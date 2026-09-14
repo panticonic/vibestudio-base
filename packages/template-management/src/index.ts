@@ -47,8 +47,7 @@ export function createShellTemplateManagementClient(
   return {
     ...extension,
     async inspect(locator) {
-      const pin =
-        "pin" in locator ? locator.pin : await extension.resolveSource(locator);
+      const pin = "pin" in locator ? locator.pin : await extension.resolveSource(locator);
       return exact.inspectExact(pin);
     },
   };
@@ -59,21 +58,21 @@ export const workspaceExamples = [
   {
     name: "Examples",
     description: "Explore sample panels, agents and tools.",
-    url: "https://github.com/panticonic/vibestudio-template-examples",
+    url: "https://github.com/panticonic/vibestudio-template-examples.git",
   },
   {
     name: "Google Workspace",
     description: "Connect Google Workspace and work with a Gmail agent.",
-    url: "https://github.com/panticonic/vibestudio-template-google-workspace",
+    url: "https://github.com/panticonic/vibestudio-template-google-workspace.git",
   },
   {
     name: "News",
     description: "Collect feeds and brief the news.",
-    url: "https://github.com/panticonic/vibestudio-template-news",
+    url: "https://github.com/panticonic/vibestudio-template-news.git",
   },
   {
     name: "Spectrolite",
     description: "Write and edit MDX with collaborative agents.",
-    url: "https://github.com/panticonic/vibestudio-template-spectrolite",
+    url: "https://github.com/panticonic/vibestudio-template-spectrolite.git",
   },
 ] as const;

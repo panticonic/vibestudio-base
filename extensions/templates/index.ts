@@ -20,9 +20,25 @@ export async function resolveInspectionPin(
 ) {
   const retained = retainedInspectionPin(locator);
   if (retained) return WorkspaceTemplatePinSchema.parse(retained);
-  if ("url" in locator)
-    return discoverDirectTemplatePin(ctx, ctx.storage.root, locator);
+  if ("url" in locator) return resolveSource(ctx, locator);
   throw new Error("Unsupported template locator");
+}
+
+/**
+ * Resolve a moving source through the instance's designated checkpoint first.
+ * Development instances designate the complete official catalog; published
+ * instances have no such checkpoints and therefore discover the remote head.
+ */
+async function resolveSource(
+  ctx: ExtensionContextLike,
+  source: { url: string; credential?: string },
+) {
+  const local = await ctx.rpc.call(
+    "main",
+    "workspaceTemplateSource.resolveLocal",
+    source.url,
+  );
+  return local ?? discoverDirectTemplatePin(ctx, ctx.storage.root, source);
 }
 
 /**
@@ -90,7 +106,7 @@ export async function activate(ctx: ExtensionContextLike) {
   ctx.log.info("templates activating");
   return {
     resolveSource: (source: { url: string; credential?: string }) =>
-      discoverDirectTemplatePin(ctx, ctx.storage.root, source),
+      resolveSource(ctx, source),
     inspect: (locator: TemplateLocator) => inspect(ctx, locator),
     inspectAuthoring: async (input: TemplateAuthoringIntent) => {
       const observation = await observeWorkspace(ctx);

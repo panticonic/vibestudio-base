@@ -39,3 +39,36 @@ it("delegates every exact pin to the host-owned source acquisition contract", as
     pin,
   );
 });
+
+it("prefers an instance-designated checkpoint to remote discovery", async () => {
+  const pin = {
+    url: "git+https://example.invalid/local.git",
+    ref: "refs/heads/vibestudio-dev-checkpoint",
+    commit: "b".repeat(40),
+  };
+  const call = vi.fn(async (_target, method) => {
+    if (method === "workspaceTemplateSource.resolveLocal") return pin;
+    if (method === "workspaceTemplateSource.inspectExact") {
+      return { pin, repositories: [], files: [], dependencies: [] };
+    }
+    throw new Error(`Unexpected method: ${method}`);
+  });
+  const api = await activate({
+    log: { info: vi.fn() },
+    rpc: { call },
+  } as never);
+
+  await expect(api.inspect({ url: pin.url })).resolves.toMatchObject({ pin });
+  expect(call).toHaveBeenNthCalledWith(
+    1,
+    "main",
+    "workspaceTemplateSource.resolveLocal",
+    pin.url,
+  );
+  expect(call).toHaveBeenNthCalledWith(
+    2,
+    "main",
+    "workspaceTemplateSource.inspectExact",
+    pin,
+  );
+});
