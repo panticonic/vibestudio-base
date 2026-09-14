@@ -2,8 +2,12 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
+import { composedWorkspaceRoot } from "./composedWorkspace.js";
 
-const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
+// Every unit the composed workspace carries, whichever template supplied it.
+const REPO_ROOT = composedWorkspaceRoot(
+  path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..")
+);
 const UNIT_ROOTS = ["about", "panels", "workers", "apps", "extensions"] as const;
 const MOBILE_SOURCE_ROOT = path.join(REPO_ROOT, "apps/mobile/src");
 const MOBILE_ICON_REGISTRY = path.join(MOBILE_SOURCE_ROOT, "design/icons.tsx");
@@ -26,6 +30,7 @@ describe("built-in workspace unit icons", () => {
 
     for (const unitRoot of UNIT_ROOTS) {
       const root = path.join(REPO_ROOT, unitRoot);
+      if (!fs.existsSync(root)) continue;
       for (const entry of fs.readdirSync(root, { withFileTypes: true })) {
         if (!entry.isDirectory()) continue;
         const manifestPath = path.join(root, entry.name, "package.json");
@@ -58,7 +63,10 @@ describe("built-in workspace unit icons", () => {
     expect(invalid).toEqual([]);
   });
 
-  it("keeps native Lucide imports inside the tree-shakeable mobile registry", () => {
+  // `apps/mobile` ships in System, so this runs where that template is composed.
+  it.skipIf(!fs.existsSync(MOBILE_SOURCE_ROOT))(
+    "keeps native Lucide imports inside the tree-shakeable mobile registry",
+    () => {
     const bypasses = [...sourceFiles(MOBILE_SOURCE_ROOT)]
       .filter((file) => file !== MOBILE_ICON_REGISTRY)
       .filter((file) => fs.readFileSync(file, "utf8").includes("lucide-react-native"))
@@ -76,5 +84,6 @@ describe("built-in workspace unit icons", () => {
 
     expect(packageReferences.length).toBeGreaterThan(0);
     expect(packageReferences).toEqual(literalPerIconRequires);
-  });
+    }
+  );
 });

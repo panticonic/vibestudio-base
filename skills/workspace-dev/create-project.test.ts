@@ -1,3 +1,4 @@
+import { composedWorkspaceRoot } from "./composedWorkspace.js";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { authorityReviewFromPackageJson } from "@vibestudio/unit-host";
 
@@ -996,20 +997,24 @@ describe("scaffold runtime contract", () => {
   it("pins the panel scaffold's React to the exact runtime Base declares", async () => {
     const { BASE_PANEL_REACT_VERSION, createProjects } =
       await import("./create-project.js");
-    const { readFileSync } = await import("node:fs");
+    const { existsSync, readFileSync } = await import("node:fs");
     const { join } = await import("node:path");
 
     // The shell realm provides this exact React; packages/react peers on it.
-    const baseRoot = join(import.meta.dirname, "..", "..");
+    const baseRoot = composedWorkspaceRoot(join(import.meta.dirname, "..", ".."));
     const reactPackage = JSON.parse(
       readFileSync(join(baseRoot, "packages", "react", "package.json"), "utf8"),
     ) as { peerDependencies?: Record<string, string> };
     expect(reactPackage.peerDependencies?.["react"]).toBe("^19.0.0");
     expect(reactPackage.peerDependencies?.["react-dom"]).toBe("^19.0.0");
-    const shellPackage = JSON.parse(
-      readFileSync(join(baseRoot, "apps", "shell", "package.json"), "utf8"),
-    ) as { dependencies?: Record<string, string> };
-    expect(shellPackage.dependencies?.["react"]).toBe("^19.0.0");
+    // `apps/shell` ships in System: assert its pin where it is composed.
+    const shellManifest = join(baseRoot, "apps", "shell", "package.json");
+    if (existsSync(shellManifest)) {
+      const shellPackage = JSON.parse(readFileSync(shellManifest, "utf8")) as {
+        dependencies?: Record<string, string>;
+      };
+      expect(shellPackage.dependencies?.["react"]).toBe("^19.0.0");
+    }
 
     // And the generated scaffold carries exactly that pin.
     await createProjects([

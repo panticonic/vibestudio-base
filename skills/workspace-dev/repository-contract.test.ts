@@ -2,11 +2,12 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { composedWorkspaceRoot } from "./composedWorkspace.js";
 import { describe, expect, it } from "vitest";
 
 import { preflightProjectFiles, type ProjectType } from "./project-manifest.js";
 
-const workspaceRoot = fileURLToPath(new URL("../../", import.meta.url));
+const workspaceRoot = composedWorkspaceRoot(fileURLToPath(new URL("../../", import.meta.url)));
 const SKIP_DIRECTORIES = new Set([".git", "build", "dist", "node_modules"]);
 const TEXT_FILE = /\.(?:[cm]?[jt]sx?|json|md|mdx|svelte|css|scss|html|ya?ml|toml|txt)$/i;
 
@@ -104,11 +105,15 @@ describe("host command guidance", () => {
       path.join(workspaceRoot, "skills/sandbox/RUNTIME_API.md"),
       "utf8"
     );
-    const appSkill = fs.readFileSync(path.join(workspaceRoot, "skills/appdev/SKILL.md"), "utf8");
-    const appAuthoring = fs.readFileSync(
-      path.join(workspaceRoot, "skills/appdev/AUTHORING.md"),
-      "utf8"
-    );
+    // `skills/appdev` ships in System; check its half of the contract where
+    // the composed workspace actually carries it.
+    const appdevRoot = path.join(workspaceRoot, "skills/appdev");
+    const appSkill = fs.existsSync(appdevRoot)
+      ? fs.readFileSync(path.join(appdevRoot, "SKILL.md"), "utf8")
+      : null;
+    const appAuthoring = fs.existsSync(appdevRoot)
+      ? fs.readFileSync(path.join(appdevRoot, "AUTHORING.md"), "utf8")
+      : null;
 
     expect(skill).toContain("PANEL_API.md#host-commands");
     expect(panelApi).toContain("## Host commands");
@@ -117,9 +122,11 @@ describe("host command guidance", () => {
     expect(panelApi).toContain("exactly once per panel runtime");
     expect(runtimeApi).toContain("registerHostCommands");
     expect(runtimeApi).toContain("onHostCommandRun");
-    expect(appSkill).toContain("AUTHORING.md#hosting-panel-contributed-commands");
-    expect(appAuthoring).toContain("## Hosting panel-contributed commands");
-    expect(appAuthoring).toContain('target: "shell"');
-    expect(appAuthoring).toContain("unknown future shell event");
+    if (appSkill !== null && appAuthoring !== null) {
+      expect(appSkill).toContain("AUTHORING.md#hosting-panel-contributed-commands");
+      expect(appAuthoring).toContain("## Hosting panel-contributed commands");
+      expect(appAuthoring).toContain('target: "shell"');
+      expect(appAuthoring).toContain("unknown future shell event");
+    }
   });
 });

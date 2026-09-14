@@ -16,6 +16,7 @@ describe("template management client", () => {
             },
             repositories: [],
             files: [],
+            dependencies: [],
           }
         : method === "authoringParts"
           ? []
@@ -46,7 +47,7 @@ it("resolves moving URLs once and sends every exact pin to the host owner", asyn
     if (method === "resolveSource") return pin;
     throw new Error(`Unexpected extension method: ${method}`);
   });
-  const callHost = vi.fn(async () => ({ pin, repositories: [], files: [] }));
+  const callHost = vi.fn(async () => ({ pin, repositories: [], files: [], dependencies: [] }));
   const client = createShellTemplateManagementClient(invoke, callHost);
 
   await client.inspect({ url: pin.url });

@@ -6,7 +6,8 @@
   "description": "Learn Vibestudio workspace development",
   "exports": {
     ".": "./index.ts",
-    "./project-manifest": "./project-manifest.ts"
+    "./project-manifest": "./project-manifest.ts",
+    "./composedWorkspace": "./composedWorkspace.ts"
   },
   "dependencies": {
     "@vibestudio/module-imports": "workspace:*",

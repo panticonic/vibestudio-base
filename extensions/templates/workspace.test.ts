@@ -22,6 +22,34 @@ describe("template workspace observation", () => {
             nextCursor: null,
           };
         }
+        // Observation also reads the workspace's own manifest, which is what
+        // exposes the templates it is composed from.
+        if (method === "vcs.resolveRepository") {
+          expect(args[0]).toMatchObject({ state, repoPath: "meta" });
+          return { repositoryId: "repository:meta" };
+        }
+        if (method === "vcs.readFile") {
+          expect(args[0]).toMatchObject({
+            state,
+            repositoryId: "repository:meta",
+          });
+          return {
+            content: {
+              kind: "text",
+              text: [
+                "systemEpoch: 1",
+                "template:",
+                "  name: Test",
+                "  description: Test template",
+                "  repositories: []",
+                "  files: []",
+                "  dependencies:",
+                "    - url: git+https://example.test/base.git",
+                "",
+              ].join("\n"),
+            },
+          };
+        }
         throw new Error(`Unexpected observation mutation: ${method}`);
       },
     );
@@ -38,9 +66,12 @@ describe("template workspace observation", () => {
       mainState: state,
       mainEventId: state.eventId,
       localRepoPaths: new Set(["meta"]),
+      templateDependencies: [{ url: "git+https://example.test/base.git" }],
     });
     expect(call.mock.calls.map(([, method]) => method)).toEqual([
       "vcs.mainState",
+      "vcs.resolveRepository",
+      "vcs.readFile",
       "vcs.listDirectory",
     ]);
   });

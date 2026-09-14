@@ -38,6 +38,10 @@
     "react-dom": "^19.0.0"
   },
   "devDependencies": {
-    "@panticonic/builtin": "workspace:*"
-  }
+    "@panticonic/builtin": "workspace:*",
+    "@testing-library/dom": "^10.4.1",
+    "@testing-library/react": "^16.3.2",
+    "vitest": "^3.2.7"
+  },
+  "//devDependencies": "@testing-library/react renders through @testing-library/dom and declares it as a peer rather than depending on it, so it has to be named here: the build installs what manifests declare and never adds a package on the registry's behalf."
 }

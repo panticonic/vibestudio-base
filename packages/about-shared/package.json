@@ -6,7 +6,8 @@
   "exports": {
     "./types": "./types.ts",
     "./ui": "./ui.tsx",
-    "./templates": "./templates.ts"
+    "./templates": "./templates.ts",
+    "./asyncState": "./asyncState.ts"
   },
   "dependencies": {
     "@radix-ui/themes": "^3.3.0",

@@ -486,7 +486,10 @@ describe("sandbox source hooks", () => {
     consoleError.mockRestore();
   });
 
-  it("compiles the onboarding overview through the file-backed inline UI pipeline", async () => {
+  // A real first-party component, chosen from this template so the pipeline is
+  // exercised wherever Base is composed. The onboarding overview this once used
+  // ships in Personal and is unreachable from here.
+  it("compiles a first-party component through the file-backed inline UI pipeline", async () => {
     const moduleMap = (globalThis as Record<string, unknown>)[
       "__vibestudioModuleMap__"
     ] as Record<string, unknown>;
@@ -499,13 +502,13 @@ describe("sandbox source hooks", () => {
     moduleMap["@workspace/model-catalog/catalog"] = {};
     moduleMap["@vibestudio/shared/shellSurface"] = ShellSurface;
 
-    const sourcePath = "skills/onboarding/SetupHub.tsx";
+    const sourcePath = "skills/web-research/SearchProviderSetup.tsx";
     const workspaceRoot =
       process.env["VIBESTUDIO_USERLAND_ROOT"] ?? process.cwd();
     const states: InlineUiState[] = [];
     const messages = [
       makeMessage({
-        id: "onboarding-setup-overview",
+        id: "search-provider-setup",
         source: { type: "file", path: sourcePath },
       }),
     ];
@@ -528,7 +531,7 @@ describe("sandbox source hooks", () => {
       () => {
         const entry = states
           .at(-1)
-          ?.inlineUiComponents.get("onboarding-setup-overview");
+          ?.inlineUiComponents.get("search-provider-setup");
         expect(entry?.error).toBeUndefined();
         expect(entry?.Component).toBeTruthy();
       },
