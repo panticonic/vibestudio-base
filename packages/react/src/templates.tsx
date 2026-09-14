@@ -18,18 +18,22 @@ import {
   Select,
 } from "@radix-ui/themes";
 import type {
+  TemplateRegistry,
   TemplateExactPin,
   TemplateInspection,
   TemplateLocator,
 } from "@vibestudio/service-schemas/templates";
-import { sameWorkspaceTemplatePin } from "@vibestudio/service-schemas/templates";
-import { workspaceExamples } from "@workspace/template-management";
+import {
+  DEFAULT_TEMPLATE_REGISTRY_URL,
+  sameWorkspaceTemplatePin,
+} from "@vibestudio/service-schemas/templates";
 import type { TemplateManagementClient } from "@workspace/template-management";
 
 import type { StoredCredentialSummary } from "@vibestudio/credential-client/types";
 import { findMatchingUrlAudience } from "@vibestudio/credential-client/urlAudience";
 
-type BrowserClient = Pick<TemplateManagementClient, "inspect">;
+type BrowserClient = Pick<TemplateManagementClient, "inspect"> &
+  Partial<Pick<TemplateManagementClient, "registry">>;
 export type CreateTemplateWorkspace = (
   name: string,
   pin: TemplateExactPin,
@@ -228,6 +232,13 @@ function WorkspaceSourceSession({
 }: TemplateBrowserProps) {
   const [accounts, setAccounts] = useState<StoredCredentialSummary[]>([]);
   const [accountError, setAccountError] = useState<string | null>(null);
+  const [registryUrl, setRegistryUrl] = useState(DEFAULT_TEMPLATE_REGISTRY_URL);
+  const [registry, setRegistry] = useState<TemplateRegistry | null>(null);
+  const [registryError, setRegistryError] = useState<string | null>(null);
+  const [loadingRegistry, setLoadingRegistry] = useState(false);
+  const registryGeneration = useRef(0);
+  const generation = useRef(0);
+  const live = useRef(true);
   useEffect(() => {
     if (!listSourceAccounts) return;
     let active = true;
@@ -242,6 +253,27 @@ function WorkspaceSourceSession({
       active = false;
     };
   }, [listSourceAccounts]);
+  const loadRegistry = async (url?: string) => {
+    if (!client.registry) return;
+    const operation = ++registryGeneration.current;
+    setLoadingRegistry(true);
+    setRegistryError(null);
+    try {
+      const result = await client.registry(url ? { url } : {});
+      if (live.current && operation === registryGeneration.current)
+        setRegistry(result);
+    } catch (error) {
+      if (live.current && operation === registryGeneration.current) {
+        setRegistryError(errorMessage(error));
+      }
+    } finally {
+      if (live.current && operation === registryGeneration.current)
+        setLoadingRegistry(false);
+    }
+  };
+  useEffect(() => {
+    void loadRegistry();
+  }, [client]);
   const [sourceKind, setSourceKind] = useState("git");
   const [freshName, setFreshName] = useState("");
   const [creatingFresh, setCreatingFresh] = useState(false);
@@ -255,13 +287,12 @@ function WorkspaceSourceSession({
   const [currentInspection, setInspection] =
     useState<TemplateInspection | null>(initialInspection ?? null);
   const [inspecting, setInspecting] = useState(false);
-  const generation = useRef(0);
-  const live = useRef(true);
   useEffect(() => {
     live.current = true;
     return () => {
       live.current = false;
       generation.current += 1;
+      registryGeneration.current += 1;
     };
   }, []);
   const inspect = async (locator: TemplateLocator) => {
@@ -588,26 +619,56 @@ function WorkspaceSourceSession({
           </Flex>
         </Flex>
       ) : null}
-      {sourceKind === "git" ? (
+      {sourceKind === "git" && client.registry ? (
         <Flex direction="column" gap="3">
-          <Heading size="3">Start from an example</Heading>
+          <Heading size="3">Workspace catalog</Heading>
+          <Flex gap="2" align="end">
+            <Box style={{ flex: 1 }}>
+              <Text as="label" size="2" weight="medium">
+                Registry address
+              </Text>
+              <TextField.Root
+                mt="1"
+                size="2"
+                aria-label="Template registry address"
+                value={registryUrl}
+                onChange={(event) => setRegistryUrl(event.target.value)}
+                disabled={loadingRegistry}
+              />
+            </Box>
+            <Button
+              variant="soft"
+              loading={loadingRegistry}
+              disabled={loadingRegistry || !registryUrl.trim()}
+              onClick={() => void loadRegistry(registryUrl.trim())}
+            >
+              Load registry
+            </Button>
+          </Flex>
+          {registryError ? (
+            <Text size="2" color="red" role="alert">
+              {registryError}
+            </Text>
+          ) : null}
           <Grid columns={{ initial: "1", sm: "2" }} gap="3">
-            {workspaceExamples.map((entry) => (
-              <Card key={entry.url}>
-                <Heading size="3">{entry.name}</Heading>
-                <Text as="p" size="2" color="gray" mt="2">
-                  {entry.description}
-                </Text>
-                <Button
-                  mt="3"
-                  variant="soft"
-                  disabled={inspecting}
-                  onClick={() => void inspect({ url: entry.url })}
-                >
-                  Review {entry.name}
-                </Button>
-              </Card>
-            ))}
+            {registry?.templates
+              .filter((entry) => entry.role === "catalog")
+              .map((entry) => (
+                <Card key={entry.url}>
+                  <Heading size="3">{entry.name}</Heading>
+                  <Text as="p" size="2" color="gray" mt="2">
+                    {entry.description}
+                  </Text>
+                  <Button
+                    mt="3"
+                    variant="soft"
+                    disabled={inspecting}
+                    onClick={() => void inspect({ url: entry.url })}
+                  >
+                    Review {entry.name}
+                  </Button>
+                </Card>
+              ))}
           </Grid>
         </Flex>
       ) : null}

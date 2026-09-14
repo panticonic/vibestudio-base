@@ -312,6 +312,47 @@ it("prefills a website Git URL and requires review before creation", async () =>
   await waitFor(() => expect(onCreate).toHaveBeenCalledWith("garden", pin));
 });
 
+it("loads a different registry address and uses its moving template URL", async () => {
+  const registry = {
+    version: 1 as const,
+    templates: [
+      {
+        id: "garden",
+        role: "catalog" as const,
+        name: "Garden",
+        description: "Grow a workspace",
+        url: "git+https://elsewhere.test/garden.git",
+      },
+    ],
+  };
+  const client = {
+    registry: vi.fn(async () => registry),
+    inspect: vi.fn(async () => inspection),
+  };
+  render(
+    <Theme>
+      <TemplateBrowser client={client} onCreate={vi.fn()} />
+    </Theme>,
+  );
+  await screen.findByRole("button", { name: "Review Garden" });
+  fireEvent.change(
+    screen.getByRole("textbox", { name: "Template registry address" }),
+    {
+      target: { value: "https://elsewhere.test/registry.json" },
+    },
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Load registry" }));
+  await waitFor(() =>
+    expect(client.registry).toHaveBeenLastCalledWith({
+      url: "https://elsewhere.test/registry.json",
+    }),
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Review Garden" }));
+  expect(client.inspect).toHaveBeenCalledWith({
+    url: "git+https://elsewhere.test/garden.git",
+  });
+});
+
 it("replaces a source session on a new link and leaves a local review with Back", async () => {
   const client = { inspect: vi.fn() };
   const onCreate = vi.fn();

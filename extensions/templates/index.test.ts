@@ -72,3 +72,31 @@ it("prefers an instance-designated checkpoint to remote discovery", async () => 
     pin,
   );
 });
+
+it("loads the instance registry by default", async () => {
+  const registry = {
+    version: 1 as const,
+    templates: [
+      ...(["base", "personal", "system"] as const).map((role) => ({
+        id: role,
+        role,
+        name: role,
+        description: `${role} workspace`,
+        url: `git+https://example.test/${role}.git`,
+      })),
+    ],
+  };
+  const call = vi.fn(async (_target, method) =>
+    method === "workspaceTemplateSource.localRegistry" ? registry : null,
+  );
+  const api = await activate({
+    log: { info: vi.fn() },
+    rpc: { call },
+  } as never);
+
+  await expect(api.registry({})).resolves.toEqual(registry);
+  expect(call).toHaveBeenCalledWith(
+    "main",
+    "workspaceTemplateSource.localRegistry",
+  );
+});

@@ -25,6 +25,7 @@ describe("templates authority manifest", () => {
       readFileSync(new URL("./package.json", import.meta.url), "utf8"),
     );
     expect(Object.keys(manifest.vibestudio.extension.methodAuthority)).toEqual([
+      "registry",
       "resolveSource",
       "inspect",
       "inspectAuthoring",

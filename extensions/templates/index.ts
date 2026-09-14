@@ -1,8 +1,13 @@
+import { Buffer } from "node:buffer";
 import type {
   TemplateAuthoringIntent,
   TemplateInspection,
   TemplateLocator,
   TemplatePublication,
+} from "@vibestudio/service-schemas/templates";
+import {
+  DEFAULT_TEMPLATE_REGISTRY_URL,
+  templateRegistrySchema,
 } from "@vibestudio/service-schemas/templates";
 import { WorkspaceTemplatePinSchema } from "@vibestudio/workspace-contracts/workspaceConfigSchema";
 import type { ExtensionContextLike } from "./context.js";
@@ -102,9 +107,39 @@ async function inspect(ctx: ExtensionContextLike, locator: TemplateLocator) {
   );
 }
 
+async function loadRegistry(ctx: ExtensionContextLike, requestedUrl?: string) {
+  if (!requestedUrl) {
+    const local = await ctx.rpc.call(
+      "main",
+      "workspaceTemplateSource.localRegistry",
+    );
+    if (local) return templateRegistrySchema.parse(local);
+  }
+  const url = new URL(requestedUrl ?? DEFAULT_TEMPLATE_REGISTRY_URL);
+  if (url.protocol !== "https:" && url.protocol !== "http:") {
+    throw new Error("Template registry URLs must use HTTP(S)");
+  }
+  const response = await ctx.credentials.fetch(url);
+  if (!response.ok) {
+    throw new Error(
+      `Template registry request failed with HTTP ${response.status}`,
+    );
+  }
+  const length = Number(response.headers.get("content-length") ?? 0);
+  if (Number.isFinite(length) && length > 1024 * 1024) {
+    throw new Error("Template registry exceeds the 1 MiB limit");
+  }
+  const body = await response.text();
+  if (Buffer.byteLength(body, "utf8") > 1024 * 1024) {
+    throw new Error("Template registry exceeds the 1 MiB limit");
+  }
+  return templateRegistrySchema.parse(JSON.parse(body));
+}
+
 export async function activate(ctx: ExtensionContextLike) {
   ctx.log.info("templates activating");
   return {
+    registry: ({ url }: { url?: string }) => loadRegistry(ctx, url),
     resolveSource: (source: { url: string; credential?: string }) =>
       resolveSource(ctx, source),
     inspect: (locator: TemplateLocator) => inspect(ctx, locator),

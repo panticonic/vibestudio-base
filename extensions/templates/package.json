@@ -13,6 +13,15 @@
         "onInvoke"
       ],
       "methodAuthority": {
+        "registry": {
+          "effect": {
+            "kind": "open"
+          },
+          "website": {
+            "kind": "eligible",
+            "rationale": "Loads public workspace-template catalog metadata from the selected address."
+          }
+        },
         "resolveSource": {
           "effect": {
             "kind": "open"
