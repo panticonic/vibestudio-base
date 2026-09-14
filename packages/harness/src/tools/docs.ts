@@ -361,12 +361,17 @@ export function renderEntry(entry: CatalogEntry): string {
               )} request in the caller's package.json with resource { "kind": "prefix", "prefix": "" }, tier "gated", and evidence "bounded-dynamic". Manifest tiers are only "gated" or "critical"; the provider method's RPC tier "open" is a separate receiver policy. This request may exist before the provider; the live declaration, provider version, context visibility, and grant are still checked at runtime.`
         );
       }
+      const durableObjectGuard =
+        access?.target?.kind === "durable-object"
+          ? 'if (service.kind !== "durable-object") throw new Error("Expected a Durable Object service");\n'
+          : "";
       const callExample = entry.parent
-        ? 'if (service.kind !== "durable-object") throw new Error("Expected a Durable Object service");\n' +
+        ? durableObjectGuard +
           `await rpc.call(service.targetId, ${JSON.stringify(
             entry.qualifiedName.split(".").at(-1)
           )}, [/* args */]);`
-        : "// Open the method docs listed above, then call its exact method through rpc.call(...).";
+        : durableObjectGuard +
+          "// Open the method docs listed above, then call its exact method through rpc.call(...).";
       const factoryObjectKey =
         access?.target?.kind === "durable-object" && access.target.defaultObjectKey === null
           ? "const objectKey = /* exact provider object key from the task/runtime context */;\n"

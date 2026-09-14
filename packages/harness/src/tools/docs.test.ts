@@ -198,6 +198,7 @@ describe("renderEntry (readable docs_open text)", () => {
     expect(text).toContain('workers.resolveService("example.notes.v1")');
     expect(text).toContain('import { workers, rpc } from "@workspace/runtime"');
     expect(text).toContain('runtime.workers.resolveService("example.notes.v1")');
+    expect(text.match(/service\.kind !== "durable-object"/gu)).toHaveLength(2);
     expect(text).toContain("Resolve and call it directly through the runtime");
   });
 
