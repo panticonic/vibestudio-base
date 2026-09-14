@@ -34,12 +34,19 @@ export async function resolveInspectionPin(
  * reading the address, rather than resolving a track, the same answer. An
  * exact `commit` is used exactly.
  */
-async function inheritedParts(
+async function inheritedInventory(
   ctx: ExtensionContextLike,
-  intent: TemplateAuthoringIntent,
-): Promise<string[]> {
-  const parts: string[] = [];
-  for (const dependency of intent.dependencies ?? []) {
+  dependencies: readonly import("@vibestudio/workspace-contracts/types").WorkspaceTemplateDependency[],
+): Promise<{ repositories: string[]; files: string[] }> {
+  const repositories: string[] = [];
+  const files: string[] = [];
+  const visited = new Set<string>();
+  const visit = async (
+    dependency: (typeof dependencies)[number],
+  ): Promise<void> => {
+    const key = `${dependency.url}\0${dependency.commit ?? "latest"}`;
+    if (visited.has(key)) return;
+    visited.add(key);
     const inspection = await inspect(
       ctx,
       dependency.commit
@@ -48,17 +55,26 @@ async function inheritedParts(
               url: dependency.url,
               ref: dependency.track ?? "refs/heads/main",
               commit: dependency.commit,
-              ...(dependency.credential ? { credential: dependency.credential } : {}),
+              ...(dependency.credential
+                ? { credential: dependency.credential }
+                : {}),
             },
           }
         : {
             url: dependency.url,
-            ...(dependency.credential ? { credential: dependency.credential } : {}),
+            ...(dependency.credential
+              ? { credential: dependency.credential }
+              : {}),
           },
     );
-    parts.push(...inspection.repositories);
+    for (const upstream of inspection.dependencies) await visit(upstream);
+    repositories.push(...inspection.repositories);
+    files.push(...inspection.files);
+  };
+  for (const dependency of dependencies) {
+    await visit(dependency);
   }
-  return parts;
+  return { repositories, files };
 }
 
 async function inspect(ctx: ExtensionContextLike, locator: TemplateLocator) {
@@ -76,13 +92,15 @@ export async function activate(ctx: ExtensionContextLike) {
     resolveSource: (source: { url: string; credential?: string }) =>
       discoverDirectTemplatePin(ctx, ctx.storage.root, source),
     inspect: (locator: TemplateLocator) => inspect(ctx, locator),
-    inspectAuthoring: async (input: TemplateAuthoringIntent) =>
-      inspectTemplateAuthoring(
+    inspectAuthoring: async (input: TemplateAuthoringIntent) => {
+      const observation = await observeWorkspace(ctx);
+      return inspectTemplateAuthoring(
         ctx,
-        await observeWorkspace(ctx),
+        observation,
         input,
-        await inheritedParts(ctx, input),
-      ),
+        await inheritedInventory(ctx, observation.templateDependencies),
+      );
+    },
     authoringParts: async () =>
       listTemplateAuthoringParts(ctx, await observeWorkspace(ctx)),
     async publishAuthoring(input: {
@@ -99,7 +117,7 @@ export async function activate(ctx: ExtensionContextLike) {
         ctx,
         observation,
         input.intent,
-        await inheritedParts(ctx, input.intent),
+        await inheritedInventory(ctx, observation.templateDependencies),
       );
       if (current.fingerprint !== input.expectedFingerprint)
         throw new Error(

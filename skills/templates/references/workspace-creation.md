@@ -74,7 +74,9 @@ connection; installed panels and workers use their ordinary admitted runtime.
 ```ts
 import { templates, workspaces } from "@workspace/runtime";
 
-const inspected = await templates.inspect({ url: "https://github.com/owner/workspace" });
+const inspected = await templates.inspect({
+  url: "https://github.com/owner/workspace",
+});
 // Retain this exact request in caller-scoped durable storage before submitting.
 const request = {
   operationId: crypto.randomUUID(),
@@ -113,8 +115,9 @@ trusted workspace action.
   must not replace its selection. A pending creation is reconciled separately.
 
 To edit selected files in the current workspace, use the existing source-copy or
-VCS import/merge workflows instead. Workspace creation does not import an
-installed template layer, share another workspace's runtime, or inherit grants.
+VCS import/merge workflows instead. Workspace creation materializes the selected
+template and its dependencies as one new workspace; it does not share another
+workspace's runtime or inherit grants.
 See [workspace RPC](../../workspace-dev/RPC.md) for explicit cross-workspace
 integration after creation, and [authoring](template-authoring.md) to publish a
-self-contained source that others can add.
+workspace template that others can add.

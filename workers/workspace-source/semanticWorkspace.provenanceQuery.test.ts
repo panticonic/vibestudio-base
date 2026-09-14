@@ -30,7 +30,6 @@ const ingress: SemanticDispatchRequest["ingress"] = {
     head: "main",
     invocationId: "invocation:test",
   },
-  contextIntegrity: { class: "internal", externalKeys: [] },
 };
 
 function pending<T>(result: SemanticDispatchResult): T {

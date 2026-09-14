@@ -1958,20 +1958,14 @@ export class PubSubChannel extends DurableObjectBase {
     return event;
   }
 
-  /** The message class is never accepted from publish arguments. The host
-   * relay seals this fact onto the current direct invocation. Non-model
-   * callers have no cognition latch and therefore author internal content. */
+  /** Content class is never accepted from publish arguments. Channel writes
+   * are authored inside the workspace; readers derive outside lineage from the
+   * sender reference on the envelope they receive. */
   private senderContentIntegrity(): {
     contentClass: "internal" | "external";
     externalKeys: string[];
   } {
-    const fact = this.authorization?.contextIntegrity;
-    if (fact?.class !== "external")
-      return { contentClass: "internal", externalKeys: [] };
-    return {
-      contentClass: "external",
-      externalKeys: [...new Set(fact.externalKeys)],
-    };
+    return { contentClass: "internal", externalKeys: [] };
   }
 
   private policyViewFromChannelEvent(event: ChannelEvent): PolicyEnvelopeView {

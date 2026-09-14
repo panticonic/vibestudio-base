@@ -1,6 +1,7 @@
 /** Builtin recall deduplication across copied trajectory and channel projections. */
 import { describe, expect, it, beforeEach } from "vitest";
 import { createTestDO } from "@vibestudio/durable/test-utils";
+import { logIdForChannel } from "@vibestudio/trajectory-identity";
 import { GadWorkspaceDO } from "./index.js";
 
 type TestGad = Awaited<ReturnType<typeof createTestDO<GadWorkspaceDO>>>;
@@ -147,5 +148,86 @@ describe("GadWorkspaceDO — recall deduplication", () => {
       eventId: "event:retention-launch",
       snippet: expect.stringContaining("Harbor Lantern rollout codename"),
     });
+  });
+});
+
+describe("GadWorkspaceDO — recall visibility", () => {
+  let gad: TestGad;
+  let doi: GadWorkspaceDO;
+
+  const OWN_CHANNEL = "channel:own";
+  const OTHER_CHANNEL = "channel:sibling";
+
+  /**
+   * The host attests the caller's agent binding; the DO never takes it from
+   * the request. A test stands in for the host by shadowing the same getter.
+   */
+  const asAgent = (channelId: string | null): void => {
+    Object.defineProperty(doi, "authorization", {
+      configurable: true,
+      get: () => ({
+        authorizingOrigin: { kind: "code", principal: "code:test" },
+        agentBinding: channelId
+          ? {
+              entity: null,
+              contextId: `context:${channelId}`,
+              channelId,
+            }
+          : null,
+      }),
+    });
+  };
+
+  beforeEach(async () => {
+    gad = await createTestDO(GadWorkspaceDO, {
+      __objectKey: "gad-recall-visibility",
+      WORKSPACE_ID: "workspace-recall",
+    });
+    doi = gad.instance;
+    for (const channelId of [OWN_CHANNEL, OTHER_CHANNEL]) {
+      reach(doi).indexMemoryRow({
+        text: `the Northstar ingress cuts streams in ${channelId}`,
+        kind: "message",
+        logId: logIdForChannel(channelId),
+        head: logIdForChannel(channelId),
+        eventId: `e-${channelId}`,
+        anchor: { messageId: `m-${channelId}`, turnId: null },
+      });
+    }
+    reach(doi).indexMemoryRow({
+      text: "Northstar ingress limits recorded in a commit",
+      kind: "commit",
+      eventId: "e-commit",
+    });
+  });
+
+  it("withholds a sibling context's conversation from an agent caller", () => {
+    asAgent(OWN_CHANNEL);
+    const texts = doi
+      .recallMemory({ query: "Northstar ingress" })
+      .results.map((result) => result.snippet);
+    expect(texts.some((text) => text.includes(OWN_CHANNEL))).toBe(true);
+    // The leak this closes: a sibling task context's message reached a reader
+    // that a provenance walk, query, and search all refuse.
+    expect(texts.some((text) => text.includes(OTHER_CHANNEL))).toBe(false);
+    // Committed workspace state stays workspace-wide.
+    expect(texts.some((text) => text.includes("in a commit"))).toBe(true);
+  });
+
+  it("returns no conversation at all to an agent caller with no binding", () => {
+    asAgent(null);
+    const texts = doi
+      .recallMemory({ query: "Northstar ingress" })
+      .results.map((result) => result.snippet);
+    expect(texts.some((text) => text.includes("channel:"))).toBe(false);
+    expect(texts.some((text) => text.includes("in a commit"))).toBe(true);
+  });
+
+  it("leaves an unattributed in-process call unscoped", () => {
+    const texts = doi
+      .recallMemory({ query: "Northstar ingress" })
+      .results.map((result) => result.snippet);
+    expect(texts.some((text) => text.includes(OWN_CHANNEL))).toBe(true);
+    expect(texts.some((text) => text.includes(OTHER_CHANNEL))).toBe(true);
   });
 });

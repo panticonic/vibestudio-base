@@ -24,6 +24,7 @@ reconstruct enough of the record to impute that axiom before you act against it.
 | What has this coordinate been *for*? | `vcs({ operation: "blame" })` and file history, read as intent drift |
 | What was tried and rejected here? | `provenance({ target, walk: "rejections" })` |
 | Which subjects match a description? | `provenance({ target: "search: some words" })` |
+| Which record mentions a name or decision no current file holds? | `memory_recall({ query })` — see [memory](../memory/SKILL.md) |
 | A set-shaped question ("all X where Y") | `provenance({ query: "SELECT …" })` |
 | Nothing above fits | `provenance({ target })` for one subject's immediate edges |
 

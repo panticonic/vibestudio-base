@@ -607,61 +607,6 @@ describe("PubSubChannel", () => {
     });
   });
 
-  it("stamps the sender latch on the durable message and preserves exact outside lineage", async () => {
-    const { instance, gad, callAs } = await createGadBackedChannel();
-    setRpcCaller(instance, "agent:outside", "agent");
-    const caller = (
-      instance as unknown as {
-        _currentVerifiedCaller: {
-          authorization?: ReturnType<typeof createTestDirectAuthority>;
-        };
-      }
-    )._currentVerifiedCaller;
-    caller.authorization = createTestDirectAuthority({
-      callerKind: "agent",
-      method: "publish",
-      objectKey: "channel-1",
-    });
-    caller.authorization.context.contextIntegrity = {
-      class: "external",
-      latchEpoch: 2,
-      externalKeys: [
-        `api:webhook:${"a".repeat(64)}`,
-        "web:example.com",
-        "msg:source/earlier",
-      ],
-    };
-
-    await instance.subscribe("agent:outside", {
-      contextId: "ctx-1",
-      name: "Outside agent",
-      type: "agent",
-    });
-    await callAs(
-      {
-        callerId: "agent:outside",
-        callerKind: "agent",
-        authorization: caller.authorization,
-      },
-      "publish",
-      "agent:outside",
-      AGENTIC_EVENT_PAYLOAD_KIND,
-      agenticEvent(),
-    );
-    const page = await gad.instance.readChannelEnvelopes({
-      channelId: "channel-1",
-    });
-    const envelope = page.items.at(-1);
-
-    expect(envelope).toMatchObject({
-      contentClass: "external",
-      externalKeys: [
-        `api:webhook:${"a".repeat(64)}`,
-        "web:example.com",
-        "msg:source/earlier",
-      ],
-    });
-  });
 
   it("ledger:channel.ordinary.authenticated-admission", async () => {
     const { instance } = await createGadBackedChannel();

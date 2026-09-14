@@ -231,7 +231,6 @@ function websiteCaller(method: string) {
         constraints: {
           subjectGeneration: 0,
           sourceWorkspaceId: "test",
-          lineageAtConsent: [],
         },
         provenance: "durable-test-host-attestation",
       },

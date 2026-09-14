@@ -292,6 +292,16 @@ export abstract class AgentWorkerBase extends AgentVesselBase {
     const fs = createRpcFs(toolRpc as never);
     const cwd = "/";
     const visibility = createAgentFileVisibility(cwd, fs);
+    const { createOutsideContentReset } = await import("./outside-content-reset.js");
+    const outsideContentReset = createOutsideContentReset({
+      resetTaskAuthority: () => this.resetTaskAuthorityForOutsideContent(channelId),
+      onError: (error, source) => {
+        console.warn("[agent] could not drop task authority for outside content", {
+          source,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      },
+    });
     // Reads come from the materialized working tree (fs RPC, scoped to the
     // caller's context); writes go through the canonical semantic VCS so the
     // exact working state is authoritative and disk is its projection.
@@ -583,10 +593,9 @@ export abstract class AgentWorkerBase extends AgentVesselBase {
         rpc: {
           call: (target, method, args) => toolRpc.call(target, method, args),
         },
-        recordIngestion: (entry) =>
-          toolRpc
-            .call("main", "contextIntegrity.ingest", [entry])
-            .then(() => undefined),
+        // Outside content drops this task's standing authority, so the next
+        // gated operation asks the person again. Self-denial, decided by code.
+        recordIngestion: (entry) => outsideContentReset.observe(entry.key),
         hasCredentialForOrigin: async (origin) => {
           try {
             const credential = await this.rpc.call<unknown>(

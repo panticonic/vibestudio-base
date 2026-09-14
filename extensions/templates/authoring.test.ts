@@ -8,6 +8,8 @@ function observation(eventId: string) {
     mainState: { kind: "event" as const, eventId },
     runtimeTop: { systemEpoch: 0 },
     localRepoPaths: new Set(["meta", "panels/news"]),
+    templateDependencies: [],
+    templateFiles: [],
   };
 }
 
@@ -31,14 +33,19 @@ function context() {
               return {
                 content: {
                   kind: "text",
-                  text: "systemEpoch: 0\ntemplate:\n  name: Source\n  repositories: [panels/news]\n  files: [meta/distributions/base.yml]\n",
+                  text: "systemEpoch: 0\ntemplate:\n  name: Source\n  repositories: [panels/news]\n  files: []\n",
                 },
               };
             }
             return {
               content: {
                 kind: "text",
-                text: JSON.stringify({ name: "@workspace-panels/news" }),
+                text: JSON.stringify({
+                  name:
+                    input.repositoryId === "repository:packages/runtime"
+                      ? "@workspace/runtime"
+                      : "@workspace-panels/news",
+                }),
               },
             };
           }
@@ -61,11 +68,13 @@ describe("template authoring source closure", () => {
       ctx as never,
       observation("event:one") as never,
       request,
+      { repositories: [], files: [] },
     );
     const second = await inspectTemplateAuthoring(
       ctx as never,
       observation("event:two") as never,
       request,
+      { repositories: [], files: [] },
     );
 
     expect(first.includedParts).toEqual(["meta", "panels/news"]);
@@ -73,8 +82,44 @@ describe("template authoring source closure", () => {
     expect(YAML.parse(first.manifest).template).toEqual(
       expect.objectContaining({
         repositories: ["panels/news"],
-        files: ["meta/distributions/base.yml"],
+        files: [],
       }),
     );
+  });
+
+  it("publishes the workspace's recorded dependency without copying its repositories", async () => {
+    const ctx = context();
+    const current = {
+      ...observation("event:one"),
+      localRepoPaths: new Set(["meta", "packages/runtime", "panels/news"]),
+      templateDependencies: [{ url: "https://example.test/base.git" }],
+    };
+    const result = await inspectTemplateAuthoring(
+      ctx as never,
+      current as never,
+      { name: "News", description: "News workspace", parts: ["panels/news"] },
+      { repositories: ["packages/runtime"], files: [] },
+    );
+
+    expect(result.includedParts).toEqual(["meta", "panels/news"]);
+    expect(YAML.parse(result.manifest).template.dependencies).toEqual([
+      { url: "https://example.test/base.git" },
+    ]);
+  });
+
+  it("does not republish standalone files supplied by dependencies", async () => {
+    const current = {
+      ...observation("event:one"),
+      templateDependencies: [{ url: "https://example.test/base.git" }],
+      templateFiles: ["AGENTS.md", "PERSONAL.md"],
+    };
+    const result = await inspectTemplateAuthoring(
+      context() as never,
+      current as never,
+      { name: "News", description: "News workspace", parts: ["panels/news"] },
+      { repositories: [], files: ["AGENTS.md"] },
+    );
+
+    expect(YAML.parse(result.manifest).template.files).toEqual(["PERSONAL.md"]);
   });
 });

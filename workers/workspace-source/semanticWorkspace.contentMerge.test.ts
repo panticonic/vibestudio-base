@@ -12,7 +12,6 @@ import { SemanticVcsStore } from "./semanticVcsStore.js";
 const timestamp = "2026-07-15T00:00:00.000Z";
 const ingress: SemanticDispatchRequest["ingress"] = {
   causalParent: null,
-  contextIntegrity: { class: "internal", externalKeys: [] },
 };
 const hash = (text: string) => sha256Hex(new TextEncoder().encode(text));
 

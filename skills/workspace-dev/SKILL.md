@@ -26,6 +26,7 @@ development](../extensiondev/SKILL.md) for trusted Node services.
 | -------------------------------------------------------------- | ------------------------------------------ |
 | Add a workspace from a folder, Git URL, or website link | [Workspace creation](../templates/references/workspace-creation.md) |
 | Publish a standalone workspace source | [Workspace authoring](../templates/references/template-authoring.md) |
+| Create a new panel, worker, package, or repo-local skill | [Scaffold projects](#scaffold-projects) |
 | Development loop                                               | [WORKFLOW.md](WORKFLOW.md)                 |
 | External dependencies, overrides, and patches                  | [DEPENDENCIES.md](DEPENDENCIES.md)         |
 | Build, inspect, polish a panel                                 | [PANEL_DEBUG_LOOP.md](PANEL_DEBUG_LOOP.md) |

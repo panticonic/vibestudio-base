@@ -1372,7 +1372,6 @@ describe("trajectory projection invariants", () => {
           head: "main",
           invocationId,
         },
-        contextIntegrity: { class: "internal", externalKeys: [] },
       },
     });
 

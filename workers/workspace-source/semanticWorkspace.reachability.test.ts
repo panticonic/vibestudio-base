@@ -69,7 +69,6 @@ describe("SemanticWorkspace causal provenance reachability", () => {
     const comparison = await semantic.dispatch("compare", {
       ingress: {
         causalParent: null,
-        contextIntegrity: { class: "internal", externalKeys: [] },
       },
       input: {
         target: { kind: "event", eventId: "event:deep:target" },

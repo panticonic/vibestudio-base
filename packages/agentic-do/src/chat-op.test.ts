@@ -365,10 +365,6 @@ class TestVessel extends AgentVesselBase {
             args: unknown[],
             options?: unknown,
           ) => {
-            if (targetId === "main" && method === "contextIntegrity.ingest") {
-              vessel.operationLog.push("rpc:main:contextIntegrity.ingest");
-              return { class: "internal", latchEpoch: 0, externalKeys: [] };
-            }
             if (
               targetId === "main" &&
               method === "credentials.connect" &&
@@ -2152,14 +2148,8 @@ describe("AgentVesselBase.processChannelEvent", () => {
       },
     });
     expect(vessel.operationLog).toEqual(
-      expect.arrayContaining([
-        "rpc:main:contextIntegrity.ingest",
-        "driver:handleIncoming",
-      ]),
+      expect.arrayContaining(["driver:handleIncoming"]),
     );
-    expect(
-      vessel.operationLog.indexOf("rpc:main:contextIntegrity.ingest"),
-    ).toBeLessThan(vessel.operationLog.indexOf("driver:handleIncoming"));
   });
 
   it("requires an exact payload-kind match", async () => {

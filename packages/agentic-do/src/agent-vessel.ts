@@ -13,6 +13,10 @@
  */
 
 import {
+  createOutsideContentReset,
+  type OutsideContentReset,
+} from "./outside-content-reset.js";
+import {
   type DurableObjectContext,
   type LifecyclePrepareInput,
   type LifecyclePrepareResult,
@@ -2723,10 +2727,6 @@ export abstract class AgentVesselBase extends PanelDurableObjectBase {
         continue;
       }
       if (participant.methods.length > 0) {
-        await this.recordDerivedSessionIngestion(
-          participant.participantId,
-          "participant-tool-advertisement",
-        );
         throwIfAborted();
       }
       for (const method of participant.methods) {
@@ -3265,15 +3265,6 @@ export abstract class AgentVesselBase extends PanelDurableObjectBase {
             : null,
           limit: typeof input.limit === "number" ? input.limit : null,
         });
-        for (const result of recall.results) {
-          const origin =
-            result.actor &&
-            typeof result.actor === "object" &&
-            "id" in result.actor
-              ? String((result.actor as { id: unknown }).id)
-              : (result.eventId ?? "memory-unknown");
-          await this.recordDerivedSessionIngestion(origin, "memory-recall");
-        }
         const lines = recall.results.map((result) => {
           const where =
             result.path ??
@@ -4516,7 +4507,6 @@ This is one admitted recurring-automation tick. If this tick establishes that th
     // The host resolves this exact durable message's persisted class. Do not
     // read a class from the delivered payload: a participant controls payload
     // bytes, while the GAD provenance row is product-sealed.
-    await this.recordMessageIngestion(channelId, event, "channel-message");
 
     await this.dispatchApprovedInput(channelId, event, sourceMessageId);
   }
@@ -4556,7 +4546,6 @@ This is one admitted recurring-automation tick. If this tick establishes that th
 
     const observation = this.resolveChannelObservation(channelId, event);
     if (!observation) return false;
-    await this.recordMessageIngestion(channelId, event, "channel-observation");
     await this.driver.handleIncoming(channelId, {
       type: "command",
       command: {
@@ -4737,11 +4726,6 @@ This is one admitted recurring-automation tick. If this tick establishes that th
     if (!sourceMessageId || !by) return true;
     if (kind === "message.edited") {
       const payload = (agentic as AgenticEvent<"message.edited">).payload;
-      await this.recordMessageIngestion(
-        channelId,
-        event,
-        "channel-message-edit",
-      );
       await this.driver.handleIncoming(channelId, {
         type: "command",
         command: { kind: "edit", sourceMessageId, blocks: payload.blocks, by },
@@ -4811,9 +4795,9 @@ This is one admitted recurring-automation tick. If this tick establishes that th
       .payload ?? {}) as Record<string, unknown>;
     const isError = kind !== "invocation.completed";
     const responderSessionId = participantIdFromRef(descriptor.target);
-    await this.recordMessageIngestion(channelId, event, "channel-tool-result");
     const hydratedResult = await this.hydrateTransportValue(
       payload["result"],
+      channelId,
       responderSessionId,
       "channel-tool-result",
     );
@@ -6530,10 +6514,11 @@ This is one admitted recurring-automation tick. If this tick establishes that th
       // Hydrate any stored-value refs the provider spilled, then resolve with
       // the delivered content (ChatMethodResult shape). hydrate is async; the
       // settle hook stays sync by resolving inside the promise chain.
-      void this.recordMessageIngestion(channelId, event, "chat-method-result")
+      void Promise.resolve()
         .then(() =>
           this.hydrateTransportValue(
             payload["result"],
+            channelId,
             entry.responderSessionId,
             "chat-method-result",
           ),
@@ -7298,47 +7283,51 @@ This is one admitted recurring-automation tick. If this tick establishes that th
 
   private async hydrateTransportValue(
     value: unknown,
+    channelId?: string | null,
     originSessionId?: string | null,
     via = "channel-value-hydration",
   ): Promise<unknown> {
-    if (originSessionId)
-      await this.recordDerivedSessionIngestion(originSessionId, via);
+    // A result authored by another session is outside content: the standing
+    // task authority goes before its bytes reach the model.
+    if (channelId && originSessionId)
+      await this.outsideContentReset(channelId).observe(
+        `${via}:${originSessionId}`,
+      );
     return hydrateStoredValueRefs(value, {
       getText: (digest) =>
         this.rpc.call<string | null>("main", "blobstore.getText", [digest]),
     });
   }
 
-  /** Advance the monotone latch before indirect userland content is exposed to
-   * prompt composition or a tool result. The server resolves the origin
-   * session's persisted class; unknown origins conservatively become external. */
-  private async recordDerivedSessionIngestion(
-    originSessionId: string,
-    via: string,
-  ): Promise<void> {
-    if (!originSessionId || originSessionId === this.participantId()) return;
-    await this.rpc.call("main", "contextIntegrity.ingest", [
-      { key: `session:${originSessionId}`, via, classification: "derived" },
-    ]);
+  /**
+   * Outside content reached this task, so its standing authority goes.
+   *
+   * Channel and cross-session content originate inside the workspace, so they
+   * are not outside content and do not reset anything. Only content the
+   * workspace fetched from beyond it does — see `outside-content-reset`.
+   */
+  private readonly outsideContentResets = new Map<
+    string,
+    OutsideContentReset
+  >();
+
+  /** One reset latch per channel: the first outside source in a task revokes
+   *  its standing grants, and later sources on the same key are no-ops. */
+  private outsideContentReset(channelId: string): OutsideContentReset {
+    const existing = this.outsideContentResets.get(channelId);
+    if (existing) return existing;
+    const created = createOutsideContentReset({
+      resetTaskAuthority: () =>
+        this.resetTaskAuthorityForOutsideContent(channelId),
+    });
+    this.outsideContentResets.set(channelId, created);
+    return created;
   }
 
-  private async recordMessageIngestion(
-    channelId: string,
-    event: ChannelEvent,
-    via: string,
-  ): Promise<void> {
-    if (!channelId || !event.messageId) {
-      throw new Error(
-        `${via}: durable channel identity is required before content ingestion`,
-      );
-    }
-    await this.rpc.call("main", "contextIntegrity.ingest", [
-      {
-        key: `msg:${channelId}/${event.messageId}`,
-        via,
-        classification: "derived",
-      },
-    ]);
+  protected async resetTaskAuthorityForOutsideContent(channelId: string): Promise<void> {
+    const contextId = this.subscriptions.getContextId(channelId);
+    if (!contextId) return;
+    await this.rpc.call("main", "authority.resetTaskRules", [{ contextId, channelId }]);
   }
 
   // ── Subclass conveniences ────────────────────────────────────────────────

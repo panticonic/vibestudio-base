@@ -63,11 +63,6 @@ describe("template UI caller authority", () => {
             version: "2.1",
             expiresAt: 10000,
           },
-          contextIntegrity: {
-            class: "not-applicable",
-            latchEpoch: 0,
-            externalKeys: [],
-          },
         };
         const input = {
           context,

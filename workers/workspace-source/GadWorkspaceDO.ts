@@ -31,7 +31,6 @@ import type {
   DeleteChannelMembershipInput,
   PutChannelMembershipInput,
 } from "@vibestudio/shared/channelInvites";
-import { parseLineageKey } from "@vibestudio/shared/authority/contextIntegrity";
 import {
   channelEnvelopePageInfo,
   normalizeChannelEnvelopePageRequest,
@@ -1561,7 +1560,6 @@ export class GadWorkspaceDO extends DurableObjectBase {
           },
           {
             causalParent: null,
-            contextIntegrity: { class: "internal", externalKeys: [] },
           },
         );
         if (ensured.kind !== "complete") {
@@ -1638,7 +1636,6 @@ export class GadWorkspaceDO extends DurableObjectBase {
           },
           {
             causalParent: null,
-            contextIntegrity: { class: "internal", externalKeys: [] },
           },
         );
         if (dispatched.kind === "host-read") {
@@ -1697,7 +1694,6 @@ export class GadWorkspaceDO extends DurableObjectBase {
           },
           ingress: {
             causalParent: null,
-            contextIntegrity: { class: "internal", externalKeys: [] },
           },
         });
         if (dispatched.kind === "host-read") {
@@ -4253,6 +4249,49 @@ export class GadWorkspaceDO extends DurableObjectBase {
   }
 
   /**
+   * Scope recalled conversation to what the caller could already reach.
+   *
+   * Recall is a second content-entry surface over the very trajectory messages
+   * the provenance views gate, so an unscoped recall returns exactly what a
+   * provenance walk, query, and search refuse — a sibling task context's
+   * conversation. The basis comes from the host-attested agent binding rather
+   * than from the input, so a caller cannot widen it by asking.
+   *
+   * Two things are reachable. The caller's own channel trajectory is its own
+   * conversation, which it is reading back rather than reaching into; and the
+   * provenance basis is everything else it could have walked to. Files and
+   * commits stay workspace-wide: they are committed workspace state every
+   * context shares, and the boundary held here is around conversation.
+   */
+  private materializeRecallVisibility(): {
+    clause: string;
+    bindings: SqlBinding[];
+  } {
+    const authorization = this.authorization;
+    // A direct in-process call has no remote caller to bound, and a host-origin
+    // caller reads the whole index as it does through every other privileged
+    // workspace surface.
+    if (!authorization || authorization.authorizingOrigin.kind === "host") {
+      return { clause: "", bindings: [] };
+    }
+    const binding = authorization.agentBinding;
+    this.semanticWorkspace().materializeVisibilityBasis(
+      binding ? [binding.contextId] : [],
+    );
+    return {
+      clause: ` AND (kind <> 'message'
+              OR log_id = ?
+              OR EXISTS (
+                   SELECT 1 FROM prov_messages visible
+                    WHERE visible.log_id = gad_memory_fts.log_id
+                      AND visible.head = gad_memory_fts.head
+                      AND visible.message_id =
+                            json_extract(gad_memory_fts.anchor_json, '$.messageId')))`,
+      bindings: [binding ? logIdForChannel(binding.channelId) : null],
+    };
+  }
+
+  /**
    * Search the memory index. Results carry provenance: the matching row's
    * anchor plus (for event-anchored rows) the event's actor and timestamp,
    * and (for file rows) the current content hash.
@@ -4289,6 +4328,8 @@ export class GadWorkspaceDO extends DurableObjectBase {
   } {
     this.ensureReady();
     const mode = this.ensureMemoryIndex();
+    const visibility = this.materializeRecallVisibility();
+    const visibilityFilter = visibility.clause;
     const limit = Math.min(input.limit ?? 10, 50);
     // Over-fetch so published/fork copies (the same logical item indexed under
     // several (log,head) pairs) can be collapsed BEFORE the page is sliced —
@@ -4337,11 +4378,12 @@ export class GadWorkspaceDO extends DurableObjectBase {
             `SELECT text, kind, log_id, head, event_id, path, content_hash, anchor_json,
                   bm25(gad_memory_fts) AS score
              FROM gad_memory_fts
-            WHERE gad_memory_fts MATCH ?${kindFilter}${pathFilter}
+            WHERE gad_memory_fts MATCH ?${kindFilter}${pathFilter}${visibilityFilter}
             ORDER BY score LIMIT ?`,
             candidateMatch,
             ...(kinds ?? []),
             ...pathBindings,
+            ...visibility.bindings,
             fetchLimit,
           )
           .toArray() as JsonRecord[];
@@ -4386,11 +4428,12 @@ export class GadWorkspaceDO extends DurableObjectBase {
             `SELECT text, kind, log_id, head, event_id, path, content_hash, anchor_json,
                   NULL AS score
              FROM gad_memory_fts
-            WHERE ${matchClause}${kindFilter}${pathFilter}
+            WHERE ${matchClause}${kindFilter}${pathFilter}${visibilityFilter}
             LIMIT ?`,
             ...likeBindings,
             ...(kinds ?? []),
             ...pathBindings,
+            ...visibility.bindings,
             fetchLimit,
           )
           .toArray() as JsonRecord[];
@@ -4822,15 +4865,10 @@ export class GadWorkspaceDO extends DurableObjectBase {
       // exact owning channel object, never from arbitrary workspace code.
       this.channelContentIntegrity(annotations);
     } else {
-      delete annotations["contentClass"];
-      delete annotations["externalKeys"];
-      const fact = this.authorization?.contextIntegrity;
-      annotations["contentClass"] =
-        fact?.class === "external" ? "external" : "internal";
-      annotations["externalKeys"] =
-        fact?.class === "external"
-          ? [...new Set(fact.externalKeys.map(String))]
-          : [];
+      // Workspace code cannot self-declare outside lineage; only the owning
+      // channel object stamps it.
+      annotations["contentClass"] = "internal";
+      annotations["externalKeys"] = [];
     }
     return { ...event, annotations };
   }
@@ -4851,7 +4889,7 @@ export class GadWorkspaceDO extends DurableObjectBase {
         "Channel append requires a valid host-attested content class",
       );
     }
-    const externalKeys = keys.map((key) => parseLineageKey(key));
+    const externalKeys = keys.map((key) => String(key));
     return { contentClass, externalKeys: [...new Set(externalKeys)] };
   }
 
@@ -5106,13 +5144,8 @@ export class GadWorkspaceDO extends DurableObjectBase {
     if (input.metadata !== undefined) annotations["metadata"] = input.metadata;
     if (input.attachments !== undefined)
       annotations["attachments"] = input.attachments;
-    const fact = this.authorization?.contextIntegrity;
-    annotations["contentClass"] =
-      fact?.class === "external" ? "external" : "internal";
-    annotations["externalKeys"] =
-      fact?.class === "external"
-        ? [...new Set(fact.externalKeys.map(String))]
-        : [];
+    annotations["contentClass"] = "internal";
+    annotations["externalKeys"] = [];
     return {
       envelopeId: input.envelopeId ?? null,
       actor: input.from,

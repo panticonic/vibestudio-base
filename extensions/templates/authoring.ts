@@ -18,7 +18,6 @@ import { normalizeWorkspaceRepoPath } from "@vibestudio/workspace/remotes";
 import { WorkspaceConfigTopLayerSchema } from "@vibestudio/workspace-contracts/workspaceConfigSchema";
 import { WORKSPACE_PACKAGE_SCOPES } from "@vibestudio/workspace-contracts/sourceDirs";
 import type { WorkspaceConfig } from "@vibestudio/workspace-contracts/types";
-import { parseTemplateManifestContent } from "@vibestudio/workspace/templateManifest";
 import { resolveTemplateClosure } from "@vibestudio/workspace/templateClosure";
 import type { ExtensionContextLike } from "./context.js";
 import type { SemanticWorkspaceObservation } from "./workspace.js";
@@ -91,7 +90,7 @@ function projectManifest(
   files: readonly string[],
   presentation: { name: string; description: string },
   includeWorkspaceDefaults: boolean,
-  dependencies: TemplateAuthoringIntent["dependencies"],
+  dependencies: readonly import("@vibestudio/workspace-contracts/types").WorkspaceTemplateDependency[],
 ): string {
   const upstreams = selectedGitMap(config.git?.upstreams, selected);
   const portableUpstreams = upstreams
@@ -197,23 +196,6 @@ function projectManifest(
       files: [...files].sort(compareUtf16CodeUnits),
     },
   });
-}
-
-async function standaloneFiles(
-  ctx: ExtensionContextLike,
-  observation: SemanticWorkspaceObservation,
-): Promise<string[]> {
-  const resolved = await repository(ctx, observation, META_REPOSITORY);
-  const file = await ctx.rpc.call<VcsReadFileResult>("main", "vcs.readFile", {
-    state: observation.mainState,
-    repositoryId: resolved.repositoryId,
-    file: { kind: "path", path: "vibestudio.yml" },
-  });
-  if (!file) throw new Error("Workspace meta/vibestudio.yml disappeared");
-  return parseTemplateManifestContent(
-    text(file),
-    observation.runtimeTop.systemEpoch,
-  ).inventory.files;
 }
 
 async function repository(
@@ -339,13 +321,17 @@ export async function inspectTemplateAuthoring(
   observation: SemanticWorkspaceObservation,
   rawRequest: TemplateAuthoringIntent,
   /**
-   * Repositories the request's declared dependencies already supply.
+   * Repositories and standalone files the workspace's recorded dependencies
+   * already supply.
    *
    * Resolved by the caller, because reading a dependency's inventory is a
    * network operation and this inspection has to stay a pure function of the
    * workspace state its fingerprint covers.
    */
-  inheritedParts: readonly string[] = [],
+  inheritedInventory: {
+    repositories: readonly string[];
+    files: readonly string[];
+  },
 ): Promise<TemplateAuthoringInspection> {
   const name = rawRequest.name.trim();
   const description = rawRequest.description.trim();
@@ -355,7 +341,10 @@ export async function inspectTemplateAuthoring(
   // copying them: the published manifest declares the dependency and an
   // installation acquires it. Without this the closure below walks straight
   // back into everything the dependency provides.
-  const inherited = new Set(inheritedParts.map(normalizeWorkspaceRepoPath));
+  const inherited = new Set(
+    inheritedInventory.repositories.map(normalizeWorkspaceRepoPath),
+  );
+  const inheritedFiles = new Set(inheritedInventory.files);
   const selectableParts = [...new Set([...observation.localRepoPaths])]
     .filter((repoPath) => repoPath !== META_REPOSITORY)
     .map(normalizeWorkspaceRepoPath)
@@ -394,18 +383,16 @@ export async function inspectTemplateAuthoring(
   }
 
   // The authored manifest replaces meta/vibestudio.yml, while the exact meta
-  // repository supplies its declared companions (including distributions).
-  // Binding meta into the same protected-main receipt prevents a source
-  // publication from mixing those files across workspace revisions.
+  // repository supplies its declared companion files. Binding meta into the
+  // same protected-main receipt prevents a publication from mixing those files
+  // across workspace revisions.
   const runtime = runtimeReferences(observation.runtimeTop as WorkspaceConfig);
-  // The walk is shared with the distribution builder, which computes the same
-  // closure over a checkout instead of this workspace's reviewed VCS state.
-  // Only these readers know how to resolve an edge from an observation.
+  // Resolve the closure over this workspace's reviewed VCS state. Inherited
+  // repositories terminate the walk because the published manifest reacquires
+  // them through its dependencies.
   const closure = resolveTemplateClosure({
     // The authored manifest replaces meta/vibestudio.yml, while the exact meta
-    // repository supplies its declared companions (including distributions).
-    // Binding meta into the same protected-main receipt prevents a source
-    // publication from mixing those files across workspace revisions.
+    // repository supplies its declared companion files.
     roots: [META_REPOSITORY, ...requestedParts],
     provided: inherited,
     packageDependenciesOf: (repoPath) =>
@@ -439,12 +426,12 @@ export async function inspectTemplateAuthoring(
   const manifest = projectManifest(
     observation.runtimeTop as WorkspaceConfig,
     new Set(includedParts.filter((repoPath) => repoPath !== META_REPOSITORY)),
-    await standaloneFiles(ctx, observation),
+    observation.templateFiles.filter((file) => !inheritedFiles.has(file)),
     { name, description },
     selectableParts.every(
       (repoPath) => included.has(repoPath) || inherited.has(repoPath),
     ),
-    rawRequest.dependencies,
+    observation.templateDependencies,
   );
   const manifestDigest = `v1-sha256:${sha256HexSyncText(manifest)}` as const;
   const request: TemplateAuthoringIntent = {

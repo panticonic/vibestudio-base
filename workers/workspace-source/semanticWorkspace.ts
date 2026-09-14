@@ -195,10 +195,6 @@ export interface SemanticDispatchRequest {
       head: string;
       invocationId: string;
     } | null;
-    contextIntegrity: {
-      class: "internal" | "external";
-      externalKeys: readonly string[];
-    };
   };
 }
 
@@ -879,34 +875,6 @@ const causalCommandRef = (ingress: SemanticDispatchRequest["ingress"]): CausalCo
     : null,
 });
 
-const persistedEffectIntegrity = (
-  payload: Row
-): SemanticDispatchRequest["ingress"]["contextIntegrity"] => {
-  const value = payload["contextIntegrity"];
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    throw new SemanticVcsError(
-      "IntegrityFailure",
-      "Pending semantic content observation has no persisted context-integrity fact"
-    );
-  }
-  const record = value as Row;
-  const externalKeys = record["externalKeys"];
-  if (
-    (record["class"] !== "internal" && record["class"] !== "external") ||
-    !Array.isArray(externalKeys) ||
-    !externalKeys.every((key) => typeof key === "string" && key.length > 0) ||
-    (record["class"] === "internal" && externalKeys.length > 0)
-  ) {
-    throw new SemanticVcsError(
-      "IntegrityFailure",
-      "Pending semantic content observation has an invalid context-integrity fact"
-    );
-  }
-  return {
-    class: record["class"],
-    externalKeys: externalKeys as string[],
-  };
-};
 
 export class SemanticWorkspace {
   constructor(private readonly deps: SemanticWorkspaceDeps) {}
@@ -1374,8 +1342,7 @@ export class SemanticWorkspace {
           const working = this.persistWorkingMutation(
             importInput,
             planned.draft,
-            pending.commandId,
-            persistedEffectIntegrity(pending.payload)
+            pending.commandId
           );
           const persistCompletedAt = Date.now();
           const committed = this.deps.store.commit({
@@ -2005,8 +1972,7 @@ export class SemanticWorkspace {
       const result = this.persistWorkingMutation(
         input,
         draft,
-        input.commandId,
-        request.ingress.contextIntegrity
+        input.commandId
       );
       const effect = this.queueRealization(
         input.contextId,
@@ -2511,8 +2477,7 @@ export class SemanticWorkspace {
       const result = this.persistWorkingMutation(
         input,
         draft,
-        input.commandId,
-        request.ingress.contextIntegrity
+        input.commandId
       );
       const effect = this.queueRealization(
         input.contextId,
@@ -2617,8 +2582,7 @@ export class SemanticWorkspace {
       const result = this.persistWorkingMutation(
         input,
         draft,
-        input.commandId,
-        request.ingress.contextIntegrity
+        input.commandId
       );
       const effect = this.queueRealization(
         input.contextId,
@@ -3213,8 +3177,7 @@ export class SemanticWorkspace {
       const result = this.persistWorkingMutation(
         input,
         draft,
-        input.commandId,
-        request.ingress.contextIntegrity
+        input.commandId
       );
       const decisionIdValue = result.decisionIds[0];
       if (!decisionIdValue)
@@ -3606,8 +3569,7 @@ export class SemanticWorkspace {
       const result = this.persistWorkingMutation(
         input,
         draft,
-        input.commandId,
-        request.ingress.contextIntegrity
+        input.commandId
       );
       const effect = this.queueRealization(
         input.contextId,
@@ -3816,7 +3778,6 @@ export class SemanticWorkspace {
           representation: "descriptor",
           projection,
           input: input as unknown as Row,
-          contextIntegrity: request.ingress.contextIntegrity as unknown as Row,
           files: contentHashes.map((contentHash) => ({ contentHash })),
         },
       });
@@ -3861,7 +3822,6 @@ export class SemanticWorkspace {
           method: "registerExternalDelta",
           representation: "descriptor",
           input: input as unknown as Row,
-          contextIntegrity: request.ingress.contextIntegrity as unknown as Row,
           files: hashes.map((contentHash) => ({ contentHash })),
         },
       });
@@ -5267,7 +5227,13 @@ export class SemanticWorkspace {
    * "query-reachable" and "walk-reachable" are the same predicate by
    * construction rather than by two implementations agreeing.
    */
-  private materializeVisibilityBasis(contextIds: readonly string[]): void {
+  /**
+   * Public because the memory recall index is a second content-entry surface
+   * over the same trajectory messages. It joins the basis this fills, so the
+   * parity invariant — what a walk cannot reach, a query and a search must not
+   * return either — holds across both surfaces from one implementation.
+   */
+  materializeVisibilityBasis(contextIds: readonly string[]): void {
     this.deps.sql.exec(`DELETE FROM prov_vis_events`);
     this.deps.sql.exec(`DELETE FROM prov_vis_applications`);
     this.deps.sql.exec(`DELETE FROM prov_vis_commands`);
@@ -7133,14 +7099,13 @@ export class SemanticWorkspace {
   /** Fold the authoring session and every exact content input into one durable class. */
   private contentIntegrityForMutation(
     basis: StateNodeRef,
-    draft: MutationDraft,
-    ingress: SemanticDispatchRequest["ingress"]["contextIntegrity"]
+    draft: MutationDraft
   ): {
     class: "internal" | "external";
     externalKeys: string[];
     latestFileChanges: Map<string, LatestAppliedFileChange>;
   } {
-    const externalKeys = new Set<string>(ingress.class === "external" ? ingress.externalKeys : []);
+    const externalKeys = new Set<string>();
     const workUnitIds = new Set<string>();
     const latestFileChanges = new Map<string, LatestAppliedFileChange>();
     const filesByState = new Map<string, { state: StateNodeRef; fileIds: Set<string> }>();
@@ -7233,8 +7198,7 @@ export class SemanticWorkspace {
       commandId: string;
     },
     draft: MutationDraft,
-    commandId: string,
-    contextIntegrity: SemanticDispatchRequest["ingress"]["contextIntegrity"]
+    commandId: string
   ): {
     commandId: string;
     contextId: string;
@@ -7251,7 +7215,7 @@ export class SemanticWorkspace {
     const basis = asState(input.expectedWorkingHead);
     const basisRoot = this.deps.store.stateRoot(basis);
     const createdAt = this.deps.now();
-    const contentIntegrity = this.contentIntegrityForMutation(basis, draft, contextIntegrity);
+    const contentIntegrity = this.contentIntegrityForMutation(basis, draft);
     const evidence = this.workUnitEvidence(input.contextId, commandId);
     const workUnitIdValue = workUnitIdentity({
       commandId,

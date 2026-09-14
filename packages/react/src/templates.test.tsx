@@ -22,6 +22,7 @@ const inspection = {
   presentation: { name: "Garden" },
   repositories: ["panels/garden"],
   files: [],
+  dependencies: [],
 };
 afterEach(cleanup);
 it("captures the reviewed source and name once while creation is pending", async () => {

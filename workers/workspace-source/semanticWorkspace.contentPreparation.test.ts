@@ -11,7 +11,6 @@ import {
 
 const ingress: SemanticDispatchRequest["ingress"] = {
   causalParent: null,
-  contextIntegrity: { class: "internal", externalKeys: [] },
 };
 const timestamp = "2026-09-08T00:00:00Z";
 async function fixture() {

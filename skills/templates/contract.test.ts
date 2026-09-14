@@ -43,7 +43,7 @@ describe("templates skill public contract", () => {
     );
 
     expect(prose).toContain("exact immutable `pin`");
-    expect(prose).toContain("creating a new standalone workspace");
+    expect(prose).toContain("creating a new independently running workspace");
     expect(prose).toContain("ordinary VCS compare and merge operations");
     expect(skill).toContain(
       'extensions.invoke("@workspace-extensions/templates", "inspect", [',
@@ -55,8 +55,6 @@ describe("templates skill public contract", () => {
     expect(invariants).toContain(
       "source integration into an existing workspace uses ordinary VCS comparison and merge",
     );
-    expect(invariants).toContain(
-      "publication does not create installed layers, runtime authority",
-    );
+    expect(invariants).toContain("publication grants no runtime authority");
   });
 });

@@ -228,10 +228,6 @@ export function createTestDirectAuthority(input: {
     testPolicy: null,
     workspace: { workspaceId: "test", member: true, role: null, revision: "test" },
     session: { id: "test-session", audience, version: "1.0.0", expiresAt: now + 5_000 },
-    contextIntegrity:
-      kind === "session"
-        ? { class: "internal", latchEpoch: 0, externalKeys: [] }
-        : { class: "not-applicable", latchEpoch: 0, externalKeys: [] },
   };
   const grants: AuthorityGrant[] = capabilities.map((grantedCapability) => ({
     subject,
@@ -244,7 +240,6 @@ export function createTestDirectAuthority(input: {
     issuedBy: "host:test",
     createdAt: now,
     constraints: {
-      lineageAtConsent: [],
       ...(invocationDigest ? { invocationDigest } : {}),
     },
     provenance: invocationDigest ? "critical-confirmation" : "durable-test-host-attestation",

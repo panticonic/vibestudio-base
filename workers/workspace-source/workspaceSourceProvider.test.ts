@@ -172,7 +172,6 @@ describe("WorkspaceSourceProviderV1", () => {
       commandId: "ensure:after-initialization",
       ingress: {
         causalParent: null,
-        contextIntegrity: { class: "internal", externalKeys: [] },
       },
     })) as {
       kind: string;

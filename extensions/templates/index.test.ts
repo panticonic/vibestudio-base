@@ -24,6 +24,7 @@ it("delegates every exact pin to the host-owned source acquisition contract", as
     presentation: { name: "Dirty source" },
     repositories: ["panels/example"],
     files: ["package.json"],
+    dependencies: [],
   };
   const call = vi.fn(async () => inspected);
   const api = await activate({

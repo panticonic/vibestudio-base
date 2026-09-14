@@ -10,7 +10,7 @@
     },
     "inspect": {
       "arguments": ["{ pin } | { url, credential? }"],
-      "returns": "{ pin, presentation?, repositories, files }",
+      "returns": "{ pin, presentation?, repositories, files, dependencies }",
       "sensitivity": "read"
     },
     "inspectAuthoring": {
@@ -32,11 +32,11 @@
     }
   },
   "invariants": [
-    "inspect resolves once to an exact pin and verifies a dependency-free self-contained snapshot",
+    "inspect resolves once to an exact pin and verifies one template repository and its dependency declarations",
     "acquired bytes remain in extension-owned workspace storage",
     "workspace creation consumes the exact inspected pin through the ordinary rootTemplate path",
     "source integration into an existing workspace uses ordinary VCS comparison and merge",
-    "authoring closes workspace package and runtime dependencies and binds the plan to protected main",
-    "publication does not create installed layers, runtime authority"
+    "authoring retains manifest dependencies, excludes inherited repositories, closes local package and runtime dependencies, and binds the plan to protected main",
+    "publication grants no runtime authority"
   ]
 }

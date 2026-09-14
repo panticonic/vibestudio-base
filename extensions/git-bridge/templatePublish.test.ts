@@ -89,7 +89,7 @@ function protectedSnapshot(
 function metaSnapshot(): ProtectedRepositorySnapshot {
   const source = [
     ["vibestudio.yml", "original manifest\n"],
-    ["distributions/base.yml", "template:\n  name: Base\n"],
+    ["notes/base.yml", "template:\n  name: Base\n"],
   ] as const;
   const files = source.map(([file, fileContent]) => {
     const bytes = Buffer.from(fileContent);
@@ -306,7 +306,7 @@ describe("TemplatePublishEngine", () => {
     ]);
     const input = publicationInput({
       manifest:
-        "systemEpoch: 59\ntemplate:\n  name: News\n  repositories: [panels/news]\n  files: [meta/distributions/base.yml]\n",
+        "systemEpoch: 59\ntemplate:\n  name: News\n  repositories: [panels/news]\n  files: [meta/notes/base.yml]\n",
       parts: [
         { repoPath: "meta", subdir: "meta" },
         { repoPath: "panels/news", subdir: "panels/news" },
@@ -324,7 +324,7 @@ describe("TemplatePublishEngine", () => {
       "publish-news-v1",
     );
     expect(tree.map((entry) => entry.path)).toContain(
-      "meta/distributions/base.yml",
+      "meta/notes/base.yml",
     );
     const publishedManifest = tree.find(
       (entry) => entry.path === "meta/vibestudio.yml",

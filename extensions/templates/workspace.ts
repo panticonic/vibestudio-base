@@ -1,9 +1,16 @@
+import { Buffer } from "node:buffer";
 import type {
+  VcsReadFileResult,
   VcsListDirectoryResult,
+  VcsResolveRepositoryResult,
   VcsStateNodeRef,
 } from "@vibestudio/service-schemas/vcs";
+import { parseTemplateManifestContent } from "@vibestudio/workspace/templateManifest";
 import { WorkspaceConfigSchema } from "@vibestudio/workspace-contracts/workspaceConfigSchema";
-import type { WorkspaceConfig } from "@vibestudio/workspace-contracts/types";
+import type {
+  WorkspaceConfig,
+  WorkspaceTemplateDependency,
+} from "@vibestudio/workspace-contracts/types";
 import type { ExtensionContextLike } from "./context.js";
 
 export const META_REPOSITORY = "meta";
@@ -12,6 +19,8 @@ export interface SemanticWorkspaceObservation {
   mainState: VcsStateNodeRef;
   runtimeTop: Omit<WorkspaceConfig, "id">;
   localRepoPaths: Set<string>;
+  templateDependencies: readonly WorkspaceTemplateDependency[];
+  templateFiles: readonly string[];
 }
 
 async function listDirectory(
@@ -65,10 +74,30 @@ export async function observeWorkspace(
     id: info.id,
   });
   const { id: _id, ...runtimeTop } = parsed;
+  const metaRepository = await ctx.rpc.call<VcsResolveRepositoryResult>(
+    "main",
+    "vcs.resolveRepository",
+    { state: mainState, repoPath: META_REPOSITORY },
+  );
+  if (!metaRepository) throw new Error("Workspace meta repository disappeared");
+  const meta = await ctx.rpc.call<VcsReadFileResult>("main", "vcs.readFile", {
+    state: mainState,
+    repositoryId: metaRepository.repositoryId,
+    file: { kind: "path", path: "vibestudio.yml" },
+  });
+  if (!meta) throw new Error("Workspace meta/vibestudio.yml disappeared");
+  const manifest = parseTemplateManifestContent(
+    meta.content.kind === "text"
+      ? meta.content.text
+      : Buffer.from(meta.content.base64, "base64").toString("utf8"),
+    runtimeTop.systemEpoch,
+  );
   return {
     mainEventId: mainState.eventId,
     mainState,
     runtimeTop,
     localRepoPaths: await repositoryPaths(ctx, mainState),
+    templateDependencies: manifest.dependencies,
+    templateFiles: manifest.inventory.files,
   };
 }

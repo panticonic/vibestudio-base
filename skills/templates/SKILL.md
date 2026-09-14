@@ -6,14 +6,15 @@ description: Discover, inspect, create, and publish exact upstream workspace sna
 # Workspace templates
 
 `@workspace-extensions/templates` owns exact acquisition,
-manifest inspection, and snapshot publication. A template is a self-contained
-upstream workspace source. It is not an installed layer and confers no grants.
+manifest inspection, dependency composition, and snapshot publication. A
+template is a Git repository with `meta/vibestudio.yml`; it may declare other
+template repositories as dependencies. Templates confer no grants.
 
-Base is an ordinary source-only upstream. A workspace records its adopted
-upstream identity and exact source baseline, but runs from its own materialized
-source and does not load Base or another workspace at runtime. Copy, compare,
-and merge are explicit source operations that preserve provenance and do not
-grant authority.
+Base is an ordinary dependency-free template. Personal and System are ordinary
+independent template repositories that depend on Base. Creation recursively
+acquires those repositories, merges their manifests and inventories, then runs
+from the resulting materialized workspace source. It does not connect the new
+workspace to another running workspace.
 
 Use [public-contract.json](public-contract.json) for exact method shapes and
 [workspace creation](references/workspace-creation.md) for folder, URL, link and
@@ -56,9 +57,10 @@ return await extensions.invoke("@workspace-extensions/templates", "inspect", [
 
 Call `inspect` with an already reviewed exact `{ pin }` or a direct
 `{ url, credential? }`. The result contains the exact immutable `pin`,
-self-asserted presentation, and validated repository and file inventory. Pass
+self-asserted presentation, validated dependency declarations, and repository
+and file inventory. Pass
 that exact pin to the ordinary workspace creation flow as `rootTemplate`,
-creating a new standalone workspace. Host-selected local snapshots already have
+creating a new independently running workspace. Host-selected local snapshots already have
 an inspection; do not re-fetch their unpublished checkpoint from remote Git.
 
 To incorporate selected source into an existing workspace, use ordinary VCS
@@ -124,8 +126,10 @@ reconciliation if a connection fails during execution.
 ## Author and publish
 
 Use `authoringParts`, then `inspectAuthoring` with `{ name, description,
-parts }`. Review `requiredParts`: workspace package dependencies and runtime
-companions are included so the published snapshot is self-contained.
+parts }`. Dependencies come from the current workspace's
+`meta/vibestudio.yml`, not from the request. Review `requiredParts`: repositories
+provided by declared dependencies are excluded; workspace-package dependencies
+and runtime companions owned by this template are included.
 
 Publish the unchanged receipt through `publishAuthoring` with its fingerprint,
 version, explicit destination, and fresh command ID. The resulting URL, ref,
