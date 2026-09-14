@@ -147,7 +147,30 @@ services:
       - vibestudio.missions.v1
     source: workers/missions
     title: Automated tasks
+  - action: run workspace tests and record results
+    authority:
+      binding: declared
+      principals:
+        - host
+        - user
+        - code
+        - session
+    description: Run this workspace's test suite and record results.
+    durableObject:
+      className: TestkitDriverDO
+    name: testkit-driver
+    notability: everyday
+    presentation:
+      domain: automation
+      verb: act
+    protocols:
+      - vibestudio.testkit-driver.v1
+    source: workers/testkit-driver
+    title: Test runner
 singletonObjects:
+  - className: TestkitDriverDO
+    key: workspace-testkit-driver
+    source: workers/testkit-driver
   - className: GadWorkspaceDO
     key: workspace
     source: workers/workspace-source
@@ -231,5 +254,6 @@ template:
     - workers/pubsub-channel
     - workers/quickfire-service
     - workers/silent-agent-worker
+    - workers/testkit-driver
     - workers/workspace-presentation
     - workers/workspace-source

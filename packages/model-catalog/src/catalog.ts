@@ -30,7 +30,7 @@ export const LOCAL_FALLBACK_MODEL = {
   ref: "local:lfm2.5-2.6b",
   name: "LFM2.5 2.6B",
   contextWindow: 128_000,
-  downloadSizeBytes: 1_674_454_848,
+  downloadSizeBytes: 1_674_455_040,
 } as const;
 export const LOCAL_FALLBACK_MODEL_REF = LOCAL_FALLBACK_MODEL.ref;
 export const LOCAL_MODELS_EXTENSION_ID = "@workspace-extensions/local-models";
