@@ -138,5 +138,71 @@ describe("SemanticWorkspace repository creation", () => {
         path: "projects/notes",
       },
     });
+    await expect(
+      semantic.dispatch("edit", {
+        ingress,
+        input: {
+          contextId: "context:test",
+          commandId: "delete-nonempty",
+          expectedWorkingHead: result.workingHead,
+          changes: [
+            {
+              kind: "repository-delete",
+              repositoryId: repository.repositoryId,
+            },
+          ],
+        },
+      }),
+    ).rejects.toMatchObject({ code: "InvalidReference" });
+    const emptied = await semantic.dispatch("edit", {
+      ingress,
+      input: {
+        contextId: "context:test",
+        commandId: "empty-unit",
+        expectedWorkingHead: result.workingHead,
+        changes: manifest.values.map((file) => ({
+          kind: "file-delete",
+          repositoryId: repository.repositoryId,
+          fileId: file.fileId,
+        })),
+      },
+    });
+    if (emptied.kind !== "effects-pending")
+      throw new Error("Emptying unit did not materialize");
+    const emptyResult = emptied.result as typeof result;
+    const deleted = await semantic.dispatch("edit", {
+      ingress,
+      input: {
+        contextId: "context:test",
+        commandId: "delete-unit",
+        expectedWorkingHead: emptyResult.workingHead,
+        changes: [
+          { kind: "repository-delete", repositoryId: repository.repositoryId },
+        ],
+      },
+    });
+    if (deleted.kind !== "effects-pending")
+      throw new Error("Deleting unit did not materialize");
+    const deletion = deleted.result as typeof result;
+    expect(
+      store.facts.repositoryAtPath(
+        store.stateRoot(deletion.workingHead),
+        "projects/notes",
+      ),
+    ).toBeNull();
+    expect(
+      store.facts.member(
+        store.stateRoot(deletion.workingHead),
+        repository.repositoryId,
+      )?.presence,
+    ).toBe("deleted");
+    expect(
+      sql
+        .exec(
+          "SELECT kind FROM gad_changes WHERE work_unit_id = ?",
+          deletion.workUnitId,
+        )
+        .toArray(),
+    ).toEqual([{ kind: "repo-delete" }]);
   });
 });

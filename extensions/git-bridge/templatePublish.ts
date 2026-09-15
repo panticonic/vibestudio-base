@@ -174,7 +174,7 @@ export class TemplatePublishEngine {
       parsedManifest["template"]
     );
     validateTemplateSnapshotInventory(
-      { repositories: inventory.repositories, files: inventory.files },
+      { repositories: inventory.repositories },
       expectedTreeEntries.map((entry) => entry.path)
     );
     const expectedTree = canonicalTree(expectedTreeEntries);

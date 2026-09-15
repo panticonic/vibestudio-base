@@ -9,7 +9,6 @@ function observation(eventId: string) {
     runtimeTop: { systemEpoch: 0 },
     localRepoPaths: new Set(["meta", "panels/news"]),
     templateDependencies: [],
-    templateFiles: [],
   };
 }
 
@@ -33,7 +32,7 @@ function context() {
               return {
                 content: {
                   kind: "text",
-                  text: "systemEpoch: 0\ntemplate:\n  name: Source\n  repositories: [panels/news]\n  files: []\n",
+                  text: "systemEpoch: 0\ntemplate:\n  name: Source\n  repositories: [panels/news]\n",
                 },
               };
             }
@@ -57,7 +56,7 @@ function context() {
 }
 
 describe("template authoring source closure", () => {
-  it("binds the protected meta repository while keeping it out of runtime repositories", async () => {
+  it("binds the protected meta repository while declaring ownership of its companion files", async () => {
     const ctx = context();
     const request = {
       name: "News",
@@ -68,21 +67,20 @@ describe("template authoring source closure", () => {
       ctx as never,
       observation("event:one") as never,
       request,
-      { repositories: [], files: [] },
+      { repositories: [] },
     );
     const second = await inspectTemplateAuthoring(
       ctx as never,
       observation("event:two") as never,
       request,
-      { repositories: [], files: [] },
+      { repositories: [] },
     );
 
     expect(first.includedParts).toEqual(["meta", "panels/news"]);
     expect(first.fingerprint).not.toBe(second.fingerprint);
     expect(YAML.parse(first.manifest).template).toEqual(
       expect.objectContaining({
-        repositories: ["panels/news"],
-        files: [],
+        repositories: ["meta", "panels/news"],
       }),
     );
   });
@@ -98,7 +96,7 @@ describe("template authoring source closure", () => {
       ctx as never,
       current as never,
       { name: "News", description: "News workspace", parts: ["panels/news"] },
-      { repositories: ["packages/runtime"], files: [] },
+      { repositories: ["packages/runtime"] },
     );
 
     expect(result.includedParts).toEqual(["meta", "panels/news"]);
@@ -106,20 +104,37 @@ describe("template authoring source closure", () => {
       { url: "https://example.test/base.git" },
     ]);
   });
+});
 
-  it("does not republish standalone files supplied by dependencies", async () => {
-    const current = {
-      ...observation("event:one"),
-      templateDependencies: [{ url: "https://example.test/base.git" }],
-      templateFiles: ["AGENTS.md", "PERSONAL.md"],
-    };
-    const result = await inspectTemplateAuthoring(
+it("retains package providers by their owning repository and extension providers by path", async () => {
+  const current = {
+    ...observation("event:providers"),
+    localRepoPaths: new Set([
+      "meta",
+      "packages/runtime",
+      "extensions/git-bridge",
+    ]),
+    runtimeTop: {
+      systemEpoch: 0,
+      providers: {
+        evalRuntime: { source: "@workspace/runtime" },
+        gitInterop: { extension: "extensions/git-bridge" },
+      },
+    },
+  };
+  const inspect = (parts: string[]) =>
+    inspectTemplateAuthoring(
       context() as never,
       current as never,
-      { name: "News", description: "News workspace", parts: ["panels/news"] },
-      { repositories: [], files: ["AGENTS.md"] },
+      { name: "Selected", description: "Selected source", parts },
+      { repositories: [] },
     );
-
-    expect(YAML.parse(result.manifest).template.files).toEqual(["PERSONAL.md"]);
-  });
+  expect(
+    YAML.parse(
+      (await inspect(["packages/runtime", "extensions/git-bridge"])).manifest,
+    ).providers,
+  ).toEqual(current.runtimeTop.providers);
+  expect(
+    YAML.parse((await inspect(["extensions/git-bridge"])).manifest).providers,
+  ).toEqual({ gitInterop: current.runtimeTop.providers.gitInterop });
 });

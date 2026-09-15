@@ -9,6 +9,7 @@ import { parseTemplateManifestContent } from "@vibestudio/workspace/templateMani
 import { WorkspaceConfigSchema } from "@vibestudio/workspace-contracts/workspaceConfigSchema";
 import type {
   WorkspaceConfig,
+  WorkspaceTemplatePin,
   WorkspaceTemplateDependency,
 } from "@vibestudio/workspace-contracts/types";
 import type { ExtensionContextLike } from "./context.js";
@@ -20,7 +21,7 @@ export interface SemanticWorkspaceObservation {
   runtimeTop: Omit<WorkspaceConfig, "id">;
   localRepoPaths: Set<string>;
   templateDependencies: readonly WorkspaceTemplateDependency[];
-  templateFiles: readonly string[];
+  templateSources: readonly WorkspaceTemplatePin[];
 }
 
 async function listDirectory(
@@ -98,6 +99,6 @@ export async function observeWorkspace(
     runtimeTop,
     localRepoPaths: await repositoryPaths(ctx, mainState),
     templateDependencies: manifest.dependencies,
-    templateFiles: manifest.inventory.files,
+    templateSources: manifest.sources,
   };
 }

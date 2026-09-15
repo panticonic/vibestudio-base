@@ -21,7 +21,6 @@ const inspection = {
   pin,
   presentation: { name: "Garden" },
   repositories: ["panels/garden"],
-  files: [],
   dependencies: [],
 };
 afterEach(cleanup);

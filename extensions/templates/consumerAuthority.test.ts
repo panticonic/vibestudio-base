@@ -22,83 +22,85 @@ const workspaceRoot = composedWorkspaceRoot(
 );
 
 describe("template UI caller authority", () => {
-  for (const unit of ["panels/chat"]) {
-    for (const method of ["inspect"]) {
+  for (const unit of ["panels/chat", "about/templates"]) {
+    for (const method of unit === "about/templates"
+      ? ["inspect", "publishAuthoring", "prepareUpdate"]
+      : ["inspect"]) {
       const manifestPath = path.join(workspaceRoot, unit, "package.json");
       it.skipIf(!existsSync(manifestPath))(
         `${unit} can acquire ${method} authority for the declared receiver only`,
         () => {
-        const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
-        const effect =
-          provider.vibestudio.extension.methodAuthority[method].effect;
-        const definition = provider.vibestudio.authority.provides.find(
-          (item: { name: string }) => item.name === effect.capability,
-        );
-        const name = `userland:extensions/templates/${definition.name}#${"a".repeat(64)}`;
-        const resourceKey = `${definition.resourceType}:extension:${provider.name}`;
-        const code = `code:${unit}@${"b".repeat(64)}` as const;
-        const context: AuthorizationContext = {
-          authorizingOrigin: { kind: "code", principal: code },
-          host: null,
-          actingUser: "user:alice",
-          entity: "entity:panel:one",
-          incarnation: "inc:1",
-          executingCode: {
-            principal: code,
-            requested: parseAuthorityRequests(manifest.vibestudio.authority),
-            sourceLineage: { class: "internal", externalKeys: [] },
-          },
-          initiatorChain: ["user:alice", code],
-          ownerChain: ["user:alice"],
-          agentBinding: null,
-          executionSession: null,
-          testPolicy: null,
-          workspace: {
-            workspaceId: "personal",
-            member: true,
-            role: "member",
-            revision: "1",
-          },
-          session: {
-            id: "s1",
-            audience: "host",
-            version: "2.1",
-            expiresAt: 10000,
-          },
-        };
-        const input = {
-          context,
-          requirement: capability("code", name),
-          resourceKey,
-          now: 100,
-        };
-        const pending = evaluateAuthority({ ...input, grants: [] });
-        expect(pending.allowed).toBe(false);
-        expect(pending.code).not.toBe("fixed-code-not-requested");
-        const grant: AuthorityGrant = {
-          subject: code,
-          capability: name,
-          resource: { kind: "exact", key: resourceKey },
-          effect: "allow",
-          issuedBy: "user:alice",
-          createdAt: 1,
-          provenance: "test",
-        };
-        expect(evaluateAuthority({ ...input, grants: [grant] }).allowed).toBe(
-          true,
-        );
-        expect(
-          evaluateAuthority({
-            ...input,
-            resourceKey: `${resourceKey}-other`,
-            grants: [
-              {
-                ...grant,
-                resource: { kind: "exact", key: `${resourceKey}-other` },
-              },
-            ],
-          }).allowed,
-        ).toBe(false);
+          const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
+          const effect =
+            provider.vibestudio.extension.methodAuthority[method].effect;
+          const definition = provider.vibestudio.authority.provides.find(
+            (item: { name: string }) => item.name === effect.capability,
+          );
+          const name = `userland:extensions/templates/${definition.name}#${"a".repeat(64)}`;
+          const resourceKey = `${definition.resourceType}:extension:${provider.name}`;
+          const code = `code:${unit}@${"b".repeat(64)}` as const;
+          const context: AuthorizationContext = {
+            authorizingOrigin: { kind: "code", principal: code },
+            host: null,
+            actingUser: "user:alice",
+            entity: "entity:panel:one",
+            incarnation: "inc:1",
+            executingCode: {
+              principal: code,
+              requested: parseAuthorityRequests(manifest.vibestudio.authority),
+              sourceLineage: { class: "internal", externalKeys: [] },
+            },
+            initiatorChain: ["user:alice", code],
+            ownerChain: ["user:alice"],
+            agentBinding: null,
+            executionSession: null,
+            testPolicy: null,
+            workspace: {
+              workspaceId: "personal",
+              member: true,
+              role: "member",
+              revision: "1",
+            },
+            session: {
+              id: "s1",
+              audience: "host",
+              version: "2.1",
+              expiresAt: 10000,
+            },
+          };
+          const input = {
+            context,
+            requirement: capability("code", name),
+            resourceKey,
+            now: 100,
+          };
+          const pending = evaluateAuthority({ ...input, grants: [] });
+          expect(pending.allowed).toBe(false);
+          expect(pending.code).not.toBe("fixed-code-not-requested");
+          const grant: AuthorityGrant = {
+            subject: code,
+            capability: name,
+            resource: { kind: "exact", key: resourceKey },
+            effect: "allow",
+            issuedBy: "user:alice",
+            createdAt: 1,
+            provenance: "test",
+          };
+          expect(evaluateAuthority({ ...input, grants: [grant] }).allowed).toBe(
+            true,
+          );
+          expect(
+            evaluateAuthority({
+              ...input,
+              resourceKey: `${resourceKey}-other`,
+              grants: [
+                {
+                  ...grant,
+                  resource: { kind: "exact", key: `${resourceKey}-other` },
+                },
+              ],
+            }).allowed,
+          ).toBe(false);
         },
       );
     }

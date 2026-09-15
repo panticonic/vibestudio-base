@@ -74,6 +74,94 @@
             "kind": "closed",
             "reason": "Controls workspace source authoring or inspection requiring source disclosure review."
           }
+        },
+        "installed": {
+          "effect": {
+            "kind": "open"
+          },
+          "website": {
+            "kind": "closed",
+            "reason": "Controls private workspace template source and its publication."
+          }
+        },
+        "inspectContribution": {
+          "effect": {
+            "kind": "open"
+          },
+          "website": {
+            "kind": "closed",
+            "reason": "Controls private workspace template source and its publication."
+          }
+        },
+        "suggestContribution": {
+          "effect": {
+            "kind": "userland-capability",
+            "capability": "workspace.templates.publish",
+            "resource": {
+              "kind": "receiver"
+            }
+          },
+          "website": {
+            "kind": "closed",
+            "reason": "Controls private workspace template source and its publication."
+          }
+        },
+        "prepareUpdate": {
+          "effect": {
+            "kind": "userland-capability",
+            "capability": "workspace.templates.update",
+            "resource": {
+              "kind": "receiver"
+            }
+          },
+          "website": {
+            "kind": "closed",
+            "reason": "Controls private workspace template source and its publication."
+          }
+        },
+        "reviewUpdate": {
+          "effect": {
+            "kind": "open"
+          },
+          "website": {
+            "kind": "closed",
+            "reason": "Controls private workspace template source and its publication."
+          }
+        },
+        "resolveUpdate": {
+          "effect": {
+            "kind": "userland-capability",
+            "capability": "workspace.templates.update",
+            "resource": {
+              "kind": "receiver"
+            }
+          },
+          "website": {
+            "kind": "closed",
+            "reason": "Controls private workspace template source and its publication."
+          }
+        },
+        "publishUpdate": {
+          "effect": {
+            "kind": "userland-capability",
+            "capability": "workspace.templates.update",
+            "resource": {
+              "kind": "receiver"
+            }
+          },
+          "website": {
+            "kind": "closed",
+            "reason": "Controls private workspace template source and its publication."
+          }
+        },
+        "readUpdateFile": {
+          "effect": {
+            "kind": "open"
+          },
+          "website": {
+            "kind": "closed",
+            "reason": "Controls private workspace template source and its publication."
+          }
         }
       }
     },
@@ -114,6 +202,24 @@
             "once",
             "session"
           ]
+        },
+        {
+          "name": "workspace.templates.update",
+          "title": "Update workspace template",
+          "action": "review and apply template source changes",
+          "tier": "gated",
+          "sensitivity": "write",
+          "resourceType": "workspace.templates",
+          "presentation": {
+            "domain": "files",
+            "verb": "act"
+          },
+          "notability": "headline",
+          "grantScopes": [
+            "once",
+            "task",
+            "session"
+          ]
         }
       ],
       "requests": [
@@ -152,6 +258,15 @@
           },
           "tier": "gated",
           "evidence": "bounded-dynamic"
+        },
+        {
+          "capability": "context.boundary",
+          "resource": {
+            "kind": "prefix",
+            "prefix": "context/template-update-"
+          },
+          "tier": "critical",
+          "evidence": "bounded-dynamic"
         }
       ]
     }
@@ -163,6 +278,7 @@
     "@vibestudio/service-schemas": "workspace:*",
     "@vibestudio/workspace": "workspace:*",
     "@vibestudio/workspace-contracts": "workspace:*",
-    "yaml": "^2.8.0"
+    "yaml": "^2.8.0",
+    "@vibestudio/shared": "workspace:*"
   }
 }

@@ -1,3 +1,4 @@
+import { createTemplateLifecycle } from "./lifecycle.js";
 import { Buffer } from "node:buffer";
 import type {
   TemplateAuthoringIntent,
@@ -43,7 +44,9 @@ async function resolveSource(
     "workspaceTemplateSource.resolveLocal",
     source.url,
   );
-  return local ?? discoverDirectTemplatePin(ctx, ctx.storage.root, source);
+  return WorkspaceTemplatePinSchema.parse(
+    local ?? (await discoverDirectTemplatePin(ctx, ctx.storage.root, source)),
+  );
 }
 
 /**
@@ -58,9 +61,8 @@ async function resolveSource(
 async function inheritedInventory(
   ctx: ExtensionContextLike,
   dependencies: readonly import("@vibestudio/workspace-contracts/types").WorkspaceTemplateDependency[],
-): Promise<{ repositories: string[]; files: string[] }> {
+): Promise<{ repositories: string[] }> {
   const repositories: string[] = [];
-  const files: string[] = [];
   const visited = new Set<string>();
   const visit = async (
     dependency: (typeof dependencies)[number],
@@ -90,12 +92,11 @@ async function inheritedInventory(
     );
     for (const upstream of inspection.dependencies) await visit(upstream);
     repositories.push(...inspection.repositories);
-    files.push(...inspection.files);
   };
   for (const dependency of dependencies) {
     await visit(dependency);
   }
-  return { repositories, files };
+  return { repositories };
 }
 
 async function inspect(ctx: ExtensionContextLike, locator: TemplateLocator) {
@@ -139,6 +140,10 @@ async function loadRegistry(ctx: ExtensionContextLike, requestedUrl?: string) {
 export async function activate(ctx: ExtensionContextLike) {
   ctx.log.info("templates activating");
   return {
+    ...createTemplateLifecycle(ctx, {
+      inspect: (pin) => inspect(ctx, { pin }),
+      resolve: (source) => resolveSource(ctx, source),
+    }),
     registry: ({ url }: { url?: string }) => loadRegistry(ctx, url),
     resolveSource: (source: { url: string; credential?: string }) =>
       resolveSource(ctx, source),
@@ -152,8 +157,16 @@ export async function activate(ctx: ExtensionContextLike) {
         await inheritedInventory(ctx, observation.templateDependencies),
       );
     },
-    authoringParts: async () =>
-      listTemplateAuthoringParts(ctx, await observeWorkspace(ctx)),
+    authoringParts: async () => {
+      const observation = await observeWorkspace(ctx);
+      const inherited = new Set(
+        (await inheritedInventory(ctx, observation.templateDependencies))
+          .repositories,
+      );
+      return (await listTemplateAuthoringParts(ctx, observation)).filter(
+        (part) => !inherited.has(part.repoPath),
+      );
+    },
     async publishAuthoring(input: {
       commandId: string;
       intent: TemplateAuthoringIntent;

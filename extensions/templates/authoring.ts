@@ -87,7 +87,7 @@ function selectedGitMap<T>(
 function projectManifest(
   config: WorkspaceConfig,
   selected: ReadonlySet<string>,
-  files: readonly string[],
+  packageOwners: ReadonlyMap<string, string>,
   presentation: { name: string; description: string },
   includeWorkspaceDefaults: boolean,
   dependencies: readonly import("@vibestudio/workspace-contracts/types").WorkspaceTemplateDependency[],
@@ -116,7 +116,7 @@ function projectManifest(
           if (!declaration) return false;
           const ref =
             "source" in declaration
-              ? declaration.source
+              ? (packageOwners.get(declaration.source) ?? null)
               : "extension" in declaration
                 ? declaration.extension
                 : null;
@@ -193,7 +193,6 @@ function projectManifest(
       // than expecting to find it copied in here.
       ...(dependencies && dependencies.length > 0 ? { dependencies } : {}),
       repositories: [...selected].sort(compareUtf16CodeUnits),
-      files: [...files].sort(compareUtf16CodeUnits),
     },
   });
 }
@@ -321,7 +320,7 @@ export async function inspectTemplateAuthoring(
   observation: SemanticWorkspaceObservation,
   rawRequest: TemplateAuthoringIntent,
   /**
-   * Repositories and standalone files the workspace's recorded dependencies
+   * Repositories the workspace's recorded dependencies
    * already supply.
    *
    * Resolved by the caller, because reading a dependency's inventory is a
@@ -330,7 +329,6 @@ export async function inspectTemplateAuthoring(
    */
   inheritedInventory: {
     repositories: readonly string[];
-    files: readonly string[];
   },
 ): Promise<TemplateAuthoringInspection> {
   const name = rawRequest.name.trim();
@@ -344,7 +342,6 @@ export async function inspectTemplateAuthoring(
   const inherited = new Set(
     inheritedInventory.repositories.map(normalizeWorkspaceRepoPath),
   );
-  const inheritedFiles = new Set(inheritedInventory.files);
   const selectableParts = [...new Set([...observation.localRepoPaths])]
     .filter((repoPath) => repoPath !== META_REPOSITORY)
     .map(normalizeWorkspaceRepoPath)
@@ -425,8 +422,8 @@ export async function inspectTemplateAuthoring(
   const includedParts = closure.included;
   const manifest = projectManifest(
     observation.runtimeTop as WorkspaceConfig,
-    new Set(includedParts.filter((repoPath) => repoPath !== META_REPOSITORY)),
-    observation.templateFiles.filter((file) => !inheritedFiles.has(file)),
+    new Set(includedParts),
+    packageOwners,
     { name, description },
     selectableParts.every(
       (repoPath) => included.has(repoPath) || inherited.has(repoPath),

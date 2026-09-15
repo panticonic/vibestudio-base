@@ -2141,6 +2141,48 @@ export class SemanticWorkspace {
       }
       if ("fileId" in change) touched.add(change.fileId);
       const repository = this.presentRepository(root, change.repositoryId);
+      if (change.kind === "repository-delete") {
+        if (repository.repoPath === "meta")
+          throw new SemanticVcsError(
+            "InvalidReference",
+            "The workspace metadata repository cannot be removed",
+          );
+        if (
+          this.deps.store.facts.pageManifest(repository.fileManifestId, {
+            limit: 1,
+          }).values.length
+        )
+          throw new SemanticVcsError(
+            "InvalidReference",
+            "Resolve contained file changes before removing a repository",
+          );
+        const ordinal = changes.length;
+        changes.push({
+          operation,
+          ordinal: 0,
+          kind: "repo-delete",
+          base: {
+            kind: "repository",
+            repositoryId: change.repositoryId,
+            repoPath: repository.repoPath,
+            fileManifestId: repository.fileManifestId,
+          },
+          result: {
+            kind: "repository",
+            repositoryId: change.repositoryId,
+            presence: "deleted",
+          },
+          payload: { repoPath: repository.repoPath },
+        });
+        repositoryResults.push({
+          repositoryId: change.repositoryId,
+          expected: repository,
+          resultPath: null,
+          newRepository: false,
+          changeRef: { kind: "authored", ordinal },
+        });
+        return;
+      }
       if (change.kind === "file-create") {
         assertSemanticVcsPathAdmissible(change.path);
         if (this.deps.store.facts.fileAtPath(root, change.repositoryId, change.path)) {

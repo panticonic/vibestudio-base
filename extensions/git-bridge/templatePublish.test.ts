@@ -114,7 +114,7 @@ function publicationInput(
   overrides: Partial<Parameters<TemplatePublishEngine["publish"]>[0]> = {},
 ): Parameters<TemplatePublishEngine["publish"]>[0] {
   const manifest =
-    "systemEpoch: 59\ntemplate:\n  name: News\n  repositories: [panels/news]\n  files: []\n";
+    "systemEpoch: 59\ntemplate:\n  name: News\n  repositories: [panels/news]\n";
   return {
     operationId: "publish-news-v1",
     expectedMainEventId: "event:main",
@@ -306,7 +306,7 @@ describe("TemplatePublishEngine", () => {
     ]);
     const input = publicationInput({
       manifest:
-        "systemEpoch: 59\ntemplate:\n  name: News\n  repositories: [panels/news]\n  files: [meta/notes/base.yml]\n",
+        "systemEpoch: 59\ntemplate:\n  name: News\n  repositories: [meta, panels/news]\n",
       parts: [
         { repoPath: "meta", subdir: "meta" },
         { repoPath: "panels/news", subdir: "panels/news" },
@@ -323,9 +323,7 @@ describe("TemplatePublishEngine", () => {
       "event:main",
       "publish-news-v1",
     );
-    expect(tree.map((entry) => entry.path)).toContain(
-      "meta/notes/base.yml",
-    );
+    expect(tree.map((entry) => entry.path)).toContain("meta/notes/base.yml");
     const publishedManifest = tree.find(
       (entry) => entry.path === "meta/vibestudio.yml",
     );

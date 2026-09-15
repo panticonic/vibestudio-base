@@ -1,5 +1,12 @@
+import * as fs from "node:fs/promises";
+import * as os from "node:os";
+import * as path from "node:path";
+import { createTemplateLifecycle } from "../../extensions/templates/lifecycle.js";
+import * as templateWorkspace from "../../extensions/templates/workspace.js";
+import type { ExtensionContextLike } from "../../extensions/templates/context.js";
+import type { TemplateSourceTree } from "@vibestudio/service-schemas/templates";
 // Builtin semantic-authority tests.
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { canonicalSnapshotDigest, sha256Hex } from "@vibestudio/content-addressing";
 import {
   vcsInspectResultSchema,
@@ -2690,3 +2697,286 @@ describe("SemanticWorkspace snapshot import", () => {
     );
   });
 });
+
+it.each(["nonoverlap", "conflict", "removal"] as const)(
+  "reviews a %s template update through native VCS and retries a lost push response",
+  async (scenario) => {
+    const { semantic, store, initial } = await authorityFixture();
+    const directory = await fs.mkdtemp(
+      path.join(os.tmpdir(), "template-lifecycle-test-"),
+    );
+    const oldFile = textFile("index.txt", "first\nsecond\nthird\n");
+    const localFile = textFile("index.txt", "local\nsecond\nthird\n");
+    const newFile = textFile(
+      "index.txt",
+      scenario === "conflict"
+        ? "incoming\nsecond\nthird\n"
+        : "first\nsecond\nincoming\n",
+    );
+    const bytes = new Map(
+      [oldFile, localFile, newFile].map((file) => [
+        file.descriptor.contentHash,
+        file.bytes,
+      ]),
+    );
+    const ingress: SemanticDispatchRequest["ingress"] = {
+      causalParent: {
+        kind: "trajectory-invocation",
+        logId: "trajectory:test",
+        head: "main",
+        invocationId: "invocation:test",
+      },
+    };
+    const pin = {
+      url: "https://example.test/base.git",
+      ref: "refs/heads/main",
+      commit: "a".repeat(40),
+    };
+    const target = { ...pin, commit: "b".repeat(40) };
+    const tree = (
+      file: ReturnType<typeof textFile>,
+      source = pin,
+    ): TemplateSourceTree => ({
+      sources: [source],
+      repositories: [
+        {
+          repoPath: "projects/example",
+          files: [file.descriptor],
+          snapshot: canonicalSnapshotDigest([
+            { ...file.descriptor, mode: 0o100644, size: file.bytes.length },
+          ]),
+        },
+      ],
+    });
+    const finish = (result: SemanticDispatchResult): unknown => {
+      if (result.kind === "host-read")
+        return finish(
+          semantic.acknowledgeHostRead({
+            request: result.request,
+            files: (result.request["contentHashes"] as string[]).map(
+              (contentHash) => {
+                const content =
+                  bytes.get(contentHash) ??
+                  semantic.preparedContent.get(contentHash);
+                if (!content)
+                  throw new Error(`Missing test content ${contentHash}`);
+                return { contentHash, text: new TextDecoder().decode(content) };
+              },
+            ),
+          }),
+        );
+      if (result.kind === "effects-pending") {
+        if (result.effects[0]?.kind === "observe-content")
+          return finish(acknowledgeImportObservation(semantic, result, bytes));
+        if (result.effects[0]?.kind === "publish-main") {
+          const effect = result.effects[0]!;
+          semantic.acknowledgeEffect({
+            effectId: effect.effectId,
+            payloadDigest: effect.payloadDigest,
+            receipt: { applied: true, appliedAt: timestamp },
+          });
+        } else acknowledgeMaterialization(semantic, result);
+        return result.result;
+      }
+      if (result.kind !== "complete")
+        throw new Error(`Unhandled native result ${result.kind}`);
+      return result.result;
+    };
+    try {
+      const imported = await completeImport(
+        semantic,
+        {
+          ingress,
+          input: {
+            contextId: "context:test",
+            commandId: "local-template",
+            expectedWorkingHead: initial.working.ref,
+            source: {
+              kind: "generated",
+              uri: pin.url,
+              snapshotRevision: "local",
+            },
+            repositories: [
+              { repoPath: "projects/example", files: [oldFile.descriptor] },
+            ],
+          },
+        },
+        bytes,
+      );
+      const baseRoot = store.stateRoot({
+        kind: "event",
+        eventId: imported.eventId,
+      });
+      const baseRepo = store.facts.repositoryAtPath(
+        baseRoot,
+        "projects/example",
+      )!;
+      const baseFile = store.facts.fileAtPath(
+        baseRoot,
+        baseRepo.repositoryId,
+        "index.txt",
+      )!;
+      const edited = finish(
+        await semantic.dispatch("edit", {
+          ingress,
+          input: {
+            contextId: "context:test",
+            commandId: "local-edit",
+            expectedWorkingHead: { kind: "event", eventId: imported.eventId },
+            changes: [
+              {
+                kind: "text-edit",
+                repositoryId: baseRepo.repositoryId,
+                fileId: baseFile.state.fileId,
+                edits: [{ start: 0, end: 5, text: "local" }],
+              },
+            ],
+          },
+        }),
+      ) as { workingHead: { kind: "application"; applicationId: string } };
+      const committed = finish(
+        await semantic.dispatch("commit", {
+          ingress,
+          input: {
+            contextId: "context:test",
+            commandId: "local-commit",
+            expectedWorkingHead: edited.workingHead,
+          },
+        }),
+      ) as { event: { eventId: string } };
+      imported.eventId = committed.event.eventId;
+      finish(
+        await semantic.dispatch("push", {
+          ingress,
+          input: {
+            contextId: "context:test",
+            commandId: "initial-template-push",
+            expectedCommittedEventId: imported.eventId,
+            expectedMainEventId: initial.committed.ref.eventId,
+          },
+        }),
+      );
+      vi.spyOn(templateWorkspace, "observeWorkspace").mockResolvedValue({
+        mainEventId: imported.eventId,
+        mainState: { kind: "event", eventId: imported.eventId },
+        runtimeTop: { systemEpoch: 1 },
+        localRepoPaths: new Set(["projects/example"]),
+        templateDependencies: [],
+        templateSources: [pin],
+      });
+      let lostPush = true;
+      const pushRequests: unknown[][] = [];
+      const call = async (
+        _target: string,
+        method: string,
+        ...args: unknown[]
+      ): Promise<unknown> => {
+        if (method === "workspaceTemplateSource.composeExact")
+          return (args[0] as { sources: (typeof pin)[] }).sources[0]!.commit ===
+            pin.commit
+            ? tree(oldFile)
+            : scenario === "removal"
+              ? { sources: [target], repositories: [] }
+              : tree(newFile, target);
+        if (method === "runtime.createContext") {
+          const contextId = (args[0] as { contextId: string }).contextId;
+          return finish(
+            semantic.ensureContext(
+              { contextId, commandId: `ensure:${contextId}` },
+              ingress,
+            ),
+          );
+        }
+        if (method === "vcs.push") pushRequests.push(args);
+        const value = finish(
+          await semantic.dispatch(method.slice(4), {
+            ingress,
+            input: args[0] ?? {},
+          }),
+        );
+        if (method === "vcs.push" && lostPush) {
+          lostPush = false;
+          throw new Error("Lost push response");
+        }
+        return value;
+      };
+      const ctx = {
+        rpc: { call },
+        storage: { root: directory },
+      } as unknown as ExtensionContextLike;
+      const source = {
+        inspect: async () => ({
+          pin,
+          repositories: ["projects/example"],
+          dependencies: [],
+        }),
+        resolve: async () => target,
+      };
+      const lifecycle = createTemplateLifecycle(ctx, source);
+      const reviewed = await lifecycle.prepareUpdate({
+        commandId: "update:test",
+        sourceUrl: pin.url,
+      });
+      if (scenario === "nonoverlap") expect(reviewed.conflicts).toEqual([]);
+      else {
+        expect(reviewed.conflicts).toHaveLength(1);
+        const conflict = reviewed.conflicts[0]!;
+        const request = {
+          operationId: "update:test",
+          deltaId: conflict.deltaId,
+          coordinate: {
+            kind: conflict.coordinate.coordinate.kind,
+            id: conflict.coordinate.coordinate.id,
+          },
+          resolution:
+            scenario === "removal" ? ("theirs" as const) : ("ours" as const),
+        };
+        expect((await lifecycle.resolveUpdate(request)).conflicts).toEqual([]);
+        expect(
+          (await createTemplateLifecycle(ctx, source).resolveUpdate(request))
+            .conflicts,
+        ).toEqual([]);
+      }
+      expect(store.mainEventId()).toBe(imported.eventId);
+      await expect(
+        lifecycle.publishUpdate({ operationId: "update:test" }),
+      ).rejects.toThrow("Lost push response");
+      const reopened = createTemplateLifecycle(ctx, source);
+      expect(
+        await reopened.publishUpdate({ operationId: "update:test" }),
+      ).toMatchObject({ status: "published" });
+      expect(pushRequests).toHaveLength(2);
+      expect(pushRequests[1]).toEqual(pushRequests[0]);
+      const mainRoot = store.stateRoot({
+        kind: "event",
+        eventId: store.mainEventId()!,
+      });
+      if (scenario === "removal") {
+        expect(
+          store.facts.repositoryAtPath(mainRoot, "projects/example"),
+        ).toBeNull();
+        return;
+      }
+      const repo = store.facts.repositoryAtPath(mainRoot, "projects/example")!;
+      const file = store.facts.fileAtPath(
+        mainRoot,
+        repo.repositoryId,
+        "index.txt",
+      )!;
+      if (file.state.presence !== "placed")
+        throw new Error("Updated file is absent");
+      expect(file.state.contentHash).toBe(
+        sha256Hex(
+          new TextEncoder().encode(
+            scenario === "conflict"
+              ? "local\nsecond\nthird\n"
+              : "local\nsecond\nincoming\n",
+          ),
+        ),
+      );
+    } finally {
+      vi.restoreAllMocks();
+      await fs.rm(directory, { recursive: true, force: true });
+    }
+  },
+);

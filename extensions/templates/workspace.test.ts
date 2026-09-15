@@ -42,7 +42,6 @@ describe("template workspace observation", () => {
                 "  name: Test",
                 "  description: Test template",
                 "  repositories: []",
-                "  files: []",
                 "  dependencies:",
                 "    - url: git+https://example.test/base.git",
                 "",

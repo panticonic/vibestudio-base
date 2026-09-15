@@ -686,3 +686,7 @@ function WorkspaceSourceSession({
     </Flex>
   );
 }
+
+export { TemplateAuthoring } from "./templateAuthoring.js";
+
+export { TemplateInstalled } from "./templateInstalled.js";

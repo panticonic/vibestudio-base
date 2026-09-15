@@ -20,7 +20,7 @@ describe("templates authority manifest", () => {
       });
     }
   });
-  it("exposes only retained upstream snapshot operations", () => {
+  it("exposes template lifecycle operations with scoped update contexts", () => {
     const manifest = JSON.parse(
       readFileSync(new URL("./package.json", import.meta.url), "utf8"),
     );
@@ -31,8 +31,21 @@ describe("templates authority manifest", () => {
       "inspectAuthoring",
       "authoringParts",
       "publishAuthoring",
+      "installed",
+      "inspectContribution",
+      "suggestContribution",
+      "prepareUpdate",
+      "reviewUpdate",
+      "resolveUpdate",
+      "publishUpdate",
+      "readUpdateFile",
     ]);
-    expect(JSON.stringify(manifest)).not.toContain("context.boundary");
+    expect(
+      manifest.vibestudio.authority.requests.find(
+        (item: { capability: string }) =>
+          item.capability === "context.boundary",
+      ).resource,
+    ).toEqual({ kind: "prefix", prefix: "context/template-update-" });
     expect(JSON.stringify(manifest)).not.toContain("workspace.storage.delete");
     expect(manifest.vibestudio.authority.requests).toEqual(
       expect.arrayContaining([

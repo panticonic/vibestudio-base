@@ -157,6 +157,16 @@ export class StubVcs implements ToolEditingVcs {
       return;
     }
     const repoPath = change.repositoryId.slice("repository:".length);
+    if (change.kind === "repository-delete") {
+      if (
+        repoPath === "meta" ||
+        [...this.files.keys(), ...this.binaryFiles.keys()].some((path) =>
+          path.startsWith(`${repoPath}/`),
+        )
+      )
+        throw new Error("Only empty non-meta repositories can be deleted");
+      return;
+    }
     if (change.kind === "file-create") {
       const fullPath = `${repoPath}/${change.path}`;
       if (change.content.kind === "text") this.files.set(fullPath, change.content.text);

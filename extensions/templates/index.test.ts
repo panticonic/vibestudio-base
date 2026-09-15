@@ -23,7 +23,6 @@ it("delegates every exact pin to the host-owned source acquisition contract", as
     pin,
     presentation: { name: "Dirty source" },
     repositories: ["panels/example"],
-    files: ["package.json"],
     dependencies: [],
   };
   const call = vi.fn(async () => inspected);
@@ -49,7 +48,7 @@ it("prefers an instance-designated checkpoint to remote discovery", async () => 
   const call = vi.fn(async (_target, method) => {
     if (method === "workspaceTemplateSource.resolveLocal") return pin;
     if (method === "workspaceTemplateSource.inspectExact") {
-      return { pin, repositories: [], files: [], dependencies: [] };
+      return { pin, repositories: [], dependencies: [] };
     }
     throw new Error(`Unexpected method: ${method}`);
   });

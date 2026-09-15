@@ -189,11 +189,11 @@ singletonObjects:
 systemEpoch: 0
 template:
   description: A self-contained foundation for an agentic workspace.
-  files: []
   name: Base
   repositories:
     - about/help
     - about/new
+    - about/templates
     - about/testbench
     - extensions/claude-code
     - extensions/file-tools
