@@ -63,6 +63,9 @@ export interface GitHubUser {
 }
 
 export interface GitHubRepo {
+  permissions?: {push?: boolean; admin?: boolean; pull?: boolean};
+  archived?: boolean;
+  disabled?: boolean;
   id: number;
   name: string;
   full_name: string;

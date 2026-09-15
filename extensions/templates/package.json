@@ -162,6 +162,15 @@
             "kind": "closed",
             "reason": "Controls private workspace template source and its publication."
           }
+        },
+        "publicationRepositories": {
+          "effect": {
+            "kind": "open"
+          },
+          "website": {
+            "kind": "closed",
+            "reason": "Lists private connected GitHub repository metadata."
+          }
         }
       }
     },
@@ -279,6 +288,7 @@
     "@vibestudio/workspace": "workspace:*",
     "@vibestudio/workspace-contracts": "workspace:*",
     "yaml": "^2.8.0",
-    "@vibestudio/shared": "workspace:*"
+    "@vibestudio/shared": "workspace:*",
+    "@workspace/integrations": "workspace:*"
   }
 }

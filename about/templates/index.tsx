@@ -61,6 +61,7 @@ export default function TemplatesPage() {
           <Tabs.Content value="publish">
             {workspaceId && (
               <TemplateAuthoring
+                listAccounts={listSourceAccounts}
                 key={workspaceId}
                 workspaceId={workspaceId}
                 client={templates}

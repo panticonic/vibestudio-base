@@ -1,5 +1,18 @@
+import {
+  TemplateRepositoryChoice,
+  type TemplateRepositoryChoiceValue,
+} from "./templateRepositoryChoice.js";
+import type { StoredCredentialSummary } from "@vibestudio/credential-client";
 import { useEffect, useRef, useState } from "react";
-import { Button, Callout, Card, Flex, Heading, Text, TextField } from "@radix-ui/themes";
+import {
+  Button,
+  Callout,
+  Card,
+  Flex,
+  Heading,
+  Text,
+  TextField,
+} from "@radix-ui/themes";
 import {
   templateAuthoringInspectionSchema,
   templatePublicationSchema,
@@ -18,9 +31,11 @@ type Draft = { plan: TemplateAuthoringInspection; request: PublicationRequest };
 export function TemplateAuthoring({
   client,
   workspaceId,
+  listAccounts,
 }: {
   client: TemplatesClient;
   workspaceId: string;
+  listAccounts?: () => Promise<StoredCredentialSummary[]>;
 }) {
   const key = `template-publication:${workspaceId}`;
   const [parts, setParts] = useState<
@@ -30,10 +45,12 @@ export function TemplateAuthoring({
   const [selected, setSelected] = useState<string[]>([]);
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
-  const [owner, setOwner] = useState("");
-  const [repository, setRepository] = useState("");
+  const [repository, setRepository] = useState<TemplateRepositoryChoiceValue>({
+    owner: "",
+    name: "",
+    private: true,
+  });
   const [version, setVersion] = useState("");
-  const [privateRepo, setPrivateRepo] = useState(true);
   const [draft, setDraft] = useState<Draft | null>(null);
   const [result, setResult] = useState<TemplatePublication | null>(null);
   const [busy, setBusy] = useState(false);
@@ -64,10 +81,16 @@ export function TemplateAuthoring({
     void client
       .authoringParts()
       .then((value) => {
-        if (active) {setParts(value);setLoading(false);}
+        if (active) {
+          setParts(value);
+          setLoading(false);
+        }
       })
       .catch((cause) => {
-        if (active) {setError(String(cause));setLoading(false);}
+        if (active) {
+          setError(String(cause));
+          setLoading(false);
+        }
       });
     return () => {
       active = false;
@@ -103,10 +126,16 @@ export function TemplateAuthoring({
           version: version.trim(),
           destination: {
             provider: "github",
-            owner: owner.trim(),
-            name: repository.trim(),
+            owner: repository.owner.trim(),
+            name: repository.name.trim(),
           },
-          creation: { private: privateRepo, description: description.trim() },
+          creation: {
+            private: repository.private,
+            description: description.trim(),
+          },
+          ...(repository.credentialId
+            ? { credentialId: repository.credentialId }
+            : {}),
         },
       };
       window.localStorage.setItem(key, JSON.stringify(captured));
@@ -155,7 +184,13 @@ export function TemplateAuthoring({
             <Text>
               {draft.request.destination.owner}/{draft.request.destination.name}{" "}
               · {draft.request.version} ·{" "}
-              {draft.request.creation?.private ? "Private" : "Public"}
+              {draft.request.creation?.private ? "Private" : "Public"} when
+              creating a repository
+            </Text>
+            <Text>
+              Publishing replaces the destination’s complete file tree with this
+              release and retains its Git history. Existing repository
+              visibility stays unchanged.
             </Text>
             <ul>
               {draft.plan.includedParts.map((part) => (
@@ -194,7 +229,9 @@ export function TemplateAuthoring({
         >
           <fieldset disabled={busy} style={{ border: 0, padding: 0 }}>
             <Flex direction="column" gap="3">
-              <label style={{display:"flex",flexDirection:"column",gap:6}}>
+              <label
+                style={{ display: "flex", flexDirection: "column", gap: 6 }}
+              >
                 Template name
                 <TextField.Root
                   aria-label="Template name"
@@ -203,7 +240,9 @@ export function TemplateAuthoring({
                   onChange={(e) => setName(e.target.value)}
                 />
               </label>
-              <label style={{display:"flex",flexDirection:"column",gap:6}}>
+              <label
+                style={{ display: "flex", flexDirection: "column", gap: 6 }}
+              >
                 Description
                 <TextField.Root
                   aria-label="Description"
@@ -212,25 +251,15 @@ export function TemplateAuthoring({
                   onChange={(e) => setDescription(e.target.value)}
                 />
               </label>
-              <label style={{display:"flex",flexDirection:"column",gap:6}}>
-                GitHub owner
-                <TextField.Root
-                  aria-label="GitHub owner"
-                  required
-                  value={owner}
-                  onChange={(e) => setOwner(e.target.value)}
-                />
-              </label>
-              <label style={{display:"flex",flexDirection:"column",gap:6}}>
-                Repository name
-                <TextField.Root
-                  aria-label="Repository name"
-                  required
-                  value={repository}
-                  onChange={(e) => setRepository(e.target.value)}
-                />
-              </label>
-              <label style={{display:"flex",flexDirection:"column",gap:6}}>
+              <TemplateRepositoryChoice
+                client={client}
+                value={repository}
+                onChange={setRepository}
+                listAccounts={listAccounts}
+              />
+              <label
+                style={{ display: "flex", flexDirection: "column", gap: 6 }}
+              >
                 Version
                 <TextField.Root
                   aria-label="Version"
@@ -240,14 +269,6 @@ export function TemplateAuthoring({
                   value={version}
                   onChange={(e) => setVersion(e.target.value)}
                 />
-              </label>
-              <label>
-                <input
-                  type="checkbox"
-                  checked={privateRepo}
-                  onChange={(e) => setPrivateRepo(e.target.checked)}
-                />
-                Private repository when creating a new one
               </label>
               <Flex gap="2">
                 <Button
@@ -268,7 +289,9 @@ export function TemplateAuthoring({
                 </Button>
               </Flex>
               {loading && <Text role="status">Loading workspace units…</Text>}
-              {!loading && !parts.length && !error && <Text>No local units are available for publication.</Text>}
+              {!loading && !parts.length && !error && (
+                <Text>No local units are available for publication.</Text>
+              )}
               <div style={{ maxHeight: 320, overflow: "auto" }}>
                 {parts.map((part) => (
                   <label key={part.repoPath} style={{ display: "block" }}>

@@ -1,3 +1,4 @@
+import { createGitHubClient } from "@workspace/integrations/github";
 import { createTemplateLifecycle } from "./lifecycle.js";
 import { Buffer } from "node:buffer";
 import type {
@@ -156,6 +157,41 @@ export async function activate(ctx: ExtensionContextLike) {
         input,
         await inheritedInventory(ctx, observation.templateDependencies),
       );
+    },
+    publicationRepositories: async ({
+      credentialId,
+      page = 1,
+    }: {
+      credentialId?: string;
+      page?: number;
+    }) => {
+      const github = createGitHubClient(ctx.credentials, { credentialId });
+      const [user, repositories] = await Promise.all([
+        github.getUser(),
+        github.listRepos({
+          per_page: 100,
+          page,
+          sort: "full_name",
+          direction: "asc",
+        }),
+      ]);
+      return {
+        owner: user.login,
+        repositories: repositories
+          .filter(
+            (repo) =>
+              repo.permissions?.push === true &&
+              !repo.archived &&
+              !repo.disabled,
+          )
+          .map((repo) => ({
+            owner: repo.owner.login,
+            name: repo.name,
+            private: repo.private,
+            webUrl: repo.html_url,
+          })),
+        nextPage: repositories.length === 100 ? page + 1 : null,
+      };
     },
     authoringParts: async () => {
       const observation = await observeWorkspace(ctx);
