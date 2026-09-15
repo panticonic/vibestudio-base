@@ -199,12 +199,14 @@ export class TemplatePublishEngine {
     )}`;
 
     let credentialId = input.credentialId?.trim() || undefined;
+    let credentialLabel: string | undefined;
     if (providerId === "github") {
       const resolved = await resolveGitHubPublishOperation(this.ctx.credentials, {
         ...(credentialId ? { credentialId } : {}),
         owner,
       });
       credentialId = resolved.credentialId;
+      credentialLabel = resolved.credentialLabel;
       if (resolved.destinationOwner.toLowerCase() !== owner.toLowerCase()) {
         throw new Error(
           `GitHub credential resolved owner ${resolved.destinationOwner}, expected ${owner}`
@@ -299,6 +301,7 @@ export class TemplatePublishEngine {
             remoteUrl: repository.cloneUrl,
             webUrl: repository.webUrl,
             templateUrl: normalizeTemplateGitUrl(repository.cloneUrl),
+            ...(credentialLabel ? { credential: credentialLabel } : {}),
             ref: `refs/tags/${tag}`,
             commit: exact.commit,
             parts: parts.map(({ repoPath }) => repoPath),

@@ -44,7 +44,7 @@ it("captures the reviewed source and name once while creation is pending", async
   fireEvent.click(button);
   fireEvent.click(button);
   expect(onCreate).toHaveBeenCalledTimes(1);
-  expect(onCreate).toHaveBeenCalledWith("my-garden", pin);
+  expect(onCreate).toHaveBeenCalledWith("my-garden", pin, "use");
   expect(
     (
       screen.getByRole("textbox", {
@@ -107,7 +107,7 @@ it("does not let a stale source inspection replace the currently requested sourc
   await act(async () => {
     fireEvent.click(screen.getByRole("button", { name: "Create workspace" }));
   });
-  expect(onCreate).toHaveBeenCalledWith("next-garden", nextPin);
+  expect(onCreate).toHaveBeenCalledWith("next-garden", nextPin, "use");
 });
 it("withdraws a reviewed source when its requested pin changes", async () => {
   let finishNext!: (value: typeof inspection) => void;
@@ -320,7 +320,9 @@ it("prefills a website Git URL and requires review before creation", async () =>
   });
   expect(onCreate).not.toHaveBeenCalled();
   fireEvent.click(screen.getByRole("button", { name: "Create workspace" }));
-  await waitFor(() => expect(onCreate).toHaveBeenCalledWith("garden", pin));
+  await waitFor(() =>
+    expect(onCreate).toHaveBeenCalledWith("garden", pin, "use"),
+  );
 });
 
 it("loads a different registry address and uses its moving template URL", async () => {
@@ -429,6 +431,24 @@ it("reviews picked folder bytes without remote inspection and treats cancellatio
   fireEvent.click(
     await screen.findByRole("button", { name: "Create workspace" }),
   );
-  await waitFor(() => expect(onCreate).toHaveBeenCalledWith("garden", pin));
+  await waitFor(() =>
+    expect(onCreate).toHaveBeenCalledWith("garden", pin, "use"),
+  );
   expect(client.inspect).not.toHaveBeenCalled();
+});
+
+it("passes the explicit authoring choice with the reviewed repository", async () => {
+  const onCreate = vi.fn(async () => undefined);
+  render(
+    <Theme>
+      <TemplateWorkspaceReview inspection={inspection} onCreate={onCreate} />
+    </Theme>,
+  );
+  fireEvent.change(screen.getByLabelText("Workspace purpose"), {
+    target: { value: "author" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Create workspace" }));
+  await waitFor(() =>
+    expect(onCreate).toHaveBeenCalledWith("garden", pin, "author"),
+  );
 });

@@ -2863,6 +2863,8 @@ it.each(["nonoverlap", "conflict", "removal"] as const)(
         localRepoPaths: new Set(["projects/example"]),
         templateDependencies: [],
         templateSources: [pin],
+        authoredTop: {systemEpoch: 0},
+        manifest: {top:{systemEpoch:0},inventory:{repositories:[]},dependencies:[],installation:{upstream:pin,sources:[]}},
       });
       let lostPush = true;
       const pushRequests: unknown[][] = [];

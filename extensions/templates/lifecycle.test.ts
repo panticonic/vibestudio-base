@@ -14,6 +14,12 @@ it("contributes only reviewed units owned by the selected source and rejects sta
     mainEventId: "event:one",
     mainState: { kind: "event" as const, eventId: "event:one" },
     runtimeTop: { systemEpoch: 1 },
+    authoredTop: { systemEpoch: 1 },
+    manifest: {
+      top: { systemEpoch: 1 },
+      inventory: { repositories: [] },
+      dependencies: [],
+    },
     localRepoPaths: new Set(["meta", "panels/example", "panels/personal"]),
     templateDependencies: [],
     templateSources: [pin],

@@ -1,5 +1,7 @@
-import * as fs from "node:fs/promises";
-import * as path from "node:path";
+import {
+  TemplateOperations,
+  type TemplateOperationStep,
+} from "./operations.js";
 import {
   canonicalSnapshotDigest,
   canonicalJson,
@@ -27,12 +29,6 @@ import { observeWorkspace } from "./workspace.js";
 
 type Request = Parameters<TemplatesClient["prepareUpdate"]>[0];
 type TreeRepo = TemplateSourceTree["repositories"][number];
-type Step = {
-  method: string;
-  args: unknown[];
-  done: boolean;
-  result?: unknown;
-};
 type Update = {
   request: Request;
   contextId: string;
@@ -40,7 +36,7 @@ type Update = {
   target: TemplateExactPin;
   before: TemplateSourceTree;
   after: TemplateSourceTree;
-  steps: Record<string, Step>;
+  steps: Record<string, TemplateOperationStep>;
   published: boolean;
 };
 const identity = (value: unknown) => sha256HexSyncText(canonicalJson(value));
@@ -51,7 +47,10 @@ export function createTemplateLifecycle(
   ctx: ExtensionContextLike,
   sources: {
     inspect(pin: TemplateExactPin): Promise<TemplateInspection>;
-    resolve(source: {url: string; credential?: string}): Promise<TemplateExactPin>;
+    resolve(source: {
+      url: string;
+      credential?: string;
+    }): Promise<TemplateExactPin>;
   },
 ) {
   const vcs = createTypedServiceClient(
@@ -59,50 +58,11 @@ export function createTemplateLifecycle(
     vcsMethods,
     (_service, method, args) => ctx.rpc.call("main", `vcs.${method}`, ...args),
   );
-  const queues = new Map<string, Promise<unknown>>();
-  const serial = async <T>(
-    id: string,
-    action: () => Promise<T>,
-  ): Promise<T> => {
-    const previous = queues.get(id) ?? Promise.resolve();
-    const next = previous.catch(() => undefined).then(action);
-    queues.set(id, next);
-    try {
-      return await next;
-    } finally {
-      if (queues.get(id) === next) queues.delete(id);
-    }
-  };
-  const file = (id: string) =>
-    path.join(ctx.storage.root, "template-updates", `${identity(id)}.json`);
-  const save = async (update: Update) => {
-    const destination = file(update.request.commandId);
-    await fs.mkdir(path.dirname(destination), { recursive: true });
-    const temporary = `${destination}.next`;
-    await fs.writeFile(temporary, JSON.stringify(update));
-    await fs.rename(temporary, destination);
-  };
-  const load = async (id: string): Promise<Update> =>
-    JSON.parse(await fs.readFile(file(id), "utf8")) as Update;
-  const step = async <T>(
-    update: Update,
-    key: string,
-    method: string,
-    args: unknown[],
-  ): Promise<T> => {
-    let record = update.steps[key];
-    if (!record) {
-      record = { method, args, done: false };
-      update.steps[key] = record;
-      await save(update);
-    }
-    if (!record.done) {
-      record.result = await ctx.rpc.call("main", record.method, ...record.args);
-      record.done = true;
-      await save(update);
-    }
-    return record.result as T;
-  };
+  const operations = new TemplateOperations<Update>(ctx, "template-updates");
+  const serial = operations.serial.bind(operations);
+  const save = operations.save.bind(operations);
+  const load = operations.load.bind(operations);
+  const step = operations.step.bind(operations);
   const status = (update: Update) =>
     vcs.status({ contextId: update.contextId });
   const envelope = async (update: Update, key: string) => ({
@@ -184,11 +144,12 @@ export function createTemplateLifecycle(
       let batch: typeof coordinates = [];
       for (const group of groups.values()) {
         if (batch.length + group.length > 500 && batch.length) {
-          batches.push(batch);batch=[];
+          batches.push(batch);
+          batch = [];
         }
         batch.push(...group);
       }
-      if(batch.length)batches.push(batch);
+      if (batch.length) batches.push(batch);
       for (const batch of batches) {
         const page = batch.map((item) => ({
           kind: item.coordinate.kind,
@@ -386,8 +347,7 @@ export function createTemplateLifecycle(
             throw new Error(
               "This workspace has no recorded exact source for that template.",
             );
-          const target =
-            request.target ?? (await sources.resolve(prior));
+          const target = request.target ?? (await sources.resolve(prior));
           if (!sameUrl(prior.url, target.url))
             throw new Error(
               "An update must keep the template repository identity.",
@@ -399,12 +359,20 @@ export function createTemplateLifecycle(
           const before = await ctx.rpc.call<TemplateSourceTree>(
             "main",
             "workspaceTemplateSource.composeExact",
-            { sources: observation.templateSources },
+            {
+              sources: observation.templateSources,
+              purpose: observation.manifest.installation?.upstream
+                ? "author"
+                : "use",
+            },
           );
           const after = await ctx.rpc.call<TemplateSourceTree>(
             "main",
             "workspaceTemplateSource.composeExact",
             {
+              purpose: observation.manifest.installation?.upstream
+                ? "author"
+                : "use",
               sources: observation.templateSources.map((pin) =>
                 sameUrl(pin.url, target.url) ? target : pin,
               ),

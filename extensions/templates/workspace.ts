@@ -5,7 +5,12 @@ import type {
   VcsResolveRepositoryResult,
   VcsStateNodeRef,
 } from "@vibestudio/service-schemas/vcs";
-import { parseTemplateManifestContent } from "@vibestudio/workspace/templateManifest";
+import {
+  installedDependencyLayers,
+  parseTemplateManifestContent,
+  rootRuntimeFromTemplateManifest,
+  type ParsedTemplateManifest,
+} from "@vibestudio/workspace/templateManifest";
 import { WorkspaceConfigSchema } from "@vibestudio/workspace-contracts/workspaceConfigSchema";
 import type {
   WorkspaceConfig,
@@ -19,6 +24,8 @@ export interface SemanticWorkspaceObservation {
   mainEventId: string;
   mainState: VcsStateNodeRef;
   runtimeTop: Omit<WorkspaceConfig, "id">;
+  authoredTop: Omit<WorkspaceConfig, "id">;
+  manifest: ParsedTemplateManifest;
   localRepoPaths: Set<string>;
   templateDependencies: readonly WorkspaceTemplateDependency[];
   templateSources: readonly WorkspaceTemplatePin[];
@@ -93,12 +100,23 @@ export async function observeWorkspace(
       : Buffer.from(meta.content.base64, "base64").toString("utf8"),
     runtimeTop.systemEpoch,
   );
+  const sources = manifest.installation?.sources ?? [];
+  const templateSources = installedDependencyLayers(manifest).map((layer) => {
+    const source = sources.find((source) => source.pin.url === layer.label);
+    if (!source)
+      throw new Error(`Installed dependency ${layer.label} disappeared`);
+    return source.pin;
+  });
+  if (manifest.installation?.upstream)
+    templateSources.push(manifest.installation.upstream);
   return {
     mainEventId: mainState.eventId,
     mainState,
-    runtimeTop,
+    runtimeTop: rootRuntimeFromTemplateManifest(manifest),
+    authoredTop: manifest.top,
+    manifest,
     localRepoPaths: await repositoryPaths(ctx, mainState),
     templateDependencies: manifest.dependencies,
-    templateSources: manifest.sources,
+    templateSources,
   };
 }

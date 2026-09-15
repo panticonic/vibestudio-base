@@ -79,6 +79,32 @@ export function TemplateAuthoring({
       setError(String(cause));
     }
     void client
+      .authoringUpstream()
+      .then(async (upstream) => {
+        if (!upstream || !active) return;
+        const url = new URL(upstream.url.replace(/^git\+/, ""));
+        if (url.hostname !== "github.com") return;
+        const [owner, rawName] = url.pathname.slice(1).split("/");
+        if (!owner || !rawName) return;
+        const accounts = listAccounts ? await listAccounts() : [];
+        if (active)
+          setRepository((current) =>
+            current.owner || current.name
+              ? current
+              : {
+                  owner,
+                  name: rawName.replace(/\.git$/, ""),
+                  private: true,
+                  credentialId: accounts.find(
+                    (account) => account.label === upstream.credential,
+                  )?.id,
+                },
+          );
+      })
+      .catch((cause) => {
+        if (active) setError(String(cause));
+      });
+    void client
       .authoringParts()
       .then((value) => {
         if (active) {
@@ -95,7 +121,7 @@ export function TemplateAuthoring({
     return () => {
       active = false;
     };
-  }, [client, key]);
+  }, [client, key, listAccounts]);
   const run = async (action: () => Promise<void>) => {
     if (pending.current) return;
     pending.current = true;
@@ -156,7 +182,8 @@ export function TemplateAuthoring({
       <Heading size="5">Publish this workspace as a template</Heading>
       <Text>
         Choose the complete set of parts for this release. Parts supplied by
-        dependencies remain dependencies.
+        dependencies remain dependencies unless you explicitly select them as
+        overrides.
       </Text>
       {error && (
         <Callout.Root color="red" role="alert">
@@ -275,10 +302,14 @@ export function TemplateAuthoring({
                   type="button"
                   variant="soft"
                   onClick={() =>
-                    setSelected(parts.map((part) => part.repoPath))
+                    setSelected(
+                      parts
+                        .filter((part) => !part.inheritedFrom)
+                        .map((part) => part.repoPath),
+                    )
                   }
                 >
-                  Select all
+                  Select local units
                 </Button>
                 <Button
                   type="button"
@@ -309,10 +340,13 @@ export function TemplateAuthoring({
                       }
                     />
                     {part.repoPath}
+                    {part.inheritedFrom
+                      ? ` (override from ${part.inheritedFrom})`
+                      : ""}
                   </label>
                 ))}
               </div>
-              <Button type="submit" disabled={!selected.length || busy}>
+              <Button type="submit" disabled={loading || busy}>
                 {busy ? "Preparing review…" : "Review release"}
               </Button>
             </Flex>

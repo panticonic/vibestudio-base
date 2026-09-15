@@ -329,6 +329,7 @@ export async function inspectTemplateAuthoring(
    */
   inheritedInventory: {
     repositories: readonly string[];
+    owners?: ReadonlyMap<string, string>;
   },
 ): Promise<TemplateAuthoringInspection> {
   const name = rawRequest.name.trim();
@@ -350,14 +351,10 @@ export async function inspectTemplateAuthoring(
   const requestedParts = [
     ...new Set(rawRequest.parts.map(normalizeWorkspaceRepoPath)),
   ].sort(compareUtf16CodeUnits);
-  if (!requestedParts.length)
-    throw new Error("Choose at least one workspace part");
+
   for (const repoPath of requestedParts) {
-    if (inherited.has(repoPath)) {
-      throw new Error(
-        `Workspace repository ${repoPath} is already provided by a declared dependency`,
-      );
-    }
+    // Selecting an inherited unit explicitly publishes a whole-unit override.
+    inherited.delete(repoPath);
     if (!selectable.has(repoPath))
       throw new Error(`Unknown workspace repository ${repoPath}`);
   }
@@ -420,8 +417,8 @@ export async function inspectTemplateAuthoring(
   const required = new Set(closure.required);
 
   const includedParts = closure.included;
-  const manifest = projectManifest(
-    observation.runtimeTop as WorkspaceConfig,
+  const projectedManifest = projectManifest(
+    observation.authoredTop as WorkspaceConfig,
     new Set(includedParts),
     packageOwners,
     { name, description },
@@ -430,6 +427,19 @@ export async function inspectTemplateAuthoring(
     ),
     observation.templateDependencies,
   );
+  const document = YAML.parse(projectedManifest) as {
+    template: { overrides?: Array<{ repoPath: string; source: string }> };
+  };
+  const overrides = includedParts.flatMap((repoPath) => {
+    const source =
+      inheritedInventory.owners?.get(repoPath) ??
+      observation.manifest?.overrides?.find(
+        (override) => override.repoPath === repoPath,
+      )?.source;
+    return source ? [{ repoPath, source }] : [];
+  });
+  if (overrides.length) document.template.overrides = overrides;
+  const manifest = canonicalYaml(document);
   const manifestDigest = `v1-sha256:${sha256HexSyncText(manifest)}` as const;
   const request: TemplateAuthoringIntent = {
     name,

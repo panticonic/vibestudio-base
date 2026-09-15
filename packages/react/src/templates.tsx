@@ -37,6 +37,7 @@ type BrowserClient = Pick<TemplateManagementClient, "inspect"> &
 export type CreateTemplateWorkspace = (
   name: string,
   pin: TemplateExactPin,
+  purpose?: "use" | "author",
 ) => Promise<void>;
 const errorMessage = (error: unknown) =>
   error instanceof Error ? error.message : String(error);
@@ -102,6 +103,7 @@ export function TemplateWorkspaceReview({
         .replace(/[^a-z0-9_-]+/g, "-")
         .replace(/^-+|-+$/g, "") || "new-workspace",
   );
+  const [purpose, setPurpose] = useState<"use" | "author">("use");
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const pending = useRef(false);
@@ -113,7 +115,7 @@ export function TemplateWorkspaceReview({
     const selectedName = name.trim();
     const selectedPin = { ...inspection.pin };
     try {
-      await onCreate(selectedName, selectedPin);
+      await onCreate(selectedName, selectedPin, purpose);
     } catch (error) {
       setError(errorMessage(error));
     } finally {
@@ -207,6 +209,27 @@ export function TemplateWorkspaceReview({
           <Callout.Text>{error}</Callout.Text>
         </Callout.Root>
       ) : null}
+      <label>
+        Workspace purpose
+        <select
+          aria-label="Workspace purpose"
+          disabled={creating}
+          value={purpose}
+          onChange={(event) =>
+            setPurpose(event.target.value as "use" | "author")
+          }
+        >
+          <option value="use">Use template — create my own workspace</option>
+          <option value="author">
+            Author template — edit its repository directly
+          </option>
+        </select>
+      </label>
+      <Text size="2">
+        {purpose === "use"
+          ? "The template becomes a dependency. Your workspace starts without a publishing repository."
+          : "This repository becomes your workspace’s upstream. Its own dependencies remain dependencies."}
+      </Text>
       <Flex gap="3" justify="end">
         {onBack ? (
           <Button

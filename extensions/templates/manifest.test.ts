@@ -39,13 +39,20 @@ describe("templates authority manifest", () => {
       "resolveUpdate",
       "publishUpdate",
       "readUpdateFile",
+      "publicationRepositories",
+      "authoringUpstream",
     ]);
     expect(
-      manifest.vibestudio.authority.requests.find(
-        (item: { capability: string }) =>
-          item.capability === "context.boundary",
-      ).resource,
-    ).toEqual({ kind: "prefix", prefix: "context/template-update-" });
+      manifest.vibestudio.authority.requests
+        .filter(
+          (item: { capability: string }) =>
+            item.capability === "context.boundary",
+        )
+        .map((item: { resource: unknown }) => item.resource),
+    ).toEqual([
+      { kind: "prefix", prefix: "context/template-update-" },
+      { kind: "prefix", prefix: "context/template-publication-" },
+    ]);
     expect(JSON.stringify(manifest)).not.toContain("workspace.storage.delete");
     expect(manifest.vibestudio.authority.requests).toEqual(
       expect.arrayContaining([

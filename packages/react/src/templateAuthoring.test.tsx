@@ -32,6 +32,7 @@ it("reviews the complete selection and retries the same captured publication aft
     fingerprint: `v1-sha256:${"b".repeat(64)}`,
   };
   const client = {
+    authoringUpstream: vi.fn().mockResolvedValue(null),
     authoringParts: vi.fn().mockResolvedValue([{ repoPath: "panels/news" }]),
     inspectAuthoring: vi.fn().mockResolvedValue(plan),
     publishAuthoring: vi.fn().mockRejectedValue(new Error("Connection lost")),

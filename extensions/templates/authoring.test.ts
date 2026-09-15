@@ -7,6 +7,7 @@ function observation(eventId: string) {
     mainEventId: eventId,
     mainState: { kind: "event" as const, eventId },
     runtimeTop: { systemEpoch: 0 },
+    authoredTop: { systemEpoch: 0 },
     localRepoPaths: new Set(["meta", "panels/news"]),
     templateDependencies: [],
   };
@@ -122,6 +123,7 @@ it("retains package providers by their owning repository and extension providers
       },
     },
   };
+  current.authoredTop = current.runtimeTop;
   const inspect = (parts: string[]) =>
     inspectTemplateAuthoring(
       context() as never,
@@ -137,4 +139,38 @@ it("retains package providers by their owning repository and extension providers
   expect(
     YAML.parse((await inspect(["extensions/git-bridge"])).manifest).providers,
   ).toEqual({ gitInterop: current.runtimeTop.providers.gitInterop });
+});
+
+it("publishes a selected inherited unit as an explicit override and permits dependency-only releases", async () => {
+  const current = {
+    ...observation("event:override"),
+    templateDependencies: [{ url: "https://example.test/base.git" }],
+  };
+  const inherited = {
+    repositories: ["panels/news"],
+    owners: new Map([["panels/news", "https://example.test/base.git"]]),
+  };
+  const inspect = (parts: string[]) =>
+    inspectTemplateAuthoring(
+      context() as never,
+      current as never,
+      { name: "Mine", description: "My workspace", parts },
+      inherited,
+    );
+  const override = YAML.parse((await inspect(["panels/news"])).manifest);
+  expect(override.template).toEqual({
+    name: "Mine",
+    description: "My workspace",
+    dependencies: current.templateDependencies,
+    repositories: ["meta", "panels/news"],
+    overrides: [
+      { repoPath: "panels/news", source: "https://example.test/base.git" },
+    ],
+  });
+  const onlyDependency = YAML.parse((await inspect([])).manifest);
+  expect(onlyDependency.template.repositories).toEqual(["meta"]);
+  expect(onlyDependency.template.dependencies).toEqual(
+    current.templateDependencies,
+  );
+  expect(onlyDependency.template.overrides).toBeUndefined();
 });

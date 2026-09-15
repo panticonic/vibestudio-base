@@ -171,6 +171,15 @@
             "kind": "closed",
             "reason": "Lists private connected GitHub repository metadata."
           }
+        },
+        "authoringUpstream": {
+          "effect": {
+            "kind": "open"
+          },
+          "website": {
+            "kind": "closed",
+            "reason": "Reads private template upstream metadata."
+          }
         }
       }
     },
@@ -273,6 +282,15 @@
           "resource": {
             "kind": "prefix",
             "prefix": "context/template-update-"
+          },
+          "tier": "critical",
+          "evidence": "bounded-dynamic"
+        },
+        {
+          "capability": "context.boundary",
+          "resource": {
+            "kind": "prefix",
+            "prefix": "context/template-publication-"
           },
           "tier": "critical",
           "evidence": "bounded-dynamic"

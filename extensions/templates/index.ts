@@ -1,3 +1,6 @@
+import { createTemplatePublisher } from "./publication.js";
+import { installedDependencyLayers } from "@vibestudio/workspace/templateManifest";
+import { templateRepositoryOwners } from "@vibestudio/workspace/templateManifestMerge";
 import { createGitHubClient } from "@workspace/integrations/github";
 import { createTemplateLifecycle } from "./lifecycle.js";
 import { Buffer } from "node:buffer";
@@ -5,7 +8,6 @@ import type {
   TemplateAuthoringIntent,
   TemplateInspection,
   TemplateLocator,
-  TemplatePublication,
 } from "@vibestudio/service-schemas/templates";
 import {
   DEFAULT_TEMPLATE_REGISTRY_URL,
@@ -50,54 +52,23 @@ async function resolveSource(
   );
 }
 
-/**
- * Read what a request's declared dependencies already supply.
- *
- * A dependency is read at its own address. Publication commits a template to
- * `main` of its repository and tags the version, so a published template's
- * default branch is its latest version by construction — which is what makes
- * reading the address, rather than resolving a track, the same answer. An
- * exact `commit` is used exactly.
- */
-async function inheritedInventory(
-  ctx: ExtensionContextLike,
-  dependencies: readonly import("@vibestudio/workspace-contracts/types").WorkspaceTemplateDependency[],
-): Promise<{ repositories: string[] }> {
-  const repositories: string[] = [];
-  const visited = new Set<string>();
-  const visit = async (
-    dependency: (typeof dependencies)[number],
-  ): Promise<void> => {
-    const key = `${dependency.url}\0${dependency.commit ?? "latest"}`;
-    if (visited.has(key)) return;
-    visited.add(key);
-    const inspection = await inspect(
-      ctx,
-      dependency.commit
-        ? {
-            pin: {
-              url: dependency.url,
-              ref: dependency.track ?? "refs/heads/main",
-              commit: dependency.commit,
-              ...(dependency.credential
-                ? { credential: dependency.credential }
-                : {}),
-            },
-          }
-        : {
-            url: dependency.url,
-            ...(dependency.credential
-              ? { credential: dependency.credential }
-              : {}),
-          },
+function inheritedInventory(
+  observation: Awaited<ReturnType<typeof observeWorkspace>>,
+) {
+  const installation = observation.manifest.installation;
+  if (!installation)
+    throw new Error(
+      "This workspace has no installed ownership declarations. Reopen it using the template picker.",
     );
-    for (const upstream of inspection.dependencies) await visit(upstream);
-    repositories.push(...inspection.repositories);
+  const layers = installedDependencyLayers(observation.manifest);
+  const owners = templateRepositoryOwners(layers);
+  owners.delete("meta");
+  return {
+    repositories: [...owners.keys()],
+    owners: new Map(
+      [...owners].map(([repoPath, layer]) => [repoPath, layer.label]),
+    ),
   };
-  for (const dependency of dependencies) {
-    await visit(dependency);
-  }
-  return { repositories };
 }
 
 async function inspect(ctx: ExtensionContextLike, locator: TemplateLocator) {
@@ -155,7 +126,7 @@ export async function activate(ctx: ExtensionContextLike) {
         ctx,
         observation,
         input,
-        await inheritedInventory(ctx, observation.templateDependencies),
+        inheritedInventory(observation),
       );
     },
     publicationRepositories: async ({
@@ -195,60 +166,28 @@ export async function activate(ctx: ExtensionContextLike) {
     },
     authoringParts: async () => {
       const observation = await observeWorkspace(ctx);
-      const inherited = new Set(
-        (await inheritedInventory(ctx, observation.templateDependencies))
-          .repositories,
-      );
-      return (await listTemplateAuthoringParts(ctx, observation)).filter(
-        (part) => !inherited.has(part.repoPath),
+      const inherited = inheritedInventory(observation);
+      return (await listTemplateAuthoringParts(ctx, observation)).map(
+        (part) => ({
+          ...part,
+          ...(inherited.owners.has(part.repoPath)
+            ? { inheritedFrom: inherited.owners.get(part.repoPath) }
+            : {}),
+        }),
       );
     },
-    async publishAuthoring(input: {
-      commandId: string;
-      intent: TemplateAuthoringIntent;
-      expectedFingerprint: string;
-      version: string;
-      destination: { provider: string; owner: string; name: string };
-      credentialId?: string;
-      creation?: { private?: boolean; description?: string };
-    }) {
+    publishAuthoring: createTemplatePublisher(ctx, async (input) => {
       const observation = await observeWorkspace(ctx);
-      const current = await inspectTemplateAuthoring(
+      const plan = await inspectTemplateAuthoring(
         ctx,
         observation,
         input.intent,
-        await inheritedInventory(ctx, observation.templateDependencies),
+        inheritedInventory(observation),
       );
-      if (current.fingerprint !== input.expectedFingerprint)
-        throw new Error(
-          "Workspace source changed after inspection; inspect authoring again",
-        );
-      return ctx.extensions.invoke<TemplatePublication>(
-        "@workspace-extensions/git-bridge",
-        "publishTemplate",
-        [
-          {
-            operationId: input.commandId,
-            expectedMainEventId: current.mainEventId,
-            templateName: current.request.name,
-            version: input.version,
-            manifest: current.manifest,
-            manifestDigest: current.manifestDigest,
-            parts: current.includedParts.map((repoPath) => ({
-              repoPath,
-              subdir: repoPath,
-            })),
-            destination: input.destination,
-            ...(input.credentialId ? { credentialId: input.credentialId } : {}),
-            creation: {
-              private: input.creation?.private ?? true,
-              description:
-                input.creation?.description ?? input.intent.description,
-            },
-          },
-        ],
-      );
-    },
+      return { observation, plan };
+    }),
+    authoringUpstream: async () =>
+      (await observeWorkspace(ctx)).manifest.installation?.upstream ?? null,
   };
 }
 export type Api = Awaited<ReturnType<typeof activate>>;
