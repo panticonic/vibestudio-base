@@ -172,43 +172,55 @@ it("allows ordinary panels to inspect and request host review without creating a
   expect(screen.queryByRole("button", { name: "Create workspace" })).toBeNull();
 });
 
-it("presents the exact pending review and retries only when requested", async () => {
-  const failure = Object.assign(new Error("internal extension status"), {
-    code: "EREVIEWPENDING",
-    errorData: {
-      authorityFailure: {
-        reasonCode: "review-pending",
-        remediation: {
-          kind: "resolve-open-review",
-          review: { approvalId: "review-templates", title: "System tools" },
+it.each(["inspect", "registry"] as const)(
+  "presents the exact pending %s review and retries only when requested",
+  async (operation) => {
+    const failure = Object.assign(new Error("internal extension status"), {
+      code: "EREVIEWPENDING",
+      errorData: {
+        authorityFailure: {
+          reasonCode: "review-pending",
+          remediation: {
+            kind: "resolve-open-review",
+            review: { approvalId: "review-templates", title: "System tools" },
+          },
         },
       },
-    },
-  });
-  const client = {
-    inspect: vi
+    });
+    const request = vi
       .fn()
       .mockRejectedValueOnce(failure)
-      .mockResolvedValue(inspection),
-  };
-  const onReviewPending = vi.fn();
-  render(
-    <Theme>
-      <TemplateBrowser
-        client={client}
-        initialPin={pin}
-        onReviewPending={onReviewPending}
-      />
-    </Theme>,
-  );
-  await screen.findByText("Waiting for you to finish reviewing System tools.");
-  expect(screen.queryByText("internal extension status")).toBeNull();
-  fireEvent.click(screen.getByRole("button", { name: "Open review" }));
-  expect(onReviewPending).toHaveBeenCalledWith("review-templates");
-  expect(client.inspect).toHaveBeenCalledTimes(1);
-  fireEvent.click(screen.getByRole("button", { name: "Check again" }));
-  await waitFor(() => expect(client.inspect).toHaveBeenCalledTimes(2));
-});
+      .mockResolvedValue(
+        operation === "inspect" ? inspection : { version: 1, templates: [] },
+      );
+    const browserClient =
+      operation === "inspect"
+        ? { inspect: request }
+        : {
+            inspect: vi.fn().mockResolvedValue(inspection),
+            registry: request,
+          };
+    const onReviewPending = vi.fn();
+    render(
+      <Theme>
+        <TemplateBrowser
+          client={browserClient}
+          {...(operation === "inspect" ? { initialPin: pin } : {})}
+          onReviewPending={onReviewPending}
+        />
+      </Theme>,
+    );
+    await screen.findByText(
+      "Waiting for you to finish reviewing System tools.",
+    );
+    expect(screen.queryByText("internal extension status")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Open review" }));
+    expect(onReviewPending).toHaveBeenCalledWith("review-templates");
+    expect(request).toHaveBeenCalledTimes(1);
+    fireEvent.click(screen.getByRole("button", { name: "Check again" }));
+    await waitFor(() => expect(request).toHaveBeenCalledTimes(2));
+  },
+);
 
 it("presents a queued runtime acquisition instead of its wrapped error", async () => {
   const failure = Object.assign(

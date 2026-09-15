@@ -42,6 +42,48 @@ const errorMessage = (error: unknown) =>
   error instanceof Error ? error.message : String(error);
 const sourceAddress = (pin: TemplateExactPin) => pin.url.replace(/^git\+/, "");
 
+function TemplateRequestError({
+  error,
+  onReviewPending,
+  onRetry,
+}: {
+  error: unknown;
+  onReviewPending?: (approvalId: string) => void;
+  onRetry: () => void;
+}) {
+  const review = pendingAuthorityNotice(error);
+  const awaitingReview = isAuthorityPending(error);
+  if (!error) return null;
+  return (
+    <Callout.Root
+      color={awaitingReview ? "amber" : "red"}
+      role={awaitingReview ? "status" : "alert"}
+    >
+      <Callout.Text>
+        {awaitingReview
+          ? (review?.message ?? "A workspace setup review is waiting for you.")
+          : errorMessage(error)}
+      </Callout.Text>
+      {awaitingReview && (
+        <Flex direction="column" gap="2">
+          {review && onReviewPending ? (
+            <Button onClick={() => onReviewPending(review.approvalId)}>
+              {review.kind === "acquisition" ? "Open approval" : "Open review"}
+            </Button>
+          ) : (
+            <Text size="2">
+              Open Approvals to finish this review, then check again.
+            </Text>
+          )}
+          <Button variant="soft" onClick={onRetry}>
+            Check again
+          </Button>
+        </Flex>
+      )}
+    </Callout.Root>
+  );
+}
+
 /** The exact reviewed pin is captured with the name before creating anything. */
 export function TemplateWorkspaceReview({
   inspection,
@@ -234,7 +276,7 @@ function WorkspaceSourceSession({
   const [accountError, setAccountError] = useState<string | null>(null);
   const [registryUrl, setRegistryUrl] = useState(DEFAULT_TEMPLATE_REGISTRY_URL);
   const [registry, setRegistry] = useState<TemplateRegistry | null>(null);
-  const [registryError, setRegistryError] = useState<string | null>(null);
+  const [registryError, setRegistryError] = useState<unknown>(null);
   const [loadingRegistry, setLoadingRegistry] = useState(false);
   const registryGeneration = useRef(0);
   const generation = useRef(0);
@@ -264,7 +306,7 @@ function WorkspaceSourceSession({
         setRegistry(result);
     } catch (error) {
       if (live.current && operation === registryGeneration.current) {
-        setRegistryError(errorMessage(error));
+        setRegistryError(error);
       }
     } finally {
       if (live.current && operation === registryGeneration.current)
@@ -280,8 +322,6 @@ function WorkspaceSourceSession({
   const freshPending = useRef(false);
   const [error, setError] = useState<unknown>(null);
   const lastLocator = useRef<TemplateLocator | null>(null);
-  const review = pendingAuthorityNotice(error);
-  const awaitingReview = isAuthorityPending(error);
   const [url, setUrl] = useState(initialSourceUrl ?? "");
   const [credential, setCredential] = useState("");
   const [currentInspection, setInspection] =
@@ -422,42 +462,13 @@ function WorkspaceSourceSession({
           </Box>
         </Flex>
       ) : null}
-      {error ? (
-        <Callout.Root
-          color={awaitingReview ? "amber" : "red"}
-          role={awaitingReview ? "status" : "alert"}
-        >
-          <Callout.Text>
-            {awaitingReview
-              ? (review?.message ??
-                "A workspace setup review is waiting for you.")
-              : errorMessage(error)}
-          </Callout.Text>
-          {awaitingReview && (
-            <Flex direction="column" gap="2">
-              {review && onReviewPending ? (
-                <Button onClick={() => onReviewPending(review.approvalId)}>
-                  {review.kind === "acquisition"
-                    ? "Open approval"
-                    : "Open review"}
-                </Button>
-              ) : (
-                <Text size="2">
-                  Open Approvals to finish this review, then check again.
-                </Text>
-              )}
-              <Button
-                variant="soft"
-                onClick={() => {
-                  if (lastLocator.current) void inspect(lastLocator.current);
-                }}
-              >
-                Check again
-              </Button>
-            </Flex>
-          )}
-        </Callout.Root>
-      ) : null}
+      <TemplateRequestError
+        error={error}
+        onReviewPending={onReviewPending}
+        onRetry={() => {
+          if (lastLocator.current) void inspect(lastLocator.current);
+        }}
+      />
       {currentInspection ? (
         <Card>
           <Heading size="3">
@@ -645,11 +656,11 @@ function WorkspaceSourceSession({
               Load registry
             </Button>
           </Flex>
-          {registryError ? (
-            <Text size="2" color="red" role="alert">
-              {registryError}
-            </Text>
-          ) : null}
+          <TemplateRequestError
+            error={registryError}
+            onReviewPending={onReviewPending}
+            onRetry={() => void loadRegistry(registryUrl.trim())}
+          />
           <Grid columns={{ initial: "1", sm: "2" }} gap="3">
             {registry?.templates
               .filter((entry) => entry.role === "catalog")
