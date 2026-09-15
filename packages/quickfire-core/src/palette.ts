@@ -9,6 +9,8 @@
  */
 import {
   browserUrlFromEntry,
+  completeWebAddress,
+  buildWebSearchSuggestions,
   buildArgSuggestions,
   buildCommandSuggestions,
   findMatchRanges,
@@ -32,21 +34,30 @@ import {
 } from "./model";
 
 /** Which suggestion kinds a mode shows, in display order. */
-export const QUICKFIRE_MODE_GROUP_ORDER: Record<QuickfireMode, OmniboxKind[]> = {
-  // `chat` leads the mixed scope because the only chat row it ever produces is
-  // the quickfire ask row, and that row is emitted exactly when asking is the
-  // likely intent (§4.1) — so it must be the default Enter target, not a
-  // footnote under commands that matched nothing.
-  all: ["chat", "command", "panel", "history", "url", "option"],
-  commands: ["command", "option"],
-  goto: ["panel", "history", "url", "command", "chat", "option"],
-  quickfire: ["chat", "command", "panel", "history", "url", "option"],
-};
+export const QUICKFIRE_MODE_GROUP_ORDER: Record<QuickfireMode, OmniboxKind[]> =
+  {
+    // `chat` leads the mixed scope because the only chat row it ever produces is
+    // the quickfire ask row, and that row is emitted exactly when asking is the
+    // likely intent (§4.1) — so it must be the default Enter target, not a
+    // footnote under commands that matched nothing.
+    all: ["chat", "command", "panel", "history", "url", "search", "option"],
+    commands: ["command", "option"],
+    goto: ["panel", "history", "url", "search", "command", "chat", "option"],
+    quickfire: [
+      "chat",
+      "command",
+      "panel",
+      "history",
+      "url",
+      "search",
+      "option",
+    ],
+  };
 
 export const QUICKFIRE_MODE_PLACEHOLDER: Record<QuickfireMode, string> = {
-  all: "Run a command, go to a panel, or ask…",
+  all: "Command, web address, search, or ask…",
   commands: "Run a command…",
-  goto: "Go to a panel or page…",
+  goto: "Open a panel, web address, or search…",
   quickfire: "Ask about this panel…",
 };
 
@@ -86,17 +97,25 @@ export function parseGotoScope(query: string): GotoScope {
   if (!trimmed.toLowerCase().startsWith(HISTORY_SCOPE_TOKEN)) {
     return { historyOnly: false, query };
   }
-  return { historyOnly: true, query: trimmed.slice(HISTORY_SCOPE_TOKEN.length).trimStart() };
+  return {
+    historyOnly: true,
+    query: trimmed.slice(HISTORY_SCOPE_TOKEN.length).trimStart(),
+  };
 }
 
 /** Drop the mode's prefix from the raw input, leaving the search query. */
 export function stripModePrefix(value: string, mode: QuickfireMode): string {
   const prefix = QUICKFIRE_MODE_PREFIX[mode];
-  return prefix && value.startsWith(prefix) ? value.slice(prefix.length).trimStart() : value;
+  return prefix && value.startsWith(prefix)
+    ? value.slice(prefix.length).trimStart()
+    : value;
 }
 
 /** A typed prefix is a mode switch; anything else keeps the current mode. */
-export function modeForInput(value: string, current: QuickfireMode): QuickfireMode {
+export function modeForInput(
+  value: string,
+  current: QuickfireMode,
+): QuickfireMode {
   const first = value[0];
   if (first === ">") return "commands";
   if (first === "@") return "goto";
@@ -105,20 +124,31 @@ export function modeForInput(value: string, current: QuickfireMode): QuickfireMo
 }
 
 /** The input value that selecting `mode` should produce, preserving the query. */
-export function inputForMode(currentValue: string, from: QuickfireMode, to: QuickfireMode): string {
+export function inputForMode(
+  currentValue: string,
+  from: QuickfireMode,
+  to: QuickfireMode,
+): string {
   return `${QUICKFIRE_MODE_PREFIX[to]}${stripModePrefix(currentValue, from)}`;
 }
 
-/** Only panels and commands complete inline; a URL or prompt is literal text. */
-export function completionForRow(row: QuickfireRow): string | null {
-  return row.id.startsWith("panel:") || row.id.startsWith("command:") ? row.title : null;
+/** Web destinations complete in the address style the user started typing. */
+export function completionForRow(row: QuickfireRow, query = ""): string | null {
+  if (row.id.startsWith("search:")) return row.title;
+  if (row.id.startsWith("history:") || row.id.startsWith("url:")) {
+    return completeWebAddress(query, row.id.slice(row.id.indexOf(":") + 1));
+  }
+  return row.id.startsWith("panel:") || row.id.startsWith("command:")
+    ? row.title
+    : null;
 }
 
 export function emptyMessageFor(input: {
   argSession: ArgSession | null;
   query: string;
 }): string | null {
-  if (input.argSession) return "No matching options — type a value and press Enter.";
+  if (input.argSession)
+    return "No matching options — type a value and press Enter.";
   if (!input.query.trim()) return null;
   return `Nothing matches “${input.query.trim()}”.`;
 }
@@ -145,7 +175,10 @@ const DEFAULT_ROW_LIMIT = 12;
 
 /** Everything the ranked engines produce, projected into display groups. */
 /** Highlight ranges for a row title, using the address bar's own matcher. */
-function ranges(title: string, query: string): { titleRanges?: ReturnType<typeof findMatchRanges> } {
+function ranges(
+  title: string,
+  query: string,
+): { titleRanges?: ReturnType<typeof findMatchRanges> } {
   const found = findMatchRanges(title, query);
   return found ? { titleRanges: found } : {};
 }
@@ -175,18 +208,28 @@ export function buildPaletteRows(input: PaletteRowsInput): QuickfireGroup[] {
   const suggestions: Array<{ kind: OmniboxKind; row: QuickfireRow }> = [];
   /** Set when an open panel's title matches the query at prefix strength or better. */
   let strongPanelMatch = false;
-  const scope = mode === "goto" ? parseGotoScope(input.query) : { historyOnly: false, query: input.query };
+  const scope =
+    mode === "goto"
+      ? parseGotoScope(input.query)
+      : { historyOnly: false, query: input.query };
   const trimmed = scope.query.trim();
 
   if (!scope.historyOnly && (mode === "all" || mode === "commands")) {
-    for (const suggestion of buildCommandSuggestions({ query: trimmed, commands, ctx, limit })) {
+    for (const suggestion of buildCommandSuggestions({
+      query: trimmed,
+      commands,
+      ctx,
+      limit,
+    })) {
       suggestions.push({
         kind: "command",
         row: {
           id: suggestion.id,
           title: suggestion.command.title,
           ...ranges(suggestion.command.title, trimmed),
-          ...(suggestion.command.description ? { meta: suggestion.command.description } : {}),
+          ...(suggestion.command.description
+            ? { meta: suggestion.command.description }
+            : {}),
           ...(suggestion.command.icon ? { icon: suggestion.command.icon } : {}),
           ...(suggestion.command.accelerator
             ? { accelerator: suggestion.command.accelerator }
@@ -208,7 +251,7 @@ export function buildPaletteRows(input: PaletteRowsInput): QuickfireGroup[] {
       const score = Math.max(
         textMatchScore(trimmed, entry.title),
         // A source-path match is real but weaker than the visible title.
-        textMatchScore(trimmed, entry.source) - 1
+        textMatchScore(trimmed, entry.source) - 1,
       );
       return score < 0 ? [] : [{ entry, index, score }];
     });
@@ -226,7 +269,9 @@ export function buildPaletteRows(input: PaletteRowsInput): QuickfireGroup[] {
           id: `panel:${entry.id}`,
           title: entry.title,
           ...ranges(entry.title, trimmed),
-          ...(entry.location ? { meta: entry.location } : { meta: entry.source }),
+          ...(entry.location
+            ? { meta: entry.location }
+            : { meta: entry.source }),
           icon: "▤",
           badge: "open",
         },
@@ -250,13 +295,22 @@ export function buildPaletteRows(input: PaletteRowsInput): QuickfireGroup[] {
     });
   }
 
+  const webSearchSuggestions = (mode === "all" || mode === "goto") && !scope.historyOnly && trimmed && !typedUrl
+    ? buildWebSearchSuggestions(trimmed, input.history ?? []) : [];
+  const searchLeads = (webSearchSuggestions[0]?.score ?? 0) >= MATCH_PREFIX;
+
   if (mode === "all" || mode === "goto") {
     // A page the user already typed in full is one destination, not two: the
     // literal URL row wins and the matching history row drops out, exactly as
     // `buildLauncherSuggestions` does it for `about/new`.
     const sameAsTyped = (url: string) =>
-      typedUrl !== null && typedUrl.replace(/\/$/, "") === url.replace(/\/$/, "");
-    for (const suggestion of rankHistorySuggestions(trimmed, input.history ?? [], limit)) {
+      typedUrl !== null &&
+      typedUrl.replace(/\/$/, "") === url.replace(/\/$/, "");
+    for (const suggestion of rankHistorySuggestions(
+      trimmed,
+      input.history ?? [],
+      limit,
+    )) {
       const { browser } = suggestion;
       if (sameAsTyped(browser.url)) continue;
       suggestions.push({
@@ -265,10 +319,27 @@ export function buildPaletteRows(input: PaletteRowsInput): QuickfireGroup[] {
           id: `history:${browser.url}`,
           title: browser.title || browser.url,
           ...ranges(browser.title || browser.url, trimmed),
-          meta: browser.title ? browser.url : browser.source === "session" ? "open browser panel" : browser.source,
+          meta: browser.title
+            ? browser.url
+            : browser.source === "session"
+              ? "open browser panel"
+              : browser.source,
           icon: "🕘",
         },
       });
+    }
+    if (!scope.historyOnly && trimmed && !typedUrl) {
+      for (const suggestion of webSearchSuggestions) {
+        suggestions.push({
+          kind: "search",
+          row: {
+            id: suggestion.id,
+            title: suggestion.query,
+            meta: `Search ${suggestion.provider}`,
+            icon: "⌕",
+          },
+        });
+      }
     }
   }
 
@@ -276,14 +347,22 @@ export function buildPaletteRows(input: PaletteRowsInput): QuickfireGroup[] {
   // typed prose goes to the panel's agent, and so does anything that matched
   // nothing else. Without it, Enter on "why is this cut off?" had no target at
   // all and the palette silently did nothing.
-  if (mode === "all" && trimmed && (isLikelyAgentPrompt(trimmed) || suggestions.length === 0)) {
+  if (
+    mode === "all" &&
+    !searchLeads &&
+    trimmed &&
+    (isLikelyAgentPrompt(trimmed) ||
+      suggestions.every((item) => item.kind === "search"))
+  ) {
     const panelTitle = ctx.focusedPanel?.title;
     const conversation = ctx.quickfire;
     suggestions.unshift({
       kind: "chat",
       row: {
         id: `ask:${trimmed}`,
-        title: panelTitle ? `Ask about “${panelTitle}”` : "Ask about this panel",
+        title: panelTitle
+          ? `Ask about “${panelTitle}”`
+          : "Ask about this panel",
         meta:
           conversation?.hasConversation && !conversation.promoted
             ? conversation.messageCount
@@ -309,11 +388,19 @@ export function buildPaletteRows(input: PaletteRowsInput): QuickfireGroup[] {
 
   const order =
     mode === "all" && strongPanelMatch
-      ? (["chat", "panel", "command", "history", "url", "option"] as OmniboxKind[])
+      ? ([
+          "chat",
+          "panel",
+          "command",
+          "history",
+          "url",
+          "search",
+          "option",
+        ] as OmniboxKind[])
       : QUICKFIRE_MODE_GROUP_ORDER[mode];
   return groupOmniboxSuggestions(
     suggestions.map((entry) => ({ ...entry.row, kind: entry.kind })),
-    order
+    searchLeads ? ["search", ...order.filter((kind) => kind !== "search")] : order,
   ).map((group) => ({
     key: group.kind,
     label: group.label,
@@ -325,9 +412,11 @@ export function buildPaletteRows(input: PaletteRowsInput): QuickfireGroup[] {
 export function buildRowTargets(
   groups: QuickfireGroup[],
   commands: CommandSpec[],
-  options: { argSession: ArgSession | null }
+  options: { argSession: ArgSession | null },
 ): Map<string, QuickfireRowTarget> {
-  const byId = new Map<string, CommandSpec>(commands.map((command) => [command.id, command]));
+  const byId = new Map<string, CommandSpec>(
+    commands.map((command) => [command.id, command]),
+  );
   const targets = new Map<string, QuickfireRowTarget>();
   for (const group of groups) {
     for (const row of group.rows) {
@@ -337,25 +426,45 @@ export function buildRowTargets(
       } else if (row.id.startsWith("option:")) {
         // `option:<argName>:<value>` — the value may itself contain colons.
         if (options.argSession) {
-          targets.set(row.id, { kind: "option", value: row.id.split(":").slice(2).join(":") });
+          targets.set(row.id, {
+            kind: "option",
+            value: row.id.split(":").slice(2).join(":"),
+          });
         }
       } else if (row.id.startsWith("panel:")) {
-        targets.set(row.id, { kind: "panel", panelId: row.id.slice("panel:".length) });
+        targets.set(row.id, {
+          kind: "panel",
+          panelId: row.id.slice("panel:".length),
+        });
       } else if (row.id.startsWith("url:")) {
         targets.set(row.id, { kind: "url", url: row.id.slice("url:".length) });
       } else if (row.id.startsWith("history:")) {
         // A recent page is opened the same way a typed one is; only the row's
         // group and provenance differ.
-        targets.set(row.id, { kind: "url", url: row.id.slice("history:".length) });
+        targets.set(row.id, {
+          kind: "url",
+          url: row.id.slice("history:".length),
+        });
+      } else if (row.id.startsWith("search:")) {
+        targets.set(row.id, {
+          kind: "url",
+          url: row.id.slice("search:".length),
+        });
       } else if (row.id.startsWith("quickfire-slot:")) {
         targets.set(row.id, {
           kind: "quickfire-slot",
           slotId: row.id.slice("quickfire-slot:".length),
         });
       } else if (row.id.startsWith("ask:")) {
-        targets.set(row.id, { kind: "quickfire-ask", prompt: row.id.slice("ask:".length) });
+        targets.set(row.id, {
+          kind: "quickfire-ask",
+          prompt: row.id.slice("ask:".length),
+        });
       } else if (row.id.startsWith("chat:")) {
-        targets.set(row.id, { kind: "chat", prompt: row.id.slice("chat:".length) });
+        targets.set(row.id, {
+          kind: "chat",
+          prompt: row.id.slice("chat:".length),
+        });
       }
     }
   }

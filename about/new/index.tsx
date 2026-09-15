@@ -23,6 +23,8 @@ import {
 import type { PanelHandle } from "@workspace/runtime";
 import {
   canonicalizeUrlForAddress,
+  getSharedBrowserAddressOptions,
+  mergeBrowserAddressSuggestions,
   normalizeBrowserAddressSuggestions,
   type BrowserAddressSuggestion,
 } from "@vibestudio/shared/panelChrome";
@@ -249,6 +251,8 @@ function destinationSource(suggestion: LauncherSuggestion): string | null {
     return canonicalizeUrlForAddress(suggestion.browser.url);
   if (suggestion.kind === "url")
     return canonicalizeUrlForAddress(suggestion.url);
+  if (suggestion.kind === "search")
+    return canonicalizeUrlForAddress(suggestion.url);
   return null;
 }
 
@@ -258,6 +262,7 @@ function suggestionLabel(suggestion: LauncherSuggestion): string {
   if (suggestion.kind === "history")
     return suggestion.browser.title || suggestion.browser.url;
   if (suggestion.kind === "url") return suggestion.url;
+  if (suggestion.kind === "search") return suggestion.query;
   return "Start a new Agentic Chat";
 }
 
@@ -267,6 +272,7 @@ function suggestionMeta(suggestion: DisplaySuggestion): string {
     return suggestion.panel.description ?? suggestion.panel.path;
   if (suggestion.kind === "history") return suggestion.browser.url;
   if (suggestion.kind === "url") return "Open in a new browser panel";
+  if (suggestion.kind === "search") return `Search ${suggestion.provider}`;
   return `Send “${suggestion.prompt}” as the opening message`;
 }
 
@@ -324,6 +330,8 @@ function SuggestionIcon({
         <img src={favicon} alt="" />
       ) : suggestion.kind === "history" ? (
         <ClockIcon width={16} height={16} />
+      ) : suggestion.kind === "search" ? (
+        <MagnifyingGlassIcon width={16} height={16} />
       ) : (
         <GlobeIcon width={16} height={16} />
       )}
@@ -521,7 +529,7 @@ function NewPanelPage() {
   const [panelUsage, setPanelUsage] =
     useState<PanelUsage>(readCachedPanelUsage);
   const [openPanels, setOpenPanels] = useState<OpenPanel[]>([]);
-  const [browserSuggestions, setBrowserSuggestions] = useState<
+  const [storedBrowserSuggestions, setBrowserSuggestions] = useState<
     BrowserAddressSuggestion[]
   >([]);
   const [hasBrowserData, setHasBrowserData] = useState(false);
@@ -552,9 +560,25 @@ function NewPanelPage() {
   const catalogWasWarmAtMountRef = useRef(panelGroups !== null);
 
   const parsedInput = useMemo(() => parseLauncherInput(value), [value]);
+  const browserSuggestions = useMemo(
+    () =>
+      mergeBrowserAddressSuggestions(
+        [
+          storedBrowserSuggestions,
+          normalizeBrowserAddressSuggestions(
+            openPanels
+              .filter((entry) => /^https?:\/\//i.test(entry.source))
+              .map((entry) => ({ url: entry.source, title: entry.title })),
+            "session",
+          ),
+        ],
+        parsedInput.query,
+      ),
+    [storedBrowserSuggestions, openPanels, parsedInput.query],
+  );
   const browserUrl = useMemo(
     () =>
-      parsedInput.mode === "all"
+      parsedInput.mode !== "chat"
         ? browserUrlFromEntry(parsedInput.query)
         : null,
     [parsedInput],
@@ -677,15 +701,13 @@ function NewPanelPage() {
     const timer = window.setTimeout(
       () => {
         const query = parsedInput.query.trim();
-        const request = query
-          ? browserData.searchHistoryForAutocomplete(query, 60)
-          : browserData.getHistory({ limit: 60 });
+        const request = getSharedBrowserAddressOptions({ query, browserData });
         void request
-          .then((rows) => {
+          .then((options) => {
             if (requestId !== historyRequestRef.current) return;
-            setBrowserSuggestions(normalizeBrowserAddressSuggestions(rows));
-            setHistoryError(false);
-            setHistoryReviewPending(false);
+            setBrowserSuggestions(options.suggestions);
+            setHistoryError(options.historyStatus === "unavailable");
+            setHistoryReviewPending(options.historyStatus === "review-pending");
           })
           .catch((error: unknown) => {
             if (requestId !== historyRequestRef.current) return;
@@ -703,7 +725,10 @@ function NewPanelPage() {
       },
       parsedInput.query ? 100 : 0,
     );
-    return () => clearTimeout(timer);
+    return () => {
+      clearTimeout(timer);
+      historyRequestRef.current += 1;
+    };
   }, [hasBrowserData, historyRefreshEpoch, parsedInput]);
 
   useEffect(() => {
@@ -928,7 +953,7 @@ function NewPanelPage() {
         );
       } else if (suggestion.kind === "history") {
         beginNavigation({ source: suggestion.browser.url }, suggestion.id);
-      } else if (suggestion.kind === "url") {
+      } else if (suggestion.kind === "url" || suggestion.kind === "search") {
         beginNavigation({ source: suggestion.url }, suggestion.id);
       } else {
         beginNavigation(
@@ -977,9 +1002,14 @@ function NewPanelPage() {
     <AboutPage
       icon={<PlusIcon width={20} height={20} />}
       title="New Panel"
-      subtitle="Jump to a panel, revisit a page, or ask an agent."
+      subtitle="Open a website, search the web, revisit a page, or ask an agent."
       maxWidth={720}
     >
+      {hasBrowserData && (
+        <Text size="2">
+          <a href={buildPanelLink("about/search")}>Search settings</a>
+        </Text>
+      )}
       <Box className="launcher-search">
         <div className="launcher-field">
           <div className="launcher-entry">
@@ -1012,7 +1042,7 @@ function NewPanelPage() {
                 }
                 enterKeyHint={selected?.kind === "chat" ? "send" : "go"}
                 style={{ maxHeight: maxInputHeight }}
-                placeholder="Panel, address, or ask an agent…"
+                placeholder="Panel, web address, search, or ask an agent…"
                 value={value}
                 onChange={(event) => {
                   selectionTouchedRef.current = false;

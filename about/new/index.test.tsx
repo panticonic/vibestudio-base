@@ -30,6 +30,9 @@ vi.mock("@workspace/runtime", () => ({
     getHistory: mocks.getHistory,
     searchHistoryForAutocomplete: mocks.searchHistory,
     getPageFavicon: mocks.getPageFavicon,
+    searchBookmarks: async () => [],
+    getSearchEngines: async () => [],
+    getSearchSuggestions: async () => [],
   },
   buildPanelLink: (source: string) => `/${source}/`,
   panel: {
@@ -511,7 +514,7 @@ describe("new panel launcher", () => {
         screen
           .queryAllByRole("group")
           .map((group) => group.textContent?.slice(0, 6)),
-      ).toEqual(["Panels"]),
+      ).toEqual(["Panels", "Search"]),
     );
 
     fireEvent.click(screen.getByRole("button", { name: /Go to/ }));

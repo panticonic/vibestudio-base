@@ -1,4 +1,6 @@
 import type { BrowserAddressSuggestion } from "@vibestudio/shared/panelChrome";
+import { DEFAULT_SEARCH_TEMPLATE } from "@vibestudio/shared/panelChrome";
+import { webSearchUrl } from "@vibestudio/shared/webSearch";
 import type { LaunchablePanel } from "./launchablePanels";
 
 /**
@@ -31,8 +33,21 @@ export type PanelUsage = Record<string, PanelUsageEntry>;
 
 export type LauncherSuggestion =
   | { id: string; kind: "panel"; panel: LaunchablePanel; score: number }
-  | { id: string; kind: "history"; browser: BrowserAddressSuggestion; score: number }
+  | {
+      id: string;
+      kind: "history";
+      browser: BrowserAddressSuggestion;
+      score: number;
+    }
   | { id: string; kind: "url"; url: string; score: number }
+  | {
+      id: string;
+      kind: "search";
+      url: string;
+      query: string;
+      provider: string;
+      score: number;
+    }
   | { id: string; kind: "chat"; prompt: string; score: number };
 
 export const MATCH_EXACT = 3_000_000_000_000;
@@ -63,35 +78,48 @@ export function isLikelyAgentPrompt(input: string): boolean {
     words.length >= 4 ||
     (words.length >= 2 && /[?!.,:]$/.test(query)) ||
     /^(please|can you|could you|would you|help me|explain|write|create|build|fix|investigate)\b/i.test(
-      query
+      query,
     )
   );
 }
 
-export function textMatchScore(query: string, ...values: Array<string | undefined>): number {
+export function textMatchScore(
+  query: string,
+  ...values: Array<string | undefined>
+): number {
   if (!query) return 0;
   const normalized = query.toLowerCase();
-  const candidates = values.filter(Boolean).map((value) => value!.toLowerCase());
+  const candidates = values
+    .filter(Boolean)
+    .map((value) => value!.toLowerCase());
   if (candidates.some((value) => value === normalized)) return MATCH_EXACT;
-  if (candidates.some((value) => value.startsWith(normalized))) return MATCH_PREFIX;
-  if (candidates.some((value) => value.includes(normalized))) return MATCH_SUBSTRING;
+  if (candidates.some((value) => value.startsWith(normalized)))
+    return MATCH_PREFIX;
+  if (candidates.some((value) => value.includes(normalized)))
+    return MATCH_SUBSTRING;
   return -1;
 }
 
 export function usageScore(count: number, lastUsed: number): number {
   // Frequency dominates within a match tier; recency breaks close ties without
   // allowing an often-used weak substring to outrank an exact destination.
-  return Math.log2(Math.max(0, count) + 1) * 10_000_000_000 + Math.min(lastUsed, 9_999_999_999);
+  return (
+    Math.log2(Math.max(0, count) + 1) * 10_000_000_000 +
+    Math.min(Math.max(0, lastUsed) / 1_000, 9_999_999_999)
+  );
 }
 
 function browserUsage(browser: BrowserAddressSuggestion): number {
   return usageScore(
     (browser.visitCount ?? 0) + (browser.typedCount ?? 0) * 2,
-    browser.lastVisit ?? 0
+    browser.lastVisit ?? 0,
   );
 }
 
-export type HistorySuggestion = Extract<LauncherSuggestion, { kind: "history" }>;
+export type HistorySuggestion = Extract<
+  LauncherSuggestion,
+  { kind: "history" }
+>;
 
 /**
  * Rank browser history rows on the launcher's terms: match tier first, visit
@@ -105,12 +133,21 @@ export type HistorySuggestion = Extract<LauncherSuggestion, { kind: "history" }>
 export function rankHistorySuggestions(
   query: string,
   browserSuggestions: BrowserAddressSuggestion[],
-  limit?: number
+  limit?: number,
 ): HistorySuggestion[] {
   const trimmed = query.trim();
   const ranked: HistorySuggestion[] = [];
   for (const browser of browserSuggestions) {
-    const match = textMatchScore(trimmed, browser.title, browser.url);
+    if (
+      browser.source === "search-engine" ||
+      browser.source === "search-suggestion"
+    )
+      continue;
+    const match = textMatchScore(
+      trimmed,
+      browser.title,
+      ...addressCompletionValues(browser.url),
+    );
     if (match < 0) continue;
     ranked.push({
       id: `history:${browser.url}`,
@@ -137,7 +174,12 @@ export function buildLauncherSuggestions(input: {
 
   if (parsed.mode === "chat") {
     if (query)
-      candidates.push({ id: `chat:${query}`, kind: "chat", prompt: query, score: URL_PRIORITY });
+      candidates.push({
+        id: `chat:${query}`,
+        kind: "chat",
+        prompt: query,
+        score: URL_PRIORITY,
+      });
     return candidates;
   }
 
@@ -159,7 +201,7 @@ export function buildLauncherSuggestions(input: {
     candidates.push(...rankHistorySuggestions(query, input.browserSuggestions));
   }
 
-  if (parsed.mode === "all" && input.browserUrl) {
+  if ((parsed.mode === "all" || parsed.mode === "goto") && input.browserUrl) {
     candidates.push({
       id: `url:${input.browserUrl}`,
       kind: "url",
@@ -177,6 +219,11 @@ export function buildLauncherSuggestions(input: {
     });
   }
 
+  if (query && !input.browserUrl)
+    candidates.push(
+      ...buildWebSearchSuggestions(query, input.browserSuggestions),
+    );
+
   return candidates
     .sort((a, b) => b.score - a.score || a.id.localeCompare(b.id))
     .filter(
@@ -186,8 +233,9 @@ export function buildLauncherSuggestions(input: {
           (other, otherIndex) =>
             otherIndex < index &&
             other.kind === "url" &&
-            other.url.replace(/\/$/, "") === candidate.browser.url.replace(/\/$/, "")
-        )
+            other.url.replace(/\/$/, "") ===
+              candidate.browser.url.replace(/\/$/, ""),
+        ),
     )
     .slice(0, input.limit ?? DEFAULT_LAUNCHER_SUGGESTION_LIMIT);
 }
@@ -221,9 +269,12 @@ export function buildIdleLauncherSuggestions(input: {
   const primaryPanels = panelSuggestions(input.panels, limit);
   const aboutPanels = panelSuggestions(
     input.aboutPanels,
-    Math.max(0, limit - primaryPanels.length)
+    Math.max(0, limit - primaryPanels.length),
   );
-  const remaining = Math.max(0, limit - primaryPanels.length - aboutPanels.length);
+  const remaining = Math.max(
+    0,
+    limit - primaryPanels.length - aboutPanels.length,
+  );
   const otherDestinations = buildLauncherSuggestions({
     value: input.value,
     panels: [],
@@ -236,12 +287,14 @@ export function buildIdleLauncherSuggestions(input: {
   return [...primaryPanels, ...aboutPanels, ...otherDestinations];
 }
 
-export const LAUNCHER_GROUP_LABELS: Record<LauncherSuggestion["kind"], string> = {
-  url: "Web address",
-  panel: "Panels",
-  history: "Recent pages",
-  chat: "Ask an agent",
-};
+export const LAUNCHER_GROUP_LABELS: Record<LauncherSuggestion["kind"], string> =
+  {
+    url: "Web address",
+    search: "Search the web",
+    panel: "Panels",
+    history: "Recent pages",
+    chat: "Ask an agent",
+  };
 
 export interface LauncherGroup<T> {
   kind: LauncherSuggestion["kind"];
@@ -258,16 +311,19 @@ export interface LauncherGroup<T> {
  * no query to rank against: browsing a launcher with nothing typed should lead
  * with the workspace's own panels rather than whatever page was visited most.
  */
-export function groupLauncherSuggestions<T extends { kind: LauncherSuggestion["kind"] }>(
-  suggestions: T[],
-  order?: LauncherSuggestion["kind"][]
-): LauncherGroup<T>[] {
+export function groupLauncherSuggestions<
+  T extends { kind: LauncherSuggestion["kind"] },
+>(suggestions: T[], order?: LauncherSuggestion["kind"][]): LauncherGroup<T>[] {
   const groups: LauncherGroup<T>[] = [];
   const byKind = new Map<LauncherSuggestion["kind"], LauncherGroup<T>>();
   for (const suggestion of suggestions) {
     let group = byKind.get(suggestion.kind);
     if (!group) {
-      group = { kind: suggestion.kind, label: LAUNCHER_GROUP_LABELS[suggestion.kind], items: [] };
+      group = {
+        kind: suggestion.kind,
+        label: LAUNCHER_GROUP_LABELS[suggestion.kind],
+        items: [],
+      };
       byKind.set(suggestion.kind, group);
       groups.push(group);
     }
@@ -282,6 +338,7 @@ export function groupLauncherSuggestions<T extends { kind: LauncherSuggestion["k
 }
 
 function completionValue(suggestion: LauncherSuggestion): string | null {
+  if (suggestion.kind === "search") return suggestion.query;
   if (suggestion.kind === "panel") return suggestion.panel.title;
   if (suggestion.kind === "history") return suggestion.browser.url;
   if (suggestion.kind === "url") return suggestion.url;
@@ -291,15 +348,84 @@ function completionValue(suggestion: LauncherSuggestion): string | null {
 /** Returns the full accepted input when the selected destination extends the query. */
 export function autocompleteForSuggestion(
   rawInput: string,
-  suggestion: LauncherSuggestion | undefined
+  suggestion: LauncherSuggestion | undefined,
 ): { value: string; suffix: string } | null {
   if (!suggestion) return null;
   const parsed = parseLauncherInput(rawInput);
-  const completion = completionValue(suggestion);
+  const candidate = completionValue(suggestion);
+  const completion =
+    candidate && (suggestion.kind === "history" || suggestion.kind === "url")
+      ? completeWebAddress(parsed.query.trim(), candidate)
+      : candidate;
   if (!completion) return null;
   const query = parsed.query.trim();
-  if (!query || !completion.toLowerCase().startsWith(query.toLowerCase())) return null;
+  if (!query || !completion.toLowerCase().startsWith(query.toLowerCase()))
+    return null;
   const suffix = completion.slice(query.length);
   if (!suffix) return null;
   return { value: `${parsed.prefix}${completion}`, suffix };
+}
+
+/** Preserve the user's address style while accepting a canonical destination. */
+export function addressCompletionValues(url: string): string[] {
+  const withoutProtocol = url.replace(/^https?:\/\//i, "");
+  return [url, withoutProtocol, withoutProtocol.replace(/^www\./i, "")];
+}
+
+export function completeWebAddress(query: string, url: string): string | null {
+  if (!query) return null;
+  return (
+    addressCompletionValues(url).find((value) =>
+      value.toLowerCase().startsWith(query.toLowerCase()),
+    ) ?? null
+  );
+}
+
+export function buildWebSearchSuggestions(
+  query: string,
+  suggestions: BrowserAddressSuggestion[],
+): Extract<LauncherSuggestion, { kind: "search" }>[] {
+  const engines = suggestions.filter((item) => item.source === "search-engine");
+  const [keyword, ...words] = query.split(/\s+/);
+  const keywordEngine = words.length
+    ? engines.find(
+        (engine) => engine.keyword?.toLowerCase() === keyword?.toLowerCase(),
+      )
+    : undefined;
+  const engine =
+    keywordEngine ?? engines.find((entry) => entry.typedCount === 1);
+  const template = engine?.searchTemplate ?? DEFAULT_SEARCH_TEMPLATE;
+  const provider = engine?.engineName ?? "DuckDuckGo";
+  const searchQuery = keywordEngine ? words.join(" ") : query;
+  const queries = [
+    searchQuery,
+    ...suggestions
+      .filter(
+        (item) =>
+          item.source === "search-suggestion" &&
+          item.completionQuery === query.trim() &&
+          item.searchTemplate === template,
+      )
+      .map((item) => item.title ?? ""),
+  ];
+  return [...new Set(queries)]
+    .filter(Boolean)
+    .slice(0, 7)
+    .flatMap((value, index) => {
+      try {
+        const url = webSearchUrl(template, value);
+        return [
+          {
+            id: `search:${url}`,
+            kind: "search" as const,
+            url,
+            query: value,
+            provider,
+            score: keywordEngine ? URL_PRIORITY - index : 2 - index / 10,
+          },
+        ];
+      } catch {
+        return [];
+      }
+    });
 }

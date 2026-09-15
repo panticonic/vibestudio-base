@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { startArgSession, type ArgSession, type CommandSpec, type SurfaceContext } from "@workspace/omnibox-core";
+import {
+  startArgSession,
+  type ArgSession,
+  type CommandSpec,
+  type SurfaceContext,
+} from "@workspace/omnibox-core";
 import {
   HISTORY_SCOPE_TOKEN,
   buildPaletteRows,
@@ -62,11 +67,46 @@ const commands: CommandSpec[] = [
 const ctx: SurfaceContext = {
   platform: "mobile",
   openPanels: {
-    entries: [{ id: "panel:tree/root/0", title: "Import wizard", source: "panels/import" }],
+    entries: [
+      {
+        id: "panel:tree/root/0",
+        title: "Import wizard",
+        source: "panels/import",
+      },
+    ],
   },
 };
 
 describe("palette projection", () => {
+  it("completes bare web destinations and resolves search rows to web actions", () => {
+    expect(
+      completionForRow(
+        { id: "history:https://www.example.com/docs", title: "Docs" },
+        "exa",
+      ),
+    ).toBe("example.com/docs");
+    const groups = buildPaletteRows({
+      mode: "goto",
+      argSession: null,
+      query: "coffee beans",
+      ctx,
+      commands: [],
+    });
+    const target = buildRowTargets(groups, [], { argSession: null }).get(
+      "search:https://duckduckgo.com/?q=coffee%20beans",
+    );
+    expect(target).toEqual({
+      kind: "url",
+      url: "https://duckduckgo.com/?q=coffee%20beans",
+    });
+  });
+
+  it("makes an explicit provider keyword a search rather than an agent prompt", () => {
+    const groups = buildPaletteRows({ mode: "all", argSession: null, query: "g cats and dogs", ctx, commands: [], history: [{ url: "https://www.google.com/search?q=%s", source: "search-engine", engineName: "Google", keyword: "g", searchTemplate: "https://www.google.com/search?q=%s" }] });
+    expect(groups[0]?.key).toBe("search");
+    expect(groups[0]?.rows[0]?.id).toBe("search:https://www.google.com/search?q=cats%20and%20dogs");
+    expect(groups.some((group) => group.key === "chat")).toBe(false);
+  });
   it("maps prefixes to modes and back without losing the query", () => {
     expect(modeForInput(">move", "all")).toBe("commands");
     expect(modeForInput("@sales", "all")).toBe("goto");
@@ -76,7 +116,13 @@ describe("palette projection", () => {
   });
 
   it("offers commands and open panels in mixed mode, honouring the surface", () => {
-    const groups = buildPaletteRows({ mode: "all", argSession: null, query: "", ctx, commands });
+    const groups = buildPaletteRows({
+      mode: "all",
+      argSession: null,
+      query: "",
+      ctx,
+      commands,
+    });
     const ids = groups.flatMap((group) => group.rows.map((row) => row.id));
     expect(ids).toContain("command:view.theme");
     // Desktop-only on a mobile context.
@@ -87,7 +133,10 @@ describe("palette projection", () => {
   it("leads the mixed scope with the ask row for typed prose", () => {
     const asking: SurfaceContext = {
       ...ctx,
-      focusedPanel: { panelId: "panel:tree/root/0", title: "Keyboard Shortcuts" },
+      focusedPanel: {
+        panelId: "panel:tree/root/0",
+        title: "Keyboard Shortcuts",
+      },
     };
     const groups = buildPaletteRows({
       mode: "all",
@@ -99,7 +148,9 @@ describe("palette projection", () => {
     const first = groups[0]!.rows[0]!;
     expect(first.id).toBe("ask:why aren't keyboard combos editable?");
     expect(first.title).toBe("Ask about “Keyboard Shortcuts”");
-    expect(buildRowTargets(groups, commands, { argSession: null }).get(first.id)).toEqual({
+    expect(
+      buildRowTargets(groups, commands, { argSession: null }).get(first.id),
+    ).toEqual({
       kind: "quickfire-ask",
       prompt: "why aren't keyboard combos editable?",
     });
@@ -113,7 +164,10 @@ describe("palette projection", () => {
       ctx,
       commands,
     });
-    expect(groups.flatMap((group) => group.rows.map((row) => row.id))).toEqual(["ask:zzzz"]);
+    expect(groups.flatMap((group) => group.rows.map((row) => row.id))).toEqual([
+      "ask:zzzz",
+      "search:https://duckduckgo.com/?q=zzzz",
+    ]);
   });
 
   it("leads with the panel when the query names one, so Enter switches to it", () => {
@@ -127,14 +181,22 @@ describe("palette projection", () => {
     const first = groups[0]!.rows[0]!;
     expect(first.id).toBe("panel:panel:tree/root/0");
     expect(completionForRow(first)).toBe("Import wizard");
-    expect(buildRowTargets(groups, commands, { argSession: null }).get(first.id)).toEqual({
+    expect(
+      buildRowTargets(groups, commands, { argSession: null }).get(first.id),
+    ).toEqual({
       kind: "panel",
       panelId: "panel:tree/root/0",
     });
   });
 
   it("keeps a matching command ahead of the ask row", () => {
-    const groups = buildPaletteRows({ mode: "all", argSession: null, query: "theme", ctx, commands });
+    const groups = buildPaletteRows({
+      mode: "all",
+      argSession: null,
+      query: "theme",
+      ctx,
+      commands,
+    });
     expect(groups[0]!.rows[0]!.id).toBe("command:view.theme");
   });
 
@@ -155,7 +217,10 @@ describe("palette projection", () => {
       "option:mode:dark",
     ]);
     const targets = buildRowTargets(groups, commands, { argSession: session });
-    expect(targets.get("option:mode:dark")).toEqual({ kind: "option", value: "dark" });
+    expect(targets.get("option:mode:dark")).toEqual({
+      kind: "option",
+      value: "dark",
+    });
   });
 
   it("resolves a URL row without a command behind it", () => {
@@ -229,7 +294,10 @@ describe("palette projection", () => {
       historyOnly: true,
       query: "docs",
     });
-    expect(parseGotoScope("docs")).toEqual({ historyOnly: false, query: "docs" });
+    expect(parseGotoScope("docs")).toEqual({
+      historyOnly: false,
+      query: "docs",
+    });
 
     const groups = buildPaletteRows({
       mode: "goto",
@@ -248,6 +316,8 @@ describe("palette projection", () => {
 
   it("stays silent on an empty query and explains an empty result", () => {
     expect(emptyMessageFor({ argSession: null, query: "   " })).toBeNull();
-    expect(emptyMessageFor({ argSession: null, query: "zzz" })).toContain("zzz");
+    expect(emptyMessageFor({ argSession: null, query: "zzz" })).toContain(
+      "zzz",
+    );
   });
 });

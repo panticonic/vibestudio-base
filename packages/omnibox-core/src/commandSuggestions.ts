@@ -52,6 +52,7 @@ export const OMNIBOX_GROUP_LABELS: Record<OmniboxKind, string> = {
   command: "Commands",
   option: "Options",
   url: "Web address",
+  search: "Search the web",
   panel: "Panels",
   history: "Recent pages",
   chat: "Ask an agent",

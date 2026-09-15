@@ -24,7 +24,10 @@ import {
   type PanelSourceKind,
   type TextMatchRange,
 } from "@vibestudio/shared/panelChrome";
-import { filterPanelSourceSuggestions, type PanelSourceSuggestion } from "./panelSources";
+import {
+  filterPanelSourceSuggestions,
+  type PanelSourceSuggestion,
+} from "./panelSources";
 export interface AddressAutocompleteBase {
   id: string;
   value: string;
@@ -44,7 +47,13 @@ export type AddressAutocompleteItem =
       panel: PanelSourceSuggestion;
     })
   | (AddressAutocompleteBase & {
-      kind: "url" | "history" | "bookmark" | "session" | "search" | "search-engine";
+      kind:
+        | "url"
+        | "history"
+        | "bookmark"
+        | "session"
+        | "search"
+        | "search-engine";
       browser: BrowserAddressSuggestion;
     });
 
@@ -58,32 +67,41 @@ export function buildAddressAutocompleteItems(args: {
 }): AddressAutocompleteItem[] {
   const limit = args.limit ?? 8;
   if (args.kind === "panel") {
-    return filterPanelSourceSuggestions(args.panelSuggestions ?? [], args.input, limit).map(
-      (panel) => ({
-        id: `panel-source:${panel.source}`,
-        kind: "panel-source",
-        value: panel.source,
-        label: panel.source,
-        meta: panel.title ? `${panel.kind} · ${panel.title}` : panel.kind,
-        iconKind: "panel",
-        matchRanges: {
-          label: findMatchRanges(panel.source, args.input),
-          meta: findMatchRanges(
-            panel.title ? `${panel.kind} · ${panel.title}` : panel.kind,
-            args.input
-          ),
-        },
-        action: { type: "panel-source", source: panel.source },
-        panel,
-      })
-    );
+    return filterPanelSourceSuggestions(
+      args.panelSuggestions ?? [],
+      args.input,
+      limit,
+    ).map((panel) => ({
+      id: `panel-source:${panel.source}`,
+      kind: "panel-source",
+      value: panel.source,
+      label: panel.source,
+      meta: panel.title ? `${panel.kind} · ${panel.title}` : panel.kind,
+      iconKind: "panel",
+      matchRanges: {
+        label: findMatchRanges(panel.source, args.input),
+        meta: findMatchRanges(
+          panel.title ? `${panel.kind} · ${panel.title}` : panel.kind,
+          args.input,
+        ),
+      },
+      action: { type: "panel-source", source: panel.source },
+      panel,
+    }));
   }
 
   const items: AddressAutocompleteItem[] = [];
   const input = args.input.trim();
+  const keywordRows = buildKeywordSearchRows(
+    args.browserSuggestions ?? [],
+    input,
+  );
   const defaultSearchTemplate =
     args.browserSuggestions?.find(
-      (item) => item.source === "search-engine" && item.typedCount === 1 && item.searchTemplate
+      (item) =>
+        item.source === "search-engine" &&
+        item.typedCount === 1 &&
+        item.searchTemplate,
     )?.searchTemplate ??
     args.defaultSearchTemplate ??
     DEFAULT_SEARCH_TEMPLATE;
@@ -98,8 +116,12 @@ export function buildAddressAutocompleteItems(args: {
           meta: parsed.url,
           iconKind: "globe",
           query: input,
-          action: { type: "navigate-url", url: parsed.url, recordAsTyped: true },
-        })
+          action: {
+            type: "navigate-url",
+            url: parsed.url,
+            recordAsTyped: true,
+          },
+        }),
       );
     } else if (parsed?.type === "panel-location") {
       items.push(
@@ -110,10 +132,14 @@ export function buildAddressAutocompleteItems(args: {
           meta: "Vibestudio panel location",
           iconKind: "panel",
           query: input,
-          action: { type: "panel-location", location: parsed.location, raw: input },
-        })
+          action: {
+            type: "panel-location",
+            location: parsed.location,
+            raw: input,
+          },
+        }),
       );
-    } else {
+    } else if (!keywordRows.length) {
       const searchQuery = parsed?.type === "search" ? parsed.query : input;
       items.push(
         browserItem({
@@ -134,19 +160,34 @@ export function buildAddressAutocompleteItems(args: {
             template: defaultSearchTemplate,
             recordAsTyped: true,
           },
-        })
+        }),
       );
     }
   }
 
-  const keywordRows = buildKeywordSearchRows(args.browserSuggestions ?? [], input);
+  const remoteSuggestions = (args.browserSuggestions ?? []).filter(
+    (item) =>
+      item.source === "search-suggestion" && item.completionQuery === input && item.title && item.searchTemplate,
+  );
   const ranked = mergeBrowserAddressSuggestions(
     [args.browserSuggestions ?? []],
     input,
-    Math.max(limit * 2, limit)
+    Math.max(limit * 2, limit),
   )
-    .filter((item) => item.source !== "search-engine")
-    .slice(0, Math.max(0, limit - items.length - keywordRows.length));
+    .filter(
+      (item) =>
+        item.source !== "search-engine" && item.source !== "search-suggestion",
+    )
+    .slice(
+      0,
+      Math.max(
+        0,
+        limit -
+          items.length -
+          keywordRows.length -
+          Math.min(3, remoteSuggestions.length),
+      ),
+    );
 
   items.push(...keywordRows.slice(0, Math.max(0, limit - items.length)));
   items.push(
@@ -177,8 +218,32 @@ export function buildAddressAutocompleteItems(args: {
         query: input,
         action: { type: "navigate-url", url: browser.url },
       });
-    })
+    }),
   );
+  for (const suggestion of remoteSuggestions) {
+    if (
+      suggestion.source !== "search-suggestion" ||
+      !suggestion.title ||
+      !suggestion.searchTemplate
+    )
+      continue;
+    items.push(
+      browserItem({
+        kind: "search",
+        browser: suggestion,
+        label: suggestion.title,
+        meta: `Search ${suggestion.engineName ?? "the web"}`,
+        iconKind: "search",
+        query: input,
+        action: {
+          type: "search",
+          query: suggestion.title,
+          template: suggestion.searchTemplate,
+          recordAsTyped: true,
+        },
+      }),
+    );
+  }
   return items.slice(0, limit);
 }
 
@@ -212,14 +277,15 @@ function browserItem(args: {
 
 function actionValue(action: AddressAction, fallback: string): string {
   if (action.type === "navigate-url") return action.url;
-  if (action.type === "search" || action.type === "keyword-search") return action.query;
+  if (action.type === "search" || action.type === "keyword-search")
+    return action.query;
   if (action.type === "panel-source") return action.source;
   return fallback;
 }
 
 function buildKeywordSearchRows(
   suggestions: BrowserAddressSuggestion[],
-  input: string
+  input: string,
 ): AddressAutocompleteItem[] {
   const [keyword, ...queryParts] = input.trim().split(/\s+/);
   const query = queryParts.join(" ").trim();
@@ -228,9 +294,9 @@ function buildKeywordSearchRows(
     .filter(
       (item) =>
         item.source === "search-engine" &&
-        item.keyword === keyword &&
+        item.keyword?.toLowerCase() === keyword.toLowerCase() &&
         item.searchTemplate &&
-        item.engineId !== undefined
+        item.engineId !== undefined,
     )
     .slice(0, 3)
     .map((engine) =>
@@ -248,7 +314,7 @@ function buildKeywordSearchRows(
           template: engine.searchTemplate!,
           recordAsTyped: true,
         },
-      })
+      }),
     );
 }
 
@@ -259,7 +325,10 @@ function buildKeywordSearchRows(
  * does; two implementations of "which characters matched" would drift into two
  * different ideas of what matched.
  */
-export function findMatchRanges(text: string, query: string): TextMatchRange[] | undefined {
+export function findMatchRanges(
+  text: string,
+  query: string,
+): TextMatchRange[] | undefined {
   const needle = query.trim().toLowerCase();
   if (!needle) return undefined;
   const haystack = text.toLowerCase();

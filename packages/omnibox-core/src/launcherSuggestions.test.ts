@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   autocompleteForSuggestion,
+  buildWebSearchSuggestions,
   isDeprecatedLauncherPrefix,
   rankHistorySuggestions,
   buildIdleLauncherSuggestions,
@@ -28,14 +29,96 @@ const history = [
 ];
 
 describe("launcher suggestions", () => {
+  it("completes bare history hosts without adding a protocol or www", () => {
+    const suggestion = {
+      id: "history:web",
+      kind: "history" as const,
+      score: 1,
+      browser: {
+        url: "https://www.example.com/docs",
+        source: "history" as const,
+      },
+    };
+    expect(autocompleteForSuggestion("@exa", suggestion)).toEqual({
+      value: "@example.com/docs",
+      suffix: "mple.com/docs",
+    });
+    expect(autocompleteForSuggestion("www.exa", suggestion)?.value).toBe(
+      "www.example.com/docs",
+    );
+    expect(
+      autocompleteForSuggestion("https://www.exa", suggestion)?.value,
+    ).toBe("https://www.example.com/docs");
+    expect(autocompleteForSuggestion("docs", suggestion)).toBeNull();
+  });
+
+  it("uses modern visit times to break frequency ties", () => {
+    const rows = [
+      {
+        url: "https://example.com/old",
+        source: "history" as const,
+        lastVisit: 1_700_000_000_000,
+      },
+      {
+        url: "https://example.com/recent",
+        source: "history" as const,
+        lastVisit: 1_800_000_000_000,
+      },
+    ];
+    expect(rankHistorySuggestions("example", rows)[0]?.browser.url).toBe(
+      rows[1]?.url,
+    );
+  });
+
+  it("offers configured search completions without treating providers as visited pages", () => {
+    const rows = [
+      {
+        url: "https://search.test/?q=%s",
+        source: "search-engine" as const,
+        engineName: "My Search",
+        keyword: "s",
+        typedCount: 1,
+        searchTemplate: "https://search.test/?q=%s",
+      },
+      {
+        url: "https://search.test/?q=coffee%20beans",
+        title: "coffee beans",
+        completionQuery: "coffee",
+        source: "search-suggestion" as const,
+        searchTemplate: "https://search.test/?q=%s",
+      },
+    ];
+    expect(rankHistorySuggestions("", rows)).toEqual([]);
+    expect(buildWebSearchSuggestions("tea", rows).map((row) => row.query)).toEqual(["tea"]);
+    expect(
+      buildWebSearchSuggestions("coffee", rows).map((row) => [
+        row.query,
+        row.provider,
+      ]),
+    ).toEqual([
+      ["coffee", "My Search"],
+      ["coffee beans", "My Search"],
+    ]);
+    expect(buildWebSearchSuggestions("s cats & dogs", rows)[0]?.url).toBe(
+      "https://search.test/?q=cats%20%26%20dogs",
+    );
+  });
   it("parses the unified go-to and chat scopes", () => {
-    expect(parseLauncherInput("@ term")).toEqual({ mode: "goto", prefix: "@", query: "term" });
+    expect(parseLauncherInput("@ term")).toEqual({
+      mode: "goto",
+      prefix: "@",
+      query: "term",
+    });
     expect(parseLauncherInput("/ explain this")).toEqual({
       mode: "chat",
       prefix: "/",
       query: "explain this",
     });
-    expect(parseLauncherInput("plain")).toEqual({ mode: "all", prefix: "", query: "plain" });
+    expect(parseLauncherInput("plain")).toEqual({
+      mode: "all",
+      prefix: "",
+      query: "plain",
+    });
   });
 
   it("keeps the retired panels-only prefix working as an alias of go-to", () => {
@@ -132,7 +215,9 @@ describe("launcher suggestions", () => {
   });
 
   it("prefers sentence-like chat unless a destination is an exact or prefix match", () => {
-    expect(isLikelyAgentPrompt("Please investigate this issue for me")).toBe(true);
+    expect(isLikelyAgentPrompt("Please investigate this issue for me")).toBe(
+      true,
+    );
     const prompt = buildLauncherSuggestions({
       value: "please investigate this issue",
       panels: [{ path: "panels/investigate", title: "Investigate" }],
@@ -144,7 +229,12 @@ describe("launcher suggestions", () => {
 
     const weakSubstring = buildLauncherSuggestions({
       value: "please write a report",
-      panels: [{ path: "panels/report-tools", title: "Tools to please write a report" }],
+      panels: [
+        {
+          path: "panels/report-tools",
+          title: "Tools to please write a report",
+        },
+      ],
       panelUsage: { "panels/report-tools": { count: 10_000, lastUsed: 999 } },
       browserSuggestions: [],
       browserUrl: null,
@@ -169,9 +259,10 @@ describe("launcher suggestions", () => {
       browserSuggestions: history,
       browserUrl: "https://typed.example/",
     });
-    // Go-to is destinations of every kind except the two that are not
-    // destinations: a literal URL row and an agent prompt.
-    expect(new Set(goTo.map((item) => item.kind))).toEqual(new Set(["panel", "history"]));
+    // Go-to includes new web destinations as well as previously visited ones.
+    expect(new Set(goTo.map((item) => item.kind))).toEqual(
+      new Set(["panel", "history", "url"]),
+    );
     const aliased = buildLauncherSuggestions({
       value: ">",
       panels,
@@ -179,7 +270,9 @@ describe("launcher suggestions", () => {
       browserSuggestions: history,
       browserUrl: null,
     });
-    expect(new Set(aliased.map((item) => item.kind))).toEqual(new Set(["panel", "history"]));
+    expect(new Set(aliased.map((item) => item.kind))).toEqual(
+      new Set(["panel", "history"]),
+    );
     const chatOnly = buildLauncherSuggestions({
       value: "/hello there",
       panels,
@@ -199,7 +292,9 @@ describe("launcher suggestions", () => {
       browserUrl: null,
     });
     const throughPalette = rankHistorySuggestions("example", history);
-    expect(throughPalette).toEqual(throughLauncher);
+    expect(throughPalette).toEqual(
+      throughLauncher.filter((item) => item.kind === "history"),
+    );
     expect(rankHistorySuggestions("example", history, 1)).toHaveLength(1);
   });
 
@@ -225,8 +320,16 @@ describe("launcher suggestions", () => {
       { kind: "panel" as const },
     ];
     const groups = groupLauncherSuggestions(ranked);
-    expect(groups.map((group) => group.kind)).toEqual(["url", "panel", "history"]);
-    expect(groups.map((group) => group.label)).toEqual(["Web address", "Panels", "Recent pages"]);
+    expect(groups.map((group) => group.kind)).toEqual([
+      "url",
+      "panel",
+      "history",
+    ]);
+    expect(groups.map((group) => group.label)).toEqual([
+      "Web address",
+      "Panels",
+      "Recent pages",
+    ]);
     expect(groups.flatMap((group) => group.items)).toEqual([
       ranked[0],
       ranked[1],
@@ -238,7 +341,7 @@ describe("launcher suggestions", () => {
   it("leads with the requested group order when there is no query to rank against", () => {
     const groups = groupLauncherSuggestions(
       [{ kind: "history" as const }, { kind: "panel" as const }],
-      ["panel", "history"]
+      ["panel", "history"],
     );
     expect(groups.map((group) => group.kind)).toEqual(["panel", "history"]);
   });
