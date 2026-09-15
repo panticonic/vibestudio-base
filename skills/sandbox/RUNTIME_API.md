@@ -84,7 +84,7 @@ Generated from `runtimeSurface.panel.ts`. Use `await help()` at runtime for the 
 | `Rpc` | value |  | RPC helpers namespace export. |
 | `z` | value |  | Zod export. |
 | `defineContract` | value |  |  |
-| `buildPanelLink` | value |  | Build a managed panel URL; options.disposition controls tree placement and options.placement supplies visual side/side-if-room/replace/split-below hints. |
+| `buildPanelLink` | value |  | Build a logical panel link. options.workspace selects an exact name, { id }, or { role: system \| personal }; omitted stays local. disposition controls destination tree placement; placement controls visual layout. |
 | `buildPanelDeepLink` | value |  | Build a canonical panel deep link with optional tree disposition and visual placement hints. |
 | `buildPanelShareLink` | value |  | Build a canonical panel share link with optional tree disposition and visual placement hints. |
 | `parseContextId` | value |  |  |

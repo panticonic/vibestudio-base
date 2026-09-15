@@ -14,6 +14,7 @@ import {
 import {
   browserData,
   buildPanelLink,
+  gatewayConfig,
   panel,
   panelTree,
   workers,
@@ -289,11 +290,11 @@ function SuggestionIcon({
   const [imageFailed, setImageFailed] = useState(false);
   useEffect(() => setImageFailed(false), [panelIcon]);
   if (suggestion.kind === "panel") {
-    if (panelIcon?.startsWith("./") && !imageFailed) {
+    if (panelIcon?.startsWith("./") && !imageFailed && gatewayConfig) {
       return (
         <img
           className="launcher-icon launcher-image-icon"
-          src={`${buildPanelLink(suggestion.panel.path)}../../${unitIconTarget(
+          src={`${new URL(gatewayConfig.serverUrl).pathname.replace(/\/$/, "")}/${unitIconTarget(
             suggestion.panel.path,
             panelIcon,
             suggestion.panel.iconVersion,

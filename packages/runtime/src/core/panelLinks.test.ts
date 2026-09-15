@@ -1,101 +1,112 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { buildPanelDeepLink, buildPanelLink, buildPanelShareLink } from "./panelLinks.js";
+import {
+  buildPanelDeepLink,
+  buildPanelLink,
+  buildPanelShareLink,
+} from "./panelLinks.js";
 import { parsePanelLocationLink } from "@vibestudio/shared/panelLocation";
 
 afterEach(() => {
   vi.unstubAllGlobals();
-  delete (globalThis as { __vibestudioGatewayConfig?: unknown }).__vibestudioGatewayConfig;
+  delete (globalThis as { __vibestudioGatewayConfig?: unknown })
+    .__vibestudioGatewayConfig;
 });
 
-describe("buildPanelLink", () => {
-  it("keeps the selected workspace route prefix in browser panel links", () => {
-    vi.stubGlobal("window", { location: { origin: "http://127.0.0.1:43873" } });
-    (
-      globalThis as {
-        __vibestudioGatewayConfig?: { serverUrl: string };
-      }
-    ).__vibestudioGatewayConfig = {
-      serverUrl: "http://localhost:43873/_workspace/dev-123",
-    };
-
-    expect(buildPanelLink("about/server-logs")).toBe("/_workspace/dev-123/about/server-logs/");
-  });
-
-  it("fails loudly instead of navigating to the wrong workspace for invalid gateway config", () => {
-    vi.stubGlobal("window", { location: { origin: "http://127.0.0.1:43873" } });
-    (
-      globalThis as {
-        __vibestudioGatewayConfig?: { serverUrl: string };
-      }
-    ).__vibestudioGatewayConfig = { serverUrl: "not a URL" };
-
-    expect(() => buildPanelLink("about/server-logs")).toThrow();
-  });
-
-  it("preserves ref, state, focus, tree disposition, and layout placement in HTTP links", () => {
-    expect(
-      buildPanelLink("panels/chat", {
-        ref: "state:abc",
-        stateArgs: { prompt: "hello" },
-        title: "Research",
-        slug: "research",
-        focus: false,
-        disposition: "child",
-        placement: { disposition: "side", preferredWidth: 640, minWidth: 440 },
-      })
-    ).toBe(
-      "/panels/chat/?ref=state%3Aabc&stateArgs=%7B%22prompt%22%3A%22hello%22%7D&title=Research&slug=research&focus=false&disposition=child&placement=side&preferredWidth=640&minWidth=440"
+describe("panel link builders", () => {
+  it("keeps local navigation independent of gateway routes and selected workspace", () => {
+    vi.stubGlobal("__vibestudioGatewayConfig", {
+      serverUrl: "not a serving URL",
+      workspace: "other",
+    });
+    expect(parsePanelLocationLink(buildPanelLink("panels/chat"))).toMatchObject(
+      {
+        kind: "ok",
+        location: { source: "panels/chat" },
+      },
     );
+    expect(buildPanelLink("panels/chat")).not.toContain("workspace");
   });
 
-  it("builds equivalent canonical deep and share links for the current workspace", () => {
-    (
-      globalThis as {
-        __vibestudioGatewayConfig?: { serverUrl: string };
-      }
-    ).__vibestudioGatewayConfig = {
-      serverUrl: "http://localhost:43873/_workspace/dev-123",
-    };
+  it("preserves every navigation option on the canonical link", () => {
     const options = {
-      contextId: "ctx-1",
-      stateArgs: { prompt: "hi" },
+      workspace: { id: "destination" },
+      contextId: "target-context",
+      ref: "state:abc",
+      stateArgs: { prompt: "hello" },
       title: "Research",
       slug: "research",
-      disposition: "root" as const,
-      placement: { disposition: "split-below" as const, minWidth: 480 },
+      focus: false,
+      disposition: "child" as const,
+      placement: {
+        disposition: "side" as const,
+        preferredWidth: 640,
+        minWidth: 440,
+      },
     };
-    for (const link of [
-      buildPanelDeepLink("panels/chat", options),
-      buildPanelShareLink("panels/chat", options),
-    ]) {
-      expect(parsePanelLocationLink(link)).toMatchObject({
+    expect(
+      parsePanelLocationLink(buildPanelLink("panels/chat", options)),
+    ).toMatchObject({
+      kind: "ok",
+      location: { source: "panels/chat", ...options },
+    });
+  });
+
+  it.each(["Project", { id: "ws-exact" }, { role: "system" as const }])(
+    "uses the same explicit destination %j on every carrier",
+    (workspace) => {
+      for (const builder of [
+        buildPanelLink,
+        buildPanelDeepLink,
+        buildPanelShareLink,
+      ]) {
+        expect(
+          parsePanelLocationLink(builder("about/automations", { workspace })),
+        ).toMatchObject({
+          kind: "ok",
+          location: { source: "about/automations", workspace },
+        });
+      }
+    },
+  );
+
+  it("captures the desktop workspace ID independently of its serving URL", () => {
+    vi.stubGlobal("__vibestudioGatewayConfig", {
+      serverUrl: "http://localhost:43873/_workspace/dev-123",
+      workspace: "desktop-workspace",
+    });
+    for (const builder of [buildPanelDeepLink, buildPanelShareLink]) {
+      expect(
+        parsePanelLocationLink(
+          builder("panels/chat", { stateArgs: { prompt: "hi" } }),
+        ),
+      ).toMatchObject({
         kind: "ok",
         location: {
-          source: "panels/chat",
-          workspace: "dev-123",
-          contextId: "ctx-1",
+          workspace: { id: "desktop-workspace" },
           stateArgs: { prompt: "hi" },
-          title: "Research",
-          slug: "research",
-          disposition: "root",
-          placement: { disposition: "split-below", minWidth: 480 },
         },
       });
     }
   });
 
-  it("uses the explicitly injected workspace when the mobile facade URL has no route prefix", () => {
-    (
-      globalThis as {
-        __vibestudioGatewayConfig?: { serverUrl: string; workspace: string };
-      }
-    ).__vibestudioGatewayConfig = {
+  it("captures an injected workspace ID as an ID, not as a name", () => {
+    vi.stubGlobal("__vibestudioGatewayConfig", {
       serverUrl: "http://127.0.0.1:43873",
       workspace: "mobile-workspace",
-    };
-    expect(parsePanelLocationLink(buildPanelShareLink("about/server-logs"))).toMatchObject({
-      kind: "ok",
-      location: { workspace: "mobile-workspace" },
     });
+    expect(
+      parsePanelLocationLink(buildPanelShareLink("about/server-logs")),
+    ).toMatchObject({
+      kind: "ok",
+      location: { workspace: { id: "mobile-workspace" } },
+    });
+  });
+
+  it("rejects invalid destinations and non-JSON state before navigation", () => {
+    expect(() => buildPanelLink("../escape")).toThrow();
+    expect(() => buildPanelLink("panels/chat", { workspace: "" })).toThrow();
+    expect(() =>
+      buildPanelLink("panels/chat", { stateArgs: { value: undefined } }),
+    ).toThrow();
   });
 });
