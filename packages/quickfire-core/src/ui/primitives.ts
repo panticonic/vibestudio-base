@@ -115,6 +115,8 @@ export interface QuickfireDisclosureProps {
   children: ReactNode;
   /** Open on first render — used for reasoning that is still streaming. */
   defaultOpen?: boolean;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
   tone?: QuickfireTone;
   label: string;
   testId?: string;
@@ -143,7 +145,22 @@ export interface QuickfireFigureProps {
  * One client's rendering of the primitives, plus the two host capabilities the
  * shared tree needs and cannot have: opening a URL, and copying text.
  */
+export interface QuickfireInputProps {
+  value: string;
+  onChange: (value: string) => void;
+  label: string;
+  placeholder?: string;
+}
+
+export interface QuickfireTableProps {
+  head: ReactNode[];
+  rows: ReactNode[][];
+  align: Array<"left" | "right" | "center" | null>;
+}
+
 export interface QuickfireSkin {
+  Table: ComponentType<QuickfireTableProps>;
+  Input: ComponentType<QuickfireInputProps>;
   Box: ComponentType<QuickfireBoxProps>;
   Text: ComponentType<QuickfireTextProps>;
   Pressable: ComponentType<QuickfirePressableProps>;
@@ -174,7 +191,7 @@ export interface QuickfireSkin {
   /** The live-text cursor on a streaming reply. */
   Caret: ComponentType<Record<string, never>>;
   openUrl?: (href: string) => void;
-  copy?: (text: string) => void;
+  copy?: (text: string) => void | Promise<void>;
 }
 
 const SkinContext = createContext<QuickfireSkin | null>(null);

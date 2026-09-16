@@ -16,10 +16,12 @@ export {
   type QuickfireFigureProps,
   type QuickfireIconProps,
   type QuickfireImageProps,
+  type QuickfireInputProps,
   type QuickfirePressableProps,
   type QuickfireSkin,
   type QuickfireSpace,
   type QuickfireTextProps,
+  type QuickfireTableProps,
 } from "./primitives";
 export { Blocks, Inlines, Markdown } from "./Markdown";
 export { Transcript, TranscriptCard, type TranscriptProps } from "./Transcript";

@@ -290,6 +290,7 @@ export interface QuickfireResumeChip {
 
 /** The `/` mode conversation view. */
 export interface QuickfireComposeView {
+  modelSelection?: QuickfireModelSelection;
   /**
    * What the conversation is bound to (messaging plan §4.8). `slot` is the
    * Quickfire agent over a panel; `conversation` is an existing channel opened
@@ -366,4 +367,20 @@ export interface QuickfireSuggestion {
   label: string;
   /** What is actually sent; usually longer than the label. */
   prompt: string;
+}
+
+/** The same model/provider picker state crosses desktop IPC and renders natively. */
+export interface QuickfireModelChoice {
+  ref: string;
+  name: string;
+  provider: string;
+  available: boolean;
+  detail: string;
+}
+export interface QuickfireModelSelection {
+  current: string | null;
+  choices: QuickfireModelChoice[];
+  loading: boolean;
+  saving: boolean;
+  error: string | null;
 }

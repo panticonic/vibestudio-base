@@ -10,7 +10,7 @@
  * product, and is now the same code.
  */
 
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import {
   resumeLabel,
   transcriptCards,
@@ -21,6 +21,8 @@ import { useSkin } from "./primitives";
 import { Transcript } from "./Transcript";
 
 export type ConversationIntent =
+  | { kind: "load-models" }
+  | { kind: "select-model"; model: string }
   | { kind: "clear" }
   | { kind: "promote" }
   | { kind: "focus-promoted" }
@@ -52,39 +54,60 @@ export function ConversationHeader({
   const { Box, Text, Icon, Pressable } = useSkin();
   const bound = compose.kind === "conversation";
   return (
-    <Box row gap="sm" align="center" testId="quickfire-conversation-header">
-      <Icon name={bound ? "bell" : "spark"} tone="accent" />
-      <Text variant="heading" clamp>
-        {compose.panelTitle}
-      </Text>
-      <Box grow />
-      {bound ? null : (
+    <Box gap="sm" testId="quickfire-conversation-header">
+      <Box row gap="sm" align="center">
+        <Icon name={bound ? "bell" : "spark"} tone="accent" />
+        <Box grow gap="xs">
+          <Text variant="heading">
+            {bound ? "Conversation" : "Quickfire agent"}
+          </Text>
+          <Text variant="caption" tone="muted" clamp>
+            {compose.panelTitle}
+          </Text>
+        </Box>
+        <Text variant="caption" tone="muted" testId="quickfire-status">
+          {compose.promoted
+            ? "Continued in chat"
+            : compose.error ||
+                compose.disabledReason ||
+                compose.credentialRequest
+              ? "Needs attention"
+              : compose.connecting
+                ? "Connecting…"
+                : compose.streaming
+                  ? "Working…"
+                  : "Ready"}
+        </Text>
+      </Box>
+      <Box row gap="sm" align="center">
+        {bound ? null : (
+          <Pressable
+            variant="ghost"
+            label="Clear this conversation and return to commands"
+            disabled={!compose.hasConversation}
+            onPress={() => onIntent({ kind: "clear" })}
+          >
+            <Text variant="caption" tone="muted">
+              Clear
+            </Text>
+          </Pressable>
+        )}
         <Pressable
           variant="ghost"
-          label="Clear this conversation and return to commands"
+          tone="accent"
+          label={
+            bound
+              ? "Open this conversation in its chat panel"
+              : "Move this conversation into a chat panel, keeping its history"
+          }
           disabled={!compose.hasConversation}
-          onPress={() => onIntent({ kind: "clear" })}
+          onPress={() => onIntent({ kind: "promote" })}
         >
-          <Text variant="caption" tone="muted">
-            Clear
+          <Text variant="caption" tone="accent">
+            {bound ? "Open chat panel" : "Move to chat panel"}
           </Text>
         </Pressable>
-      )}
-      <Pressable
-        variant="ghost"
-        tone="accent"
-        label={
-          bound
-            ? "Open this conversation in its chat panel"
-            : "Move this conversation into a chat panel, keeping its history"
-        }
-        disabled={!compose.hasConversation}
-        onPress={() => onIntent({ kind: "promote" })}
-      >
-        <Text variant="caption" tone="accent">
-          {bound ? "Open chat panel" : "Move to chat panel"}
-        </Text>
-      </Pressable>
+      </Box>
     </Box>
   );
 }
@@ -185,6 +208,9 @@ export function ConversationBody({
   return (
     <Box gap="sm">
       {leading}
+      {compose.modelSelection ? (
+        <ModelChooser compose={compose} onIntent={onIntent} />
+      ) : null}
 
       {compose.resume ? (
         <Box
@@ -253,7 +279,12 @@ export function ConversationBody({
       ) : (
         <Box gap="sm">
           {older}
-          <Box gap="sm" pad="md" testId="quickfire-empty">
+          <Box gap="md" pad="lg" surface="sunken" testId="quickfire-empty">
+            <Text variant="heading">
+              {compose.kind === "conversation"
+                ? "Pick up the conversation"
+                : "What would you like to do?"}
+            </Text>
             <Box row gap="sm" align="center" live>
               {compose.connecting ? <Spinner tone="accent" /> : null}
               <Text tone="muted">
@@ -272,6 +303,9 @@ export function ConversationBody({
                     variant="primary"
                     tone="accent"
                     label={suggestion.prompt}
+                    disabled={Boolean(
+                      compose.disabledReason || compose.connecting,
+                    )}
                     onPress={() =>
                       onIntent({ kind: "send", text: suggestion.prompt })
                     }
@@ -300,6 +334,131 @@ export function ConversationBody({
           <Text variant="caption" tone="warning">
             {compose.disabledReason}
           </Text>
+        </Box>
+      ) : null}
+    </Box>
+  );
+}
+
+function ModelChooser({ compose, onIntent }: Omit<ConversationProps, "now">) {
+  const { Box, Text, Pressable, Input, Spinner } = useSkin();
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const [limit, setLimit] = useState(12);
+  const selection = compose.modelSelection!;
+  const current = selection.choices.find(
+    (choice) => choice.ref === selection.current,
+  );
+  const matched = selection.choices.filter((choice) =>
+    `${choice.name} ${choice.provider} ${choice.ref}`
+      .toLowerCase()
+      .includes(query.trim().toLowerCase()),
+  );
+  return (
+    <Box surface="sunken" pad="sm" gap="sm" testId="quickfire-model-picker">
+      <Box row align="center" gap="sm">
+        <Box grow gap="xs">
+          <Text variant="caption" tone="muted">
+            Model &amp; provider
+          </Text>
+          <Text variant="strong">
+            {current
+              ? `${current.name} · ${current.provider}`
+              : (selection.current ?? "Choose a model for this conversation")}
+          </Text>
+        </Box>
+        <Pressable
+          variant="ghost"
+          tone="accent"
+          label={open ? "Close model picker" : "Choose model and provider"}
+          disabled={compose.connecting || selection.saving}
+          onPress={() => {
+            if (!open) onIntent({ kind: "load-models" });
+            setOpen(!open);
+          }}
+        >
+          <Text variant="caption" tone="accent">
+            {open ? "Done" : "Change"}
+          </Text>
+        </Pressable>
+      </Box>
+      {open ? (
+        <Box gap="sm">
+          <Text variant="caption" tone="muted">
+            Choose the model for future responses. Your conversation stays here.
+          </Text>
+          <Input
+            label="Search models and providers"
+            placeholder="Search models or providers…"
+            value={query}
+            onChange={(value) => {
+              setQuery(value);
+              setLimit(12);
+            }}
+          />
+          {selection.loading || selection.saving ? (
+            <Box row gap="sm" align="center" live>
+              <Spinner tone="accent" />
+              <Text variant="caption">
+                {selection.saving ? "Changing model…" : "Loading models…"}
+              </Text>
+            </Box>
+          ) : null}
+          {selection.error ? (
+            <Box gap="xs" live>
+              <Text variant="caption" tone="danger">
+                {selection.error}
+              </Text>
+              <Pressable
+                label="Retry loading models"
+                onPress={() => onIntent({ kind: "load-models" })}
+                disabled={selection.loading || selection.saving}
+              >
+                <Text variant="caption" tone="accent">
+                  Try again
+                </Text>
+              </Pressable>
+            </Box>
+          ) : null}
+          {!selection.loading && !selection.error && matched.length === 0 ? (
+            <Text variant="caption" tone="muted">
+              No models match. Try a different model or provider name.
+            </Text>
+          ) : null}
+          {matched.slice(0, limit).map((choice) => (
+            <Pressable
+              key={choice.ref}
+              variant={choice.ref === selection.current ? "primary" : "ghost"}
+              tone={choice.ref === selection.current ? "accent" : "neutral"}
+              label={`Use ${choice.name} from ${choice.provider}`}
+              disabled={
+                !choice.available || selection.saving || selection.loading
+              }
+              onPress={() =>
+                onIntent({ kind: "select-model", model: choice.ref })
+              }
+            >
+              <Box grow gap="xs">
+                <Text variant="strong">
+                  {choice.ref === selection.current ? "✓ " : ""}
+                  {choice.name}
+                </Text>
+                <Text variant="caption" tone="muted">
+                  {choice.provider} · {choice.detail}
+                </Text>
+              </Box>
+            </Pressable>
+          ))}
+          {matched.length > limit ? (
+            <Pressable
+              label="Show more models"
+              onPress={() => setLimit(limit + 24)}
+            >
+              <Text variant="caption" tone="accent">
+                Show more ({matched.length - limit})
+              </Text>
+            </Pressable>
+          ) : null}
         </Box>
       ) : null}
     </Box>

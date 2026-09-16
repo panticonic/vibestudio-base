@@ -12,7 +12,13 @@
  * collapsed, which is a different thing, and every collapse says what is inside.
  */
 
-import { useState, type ReactNode } from "react";
+import {
+  createContext,
+  useContext,
+  useMemo,
+  useState,
+  type ReactNode,
+} from "react";
 import type {
   QuickfireCard,
   QuickfireCardActionId,
@@ -37,25 +43,150 @@ export interface TranscriptProps {
   footer?: ReactNode;
 }
 
+/** One disclosure state owner preserves manual choices across streaming updates. */
+const DetailState = createContext<{
+  expanded: Record<string, boolean>;
+  toggle: (id: string, open: boolean) => void;
+} | null>(null);
+
+function detailKeys(card: QuickfireCard): string[] {
+  return [
+    ...card.details.map((detail) => `${card.id}:${detail.id}`),
+    ...card.work.map((work) => `${card.id}:work:${work.id}`),
+  ];
+}
+
+function searchableText(card: QuickfireCard): string {
+  return [
+    card.plainText,
+    card.title,
+    card.meta,
+    ...card.details.map((detail) => detail.text),
+    ...card.work.flatMap((work) => [
+      work.name,
+      ...work.details.map((detail) => detail.text),
+    ]),
+  ]
+    .filter(Boolean)
+    .join("\n")
+    .toLowerCase();
+}
+
 export function Transcript({
   cards,
   onAction,
   header,
   footer,
 }: TranscriptProps) {
-  const { Box } = useSkin();
+  const { Box, Text, Pressable, Input } = useSkin();
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({});
+  const [searching, setSearching] = useState(false);
+  const [query, setQuery] = useState("");
+  const filtered = useMemo(() => {
+    const text = query.trim().toLowerCase();
+    return text
+      ? cards.filter((card) => searchableText(card).includes(text))
+      : cards;
+  }, [cards, query]);
+  const keys = filtered.flatMap(detailKeys);
+  const messages = cards.filter((card) => card.kind === "message").length;
+  const activity = cards.length - messages;
+  const context = useMemo(
+    () => ({
+      expanded,
+      toggle: (id: string, open: boolean) =>
+        setExpanded((current) => ({ ...current, [id]: open })),
+    }),
+    [expanded],
+  );
+  const expandDetails = (open: boolean) =>
+    setExpanded((current) => ({
+      ...current,
+      ...Object.fromEntries(keys.map((key) => [key, open])),
+    }));
   return (
-    <Box row gap="md" testId="quickfire-transcript">
-      {header ? <Box full>{header}</Box> : null}
-      {cards.map((card) => (
-        <TranscriptCard
-          key={card.id}
-          card={card}
-          {...(onAction ? { onAction } : {})}
-        />
-      ))}
-      {footer ? <Box full>{footer}</Box> : null}
-    </Box>
+    <DetailState.Provider value={context}>
+      <Box gap="md" testId="quickfire-transcript">
+        <Box gap="xs" testId="quickfire-history-toolbar">
+          <Box row gap="sm" align="center">
+            <Text variant="strong">Conversation</Text>
+            <Text variant="caption" tone="muted">
+              {messages} {messages === 1 ? "message" : "messages"}
+              {activity
+                ? ` · ${activity} activity ${activity === 1 ? "entry" : "entries"}`
+                : ""}
+            </Text>
+            <Box grow />
+            <Pressable
+              label={
+                searching
+                  ? "Close history search"
+                  : "Search conversation history"
+              }
+              onPress={() => {
+                setSearching(!searching);
+                setQuery("");
+              }}
+            >
+              <Text variant="caption" tone="accent">
+                {searching ? "Close search" : "Find in history"}
+              </Text>
+            </Pressable>
+          </Box>
+          {searching ? (
+            <Box gap="xs">
+              <Input
+                label="Search conversation history"
+                placeholder="Search messages, tools, inputs, and results…"
+                value={query}
+                onChange={setQuery}
+              />
+              <Text variant="caption" tone="muted">
+                {filtered.length} of {cards.length} loaded entries. Load earlier
+                history to search further back.
+              </Text>
+            </Box>
+          ) : null}
+          {keys.length ? (
+            <Box row gap="sm">
+              <Pressable
+                label="Expand all history details"
+                onPress={() => expandDetails(true)}
+              >
+                <Text variant="caption" tone="accent">
+                  Expand details
+                </Text>
+              </Pressable>
+              <Pressable
+                label="Collapse all history details"
+                onPress={() => expandDetails(false)}
+              >
+                <Text variant="caption" tone="muted">
+                  Collapse details
+                </Text>
+              </Pressable>
+            </Box>
+          ) : null}
+        </Box>
+        {header ? <Box full>{header}</Box> : null}
+        {filtered.map((card) => (
+          <TranscriptCard
+            key={card.id}
+            card={card}
+            {...(onAction ? { onAction } : {})}
+          />
+        ))}
+        {filtered.length === 0 ? (
+          <Box surface="sunken" pad="md">
+            <Text tone="muted">
+              No matching entries. Try a tool name, a path, or a phrase from the
+              conversation.
+            </Text>
+          </Box>
+        ) : null}
+        {footer ? <Box full>{footer}</Box> : null}
+      </Box>
+    </DetailState.Provider>
   );
 }
 
@@ -88,7 +219,6 @@ export function TranscriptCard({
       />
     );
   }
-  const compact = card.kind === "thinking" || card.kind === "activity";
   // Reasoning is a heading *and* a disclosure — it has nothing else in it. Two
   // rows for one idea read as a stutter, so the heading is the summary.
   const headerIsDisclosure =
@@ -103,11 +233,10 @@ export function TranscriptCard({
       {/* A speaker's name is a label; a thought is a sentence, and setting one
           in small caps makes it unreadable at exactly the size it is shown. */}
       <Text
-        variant={card.kind === "thinking" ? "caption" : "label"}
+        variant="strong"
         tone={answer ? presentationTone : speech ? "muted" : card.tone}
-        clamp
       >
-        {card.title}
+        {card.kind === "thinking" ? "Reasoning" : card.title}
       </Text>
       {card.badges.map((badge) => (
         <Pill key={badge.id} tone={badge.tone}>
@@ -116,7 +245,7 @@ export function TranscriptCard({
       ))}
       <Box grow />
       {card.meta ? (
-        <Text variant="caption" tone="muted" clamp>
+        <Text variant="caption" tone="muted">
           {card.meta}
         </Text>
       ) : null}
@@ -129,15 +258,20 @@ export function TranscriptCard({
       }
       tone={answer ? presentationTone : card.tone}
       pad={answer ? "md" : "sm"}
-      {...(compact ? { fit: true } : { full: true })}
-      gap="xs"
+      full
+      gap="sm"
       testId={`quickfire-card-${card.id}`}
       {...(card.busy ? { live: true } : {})}
       {...(card.focused ? { emphasis: true } : {})}
     >
-      {/* A repeated "agent / agent / agent" column is noise; the first card in a
-          run carries the heading and the rest continue under it. */}
-      {card.continues || headerIsDisclosure ? null : header}
+      {/* Every message retains its speaker, model, time, and status, including
+          consecutive messages from the same agent. */}
+      {headerIsDisclosure ? null : header}
+      {card.kind === "thinking" && !headerIsDisclosure ? (
+        <Text variant="caption" tone="muted">
+          {card.title}
+        </Text>
+      ) : null}
 
       {card.body ? (
         card.body.format === "markdown" ? (
@@ -155,12 +289,25 @@ export function TranscriptCard({
       {card.details.map((detail) => (
         <Detail
           key={detail.id}
+          stateKey={`${card.id}:${detail.id}`}
           detail={detail}
           tone={card.tone}
           {...(headerIsDisclosure
-            ? { summary: header, label: card.title }
+            ? {
+                summary: (
+                  <Box grow gap="xs">
+                    {header}
+                    <Text variant="caption" tone="muted">
+                      {card.title}
+                    </Text>
+                  </Box>
+                ),
+                label: `Reasoning: ${card.title}`,
+              }
             : {})}
-          defaultOpen={card.kind === "thinking" && card.busy}
+          defaultOpen={
+            (card.kind === "thinking" && card.busy) || detail.id === "error"
+          }
         />
       ))}
 
@@ -203,7 +350,7 @@ function WorkRecord({
   return (
     <Box
       surface="outline"
-      fit
+      full
       // A green frame around every completed call shouts about the ordinary
       // case; the glyph already says it went fine.
       {...(record.state === "done" ? {} : { tone: record.tone })}
@@ -211,19 +358,33 @@ function WorkRecord({
       {...(testId ? { testId } : {})}
     >
       <Detail
+        stateKey={`${card.id}:work:${record.id}`}
+        defaultOpen={record.state === "failed"}
         tone={record.tone}
         summary={
-          <Box row gap="xs" align="center">
-            {record.busy ? (
-              <Spinner tone={record.tone} />
-            ) : (
-              <Icon name={record.glyph} tone={record.tone} size="sm" />
-            )}
-            <Text variant="strong" tone={record.tone}>
-              {record.name}
-            </Text>
+          <Box grow gap="sm">
+            <Box row gap="sm" align="center">
+              {record.busy ? (
+                <Spinner tone={record.tone} />
+              ) : (
+                <Icon name={record.glyph} tone={record.tone} />
+              )}
+              <Text variant="strong">{record.name}</Text>
+              <Box grow />
+              <Text variant="caption" tone={record.tone}>
+                {record.statusLabel}
+              </Text>
+            </Box>
+            {record.preview ? (
+              <Text
+                variant="caption"
+                tone={record.state === "failed" ? "danger" : "muted"}
+              >
+                {record.preview}
+              </Text>
+            ) : null}
             <Text variant="caption" tone="muted">
-              {record.statusLabel}
+              {record.contents}
             </Text>
           </Box>
         }
@@ -308,8 +469,9 @@ function CardActions({
 }) {
   const { Box, Text, Pressable, copy } = useSkin();
   const [copied, setCopied] = useState(false);
+  const [copyError, setCopyError] = useState(false);
   return (
-    <Box row gap="sm" hover testId="quickfire-card-actions">
+    <Box row gap="sm" testId="quickfire-card-actions">
       {card.actions.map((action) => (
         <Pressable
           key={action.id}
@@ -318,8 +480,14 @@ function CardActions({
           label={action.label}
           onPress={() => {
             if (action.id === "copy" && copy) {
-              copy(action.value ?? card.plainText);
-              setCopied(true);
+              setCopyError(false);
+              void Promise.resolve()
+                .then(() => copy(action.value ?? card.plainText))
+                .then(() => setCopied(true))
+                .catch(() => {
+                  setCopied(false);
+                  setCopyError(true);
+                });
               return;
             }
             onAction?.(action.id, card, action.value);
@@ -329,7 +497,9 @@ function CardActions({
             {action.id === "copy"
               ? copied
                 ? "Copied"
-                : "Copy"
+                : copyError
+                  ? "Copy failed · try again"
+                  : "Copy"
               : `${action.label} →`}
           </Text>
         </Pressable>
@@ -346,6 +516,7 @@ function CardActions({
  * Either way the summary names what is inside, so "expand" is never a gamble.
  */
 function Detail({
+  stateKey,
   detail,
   sections,
   summary,
@@ -354,6 +525,7 @@ function Detail({
   defaultOpen,
   extra,
 }: {
+  stateKey: string;
   detail: QuickfireDetail | null;
   sections?: readonly QuickfireDetail[];
   summary?: ReactNode;
@@ -364,11 +536,19 @@ function Detail({
   extra?: ReactNode;
 }) {
   const { Box, Text, Disclosure, Code } = useSkin();
+  const state = useContext(DetailState);
+  const [initialOpen] = useState(Boolean(defaultOpen));
   const payload = sections ?? (detail ? [detail] : []);
   const summaryLabel = label ?? detail?.label ?? "Details";
   return (
     <Disclosure
       label={summaryLabel}
+      {...(state
+        ? {
+            open: state.expanded[stateKey] ?? initialOpen,
+            onOpenChange: (open: boolean) => state.toggle(stateKey, open),
+          }
+        : {})}
       {...(tone ? { tone } : {})}
       {...(defaultOpen ? { defaultOpen } : {})}
       summary={

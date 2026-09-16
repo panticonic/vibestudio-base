@@ -31,7 +31,15 @@ import {
   type ChannelViewState,
 } from "@workspace/agentic-protocol";
 import type { PubSubClient } from "@workspace/pubsub";
-import type { QuickfireResumeChip, QuickfireTranscriptEntry } from "./model";
+import {
+  isModelAgentLaunchable,
+  type ModelCatalog,
+} from "@workspace/model-catalog/catalog";
+import type {
+  QuickfireModelSelection,
+  QuickfireResumeChip,
+  QuickfireTranscriptEntry,
+} from "./model";
 import {
   hasOpenTurn,
   projectTranscript,
@@ -161,6 +169,7 @@ export type QuickfireSessionSource =
 
 /** Everything the core needs from its host client. */
 export interface QuickfireTransport {
+  loadModelCatalog: () => Promise<ModelCatalog>;
   sessionFor: (
     slotId: string,
     options?: { fresh?: boolean },
@@ -187,6 +196,7 @@ export interface QuickfireTransport {
 }
 
 export interface QuickfireSessionView {
+  modelSelection: QuickfireModelSelection;
   /** What this session is bound to; `null` while unbound. */
   source: QuickfireSessionSource | null;
   slotId: string | null;
@@ -217,6 +227,8 @@ export interface QuickfireSessionController {
   view: QuickfireSessionView;
   /** `slot` sessions can be cleared and restarted; `conversation` sessions cannot. */
   mode: "slot" | "conversation" | null;
+  loadModels: () => Promise<void>;
+  selectModel: (model: string) => Promise<void>;
   send: (text: string) => Promise<void>;
   stop: () => Promise<void>;
   /** Slot mode only; throws for a conversation. */
@@ -234,7 +246,15 @@ export interface QuickfireSessionController {
   revealImage: (imageId: string) => void;
 }
 
+const EMPTY_MODEL_SELECTION: QuickfireModelSelection = {
+  current: null,
+  choices: [],
+  loading: false,
+  saving: false,
+  error: null,
+};
 const IDLE: QuickfireSessionView = {
+  modelSelection: EMPTY_MODEL_SELECTION,
   source: null,
   slotId: null,
   channelId: null,
@@ -299,6 +319,8 @@ export function useQuickfireSessionCore(
   transport: QuickfireTransport,
   options: QuickfireSessionOptions = {},
 ): QuickfireSessionController {
+  const agentIdRef = useRef<string | null>(null);
+  const modelRequestRef = useRef(false);
   const transcriptOrder = options.transcriptOrder ?? "oldest-first";
   const imageDelivery = options.imageDelivery ?? "inline";
   const source = useMemo(() => normalizeSource(input), [input]);
@@ -433,6 +455,8 @@ export function useQuickfireSessionCore(
     }
     const client = clientRef.current;
     clientRef.current = null;
+    agentIdRef.current = null;
+    modelRequestRef.current = false;
     selfKeyRef.current = null;
     awaitingResponseRef.current = null;
     // Leaving the channel is a view change only; the durable conversation
@@ -663,6 +687,164 @@ export function useQuickfireSessionCore(
     }
   }, [flush]);
 
+  const loadModels = useCallback(async () => {
+    const client = clientRef.current;
+    if (
+      !client ||
+      sourceRef.current?.kind !== "slot" ||
+      modelRequestRef.current
+    )
+      return;
+    const generation = generationRef.current;
+    modelRequestRef.current = true;
+    setView((current) => ({
+      ...current,
+      modelSelection: { ...current.modelSelection, loading: true, error: null },
+    }));
+    try {
+      const [catalog, participants] = await Promise.all([
+        transportRef.current.loadModelCatalog(),
+        client.getParticipants(),
+      ]);
+      if (generation !== generationRef.current) return;
+      const agent = participants.find(
+        (participant) => participant.metadata?.["handle"] === "quickfire",
+      );
+      if (!agent)
+        throw new Error(
+          "The Quickfire agent is not available. Try again when it has connected.",
+        );
+      const settings = await client.callMethod(
+        agent.participantId,
+        "getAgentSettings",
+        {},
+      ).result;
+      if (generation !== generationRef.current) return;
+      agentIdRef.current = agent.participantId;
+      if (
+        !settings ||
+        typeof settings !== "object" ||
+        !("model" in settings) ||
+        typeof settings.model !== "string"
+      )
+        throw new Error("The agent did not return its current model.");
+      const providers = new Map(
+        catalog.providers.map((provider) => [provider.id, provider.label]),
+      );
+      const choices = [...catalog.models]
+        .sort(
+          (a, b) =>
+            Number(isModelAgentLaunchable(b)) -
+              Number(isModelAgentLaunchable(a)) ||
+            Number(b.recommended) - Number(a.recommended) ||
+            a.name.localeCompare(b.name),
+        )
+        .map((model) => ({
+          ref: model.ref,
+          name: model.name,
+          provider: providers.get(model.provider) ?? model.provider,
+          available: isModelAgentLaunchable(model),
+          detail:
+            model.availability.state === "ready"
+              ? "Ready"
+              : model.availability.state === "startable"
+                ? "Loads on use"
+                : model.availability.state === "needs-setup"
+                  ? "Setup required"
+                  : model.availability.state === "error"
+                    ? model.availability.message
+                    : model.availability.state,
+        }));
+      setView((current) => ({
+        ...current,
+        modelSelection: {
+          ...current.modelSelection,
+          current: settings.model as string,
+          choices,
+        },
+      }));
+    } catch (error) {
+      if (generation === generationRef.current)
+        setView((current) => ({
+          ...current,
+          modelSelection: {
+            ...current.modelSelection,
+            error: error instanceof Error ? error.message : String(error),
+          },
+        }));
+    } finally {
+      if (generation === generationRef.current) {
+        modelRequestRef.current = false;
+        setView((current) => ({
+          ...current,
+          modelSelection: { ...current.modelSelection, loading: false },
+        }));
+      }
+    }
+  }, []);
+
+  const selectModel = useCallback(
+    async (model: string) => {
+      const client = clientRef.current;
+      const agentId = agentIdRef.current;
+      if (
+        !client ||
+        !agentId ||
+        sourceRef.current?.kind !== "slot" ||
+        modelRequestRef.current
+      )
+        return;
+      const choice = view.modelSelection.choices.find(
+        (choice) => choice.ref === model,
+      );
+      if (!choice?.available) return;
+      const generation = generationRef.current;
+      modelRequestRef.current = true;
+      setView((current) => ({
+        ...current,
+        modelSelection: {
+          ...current.modelSelection,
+          saving: true,
+          error: null,
+        },
+      }));
+      try {
+        const settings = await client.callMethod(agentId, "setModel", { model })
+          .result;
+        if (generation !== generationRef.current) return;
+        if (
+          !settings ||
+          typeof settings !== "object" ||
+          !("model" in settings) ||
+          settings.model !== model
+        )
+          throw new Error("The agent did not confirm the model change.");
+        setView((current) => ({
+          ...current,
+          modelSelection: { ...current.modelSelection, current: model },
+        }));
+      } catch (error) {
+        if (generation === generationRef.current)
+          setView((current) => ({
+            ...current,
+            modelSelection: {
+              ...current.modelSelection,
+              error: error instanceof Error ? error.message : String(error),
+            },
+          }));
+      } finally {
+        if (generation === generationRef.current) {
+          modelRequestRef.current = false;
+          setView((current) => ({
+            ...current,
+            modelSelection: { ...current.modelSelection, saving: false },
+          }));
+        }
+      }
+    },
+    [view.modelSelection.choices],
+  );
+
   const clear = useCallback(async () => {
     const bound = sourceRef.current;
     if (!bound) return;
@@ -801,6 +983,8 @@ export function useQuickfireSessionCore(
   return useMemo(
     () => ({
       view,
+      loadModels,
+      selectModel,
       mode: source ? source.kind : null,
       send,
       stop,
@@ -812,6 +996,8 @@ export function useQuickfireSessionCore(
     }),
     [
       clear,
+      loadModels,
+      selectModel,
       promote,
       revealImage,
       send,

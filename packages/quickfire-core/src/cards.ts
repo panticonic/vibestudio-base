@@ -100,6 +100,10 @@ export interface QuickfireWorkRecord {
   glyph: QuickfireGlyph;
   /** "running", "failed", "1.2s" — what the collapsed pill says after the name. */
   statusLabel: string;
+  /** A useful glimpse of the request or failure before opening its details. */
+  preview: string;
+  /** Names the payloads available behind the disclosure. */
+  contents: string;
   details: QuickfireDetail[];
   /** Pictures the call produced, shown as pictures. */
   images: QuickfireImageView[];
@@ -278,6 +282,19 @@ function messageCard(
     });
   }
 
+  const facts = [
+    entry.modelLabel ? `Model: ${entry.modelLabel}` : null,
+    entry.at === undefined ? null : `Sent: ${new Date(entry.at).toISOString()}`,
+    entry.edited ? "This message was edited." : null,
+  ].filter(Boolean);
+  if (facts.length)
+    details.push({
+      id: "metadata",
+      label: "Message details",
+      format: "text",
+      text: facts.join("\n"),
+    });
+
   const meta = joinMeta([
     entry.escalation?.title ?? null,
     entry.modelLabel ?? null,
@@ -371,7 +388,9 @@ function thinkingCard(
           },
         ],
     work: [],
-    actions: [],
+    actions: entry.text.trim()
+      ? [{ id: "copy", label: "Copy reasoning", value: entry.text }]
+      : [],
     busy: entry.streaming === true,
     plainText: markdownToPlainText(parseMarkdown(entry.text)),
   };
@@ -590,6 +609,27 @@ function workRecords(
           ? "tool"
           : "check",
     statusLabel: workStatusLabel(call),
+    preview: abbreviate(
+      call.failure ??
+        (call.arguments?.[0]
+          ? `${call.arguments[0].name}: ${call.arguments[0].value}`
+          : (call.progress?.at(-1) ?? "")),
+      140,
+    ),
+    contents:
+      [
+        call.arguments?.length
+          ? `${call.arguments.length} ${call.arguments.length === 1 ? "input" : "inputs"}`
+          : null,
+        call.progress?.length ? "Progress" : null,
+        call.output ? "Output" : null,
+        call.failure ? "Failure" : null,
+        call.images?.length
+          ? `${call.images.length} ${call.images.length === 1 ? "image" : "images"}`
+          : null,
+      ]
+        .filter(Boolean)
+        .join(" · ") || "Details",
     busy: call.state === "running",
     details: workDetails(call),
     images: (call.images ?? []).map((image) => imageView(image, call.name)),

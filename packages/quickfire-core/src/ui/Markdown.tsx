@@ -9,7 +9,11 @@
  */
 
 import { Fragment, type ReactNode } from "react";
-import { parseMarkdown, type MarkdownBlock, type MarkdownInline } from "../markdown";
+import {
+  parseMarkdown,
+  type MarkdownBlock,
+  type MarkdownInline,
+} from "../markdown";
 import { useSkin } from "./primitives";
 
 export function Markdown({
@@ -20,7 +24,9 @@ export function Markdown({
   /** Append the live-text cursor to the last line (a streaming reply). */
   caret?: boolean;
 }) {
-  return <Blocks blocks={parseMarkdown(source)} {...(caret ? { caret } : {})} />;
+  return (
+    <Blocks blocks={parseMarkdown(source)} {...(caret ? { caret } : {})} />
+  );
 }
 
 export function Blocks({
@@ -62,10 +68,22 @@ function Block({ block, caret }: { block: MarkdownBlock; caret?: boolean }) {
         </Text>
       );
     case "code":
-      return <Code text={block.text} language={block.language} caption={block.meta} />;
+      return (
+        <Code
+          text={block.text}
+          language={block.language}
+          caption={block.meta}
+        />
+      );
     case "embed":
       // Shown, never run. The label is what stops it reading as broken output.
-      return <Code text={block.text} language={block.label.toLowerCase()} caption={block.label} />;
+      return (
+        <Code
+          text={block.text}
+          language={block.label.toLowerCase()}
+          caption={block.label}
+        />
+      );
     case "rule":
       return <Divider />;
     case "quote":
@@ -105,35 +123,36 @@ function List({ block }: { block: Extract<MarkdownBlock, { kind: "list" }> }) {
   );
 }
 
-function Table({ block }: { block: Extract<MarkdownBlock, { kind: "table" }> }) {
-  const { Box, Text } = useSkin();
+function Table({
+  block,
+}: {
+  block: Extract<MarkdownBlock, { kind: "table" }>;
+}) {
+  const { Table, Text } = useSkin();
   return (
-    <Box surface="outline" gap="none" testId="quickfire-table">
-      <Box row gap="sm" pad="sm" surface="sunken">
-        {block.head.map((cell, index) => (
-          <Box key={index} grow>
-            <Text variant="label">
-              <Inlines nodes={cell} />
-            </Text>
-          </Box>
-        ))}
-      </Box>
-      {block.rows.map((row, rowIndex) => (
-        <Box key={rowIndex} row gap="sm" pad="sm">
-          {row.map((cell, index) => (
-            <Box key={index} grow>
-              <Text variant="caption">
-                <Inlines nodes={cell} />
-              </Text>
-            </Box>
-          ))}
-        </Box>
+    <Table
+      align={block.align}
+      head={block.head.map((cell, index) => (
+        <Text key={index} variant="strong">
+          <Inlines nodes={cell} />
+        </Text>
       ))}
-    </Box>
+      rows={block.rows.map((row) =>
+        row.map((cell, index) => (
+          <Text key={index}>
+            <Inlines nodes={cell} />
+          </Text>
+        )),
+      )}
+    />
   );
 }
 
-export function Inlines({ nodes }: { nodes: readonly MarkdownInline[] }): ReactNode {
+export function Inlines({
+  nodes,
+}: {
+  nodes: readonly MarkdownInline[];
+}): ReactNode {
   return nodes.map((node, index) => <Inline key={index} node={node} />);
 }
 
@@ -178,7 +197,9 @@ function Inline({ node }: { node: MarkdownInline }): ReactNode {
       );
     case "image":
       if (Image) return <Image src={node.src} alt={node.alt} />;
-      return <Text tone="muted">{node.alt ? `🖼 ${node.alt}` : "🖼 image"}</Text>;
+      return (
+        <Text tone="muted">{node.alt ? `🖼 ${node.alt}` : "🖼 image"}</Text>
+      );
     case "break":
       return Break ? <Break /> : <Fragment>{"\n"}</Fragment>;
   }
