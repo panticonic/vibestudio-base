@@ -99,3 +99,53 @@ it("loads the instance registry by default", async () => {
     "workspaceTemplateSource.localRegistry",
   );
 });
+
+it("checks every tag page using the chosen account before suggesting a version", async () => {
+  const fetch = vi
+    .fn()
+    .mockResolvedValueOnce(
+      new Response(
+        JSON.stringify(Array.from({ length: 100 }, () => ({ name: "v1.0.0" }))),
+      ),
+    )
+    .mockResolvedValueOnce(new Response(JSON.stringify([{ name: "v2.4.9" }])));
+  const forAudience = vi.fn(async () => ({ fetch }));
+  const api = await activate({
+    log: { info: vi.fn() },
+    rpc: { call: vi.fn() },
+    credentials: { forAudience },
+  } as never);
+  await expect(
+    api.publicationVersion({
+      owner: "team",
+      name: "personal",
+      credentialId: "selected",
+    }),
+  ).resolves.toEqual({ latest: "2.4.9", suggested: "2.4.10" });
+  expect(forAudience).toHaveBeenCalledWith(
+    expect.objectContaining({ credentialId: "selected" }),
+  );
+  expect(fetch.mock.calls.map((call) => call[0])).toEqual([
+    "https://api.github.com/repos/team/personal/tags?per_page=100&page=1",
+    "https://api.github.com/repos/team/personal/tags?per_page=100&page=2",
+  ]);
+});
+
+it("reports inaccessible tags instead of suggesting an unverified first release", async () => {
+  const api = await activate({
+    log: { info: vi.fn() },
+    rpc: { call: vi.fn() },
+    credentials: {
+      forAudience: async () => ({
+        fetch: async () => new Response("Access denied", { status: 403 }),
+      }),
+    },
+  } as never);
+  await expect(
+    api.publicationVersion({
+      owner: "team",
+      name: "personal",
+      credentialId: "selected",
+    }),
+  ).rejects.toThrow("403");
+});

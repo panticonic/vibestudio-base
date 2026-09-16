@@ -10,6 +10,11 @@ function observation(eventId: string) {
     authoredTop: { systemEpoch: 0 },
     localRepoPaths: new Set(["meta", "panels/news"]),
     templateDependencies: [],
+    manifest: {
+      inventory: { repositories: ["meta", "panels/news"] },
+      dependencies: [],
+      top: { systemEpoch: 0 },
+    },
   };
 }
 
@@ -173,4 +178,39 @@ it("publishes a selected inherited unit as an explicit override and permits depe
     current.templateDependencies,
   );
   expect(onlyDependency.template.overrides).toBeUndefined();
+});
+
+it("retains declared workspace defaults when incidental repositories are excluded", async () => {
+  const current = observation("event:defaults");
+  // Use a real parsed configuration value so the test checks the released manifest.
+  const config = {
+    systemEpoch: 0,
+    defaultAgentConfig: { model: "provider:model" },
+  };
+  const source = {
+    ...current,
+    authoredTop: config,
+    runtimeTop: config,
+    localRepoPaths: new Set(["meta", "panels/news", "projects/scratch"]),
+  };
+  const ctx = context();
+  const baseCall = ctx.rpc.call.getMockImplementation()!;
+  ctx.rpc.call.mockImplementation(async (target, method, input) => {
+    if (
+      method === "vcs.readFile" &&
+      input.repositoryId === "repository:projects/scratch"
+    )
+      return null as never;
+    return baseCall(target, method, input);
+  });
+  const plan = await inspectTemplateAuthoring(
+    ctx as never,
+    source as never,
+    { name: "News", description: "News workspace", parts: ["panels/news"] },
+    { repositories: [] },
+  );
+  expect(YAML.parse(plan.manifest).defaultAgentConfig).toEqual(
+    config.defaultAgentConfig,
+  );
+  expect(plan.includedParts).not.toContain("projects/scratch");
 });

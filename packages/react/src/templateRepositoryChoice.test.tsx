@@ -14,78 +14,75 @@ import {
   TemplateRepositoryChoice,
   type TemplateRepositoryChoiceValue,
 } from "./templateRepositoryChoice.js";
-
 afterEach(cleanup);
-it("selects a repository with its real visibility and invalidates selection when accounts change", async () => {
-  const publicationRepositories = vi
-    .fn()
-    .mockResolvedValue({
-      owner: "alice",
-      repositories: [
+it("prefills a single account without erasing upstream, and lets the user select another repository", async () => {
+  const publicationRepositories = vi.fn().mockResolvedValue({
+    owner: "alice",
+    repositories: [
+      {
+        owner: "team",
+        name: "template",
+        private: false,
+        webUrl: "https://github.com/team/template",
+      },
+    ],
+    nextPage: null,
+  });
+  const listAccounts = vi.fn().mockResolvedValue([
+    {
+      id: "account-1",
+      label: "Alice",
+      lifecycle: { state: "active" },
+      bindings: [
         {
-          owner: "team",
-          name: "template",
-          private: false,
-          webUrl: "https://github.com/team/template",
+          use: "git-http",
+          audience: [{ url: "https://github.com", match: "origin" }],
         },
       ],
-      nextPage: null,
-    });
-  const listAccounts = vi
-    .fn()
-    .mockResolvedValue([
-      {
-        id: "account-1",
-        label: "Alice",
-        lifecycle: { state: "active" },
-        bindings: [
-          {
-            use: "git-http",
-            audience: [{ url: "https://github.com", match: "origin" }],
-          },
-        ],
-      },
-    ]);
+    },
+  ]);
   const changed = vi.fn();
   function Harness() {
     const [value, setValue] = useState<TemplateRepositoryChoiceValue>({
-      owner: "",
-      name: "",
+      owner: "team",
+      name: "personal",
       private: true,
+      mode: "upstream",
     });
     return (
       <Theme>
         <TemplateRepositoryChoice
+          upstream={{ owner: "team", name: "personal" }}
           client={{ publicationRepositories } as unknown as TemplatesClient}
           value={value}
+          listAccounts={listAccounts}
           onChange={(next) => {
             setValue(next);
             changed(next);
           }}
-          listAccounts={listAccounts}
         />
       </Theme>
     );
   }
   render(<Harness />);
-  await screen.findByRole("option", { name: "Alice" });
-  fireEvent.change(screen.getByLabelText("GitHub account"), {
-    target: { value: "account-1" },
-  });
-  fireEvent.change(screen.getByLabelText("Repository destination"), {
-    target: { value: "existing" },
-  });
+  await screen.findByRole("radio", { name: "Alice" });
+  await waitFor(() =>
+    expect(changed).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        owner: "team",
+        name: "personal",
+        credentialId: "account-1",
+        mode: "upstream",
+      }),
+    ),
+  );
+  fireEvent.click(screen.getByRole("radio", { name: "Existing repository" }));
   fireEvent.click(
     screen.getByRole("button", { name: "Load writable repositories" }),
   );
-  await screen.findByRole("option", { name: "team/template · Public" });
-  expect(publicationRepositories).toHaveBeenCalledWith({
-    credentialId: "account-1",
-    page: 1,
-  });
-  fireEvent.change(screen.getByLabelText("Existing repository"), {
-    target: { value: "team/template" },
-  });
+  fireEvent.click(
+    await screen.findByRole("button", { name: "team/template · Public" }),
+  );
   expect(changed).toHaveBeenLastCalledWith(
     expect.objectContaining({
       owner: "team",
@@ -94,18 +91,12 @@ it("selects a repository with its real visibility and invalidates selection when
       credentialId: "account-1",
     }),
   );
-  fireEvent.change(screen.getByLabelText("GitHub account"), {
-    target: { value: "" },
-  });
-  await waitFor(() =>
-    expect(
-      screen.queryByRole("option", { name: "team/template · Public" }),
-    ).toBeNull(),
+  fireEvent.click(screen.getByRole("radio", { name: "Update upstream" }));
+  expect(changed).toHaveBeenLastCalledWith(
+    expect.objectContaining({
+      owner: "team",
+      name: "personal",
+      credentialId: "account-1",
+    }),
   );
-  expect(changed).toHaveBeenLastCalledWith({
-    owner: "",
-    name: "",
-    private: true,
-    credentialId: undefined,
-  });
 });

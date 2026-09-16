@@ -17,6 +17,8 @@ import { WorkspaceTemplatePinSchema } from "@vibestudio/workspace-contracts/work
 import type { ExtensionContextLike } from "./context.js";
 import {
   inspectTemplateAuthoring,
+  templateAuthoringSetup,
+  nextPublicationVersion,
   listTemplateAuthoringParts,
 } from "./authoring.js";
 import { observeWorkspace } from "./workspace.js";
@@ -186,6 +188,31 @@ export async function activate(ctx: ExtensionContextLike) {
       );
       return { observation, plan };
     }),
+    authoringSetup: async () => {
+      const observation = await observeWorkspace(ctx);
+      return templateAuthoringSetup(
+        observation,
+        inheritedInventory(observation).owners,
+      );
+    },
+    publicationVersion: async ({
+      owner,
+      name,
+      credentialId,
+    }: {
+      owner: string;
+      name: string;
+      credentialId?: string;
+    }) => {
+      const github = createGitHubClient(ctx.credentials, { credentialId });
+      const tags: string[] = [];
+      for (let page = 1; ; page++) {
+        const batch = await github.listTags(owner, name, page);
+        tags.push(...batch.map((tag) => tag.name));
+        if (batch.length < 100) break;
+      }
+      return nextPublicationVersion(tags);
+    },
     authoringUpstream: async () =>
       (await observeWorkspace(ctx)).manifest.installation?.upstream ?? null,
   };

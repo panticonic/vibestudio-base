@@ -1,0 +1,117 @@
+.template-publication {
+  container-type: inline-size;
+  min-width: 0;
+  padding-top: 24px;
+}
+.publication-fields {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+}
+.publication-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr);
+  gap: 20px;
+  align-items: start;
+}
+.publication-section {
+  padding: 20px;
+  border-radius: 14px;
+  min-width: 0;
+}
+.publication-choice-grid {
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: 8px;
+}
+.publication-choice-grid .rt-RadioCardsItem {
+  min-height: 48px;
+  padding: 12px;
+}
+.publication-destination {
+  overflow-wrap: anywhere;
+  background: var(--accent-a2);
+}
+.template-publication label {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: 14px;
+}
+.template-publication .rt-TextFieldRoot {
+  min-height: 44px;
+}
+.template-publication .rt-Button {
+  min-height: 44px;
+  white-space: normal;
+}
+.template-publication details {
+  margin-top: 16px;
+}
+.template-publication summary {
+  min-height: 44px;
+  align-content: center;
+  cursor: pointer;
+  font-size: 14px;
+  color: var(--accent-11);
+}
+.template-publication .publication-part {
+  display: flex;
+  flex-direction: row;
+  align-items: start;
+  min-height: 44px;
+  padding: 12px 0;
+  gap: 12px;
+  border-bottom: 1px solid var(--gray-a4);
+}
+.publication-part > span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.publication-part-source {
+  display: block;
+  margin-top: 4px;
+}
+.publication-dependencies {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 16px;
+  overflow-wrap: anywhere;
+}
+.publication-dependencies .rt-Badge {
+  white-space: normal;
+}
+.publication-actions {
+  position: sticky;
+  bottom: 0;
+  margin-top: 20px;
+  padding: 16px 0;
+  background: var(--color-background);
+  border-top: 1px solid var(--gray-a5);
+  z-index: 1;
+}
+.publication-repositories {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.publication-paths,
+.template-publication pre {
+  font-size: 12px;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+@container (max-width: 640px) {
+  .publication-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .publication-section {
+    padding: 16px;
+  }
+  .publication-actions {
+    flex-direction: column;
+    align-items: stretch;
+    padding-bottom: max(16px, env(safe-area-inset-bottom));
+  }
+}

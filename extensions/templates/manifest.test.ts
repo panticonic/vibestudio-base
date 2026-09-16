@@ -41,6 +41,8 @@ describe("templates authority manifest", () => {
       "readUpdateFile",
       "publicationRepositories",
       "authoringUpstream",
+      "authoringSetup",
+      "publicationVersion",
     ]);
     expect(
       manifest.vibestudio.authority.requests

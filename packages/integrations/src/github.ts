@@ -63,7 +63,7 @@ export interface GitHubUser {
 }
 
 export interface GitHubRepo {
-  permissions?: {push?: boolean; admin?: boolean; pull?: boolean};
+  permissions?: { push?: boolean; admin?: boolean; pull?: boolean };
   archived?: boolean;
   disabled?: boolean;
   id: number;
@@ -488,6 +488,11 @@ export interface GitHubClient {
     params: ResolveOrCreateRepoParams,
   ): Promise<ResolveOrCreateRepoResult>;
   getRepo(owner: string, repo: string): Promise<GitHubRepo>;
+  listTags(
+    owner: string,
+    repo: string,
+    page: number,
+  ): Promise<Array<{ name: string }>>;
   listIssues(
     owner: string,
     repo: string,
@@ -765,6 +770,10 @@ export function createGitHubClient(
         `/user/repos${toQueryParams(opts)}`,
         undefined,
         userHandle,
+      ),
+    listTags: (owner, repo, page) =>
+      apiFetch(
+        `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/tags?per_page=100&page=${page}`,
       ),
     getRepo: (owner, repo) =>
       apiFetch<GitHubRepo>(`/repos/${enc(owner)}/${enc(repo)}`),

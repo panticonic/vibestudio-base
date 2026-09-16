@@ -422,7 +422,7 @@ export async function inspectTemplateAuthoring(
     new Set(includedParts),
     packageOwners,
     { name, description },
-    selectableParts.every(
+    observation.manifest.inventory.repositories.every(
       (repoPath) => included.has(repoPath) || inherited.has(repoPath),
     ),
     observation.templateDependencies,
@@ -483,4 +483,67 @@ export async function listTemplateAuthoringParts(
       };
     }),
   );
+}
+
+/** Publication defaults come from authored declarations, never the materialized dependency tree. */
+export function templateAuthoringSetup(
+  observation: SemanticWorkspaceObservation,
+  inheritedOwners: ReadonlyMap<string, string>,
+) {
+  const manifest = observation.manifest;
+  const declared = new Set(manifest.inventory.repositories);
+  const overrides = new Set(manifest.overrides?.map((item) => item.repoPath));
+  return {
+    name: manifest.presentation?.name ?? "",
+    description: manifest.presentation?.description ?? "",
+    upstream: manifest.installation?.upstream ?? null,
+    dependencies: [...manifest.dependencies],
+    parts: [...observation.localRepoPaths]
+      .filter((repoPath) => repoPath !== "meta")
+      .sort(compareUtf16CodeUnits)
+      .map((repoPath) => {
+        const inheritedFrom = inheritedOwners.get(repoPath);
+        return {
+          repoPath,
+          ownership: (overrides.has(repoPath) ||
+          (declared.has(repoPath) && !inheritedFrom)
+            ? "authored"
+            : inheritedFrom
+              ? "inherited"
+              : "unlisted") as "authored" | "inherited" | "unlisted",
+          ...(inheritedFrom ? { inheritedFrom } : {}),
+        };
+      }),
+  };
+}
+
+export function nextPublicationVersion(tags: readonly string[]) {
+  const versions = tags
+    .flatMap((tag) => {
+      const match =
+        /^v?(0|[1-9][0-9]*)(?:\.(0|[1-9][0-9]*))?(?:\.(0|[1-9][0-9]*))?$/.exec(
+          tag,
+        );
+      return match
+        ? [
+            [
+              BigInt(match[1]!),
+              BigInt(match[2] ?? "0"),
+              BigInt(match[3] ?? "0"),
+            ],
+          ]
+        : [];
+    })
+    .sort((a, b) => {
+      for (let i = 0; i < 3; i++)
+        if (a[i] !== b[i]) return a[i]! > b[i]! ? -1 : 1;
+      return 0;
+    });
+  const latest = versions[0];
+  return {
+    latest: latest ? latest.join(".") : null,
+    suggested: latest
+      ? `${latest[0]}.${latest[1]}.${latest[2]! + 1n}`
+      : "1.0.0",
+  };
 }

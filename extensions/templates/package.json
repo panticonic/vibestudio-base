@@ -180,6 +180,24 @@
             "kind": "closed",
             "reason": "Reads private template upstream metadata."
           }
+        },
+        "authoringSetup": {
+          "effect": {
+            "kind": "open"
+          },
+          "website": {
+            "kind": "closed",
+            "reason": "Reads private workspace publication metadata."
+          }
+        },
+        "publicationVersion": {
+          "effect": {
+            "kind": "open"
+          },
+          "website": {
+            "kind": "closed",
+            "reason": "Reads private workspace publication metadata."
+          }
         }
       }
     },
