@@ -3548,6 +3548,10 @@ This is one admitted recurring-automation tick. If this tick establishes that th
     );
     if (terminal) return terminal;
     const loop = await this.driver.loop(input.channelId);
+    const queued = loop.state.deferredPostTurnQueue.find(
+      (entry) => entry.metadata?.automation?.runId === input.runId,
+    );
+    if (queued) return { state: "queued", channelId: input.channelId };
     const turn = loop.state.openTurn;
     if (turn?.metadata?.automation?.runId !== input.runId)
       return { state: "not-found" };
@@ -7685,12 +7689,12 @@ This is one admitted recurring-automation tick. If this tick establishes that th
     };
   }
 
-  /** Validate a model's request to wait for supervised work against both
-   * retained child lifecycle and already-admitted terminal prompts. A child
-   * may finish while the parent's spawning turn is still open; in that case
-   * the report is durably deferred until the turn closes and suspension is
-   * precisely what releases it. */
+  /** A wait must have a concrete wake source: live supervised work or a
+   * durably admitted turn. Yielding lets the loop release its own queued work
+   * without polling or borrowing the foreground turn's execution identity. */
   protected async guardBackgroundSuspension(channelId: string) {
+    const loop = await this.driver.loop(channelId);
+    if (loop.state.deferredPostTurnQueue.length > 0) return { suspend: true };
     const supervised = this.subagentRuns
       .listAll()
       .filter((run) => run.parentChannelId === channelId);
@@ -7698,18 +7702,6 @@ This is one admitted recurring-automation tick. If this tick establishes that th
       (run) => run.status === "starting" || run.status === "running",
     );
     if (live.length > 0) return { suspend: true };
-
-    const retainedRunIds = new Set(supervised.map((run) => run.runId));
-    if (retainedRunIds.size > 0) {
-      const loop = await this.driver.loop(channelId);
-      const admittedChildReport = loop.state.deferredPostTurnQueue.some(
-        (prompt) => {
-          const runId = prompt.metadata?.supervisedRunId;
-          return typeof runId === "string" && retainedRunIds.has(runId);
-        },
-      );
-      if (admittedChildReport) return { suspend: true };
-    }
 
     const completedRunsAwaitingIntegration = supervised
       .filter(

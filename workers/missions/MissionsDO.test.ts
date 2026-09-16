@@ -628,12 +628,13 @@ describe("MissionsDO", () => {
     });
   });
 
-  it("reconciles an executing turn from receiver-owned evidence", async () => {
+  it.each(["queued", "running"] as const)("reconciles a %s turn from receiver-owned evidence", async (initialState) => {
     const harness = await createMissions(IdempotentCommandMissionsDO);
     const dispatchKeys: string[] = [];
     let admissions = 0;
     let executorStatus:
       | { state: "not-found" }
+      | { state: "queued"; channelId: string }
       | {
           state: "running";
           channelId: string;
@@ -645,7 +646,7 @@ describe("MissionsDO", () => {
           outcome: "succeeded";
           finalMessage: string;
         } = {
-      state: "running",
+      state: initialState,
       channelId: "do:workers/pubsub-channel:PubSubChannel:fresh",
       turnId: "turn:live",
       waiting: true,

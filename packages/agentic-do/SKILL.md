@@ -24,6 +24,16 @@ projection/rendering details can live in sibling packages such as
 `../agentic-core` or `../agentic-protocol`, and the standard chat worker lives
 under `../../workers/agent-worker`.
 
+## Automation turns
+
+Prompt automations and model-free evals share the agent loop's durable
+after-turn queue. A busy conversation admits the run as `queued`; it starts
+after earlier turns finish, with its own automation metadata and ordinary
+tool permissions. A foreground `suspend_turn` yields to admitted work instead
+of waiting on its own queue. Stop parks queued work until explicit user input resumes it.
+Keep admission, replay, and deduplication in this shared loop rather than
+adding an automation-specific executor or retry queue.
+
 ## Structured channel observations
 
 A channel subscription can opt an agent into exact non-chat payload kinds:

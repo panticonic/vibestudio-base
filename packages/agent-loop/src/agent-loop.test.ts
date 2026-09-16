@@ -149,6 +149,78 @@ function drainPromptArtifactPreparations(s: Scenario): void {
 }
 
 const turn1 = ids.turnId("chan-1", "env-1", "agent:self");
+
+describe("deferred direct invocations", () => {
+  function invoke(s: Scenario, envelopeId = "automation:eval") {
+    dispatch(s, { type: "command", command: {
+      kind: "invoke", channelId: "chan-1", source: { envelopeId },
+      tool: "read", args: { path: "README.md" },
+      metadata: { completion: "after-invocation" },
+    } });
+  }
+  function finishModel(s: Scenario) {
+    const effect = [...s.effects.values()].find((effect) => effect.kind === "model_call")!;
+    resolveEffect(s, effect.effectId, { kind: "model", blocks: [{ type: "text", content: "done" }], stopReason: "completed" });
+  }
+
+  it.each(["before", "after"])("runs queued work admitted %s the foreground turn yields", (timing) => {
+    const s = scenario();
+    prompt(s);
+    if (timing === "before") invoke(s);
+    const model = [...s.effects.values()].find((effect) => effect.kind === "model_call")!;
+    resolveEffect(s, model.effectId, {
+      kind: "model",
+      blocks: [{ type: "toolCall", id: "yield", name: "suspend_turn", arguments: { reason: "waiting_for_background" } }],
+      stopReason: "completed",
+    });
+    resolveEffect(s, ids.invocationEffect("yield"), {
+      kind: "tool", isError: false,
+      result: { protocolContent: [{ type: "text", text: "Turn suspended." }], details: { suspendTurn: true, reason: "waiting_for_background" } },
+      turnControl: { kind: "suspend", reason: "waiting_for_background", summary: "Waiting for queued work" },
+    });
+    if (timing === "after") invoke(s);
+    expect(s.state.openTurn?.metadata?.completion).toBe("after-invocation");
+    expect(s.log.find((row) => row.payloadKind === "turn.closed")?.payload)
+      .not.toHaveProperty("reason"); // Yielding is completion, not a failed automation turn.
+    expect(s.state.deferredPostTurnQueue).toEqual([]);
+    expect([...s.effects.values()].map((effect) => effect.kind)).toEqual(["local_tool"]);
+  });
+
+  it("preserves FIFO order across prompt and model-free turns", () => {
+    const s = scenario();
+    prompt(s);
+    prompt(s, "deferred-prompt", "next", { deliverAfterTurn: true });
+    invoke(s);
+    expect(s.state.deferredPostTurnQueue.map((entry) => entry.kind)).toEqual(["prompt", "invoke"]);
+    finishModel(s);
+    expect(s.state.openTurn?.metadata?.completion).not.toBe("after-invocation");
+    expect(s.state.deferredPostTurnQueue.map((entry) => entry.kind)).toEqual(["invoke"]);
+    finishModel(s);
+    expect(s.state.openTurn?.metadata?.completion).toBe("after-invocation");
+    const tool = [...s.effects.values()].find((effect) => effect.kind === "local_tool")!;
+    resolveEffect(s, tool.effectId, { kind: "tool", result: "read complete", isError: false });
+    expect(s.state.openTurn).toBeNull();
+    expect(s.state.deferredPostTurnQueue).toEqual([]);
+    expect(s.effects.size).toBe(0);
+  });
+
+  it("keeps queued invocations stopped across wake until the user resumes", () => {
+    const s = scenario();
+    prompt(s);
+    invoke(s);
+    dispatch(s, { type: "command", command: { kind: "interrupt" } });
+    const model = [...s.effects.values()].find((effect) => effect.kind === "model_call")!;
+    resolveEffect(s, model.effectId, { kind: "model", blocks: [], stopReason: "aborted" });
+    dispatch(s, { type: "command", command: { kind: "wake" } });
+    expect(s.state.pausedByUser).toBe(true);
+    expect(s.state.openTurn).toBeNull();
+    expect(s.state.deferredPostTurnQueue).toHaveLength(1);
+    expect(s.effects.size).toBe(0);
+    prompt(s, "resume", "continue");
+    finishModel(s);
+    expect(s.state.openTurn?.metadata?.completion).toBe("after-invocation");
+  });
+});
 const msg0 = ids.messageId(turn1, 0);
 
 describe("agent-loop core lifecycle", () => {
@@ -2982,7 +3054,7 @@ describe("agent-loop message delivery (acks, edit/retract, after-turn, flush)", 
 
     expect(s.state.openTurn).toBeNull();
     expect(
-      s.state.deferredPostTurnQueue.map((entry) => entry.sourceMessageId),
+      s.state.deferredPostTurnQueue.map((entry) => entry.kind === "prompt" ? entry.sourceMessageId : null),
     ).toEqual(["deferred-after-turn"]);
     expect(pendingEffectIds(s)).toEqual([]);
     expect(s.state.pausedByUser).toBe(true);
@@ -3007,7 +3079,7 @@ describe("agent-loop message delivery (acks, edit/retract, after-turn, flush)", 
     drainPromptArtifactPreparations(s);
     expect(s.state.openTurn).toBeNull();
     expect(
-      s.state.deferredPostTurnQueue.map((entry) => entry.sourceMessageId),
+      s.state.deferredPostTurnQueue.map((entry) => entry.kind === "prompt" ? entry.sourceMessageId : null),
     ).toEqual(["deferred-after-turn", "late-background"]);
 
     promptWith(s, {
@@ -3063,7 +3135,7 @@ describe("agent-loop message delivery (acks, edit/retract, after-turn, flush)", 
     });
     expect(s.state.openTurn).toBeNull();
     expect(
-      s.state.deferredPostTurnQueue.map((entry) => entry.sourceMessageId),
+      s.state.deferredPostTurnQueue.map((entry) => entry.kind === "prompt" ? entry.sourceMessageId : null),
     ).toEqual(["deferred-after-turn"]);
     expect(pendingEffectIds(s)).toEqual([]);
   });
@@ -3115,7 +3187,7 @@ describe("agent-loop message delivery (acks, edit/retract, after-turn, flush)", 
     });
     // recv appended, but no NEW model_call effect and no context entry
     expect(pendingEffectIds(s)).toEqual(before);
-    expect(s.state.deferredPostTurnQueue.map((d) => d.sourceMessageId)).toEqual(
+    expect(s.state.deferredPostTurnQueue.map((d) => d.kind === "prompt" ? d.sourceMessageId : null)).toEqual(
       ["d1"],
     );
     expect(
@@ -3208,7 +3280,7 @@ describe("agent-loop message delivery (acks, edit/retract, after-turn, flush)", 
       metadata: { deliverAfterTurn: true },
     });
     expect(
-      s.state.deferredPostTurnQueue.map((entry) => entry.sourceMessageId),
+      s.state.deferredPostTurnQueue.map((entry) => entry.kind === "prompt" ? entry.sourceMessageId : null),
     ).toEqual(["subagent-terminal:run-1"]);
 
     resolveEffect(s, ids.invocationEffect("suspend-1"), {
@@ -3311,7 +3383,7 @@ describe("agent-loop message delivery (acks, edit/retract, after-turn, flush)", 
       ["u2"],
     );
     expect(
-      s.state.deferredPostTurnQueue.map((entry) => entry.sourceMessageId),
+      s.state.deferredPostTurnQueue.map((entry) => entry.kind === "prompt" ? entry.sourceMessageId : null),
     ).toEqual(["subagent-terminal:run-2"]);
 
     resolveEffect(s, firstTerminalModel, {
@@ -3327,7 +3399,7 @@ describe("agent-loop message delivery (acks, edit/retract, after-turn, flush)", 
       `read:u2:${turn1}`,
     ]);
     expect(
-      s.state.deferredPostTurnQueue.map((entry) => entry.sourceMessageId),
+      s.state.deferredPostTurnQueue.map((entry) => entry.kind === "prompt" ? entry.sourceMessageId : null),
     ).toEqual(["subagent-terminal:run-2"]);
 
     resolveEffect(s, steeredModel, {
@@ -3406,7 +3478,7 @@ describe("agent-loop message delivery (acks, edit/retract, after-turn, flush)", 
       ]),
     );
     expect(
-      s.state.deferredPostTurnQueue.map((item) => item.sourceMessageId),
+      s.state.deferredPostTurnQueue.map((item) => item.kind === "prompt" ? item.sourceMessageId : null),
     ).toEqual(["d1"]);
     expect(
       s.state.entries.some(
@@ -3428,7 +3500,7 @@ describe("agent-loop message delivery (acks, edit/retract, after-turn, flush)", 
       sourceMessageId: "d2",
       metadata: { deliverAfterTurn: true },
     });
-    expect(s.state.deferredPostTurnQueue.map((d) => d.sourceMessageId)).toEqual(
+    expect(s.state.deferredPostTurnQueue.map((d) => d.kind === "prompt" ? d.sourceMessageId : null)).toEqual(
       ["d1", "d2"],
     );
 
@@ -3438,7 +3510,7 @@ describe("agent-loop message delivery (acks, edit/retract, after-turn, flush)", 
       blocks: [{ type: "text", content: "done" }],
       stopReason: "completed",
     });
-    expect(s.state.deferredPostTurnQueue.map((d) => d.sourceMessageId)).toEqual(
+    expect(s.state.deferredPostTurnQueue.map((d) => d.kind === "prompt" ? d.sourceMessageId : null)).toEqual(
       ["d2"],
     );
     expect(s.state.openTurn).not.toBeNull();
@@ -3580,7 +3652,7 @@ describe("agent-loop message delivery (acks, edit/retract, after-turn, flush)", 
       command: { kind: "interrupt", flushDeferred: true },
     });
     expect(s.state.openTurn?.pendingFlush).toBe("steers");
-    expect(s.state.deferredPostTurnQueue.map((d) => d.sourceMessageId)).toEqual(
+    expect(s.state.deferredPostTurnQueue.map((d) => d.kind === "prompt" ? d.sourceMessageId : null)).toEqual(
       ["d1"],
     );
     // aborted model terminal → continuation consumes the steer (turn stays open)
@@ -3591,7 +3663,7 @@ describe("agent-loop message delivery (acks, edit/retract, after-turn, flush)", 
     });
     expect(s.state.openTurn).not.toBeNull();
     expect(readAcks(s).map((ack) => ack.messageId)).toContain("s1");
-    expect(s.state.deferredPostTurnQueue.map((d) => d.sourceMessageId)).toEqual(
+    expect(s.state.deferredPostTurnQueue.map((d) => d.kind === "prompt" ? d.sourceMessageId : null)).toEqual(
       ["d1"],
     );
   });
@@ -3744,7 +3816,7 @@ describe("agent-loop message delivery (acks, edit/retract, after-turn, flush)", 
       stopReason: "aborted",
     });
     // one head promoted into a fresh turn; the other still queued
-    expect(s.state.deferredPostTurnQueue.map((d) => d.sourceMessageId)).toEqual(
+    expect(s.state.deferredPostTurnQueue.map((d) => d.kind === "prompt" ? d.sourceMessageId : null)).toEqual(
       ["d2"],
     );
     expect(s.state.openTurn).not.toBeNull();

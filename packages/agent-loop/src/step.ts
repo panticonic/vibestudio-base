@@ -20,7 +20,7 @@ import {
   type ModelCallEffect,
   type RecordReceiptEffect,
 } from "./effects.js";
-import type { DeferredPrompt } from "./state.js";
+import type { DeferredPrompt, DeferredInvocation } from "./state.js";
 import { applyEvent } from "./fold.js";
 import { ids } from "./ids.js";
 import { classifyModelFailure, type ModelFailureInfo } from "./model-errors.js";
@@ -523,12 +523,60 @@ function promoteSteersAsTurn(state: AgentState, ctx: StepContext): StepOutput {
 
 function promoteDeferredHead(state: AgentState, ctx: StepContext): StepOutput {
   const head = state.deferredPostTurnQueue[0];
-  if (!head?.artifactsReady || Object.keys(state.pendingPromptPreparations).length > 0) {
+  if (head?.kind === "invoke") {
+    if (state.openTurn) {
+      if (
+        state.pausedByUser || state.openTurn.interrupted ||
+        state.openTurn.waitingAtSeq === undefined || !wakeGuardSatisfied(state)
+      ) return EMPTY;
+      // A parked foreground turn cannot wait on work queued behind itself.
+      // Yield the turn boundary; the queued invocation retains its own identity.
+      return {
+        append: [turnClosedItem(state.openTurn)],
+        effects: [],
+      };
+    }
+    return startDirectInvocation(state, head, ctx);
+  }
+  if (state.openTurn || !head?.artifactsReady || Object.keys(state.pendingPromptPreparations).length > 0) {
     return EMPTY;
   }
   const recv = promotedRecvItem(head, state.lastSeq);
   const afterRecv = projectAppend(state, [recv], ctx.now);
   return promotePendingPrompt(afterRecv, ctx, [recv]);
+}
+
+function startDirectInvocation(
+  state: AgentState,
+  head: DeferredInvocation,
+  ctx: StepContext,
+): StepOutput {
+  const turnId = ids.turnId(state.channelId, head.turnTriggerEnvelopeId, ctx.selfRef.id);
+  const messageId = ids.messageId(turnId, 0);
+  return {
+    append: [
+      turnOpenedItem(turnId, head.metadata, head.envelopeId),
+      {
+        envelopeId: ids.messageTerminal(messageId),
+        payloadKind: "message.completed",
+        payload: {
+          protocol: AGENTIC_PROTOCOL_VERSION,
+          role: "assistant",
+          blocks: [{
+            type: "toolCall",
+            id: `direct:${turnId}:${head.tool}`,
+            name: head.tool,
+            arguments: head.args,
+          }],
+          outcome: "tool_calls_only",
+          tier: "secondary",
+        },
+        causality: { messageId: messageId as never, turnId },
+        publish: true,
+      },
+    ],
+    effects: [],
+  };
 }
 
 function turnClosedItem(
@@ -1211,10 +1259,7 @@ function flushStep(state: AgentState, ctx: StepContext): StepOutput | null {
       };
     }
     // No open turn: promote the head directly.
-    const head = state.deferredPostTurnQueue[0]!;
-    const recv = promotedRecvItem(head, state.lastSeq);
-    const afterRecv = projectAppend(state, [recv], ctx.now);
-    return promotePendingPrompt(afterRecv, ctx, [recv]);
+    return promoteDeferredHead(state, ctx);
   }
 
   return null;
@@ -1244,37 +1289,28 @@ function alreadyIngested(state: AgentState, recvEnvelopeId: string): boolean {
 function commandStep(state: AgentState, command: Command, ctx: StepContext): StepOutput {
   switch (command.kind) {
     case "invoke": {
-      if (state.openTurn) {
-        throw new Error("Cannot start a direct invocation while another turn is open");
-      }
       const turnId = ids.turnId(state.channelId, command.source.envelopeId, ctx.selfRef.id);
       const messageId = ids.messageId(turnId, 0);
-      const invocationId = `direct:${turnId}:${command.tool}`;
-      const opened = turnOpenedItem(turnId, command.metadata);
-      const message: AppendItem = {
-        envelopeId: ids.messageTerminal(messageId),
-        payloadKind: "message.completed",
+      const envelopeId = `recv:invoke:${turnId}`;
+      if (state.deferredPostTurnQueue.some((entry) => entry.envelopeId === envelopeId) ||
+          state.openTurn?.turnId === turnId ||
+          state.entries.some((entry) => entry.kind === "assistant" && entry.messageId === messageId)) return EMPTY;
+      // Admission is durable even while busy or stopped. Promotion alone starts
+      // the normal tool lifecycle, after all earlier queued turns have run.
+      return { append: [{
+        envelopeId,
+        payloadKind: "system.event",
         payload: {
           protocol: AGENTIC_PROTOCOL_VERSION,
-          role: "assistant",
-          blocks: [
-            {
-              type: "toolCall",
-              id: invocationId,
-              name: command.tool,
-              arguments: command.args,
-            },
-          ],
-          outcome: "tool_calls_only",
-          tier: "secondary",
+          kind: "turn.invocation_queued",
+          details: { kind: "turn.invocation_queued" },
+          turnTriggerEnvelopeId: command.source.envelopeId,
+          tool: command.tool,
+          request: command.args,
+          ...(command.metadata ? { metadata: command.metadata } : {}),
         },
-        causality: { messageId: messageId as never, turnId },
-        publish: true,
-      };
-      // The ordinary message.completed cascade owns invocation.started and
-      // effect dispatch. Direct turns only bypass the model call; they do not
-      // create a second tool lifecycle.
-      return { append: [opened, message], effects: [] };
+        publish: false,
+      }], effects: [] };
     }
 
     case "prompt-failed": {
@@ -1555,9 +1591,15 @@ function commandStep(state: AgentState, command: Command, ctx: StepContext): Ste
         }
       }
       // 2+3. open turn + fresh input + guard → next model call
+      if (afterOrphan.openTurn?.waitingAtSeq !== undefined &&
+          afterOrphan.deferredPostTurnQueue[0]?.kind === "invoke") {
+        const next = promoteDeferredHead(afterOrphan, ctx);
+        return { append: [...append, ...next.append], effects: next.effects };
+      }
       if (
         afterOrphan.openTurn &&
         !afterOrphan.openTurn.interrupted &&
+        afterOrphan.openTurn.metadata?.completion !== "after-invocation" &&
         wakeGuardSatisfied(afterOrphan) &&
         (hasFreshInput(afterOrphan) ||
           afterOrphan.openTurn.modelCallCount === 0 ||
@@ -1569,6 +1611,12 @@ function commandStep(state: AgentState, command: Command, ctx: StepContext): Ste
       // 4. no open turn + pendingPrompt → C-prompt path (shared promotion).
       if (!afterOrphan.openTurn && afterOrphan.pendingPrompt) {
         return promotePendingPrompt(afterOrphan, ctx, append);
+      }
+      if (!afterOrphan.openTurn && !afterOrphan.pausedByUser) {
+        const next = afterOrphan.steeringQueue.length > 0
+          ? promoteSteersAsTurn(afterOrphan, ctx)
+          : promoteDeferredHead(afterOrphan, ctx);
+        return { append: [...append, ...next.append], effects: next.effects };
       }
       return { append, effects: [] };
     }
@@ -1614,6 +1662,10 @@ function eventStep(state: AgentState, envelope: LogEnvelope, ctx: StepContext): 
       : {};
   const causality = (envelope.causality ?? {}) as Record<string, unknown>;
   // NOTE: `state` here is post-fold (the driver folds the envelope first).
+
+  if (kind === "turn.waiting" && state.deferredPostTurnQueue[0]?.kind === "invoke") {
+    return promoteDeferredHead(state, ctx);
+  }
 
   // E-model-terminal
   if (kind === "message.completed" && payload["role"] === "assistant") {
@@ -1741,7 +1793,7 @@ function eventStep(state: AgentState, envelope: LogEnvelope, ctx: StepContext): 
         // response waiter observe a response-less terminal turn before the
         // promoted input could be synthesized.
         const deferred = state.deferredPostTurnQueue[0];
-        if (deferred?.artifactsReady && Object.keys(state.pendingPromptPreparations).length === 0) {
+        if (deferred?.kind === "prompt" && deferred.artifactsReady && Object.keys(state.pendingPromptPreparations).length === 0) {
           const recv = promotedRecvItem(deferred, state.lastSeq);
           const afterRecv = projectAppend(state, [recv], ctx.now);
           const next = nextModelCall(afterRecv, 1, ctx, [deferred.sourceMessageId]);
@@ -1859,6 +1911,10 @@ function eventStep(state: AgentState, envelope: LogEnvelope, ctx: StepContext): 
   // interrupt marker with no in-flight call → immediate cleanup
   if (kind === "system.event") {
     const details = (payload["details"] ?? {}) as Record<string, unknown>;
+    if (details["kind"] === "turn.invocation_queued") {
+      if (state.pausedByUser || state.pendingPrompt || state.steeringQueue.length > 0) return EMPTY;
+      return promoteDeferredHead(state, ctx);
+    }
     if (details["kind"] === "prompt.artifacts_ready") {
       if (!state.openTurn) {
         if (state.pausedByUser) return EMPTY;
@@ -1870,7 +1926,7 @@ function eventStep(state: AgentState, envelope: LogEnvelope, ctx: StepContext): 
       if (
         state.openTurn.waitingAtSeq !== undefined &&
         !state.openTurn.interrupted &&
-        deferred?.artifactsReady &&
+        deferred?.kind === "prompt" && deferred.artifactsReady &&
         Object.keys(state.pendingPromptPreparations).length === 0 &&
         Object.keys(state.pendingInvocations).length === 0 &&
         wakeGuardSatisfied(state)

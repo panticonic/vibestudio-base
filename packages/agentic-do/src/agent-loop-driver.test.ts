@@ -92,6 +92,7 @@ async function makeHarness(opts: {
   selfRefFor?: DriverDeps["selfRefFor"];
   gad?: Awaited<ReturnType<typeof createTestDO<GadWorkspaceDO>>>;
   driverSql?: Awaited<ReturnType<typeof createTestDO<GadWorkspaceDO>>>;
+  blobs?: Map<string, string>;
   compaction?: { minEntries?: number; triggerBytes?: number };
   /** Optional gate to inject a TRANSIENT store-load failure: return an Error to
    *  make the gad call throw (and record nothing). Used to verify the driver
@@ -140,7 +141,7 @@ async function makeHarness(opts: {
       },
     }) as EffectExecutor;
 
-  const blobs = new Map<string, string>();
+  const blobs = opts.blobs ?? new Map<string, string>();
   const deps: DriverDeps = {
     sql: driverHost.sql as never,
     gad: {
@@ -229,6 +230,7 @@ async function makeHarness(opts: {
     driver,
     gad,
     driverHost,
+    blobs,
     ephemerals,
     alarms,
     channelPublishes,
@@ -463,6 +465,7 @@ describe("AgentLoopDriver", () => {
       args: { code: "return 42", authority: { approvals: "pregranted-only" } },
     });
     expect(await logKinds(harness.gad)).toEqual([
+      "system.event",
       "turn.opened",
       "message.completed",
       "invocation.started",
@@ -479,6 +482,73 @@ describe("AgentLoopDriver", () => {
           }),
         }),
       }),
+    ]);
+  });
+
+  it("queues a direct eval behind a conversation, survives reload, and delivers it once", async () => {
+    const observed: EffectDescriptor[] = [];
+    const script = { model: [textReply("Conversation finished")], tool: [toolOk] };
+    const harness = await makeHarness({ script });
+    await harness.driver.handleIncoming(CHANNEL, promptIncoming());
+    const code = `return ${JSON.stringify("x".repeat(80_000))}`;
+    const incoming = {
+      type: "command" as const,
+      command: {
+        kind: "invoke" as const, channelId: CHANNEL,
+        source: { envelopeId: "automation:queued" }, tool: "eval",
+        args: { code, authority: { approvals: "prompt" } },
+        metadata: { completion: "after-invocation" as const },
+      },
+    };
+    await harness.driver.handleIncoming(CHANNEL, incoming);
+    await harness.driver.handleIncoming(CHANNEL, incoming);
+    expect((await harness.driver.loop(CHANNEL)).state.deferredPostTurnQueue).toHaveLength(1);
+
+    const recovered = await makeHarness({
+      script, gad: harness.gad, driverSql: harness.driverHost, blobs: harness.blobs,
+      executorOverride: (descriptor) => { observed.push(descriptor); return null; },
+    });
+    await recovered.driver.wake(CHANNEL);
+    await settle(recovered.driver);
+    await recovered.driver.handleIncoming(CHANNEL, incoming);
+    await settle(recovered.driver);
+    expect(observed.filter((effect) => effect.kind === "model_call")).toHaveLength(1);
+    expect(observed.filter((effect) => effect.kind === "local_tool")).toEqual([
+      expect.objectContaining({ tool: "eval", args: { code, authority: { approvals: "prompt" } } }),
+    ]);
+    expect((await recovered.driver.loop(CHANNEL)).state.openTurn).toBeNull();
+    expect((await recovered.driver.loop(CHANNEL)).state.deferredPostTurnQueue).toEqual([]);
+    expect((await logKinds(harness.gad)).filter((kind) => kind === "turn.closed")).toHaveLength(2);
+  });
+
+  it.each(["after-append", "after-outcome-append"])("recovers a model-free invocation after %s without calling a model", async (killPoint) => {
+    let armed = true;
+    const script = { model: [], tool: [toolOk] };
+    const crashed = await makeHarness({
+      script,
+      killPoint: (point) => {
+        if (armed && point === killPoint) { armed = false; throw new Error("crash"); }
+      },
+    });
+    await crashed.driver.handleIncoming(CHANNEL, {
+      type: "command", command: {
+        kind: "invoke", channelId: CHANNEL,
+        source: { envelopeId: "automation:recover" }, tool: "eval",
+        args: { code: "return 42" }, metadata: { completion: "after-invocation" },
+      },
+    }).catch(() => {});
+    await crashed.driver.dispatchReadyEffectsForTest().catch(() => {});
+    const observed: EffectDescriptor[] = [];
+    const recovered = await makeHarness({
+      script, gad: crashed.gad, driverSql: crashed.driverHost, blobs: crashed.blobs,
+      executorOverride: (descriptor) => { observed.push(descriptor); return null; },
+    });
+    await recovered.driver.wake(CHANNEL);
+    await settle(recovered.driver);
+    expect(observed.some((effect) => effect.kind === "model_call")).toBe(false);
+    expect((await recovered.driver.loop(CHANNEL)).state.openTurn).toBeNull();
+    expect(await logKinds(crashed.gad)).toEqual([
+      "system.event", "turn.opened", "message.completed", "invocation.started", "invocation.completed", "turn.closed",
     ]);
   });
 

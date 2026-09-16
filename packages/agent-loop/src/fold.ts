@@ -94,7 +94,7 @@ function liveSenderRef(
     return state.pendingPrompt.senderRef;
   }
   for (const deferred of state.deferredPostTurnQueue) {
-    if (deferred.sourceMessageId === sourceMessageId) return deferred.senderRef;
+    if (deferred.kind === "prompt" && deferred.sourceMessageId === sourceMessageId) return deferred.senderRef;
   }
   return undefined;
 }
@@ -158,6 +158,9 @@ export function applyEvent(
             : {}),
         },
         pendingPrompt: null,
+        deferredPostTurnQueue: state.deferredPostTurnQueue.filter(
+          (entry) => entry.kind !== "invoke" || entry.envelopeId !== causality["messageId"],
+        ),
       };
     }
 
@@ -304,6 +307,7 @@ export function applyEvent(
           (state.openTurn && state.openTurn.waitingAtSeq === undefined))
       ) {
         const deferred: DeferredPrompt = {
+          kind: "prompt",
           sourceMessageId: sourceMessageId ?? String(envelope.envelopeId),
           envelopeId: String(envelope.envelopeId),
           turnTriggerEnvelopeId,
@@ -324,7 +328,7 @@ export function applyEvent(
       // deferred entry — drop that entry from the queue as it enters context.
       const deferredPostTurnQueue = sourceMessageId
         ? state.deferredPostTurnQueue.filter(
-            (d) => d.sourceMessageId !== sourceMessageId,
+            (d) => d.kind !== "prompt" || d.sourceMessageId !== sourceMessageId,
           )
         : state.deferredPostTurnQueue;
 
@@ -405,7 +409,7 @@ export function applyEvent(
               }
             : state.pendingPrompt,
         deferredPostTurnQueue: state.deferredPostTurnQueue.map((deferred) =>
-          deferred.sourceMessageId === sourceMessageId
+          deferred.kind === "prompt" && deferred.sourceMessageId === sourceMessageId
             ? {
                 ...deferred,
                 content: withEditedBlocks(deferred.content, blocks),
@@ -437,7 +441,7 @@ export function applyEvent(
             ? null
             : state.pendingPrompt,
         deferredPostTurnQueue: state.deferredPostTurnQueue.filter(
-          (deferred) => deferred.sourceMessageId !== sourceMessageId,
+          (deferred) => deferred.kind !== "prompt" || deferred.sourceMessageId !== sourceMessageId,
         ),
         entries: state.entries.filter(
           (entry) =>
@@ -652,6 +656,29 @@ export function applyEvent(
     case kind === "system.event": {
       const details = (payload["details"] ?? {}) as Record<string, unknown>;
       const detailKind = String(details["kind"] ?? payload["kind"] ?? "");
+      if (detailKind === "turn.invocation_queued") {
+        if (foreignAuthor) return state;
+        const turnTriggerEnvelopeId = payload["turnTriggerEnvelopeId"];
+        const tool = payload["tool"];
+        if (
+          typeof turnTriggerEnvelopeId !== "string" || !turnTriggerEnvelopeId ||
+          typeof tool !== "string" || !tool || !("request" in payload)
+        ) {
+          throw new Error("Queued invocation lacks its exact source, tool, or request");
+        }
+        return {
+          ...state,
+          deferredPostTurnQueue: [...state.deferredPostTurnQueue, {
+            kind: "invoke",
+            envelopeId: String(envelope.envelopeId),
+            turnTriggerEnvelopeId,
+            seq: envelope.seq,
+            tool,
+            args: payload["request"],
+            ...(metadataFromPayload(payload) ? { metadata: metadataFromPayload(payload) } : {}),
+          }],
+        };
+      }
       if (detailKind === "prompt.artifacts_requested") {
         const triggerEnvelopeId = String(
           payload["triggerEnvelopeId"] ?? details["triggerEnvelopeId"] ?? "",

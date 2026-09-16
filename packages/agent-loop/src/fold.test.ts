@@ -83,6 +83,23 @@ function request(contextThroughSeq: number): ModelRequestDescriptor {
 }
 
 describe("fold: an agent only owns turns it authored", () => {
+  it("never admits another agent's queued invocation", () => {
+    const state = initialAgentState({ channelId: "task", config, selfId: "agent:self" });
+    const payload = {
+      kind: "turn.invocation_queued",
+      turnTriggerEnvelopeId: "automation:run",
+      tool: "eval",
+      request: { code: "return 42" },
+      metadata: { completion: "after-invocation" },
+    };
+    expect(applyEvent(state, envelope("agent:other", "system.event", payload, {}, 1))
+      .deferredPostTurnQueue).toEqual([]);
+    expect(applyEvent(state, envelope("agent:self", "system.event", payload, {}, 1))
+      .deferredPostTurnQueue).toEqual([
+      expect.objectContaining({ kind: "invoke", tool: "eval", args: payload.request, metadata: payload.metadata }),
+    ]);
+  });
+
   it("keeps inherited context but never executes a pre-cut parent prompt", () => {
     const parentId = "agent:parent";
     const childId = "agent:child";

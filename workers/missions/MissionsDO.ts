@@ -1431,7 +1431,7 @@ export class MissionsDO extends DurableObjectBase {
       "describeAutomationRun",
       [{ channelId: row.channel_id, runId: row.run_id }],
     );
-    if (status.state === "running") {
+    if (status.state === "queued" || status.state === "running") {
       this.sql.exec(
         "UPDATE mission_runs SET progress_at=?,failure_json=NULL WHERE run_id=? AND phase='executing'",
         Date.now(),

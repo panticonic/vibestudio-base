@@ -407,6 +407,7 @@ export interface PendingPrompt {
 /** A "send after turn" message held until the current turn closes, then
  *  promoted (one per turn) into a fresh turn of its own. */
 export interface DeferredPrompt {
+  kind: "prompt";
   sourceMessageId: string;
   envelopeId: string;
   turnTriggerEnvelopeId: string;
@@ -417,6 +418,20 @@ export interface DeferredPrompt {
   agentHops?: number;
   artifactsReady?: boolean;
 }
+
+/** A model-free turn shares ordering with send-after-turn prompts. The request
+ * is fold-opaque (normally a StoredValueRef), hydrated by the tool executor. */
+export interface DeferredInvocation {
+  kind: "invoke";
+  envelopeId: string;
+  turnTriggerEnvelopeId: string;
+  seq: number;
+  tool: string;
+  args: unknown;
+  metadata?: AgentTurnMetadata;
+}
+
+export type DeferredTurn = DeferredPrompt | DeferredInvocation;
 
 /** Durable prerequisite for consuming an inbound prompt/steer. The request is
  * journaled before any host/build/blob I/O starts; the outbox derives exactly
@@ -519,13 +534,13 @@ export interface AgentState {
   steeringQueue: SteeringEntry[];
   pendingPrompt: PendingPrompt | null;
   pendingPromptPreparations: Record<string, PendingPromptPreparation>;
-  /** "Send after turn" messages, drained one per turn after each turn closes. */
-  deferredPostTurnQueue: DeferredPrompt[];
+  /** Prompt and model-free turns, drained in admission order after each turn closes. */
+  deferredPostTurnQueue: DeferredTurn[];
   /** A plain user Stop parks background deliveries until explicit input. */
   pausedByUser: boolean;
 }
 
-export const MODEL_CONTEXT_VERSION = 2;
+export const MODEL_CONTEXT_VERSION = 3;
 
 /**
  * A trajectory fork inherits semantic conversation entries, not executable

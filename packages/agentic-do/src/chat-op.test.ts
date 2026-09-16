@@ -776,6 +776,7 @@ class TestVessel extends AgentVesselBase {
 }
 
 class PromptEventProbe extends TestVessel {
+  deferredTurnsForTest: import("@workspace/agent-loop").DeferredTurn[] = [];
   readonly handleIncomingSpy = vi.fn(
     async (_channelId: string, _incoming: unknown) => {
       this.operationLog.push("driver:handleIncoming");
@@ -807,7 +808,7 @@ class PromptEventProbe extends TestVessel {
     return {
       activateChannel: vi.fn(),
       handleIncoming: this.handleIncomingSpy,
-      loop: vi.fn(async () => ({ state: { openTurn: null } })),
+      loop: vi.fn(async () => ({ state: { openTurn: null, deferredPostTurnQueue: this.deferredTurnsForTest } })),
     } as unknown as AgentLoopDriver;
   }
 
@@ -840,7 +841,7 @@ class AutomationCompletionProbe extends PromptEventProbe {
         openTurn ? { state: { openTurn } } : { state: { openTurn: null } },
       ),
       loop: vi.fn(async () => ({
-        state: { openTurn },
+        state: { openTurn, deferredPostTurnQueue: this.deferredTurnsForTest },
       })),
     } as unknown as AgentLoopDriver;
   }
@@ -1006,6 +1007,23 @@ describe("AgentVesselBase automation ingress", () => {
         },
       },
     });
+  });
+
+  it("reports queued evals and does not submit a duplicate run", async () => {
+    const vessel = await makePromptProbe();
+    vessel.deferredTurnsForTest = [{
+      kind: "invoke",
+      envelopeId: "queued-eval",
+      turnTriggerEnvelopeId: `automation:${automation.runId}`,
+      seq: 1,
+      tool: "eval",
+      args: { code: "return 42" },
+      metadata: { automation, completion: "after-invocation" },
+    }];
+    await expect(vessel.describeAutomationRun({ channelId: CHANNEL, runId: automation.runId }))
+      .resolves.toEqual({ state: "queued", channelId: CHANNEL });
+    await vessel.runAutomationEval({ channelId: CHANNEL, automation, eval: { code: "return 42" } });
+    expect(vessel.handleIncomingSpy).not.toHaveBeenCalled();
   });
 
   it("carries the same durable automation provenance into prompt turns", async () => {
@@ -2777,6 +2795,7 @@ class SubagentSpawnProbe extends TestVessel {
   readonly dropLoopSpy = vi.fn((_channelId: string) => {});
   childExecutionActive = false;
   deferredPostTurnQueueForTest: Array<{
+    kind?: "prompt" | "invoke";
     metadata?: { supervisedRunId?: string };
   }> = [];
   protected override async ensurePromptArtifacts(): Promise<void> {}
@@ -5076,6 +5095,12 @@ describe("AgentVesselBase.runDeferredSpawn", () => {
     expect(probe.subagentRunForTest("inv-1")).toMatchObject({
       status: "completed",
     });
+  });
+
+  it("lets suspension release queued work without requiring a supervised child", async () => {
+    const probe = await makeSubagentSpawnProbe();
+    probe.deferredPostTurnQueueForTest = [{ kind: "invoke" }];
+    await expect(probe.guardBackgroundSuspensionForTest()).resolves.toEqual({ suspend: true });
   });
 
   it("lets suspension release an admitted ordinary report from the open turn", async () => {
