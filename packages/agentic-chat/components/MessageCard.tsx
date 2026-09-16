@@ -33,6 +33,7 @@ import { useOptionalChatMessageActions } from "../context/ChatContext";
 import { useOptionalChatInputActions } from "../context/ChatInputContext";
 import { TypingIndicator } from "./TypingIndicator";
 import { MessageContent } from "./MessageContent";
+import { MessageSurface } from "./MessageSurface";
 import { ImageGallery } from "./ImageGallery";
 import { InlineUiMessage, parseInlineUiData } from "./InlineUiMessage";
 import { AgentDisconnectedMessage } from "./AgentDisconnectedMessage";
@@ -882,13 +883,10 @@ export const MessageCard = React.memo(function MessageCard({
         isSecondary && "message-row-tier2",
       )}
     >
-      <Card
-        className={classNames(
-          "message-card",
-          isClient && "message-card-client",
-          hasError && "message-card-error",
-          isSecondary && "message-card-tier2",
-        )}
+      <MessageSurface
+        role={isClient ? "player" : "agent"}
+        error={hasError}
+        secondary={isSecondary}
       >
         <Flex className="message-card-body" direction="column" gap="2">
           <Flex align="center" justify="between" gap="2">
@@ -1118,7 +1116,7 @@ export const MessageCard = React.memo(function MessageCard({
             />
           )}
         </Flex>
-      </Card>
+      </MessageSurface>
       <Dialog.Root
         open={editMode !== null}
         onOpenChange={(open) => !open && !editSubmitting && setEditMode(null)}

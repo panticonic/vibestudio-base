@@ -5,6 +5,7 @@
   "exports": {
     ".": "./index.ts",
     "./chat": "./components/AgenticChat.tsx",
+    "./presentation": "./presentation.ts",
     "./error-boundary": "./components/ErrorBoundary.tsx",
     "./features": "./features.ts",
     "./types": "./types.ts",

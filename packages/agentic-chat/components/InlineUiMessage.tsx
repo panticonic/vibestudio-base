@@ -16,12 +16,9 @@ import {
   type ErrorInfo,
 } from "react";
 import { Box, Button, Callout, Flex, Spinner, Text } from "@radix-ui/themes";
-import {
-  ExclamationTriangleIcon,
-  ComponentInstanceIcon,
-} from "@radix-ui/react-icons";
+import { ExclamationTriangleIcon } from "@radix-ui/react-icons";
 import { EventErrorBoundary } from "@workspace/tool-ui/components/EventErrorBoundary";
-import { SurfaceFrame } from "@workspace/tool-ui/components/SurfaceFrame";
+import { InlineUiSurface } from "./InlineUiSurface";
 import { CopyButton } from "./shared/CopyButton";
 import {
   wrapChatForErrorReporting,
@@ -486,14 +483,8 @@ export function InlineUiMessage({
   }
 
   return (
-    <SurfaceFrame
-      className="inline-ui-frame"
-      title="Interactive UI"
+    <InlineUiSurface
       subtitle={messageId ? `${data.id} · ${messageId}` : data.id}
-      tone="blue"
-      icon={<ComponentInstanceIcon />}
-      collapsible
-      defaultExpanded
     >
       <Box
         className="inline-ui-content"
@@ -536,7 +527,7 @@ export function InlineUiMessage({
           messageId={messageId}
         />
       </Box>
-    </SurfaceFrame>
+    </InlineUiSurface>
   );
 }
 
