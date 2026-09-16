@@ -444,11 +444,57 @@ it("passes the explicit authoring choice with the reviewed repository", async ()
       <TemplateWorkspaceReview inspection={inspection} onCreate={onCreate} />
     </Theme>,
   );
-  fireEvent.change(screen.getByLabelText("Workspace purpose"), {
-    target: { value: "author" },
-  });
+  fireEvent.click(
+    screen.getByRole("radio", { name: /Edit the template itself/ }),
+  );
   fireEvent.click(screen.getByRole("button", { name: "Create workspace" }));
   await waitFor(() =>
     expect(onCreate).toHaveBeenCalledWith("garden", pin, "author"),
   );
 });
+
+it.each(["base", "personal", "system", "development", "catalog"] as const)(
+  "offers dependency and authoring creation for a %s template",
+  async (role) => {
+    const client = {
+      registry: vi.fn(async () => ({
+        version: 1 as const,
+        templates: [
+          {
+            id: "garden",
+            role,
+            name: "Garden",
+            description: "Grow a workspace",
+            url: pin.url,
+          },
+        ],
+      })),
+      inspect: vi.fn(async () => inspection),
+    };
+    const onCreate = vi.fn(async () => undefined);
+    render(
+      <Theme>
+        <TemplateBrowser client={client} onCreate={onCreate} />
+      </Theme>,
+    );
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Review Garden" }),
+    );
+    const use = await screen.findByRole("radio", {
+      name: /Use as a dependency/,
+    });
+    expect(use.getAttribute("aria-checked")).toBe("true");
+    fireEvent.click(screen.getByRole("button", { name: "Create workspace" }));
+    await waitFor(() =>
+      expect(onCreate).toHaveBeenCalledWith("garden", pin, "use"),
+    );
+    await waitFor(() => expect(use.hasAttribute("disabled")).toBe(false));
+    fireEvent.click(
+      screen.getByRole("radio", { name: /Edit the template itself/ }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Create workspace" }));
+    await waitFor(() =>
+      expect(onCreate).toHaveBeenLastCalledWith("garden", pin, "author"),
+    );
+  },
+);

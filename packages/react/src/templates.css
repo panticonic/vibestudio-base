@@ -1,0 +1,222 @@
+.workspace-setup {
+  container-type: inline-size;
+  min-width: 0;
+  padding-top: 20px;
+  --workspace-border: var(--gray-a5);
+}
+.workspace-steps {
+  display: flex;
+  gap: 24px;
+  margin: 0 0 8px;
+  padding: 0;
+  list-style: none;
+  color: var(--gray-10);
+  font-size: 13px;
+}
+.workspace-steps li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.workspace-steps li[aria-current] {
+  color: var(--gray-12);
+  font-weight: 600;
+}
+.workspace-steps li > span {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: var(--gray-a3);
+  flex-shrink: 0;
+}
+.workspace-steps li[aria-current] > span {
+  background: var(--accent-a4);
+  color: var(--accent-11);
+}
+.workspace-source-tabs {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 8px;
+}
+.workspace-source-tabs .rt-RadioCardsItem {
+  justify-content: flex-start;
+  padding: 16px 12px;
+  gap: 10px;
+  text-align: left;
+  min-height: 76px;
+}
+.workspace-source-tabs svg {
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+  color: var(--accent-11);
+}
+.workspace-source-form {
+  padding: clamp(16px, 4cqi, 32px);
+  border: 1px solid var(--workspace-border);
+  border-radius: 16px;
+  background: var(--gray-a2);
+}
+.workspace-source-form > .rt-Text {
+  max-width: 65ch;
+}
+.workspace-source-form .rt-TextFieldRoot,
+.workspace-source-form .rt-SelectTrigger {
+  min-height: 44px;
+}
+.workspace-source-icon {
+  width: 36px;
+  height: 36px;
+  color: var(--accent-11);
+}
+.workspace-template-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.workspace-template-card {
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  border-radius: 14px;
+}
+.workspace-template-card > .rt-Text {
+  flex: 1;
+}
+.workspace-template-card > .rt-Button {
+  align-self: flex-start;
+  min-height: 44px;
+  margin-top: 20px;
+}
+.workspace-template-icon {
+  width: 28px;
+  height: 28px;
+  color: var(--accent-11);
+}
+.workspace-catalog-settings {
+  border-top: 1px solid var(--workspace-border);
+  margin-top: 8px;
+}
+.workspace-setup summary {
+  cursor: pointer;
+  min-height: 44px;
+  align-content: center;
+  color: var(--gray-11);
+  font-size: 13px;
+}
+.workspace-registry-settings {
+  padding: 8px 0;
+}
+.workspace-registry-settings > .rt-Box {
+  min-width: 0;
+}
+.workspace-review-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
+  gap: 24px;
+  align-items: start;
+}
+.workspace-purpose .rt-RadioCardsItem {
+  text-align: left;
+  justify-content: flex-start;
+  padding: 20px;
+}
+.workspace-summary {
+  padding: 20px;
+  background: var(--gray-a2);
+  overflow-wrap: anywhere;
+}
+.workspace-dependencies {
+  padding-inline-start: 20px;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+.workspace-actions {
+  position: sticky;
+  bottom: 0;
+  background: var(--color-panel-solid);
+  z-index: 1;
+  padding: 16px 0 0;
+  border-top: 1px solid var(--workspace-border);
+}
+.workspace-setup .rt-Button {
+  min-height: 44px;
+  white-space: normal;
+}
+.workspace-setup .rt-CalloutRoot {
+  overflow-wrap: anywhere;
+}
+.workspace-setup :focus-visible {
+  outline-offset: 4px;
+}
+@container (max-width: 560px) {
+  .workspace-source-tabs {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .workspace-source-tabs .rt-RadioCardsItem {
+    padding: 12px;
+  }
+  .workspace-source-tabs .rt-RadioCardsItem .rt-Text:last-child {
+    display: none;
+  }
+  .workspace-template-grid,
+  .workspace-review-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .workspace-review-layout {
+    gap: 16px;
+  }
+  .workspace-template-card {
+    padding: 16px;
+  }
+  .workspace-actions > .rt-Button {
+    flex: 1;
+  }
+  .workspace-registry-settings {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .workspace-steps {
+    gap: 12px;
+    font-size: 12px;
+  }
+}
+.workspace-creation-dialog {
+  position: relative;
+  max-height: calc(100dvh - 32px);
+  overflow-y: auto;
+  padding: 28px;
+}
+.workspace-creation-dialog > .rt-DialogTitle,
+.workspace-creation-dialog > .rt-DialogDescription {
+  padding-right: 40px;
+}
+.workspace-creation-close {
+  position: absolute;
+  right: 16px;
+  top: 16px;
+  width: 44px;
+  height: 44px;
+  border: 1px solid var(--gray-a5);
+  border-radius: 50%;
+  background: var(--gray-a2);
+  color: var(--gray-11);
+  font: inherit;
+  font-size: 26px;
+  cursor: pointer;
+}
+.workspace-creation-close:hover {
+  background: var(--gray-a4);
+}
+@media (max-width: 600px) {
+  .workspace-creation-dialog {
+    width: 100%;
+    max-height: calc(100dvh - 16px);
+    padding: 20px 16px max(20px, env(safe-area-inset-bottom));
+  }
+  .workspace-creation-close {
+    right: 12px;
+    top: 12px;
+  }
+}

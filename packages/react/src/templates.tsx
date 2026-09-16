@@ -1,5 +1,14 @@
 import { useEffect, useRef, useState } from "react";
 import {
+  CubeIcon,
+  PlusIcon,
+  GitHubLogoIcon,
+  ArchiveIcon,
+  ArrowRightIcon,
+  CheckIcon,
+} from "@radix-ui/react-icons";
+import "./templates.css";
+import {
   pendingAuthorityNotice,
   isAuthorityPending,
 } from "@vibestudio/shared/authority/reviewPending";
@@ -16,6 +25,7 @@ import {
   TextField,
   RadioCards,
   Select,
+  Spinner,
 } from "@radix-ui/themes";
 import type {
   TemplateRegistry,
@@ -42,6 +52,19 @@ export type CreateTemplateWorkspace = (
 const errorMessage = (error: unknown) =>
   error instanceof Error ? error.message : String(error);
 const sourceAddress = (pin: TemplateExactPin) => pin.url.replace(/^git\+/, "");
+
+function WorkspaceSteps({ review = false }: { review?: boolean }) {
+  return (
+    <ol className="workspace-steps" aria-label="Workspace setup progress">
+      <li aria-current={!review ? "step" : undefined}>
+        <span>{review ? <CheckIcon /> : "1"}</span>Choose a starting point
+      </li>
+      <li aria-current={review ? "step" : undefined}>
+        <span>2</span>Make it yours
+      </li>
+    </ol>
+  );
+}
 
 function TemplateRequestError({
   error,
@@ -124,10 +147,16 @@ export function TemplateWorkspaceReview({
     }
   };
   return (
-    <Flex direction="column" gap="4" style={{ minWidth: 0 }}>
+    <Flex
+      className="workspace-setup"
+      direction="column"
+      gap="4"
+      style={{ minWidth: 0 }}
+    >
+      <WorkspaceSteps review />
       <Box>
         <Badge color="gray" variant="soft">
-          New workspace
+          Selected template
         </Badge>
         <Heading size="5" mt="2">
           {inspection.presentation?.name ?? "Make this workspace yours"}
@@ -138,99 +167,147 @@ export function TemplateWorkspaceReview({
           </Text>
         ) : null}
       </Box>
-      <Card variant="surface">
-        <Flex direction="column" gap="2" style={{ minWidth: 0 }}>
-          <Text size="2" weight="medium">
-            Source you’re opening
-          </Text>
-          <Text as="div" size="2" style={{ overflowWrap: "anywhere" }}>
-            {sourceAddress(inspection.pin)}
-          </Text>
-          <details>
-            <summary
-              style={{
-                cursor: "pointer",
-                minHeight: 44,
-                alignContent: "center",
-                fontSize: 13,
-              }}
-            >
-              View source details
-            </summary>
+      <div className="workspace-review-layout">
+        <Flex direction="column" gap="4">
+          <label>
+            <Text as="div" size="2" weight="medium" mb="2">
+              Workspace name
+            </Text>
+            <TextField.Root
+              aria-label="Workspace name"
+              value={name}
+              onChange={(event) => setName(event.target.value)}
+              disabled={creating}
+              size="3"
+              autoComplete="off"
+              spellCheck={false}
+              aria-describedby="workspace-name-hint"
+            />
             <Text
               as="div"
+              id="workspace-name-hint"
               size="1"
               color="gray"
-              style={{ overflowWrap: "anywhere" }}
+              mt="2"
             >
-              {inspection.pin.ref} · {inspection.pin.commit}
+              Letters, numbers, hyphens and underscores.
             </Text>
-            <Text as="div" size="1" mt="2">
-              {inspection.repositories.length} source components
-            </Text>
-            <ul
-              style={{
-                margin: "8px 0",
-                paddingInlineStart: 20,
-                maxHeight: 180,
-                overflow: "auto",
-                overflowWrap: "anywhere",
-                fontSize: 12,
-              }}
+          </label>
+          <Flex direction="column" gap="2">
+            <Heading size="3">Your relationship to the template</Heading>
+            <RadioCards.Root
+              aria-label="Template relationship"
+              value={purpose}
+              onValueChange={(value) => setPurpose(value as "use" | "author")}
+              disabled={creating}
+              className="workspace-purpose"
+              columns="1"
             >
-              {inspection.repositories.map((repo) => (
-                <li key={repo}>{repo}</li>
-              ))}
-            </ul>
-          </details>
+              <RadioCards.Item value="use">
+                <Flex direction="column" gap="2">
+                  <Text weight="bold">Use as a dependency (default)</Text>
+                  <Text size="2">
+                    Build your own workspace on top of this template. Keep it as
+                    a dependency and publish your work to your own repository
+                    later.
+                  </Text>
+                </Flex>
+              </RadioCards.Item>
+              <RadioCards.Item value="author">
+                <Flex direction="column" gap="2">
+                  <Text weight="bold">Edit the template itself</Text>
+                  <Text size="2">
+                    Author this template directly. Its repository becomes your
+                    upstream. Its own dependencies stay; the template itself is
+                    not added as a dependency.
+                  </Text>
+                </Flex>
+              </RadioCards.Item>
+            </RadioCards.Root>
+          </Flex>
         </Flex>
-      </Card>
+        <Card className="workspace-summary" variant="surface">
+          <Badge variant="soft" color={purpose === "use" ? "green" : "amber"}>
+            {purpose === "use" ? "Your own workspace" : "Template authoring"}
+          </Badge>
+          <Text as="p" size="2" mt="3" mb="4">
+            {purpose === "use"
+              ? "Your changes belong to this workspace. Choose a separate GitHub repository when you’re ready to publish."
+              : "Your changes belong to the selected template. Publishing targets its upstream repository."}
+          </Text>
+          <Flex direction="column" gap="2" style={{ minWidth: 0 }}>
+            <Text size="2" weight="medium">
+              Source you’re opening
+            </Text>
+            <Text as="div" size="2" style={{ overflowWrap: "anywhere" }}>
+              {sourceAddress(inspection.pin)}
+            </Text>
+            <details>
+              <summary
+                style={{
+                  cursor: "pointer",
+                  minHeight: 44,
+                  alignContent: "center",
+                  fontSize: 13,
+                }}
+              >
+                View source details
+              </summary>
+              <Text
+                as="div"
+                size="1"
+                color="gray"
+                style={{ overflowWrap: "anywhere" }}
+              >
+                {inspection.pin.ref} · {inspection.pin.commit}
+              </Text>
+              <Text as="div" size="1" mt="2">
+                {inspection.repositories.length} source components
+              </Text>
+              <ul
+                style={{
+                  margin: "8px 0",
+                  paddingInlineStart: 20,
+                  maxHeight: 180,
+                  overflow: "auto",
+                  overflowWrap: "anywhere",
+                  fontSize: 12,
+                }}
+              >
+                {inspection.repositories.map((repo) => (
+                  <li key={repo}>{repo}</li>
+                ))}
+              </ul>
+              <Text as="div" size="1" mt="3" weight="bold">
+                Template dependencies
+              </Text>
+              {inspection.dependencies.length ? (
+                <ul className="workspace-dependencies">
+                  {inspection.dependencies.map((dependency) => (
+                    <li key={dependency.url}>
+                      {dependency.url.replace(/^git\+/, "")}
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <Text as="p" size="1" color="gray">
+                  This template declares no dependencies.
+                </Text>
+              )}
+            </details>
+          </Flex>
+        </Card>
+      </div>
       <Text as="p" size="2" color="gray">
         This workspace gets its own panels, files and approvals. Connections to
         your other workspaces are yours to choose.
       </Text>
-      <label>
-        <Text as="div" size="2" weight="medium" mb="2">
-          Workspace name
-        </Text>
-        <TextField.Root
-          aria-label="Workspace name"
-          value={name}
-          onChange={(event) => setName(event.target.value)}
-          disabled={creating}
-          size="3"
-        />
-        <Text as="div" size="1" color="gray" mt="1">
-          Use letters, numbers, hyphens or underscores.
-        </Text>
-      </label>
       {error ? (
         <Callout.Root color="red" role="alert">
           <Callout.Text>{error}</Callout.Text>
         </Callout.Root>
       ) : null}
-      <label>
-        Workspace purpose
-        <select
-          aria-label="Workspace purpose"
-          disabled={creating}
-          value={purpose}
-          onChange={(event) =>
-            setPurpose(event.target.value as "use" | "author")
-          }
-        >
-          <option value="use">Use template — create my own workspace</option>
-          <option value="author">
-            Author template — edit its repository directly
-          </option>
-        </select>
-      </label>
-      <Text size="2">
-        {purpose === "use"
-          ? "The template becomes a dependency. Your workspace starts without a publishing repository."
-          : "This repository becomes your workspace’s upstream. Its own dependencies remain dependencies."}
-      </Text>
-      <Flex gap="3" justify="end">
+      <Flex className="workspace-actions" gap="3" justify="end">
         {onBack ? (
           <Button
             variant="soft"
@@ -339,7 +416,16 @@ function WorkspaceSourceSession({
   useEffect(() => {
     void loadRegistry();
   }, [client]);
-  const [sourceKind, setSourceKind] = useState("git");
+  const [sourceKind, setSourceKind] = useState(
+    initialSourceUrl
+      ? "git"
+      : client.registry
+        ? "templates"
+        : onCreateFresh
+          ? "fresh"
+          : "git",
+  );
+  const [search, setSearch] = useState("");
   const [freshName, setFreshName] = useState("");
   const [creatingFresh, setCreatingFresh] = useState(false);
   const freshPending = useRef(false);
@@ -401,31 +487,66 @@ function WorkspaceSourceSession({
       return false;
     }
   })();
+  const availableAccounts = accounts.filter((account) => {
+    if (account.revokedAt || account.lifecycle.state === "revoked")
+      return false;
+    return account.bindings?.some((binding) => {
+      if (binding.use !== "git-http") return false;
+      if (!url.trim()) return true;
+      try {
+        return !!findMatchingUrlAudience(
+          new URL(url.trim().replace(/^git\+/, "")),
+          binding.audience,
+        );
+      } catch {
+        return false;
+      }
+    });
+  });
+  const entries = registry?.templates.filter((entry) =>
+    `${entry.name} ${entry.description}`
+      .toLowerCase()
+      .includes(search.toLowerCase().trim()),
+  );
   return (
-    <Flex direction="column" gap="5">
+    <Flex className="workspace-setup" direction="column" gap="4">
+      <WorkspaceSteps />
       <RadioCards.Root
         value={sourceKind}
-        onValueChange={setSourceKind}
-        columns={{
-          initial: "1",
-          sm: onChooseFolder && onCreateFresh ? "3" : "2",
+        onValueChange={(value) => {
+          setSourceKind(value);
+          setError(null);
         }}
+        className="workspace-source-tabs"
         gap="3"
         aria-label="Workspace starting point"
         disabled={inspecting || creatingFresh}
       >
+        {client.registry ? (
+          <RadioCards.Item value="templates">
+            <CubeIcon aria-hidden="true" />
+            <Flex direction="column" gap="1">
+              <Text weight="bold">Templates</Text>
+              <Text size="1" color="gray">
+                Find your starting point
+              </Text>
+            </Flex>
+          </RadioCards.Item>
+        ) : null}
         {onCreateFresh ? (
           <RadioCards.Item value="fresh">
+            <PlusIcon aria-hidden="true" />
             <Flex direction="column" gap="1">
               <Text weight="bold">Start fresh</Text>
               <Text size="2" color="gray">
-                Start with Base
+                Base as a dependency
               </Text>
             </Flex>
           </RadioCards.Item>
         ) : null}
         {onChooseFolder ? (
           <RadioCards.Item value="folder">
+            <ArchiveIcon aria-hidden="true" />
             <Flex direction="column" gap="1">
               <Text weight="bold">Folder</Text>
               <Text size="2" color="gray">
@@ -435,21 +556,34 @@ function WorkspaceSourceSession({
           </RadioCards.Item>
         ) : null}
         <RadioCards.Item value="git">
+          <GitHubLogoIcon aria-hidden="true" />
           <Flex direction="column" gap="1">
             <Text weight="bold">Git URL</Text>
             <Text size="2" color="gray">
-              Use a repository
+              Existing repository
             </Text>
           </Flex>
         </RadioCards.Item>
       </RadioCards.Root>
       {sourceKind === "fresh" && onCreateFresh ? (
-        <Flex direction="column" gap="3">
+        <Flex className="workspace-source-form" direction="column" gap="3">
+          <Heading size="4">A fresh space for your ideas</Heading>
           <Text size="2" color="gray">
-            A separate workspace using this host’s configured Base, with its own
-            data and panels.
+            Create your own workspace with this host’s configured Base as a
+            template dependency. It starts without a publishing repository; you
+            can create one later. To edit Base itself, select Base in the
+            template catalog and choose “Edit the template itself”.
+          </Text>
+          <Text
+            as="label"
+            htmlFor="fresh-workspace-name"
+            size="2"
+            weight="medium"
+          >
+            Workspace name
           </Text>
           <TextField.Root
+            id="fresh-workspace-name"
             aria-label="Workspace name"
             placeholder="my-project"
             value={freshName}
@@ -520,10 +654,13 @@ function WorkspaceSourceSession({
         </Card>
       ) : null}
       {onChooseFolder && sourceKind === "folder" ? (
-        <Flex direction="column" gap="2">
-          <Heading size="3">From a folder on this computer</Heading>
+        <Flex className="workspace-source-form" direction="column" gap="3">
+          <ArchiveIcon className="workspace-source-icon" aria-hidden="true" />
+          <Heading size="4">Start from a local folder</Heading>
           <Text size="2" color="gray">
-            Use a workspace folder, including changes you haven’t committed.
+            Choose a workspace template checkout. We’ll include your uncommitted
+            changes, then let you choose to build on it or author the template.
+            Your original folder stays unchanged.
           </Text>
           <Box>
             <Button
@@ -560,12 +697,23 @@ function WorkspaceSourceSession({
         </Flex>
       ) : null}
       {sourceKind === "git" ? (
-        <Flex direction="column" gap="3">
-          <Flex justify="between" align="center">
-            <Heading size="3">From a source address</Heading>
-          </Flex>
+        <Flex className="workspace-source-form" direction="column" gap="3">
+          <Heading size="4">Start from a Git repository</Heading>
+          <Text size="2" color="gray">
+            Paste the HTTPS address of an existing workspace template. You’ll
+            choose how to use it in the next step.
+          </Text>
+          <Text
+            as="label"
+            htmlFor="workspace-source-url"
+            size="2"
+            weight="medium"
+          >
+            Repository URL
+          </Text>
           <TextField.Root
             size="3"
+            id="workspace-source-url"
             aria-label="Workspace source address"
             placeholder="https://github.com/owner/workspace"
             value={url}
@@ -595,36 +743,19 @@ function WorkspaceSourceSession({
                   <Select.Item value="anonymous">
                     Public repository — no account
                   </Select.Item>
-                  {accounts
-                    .filter((account) => {
-                      if (
-                        account.revokedAt ||
-                        account.lifecycle.state === "revoked"
-                      )
-                        return false;
-                      try {
-                        return account.bindings?.some(
-                          (binding) =>
-                            binding.use === "git-http" &&
-                            !!findMatchingUrlAudience(
-                              new URL(url.replace(/^git\+/, "")),
-                              binding.audience,
-                            ),
-                        );
-                      } catch {
-                        return false;
-                      }
-                    })
-                    .map((account) => (
-                      <Select.Item key={account.id} value={account.label}>
-                        {account.label}
-                      </Select.Item>
-                    ))}
+                  {availableAccounts.map((account) => (
+                    <Select.Item key={account.id} value={account.label}>
+                      {account.label}
+                    </Select.Item>
+                  ))}
                 </Select.Content>
               </Select.Root>
               <Text size="1" color="gray">
-                For a private repository, choose a connected account that can
-                access this address.
+                {!canInspect
+                  ? "Enter a valid repository URL to check which accounts can access it."
+                  : availableAccounts.length
+                    ? "For a private repository, select a connected account above."
+                    : "No connected account matches this address. Public repositories can continue without one. For private access, connect an account in Settings."}
               </Text>
               {accountError ? (
                 <Text size="2" color="red" role="alert">
@@ -653,57 +784,107 @@ function WorkspaceSourceSession({
           </Flex>
         </Flex>
       ) : null}
-      {sourceKind === "git" && client.registry ? (
+      {client.registry && sourceKind === "templates" ? (
         <Flex direction="column" gap="3">
-          <Heading size="3">Workspace catalog</Heading>
-          <Flex gap="2" align="end">
-            <Box style={{ flex: 1 }}>
-              <Text as="label" size="2" weight="medium">
-                Registry address
-              </Text>
-              <TextField.Root
-                mt="1"
-                size="2"
-                aria-label="Template registry address"
-                value={registryUrl}
-                onChange={(event) => setRegistryUrl(event.target.value)}
-                disabled={loadingRegistry}
-              />
-            </Box>
-            <Button
-              variant="soft"
-              loading={loadingRegistry}
-              disabled={loadingRegistry || !registryUrl.trim()}
-              onClick={() => void loadRegistry(registryUrl.trim())}
-            >
-              Load registry
-            </Button>
+          <Flex align="center" justify="between" gap="3" wrap="wrap">
+            <Heading size="4">Choose your starting point</Heading>
+            <TextField.Root
+              aria-label="Search templates"
+              placeholder="Search templates…"
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+            />
           </Flex>
+          <Text size="2" color="gray">
+            Choose any template, then review whether to use it as a dependency
+            (the default) or edit the template itself. Git URLs and folders
+            offer the same choice.
+          </Text>
           <TemplateRequestError
             error={registryError}
             onReviewPending={onReviewPending}
             onRetry={() => void loadRegistry(registryUrl.trim())}
           />
-          <Grid columns={{ initial: "1", sm: "2" }} gap="3">
-            {registry?.templates
-              .filter((entry) => entry.role === "catalog")
-              .map((entry) => (
-                <Card key={entry.url}>
-                  <Heading size="3">{entry.name}</Heading>
-                  <Text as="p" size="2" color="gray" mt="2">
-                    {entry.description}
-                  </Text>
-                  <Button
-                    mt="3"
-                    variant="soft"
-                    disabled={inspecting}
-                    onClick={() => void inspect({ url: entry.url })}
-                  >
-                    Review {entry.name}
-                  </Button>
-                </Card>
-              ))}
+          {loadingRegistry ? (
+            <Flex role="status" align="center" gap="2">
+              <Spinner />
+              Loading templates…
+            </Flex>
+          ) : null}
+          {!loadingRegistry && registry && !entries?.length ? (
+            <Text color="gray" role="status">
+              {search
+                ? "No templates match your search."
+                : "This catalog has no templates. Try a Git URL or another catalog."}
+            </Text>
+          ) : null}
+          <Grid className="workspace-template-grid" gap="3">
+            {entries?.map((entry) => (
+              <Card className="workspace-template-card" key={entry.url}>
+                <Flex align="center" justify="between" mb="3">
+                  <CubeIcon
+                    className="workspace-template-icon"
+                    aria-hidden="true"
+                  />
+                  {entry.role === "catalog" ? (
+                    <Badge color="gray">Template</Badge>
+                  ) : (
+                    <Badge color="gray">
+                      {entry.role === "development"
+                        ? "Development"
+                        : "Foundation"}
+                    </Badge>
+                  )}
+                </Flex>
+                <Heading size="3">{entry.name}</Heading>
+                <Text as="p" size="2" color="gray" mt="2">
+                  {entry.description}
+                </Text>
+                <Button
+                  mt="3"
+                  variant="soft"
+                  disabled={inspecting}
+                  loading={
+                    (inspecting &&
+                      lastLocator.current &&
+                      "url" in lastLocator.current &&
+                      lastLocator.current.url === entry.url) ||
+                    false
+                  }
+                  onClick={() => void inspect({ url: entry.url })}
+                >
+                  Review {entry.name}
+                  <ArrowRightIcon aria-hidden="true" />
+                </Button>
+              </Card>
+            ))}
           </Grid>
+          <details className="workspace-catalog-settings">
+            <summary>Use a different template catalog</summary>
+            <Flex className="workspace-registry-settings" gap="2" align="end">
+              <Box style={{ flex: 1 }}>
+                <Text as="label" size="2" weight="medium">
+                  Registry address
+                </Text>
+                <TextField.Root
+                  mt="1"
+                  size="2"
+                  aria-label="Template registry address"
+                  value={registryUrl}
+                  onChange={(event) => setRegistryUrl(event.target.value)}
+                  disabled={loadingRegistry}
+                />
+              </Box>
+              <Button
+                variant="soft"
+                loading={loadingRegistry}
+                disabled={loadingRegistry || !registryUrl.trim()}
+                onClick={() => void loadRegistry(registryUrl.trim())}
+              >
+                Load registry
+              </Button>
+            </Flex>
+          </details>
         </Flex>
       ) : null}
     </Flex>
