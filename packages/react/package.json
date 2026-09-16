@@ -4,6 +4,7 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
+    "./connection": "./src/WorkspaceConnection.tsx",
     "./auto-mount": "./src/autoMount.ts",
     "./hooks": "./src/hooks.ts",
     "./responsive": "./src/responsive.ts",

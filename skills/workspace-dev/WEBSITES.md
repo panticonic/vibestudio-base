@@ -14,32 +14,35 @@ before promising an operation.
 
 ## Start with zero workspace access
 
-Importing the standalone SDK does not connect or issue workspace RPC. Read the
-local `workspaceConnection.available`, `.connected`, and `.kind` properties to
-render ordinary content outside Vibestudio and connection controls inside it.
+Importing the standalone SDK does not connect or issue workspace RPC. Use the
+standard control from the focused React entry; the runtime owns connection state,
+while `@workspace/react/connection` owns rendering, labels, and user actions.
 An installed panel already has its normal admitted runtime; it does not ask for
 website connection approval.
 
 ```tsx
-import { useEffect, useState } from "react";
-import { connectWorkspace, workspaceConnection } from "@workspace/runtime";
+import { WorkspaceConnection } from "@workspace/react/connection";
 
-export function ConnectionControl() {
-  const [connected, setConnected] = useState(workspaceConnection.connected);
-  const [error, setError] = useState("");
-  useEffect(() => workspaceConnection.subscribe(() => {
-    setConnected(workspaceConnection.connected);
-  }), []);
-  if (!workspaceConnection.available) return <p>Open this URL in a Vibestudio browser panel to connect.</p>;
-  if (connected) return <p>Workspace connected</p>;
-  return <><button onClick={() => {
-    setError("");
-    void connectWorkspace().catch(reason => setError(String(reason)));
-  }}>Connect to workspace</button><p role="status">{error}</p></>;
+export function App() {
+  return <WorkspaceConnection />;
 }
 ```
 
-Call `connectWorkspace()` directly from a fresh user action. A page cannot open
+The control handles waiting, denial/retry, disconnect, and revocation with native
+buttons and an accessible status message. Mounting does not connect; unmounting
+does not disconnect. It inherits page styling; use `className` or
+`.vibestudio-workspace-connection` to customize it. Multiple controls observe the
+same runtime. Approval stays in trusted host UI, never in a website-rendered dialog.
+The destination is the workspace containing the page, not a website-selected one.
+Outside Vibestudio it explains where to open the page; it does not connect an
+ordinary Chrome or Safari tab. Installed panels have no website Disconnect action.
+
+For non-React or custom UI, use `workspaceConnection` from `@workspace/runtime`:
+`status` is `unavailable`, `disconnected`, `connecting`, `connected`, or
+`disconnecting`; `error` is the latest failed action's message or null.
+`available`, `connected`, and `kind` are local information; `subscribe(listener)`
+returns cleanup. Call `connectWorkspace()` directly from a fresh user action.
+A page cannot open
 connection consent from a timer, import, background retry, or resource request.
 The host consumes trusted input before asynchronous admission; page message payloads
 cannot manufacture that evidence.
@@ -106,6 +109,7 @@ On disconnect or document replacement, clear private results, abort local work,
 and reject late results from the retired connection. Bind async UI work to a
 connection generation so a response cannot repopulate a newly connected page.
 Use `disconnectWorkspace()` for an explicit website Disconnect action.
+Disconnect ends live access; forgetting saved permissions is a separate host action.
 
 A stable panel slot, URL path, title, icon, or JavaScript object is not a live
 execution identity. Reload/navigation requires a fresh document connection.
@@ -122,7 +126,14 @@ pnpm create:website --out-dir /tmp/my-website --sdk-dir /tmp/website-sdk --name 
 ```
 
 These are Host developer commands, not workspace eval exports. The generated
-project vendors the exact shared SDK tarball and lockfile. `npm ci` followed by
+project vendors two versioned packages and a lockfile: the runtime as
+`@workspace/runtime`, and the focused React connection entry as `@workspace/react`.
+The UI declares the runtime and React as peers; it never bundles another runtime
+or React copy. Declare both workspace packages and React in the app's manifest.
+Non-React sites only need the runtime package. `sdk.json` records both artifact
+hashes. Commit `vendor/`, `sdk.json`, and the lockfile so builds do not depend on
+the Host checkout. There is no remotely loaded widget or new bridge protocol.
+`npm ci` followed by
 `npm run build` produces `docs/` with relative asset URLs, `.nojekyll`, and a
 content-hashed build manifest. The same `App.tsx` has installed and static entry
 points. Full installed/static application parity still needs acceptance; do not

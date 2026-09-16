@@ -9,6 +9,8 @@ let current: PanelApi | undefined;
 let activeProvider: WorkspaceProvider | undefined;
 let stopDisconnect: (() => void) | undefined;
 let connecting: Promise<PanelApi> | undefined;
+let disconnecting: Promise<void> | undefined;
+let connectionError: string | null = null;
 let generation = 0;
 export let id: string;
 export let contextId: string;
@@ -18,6 +20,20 @@ const changed = () => {
   for (const listener of listeners) listener();
 };
 export const workspaceConnection = {
+  get status():
+    | "unavailable"
+    | "disconnected"
+    | "connecting"
+    | "connected"
+    | "disconnecting" {
+    if (disconnecting) return "disconnecting";
+    if (connecting) return "connecting";
+    if (current) return "connected";
+    return this.available ? "disconnected" : "unavailable";
+  },
+  get error(): string | null {
+    return connectionError;
+  },
   get kind(): "installed" | "website" | "unavailable" {
     return activeProvider || globalThis.vibestudio
       ? "website"
@@ -29,7 +45,7 @@ export const workspaceConnection = {
     return current !== undefined;
   },
   get available(): boolean {
-    return Boolean(current || globalThis.vibestudio);
+    return Boolean(current || activeProvider || globalThis.vibestudio);
   },
   subscribe(listener: () => void): () => void {
     listeners.add(listener);
@@ -61,12 +77,14 @@ export function connectWorkspace(
   provider: WorkspaceProvider | undefined = globalThis.vibestudio,
 ): Promise<PanelApi> {
   if (current) return Promise.resolve(current);
+  if (disconnecting) return Promise.reject(disconnected());
   if (connecting) return connecting;
   if (!provider)
     return Promise.reject(
       new Error("Open this page in a Vibestudio browser panel to connect"),
     );
   const attempt = ++generation;
+  connectionError = null;
   connecting = (async () => {
     activeProvider = provider;
     stopDisconnect = provider.onDisconnect(() => {
@@ -103,28 +121,45 @@ export function connectWorkspace(
         stopDisconnect?.();
         stopDisconnect = undefined;
         activeProvider = undefined;
+        connectionError =
+          error instanceof Error ? error.message : String(error);
       }
       throw error;
     })
     .finally(() => {
       connecting = undefined;
+      changed();
     });
+  changed();
   return connecting;
 }
 
-export async function disconnectWorkspace(): Promise<void> {
+export function disconnectWorkspace(): Promise<void> {
+  if (disconnecting) return disconnecting;
   if (current && !activeProvider)
-    throw new Error(
-      "Installed panel lifetime is owned by its presentation host",
+    return Promise.reject(
+      new Error("Installed panel lifetime is owned by its presentation host"),
     );
   ++generation;
   const provider = activeProvider ?? globalThis.vibestudio;
   stopDisconnect?.();
   stopDisconnect = undefined;
   activeProvider = undefined;
+  connectionError = null;
   current?.destroy();
+  // Retire local access immediately; do not report completion before host acknowledgement.
+  disconnecting = Promise.resolve()
+    .then(() => provider?.disconnect())
+    .catch((error) => {
+      connectionError = error instanceof Error ? error.message : String(error);
+      throw error;
+    })
+    .finally(() => {
+      disconnecting = undefined;
+      changed();
+    });
   bind(undefined);
-  await provider?.disconnect();
+  return disconnecting;
 }
 
 /**
