@@ -115,7 +115,10 @@ export function useForkLineage(options: UseForkLineageOptions): ForkUiState {
   const readCursorsRef = useRef<Record<string, number>>({});
   readCursorsRef.current = readCursors;
   const [forking, setForking] = useState(false);
-  const [error, setError] = useState<string>();
+  const [actionError, setError] = useState<string>();
+  const [loadError, setLoadError] = useState<string>();
+  const [streamError, setStreamError] = useState<string>();
+  const error = actionError ?? loadError ?? streamError;
 
   const reportError = useCallback((summary: string, cause: unknown) => {
     setError(`${summary}: ${conciseError(cause)}`);
@@ -147,33 +150,39 @@ export function useForkLineage(options: UseForkLineageOptions): ForkUiState {
     });
   }, []);
 
-  const refreshData = useCallback(async (): Promise<void> => {
-    if (!enabled || !channelId) return;
-    try {
-      const [prov, own] = await Promise.all([
-        readProvenance(rpc, channelId),
-        readForks(rpc, channelId),
-      ]);
-      let siblings: ForkEntry[] = [];
-      let label = prov.kind === "task" ? "Subagent task" : prov.kind === "fork" ? "Fork" : "Main";
-      if (prov.kind === "fork") {
-        const parent = await readForks(rpc, prov.forkedFrom);
-        const self = parent.forks.find((fork) => fork.forkedChannelId === channelId);
-        if (self) label = self.label || self.reason || "Fork";
-        siblings = parent.forks
-          .filter((fork) => fork.forkedChannelId !== channelId && !fork.archived)
-          .map(forkProjectionToEntry);
+  const refreshData = useCallback(
+    async (signal?: AbortSignal): Promise<void> => {
+      if (!enabled || !channelId) return;
+      try {
+        const [prov, own] = await Promise.all([
+          readProvenance(rpc, channelId),
+          readForks(rpc, channelId),
+        ]);
+        let siblings: ForkEntry[] = [];
+        let label = prov.kind === "task" ? "Subagent task" : prov.kind === "fork" ? "Fork" : "Main";
+        if (prov.kind === "fork") {
+          const parent = await readForks(rpc, prov.forkedFrom);
+          const self = parent.forks.find((fork) => fork.forkedChannelId === channelId);
+          if (self) label = self.label || self.reason || "Fork";
+          siblings = parent.forks
+            .filter((fork) => fork.forkedChannelId !== channelId && !fork.archived)
+            .map(forkProjectionToEntry);
+        }
+        if (signal?.aborted) return;
+        setLoadError(undefined);
+        setProvenance(prov);
+        setCurrentLabel(label);
+        setCurrentHead(own.headSeq);
+        setBaseChildren(own.forks.filter((fork) => !fork.archived).map(forkProjectionToEntry));
+        setBaseSiblings(siblings);
+        setReadCursors(navRef.current?.readForkCursors?.() ?? {});
+      } catch (cause) {
+        if (!signal?.aborted)
+          setLoadError(`Could not load conversation forks: ${conciseError(cause)}`);
       }
-      setProvenance(prov);
-      setCurrentLabel(label);
-      setCurrentHead(own.headSeq);
-      setBaseChildren(own.forks.filter((fork) => !fork.archived).map(forkProjectionToEntry));
-      setBaseSiblings(siblings);
-      setReadCursors(navRef.current?.readForkCursors?.() ?? {});
-    } catch (cause) {
-      setError(`Could not load conversation forks: ${conciseError(cause)}`);
-    }
-  }, [enabled, channelId, rpc]);
+    },
+    [enabled, channelId, rpc]
+  );
 
   useEffect(() => {
     if (!enabled) return;
@@ -184,7 +193,9 @@ export function useForkLineage(options: UseForkLineageOptions): ForkUiState {
       return;
     }
     if (!connected) return;
-    void refreshData();
+    const abort = new AbortController();
+    void refreshData(abort.signal);
+    return () => abort.abort();
   }, [enabled, channelId, connected, refreshData]);
 
   useEffect(() => {
@@ -204,55 +215,80 @@ export function useForkLineage(options: UseForkLineageOptions): ForkUiState {
   // A response-owned stream provides live invalidations. Durable heads from
   // listForks remain the source of truth after reconnect or missed signals.
   useEffect(() => {
-    if (!enabled || !lineageRootId || !selfId || !rpc.stream) return;
-    const abort = new AbortController();
-    void (async () => {
-      try {
-        const target = await resolveChannelTarget(rpc, lineageRootId);
-        const response = await rpc.stream!(target, "subscribeLineage", [selfId], {
-          signal: abort.signal,
-          bodyIdleTimeoutMs: null,
-        });
-        for await (const record of readChannelSubscriptionRecords(response)) {
-          if (record.kind !== "message") continue;
-          const signal = record.payload as {
-            kind?: unknown;
-            payload?: { contentType?: unknown; content?: unknown };
-          };
-          if (
-            signal.kind !== "signal" ||
-            signal.payload?.contentType !== FORK_HEAD_CHANGED_SIGNAL
-          ) {
-            continue;
+    if (!enabled || !lineageRootId || !selfId || !rpc.stream || !client) return;
+    let active: AbortController | undefined;
+    const subscribe = () => {
+      active?.abort();
+      const abort = new AbortController();
+      active = abort;
+      void (async () => {
+        try {
+          const target = await resolveChannelTarget(rpc, lineageRootId);
+          if (abort.signal.aborted) return;
+          const response = await rpc.stream!(target, "subscribeLineage", [selfId], {
+            signal: abort.signal,
+            bodyIdleTimeoutMs: null,
+          });
+          if (abort.signal.aborted) {
+            await response.body?.cancel();
+            return;
           }
-          const parsed = JSON.parse(String(signal.payload.content)) as {
-            channelId?: unknown;
-            headSeq?: unknown;
-            rosterChanged?: unknown;
-          };
-          if (typeof parsed.channelId !== "string" || typeof parsed.headSeq !== "number") continue;
-          setLiveHeads((current) => ({
-            ...current,
-            [parsed.channelId as string]: Math.max(
-              current[parsed.channelId as string] ?? 0,
-              parsed.headSeq as number
-            ),
-          }));
-          if (parsed.channelId === channelId) {
-            void markRead(parsed.channelId, parsed.headSeq).catch((cause) =>
-              reportError("Could not save the conversation read position", cause)
-            );
-            if (parsed.rosterChanged === true) void refreshData();
+          for await (const record of readChannelSubscriptionRecords(response)) {
+            if (abort.signal.aborted) return;
+            if (record.kind === "subscribed") {
+              // Re-read durable heads only after the live subscription is ready,
+              // so changes during reconnect cannot fall between the two reads.
+              await refreshData(abort.signal);
+              if (!abort.signal.aborted) setStreamError(undefined);
+              continue;
+            }
+            const signal = record.payload as {
+              kind?: unknown;
+              payload?: { contentType?: unknown; content?: unknown };
+            };
+            if (
+              signal.kind !== "signal" ||
+              signal.payload?.contentType !== FORK_HEAD_CHANGED_SIGNAL
+            ) {
+              continue;
+            }
+            const parsed = JSON.parse(String(signal.payload.content)) as {
+              channelId?: unknown;
+              headSeq?: unknown;
+              rosterChanged?: unknown;
+            };
+            if (typeof parsed.channelId !== "string" || typeof parsed.headSeq !== "number")
+              continue;
+            setLiveHeads((current) => ({
+              ...current,
+              [parsed.channelId as string]: Math.max(
+                current[parsed.channelId as string] ?? 0,
+                parsed.headSeq as number
+              ),
+            }));
+            if (parsed.channelId === channelId) {
+              void markRead(parsed.channelId, parsed.headSeq).catch((cause) =>
+                reportError("Could not save the conversation read position", cause)
+              );
+              if (parsed.rosterChanged === true) void refreshData(abort.signal);
+            }
+          }
+        } catch (cause) {
+          if (!abort.signal.aborted) {
+            setStreamError(`Live fork updates disconnected: ${conciseError(cause)}`);
           }
         }
-      } catch (cause) {
-        if (!abort.signal.aborted) {
-          setError(`Live fork updates disconnected: ${conciseError(cause)}`);
-        }
-      }
-    })();
-    return () => abort.abort();
-  }, [enabled, rpc, lineageRootId, selfId, channelId, markRead, refreshData, reportError]);
+      })();
+    };
+    // Use the channel's recovered-session signal; a separate retry timer here
+    // would compete with the transport's own reconnection lifecycle.
+    const offReconnect = client.onReconnect(subscribe);
+    subscribe();
+    return () => {
+      offReconnect();
+      active?.abort();
+    };
+  }, [enabled, rpc, client, lineageRootId, selfId, channelId, markRead, refreshData, reportError]);
 
   const decorate = useCallback(
     (entries: ForkEntry[]): ForkEntry[] =>
@@ -483,7 +519,11 @@ export function useForkLineage(options: UseForkLineageOptions): ForkUiState {
     (entry: ForkEntry) => mutateFork(entry, "archiveFork", []),
     [mutateFork]
   );
-  const clearError = useCallback(() => setError(undefined), []);
+  const clearError = useCallback(() => {
+    setError(undefined);
+    setLoadError(undefined);
+    setStreamError(undefined);
+  }, []);
   const refresh = useCallback(() => void refreshData(), [refreshData]);
   const switchTo = useCallback(async (targetChannelId: string, targetContextId: string) => {
     try {
