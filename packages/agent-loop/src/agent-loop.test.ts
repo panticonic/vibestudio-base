@@ -3822,3 +3822,122 @@ describe("agent-loop message delivery (acks, edit/retract, after-turn, flush)", 
     expect(s.state.openTurn).not.toBeNull();
   });
 });
+
+describe("conditional automation turns", () => {
+  it.each([null, "An update is available. Notify the owner and ask how to proceed."])(
+    "uses the model only for a nonempty watch signal: %s",
+    (signal) => {
+      const s = scenario();
+      dispatch(s, {
+        type: "command",
+        command: {
+          kind: "invoke",
+          channelId: "chan-1",
+          source: { envelopeId: "watch:one" },
+          tool: "eval",
+          args: { code: "return signal" },
+          metadata: { completion: "when-signaled" },
+        },
+      });
+      const tool = [...s.effects.values()].find((effect) => effect.kind === "local_tool")!;
+      resolveEffect(s, tool.effectId, {
+        kind: "tool",
+        isError: false,
+        result: {
+          details: {
+            returnValue: { protocol: "automation-signal.v1", prompt: signal },
+          },
+        },
+      });
+      drainPromptArtifactPreparations(s);
+      expect([...s.effects.values()].some((effect) => effect.kind === "model_call")).toBe(
+        signal !== null
+      );
+      expect(s.state.openTurn === null).toBe(signal === null);
+      if (signal !== null) {
+        const model = [...s.effects.values()].find((effect) => effect.kind === "model_call")!;
+        resolveEffect(s, model.effectId, {
+          kind: "model",
+          blocks: [{ type: "text", content: "Owner notified" }],
+          stopReason: "completed",
+        });
+        expect(s.state.openTurn).toBeNull();
+        expect(JSON.stringify(s.log)).toContain("Owner notified");
+      }
+    }
+  );
+  it.each([{ protocol: "automation-signal.v1", prompt: " " }, { prompt: null }, undefined])(
+    "fails malformed signals instead of waking the agent: %j",
+    (signal) => {
+      const s = scenario();
+      dispatch(s, {
+        type: "command",
+        command: {
+          kind: "invoke",
+          channelId: "chan-1",
+          source: { envelopeId: "watch:bad" },
+          tool: "eval",
+          args: { code: "return signal" },
+          metadata: { completion: "when-signaled" },
+        },
+      });
+      const tool = [...s.effects.values()].find((effect) => effect.kind === "local_tool")!;
+      resolveEffect(s, tool.effectId, {
+        kind: "tool",
+        isError: false,
+        result: { details: { returnValue: signal } },
+      });
+      expect([...s.effects.values()].some((effect) => effect.kind === "model_call")).toBe(false);
+      expect(s.state.openTurn).toBeNull();
+      expect(JSON.stringify(s.log)).toContain("work_failed");
+    }
+  );
+  it.each([null, "New update"])(
+    "recovers a committed watch result without changing its decision: %s",
+    (signal) => {
+      const s = scenario();
+      dispatch(s, {
+        type: "command",
+        command: {
+          kind: "invoke",
+          channelId: "chan-1",
+          source: { envelopeId: "watch:recover" },
+          tool: "eval",
+          args: { code: "return signal" },
+          metadata: { completion: "when-signaled" },
+        },
+      });
+      const invocation = Object.values(s.state.pendingInvocations)[0]!;
+      const [terminal] = applyAppend(s, [
+        {
+          envelopeId: ids.invocationTerminal(invocation.invocationId),
+          payloadKind: "invocation.completed",
+          payload: {
+            result: {
+              details: { returnValue: { protocol: "automation-signal.v1", prompt: signal } },
+            },
+          },
+          causality: { invocationId: invocation.invocationId as never, turnId: invocation.turnId },
+        },
+      ]);
+      dispatch(s, { type: "command", command: { kind: "wake" } });
+      expect([...s.effects.values()].some((effect) => effect.kind === "model_call")).toBe(false);
+      dispatch(s, { type: "event-appended", envelope: terminal! });
+      drainPromptArtifactPreparations(s);
+      expect([...s.effects.values()].some((effect) => effect.kind === "model_call")).toBe(
+        signal !== null
+      );
+      expect(s.state.openTurn === null).toBe(signal === null);
+      if (signal !== null) {
+        const model = [...s.effects.values()].find((effect) => effect.kind === "model_call")!;
+        resolveEffect(s, model.effectId, {
+          kind: "model",
+          blocks: [{ type: "text", content: "Owner notified" }],
+          stopReason: "completed",
+        });
+        expect(s.state.openTurn).toBeNull();
+        expect(JSON.stringify(s.log)).toContain("Owner notified");
+      }
+    }
+  );
+});

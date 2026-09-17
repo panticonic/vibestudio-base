@@ -1009,6 +1009,29 @@ describe("AgentVesselBase automation ingress", () => {
     });
   });
 
+  it("keeps a watch in one durable run and suppresses quiet channel delivery", async () => {
+    const vessel = await makePromptProbe();
+    const watch = { ...automation, action: "watch" as const };
+    await vessel.runAutomationEval({
+      channelId: CHANNEL,
+      automation: watch,
+      eval: { code: "return signal" },
+    });
+    expect(vessel.handleIncomingSpy).toHaveBeenCalledWith(
+      CHANNEL,
+      expect.objectContaining({
+        command: expect.objectContaining({
+          metadata: {
+            origin: "scheduled",
+            automation: watch,
+            completion: "when-signaled",
+            delivery: "none",
+          },
+        }),
+      }),
+    );
+  });
+
   it("reports queued evals and does not submit a duplicate run", async () => {
     const vessel = await makePromptProbe();
     vessel.deferredTurnsForTest = [{

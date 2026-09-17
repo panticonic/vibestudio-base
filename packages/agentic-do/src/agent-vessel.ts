@@ -2989,7 +2989,7 @@ export abstract class AgentVesselBase extends PanelDurableObjectBase {
       name: "launch_automation",
       label: "launch_automation",
       description:
-        "Create and immediately start one recurring or manual automation. By default the current agent wakes in this conversation; choose a fresh conversation only for a separate topic or genuinely long-running background task. If shared context would help and wake-ups can be more than one hour apart, ask the user which mode they want when their intent is unclear. A prompt action is an instruction for the future agent, not a final message payload: preserve requested effects such as notifying the owner instead of supplying only the text to send. Model-facing tools such as notify are available to prompt actions, not as eval JavaScript globals. List concrete external service operations known at launch so the host can pre-acquire eligible standing grants; this list is not a runtime allowlist, and omitted authority falls back to ordinary user approval during a run. The running automation is added to this chat as an inspectable pill before the tool returns.",
+        "Create and immediately start one recurring or manual automation. By default the current agent wakes in this conversation; choose a fresh conversation only for a separate topic or genuinely long-running background task. If shared context would help and wake-ups can be more than one hour apart, ask the user which mode they want when their intent is unclear. A prompt action is an instruction for the future agent, not a final message payload: preserve requested effects such as notifying the owner instead of supplying only the text to send. A watch action runs deterministic code first: return {protocol: 'automation-signal.v1', prompt: null} to finish quietly without a model call, or a nonempty prompt string to continue this run with the agent. The nonempty watch prompt is the future agent's task: preserve requested effects there. For owner notifications, explicitly instruct it to call notify with to: owner and alert: inbox; a final chat reply does not send an inbox notification. Model-facing tools such as notify are available to prompt actions and signaled watch turns, not as eval JavaScript globals. List concrete external service operations known at launch so the host can pre-acquire eligible standing grants; this list is not a runtime allowlist, and omitted authority falls back to ordinary user approval during a run. The running automation is added to this chat as an inspectable pill before the tool returns.",
       parameters: {
         type: "object",
         properties: {
@@ -3012,7 +3012,7 @@ export abstract class AgentVesselBase extends PanelDurableObjectBase {
               {
                 type: "object",
                 properties: {
-                  kind: { const: "eval" },
+                  kind: { enum: ["eval", "watch"] },
                   code: { type: "string" },
                   syntax: { enum: ["javascript", "typescript", "jsx", "tsx"] },
                   timeoutMs: { type: "integer", minimum: 1 },
@@ -3512,8 +3512,8 @@ This is one admitted recurring-automation tick. If this tick establishes that th
         metadata: {
           origin: "scheduled",
           automation: input.automation,
-          completion: "after-invocation",
-          delivery: "channel",
+          completion: input.automation.action === "watch" ? "when-signaled" : "after-invocation",
+          delivery: input.automation.action === "watch" ? "none" : "channel",
         },
       },
     });

@@ -19,6 +19,11 @@ export const ids = {
     return `m:${turnId}:${modelCallCount}`;
   },
 
+  /** A direct tool invocation is not model call zero. */
+  directInvocationMessage(turnId: string): string {
+    return `direct:${turnId}`;
+  },
+
   attemptId(messageId: string): string {
     return `att:${messageId}`;
   },

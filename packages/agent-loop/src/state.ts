@@ -175,7 +175,7 @@ export interface AgentTurnMetadata {
     ownerUserId: string;
     name: string;
     revision: number;
-    action: "prompt" | "eval" | "method";
+    action: "prompt" | "eval" | "watch" | "method";
     trigger: "manual" | "scheduled";
     startedAt: number;
     createdAt: number;
@@ -202,8 +202,8 @@ export interface AgentTurnMetadata {
         }
       | null;
   };
-  /** Model-free turns close after their directly journaled invocation settles. */
-  completion?: "after-invocation";
+  /** Direct invocations either finish immediately or continue when their check signals work. */
+  completion?: "after-invocation" | "when-signaled";
   contextPolicy?: AgentTurnContextPolicy;
   delivery?: "none" | "channel" | "last-contact";
   ackToken?: string;

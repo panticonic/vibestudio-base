@@ -676,7 +676,7 @@ const automationInstitutedPayloadSchema = z
         name: z.string().min(1).max(200),
         summary: z.string().min(1).max(4_000),
         revision: z.number().int().positive(),
-        action: z.enum(["prompt", "eval", "method"]),
+        action: z.enum(["prompt", "eval", "watch", "method"]),
         createdAt: z.number().int().nonnegative(),
         state: z.literal("active"),
         nextRunAt: z.number().int().nonnegative().optional(),

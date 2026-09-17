@@ -552,7 +552,7 @@ function startDirectInvocation(
   ctx: StepContext,
 ): StepOutput {
   const turnId = ids.turnId(state.channelId, head.turnTriggerEnvelopeId, ctx.selfRef.id);
-  const messageId = ids.messageId(turnId, 0);
+  const messageId = ids.directInvocationMessage(turnId);
   return {
     append: [
       turnOpenedItem(turnId, head.metadata, head.envelopeId),
@@ -1600,6 +1600,8 @@ function commandStep(state: AgentState, command: Command, ctx: StepContext): Ste
         afterOrphan.openTurn &&
         !afterOrphan.openTurn.interrupted &&
         afterOrphan.openTurn.metadata?.completion !== "after-invocation" &&
+        !(afterOrphan.openTurn.metadata?.completion === "when-signaled" &&
+          afterOrphan.openTurn.modelCallCount === 0) &&
         wakeGuardSatisfied(afterOrphan) &&
         (hasFreshInput(afterOrphan) ||
           afterOrphan.openTurn.modelCallCount === 0 ||
@@ -1771,6 +1773,9 @@ function eventStep(state: AgentState, envelope: LogEnvelope, ctx: StepContext): 
     if (Object.keys(state.pendingInvocations).length > 0) return EMPTY; // not last yet
     if (Object.keys(state.pendingApprovals).length > 0) return EMPTY;
     if (Object.keys(state.pendingCredentialWaits).length > 0) return EMPTY;
+    if (turn.metadata?.completion === "when-signaled" && turn.modelCallCount === 0) {
+      return finishWatchCheck(state, ctx, kind, payload);
+    }
     if (turn.metadata?.completion === "after-invocation") {
       const succeeded = kind === "invocation.completed";
       return {
@@ -2027,6 +2032,54 @@ function eventStep(state: AgentState, envelope: LogEnvelope, ctx: StepContext): 
   }
 
   return EMPTY;
+}
+
+/** Semantic cascades hydrate the durable result; the fold keeps opaque refs.
+ * Replay uses that same cascade before an interrupted check can wake a model. */
+function finishWatchCheck(
+  state: AgentState,
+  ctx: StepContext,
+  kind: string,
+  payload: Record<string, unknown>
+): StepOutput {
+  const turn = state.openTurn!;
+  const result = payload["result"] as { details?: { returnValue?: unknown } } | undefined;
+  const signal = result?.details?.returnValue as
+    | { protocol?: unknown; prompt?: unknown }
+    | undefined;
+  if (
+    kind !== "invocation.completed" ||
+    signal?.protocol !== "automation-signal.v1" ||
+    !(signal.prompt === null || (typeof signal.prompt === "string" && signal.prompt.trim()))
+  ) {
+    return {
+      append: [
+        turnClosedItem(turn, {
+          reason: "work_failed",
+          summary:
+            kind !== "invocation.completed"
+              ? directInvocationSummary(kind, payload)
+              : "Watch must return automation-signal.v1 with a nonempty prompt or null.",
+        }),
+      ],
+      effects: [],
+    };
+  }
+  if (signal.prompt === null) {
+    return { append: [turnClosedItem(turn, { summary: "No change detected." })], effects: [] };
+  }
+  // A signaled check supplies a fresh task for this run, not merely tool data
+  // appended after an earlier run's already-completed instruction.
+  const prompt = recvItem({
+    kind: "prompt",
+    channelId: state.channelId,
+    source: { envelopeId: `automation-signal:${turn.turnId}` },
+    senderRef: ctx.selfRef,
+    content: signal.prompt,
+    metadata: { origin: "scheduled", automation: turn.metadata?.automation },
+  });
+  const next = nextModelCall(projectAppend(state, [prompt], ctx.now), 0, ctx);
+  return { append: [prompt, ...next.append], effects: next.effects };
 }
 
 function directInvocationSummary(kind: string, payload: Record<string, unknown>): string {

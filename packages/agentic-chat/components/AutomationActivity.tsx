@@ -668,15 +668,17 @@ export function AutomationParametersEditor({
         <Text as="div" size="1" color="gray" mb="1">
           {execution.kind === "method"
             ? "Method arguments (JSON array)"
-            : execution.action.kind === "eval"
-              ? "Exact eval code"
+            : execution.action.kind !== "prompt"
+              ? execution.action.kind === "watch"
+                ? "Watch check code"
+                : "Exact eval code"
               : "Prompt text"}
         </Text>
         <TextArea
           aria-label={
             execution.kind === "method"
               ? "Method arguments"
-              : execution.action.kind === "eval"
+              : execution.action.kind !== "prompt"
                 ? "Eval code"
                 : "Prompt text"
           }
@@ -685,11 +687,11 @@ export function AutomationParametersEditor({
           resize="vertical"
           style={{
             minHeight:
-              execution.kind === "agent" && execution.action.kind === "eval"
+              execution.kind === "agent" && execution.action.kind !== "prompt"
                 ? 220
                 : 120,
             fontFamily:
-              execution.kind === "agent" && execution.action.kind === "eval"
+              execution.kind === "agent" && execution.action.kind !== "prompt"
                 ? "var(--code-font-family)"
                 : undefined,
           }}
@@ -947,14 +949,14 @@ function Inspector({
           <Text
             size="2"
             style={
-              execution.kind === "method" || execution.action.kind === "eval"
+              execution.kind === "method" || execution.action.kind !== "prompt"
                 ? { fontFamily: "var(--code-font-family)" }
                 : undefined
             }
           >
             {execution.kind === "method"
               ? `${execution.method}(${JSON.stringify(execution.args, null, 2)})`
-              : execution.action.kind === "eval"
+              : execution.action.kind !== "prompt"
                 ? execution.action.code
                 : execution.action.text}
           </Text>

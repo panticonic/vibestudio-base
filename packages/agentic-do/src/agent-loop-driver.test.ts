@@ -407,6 +407,118 @@ describe("AgentLoopDriver", () => {
     });
   });
 
+  it.each([null, "An update is available"])(
+    "settles a durable watch through its check and optional model turn: %s",
+    async (signal) => {
+      const closed: Parameters<NonNullable<DriverDeps["onTurnClosed"]>>[0][] = [];
+      const observed: EffectDescriptor[] = [];
+      const harness = await makeHarness({
+        script: {
+          model: signal === null ? [] : [textReply("Owner notified")],
+          tool: [
+            {
+              kind: "tool",
+              isError: false,
+              result: {
+                details: { returnValue: { protocol: "automation-signal.v1", prompt: signal } },
+              },
+            },
+          ],
+        },
+        onTurnClosed: (input) => {
+          closed.push(input);
+        },
+        executorOverride: (descriptor) => {
+          observed.push(descriptor);
+          return null;
+        },
+      });
+      await harness.driver.handleIncoming(CHANNEL, {
+        type: "command",
+        command: {
+          kind: "invoke",
+          channelId: CHANNEL,
+          source: { envelopeId: "automation:watch" },
+          tool: "eval",
+          args: { code: "return signal" },
+          metadata: { origin: "scheduled", completion: "when-signaled", delivery: "none" },
+        },
+      });
+      await settle(harness.driver);
+      expect(observed.filter((effect) => effect.kind === "model_call")).toHaveLength(
+        signal === null ? 0 : 1
+      );
+      expect(closed).toHaveLength(1);
+      expect(closed[0]?.reason).not.toBe("work_failed");
+      expect(
+        (await logKinds(harness.gad)).filter((kind) => kind === "message.completed")
+      ).toHaveLength(signal === null ? 1 : 3);
+    }
+  );
+
+  it.each([null, "New update"])(
+    "rehydrates a watch result after interruption: %s",
+    async (signal) => {
+      let armed = true;
+      const script: Script = {
+        model: signal === null ? [] : [textReply("Owner notified")],
+        tool: [
+          {
+            kind: "tool",
+            isError: false,
+            result: {
+              details: { returnValue: { protocol: "automation-signal.v1", prompt: signal } },
+            },
+          },
+        ],
+      };
+      const crashed = await makeHarness({
+        script,
+        killPoint: (point) => {
+          if (armed && point === "after-outcome-append") {
+            armed = false;
+            throw new Error("crash");
+          }
+        },
+      });
+      await crashed.driver.handleIncoming(CHANNEL, {
+        type: "command",
+        command: {
+          kind: "invoke",
+          channelId: CHANNEL,
+          source: { envelopeId: "automation:watch-recovery" },
+          tool: "eval",
+          args: { code: "return signal" },
+          metadata: { completion: "when-signaled" },
+        },
+      });
+      await crashed.driver.dispatchReadyEffectsForTest().catch(() => {});
+      const observed: EffectDescriptor[] = [];
+      const closed: Parameters<NonNullable<DriverDeps["onTurnClosed"]>>[0][] = [];
+      const recovered = await makeHarness({
+        script,
+        gad: crashed.gad,
+        driverSql: crashed.driverHost,
+        blobs: crashed.blobs,
+        executorOverride: (descriptor) => {
+          observed.push(descriptor);
+          return null;
+        },
+        onTurnClosed: (input) => {
+          closed.push(input);
+        },
+      });
+      await recovered.driver.wake(CHANNEL);
+      await settle(recovered.driver);
+      expect(observed.filter((effect) => effect.kind === "model_call")).toHaveLength(
+        signal === null ? 0 : 1
+      );
+      expect(closed).toHaveLength(1);
+      expect(closed[0]?.reason).not.toBe("work_failed");
+      expect((await recovered.driver.loop(CHANNEL)).state.openTurn).toBeNull();
+    }
+  );
+
   it("journals a model-free automation eval as one visible invocation and closes from its result", async () => {
     const closed: Parameters<NonNullable<DriverDeps["onTurnClosed"]>>[0][] = [];
     const observed: EffectDescriptor[] = [];
