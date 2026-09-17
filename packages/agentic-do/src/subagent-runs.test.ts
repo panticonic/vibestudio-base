@@ -25,7 +25,7 @@ describe("SubagentRunStore schema", () => {
       startedAt: 1,
       lastActivityAt: 2,
       agentKind: "pi",
-      launchConfig: { model: "openai-codex:gpt-5.3-codex-spark" },
+      launchConfig: { model: "openai-codex:gpt-5.6-luna" },
       externalSessionEntityId: null,
       externalGenerationId: null,
     });

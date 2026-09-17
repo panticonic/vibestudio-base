@@ -9,7 +9,7 @@ import { AGENT_LAUNCH_WATCHDOG_MS, useDeferredAgent } from "./useDeferredAgent";
 import type { ChatParticipantMetadata } from "../types";
 
 const WORKSPACE_MODEL = "openai-codex:gpt-5.6-sol";
-const PANEL_MODEL = "openai-codex:gpt-5.3-codex-spark";
+const PANEL_MODEL = "openai-codex:gpt-5.6-luna";
 const USER_MODEL = "anthropic:claude-sonnet-4-6";
 
 const AGENT: AvailableAgent = {
@@ -31,8 +31,8 @@ const MODEL_CATALOG: ModelCatalog = {
     }),
     makeTestCatalogEntry({
       ref: PANEL_MODEL,
-      id: "gpt-5.3-codex-spark",
-      name: "GPT-5.3 Codex Spark",
+      id: "gpt-5.6-luna",
+      name: "GPT-5.6 Luna",
       provider: "openai-codex",
       baseUrl: "https://chatgpt.com/backend-api",
     }),

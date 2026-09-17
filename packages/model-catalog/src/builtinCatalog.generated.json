@@ -3324,30 +3324,6 @@
         }
       },
       {
-        "id": "gpt-5.3-codex-spark",
-        "name": "GPT-5.3 Codex Spark",
-        "api": "azure-openai-responses",
-        "provider": "azure-openai-responses",
-        "baseUrl": "",
-        "reasoning": true,
-        "input": ["text", "image"],
-        "cost": {
-          "input": 1.75,
-          "output": 14,
-          "cacheRead": 0.175,
-          "cacheWrite": 0
-        },
-        "contextWindow": 128000,
-        "maxTokens": 32000,
-        "thinkingLevelMap": {
-          "off": null,
-          "xhigh": "xhigh"
-        },
-        "compat": {
-          "supportsOpenAIGrammarTools": true
-        }
-      },
-      {
         "id": "gpt-5.4",
         "name": "GPT-5.4",
         "api": "azure-openai-responses",
@@ -12757,36 +12733,6 @@
         }
       },
       {
-        "id": "gpt-5.3-codex-spark",
-        "name": "GPT-5.3 Codex Spark",
-        "api": "openai-responses",
-        "provider": "openai",
-        "baseUrl": "https://api.openai.com/v1",
-        "reasoning": true,
-        "input": ["text", "image"],
-        "cost": {
-          "input": 1.75,
-          "output": 14,
-          "cacheRead": 0.175,
-          "cacheWrite": 0
-        },
-        "contextWindow": 128000,
-        "maxTokens": 32000,
-        "thinkingLevelMap": {
-          "off": null,
-          "minimal": null,
-          "low": "low",
-          "medium": "medium",
-          "high": "high",
-          "xhigh": "xhigh",
-          "max": null
-        },
-        "compat": {
-          "supportsStrictMode": true,
-          "supportsOpenAIGrammarTools": true
-        }
-      },
-      {
         "id": "gpt-5.4",
         "name": "GPT-5.4",
         "api": "openai-responses",
@@ -13383,30 +13329,6 @@
       }
     ],
     "openai-codex": [
-      {
-        "id": "gpt-5.3-codex-spark",
-        "name": "GPT-5.3 Codex Spark",
-        "api": "openai-codex-responses",
-        "provider": "openai-codex",
-        "baseUrl": "https://chatgpt.com/backend-api",
-        "reasoning": true,
-        "input": ["text"],
-        "cost": {
-          "input": 1.75,
-          "output": 14,
-          "cacheRead": 0.175,
-          "cacheWrite": 0
-        },
-        "contextWindow": 128000,
-        "maxTokens": 128000,
-        "thinkingLevelMap": {
-          "xhigh": "xhigh",
-          "minimal": "low"
-        },
-        "compat": {
-          "supportsOpenAIGrammarTools": true
-        }
-      },
       {
         "id": "gpt-5.4",
         "name": "GPT-5.4",

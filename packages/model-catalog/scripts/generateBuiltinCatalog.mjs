@@ -11,6 +11,10 @@ const sourceUrl = import.meta.resolve(sourceSpecifier);
 const sourcePackageUrl = new URL("../../package.json", sourceUrl);
 const sourcePackage = JSON.parse(await readFile(sourcePackageUrl, "utf8"));
 
+// Keep discontinued models out of every provider's selectable catalog even
+// while the upstream registry still advertises them.
+const RETIRED_MODEL_IDS = new Set(["gpt-5.3-codex-spark"]);
+
 const providers = Object.fromEntries(
   getBuiltinProviders()
     .slice()
@@ -19,6 +23,7 @@ const providers = Object.fromEntries(
       provider,
       getBuiltinModels(provider)
         .slice()
+        .filter((model) => !RETIRED_MODEL_IDS.has(model.id))
         .sort((left, right) => left.id.localeCompare(right.id)),
     ]),
 );

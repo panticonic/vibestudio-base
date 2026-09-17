@@ -3740,7 +3740,7 @@ describe("AgentVesselBase.runDeferredSpawn", () => {
     probe.callerIdForTest = await expectedEvalCaller();
     await probe.chatOp(CHANNEL, "configureAgent", [
       {
-        model: "openai-codex:gpt-5.3-codex-spark",
+        model: "openai-codex:gpt-5.6-luna",
         thinkingLevel: "high",
         fallbackModel: "anthropic:claude-sonnet-4-6",
         fallbackThinkingLevel: "minimal",
@@ -3763,7 +3763,7 @@ describe("AgentVesselBase.runDeferredSpawn", () => {
     expect(create?.args[0]).toMatchObject({
       stateArgs: {
         agentConfig: {
-          model: "openai-codex:gpt-5.3-codex-spark",
+          model: "openai-codex:gpt-5.6-luna",
           thinkingLevel: "high",
           fallbackModel: "anthropic:claude-sonnet-4-6",
           fallbackThinkingLevel: "minimal",
@@ -3781,13 +3781,13 @@ describe("AgentVesselBase.runDeferredSpawn", () => {
     const probe = await makeSubagentSpawnProbe();
     probe.callerIdForTest = await expectedEvalCaller();
     await probe.chatOp(CHANNEL, "configureAgent", [
-      { model: "openai-codex:gpt-5.3-codex-spark", approvalLevel: 2 },
+      { model: "openai-codex:gpt-5.6-luna", approvalLevel: 2 },
     ]);
 
     const out = await probe.spawnForTest(CHANNEL, "inv-override", {
       mode: "fresh",
       task: "exercise an explicit child override",
-      config: { model: "openai-codex:gpt-5.3-codex-spark", approvalLevel: 1 },
+      config: { model: "openai-codex:gpt-5.6-luna", approvalLevel: 1 },
     });
 
     expect(out).toMatchObject({
@@ -3795,7 +3795,7 @@ describe("AgentVesselBase.runDeferredSpawn", () => {
       result: {
         details: {
           launchConfig: {
-            model: "openai-codex:gpt-5.3-codex-spark",
+            model: "openai-codex:gpt-5.6-luna",
             approvalLevel: 1,
           },
         },
@@ -3808,7 +3808,7 @@ describe("AgentVesselBase.runDeferredSpawn", () => {
     expect(create?.args[0]).toMatchObject({
       stateArgs: {
         agentConfig: {
-          model: "openai-codex:gpt-5.3-codex-spark",
+          model: "openai-codex:gpt-5.6-luna",
           approvalLevel: 1,
         },
       },

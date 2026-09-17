@@ -7,8 +7,8 @@ import {
 } from "@workspace/pi-ai/api/openai-codex-responses";
 
 const model = {
-  id: "gpt-5.3-codex-spark",
-  name: "GPT-5.3 Codex Spark",
+  id: "gpt-5.6-luna",
+  name: "GPT-5.6 Luna",
   api: "openai-codex-responses",
   provider: "openai-codex",
   baseUrl: "https://chatgpt.com/backend-api",

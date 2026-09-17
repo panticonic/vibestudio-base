@@ -872,7 +872,7 @@ describe("chatMessagesFromChannelView", () => {
       payload: {
         protocol: AGENTIC_PROTOCOL_VERSION,
         reason:
-          "The usage limit has been reached for GPT-5.3-Codex-Spark. Try again after Jun 15, 2026 at 6:35 PM UTC.",
+          "The usage limit has been reached for GPT-5.6-Luna. Try again after Jun 15, 2026 at 6:35 PM UTC.",
         recoverable: false,
         code: "usage_limit_terminal",
         resetAt: "2026-06-15T18:35:01.000Z",

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { getBuiltinModels } from "./builtinCatalog";
+import { getBuiltinModels, getBuiltinProviders } from "./builtinCatalog";
 import { ConnectCredentialParamsSchema } from "@vibestudio/service-schemas/credentials";
 import {
   listProviderConnectPresets,
@@ -10,6 +10,17 @@ import {
 import { toCredentialConnectRequest } from "./providerConnect";
 
 describe("provider connect presets", () => {
+  it("omits discontinued models from every provider catalog", () => {
+    for (const provider of getBuiltinProviders()) {
+      expect(
+        getBuiltinModels(provider).some(
+          (model) => model.id === "gpt-5.3-codex-spark",
+        ),
+        `${provider} exposes a discontinued model`,
+      ).toBe(false);
+    }
+  });
+
   it("builds a schema-valid OpenAI Codex external-browser credential request", () => {
     const request = toCredentialConnectRequest("openai-codex", {
       browser: "external",

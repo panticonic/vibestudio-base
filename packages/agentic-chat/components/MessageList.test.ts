@@ -285,7 +285,7 @@ describe("MessageList typing indicators (roster-based)", () => {
             contentType: "diagnostic",
             kind: "system",
             content:
-              "The usage limit has been reached for GPT-5.3-Codex-Spark. Try again after Jun 15, 2026 at 6:35 PM UTC.",
+              "The usage limit has been reached for GPT-5.6-Luna. Try again after Jun 15, 2026 at 6:35 PM UTC.",
             complete: true,
             diagnostic: {
               messageId: "msg-usage-limit",
@@ -294,7 +294,7 @@ describe("MessageList typing indicators (roster-based)", () => {
               severity: "error",
               title: "Model usage limit reached",
               detail:
-                "The usage limit has been reached for GPT-5.3-Codex-Spark. Try again after Jun 15, 2026 at 6:35 PM UTC.",
+                "The usage limit has been reached for GPT-5.6-Luna. Try again after Jun 15, 2026 at 6:35 PM UTC.",
               resetAt: "2026-06-15T18:35:01.000Z",
             },
           }),

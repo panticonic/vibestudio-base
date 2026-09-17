@@ -619,7 +619,7 @@ describe("modelCallExecutor", () => {
     await modelCallExecutor.execute({
       descriptor: descriptor({
         provider: "openai-codex",
-        model: "gpt-5.3-codex-spark",
+        model: "gpt-5.6-luna",
         modelSpec: { ...codexSpec, streamIdleTimeoutMs: 45_000 } as never,
       }),
       state: initialAgentState({ channelId: "channel-1", config }),
@@ -667,7 +667,7 @@ describe("modelCallExecutor", () => {
       modelCallExecutor.execute({
         descriptor: descriptor({
           provider: "openai-codex",
-          model: "gpt-5.3-codex-spark",
+          model: "gpt-5.6-luna",
           modelSpec: codexSpec as never,
         }),
         state: initialAgentState({ channelId: "channel-1", config }),
@@ -980,7 +980,7 @@ describe("modelCallExecutor", () => {
     });
     const longDescriptor = descriptor();
     longDescriptor.request.provider = "openai-codex";
-    longDescriptor.request.model = "gpt-5.3-codex-spark";
+    longDescriptor.request.model = "gpt-5.6-luna";
     longDescriptor.channelId =
       "ctx-panel-tree-panels-chat-mqcwmvir-0fe8dd6c-extra-long";
     const inputDeps = deps();
@@ -1324,7 +1324,7 @@ describe("modelCallExecutor", () => {
           : digest === "tools" ? toolSchemas(["read"]) : "";
       const inputDescriptor = descriptor({ toolSchemasHash: "tools" });
       inputDescriptor.request.provider = "openai-codex";
-      inputDescriptor.request.model = "gpt-5.3-codex-spark";
+      inputDescriptor.request.model = "gpt-5.6-luna";
       inputDescriptor.request.activeToolNames = ["read"];
 
       const outcome = await modelCallExecutor.execute({
@@ -1850,7 +1850,7 @@ describe("modelCallExecutor", () => {
     const info = vi.spyOn(console, "info").mockImplementation(() => {});
     const inputDescriptor = descriptor();
     inputDescriptor.request.provider = "openai-codex";
-    inputDescriptor.request.model = "gpt-5.3-codex-spark";
+    inputDescriptor.request.model = "gpt-5.6-luna";
 
     await modelCallExecutor.execute({
       descriptor: inputDescriptor,

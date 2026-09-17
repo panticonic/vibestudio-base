@@ -141,13 +141,13 @@ describe("buildAgentSubscriptionConfig", () => {
         model: "openai-codex:gpt-5.6-sol",
       },
       globalConfig: {
-        model: "openai-codex:gpt-5.3-codex-spark",
+        model: "openai-codex:gpt-5.6-luna",
       },
       perAgentConfig: {},
     });
 
-    expect(result.subscribeConfig["model"]).toBe("openai-codex:gpt-5.3-codex-spark");
-    expect(result.perAgent["model"]).toBe("openai-codex:gpt-5.3-codex-spark");
+    expect(result.subscribeConfig["model"]).toBe("openai-codex:gpt-5.6-luna");
+    expect(result.perAgent["model"]).toBe("openai-codex:gpt-5.6-luna");
   });
 
   it("persists effective model and behavior defaults into the per-agent record", () => {
