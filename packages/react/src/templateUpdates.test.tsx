@@ -30,20 +30,19 @@ it("launches an agent with the exact target and resumed operation, without mergi
     }),
   );
   const client = {
-    updateStatus: vi
-      .fn()
-      .mockResolvedValue({
-        workspaceEpoch: 0,
-        checks: [
-          {
-            source: pin,
-            target,
-            targetEpoch: 1,
-            checkedAt: 100,
-            status: "different-epoch",
-          },
-        ],
-      }),
+    updateAssistant: vi.fn(async () => null),
+    updateStatus: vi.fn().mockResolvedValue({
+      workspaceEpoch: 0,
+      checks: [
+        {
+          source: pin,
+          target,
+          targetEpoch: 1,
+          checkedAt: 100,
+          status: "different-epoch",
+        },
+      ],
+    }),
     prepareUpdate: vi.fn(),
     publishUpdate: vi.fn(),
   };
@@ -67,7 +66,7 @@ it("launches an agent with the exact target and resumed operation, without mergi
       />
     </Theme>,
   );
-  await screen.findByText("Host compatibility review needed");
+  await screen.findByText("App compatibility review needed");
   fireEvent.click(
     screen.getByRole("button", { name: "Review Personal with an agent" }),
   );
@@ -76,4 +75,32 @@ it("launches an agent with the exact target and resumed operation, without mergi
   expect(client.prepareUpdate).not.toHaveBeenCalled();
   expect(client.publishUpdate).not.toHaveBeenCalled();
   expect(screen.queryByRole("button", { name: "Keep local" })).toBeNull();
+});
+
+it("shows the saved paused state and configures the same assistant instead of offering setup", async () => {
+  const client = {
+    updateStatus: vi.fn(async () => ({ workspaceEpoch: 0, checks: [] })),
+    updateAssistant: vi.fn(async () => ({
+      state: "paused",
+      charter: { trigger: { kind: "schedule", everyMs: 21600000 } },
+    })),
+  };
+  const configure = vi.fn();
+  render(
+    <Theme>
+      <TemplateUpdates
+        client={client as unknown as TemplatesClient}
+        workspaceId="paused"
+        sources={[]}
+        onRefresh={async () => {}}
+        onReviewWithAgent={configure}
+      />
+    </Theme>,
+  );
+  await screen.findByText("Monitoring is paused");
+  fireEvent.click(
+    screen.getByRole("button", { name: "Configure with assistant" }),
+  );
+  expect(configure.mock.calls[0]?.[0]).toContain("same automation");
+  expect(screen.queryByText("Set up update assistant")).toBeNull();
 });

@@ -47,6 +47,8 @@ describe("templates authority manifest", () => {
       "checkUpdates",
       "updateSignal",
       "acknowledgeUpdates",
+      "updateAssistant",
+      "reviewPublication",
     ]);
     expect(
       manifest.vibestudio.authority.requests

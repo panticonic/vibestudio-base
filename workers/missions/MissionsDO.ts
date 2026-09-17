@@ -463,14 +463,80 @@ export class MissionsDO extends DurableObjectBase {
   }
 
   @schemaRpc()
+  getDefault(id: string): MissionRecord | null {
+    const key = `workspace-default:${this.requireUser()}:${id}`;
+    const missionId = this.getStateValue(key);
+    return missionId ? this.requireMission(missionId) : null;
+  }
+
+  @schemaRpc()
+  async provisionDefault(
+    id: string,
+    input: { name: string; charter: MissionCharter },
+  ): Promise<MissionRecord> {
+    const existing = this.getDefault(id);
+    if (existing) return existing;
+    const userId = this.requireUser();
+    // A manually installed equivalent watch already expresses this user's choice.
+    // Adopt it even if its cadence or state differs from the template default.
+    const execution = input.charter.execution;
+    const matching = this.sql
+      .exec(
+        "SELECT * FROM missions WHERE owner_user_id=? AND NOT EXISTS (SELECT 1 FROM mission_launches l WHERE l.mission_id=missions.mission_id AND l.launch_key LIKE 'workspace-default:%') ORDER BY created_at,mission_id",
+        userId,
+      )
+      .toArray()
+      .map((row) => this.rowToMission(row as unknown as MissionRow))
+      .find((mission) => {
+        const candidate = mission.charter.execution;
+        return (
+          !this.getStateValue(`workspace-default-claim:${mission.missionId}`) &&
+          execution.kind === "agent" &&
+          execution.action.kind === "watch" &&
+          candidate.kind === "agent" &&
+          candidate.image.source === execution.image.source &&
+          candidate.image.className === execution.image.className &&
+          canonicalJson(
+            candidate.action.kind === "watch"
+              ? { ...candidate.action, code: candidate.action.code.trim() }
+              : candidate.action,
+          ) ===
+            canonicalJson({
+              ...execution.action,
+              code: execution.action.code.trim(),
+            })
+        );
+      });
+    const mission =
+      matching ??
+      (await this.launchDefinition(input, `workspace-default:${id}`));
+    this.ctx.storage.transactionSync(() => {
+      this.setStateValue(
+        `workspace-default:${userId}:${id}`,
+        mission.missionId,
+      );
+      this.setStateValue(`workspace-default-claim:${mission.missionId}`, id);
+    });
+    return mission;
+  }
+
+  @schemaRpc()
   async launch(input: {
     name: string;
     charter: MissionCharter;
   }): Promise<MissionRecord> {
+    return this.launchDefinition(
+      input,
+      this.rpcIdempotencyKey ?? this.rpcRequestId ?? crypto.randomUUID(),
+    );
+  }
+
+  private async launchDefinition(
+    input: { name: string; charter: MissionCharter },
+    launchKey: string,
+  ): Promise<MissionRecord> {
     validateMissionCharter(input.charter);
     const caller = this.requireOwnerCaller();
-    const launchKey =
-      this.rpcIdempotencyKey ?? this.rpcRequestId ?? crypto.randomUUID();
     const prior = this.sql
       .exec(
         "SELECT mission_id,state,intent_json FROM mission_launches WHERE owner_user_id=? AND launch_key=?",

@@ -1,3 +1,8 @@
+import { DiffViewer, type DiffContentFetcher } from "@workspace/ui/diff";
+import {
+  templatePublicationReviewSchema,
+  type TemplatePublicationReview,
+} from "@vibestudio/service-schemas/gitInterop";
 import {
   TemplateRepositoryChoice,
   type TemplateRepositoryChoiceValue,
@@ -27,7 +32,11 @@ import {
 import "./templateAuthoring.css";
 
 type PublicationRequest = Parameters<TemplatesClient["publishAuthoring"]>[0];
-type Draft = { plan: TemplateAuthoringInspection; request: PublicationRequest };
+type Draft = {
+  plan: TemplateAuthoringInspection;
+  request: PublicationRequest;
+  review: TemplatePublicationReview;
+};
 type Setup = Awaited<ReturnType<TemplatesClient["authoringSetup"]>>;
 function githubUpstream(setup: Setup) {
   if (!setup.upstream) return null;
@@ -47,7 +56,11 @@ export function TemplateAuthoring({
   workspaceId,
   listAccounts,
   onPublished,
+  onConnectGitHub,
+  fetchContent,
 }: {
+  onConnectGitHub?: () => Promise<void>;
+  fetchContent: DiffContentFetcher;
   client: TemplatesClient;
   workspaceId: string;
   onPublished?: () => Promise<void>;
@@ -91,10 +104,14 @@ export function TemplateAuthoring({
           throw new Error(
             "Saved publication review is invalid; review the selection again.",
           );
-        setDraft({ plan, request });
+        const review = templatePublicationReviewSchema.parse(value.review);
+        setDraft({ plan, request, review });
       }
-    } catch (cause) {
-      setError(String(cause));
+    } catch {
+      window.localStorage.removeItem(key);
+      setError(
+        "This saved release needs a fresh review. Check the selection below and review again.",
+      );
     }
     void client
       .authoringSetup()
@@ -195,30 +212,35 @@ export function TemplateAuthoring({
         description: description.trim(),
         parts: selected,
       });
+      const request: Parameters<TemplatesClient["reviewPublication"]>[0] = {
+        commandId: crypto.randomUUID(),
+        intent: plan.request,
+        expectedFingerprint: plan.fingerprint,
+        version: version.trim(),
+        destination: {
+          provider: "github",
+          owner: repository.owner.trim(),
+          name: repository.name.trim(),
+        },
+        ...(repository.mode === "new"
+          ? {
+              creation: {
+                private: repository.private,
+                description: description.trim(),
+              },
+            }
+          : {}),
+        ...(repository.credentialId
+          ? { credentialId: repository.credentialId }
+          : {}),
+      };
+      const review = templatePublicationReviewSchema.parse(
+        await client.reviewPublication(request),
+      );
       const captured: Draft = {
         plan,
-        request: {
-          commandId: crypto.randomUUID(),
-          intent: plan.request,
-          expectedFingerprint: plan.fingerprint,
-          version: version.trim(),
-          destination: {
-            provider: "github",
-            owner: repository.owner.trim(),
-            name: repository.name.trim(),
-          },
-          ...(repository.mode === "new"
-            ? {
-                creation: {
-                  private: repository.private,
-                  description: description.trim(),
-                },
-              }
-            : {}),
-          ...(repository.credentialId
-            ? { credentialId: repository.credentialId }
-            : {}),
-        },
+        review,
+        request: { ...request, expectedRemoteCommit: review.remoteCommit },
       };
       window.localStorage.setItem(key, JSON.stringify(captured));
       setDraft(captured);
@@ -297,7 +319,20 @@ export function TemplateAuthoring({
       </div>
       {error && (
         <Callout.Root color="red" role="alert">
-          <Callout.Text>{error}</Callout.Text>
+          <Callout.Text>
+            We couldn’t complete this release. Your review is preserved.
+          </Callout.Text>
+          <details>
+            <summary>Error details</summary>
+            <Text as="p" size="2">
+              {error}
+            </Text>
+          </details>
+          {onConnectGitHub && (
+            <Button variant="soft" onClick={() => void onConnectGitHub()}>
+              Connect or repair GitHub access
+            </Button>
+          )}
           {!setup && (
             <Button onClick={() => setReload((value) => value + 1)}>
               Try again
@@ -332,7 +367,12 @@ export function TemplateAuthoring({
             <Text weight="bold">
               {draft.request.destination.owner}/{draft.request.destination.name}
             </Text>
-            <Badge>{draft.request.version}</Badge>
+            <Flex gap="2" wrap="wrap">
+              <Badge>Version {draft.request.version}</Badge>
+              <Badge color="gray">
+                {draft.review.changedFiles.length} changed files
+              </Badge>
+            </Flex>
             <Text size="2">
               {draft.request.creation
                 ? `Create a ${draft.request.creation.private ? "private" : "public"} repository if it does not exist.`
@@ -344,6 +384,36 @@ export function TemplateAuthoring({
               {draft.plan.includedParts.length} included units. Required local
               dependencies are included automatically.
             </Text>
+            <Text size="2" color="gray">
+              {draft.review.remoteCommit
+                ? `Compared with upstream main at ${draft.review.remoteCommit.slice(0, 10)}.`
+                : "First publication: all files will be added."}{" "}
+              Expand a file to review its changes.
+            </Text>
+            <DiffViewer
+              entry={{
+                repoPath: `${draft.request.destination.owner}/${draft.request.destination.name}`,
+                oldState: draft.review.remoteCommit ?? "empty",
+                newState: draft.plan.fingerprint,
+                diffStat: { filesChanged: draft.review.changedFiles.length },
+                changedFiles: draft.review.changedFiles,
+              }}
+              fetchContent={fetchContent}
+              appearance="dark"
+            />
+            {draft.review.changedFiles
+              .filter(
+                (file) =>
+                  file.oldMode !== null &&
+                  file.newMode !== null &&
+                  file.oldMode !== file.newMode,
+              )
+              .map((file) => (
+                <Text key={file.path} size="2">
+                  {file.path}: file mode {file.oldMode!.toString(8)} →{" "}
+                  {file.newMode!.toString(8)}
+                </Text>
+              ))}
             <details>
               <summary>Included files and template manifest</summary>
               <ul className="publication-paths">
@@ -398,6 +468,7 @@ export function TemplateAuthoring({
                     value={repository}
                     onChange={setRepository}
                     listAccounts={listAccounts}
+                    onConnectGitHub={onConnectGitHub}
                     upstream={upstream}
                   />
                 </Card>
@@ -531,7 +602,12 @@ export function TemplateAuthoring({
                     </Flex>
                   ) : (
                     <Text as="p" size="6" weight="bold" mt="3">
-                      {version || "Choose a destination"}
+                      {version ||
+                        (listAccounts && !repository.credentialId
+                          ? "Connect a GitHub account"
+                          : repository.owner && repository.name
+                            ? "Check release version"
+                            : "Choose a destination")}
                     </Text>
                   )}
                   <Text as="p" size="2" color="gray" mt="2">

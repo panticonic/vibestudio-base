@@ -1,3 +1,4 @@
+import { WorkspaceAutomationSchema } from "@vibestudio/workspace-contracts/automations";
 /**
  * AgentVesselBase (WS1 §2.7) — the thin, event-sourced agent vessel.
  *
@@ -3512,7 +3513,10 @@ This is one admitted recurring-automation tick. If this tick establishes that th
         metadata: {
           origin: "scheduled",
           automation: input.automation,
-          completion: input.automation.action === "watch" ? "when-signaled" : "after-invocation",
+          completion:
+            input.automation.action === "watch"
+              ? "when-signaled"
+              : "after-invocation",
           delivery: input.automation.action === "watch" ? "none" : "channel",
         },
       },
@@ -5945,6 +5949,78 @@ This is one admitted recurring-automation tick. If this tick establishes that th
   /** Launch the canonical mission first, then publish its idempotent running
    * resource projection. A retry recovers the same mission and the same pill;
    * the tool does not report success until both durable owners acknowledge. */
+  /** Host-driven provisioning binds a declared default to this user-owned vessel.
+   * It prepares a durable conversation but submits no prompt or model turn. */
+  @rpc({
+    website: {
+      kind: "closed",
+      reason: "Only workspace lifecycle may initialize a default automation.",
+    },
+    principals: ["host"],
+    effect: { kind: "open" },
+    tier: "open",
+    sensitivity: "write",
+  })
+  async initializeAutomation(input: {
+    id: string;
+    contextId: string;
+    definition: unknown;
+  }): Promise<MissionRecord> {
+    const definition = WorkspaceAutomationSchema.parse(input.definition);
+    if (
+      definition.source !== this.env["WORKER_SOURCE"] ||
+      definition.className !== this.env["WORKER_CLASS_NAME"]
+    ) {
+      throw new Error(
+        "Default automation declaration does not match its executing agent",
+      );
+    }
+    const target = await this.automationServiceTarget(this.rpc);
+    const existing = await this.rpc.call<MissionRecord | null>(
+      target,
+      "getDefault",
+      [input.id],
+    );
+    if (existing) return existing;
+    const channelId = this.objectKey;
+    await this.rpc.call(
+      "main",
+      "runtime.createEntity",
+      [
+        {
+          kind: "do",
+          execution: { surface: "code", source: "workers/pubsub-channel" },
+          className: "PubSubChannel",
+          key: channelId,
+          contextId: input.contextId,
+        },
+      ],
+      { idempotencyKey: `default-automation:${input.id}:channel` },
+    );
+    await this.subscribeChannel({
+      channelId,
+      contextId: input.contextId,
+      replay: false,
+      delivery: "all",
+      config: { name: definition.name },
+    });
+    // Retain the exact first intent across interruption and template changes.
+    const intentKey = `default-automation:${input.id}:intent`;
+    let intent = this.getStateValue(intentKey);
+    if (!intent) {
+      intent = JSON.stringify(
+        this.selfAutomationDefinition(channelId, definition),
+      );
+      this.setStateValue(intentKey, intent);
+    }
+    return this.rpc.call<MissionRecord>(
+      target,
+      "provisionDefault",
+      [input.id, JSON.parse(intent)],
+      { idempotencyKey: `default-automation:${input.id}:provision` },
+    );
+  }
+
   private async automationServiceTarget(callerRpc: RpcClient): Promise<string> {
     const service = await callerRpc.call<{
       kind?: unknown;
@@ -7328,10 +7404,14 @@ This is one admitted recurring-automation tick. If this tick establishes that th
     return created;
   }
 
-  protected async resetTaskAuthorityForOutsideContent(channelId: string): Promise<void> {
+  protected async resetTaskAuthorityForOutsideContent(
+    channelId: string,
+  ): Promise<void> {
     const contextId = this.subscriptions.getContextId(channelId);
     if (!contextId) return;
-    await this.rpc.call("main", "authority.resetTaskRules", [{ contextId, channelId }]);
+    await this.rpc.call("main", "authority.resetTaskRules", [
+      { contextId, channelId },
+    ]);
   }
 
   // ── Subclass conveniences ────────────────────────────────────────────────

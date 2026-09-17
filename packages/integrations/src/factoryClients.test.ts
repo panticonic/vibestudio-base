@@ -96,7 +96,7 @@ function makeMockEnv(
     },
   };
   const credentials = createCredentialClient(rpc);
-  return { credentials, stats };
+  return { credentials, stats, credential };
 }
 
 function credentialInjection() {
@@ -116,6 +116,17 @@ function jsonResponse(body: unknown, init: ResponseInit = {}): Response {
 }
 
 describe("createGitHubClient", () => {
+  it("accepts contents-write for an existing repository but requires administration for creation", async () => {
+    const { credentials, credential, stats } = makeMockEnv(() => jsonResponse({ login: "acme" }));
+    credential.scopes = ["metadata:read", "contents:write"];
+    await expect(resolveGitHubPublishOperation(credentials, { owner: "acme", publication: "existing-repository" })).resolves.toMatchObject({ requiredCapabilities: ["github-api", "github-git-push"] });
+    const reads = stats.fetchCalls.length;
+    await expect(resolveGitHubPublishOperation(credentials, { owner: "acme", publication: "repository" })).rejects.toThrow("administration:write");
+    expect(stats.fetchCalls).toHaveLength(reads);
+    credential.scopes = ["metadata:read", "contents:read"];
+    await expect(resolveGitHubPublishOperation(credentials, { publication: "existing-repository" })).rejects.toThrow("contents:write");
+  });
+
   it("requires Pages permission before making publication requests", async () => {
     const { credentials, stats } = makeMockEnv(() =>
       jsonResponse({ login: "octocat" }),

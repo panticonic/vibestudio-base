@@ -6,13 +6,24 @@ merge still needs an agent to inspect intent, behavior, and relevant tests.
 
 ## Monitoring without a mounted chat panel
 
-Use the native `launch_automation` tool with a `watch` action. The missions
+Base declares `defaultAutomations.workspace-updates` in `meta/vibestudio.yml`.
+The workspace host provisions it automatically for each member, without a
+chat panel or model call. Personal and System inherit the same declaration.
+
+Read `templates.updateAssistant()` to find the actual installed automation.
+Reconfigure that record through ordinary Automations edit/pause/resume controls;
+never launch a duplicate to change a schedule. Paused and retired choices
+survive restarts. A missing record means provisioning has not completed, not
+that monitoring is active. Inspect runtime/build errors before offering repair.
+
+For an explicitly requested custom automation, use the native
+`launch_automation` tool with a `watch` action. The missions
 service owns the schedule, durable run, retries, and authority. Never install
 an extension timer or a second queue for updates. The agent and conversation
 are durable; a mounted chat panel is not required.
 
 Inspect owner-visible automations before creating a duplicate. Default product
-setup is one continuing conversation per workspace, every six hours. Honor a
+setup is one continuing conversation per member and workspace, every six hours. Honor a
 user's different cadence or routing preference.
 
 The watch code is:
@@ -24,18 +35,13 @@ return await extensions.invoke("@workspace-extensions/templates", "updateSignal"
 
 Launch with `action: { kind: "watch", code: <the code above>, syntax: "typescript" }`,
 `trigger: { kind: "schedule", everyMs: 21_600_000 }`, and
-`conversation: { mode: "continue" }`. Declare these predictable operations:
-
-```json
-[
-  {"service":"extensions","method":"invoke","args":["@workspace-extensions/templates","updateSignal",[]],"use":"action"},
-  {"service":"extensions","method":"invoke","use":"conditional"}
-]
-```
-
-The acknowledgement targets are discovered by the check; that operation's
-arguments are intentionally omitted. Never invent capability grants. `notify`
-owns its own effects; it is not an eval global or an extra service operation.
+`conversation: { mode: "continue" }`, with `operations: []`.
+The signal and acknowledgement methods declare open effects and need no standing
+grants. `extensions.invoke` resolves its receiver dynamically; it is not a
+statically compilable authority-plan operation. Each concrete invocation still
+passes ordinary receiver authorization. Do not invent broad grants for extension
+dispatch or pre-authorize merging and publishing. `notify` owns its own effects;
+it is not an eval global or an extra service operation.
 
 `updateSignal` returns `{protocol: "automation-signal.v1", prompt: null}` when
 there is nothing new to announce. That closes the run without calling a model
@@ -82,3 +88,18 @@ using a retained old host after the app is updated. This is best-effort and
 requires that retained host to exist. If the exact target host or a supported
 composition path is unavailable, report that blocker before modifying live
 main. Installing the newest app alone does not migrate workspace content.
+
+## Workspace-authored defaults
+
+`defaultAutomations` is a record keyed by stable IDs. Each value supplies
+`source` and `className` for the agent, plus `name`, `summary`, `action`,
+`trigger`, and `operations` in the ordinary automation vocabulary. Definitions
+inherit by ID through template composition. A null value suppresses an inherited
+default for future provisioning. For example, `workspace-updates: null` opts a
+workspace out of that default; it does not retire an existing user's automation.
+
+The declaration supplies initial settings, not ongoing enforced policy. The
+installed automation owns subsequent user changes. Changing a template's default
+never resets a saved schedule or re-enables a paused or retired automation.
+Keep the ID stable when changing defaults; a new ID represents another automation.
+Review and apply changes to existing automations explicitly with the user.

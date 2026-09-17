@@ -8,7 +8,7 @@ describe("templates skill public contract", () => {
     const contract = JSON.parse(
       fs.readFileSync(new URL("public-contract.json", root), "utf8"),
     ) as {
-      methods: Record<string, { arguments: string[]; sensitivity: string }>;
+      methods: Record<string, { arguments: unknown; sensitivity: string }>;
       invariants: string[];
     };
     const skill = fs.readFileSync(new URL("SKILL.md", root), "utf8");
@@ -18,13 +18,6 @@ describe("templates skill public contract", () => {
     expect(Object.keys(contract.methods).sort()).toEqual(
       Object.keys(templatesMethods).sort(),
     );
-    expect(Object.keys(contract.methods).sort()).toEqual([
-      "authoringParts",
-      "inspect",
-      "inspectAuthoring",
-      "publishAuthoring",
-      "resolveSource",
-    ]);
     for (const name of Object.keys(templatesMethods) as Array<
       keyof typeof templatesMethods
     >) {
@@ -32,19 +25,19 @@ describe("templates skill public contract", () => {
         templatesMethods[name].access.sensitivity,
       );
     }
-    expect(contract.methods["inspect"]!.arguments.join(" ")).toContain(
-      "{ pin }",
+    expect(JSON.stringify(contract.methods["inspect"]!.arguments)).toContain(
+      "pin",
     );
-    expect(contract.methods["inspectAuthoring"]!.arguments.join(" ")).toContain(
+    expect(JSON.stringify(contract.methods["inspectAuthoring"]!.arguments)).toContain(
       "parts",
     );
-    expect(contract.methods["publishAuthoring"]!.arguments.join(" ")).toContain(
+    expect(JSON.stringify(contract.methods["publishAuthoring"]!.arguments)).toContain(
       "expectedFingerprint",
     );
 
     expect(prose).toContain("exact immutable `pin`");
     expect(prose).toContain("creating a new independently running workspace");
-    expect(prose).toContain("ordinary VCS compare and merge operations");
+    expect(prose).toContain("compare and merge operations");
     expect(skill).toContain(
       'extensions.invoke("@workspace-extensions/templates", "inspect", [',
     );

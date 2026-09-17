@@ -53,12 +53,16 @@ it("reviews the complete selection and retries the same captured publication aft
       parts: [{ repoPath: "panels/news", ownership: "authored" }],
     }),
     inspectAuthoring: vi.fn().mockResolvedValue(plan),
+    reviewPublication: vi
+      .fn()
+      .mockResolvedValue({ remoteCommit: null, changedFiles: [] }),
     publishAuthoring: vi.fn().mockRejectedValue(new Error("Connection lost")),
   };
   const mount = () =>
     render(
       <Theme>
         <TemplateAuthoring
+          fetchContent={async () => ""}
           client={client as unknown as TemplatesClient}
           workspaceId="ws:news"
         />
@@ -133,6 +137,7 @@ it("prefills upstream metadata and declared contents, and derives the version fr
   render(
     <Theme>
       <TemplateAuthoring
+        fetchContent={async () => ""}
         client={client as unknown as TemplatesClient}
         workspaceId="personal"
       />
@@ -190,6 +195,7 @@ it("ignores a late tag lookup after the publication destination changes", async 
   render(
     <Theme>
       <TemplateAuthoring
+        fetchContent={async () => ""}
         client={client as unknown as TemplatesClient}
         workspaceId="personal"
       />
@@ -205,4 +211,122 @@ it("ignores a late tag lookup after the publication destination changes", async 
     expect(screen.getByText("First release of a new repository.")).toBeTruthy(),
   );
   expect(screen.queryByText("8.0.1")).toBeNull();
+});
+
+it("explains missing credentials and lets the user connect and refresh without losing the destination", async () => {
+  const client = {
+    authoringSetup: vi.fn().mockResolvedValue({
+      name: "Personal",
+      description: "Tools",
+      dependencies: [],
+      parts: [{ repoPath: "panels/news", ownership: "authored" }],
+      upstream: { url: "git+https://github.com/acme/personal.git" },
+    }),
+    publicationVersion: vi
+      .fn()
+      .mockResolvedValue({ latest: "1.0.0", suggested: "1.0.1" }),
+  };
+  const listAccounts = vi.fn().mockResolvedValue([]);
+  const connect = vi.fn().mockResolvedValue(undefined);
+  render(
+    <Theme>
+      <TemplateAuthoring
+        client={client as unknown as TemplatesClient}
+        workspaceId="missing-account"
+        listAccounts={listAccounts}
+        onConnectGitHub={connect}
+        fetchContent={async () => ""}
+      />
+    </Theme>,
+  );
+  await screen.findByText("Connect a GitHub account");
+  expect(
+    screen
+      .getByRole("button", { name: "Review release" })
+      .hasAttribute("disabled"),
+  ).toBe(true);
+  expect(client.publicationVersion).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole("button", { name: "Connect GitHub" }));
+  await waitFor(() => expect(connect).toHaveBeenCalledOnce());
+  listAccounts.mockResolvedValue([
+    {
+      id: "github",
+      label: "GitHub",
+      lifecycle: { state: "active" },
+      bindings: [
+        { use: "git-http", audience: [{ url: "https://github.com" }] },
+      ],
+    },
+  ]);
+  fireEvent.click(screen.getByRole("button", { name: "Refresh accounts" }));
+  await screen.findByText("1.0.1");
+  expect(client.publicationVersion).toHaveBeenCalledWith({
+    owner: "acme",
+    name: "personal",
+    credentialId: "github",
+  });
+});
+
+it("checks remote access before offering Publish and preserves the selection on failure", async () => {
+  const client = {
+    authoringSetup: vi
+      .fn()
+      .mockResolvedValue({
+        name: "Personal",
+        description: "Tools",
+        dependencies: [],
+        upstream: null,
+        parts: [{ repoPath: "panels/news", ownership: "authored" }],
+      }),
+    inspectAuthoring: vi
+      .fn()
+      .mockResolvedValue({
+        request: {
+          name: "Personal",
+          description: "Tools",
+          parts: ["panels/news"],
+        },
+        fingerprint: `v1-sha256:${"a".repeat(64)}`,
+      }),
+    reviewPublication: vi
+      .fn()
+      .mockRejectedValue(
+        new Error("GitHub account is missing contents:write permission"),
+      ),
+    publishAuthoring: vi.fn(),
+  };
+  const connect = vi.fn().mockResolvedValue(undefined);
+  render(
+    <Theme>
+      <TemplateAuthoring
+        client={client as unknown as TemplatesClient}
+        workspaceId="review-access"
+        onConnectGitHub={connect}
+        fetchContent={async () => ""}
+      />
+    </Theme>,
+  );
+  await screen.findByRole("textbox", { name: "GitHub owner" });
+  fireEvent.change(screen.getByRole("textbox", { name: "GitHub owner" }), {
+    target: { value: "acme" },
+  });
+  fireEvent.change(screen.getByRole("textbox", { name: "Repository name" }), {
+    target: { value: "personal" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Review release" }));
+  await screen.findByRole("alert");
+  expect(client.reviewPublication).toHaveBeenCalledOnce();
+  expect(client.publishAuthoring).not.toHaveBeenCalled();
+  expect(screen.queryByRole("button", { name: "Publish template" })).toBeNull();
+  expect(
+    (
+      screen.getByRole("textbox", {
+        name: "Repository name",
+      }) as HTMLInputElement
+    ).value,
+  ).toBe("personal");
+  fireEvent.click(
+    screen.getByRole("button", { name: "Connect or repair GitHub access" }),
+  );
+  expect(connect).toHaveBeenCalledOnce();
 });

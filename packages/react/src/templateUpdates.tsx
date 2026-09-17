@@ -49,6 +49,10 @@ export function TemplateUpdates({
   onReviewWithAgent: (prompt: string) => void;
 }) {
   const [status, setStatus] = useState<TemplateUpdateStatus | null>(null);
+  const [assistant, setAssistant] = useState<
+    Awaited<ReturnType<TemplatesClient["updateAssistant"]>> | undefined
+  >();
+  const [assistantError, setAssistantError] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [request, , restoreError] = useTemplateDraft<
@@ -60,7 +64,18 @@ export function TemplateUpdates({
   );
   useEffect(() => {
     let active = true;
-    const refresh = () =>
+    const refresh = () => {
+      void client
+        .updateAssistant()
+        .then((value) => {
+          if (active) {
+            setAssistant(value);
+            setAssistantError("");
+          }
+        })
+        .catch((error) => {
+          if (active) setAssistantError(String(error));
+        });
       void client
         .updateStatus()
         .then((value) => {
@@ -69,6 +84,7 @@ export function TemplateUpdates({
         .catch((error) => {
           if (active) setError(String(error));
         });
+    };
     refresh();
     const timer = setInterval(refresh, 30_000);
     return () => {
@@ -187,18 +203,51 @@ export function TemplateUpdates({
         variant="soft"
         onClick={() =>
           onReviewWithAgent(
-            "Set up a workspace update assistant using the templates skill, workspace-updates reference, and the watch automation action. Check every six hours in this conversation, without requiring an open chat panel. Wake only for unannounced updates; notify me and ask how I want to proceed. Do not merge, publish, or install updates without my decision. Inspect existing automations first to avoid duplicates.",
+            "Help me configure this workspace’s update assistant. Read the templates skill and workspace-updates reference. Read templates.updateAssistant to find my existing automation and its actual schedule and state. Ask what I want to change, then edit, pause, or resume that same automation. Preserve my choices and do not create a duplicate. Monitoring does not authorize merging, publishing, or installing updates.",
           )
         }
       >
-        Set up update assistant
+        Configure with assistant
       </Button>
-      <Text color="gray">
-        Enable the update assistant to check sources automatically without
-        keeping a chat panel open. An agent reviews incoming changes,
-        understands your local edits, and prepares a tested proposal for your
-        approval.
-      </Text>
+      <Card>
+        <Flex direction="column" gap="2">
+          <Heading size="3">Update assistant</Heading>
+          <Text>
+            {assistantError
+              ? "Assistant status unavailable"
+              : assistant === undefined
+                ? "Checking assistant status…"
+                : !assistant
+                  ? "Automatic setup has not completed"
+                  : assistant.state === "active"
+                    ? "Monitoring is on"
+                    : assistant.state === "paused"
+                      ? "Monitoring is paused"
+                      : "Monitoring is stopped"}
+          </Text>
+          {assistant?.charter.trigger.kind === "schedule" && (
+            <Text size="2" color="gray">
+              Checks every {assistant.charter.trigger.everyMs / 3_600_000}{" "}
+              hours.
+            </Text>
+          )}
+          {assistant?.charter.trigger.kind === "cron" && (
+            <Text size="2" color="gray">
+              {assistant.charter.trigger.expression} (
+              {assistant.charter.trigger.timezone})
+            </Text>
+          )}
+          <Text size="2" color="gray">
+            Runs without an open chat. An agent notifies you when updates are
+            available and asks before applying changes.
+          </Text>
+          {assistantError && (
+            <Text size="2" color="red">
+              {assistantError}
+            </Text>
+          )}
+        </Flex>
+      </Card>
       {error && (
         <Callout.Root color="red">
           <Callout.Text>{error}</Callout.Text>

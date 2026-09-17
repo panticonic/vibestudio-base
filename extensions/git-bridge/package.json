@@ -78,6 +78,15 @@
             "kind": "closed",
             "reason": "Controls managed source publication and protected Git export."
           }
+        },
+        "reviewTemplatePublication": {
+          "effect": {
+            "kind": "open"
+          },
+          "website": {
+            "kind": "closed",
+            "reason": "Reads private publication source and upstream contents."
+          }
         }
       }
     },

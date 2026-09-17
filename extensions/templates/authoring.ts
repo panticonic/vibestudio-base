@@ -143,6 +143,15 @@ function projectManifest(
     : undefined;
   const runtime = WorkspaceConfigTopLayerSchema.parse({
     systemEpoch: config.systemEpoch,
+    ...(config.defaultAutomations
+      ? {
+          defaultAutomations: Object.fromEntries(
+            Object.entries(config.defaultAutomations).filter(
+              ([, value]) => value === null || selected.has(value.source),
+            ),
+          ),
+        }
+      : {}),
     ...(config.defaultRepo && selected.has(config.defaultRepo)
       ? { defaultRepo: config.defaultRepo }
       : {}),
@@ -272,6 +281,8 @@ function runtimeReferences(
   const add = (owner: string | null, target: string | null) => {
     if (owner && target) refs.push([owner, target]);
   };
+  for (const item of Object.values(config.defaultAutomations ?? {}))
+    if (item) add(item.source, item.source);
   for (const item of config.initPanels ?? []) add(item.source, item.source);
   for (const item of config.singletonObjects ?? [])
     add(item.source, item.source);

@@ -175,6 +175,94 @@ async function createMissions<T extends typeof MissionsDO>(
 }
 
 describe("MissionsDO", () => {
+  it("provisions per owner once and preserves edits, pause, and retirement", async () => {
+    const { callAs, sql } = await createMissions();
+    const input = { name: "Updates", charter: continuingAgentCharter() };
+    const first = await callAs<MissionRecord>(
+      alice,
+      "provisionDefault",
+      "updates",
+      input,
+    );
+    await callAs(alice, "edit", first.missionId, { name: "My updates" });
+    await callAs(alice, "pause", first.missionId);
+    const changedDefault = { ...input, name: "New template default" };
+    const paused = await callAs<MissionRecord>(
+      alice,
+      "provisionDefault",
+      "updates",
+      changedDefault,
+    );
+    expect(paused).toMatchObject({
+      missionId: first.missionId,
+      name: "My updates",
+      state: "paused",
+    });
+    const other = await callAs<MissionRecord>(
+      bob,
+      "provisionDefault",
+      "updates",
+      input,
+    );
+    expect(other.missionId).not.toBe(first.missionId);
+    await callAs(alice, "retire", first.missionId);
+    expect(
+      await callAs(alice, "provisionDefault", "updates", input),
+    ).toMatchObject({ state: "retired", missionId: first.missionId });
+    expect(sql.exec("SELECT COUNT(*) AS count FROM missions").one()).toEqual({
+      count: 2,
+    });
+  });
+
+  it("adopts an existing equivalent watch without resetting its schedule or paused state", async () => {
+    const { callAs, sql } = await createMissions();
+    const charter = continuingAgentCharter();
+    if (charter.execution.kind !== "agent") throw new Error("Expected agent");
+    charter.execution.action = { kind: "watch", code: "return signal();" };
+    charter.trigger = { kind: "schedule", everyMs: 3600000 };
+    const manual = await callAs<MissionRecord>(alice, "launch", {
+      name: "My watcher",
+      charter,
+    });
+    await callAs(alice, "pause", manual.missionId);
+    const result = await callAs<MissionRecord>(
+      alice,
+      "provisionDefault",
+      "updates",
+      {
+        name: "Default watcher",
+        charter: {
+          ...charter,
+          trigger: { kind: "schedule", everyMs: 21600000 },
+        },
+      },
+    );
+    expect(result).toMatchObject({
+      missionId: manual.missionId,
+      state: "paused",
+      charter: { trigger: { everyMs: 3600000 } },
+    });
+    expect(await callAs(alice, "getDefault", "updates")).toMatchObject({
+      missionId: manual.missionId,
+    });
+    expect(await callAs(bob, "getDefault", "updates")).toBeNull();
+    expect(sql.exec("SELECT COUNT(*) AS count FROM missions").one()).toEqual({
+      count: 1,
+    });
+  });
+
+
+  it("keeps distinct declared defaults distinct even when their watch actions match", async () => {
+    const { callAs } = await createMissions();
+    const charter = continuingAgentCharter();
+    if (charter.execution.kind !== "agent") throw new Error("Expected agent");
+    charter.execution.action = { kind: "watch", code: "return signal();" };
+    const input = { name: "Watcher", charter };
+    const first = await callAs<MissionRecord>(alice, "provisionDefault", "first", input);
+    const second = await callAs<MissionRecord>(alice, "provisionDefault", "second", input);
+    expect(second.missionId).not.toBe(first.missionId);
+  });
+
   it("runs under its installed Base provider identity", async () => {
     const { instance } = await createTestDO(IdentityMissionsDO, {
       WORKER_SOURCE: "workers/missions",

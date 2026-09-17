@@ -71,6 +71,7 @@ type GitBridgeApi = {
   suggestTemplateContribution(
     input: TemplatePushInput,
   ): ReturnType<TemplatePushEngine["push"]>;
+  reviewTemplatePublication(input: Omit<GitTemplatePublishInput, "expectedRemoteCommit">): ReturnType<TemplatePublishEngine["review"]>;
   publishTemplate(
     input: GitTemplatePublishInput,
   ): ReturnType<TemplatePublishEngine["publish"]>;
@@ -189,6 +190,9 @@ export async function activate(ctx: ExtensionContextLike) {
     },
     suggestTemplateContribution(input: TemplatePushInput) {
       return templatePush.push(input);
+    },
+    reviewTemplatePublication(input: Omit<GitTemplatePublishInput, "expectedRemoteCommit">) {
+      return templatePublish.review(input);
     },
     publishTemplate(input: GitTemplatePublishInput) {
       return templatePublish.publish(input);

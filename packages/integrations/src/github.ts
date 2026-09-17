@@ -184,6 +184,7 @@ export interface GitHubPublishOperationResolution {
   targetName?: string;
   organization?: string;
   requiredCapabilities:
+    | readonly ["github-api", "github-git-push"]
     | readonly ["github-api", "github-repository-create", "github-git-push"]
     | readonly [
         "github-api",
@@ -224,7 +225,7 @@ export class GitHubCredentialSetupError extends Error {
     message: string,
     readonly repair: {
       provider: "github";
-      accessLevel: "publish" | "publish-pages";
+      accessLevel: "collaborate" | "publish" | "publish-pages";
       credentialId: string;
     },
   ) {
@@ -235,16 +236,16 @@ export class GitHubCredentialSetupError extends Error {
 
 export function validateGitHubPublishCredential(
   credential: StoredCredentialSummary,
-  publication: "repository" | "pages" = "repository",
+  publication: "repository" | "pages" | "existing-repository" = "repository",
 ): void {
   const fail = (message: string): Error =>
     new GitHubCredentialSetupError(message, {
       provider: "github",
-      accessLevel: publication === "pages" ? "publish-pages" : "publish",
+      accessLevel: publication === "pages" ? "publish-pages" : publication === "existing-repository" ? "collaborate" : "publish",
       credentialId: credential.id,
     });
   const accessLabel =
-    publication === "pages" ? "Publish websites" : "Publish repositories";
+    publication === "pages" ? "Publish websites" : publication === "existing-repository" ? "Collaborate" : "Publish repositories";
   if (credential.lifecycle.state !== "active") {
     throw fail(
       `GitHub publish preflight failed for credential "${credential.label}": ` +
@@ -267,7 +268,7 @@ export function validateGitHubPublishCredential(
     const scopes = new Set(credential.scopes);
     const missingScopes = [
       "contents:write",
-      "administration:write",
+      ...(publication === "existing-repository" ? [] : ["administration:write"]),
       ...(publication === "pages" ? ["pages:write"] : []),
     ].filter((scope) => !scopes.has(scope));
     if (missingScopes.length) {
@@ -286,7 +287,7 @@ export async function resolveGitHubPublishOperation(
     credentialId?: string;
     organization?: string;
     owner?: string;
-    publication?: "repository" | "pages";
+    publication?: "repository" | "pages" | "existing-repository";
   } = {},
 ): Promise<GitHubPublishOperationResolution> {
   if (opts.organization && opts.owner) {
@@ -372,7 +373,9 @@ export async function resolveGitHubPublishOperation(
             "github-git-push",
             "github-pages-publish",
           ]
-        : ["github-api", "github-repository-create", "github-git-push"],
+        : opts.publication === "existing-repository"
+          ? ["github-api", "github-git-push"]
+          : ["github-api", "github-repository-create", "github-git-push"],
   };
 }
 

@@ -30,11 +30,30 @@ type Publication = {
   steps: Record<string, TemplateOperationStep>;
 };
 
+export function publicationInput(
+  request: Omit<Request, "expectedRemoteCommit">,
+  plan: TemplateAuthoringInspection,
+) {
+  return {
+    operationId: request.commandId,
+    expectedMainEventId: plan.mainEventId,
+    templateName: plan.request.name,
+    version: request.version,
+    manifest: plan.manifest,
+    manifestDigest: plan.manifestDigest,
+    parts: plan.includedParts.map((repoPath) => ({
+      repoPath,
+      subdir: repoPath,
+    })),
+    destination: request.destination,
+    ...(request.credentialId ? { credentialId: request.credentialId } : {}),
+    ...(request.creation ? { creation: request.creation } : {}),
+  };
+}
+
 export function createTemplatePublisher(
   ctx: ExtensionContextLike,
-  inspect: (
-    input: Request,
-  ) => Promise<{
+  inspect: (input: Request) => Promise<{
     observation: SemanticWorkspaceObservation;
     plan: TemplateAuthoringInspection;
   }>,
@@ -120,25 +139,8 @@ export function createTemplatePublisher(
         "publishTemplate",
         [
           {
-            operationId: request.commandId,
-            expectedMainEventId: plan.mainEventId,
-            templateName: plan.request.name,
-            version: request.version,
-            manifest: plan.manifest,
-            manifestDigest: plan.manifestDigest,
-            parts: plan.includedParts.map((repoPath) => ({
-              repoPath,
-              subdir: repoPath,
-            })),
-            destination: request.destination,
-            ...(request.credentialId
-              ? { credentialId: request.credentialId }
-              : {}),
-            creation: {
-              private: request.creation?.private ?? true,
-              description:
-                request.creation?.description ?? request.intent.description,
-            },
+            ...publicationInput(request, plan),
+            expectedRemoteCommit: request.expectedRemoteCommit,
           },
         ],
         (args) =>

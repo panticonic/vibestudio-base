@@ -2,7 +2,13 @@ import { useCallback, useEffect, useState } from "react";
 import { Badge, Button, Callout, Flex, Tabs, Text } from "@radix-ui/themes";
 import { credentialsMethods } from "@vibestudio/service-schemas/credentials";
 import { createTypedServiceClient } from "@vibestudio/shared/typedServiceClient";
-import { buildPanelLink, extensions, rpc, workspace } from "@workspace/runtime";
+import {
+  buildPanelLink,
+  extensions,
+  rpc,
+  workspace,
+  openPanel,
+} from "@workspace/runtime";
 import { createTemplateManagementClient } from "@workspace/template-management";
 import {
   TemplateAuthoring,
@@ -145,6 +151,28 @@ export default function WorkspacePage() {
                   workspaceId={info.id}
                   listAccounts={listSourceAccounts}
                   onPublished={refresh}
+                  onConnectGitHub={async () => {
+                    await openPanel("panels/chat", {
+                      stateArgs: {
+                        initialPrompt:
+                          "Help me connect or repair my GitHub account for publishing this workspace. Use the GitHub setup skill. For an existing repository I need contents write access; ask whether I need to create a new repository before requesting administration access. Do not publish anything.",
+                      },
+                    });
+                  }}
+                  fetchContent={async (hash) => {
+                    const value = await rpc.call<string | null>(
+                      "main",
+                      "blobstore.getBase64",
+                      [hash],
+                    );
+                    if (value === null)
+                      throw new Error(
+                        "Review content is no longer available. Review the release again.",
+                      );
+                    return Uint8Array.from(atob(value), (character) =>
+                      character.charCodeAt(0),
+                    );
+                  }}
                 />
                 {sources?.some(
                   (source) => source.relationship !== "upstream",

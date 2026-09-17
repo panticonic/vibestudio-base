@@ -1,3 +1,4 @@
+import * as github from "@workspace/integrations/github";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -118,6 +119,7 @@ function publicationInput(
   return {
     operationId: "publish-news-v1",
     expectedMainEventId: "event:main",
+    expectedRemoteCommit: state.main,
     templateName: "News",
     version: "1.0.0",
     manifest,
@@ -298,6 +300,36 @@ function engine(snapshot = protectedSnapshot()) {
 }
 
 describe("TemplatePublishEngine", () => {
+  it("reviews actual upstream additions, edits, deletions and mode changes without writing remotely", async () => {
+    const fixture = engine();
+    const credential = vi.spyOn(github, "resolveGitHubPublishOperation").mockResolvedValue({ credentialId: "github", credentialLabel: "GitHub", destinationOwner: "acme" } as never);
+    const getRepo = vi.fn().mockResolvedValue({ permissions: { push: true } });
+    vi.spyOn(github, "createGitHubClient").mockReturnValue({ getRepo } as never);
+    state.main = "a".repeat(40);
+    const bytes = (text: string) => new TextEncoder().encode(text);
+    state.trees.set(state.main, [
+      { path: "obsolete.txt", mode: 0o100644, type: "blob", bytes: bytes("remove me") },
+      { path: "panels/news/index.ts", mode: 0o100755, type: "blob", bytes: bytes("old source") },
+    ] as GitCommitTreeEntry[]);
+    const result = await fixture.engine.review(publicationInput({ destination: { provider: "github", owner: "acme", name: "news" } }));
+    expect(result.remoteCommit).toBe(state.main);
+    expect(result.changedFiles).toEqual(expect.arrayContaining([
+      expect.objectContaining({ path: "panels/news/index.ts", kind: "changed", oldMode: 0o100755, newMode: 0o100644, oldHash: expect.any(String), newHash: expect.any(String) }),
+      expect.objectContaining({ path: "obsolete.txt", kind: "removed", oldHash: expect.any(String) }),
+      expect.objectContaining({ path: "meta/vibestudio.yml", kind: "added", newHash: expect.any(String) }),
+    ]));
+    expect(credential).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ publication: "existing-repository" }));
+    expect(resolveOrCreateRepo).not.toHaveBeenCalled();
+    expect(GitClient.prototype.push).not.toHaveBeenCalled();
+  });
+
+  it("rejects a stale upstream review before pushing", async () => {
+    const fixture = engine();
+    const first = await fixture.engine.publish(publicationInput());
+    await expect(fixture.engine.publish(publicationInput({ operationId: "second", version: "1.0.1", expectedRemoteCommit: null }))).rejects.toThrow("Upstream changed after review");
+    expect(state.main).toBe(first.commit);
+  });
+
   it("retains protected meta companions and replaces only the authored manifest", async () => {
     const fixture = engine();
     fixture.bridge.readProtectedRepositories.mockResolvedValueOnce([

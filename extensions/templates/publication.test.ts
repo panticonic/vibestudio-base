@@ -51,7 +51,8 @@ it("records its own upstream and overrides, and retries an uncertain main push w
         description: "Mine",
         parts: ["projects/example"],
       },
-      expectedFingerprint: `v1-sha256:${"b".repeat(64)}` as const,
+      expectedRemoteCommit: null,
+    expectedFingerprint: `v1-sha256:${"b".repeat(64)}` as const,
       version: "1.0.0",
       destination: { provider: "github", owner: "alice", name: "mine" },
     };

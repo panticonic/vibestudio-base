@@ -1,5 +1,6 @@
+import type { TemplatesClient } from "@vibestudio/service-schemas/templates";
 import { createTemplateUpdateChecks } from "./updateChecks.js";
-import { createTemplatePublisher } from "./publication.js";
+import { createTemplatePublisher, publicationInput } from "./publication.js";
 import { installedDependencyLayers } from "@vibestudio/workspace/templateManifest";
 import { templateRepositoryOwners } from "@vibestudio/workspace/templateManifestMerge";
 import { createGitHubClient } from "@workspace/integrations/github";
@@ -118,6 +119,16 @@ export async function activate(ctx: ExtensionContextLike) {
     resolveSource(ctx, source),
   );
   return {
+    updateAssistant: async () => {
+      const service = await ctx.rpc.call<{ kind: string; targetId?: string }>(
+        "main",
+        "workers.resolveService",
+        "vibestudio.missions.v1",
+      );
+      if (service.kind !== "durable-object" || !service.targetId)
+        throw new Error("Automations service is unavailable");
+      return ctx.rpc.call(service.targetId, "getDefault", "workspace-updates");
+    },
     updateSignal: updates.signal,
     acknowledgeUpdates: updates.acknowledge,
     updateStatus: updates.status,
@@ -184,6 +195,24 @@ export async function activate(ctx: ExtensionContextLike) {
             ? { inheritedFrom: inherited.owners.get(part.repoPath) }
             : {}),
         }),
+      );
+    },
+    reviewPublication: async (
+      input: Parameters<TemplatesClient["reviewPublication"]>[0],
+    ) => {
+      const observation = await observeWorkspace(ctx);
+      const plan = await inspectTemplateAuthoring(
+        ctx,
+        observation,
+        input.intent,
+        inheritedInventory(observation),
+      );
+      if (plan.fingerprint !== input.expectedFingerprint)
+        throw new Error("Workspace changed. Review the release again.");
+      return ctx.extensions.invoke(
+        "@workspace-extensions/git-bridge",
+        "reviewTemplatePublication",
+        [publicationInput(input, plan)],
       );
     },
     publishAuthoring: createTemplatePublisher(ctx, async (input) => {

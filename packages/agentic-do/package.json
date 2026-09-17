@@ -25,7 +25,8 @@
     "@workspace/pubsub": "workspace:*",
     "@vibestudio/service-schemas": "workspace:*",
     "@vibestudio/shared": "workspace:*",
-    "@workspace/agent-loop": "workspace:*"
+    "@workspace/agent-loop": "workspace:*",
+    "@vibestudio/workspace-contracts": "workspace:*"
   },
   "devDependencies": {
     "@panticonic/builtin": "workspace:*"

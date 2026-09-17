@@ -1,3 +1,21 @@
+defaultAutomations:
+  workspace-updates:
+    source: workers/agent-worker
+    className: AiChatWorker
+    name: Workspace update assistant
+    summary: Check upstream sources and notify me about new updates. Ask before merging or installing anything.
+    action:
+      kind: watch
+      syntax: typescript
+      code: |
+        import { extensions } from "@workspace/runtime";
+        return await extensions.invoke("@workspace-extensions/templates", "updateSignal", []);
+    trigger:
+      kind: schedule
+      everyMs: 21600000
+    # Both extension methods have open effects. No standing grants are needed;
+    # extension dispatch still checks each concrete method at invocation time.
+    operations: []
 defaultAgentConfig:
   model: openai-codex:gpt-5.6-sol
 defaultRepo: projects/default

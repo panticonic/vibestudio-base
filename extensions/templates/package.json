@@ -234,6 +234,24 @@
             "kind": "closed",
             "reason": "Workspace update automation is private."
           }
+        },
+        "updateAssistant": {
+          "effect": {
+            "kind": "open"
+          },
+          "website": {
+            "kind": "closed",
+            "reason": "Workspace automation configuration is private."
+          }
+        },
+        "reviewPublication": {
+          "effect": {
+            "kind": "open"
+          },
+          "website": {
+            "kind": "closed",
+            "reason": "Reads private publication source and upstream contents."
+          }
         }
       }
     },
@@ -348,6 +366,21 @@
           },
           "tier": "critical",
           "evidence": "bounded-dynamic"
+        },
+        {
+          "capability": "workspace-service:missions",
+          "resource": {
+            "kind": "prefix",
+            "prefix": ""
+          },
+          "tier": "gated",
+          "evidence": "bounded-dynamic"
+        }
+      ],
+      "serviceRequests": [
+        {
+          "protocol": "vibestudio.missions.v1",
+          "availability": "required"
         }
       ]
     }

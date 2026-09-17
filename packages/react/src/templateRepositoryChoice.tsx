@@ -25,13 +25,17 @@ export function TemplateRepositoryChoice({
   onChange,
   listAccounts,
   upstream,
+  onConnectGitHub,
 }: {
+  onConnectGitHub?: () => Promise<void>;
   client: TemplatesClient;
   value: TemplateRepositoryChoiceValue;
   onChange(value: TemplateRepositoryChoiceValue): void;
   listAccounts?: () => Promise<StoredCredentialSummary[]>;
   upstream?: { owner: string; name: string; credential?: string } | null;
 }) {
+  const [accountRefresh, setAccountRefresh] = useState(0);
+  const [accountsLoading, setAccountsLoading] = useState(!!listAccounts);
   const [accounts, setAccounts] = useState<StoredCredentialSummary[]>([]);
   const [repositories, setRepositories] = useState<Page["repositories"]>([]);
   const [page, setPage] = useState<number | null>(1);
@@ -43,6 +47,7 @@ export function TemplateRepositoryChoice({
   current.current = { value, onChange, upstream };
   useEffect(() => {
     let active = true;
+    setAccountsLoading(!!listAccounts);
     if (listAccounts)
       void listAccounts()
         .then((items) => {
@@ -68,17 +73,30 @@ export function TemplateRepositoryChoice({
           const preferred =
             available.find((item) => item.label === upstream?.credential) ??
             (available.length === 1 ? available[0] : undefined);
-          if (!value.credentialId && preferred)
+          if (
+            value.credentialId &&
+            !available.some((item) => item.id === value.credentialId)
+          )
+            onChange({ ...value, credentialId: preferred?.id });
+          else if (!value.credentialId && preferred)
             onChange({ ...value, credentialId: preferred.id });
         })
         .catch((cause) => {
           if (active) setError(String(cause));
+        })
+        .finally(() => {
+          if (active) setAccountsLoading(false);
         });
     return () => {
       active = false;
       generation.current++;
     };
-  }, [listAccounts]);
+  }, [listAccounts, accountRefresh]);
+  useEffect(() => {
+    const refresh = () => setAccountRefresh((value) => value + 1);
+    window.addEventListener("focus", refresh);
+    return () => window.removeEventListener("focus", refresh);
+  }, []);
   const load = async () => {
     const operation = ++generation.current;
     setBusy(true);
@@ -106,7 +124,9 @@ export function TemplateRepositoryChoice({
       <Text size="2" weight="bold">
         GitHub account
       </Text>
-      {accounts.length ? (
+      {accountsLoading ? (
+        <Text role="status">Loading GitHub accounts…</Text>
+      ) : accounts.length ? (
         <RadioCards.Root
           aria-label="GitHub account"
           value={value.credentialId ?? ""}
@@ -128,10 +148,34 @@ export function TemplateRepositoryChoice({
         </RadioCards.Root>
       ) : listAccounts ? (
         <Text size="2" color="gray">
-          Connect a GitHub account with publishing access in Settings to
-          continue.
+          Connect GitHub to publish this release. Existing repositories need
+          write access to contents; creating a repository also needs
+          administration access.
         </Text>
       ) : null}
+      {listAccounts && (
+        <Flex gap="2" wrap="wrap">
+          {onConnectGitHub && (
+            <Button
+              variant="soft"
+              onClick={() =>
+                void onConnectGitHub()
+                  .then(() => setAccountRefresh((v) => v + 1))
+                  .catch((cause) => setError(String(cause)))
+              }
+            >
+              Connect GitHub
+            </Button>
+          )}
+          <Button
+            variant="ghost"
+            disabled={accountsLoading}
+            onClick={() => setAccountRefresh((v) => v + 1)}
+          >
+            Refresh accounts
+          </Button>
+        </Flex>
+      )}
       <Text size="2" weight="bold">
         Destination
       </Text>

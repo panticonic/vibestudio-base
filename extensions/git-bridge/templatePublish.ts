@@ -12,6 +12,7 @@ import { GitClient, readExactGitSnapshot, withTemporaryGitCheckout } from "@vibe
 import type {
   GitTemplatePublishInput,
   GitTemplatePublishResult,
+  TemplatePublicationReview,
 } from "@vibestudio/service-schemas/gitInterop";
 import { normalizeWorkspaceRepoPath } from "@vibestudio/workspace/remotes";
 import {
@@ -20,7 +21,7 @@ import {
 } from "@vibestudio/workspace/templateCoordinates";
 import { validateTemplateSnapshotInventory } from "@vibestudio/workspace/templateManifest";
 import { WorkspaceTemplateAuthoringMetadataSchema } from "@vibestudio/workspace-contracts/workspaceConfigSchema";
-import { resolveGitHubPublishOperation } from "@workspace/integrations/github";
+import { createGitHubClient, resolveGitHubPublishOperation } from "@workspace/integrations/github";
 import { getRemoteProvider } from "@workspace/integrations/remoteProviders";
 import { GitBridge, type ProtectedRepositorySnapshot } from "./bridge.js";
 import type { ExtensionContextLike } from "./context.js";
@@ -63,7 +64,7 @@ function canonicalTree(entries: readonly CanonicalTreeEntry[]): string {
         path: entryPath,
         mode,
         contentHash,
-      }))
+      })),
   );
 }
 
@@ -89,7 +90,7 @@ function assertRepositorySegment(value: string, label: string): string {
 
 function sameRepositoryIdentity(
   expected: GitTemplatePublishInput["destination"],
-  actual: GitTemplatePublishResult["destination"]
+  actual: GitTemplatePublishResult["destination"],
 ): boolean {
   if (expected.provider !== actual.provider) return false;
   if (expected.provider === "github") {
@@ -104,10 +105,10 @@ function sameRepositoryIdentity(
 export class TemplatePublishEngine {
   constructor(
     private readonly ctx: ExtensionContextLike,
-    private readonly bridge: GitBridge
+    private readonly bridge: GitBridge,
   ) {}
 
-  async publish(input: GitTemplatePublishInput): Promise<GitTemplatePublishResult> {
+  private async prepare(input: Omit<GitTemplatePublishInput, "expectedRemoteCommit">) {
     const providerId = input.destination.provider;
     const provider = getRemoteProvider(providerId);
     if (!provider) throw new Error(`Unknown remote provider: ${providerId}`);
@@ -133,7 +134,7 @@ export class TemplatePublishEngine {
     const protectedSnapshots = await this.bridge.readProtectedRepositories(
       parts.map(({ repoPath }) => repoPath),
       input.expectedMainEventId,
-      input.operationId
+      input.operationId,
     );
     const snapshots: PartSnapshot[] = parts.map((part, index) => ({
       ...part,
@@ -151,11 +152,7 @@ export class TemplatePublishEngine {
     for (const part of snapshots) {
       for (const file of part.snapshot.files) {
         const relative = `${part.subdir}/${file.path}`;
-        if (
-          part.repoPath === "meta" &&
-          part.subdir === "meta" &&
-          relative === MANIFEST_PATH
-        ) {
+        if (part.repoPath === "meta" && part.subdir === "meta" && relative === MANIFEST_PATH) {
           continue;
         }
         if (occupiedPaths.has(relative)) {
@@ -170,12 +167,10 @@ export class TemplatePublishEngine {
       }
     }
     const parsedManifest = YAML.parse(input.manifest) as Record<string, unknown>;
-    const inventory = WorkspaceTemplateAuthoringMetadataSchema.parse(
-      parsedManifest["template"]
-    );
+    const inventory = WorkspaceTemplateAuthoringMetadataSchema.parse(parsedManifest["template"]);
     validateTemplateSnapshotInventory(
       { repositories: inventory.repositories },
-      expectedTreeEntries.map((entry) => entry.path)
+      expectedTreeEntries.map((entry) => entry.path),
     );
     const expectedTree = canonicalTree(expectedTreeEntries);
     const tag = versionTag(input.version);
@@ -195,42 +190,191 @@ export class TemplatePublishEngine {
           subdir,
           treeDigest: snapshot.treeDigest,
         })),
-      })
+      }),
     )}`;
 
+    return {
+      providerId,
+      provider,
+      owner,
+      repoName,
+      destination,
+      parts,
+      snapshots,
+      expectedTree,
+      tag,
+      requestFingerprint,
+    };
+  }
+
+  async review(
+    input: Omit<GitTemplatePublishInput, "expectedRemoteCommit">,
+  ): Promise<TemplatePublicationReview> {
+    const prepared = await this.prepare(input);
+    if (prepared.providerId !== "github")
+      throw new Error("Publication review currently supports GitHub repositories.");
+    const { owner, repoName, snapshots } = prepared;
+    const resolved = await resolveGitHubPublishOperation(this.ctx.credentials, {
+      credentialId: input.credentialId,
+      owner,
+      publication: input.creation ? "repository" : "existing-repository",
+    });
+    const github = createGitHubClient(this.ctx.credentials, {
+      credentialId: resolved.credentialId,
+    });
+    const url = `https://github.com/${owner}/${repoName}.git`;
+    const git = new GitClient(fsp, {
+      http: this.ctx.credentials.gitHttp({ credentialId: resolved.credentialId }),
+    });
+    const next = new Map<string, { bytes: Uint8Array; mode: number }>([
+      [MANIFEST_PATH, { bytes: new TextEncoder().encode(input.manifest), mode: 0o100644 }],
+    ]);
+    for (const part of snapshots)
+      for (const file of part.snapshot.files) {
+        const name = `${part.subdir}/${file.path}`;
+        if (name !== MANIFEST_PATH)
+          next.set(name, { bytes: file.bytes, mode: file.mode & 0o111 ? 0o100755 : 0o100644 });
+      }
+    // A creation request is explicit. Never turn an inaccessible existing repository into a new one.
+    let exists = true;
+    try {
+      const repo = await github.getRepo(owner, repoName);
+      if (input.creation)
+        throw new Error(
+          "This repository already exists. Choose Existing repository and review again.",
+        );
+      if (!repo.permissions?.push || repo.archived || repo.disabled)
+        throw new Error(
+          "This GitHub account cannot push to the selected repository. Check repository access or connect another account.",
+        );
+    } catch (error) {
+      if (input.creation && error instanceof Error && "status" in error && error.status === 404)
+        exists = false;
+      else throw error;
+    }
+    return withTemporaryGitCheckout(
+      fsp,
+      path.join(this.ctx.storage.root, "git-checkouts", "_template-reviews"),
+      input.operationId,
+      async (checkout) => {
+        let remoteCommit: string | null = null;
+        const before = new Map<string, { bytes: Uint8Array; mode: number }>();
+        if (exists) {
+          const branch = await git.getRemoteDefaultBranch(url);
+          if (branch && branch !== BRANCH)
+            throw new Error(`Template repositories require ${BRANCH} as the default branch.`);
+          if (branch) {
+            await git.clone({
+              dir: checkout,
+              url,
+              ref: BRANCH,
+              singleBranch: false,
+              fullHistory: true,
+            });
+            remoteCommit = await git.resolveCommit(checkout, `refs/heads/${BRANCH}`);
+            if (await git.resolveCommit(checkout, `refs/tags/${prepared.tag}`))
+              throw new Error(`Release ${prepared.tag} already exists. Choose another version.`);
+            if (remoteCommit)
+              for (const entry of await git.readCommitTree(checkout, remoteCommit)) {
+                if (entry.type !== "blob")
+                  throw new Error(`Cannot review non-regular upstream entry: ${entry.path}`);
+                before.set(entry.path, entry);
+              }
+          }
+        }
+        const changedFiles: TemplatePublicationReview["changedFiles"] = [];
+        const store = async (bytes: Uint8Array) =>
+          (
+            await this.ctx.rpc.call<{ digest: string }>(
+              "main",
+              "blobstore.putBase64",
+              Buffer.from(bytes).toString("base64"),
+            )
+          ).digest;
+        for (const file of [...new Set([...before.keys(), ...next.keys()])].sort()) {
+          const old = before.get(file),
+            fresh = next.get(file);
+          if (
+            old &&
+            fresh &&
+            old.mode === fresh.mode &&
+            sha256Hex(old.bytes) === sha256Hex(fresh.bytes)
+          )
+            continue;
+          changedFiles.push({
+            path: file,
+            kind: !old ? "added" : !fresh ? "removed" : "changed",
+            ...(old ? { oldHash: await store(old.bytes) } : {}),
+            ...(fresh ? { newHash: await store(fresh.bytes) } : {}),
+            binary: [old, fresh].some((entry) => entry?.bytes.includes(0)),
+            tooLarge: [old, fresh].some((entry) => (entry?.bytes.length ?? 0) > 128 * 1024),
+            oldMode: old?.mode ?? null,
+            newMode: fresh?.mode ?? null,
+          });
+        }
+        return { remoteCommit, changedFiles };
+      },
+    );
+  }
+
+  async publish(input: GitTemplatePublishInput): Promise<GitTemplatePublishResult> {
+    const {
+      providerId,
+      provider,
+      owner,
+      repoName,
+      destination,
+      parts,
+      snapshots,
+      expectedTree,
+      tag,
+      requestFingerprint,
+    } = await this.prepare(input);
     let credentialId = input.credentialId?.trim() || undefined;
     let credentialLabel: string | undefined;
     if (providerId === "github") {
       const resolved = await resolveGitHubPublishOperation(this.ctx.credentials, {
         ...(credentialId ? { credentialId } : {}),
         owner,
+        publication: input.creation ? "repository" : "existing-repository",
       });
       credentialId = resolved.credentialId;
       credentialLabel = resolved.credentialLabel;
       if (resolved.destinationOwner.toLowerCase() !== owner.toLowerCase()) {
         throw new Error(
-          `GitHub credential resolved owner ${resolved.destinationOwner}, expected ${owner}`
+          `GitHub credential resolved owner ${resolved.destinationOwner}, expected ${owner}`,
         );
       }
     }
-    const repository = await provider.resolveOrCreateRepo(this.ctx.credentials, {
-      destination,
-      creation: {
-        private: input.creation?.private ?? true,
-        description: input.creation?.description ?? input.templateName,
-      },
-      ...(credentialId ? { credentialId } : {}),
-    });
+    const existing =
+      !input.creation && providerId === "github"
+        ? await createGitHubClient(this.ctx.credentials, { credentialId }).getRepo(owner, repoName)
+        : null;
+    const repository = existing
+      ? {
+          destination,
+          cloneUrl: `https://github.com/${owner}/${repoName}.git`,
+          webUrl: existing.html_url,
+          created: false,
+        }
+      : await provider.resolveOrCreateRepo(this.ctx.credentials, {
+          destination,
+          creation: {
+            private: input.creation?.private ?? true,
+            description: input.creation?.description ?? input.templateName,
+          },
+          ...(credentialId ? { credentialId } : {}),
+        });
     if (!sameRepositoryIdentity(destination, repository.destination)) {
       throw new Error(
         `Remote provider resolved ${repository.destination.provider}:` +
           `${repository.destination.owner}/${repository.destination.name}, expected ` +
-          `${destination.provider}:${destination.owner}/${destination.name}`
+          `${destination.provider}:${destination.owner}/${destination.name}`,
       );
     }
     if (!provider.matches(repository.cloneUrl)) {
       throw new Error(
-        `Remote provider ${provider.id} returned an incompatible clone URL: ${repository.cloneUrl}`
+        `Remote provider ${provider.id} returned an incompatible clone URL: ${repository.cloneUrl}`,
       );
     }
     const git = new GitClient(fsp, {
@@ -248,7 +392,7 @@ export class TemplatePublishEngine {
           if (defaultBranch !== BRANCH) {
             throw new Error(
               `Template repository ${repository.webUrl} uses ${defaultBranch} as its default ` +
-                `branch; template repositories require ${BRANCH}`
+                `branch; template repositories require ${BRANCH}`,
             );
           }
           await git.clone({
@@ -268,11 +412,11 @@ export class TemplatePublishEngine {
             ? []
             : await git.log(checkout, { ref: mainCommit, depth: Number.MAX_SAFE_INTEGER });
         const matchingOperations = history.filter(
-          ({ message }) => trailer(message, OPERATION_TRAILER) === input.operationId
+          ({ message }) => trailer(message, OPERATION_TRAILER) === input.operationId,
         );
         if (matchingOperations.length > 1) {
           throw new Error(
-            `Template history contains multiple commits for operation ${input.operationId}`
+            `Template history contains multiple commits for operation ${input.operationId}`,
           );
         }
 
@@ -287,7 +431,7 @@ export class TemplatePublishEngine {
                 this.ctx.rpc.call<{ digest: string; size: number }>(
                   "main",
                   "blobstore.putBase64",
-                  Buffer.from(bytes).toString("base64")
+                  Buffer.from(bytes).toString("base64"),
                 ),
             },
             reservedPaths: "exclude",
@@ -313,13 +457,13 @@ export class TemplatePublishEngine {
           const recordedRequest = trailer(matchingOperation.message, REQUEST_TRAILER);
           if (recordedRequest !== requestFingerprint) {
             throw new Error(
-              `Operation ${input.operationId} was already used for a different template publication`
+              `Operation ${input.operationId} was already used for a different template publication`,
             );
           }
           const tree = await git.readCommitTree(checkout, matchingOperation.oid);
           if (tree.some((entry) => entry.type !== "blob")) {
             throw new Error(
-              `Operation ${input.operationId} produced a non-regular template repository tree`
+              `Operation ${input.operationId} produced a non-regular template repository tree`,
             );
           }
           const actualTree = canonicalTree(
@@ -327,11 +471,11 @@ export class TemplatePublishEngine {
               path: entry.path,
               mode: entry.mode,
               contentHash: entry.type === "blob" ? sha256Hex(entry.bytes) : "",
-            }))
+            })),
           );
           if (actualTree !== expectedTree) {
             throw new Error(
-              `Operation ${input.operationId} is recorded with different template contents`
+              `Operation ${input.operationId} is recorded with different template contents`,
             );
           }
           if (tagCommit !== null && tagCommit !== matchingOperation.oid) {
@@ -349,6 +493,12 @@ export class TemplatePublishEngine {
           return result(matchingOperation.oid);
         }
 
+        if (mainCommit !== input.expectedRemoteCommit) {
+          throw new Error(
+            "Upstream changed after review. Review the release again before publishing.",
+          );
+        }
+
         if (tagCommit !== null) {
           throw new Error(`Immutable template tag ${tag} already exists`);
         }
@@ -364,11 +514,7 @@ export class TemplatePublishEngine {
         for (const part of snapshots) {
           for (const file of part.snapshot.files) {
             const relative = `${part.subdir}/${file.path}`;
-            if (
-              part.repoPath === "meta" &&
-              part.subdir === "meta" &&
-              relative === MANIFEST_PATH
-            ) {
+            if (part.repoPath === "meta" && part.subdir === "meta" && relative === MANIFEST_PATH) {
               continue;
             }
             const fileDestination = safeJoin(checkout, relative);
@@ -394,7 +540,7 @@ export class TemplatePublishEngine {
             path: entry.path,
             mode: entry.mode,
             contentHash: entry.type === "blob" ? sha256Hex(entry.bytes) : "",
-          }))
+          })),
         );
         if (
           committedTree.some((entry) => entry.type !== "blob") ||
@@ -423,10 +569,10 @@ export class TemplatePublishEngine {
             `Publishing ${input.templateName} to ${repository.webUrl} failed: ${
               error instanceof Error ? error.message : String(error)
             }`,
-            { cause: error }
+            { cause: error },
           );
         }
-      }
+      },
     );
   }
 }
