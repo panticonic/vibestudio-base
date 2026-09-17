@@ -246,6 +246,7 @@ template:
     - skills/templates
     - skills/terminal
     - skills/vibestudio-vcs
+    - skills/phone-setup
     - skills/web-research
     - skills/workspace-dev
     - templates/default

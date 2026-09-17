@@ -1,0 +1,21 @@
+{
+  "name": "@workspace-skills/phone-setup",
+  "version": "0.1.0",
+  "type": "module",
+  "exports": {
+    ".": "./index.ts"
+  },
+  "dependencies": {
+    "@workspace/runtime": "workspace:*",
+    "@vibestudio/service-schemas": "workspace:*"
+  },
+  "peerDependencies": {
+    "react": "^19.0.0",
+    "@radix-ui/themes": "^3.3.0"
+  },
+  "devDependencies": {
+    "@testing-library/react": "^16.3.2",
+    "@testing-library/dom": "^10.4.1",
+    "vitest": "^3.2.7"
+  }
+}
