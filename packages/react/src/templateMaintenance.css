@@ -1,0 +1,41 @@
+.workspace-maintenance {
+  min-width: 0;
+  container-type: inline-size;
+}
+.workspace-source-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr));
+  gap: 16px;
+}
+.workspace-source-card {
+  padding: 20px;
+}
+.workspace-maintenance .rt-Button {
+  min-height: 44px;
+  white-space: normal;
+}
+.workspace-maintenance summary {
+  min-height: 44px;
+  align-content: center;
+  color: var(--accent-11);
+  cursor: pointer;
+}
+.workspace-maintenance details {
+  margin-top: 12px;
+}
+.workspace-maintenance pre,
+.workspace-maintenance li,
+.workspace-source-url {
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+.workspace-maintenance .rt-Card {
+  min-width: 0;
+}
+.workspace-maintenance label {
+  display: flex;
+  gap: 12px;
+  align-items: start;
+  min-height: 44px;
+  overflow-wrap: anywhere;
+}

@@ -26,6 +26,7 @@ export interface ExtensionContextLike {
         callerKind: string;
         callerId: string;
         callerTitle?: string;
+        userId?: string;
         contextId?: string;
       };
       chainCaller?: { contextId?: string };

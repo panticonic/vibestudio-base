@@ -1,12 +1,12 @@
 {
-  "name": "@workspace-about/templates",
+  "name": "@workspace-about/workspace",
   "version": "0.1.0",
   "private": true,
   "type": "module",
   "vibestudio": {
-    "title": "Workspaces",
+    "title": "This workspace",
     "icon": "./assets/icon.svg",
-    "description": "Discover templates and create a new workspace.",
+    "description": "Pull upstream updates, review template dependencies, and publish this workspace.",
     "hiddenInLauncher": false,
     "autoArchiveWhenEmpty": true,
     "authority": {
@@ -14,6 +14,24 @@
       "requests": [
         {
           "capability": "userland:extensions/templates/workspace.templates.inspect#*",
+          "resource": {
+            "kind": "exact",
+            "key": "workspace.templates:extension:@workspace-extensions/templates"
+          },
+          "tier": "gated",
+          "evidence": "bounded-dynamic"
+        },
+        {
+          "capability": "userland:extensions/templates/workspace.templates.publish#*",
+          "resource": {
+            "kind": "exact",
+            "key": "workspace.templates:extension:@workspace-extensions/templates"
+          },
+          "tier": "gated",
+          "evidence": "bounded-dynamic"
+        },
+        {
+          "capability": "userland:extensions/templates/workspace.templates.update#*",
           "resource": {
             "kind": "exact",
             "key": "workspace.templates:extension:@workspace-extensions/templates"

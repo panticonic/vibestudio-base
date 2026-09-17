@@ -1,3 +1,4 @@
+import { createTemplateUpdateChecks } from "./updateChecks.js";
 import { createTemplatePublisher } from "./publication.js";
 import { installedDependencyLayers } from "@vibestudio/workspace/templateManifest";
 import { templateRepositoryOwners } from "@vibestudio/workspace/templateManifestMerge";
@@ -113,7 +114,14 @@ async function loadRegistry(ctx: ExtensionContextLike, requestedUrl?: string) {
 
 export async function activate(ctx: ExtensionContextLike) {
   ctx.log.info("templates activating");
+  const updates = createTemplateUpdateChecks(ctx, (source) =>
+    resolveSource(ctx, source),
+  );
   return {
+    updateSignal: updates.signal,
+    acknowledgeUpdates: updates.acknowledge,
+    updateStatus: updates.status,
+    checkUpdates: updates.check,
     ...createTemplateLifecycle(ctx, {
       inspect: (pin) => inspect(ctx, { pin }),
       resolve: (source) => resolveSource(ctx, source),

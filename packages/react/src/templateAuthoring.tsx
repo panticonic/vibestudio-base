@@ -46,9 +46,11 @@ export function TemplateAuthoring({
   client,
   workspaceId,
   listAccounts,
+  onPublished,
 }: {
   client: TemplatesClient;
   workspaceId: string;
+  onPublished?: () => Promise<void>;
   listAccounts?: () => Promise<StoredCredentialSummary[]>;
 }) {
   const key = `template-publication:${workspaceId}`;
@@ -230,6 +232,7 @@ export function TemplateAuthoring({
       setResult(publication);
       window.localStorage.removeItem(key);
       setDraft(null);
+      await onPublished?.();
     });
   const upstream = setup ? githubUpstream(setup) : null;
   const inherited =

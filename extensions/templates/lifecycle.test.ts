@@ -10,7 +10,7 @@ const pin = {
 };
 afterEach(() => vi.restoreAllMocks());
 it("contributes only reviewed units owned by the selected source and rejects stale reviews", async () => {
-  const observation = {
+  const observation: Awaited<ReturnType<typeof workspace.observeWorkspace>> = {
     mainEventId: "event:one",
     mainState: { kind: "event" as const, eventId: "event:one" },
     runtimeTop: { systemEpoch: 1 },
@@ -69,4 +69,46 @@ it("contributes only reviewed units owned by the selected source and rejects sta
     lifecycle.suggestContribution({ commandId: "contribute:two", plan }),
   ).rejects.toThrow("review the contribution again");
   expect(invoke).toHaveBeenCalledTimes(1);
+});
+
+it("classifies the recorded authoring upstream, direct templates, and transitive sources", async () => {
+  const upstream = { ...pin, url: "https://example.test/personal.git" };
+  const dependency = { ...pin, url: "https://example.test/support.git" };
+  const observation: Awaited<ReturnType<typeof workspace.observeWorkspace>> = {
+    mainEventId: "event:one",
+    mainState: { kind: "event" as const, eventId: "event:one" },
+    runtimeTop: { systemEpoch: 1 },
+    authoredTop: { systemEpoch: 1 },
+    manifest: {
+      top: { systemEpoch: 1 },
+      inventory: { repositories: [] },
+      dependencies: [],
+      installation: { upstream, sources: [] },
+    },
+    localRepoPaths: new Set<string>(),
+    templateDependencies: [{ url: pin.url }],
+    templateSources: [dependency, pin, upstream],
+  };
+  vi.spyOn(workspace, "observeWorkspace").mockResolvedValue(observation);
+  const lifecycle = createTemplateLifecycle({} as ExtensionContextLike, {
+    inspect: async (pin) => ({ pin, repositories: [], dependencies: [] }),
+    resolve: async () => pin,
+  });
+  expect(
+    (await lifecycle.installed()).map((source) => [
+      source.pin.url,
+      source.relationship,
+    ]),
+  ).toEqual([
+    [dependency.url, "transitive"],
+    [pin.url, "direct"],
+    [upstream.url, "upstream"],
+  ]);
+  observation.manifest.installation = {
+    sources: [],
+  };
+  observation.templateDependencies = [{ url: upstream.url }];
+  expect(
+    (await lifecycle.installed()).map((source) => source.relationship),
+  ).toEqual(["transitive", "transitive", "direct"]);
 });

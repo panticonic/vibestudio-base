@@ -43,6 +43,10 @@ describe("templates authority manifest", () => {
       "authoringUpstream",
       "authoringSetup",
       "publicationVersion",
+      "updateStatus",
+      "checkUpdates",
+      "updateSignal",
+      "acknowledgeUpdates",
     ]);
     expect(
       manifest.vibestudio.authority.requests

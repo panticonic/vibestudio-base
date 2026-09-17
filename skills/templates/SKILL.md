@@ -1,6 +1,6 @@
 ---
 name: templates
-description: Discover, inspect, create, and publish exact upstream workspace snapshots.
+description: Discover, create, publish, and agentically review workspace updates and their app compatibility.
 ---
 
 # Workspace templates
@@ -20,6 +20,11 @@ Use [public-contract.json](public-contract.json) for exact method shapes and
 [workspace creation](references/workspace-creation.md) for folder, URL, link and
 recovery behavior, and [template authoring](references/template-authoring.md)
 when publishing.
+
+## Update a workspace
+
+Use [workspace updates](references/workspace-updates.md) for conditional agentic
+automations, source checks, notifications, semantic review, and host compatibility.
 
 ## Add a workspace
 

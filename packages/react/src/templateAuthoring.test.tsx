@@ -149,7 +149,7 @@ it("prefills upstream metadata and declared contents, and derives the version fr
   ).toBe("Personal tools");
   expect(
     screen
-      .getByRole("radio", { name: "Update upstream" })
+      .getByRole("radio", { name: "Publish to upstream" })
       .getAttribute("aria-checked"),
   ).toBe("true");
   expect(

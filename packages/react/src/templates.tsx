@@ -893,4 +893,5 @@ function WorkspaceSourceSession({
 
 export { TemplateAuthoring } from "./templateAuthoring.js";
 
-export { TemplateInstalled } from "./templateInstalled.js";
+export { TemplateUpdates } from "./templateUpdates.js";
+export { TemplateContributions } from "./templateContributions.js";

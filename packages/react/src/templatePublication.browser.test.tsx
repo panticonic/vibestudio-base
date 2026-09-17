@@ -82,7 +82,7 @@ it.each([390, 1280])(
       expect(checkbox.checkVisibility()).toBe(false);
     expect(
       screen
-        .getByRole("radio", { name: "Update upstream" })
+        .getByRole("radio", { name: "Publish to upstream" })
         .getAttribute("aria-checked"),
     ).toBe("true");
     await act(async () => {

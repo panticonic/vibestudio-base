@@ -91,7 +91,7 @@ it("prefills a single account without erasing upstream, and lets the user select
       credentialId: "account-1",
     }),
   );
-  fireEvent.click(screen.getByRole("radio", { name: "Update upstream" }));
+  fireEvent.click(screen.getByRole("radio", { name: "Publish to upstream" }));
   expect(changed).toHaveBeenLastCalledWith(
     expect.objectContaining({
       owner: "team",

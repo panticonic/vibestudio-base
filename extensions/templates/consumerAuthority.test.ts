@@ -22,8 +22,8 @@ const workspaceRoot = composedWorkspaceRoot(
 );
 
 describe("template UI caller authority", () => {
-  for (const unit of ["panels/chat", "about/templates"]) {
-    for (const method of unit === "about/templates"
+  for (const unit of ["panels/chat", "about/templates", "about/workspace"]) {
+    for (const method of unit === "about/workspace"
       ? ["inspect", "publishAuthoring", "prepareUpdate"]
       : ["inspect"]) {
       const manifestPath = path.join(workspaceRoot, unit, "package.json");

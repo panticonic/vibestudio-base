@@ -198,6 +198,42 @@
             "kind": "closed",
             "reason": "Reads private workspace publication metadata."
           }
+        },
+        "updateStatus": {
+          "effect": {
+            "kind": "open"
+          },
+          "website": {
+            "kind": "closed",
+            "reason": "Workspace update availability is private."
+          }
+        },
+        "checkUpdates": {
+          "effect": {
+            "kind": "open"
+          },
+          "website": {
+            "kind": "closed",
+            "reason": "Workspace update availability is private."
+          }
+        },
+        "updateSignal": {
+          "effect": {
+            "kind": "open"
+          },
+          "website": {
+            "kind": "closed",
+            "reason": "Workspace update automation is private."
+          }
+        },
+        "acknowledgeUpdates": {
+          "effect": {
+            "kind": "open"
+          },
+          "website": {
+            "kind": "closed",
+            "reason": "Workspace update automation is private."
+          }
         }
       }
     },

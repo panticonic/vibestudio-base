@@ -270,7 +270,18 @@ export function createTemplateLifecycle(
   const installed = async () => {
     const observation = await observeWorkspace(ctx);
     return Promise.all(
-      observation.templateSources.map((pin) => sources.inspect(pin)),
+      observation.templateSources.map(async (pin) => ({
+        ...(await sources.inspect(pin)),
+        relationship:
+          observation.manifest.installation?.upstream &&
+          sameUrl(pin.url, observation.manifest.installation.upstream.url)
+            ? ("upstream" as const)
+            : observation.templateDependencies.some((dependency) =>
+                  sameUrl(dependency.url, pin.url),
+                )
+              ? ("direct" as const)
+              : ("transitive" as const),
+      })),
     );
   };
   const inspectContribution: TemplatesClient["inspectContribution"] = async (

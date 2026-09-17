@@ -155,7 +155,7 @@ export function TemplateRepositoryChoice({
       >
         {upstream && (
           <RadioCards.Item value="upstream">
-            <Text>Update upstream</Text>
+            <Text>Publish to upstream</Text>
           </RadioCards.Item>
         )}
         <RadioCards.Item value="existing">

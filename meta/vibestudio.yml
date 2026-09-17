@@ -194,6 +194,7 @@ template:
     - about/help
     - about/new
     - about/templates
+    - about/workspace
     - about/testbench
     - extensions/claude-code
     - extensions/file-tools
