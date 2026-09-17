@@ -436,6 +436,85 @@ function runtimeFocusHarness() {
 }
 
 describe("panel runtime topology composition", () => {
+  it.each([undefined, "main", "release-v1"])(
+    "reloads code by resolving a fresh incarnation at ref %s and replacing the current history cell",
+    async (ref) => {
+      const { runtime, call } = runtimeHarness();
+      const original = call.getMockImplementation()!;
+      call.mockImplementation(async (target, method, args, callOptions) => {
+        const result = await original(target, method, args, callOptions);
+        if (method !== "workspace-state.panelTree.detail") return result;
+        const row = result as ReturnType<typeof detail>;
+        return {
+          ...row,
+          currentHistory: {
+            ...row.currentHistory,
+            state_args: JSON.stringify({ documentId: "doc-123" }),
+            options: JSON.stringify({ ref, env: { THEME: "dark" } }),
+          },
+        } as typeof result;
+      });
+
+      const observation = await runtime
+        .getPanelHandle("panel:tree/new")
+        .reload();
+
+      expect(observation.runtimeEntityId).not.toBe("panel:nav-new");
+      expect(call).toHaveBeenCalledWith("main", "runtime.createEntity", [
+        expect.objectContaining({
+          kind: "panel",
+          execution: {
+            surface: "code",
+            source: "panels/new",
+            ...(ref ? { ref } : {}),
+          },
+          contextId: "ctx:test",
+          stateArgs: { documentId: "doc-123" },
+        }),
+      ]);
+      expect(call).toHaveBeenCalledWith(
+        "main",
+        "workspace-state.slot.commitPreparedNavigation",
+        [
+          expect.objectContaining({
+            slotId: "panel:tree/new",
+            expectedCurrentEntityId: "panel:nav-new",
+            mutation: {
+              kind: "replace",
+              entry: expect.objectContaining({
+                entityId: observation.runtimeEntityId,
+                source: "panels/new",
+                contextId: "ctx:test",
+                stateArgs: { documentId: "doc-123" },
+                options: { ...(ref ? { ref } : {}), env: { THEME: "dark" } },
+              }),
+            },
+          }),
+        ],
+      );
+      expect(call.mock.calls.map((entry) => entry[1])).not.toContain(
+        "runtime.supervision.restart",
+      );
+    },
+  );
+
+  it("reloads a browser in place without changing its runtime or history", async () => {
+    const { runtime, call } = runtimeHarness({ browserReady: true });
+
+    const observation = await runtime.getPanelHandle("panel:tree/new").reload();
+
+    expect(observation.runtimeEntityId).toBe("panel:nav-new");
+    expect(call).toHaveBeenCalledWith("main", "runtime.supervision.restart", [
+      { kind: "panel", entityId: "panel:nav-new" },
+    ]);
+    expect(call.mock.calls.map((entry) => entry[1])).not.toContain(
+      "runtime.createEntity",
+    );
+    expect(call.mock.calls.map((entry) => entry[1])).not.toContain(
+      "workspace-state.slot.commitPreparedNavigation",
+    );
+  });
+
   it("ledger:execution.panel", async () => {
     const { runtime, call } = runtimeHarness();
 

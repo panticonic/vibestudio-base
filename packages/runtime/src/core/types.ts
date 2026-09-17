@@ -337,6 +337,7 @@ export interface PanelHandle<
     source: string,
     options?: PanelNavigateOptions,
   ): Promise<PanelObservation>;
+  /** Resolve current code in the selected context/ref, replacing this history entry. Browser panels reload in place. */
   reload(options?: PanelWaitOptions): Promise<PanelObservation>;
   /** One bounded post-mortem packet: observation, console history, and ready document. */
   diagnose(): Promise<PanelDiagnosticsResult>;

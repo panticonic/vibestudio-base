@@ -739,11 +739,20 @@ describe("PanelHandle", () => {
       phase: "ready",
     });
 
-    expect(rpcCall).toHaveBeenCalledWith(
-      "main",
-      "runtime.supervision.restart",
-      [{ kind: "panel", entityId: "panel:nav-panel-parent-entity" }],
+    const replacements = rpcCall.mock.calls.filter(
+      ([, method, args]) =>
+        method === "workspace-state.slot.commitPreparedNavigation" &&
+        (args[0] as { mutation: { kind: string } }).mutation.kind === "replace",
     );
+    expect(replacements).toHaveLength(2);
+    for (const [, , args] of replacements) {
+      expect(args[0]).toMatchObject({
+        slotId: "panel:tree/panel-parent",
+        mutation: {
+          entry: { source: "panels/parent", stateArgs: { preserved: true } },
+        },
+      });
+    }
     expect(rpcCall).toHaveBeenCalledWith(
       "main",
       "workspace-state.slot.commitPreparedNavigation",

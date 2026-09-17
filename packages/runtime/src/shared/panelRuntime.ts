@@ -985,25 +985,21 @@ export function createPanelRuntime(
     return waitUntilReady(observation, waitOptions?.signal, attempt);
   };
 
-  const restartPanel = async (id: string): Promise<void> => {
+  const requirePanelDetail = async (
+    id: string,
+  ): Promise<WorkspacePanelDetail> => {
     const detail = await callPanelState<WorkspacePanelDetail | null>("detail", [
       id,
     ]);
     if (!detail) throw new Error(`Unknown panel slot: ${id}`);
-    await ensurePanelMaterialized(id);
-    await options.rpc.call("main", "runtime.supervision.restart", [
-      { kind: "panel", entityId: detail.entity.id },
-    ]);
+    return detail;
   };
 
   const rebuildPanel = async (
     id: string,
+    detail: WorkspacePanelDetail,
     waitOptions?: PanelWaitOptions,
   ): Promise<PanelObservation> => {
-    const detail = await callPanelState<WorkspacePanelDetail | null>("detail", [
-      id,
-    ]);
-    if (!detail) throw new Error(`Unknown panel slot: ${id}`);
     const storedOptions = detail.currentHistory.options
       ? (JSON.parse(detail.currentHistory.options) as {
           ref?: string;
@@ -1295,11 +1291,22 @@ export function createPanelRuntime(
       return resolvedParentId ? panelTree.get(resolvedParentId) : null;
     },
     reload: async (id, waitOptions) => {
-      await restartPanel(id);
-      const result = await waitUntilReady(
-        await observePanel(id),
-        waitOptions?.signal,
-      );
+      const detail = await requirePanelDetail(id);
+      let result: PanelObservation;
+      if (detail.currentHistory.source.startsWith("browser:")) {
+        await ensurePanelMaterialized(id);
+        await options.rpc.call("main", "runtime.supervision.restart", [
+          { kind: "panel", entityId: detail.entity.id },
+        ]);
+        result = await waitUntilReady(
+          await observePanel(id),
+          waitOptions?.signal,
+        );
+      } else {
+        // Code runtimes are immutable. Reload resolves the current source in
+        // its context and replaces this history cell with a fresh incarnation.
+        result = await rebuildPanel(id, detail, waitOptions);
+      }
       options.onReload?.(id);
       return result;
     },
@@ -1335,7 +1342,11 @@ export function createPanelRuntime(
     },
     openDevTools: (id, mode) => callView("openPanelDevTools", [id, mode]),
     rebuild: async (id, waitOptions) => {
-      const result = await rebuildPanel(id, waitOptions);
+      const result = await rebuildPanel(
+        id,
+        await requirePanelDetail(id),
+        waitOptions,
+      );
       options.onReload?.(id);
       return result;
     },

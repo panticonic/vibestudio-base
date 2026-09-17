@@ -734,9 +734,17 @@ describe("worker panelTree handles", () => {
       method: "panelCdp.getCdpEndpoint",
       args: ["panel:tree/parent-slot"],
     });
-    expect(calls.map(({ method }) => method)).toContain(
-      "runtime.supervision.restart",
+    const replacements = calls.filter(
+      ({ method }) =>
+        method === "workspace-state.slot.commitPreparedNavigation",
     );
+    expect(replacements).toHaveLength(2);
+    for (const call of replacements) {
+      expect(call.args[0]).toMatchObject({
+        slotId: "panel:tree/parent-slot",
+        mutation: { kind: "replace" },
+      });
+    }
     expect(calls.map(({ method }) => method)).toContain(
       "workspace-state.slot.commitPreparedNavigation",
     );
