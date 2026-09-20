@@ -68,12 +68,12 @@
     },
     {
       "path": "references/semantic-commit.md",
-      "sha256": "0f2ea1526c131872381509e3ffa53f45dcacb0f8b6aca61ef9d970860a259a88"
+      "sha256": "0783e5ca6f0103f40ec176a85200d54665900eb573643f29a8748e67eae4b670"
     },
     {
       "path": "references/typed-recovery.md",
       "sha256": "1b8a8b5b185b47039733272129292f2d6442205bb02d4b07e328790795eb77cb"
     }
   ],
-  "packageDigest": "8d2fbf87cf70e8002c00b8eab33251dd97cc1139e21346381bae26577987ee66"
+  "packageDigest": "66ddcb4801763f426d9a5c378854690a6cfef15e67b2f363fa2e2c8f6b47aa18"
 }

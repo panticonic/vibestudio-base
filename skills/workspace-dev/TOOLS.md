@@ -114,7 +114,7 @@ Supported types: `panel`, `package`, `skill`, `project`, `worker`. Each scaffold
 The scaffold runs the semantic development loop for you: it authors one
 coherent lifecycle work unit, commits the complete local chain from the exact
 working head, and publishes the resulting event through semantic
-ancestry/integration validation, the affected-unit build/typecheck gate,
+ancestry/integration validation, the affected-unit build/typecheck/authority gate,
 approval, and an atomic protected-ref update. Post-publication build and
 activation remain separate projections, and failed activation retains the
 previous runnable artifact.
@@ -572,10 +572,14 @@ Compile a panel against the current context working head and return the
 canonical structured build report. Pass the panel source path and the exact
 context ref. The report contains `status`, top-level `diagnostics`, and
 per-target `builds`; diagnostics include source, severity, file, line, column,
-message, and optional source context. The routine report intentionally omits
-artifact manifests so compiler feedback remains compact and structurally
-available through eval. Each target includes its immutable `buildKey`; use
-build provenance or metadata inspection only when artifact details are needed.
+message, and optional source context. They combine bundling, TypeScript, and
+static authority checks; a statically known privileged call without a covering
+manifest request is reported here. A request is not a grant. Dynamic eval and
+method selection remain subject to runtime authority checks. The routine
+report intentionally omits artifact manifests so compiler feedback remains
+compact and structurally available through eval. Each target includes its
+immutable `buildKey`; use build provenance or metadata inspection only when
+artifact details are needed.
 
 ```
 eval({ code: `
@@ -592,12 +596,17 @@ the fast repair loop used before commit; the protected push gate repeats the
 same check against the exact candidate. Fix every reported file through
 managed edits, then request a new report for the same context.
 
-#### @workspace-extensions/typecheck-service (alternative)
+`services.build.getBuild` returns a runtime bundle; it does not provide this
+combined pre-commit diagnostic report.
+
+#### @workspace-extensions/typecheck-service (TypeScript-only check)
 
 Installed panels, workers, extensions, and admitted eval sessions may invoke
 `@workspace-extensions/typecheck-service.checkPanel` or its lower-level `check`
 method. Prefer `services.build.getBuildReport` in eval because it is the
-canonical build result used by panel launch and includes every build target.
+canonical build result used by panel launch and includes every build target
+and the static authority diagnostics. The extension's TypeScript result does
+not replace that combined pre-commit report.
 
 `checkPanel` returns `{ diagnostics, errorCount, warningCount }` and infers the
 installed caller's context. Pass `{ contextId }` only when intentionally

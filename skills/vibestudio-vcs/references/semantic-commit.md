@@ -53,7 +53,7 @@ observed main event, and invocation-bound command ID. Direct clients call
 `vcs.push` with those exact fields.
 
 Push validates event ancestry and coordinate-accounting completeness, runs the exact
-candidate build/typecheck gate for the changed units and their transitive
+candidate build/typecheck/authority gate for the changed units and their transitive
 reverse dependents, obtains protected publication approval, and atomically
 advances protected refs through one durable effect. It authors no new source
 history. Run the same exact-context report explicitly before publication when

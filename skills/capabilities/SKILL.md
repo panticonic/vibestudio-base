@@ -101,8 +101,12 @@ For a panel, worker, app, extension, or package performing gated/critical work:
    request open methods or host lifecycle plumbing.
 3. Use the narrowest exact identity, origin, domain, or intentional prefix.
    Never use a wildcard to silence a build error.
-4. Build or typecheck the exact `ctx:<contextId>` working state. The build seals
-   and checks the manifest but doesn't write or approve it.
+4. Request `build.getBuildReport` for the unit at the exact `ctx:<contextId>`
+   working state. Its TypeScript and static authority diagnostics report
+   missing requests for statically known calls alongside build errors. The
+   check does not write the manifest or grant the request; protected push
+   repeats it against the exact candidate. A bare runtime build is not this
+   pre-commit check.
 5. Exercise the real path. On denial, follow structured remediation rather than
    catching `EACCES` and trying a parallel route.
 

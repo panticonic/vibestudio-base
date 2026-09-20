@@ -85,7 +85,9 @@ purpose, workflow, ownership, invariants, and diagnostics.
   resolution](DEPENDENCIES.md#own-it-or-let-the-realm-provide-it).
 - Use structured read/edit/write/move/copy and semantic VCS tools for managed
   files. Use eval for runtime operations, not as a file editor or shell.
-- Use `verify` for exact-context build checks and focused tests.
+- Use `verify` for exact-context build checks and focused tests. The canonical
+  `build.getBuildReport` combines bundling, TypeScript, and static authority
+  diagnostics for an executable unit; see [the development loop](WORKFLOW.md#semantic-workspace-development).
 - Declare every in-app test suite in `package.json#vibestudio.tests`. Choose the
   production-matched runtime explicitly: `browser` for panels/DOM behavior,
   `workerd` for workers and portable logic, and `native` only for Node,

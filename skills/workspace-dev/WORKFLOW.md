@@ -19,15 +19,18 @@ The lifecycle is:
 2. Author through `edit`/`write` or the managed VCS edit surface. Each
    user-visible intent becomes a work unit and one local application.
 3. Run the exact-context build report against that context's current
-   materialization. Use its structured typecheck diagnostics as the repair
-   loop; tests and runtime checks are additional evidence.
+   materialization. Its structured bundling, TypeScript, and static authority
+   diagnostics are the repair loop; tests and runtime checks are additional
+   evidence.
 4. If main or another source advanced, compare the exact source event. Adopt,
    merge useful changes through bounded coordinate pages, review composed intents, and
    run checks between them.
 5. Commit the complete local application chain. Work that needs a different
    commit boundary belongs in another context.
 6. Publish the clean committed event. Publication validates semantic ancestry
-   and integration, obtains approval, and atomically advances protected refs.
+   and integration, reruns the exact-candidate build/typecheck/authority gate
+   for affected units and dependents, obtains approval, and atomically advances
+   protected refs.
 7. Let the separate post-publication build projection produce an artifact, then
    open or reload the running unit at the intended build ref and verify
    behavior. Failed activation retains the previous runnable artifact.
@@ -184,10 +187,12 @@ canonical path.
 
 3. Keep the returned working head, then run the exact-context build report.
    For panels, `services.build.getBuildReport(source,
-\`ctx:${ctx.contextId}\`)`requests the canonical structured build.
-  `runtime.supervision.health(identity)` only reads the exact live entity's
-   health/log records and does not compile the working source. Read every error in the
-   report, repair its cited file/line/column, and rerun until it is clean.
+\`ctx:${ctx.contextId}\`)` requests the canonical structured check, including
+   missing authority requests for statically known calls. A declaration is a
+   request for review, not a grant. `runtime.supervision.health(identity)` only
+   reads the exact live entity's health/log records and does not compile the
+   working source. Read every error in the report, repair its cited
+   file/line/column, and rerun until it is clean.
    The push gate repeats the report on the exact candidate state; it is
    authoritative, while this local report is the fast feedback loop.
 
