@@ -11,7 +11,7 @@ function harness() {
       reconnectHandlers.add(handler);
       return () => reconnectHandlers.delete(handler);
     },
-  } as NonNullable<UseForkLineageOptions["client"]>;
+  } satisfies NonNullable<UseForkLineageOptions["client"]>;
   let head = 2;
   let label = "Before disconnect";
   let failRead = false;

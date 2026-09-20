@@ -52,7 +52,7 @@ export interface UseForkLineageOptions {
   /** Changes when a workspace review may have unblocked cursor persistence. */
   retrySignal?: number;
   /** Connection readiness only; lineage has its own response-owned stream. */
-  client?: PubSubClient<ChatParticipantMetadata> | null;
+  client?: Pick<PubSubClient<ChatParticipantMetadata>, "onReconnect"> | null;
   nav?: ForkNavHandlers;
 }
 
