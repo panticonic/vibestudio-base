@@ -1,23 +1,21 @@
+defaultAgentConfig:
+  model: openai-codex:gpt-5.6-sol
 defaultAutomations:
   workspace-updates:
-    source: workers/agent-worker
-    className: AiChatWorker
-    name: Workspace update assistant
-    summary: Check upstream sources and notify me about new updates. Ask before merging or installing anything.
     action:
-      kind: watch
-      syntax: typescript
       code: |
         import { extensions } from "@workspace/runtime";
         return await extensions.invoke("@workspace-extensions/templates", "updateSignal", []);
-    trigger:
-      kind: schedule
-      everyMs: 21600000
-    # Both extension methods have open effects. No standing grants are needed;
-    # extension dispatch still checks each concrete method at invocation time.
+      kind: watch
+      syntax: typescript
+    className: AiChatWorker
+    name: Workspace update assistant
     operations: []
-defaultAgentConfig:
-  model: openai-codex:gpt-5.6-sol
+    source: workers/agent-worker
+    summary: Check upstream sources and notify me about new updates. Ask before merging or installing anything.
+    trigger:
+      everyMs: 21600000
+      kind: schedule
 defaultRepo: projects/default
 extensions:
   - source: extensions/git-bridge
@@ -212,8 +210,8 @@ template:
     - about/help
     - about/new
     - about/templates
-    - about/workspace
     - about/testbench
+    - about/workspace
     - extensions/claude-code
     - extensions/file-tools
     - extensions/git-bridge
@@ -222,6 +220,7 @@ template:
     - extensions/shell
     - extensions/templates
     - extensions/test-runner
+    - meta
     - packages/about-shared
     - packages/agent-loop
     - packages/agentic-chat
@@ -259,12 +258,12 @@ template:
     - skills/extensiondev
     - skills/gad-context
     - skills/messaging
+    - skills/phone-setup
     - skills/provenance-orientation
     - skills/sandbox
     - skills/templates
     - skills/terminal
     - skills/vibestudio-vcs
-    - skills/phone-setup
     - skills/web-research
     - skills/workspace-dev
     - templates/default
