@@ -25,7 +25,7 @@ describe("capabilities skill", () => {
     expect(markdown).toContain("`workspace-service:<name>`");
     expect(markdown).toContain("`package.json#vibestudio.authority.requests`");
     expect(markdown).toContain("exact `ctx:<contextId>` working state");
-    expect(markdown).toContain("build seals and checks the manifest");
+    expect(markdown).toContain("protected push repeats it against the exact candidate");
     expect(markdown).toContain("Version-bound grants follow the exact execution digest");
   });
 

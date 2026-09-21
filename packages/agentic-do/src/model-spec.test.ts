@@ -94,7 +94,7 @@ describe("Codex service-tier materialization", () => {
     expect(
       materializeModel("openai-codex", "gpt-5.6-luna", null)?.spec
         .serviceTiers,
-    ).toBeUndefined();
+    ).toEqual(["priority"]);
     expect(
       materializeModel("openai-codex", "gpt-5.4-mini", null)?.spec.serviceTiers,
     ).toBeUndefined();

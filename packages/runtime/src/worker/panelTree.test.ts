@@ -164,7 +164,7 @@ describe("worker panelTree handles", () => {
     expect(runtimeModule.z.object).toBeTypeOf("function");
     expect(runtimeModule.defineContract).toBeTypeOf("function");
     expect(runtimeModule.buildPanelLink("panels/editor")).toBe(
-      "/panels/editor/",
+      "vibestudio://panel?v=1&source=panels%2Feditor",
     );
     expect(runtimeModule.parseContextId("ctx_project")).toEqual({
       instanceId: "project",
