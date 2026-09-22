@@ -44,7 +44,10 @@ function messageTypeRegistered(
       protocol: AGENTIC_PROTOCOL_VERSION,
       typeId,
       displayMode: "inline",
-      source: { type: "code", code: "export default function Demo() { return null; }" },
+      source: {
+        type: "code",
+        code: "export default function Demo() { return null; }",
+      },
     },
     createdAt,
   };
@@ -87,7 +90,10 @@ function messageRetracted(
     kind: "message.retracted",
     actor: { kind: "user", id: actorId },
     causality: { messageId: brandId<MessageId>(id) },
-    payload: { protocol: AGENTIC_PROTOCOL_VERSION, by: { kind: "user", id: actorId } },
+    payload: {
+      protocol: AGENTIC_PROTOCOL_VERSION,
+      by: { kind: "user", id: actorId },
+    },
     createdAt,
   };
 }
@@ -167,8 +173,14 @@ function createClient(events: unknown[] = [], overrides: Partial<PubSubClient> =
     events: vi.fn(async function* () {
       for (const event of events) yield event;
     }),
-    getReplayAfter: vi.fn(async () => ({ logEvents: [], ready: { hasMoreBefore: false } })),
-    getReplayBefore: vi.fn(async () => ({ logEvents: [], ready: { hasMoreBefore: false } })),
+    getReplayAfter: vi.fn(async () => ({
+      logEvents: [],
+      ready: { hasMoreBefore: false },
+    })),
+    getReplayBefore: vi.fn(async () => ({
+      logEvents: [],
+      ready: { hasMoreBefore: false },
+    })),
     ...overrides,
   };
   return client as unknown as PubSubClient;
@@ -224,6 +236,78 @@ function Probe({
 }
 
 describe("useChannelMessages", () => {
+  it("can page past a replay window containing only non-message events", async () => {
+    let latest: UseChannelMessagesResult | undefined;
+    const getReplayBefore = vi.fn(async () => ({
+      mode: "before" as const,
+      logEvents: [rawReplayEvent(2, messageCompleted("original", "Original prompt"))],
+      snapshots: [],
+      ready: { totalCount: 2, envelopeCount: 2, hasMoreBefore: false },
+    }));
+    const client = createClient(
+      [{ type: "presence", delivery: "log", phase: "replay", pubsubId: 20 }],
+      { connected: true, hasMoreBefore: true, getReplayBefore }
+    );
+    await act(async () => {
+      render(
+        <Probe
+          client={client}
+          onValue={(value) => {
+            latest = value;
+          }}
+        />
+      );
+    });
+    expect(latest!.messages).toEqual([]);
+    await act(async () => {
+      await latest!.loadEarlierMessages();
+    });
+    expect(getReplayBefore).toHaveBeenCalledWith(20, 500);
+    expect(latest!.messages.map(({ id }) => id)).toEqual(["original"]);
+  });
+  it("keeps earlier history available when paging runs before replay consumption", async () => {
+    let latest: UseChannelMessagesResult | undefined;
+    const stream = createEventStream();
+    const getReplayBefore = vi.fn(async () => ({
+      mode: "before" as const,
+      logEvents: [rawReplayEvent(2, messageCompleted("original", "Original prompt"))],
+      snapshots: [],
+      ready: { totalCount: 2, envelopeCount: 2, hasMoreBefore: false },
+    }));
+    const client = createClient([], {
+      connected: true,
+      hasMoreBefore: true,
+      events: () => stream.iterator,
+      getReplayBefore,
+    });
+    render(
+      <Probe
+        client={client}
+        onValue={(value) => {
+          latest = value;
+        }}
+      />
+    );
+    // The scroll-to-top loader can run as soon as readiness metadata arrives,
+    // before the asynchronous replay consumer has populated its cursor.
+    await act(async () => {
+      await latest!.loadEarlierMessages();
+    });
+    expect(latest!.hasMoreHistory).toBe(true);
+    expect(getReplayBefore).not.toHaveBeenCalled();
+    await act(async () => {
+      stream.push(
+        pubsubAgenticEvent(10, messageCompleted("recent", "Recent reply")) as IncomingEvent
+      );
+    });
+    await waitFor(() => expect(latest!.messages.map(({ id }) => id)).toEqual(["recent"]));
+    await act(async () => {
+      await latest!.loadEarlierMessages();
+    });
+    expect(getReplayBefore).toHaveBeenCalledWith(10, 500);
+    expect(latest!.messages.map(({ id }) => id)).toEqual(["original", "recent"]);
+    expect(latest!.hasMoreHistory).toBe(false);
+  });
   it("reads pagination metadata from a client that is already replay-ready", async () => {
     let latest: UseChannelMessagesResult | undefined;
     const retained = messageCompleted("retained", "Retained history");
@@ -312,7 +396,10 @@ describe("useChannelMessages", () => {
         complete: true,
       });
     });
-    expect(client.events).toHaveBeenCalledWith({ includeReplay: true, includeSignals: true });
+    expect(client.events).toHaveBeenCalledWith({
+      includeReplay: true,
+      includeSignals: true,
+    });
   });
 
   it("loads earlier typed envelopes before the replay anchor and updates pagination metadata", async () => {

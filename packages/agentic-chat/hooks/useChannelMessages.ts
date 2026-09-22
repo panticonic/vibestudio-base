@@ -213,7 +213,10 @@ export function useChannelMessages<T extends ParticipantMetadata = ParticipantMe
             if (!cancelledRef.current) flushReplayDirty();
           }, 0);
         };
-        for await (const event of client.events({ includeReplay: true, includeSignals: true })) {
+        for await (const event of client.events({
+          includeReplay: true,
+          includeSignals: true,
+        })) {
           if (cancelledRef.current) break;
 
           const wire = event as unknown as {
@@ -227,6 +230,11 @@ export function useChannelMessages<T extends ParticipantMetadata = ParticipantMe
             attachments?: WireAttachment[];
             payload?: AgenticEvent;
           };
+          // Paging includes durable events that do not render as messages.
+          if (wire.delivery !== "signal" && wire.pubsubId !== undefined) {
+            oldestRootIdRef.current = Math.min(oldestRootIdRef.current ?? Infinity, wire.pubsubId);
+            newestSeqRef.current = Math.max(newestSeqRef.current ?? 0, wire.pubsubId);
+          }
           if (wire.phase === "live" && replayDirty) {
             if (replayRebuildTimerRef.current !== null) {
               clearTimeout(replayRebuildTimerRef.current);
@@ -241,7 +249,10 @@ export function useChannelMessages<T extends ParticipantMetadata = ParticipantMe
           // random ids defeat dedup). Apply them directly to the message
           // projection; the durable terminal later replaces blocks
           // authoritatively.
-          const signalWire = wire as unknown as { contentType?: string; content?: string };
+          const signalWire = wire as unknown as {
+            contentType?: string;
+            content?: string;
+          };
           if (
             wire.delivery === "signal" &&
             signalWire.contentType === AGENTIC_EVENT_PAYLOAD_KIND &&
@@ -296,14 +307,6 @@ export function useChannelMessages<T extends ParticipantMetadata = ParticipantMe
               payload: wire.payload as AgenticEvent,
             });
             channelStateRef.current = reduceChannelView(channelStateRef.current, envelope);
-            if (wire.pubsubId !== undefined) {
-              if (oldestRootIdRef.current === null || wire.pubsubId < oldestRootIdRef.current) {
-                oldestRootIdRef.current = wire.pubsubId;
-              }
-              if (newestSeqRef.current === null || wire.pubsubId > newestSeqRef.current) {
-                newestSeqRef.current = wire.pubsubId;
-              }
-            }
             if (wire.phase === "replay") {
               replayDirty = true;
               scheduleReplayRebuild();
@@ -376,7 +379,11 @@ export function useChannelMessages<T extends ParticipantMetadata = ParticipantMe
     const c = clientRef.current;
     if (!c || loadingMore) return;
     const anchor = oldestRootIdRef.current;
-    if (anchor === null || anchor <= 1) {
+    // Ready metadata can arrive before the async replay consumer establishes
+    // its cursor. An early scroll-to-top request must not erase the server's
+    // continuation flag (and permanently hide the load-history button).
+    if (anchor === null) return;
+    if (anchor <= 1) {
       setHasMoreHistory(false);
       return;
     }
