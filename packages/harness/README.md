@@ -107,8 +107,17 @@ signal.
 
 ## Tests
 
+From the Vibestudio host checkout, use its userland runner. It owns the test
+engine, dependency projection, and derived caches; Base is source input and
+must not become a package-manager or test-tool workspace.
+
 ```bash
-pnpm vitest run workspace/packages/harness/
+pnpm test:userland -- --template base --filter packages/harness
 ```
+
+Do not run Vitest, TypeScript, or a package manager with the Base checkout as
+the working directory. Direct tool execution writes `.vite`, `node_modules`,
+or `tsconfig.tsbuildinfo` into the template and does not reproduce the installed
+workspace dependency boundary.
 
 Covers all three extension factories and the UI context bridge.

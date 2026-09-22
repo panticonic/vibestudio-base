@@ -155,6 +155,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { startVitest } from ${JSON.stringify(input.vitestNodeUrl)};
 const root = ${JSON.stringify(input.root)};
+const scratch = path.dirname(${JSON.stringify(input.reportPath)});
 const vitest = await startVitest("test", [${JSON.stringify(input.pattern)}], {
   root,
   run: true,
@@ -166,7 +167,14 @@ const vitest = await startVitest("test", [${JSON.stringify(input.pattern)}], {
   passWithNoTests: true,
   reporters: [],
   silent: true,
-}, { server: { host: "127.0.0.1" } });
+}, {
+  // startVitest's third argument is Vitest options, while cacheDir belongs to
+  // the fourth-argument Vite overrides. A materialized workspace is source,
+  // not a test-tool workspace, so the adapter's scratch lifetime owns both
+  // transform and test-result caches.
+  cacheDir: path.join(scratch, "vite-cache"),
+  server: { host: "127.0.0.1" },
+});
 const report = { numPassedTests: 0, numFailedTests: 0, numTotalTests: 0, testResults: [] };
 for (const module of vitest.state.getTestModules()) {
     const errors = module.errors().map((error) => error?.stack ?? error?.message ?? String(error));

@@ -95,5 +95,15 @@ describe("native test adapter boundary", () => {
       fileFilter: "simple.test.ts",
     });
     expect(result).toMatchObject({ passed: 1, failed: 0, total: 1 });
+    const contextNodeModules = path.join(
+      path.dirname(target),
+      "..",
+      "node_modules",
+    );
+    expect(
+      fs.existsSync(contextNodeModules)
+        ? fs.readdirSync(contextNodeModules, { recursive: true })
+        : [],
+    ).toEqual([]);
   });
 });
