@@ -125,6 +125,11 @@ createPanelSlot(source, opts?): Promise<PanelHandle>
 openPanel(source, opts?): Promise<PanelHandle>
 ```
 
+`PanelHandle.id` is the durable panel-tree slot id and corresponds to
+`PanelTreeNode.slotId`; a handle has no separate `slotId` property. Archiving
+that id removes the durable panel subtree, whereas closing a CDP page only
+disconnects the automation client.
+
 The bounded discovery methods return page objects, not bare arrays:
 
 ```ts

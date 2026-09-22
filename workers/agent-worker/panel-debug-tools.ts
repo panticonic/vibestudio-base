@@ -227,7 +227,7 @@ const evalParameters = Type.Object(
     ...panelTarget,
     expression: Type.String({
       description:
-        "A JavaScript expression evaluated in the panel's page, exactly as a console would. The value is serialized and returned; a promise is awaited.",
+        "A plain JavaScript expression evaluated in the panel's page, exactly as a console would. TypeScript syntax such as `as HTMLInputElement` is not accepted. The value is serialized and returned; a promise is awaited.",
     }),
   },
   { additionalProperties: false },
@@ -256,7 +256,7 @@ export function createPanelEvalTool(
     name: "panel_eval",
     label: "evaluate in panel",
     description:
-      "Run one JavaScript expression inside the panel's page and get the serialized result back — measure an element, read computed style, check a global, call a debug hook. It runs under an 8 second bound; an expression that throws comes back as a reported error rather than a failed tool call. This runs real code in the live page, so prefer reading over mutating.",
+      "Run one plain JavaScript expression inside the panel's page and get the serialized result back — measure an element, read computed style, check a global, call a debug hook. Do not use TypeScript annotations or `as` assertions. It runs under an 8 second bound; an expression that throws comes back as a reported error rather than a failed tool call. This runs real code in the live page, so prefer reading over mutating.",
     parameters: evalParameters,
     execute: async (
       _toolCallId,

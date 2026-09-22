@@ -154,6 +154,9 @@ export interface EvalRunResult {
   failureCode?: string;
   errorData?: unknown;
   scopeKeys?: string[];
+  panelResources?: {
+    open: Array<{ id: string; source: string; kind: "workspace" | "browser" }>;
+  };
   kernel?: {
     incarnationId: string;
     startedAt: number;
@@ -261,6 +264,14 @@ export function formatEvalResult(result: EvalRunResult): AgentToolResult<EvalRun
   parts.push(
     keys.length ? `[scope] keys: ${keys.join(", ")} (${keys.length} total)` : "[scope] (empty)"
   );
+  const openPanels = result.panelResources?.open ?? [];
+  if (openPanels.length) {
+    parts.push(
+      `[panels] This eval kernel still owns open panels:\n${openPanels
+        .map((panel) => `- ${panel.id} (${panel.source})`)
+        .join("\n")}\nArchive temporary panels before finishing with panelTree.get(id).archive(). Leave only an intentional user-facing result open and mention it in the final response.`
+    );
+  }
   const details = returnedImage
     ? {
         ...result,

@@ -232,6 +232,29 @@ describe("formatEvalResult (shared by the eval tool's execute + the agent's defe
     expect(out.isError).toBe(false);
   });
 
+  it("keeps owned panel resources visible until the agent archives them", () => {
+    const text = textOf(
+      formatEvalResult({
+        success: true,
+        console: "",
+        panelResources: {
+          open: [
+            {
+              id: "panel:tree/tour/preview",
+              source: "panels/tour",
+              kind: "workspace",
+            },
+          ],
+        },
+      })
+    );
+
+    expect(text).toContain("still owns open panels");
+    expect(text).toContain("panel:tree/tour/preview (panels/tour)");
+    expect(text).toContain("panelTree.get(id).archive()");
+    expect(text).toContain("intentional user-facing result");
+  });
+
   it("projects a canonical panel screenshot as native image content without base64 text", () => {
     const data = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAAB";
     const out = formatEvalResult({

@@ -135,7 +135,7 @@ export async function activate(ctx: ExtensionContextLike) {
       return upstream.setAutoPush(repoPath, enabled);
     },
     upstreamStatus(
-      repoPaths: string[],
+      repoPaths: string[] = [],
       options: GitUpstreamStatusOptions = {},
     ) {
       return upstream.upstreamStatus(repoPaths, options);

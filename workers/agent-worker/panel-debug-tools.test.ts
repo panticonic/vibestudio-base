@@ -142,6 +142,13 @@ describe("panel_console", () => {
 });
 
 describe("panel_eval", () => {
+  it("states that expressions use plain JavaScript rather than TypeScript", () => {
+    const tool = createPanelEvalTool(calls(null), BOUND);
+    expect(tool.description).toContain("plain JavaScript");
+    expect(tool.description).toContain("`as` assertions");
+    expect(JSON.stringify(tool.parameters)).toContain("as HTMLInputElement");
+  });
+
   it("reports a value with its type", async () => {
     const callMain = calls({
       ok: true,

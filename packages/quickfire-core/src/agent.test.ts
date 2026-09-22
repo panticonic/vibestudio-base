@@ -19,7 +19,7 @@ describe("quickfire agent referent contract", () => {
 
   it("points panel and service orchestration at the portable runtime", () => {
     expect(QUICKFIRE_AGENT_PROMPT).toContain(
-      'await panelTree.page({ group: { kind: "children", parentSlotId }, limit: 50 })',
+      "await panelTree.children(parentSlotId, { limit: 50 })",
     );
     expect(QUICKFIRE_AGENT_PROMPT).toContain(
       "const { hits } = await panelTree.search({ query, limit: 20 })",
@@ -27,8 +27,11 @@ describe("quickfire agent referent contract", () => {
     expect(QUICKFIRE_AGENT_PROMPT).toContain("{ entry: { node, handle }, ancestors }");
     expect(QUICKFIRE_AGENT_PROMPT).toContain('require `authority.effects: "read-write"`');
     expect(QUICKFIRE_AGENT_PROMPT).toContain(
-      'const handle = await openPanel(source, { parentId, focus: true, placement: { disposition: "side" } })',
+      'openPanel(source, { focus: true, placement: { disposition: "side" } })',
     );
+    expect(QUICKFIRE_AGENT_PROMPT).toContain("defaults structurally beneath the attached panel");
+    expect(QUICKFIRE_AGENT_PROMPT).toContain("archive them in a `finally` block");
+    expect(QUICKFIRE_AGENT_PROMPT).toContain("outstanding owned panels");
     expect(QUICKFIRE_AGENT_PROMPT).toContain(
       "await handle.movePanel(parentId, { beforeSlotId })",
     );

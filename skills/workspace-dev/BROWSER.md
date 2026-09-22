@@ -166,6 +166,13 @@ Repeated `openPanel()` calls without the same `operationId` create distinct pane
 a possible replacement, refresh the existing session and use the returned
 session.
 
+For controlled React form controls, exercise the same user-facing path as a
+person. Focus the control and use locator keyboard actions such as
+`await page.getByRole("slider").press("ArrowRight")`, then assert the visible
+postcondition. Assigning `.value` and dispatching a synthetic `input` event
+only proves that the DOM property changed; it does not establish that React
+accepted the interaction or updated application state.
+
 ## Where it runs
 
 The CDP client is workerd-native: it works in panels **and** in

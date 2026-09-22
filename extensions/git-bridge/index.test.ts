@@ -11,6 +11,9 @@ describe("git-bridge activation surface", () => {
 
   it("keeps ordinary Git transport provider-owned and exposes only the userland template contribution venue", async () => {
     vi.spyOn(UpstreamEngine.prototype, "activate").mockResolvedValue(undefined);
+    const upstreamStatus = vi
+      .spyOn(UpstreamEngine.prototype, "upstreamStatus")
+      .mockResolvedValue([]);
     const rpc = { call: vi.fn(async () => ({ ok: true })) };
     const api = await activate({
       name: "@workspace-extensions/git-bridge",
@@ -35,6 +38,8 @@ describe("git-bridge activation surface", () => {
     expect(api).not.toHaveProperty("publishRepo");
     expect(api).toHaveProperty("suggestTemplateContribution");
     expect(api).not.toHaveProperty("suggestRegistryEntry");
+    await api.providerContracts.gitInterop.upstreamStatus();
+    expect(upstreamStatus).toHaveBeenCalledWith([], {});
   });
 
   it("routes notification actions directly through the owning Git engine", async () => {
