@@ -36,6 +36,10 @@ export type QuickfireTone =
 
 /** Semantic icon name. Each client maps these onto its own icon set. */
 export type QuickfireGlyph =
+  | "search"
+  | "copy"
+  | "expand"
+  | "collapse"
   | "you"
   | "agent"
   | "person"
@@ -588,6 +592,24 @@ function openChat(label: string): QuickfireCardAction {
   return { id: "open-chat", label };
 }
 
+/** Keep the transport envelope in details, and its human message in the summary. */
+export function failureMessage(failure: string): string {
+  try {
+    const value: unknown = JSON.parse(failure);
+    if (
+      value &&
+      typeof value === "object" &&
+      "message" in value &&
+      typeof value.message === "string"
+    ) {
+      return value.message;
+    }
+  } catch {
+    // Plain-text failures already are readable messages.
+  }
+  return failure;
+}
+
 function workRecords(
   calls: readonly QuickfireToolCall[] | undefined,
 ): QuickfireWorkRecord[] {
@@ -610,7 +632,7 @@ function workRecords(
           : "check",
     statusLabel: workStatusLabel(call),
     preview: abbreviate(
-      call.failure ??
+      (call.failure ? failureMessage(call.failure) : undefined) ??
         (call.arguments?.[0]
           ? `${call.arguments[0].name}: ${call.arguments[0].value}`
           : (call.progress?.at(-1) ?? "")),
@@ -681,7 +703,13 @@ function workDetails(call: QuickfireToolCall): QuickfireDetail[] {
       id: "failure",
       label: "Failure",
       format: "code",
-      text: call.failure,
+      text: (() => {
+        try {
+          return JSON.stringify(JSON.parse(call.failure), null, 2);
+        } catch {
+          return call.failure;
+        }
+      })(),
     });
   }
   return details;

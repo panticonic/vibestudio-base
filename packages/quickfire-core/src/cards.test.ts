@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { transcriptCards } from "./cards";
+import { failureMessage, transcriptCards } from "./cards";
 import type { QuickfireTranscriptEntry } from "./model";
 
 const NOW = Date.parse("2026-08-17T12:00:00.000Z");
@@ -9,6 +9,28 @@ function cards(entries: QuickfireTranscriptEntry[], order?: "newest-first") {
 }
 
 describe("transcript cards", () => {
+  it("summarizes structured failures without losing the diagnostic envelope", () => {
+    const failure = JSON.stringify({
+      protocol: "agent-tool-failure.v1",
+      code: "test_suite_not_declared",
+      message: "No test suite is declared for this panel.",
+    });
+    const [card] = cards([
+      {
+        kind: "tool",
+        id: "verify",
+        call: { id: "verify", name: "verify", state: "failed", failure },
+      },
+    ]);
+    expect(card?.work[0]?.preview).toBe(
+      "No test suite is declared for this panel.",
+    );
+    expect(JSON.parse(card!.work[0]!.details[0]!.text)).toEqual(
+      JSON.parse(failure),
+    );
+    expect(failureMessage("Connection lost")).toBe("Connection lost");
+    expect(failureMessage('{"message":null}')).toBe('{"message":null}');
+  });
   it("says what went wrong instead of only colouring the card red", () => {
     const [card] = cards([
       {

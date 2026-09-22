@@ -78,7 +78,7 @@ export function Transcript({
   header,
   footer,
 }: TranscriptProps) {
-  const { Box, Text, Pressable, Input } = useSkin();
+  const { Box, Text, Pressable, Input, Icon } = useSkin();
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [searching, setSearching] = useState(false);
   const [query, setQuery] = useState("");
@@ -89,8 +89,17 @@ export function Transcript({
       : cards;
   }, [cards, query]);
   const keys = filtered.flatMap(detailKeys);
-  const messages = cards.filter((card) => card.kind === "message").length;
-  const activity = cards.length - messages;
+  const defaultExpanded = Object.fromEntries(
+    filtered.flatMap((card) =>
+      card.details.map((detail) => [
+        `${card.id}:${detail.id}`,
+        (card.kind === "thinking" && card.busy) || detail.id === "error",
+      ]),
+    ),
+  );
+  const allExpanded =
+    keys.length > 0 &&
+    keys.every((key) => expanded[key] ?? defaultExpanded[key]);
   const context = useMemo(
     () => ({
       expanded,
@@ -109,14 +118,20 @@ export function Transcript({
       <Box gap="md" testId="quickfire-transcript">
         <Box gap="xs" testId="quickfire-history-toolbar">
           <Box row gap="sm" align="center">
-            <Text variant="strong">Conversation</Text>
-            <Text variant="caption" tone="muted">
-              {messages} {messages === 1 ? "message" : "messages"}
-              {activity
-                ? ` · ${activity} activity ${activity === 1 ? "entry" : "entries"}`
-                : ""}
-            </Text>
+            {header}
             <Box grow />
+            {keys.length ? (
+              <Pressable
+                label={
+                  allExpanded
+                    ? "Collapse all history details"
+                    : "Expand all history details"
+                }
+                onPress={() => expandDetails(!allExpanded)}
+              >
+                <Icon name={allExpanded ? "collapse" : "expand"} tone="muted" />
+              </Pressable>
+            ) : null}
             <Pressable
               label={
                 searching
@@ -128,9 +143,7 @@ export function Transcript({
                 setQuery("");
               }}
             >
-              <Text variant="caption" tone="accent">
-                {searching ? "Close search" : "Find in history"}
-              </Text>
+              <Icon name={searching ? "cross" : "search"} tone="muted" />
             </Pressable>
           </Box>
           {searching ? (
@@ -147,35 +160,16 @@ export function Transcript({
               </Text>
             </Box>
           ) : null}
-          {keys.length ? (
-            <Box row gap="sm">
-              <Pressable
-                label="Expand all history details"
-                onPress={() => expandDetails(true)}
-              >
-                <Text variant="caption" tone="accent">
-                  Expand details
-                </Text>
-              </Pressable>
-              <Pressable
-                label="Collapse all history details"
-                onPress={() => expandDetails(false)}
-              >
-                <Text variant="caption" tone="muted">
-                  Collapse details
-                </Text>
-              </Pressable>
-            </Box>
-          ) : null}
         </Box>
-        {header ? <Box full>{header}</Box> : null}
-        {filtered.map((card) => (
-          <TranscriptCard
-            key={card.id}
-            card={card}
-            {...(onAction ? { onAction } : {})}
-          />
-        ))}
+        <Box row gap="xs">
+          {filtered.map((card) => (
+            <TranscriptCard
+              key={card.id}
+              card={card}
+              {...(onAction ? { onAction } : {})}
+            />
+          ))}
+        </Box>
         {filtered.length === 0 ? (
           <Box surface="sunken" pad="md">
             <Text tone="muted">
@@ -233,10 +227,12 @@ export function TranscriptCard({
       {/* A speaker's name is a label; a thought is a sentence, and setting one
           in small caps makes it unreadable at exactly the size it is shown. */}
       <Text
-        variant="strong"
+        variant={
+          card.kind === "thinking" && !headerIsDisclosure ? "caption" : "strong"
+        }
         tone={answer ? presentationTone : speech ? "muted" : card.tone}
       >
-        {card.kind === "thinking" ? "Reasoning" : card.title}
+        {headerIsDisclosure ? "Reasoning" : card.title}
       </Text>
       {card.badges.map((badge) => (
         <Pill key={badge.id} tone={badge.tone}>
@@ -249,6 +245,11 @@ export function TranscriptCard({
           {card.meta}
         </Text>
       ) : null}
+      {card.kind === "thinking" &&
+      !headerIsDisclosure &&
+      card.actions.length > 0 ? (
+        <CardActions card={card} {...(onAction ? { onAction } : {})} />
+      ) : null}
     </Box>
   );
   return (
@@ -258,7 +259,8 @@ export function TranscriptCard({
       }
       tone={answer ? presentationTone : card.tone}
       pad={answer ? "md" : "sm"}
-      full
+      full={card.kind !== "thinking"}
+      fit={card.kind === "thinking"}
       gap="sm"
       testId={`quickfire-card-${card.id}`}
       {...(card.busy ? { live: true } : {})}
@@ -267,11 +269,6 @@ export function TranscriptCard({
       {/* Every message retains its speaker, model, time, and status, including
           consecutive messages from the same agent. */}
       {headerIsDisclosure ? null : header}
-      {card.kind === "thinking" && !headerIsDisclosure ? (
-        <Text variant="caption" tone="muted">
-          {card.title}
-        </Text>
-      ) : null}
 
       {card.body ? (
         card.body.format === "markdown" ? (
@@ -308,6 +305,11 @@ export function TranscriptCard({
           defaultOpen={
             (card.kind === "thinking" && card.busy) || detail.id === "error"
           }
+          extra={
+            card.kind === "thinking" && card.actions.length > 0 ? (
+              <CardActions card={card} {...(onAction ? { onAction } : {})} />
+            ) : null
+          }
         />
       ))}
 
@@ -324,7 +326,7 @@ export function TranscriptCard({
         </Box>
       ) : null}
 
-      {card.actions.length > 0 ? (
+      {card.actions.length > 0 && card.kind !== "thinking" ? (
         <CardActions card={card} {...(onAction ? { onAction } : {})} />
       ) : null}
     </Box>
@@ -350,7 +352,7 @@ function WorkRecord({
   return (
     <Box
       surface="outline"
-      full
+      fit
       // A green frame around every completed call shouts about the ordinary
       // case; the glyph already says it went fine.
       {...(record.state === "done" ? {} : { tone: record.tone })}
@@ -359,10 +361,10 @@ function WorkRecord({
     >
       <Detail
         stateKey={`${card.id}:work:${record.id}`}
-        defaultOpen={record.state === "failed"}
+        defaultOpen={false}
         tone={record.tone}
         summary={
-          <Box grow gap="sm">
+          <Box gap="xs">
             <Box row gap="sm" align="center">
               {record.busy ? (
                 <Spinner tone={record.tone} />
@@ -370,12 +372,11 @@ function WorkRecord({
                 <Icon name={record.glyph} tone={record.tone} />
               )}
               <Text variant="strong">{record.name}</Text>
-              <Box grow />
               <Text variant="caption" tone={record.tone}>
                 {record.statusLabel}
               </Text>
             </Box>
-            {record.preview ? (
+            {record.state === "failed" && record.preview ? (
               <Text
                 variant="caption"
                 tone={record.state === "failed" ? "danger" : "muted"}
@@ -383,9 +384,6 @@ function WorkRecord({
                 {record.preview}
               </Text>
             ) : null}
-            <Text variant="caption" tone="muted">
-              {record.contents}
-            </Text>
           </Box>
         }
         label={`${record.name} — ${record.statusLabel}`}
@@ -467,17 +465,25 @@ function CardActions({
     value?: string,
   ) => void;
 }) {
-  const { Box, Text, Pressable, copy } = useSkin();
+  const { Box, Text, Icon, Pressable, copy } = useSkin();
   const [copied, setCopied] = useState(false);
   const [copyError, setCopyError] = useState(false);
   return (
-    <Box row gap="sm" testId="quickfire-card-actions">
+    <Box row gap="xs" hover testId="quickfire-card-actions">
       {card.actions.map((action) => (
         <Pressable
           key={action.id}
           variant="ghost"
           tone="accent"
-          label={action.label}
+          label={
+            action.id === "copy"
+              ? copied
+                ? "Copied"
+                : copyError
+                  ? "Copy failed, try again"
+                  : action.label
+              : action.label
+          }
           onPress={() => {
             if (action.id === "copy" && copy) {
               setCopyError(false);
@@ -493,15 +499,16 @@ function CardActions({
             onAction?.(action.id, card, action.value);
           }}
         >
-          <Text variant="caption" tone="accent">
-            {action.id === "copy"
-              ? copied
-                ? "Copied"
-                : copyError
-                  ? "Copy failed · try again"
-                  : "Copy"
-              : `${action.label} →`}
-          </Text>
+          {action.id === "copy" ? (
+            <Icon
+              name={copied ? "check" : copyError ? "alert" : "copy"}
+              tone="muted"
+            />
+          ) : (
+            <Text variant="caption" tone="accent">
+              {action.label} →
+            </Text>
+          )}
         </Pressable>
       ))}
     </Box>

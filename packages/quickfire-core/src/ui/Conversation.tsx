@@ -50,21 +50,29 @@ export interface ConversationProps {
 export function ConversationHeader({
   compose,
   onIntent,
-}: Omit<ConversationProps, "now">) {
+  leading,
+  trailing,
+}: Omit<ConversationProps, "now"> & {
+  leading?: ReactNode;
+  trailing?: ReactNode;
+}) {
   const { Box, Text, Icon, Pressable } = useSkin();
   const bound = compose.kind === "conversation";
   return (
-    <Box gap="sm" testId="quickfire-conversation-header">
-      <Box row gap="sm" align="center">
-        <Icon name={bound ? "bell" : "spark"} tone="accent" />
-        <Box grow gap="xs">
-          <Text variant="heading">
-            {bound ? "Conversation" : "Quickfire agent"}
-          </Text>
-          <Text variant="caption" tone="muted" clamp>
-            {compose.panelTitle}
-          </Text>
-        </Box>
+    <Box row gap="sm" align="center" testId="quickfire-conversation-header">
+      {leading}
+      <Icon name={bound ? "bell" : "spark"} tone="accent" />
+      <Box grow>
+        <Text variant="caption" clamp>
+          {compose.panelTitle}
+        </Text>
+      </Box>
+      {compose.promoted ||
+      compose.error ||
+      compose.disabledReason ||
+      compose.credentialRequest ||
+      compose.connecting ||
+      compose.streaming ? (
         <Text variant="caption" tone="muted" testId="quickfire-status">
           {compose.promoted
             ? "Continued in chat"
@@ -78,36 +86,35 @@ export function ConversationHeader({
                   ? "Working…"
                   : "Ready"}
         </Text>
-      </Box>
-      <Box row gap="sm" align="center">
-        {bound ? null : (
-          <Pressable
-            variant="ghost"
-            label="Clear this conversation and return to commands"
-            disabled={!compose.hasConversation}
-            onPress={() => onIntent({ kind: "clear" })}
-          >
-            <Text variant="caption" tone="muted">
-              Clear
-            </Text>
-          </Pressable>
-        )}
+      ) : null}
+      {bound ? null : (
         <Pressable
           variant="ghost"
-          tone="accent"
-          label={
-            bound
-              ? "Open this conversation in its chat panel"
-              : "Move this conversation into a chat panel, keeping its history"
-          }
+          label="Clear this conversation and return to commands"
           disabled={!compose.hasConversation}
-          onPress={() => onIntent({ kind: "promote" })}
+          onPress={() => onIntent({ kind: "clear" })}
         >
-          <Text variant="caption" tone="accent">
-            {bound ? "Open chat panel" : "Move to chat panel"}
+          <Text variant="caption" tone="muted">
+            Clear
           </Text>
         </Pressable>
-      </Box>
+      )}
+      <Pressable
+        variant="ghost"
+        tone="accent"
+        label={
+          bound
+            ? "Open this conversation in its chat panel"
+            : "Move this conversation into a chat panel, keeping its history"
+        }
+        disabled={!compose.hasConversation}
+        onPress={() => onIntent({ kind: "promote" })}
+      >
+        <Text variant="caption" tone="accent">
+          Open chat
+        </Text>
+      </Pressable>
+      {trailing}
     </Box>
   );
 }
@@ -167,11 +174,6 @@ export function ConversationBody({
   const older =
     compose.olderCount > 0 || compose.expandable || compose.loadingOlder ? (
       <Box row gap="sm" align="center" testId="quickfire-older">
-        <Text variant="caption" tone="muted">
-          {compose.olderCount > 0
-            ? `${compose.olderCount} earlier ${compose.olderCount === 1 ? "entry" : "entries"}`
-            : "Earlier history is available"}
-        </Text>
         {compose.loadingOlder ? (
           <Box row gap="xs" align="center">
             <Spinner tone="accent" />
@@ -187,7 +189,9 @@ export function ConversationBody({
             onPress={() => onIntent({ kind: "show-older" })}
           >
             <Text variant="caption" tone="accent">
-              show them
+              {compose.olderCount > 0
+                ? `${compose.olderCount} earlier ${compose.olderCount === 1 ? "entry" : "entries"}`
+                : "Load earlier history"}
             </Text>
           </Pressable>
         ) : (
@@ -355,18 +359,8 @@ function ModelChooser({ compose, onIntent }: Omit<ConversationProps, "now">) {
       .includes(query.trim().toLowerCase()),
   );
   return (
-    <Box surface="sunken" pad="sm" gap="sm" testId="quickfire-model-picker">
+    <Box gap="sm" testId="quickfire-model-picker">
       <Box row align="center" gap="sm">
-        <Box grow gap="xs">
-          <Text variant="caption" tone="muted">
-            Model &amp; provider
-          </Text>
-          <Text variant="strong">
-            {current
-              ? `${current.name} · ${current.provider}`
-              : (selection.current ?? "Choose a model for this conversation")}
-          </Text>
-        </Box>
         <Pressable
           variant="ghost"
           tone="accent"
@@ -378,15 +372,14 @@ function ModelChooser({ compose, onIntent }: Omit<ConversationProps, "now">) {
           }}
         >
           <Text variant="caption" tone="accent">
-            {open ? "Done" : "Change"}
+            {open
+              ? "Close model picker"
+              : (current?.name ?? selection.current ?? "Change model")}
           </Text>
         </Pressable>
       </Box>
       {open ? (
         <Box gap="sm">
-          <Text variant="caption" tone="muted">
-            Choose the model for future responses. Your conversation stays here.
-          </Text>
           <Input
             label="Search models and providers"
             placeholder="Search models or providers…"
