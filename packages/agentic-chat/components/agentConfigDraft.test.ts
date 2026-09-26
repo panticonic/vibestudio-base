@@ -101,16 +101,16 @@ describe("draftForAgent", () => {
 
     expect(draft.model).toBe(CATALOG_DEFAULT);
     expect(draft.thinkingLevel).toBe("medium");
-    expect(draft.fastMode).toBe(true);
+    expect(draft.fastMode).toBe(false);
   });
 
-  it("preserves an explicit Fast mode opt-out for a supported Codex model", () => {
+  it("preserves an explicit Fast mode opt-in for a supported Codex model", () => {
     const draft = draftForAgent(AGENT, {
       modelCatalog: CATALOG,
       defaultModelRef: CATALOG_DEFAULT,
-      defaultAgentConfig: { model: CATALOG_DEFAULT, fastMode: false },
+      defaultAgentConfig: { model: CATALOG_DEFAULT, fastMode: true },
     });
 
-    expect(draft.fastMode).toBe(false);
+    expect(draft.fastMode).toBe(true);
   });
 });

@@ -379,14 +379,14 @@ describe("ModelSettingsDO", () => {
     });
   });
 
-  it("defaults supported Codex models to Fast mode without overriding an opt-out", async () => {
+  it("defaults supported Codex models to standard mode without overriding an opt-in", async () => {
     TestModelSettingsDO.config = { ...BASE_CONFIG };
     const { call } = await createTestDO(CodexModelSettingsDO);
 
     await expect(call("getSettings")).resolves.toMatchObject({
       defaultAgentConfig: {
         model: "openai-codex:gpt-5.6-sol",
-        fastMode: true,
+        fastMode: false,
       },
     });
 
@@ -394,13 +394,13 @@ describe("ModelSettingsDO", () => {
       ...BASE_CONFIG,
       defaultAgentConfig: {
         model: "openai-codex:gpt-5.6-sol",
-        fastMode: false,
+        fastMode: true,
       },
     };
     await expect(call("getSettings")).resolves.toMatchObject({
       defaultAgentConfig: {
         model: "openai-codex:gpt-5.6-sol",
-        fastMode: false,
+        fastMode: true,
       },
     });
   });
@@ -415,12 +415,12 @@ describe("ModelSettingsDO", () => {
     ).resolves.toMatchObject({
       defaultAgentConfig: {
         model: "openai-codex:gpt-5.6-sol",
-        fastMode: true,
+        fastMode: false,
       },
     });
     expect(TestModelSettingsDO.writes.at(-1)?.value).toEqual({
       model: "openai-codex:gpt-5.6-sol",
-      fastMode: true,
+      fastMode: false,
     });
 
     TestModelSettingsDO.config = {
@@ -430,7 +430,7 @@ describe("ModelSettingsDO", () => {
     await expect(call("getSettings")).resolves.toMatchObject({
       defaultAgentConfig: {
         model: "openai-codex:gpt-5.6-sol",
-        fastMode: true,
+        fastMode: false,
       },
     });
   });

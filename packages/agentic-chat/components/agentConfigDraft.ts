@@ -1,6 +1,5 @@
 import type { AgentSubscriptionConfig, AvailableAgent, ModelCatalog } from "@workspace/agentic-core";
 import {
-  defaultFastModeForModel,
   type DefaultAgentConfig,
 } from "@workspace/model-catalog/catalog";
 import type { AgentConfigDraft } from "./AgentConfigForm";
@@ -75,14 +74,12 @@ export function draftForAgent(
     typeof defaults.model === "string" && defaults.model ? defaults.model : undefined;
   const model =
     ws?.model || workerModel || pickDefaultModel(opts.modelCatalog, opts.defaultModelRef);
-  const modelEntry = opts.modelCatalog?.models.find((entry) => entry.ref === model);
   const defaultHandle =
     typeof defaults["handle"] === "string" ? defaults["handle"] : agent?.proposedHandle;
   return {
     model,
     thinkingLevel: ws?.thinkingLevel ?? defaults.thinkingLevel ?? "medium",
-    fastMode:
-      ws?.fastMode ?? defaults.fastMode ?? defaultFastModeForModel(modelEntry),
+    fastMode: ws?.fastMode ?? defaults.fastMode ?? false,
     approvalLevel: ws?.approvalLevel ?? defaults.approvalLevel,
     respondPolicy: defaults.respondPolicy ?? (opts.showReactiveness ? "mentioned" : undefined),
     respondFrom: defaults.respondFrom,

@@ -213,21 +213,6 @@ export interface ModelCatalog {
   models: ModelCatalogEntry[];
 }
 
-/** The product default for a newly selected model. An explicit agent or
- * workspace setting always wins; unsupported models remain on standard mode. */
-export function defaultFastModeForModel(
-  model:
-    | Pick<ModelCatalogEntry, "id" | "provider" | "modelSpec">
-    | null
-    | undefined,
-): boolean {
-  if (!model) return false;
-  return (
-    model.modelSpec?.serviceTiers?.includes("priority") ??
-    modelServiceTiers(model.provider, model.id).includes("priority")
-  );
-}
-
 /** Whether a model can be assigned to an agent without another setup step. */
 export function isModelUsable(
   model: Pick<ModelCatalogEntry, "availability"> | null | undefined,

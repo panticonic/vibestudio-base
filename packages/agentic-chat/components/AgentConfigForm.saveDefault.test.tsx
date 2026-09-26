@@ -148,11 +148,11 @@ describe("AgentConfigForm — save as defaults", () => {
     });
   });
 
-  it("defaults each newly selected model from its advertised service tiers", () => {
+  it("defaults newly selected models to standard mode", () => {
     expect(
-      configForSelectedModel(fastCodexCatalog, "openai-codex:gpt-5.6-sol"),
-    ).toEqual({ model: "openai-codex:gpt-5.6-sol", fastMode: true });
-    expect(configForSelectedModel(catalog, "prov:model-b")).toEqual({
+      configForSelectedModel("openai-codex:gpt-5.6-sol"),
+    ).toEqual({ model: "openai-codex:gpt-5.6-sol", fastMode: false });
+    expect(configForSelectedModel("prov:model-b")).toEqual({
       model: "prov:model-b",
       fastMode: false,
     });
