@@ -8,7 +8,13 @@ import {
 } from "@vibestudio/module-imports";
 import { parse as parseSvelte } from "svelte/compiler";
 
-export const PROJECT_TYPES = ["panel", "package", "skill", "project", "worker"] as const;
+export const PROJECT_TYPES = [
+  "panel",
+  "package",
+  "skill",
+  "project",
+  "worker",
+] as const;
 export type ProjectType = (typeof PROJECT_TYPES)[number];
 
 export interface ProjectPreflightReport {
@@ -79,6 +85,12 @@ export interface BuildProjectManifestInput {
   exports?: Record<string, string>;
   exposeModules?: string[];
   durableClasses?: string[];
+  website?: {
+    entry: string;
+    title?: string;
+    expects?: string;
+    suggestedTemplates?: Array<{ label: string; locator: { url: string } }>;
+  };
   dependencies?: Record<string, string>;
   devDependencies?: Record<string, string>;
 }
@@ -104,7 +116,7 @@ function assertProjectName(name: string): void {
     throw new Error(
       `Project name ${JSON.stringify(name)} is invalid. Use a stable kebab-case identifier matching ` +
         "`^[a-z][a-z0-9-]*$`, for example `todo-list` or " +
-        "`todo-list-${Date.now().toString(36)}`. Raw ISO timestamps are invalid because they contain uppercase letters and punctuation."
+        "`todo-list-${Date.now().toString(36)}`. Raw ISO timestamps are invalid because they contain uppercase letters and punctuation.",
     );
   }
 }
@@ -113,29 +125,43 @@ export function assertProjectIdentity(name: string, title: string): void {
   assertProjectName(name);
   if (!title.trim() || /[`\\\r\n"<>{}&*]|\$\{/.test(title)) {
     throw new Error(
-      'Project title must be a single non-empty line without code or markup delimiters such as ", <, {, *, backticks, or backslashes.'
+      'Project title must be a single non-empty line without code or markup delimiters such as ", <, {, *, backticks, or backslashes.',
     );
   }
 }
 
-function canonicalRecord<T>(value: Record<string, T> | undefined): Record<string, T> | undefined {
+function canonicalRecord<T>(
+  value: Record<string, T> | undefined,
+): Record<string, T> | undefined {
   if (!value) return undefined;
   return Object.fromEntries(
-    Object.entries(value).sort(([left], [right]) => left.localeCompare(right))
+    Object.entries(value).sort(([left], [right]) => left.localeCompare(right)),
   );
 }
 
 /** Build the one canonical package manifest shape used by every scaffold template. */
-export function buildProjectManifest(input: BuildProjectManifestInput): Record<string, unknown> {
+export function buildProjectManifest(
+  input: BuildProjectManifestInput,
+): Record<string, unknown> {
   assertProjectIdentity(input.name, input.title);
-  const executable = input.projectType === "panel" || input.projectType === "worker";
+  const executable =
+    input.projectType === "panel" || input.projectType === "worker";
   const testRuntime =
-    input.projectType === "panel" ? "browser" : input.projectType === "worker" ? "workerd" : null;
+    input.projectType === "panel"
+      ? "browser"
+      : input.projectType === "worker"
+        ? "workerd"
+        : null;
   if (executable && !input.entry) {
     throw new Error(`${input.projectType} manifests require an explicit entry`);
   }
   if (!executable && input.entry) {
-    throw new Error(`${input.projectType} manifests cannot declare a Vibestudio entry`);
+    throw new Error(
+      `${input.projectType} manifests cannot declare a Vibestudio entry`,
+    );
+  }
+  if (input.website && input.projectType !== "panel") {
+    throw new Error("Only panel packages can declare a portable website entry");
   }
   const manifest: Record<string, unknown> = {
     name: `${PACKAGE_SCOPES[input.projectType]}/${input.name}`,
@@ -149,9 +175,12 @@ export function buildProjectManifest(input: BuildProjectManifestInput): Record<s
       title: input.title,
       icon: input.icon ?? (input.projectType === "panel" ? "🧩" : "⚙️"),
       entry: input.entry,
-      ...(input.exposeModules ? { exposeModules: [...input.exposeModules] } : {}),
+      ...(input.exposeModules
+        ? { exposeModules: [...input.exposeModules] }
+        : {}),
       authority: { requests: EXECUTABLE_BASELINE_AUTHORITY, provides: [] },
       ...(input.template ? { template: input.template } : {}),
+      ...(input.website ? { website: input.website } : {}),
       ...(input.durableClasses
         ? {
             durable: {
@@ -171,15 +200,20 @@ export function buildProjectManifest(input: BuildProjectManifestInput): Record<s
   if (input.dependencies || testRuntime) {
     manifest["dependencies"] = canonicalRecord({
       ...(input.dependencies ?? {}),
-      ...(testRuntime === "browser" ? { "@workspace/runtime": "workspace:*" } : {}),
+      ...(testRuntime === "browser"
+        ? { "@workspace/runtime": "workspace:*" }
+        : {}),
       ...(testRuntime ? { "@workspace/test-runtime": "workspace:*" } : {}),
     });
   }
-  if (input.devDependencies) manifest["devDependencies"] = canonicalRecord(input.devDependencies);
+  if (input.devDependencies)
+    manifest["devDependencies"] = canonicalRecord(input.devDependencies);
   return manifest;
 }
 
-export function serializeProjectManifest(input: BuildProjectManifestInput): string {
+export function serializeProjectManifest(
+  input: BuildProjectManifestInput,
+): string {
   return `${JSON.stringify(buildProjectManifest(input), null, 2)}\n`;
 }
 
@@ -196,17 +230,20 @@ function parseManifest(source: string): Record<string, unknown> {
     parsed = JSON.parse(source);
   } catch (error) {
     throw new Error(
-      `package.json must be valid JSON: ${error instanceof Error ? error.message : String(error)}`
+      `package.json must be valid JSON: ${error instanceof Error ? error.message : String(error)}`,
     );
   }
   return asRecord(parsed, "package.json");
 }
 
 function dependencyOccurrences(
-  files: Readonly<Record<string, string | Uint8Array>>
-): Array<ProjectDependencyOccurrence & { coordinate: string; testOnly: boolean }> {
-  const imports: Array<ProjectDependencyOccurrence & { coordinate: string; testOnly: boolean }> =
-    [];
+  files: Readonly<Record<string, string | Uint8Array>>,
+): Array<
+  ProjectDependencyOccurrence & { coordinate: string; testOnly: boolean }
+> {
+  const imports: Array<
+    ProjectDependencyOccurrence & { coordinate: string; testOnly: boolean }
+  > = [];
   for (const [path, content] of Object.entries(files)) {
     if (content instanceof Uint8Array || path === "package.json") continue;
     let moduleSource: string;
@@ -218,9 +255,13 @@ function dependencyOccurrences(
       // grammar-owned script regions to the TypeScript/JSX parser.
       const characters: string[] = content
         .split("")
-        .map((character) => (character === "\n" || character === "\r" ? character : " "));
+        .map((character) =>
+          character === "\n" || character === "\r" ? character : " ",
+        );
       for (const script of [component.module, component.instance]) {
-        const program = script?.content as { start: number; end: number } | undefined;
+        const program = script?.content as
+          | { start: number; end: number }
+          | undefined;
         if (!program) continue;
         for (let index = program.start; index < program.end; index++) {
           characters[index] = content.charAt(index);
@@ -230,7 +271,9 @@ function dependencyOccurrences(
     } else {
       continue;
     }
-    const testOnly = /(^|\/)(?:__tests__\/|[^/]+\.(?:test|spec)\.[^/]+$)/.test(path);
+    const testOnly = /(^|\/)(?:__tests__\/|[^/]+\.(?:test|spec)\.[^/]+$)/.test(
+      path,
+    );
     for (const reference of analyzeModuleImports(moduleSource)) {
       const coordinate = moduleCoordinate(reference.specifier);
       if (!coordinate) continue;
@@ -261,7 +304,9 @@ export function preflightProjectFiles(input: {
   assertProjectName(input.name);
   const checked = ["canonical project type", "non-empty repository"];
   if (!PROJECT_TYPES.includes(input.projectType)) {
-    throw new Error(`Unknown project type ${JSON.stringify(input.projectType)}`);
+    throw new Error(
+      `Unknown project type ${JSON.stringify(input.projectType)}`,
+    );
   }
   if (Object.keys(input.files).length === 0) {
     throw new Error("A project repository must contain at least one file");
@@ -282,7 +327,9 @@ export function preflightProjectFiles(input: {
 
   const packageSource = input.files["package.json"];
   if (typeof packageSource !== "string") {
-    throw new Error(`${input.projectType} repositories require a textual package.json`);
+    throw new Error(
+      `${input.projectType} repositories require a textual package.json`,
+    );
   }
   const manifest = parseManifest(packageSource);
   const expectedName = `${PACKAGE_SCOPES[input.projectType]}/${input.name}`;
@@ -297,35 +344,49 @@ export function preflightProjectFiles(input: {
   let entry: string | null = null;
   let authorityRequestCount = 0;
   if (input.projectType === "panel" || input.projectType === "worker") {
-    const vibestudio = asRecord(manifest["vibestudio"], "package.json vibestudio");
-    if (input.projectType === "panel" && typeof vibestudio["title"] !== "string") {
+    const vibestudio = asRecord(
+      manifest["vibestudio"],
+      "package.json vibestudio",
+    );
+    if (
+      input.projectType === "panel" &&
+      typeof vibestudio["title"] !== "string"
+    ) {
       throw new Error("Panel package.json must declare a Vibestudio title");
     }
     if (typeof vibestudio["title"] === "string") {
       assertProjectIdentity(input.name, vibestudio["title"]);
     }
-    entry = typeof vibestudio["entry"] === "string" ? vibestudio["entry"] : null;
+    entry =
+      typeof vibestudio["entry"] === "string" ? vibestudio["entry"] : null;
     if (!entry || !(entry in input.files)) {
-      throw new Error(`${input.projectType} entry must name a file in the planned repository`);
+      throw new Error(
+        `${input.projectType} entry must name a file in the planned repository`,
+      );
     }
     authorityRequestCount = parseUnitAuthorityManifest(
       vibestudio["authority"],
-      `${expectedName} vibestudio.authority`
+      `${expectedName} vibestudio.authority`,
     ).requests.length;
     checked.push("executable entry", "authority manifest syntax");
   } else if (manifest["exports"] === undefined) {
     throw new Error(`${input.projectType} package.json must declare exports`);
   }
 
-  if (input.projectType === "skill" && typeof input.files["SKILL.md"] !== "string") {
+  if (
+    input.projectType === "skill" &&
+    typeof input.files["SKILL.md"] !== "string"
+  ) {
     throw new Error("Skill repositories require a textual SKILL.md");
   }
   if (input.projectType === "skill") checked.push("skill instructions");
 
   const occurrences = dependencyOccurrences(input.files).filter(
-    (occurrence) => occurrence.coordinate !== expectedName
+    (occurrence) => occurrence.coordinate !== expectedName,
   );
-  const imports = [...new Set(occurrences.map((occurrence) => occurrence.coordinate))].sort();
+  const imports = [
+    ...new Set(occurrences.map((occurrence) => occurrence.coordinate)),
+  ].sort();
   const dependencies =
     manifest["dependencies"] === undefined
       ? {}
@@ -341,20 +402,26 @@ export function preflightProjectFiles(input: {
   const issues = new Map<string, ProjectDependencyIssue>();
   for (const occurrence of occurrences) {
     const expectedField =
-      occurrence.testOnly || occurrence.kind === "type" ? "devDependencies" : "dependencies";
+      occurrence.testOnly || occurrence.kind === "type"
+        ? "devDependencies"
+        : "dependencies";
     const acceptedCoordinates = [
       occurrence.coordinate,
-      ...(occurrence.kind === "type" ? [definitelyTypedCoordinate(occurrence.coordinate)] : []),
+      ...(occurrence.kind === "type"
+        ? [definitelyTypedCoordinate(occurrence.coordinate)]
+        : []),
     ];
     const productionDeclared = acceptedCoordinates.some(
-      (coordinate) => coordinate in dependencies || coordinate in peerDependencies
+      (coordinate) =>
+        coordinate in dependencies || coordinate in peerDependencies,
     );
     const developmentDeclared = acceptedCoordinates.some(
-      (coordinate) => coordinate in devDependencies
+      (coordinate) => coordinate in devDependencies,
     );
     if (
       productionDeclared ||
-      ((occurrence.testOnly || occurrence.kind === "type") && developmentDeclared)
+      ((occurrence.testOnly || occurrence.kind === "type") &&
+        developmentDeclared)
     ) {
       continue;
     }

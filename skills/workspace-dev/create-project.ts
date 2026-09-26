@@ -458,6 +458,14 @@ export interface CreateProjectParams {
   /** Emoji, ./relative image path, or a curated lucide:<name>/brand:<name> catalog id. */
   icon?: string;
   template?: string;
+  /** Add a portable browser entry to this panel. Requirements are advisory. */
+  website?:
+    | boolean
+    | {
+        title?: string;
+        expects?: string;
+        suggestedTemplates?: Array<{ label: string; locator: { url: string } }>;
+      };
 }
 
 export type ProjectIconCatalog = string[];
@@ -725,7 +733,7 @@ async function materializeCatalogIcon(
 async function resolveProject(
   params: CreateProjectParams,
 ): Promise<ResolvedProject> {
-  const { projectType, name, title = name, icon, template } = params;
+  const { projectType, name, title = name, icon, template, website } = params;
 
   assertProjectIdentity(name, title);
 
@@ -779,6 +787,23 @@ async function resolveProject(
           icon: manifestIcon,
           entry: "index.ts",
           ...(panelTemplate !== "default" ? { template: panelTemplate } : {}),
+          ...(website
+            ? {
+                website: {
+                  entry: "site.ts",
+                  title:
+                    typeof website === "object"
+                      ? (website.title ?? title)
+                      : title,
+                  ...(typeof website === "object" && website.expects
+                    ? { expects: website.expects }
+                    : {}),
+                  ...(typeof website === "object" && website.suggestedTemplates
+                    ? { suggestedTemplates: website.suggestedTemplates }
+                    : {}),
+                },
+              }
+            : {}),
           dependencies: {
             "@workspace/runtime": "workspace:*",
             "@workspace/svelte": "workspace:*",
@@ -824,6 +849,10 @@ async function resolveProject(
   h1 { color: var(--vibestudio-accent); }
 </style>
 `;
+        if (website) {
+          files["site.ts"] =
+            `import { mount } from "svelte";\nimport App from "./App.svelte";\n\nmount(App, { target: document.getElementById("root")! });\n`;
+        }
       } else {
         // Default: a minimal React panel with only the executable baseline
         // authority. Framework helpers can be added deliberately when needed.
@@ -839,6 +868,23 @@ async function resolveProject(
             "react/jsx-runtime",
             "react/jsx-dev-runtime",
           ],
+          ...(website
+            ? {
+                website: {
+                  entry: "site.tsx",
+                  title:
+                    typeof website === "object"
+                      ? (website.title ?? title)
+                      : title,
+                  ...(typeof website === "object" && website.expects
+                    ? { expects: website.expects }
+                    : {}),
+                  ...(typeof website === "object" && website.suggestedTemplates
+                    ? { suggestedTemplates: website.suggestedTemplates }
+                    : {}),
+                },
+              }
+            : {}),
           dependencies: {
             react: BASE_PANEL_REACT_VERSION,
             "react-dom": BASE_PANEL_REACT_VERSION,
@@ -898,6 +944,10 @@ function ${toPascalCase(name)}Content() {
   );
 }
 `;
+        if (website) {
+          files["site.tsx"] =
+            `import { createRoot } from "react-dom/client";\nimport App from "./index.js";\n\ncreateRoot(document.getElementById("root")!).render(<App />);\n`;
+        }
       }
       break;
     }

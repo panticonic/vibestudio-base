@@ -9,10 +9,13 @@
     "./github": "./src/github.ts",
     "./remoteProviders": "./src/remoteProviders.ts",
     "./providers": "./src/providers.ts",
+    "./website": "./src/website.ts",
     "./github-issue-mirror": "./src/github-issue-mirror.ts"
   },
   "dependencies": {
+    "@noble/hashes": "^2.2.0",
     "@vibestudio/credential-client": "workspace:*",
+    "@vibestudio/rpc": "workspace:*",
     "@workspace/runtime": "workspace:*"
   }
 }

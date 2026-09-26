@@ -12,7 +12,7 @@ function workerFiles(
     dependencies?: Record<string, string>;
     devDependencies?: Record<string, string>;
     testSource?: string;
-  } = {}
+  } = {},
 ): Record<string, string> {
   return {
     "package.json": `${JSON.stringify(
@@ -26,21 +26,55 @@ function workerFiles(
         devDependencies: options.devDependencies,
       }),
       null,
-      2
+      2,
     )}\n`,
     "index.ts": source,
-    ...(options.testSource === undefined ? {} : { "index.test.ts": options.testSource }),
+    ...(options.testSource === undefined
+      ? {}
+      : { "index.test.ts": options.testSource }),
   };
 }
 
 describe("project dependency preflight", () => {
+  it("keeps website requirements advisory inside the panel manifest", () => {
+    const manifest = buildProjectManifest({
+      projectType: "panel",
+      name: "portable-site",
+      title: "Portable site",
+      entry: "index.tsx",
+      website: {
+        entry: "site.tsx",
+        expects: "A workspace with projects",
+        suggestedTemplates: [
+          {
+            label: "Projects",
+            locator: { url: "https://example.test/projects" },
+          },
+        ],
+      },
+    });
+    expect(manifest).toMatchObject({
+      vibestudio: {
+        website: {
+          entry: "site.tsx",
+          expects: "A workspace with projects",
+          suggestedTemplates: [
+            { locator: { url: "https://example.test/projects" } },
+          ],
+        },
+      },
+    });
+  });
+
   it("returns file-level structured remediation for a missing production dependency", () => {
     const failure = (() => {
       try {
         preflightProjectFiles({
           projectType: "worker",
           name: "example",
-          files: workerFiles('import { rpcErrorDataOf } from "@vibestudio/rpc";'),
+          files: workerFiles(
+            'import { rpcErrorDataOf } from "@vibestudio/rpc";',
+          ),
         });
       } catch (error) {
         return error;
@@ -84,7 +118,7 @@ describe("project dependency preflight", () => {
           devDependencies: { vitest: "^3.2.2" },
           testSource: 'import { describe } from "vitest"; void describe;',
         }),
-      })
+      }),
     ).not.toThrow();
 
     expect(() =>
@@ -94,7 +128,7 @@ describe("project dependency preflight", () => {
         files: workerFiles('import "production-package";', {
           devDependencies: { "production-package": "^1.0.0" },
         }),
-      })
+      }),
     ).toThrowError(
       expect.objectContaining({
         errorData: expect.objectContaining({
@@ -106,7 +140,7 @@ describe("project dependency preflight", () => {
             }),
           ],
         }),
-      })
+      }),
     );
   });
 
@@ -122,9 +156,9 @@ describe("project dependency preflight", () => {
             'import { join } from "path";',
             "void readFile; void join;",
           ].join("\n"),
-          { dependencies: { "@types/mdast": "^4.0.4" } }
+          { dependencies: { "@types/mdast": "^4.0.4" } },
         ),
-      })
+      }),
     ).not.toThrow();
   });
 
@@ -137,7 +171,7 @@ describe("project dependency preflight", () => {
           'const example = "import fake from \\"not-a-package\\"";',
           'const template = `require("also-not-a-package")`;',
           "void example; void template;",
-        ].join("\n")
+        ].join("\n"),
       ),
     });
 
@@ -158,7 +192,8 @@ describe("project dependency preflight", () => {
       "</script>",
       "<div>{count} {value}</div>",
     ].join("\n");
-    files["README.md"] = 'Documentation can say import fake from "not-a-package".';
+    files["README.md"] =
+      'Documentation can say import fake from "not-a-package".';
     files["style.css"] = '@import "also-not-a-package";';
 
     const report = preflightProjectFiles({
@@ -167,7 +202,10 @@ describe("project dependency preflight", () => {
       files,
     });
 
-    expect(report.importedPackages).toEqual(["production-package", "svelte-package"]);
+    expect(report.importedPackages).toEqual([
+      "production-package",
+      "svelte-package",
+    ]);
   });
 
   it("rejects undeclared dependencies imported from template interpolation", () => {
@@ -176,9 +214,9 @@ describe("project dependency preflight", () => {
         projectType: "worker",
         name: "example",
         files: workerFiles(
-          'const loaded = `module: ${import("interpolated-package")}`; void loaded;'
+          'const loaded = `module: ${import("interpolated-package")}`; void loaded;',
         ),
-      })
+      }),
     ).toThrowError(
       expect.objectContaining({
         errorData: expect.objectContaining({
@@ -190,7 +228,7 @@ describe("project dependency preflight", () => {
             }),
           ],
         }),
-      })
+      }),
     );
   });
 });

@@ -69,7 +69,8 @@ website policy choice. For a genuinely public, bounded application receiver:
 ```ts
 rpc.expose("readPublicSummary", () => publicSummary, {
   kind: "eligible",
-  rationale: "Returns only the application summary deliberately shared with connected websites.",
+  rationale:
+    "Returns only the application summary deliberately shared with connected websites.",
 });
 ```
 
@@ -88,7 +89,13 @@ an installed panel and a connected website:
 const chat = createConversationClient(rpc);
 await chat.history(channelTargetId);
 await chat.send(channelTargetId, text);
-await chat.subscribe(channelTargetId, "website-participant", metadata, onRecord, { signal });
+await chat.subscribe(
+  channelTargetId,
+  "website-participant",
+  metadata,
+  onRecord,
+  { signal },
+);
 ```
 
 `channelTargetId` is the host-resolved exact Durable Object target, for example
@@ -116,44 +123,24 @@ execution identity. Reload/navigation requires a fresh document connection.
 Remembered origin permission may satisfy that request after explicit Connect;
 it never automatically connects a replacement document.
 
-## Build a static site
+## Package and publish the panel
 
-The Host checkout currently provides:
+Declare `vibestudio.website.entry` in the panel manifest and keep the browser
+entry to a small mount of the shared application component. The Host builds the
+exact workspace state into immutable browser artifacts. Workspace userland adds
+the HTML shell and public build manifest, reviews the complete inventory, and
+runs provider APIs through host-mediated credentials.
 
-```sh
-pnpm build:website-runtime --out-dir /tmp/website-sdk
-pnpm create:website --out-dir /tmp/my-website --sdk-dir /tmp/website-sdk --name my-website
-```
+Read the [website publishing skill](../website-publishing/SKILL.md) for Vercel,
+Cloudflare Pages, and GitHub Pages. Its provider adapters own account/project
+selection, upload protocols, receipts, retries, observation, and verification.
+Credentials and short-lived upload tokens remain Host held. Publishing never
+adds a second runtime bridge or changes the connected-page authority model.
 
-These are Host developer commands, not workspace eval exports. The generated
-project vendors two versioned packages and a lockfile: the runtime as
-`@workspace/runtime`, and the focused React connection entry as `@workspace/react`.
-The UI declares the runtime and React as peers; it never bundles another runtime
-or React copy. Declare both workspace packages and React in the app's manifest.
-Non-React sites only need the runtime package. `sdk.json` records both artifact
-hashes. Commit `vendor/`, `sdk.json`, and the lockfile so builds do not depend on
-the Host checkout. There is no remotely loaded widget or new bridge protocol.
-`npm ci` followed by
-`npm run build` produces `docs/` with relative asset URLs, `.nojekyll`, and a
-content-hashed build manifest. The same `App.tsx` has installed and static entry
-points. Full installed/static application parity still needs acceptance; do not
-claim it from a successful static bundle alone.
-
-Commit the SDK artifact, lockfile, source, and reviewed public output. Never
-include credentials, document challenges, connection handles, workspace state,
-transcripts, tool logs, or private source in public assets. Test ordinary-browser
-loading under `/repository/`, disconnected behavior, connection/denial, scoped
-operations, document replacement, and revocation in the real host.
-
-GitHub Pages uses the existing [GitHub account workflow](../github/SKILL.md)
-and semantic VCS followed by protected-main Git export. Select the exact
-repository audience and review the complete public file inventory. Repository
-creation, source publication, Pages configuration, and remote push are external
-effects requiring their ordinary authority. Never use `gh auth`, copy a token
-into the page, or report a URL live merely because a push succeeded. Verify the
-reviewed commit, served build manifest, and assets. The automated end-to-end
-configuration and observation helpers are documented in [GitHub Pages](../github/PAGES.md);
-real public deployment acceptance remains outstanding.
+Never include credentials, document challenges, connection handles, workspace
+state, transcripts, tool logs, or private source in public assets. Test ordinary
+browser loading, disconnected behavior, connection/denial, scoped operations,
+document replacement, and revocation in the real host.
 
 For template offers and exact-source inspection, see [templates](../templates/SKILL.md).
 A template link opens trusted review; it grants no website workspace access.
