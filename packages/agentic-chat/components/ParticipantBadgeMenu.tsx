@@ -201,40 +201,6 @@ export function ParticipantBadgeMenu({
     />
   ) : null;
 
-  const linkedAttachment = participant.metadata.linkedAttachment;
-  const linkedKindLabel = participant.metadata.agentKind;
-  const linkedKindIndicator = linkedKindLabel ? (
-    <Badge
-      color="amber"
-      variant="soft"
-      size="1"
-      style={{ marginLeft: 4, fontSize: "9px", padding: "0 4px" }}
-      title={
-        linkedAttachment === "detached"
-          ? `${linkedKindLabel} — offline (detached)`
-          : linkedAttachment === "attached"
-            ? `${linkedKindLabel} — online (attached)`
-            : String(linkedKindLabel)
-      }
-    >
-      {linkedAttachment ? (
-        <span
-          aria-hidden="true"
-          style={{
-            display: "inline-block",
-            width: 6,
-            height: 6,
-            borderRadius: "50%",
-            marginRight: 4,
-            verticalAlign: "middle",
-            background: linkedAttachment === "attached" ? "var(--green-9)" : "var(--gray-8)",
-          }}
-        />
-      ) : null}
-      {linkedKindLabel}
-    </Badge>
-  ) : null;
-
   // Plan mode indicator
   const planModeIndicator = isPlanMode ? (
     <Badge
@@ -280,7 +246,6 @@ export function ParticipantBadgeMenu({
           <Badge color={color} title={badgeTitle}>
             {identityIndicator}@{displayHandle}
             {humanPresenceIndicator}
-            {linkedKindIndicator}
             {planModeIndicator}
             {statusIndicator}
           </Badge>
@@ -301,7 +266,6 @@ export function ParticipantBadgeMenu({
               <Badge color={color} title={badgeTitle} style={{ cursor: "pointer" }}>
                 {identityIndicator}@{displayHandle}
                 {humanPresenceIndicator}
-                {linkedKindIndicator}
                 {planModeIndicator}
                 {statusIndicator}
                 <TriangleDownIcon

@@ -24,10 +24,7 @@ describe("SubagentRunStore schema", () => {
       semanticIntegrationSnapshot: { state: "complete" },
       startedAt: 1,
       lastActivityAt: 2,
-      agentKind: "pi",
       launchConfig: { model: "openai-codex:gpt-5.6-luna" },
-      externalSessionEntityId: null,
-      externalGenerationId: null,
     });
 
     expect(store.countLive()).toBe(1);
@@ -118,10 +115,7 @@ describe("SubagentRunStore schema", () => {
       semanticIntegrationSnapshot: null,
       startedAt: 1,
       lastActivityAt: 2,
-      agentKind: "pi",
       launchConfig: null,
-      externalSessionEntityId: null,
-      externalGenerationId: null,
     });
     // `closed` and any other non-live/non-terminal label are rejected by the
     // schema itself — corruption cannot even be persisted.
@@ -133,9 +127,18 @@ describe("SubagentRunStore schema", () => {
     ).toThrow(/CHECK constraint failed/);
   });
 
+  it("rejects storage that still carries external-agent session fields", async () => {
+    const sql = (await createInMemorySql()) as unknown as SqlStorage;
+    const store = new SubagentRunStore(sql);
+    store.createTables();
+    sql.exec("ALTER TABLE subagent_runs ADD COLUMN external_generation_id TEXT");
+    expect(() => store.createTables()).toThrow(
+      "Unsupported subagent_runs schema; delete this pre-release state"
+    );
+  });
+
   it.each([
     ["mode", "sideways"],
-    ["agent_kind", ""],
   ])("rejects an invalid persisted %s", async (column, value) => {
     const sql = (await createInMemorySql()) as unknown as SqlStorage;
     const store = new SubagentRunStore(sql);
@@ -156,10 +159,7 @@ describe("SubagentRunStore schema", () => {
       semanticIntegrationSnapshot: null,
       startedAt: 1,
       lastActivityAt: 2,
-      agentKind: "pi",
       launchConfig: null,
-      externalSessionEntityId: null,
-      externalGenerationId: null,
     });
     sql.exec(`UPDATE subagent_runs SET ${column} = ? WHERE run_id = 'run-1'`, value);
 

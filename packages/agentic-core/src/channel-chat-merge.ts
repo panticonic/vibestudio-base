@@ -1032,7 +1032,6 @@ function subagentDetails(value: unknown): SubagentRunState | undefined {
       ? { childEntityId: record["childEntityId"] }
       : {}),
     ...(typeof record["label"] === "string" ? { label: record["label"] } : {}),
-    ...(typeof record["agentKind"] === "string" ? { agentKind: record["agentKind"] } : {}),
     ...(record["launchConfig"] &&
     typeof record["launchConfig"] === "object" &&
     !Array.isArray(record["launchConfig"])

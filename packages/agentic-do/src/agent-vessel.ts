@@ -183,7 +183,6 @@ import { DOIdentity } from "./identity.js";
 import { SubscriptionManager } from "./subscription-manager.js";
 import {
   SubagentRunStore,
-  type SubagentAgentKind,
   type SubagentRunRow,
 } from "./subagent-runs.js";
 import { ChannelClient } from "./channel-client.js";
@@ -379,36 +378,6 @@ function semanticIntegrationForRun(
     return receipt;
   }
   return { state: "unattempted", sourceEventId: run.sourceEventId };
-}
-
-/** The subset of an external subagent launch result the spawn path consumes.
- *  Typed inline to avoid a vessel→extension source dependency; the call goes
- *  through a configured provider namespace when one exists. */
-interface ExternalSubagentLaunchResult {
-  entityId: string;
-  contextId: string;
-  channelId: string;
-  vesselRef: string;
-  vesselEntityId: string;
-  vesselParticipantId: string | null;
-  launchId: string;
-  /** Exact provider-owned generation used for runtime inspection and release. */
-  generationId: string;
-  pid?: number | null;
-}
-
-const EXTERNAL_SUBAGENT_KIND_PATTERN = /^[a-zA-Z][a-zA-Z0-9._-]{0,63}$/;
-
-function normalizeSubagentAgentKind(value: unknown): SubagentAgentKind | null {
-  if (value === undefined || value === null || value === "") return "pi";
-  if (typeof value !== "string") return null;
-  const kind = value.trim();
-  if (kind === "pi") return "pi";
-  return EXTERNAL_SUBAGENT_KIND_PATTERN.test(kind) ? kind : null;
-}
-
-function externalSubagentExtensionId(agentKind: SubagentAgentKind): string {
-  return `@workspace-extensions/${agentKind}`;
 }
 
 const OBSERVABLE_SUBAGENT_CONFIG_KEYS = [
@@ -616,8 +585,7 @@ export interface AgentPromptOverride {
   systemPromptMode?: SystemPromptMode;
 }
 
-// Moved to @workspace/agentic-core so external launcher extensions render the
-// same contract; re-exported here for local tests and downstream launchers.
+// Shared subagent prompt contract, re-exported for local tests.
 export {
   subagentFirstTaskPrompt,
   subagentRuntimePrompt,
@@ -708,7 +676,7 @@ type DeferredEvalGateResult =
     };
 
 export abstract class AgentVesselBase extends PanelDurableObjectBase {
-  static override schemaVersion = 3;
+  static override schemaVersion = 4;
 
   protected readonly identity: DOIdentity;
   protected readonly subscriptions: SubscriptionManager;
@@ -1140,32 +1108,9 @@ export abstract class AgentVesselBase extends PanelDurableObjectBase {
     let abandoned = 0;
     for (const run of this.subagentRuns.listLive()) {
       const reason = "supervisor retired";
-      if (run.externalSessionEntityId && run.externalGenerationId) {
-        const agentKind = normalizeSubagentAgentKind(run.agentKind);
-        if (!agentKind || agentKind === "pi") {
-          throw new Error(
-            `retire: invalid external agent kind ${run.agentKind}`,
-          );
-        }
-        await this.rpc.call(
-          "main",
-          "extensions.invoke",
-          [
-            externalSubagentExtensionId(agentKind),
-            "release",
-            [
-              {
-                entityId: run.externalSessionEntityId,
-                generationId: run.externalGenerationId,
-              },
-            ],
-          ],
-        );
-      } else {
-        await this.rpc.call(run.childEntityId, "retireSubagentExecution", [
-          { runId: run.runId, taskChannelId: run.taskChannelId, reason },
-        ]);
-      }
+      await this.rpc.call(run.childEntityId, "retireSubagentExecution", [
+        { runId: run.runId, taskChannelId: run.taskChannelId, reason },
+      ]);
       await this.settleSubagentTerminal(run, "abandoned", reason);
       abandoned += 1;
     }
@@ -4672,14 +4617,7 @@ This is one admitted recurring-automation tick. If this tick establishes that th
     return true;
   }
 
-  /**
-   * Deliver an addressing-approved inbound message to this vessel's reasoning
-   * loop. The default drives the in-process AgentLoopDriver; a vessel whose
-   * reasoning loop lives OUTSIDE the system (linked agents — an attached
-   * external process) overrides this to enqueue/forward instead. Runs AFTER
-   * shouldRespond and the received ack, so overrides only ever see input the
-   * agent should react to.
-   */
+  /** Deliver an addressing-approved message to the reasoning loop. */
   protected async dispatchApprovedInput(
     channelId: string,
     event: ChannelEvent,
@@ -7877,17 +7815,8 @@ This is one admitted recurring-automation tick. If this tick establishes that th
         task?: unknown;
         config?: unknown;
         label?: unknown;
-        agentKind?: unknown;
       };
       const mode: "fresh" | "fork" = p.mode === "fork" ? "fork" : "fresh";
-      const agentKind = normalizeSubagentAgentKind(p.agentKind);
-      if (!agentKind) {
-        return {
-          result:
-            "spawn_subagent agentKind must be 'pi' or a valid extension launcher id",
-          isError: true,
-        };
-      }
       const task = typeof p.task === "string" ? p.task : "";
       if (!task.trim()) {
         return {
@@ -7962,8 +7891,7 @@ This is one admitted recurring-automation tick. If this tick establishes that th
       // product behavior, this keeps unattended/headless trees uniform: a
       // parent pinned to a model, approval posture, or stream watchdog cannot
       // silently spawn a differently configured child. Explicit child config
-      // remains an override. External launcher config is provider-specific CLI
-      // input, so it intentionally does not receive Pi settings.
+      // remains an override.
       const parentChannelConfig =
         (this.subscriptions.getConfig(channelId) as Record<
           string,
@@ -7976,66 +7904,60 @@ This is one admitted recurring-automation tick. If this tick establishes that th
             : [[key, parentChannelConfig[key]]],
         ),
       );
-      const childConfig =
-        agentKind === "pi"
-          ? {
-              model: loopConfig.model,
-              thinkingLevel: loopConfig.thinkingLevel,
-              ...(loopConfig.fallbackModelRef
-                ? { fallbackModel: loopConfig.fallbackModelRef }
-                : {}),
-              ...(loopConfig.fallbackThinkingLevel
-                ? { fallbackThinkingLevel: loopConfig.fallbackThinkingLevel }
-                : {}),
-              ...(loopConfig.fallbackFailureCodes
-                ? { fallbackOn: [...loopConfig.fallbackFailureCodes] }
-                : {}),
-              ...(loopConfig.fallbackScope
-                ? { fallbackScope: loopConfig.fallbackScope }
-                : {}),
-              approvalLevel: loopConfig.approvalLevel,
-              respondPolicy: loopConfig.respondPolicy,
-              ...inheritedPromptConfig,
-              ...(requestedChildConfig ?? {}),
-            }
-          : requestedChildConfig;
+      const childConfig: Record<string, unknown> = {
+        model: loopConfig.model,
+        thinkingLevel: loopConfig.thinkingLevel,
+        ...(loopConfig.fallbackModelRef
+          ? { fallbackModel: loopConfig.fallbackModelRef }
+          : {}),
+        ...(loopConfig.fallbackThinkingLevel
+          ? { fallbackThinkingLevel: loopConfig.fallbackThinkingLevel }
+          : {}),
+        ...(loopConfig.fallbackFailureCodes
+          ? { fallbackOn: [...loopConfig.fallbackFailureCodes] }
+          : {}),
+        ...(loopConfig.fallbackScope
+          ? { fallbackScope: loopConfig.fallbackScope }
+          : {}),
+        approvalLevel: loopConfig.approvalLevel,
+        respondPolicy: loopConfig.respondPolicy,
+        ...inheritedPromptConfig,
+        ...(requestedChildConfig ?? {}),
+      };
       // Validate the effective Pi model configuration before minting any
       // context or entity. A caller typo is a local argument error, not a
       // partially-created lifecycle that must be repaired through teardown.
       // This uses the same materialization boundary as loopConfig(), so child
       // admission and execution cannot disagree about catalog availability.
-      if (agentKind === "pi") {
-        const childModel = childConfig?.["model"];
-        if (
-          typeof childModel !== "string" ||
-          !this.materializedModel(channelId, childModel)
-        ) {
-          return {
-            result:
-              `Agent model ${JSON.stringify(childModel)} could not be materialized; ` +
-              "select a model present in the current catalog before starting the agent",
-            isError: true,
-          };
-        }
-        const childFallbackModel = childConfig?.["fallbackModel"];
-        if (
-          childFallbackModel !== undefined &&
-          (typeof childFallbackModel !== "string" ||
-            !this.materializedModel(channelId, childFallbackModel))
-        ) {
-          return {
-            result:
-              `Agent fallback model ${JSON.stringify(childFallbackModel)} could not be materialized; ` +
-              "select a fallback model present in the current catalog before starting the agent",
-            isError: true,
-          };
-        }
+      const childModel = childConfig["model"];
+      if (
+        typeof childModel !== "string" ||
+        !this.materializedModel(channelId, childModel)
+      ) {
+        return {
+          result:
+            `Agent model ${JSON.stringify(childModel)} could not be materialized; ` +
+            "select a model present in the current catalog before starting the agent",
+          isError: true,
+        };
+      }
+      const childFallbackModel = childConfig["fallbackModel"];
+      if (
+        childFallbackModel !== undefined &&
+        (typeof childFallbackModel !== "string" ||
+          !this.materializedModel(channelId, childFallbackModel))
+      ) {
+        return {
+          result:
+            `Agent fallback model ${JSON.stringify(childFallbackModel)} could not be materialized; ` +
+            "select a fallback model present in the current catalog before starting the agent",
+          isError: true,
+        };
       }
       // A Pi child inherits the parent's executable identity. Letting model
       // arguments choose an arbitrary package here conflates the task's source
       // repository with a runtime worker and can launch the wrong code (or a
-      // non-runtime package). Different reasoning engines are selected through
-      // agentKind; they do not replace the vessel implementation.
+      // non-runtime package). Model selection does not replace the worker.
       const source = String(this.env["WORKER_SOURCE"] ?? "");
       const className =
         childConfig && typeof childConfig["className"] === "string"
@@ -8067,24 +7989,6 @@ This is one admitted recurring-automation tick. If this tick establishes that th
           `spawn_subagent context mismatch: owner ${ownerEntityId} is registered in ` +
             `${ownerRuntimeContextId}, but channel ${channelId} is subscribed as ${parentContextId}`,
         );
-      }
-
-      // External subagent target: the child is a linked external session driven
-      // by an extension-owned headless process, not an in-process Pi child.
-      if (agentKind !== "pi") {
-        return await this.runExternalSubagentSpawn(agentKind, channelId, {
-          runId,
-          taskChannelId,
-          label,
-          task,
-          mode,
-          childDepth,
-          parentContextId,
-          ownerEntityId,
-          // For external kinds `config` is launcher options (the extension
-          // whitelists what its CLI supports — the options supported by that launcher).
-          ...(childConfig ? { launcherOptions: childConfig } : {}),
-        });
       }
 
       // 1) Child context (deterministic; runtime records the lifecycle edge).
@@ -8150,10 +8054,7 @@ This is one admitted recurring-automation tick. If this tick establishes that th
         semanticIntegrationSnapshot: null,
         startedAt: now,
         lastActivityAt: now,
-        agentKind: "pi",
         launchConfig: observableSubagentLaunchConfig(childConfig),
-        externalSessionEntityId: null,
-        externalGenerationId: null,
       };
       this.subagentRuns.insert(run);
 
@@ -8303,170 +8204,6 @@ This is one admitted recurring-automation tick. If this tick establishes that th
     }
   }
 
-  /**
-   * External subagent bring-up. Mirrors the Pi path but delegates the child
-   * process to an extension launcher named by agentKind. Completion is the
-   * linked vessel's durable terminal task event. Interactive completion can
-   * arrive from the bridge; supervised
-   * print-mode completion arrives from the launcher's typed process result.
-   * Cards, progress, merge-back, and cancellation stay shared either way.
-   */
-  private async runExternalSubagentSpawn(
-    agentKind: SubagentAgentKind,
-    channelId: string,
-    opts: {
-      runId: string;
-      taskChannelId: string;
-      label: string;
-      task: string;
-      mode: "fresh" | "fork";
-      childDepth: number;
-      parentContextId: string;
-      ownerEntityId: string;
-      /** Launcher-specific options, forwarded verbatim; the extension owns the
-       *  whitelist of what its CLI supports. */
-      launcherOptions?: Record<string, unknown>;
-    },
-  ): Promise<{ result: unknown; isError: boolean }> {
-    const {
-      runId,
-      taskChannelId,
-      label,
-      task,
-      mode,
-      childDepth,
-      parentContextId,
-      ownerEntityId,
-    } = opts;
-    const targetKey = `subagent:${runId}`;
-
-    // 1) Child context (deterministic; runtime records the lifecycle edge).
-    const { contextId } = await createSubagentContext(this.rpc, {
-      parentContextId,
-      ownerEntityId,
-      targetKey,
-    });
-
-    // 2) Record the run BEFORE any external side effect so a setup failure is
-    //    compensatable by the spawn transaction rollback. childEntityId/participant are filled
-    //    once `prepare` returns; the complete-gate can't fire during setup.
-    const now = Date.now();
-    const run: SubagentRunRow = {
-      runId,
-      taskChannelId,
-      parentContextId: parentContextId ?? null,
-      childContextId: contextId,
-      childEntityId: "",
-      childParticipantId: null,
-      parentChannelId: channelId,
-      mode,
-      label,
-      depth: childDepth,
-      status: "starting",
-      sourceEventId: null,
-      semanticIntegrationSnapshot: null,
-      startedAt: now,
-      lastActivityAt: now,
-      agentKind,
-      // The extension owns its configuration schema. Preserve the same options
-      // for follow-up turns rather than filtering through Pi-specific settings.
-      launchConfig: opts.launcherOptions ? { ...opts.launcherOptions } : null,
-      externalSessionEntityId: null,
-      externalGenerationId: null,
-    };
-    this.subagentRuns.insert(run);
-
-    // 3) Supervisor stance on the task channel (§9): "addressed" delivery —
-    //    zero mailbox rows for child tool activity. This also materializes the
-    //    channel bound to the child context, which the extension's `prepare`
-    //    resolves the session context from.
-    await this.subscribeChannel({
-      channelId: taskChannelId,
-      contextId,
-      config: { wakePolicy: "explicit" },
-      replay: false,
-      delivery: "addressed",
-    });
-    await this.createChannelClient(taskChannelId).recordTaskProvenance({
-      parentChannelId: channelId,
-      parentContextId: parentContextId ?? "",
-      runId,
-    });
-
-    // 4) Launch the linked external subagent via its extension. The extension
-    //    owns the Node-only work: prepare the linked vessel, write the profile,
-    //    and spawn the headless process in the child context.
-    const launched = await this.rpc.call<ExternalSubagentLaunchResult>(
-      "main",
-      "extensions.invoke",
-      [
-        externalSubagentExtensionId(agentKind),
-        "launchSubagent",
-        [
-          {
-            channelId: taskChannelId,
-            title: label,
-            ...(opts.launcherOptions ? { options: opts.launcherOptions } : {}),
-            subagent: {
-              runId,
-              task,
-              parentRef: ownerEntityId,
-              parentChannelId: channelId,
-              taskChannelId,
-              parentContextId,
-              depth: childDepth,
-              mode,
-              parentParticipantId: this.participantId(),
-            },
-          },
-        ],
-      ],
-    );
-
-    // The participant is the linked vessel's canonical publishing identity;
-    // the entity remains its executable delivery/ownership endpoint. Terminal
-    // admission validates the former and never conflates these two axes.
-    this.subagentRuns.setChildEntityId(runId, launched.vesselEntityId);
-    this.subagentRuns.setChildParticipantId(
-      runId,
-      launched.vesselParticipantId,
-    );
-    this.subagentRuns.setExternalSession(runId, {
-      entityId: launched.entityId,
-      generationId: launched.generationId,
-    });
-
-    // 6) Durable run card, then transition to live.
-    const startedRun = this.subagentRuns.get(runId) ?? {
-      ...run,
-      externalSessionEntityId: launched.entityId,
-      externalGenerationId: launched.generationId,
-    };
-    await this.publishSubagentStarted(startedRun);
-    this.subagentRuns.setStatus(runId, "running");
-    const runningRun = this.subagentRuns.get(runId) ?? {
-      ...startedRun,
-      status: "running" as const,
-    };
-
-    // 7) Seed the task on the channel (trajectory visibility; the headless copy
-    //    is the -p prompt).
-    await this.publishSubagentSeed(runningRun, task);
-
-    return {
-      result: {
-        protocolContent: [
-          {
-            type: "text",
-            text: `${agentKind} ${subagentLaunchReceipt(runningRun)}`,
-          },
-        ],
-        details: this.subagentRunDetails(runningRun),
-      },
-      isError: false,
-    };
-  }
-
   private subagentRunDetails(run: SubagentRunRow): Record<string, unknown> {
     return {
       runId: subagentRunHandle(run.runId),
@@ -8479,15 +8216,7 @@ This is one admitted recurring-automation tick. If this tick establishes that th
       status: run.status,
       sourceEventId: run.sourceEventId,
       semanticIntegration: semanticIntegrationForRun(run),
-      // W6b: the SubagentRunCard badges the reasoning engine from this field.
-      agentKind: run.agentKind,
       ...(run.launchConfig ? { launchConfig: run.launchConfig } : {}),
-      ...(run.externalSessionEntityId
-        ? { externalSessionEntityId: run.externalSessionEntityId }
-        : {}),
-      ...(run.externalGenerationId
-        ? { externalGenerationId: run.externalGenerationId }
-        : {}),
     };
   }
 
@@ -8624,23 +8353,11 @@ This is one admitted recurring-automation tick. If this tick establishes that th
             semanticIntegrationSnapshot: null,
             startedAt,
             lastActivityAt: startedAt,
-            agentKind:
-              typeof subagent["agentKind"] === "string" && subagent["agentKind"]
-                ? subagent["agentKind"]
-                : "pi",
             launchConfig:
               subagent["launchConfig"] &&
               typeof subagent["launchConfig"] === "object" &&
               !Array.isArray(subagent["launchConfig"])
                 ? (subagent["launchConfig"] as Record<string, unknown>)
-                : null,
-            externalSessionEntityId:
-              typeof subagent["externalSessionEntityId"] === "string"
-                ? subagent["externalSessionEntityId"]
-                : null,
-            externalGenerationId:
-              typeof subagent["externalGenerationId"] === "string"
-                ? subagent["externalGenerationId"]
                 : null,
           };
           continue;
@@ -8758,14 +8475,7 @@ This is one admitted recurring-automation tick. If this tick establishes that th
         { runId: run.runId },
       );
     }
-    const resumesIdleExternal =
-      run.externalSessionEntityId != null &&
-      run.externalGenerationId != null &&
-      run.status !== "starting" &&
-      run.status !== "running";
-    const messageId = resumesIdleExternal
-      ? `subagent-followup:${toolCallId}`
-      : `subagent-msg:${toolCallId}`;
+    const messageId = `subagent-msg:${toolCallId}`;
     await this.createChannelClient(run.taskChannelId).send(
       participantId,
       messageId,
@@ -8775,33 +8485,6 @@ This is one admitted recurring-automation tick. If this tick establishes that th
         to: [{ kind: "participant", participantId: run.childParticipantId }],
       },
     );
-    if (resumesIdleExternal) {
-      const agentKind = normalizeSubagentAgentKind(run.agentKind);
-      if (!agentKind || agentKind === "pi") {
-        throw new Error(`notify: invalid external agent kind ${run.agentKind}`);
-      }
-      const continued = await this.rpc.call<ExternalSubagentLaunchResult>(
-        "main",
-        "extensions.invoke",
-        [
-          externalSubagentExtensionId(agentKind),
-          "continueSubagent",
-          [
-            {
-              entityId: run.externalSessionEntityId,
-              generationId: run.externalGenerationId,
-              messageId,
-              prompt: message,
-              ...(run.launchConfig ? { options: run.launchConfig } : {}),
-            },
-          ],
-        ],
-      );
-      this.subagentRuns.setExternalSession(run.runId, {
-        entityId: continued.entityId,
-        generationId: continued.generationId,
-      });
-    }
     if (run.status !== "starting" && run.status !== "running") {
       this.subagentRuns.setStatus(run.runId, "running");
     }
@@ -8813,8 +8496,7 @@ This is one admitted recurring-automation tick. If this tick establishes that th
     });
   }
 
-  /** Inspect semantic child state through VCS, or an external engine through
-   *  its provider-owned bounded runtime diagnostics. */
+  /** Inspect semantic child state through VCS. */
   protected async inspectSubagent(
     runId: string,
     query: string,
@@ -8831,45 +8513,6 @@ This is one admitted recurring-automation tick. If this tick establishes that th
       });
     }
     const q = (query ?? "status").trim() || "status";
-    if (q === "runtime") {
-      if (!run.externalSessionEntityId || !run.externalGenerationId) {
-        return this.toolText(
-          `Runtime diagnostics are not applicable to ${run.agentKind} subagent ${subagentRunHandle(run.runId)}; use status, log, or read_subagent.`,
-          {
-            runId: subagentRunHandle(run.runId),
-            query: q,
-            available: false,
-            reason: "not-external",
-            agentKind: run.agentKind,
-            status: run.status,
-          },
-        );
-      }
-      const agentKind = normalizeSubagentAgentKind(run.agentKind);
-      if (!agentKind || agentKind === "pi") {
-        throw new Error(
-          `subagent ${run.runId} has invalid external agentKind ${run.agentKind}`,
-        );
-      }
-      const result = await this.rpc.call(
-        "main",
-        "extensions.invoke",
-        [
-          externalSubagentExtensionId(agentKind),
-          "inspectLaunch",
-          [
-            {
-              entityId: run.externalSessionEntityId,
-              generationId: run.externalGenerationId,
-            },
-          ],
-        ],
-      );
-      return this.toolText(JSON.stringify(result, null, 2), {
-        runId: subagentRunHandle(run.runId),
-        query: q,
-      });
-    }
     const vcs = createSubagentVcsClient(this.rpc);
     const childStatusStartedAt = performance.now();
     const childStatus = vcs.status({ contextId: run.childContextId });
@@ -9263,34 +8906,9 @@ This is one admitted recurring-automation tick. If this tick establishes that th
   ): Promise<void> {
     const run = this.subagentRuns.get(runId);
     if (!run || (run.status !== "starting" && run.status !== "running")) return;
-    if (run.externalSessionEntityId && run.externalGenerationId) {
-      const agentKind = normalizeSubagentAgentKind(run.agentKind);
-      if (!agentKind || agentKind === "pi") {
-        throw new Error(
-          `cancel_subagent: invalid external agent kind ${run.agentKind}`,
-        );
-      }
-      await toolRpc.call(
-        "main",
-        "extensions.invoke",
-        [
-          externalSubagentExtensionId(agentKind),
-          "interrupt",
-          [
-            {
-              entityId: run.externalSessionEntityId,
-              generationId: run.externalGenerationId,
-            },
-          ],
-        ],
-      );
-    } else {
-      await toolRpc.call(run.childEntityId, "cancelSubagentExecution", [
-        { runId: run.runId, taskChannelId: run.taskChannelId, reason },
-      ]);
-      return;
-    }
-    await this.settleSubagentTerminal(run, "cancelled", reason);
+    await toolRpc.call(run.childEntityId, "cancelSubagentExecution", [
+      { runId: run.runId, taskChannelId: run.taskChannelId, reason },
+    ]);
   }
 
   @rpc({
@@ -9455,7 +9073,6 @@ This is one admitted recurring-automation tick. If this tick establishes that th
             childEntityId: run.childEntityId,
             childParticipantId: run.childParticipantId,
             label: run.label,
-            agentKind: run.agentKind,
             launchConfig: run.launchConfig,
           },
         },
@@ -9615,26 +9232,6 @@ This is one admitted recurring-automation tick. If this tick establishes that th
     if (run.status !== "starting") {
       throw new Error(
         `refusing spawn rollback for ${run.runId} in ${run.status}`,
-      );
-    }
-    if (run.externalSessionEntityId && run.externalGenerationId) {
-      const agentKind = normalizeSubagentAgentKind(run.agentKind);
-      if (!agentKind || agentKind === "pi") {
-        throw new Error(`invalid external spawn kind ${run.agentKind}`);
-      }
-      await this.rpc.call(
-        "main",
-        "extensions.invoke",
-        [
-          externalSubagentExtensionId(agentKind),
-          "release",
-          [
-            {
-              entityId: run.externalSessionEntityId,
-              generationId: run.externalGenerationId,
-            },
-          ],
-        ],
       );
     }
     await this.unsubscribeChannel(run.taskChannelId);

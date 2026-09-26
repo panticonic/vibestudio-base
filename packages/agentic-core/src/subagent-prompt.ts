@@ -1,12 +1,4 @@
-/**
- * The subagent operating contract — stable system-prompt material composed
- * once for each spawned child agent, whatever its reasoning engine.
- *
- * Shared here (not in agentic-do) because it has two consumers that must not
- * drift: the in-process Pi vessel composes it into the child's stable system
- * prompt, and external launcher extensions render it into
- * the launch profile so the bridge can surface it as MCP server instructions.
- */
+/** Stable operating contract composed into each child agent's system prompt. */
 
 /** Subagent task-duty binding threaded into a child vessel's state. */
 export interface SubagentIdentity {
@@ -28,8 +20,6 @@ export interface SubagentIdentity {
    * lineage. This is deliberately narrower than channel membership. */
   lineageParticipantIds?: string[];
 }
-
-export type SubagentCompletionMode = "tool" | "supervised-process";
 
 /**
  * Render the actual first task prompt for a child.
@@ -58,7 +48,6 @@ ${subagent.task}
 
 export function subagentRuntimePrompt(
   subagent: SubagentIdentity,
-  options: { completionMode?: SubagentCompletionMode } = {},
 ): string {
   const forkPrefix =
     subagent.mode === "fork"
@@ -71,22 +60,10 @@ The durable assigned task below is your authoritative current instruction. Earli
 Assume the parent agent owns the main line of work. Your job is to focus narrowly on the particular task the parent gave you, produce useful findings or isolated child-context edits, and hand the result back. Do not broaden scope, take over the whole project, redo parent work, or spawn more subagents unless your assigned child task explicitly requires it.`
       : "";
 
-  const completion =
-    options.completionMode === "supervised-process"
-      ? `Completion:
-- Finish with one concise final report. The launcher consumes the CLI's typed terminal result and settles the parent from it.
-- Use a successful final result only when the assigned task is complete enough for the parent to act on.
-- When blocked or unable to complete, clearly say so in the final report and include what you tried, the blocking condition, and whether partial work exists.
-- Do not print or imitate tool-call syntax. Return the report through the launcher's ordinary typed result.`
-      : `Completion:
+  const completion = `Completion:
 - Finish the current assignment with one concise final report. A normal final reply is retained in this task channel and delivered to the parent.
 - When blocked or unable to complete, say so in the report and include what you tried, the blocking condition, and whether partial work exists.
 - Completion ends the current assignment, not this collaborator. The parent may send a later follow-up into this same retained context.`;
-
-  const durableCompletion =
-    options.completionMode === "supervised-process"
-      ? "finishing your final report"
-      : "finishing your final report";
 
   const assignment = `## Durable Assigned Task
 
@@ -118,7 +95,7 @@ Progress:
 ${completion}
 
 Durable work:
-- Commit repository work in this child context BEFORE ${durableCompletion} — the parent integrates changes from your committed child event into its own local working head.
+- Commit repository work in this child context BEFORE finishing your final report — the parent integrates changes from your committed child event into its own local working head.
 - Do not push \`main\` yourself; the parent owns integration and publication decisions.
 - Report verification results and remaining uncertainties in your completion report.`;
 

@@ -11,8 +11,6 @@ export type SubagentRunStatus =
   | "cancelled"
   | "abandoned";
 
-export type SubagentAgentKind = string;
-
 export interface SubagentRunRow {
   runId: string;
   taskChannelId: string;
@@ -29,10 +27,7 @@ export interface SubagentRunRow {
   semanticIntegrationSnapshot: Record<string, unknown> | null;
   startedAt: number;
   lastActivityAt: number;
-  agentKind: SubagentAgentKind;
   launchConfig: Record<string, unknown> | null;
-  externalSessionEntityId: string | null;
-  externalGenerationId: string | null;
 }
 
 export type SubagentRunReferenceResolution =
@@ -66,10 +61,7 @@ interface SubagentRunSqlRow {
   semantic_integration_json: string | null;
   started_at: number;
   last_activity_at: number;
-  agent_kind: string;
   launch_config_json: string | null;
-  external_session_entity_id: string | null;
-  external_generation_id: string | null;
 }
 
 function exactEnum<const Value extends string>(
@@ -93,9 +85,6 @@ function parseRecord(field: string, value: string | null): Record<string, unknow
 }
 
 function toRow(row: SubagentRunSqlRow): SubagentRunRow {
-  if (typeof row.agent_kind !== "string" || row.agent_kind.trim().length === 0) {
-    throw new Error(`Invalid subagent_runs.agent_kind: ${JSON.stringify(row.agent_kind)}`);
-  }
   return {
     runId: row.run_id,
     taskChannelId: row.task_channel_id,
@@ -115,10 +104,7 @@ function toRow(row: SubagentRunSqlRow): SubagentRunRow {
     ),
     startedAt: Number(row.started_at),
     lastActivityAt: Number(row.last_activity_at),
-    agentKind: row.agent_kind,
     launchConfig: parseRecord("launch_config_json", row.launch_config_json),
-    externalSessionEntityId: row.external_session_entity_id ?? null,
-    externalGenerationId: row.external_generation_id ?? null,
   };
 }
 
@@ -185,10 +171,7 @@ export class SubagentRunStore {
         )),
         started_at INTEGER NOT NULL,
         last_activity_at INTEGER NOT NULL,
-        agent_kind TEXT NOT NULL,
         launch_config_json TEXT,
-        external_session_entity_id TEXT,
-        external_generation_id TEXT,
         source_event_id TEXT,
         semantic_integration_json TEXT
       )
@@ -209,10 +192,7 @@ export class SubagentRunStore {
         ["status", "TEXT", true],
         ["started_at", "INTEGER", true],
         ["last_activity_at", "INTEGER", true],
-        ["agent_kind", "TEXT", true],
         ["launch_config_json", "TEXT", false],
-        ["external_session_entity_id", "TEXT", false],
-        ["external_generation_id", "TEXT", false],
         ["source_event_id", "TEXT", false],
         ["semantic_integration_json", "TEXT", false],
       ],
@@ -230,9 +210,8 @@ export class SubagentRunStore {
          (run_id, task_channel_id, parent_context_id, child_context_id, child_entity_id,
           child_participant_id, parent_channel_id, mode, label, depth, status,
           source_event_id, semantic_integration_json, started_at,
-          last_activity_at, agent_kind, launch_config_json, external_session_entity_id,
-          external_generation_id)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          last_activity_at, launch_config_json)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       row.runId,
       row.taskChannelId,
       row.parentContextId,
@@ -248,10 +227,7 @@ export class SubagentRunStore {
       row.semanticIntegrationSnapshot ? JSON.stringify(row.semanticIntegrationSnapshot) : null,
       row.startedAt,
       row.lastActivityAt,
-      row.agentKind,
       row.launchConfig ? JSON.stringify(row.launchConfig) : null,
-      row.externalSessionEntityId,
-      row.externalGenerationId
     );
   }
 
@@ -351,15 +327,6 @@ export class SubagentRunStore {
     this.sql.exec(
       `UPDATE subagent_runs SET launch_config_json = ? WHERE run_id = ?`,
       launchConfig ? JSON.stringify(launchConfig) : null,
-      runId
-    );
-  }
-
-  setExternalSession(runId: string, session: { entityId: string; generationId: string } | null): void {
-    this.sql.exec(
-      `UPDATE subagent_runs SET external_session_entity_id = ?, external_generation_id = ? WHERE run_id = ?`,
-      session?.entityId ?? null,
-      session?.generationId ?? null,
       runId
     );
   }

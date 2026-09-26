@@ -242,24 +242,7 @@ describe("subagent prompt contract", () => {
     ).toBe("Inspect one package.");
   });
 
-  it("uses the typed launcher result for a supervised external subagent", () => {
-    const prompt = subagentRuntimePrompt(
-      {
-        runId: "run-external",
-        task: "Audit the subagent documentation without editing files.",
-        parentRef: "parent",
-        parentChannelId: "ch-parent",
-        taskChannelId: "ch-task",
-        parentContextId: "ctx-parent",
-        parentParticipantId: "agent:parent",
-        depth: 2,
-      },
-      { completionMode: "supervised-process" },
-    );
-    expect(prompt).toContain("typed terminal result");
-    expect(prompt).toContain("Do not print or imitate tool-call syntax");
-    expect(prompt).not.toContain("Only `complete` ends");
-  });
+
 });
 
 describe("per-agent settings seeding from STATE_ARGS.agentConfig", () => {

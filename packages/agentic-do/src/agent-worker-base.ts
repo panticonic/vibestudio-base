@@ -1542,7 +1542,7 @@ export abstract class AgentWorkerBase extends AgentVesselBase {
                 "overrides use model and thinkingLevel " +
                 "('minimal'|'low'|'medium'|'high'|'xhigh'|'max'), plus optional approvalLevel, " +
                 "respondPolicy, handle, and system-prompt settings. Do not use effort for Pi. " +
-                "For external kinds, consult the launcher extension's supported configuration.",
+                "All subagents run through the shared model-provider harness.",
               properties: {
                 model: {
                   type: "string",
@@ -1553,7 +1553,7 @@ export abstract class AgentWorkerBase extends AgentVesselBase {
                   type: "string",
                   enum: ["minimal", "low", "medium", "high", "xhigh", "max"],
                   description:
-                    "Pi child reasoning level. External launchers ignore this field.",
+                    "Child reasoning level.",
                 },
                 approvalLevel: { type: "integer", minimum: 0, maximum: 3 },
                 respondPolicy: { type: "string" },
@@ -1565,11 +1565,6 @@ export abstract class AgentWorkerBase extends AgentVesselBase {
             label: {
               type: "string",
               description: "Optional short label for the run.",
-            },
-            agentKind: {
-              type: "string",
-              description:
-                "Reasoning engine for the child (default 'pi', an in-process agent). Any other value names an external launcher extension @workspace-extensions/<agentKind>; the task is required and the launched child reports progress, completes, and integrates its committed changes exactly like a 'pi' subagent.",
             },
           },
           required: ["mode", "task"],
@@ -1588,7 +1583,7 @@ export abstract class AgentWorkerBase extends AgentVesselBase {
         name: "inspect_subagent",
         label: "inspect_subagent",
         description:
-          "Inspects a supervised child's runtime or semantic workspace state; it never exposes the model's private context window. Use the bounded parent-relative 'diff' when the user's goal is to inspect, review, or compare child work without integrating it. No inspection preflight is required before merge_subagent when the goal instead calls for integration. Use 'status', 'diff'/'log', or an exact repo-prefixed file path. 'runtime' is only for external-agent diagnostics; read_subagent returns what the child said. Do not poll a live child with this tool; suspend_turn wakes when the child reports.",
+          "Inspects a supervised child's runtime or semantic workspace state; it never exposes the model's private context window. Use the bounded parent-relative 'diff' when the user's goal is to inspect, review, or compare child work without integrating it. No inspection preflight is required before merge_subagent when the goal instead calls for integration. Use 'status', 'diff'/'log', or an exact repo-prefixed file path. read_subagent returns what the child said. Do not poll a live child with this tool; suspend_turn wakes when the child reports.",
         parameters: {
           type: "object",
           properties: {
@@ -1600,7 +1595,7 @@ export abstract class AgentWorkerBase extends AgentVesselBase {
             query: {
               type: "string",
               description:
-                "'status' | 'diff' | 'log' | 'runtime' | an exact repo-prefixed file path (default 'status').",
+                "'status' | 'diff' | 'log' | an exact repo-prefixed file path (default 'status').",
             },
             limit: {
               type: "integer",

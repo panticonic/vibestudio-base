@@ -42,7 +42,6 @@ export interface AgentEntityCreateInput {
   ref?: string;
   config?: AgentSubscriptionConfig | Record<string, unknown>;
   stateArgs?: Record<string, unknown>;
-  agentBinding?: { entityId: string; channelId: string };
   resourceBindings?: Array<{
     resource: { kind: string; id: string };
     capabilities: string[];
@@ -161,7 +160,6 @@ export function buildAgentEntityCreateSpec(
     key: input.key,
     ...(input.contextId ? { contextId: input.contextId } : {}),
     ...(Object.keys(stateArgs).length > 0 ? { stateArgs } : {}),
-    ...(input.agentBinding ? { agentBinding: input.agentBinding } : {}),
     ...(input.resourceBindings
       ? { resourceBindings: input.resourceBindings }
       : {}),
@@ -249,20 +247,10 @@ export async function launchAgentIntoChannel(
   rpc: AgentLaunchRpc,
   input: LaunchAgentIntoChannelInput,
 ): Promise<LaunchAgentIntoChannelResult> {
-  // There are two disjoint identities behind the same subscription workflow:
-  // an ordinary agent acts as itself on the channel, while a linked vessel
-  // relays an already-bound external agent session. Giving the latter a second
-  // self-agent channel would make one entity claim both identities and is
-  // rejected by runtime.createEntity.
-  const handle = await createAgentEntity(
-    rpc,
-    input.agentBinding
-      ? input
-      : {
-          ...input,
-          agentChannelId: input.channelId,
-        },
-  );
+  const handle = await createAgentEntity(rpc, {
+    ...input,
+    agentChannelId: input.channelId,
+  });
   if (
     input.contextId &&
     handle.contextId &&

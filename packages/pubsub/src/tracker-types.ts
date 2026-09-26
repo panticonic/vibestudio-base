@@ -61,22 +61,6 @@ export interface ChatParticipantMetadata extends AgenticParticipantMetadata {
   /** Whether this participant is currently typing / working. Set via updateMetadata;
    *  automatically cleared when the participant leaves the channel. */
   typing?: boolean;
-  /**
-   * Set by an externally-driven linked-agent vessel. Marks this `agent` participant as
-   * one whose reasoning loop runs outside the system via an attached process.
-   */
-  linkedAgent?: boolean;
-  /**
-   * Kind of linked agent, e.g. `"external-reviewer"`. Drives the roster kind badge.
-   * Also carried on subagent run details for the SubagentRunCard badge.
-   */
-  agentKind?: string;
-  /**
-   * Attachment/presence state of a linked agent: `"attached"` (the external
-   * process is connected and online) or `"detached"` (offline; buffered).
-   * Drives the roster presence dot.
-   */
-  linkedAttachment?: "attached" | "detached";
 }
 
 /**
