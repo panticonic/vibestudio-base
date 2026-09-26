@@ -372,6 +372,7 @@ export type EffectOutcome =
       stopReason: "completed" | "aborted" | "error";
       outcome?: "completed" | "interrupted" | "empty" | "tool_calls_only";
       usage?: Record<string, unknown>;
+      metadata?: Record<string, unknown>;
       errorReason?: string;
       recoverable?: boolean;
       failure?: ModelFailureInfo;
@@ -546,6 +547,7 @@ export function outcomeEvents(
           outcome: messageOutcome,
           tier,
           ...(outcome.usage ? { usage: outcome.usage } : {}),
+          ...(outcome.metadata ? { metadata: outcome.metadata } : {}),
         },
         causality: {
           messageId: descriptor.messageId as never,

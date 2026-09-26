@@ -1,3 +1,5 @@
+import ModelCredentialRequiredCard from "./ModelCredentialRequiredCard";
+import type { ChatContextValue } from "../types";
 import { useCallback, useId, useMemo, useState, type ReactNode } from "react";
 import {
   Badge,
@@ -34,6 +36,7 @@ export interface AgentConfigDraft {
 
 export interface AgentConfigFormProps {
   catalog: ModelCatalog | null;
+  onConnectModelProvider?: ChatContextValue["onConnectModelProvider"];
   value: AgentConfigDraft;
   onChange: (next: AgentConfigDraft) => void;
   /** False in edit mode — model is read-only (switching model needs a restart). */
@@ -73,7 +76,7 @@ const APPROVAL_LABELS: Record<string, string> = {
  * persisted per-agent choice. */
 export function configForSelectedModel(
   catalog: ModelCatalog | null,
-  ref: string,
+  ref: string
 ): Pick<AgentConfigDraft, "model" | "fastMode"> {
   const model = catalog?.models.find((entry) => entry.ref === ref);
   return { model: ref, fastMode: defaultFastModeForModel(model) };
@@ -106,6 +109,7 @@ export function AgentConfigForm({
   showHandle = false,
   participants = [],
   onOpenServerLog,
+  onConnectModelProvider,
 }: AgentConfigFormProps) {
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [savingDefault, setSavingDefault] = useState(false);
@@ -178,6 +182,29 @@ export function AgentConfigForm({
           </Flex>
         </Field>
       )}
+
+      {selectedModel?.connectable &&
+      onConnectModelProvider &&
+      ["needs-setup", "error"].includes(selectedModel.availability.state) ? (
+        <ModelCredentialRequiredCard
+          key={selectedModel.ref}
+          onConnect={onConnectModelProvider}
+          props={{
+            providerId: selectedModel.provider,
+            modelRef: selectedModel.ref,
+            modelBaseUrl: selectedModel.baseUrl,
+            configuration: selectedModel.connection?.configuration,
+            method: selectedModel.connection?.method,
+            ...(selectedModel.availability.state === "error"
+              ? { reason: selectedModel.availability.message }
+              : {}),
+            ...(selectedModel.availability.state === "needs-setup" &&
+            selectedModel.availability.detail === "credential-expired"
+              ? { reason: "Your connection has expired. Sign in again to continue." }
+              : {}),
+          }}
+        />
+      ) : null}
 
       {/* Effort — only for reasoning models */}
       {showEffort && (

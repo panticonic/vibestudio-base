@@ -17,7 +17,7 @@
     "@vibestudio/shared": "workspace:*"
   },
   "devDependencies": {
-    "@earendil-works/pi-ai": "^0.85.0",
+    "@earendil-works/pi-ai": "^0.87.1",
     "vitest": "^3.2.7"
   }
 }

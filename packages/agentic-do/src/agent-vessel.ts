@@ -145,7 +145,7 @@ import {
   type VcsMergeInput,
   type VcsStateNodeRef,
 } from "@vibestudio/service-schemas/vcs";
-import { toCredentialConnectRequest } from "@workspace/model-catalog/providerConnect";
+import { toCredentialConnectRequest, isTemplatedBaseUrl, resolveProviderModelBaseUrl } from "@workspace/model-catalog/providerConnect";
 import {
   defaultPolicies,
   derivedTurnStatus,
@@ -1973,7 +1973,7 @@ export abstract class AgentVesselBase extends PanelDurableObjectBase {
           // endpoint; fall back to provider-scoped credentials for providers
           // whose registry entries do not carry a base URL.
           let summary: ModelCredentialSummary | null;
-          const resolveRequest = modelBaseUrl
+          const resolveRequest = modelBaseUrl && !isTemplatedBaseUrl(modelBaseUrl)
             ? { url: modelBaseUrl }
             : { providerId };
           try {
@@ -2019,10 +2019,14 @@ export abstract class AgentVesselBase extends PanelDurableObjectBase {
             // and parked the turn forever.
             throw err;
           }
-          installUrlBoundModelFetchProxy(modelBaseUrl ?? "*", (url, init) =>
-            this.credentials.fetch(url, init),
+          const credentialBaseUrl = resolveProviderModelBaseUrl(providerId, modelBaseUrl ?? "", summary.metadata) || undefined;
+          installUrlBoundModelFetchProxy(credentialBaseUrl ?? modelBaseUrl ?? "*", (url, init) =>
+            this.credentials.fetch(url, init, { credentialId: summary.id }),
           );
           return {
+            ...(credentialBaseUrl ? { baseUrl: credentialBaseUrl } : {}),
+            authType:
+              providerId === "anthropic" && summary.metadata?.["modelAuthMethod"] === "subscription" ? "oauth" : "api_key",
             apiKey: createModelCredentialSentinel(
               this.getModelCredentialTokenClaims(providerId, summary),
             ),
@@ -5537,6 +5541,8 @@ This is one admitted recurring-automation tick. If this tick establishes that th
       case "connectModelCredential": {
         const input = (args ?? {}) as {
           providerId?: string;
+          method?: string;
+          configuration?: Record<string, string>;
           modelRef?: string;
           browserOpenMode?: string;
           modelBaseUrl?: string;
@@ -5552,6 +5558,8 @@ This is one admitted recurring-automation tick. If this tick establishes that th
         const browser = normalizeBrowserOpenMode(input.browserOpenMode);
         const request = toCredentialConnectRequest(input.providerId, {
           browser,
+          method: input.method,
+          configuration: input.configuration,
         });
         if (!request) {
           return {

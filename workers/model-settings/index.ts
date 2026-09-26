@@ -1,3 +1,4 @@
+import { modelProviderLabel, resolveProviderModelBaseUrl } from "@workspace/model-catalog/providerConnect";
 /**
  * Model settings service — the single authority on what a model IS
  * (journaled `modelSpec`) and whether it is USABLE right now (`availability`).
@@ -78,8 +79,7 @@ export function getModelCatalog(): Promise<ModelCatalog> {
 type PiModelLike = PiModelInput;
 
 function providerLabel(providerId: string): string {
-  if (providerId === "openai-codex") return "GPT Codex";
-  return providerId;
+  return modelProviderLabel(providerId);
 }
 
 /** Static pi-ai registry projection. Availability here is a placeholder —
@@ -111,7 +111,7 @@ export async function buildModelCatalog(): Promise<ModelCatalog> {
         : null,
       connectable:
         providerIsConnectable(providerId) &&
-        baseUrls.some((url) => !isTemplatedBaseUrl(url)),
+        baseUrls.some((url) => modelIsConnectable(providerId, url)),
     });
 
     for (const model of provModels) {
@@ -227,6 +227,19 @@ export function applyCloudAvailability(
       availability: { state: "ready", detail: "deterministic-test" },
     };
   }
+  const configured = credentials.find((credential) => credential.metadata?.["modelProviderId"] === entry.provider &&
+    (credential.metadata?.["modelBaseUrl"] || credential.metadata?.["modelProviderConfig"]));
+  if (configured) {
+    try {
+      const baseUrl = resolveProviderModelBaseUrl(entry.provider, entry.baseUrl, configured.metadata);
+      const configuration = configured.metadata?.["modelProviderConfig"];
+      entry = { ...entry, baseUrl, templatedBaseUrl: isTemplatedBaseUrl(baseUrl),
+        connection: { method: configured.metadata?.["modelAuthMethod"], ...(configuration ? { configuration: JSON.parse(configuration) } : {}) },
+        ...(entry.modelSpec ? { modelSpec: { ...entry.modelSpec, baseUrl } } : {}) };
+    } catch {
+      return { ...entry, availability: { state: "error", message: "Provider settings are invalid. Reconnect this provider to update them." } };
+    }
+  }
   // The credential owner projects expiry and refresh capability into each
   // secret-free summary. A stored credential is not enough: it must be active
   // or carry persisted material that can renew it.
@@ -239,6 +252,12 @@ export function applyCloudAvailability(
       return false;
     }
   });
+  const availableAccounts = matching.filter(isStoredCredentialUsable);
+  if (availableAccounts.length && availableAccounts.every((credential) => {
+    const allowed = credential.metadata?.["modelAvailableIds"];
+    if (!allowed) return false;
+    try { return !JSON.parse(allowed).includes(entry.id); } catch { return false; }
+  })) return { ...entry, availability: { state: "error", message: "This model is not available with your connected provider account. Choose another model or update your plan." } };
   const matchedUsable = matching.some(isStoredCredentialUsable);
   const matchedExpired = matching.some(
     (credential) =>

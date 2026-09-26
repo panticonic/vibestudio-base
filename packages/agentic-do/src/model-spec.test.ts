@@ -83,6 +83,7 @@ describe("Codex service-tier materialization", () => {
       materializeModel("openai-codex", "gpt-6-astra", null)?.spec,
     ).toMatchObject({
       ...expected,
+      thinkingLevelMap: { ...expected.thinkingLevelMap, minimal: "low" },
       serviceTiers: ["priority"],
     });
   });

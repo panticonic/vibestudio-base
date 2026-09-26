@@ -14,18 +14,31 @@ interface FlagshipRule {
 const FLAGSHIP_RULES: FlagshipRule[] = [
   {
     provider: "openai-codex",
-    prefer: [/-sol$/i, /codex/i, /gpt-5/i],
+    prefer: [/-sol$/i, /codex/i, /gpt-\d/i],
     exclude: [/\bmini\b|\bnano\b/i],
   },
+  { provider: "github-copilot", prefer: [/-sol$/i, /opus/i, /sonnet/i] },
   { provider: "anthropic", prefer: [/opus/i, /sonnet/i] },
   {
     provider: "openai",
-    prefer: [/gpt-5/i, /gpt-4\.1/i, /gpt-4/i],
+    prefer: [/-sol$/i, /gpt-\d/i],
     exclude: [/\bmini\b|\bnano\b|\bcodex\b|\bchat\b|\bpro\b/i],
   },
-  { provider: "google", prefer: [/gemini.*pro/i, /gemini/i], exclude: [/\bflash\b|\blite\b/i] },
-  { provider: "xai", prefer: [/grok/i], exclude: [/\bmini\b|\bfast\b|\breasoning\b/i] },
-  { provider: "openrouter", prefer: [/gpt-5/i, /claude.*opus/i], exclude: [/\bmini\b|\bnano\b/i] },
+  {
+    provider: "google",
+    prefer: [/gemini.*pro/i, /gemini/i],
+    exclude: [/\bflash\b|\blite\b/i],
+  },
+  {
+    provider: "xai",
+    prefer: [/grok/i],
+    exclude: [/\bmini\b|\bfast\b|\breasoning\b/i],
+  },
+  {
+    provider: "openrouter",
+    prefer: [/gpt-\d.*-sol$/i, /gpt-\d/i, /claude.*opus/i],
+    exclude: [/\bmini\b|\bnano\b/i],
+  },
 ];
 
 function versionVector(id: string): number[] {
@@ -49,23 +62,27 @@ function ruleForProvider(providerId: string): FlagshipRule | null {
   return FLAGSHIP_RULES.find((rule) => rule.provider === providerId) ?? null;
 }
 
-export function modelRecommendationScore(providerId: string, modelId: string): number {
+function familyPreference(providerId: string, modelId: string): number {
   const rule = ruleForProvider(providerId);
-  if (!rule) return compareModelVersions(modelId, "");
+  if (!rule) return 0;
   const preferredIndex = rule.prefer.findIndex((re) => re.test(modelId));
   const preferredScore = preferredIndex >= 0 ? 1_000 - preferredIndex * 100 : 0;
-  const excludedScore = (rule.exclude ?? []).some((re) => re.test(modelId)) ? -1_000 : 0;
-  return preferredScore + excludedScore + compareModelVersions(modelId, "");
+  const excludedScore = (rule.exclude ?? []).some((re) => re.test(modelId))
+    ? -1_000
+    : 0;
+  return preferredScore + excludedScore;
 }
 
 export function pickRecommendedModelId(
   providerId: string,
-  models: readonly RecommendableModel[]
+  models: readonly RecommendableModel[],
 ): string | null {
   if (models.length === 0) return null;
   return models.reduce((best, model) =>
-    modelRecommendationScore(providerId, model.id) > modelRecommendationScore(providerId, best.id)
+    (familyPreference(providerId, model.id) -
+      familyPreference(providerId, best.id) ||
+      compareModelVersions(model.id, best.id)) > 0
       ? model
-      : best
+      : best,
   ).id;
 }

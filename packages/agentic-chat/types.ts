@@ -487,6 +487,8 @@ export interface ChatContextValue {
   ) => Promise<void> | void;
   /** Start installing a local model; live progress arrives through modelCatalog. */
   onInstallLocalModel?: (modelRef: string) => Promise<ModelSetupResult>;
+  /** Connect directly from the model picker, before an agent exists. */
+  onConnectModelProvider?: (modelRef: string, method: string, browser: "internal" | "external", signal: AbortSignal, configuration?: Record<string, string>) => Promise<void>;
   availableAgents?: AvailableAgent[];
   /** Static pi model catalog; connection status merged in the UI. */
   modelCatalog?: ModelCatalog | null;

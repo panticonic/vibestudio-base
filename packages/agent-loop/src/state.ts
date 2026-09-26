@@ -470,6 +470,8 @@ export type SessionEntry =
       /** Present only for model-produced messages. Runtime diagnostics and
        * model-free direct invocations have no model identity to invent. */
       model?: AssistantModelIdentity;
+      /** Provider replay state, retained across journal rehydration. */
+      metadata?: Record<string, unknown>;
     }
   | {
       kind: "tool-result";

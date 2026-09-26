@@ -14,7 +14,7 @@
 export const MODEL_SETTINGS_SERVICE_PROTOCOL = "vibestudio.models.v1";
 /** Workspace config field holding the full default agent config (model + behavior). */
 export const WORKSPACE_DEFAULT_AGENT_CONFIG_FIELD = "defaultAgentConfig";
-export const DEFAULT_AGENT_MODEL_REF = "openai-codex:gpt-5.6-sol";
+export const DEFAULT_AGENT_MODEL_REF = "openai-codex:gpt-6-sol";
 /** The local provider id, preferred model, and guaranteed small fallback. */
 export const LOCAL_PROVIDER_ID = "local";
 export const LOCAL_DEFAULT_MODEL = {
@@ -43,6 +43,8 @@ export function modelServiceTiers(
   const supportsPriority =
     provider === "openai-codex" &&
     (modelId === "gpt-6-astra" ||
+      modelId === "gpt-6-sol" ||
+      modelId === "gpt-6-luna" ||
       modelId.startsWith("gpt-5.6-") ||
       modelId === "gpt-5.5" ||
       modelId === "gpt-5.4");
@@ -188,10 +190,12 @@ export interface ModelCatalogEntry {
   tokensPerSec?: number | null;
   /** Model-supported subset of the enabled agent thinking levels. */
   thinkingLevels: AgentThinkingLevel[];
-  /** baseUrl contains "{...}" placeholders → not quick-connectable. */
+  /** Endpoint still contains provider configuration placeholders. */
   templatedBaseUrl: boolean;
-  /** Authoritative: a connect preset exists for the provider AND !templatedBaseUrl. */
+  /** A guided sign-in or API-key configuration flow is available. */
   connectable: boolean;
+  /** Public settings from the matching credential; never includes keys or tokens. */
+  connection?: { method?: string; configuration?: Record<string, string> };
   /** Part of the curated flagship-newest recommended set. */
   recommended: boolean;
   /** Explicit auth mode (design §6.3). */
@@ -234,21 +238,14 @@ export function isModelUsable(
   );
 }
 
-/** Whether an agent can be created with this model. Remote credential setup is
- * agent-owned: the agent may start, park before provider use, and ask the user
- * to connect. Local models still have to be installed before an agent starts. */
+/** Chat preflight connects providers or installs local models before agent creation. */
 export function isModelAgentLaunchable(
   model:
     | Pick<ModelCatalogEntry, "availability" | "provider" | "connectable">
     | null
     | undefined,
 ): boolean {
-  return (
-    isModelUsable(model) ||
-    (model?.provider !== "local" &&
-      model?.connectable === true &&
-      model.availability.state === "needs-setup")
-  );
+  return isModelUsable(model);
 }
 
 export interface ModelSettingsSnapshot {

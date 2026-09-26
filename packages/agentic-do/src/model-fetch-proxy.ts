@@ -219,11 +219,12 @@ export function installUrlBoundModelFetchProxy(
   const proxyState = state;
   globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
     const request = new Request(input as RequestInfo, init);
-    const authorization = request.headers.get("authorization");
-    const sentinel = authorization?.startsWith("Bearer ")
-      ? isModelCredentialSentinel(authorization.slice("Bearer ".length))
-      : false;
-    if (!sentinel) return proxyState.originalFetch(input as RequestInfo, init);
+    const sentinelHeaders = ["authorization", "x-api-key", "x-goog-api-key", "api-key", "cf-aig-authorization"].filter((name) => {
+      const value = request.headers.get(name);
+      if (!value) return false;
+      return isModelCredentialSentinel(value.startsWith("Bearer ") ? value.slice(7) : value);
+    });
+    if (sentinelHeaders.length === 0) return proxyState.originalFetch(input as RequestInfo, init);
 
     const targetUrl = new URL(request.url);
     const route = findRoute(targetUrl, proxyState.routes);
@@ -233,7 +234,7 @@ export function installUrlBoundModelFetchProxy(
       );
     }
     const headers = new Headers(request.headers);
-    headers.delete("authorization");
+    for (const name of sentinelHeaders) headers.delete(name);
     if (headers.get("upgrade")?.toLowerCase() === "websocket") {
       // workerd outbound WebSocket = fetch-with-Upgrade. The credentialed
       // proxyFetch stream cannot carry an upgrade; encode the provider

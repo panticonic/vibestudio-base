@@ -4,12 +4,16 @@ import { ConnectCredentialParamsSchema } from "@vibestudio/service-schemas/crede
 import {
   listProviderConnectPresets,
   modelIsConnectable,
+  providerIsConnectable,
   toCredentialConnectRequest as toSharedCredentialConnectRequest,
 } from "@vibestudio/shared/providerConnect";
 
 import { toCredentialConnectRequest } from "./providerConnect";
 
 describe("provider connect presets", () => {
+  it("offers guided setup for every catalog provider", () => {
+    for (const provider of getBuiltinProviders()) expect(providerIsConnectable(provider), provider).toBe(true);
+  });
   it("omits discontinued models from every provider catalog", () => {
     for (const provider of getBuiltinProviders()) {
       expect(
@@ -65,15 +69,13 @@ describe("provider connect presets", () => {
     expect(toSharedCredentialConnectRequest("openai")?.credential.label).toBe("OpenAI API key");
   });
 
-  it("keeps every provider preset schema-valid", () => {
+  it("keeps every provider method schema-valid with its required configuration", () => {
     for (const preset of listProviderConnectPresets()) {
-      const request = toCredentialConnectRequest(preset.providerId, {
-        browser: "external",
-      });
-      expect(
-        ConnectCredentialParamsSchema.safeParse(request),
-        `${preset.providerId} connect request`
-      ).toMatchObject({ success: true });
+      for (const method of preset.methods) {
+        const configuration = Object.fromEntries((preset.configuration ?? []).map((field) => [field.name, field.type === "https-url" ? "https://resource.openai.azure.com/openai/v1" : "account-id"]));
+        const request = toCredentialConnectRequest(preset.providerId, { method: method.id, configuration, browser: "external" });
+        expect(ConnectCredentialParamsSchema.safeParse(request), `${preset.providerId}/${method.id}`).toMatchObject({ success: true });
+      }
     }
   });
 

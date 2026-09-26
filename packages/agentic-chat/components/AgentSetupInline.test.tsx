@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { Theme } from "@radix-ui/themes";
 import { describe, expect, it, vi } from "vitest";
 import type { ModelCatalog } from "@workspace/agentic-core";
@@ -38,6 +38,7 @@ const chatContext = {
   defaultAgentConfig: { model: model.ref, approvalLevel: 2 },
   onSaveDefaults: vi.fn(),
   onInstallLocalModel: undefined,
+  onConnectModelProvider: vi.fn(async () => {}),
   onOpenLocalModels: undefined,
   onOpenLocalModelsLog: undefined,
 };
@@ -47,7 +48,7 @@ vi.mock("../context/ChatContext", () => ({
 }));
 
 describe("AgentSetupInline", () => {
-  it("starts a connectable agent and leaves credential setup to that agent", () => {
+  it("offers provider sign-in before starting the queued agent", async () => {
     render(
       <Theme>
         <AgentSetupInline />
@@ -61,8 +62,10 @@ describe("AgentSetupInline", () => {
     expect(screen.getByText("Recommended for this workspace")).toBeTruthy();
     expect(screen.queryByText(/show|hide/i)).toBeNull();
     expect(screen.queryByText(/connect gpt codex/i)).toBeNull();
-    expect(screen.queryByRole("button", { name: "Use system browser" })).toBeNull();
-    expect(screen.getByRole("button", { name: "Start agent" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: /Use system browser/i }));
+    await waitFor(() => expect(chatContext.onConnectModelProvider).toHaveBeenCalled());
+    expect(chatContext.deferredAgent.startQueued).not.toHaveBeenCalled();
+    expect(screen.queryByRole("button", { name: "Start agent" })).toBeNull();
     expect(screen.queryByText("Autonomy")).toBeNull();
 
     fireEvent.click(screen.getByText("▸ Advanced"));

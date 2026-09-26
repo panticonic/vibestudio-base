@@ -1514,6 +1514,7 @@ Use package imports available to inline_ui plus relative imports for local helpe
   const onPrepareAgent = actions?.onPrepareAgent ? handlePrepareAgent : undefined;
   const onReplaceAgent = actions?.onReplaceAgent ? handleReplaceAgent : undefined;
   const onInstallLocalModel = actions?.onInstallLocalModel;
+  const onConnectModelProvider = actions?.onConnectModelProvider;
   const availableAgents = actions?.availableAgents;
   const modelCatalog = actions?.modelCatalog;
   const defaultModelRef = actions?.defaultModelRef;
@@ -1657,6 +1658,7 @@ Use package imports available to inline_ui plus relative imports for local helpe
       onAddAgent,
       onReplaceAgent,
       onInstallLocalModel,
+      onConnectModelProvider,
       availableAgents,
       modelCatalog,
       defaultModelRef,
@@ -1737,6 +1739,7 @@ Use package imports available to inline_ui plus relative imports for local helpe
       onAddAgent,
       onReplaceAgent,
       onInstallLocalModel,
+      onConnectModelProvider,
       availableAgents,
       modelCatalog,
       defaultModelRef,

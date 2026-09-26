@@ -208,6 +208,7 @@ function supportsAdaptiveThinking(model: RawThinkingModel): boolean {
       candidate.includes("opus-4-6") ||
       candidate.includes("opus-4-7") ||
       candidate.includes("opus-4-8") ||
+      candidate.includes("opus-5") ||
       candidate.includes("sonnet-4-6") ||
       candidate.includes("sonnet-5") ||
       candidate.includes("fable-5"),

@@ -41,6 +41,7 @@ describe("buildModelContext: multi-agent attribution", () => {
         messageId: "m2",
         senderRef: { kind: "agent", id: selfId },
         blocks: [{ type: "text", content: "my own turn" }],
+        metadata: { pi: { providerThinkingLevel: "medium" } },
         model: {
           provider: "anthropic",
           api: "anthropic-messages",
@@ -63,6 +64,7 @@ describe("buildModelContext: multi-agent attribution", () => {
     expect(msgs[1]).toEqual({
       role: "assistant",
       blocks: [{ type: "text", content: "my own turn" }],
+      metadata: { pi: { providerThinkingLevel: "medium" } },
       model: {
         provider: "anthropic",
         api: "anthropic-messages",

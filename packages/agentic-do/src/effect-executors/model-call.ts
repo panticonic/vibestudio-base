@@ -13,6 +13,7 @@ import {
   releaseOpenAICodexWebSocketSession,
 } from "@workspace/pi-ai/api/openai-codex-responses";
 import { clampMaxTokensToContext } from "@workspace/pi-ai/api/simple-options";
+import { normalizeContext } from "@workspace/pi-ai/utils/transcript";
 import type { Context, Message } from "@workspace/pi-ai";
 import {
   buildModelContext,
@@ -413,7 +414,13 @@ export function toPiMessages(messages: ModelMessage[]): Message[] {
         timestamp: 0,
       } as unknown as Message);
     } else if (message.role === "assistant") {
+      const pi = isRecord(message.metadata?.[PI_REPLAY_METADATA_KEY])
+        ? message.metadata[PI_REPLAY_METADATA_KEY]
+        : undefined;
       out.push({
+        ...(typeof pi?.["providerThinkingLevel"] === "string"
+          ? { providerThinkingLevel: pi["providerThinkingLevel"] }
+          : {}),
         role: "assistant",
         content: toPiAssistantBlocks(message.blocks ?? []) as never,
         ...(message.model
@@ -1082,7 +1089,12 @@ async function executeModelCall(
     return testModeOutcome;
   }
 
-  let credentials: { apiKey: string; headers?: Record<string, string> };
+  let credentials: {
+    apiKey: string;
+    headers?: Record<string, string>;
+    authType?: "api_key" | "oauth";
+    baseUrl?: string;
+  };
   // Live endpoint override: set for loopback (ensureLoaded's answer beats any
   // journaled port — design §6.3) or when the request carries an explicit one.
   let liveBaseUrl: string | undefined = request.modelBaseUrl;
@@ -1149,6 +1161,7 @@ async function executeModelCall(
         signal,
       });
       throwIfAborted();
+      if (credentials.baseUrl) liveBaseUrl = credentials.baseUrl;
       trace("credential.resolve.completed", {
         hasHeaders: !!credentials.headers,
       });
@@ -1278,12 +1291,17 @@ async function executeModelCall(
     throwIfAborted();
     eventStream = stream(effectiveSpec as never, context, {
       apiKey: credentials.apiKey,
+      ...(credentials.authType ? { authType: credentials.authType } : {}),
       // We call pi-ai's raw stream surface to retain provider-native
       // reasoning summaries. Raw stream does not apply streamSimple's base
       // options for us, so carry the journaled model output limit across this
       // boundary explicitly. Omitting it lets a malformed tool call stream
       // without the model catalog's terminal token bound.
-      maxTokens: clampMaxTokensToContext(effectiveSpec as never, context, effectiveSpec.maxTokens),
+      maxTokens: clampMaxTokensToContext(
+        effectiveSpec as never,
+        normalizeContext(context),
+        effectiveSpec.maxTokens
+      ),
       ...(credentials.headers ? { headers: credentials.headers } : {}),
       signal: streamAbort.signal,
       sessionId: providerSessionId,
@@ -1554,6 +1572,13 @@ async function executeModelCall(
     blocks,
     stopReason: "completed",
     usage,
+    ...(typeof result["providerThinkingLevel"] === "string"
+      ? {
+          metadata: {
+            [PI_REPLAY_METADATA_KEY]: { providerThinkingLevel: result["providerThinkingLevel"] },
+          },
+        }
+      : {}),
   };
 }
 

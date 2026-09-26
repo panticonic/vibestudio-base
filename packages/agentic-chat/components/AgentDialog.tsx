@@ -48,6 +48,7 @@ export function AgentDialog({ open, onOpenChange, editParticipantId }: AgentDial
     onAddAgent,
     onReplaceAgent,
     onInstallLocalModel,
+    onConnectModelProvider,
     onCallMethodResult,
     onOpenLocalModels,
     onOpenLocalModelsLog,
@@ -351,6 +352,7 @@ export function AgentDialog({ open, onOpenChange, editParticipantId }: AgentDial
               showHandle={showHandle}
               participants={otherParticipants}
               onOpenServerLog={onOpenLocalModelsLog}
+              onConnectModelProvider={onConnectModelProvider}
             />
 
             {mode !== "edit" && selectedModel ? (

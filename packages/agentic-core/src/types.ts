@@ -165,6 +165,7 @@ export interface AgenticChatActions {
   onRemoveAgent?: (channelName: string, handle: string) => Promise<void>;
   /** Start installing a local model. Availability/progress remains catalog-owned. */
   onInstallLocalModel?: (modelRef: string) => Promise<ModelSetupResult>;
+  onConnectModelProvider?: (modelRef: string, method: string, browser: "internal" | "external", signal: AbortSignal, configuration?: Record<string, string>) => Promise<void>;
   onPersistAgentModel?: (
     channelName: string,
     participantId: string,

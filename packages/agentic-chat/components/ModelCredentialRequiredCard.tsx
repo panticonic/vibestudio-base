@@ -1,5 +1,9 @@
-import { useState } from "react";
-import { Box, Button, Callout, Card, Code, Flex, Spinner, Text } from "@radix-ui/themes";
+import {
+  modelProviderLabel,
+  getProviderConnectPreset,
+} from "@workspace/model-catalog/providerConnect";
+import { useEffect, useRef, useState } from "react";
+import { Box, Button, Callout, Card, Code, Flex, Spinner, Text, TextField } from "@radix-ui/themes";
 import { getVibestudioHostPlatform } from "@workspace/react/responsive";
 
 interface CredentialFlow {
@@ -27,6 +31,8 @@ interface ModelCredentialRequiredCardProps {
   browserHandoffCallerKind?: string;
   modelPersistenceParticipantId?: string;
   reason?: string;
+  configuration?: Record<string, string>;
+  method?: string;
   diagnosticReason?: string;
   failureCode?: string;
 }
@@ -38,9 +44,17 @@ interface ChatApi {
 export default function ModelCredentialRequiredCard({
   props = {},
   chat,
+  onConnect,
 }: {
   props?: ModelCredentialRequiredCardProps;
-  chat: ChatApi;
+  chat?: ChatApi;
+  onConnect?: (
+    modelRef: string,
+    method: string,
+    browser: "internal" | "external",
+    signal: AbortSignal,
+    configuration?: Record<string, string>
+  ) => Promise<void>;
 }) {
   const providerId = props.providerId ?? "";
   const currentModelRef = typeof props.modelRef === "string" ? props.modelRef : "";
@@ -65,7 +79,14 @@ export default function ModelCredentialRequiredCard({
     fallbackOption;
   const selectedProviderId = selectedOption.providerId || providerId;
   const selectedModelBaseUrl = selectedOption.modelBaseUrl || props.modelBaseUrl;
-  const selectedFlow = selectedOption.flow || props.flow;
+  const definition = getProviderConnectPreset(selectedProviderId);
+  const methods = definition?.methods ?? [];
+  const [configuration, setConfiguration] = useState<Record<string, string>>(
+    props.configuration ?? {}
+  );
+  const [selectedMethodId, setSelectedMethodId] = useState<string | undefined>(props.method);
+  const selectedMethod = methods.find((method) => method.id === selectedMethodId) ?? methods[0];
+  const selectedFlow = selectedMethod?.flow ?? selectedOption.flow ?? props.flow;
   const reconnectReason =
     typeof props.reason === "string" && props.reason.trim() ? props.reason : "";
   const diagnosticReason =
@@ -78,13 +99,28 @@ export default function ModelCredentialRequiredCard({
   const [activeOpenMode, setActiveOpenMode] = useState<"internal" | "external" | null>(null);
   const [error, setError] = useState("");
 
+  const operation = useRef<AbortController | null>(null);
+  useEffect(() => () => operation.current?.abort(), []);
   const startCredential = async (openMode: "internal" | "external") => {
-    if (!selectedFlow || !selectedModelBaseUrl) return;
+    if (!selectedFlow) return;
     setStatus("starting");
     setActiveOpenMode(openMode);
     setError("");
+    const controller = new AbortController();
+    operation.current = controller;
     try {
-      if (!props.agentParticipantId) {
+      if (onConnect) {
+        await onConnect(
+          selectedOption.modelRef ?? currentModelRef,
+          selectedMethod!.id,
+          openMode,
+          controller.signal,
+          configuration
+        );
+        if (!controller.signal.aborted && operation.current === controller) setStatus("done");
+        return;
+      }
+      if (!chat || !props.agentParticipantId) {
         throw new Error("Missing agent participant for credential setup");
       }
       if (selectedOption.modelRef && selectedOption.modelRef !== currentModelRef) {
@@ -103,26 +139,49 @@ export default function ModelCredentialRequiredCard({
         }
       }
       setStatus("waiting");
-      await chat.callMethod(props.agentParticipantId, "connectModelCredential", {
+      const connected = await chat.callMethod(props.agentParticipantId, "connectModelCredential", {
         providerId: selectedProviderId,
+        configuration,
+        ...(selectedMethodId ? { method: selectedMethod?.id } : {}),
         modelBaseUrl: selectedModelBaseUrl,
         modelRef: selectedOption.modelRef,
         browserOpenMode: openMode,
         browserHandoffCallerId: props.browserHandoffCallerId,
         browserHandoffCallerKind: props.browserHandoffCallerKind,
       });
-      setStatus("done");
+      if (connected && typeof connected === "object") {
+        const response = connected as {
+          isError?: boolean;
+          error?: string;
+          result?: { error?: string };
+        };
+        if (response.isError || response.error || response.result?.error)
+          throw new Error(
+            response.error ?? response.result?.error ?? "Provider connection failed. Try again."
+          );
+      }
+      if (operation.current === controller) setStatus("done");
     } catch (err) {
+      if (operation.current !== controller) return;
+      if (controller.signal.aborted) {
+        setStatus("idle");
+        return;
+      }
       setError(err instanceof Error ? err.message : String(err));
       setStatus("error");
     } finally {
-      setActiveOpenMode(null);
+      if (operation.current === controller) {
+        operation.current = null;
+        setActiveOpenMode(null);
+      }
     }
   };
 
   const busy = status === "starting" || status === "waiting";
   const workspaceBrowserAvailable = getVibestudioHostPlatform() !== "mobile";
-  const unsupported = !selectedFlow || !selectedModelBaseUrl;
+  const needsDesktop =
+    !workspaceBrowserAvailable && selectedMethod?.redirectPolicy === "loopback-required";
+  const unsupported = !selectedFlow;
   const apiKeyFlow = selectedFlow?.type === "api-key";
   const browserChoicePrompt = reconnectReason
     ? "Choose the browser that is signed in to the account you want to reconnect. If neither is signed in, pick the one you want to use."
@@ -145,12 +204,12 @@ export default function ModelCredentialRequiredCard({
       <Flex direction="column" gap="3">
         <Box>
           <Text as="div" size="2" weight="medium">
-            {reconnectReason ? "Credential needs refresh for " : "Credential required for "}
-            {providerId}
+            {reconnectReason ? "Reconnect " : "Connect "}
+            {modelProviderLabel(selectedProviderId)}
           </Text>
           <Text as="div" size="1" color="gray" mt="1">
-            {reconnectReason ? "Refresh the saved" : "Connect a"} URL-bound model credential for{" "}
-            <Code size="1">{selectedModelBaseUrl || selectedProviderId}</Code>.
+            Connect once to use this provider’s models. Your credentials stay in the secure
+            credential store.
           </Text>
         </Box>
         {providerOptions.length > 1 ? (
@@ -166,9 +225,11 @@ export default function ModelCredentialRequiredCard({
                   color={selected ? undefined : "gray"}
                   onClick={() => {
                     setSelectedModelRef(option.modelRef || option.providerId);
+                    setSelectedMethodId(undefined);
+                    setConfiguration({});
                     setError("");
                     setActiveOpenMode(null);
-                    if (status !== "done") setStatus("idle");
+                    setStatus("idle");
                   }}
                   disabled={busy}
                   style={{ justifyContent: "flex-start" }}
@@ -182,6 +243,42 @@ export default function ModelCredentialRequiredCard({
                 </Button>
               );
             })}
+          </Flex>
+        ) : null}
+        {definition?.configuration?.map((field) => (
+          <label key={field.name}>
+            <Text size="1" as="div">
+              {field.label}
+            </Text>
+            <TextField.Root
+              aria-label={field.label}
+              placeholder={field.placeholder}
+              value={configuration[field.name] ?? ""}
+              disabled={busy}
+              onChange={(event) =>
+                setConfiguration({ ...configuration, [field.name]: event.target.value })
+              }
+            />
+          </label>
+        ))}
+        {methods.length > 1 ? (
+          <Flex gap="2" wrap="wrap" aria-label="Sign-in method">
+            {methods.map((method) => (
+              <Button
+                key={method.id}
+                size="1"
+                disabled={busy}
+                aria-pressed={method.id === selectedMethod?.id}
+                variant={method.id === selectedMethod?.id ? "solid" : "soft"}
+                onClick={() => {
+                  setSelectedMethodId(method.id);
+                  setStatus("idle");
+                  setError("");
+                }}
+              >
+                {method.label}
+              </Button>
+            ))}
           </Flex>
         ) : null}
         {reconnectReason ? (
@@ -207,15 +304,47 @@ export default function ModelCredentialRequiredCard({
         ) : null}
         {status === "done" ? (
           <Callout.Root color="green" size="1">
-            <Callout.Text>Credential connected. Continuing...</Callout.Text>
+            <Callout.Text>
+              {onConnect
+                ? "Provider connected. You can start chatting."
+                : "Provider connected. Continuing…"}
+            </Callout.Text>
           </Callout.Root>
+        ) : null}
+        {busy ? (
+          <Text size="1" role="status">
+            {apiKeyFlow
+              ? "Complete the secure key entry prompt."
+              : "Finish signing in in your browser. For device sign-in, use the code shown in the approval bar."}
+          </Text>
+        ) : null}
+        {busy && onConnect ? (
+          <Button
+            size="1"
+            variant="soft"
+            color="gray"
+            onClick={() => {
+              operation.current?.abort();
+              operation.current = null;
+              setStatus("idle");
+            }}
+          >
+            Cancel sign-in
+          </Button>
         ) : null}
         {error ? (
           <Callout.Root color="red" size="1">
             <Callout.Text>{error}</Callout.Text>
           </Callout.Root>
         ) : null}
-        {apiKeyFlow ? (
+        {needsDesktop ? (
+          <Callout.Root color="amber" size="1">
+            <Callout.Text>
+              This subscription sign-in requires a desktop browser. Connect this provider on
+              desktop, or choose an API key if available.
+            </Callout.Text>
+          </Callout.Root>
+        ) : apiKeyFlow ? (
           <Flex gap="2" wrap="wrap">
             <Button
               size="1"

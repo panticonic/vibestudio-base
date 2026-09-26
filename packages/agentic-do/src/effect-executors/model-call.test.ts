@@ -860,8 +860,10 @@ describe("modelCallExecutor", () => {
       maxTokens: 64_000,
     };
     mocks.stream.mockImplementation((_model, _context, options) => {
+      expect(_model.baseUrl).toBe("https://credential-endpoint.test");
       expect(options).toMatchObject({
         apiKey: "test-key",
+        authType: "oauth",
         sessionId: "channel-1:agent:self:turn-1:test:model",
         thinkingEnabled: true,
         thinkingBudgetTokens: 8192,
@@ -886,17 +888,20 @@ describe("modelCallExecutor", () => {
             },
           ],
           stopReason: "stop",
+          providerThinkingLevel: "medium",
           usage: { input: 1, output: 2 },
         }),
       };
     });
 
+    const inputDeps = deps();
+    inputDeps.credentials.getApiKey = async () => ({ apiKey: "test-key", authType: "oauth", baseUrl: "https://credential-endpoint.test" });
     const ephemerals: unknown[] = [];
     const outcome = await modelCallExecutor.execute({
       descriptor: descriptor({ modelSpec: providerModel as never }),
       state: initialAgentState({ channelId: "channel-1", config }),
       signal: new AbortController().signal,
-      deps: deps(),
+      deps: inputDeps,
       onEphemeral: (event) => ephemerals.push(event),
     });
 
@@ -925,6 +930,7 @@ describe("modelCallExecutor", () => {
     expect(outcome).toMatchObject({
       kind: "model",
       stopReason: "completed",
+      metadata: { pi: { providerThinkingLevel: "medium" } },
       blocks: [
         {
           type: "thinking",
@@ -945,6 +951,15 @@ describe("modelCallExecutor", () => {
     expect(mocks.releaseOpenAICodexWebSocketSession).toHaveBeenCalledWith(
       "channel-1:agent:self:turn-1:test:model",
     );
+  });
+
+  it("restores the provider effort recorded on a historical assistant message", () => {
+    expect(toPiMessages([{
+      role: "assistant",
+      blocks: [{ type: "text", content: "done" }],
+      metadata: { pi: { providerThinkingLevel: "medium" } },
+      model: { provider: "anthropic", api: "anthropic-messages", model: "claude-opus-5-5" },
+    }])[0]).toMatchObject({ role: "assistant", providerThinkingLevel: "medium" });
   });
 
   it("reuses a provider session only while tool calls keep the same turn active", async () => {

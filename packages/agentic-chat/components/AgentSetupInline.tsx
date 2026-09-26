@@ -23,6 +23,7 @@ export function AgentSetupInline() {
     defaultAgentConfig,
     onSaveDefaults,
     onInstallLocalModel,
+    onConnectModelProvider,
     onOpenLocalModels,
     onOpenLocalModelsLog,
   } = useChatContext();
@@ -121,6 +122,7 @@ export function AgentSetupInline() {
               showReactiveness={false}
               showHandle={false}
               onOpenServerLog={onOpenLocalModelsLog}
+              onConnectModelProvider={onConnectModelProvider}
             />
             {modelSelectionRequired && selectedModel ? (
               <ModelSetupStatus
@@ -164,7 +166,7 @@ export function AgentSetupInline() {
         {!modelSelectionRequired && (
           <Flex align="center" gap="1">
             <Text size="2" color="gray">
-              Nothing to configure — just type a message below to start
+              {canStart ? "Type a message below to start" : "Connect your provider above, then send a message to start"}
             </Text>
             <ArrowDownIcon width="14" height="14" style={{ color: "var(--gray-10)" }} />
           </Flex>

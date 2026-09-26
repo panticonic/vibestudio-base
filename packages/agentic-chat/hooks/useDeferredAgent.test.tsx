@@ -460,7 +460,7 @@ describe("useDeferredAgent", () => {
     expect(result.current.deferredAgent?.launching).toBe(false);
   });
 
-  it("launches a connectable cloud agent before its credential is configured", async () => {
+  it("keeps the opening message queued until provider connection completes", async () => {
     const m = freshMocks();
     const needsSetupCatalog: ModelCatalog = {
       providers: [],
@@ -480,7 +480,7 @@ describe("useDeferredAgent", () => {
       defaultModelRef: WORKSPACE_MODEL,
       defaultAgentConfig: { model: WORKSPACE_MODEL },
     };
-    const { result } = renderHook((p: Params) => useDeferredAgent(p), {
+    const { result, rerender } = renderHook((p: Params) => useDeferredAgent(p), {
       initialProps: makeParams(m, {
         ...configured,
         modelCatalog: needsSetupCatalog,
@@ -494,6 +494,9 @@ describe("useDeferredAgent", () => {
 
     act(() => result.current.deferredAgent?.startQueued());
 
+    expect(m.onAddAgent).not.toHaveBeenCalled();
+    rerender(makeParams(m, { ...configured, firstAgentModelPreflight: "selection-required", modelCatalog: { ...needsSetupCatalog, models: needsSetupCatalog.models.map((model) => ({ ...model, availability: { state: "ready", detail: "credentialed" } })) } }));
+    act(() => result.current.deferredAgent?.startQueued());
     await waitFor(() => expect(m.onAddAgent).toHaveBeenCalledTimes(1));
     expect(m.onAddAgent).toHaveBeenCalledWith(
       undefined,

@@ -100,6 +100,32 @@ describe("model fetch proxy websocket preparation", () => {
     expect(new Headers(init?.headers).get("authorization")).toBeNull();
   });
 
+  it.each(["authorization", "x-api-key", "x-goog-api-key"])(
+    "routes and removes the %s credential sentinel",
+    async (header) => {
+      const direct = vi.fn(async () => new Response("direct"));
+      globalThis.fetch = direct as typeof fetch;
+      const routeFetcher = vi.fn(
+        async (_url: string, _init?: RequestInit) => new Response("proxied")
+      );
+      installUrlBoundModelFetchProxy("https://api.anthropic.com", routeFetcher);
+      const sentinel = createModelCredentialSentinel();
+      await globalThis.fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: {
+          [header]: header === "authorization" ? `Bearer ${sentinel}` : sentinel,
+          "anthropic-beta": "oauth-2025-04-20",
+        },
+        body: "{}",
+      });
+      expect(direct).not.toHaveBeenCalled();
+      expect(routeFetcher).toHaveBeenCalledOnce();
+      const headers = new Headers(routeFetcher.mock.calls[0]![1]?.headers);
+      expect(headers.get(header)).toBeNull();
+      expect(headers.get("anthropic-beta")).toBe("oauth-2025-04-20");
+    }
+  );
+
   it("aligns ChatGPT Codex SSE requests with the credential's OAuth client", async () => {
     globalThis.fetch = vi.fn(async () => new Response("direct")) as unknown as typeof fetch;
     const routeFetcher = vi.fn(

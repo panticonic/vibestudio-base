@@ -253,6 +253,9 @@ export function applyEvent(
             typeof payload["outcome"] === "string"
               ? (payload["outcome"] as string)
               : undefined,
+          ...(payload["metadata"] && typeof payload["metadata"] === "object" && !Array.isArray(payload["metadata"])
+            ? { metadata: payload["metadata"] as Record<string, unknown> }
+            : {}),
           ...(modelRequest
             ? {
                 model: {

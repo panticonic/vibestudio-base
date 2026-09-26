@@ -1,3 +1,4 @@
+import { toCredentialConnectRequest } from "@workspace/model-catalog/providerConnect";
 /**
  * Agentic Chat Panel
  *
@@ -1144,6 +1145,15 @@ export default function ChatPanel() {
     [availableAgents, buildSubscribeConfig, resolveWorkspaceDefaultAgentConfig]
   );
 
+  const handleConnectModelProvider = useCallback(async (modelRef: string, method: string, browser: "internal" | "external", signal: AbortSignal, configuration?: Record<string, string>) => {
+    const model = catalogRef.current?.models.find((entry) => entry.ref === modelRef);
+    if (!model || !model.connectable) throw new Error("This model requires provider configuration before connecting.");
+    const request = toCredentialConnectRequest(model.provider, { method, browser, configuration });
+    if (!request) throw new Error("This sign-in method is unavailable. Choose another method.");
+    await rpc.call("main", "credentials.connect", [request], { signal });
+    await loadModelSettings(true);
+  }, [loadModelSettings]);
+
   const handleInstallLocalModel = useCallback(
     async (modelRef: string): Promise<ModelSetupResult> => {
       try {
@@ -1235,6 +1245,7 @@ export default function ChatPanel() {
       onPrepareAgent: handlePrepareAgent,
       onReplaceAgent: handleReplaceAgent,
       onInstallLocalModel: handleInstallLocalModel,
+      onConnectModelProvider: handleConnectModelProvider,
       onPersistAgentModel: handlePersistAgentModel,
       onSaveDefaults: saveDefaultAgentConfig,
       onRemoveAgent: handleRemoveAgent,
@@ -1264,6 +1275,7 @@ export default function ChatPanel() {
       handlePrepareAgent,
       handleReplaceAgent,
       handleInstallLocalModel,
+      handleConnectModelProvider,
       handlePersistAgentModel,
       saveDefaultAgentConfig,
       handleRemoveAgent,

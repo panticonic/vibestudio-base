@@ -1,8 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  createTestDO,
-  createTestDirectAuthority,
-} from "@workspace/runtime/worker/test-utils";
+import { createTestDO, createTestDirectAuthority } from "@workspace/runtime/worker/test-utils";
 import type { DirectAuthorityAttestation } from "@vibestudio/rpc/internal";
 import type { WorkspaceConfig } from "@workspace/runtime/worker";
 import {
@@ -15,7 +12,12 @@ import {
 import type { LocalModelEntry } from "@workspace/model-catalog/localModels";
 import { makeTestCatalogEntry } from "@workspace/model-catalog/testing";
 import type { StoredCredentialSummary } from "@vibestudio/credential-client";
-import { getModelCatalog, localEntryToCatalogEntry, ModelSettingsDO } from "./index.js";
+import {
+  applyCloudAvailability,
+  getModelCatalog,
+  localEntryToCatalogEntry,
+  ModelSettingsDO,
+} from "./index.js";
 import { WORKSPACE_SYSTEM_EPOCH } from "@vibestudio/shared/vcs/systemEpoch";
 
 const BASE_CONFIG = { id: "test", systemEpoch: WORKSPACE_SYSTEM_EPOCH } as const;
@@ -209,9 +211,9 @@ function websiteCaller(method: string) {
       authorizingOrigin: { kind: "website", principal: subject } as const,
       executingCode: null,
       subjectBinding: binding,
-        website: {
-          subject,
-          userId,
+      website: {
+        subject,
+        userId,
         workspaceId: "test",
         origin: "https://example.com",
         binding,
@@ -250,28 +252,23 @@ describe("ModelSettingsDO", () => {
 
     const catalog = await callAs<ModelCatalog>(websiteCaller("listCatalog"), "listCatalog");
     const settings = await callAs(websiteCaller("getSettings"), "getSettings");
-    const defaultModel = await callAs(
-      websiteCaller("getDefaultModel"),
-      "getDefaultModel",
-    );
-    const inspected = await callAs(
-      websiteCaller("inspectModels"),
-      "inspectModels",
-      ["openai:gpt-5"],
-    );
+    const defaultModel = await callAs(websiteCaller("getDefaultModel"), "getDefaultModel");
+    const inspected = await callAs(websiteCaller("inspectModels"), "inspectModels", [
+      "openai:gpt-5",
+    ]);
 
     expect(catalog.models).toHaveLength(2);
     expect(settings).toMatchObject({ catalog: { models: expect.any(Array) } });
     expect(defaultModel).toMatchObject({ catalog: { models: expect.any(Array) } });
     expect(inspected).toMatchObject({ models: [{ ref: "openai:gpt-5" }] });
     expect(JSON.stringify({ catalog, settings, defaultModel, inspected })).not.toMatch(
-      /authorization|api[-_]?key|bearer\s|client[-_]?secret|access[-_]?token|refresh[-_]?token/iu,
+      /authorization|api[-_]?key|bearer\s|client[-_]?secret|access[-_]?token|refresh[-_]?token/iu
     );
 
     await expect(
       callAs(websiteCaller("setDefaultAgentConfig"), "setDefaultAgentConfig", {
         model: "openai:gpt-5",
-      }),
+      })
     ).rejects.toThrow(/receiver is closed to websites/);
   });
 
@@ -340,16 +337,16 @@ describe("ModelSettingsDO", () => {
     });
   });
 
-  it("projects the Codex 5.6 Sol registry entry and all enabled effort levels", async () => {
+  it("projects the Codex 6 Sol registry entry and all enabled effort levels", async () => {
     const catalog = await getModelCatalog();
     const sol = catalog.models.find((model) => model.ref === DEFAULT_AGENT_MODEL_REF);
 
-    expect(DEFAULT_AGENT_MODEL_REF).toBe("openai-codex:gpt-5.6-sol");
+    expect(DEFAULT_AGENT_MODEL_REF).toBe("openai-codex:gpt-6-sol");
     expect(catalog.providers.find((provider) => provider.id === "openai-codex")?.label).toBe(
-      "GPT Codex"
+      "ChatGPT"
     );
     expect(sol).toMatchObject({
-      id: "gpt-5.6-sol",
+      id: "gpt-6-sol",
       provider: "openai-codex",
       contextWindow: 272_000,
       thinkingLevels: ["minimal", "low", "medium", "high", "xhigh", "max"],
@@ -654,4 +651,59 @@ describe("ModelSettingsDO", () => {
       "Unknown model ref: missing:model"
     );
   });
+});
+
+it("resolves account-specific endpoint templates without exposing secret material", () => {
+  const baseUrl = "https://api.cloudflare.com/client/v4/accounts/{CLOUDFLARE_ACCOUNT_ID}/ai/v1";
+  const expected = "https://api.cloudflare.com/client/v4/accounts/account123/ai/v1";
+  const credential = {
+    ...storedCredential("cloudflare", expected),
+    metadata: {
+      modelProviderId: "cloudflare-workers-ai",
+      modelAuthMethod: "api-key",
+      modelProviderConfig: JSON.stringify({ CLOUDFLARE_ACCOUNT_ID: "account123" }),
+    },
+  };
+  const entry = makeTestCatalogEntry({
+    ref: "cloudflare-workers-ai:model",
+    id: "model",
+    name: "Test model",
+    provider: "cloudflare-workers-ai",
+    baseUrl,
+    availability: { state: "needs-setup", detail: "no-credential" },
+  });
+  expect(applyCloudAvailability(entry, [credential], "provider-credentials")).toMatchObject({
+    baseUrl: expected,
+    modelSpec: { baseUrl: expected },
+    availability: { state: "ready" },
+    connection: { configuration: { CLOUDFLARE_ACCOUNT_ID: "account123" } },
+  });
+});
+
+it("shows account model restrictions instead of marking every Copilot model ready", () => {
+  const baseUrl = "https://api.individual.githubcopilot.com";
+  const credential = {
+    ...storedCredential("copilot", baseUrl),
+    metadata: {
+      modelProviderId: "github-copilot",
+      modelAvailableIds: JSON.stringify(["gpt-6-sol"]),
+    },
+  };
+  const entry = makeTestCatalogEntry({
+    ref: "github-copilot:claude-opus-5-5",
+    name: "Claude Opus 5.5",
+    id: "claude-opus-5-5",
+    provider: "github-copilot",
+    baseUrl,
+  });
+  expect(
+    applyCloudAvailability(entry, [credential], "provider-credentials").availability
+  ).toMatchObject({
+    state: "error",
+    message: expect.stringContaining("not available with your connected provider account"),
+  });
+  expect(
+    applyCloudAvailability({ ...entry, id: "gpt-6-sol" }, [credential], "provider-credentials")
+      .availability.state
+  ).toBe("ready");
 });

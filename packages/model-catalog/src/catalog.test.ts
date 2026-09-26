@@ -30,14 +30,14 @@ describe("isModelUsable", () => {
 });
 
 describe("isModelAgentLaunchable", () => {
-  it("allows a connectable remote model to park for agent-owned credential setup", () => {
+  it("waits for provider connection before starting a remote model", () => {
     expect(
       isModelAgentLaunchable({
         provider: "openai-codex",
         connectable: true,
         availability: { state: "needs-setup", detail: "no-credential" },
       })
-    ).toBe(true);
+    ).toBe(false);
   });
 
   it("still blocks uninstalled local and non-connectable remote models", () => {

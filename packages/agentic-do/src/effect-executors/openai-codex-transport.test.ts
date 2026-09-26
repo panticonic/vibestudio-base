@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { Context, Model } from "@workspace/pi-ai";
+import { normalizeContext } from "@workspace/pi-ai/utils/transcript";
+import type { Model } from "@workspace/pi-ai";
 import {
   getOpenAICodexWebSocketDebugStats,
   releaseOpenAICodexWebSocketSession,
@@ -19,7 +20,7 @@ const model = {
   maxTokens: 128_000,
 } satisfies Model<"openai-codex-responses">;
 
-const context: Context = { messages: [] };
+const context = normalizeContext({ messages: [] });
 const apiKey = [
   btoa(JSON.stringify({ alg: "none" })),
   btoa(

@@ -1,3 +1,4 @@
+import { getProviderConnectPreset } from "@workspace/model-catalog/providerConnect";
 /**
  * Two-step provider/model selection for agent setup.
  *
@@ -353,7 +354,7 @@ export function ModelPicker({
               <Select.Item key={provider.id} value={provider.id}>
                 {provider.label}
                 {provider.id === recommendedProviderId ? " — Recommended" : ""}
-                {provider.id === LOCAL_PROVIDER_ID ? " — Experimental" : ""}
+                {provider.id === LOCAL_PROVIDER_ID ? " — Experimental" : models.some((model) => model.provider === provider.id && model.availability.state === "ready") ? " — Connected" : " — Not connected"}
               </Select.Item>
             ))}
           </Select.Content>
@@ -363,7 +364,7 @@ export function ModelPicker({
             ? "Recommended for this workspace"
             : selectedProvider?.id === LOCAL_PROVIDER_ID
               ? "Runs on this device; local inference is experimental"
-              : "Choose where model requests are handled"}
+              : getProviderConnectPreset(selectedProvider?.id ?? "")?.methods.map((method) => method.label).join(" · ") || "Choose where model requests are handled"}
         </Text>
       </Flex>
 

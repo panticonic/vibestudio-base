@@ -325,6 +325,7 @@ describe("fold: an agent only owns turns it authored", () => {
         {
           role: "assistant",
           blocks: [{ type: "thinking", content: "durable reasoning" }],
+          metadata: { pi: { providerThinkingLevel: "medium" } },
           outcome: "completed",
         },
         { messageId: "m:model-identity", turnId: "turn:model-identity" },
@@ -335,6 +336,7 @@ describe("fold: an agent only owns turns it authored", () => {
     expect(state.entries.at(-1)).toMatchObject({
       kind: "assistant",
       messageId: "m:model-identity",
+      metadata: { pi: { providerThinkingLevel: "medium" } },
       model: {
         provider: modelRequest.provider,
         api: modelRequest.modelSpec.api,

@@ -18,6 +18,7 @@ export interface ModelMessage {
   toolName?: string;
   isError?: boolean;
   model?: AssistantModelIdentity;
+  metadata?: Record<string, unknown>;
 }
 
 export function buildModelContext(
@@ -152,6 +153,7 @@ function modelMessageFromEntry(
         role: "assistant",
         blocks: entry.blocks,
         ...(entry.model ? { model: entry.model } : {}),
+        ...(entry.metadata ? { metadata: entry.metadata } : {}),
       };
     }
     case "tool-result":
