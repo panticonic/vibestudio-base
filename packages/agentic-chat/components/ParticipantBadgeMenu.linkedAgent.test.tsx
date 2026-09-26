@@ -19,9 +19,9 @@ function participant(
     id: "do:linked:1",
     ref: { kind: "agent", id: "do:linked:1", participantId: "do:linked:1" },
     metadata: {
-      name: "Claude Code",
+      name: "External reviewer",
       type: "agent",
-      handle: "claude-code",
+      handle: "external-reviewer",
       ...metadata,
     } as ChatParticipantMetadata,
   };
@@ -53,17 +53,17 @@ describe("ParticipantBadgeMenu — linked agent", () => {
     expect(screen.getByTitle("Alice — idle")).toBeTruthy();
   });
 
-  it("renders a Claude Code kind badge for a linked agent participant", () => {
+  it("renders an external reviewer kind badge for a linked agent participant", () => {
     render(
       <Theme>
         <ParticipantBadgeMenu
-          participant={participant({ agentKind: "claude-code", linkedAttachment: "attached" })}
+          participant={participant({ agentKind: "External reviewer", linkedAttachment: "attached" })}
           hasActiveMessage={false}
           onCallMethod={vi.fn()}
         />
       </Theme>
     );
-    expect(screen.getByText("Claude Code")).toBeTruthy();
+    expect(screen.getByText("External reviewer")).toBeTruthy();
     // Attached → the badge advertises the online state via its title.
     expect(screen.getByTitle(/online \(attached\)/i)).toBeTruthy();
   });
@@ -72,13 +72,13 @@ describe("ParticipantBadgeMenu — linked agent", () => {
     render(
       <Theme>
         <ParticipantBadgeMenu
-          participant={participant({ linkedAgent: true, linkedAttachment: "detached" })}
+          participant={participant({ linkedAgent: true, agentKind: "External reviewer", linkedAttachment: "detached" })}
           hasActiveMessage={false}
           onCallMethod={vi.fn()}
         />
       </Theme>
     );
-    expect(screen.getByText("Claude Code")).toBeTruthy();
+    expect(screen.getByText("External reviewer")).toBeTruthy();
     expect(screen.getByTitle(/offline \(detached\)/i)).toBeTruthy();
   });
 
@@ -92,6 +92,6 @@ describe("ParticipantBadgeMenu — linked agent", () => {
         />
       </Theme>
     );
-    expect(screen.queryByText("Claude Code")).toBeNull();
+    expect(screen.queryByText("External reviewer")).toBeNull();
   });
 });

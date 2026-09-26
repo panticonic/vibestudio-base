@@ -1542,11 +1542,7 @@ export abstract class AgentWorkerBase extends AgentVesselBase {
                 "overrides use model and thinkingLevel " +
                 "('minimal'|'low'|'medium'|'high'|'xhigh'|'max'), plus optional approvalLevel, " +
                 "respondPolicy, handle, and system-prompt settings. Do not use effort for Pi. " +
-                "For external kinds it maps to the launcher's CLI — claude-code supports model " +
-                "(alias like 'opus'/'sonnet' or a full model name), effort " +
-                "('low'|'medium'|'high'|'xhigh'|'max'), permissionMode ('auto' by default — the " +
-                "child runs autonomously; also 'acceptEdits'|'bypassPermissions'|'manual'|'dontAsk'|'plan'), " +
-                "fallbackModel, and maxBudgetUsd (number). Unknown keys are ignored.",
+                "For external kinds, consult the launcher extension's supported configuration.",
               properties: {
                 model: {
                   type: "string",
@@ -1559,18 +1555,10 @@ export abstract class AgentWorkerBase extends AgentVesselBase {
                   description:
                     "Pi child reasoning level. External launchers ignore this field.",
                 },
-                effort: {
-                  type: "string",
-                  enum: ["low", "medium", "high", "xhigh", "max"],
-                  description:
-                    "External-launcher effort. Pi children ignore this field.",
-                },
                 approvalLevel: { type: "integer", minimum: 0, maximum: 3 },
                 respondPolicy: { type: "string" },
                 handle: { type: "string" },
-                permissionMode: { type: "string" },
                 fallbackModel: { type: "string" },
-                maxBudgetUsd: { type: "number", exclusiveMinimum: 0 },
               },
               additionalProperties: true,
             },

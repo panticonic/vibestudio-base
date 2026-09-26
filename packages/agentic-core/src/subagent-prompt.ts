@@ -4,7 +4,7 @@
  *
  * Shared here (not in agentic-do) because it has two consumers that must not
  * drift: the in-process Pi vessel composes it into the child's stable system
- * prompt, and external launcher extensions (e.g. claude-code) render it into
+ * prompt, and external launcher extensions render it into
  * the launch profile so the bridge can surface it as MCP server instructions.
  */
 

@@ -1,6 +1,5 @@
 export function agentLabel(kind?: string): string {
   switch (kind) {
-    case "claude-code": return "Claude Code";
     case "codex": return "Codex";
     case "aider": return "Aider";
     case "opencode": return "OpenCode";

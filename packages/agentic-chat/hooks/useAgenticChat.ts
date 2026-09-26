@@ -1529,7 +1529,6 @@ Use package imports available to inline_ui plus relative imports for local helpe
   const onNewConversation = actions?.onNewConversation;
   const onListTaskRules = actions?.onListTaskRules;
   const onResetTaskRules = actions?.onResetTaskRules;
-  const onOpenClaudeCode = actions?.onOpenClaudeCode;
   const onOpenLocalModelsLog = actions?.onOpenLocalModelsLog;
   const onOpenLocalModels = actions?.onOpenLocalModels;
 
@@ -1671,7 +1670,6 @@ Use package imports available to inline_ui plus relative imports for local helpe
       onNewConversation,
       onListTaskRules,
       onResetTaskRules,
-      onOpenClaudeCode,
       onOpenLocalModelsLog,
       onOpenLocalModels,
       toolApproval: chatTools.toolApprovalValue,
@@ -1752,7 +1750,6 @@ Use package imports available to inline_ui plus relative imports for local helpe
       onNewConversation,
       onListTaskRules,
       onResetTaskRules,
-      onOpenClaudeCode,
       onOpenLocalModelsLog,
       onOpenLocalModels,
       chatTools.toolApprovalValue,

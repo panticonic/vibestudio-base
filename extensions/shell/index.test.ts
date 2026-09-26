@@ -462,17 +462,17 @@ describe("@workspace-extensions/shell", () => {
 
   it("tags an agent only when it is the launched executable", async () => {
     const { api, root } = await makeApi("allow");
-    const claude = join(root, "claude");
-    await symlink(process.execPath, claude);
+    const codex = join(root, "codex");
+    await symlink(process.execPath, codex);
     const { sessionId } = await api.open({
-      command: claude,
+      command: codex,
       args: ["--version"],
     });
     await api.awaitExit(sessionId);
     const info = await api.get(sessionId);
     expect(info.detectedAgent).toEqual({
-      kind: "claude-code",
-      title: "Claude Code",
+      kind: "codex",
+      title: "Codex",
     });
   });
 
@@ -480,8 +480,8 @@ describe("@workspace-extensions/shell", () => {
     const { api } = await makeApi("allow");
     const { sessionId } = await api.open({
       command: "node",
-      args: ["-e", "process.exit(0)", "claude"],
-      label: "Claude Code",
+      args: ["-e", "process.exit(0)", "codex"],
+      label: "Codex",
     });
     await api.awaitExit(sessionId);
     const info = await api.get(sessionId);

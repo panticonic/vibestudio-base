@@ -508,8 +508,6 @@ export interface ChatContextValue {
   onOpenChannel?: (channelId: string, opts?: { focusMessageId?: string }) => Promise<void> | void;
   /** Start a fresh conversation (surfaced for the command palette). */
   onNewConversation?: (options?: NewConversationOptions) => void | Promise<void>;
-  /** Launch Claude Code as a linked agent in this conversation (§4.3). */
-  onOpenClaudeCode?: (channelId: string) => Promise<void> | void;
   /** Open the Local Models panel focused on a server's log (item 6) — wired
    *  from a local model's red error dot in the picker. */
   onOpenLocalModelsLog?: (server: "utility" | "main") => void;

@@ -46,7 +46,6 @@ afterEach(() => {
 describe("shared conversation action model", () => {
   it("derives handles and agent actions once for both renderers", () => {
     const onReplaceAgent = vi.fn();
-    const onOpenClaudeCode = vi.fn(async () => undefined);
     const onRemoveAgent = vi.fn();
     const onDebugConsoleChange = vi.fn();
     chatContext.value = {
@@ -54,7 +53,6 @@ describe("shared conversation action model", () => {
       messages: [],
       deferredAgent: { active: false },
       onReplaceAgent,
-      onOpenClaudeCode,
     };
     const participants = {
       "user:one": {
@@ -85,7 +83,6 @@ describe("shared conversation action model", () => {
     ]);
     expect(controller?.agents.map(({ handle }) => handle)).toEqual(["helper"]);
     expect(controller?.agentActionLabel).toBe("Switch agent");
-    expect(controller?.canOpenClaudeCode).toBe(true);
 
     act(() => controller?.openAddAgent());
     expect(controller?.addAgentOpen).toBe(true);
@@ -97,7 +94,5 @@ describe("shared conversation action model", () => {
     vi.spyOn(window, "confirm").mockReturnValue(true);
     expect(controller?.requestRemoveAgent("helper")).toBe(true);
     expect(onRemoveAgent).toHaveBeenCalledWith("helper");
-    controller?.openClaudeCode();
-    expect(onOpenClaudeCode).toHaveBeenCalledWith("channel:one");
   });
 });

@@ -107,15 +107,6 @@ export function ChatNativeActionsDialog({ open, onOpenChange }: ChatNativeAction
                     {actions.agentActionLabel}
                   </Button>
                 ) : null}
-                {actions.canOpenClaudeCode ? (
-                  <Button
-                    size="2"
-                    variant="soft"
-                    onClick={() => leaveDialog(actions.openClaudeCode)}
-                  >
-                    Open Claude Code
-                  </Button>
-                ) : null}
               </Flex>
             </Flex>
 

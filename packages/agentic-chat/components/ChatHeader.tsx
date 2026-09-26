@@ -466,11 +466,6 @@ function ChatHeaderOverflowMenu({
               {actions.agentActionLabel}
             </DropdownMenu.Item>
           )}
-          {actions.canOpenClaudeCode && (
-            <DropdownMenu.Item onSelect={actions.openClaudeCode}>
-              Open Claude Code
-            </DropdownMenu.Item>
-          )}
           {toolApproval && (
             <ToolPermissionsDropdown
               variant="submenu"

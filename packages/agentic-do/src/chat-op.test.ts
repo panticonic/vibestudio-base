@@ -2806,7 +2806,7 @@ class SubagentSpawnProbe extends TestVessel {
   childSettings: Record<string, unknown> = {};
   readonly vcsResponses = new Map<string, unknown[]>();
   gadLogHead: Record<string, unknown> | null = null;
-  failClaudeLaunch = false;
+  failExternalLaunch = false;
   failExternalReleaseCount = 0;
   failDestroyContextCount = 0;
   ownerRuntimeContextId = "ctx-1";
@@ -2911,17 +2911,17 @@ class SubagentSpawnProbe extends TestVessel {
             inherited: 0,
           };
         }
-        if (target === "main" && method === "extensions.invokeProvider") {
+        if (target === "main" && method === "extensions.invoke") {
           const [provider, providerMethod] = args as [
             string,
             string,
             unknown[],
           ];
           if (
-            provider === "claudeCode" &&
+            provider === "@workspace-extensions/external-reviewer" &&
             providerMethod === "launchSubagent"
           ) {
-            if (this.failClaudeLaunch) throw new Error("launchSubagent boom");
+            if (this.failExternalLaunch) throw new Error("launchSubagent boom");
             return {
               entityId: "session:cc-1",
               contextId: "ctx-child",
@@ -2931,24 +2931,24 @@ class SubagentSpawnProbe extends TestVessel {
               vesselEntityId:
                 "do:workers/linked-agent:LinkedAgentWorker:linked:session-cc-1",
               vesselParticipantId: "participant-linked",
-              launchId: "claude-code:inv-cc",
+              launchId: "external-reviewer:inv-cc",
               generationId: "generation:cc-1",
               pid: 4242,
               logPath: "/state/agent-launch/session:cc-1/headless.log",
             };
           }
-          if (provider === "claudeCode" && providerMethod === "release") {
+          if (provider === "@workspace-extensions/external-reviewer" && providerMethod === "release") {
             if (this.failExternalReleaseCount > 0) {
               this.failExternalReleaseCount -= 1;
               throw new Error("release boom");
             }
             return { released: true };
           }
-          if (provider === "claudeCode" && providerMethod === "interrupt") {
+          if (provider === "@workspace-extensions/external-reviewer" && providerMethod === "interrupt") {
             return { interrupted: true };
           }
           if (
-            provider === "claudeCode" &&
+            provider === "@workspace-extensions/external-reviewer" &&
             providerMethod === "continueSubagent"
           ) {
             return {
@@ -2960,12 +2960,12 @@ class SubagentSpawnProbe extends TestVessel {
               vesselEntityId:
                 "do:workers/linked-agent:LinkedAgentWorker:linked:session-cc-1",
               vesselParticipantId: "participant-linked",
-              launchId: "claude-code:inv-cc",
+              launchId: "external-reviewer:inv-cc",
               generationId: "generation:cc-1",
               pid: 4243,
             };
           }
-          if (provider === "claudeCode" && providerMethod === "inspectLaunch") {
+          if (provider === "@workspace-extensions/external-reviewer" && providerMethod === "inspectLaunch") {
             return {
               entityId: "session:cc-1",
               generationId: "generation:cc-1",
@@ -5167,15 +5167,15 @@ describe("AgentVesselBase.runDeferredSpawn", () => {
     });
   });
 
-  it("agentKind:'claude-code' prepares the linked vessel and headless-launches via the supervisor", async () => {
+  it("agentKind:'external-reviewer' prepares the linked vessel and headless-launches via the supervisor", async () => {
     const probe = await makeSubagentSpawnProbe();
 
     const out = await probe.spawnForTest(CHANNEL, "inv-cc", {
       mode: "fresh",
-      agentKind: "claude-code",
+      agentKind: "external-reviewer",
       label: "cc audit",
       task: "audit the repo",
-      config: { model: "opus", effort: "high" },
+      config: { model: "review-model", reviewDepth: "thorough" },
     });
 
     expect(out).toMatchObject({
@@ -5184,19 +5184,19 @@ describe("AgentVesselBase.runDeferredSpawn", () => {
         details: {
           runId: "inv-cc",
           status: "running",
-          agentKind: "claude-code",
+          agentKind: "external-reviewer",
           taskChannelId: "task-inv-cc",
           contextId: "ctx-child",
         },
       },
     });
 
-    // Run row records the claude-code kind, the linked vessel as childEntityId
+    // Run row records the external-reviewer kind, the linked vessel as childEntityId
     // (its complete-caller identity), and the external session entity to release.
     expect(probe.subagentRunForTest("inv-cc")).toMatchObject({
       runId: "inv-cc",
       status: "running",
-      agentKind: "claude-code",
+      agentKind: "external-reviewer",
       childEntityId:
         "do:workers/linked-agent:LinkedAgentWorker:linked:session-cc-1",
       childParticipantId: "participant-linked",
@@ -5209,11 +5209,11 @@ describe("AgentVesselBase.runDeferredSpawn", () => {
     // subagent duty and the task; argv/cwd/env stay private to the extension.
     const launchCall = probe.rpcCalls.find(
       (c) =>
-        c.method === "extensions.invokeProvider" &&
+        c.method === "extensions.invoke" &&
         (c.args[1] as string) === "launchSubagent",
     );
     expect(launchCall).toBeDefined();
-    expect(launchCall!.args[0]).toBe("claudeCode");
+    expect(launchCall!.args[0]).toBe("@workspace-extensions/external-reviewer");
     const launchArg = (launchCall!.args[2] as unknown[])[0] as {
       channelId: string;
       options?: Record<string, unknown>;
@@ -5228,7 +5228,7 @@ describe("AgentVesselBase.runDeferredSpawn", () => {
     expect(launchArg.channelId).toBe("task-inv-cc");
     // The spawn `config` reaches the launcher as CLI options (the extension
     // whitelists what its CLI supports).
-    expect(launchArg.options).toEqual({ model: "opus", effort: "high" });
+    expect(launchArg.options).toEqual({ model: "review-model", reviewDepth: "thorough" });
     expect(launchArg.subagent).toMatchObject({
       runId: "inv-cc",
       task: "audit the repo",
@@ -5253,10 +5253,10 @@ describe("AgentVesselBase.runDeferredSpawn", () => {
     const probe = await makeSubagentSpawnProbe();
     await probe.spawnForTest(CHANNEL, "inv-cc", {
       mode: "fresh",
-      agentKind: "claude-code",
+      agentKind: "external-reviewer",
       label: "cc audit",
       task: "audit the repo",
-      config: { model: "opus", effort: "high" },
+      config: { model: "review-model", reviewDepth: "thorough" },
     });
     await probe.reportSubagentForTest("inv-cc", "First report.", "success");
 
@@ -5271,9 +5271,9 @@ describe("AgentVesselBase.runDeferredSpawn", () => {
     );
     expect(probe.rpcCalls).toContainEqual({
       target: "main",
-      method: "extensions.invokeProvider",
+      method: "extensions.invoke",
       args: [
-        "claudeCode",
+        "@workspace-extensions/external-reviewer",
         "continueSubagent",
         [
           {
@@ -5281,7 +5281,7 @@ describe("AgentVesselBase.runDeferredSpawn", () => {
             generationId: "generation:cc-1",
             messageId: "subagent-followup:send-test",
             prompt: "Check the follow-up.",
-            options: { model: "opus", effort: "high" },
+            options: { model: "review-model", reviewDepth: "thorough" },
           },
         ],
       ],
@@ -5338,11 +5338,11 @@ describe("AgentVesselBase.runDeferredSpawn", () => {
 
   it("tears down the child context when the Claude extension launch fails during setup", async () => {
     const probe = await makeSubagentSpawnProbe();
-    probe.failClaudeLaunch = true;
+    probe.failExternalLaunch = true;
 
     const out = await probe.spawnForTest(CHANNEL, "inv-cc", {
       mode: "fresh",
-      agentKind: "claude-code",
+      agentKind: "external-reviewer",
       task: "audit the repo",
     });
 
@@ -5378,7 +5378,7 @@ describe("AgentVesselBase.runDeferredSpawn", () => {
       probe.rpcCalls.some(
         (call) =>
           (call.method === "extensions.invoke" ||
-            call.method === "extensions.invokeProvider") &&
+            call.method === "extensions.invoke") &&
           call.args[1] === "inspectLaunch",
       ),
     ).toBe(false);

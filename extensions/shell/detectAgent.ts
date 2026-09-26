@@ -19,9 +19,6 @@ function executableName(value: string | undefined): string {
 export function detectAgent(argv: readonly string[]): DetectedAgent | undefined {
   const executable = executableName(argv[0]);
   switch (executable) {
-    case "claude":
-    case "claude-code":
-      return { kind: "claude-code", title: "Claude Code" };
     case "codex":
       return { kind: "codex", title: "Codex" };
     case "aider":
@@ -33,8 +30,6 @@ export function detectAgent(argv: readonly string[]): DetectedAgent | undefined 
       return { kind: "test-runner", title: "Tests" };
     case "vite":
       return { kind: "dev-server", title: "Dev server" };
-    case "vibestudio":
-      return argv[1] === "claude" ? { kind: "claude-code", title: "Claude Code" } : undefined;
     case "pnpm":
       return argv[1] === "test" ? { kind: "test-runner", title: "Tests" } : undefined;
     case "next":

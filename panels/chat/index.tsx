@@ -645,32 +645,6 @@ export default function ChatPanel() {
     void openLocalModelsCapability();
   }, [openLocalModelsCapability]);
 
-  // Use the explicit managed launcher. It prepares the channel identity,
-  // materializes the isolated profile, applies confinement, and releases the
-  // launch when Claude exits. A generic shell launch never acquires identity.
-  const handleOpenClaudeCode = useCallback(
-    async (channelId: string) => {
-      try {
-        if (!resolvedContextId) throw new Error("Conversation has no context");
-        await extensions.invoke("@workspace-extensions/shell", "open", [
-          {
-            contextId: resolvedContextId,
-            command: "vibestudio",
-            args: ["claude", "--channel", channelId],
-            label: "Claude Code"
-          }
-        ]);
-      } catch (err) {
-        void notifications.show({
-          type: "error",
-          title: "Open Claude Code failed",
-          message: err instanceof Error ? err.message : String(err)
-        });
-      }
-    },
-    [resolvedContextId]
-  );
-
   const handleActionBarFileChange = useCallback(
     (value: { path: string | null; props?: Record<string, unknown>; maxHeight?: number }) => {
       void panel.stateArgs.set({
@@ -1258,7 +1232,6 @@ export default function ChatPanel() {
       onFocusPanel: handleFocusPanel,
       onReloadPanel: handleReloadPanel,
       onOpenChannel: handleOpenChannel,
-      onOpenClaudeCode: handleOpenClaudeCode,
       onOpenLocalModelsLog: handleOpenLocalModelsLog,
       onOpenLocalModels: handleOpenLocalModels,
       onAttentionRequired: (title, message) => {
@@ -1288,7 +1261,6 @@ export default function ChatPanel() {
       handleFocusPanel,
       handleReloadPanel,
       handleOpenChannel,
-      handleOpenClaudeCode,
       handleOpenLocalModelsLog,
       handleOpenLocalModels,
       channelName,

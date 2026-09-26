@@ -25,14 +25,11 @@ extensions:
   - source: extensions/shell
   - source: extensions/templates
   - source: extensions/test-runner
-  - source: extensions/claude-code
 initPanels:
   - source: about/new
 providers:
   cdpClient:
     source: "@workspace/cdp-client"
-  claudeCode:
-    extension: extensions/claude-code
   evalEngine:
     source: "@workspace/eval"
   evalRuntime:
@@ -212,7 +209,6 @@ template:
     - about/templates
     - about/testbench
     - about/workspace
-    - extensions/claude-code
     - extensions/file-tools
     - extensions/git-bridge
     - extensions/image-service

@@ -201,14 +201,8 @@ export function ParticipantBadgeMenu({
     />
   ) : null;
 
-  // Linked-agent (Claude Code) kind badge + attach/detach presence dot
-  // (docs/claude-code-channels-plan.md §8.1). Rendered tolerantly: `agentKind`
-  // /`linkedAttachment` are optional metadata the linked-agent vessel advertises.
-  const linkedAgentKind =
-    participant.metadata.agentKind ??
-    (participant.metadata.linkedAgent ? "claude-code" : undefined);
   const linkedAttachment = participant.metadata.linkedAttachment;
-  const linkedKindLabel = linkedAgentKind === "claude-code" ? "Claude Code" : linkedAgentKind;
+  const linkedKindLabel = participant.metadata.agentKind;
   const linkedKindIndicator = linkedKindLabel ? (
     <Badge
       color="amber"

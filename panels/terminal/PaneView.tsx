@@ -9,7 +9,7 @@ import {
   TextField,
 } from "@radix-ui/themes";
 import { ArrowDownIcon } from "@radix-ui/react-icons";
-import { extensions, notifications, openExternal, openPanel } from "@workspace/runtime";
+import { notifications, openExternal } from "@workspace/runtime";
 import type { ReactNode } from "react";
 import { useEffect, useRef, useState } from "react";
 import { DropOverlay } from "./DropOverlay.js";
@@ -369,43 +369,6 @@ export function PaneView(props: {
     }
   }
 
-  // Jump from a context-scoped Claude Code session to its linked conversation
-  // (docs/claude-code-channels-plan.md §8.1). Resolve the channel from the
-  // context via the claude-code extension, then open the chat panel in that
-  // explicit workspace branch. The channel remains ordinary panel state.
-  const linkedContextId = props.session.contextId;
-  const canOpenLinkedChat =
-    props.session.detectedAgent?.kind === "claude-code" && Boolean(linkedContextId);
-  async function openLinkedConversation() {
-    if (!linkedContextId) return;
-    try {
-      const resolved = (await extensions.invokeProvider("claudeCode", "resolvePrimaryChannel", [
-        { contextId: linkedContextId },
-      ])) as { channelId?: string } | null;
-      if (!resolved?.channelId) {
-        void notifications.show({
-          type: "info",
-          title: "No linked conversation",
-          message: "This context has no primary conversation channel yet.",
-          ttl: 2500,
-        });
-        return;
-      }
-      await openPanel("panels/chat", {
-        focus: true,
-        contextId: linkedContextId,
-        stateArgs: { channelName: resolved.channelId },
-      });
-    } catch (err) {
-      console.error("[terminal] jump to conversation failed:", err);
-      void notifications.show({
-        type: "error",
-        title: "Could not open conversation",
-        ttl: 2500,
-      });
-    }
-  }
-
   async function handleFiles(files: File[]): Promise<boolean> {
     if (!files.length) return false;
     const items = await Promise.all(
@@ -626,7 +589,6 @@ export function PaneView(props: {
         onFind={() => setFindOpen(true)}
         onZoom={props.onZoom}
         onOpenScratch={props.onOpenScratch}
-        onOpenChat={canOpenLinkedChat ? () => void openLinkedConversation() : undefined}
       />
       <Dialog.Root open={renameOpen} onOpenChange={setRenameOpen}>
         <Dialog.Content maxWidth="420px">

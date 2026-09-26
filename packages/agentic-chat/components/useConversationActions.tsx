@@ -24,14 +24,12 @@ export interface ConversationActionsController {
   agents: ConversationParticipantAction[];
   canChangeAgent: boolean;
   agentActionLabel: "Add agent" | "Switch agent";
-  canOpenClaudeCode: boolean;
   canOpenDebugConsole: boolean;
   canRemoveAgent: boolean;
   openAddAgent(): void;
   openAgentSettings(participantId: string): void;
   openDebugConsole(handle: string): void;
   requestRemoveAgent(handle: string): boolean;
-  openClaudeCode(): void;
   addAgentOpen: boolean;
   setAddAgentOpen(open: boolean): void;
   settingsParticipantId: string | null;
@@ -45,7 +43,7 @@ export function useConversationActions({
   onRemoveAgent,
   onDebugConsoleChange,
 }: UseConversationActionsOptions): ConversationActionsController {
-  const { channelId, messages, deferredAgent, onAddAgent, onReplaceAgent, onOpenClaudeCode } =
+  const { messages, deferredAgent, onAddAgent, onReplaceAgent } =
     useChatContext();
   const [addAgentOpen, setAddAgentOpen] = useState(false);
   const [settingsParticipantId, setSettingsParticipantId] = useState<string | null>(null);
@@ -75,7 +73,6 @@ export function useConversationActions({
     agents,
     canChangeAgent,
     agentActionLabel,
-    canOpenClaudeCode: !!onOpenClaudeCode && !!channelId,
     canOpenDebugConsole: !!onDebugConsoleChange,
     canRemoveAgent: !!onRemoveAgent,
     openAddAgent: () => setAddAgentOpen(true),
@@ -87,9 +84,6 @@ export function useConversationActions({
       }
       onRemoveAgent(handle);
       return true;
-    },
-    openClaudeCode: () => {
-      if (onOpenClaudeCode && channelId) void onOpenClaudeCode(channelId);
     },
     addAgentOpen,
     setAddAgentOpen,

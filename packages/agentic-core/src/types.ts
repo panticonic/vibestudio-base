@@ -201,13 +201,6 @@ export interface AgenticChatActions {
   onBecomeVisible?: () => void;
   /** Raise host-level attention for a blocking in-chat question. */
   onAttentionRequired?: (title: string, message?: string) => void;
-  /**
-   * Launch a Claude Code session as a linked agent in this conversation. The
-   * host calls `prepare` through the manifest-selected `claudeCode` provider
-   * for the current channel and opens a context-scoped terminal running the
-   * returned argv. Absent on hosts that don't wire agent-CLI launches.
-   */
-  onOpenClaudeCode?: (channelId: string) => Promise<void> | void;
   /** Open the Local Models panel focused on a specific server's log. Wired
    *  from a local model's red error dot in the model picker (item 6). Absent
    *  on hosts that don't wire panel navigation. */

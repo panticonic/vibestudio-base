@@ -221,17 +221,6 @@ export function SubagentRunCard({ msg }: { msg: ChatMessage }) {
                   {subagent.mode}
                 </Badge>
               )}
-              {subagent.agentKind === "claude-code" && (
-                <Badge
-                  className="subagent-kind-badge"
-                  size="1"
-                  variant="soft"
-                  color="amber"
-                  title="Claude Code subagent"
-                >
-                  Claude Code
-                </Badge>
-              )}
             </button>
             <Flex align="center" gap="2" className="subagent-card-actions">
               <Badge className="subagent-status-badge" size="1" variant="soft" color="gray">

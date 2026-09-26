@@ -19,7 +19,6 @@ const chatContext = {
   onRemoveAgent: undefined,
   onAddAgent: undefined,
   onReplaceAgent: undefined,
-  onOpenClaudeCode: undefined,
   deferredAgent: undefined,
   chat: {},
   clientRef: { current: null },

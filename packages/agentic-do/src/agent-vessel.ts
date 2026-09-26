@@ -411,25 +411,16 @@ function externalSubagentExtensionId(agentKind: SubagentAgentKind): string {
   return `@workspace-extensions/${agentKind}`;
 }
 
-function externalSubagentProviderSlot(
-  agentKind: SubagentAgentKind,
-): string | null {
-  return agentKind === "claude-code" ? "claudeCode" : null;
-}
-
 const OBSERVABLE_SUBAGENT_CONFIG_KEYS = [
   "model",
   "thinkingLevel",
   "fastMode",
-  "effort",
   "fallbackModel",
   "fallbackThinkingLevel",
   "fallbackOn",
   "fallbackScope",
   "approvalLevel",
   "respondPolicy",
-  "permissionMode",
-  "maxBudgetUsd",
 ] as const;
 
 function observableSubagentLaunchConfig(
@@ -1156,12 +1147,11 @@ export abstract class AgentVesselBase extends PanelDurableObjectBase {
             `retire: invalid external agent kind ${run.agentKind}`,
           );
         }
-        const providerSlot = externalSubagentProviderSlot(agentKind);
         await this.rpc.call(
           "main",
-          providerSlot ? "extensions.invokeProvider" : "extensions.invoke",
+          "extensions.invoke",
           [
-            providerSlot ?? externalSubagentExtensionId(agentKind),
+            externalSubagentExtensionId(agentKind),
             "release",
             [
               {
@@ -8092,7 +8082,7 @@ This is one admitted recurring-automation tick. If this tick establishes that th
           parentContextId,
           ownerEntityId,
           // For external kinds `config` is launcher options (the extension
-          // whitelists what its CLI supports — e.g. model/effort for claude-code).
+          // whitelists what its CLI supports — the options supported by that launcher).
           ...(childConfig ? { launcherOptions: childConfig } : {}),
         });
       }
@@ -8378,7 +8368,9 @@ This is one admitted recurring-automation tick. If this tick establishes that th
       startedAt: now,
       lastActivityAt: now,
       agentKind,
-      launchConfig: observableSubagentLaunchConfig(opts.launcherOptions),
+      // The extension owns its configuration schema. Preserve the same options
+      // for follow-up turns rather than filtering through Pi-specific settings.
+      launchConfig: opts.launcherOptions ? { ...opts.launcherOptions } : null,
       externalSessionEntityId: null,
       externalGenerationId: null,
     };
@@ -8404,12 +8396,11 @@ This is one admitted recurring-automation tick. If this tick establishes that th
     // 4) Launch the linked external subagent via its extension. The extension
     //    owns the Node-only work: prepare the linked vessel, write the profile,
     //    and spawn the headless process in the child context.
-    const providerSlot = externalSubagentProviderSlot(agentKind);
     const launched = await this.rpc.call<ExternalSubagentLaunchResult>(
       "main",
-      providerSlot ? "extensions.invokeProvider" : "extensions.invoke",
+      "extensions.invoke",
       [
-        providerSlot ?? externalSubagentExtensionId(agentKind),
+        externalSubagentExtensionId(agentKind),
         "launchSubagent",
         [
           {
@@ -8789,12 +8780,11 @@ This is one admitted recurring-automation tick. If this tick establishes that th
       if (!agentKind || agentKind === "pi") {
         throw new Error(`notify: invalid external agent kind ${run.agentKind}`);
       }
-      const providerSlot = externalSubagentProviderSlot(agentKind);
       const continued = await this.rpc.call<ExternalSubagentLaunchResult>(
         "main",
-        providerSlot ? "extensions.invokeProvider" : "extensions.invoke",
+        "extensions.invoke",
         [
-          providerSlot ?? externalSubagentExtensionId(agentKind),
+          externalSubagentExtensionId(agentKind),
           "continueSubagent",
           [
             {
@@ -8861,12 +8851,11 @@ This is one admitted recurring-automation tick. If this tick establishes that th
           `subagent ${run.runId} has invalid external agentKind ${run.agentKind}`,
         );
       }
-      const providerSlot = externalSubagentProviderSlot(agentKind);
       const result = await this.rpc.call(
         "main",
-        providerSlot ? "extensions.invokeProvider" : "extensions.invoke",
+        "extensions.invoke",
         [
-          providerSlot ?? externalSubagentExtensionId(agentKind),
+          externalSubagentExtensionId(agentKind),
           "inspectLaunch",
           [
             {
@@ -9281,12 +9270,11 @@ This is one admitted recurring-automation tick. If this tick establishes that th
           `cancel_subagent: invalid external agent kind ${run.agentKind}`,
         );
       }
-      const providerSlot = externalSubagentProviderSlot(agentKind);
       await toolRpc.call(
         "main",
-        providerSlot ? "extensions.invokeProvider" : "extensions.invoke",
+        "extensions.invoke",
         [
-          providerSlot ?? externalSubagentExtensionId(agentKind),
+          externalSubagentExtensionId(agentKind),
           "interrupt",
           [
             {
@@ -9634,12 +9622,11 @@ This is one admitted recurring-automation tick. If this tick establishes that th
       if (!agentKind || agentKind === "pi") {
         throw new Error(`invalid external spawn kind ${run.agentKind}`);
       }
-      const providerSlot = externalSubagentProviderSlot(agentKind);
       await this.rpc.call(
         "main",
-        providerSlot ? "extensions.invokeProvider" : "extensions.invoke",
+        "extensions.invoke",
         [
-          providerSlot ?? externalSubagentExtensionId(agentKind),
+          externalSubagentExtensionId(agentKind),
           "release",
           [
             {
