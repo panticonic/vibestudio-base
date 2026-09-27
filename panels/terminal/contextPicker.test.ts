@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { deriveContextOptions, type LiveEntity } from "./contextPicker.js";
+import { deriveContextOptions, type LiveEntity } from "./contextPickerModel.js";
 
 describe("deriveContextOptions", () => {
   it("dedups by contextId, labels with the best hint, and sorts by label", () => {

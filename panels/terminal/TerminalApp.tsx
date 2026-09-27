@@ -14,7 +14,7 @@ const expose = (method: string, handler: (...args: any[]) => unknown | Promise<u
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { CommandLauncher } from "./CommandLauncher.js";
 import { ContextPicker, type CreatedContext, type PickedContextOptions } from "./ContextPicker.js";
-import { deriveContextOptions, type ContextOption, type LiveEntity } from "./contextPicker.js";
+import { deriveContextOptions, type ContextOption, type LiveEntity } from "./contextPickerModel.js";
 import { documentTitleForPanel } from "./documentTitle.js";
 import { NotificationCenter } from "./NotificationCenter.js";
 import { ScratchOverlay } from "./ScratchOverlay.js";

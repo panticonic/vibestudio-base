@@ -122,7 +122,7 @@ describe("createBlobstoreClient", () => {
     const client = createBlobstoreClient(rpc as never, fs as never);
 
     await expect(client.materializeTree(`manifest:${"d".repeat(64)}`, "/checkout")).rejects.toThrow(
-      /Invalid or overlong tree-relative path|Unsafe tree path/
+      'Service "blobstore" method "listTree" return value failed schema validation.'
     );
   });
 
