@@ -30,7 +30,7 @@ export function BrandMark({ size = 48 }: { size?: number }) {
   return <VibestudioLogo size={size} variant="symbol" />;
 }
 
-/** Compact sea-blue square around a page icon. */
+/** Compact blue square around a page icon. */
 export function PageIcon({ children }: { children: ReactNode }) {
   return (
     <Flex
@@ -40,7 +40,7 @@ export function PageIcon({ children }: { children: ReactNode }) {
         width: 40,
         height: 40,
         borderRadius: 5,
-        background: "var(--brand-sea)",
+        background: "var(--brand-primary)",
         boxShadow: "none",
         color: "var(--accent-contrast)",
         flexShrink: 0,

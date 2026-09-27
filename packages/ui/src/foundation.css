@@ -26,9 +26,9 @@
   --intent-error-text: var(--red-11);
   --intent-error-surface: var(--red-a3);
   --intent-error-border: var(--red-a6);
-  --intent-consent: var(--iris-9);
-  --intent-consent-surface: var(--iris-a3);
-  --intent-consent-border: var(--iris-a6);
+  --intent-consent: var(--accent-11);
+  --intent-consent-surface: var(--accent-a3);
+  --intent-consent-border: var(--accent-a6);
 
   --approval-info: var(--sky-9);
   --approval-info-surface: var(--sky-a3);

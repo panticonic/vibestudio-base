@@ -137,6 +137,7 @@
   --agentic-player-surface: var(--accent-a2);
   --agentic-player-surface-strong: var(--accent-a3);
   --agentic-agent-message-surface: var(--color-panel);
+  --agentic-agent-secondary-message-surface: var(--agentic-agent-message-surface);
   --agentic-player-message-surface: var(--color-panel);
   container-type: inline-size;
   min-inline-size: 0;
@@ -147,8 +148,10 @@
 }
 
 .radix-themes:where(.light, .light-theme) > .agentic-chat-root {
-  --agentic-agent-message-surface: var(--gray-3);
-  --agentic-player-message-surface: var(--accent-a3);
+  --agentic-surface: var(--gray-3);
+  --agentic-agent-message-surface: var(--color-panel-solid);
+  --agentic-agent-secondary-message-surface: var(--gray-2);
+  --agentic-player-message-surface: var(--accent-2);
 }
 
 .agentic-chat-root,
@@ -267,6 +270,15 @@
 
 .chat-surface-card::after {
   box-shadow: none;
+}
+
+.chat-input-card.chat-surface-card::after {
+  box-shadow: none;
+}
+
+.chat-input-card .chat-input-textarea .rt-TextAreaInput:not(:disabled)::placeholder {
+  color: var(--gray-11);
+  opacity: 1;
 }
 
 /* Geometry of the default composer + its docked send control. The composer
@@ -512,7 +524,6 @@
   .agentic-chat-root {
     --agentic-panel-padding: var(--space-2);
     --agentic-message-list-padding: var(--space-1);
-    background: var(--gray-2);
   }
 
   .chat-surface-card {
@@ -545,40 +556,41 @@
 
 /*
  * Tier 2 (secondary salience): supporting content — intermediate agent steps,
- * system-injected prompts, and messages produced by UI interactions. Rendered
- * with no card fill (just the outline border) as quiet, smaller text that
- * recedes into the transcript, while keeping comfortable padding and the chrome
- * (sender header + copy/reply). Applies on both the agent (left) and client
- * (right) sides; tier 1 keeps the full default card presentation.
+ * system-injected prompts, and messages produced by UI interactions. Keep
+ * role-specific bubble fills and borders, with readable prose and quieter
+ * sender metadata. Retain comfortable padding and the chrome (sender header
+ * + copy/reply) on both the agent and client sides.
  */
 .message-card-tier2 {
-  --card-background-color: transparent;
-  background-color: transparent;
-  color: var(--gray-a11);
+  color: var(--gray-12);
 }
 
-/* The Radix Card surface paints a translucent panel fill on ::before (and may
-   blur behind it). Clear it so tier 2 truly matches the transcript background;
-   the border lives on ::after and is intentionally kept. */
-.message-card-tier2::before {
-  background-color: transparent;
-  -webkit-backdrop-filter: none;
-  backdrop-filter: none;
+.message-card-tier2:where(:not(.message-card-client)) {
+  --card-background-color: var(--agentic-agent-secondary-message-surface);
+  background-color: var(--agentic-agent-secondary-message-surface);
 }
 
-/* Smaller text *and* a proportionally tighter line-height — otherwise the line
-   spacing stays sized for tier-1 text and the block looks loose. */
+.expanded-thinking {
+  background-color: var(--gray-a2);
+}
+
+.radix-themes:where(.light, .light-theme) > .agentic-chat-root .expanded-thinking {
+  background-color: var(--gray-2);
+}
+
+/* Keep supporting prose at the normal reading size; metadata carries its
+   lower emphasis. */
 .message-card-tier2 .message-content,
 .message-card-tier2 .message-content :where(.rt-Text),
 .message-card-tier2 .message-prose,
 .message-card-tier2 .message-prose :where(p, li, blockquote) {
-  font-size: var(--font-size-1);
-  line-height: var(--line-height-1);
+  font-size: var(--font-size-2);
+  line-height: var(--line-height-2);
 }
 
 /* Quiet the sender header (name + @handle) so it recedes with the body. */
 .message-card-tier2 .message-card-body > .rt-Flex:first-child .rt-Text {
-  color: var(--gray-a10);
+  color: var(--gray-11);
 }
 
 .message-card-error {

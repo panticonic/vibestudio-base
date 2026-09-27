@@ -483,9 +483,7 @@ export function InlineUiMessage({
   }
 
   return (
-    <InlineUiSurface
-      subtitle={messageId ? `${data.id} · ${messageId}` : data.id}
-    >
+    <InlineUiSurface>
       <Box
         className="inline-ui-content"
         onClickCapture={onInteraction}

@@ -66,8 +66,8 @@ const ExpandedThinking = React.memo(function ExpandedThinking({
 }) {
   return (
     <Box
+      className="expanded-thinking"
       style={{
-        backgroundColor: "var(--gray-a2)",
         borderRadius: "6px",
         padding: "8px 10px",
         border: "1px solid var(--gray-a4)",
