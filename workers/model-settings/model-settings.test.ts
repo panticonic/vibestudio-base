@@ -114,9 +114,9 @@ const CATALOG: ModelCatalog = {
 };
 
 const CODEX_CATALOG_ENTRY = makeTestCatalogEntry({
-  ref: "openai-codex:gpt-5.6-sol",
-  id: "gpt-5.6-sol",
-  name: "GPT-5.6 Sol",
+  ref: "openai-codex:gpt-6-sol",
+  id: "gpt-6-sol",
+  name: "GPT-6 Sol",
   provider: "openai-codex",
   baseUrl: "https://chatgpt.com/backend-api/codex",
   recommended: true,
@@ -385,7 +385,7 @@ describe("ModelSettingsDO", () => {
 
     await expect(call("getSettings")).resolves.toMatchObject({
       defaultAgentConfig: {
-        model: "openai-codex:gpt-5.6-sol",
+        model: "openai-codex:gpt-6-sol",
         fastMode: false,
       },
     });
@@ -393,13 +393,13 @@ describe("ModelSettingsDO", () => {
     TestModelSettingsDO.config = {
       ...BASE_CONFIG,
       defaultAgentConfig: {
-        model: "openai-codex:gpt-5.6-sol",
+        model: "openai-codex:gpt-6-sol",
         fastMode: true,
       },
     };
     await expect(call("getSettings")).resolves.toMatchObject({
       defaultAgentConfig: {
-        model: "openai-codex:gpt-5.6-sol",
+        model: "openai-codex:gpt-6-sol",
         fastMode: true,
       },
     });
@@ -411,15 +411,15 @@ describe("ModelSettingsDO", () => {
     const { call } = await createTestDO(CodexModelSettingsDO);
 
     await expect(
-      call("setDefaultAgentConfig", { model: "openai-codex:gpt-5.6-sol" })
+      call("setDefaultAgentConfig", { model: "openai-codex:gpt-6-sol" })
     ).resolves.toMatchObject({
       defaultAgentConfig: {
-        model: "openai-codex:gpt-5.6-sol",
+        model: "openai-codex:gpt-6-sol",
         fastMode: false,
       },
     });
     expect(TestModelSettingsDO.writes.at(-1)?.value).toEqual({
-      model: "openai-codex:gpt-5.6-sol",
+      model: "openai-codex:gpt-6-sol",
       fastMode: false,
     });
 
@@ -429,7 +429,7 @@ describe("ModelSettingsDO", () => {
     };
     await expect(call("getSettings")).resolves.toMatchObject({
       defaultAgentConfig: {
-        model: "openai-codex:gpt-5.6-sol",
+        model: "openai-codex:gpt-6-sol",
         fastMode: false,
       },
     });

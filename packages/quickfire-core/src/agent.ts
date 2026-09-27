@@ -51,7 +51,7 @@ export function quickfireAgentConfig(
 ): AgentSubscriptionConfig {
   if (!slotId) throw new Error("Quickfire requires a panel slot id");
   return {
-    model: "openai-codex:gpt-5.6-luna",
+    model: "openai-codex:gpt-6-luna",
     thinkingLevel: "high",
     handle: "quickfire",
     name: "Quickfire agent",

@@ -116,7 +116,7 @@ Headless/session subscribers may pass `extraConfig`:
   model: "anthropic:claude-sonnet-4-6",
   thinkingLevel: "high",
   fastMode: true,
-  fallbackModel: "openai-codex:gpt-5.6-luna",
+  fallbackModel: "openai-codex:gpt-6-luna",
   fallbackThinkingLevel: "minimal",
   fallbackOn: ["usage_limit_terminal"],
   fallbackScope: "all-turns",

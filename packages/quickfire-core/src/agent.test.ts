@@ -71,7 +71,7 @@ describe("quickfire agent referent contract", () => {
 
   it("defaults new Quickfire agents to the fast Luna profile", () => {
     expect(config()).toMatchObject({
-      model: "openai-codex:gpt-5.6-luna",
+      model: "openai-codex:gpt-6-luna",
       thinkingLevel: "high",
     });
   });
