@@ -276,7 +276,7 @@ describe("createProjects", () => {
       vibestudio: { icon: "./assets/icon.svg" },
     });
     expect(mocks.files.get("panels/inbox/assets/icon.svg")).toBe(
-      '<svg stroke="#8B5CF6"><path d="M1 1" /></svg>',
+      '<svg stroke="#268CA3"><path d="M1 1" /></svg>',
     );
   });
 
