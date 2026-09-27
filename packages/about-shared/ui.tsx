@@ -14,9 +14,6 @@ import { usePanelThemeConfig } from "@workspace/react/theme";
 import { useIsMobile } from "@workspace/react/responsive";
 import { usePanelTheme } from "@workspace/react/theme";
 
-/** Brand gradient used for the app mark and page icons. Theme-aware via Radix color scales. */
-export const BRAND_GRADIENT = "var(--brand-gradient)";
-
 /** Theme wrapper shared by all about panels. */
 export function AboutThemeRoot({ children }: { children: ReactNode }) {
   const theme = usePanelTheme();
@@ -33,7 +30,7 @@ export function BrandMark({ size = 48 }: { size?: number }) {
   return <VibestudioLogo size={size} variant="symbol" />;
 }
 
-/** Small gradient bubble wrapping a page icon. */
+/** Compact sea-blue square around a page icon. */
 export function PageIcon({ children }: { children: ReactNode }) {
   return (
     <Flex
@@ -42,10 +39,10 @@ export function PageIcon({ children }: { children: ReactNode }) {
       style={{
         width: 40,
         height: 40,
-        borderRadius: 10,
-        background: BRAND_GRADIENT,
-        boxShadow: "0 3px 12px var(--brand-glow)",
-        color: "white",
+        borderRadius: 5,
+        background: "var(--brand-sea)",
+        boxShadow: "none",
+        color: "var(--accent-contrast)",
         flexShrink: 0,
       }}
     >

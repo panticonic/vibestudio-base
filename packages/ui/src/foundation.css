@@ -38,7 +38,7 @@
   --approval-danger-surface: var(--red-a3);
 
   --surface-chrome: var(--gray-2);
-  --surface-panel: var(--color-panel-translucent, var(--gray-1));
+  --surface-panel: var(--color-panel, var(--gray-1));
   --surface-card: var(--gray-2);
   --surface-raised: var(--color-panel-solid, var(--gray-1));
   --surface-border: var(--gray-a6);

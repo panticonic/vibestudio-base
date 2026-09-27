@@ -241,7 +241,7 @@ function ModelChips({ model }: { model: ModelCatalogEntry }) {
         </Badge>
       ) : null}
       {model.reasoning ? (
-        <Badge color="purple" variant="soft" size="1">
+        <Badge variant="soft" size="1" style={{ color: "var(--accent-11)" }}>
           <LightningBoltIcon width="10" height="10" /> reasoning
         </Badge>
       ) : null}

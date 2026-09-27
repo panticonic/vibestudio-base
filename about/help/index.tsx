@@ -18,7 +18,6 @@ import { useIsMobile } from "@workspace/react";
 import {
   AboutThemeRoot,
   AboutPage,
-  BRAND_GRADIENT,
 } from "@workspace/about-shared/ui";
 
 interface HelpSection {
@@ -92,8 +91,8 @@ function SectionIcon({ children }: { children: ReactNode }) {
       style={{
         width: 28,
         height: 28,
-        borderRadius: 7,
-        background: BRAND_GRADIENT,
+        borderRadius: 6,
+        background: "var(--brand-sea)",
         color: "white",
         flexShrink: 0,
       }}

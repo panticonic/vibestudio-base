@@ -1,7 +1,7 @@
 /** One keyboard-first launcher for panels, browser destinations, and Agentic Chat. */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
-import { Box, Button, Callout, Flex, Spinner, Text } from "@radix-ui/themes";
+import { Box, Button, Callout, Flex, Link, Spinner, Text } from "@radix-ui/themes";
 import {
   ClockIcon,
   EnterIcon,
@@ -1004,12 +1004,8 @@ function NewPanelPage() {
       title="New Panel"
       subtitle="Open a website, search the web, revisit a page, or ask an agent."
       maxWidth={720}
+      actions={hasBrowserData ? <Link href={buildPanelLink("about/search")} size="2">Search settings</Link> : undefined}
     >
-      {hasBrowserData && (
-        <Text size="2">
-          <a href={buildPanelLink("about/search")}>Search settings</a>
-        </Text>
-      )}
       <Box className="launcher-search">
         <div className="launcher-field">
           <div className="launcher-entry">

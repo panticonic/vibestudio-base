@@ -683,14 +683,8 @@
   border: 1px solid var(--gray-a5);
   border-inline-start: 3px solid var(--gray-a7);
   border-radius: 8px;
-  background:
-    linear-gradient(
-      180deg,
-      color-mix(in srgb, var(--accent-a2) 55%, transparent),
-      transparent 42px
-    ),
-    var(--gray-2);
-  box-shadow: var(--elevation-1);
+  background: var(--gray-2);
+  box-shadow: none;
   overflow: hidden;
   transition:
     border-color 140ms ease,
@@ -699,11 +693,11 @@
 
 .message-card-subagent:hover {
   border-color: var(--gray-a7);
-  box-shadow: var(--elevation-2);
+  box-shadow: none;
 }
 
 .message-card-subagent.subagent-card-open {
-  box-shadow: var(--elevation-2);
+  box-shadow: none;
 }
 
 .subagent-summary {
@@ -1494,7 +1488,7 @@
   align-items: center;
 }
 .ack-avatar-stack-item {
-  border-radius: 9999px;
+  border-radius: var(--radius-3);
   box-shadow: 0 0 0 2px var(--color-panel-solid, var(--gray-1));
 }
 .ack-badge-trigger {
@@ -1726,7 +1720,7 @@
 }
 .agent-setup-heading-icon {
   align-items: center;
-  background: var(--accent-a3);
+  background: var(--accent-3);
   border-radius: 9999px;
   color: var(--accent-11);
   display: inline-flex;
@@ -1771,21 +1765,19 @@
 .chat-startup-status-card {
   inline-size: min(100%, 360px);
   padding: var(--space-5);
-  border: 1px solid var(--gray-a5);
+  border: 1px solid var(--gray-6);
   border-radius: var(--radius-4);
-  background:
-    radial-gradient(circle at 50% 0%, var(--accent-a3), transparent 58%),
-    var(--gray-a2);
-  box-shadow: 0 12px 36px var(--black-a4);
+  background: var(--surface-raised);
+  box-shadow: none;
 }
 .chat-startup-status-glyph {
   inline-size: 42px;
   block-size: 42px;
   margin-block-end: var(--space-3);
   border: 1px solid var(--accent-a6);
-  border-radius: 9999px;
+  border-radius: var(--radius-3);
   color: var(--accent-11);
-  background: var(--accent-a3);
+  background: var(--accent-3);
 }
 .chat-startup-status-title {
   letter-spacing: -0.01em;

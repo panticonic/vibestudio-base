@@ -725,7 +725,7 @@ async function materializeCatalogIcon(
   svg =
     kind === "brand"
       ? `<!-- Source: Simple Icons 16.27.1 (CC0 collection); brand rights remain with their owners. -->\n${svg.replace("<svg ", `<svg fill="${brandColor}" `)}`
-      : svg.replaceAll("currentColor", "#8B5CF6");
+      : svg.replaceAll("currentColor", "#268CA3");
   files["assets/icon.svg"] = svg;
   return "./assets/icon.svg";
 }

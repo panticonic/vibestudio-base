@@ -21,12 +21,12 @@ export function TypingPill({
       style={{
         padding: "2px 6px",
         borderRadius: "4px",
-        backgroundColor: "var(--purple-a3)",
+        backgroundColor: "var(--accent-a3)",
         display: "inline-flex",
       }}
     >
       <Spinner size="1" />
-      <Text className="inline-pill-summary" size="1" color="purple" weight="medium">
+      <Text className="inline-pill-summary" size="1" weight="medium" style={{ color: "var(--accent-11)" }}>
         {data.senderName ?? "Agent"} typing
       </Text>
       {onInterrupt && (
