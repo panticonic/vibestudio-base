@@ -849,7 +849,7 @@ export const MessageList = React.memo(function MessageList({
               </Text>
             ))
           ) : (
-            <Flex className="message-list-stack" direction="column" gap="1">
+            <Flex className="message-list-stack" direction="column">
               {visibleGroupedItems.map((item, index) => (
                 <GroupedMessageRow
                   key={item.type === "inline-group" ? item.key : item.msg.id || `msg-${index}`}

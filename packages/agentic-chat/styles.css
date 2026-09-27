@@ -154,6 +154,12 @@
   --agentic-player-message-surface: var(--accent-2);
 }
 
+.radix-themes:where(.dark, .dark-theme)[data-accent-color="blue"][data-gray-color="slate"] > .agentic-chat-root {
+  --agentic-agent-message-surface: var(--gray-3);
+  --agentic-agent-secondary-message-surface: var(--gray-2);
+  --agentic-player-message-surface: color-mix(in srgb, var(--color-panel-solid) 85%, var(--accent-9));
+}
+
 .agentic-chat-root,
 .agentic-chat-root * {
   box-sizing: border-box;
@@ -402,6 +408,10 @@
   contain: inline-size layout paint;
 }
 
+.message-list-stack {
+  gap: 6px;
+}
+
 .message-row {
   display: flex;
   inline-size: fit-content;
@@ -517,7 +527,7 @@
   color: var(--gray-12);
   --card-background-color: var(--agentic-agent-message-surface);
   background-color: var(--agentic-agent-message-surface);
-  --card-padding: 8px;
+  --card-padding: 10px;
 }
 
 @media (min-width: 720px) {

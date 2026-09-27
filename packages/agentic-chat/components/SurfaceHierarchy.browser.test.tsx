@@ -114,7 +114,7 @@ describe("chat surface hierarchy", () => {
           appearance === "light" ? "rgb(20, 36, 61)" : "rgb(244, 245, 246)",
         );
         expect(getComputedStyle(secondaryMetadata).color).toBe(
-          appearance === "light" ? "rgb(88, 103, 125)" : "rgb(199, 205, 213)",
+          appearance === "light" ? "rgb(88, 103, 125)" : "rgb(201, 205, 211)",
         );
         expect(enabledSoftButtonColor).not.toBe(disabledSoftButtonColor);
         expect(secondaryAgentColor).not.toBe(transcriptColor);
@@ -134,10 +134,13 @@ describe("chat surface hierarchy", () => {
           expect(secondaryErrorColor).not.toBe(secondaryAgentColor);
           expect(expandedThinkingColor).toBe("rgb(241, 243, 247)");
         } else {
-          expect(transcriptColor).toBe("rgb(26, 32, 42)");
-          expect(agentColor).toBe("rgb(36, 46, 60)");
-          expect(playerColor).toBe(agentColor);
-          expect(toolColor).toBe(agentColor);
+          expect(transcriptColor).toBe("rgb(32, 33, 36)");
+          expect(agentColor).toBe("rgb(52, 55, 60)");
+          expect(playerColor).toBe("color(srgb 0.179608 0.208627 0.25549)");
+          expect(secondaryAgentColor).toBe("rgb(41, 43, 47)");
+          expect(secondaryPlayerColor).toBe(playerColor);
+          expect(secondaryErrorColor).not.toBe(secondaryAgentColor);
+          expect(toolColor).toBe("rgb(41, 43, 47)");
           expect(getComputedStyle(tool!).borderTopColor).not.toBe(
             getComputedStyle(agent).borderTopColor,
           );
