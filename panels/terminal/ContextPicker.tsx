@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Button, DropdownMenu } from "@radix-ui/themes";
 import { ChevronDownIcon } from "@radix-ui/react-icons";
-import type { ContextOption } from "./contextPicker.js";
+import type { ContextOption } from "./contextPickerModel.js";
 
 export interface PickedContextOptions {
   contextAttachToken?: string;

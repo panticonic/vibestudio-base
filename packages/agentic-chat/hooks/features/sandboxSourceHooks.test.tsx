@@ -5,6 +5,7 @@ import * as ReactJsxRuntime from "react/jsx-runtime";
 import * as ReactJsxDevRuntime from "react/jsx-dev-runtime";
 import * as RadixIcons from "@radix-ui/react-icons";
 import * as RadixThemes from "@radix-ui/themes";
+import * as ModelProviderConnect from "@workspace/model-catalog/providerConnect";
 import * as ReactResponsive from "@workspace/react/responsive";
 import * as ShellSurface from "@vibestudio/shared/shellSurface";
 import { act, render, waitFor } from "@testing-library/react";
@@ -633,6 +634,13 @@ describe("sandbox source hooks", () => {
   });
 
   it("renders the compiled model credential card with the panel's exposed modules", async () => {
+    const workspaceRoot = process.env["VIBESTUDIO_USERLAND_ROOT"] ?? process.cwd();
+    const providerConnectModule = "@workspace/model-catalog/providerConnect";
+    const panelManifest = JSON.parse(
+      await readFile(path.join(workspaceRoot, "panels/chat/package.json"), "utf8"),
+    ) as { vibestudio?: { exposeModules?: string[] } };
+    expect(panelManifest.vibestudio?.exposeModules).toContain(providerConnectModule);
+
     const moduleMap = (globalThis as Record<string, unknown>)[
       "__vibestudioModuleMap__"
     ] as Record<string, unknown>;
@@ -640,12 +648,11 @@ describe("sandbox source hooks", () => {
     moduleMap["react/jsx-runtime"] = ReactJsxRuntime;
     moduleMap["react/jsx-dev-runtime"] = ReactJsxDevRuntime;
     moduleMap["@radix-ui/themes"] = RadixThemes;
+    moduleMap[providerConnectModule] = ModelProviderConnect;
     moduleMap["@workspace/react/responsive"] = ReactResponsive;
 
     const sourcePath =
       "packages/agentic-chat/components/ModelCredentialRequiredCard.tsx";
-    const workspaceRoot =
-      process.env["VIBESTUDIO_USERLAND_ROOT"] ?? process.cwd();
     const source = await readFile(path.join(workspaceRoot, sourcePath), "utf8");
     const states: InlineUiState[] = [];
     const messages = [
@@ -693,7 +700,7 @@ describe("sandbox source hooks", () => {
           "model-credential-card",
         )?.error,
       ).toBeUndefined();
-      expect(view.getByText(/Credential required for/)).toBeTruthy();
+      expect(view.getByText("Connect ChatGPT")).toBeTruthy();
     });
   });
 });
