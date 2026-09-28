@@ -24,6 +24,30 @@ function* sourceFiles(directory: string): Generator<string> {
 }
 
 describe("built-in workspace unit icons", () => {
+  it("ships the full offline Lucide SVG catalog, including commonly requested layout icons", () => {
+    const directory = path.join(
+      REPO_ROOT,
+      "skills/workspace-dev/assets/icons/lucide",
+    );
+    const icons = fs
+      .readdirSync(directory)
+      .filter((name) => name.endsWith(".svg"));
+    expect(icons).toHaveLength(2007);
+    expect(icons).toEqual(
+      expect.arrayContaining([
+        "columns-3.svg",
+        "layout-dashboard.svg",
+        "database.svg",
+      ]),
+    );
+    for (const name of icons) {
+      const svg = fs.readFileSync(path.join(directory, name), "utf8");
+      expect(svg, name).toContain("@license lucide-static v1.27.0 - ISC");
+      expect(svg, name).toContain('viewBox="0 0 24 24"');
+      expect(Buffer.byteLength(svg), name).toBeLessThan(1024 * 1024);
+    }
+  });
+
   it("gives every user-visible or executable unit one canonical semantic icon", () => {
     const missing: string[] = [];
     const invalid: string[] = [];

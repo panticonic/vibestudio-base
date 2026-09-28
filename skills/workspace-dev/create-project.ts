@@ -455,7 +455,7 @@ export interface CreateProjectParams {
   projectType: string;
   name: string;
   title?: string;
-  /** Emoji, ./relative image path, or a curated lucide:<name>/brand:<name> catalog id. */
+  /** Emoji, ./relative image path, or lucide:<name>/brand:<name> from the offline catalog. */
   icon?: string;
   template?: string;
   /** Add a portable browser entry to this panel. Requirements are advisory. */
@@ -513,8 +513,11 @@ export class ProjectIconError extends Error {
 
   constructor(errorData: ProjectIconFailureData) {
     super(
-      `Unknown curated ${errorData.kind} icon: ${errorData.name || "(empty)"}. ` +
-        "Use the bounded catalog result in errorData.catalog or call searchProjectCatalog().",
+      `Unknown ${errorData.kind} icon: ${errorData.name || "(empty)"}. ` +
+        (errorData.suggestions.length
+          ? `Try ${errorData.suggestions.join(", ")}. `
+          : "") +
+        `Call searchProjectCatalog(${JSON.stringify(errorData.catalogQuery)}) for the installed catalog, or omit icon.`,
     );
     this.name = "ProjectIconError";
     this.errorData = errorData;
@@ -569,26 +572,35 @@ async function catalogNames(kind: "lucide" | "brand"): Promise<string[]> {
 
 /** Return the exact icon ids accepted by {@link createProjects}. */
 export async function listProjectIcons(): Promise<ProjectIconCatalog> {
-  return (await searchProjectCatalog({ resource: "icon" })).entries.map(
-    (entry) => entry.id,
-  );
+  return (await projectCatalogEntries())
+    .sort((left, right) => left.id.localeCompare(right.id))
+    .map((entry) => entry.id);
 }
 
-/** Bounded discovery for curated project resources accepted by scaffolding. */
+/** Bounded discovery for project resources accepted by scaffolding. */
 export async function searchProjectCatalog(
   query: ProjectCatalogQuery,
 ): Promise<ProjectCatalogResult> {
-  const families: Array<"lucide" | "brand"> = query.families?.length
-    ? [...new Set(query.families)]
+  return filterProjectCatalog(
+    await projectCatalogEntries(query.families),
+    query.query,
+    query.limit,
+  );
+}
+
+async function projectCatalogEntries(
+  requestedFamilies?: Array<"lucide" | "brand">,
+): Promise<ProjectCatalogEntry[]> {
+  const families: Array<"lucide" | "brand"> = requestedFamilies?.length
+    ? [...new Set(requestedFamilies)]
     : ["lucide", "brand"];
-  const entries = (
+  return (
     await Promise.all(
       families.map(async (family) =>
         catalogEntries(family, await catalogNames(family)),
       ),
     )
   ).flat();
-  return filterProjectCatalog(entries, query.query, query.limit);
 }
 
 function catalogEntries(
@@ -609,20 +621,19 @@ function filterProjectCatalog(
   requestedLimit: number | undefined,
 ): ProjectCatalogResult {
   const normalizedQuery = query?.trim().toLowerCase() ?? "";
-  const limit = Math.max(
-    1,
-    Math.min(requestedLimit ?? (normalizedQuery ? 12 : entries.length), 500),
-  );
+  const searchName = normalizedQuery
+    .replace(/^(lucide|brand):/u, "")
+    .replace(/\s+/gu, "-");
+  const limit = Math.max(1, Math.min(requestedLimit ?? 12, 500));
   const ranked = entries
     .map((entry) => ({
       entry,
       score: normalizedQuery
-        ? entry.id === normalizedQuery || entry.name === normalizedQuery
+        ? entry.id === normalizedQuery || entry.name === searchName
           ? -1_000
-          : entry.id.includes(normalizedQuery) ||
-              entry.name.includes(normalizedQuery)
-            ? -500 + Math.abs(entry.name.length - normalizedQuery.length)
-            : editDistance(normalizedQuery, entry.name)
+          : entry.name.includes(searchName)
+            ? -500 + Math.abs(entry.name.length - searchName.length)
+            : editDistance(searchName, entry.name)
         : 0,
     }))
     .sort(
@@ -666,20 +677,18 @@ function invalidProjectIcon(
   name: string,
   available: string[],
 ): ProjectIconError {
-  const suggestions = [...available]
-    .sort(
-      (left, right) =>
-        editDistance(name, left) - editDistance(name, right) ||
-        left.localeCompare(right),
-    )
-    .slice(0, 5)
-    .map((candidate) => `${kind}:${candidate}`);
   const catalogQuery: ProjectCatalogQuery = {
     resource: "icon",
     query: name,
     families: [kind],
     limit: 12,
   };
+  const catalog = filterProjectCatalog(
+    catalogEntries(kind, available),
+    name,
+    catalogQuery.limit,
+  );
+  const suggestions = catalog.entries.slice(0, 5).map((entry) => entry.id);
   return new ProjectIconError({
     code: "project_icon_invalid",
     icon,
@@ -687,11 +696,7 @@ function invalidProjectIcon(
     name,
     suggestions,
     catalogQuery,
-    catalog: filterProjectCatalog(
-      catalogEntries(kind, available),
-      name,
-      catalogQuery.limit,
-    ),
+    catalog,
     recovery: {
       action: "correct-request",
       instruction:
@@ -711,16 +716,15 @@ async function materializeCatalogIcon(
   if (!declaredKind) return icon;
   const match = /^(lucide|brand):([a-z0-9-]+)$/u.exec(icon ?? "");
   const kind = declaredKind;
-  const available = await catalogNames(kind);
   const name = match?.[2] ?? "";
-  if (!match || !available.includes(name)) {
-    throw invalidProjectIcon(icon!, kind, name, available);
+  const source = `${catalogDirectory(kind)}/${name}.svg`;
+  // Valid requests touch only their selected asset, regardless of catalog size.
+  if (!match || !(await fs.exists(source))) {
+    throw invalidProjectIcon(icon!, kind, name, await catalogNames(kind));
   }
-  const library = kind === "brand" ? "brands" : "lucide";
   const brandColor = BRAND_ICON_COLORS[name];
   if (kind === "brand" && !brandColor)
     throw new Error(`Missing brand color metadata: ${name}`);
-  const source = `skills/workspace-dev/assets/icons/${library}/${name}.svg`;
   let svg = (await fs.readFile(source, "utf-8")) as string;
   svg =
     kind === "brand"

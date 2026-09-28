@@ -32,11 +32,16 @@ Every user-visible or executable unit declares exactly one
 3. A single semantic emoji only when it is more expressive than a drawn icon.
 4. Original repo-local artwork for a product identity.
 
-For new panels and workers, discover the accepted ids and pass one exact result
-to `createProjects`:
+For new panels and workers, pass a Lucide name directly, such as
+`icon: "lucide:columns-3"` or `icon: "lucide:layout-dashboard"`. The offline
+catalog includes every SVG shipped by Lucide Static 1.27.0, including its
+aliases. Use `searchProjectCatalog` when you need to discover a name:
 
 ```ts
-import { createProjects, searchProjectCatalog } from "@workspace-skills/workspace-dev";
+import {
+  createProjects,
+  searchProjectCatalog,
+} from "@workspace-skills/workspace-dev";
 
 const catalog = await searchProjectCatalog({
   resource: "icon",
@@ -45,16 +50,18 @@ const catalog = await searchProjectCatalog({
 });
 const icon = catalog.entries[0]?.id;
 if (!icon) throw new Error("The messages icon is unavailable");
-return createProjects([
-  { projectType: "panel", name: "inbox", icon },
-]);
+return createProjects([{ projectType: "panel", name: "inbox", icon }]);
 ```
 
-Do not infer availability from the full upstream libraries or guess a plausible
-Lucide name. The scaffold copies only the selected SVG into `assets/icon.svg`
+The scaffold copies only the selected SVG into `assets/icon.svg`
 and writes `vibestudio.icon: "./assets/icon.svg"`; no icon library enters the
-unit's runtime bundle. Invalid catalog ids fail before mutation with the exact
-available ids and suggestions in structured error data.
+unit's runtime bundle. Valid requests read only their selected SVG; catalog
+search lists filenames on demand without loading artwork. Catalog search returns
+12 entries by default (at most 500); `listProjectIcons()` returns all ids.
+Newer upstream releases can contain names absent from the pinned catalog.
+Invalid ids fail before mutation with suggestions in the message and bounded
+catalog evidence in structured error data. Brand icons remain the selected
+Simple Icons marks listed below.
 
 For apps and extensions, copy the chosen catalog SVG into the unit as
 `assets/icon.svg`, replace Lucide's `currentColor` with a visible fixed color,

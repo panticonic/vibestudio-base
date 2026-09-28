@@ -179,18 +179,20 @@ Even for a single project, use `createProjects` with a one-element array.
 | `projectType` | string | Yes | One of: `panel`, `package`, `skill`, `project`, `worker` |
 | `name` | string | Yes | Stable kebab-case identifier matching `^[a-z][a-z0-9-]*$` |
 | `title` | string | No | Human-readable title (defaults to name) |
-| `icon` | string | No | Emoji, local relative asset, or an exact catalog entry id returned by `searchProjectCatalog({ resource: "icon", query })` |
+| `icon` | string | No | Emoji, local relative asset, `lucide:<name>` from Lucide Static 1.27.0, or a selected `brand:<name>` |
 | `template` | string | No | Panel template name; for workers use `durable-service` for an app database, `agentic` for an agent, or omit it for a stateless HTTP worker |
 
-Do not guess catalog names from the full upstream Lucide or Simple Icons
-libraries: the scaffold deliberately accepts a small curated set. Call
+All Lucide Static 1.27.0 SVG names and aliases are available offline; known ids
+such as `lucide:columns-3` and `lucide:layout-dashboard` can be passed directly.
+Brand marks remain a selected set. For discovery, call
 `searchProjectCatalog({ resource: "icon", query, limit })` and choose an exact
-entry id. An invalid catalog id throws `ProjectIconError` before any VCS
+entry id. Only the chosen SVG is copied into the project; no catalog enters its
+runtime bundle. An invalid catalog id throws `ProjectIconError` before any VCS
 mutation, with the exact bounded query/result, suggestions, and recovery in
 `errorData`.
 
 The typed catalog result records the resource, normalized query, total count,
-bounded entries, and truncation count. Pass an entry's exact `id` directly.
+bounded entries (12 by default, at most 500), and truncation count. Pass an entry's exact `id` directly.
 `listProjectIcons()` remains the unbounded convenience read when every icon is
 genuinely needed.
 

@@ -1,5 +1,5 @@
 import { composedWorkspaceRoot } from "./composedWorkspace.js";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { authorityReviewFromPackageJson } from "@vibestudio/unit-host";
 
 const mocks = vi.hoisted(() => {
@@ -152,6 +152,7 @@ function resetRuntimeMocks(): void {
 
 describe("createProjects", () => {
   beforeEach(resetRuntimeMocks);
+  afterEach(() => vi.restoreAllMocks());
 
   it("scaffolds a plain project as a content repo under projects/", async () => {
     const { createProjects } = await import("./create-project.js");
@@ -254,7 +255,7 @@ describe("createProjects", () => {
     });
   });
 
-  it("materializes a curated Lucide identity without adding an icon runtime", async () => {
+  it("materializes a Lucide identity without adding an icon runtime", async () => {
     addFile(
       "skills/workspace-dev/assets/icons/lucide/messages-square.svg",
       '<svg stroke="currentColor"><path d="M1 1" /></svg>',
@@ -280,7 +281,121 @@ describe("createProjects", () => {
     );
   });
 
-  it("discovers the exact curated icon catalog instead of requiring guessed names", async () => {
+  it.each(["columns-3", "layout-dashboard"])(
+    "scaffolds the real upstream %s icon while reading only the selected SVG",
+    async (name) => {
+      const { readFileSync } = await import("node:fs");
+      const path = await import("node:path");
+      const { fileURLToPath } = await import("node:url");
+      const root = composedWorkspaceRoot(
+        path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../.."),
+      );
+      const source = `skills/workspace-dev/assets/icons/lucide/${name}.svg`;
+      const svg = readFileSync(path.join(root, source), "utf8");
+      addFile(source, svg);
+      // Other artwork must never be read or enumerated on the success path.
+      addFile(
+        "skills/workspace-dev/assets/icons/lucide/database.svg",
+        "<svg />",
+      );
+      const { fs } = await import("@workspace/runtime");
+      const read = vi.spyOn(fs, "readFile");
+      const list = vi.spyOn(fs, "readdir");
+      const { createProjects } = await import("./create-project.js");
+      await createProjects([
+        { projectType: "panel", name: "board", icon: `lucide:${name}` },
+      ]);
+      expect(mocks.files.get("panels/board/assets/icon.svg")).toBe(
+        svg.replaceAll("currentColor", "#268CA3"),
+      );
+      expect(
+        JSON.parse(mocks.files.get("panels/board/package.json") as string),
+      ).toMatchObject({ vibestudio: { icon: "./assets/icon.svg" } });
+      expect(
+        read.mock.calls.filter(([file]) =>
+          file.startsWith("skills/workspace-dev/assets/icons/"),
+        ),
+      ).toEqual([[source, "utf-8"]]);
+      expect(
+        list.mock.calls.filter(([file]) =>
+          file.startsWith("skills/workspace-dev/assets/icons/"),
+        ),
+      ).toEqual([]);
+    },
+  );
+
+  it("keeps full icon listing complete and catalog discovery bounded above 500 icons", async () => {
+    for (let index = 0; index < 520; index += 1) {
+      addFile(
+        `skills/workspace-dev/assets/icons/lucide/icon-${index}.svg`,
+        "<svg />",
+      );
+    }
+    for (const name of [
+      "claude",
+      "git",
+      "gmail",
+      "gnubash",
+      "javascript",
+      "react",
+      "svelte",
+      "typescript",
+    ]) {
+      addFile(
+        `skills/workspace-dev/assets/icons/brands/${name}.svg`,
+        "<svg />",
+      );
+    }
+    const { listProjectIcons, searchProjectCatalog } =
+      await import("./create-project.js");
+    expect(await listProjectIcons()).toHaveLength(528);
+    const catalog = await searchProjectCatalog({ resource: "icon" });
+    expect(catalog).toMatchObject({ total: 528, truncated: 516 });
+    expect(catalog.entries).toHaveLength(12);
+  });
+
+  it("ranks spaced names and qualified ids consistently with recovery suggestions", async () => {
+    for (const name of [
+      "columns-3",
+      "columns-3-cog",
+      "layout-dashboard",
+      "layout-template",
+      "database",
+    ]) {
+      addFile(
+        `skills/workspace-dev/assets/icons/lucide/${name}.svg`,
+        "<svg />",
+      );
+    }
+    const { searchProjectCatalog, createProjects, ProjectIconError } =
+      await import("./create-project.js");
+    for (const query of [
+      "layout dashboard",
+      "lucide:layout-dashboard",
+      "layout-dashbord",
+    ]) {
+      const result = await searchProjectCatalog({
+        resource: "icon",
+        families: ["lucide"],
+        query,
+        limit: 1,
+      });
+      expect(result.entries[0]?.id).toBe("lucide:layout-dashboard");
+    }
+    const failure = (await createProjects([
+      { projectType: "panel", name: "board", icon: "lucide:layout-dashbord" },
+    ]).catch((error: unknown) => error)) as InstanceType<
+      typeof ProjectIconError
+    >;
+    expect(failure).toBeInstanceOf(ProjectIconError);
+    expect(failure.message).toContain("Try lucide:layout-dashboard");
+    expect(failure.errorData.suggestions).toEqual(
+      failure.errorData.catalog.entries.slice(0, 5).map((entry) => entry.id),
+    );
+    expect(mocks.edit).not.toHaveBeenCalled();
+  });
+
+  it("discovers the exact icon catalog instead of requiring guessed names", async () => {
     addFile("skills/workspace-dev/assets/icons/lucide/database.svg", "<svg />");
     addFile(
       "skills/workspace-dev/assets/icons/lucide/messages-square.svg",
@@ -340,7 +455,7 @@ describe("createProjects", () => {
       await import("./create-project.js");
 
     const failure = await createProjects([
-      { projectType: "panel", name: "board", icon: "lucide:columns-3" },
+      { projectType: "panel", name: "board", icon: "lucide:columns-3x" },
     ]).catch((error: unknown) => error);
 
     expect(failure).toBeInstanceOf(ProjectIconError);
@@ -348,20 +463,20 @@ describe("createProjects", () => {
       (failure as InstanceType<typeof ProjectIconError>).errorData,
     ).toEqual({
       code: "project_icon_invalid",
-      icon: "lucide:columns-3",
+      icon: "lucide:columns-3x",
       kind: "lucide",
-      name: "columns-3",
+      name: "columns-3x",
       suggestions: ["lucide:database"],
       catalogQuery: {
         resource: "icon",
-        query: "columns-3",
+        query: "columns-3x",
         families: ["lucide"],
         limit: 12,
       },
       catalog: {
         protocol: "workspace-dev-catalog.v1",
         resource: "icon",
-        query: "columns-3",
+        query: "columns-3x",
         total: 1,
         entries: [
           {
