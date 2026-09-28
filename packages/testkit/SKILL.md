@@ -85,8 +85,8 @@ Start with the cross-layer helpers exported from `@workspace/testkit`:
 - `profileBuild` for first-path and verified-cache build evidence;
 - `profileHost` for server, workerd, and event-loop measurements around one
   workload;
-- `profilePanelInteraction` or `profilePanelReload` for browser-native page,
-  runtime, and network evidence;
+- `profilePanelInteraction` for browser-native page, runtime, and network evidence;
+- `profilePanelReload` for host resources and elapsed time across runtime replacement;
 - `profileWorkerd` or `profileDO` for bounded V8 CPU profiles;
 - `readStartupProfile` for current-boot phases.
 

@@ -4,7 +4,10 @@ import type {
   HostPerformanceSnapshot,
 } from "@vibestudio/service-schemas/hostPerformance";
 import type { ServerLogRecord } from "@vibestudio/service-schemas/serverLog";
-import type { CdpProfileOptions, CdpProfileReport } from "@workspace/cdp-client";
+import type {
+  CdpProfileOptions,
+  CdpProfileReport,
+} from "@workspace/cdp-client";
 import { rpc, type PanelHandle } from "@workspace/runtime";
 
 export interface HostSpanSummary {
@@ -57,22 +60,27 @@ export async function hostPerformanceSnapshot(options?: {
   since?: number;
   eventLoopLimit?: number;
 }): Promise<HostPerformanceSnapshot> {
-  return rpc.call<HostPerformanceSnapshot>("main", "hostPerformance.snapshot", [options]);
+  return rpc.call<HostPerformanceSnapshot>("main", "hostPerformance.snapshot", [
+    options,
+  ]);
 }
 
 export function summarizeHostSpan(
   before: HostPerformanceSnapshot,
   after: HostPerformanceSnapshot,
-  elapsedMs: number
+  elapsedMs: number,
 ): HostSpanSummary {
   const samples = after.eventLoop.samples;
-  const maximum = (pick: (sample: HostEventLoopSample) => number): number | null =>
+  const maximum = (
+    pick: (sample: HostEventLoopSample) => number,
+  ): number | null =>
     samples.length > 0 ? Math.max(...samples.map(pick)) : null;
   return {
     elapsedMs,
     server: {
       rssDeltaBytes: after.process.rssBytes - before.process.rssBytes,
-      heapUsedDeltaBytes: after.process.heapUsedBytes - before.process.heapUsedBytes,
+      heapUsedDeltaBytes:
+        after.process.heapUsedBytes - before.process.heapUsedBytes,
       userCpuMs: after.process.userCpuMs - before.process.userCpuMs,
       systemCpuMs: after.process.systemCpuMs - before.process.systemCpuMs,
     },
@@ -103,7 +111,7 @@ export function summarizeHostSpan(
 /** Measure one exact userland workload against server/workerd resource counters. */
 export async function profileHost<T>(
   run: () => Promise<T>,
-  options?: { label?: string; eventLoopLimit?: number }
+  options?: { label?: string; eventLoopLimit?: number },
 ): Promise<HostSpanProfile<T>> {
   const before = await hostPerformanceSnapshot({ eventLoopLimit: 1 });
   const startedAt = Date.now();
@@ -131,13 +139,13 @@ export async function profileHost<T>(
  */
 export function profileBuild(
   source: string,
-  options?: { ref?: string; verifyCache?: boolean }
+  options?: { ref?: string; verifyCache?: boolean },
 ): Promise<BuildPerformanceProfileWire> {
-  return rpc.call<BuildPerformanceProfileWire>("main", "build.getPerformanceProfile", [
-    source,
-    options?.ref,
-    { verifyCache: options?.verifyCache ?? true },
-  ]);
+  return rpc.call<BuildPerformanceProfileWire>(
+    "main",
+    "build.getPerformanceProfile",
+    [source, options?.ref, { verifyCache: options?.verifyCache ?? true }],
+  );
 }
 
 /** Capture Electron's process family from client-affine eval in a desktop app or panel. */
@@ -155,7 +163,7 @@ export function electronPerformanceSnapshot(): Promise<ElectronProcessPerformanc
     root.__vibestudioApp?.getProcessPerformanceSnapshot;
   if (!read) {
     throw new Error(
-      "Electron process metrics require client_eval in an Electron-hosted Vibestudio app or panel"
+      "Electron process metrics require client_eval in an Electron-hosted Vibestudio app or panel",
     );
   }
   return read();
@@ -166,7 +174,9 @@ type ServerLogEnvelope = {
   startedAt: number;
 };
 
-function firstStructuredField(record: ServerLogRecord | undefined): Record<string, unknown> | null {
+function firstStructuredField(
+  record: ServerLogRecord | undefined,
+): Record<string, unknown> | null {
   const value = record?.fields?.[0];
   return value && typeof value === "object" && !Array.isArray(value)
     ? (value as Record<string, unknown>)
@@ -187,19 +197,25 @@ export async function readStartupProfile(): Promise<{
   }>;
 }> {
   const snapshot = await hostPerformanceSnapshot({ eventLoopLimit: 1 });
-  const envelope = await rpc.call<ServerLogEnvelope>("main", "serverLog.query", [
-    { since: snapshot.startedAt, limit: 5_000 },
-  ]);
+  const envelope = await rpc.call<ServerLogEnvelope>(
+    "main",
+    "serverLog.query",
+    [{ since: snapshot.startedAt, limit: 5_000 }],
+  );
   const latest = (predicate: (record: ServerLogRecord) => boolean) =>
     [...envelope.records].reverse().find(predicate);
   const semantic = latest(
-    (record) => record.tag === "Vcs" && record.message === "semantic activation report"
+    (record) =>
+      record.tag === "Vcs" && record.message === "semantic activation report",
   );
   const reconciliation = latest(
-    (record) => record.tag === "StartupBootstrap" && record.message === "Reconciliation barrier"
+    (record) =>
+      record.tag === "StartupBootstrap" &&
+      record.message === "Reconciliation barrier",
   );
   const buildDiscovery = latest(
-    (record) => record.tag === "BuildV2" && record.message.startsWith("Discovered ")
+    (record) =>
+      record.tag === "BuildV2" && record.message.startsWith("Discovered "),
   );
   return {
     version: 1,
@@ -208,7 +224,10 @@ export async function readStartupProfile(): Promise<{
     reconciliation: firstStructuredField(reconciliation),
     buildDiscovery: buildDiscovery?.message ?? null,
     responsivenessWarnings: envelope.records
-      .filter((record) => record.tag?.startsWith("EventLoop:") && record.level === "warn")
+      .filter(
+        (record) =>
+          record.tag?.startsWith("EventLoop:") && record.level === "warn",
+      )
       .map((record) => ({
         timestamp: record.timestamp,
         label: record.tag!.slice("EventLoop:".length),
@@ -220,8 +239,10 @@ export async function readStartupProfile(): Promise<{
 /** Profile an interaction on one existing panel and always release the CDP lease. */
 export async function profilePanelInteraction(
   handle: PanelHandle,
-  action: (page: Awaited<ReturnType<PanelHandle["cdp"]["page"]>>) => void | Promise<void>,
-  options?: CdpProfileOptions
+  action: (
+    page: Awaited<ReturnType<PanelHandle["cdp"]["page"]>>,
+  ) => void | Promise<void>,
+  options?: CdpProfileOptions,
 ): Promise<CdpProfileReport> {
   const page = await handle.cdp.page();
   try {
@@ -231,33 +252,17 @@ export async function profilePanelInteraction(
   }
 }
 
-/** Profile the real in-place workspace-panel reload and retain lifecycle proof. */
+/** Profile reload across runtime replacement; a CDP page belongs to one incarnation. */
 export async function profilePanelReload(
   handle: PanelHandle,
-  options?: CdpProfileOptions
+  options?: { label?: string; eventLoopLimit?: number },
 ): Promise<{
   beforeAttemptId: string | null;
   afterAttemptId: string | null;
-  markerResetAfterReload: boolean;
-  report: CdpProfileReport;
+  report: HostSpanProfile<Awaited<ReturnType<PanelHandle["reload"]>>>;
 }> {
   const beforeAttemptId = (await handle.snapshot()).attemptId ?? null;
-  let markerResetAfterReload = false;
-  const report = await profilePanelInteraction(
-    handle,
-    async (page) => {
-      await page.evaluate(() => {
-        Reflect.set(globalThis, "__vibestudioProfilePanelReloadProbe", true);
-      });
-      await handle.reload();
-      await page.waitForLoadState("networkidle");
-      markerResetAfterReload =
-        (await page.evaluate(() =>
-          Reflect.get(globalThis, "__vibestudioProfilePanelReloadProbe")
-        )) === undefined;
-    },
-    options
-  );
+  const report = await profileHost(() => handle.reload(), options);
   const afterAttemptId = (await handle.snapshot()).attemptId ?? null;
-  return { beforeAttemptId, afterAttemptId, markerResetAfterReload, report };
+  return { beforeAttemptId, afterAttemptId, report };
 }

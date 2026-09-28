@@ -3,6 +3,8 @@ import type { HostPerformanceSnapshot } from "@vibestudio/service-schemas/hostPe
 
 vi.mock("@workspace/runtime", () => ({ rpc: { call: vi.fn() } }));
 
+import { rpc } from "@workspace/runtime";
+
 import { profilePanelReload, summarizeHostSpan } from "./performance.js";
 
 function snapshot(overrides: {
@@ -109,34 +111,38 @@ describe("performance summaries", () => {
     });
   });
 
-  it("profiles one in-place reload and returns browser-lifecycle proof", async () => {
-    const evaluate = vi.fn().mockResolvedValueOnce(undefined).mockResolvedValueOnce(undefined);
-    const page = {
-      evaluate,
-      profile: vi.fn(async (action: () => Promise<void>) => {
-        await action();
-        return { elapsedMs: 17 };
-      }),
-      waitForLoadState: vi.fn().mockResolvedValue(undefined),
-      close: vi.fn().mockResolvedValue(undefined),
-    };
+  it("profiles reload through boot readiness without retaining the replaced CDP page", async () => {
+    const metrics = snapshot({
+      rss: 100,
+      heap: 40,
+      userCpu: 10,
+      systemCpu: 5,
+      workerdRss: 70,
+      p99: 1,
+      max: 2,
+    });
+    vi.mocked(rpc.call).mockResolvedValue(metrics);
+    const observation = { attemptId: "attempt-2", status: "ready" };
     const handle = {
       snapshot: vi
         .fn()
         .mockResolvedValueOnce({ attemptId: "attempt-1" })
-        .mockResolvedValueOnce({ attemptId: "attempt-1" }),
-      reload: vi.fn().mockResolvedValue(undefined),
-      cdp: { page: vi.fn().mockResolvedValue(page) },
+        .mockResolvedValueOnce(observation),
+      reload: vi.fn().mockResolvedValue(observation),
+      cdp: {
+        page: vi.fn(() => {
+          throw new Error("CDP cannot span incarnations");
+        }),
+      },
     };
-
-    await expect(profilePanelReload(handle as never, { label: "reload" })).resolves.toMatchObject({
+    await expect(
+      profilePanelReload(handle as never, { label: "reload" }),
+    ).resolves.toMatchObject({
       beforeAttemptId: "attempt-1",
-      afterAttemptId: "attempt-1",
-      markerResetAfterReload: true,
-      report: { elapsedMs: 17 },
+      afterAttemptId: "attempt-2",
+      report: { label: "reload", value: observation },
     });
     expect(handle.reload).toHaveBeenCalledOnce();
-    expect(page.waitForLoadState).toHaveBeenCalledWith("networkidle");
-    expect(page.close).toHaveBeenCalledOnce();
+    expect(handle.cdp.page).not.toHaveBeenCalled();
   });
 });

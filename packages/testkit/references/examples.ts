@@ -89,7 +89,7 @@ export async function profilePanelInteractionWorkload(
 
 /** Profile a real panel lifecycle reload without replacing its handle. */
 export async function profilePanelReloadWorkload(handle: Awaited<ReturnType<typeof openPanel>>) {
-  return profilePanelReload(handle, { label: "panel reload", disableCache: true });
+  return profilePanelReload(handle, { label: "panel reload" });
 }
 
 /** Exact build attribution plus a verified-cache repeat. */
