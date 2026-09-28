@@ -20,7 +20,6 @@ import type {
   Participant,
   AgentDebugPayload,
   IncomingEvent,
-  MethodDefinition,
 } from "@workspace/pubsub";
 import { isAgentParticipantType } from "@workspace/pubsub";
 import {
@@ -164,12 +163,7 @@ export interface ChatCoreState {
   dismissConnectionError: () => void;
   client: PubSubClient<ChatParticipantMetadata> | null;
   clientRef: React.RefObject<PubSubClient<ChatParticipantMetadata> | null>;
-  connectToChannel: (options: {
-    channelId: string;
-    methods: Record<string, MethodDefinition>;
-    channelConfig?: ChannelConfig;
-    contextId?: string;
-  }) => Promise<PubSubClient<ChatParticipantMetadata>>;
+  connectToChannel: ConnectionManager["connect"];
   hasConnectedRef: React.MutableRefObject<boolean>;
 
   // Participants
@@ -507,19 +501,10 @@ export function useChatCore({
 
   // --- Connect ---
   const connectToChannel = useCallback(
-    async (options: {
-      channelId: string;
-      methods: Record<string, MethodDefinition>;
-      channelConfig?: ChannelConfig;
-      contextId?: string;
-    }): Promise<PubSubClient<ChatParticipantMetadata>> => {
+    async (options: Parameters<ConnectionManager["connect"]>[0]) => {
       setStatus("Connecting...");
-      const newClient = await connection.connect({
-        channelId: options.channelId,
-        methods: options.methods,
-        channelConfig: options.channelConfig,
-        contextId: options.contextId,
-      });
+      const newClient = await connection.connect(options);
+      options.signal?.throwIfAborted();
       setClient(newClient);
       setConnected(true);
       setStatus("Connected");

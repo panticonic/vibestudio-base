@@ -19,7 +19,11 @@ import {
   MAX_CHANNEL_ENVELOPE_PAGE_LIMIT,
 } from "@vibestudio/shared/channelEnvelopePaging";
 
-export type ConnectionStatus = "disconnected" | "connecting" | "connected" | "error";
+export type ConnectionStatus =
+  | "disconnected"
+  | "connecting"
+  | "connected"
+  | "error";
 
 /** A local channel subscription is expected to reach its replay boundary
  * promptly. More importantly, every connection attempt must have a terminal
@@ -47,6 +51,7 @@ export interface ConnectionCallbacks {
 }
 
 export interface ConnectionConnectOptions {
+  signal?: AbortSignal;
   channelId: string;
   channelTargetId?: string;
   methods: Record<string, MethodDefinition>;
@@ -91,11 +96,15 @@ export class ConnectionManager {
     return this._clientId;
   }
 
-  async connect(options: ConnectionConnectOptions): Promise<PubSubClient<ChatParticipantMetadata>> {
-    const { channelId, channelTargetId, methods, channelConfig, contextId } = options;
+  async connect(
+    options: ConnectionConnectOptions,
+  ): Promise<PubSubClient<ChatParticipantMetadata>> {
+    options.signal?.throwIfAborted();
+    const { channelId, channelTargetId, methods, channelConfig, contextId } =
+      options;
     const replayMessageLimit = Math.min(
       this.config.replayMessageLimit ?? DEFAULT_CHANNEL_ENVELOPE_PAGE_LIMIT,
-      MAX_CHANNEL_ENVELOPE_PAGE_LIMIT
+      MAX_CHANNEL_ENVELOPE_PAGE_LIMIT,
     );
 
     if (!this.config.rpc) {
@@ -105,21 +114,40 @@ export class ConnectionManager {
       throw error;
     }
 
-    // Close existing connection if any
+    // Install ownership before the first await. Concurrent callers can then
+    // cancel only the attempt they replace, including during graceful leave.
+    const closing = this.disconnect();
+    const readyAbort = new AbortController();
+    this.connectAbortController = readyAbort;
+    const onAbort = () => {
+      if (this.connectAbortController !== readyAbort) return;
+      readyAbort.abort(options.signal?.reason);
+      this.connectAbortController = null;
+      this.setStatus("disconnected");
+    };
+    options.signal?.addEventListener("abort", onAbort, { once: true });
+    if (options.signal?.aborted) onAbort();
     try {
-      await this.disconnect();
+      await closing;
     } catch (error) {
       // A failed graceful leave is a transport failure. Surface it, then let
       // the new subscription replace the old transport generation.
-      this.callbacks.onError?.(error instanceof Error ? error : new Error(String(error)));
+      if (this.connectAbortController === readyAbort) {
+        this.callbacks.onError?.(
+          error instanceof Error ? error : new Error(String(error)),
+        );
+      }
+    }
+    if (this.connectAbortController !== readyAbort) {
+      options.signal?.removeEventListener("abort", onAbort);
+      throw new Error("Connection attempt was superseded");
     }
     this.setStatus("connecting");
-    const readyAbort = new AbortController();
-    this.connectAbortController = readyAbort;
     let readyTimedOut = false;
     let readyTimer: ReturnType<typeof setTimeout> | null = null;
 
     let newClient: PubSubClient<ChatParticipantMetadata> | null = null;
+    const unsubs: Array<() => void> = [];
     try {
       const resolvedChannelTargetId =
         channelTargetId ??
@@ -149,7 +177,9 @@ export class ConnectionManager {
         // No asserted HUMAN handle (WP6 §5): the channel stamps human identity
         // from the host-verified subject, ignoring client-supplied handles.
         // Agents/headless workers still pass their own descriptor through.
-        ...(this.metadata.handle !== undefined ? { handle: this.metadata.handle } : {}),
+        ...(this.metadata.handle !== undefined
+          ? { handle: this.metadata.handle }
+          : {}),
         name: this.metadata.name,
         type: this.metadata.type,
         clientId: this.config.clientId,
@@ -171,19 +201,13 @@ export class ConnectionManager {
       await newClient.ready(readyAbort.signal);
       if (contextId && newClient.contextId !== contextId) {
         const resolved = newClient.contextId ?? "none";
-        await newClient.close();
         throw new Error(
-          `Channel ${channelId} resolved in context ${resolved}, expected ${contextId}`
+          `Channel ${channelId} resolved in context ${resolved}, expected ${contextId}`,
         );
       }
       if (this.connectAbortController !== readyAbort) {
-        await newClient.close();
         throw new Error("Connection attempt was superseded");
       }
-      this.connectAbortController = null;
-
-      this._client = newClient;
-      this._clientId = newClient.clientId ?? null;
       console.info("[ConnectionManager] channel replay connected", {
         channelId,
         requestedContextId: contextId ?? null,
@@ -194,8 +218,6 @@ export class ConnectionManager {
         firstEnvelopeSeq: newClient.firstEnvelopeSeq ?? null,
         hasMoreBefore: newClient.hasMoreBefore ?? null,
       });
-
-      const unsubs: Array<() => void> = [];
 
       // Stream transports own an event iterator. Resident transports invoke
       // the application handler inside the finite delivery RPC above so the
@@ -216,16 +238,26 @@ export class ConnectionManager {
               try {
                 await this.callbacks.onEvent?.(event as IncomingEvent);
               } catch (eventError) {
-                console.error("[ConnectionManager] Event callback error:", eventError);
+                console.error(
+                  "[ConnectionManager] Event callback error:",
+                  eventError,
+                );
                 this.callbacks.onError?.(
-                  eventError instanceof Error ? eventError : new Error(String(eventError))
+                  eventError instanceof Error
+                    ? eventError
+                    : new Error(String(eventError)),
                 );
               }
             }
           } catch (streamError) {
-            console.error("[ConnectionManager] Event stream error:", streamError);
+            console.error(
+              "[ConnectionManager] Event stream error:",
+              streamError,
+            );
             this.callbacks.onError?.(
-              streamError instanceof Error ? streamError : new Error(String(streamError))
+              streamError instanceof Error
+                ? streamError
+                : new Error(String(streamError)),
             );
           } finally {
             eventIteratorRef = null;
@@ -244,9 +276,12 @@ export class ConnectionManager {
           try {
             this.callbacks.onRoster?.(roster);
           } catch (rosterError) {
-            console.error("[ConnectionManager] Roster callback error:", rosterError);
+            console.error(
+              "[ConnectionManager] Roster callback error:",
+              rosterError,
+            );
           }
-        })
+        }),
       );
 
       // Set up reconnect handler
@@ -255,42 +290,51 @@ export class ConnectionManager {
           try {
             this.callbacks.onReconnect?.();
           } catch (reconnectError) {
-            console.error("[ConnectionManager] Reconnect callback error:", reconnectError);
+            console.error(
+              "[ConnectionManager] Reconnect callback error:",
+              reconnectError,
+            );
           }
-        })
+        }),
       );
 
       this.unsubscribers = unsubs;
+      this._client = newClient;
+      this._clientId = newClient.clientId ?? null;
+      this.connectAbortController = null;
       this.setStatus("connected");
       return newClient;
     } catch (err) {
+      for (const unsub of unsubs) unsub();
       const error = readyTimedOut
         ? new Error(
-            `Channel ${channelId} did not finish loading within ${CONNECTION_READY_TIMEOUT_MS / 1_000} seconds`
+            `Channel ${channelId} did not finish loading within ${CONNECTION_READY_TIMEOUT_MS / 1_000} seconds`,
           )
         : err instanceof Error
           ? err
           : new Error(String(err));
-      await newClient?.close().catch(() => undefined);
-      if (readyAbort.signal.aborted && this.connectAbortController !== readyAbort) {
+      if (this.connectAbortController !== readyAbort) {
+        await newClient?.close().catch(() => undefined);
         throw error;
       }
-      if (this.connectAbortController === readyAbort) {
-        this.connectAbortController = null;
-      }
+      // Detach this attempt synchronously before async cleanup. A replacement
+      // may start while close() awaits its subscription's terminal response.
+      this.connectAbortController = null;
       this.callbacks.onError?.(error);
       this.setStatus("error");
-      await this.disconnect().catch(() => undefined);
+      this.setStatus("disconnected");
+      await newClient?.close().catch(() => undefined);
       throw error;
     } finally {
+      options.signal?.removeEventListener("abort", onAbort);
       if (readyTimer !== null) clearTimeout(readyTimer);
     }
   }
 
   disconnect(): Promise<void> {
-    if (this.disconnectPromise) return this.disconnectPromise;
     this.connectAbortController?.abort();
     this.connectAbortController = null;
+    if (this.disconnectPromise) return this.disconnectPromise;
 
     for (const unsub of this.unsubscribers) {
       unsub();

@@ -855,6 +855,7 @@ export function useAgenticChat({
     if (!channelName || !config.rpc) return;
     if (core.hasConnectedRef.current) return;
     core.hasConnectedRef.current = true;
+    const controller = new AbortController();
     let cancelled = false;
     let connected = false;
     let retryTimer: ReturnType<typeof setTimeout> | undefined;
@@ -1431,6 +1432,7 @@ Use package imports available to inline_ui plus relative imports for local helpe
               : undefined
           );
           await core.connectToChannel({
+            signal: controller.signal,
             channelId: channelName,
             methods,
             channelConfig,
@@ -1462,6 +1464,7 @@ Use package imports available to inline_ui plus relative imports for local helpe
     void doConnect();
     return () => {
       cancelled = true;
+      controller.abort();
       if (retryTimer !== undefined) clearTimeout(retryTimer);
       if (!connected) core.hasConnectedRef.current = false;
     };

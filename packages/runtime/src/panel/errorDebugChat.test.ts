@@ -127,7 +127,7 @@ function createRpcCall() {
         return {
           status: "assigned",
           lease: null,
-          attempt: readyAttempt(String(args[0]), String(args[1])),
+          attempt: readyAttempt(String(args[0]), runtimeEntity.id),
         };
       case "workspace-state.panelTree.detail":
         if (args[0] === "panel:tree/spectrolite") {

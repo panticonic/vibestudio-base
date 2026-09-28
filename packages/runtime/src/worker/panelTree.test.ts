@@ -250,7 +250,7 @@ describe("worker panelTree handles", () => {
         if (body.method === "panelRuntime.ensureSlot")
           return respond(
             init,
-            assignedRuntimeSlot(String(body.args[0]), String(body.args[1])),
+            assignedRuntimeSlot(String(body.args[0]), workspaceDetailFor(String(body.args[0])).entity.id),
           );
         if (body.method === "panelRuntime.observeSlot")
           return respond(init, readyRuntimeSlot(String(body.args[0])));
@@ -280,7 +280,7 @@ describe("worker panelTree handles", () => {
       type: "call",
       targetId: "main",
       method: "panelRuntime.ensureSlot",
-      args: ["panel:tree/slot-a", "panel:nav-slot-a-current-entity"],
+      args: ["panel:tree/slot-a"],
     });
     expect(calls).toContainEqual({
       type: "call",
@@ -370,7 +370,7 @@ describe("worker panelTree handles", () => {
         if (body.method === "panelRuntime.ensureSlot")
           return respond(
             init,
-            assignedRuntimeSlot(String(body.args[0]), String(body.args[1])),
+            assignedRuntimeSlot(String(body.args[0]), workspaceDetailFor(String(body.args[0])).entity.id),
           );
         return respond(init, { loaded: true });
       },
@@ -495,7 +495,7 @@ describe("worker panelTree handles", () => {
         if (body.method === "panelRuntime.ensureSlot")
           return respond(
             init,
-            assignedRuntimeSlot(String(body.args[0]), String(body.args[1])),
+            assignedRuntimeSlot(String(body.args[0]), workspaceDetailFor(String(body.args[0])).entity.id),
           );
         if (body.method === "panelRuntime.observeSlot")
           return respond(init, readyRuntimeSlot(String(body.args[0])));
@@ -595,7 +595,7 @@ describe("worker panelTree handles", () => {
         if (body.method === "panelRuntime.ensureSlot")
           return respond(
             init,
-            assignedRuntimeSlot(String(body.args[0]), String(body.args[1])),
+            assignedRuntimeSlot(String(body.args[0]), workspaceDetailFor(String(body.args[0])).entity.id),
           );
         if (body.method === "panelRuntime.observeSlot")
           return respond(init, readyRuntimeSlot(String(body.args[0])));
@@ -686,7 +686,7 @@ describe("worker panelTree handles", () => {
         if (body.method === "panelRuntime.ensureSlot")
           return respond(
             init,
-            assignedRuntimeSlot(String(body.args[0]), String(body.args[1])),
+            assignedRuntimeSlot(String(body.args[0]), workspaceDetailFor(String(body.args[0])).entity.id),
           );
         return respond(init, undefined);
       },

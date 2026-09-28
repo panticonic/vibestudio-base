@@ -99,7 +99,7 @@ function createRpcCall() {
         return {
           status: "assigned",
           lease: null,
-          attempt: readyAttempt(String(args[0]), String(args[1])),
+          attempt: readyAttempt(String(args[0]), `panel:nav-${String(args[0]).replace(/^panel:tree\//, "")}-entity`),
         };
       case "workspace-state.slot.commitPreparedNavigation": {
         const input = args[0] as {

@@ -325,14 +325,10 @@ export function createPanelRuntime(
   const callView = <T>(method: string, args: unknown[]): Promise<T> =>
     options.rpc.call<T>("main", `view.${method}`, args);
   const ensurePanelMaterialized = async (id: string): Promise<PanelAttempt> => {
-    const detail = await callPanelState<WorkspacePanelDetail | null>("detail", [
-      id,
-    ]);
-    if (!detail) throw new Error(`Unknown panel slot: ${id}`);
     const result = await options.rpc.call<EnsurePanelSlotResult>(
       "main",
       "panelRuntime.ensureSlot",
-      [id, detail.entity.id],
+      [id],
     );
     if (
       (result.status === "assigned" || result.status === "already-held") &&
@@ -340,6 +336,8 @@ export function createPanelRuntime(
     ) {
       return result.attempt;
     }
+    const detail = await callPanelState<WorkspacePanelDetail | null>("detail", [id]);
+    if (!detail) throw new Error(`Unknown panel slot: ${id}`);
     const holder = result.lease?.holderLabel;
     throw new PanelOperationError(
       panelFailure({
@@ -351,7 +349,7 @@ export function createPanelRuntime(
             : `No presentation host is available for panel ${id}`,
         provenance: {
           panelId: id,
-          runtimeEntityId: detail.entity.id,
+          runtimeEntityId: result.attempt?.runtimeEntityId ?? detail.entity.id,
           attemptId: result.attempt?.attemptId,
           source: detail.currentHistory.source,
           contextId: detail.currentHistory.context_id,

@@ -555,6 +555,7 @@ describe("initRuntime", () => {
   it("exposes panel lifecycle and state operations on the unified parent handle", async () => {
     const sends: Array<{ targetId: string; method: string; args: unknown[] }> =
       [];
+    let currentEntityId = "panel:nav-parent-entity";
     g.__vibestudioEntityId = "panel:child-entity";
     g.__vibestudioSlotId = "child-slot";
     g.__vibestudioContextId = "ctx-1";
@@ -582,6 +583,9 @@ describe("initRuntime", () => {
               method: message.method,
               args: message.args,
             });
+            if (message.method === "workspace-state.slot.commitPreparedNavigation") {
+              currentEntityId = "panel:nav-next-entity";
+            }
             const navigation =
               message.method === "panelTree.navigate"
                 ? {
@@ -642,7 +646,7 @@ describe("initRuntime", () => {
                                     options: null,
                                   },
                                   entity: {
-                                    id: "panel:nav-parent-entity",
+                                    id: currentEntityId,
                                     source: { effectiveVersion: "ev-current" },
                                     activeBuildKey: "build-current",
                                   },
@@ -659,11 +663,9 @@ describe("initRuntime", () => {
                                       lease: null,
                                       attempt: {
                                         epoch: "test",
-                                        attemptId: `attempt:${String(message.args[1])}`,
+                                        attemptId: `attempt:${currentEntityId}`,
                                         slotId: String(message.args[0]),
-                                        runtimeEntityId: String(
-                                          message.args[1],
-                                        ),
+                                        runtimeEntityId: currentEntityId,
                                         phase: "ready",
                                         revision: 1,
                                         reporter: "renderer",
@@ -677,10 +679,9 @@ describe("initRuntime", () => {
                                         attempt: {
                                           epoch: "test",
                                           attemptId:
-                                            "attempt:panel:nav-parent-entity",
+                                            `attempt:${currentEntityId}`,
                                           slotId: String(message.args[0]),
-                                          runtimeEntityId:
-                                            "panel:nav-parent-entity",
+                                          runtimeEntityId: currentEntityId,
                                           phase: "ready",
                                           revision: 1,
                                           reporter: "renderer",

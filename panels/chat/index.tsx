@@ -67,6 +67,7 @@ import {
   sanitizeHandle
 } from "./bootstrap.js";
 import { createAndSubscribeAgent, persistInstalledAgent, waitForPanelReview } from "./agentLifecycle.js";
+import { useAgentRecovery } from "./useAgentRecovery.js";
 import {
   ConversationHeader,
   conversationStyle,
@@ -86,8 +87,6 @@ const DEFAULT_WORKER_SOURCE = "workers/agent-worker";
 const DEFAULT_CLASS_NAME = "AiChatWorker";
 const DEFAULT_HANDLE = "ai-chat";
 const CHANNEL_SERVICE_PROTOCOL = "vibestudio.channel.v1";
-const AGENT_SUBSCRIPTION_RETRY_DELAY_MS = 1_000;
-const AGENT_SUBSCRIPTION_MAX_ATTEMPTS = 60;
 const MODEL_SETTINGS_DISCOVERY_TIMEOUT_MS = 15_000;
 
 /** Response shape from workers.listSources */
@@ -133,11 +132,12 @@ function parseDoTargetId(participantId: string): ChannelDORef | null {
   };
 }
 
-async function getChannelDOParticipants(channelId: string): Promise<ChannelDORef[]> {
+async function getChannelDOParticipants(channelId: string, signal: AbortSignal): Promise<ChannelDORef[]> {
   const channelService = await rpc.call<{ kind: string; targetId?: string }>(
     "main",
     "workers.resolveService",
-    [CHANNEL_SERVICE_PROTOCOL, channelId]
+    [CHANNEL_SERVICE_PROTOCOL, channelId],
+    { signal }
   );
   if (channelService.kind !== "durable-object" || !channelService.targetId) {
     throw new Error("Channel service must resolve to a Durable Object service");
@@ -145,15 +145,12 @@ async function getChannelDOParticipants(channelId: string): Promise<ChannelDORef
   const participants = await rpc.call<ChannelParticipant[]>(
     channelService.targetId,
     "getParticipants",
-    []
+    [],
+    { signal }
   );
   return participants
     .map((p) => parseDoTargetId(p.participantId))
     .filter((p): p is ChannelDORef => p !== null);
-}
-
-function delay(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 /** Persisted per-agent record. `key` is the stable DO `objectKey` minted once
@@ -418,116 +415,43 @@ export default function ChatPanel() {
   // channel in durable notification ids.
   const channelName = stateArgs.channelName ?? bootstrapChannel;
 
-  // Agent subscription recovery: when a panel has a channel but no DO
-  // participants, re-create+subscribe each persisted agent using its stable
-  // `key` so we hit the same entity row idempotently. This also covers fresh
-  // bootstrap, where server-side startup approvals/builds can briefly race
-  // the first create+subscribe attempt.
-  const rehydrationCheckedRef = useRef(false);
-  const [rehydrationStatus, setRehydrationStatus] = useState<"idle" | "recovering" | "failed">(
-    "idle"
-  );
-  const [rehydrationError, setRehydrationError] = useState<string | null>(null);
-  const [rehydrationAttempt, setRehydrationAttempt] = useState(0);
-  useEffect(() => {
-    if (rehydrationCheckedRef.current || !stateArgs.channelName || !resolvedContextId) return;
-    rehydrationCheckedRef.current = true;
-    let cancelled = false;
-
-    const channelName = stateArgs.channelName;
-    if ((stateArgs.installedAgents?.length ?? 0) > 0) {
-      setRehydrationStatus("recovering");
-      setRehydrationError(null);
+  // Reconcile persisted agent membership. The effect owns cancellation; an
+  // updated channel/config starts a fresh recovery rather than inheriting a
+  // cancelled attempt's "already checked" latch.
+  const recoverInstalledAgents = useCallback(async (signal: AbortSignal) => {
+    const channelName = stateArgs.channelName!;
+    const dos = await getChannelDOParticipants(channelName, signal);
+    signal.throwIfAborted();
+    const missingAgents = (stateArgs.installedAgents ?? []).filter((agent) =>
+      !dos.some((participant) =>
+        participant.source === agent.source &&
+        participant.className === agent.className &&
+        participant.objectKey === agent.key
+      )
+    );
+    if (missingAgents.length === 0) return;
+    const defaultAgentConfig = await resolveWorkspaceDefaultAgentConfig();
+    signal.throwIfAborted();
+    for (const agent of missingAgents) {
+      const { subscribeConfig } = buildAgentSubscriptionConfig({
+        handle: agent.handle,
+        workspaceDefaultAgentConfig: defaultAgentConfig,
+        globalConfig: stateArgs.agentConfig,
+        perAgentConfig: agent.config,
+        systemPrompt: stateArgs.systemPrompt,
+        systemPromptMode: stateArgs.systemPromptMode
+      });
+      await createAndSubscribeAgent({
+        source: agent.source,
+        className: agent.className,
+        key: agent.key,
+        channelId: channelName,
+        channelContextId: resolvedContextId,
+        config: subscribeConfig,
+        replay: true
+      });
+      signal.throwIfAborted();
     }
-    void (async () => {
-      for (
-        let attempt = 1;
-        attempt <= AGENT_SUBSCRIPTION_MAX_ATTEMPTS && !cancelled;
-        attempt += 1
-      ) {
-        try {
-          const dos = await getChannelDOParticipants(channelName);
-          console.info("[ChatPanel] agent rehydration participant check", {
-            channelName,
-            contextId: resolvedContextId,
-            participantCount: dos.length,
-            attempt
-          });
-          if (dos.length > 0) {
-            setRehydrationStatus("idle");
-            return;
-          }
-
-          const installedList = stateArgs.installedAgents ?? [];
-          if (installedList.length === 0) {
-            setRehydrationStatus("idle");
-            return;
-          }
-          const defaultAgentConfig = await resolveWorkspaceDefaultAgentConfig();
-          console.warn("[ChatPanel] channel has no DO participants; rehydrating installed agents", {
-            channelName,
-            contextId: resolvedContextId,
-            installedAgentCount: installedList.length,
-            installedAgents: installedList.map((agent) => ({
-              key: agent.key,
-              source: agent.source,
-              className: agent.className,
-              handle: agent.handle
-            }))
-          });
-
-          for (const agent of installedList) {
-            // Layer the per-agent persisted config over the global default so a
-            // switched/added agent comes back on its own model after reload.
-            const { subscribeConfig } = buildAgentSubscriptionConfig({
-              handle: agent.handle,
-              workspaceDefaultAgentConfig: defaultAgentConfig,
-              globalConfig: stateArgs.agentConfig,
-              perAgentConfig: agent.config,
-              systemPrompt: stateArgs.systemPrompt,
-              systemPromptMode: stateArgs.systemPromptMode
-            });
-            await createAndSubscribeAgent({
-              source: agent.source,
-              className: agent.className,
-              key: agent.key,
-              channelId: channelName,
-              channelContextId: resolvedContextId,
-              config: subscribeConfig,
-              replay: true
-            });
-            console.info("[ChatPanel] rehydrated installed agent", {
-              channelName,
-              contextId: resolvedContextId,
-              key: agent.key,
-              source: agent.source,
-              className: agent.className,
-              handle: agent.handle
-            });
-          }
-          setRehydrationStatus("idle");
-          return;
-        } catch (err) {
-          if (attempt === AGENT_SUBSCRIPTION_MAX_ATTEMPTS) {
-            console.warn(`[ChatPanel] Agent subscription recovery failed:`, err);
-            const message = err instanceof Error ? err.message : String(err);
-            setRehydrationError(message);
-            setRehydrationStatus("failed");
-            void notifications.show({
-              type: "error",
-              title: "Couldn't reconnect the chat agent",
-              message
-            });
-            return;
-          }
-          await delay(AGENT_SUBSCRIPTION_RETRY_DELAY_MS);
-        }
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
   }, [
     stateArgs.channelName,
     stateArgs.installedAgents,
@@ -535,9 +459,26 @@ export default function ChatPanel() {
     stateArgs.systemPrompt,
     stateArgs.systemPromptMode,
     resolvedContextId,
-    resolveWorkspaceDefaultAgentConfig,
-    rehydrationAttempt
+    resolveWorkspaceDefaultAgentConfig
   ]);
+  const reportRecoveryFailure = useCallback((error: Error) => {
+    console.warn("[ChatPanel] Agent subscription recovery failed:", error);
+    void notifications.show({
+      type: "error",
+      title: "Couldn't reconnect the chat agent",
+      message: error.message
+    });
+  }, []);
+  const {
+    status: rehydrationStatus,
+    error: rehydrationError,
+    retry: retryAgentRecovery
+  } = useAgentRecovery(
+    stateArgs.channelName && (stateArgs.installedAgents?.length ?? 0) > 0
+      ? recoverInstalledAgents
+      : null,
+    reportRecoveryFailure
+  );
 
   // Build ConnectionConfig from runtime
   const config = useMemo<ConnectionConfig>(
@@ -1279,7 +1220,6 @@ export default function ChatPanel() {
         forkContextId
       });
       initialPromptCaptured.current = undefined;
-      rehydrationCheckedRef.current = false;
       const current = panel.stateArgs.get<ChatStateArgs & { contextId?: unknown }>();
       const { contextId: _obsoleteContextId, ...panelState } = current;
       await panel.switchContext(forkContextId, {
@@ -1457,10 +1397,7 @@ export default function ChatPanel() {
                   size="1"
                   variant="soft"
                   color="red"
-                  onClick={() => {
-                    rehydrationCheckedRef.current = false;
-                    setRehydrationAttempt((attempt) => attempt + 1);
-                  }}
+                  onClick={retryAgentRecovery}
                 >
                   Retry
                 </Button>
