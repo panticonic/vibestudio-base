@@ -64,3 +64,7 @@ export const journal = helpfulNamespace("journal", {
   with: withJournal,
   current: currentJournal,
 });
+
+// Explicit-client factories are portable: no global transport or panel state.
+export { createConversationClient, type ConversationClient } from "./conversation.js";
+export { launchAgentIntoChannel, type LaunchAgentIntoChannelInput, type LaunchAgentIntoChannelResult } from "@workspace/agentic-core/agent-launch";

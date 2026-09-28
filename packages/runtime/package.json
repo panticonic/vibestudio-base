@@ -51,6 +51,7 @@
     "@workspace/cdp-client": "workspace:*",
     "@workspace/template-management": "workspace:*",
     "sql.js": "^1.14.1",
-    "zod": "^3.25.76"
+    "zod": "^3.25.76",
+    "@workspace/agentic-core": "workspace:*"
   }
 }

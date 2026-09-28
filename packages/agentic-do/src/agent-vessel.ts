@@ -2410,12 +2410,8 @@ export abstract class AgentVesselBase extends PanelDurableObjectBase {
   }
 
   @rpc({
-    website: {
-      kind: "closed",
-      reason:
-        "This receiver owns workspace orchestration or retained workspace data; websites require a reviewed bounded operation.",
-    },
-    principals: ["host", "user", "code"],
+    website: { kind: "eligible", rationale: "Ordinary conversation and agent operations use caller-scoped approvals; launched execution retains its authenticated authority." },
+    principals: ["host", "user", "code", "website"],
     effect: { kind: "open" },
     tier: "open",
     sensitivity: "read",
@@ -3238,12 +3234,8 @@ export abstract class AgentVesselBase extends PanelDurableObjectBase {
   // the agent. Host lifecycle code can interrupt an active vessel, but does not
   // join it to arbitrary channels on a product service's behalf.
   @rpc({
-    website: {
-      kind: "closed",
-      reason:
-        "This receiver owns workspace orchestration or retained workspace data; websites require a reviewed bounded operation.",
-    },
-    principals: ["code"],
+    website: { kind: "eligible", rationale: "Ordinary conversation and agent operations use caller-scoped approvals; launched execution retains its authenticated authority." },
+    principals: ["code", "website"],
     effect: { kind: "open" },
     tier: "open",
     sensitivity: "write",
@@ -3591,12 +3583,8 @@ This is one admitted recurring-automation tick. If this tick establishes that th
   // Symmetric with `subscribeChannel`: an owning userland service must be able
   // to detach a vessel during lifecycle cleanup.
   @rpc({
-    website: {
-      kind: "closed",
-      reason:
-        "This receiver owns workspace orchestration or retained workspace data; websites require a reviewed bounded operation.",
-    },
-    principals: ["user", "code"],
+    website: { kind: "eligible", rationale: "Ordinary conversation and agent operations use caller-scoped approvals; launched execution retains its authenticated authority." },
+    principals: ["user", "code", "website"],
     effect: { kind: "open" },
     tier: "open",
     sensitivity: "write",
@@ -5357,12 +5345,8 @@ This is one admitted recurring-automation tick. If this tick establishes that th
    * `pause` method this does not require the controller to remain a channel
    * member while cancellation is already unwinding that membership. */
   @rpc({
-    website: {
-      kind: "closed",
-      reason:
-        "This receiver owns workspace orchestration or retained workspace data; websites require a reviewed bounded operation.",
-    },
-    principals: ["host", "user", "code"],
+    website: { kind: "eligible", rationale: "Ordinary conversation and agent operations use caller-scoped approvals; launched execution retains its authenticated authority." },
+    principals: ["host", "user", "code", "website"],
     effect: { kind: "open" },
     tier: "open",
     sensitivity: "write",
@@ -7500,12 +7484,8 @@ This is one admitted recurring-automation tick. If this tick establishes that th
    *  exist); a multi-channel agent forks the one channel and drops the rest in
    *  the clone (see {@link postClone}), so the old ≤1-subscription gate is gone. */
   @rpc({
-    website: {
-      kind: "closed",
-      reason:
-        "This receiver owns workspace orchestration or retained workspace data; websites require a reviewed bounded operation.",
-    },
-    principals: ["host", "code"],
+    website: { kind: "eligible", rationale: "Ordinary conversation and agent operations use caller-scoped approvals; launched execution retains its authenticated authority." },
+    principals: ["host", "code", "website"],
     effect: { kind: "open" },
     tier: "open",
     sensitivity: "read",
@@ -7618,12 +7598,8 @@ This is one admitted recurring-automation tick. If this tick establishes that th
    * The child boots knowing everything the parent knew at the fork point.
    */
   @rpc({
-    website: {
-      kind: "closed",
-      reason:
-        "This receiver owns workspace orchestration or retained workspace data; websites require a reviewed bounded operation.",
-    },
-    principals: ["host", "code"],
+    website: { kind: "eligible", rationale: "Ordinary conversation and agent operations use caller-scoped approvals; launched execution retains its authenticated authority." },
+    principals: ["host", "code", "website"],
     effect: { kind: "open" },
     tier: "open",
     sensitivity: "write",

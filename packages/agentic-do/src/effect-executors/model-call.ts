@@ -40,6 +40,8 @@ import {
 } from "./types.js";
 import { modelCredentialReconnectOutcome } from "../model-credential-suspension.js";
 
+import { scriptedModelOutcome, type ModelScript } from "./scripted-model.js";
+
 const PI_REPLAY_METADATA_KEY = "pi";
 const MAX_PROVIDER_SESSION_ID_LENGTH = 64;
 const LOCAL_MODEL_SIGNAL_CONTENT_TYPE = "vibestudio-ext-working";
@@ -710,6 +712,15 @@ function deterministicTestModeModelOutcome(
   const processEnv = (globalThis as { process?: { env?: Record<string, string | undefined> } })
     .process?.env;
   if (testMode !== "1" && processEnv?.["VIBESTUDIO_TEST_MODE"] !== "1") return null;
+
+  const script = env?.["VIBESTUDIO_TEST_MODEL_SCRIPT"] ?? processEnv?.["VIBESTUDIO_TEST_MODEL_SCRIPT"];
+  if (typeof script === "string") {
+    const user = [...messages].reverse().find(entry => entry.role === "user");
+    const request = user ? extractUserContent(user.content).map(block => block.text).join("\n") : "";
+    const outcome = scriptedModelOutcome(JSON.parse(script) as ModelScript, request, state,
+      new Set((tools ?? []).map(tool => tool.name)));
+    if (outcome) return outcome;
+  }
 
   // This deterministic endpoint substitutes only for model inference,
   // independently of whichever provider a fresh profile resolves. The opening

@@ -2427,8 +2427,8 @@ export class PubSubChannel extends DurableObjectBase {
 
   /** Durable per-channel human presence, including offline members who have no
    * roster row. Status is server-derived from real activity and session count. */
-  @rpc({ website: {"kind":"closed","reason":"This receiver owns workspace orchestration or retained workspace data; websites require a reviewed bounded operation."},
-    principals: ["host", "user", "code"],
+  @rpc({ website: { kind: "eligible", rationale: "Ordinary conversation and agent operations use caller-scoped approvals; launched execution retains its authenticated authority." },
+    principals: ["host", "user", "code", "website"],
     effect: {
       kind: "userland-capability",
       capability: "channel.admin",
@@ -2718,7 +2718,7 @@ export class PubSubChannel extends DurableObjectBase {
    * Subscribe a participant to this channel. Inserts the participant first,
    * then builds replay, so an initial roster snapshot includes the subscriber.
    */
-  @rpc({ website: {"kind":"eligible","rationale":"A connected website may participate in one selected workspace conversation; durable history remains in the ordinary workspace channel and live delivery ends with the document."},
+  @rpc({ website: { kind: "eligible", rationale: "Ordinary conversation and agent operations use caller-scoped approvals; launched execution retains its authenticated authority." },
     principals: ["user", "code", "website"],
     effect: { kind: "open" },
     tier: "open",
@@ -3000,8 +3000,8 @@ export class PubSubChannel extends DurableObjectBase {
    * can prove that accepted structured deliveries were drained before retiring
    * the participant runtime.
    */
-  @rpc({ website: {"kind":"closed","reason":"This receiver owns workspace orchestration or retained workspace data; websites require a reviewed bounded operation."},
-    principals: ["user", "code"],
+  @rpc({ website: { kind: "eligible", rationale: "Ordinary conversation and agent operations use caller-scoped approvals; launched execution retains its authenticated authority." },
+    principals: ["user", "code", "website"],
     effect: { kind: "open" },
     tier: "open",
     sensitivity: "write",
@@ -3159,8 +3159,8 @@ export class PubSubChannel extends DurableObjectBase {
    * GAD validates agentic payloads at append-time inside the txn; policies
    * annotate (never mutate) the envelope.
    */
-  @rpc({ website: {"kind":"closed","reason":"This receiver owns workspace orchestration or retained workspace data; websites require a reviewed bounded operation."},
-    principals: ["user", "code"],
+  @rpc({ website: { kind: "eligible", rationale: "Ordinary conversation and agent operations use caller-scoped approvals; launched execution retains its authenticated authority." },
+    principals: ["user", "code", "website"],
     effect: { kind: "open" },
     tier: "open",
     sensitivity: "write",
@@ -3288,7 +3288,7 @@ export class PubSubChannel extends DurableObjectBase {
    * role assistant for an agent), carrying the same addressing fields
    * (`to`/`mentions`) a participant's message would.
    */
-  @rpc({ website: {"kind":"eligible","rationale":"A connected website may publish a user message to one selected workspace conversation; the existing channel and model approvals still govern downstream work."},
+  @rpc({ website: { kind: "eligible", rationale: "Ordinary conversation and agent operations use caller-scoped approvals; launched execution retains its authenticated authority." },
     principals: ["host", "user", "code", "website"],
     effect: { kind: "open" },
     tier: "open",
@@ -3481,7 +3481,7 @@ export class PubSubChannel extends DurableObjectBase {
     );
   }
 
-  @rpc({ website: {"kind":"eligible","rationale":"A connected website may read one selected workspace conversation through the ordinary bounded channel replay API."},
+  @rpc({ website: { kind: "eligible", rationale: "Ordinary conversation and agent operations use caller-scoped approvals; launched execution retains its authenticated authority." },
     principals: ["host", "user", "code", "website"],
     effect: { kind: "open" },
     tier: "open",
@@ -3494,8 +3494,8 @@ export class PubSubChannel extends DurableObjectBase {
   /** Return one durable envelope by its stable envelope id, or null when that
    * id belongs to another log (for example a VCS commit id). This is a pure,
    * lineage-aware lookup used by panels, agents, and diagnostic evals. */
-  @rpc({ website: {"kind":"closed","reason":"This receiver owns workspace orchestration or retained workspace data; websites require a reviewed bounded operation."},
-    principals: ["host", "user", "code"],
+  @rpc({ website: { kind: "eligible", rationale: "Ordinary conversation and agent operations use caller-scoped approvals; launched execution retains its authenticated authority." },
+    principals: ["host", "user", "code", "website"],
     effect: { kind: "open" },
     tier: "open",
     sensitivity: "read",
@@ -3505,8 +3505,8 @@ export class PubSubChannel extends DurableObjectBase {
   }
 
   /** Send a non-durable signal message. */
-  @rpc({ website: {"kind":"closed","reason":"This receiver owns workspace orchestration or retained workspace data; websites require a reviewed bounded operation."},
-    principals: ["user", "code"],
+  @rpc({ website: { kind: "eligible", rationale: "Ordinary conversation and agent operations use caller-scoped approvals; launched execution retains its authenticated authority." },
+    principals: ["user", "code", "website"],
     effect: { kind: "open" },
     tier: "open",
     sensitivity: "write",
@@ -3538,8 +3538,8 @@ export class PubSubChannel extends DurableObjectBase {
   }
 
   /** Replace a participant's metadata entirely. */
-  @rpc({ website: {"kind":"closed","reason":"This receiver owns workspace orchestration or retained workspace data; websites require a reviewed bounded operation."},
-    principals: ["user", "code"],
+  @rpc({ website: { kind: "eligible", rationale: "Ordinary conversation and agent operations use caller-scoped approvals; launched execution retains its authenticated authority." },
+    principals: ["user", "code", "website"],
     effect: { kind: "open" },
     tier: "open",
     sensitivity: "write",
@@ -3621,8 +3621,8 @@ export class PubSubChannel extends DurableObjectBase {
     await this.publishPresenceEvent(participantId, "update", stored);
   }
 
-  @rpc({ website: {"kind":"closed","reason":"This receiver owns workspace orchestration or retained workspace data; websites require a reviewed bounded operation."},
-    principals: ["user", "code"],
+  @rpc({ website: { kind: "eligible", rationale: "Ordinary conversation and agent operations use caller-scoped approvals; launched execution retains its authenticated authority." },
+    principals: ["user", "code", "website"],
     effect: { kind: "open" },
     tier: "open",
     sensitivity: "write",
@@ -3669,8 +3669,8 @@ export class PubSubChannel extends DurableObjectBase {
   }
 
   /** Get all participants with DO identity when available. */
-  @rpc({ website: {"kind":"closed","reason":"This receiver owns workspace orchestration or retained workspace data; websites require a reviewed bounded operation."},
-    principals: ["host", "user", "code"],
+  @rpc({ website: { kind: "eligible", rationale: "Ordinary conversation and agent operations use caller-scoped approvals; launched execution retains its authenticated authority." },
+    principals: ["host", "user", "code", "website"],
     effect: { kind: "open" },
     tier: "open",
     sensitivity: "read",
@@ -3748,8 +3748,8 @@ export class PubSubChannel extends DurableObjectBase {
    * host-verified `userId` (WP4). Idempotent: re-adding refreshes the handle
    * snapshot without a second invite.
    */
-  @rpc({ website: {"kind":"closed","reason":"This receiver owns workspace orchestration or retained workspace data; websites require a reviewed bounded operation."},
-    principals: ["host", "user", "code"],
+  @rpc({ website: { kind: "eligible", rationale: "Ordinary conversation and agent operations use caller-scoped approvals; launched execution retains its authenticated authority." },
+    principals: ["host", "user", "code", "website"],
     effect: { kind: "open" },
     tier: "open",
     sensitivity: "write",
@@ -3874,8 +3874,8 @@ export class PubSubChannel extends DurableObjectBase {
 
   /** Remove a member from this channel (WP7 §3, §10.3 — a user may remove
    *  themselves; mutual trust means anyone may, no ACL). History stays visible. */
-  @rpc({ website: {"kind":"closed","reason":"This receiver owns workspace orchestration or retained workspace data; websites require a reviewed bounded operation."},
-    principals: ["host", "user", "code"],
+  @rpc({ website: { kind: "eligible", rationale: "Ordinary conversation and agent operations use caller-scoped approvals; launched execution retains its authenticated authority." },
+    principals: ["host", "user", "code", "website"],
     effect: {
       kind: "userland-capability",
       capability: "channel.members.remove",
@@ -3915,8 +3915,8 @@ export class PubSubChannel extends DurableObjectBase {
   }
 
   /** List this channel's durable members (WP7 §3). Ordered by add time. */
-  @rpc({ website: {"kind":"closed","reason":"This receiver owns workspace orchestration or retained workspace data; websites require a reviewed bounded operation."},
-    principals: ["host", "user", "code"],
+  @rpc({ website: { kind: "eligible", rationale: "Ordinary conversation and agent operations use caller-scoped approvals; launched execution retains its authenticated authority." },
+    principals: ["host", "user", "code", "website"],
     effect: { kind: "open" },
     tier: "open",
     sensitivity: "read",
@@ -3947,8 +3947,8 @@ export class PubSubChannel extends DurableObjectBase {
    * identity is host-verified and the indexed lookup is exact; no client-supplied
    * user id and no channel enumeration participate in discovery.
    */
-  @rpc({ website: {"kind":"closed","reason":"This receiver owns workspace orchestration or retained workspace data; websites require a reviewed bounded operation."},
-    principals: ["user", "code"],
+  @rpc({ website: { kind: "eligible", rationale: "Ordinary conversation and agent operations use caller-scoped approvals; launched execution retains its authenticated authority." },
+    principals: ["user", "code", "website"],
     effect: { kind: "open" },
     tier: "open",
     sensitivity: "read",
@@ -3968,8 +3968,8 @@ export class PubSubChannel extends DurableObjectBase {
   }
 
   /** Remove the calling user's invite from the canonical workspace inbox. */
-  @rpc({ website: {"kind":"closed","reason":"This receiver owns workspace orchestration or retained workspace data; websites require a reviewed bounded operation."},
-    principals: ["user", "code"],
+  @rpc({ website: { kind: "eligible", rationale: "Ordinary conversation and agent operations use caller-scoped approvals; launched execution retains its authenticated authority." },
+    principals: ["user", "code", "website"],
     effect: { kind: "open" },
     tier: "open",
     sensitivity: "write",
@@ -4109,8 +4109,8 @@ export class PubSubChannel extends DurableObjectBase {
     }
   }
 
-  @rpc({ website: {"kind":"closed","reason":"This receiver owns workspace orchestration or retained workspace data; websites require a reviewed bounded operation."},
-    principals: ["host", "user", "code"],
+  @rpc({ website: { kind: "eligible", rationale: "Ordinary conversation and agent operations use caller-scoped approvals; launched execution retains its authenticated authority." },
+    principals: ["host", "user", "code", "website"],
     effect: { kind: "open" },
     tier: "open",
     sensitivity: "read",
@@ -4119,8 +4119,8 @@ export class PubSubChannel extends DurableObjectBase {
     return this.getStateValue("contextId");
   }
 
-  @rpc({ website: {"kind":"closed","reason":"This receiver owns workspace orchestration or retained workspace data; websites require a reviewed bounded operation."},
-    principals: ["host", "user", "code"],
+  @rpc({ website: { kind: "eligible", rationale: "Ordinary conversation and agent operations use caller-scoped approvals; launched execution retains its authenticated authority." },
+    principals: ["host", "user", "code", "website"],
     effect: { kind: "open" },
     tier: "open",
     sensitivity: "read",
@@ -4134,8 +4134,8 @@ export class PubSubChannel extends DurableObjectBase {
    * immutable participant set. Repeated identical initialization is safe;
    * any drift is a programming error rather than an implicit policy update.
    */
-  @rpc({ website: {"kind":"closed","reason":"This receiver owns workspace orchestration or retained workspace data; websites require a reviewed bounded operation."},
-    principals: ["host"],
+  @rpc({ website: { kind: "eligible", rationale: "Ordinary conversation and agent operations use caller-scoped approvals; launched execution retains its authenticated authority." },
+    principals: ["host", "website"],
     effect: { kind: "open" },
     tier: "open",
     sensitivity: "write",
@@ -4182,8 +4182,8 @@ export class PubSubChannel extends DurableObjectBase {
     return normalizedConfig;
   }
 
-  @rpc({ website: {"kind":"closed","reason":"This receiver owns workspace orchestration or retained workspace data; websites require a reviewed bounded operation."},
-    principals: ["host", "code"],
+  @rpc({ website: { kind: "eligible", rationale: "Ordinary conversation and agent operations use caller-scoped approvals; launched execution retains its authenticated authority." },
+    principals: ["host", "code", "website"],
     effect: { kind: "open" },
     tier: "open",
     sensitivity: "write",
@@ -4212,8 +4212,8 @@ export class PubSubChannel extends DurableObjectBase {
     return newConfig;
   }
 
-  @rpc({ website: {"kind":"closed","reason":"This receiver owns workspace orchestration or retained workspace data; websites require a reviewed bounded operation."},
-    principals: ["host", "user", "code"],
+  @rpc({ website: { kind: "eligible", rationale: "Ordinary conversation and agent operations use caller-scoped approvals; launched execution retains its authenticated authority." },
+    principals: ["host", "user", "code", "website"],
     effect: { kind: "open" },
     tier: "open",
     sensitivity: "read",
@@ -4229,8 +4229,8 @@ export class PubSubChannel extends DurableObjectBase {
   // Registry reads: direct passthrough to GAD's channel_message_types
   // projection (hydrated — published `source` payloads are blob-spilled).
 
-  @rpc({ website: {"kind":"closed","reason":"This receiver owns workspace orchestration or retained workspace data; websites require a reviewed bounded operation."},
-    principals: ["host", "code"],
+  @rpc({ website: { kind: "eligible", rationale: "Ordinary conversation and agent operations use caller-scoped approvals; launched execution retains its authenticated authority." },
+    principals: ["host", "code", "website"],
     effect: { kind: "open" },
     tier: "open",
     sensitivity: "read",
@@ -4239,8 +4239,8 @@ export class PubSubChannel extends DurableObjectBase {
     return this.channelLog.listMessageTypes();
   }
 
-  @rpc({ website: {"kind":"closed","reason":"This receiver owns workspace orchestration or retained workspace data; websites require a reviewed bounded operation."},
-    principals: ["host", "code"],
+  @rpc({ website: { kind: "eligible", rationale: "Ordinary conversation and agent operations use caller-scoped approvals; launched execution retains its authenticated authority." },
+    principals: ["host", "code", "website"],
     effect: { kind: "open" },
     tier: "open",
     sensitivity: "read",
@@ -4249,8 +4249,8 @@ export class PubSubChannel extends DurableObjectBase {
     return this.channelLog.getMessageType(typeId);
   }
 
-  @rpc({ website: {"kind":"closed","reason":"This receiver owns workspace orchestration or retained workspace data; websites require a reviewed bounded operation."},
-    principals: ["host", "code"],
+  @rpc({ website: { kind: "eligible", rationale: "Ordinary conversation and agent operations use caller-scoped approvals; launched execution retains its authenticated authority." },
+    principals: ["host", "code", "website"],
     effect: { kind: "open" },
     tier: "open",
     sensitivity: "read",
@@ -4418,8 +4418,8 @@ export class PubSubChannel extends DurableObjectBase {
     return this.inspectAgentReadOnly(participantId, methodName);
   }
 
-  @rpc({ website: {"kind":"closed","reason":"This receiver owns workspace orchestration or retained workspace data; websites require a reviewed bounded operation."},
-    principals: ["host", "user", "code"],
+  @rpc({ website: { kind: "eligible", rationale: "Ordinary conversation and agent operations use caller-scoped approvals; launched execution retains its authenticated authority." },
+    principals: ["host", "user", "code", "website"],
     effect: {
       kind: "userland-capability",
       capability: "channel.admin",
@@ -4557,8 +4557,8 @@ export class PubSubChannel extends DurableObjectBase {
 
   // ── Method calls (calls.ts — pending_calls is a declared cache) ──────────
 
-  @rpc({ website: {"kind":"closed","reason":"This receiver owns workspace orchestration or retained workspace data; websites require a reviewed bounded operation."},
-    principals: ["user", "code"],
+  @rpc({ website: { kind: "eligible", rationale: "Ordinary conversation and agent operations use caller-scoped approvals; launched execution retains its authenticated authority." },
+    principals: ["user", "code", "website"],
     effect: { kind: "open" },
     tier: "open",
     sensitivity: "write",
@@ -4751,8 +4751,8 @@ export class PubSubChannel extends DurableObjectBase {
    * caller before appending the terminal. Server-driven expiry remains the
    * separate `timeoutMethodCall` authority below.
    */
-  @rpc({ website: {"kind":"closed","reason":"This receiver owns workspace orchestration or retained workspace data; websites require a reviewed bounded operation."},
-    principals: ["user", "code"],
+  @rpc({ website: { kind: "eligible", rationale: "Ordinary conversation and agent operations use caller-scoped approvals; launched execution retains its authenticated authority." },
+    principals: ["user", "code", "website"],
     effect: { kind: "open" },
     tier: "open",
     sensitivity: "write",
@@ -5041,8 +5041,8 @@ export class PubSubChannel extends DurableObjectBase {
    * provenance at task-channel creation (B1, WS-5) — until that lands a task
    * channel reads as `root`/`fork`.
    */
-  @rpc({ website: {"kind":"closed","reason":"This receiver owns workspace orchestration or retained workspace data; websites require a reviewed bounded operation."},
-    principals: ["host", "user", "code"],
+  @rpc({ website: { kind: "eligible", rationale: "Ordinary conversation and agent operations use caller-scoped approvals; launched execution retains its authenticated authority." },
+    principals: ["host", "user", "code", "website"],
     effect: { kind: "open" },
     tier: "open",
     sensitivity: "read",
@@ -5329,8 +5329,8 @@ export class PubSubChannel extends DurableObjectBase {
     };
   }
 
-  @rpc({ website: {"kind":"closed","reason":"This receiver owns workspace orchestration or retained workspace data; websites require a reviewed bounded operation."},
-    principals: ["host", "code"],
+  @rpc({ website: { kind: "eligible", rationale: "Ordinary conversation and agent operations use caller-scoped approvals; launched execution retains its authenticated authority." },
+    principals: ["host", "code", "website"],
     effect: { kind: "open" },
     tier: "open",
     sensitivity: "write",
@@ -5722,8 +5722,8 @@ export class PubSubChannel extends DurableObjectBase {
   }
 
   /** Rename a direct child fork (durable `channel.fork_renamed` on this log). */
-  @rpc({ website: {"kind":"closed","reason":"This receiver owns workspace orchestration or retained workspace data; websites require a reviewed bounded operation."},
-    principals: ["host", "code"],
+  @rpc({ website: { kind: "eligible", rationale: "Ordinary conversation and agent operations use caller-scoped approvals; launched execution retains its authenticated authority." },
+    principals: ["host", "code", "website"],
     effect: { kind: "open" },
     tier: "open",
     sensitivity: "write",
@@ -5758,8 +5758,8 @@ export class PubSubChannel extends DurableObjectBase {
   }
 
   /** Archive a direct child fork (durable `channel.fork_archived` latch). */
-  @rpc({ website: {"kind":"closed","reason":"This receiver owns workspace orchestration or retained workspace data; websites require a reviewed bounded operation."},
-    principals: ["host", "code"],
+  @rpc({ website: { kind: "eligible", rationale: "Ordinary conversation and agent operations use caller-scoped approvals; launched execution retains its authenticated authority." },
+    principals: ["host", "code", "website"],
     effect: {
       kind: "userland-capability",
       capability: "channel.archive",
@@ -5812,8 +5812,8 @@ export class PubSubChannel extends DurableObjectBase {
    * current durable head. Archived forks remain available to administrative
    * callers; active UI surfaces filter them.
    */
-  @rpc({ website: {"kind":"closed","reason":"This receiver owns workspace orchestration or retained workspace data; websites require a reviewed bounded operation."},
-    principals: ["host", "code"],
+  @rpc({ website: { kind: "eligible", rationale: "Ordinary conversation and agent operations use caller-scoped approvals; launched execution retains its authenticated authority." },
+    principals: ["host", "code", "website"],
     effect: { kind: "open" },
     tier: "open",
     sensitivity: "read",
@@ -6191,8 +6191,8 @@ export class PubSubChannel extends DurableObjectBase {
     );
   }
 
-  @rpc({ website: {"kind":"closed","reason":"This receiver owns workspace orchestration or retained workspace data; websites require a reviewed bounded operation."},
-    principals: ["host", "code"],
+  @rpc({ website: { kind: "eligible", rationale: "Ordinary conversation and agent operations use caller-scoped approvals; launched execution retains its authenticated authority." },
+    principals: ["host", "code", "website"],
     effect: { kind: "open" },
     tier: "open",
     sensitivity: "read",

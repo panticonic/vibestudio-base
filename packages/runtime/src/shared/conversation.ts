@@ -1,3 +1,4 @@
+import { readChannelSubscriptionRecords } from "@vibestudio/service-schemas/channel";
 import type {
   RpcClient,
   RpcCallOptions,
@@ -50,31 +51,8 @@ export function createConversationClient(rpc: RpcClient): ConversationClient {
         [participantId, metadata],
         options,
       );
-      if (!response.body)
-        throw new Error("Conversation subscription returned no body");
-      const reader = response.body.getReader();
-      const decoder = new TextDecoder();
-      let pending = "";
-      try {
-        for (;;) {
-          const chunk = await reader.read();
-          if (chunk.done) break;
-          pending += decoder.decode(chunk.value, { stream: true });
-          for (;;) {
-            const newline = pending.indexOf("\n");
-            if (newline < 0) break;
-            const line = pending.slice(0, newline).trim();
-            pending = pending.slice(newline + 1);
-            if (line) await onRecord(JSON.parse(line));
-          }
-        }
-        pending += decoder.decode();
-        if (pending.trim()) await onRecord(JSON.parse(pending));
-      } catch (error) {
-        await reader.cancel(error).catch(() => {});
-        throw error;
-      } finally {
-        reader.releaseLock();
+      for await (const record of readChannelSubscriptionRecords(response)) {
+        await onRecord(record);
       }
     },
   };

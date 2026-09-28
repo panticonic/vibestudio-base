@@ -53,7 +53,6 @@ import {
   type WorkspaceRuntime,
 } from "../shared/hostedRuntime.js";
 import type { WorkerEnv } from "./types.js";
-export { createConversationClient, type ConversationClient } from "../shared/conversation.js";
 export type { WorkerEnv, ExecutionContext } from "./types.js";
 // Portable authoring helpers (z, defineContract, Rpc, path/context helpers,
 // buildPanelLink, createGatewayFetch) — identical on panel · worker · eval.
@@ -522,3 +521,4 @@ export function handleWorkerRpc(
 }
 
 export type * from "../shared/images.js";
+

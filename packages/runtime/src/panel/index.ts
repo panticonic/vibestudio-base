@@ -84,7 +84,6 @@ export type { CdpAutomation, CdpEndpoint } from "./cdpAutomation.js";
 export type { AdBlockStats, AdBlockApi } from "./adblock.js";
 export type * from "../shared/images.js";
 export { createPanelRuntime, type PanelApi } from "./createPanelRuntime.js";
-export { createConversationClient, type ConversationClient } from "../shared/conversation.js";
 export {
   connectWorkspace,
   disconnectWorkspace,
@@ -130,3 +129,4 @@ export const workers = defaultMember("workers");
 export const panel = defaultMember("panel");
 export const agentApi = defaultMember("agentApi");
 export const adblock = defaultMember("adblock");
+
