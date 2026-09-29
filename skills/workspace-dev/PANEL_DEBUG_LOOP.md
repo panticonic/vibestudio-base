@@ -152,7 +152,17 @@ against the fresh page. Retain each observed outcome in `scope` before starting
 the next action; a later failure must not erase earlier successful evidence.
 For an application with persistent user data, reload through the panel handle,
 refresh the generation-fenced session, and verify that the saved data survives.
-Actions auto-wait, so do not add sleeps. For newly authored or restyled UI,
+Actions auto-wait for an actionable control; dispatch does not establish that
+an asynchronous save, fetch, or React update finished. For each mutation,
+observe its rendered completion condition before another dependent action.
+Use `click({ expect: { locator, state } })` when the expected condition follows
+that click, or the expected locator's `waitFor({ state })` before reading it.
+After reload/reacquisition, wait for the application's loaded result rather
+than treating its first loading state as an empty database or a failure.
+Choose conditions from the delivered UI, not elapsed sleeps. If an observation
+fails, inspect its structured error, `panel.diagnose()`, and console history;
+report a persistence defect only when the loaded result contradicts the saved
+state or diagnostics establish the failure. For newly authored or restyled UI,
 also follow [theme verification](WORKFLOW.md#theme-and-layout): inspect light and
 dark appearances, switch the host choice with the same panel open, and restore
 the prior setting. Check custom surfaces and open overlays, not just the theme

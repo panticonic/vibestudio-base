@@ -296,6 +296,15 @@ await page.locator(".box").boundingBox();
 await page.locator(".box").inspect();
 ```
 
+A successful action establishes native dispatch, not completion of asynchronous
+application work. Await the specific rendered effect with `click({ expect })`
+or the result locator's `waitFor` before reading or starting dependent work.
+Panel reload readiness establishes the runtime boot handshake; application
+fetches may still be loading. Observe the application's completed state before
+judging saved data. Immediate reads during loading are intermediate evidence,
+not a persistence verdict. Diagnose a failed observation through its structured
+error and the panel's lifecycle/console packet.
+
 String locators use normalized, case-insensitive substring matching by default;
 `{ exact: true }` selects a case-sensitive whole-string match. The `isVisible`,
 `isChecked`, `isEnabled`, `isDisabled`, and `isEditable` methods are immediate
