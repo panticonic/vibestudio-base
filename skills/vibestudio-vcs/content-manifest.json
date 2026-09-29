@@ -48,7 +48,7 @@
     },
     {
       "path": "references/public-contract.json",
-      "sha256": "bcf7d3bb7b936589a4df3ac74a160353456804d6d9b33712dd25bec4dcd3868b"
+      "sha256": "340d84eb7e5b90ea81058c75d84d870afe87f3936488bc8a3476c91781a548c6"
     },
     {
       "path": "references/public-contract.md",
@@ -75,5 +75,5 @@
       "sha256": "1b8a8b5b185b47039733272129292f2d6442205bb02d4b07e328790795eb77cb"
     }
   ],
-  "packageDigest": "66ddcb4801763f426d9a5c378854690a6cfef15e67b2f363fa2e2c8f6b47aa18"
+  "packageDigest": "f48455795750538e358033f08f076839ae8eadaa371943d1188d10658b13bd97"
 }

@@ -174,7 +174,7 @@ export class StubVcs implements ToolEditingVcs {
       this.modes.set(fullPath, change.mode);
       return;
     }
-    const fullPath = [...this.files.keys()].find((path) => `file:${path}` === change.fileId);
+    const fullPath = [...this.files.keys(), ...this.binaryFiles.keys()].find((path) => `file:${path}` === change.fileId);
     if (!fullPath) throw new Error(`file not found: ${change.fileId}`);
     if (change.kind === "file-delete") {
       this.files.delete(fullPath);
@@ -186,9 +186,11 @@ export class StubVcs implements ToolEditingVcs {
       this.modes.set(fullPath, change.mode);
       return;
     }
-    if (change.kind === "binary-replace") {
+    if (change.kind === "content-replace") {
       this.files.delete(fullPath);
-      this.binaryFiles.set(fullPath, change.base64);
+      this.binaryFiles.delete(fullPath);
+      if (change.content.kind === "text") this.files.set(fullPath, change.content.text);
+      else this.binaryFiles.set(fullPath, change.content.base64);
       if (change.mode !== undefined) this.modes.set(fullPath, change.mode);
       return;
     }

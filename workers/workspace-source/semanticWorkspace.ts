@@ -1936,6 +1936,9 @@ export class SemanticWorkspace {
           if (!point || point.state.presence !== "placed") {
             throw new SemanticVcsError("InvalidReference", `Unknown file ${change.fileId}`);
           }
+          if (point.state.contentKind !== "text") {
+            throw new SemanticVcsError("InvalidReference", `Text edit requires text content for ${change.fileId}`, { referenceKind: "text-file", reference: change.fileId });
+          }
           contentHashes.add(point.state.contentHash);
         }
         return {
@@ -2261,21 +2264,20 @@ export class SemanticWorkspace {
       const { fileStateId: _priorFileStateId, ...prior } = point.state;
       if (change.kind === "file-mode") {
         result = { ...prior, mode: change.mode };
-      } else if (change.kind === "binary-replace") {
-        bytes = bytesFromBase64(change.base64);
+      } else if (change.kind === "content-replace") {
+        bytes = contentBytes(change.content);
         result = {
           ...prior,
           contentHash: sha256Hex(bytes),
-          contentKind: "bytes",
-          byteLength: bytes.length,
-          coordinateExtent: bytes.length,
+          ...contentDescriptor(change.content, bytes),
           ...(change.mode !== undefined ? { mode: change.mode } : {}),
         };
       } else {
         if (point.state.contentKind !== "text") {
           throw new SemanticVcsError(
-            "RevisionChanged",
-            `Text edit requires text content for ${change.fileId}`
+            "InvalidReference",
+            `Text edit requires text content for ${change.fileId}`,
+            { referenceKind: "text-file", reference: change.fileId }
           );
         }
         const before = observed.get(point.state.contentHash);
@@ -2285,13 +2287,13 @@ export class SemanticWorkspace {
             `Missing content for ${change.fileId}`,
             { fileId: change.fileId, contract: "edit-observation" }
           );
-        const text = new TextDecoder("utf-8", { fatal: true }).decode(before);
+        const text = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(before);
         const edits = [...change.edits].sort((left, right) => left.start - right.start);
         let cursor = 0;
         let next = "";
         for (const edit of edits) {
           if (edit.start < cursor || edit.end > text.length) {
-            throw new SemanticVcsError("RevisionChanged", `Invalid edit span for ${change.fileId}`);
+            throw new SemanticVcsError("InvalidReference", `Invalid edit span for ${change.fileId}`, { referenceKind: "text-span", reference: edit });
           }
           next += text.slice(cursor, edit.start) + edit.text;
           cursor = edit.end;
@@ -2317,13 +2319,13 @@ export class SemanticWorkspace {
         kind:
           change.kind === "text-edit"
             ? "text"
-            : change.kind === "binary-replace"
+            : change.kind === "content-replace"
               ? "content-replace"
               : change.kind,
         base,
         result: resultEndpoint,
         payload:
-          change.kind === "binary-replace"
+          change.kind === "content-replace"
             ? { mode: change.mode ?? point.state.mode }
             : change.kind === "text-edit"
               ? {
@@ -6770,6 +6772,9 @@ export class SemanticWorkspace {
         repoPath: point.repository.repoPath,
         path: point.state.path,
         contentHash: point.state.contentHash,
+        contentKind: point.state.contentKind,
+        byteLength: point.state.byteLength,
+        coordinateExtent: point.state.coordinateExtent,
         ...lineage,
         mode: point.state.mode,
       },

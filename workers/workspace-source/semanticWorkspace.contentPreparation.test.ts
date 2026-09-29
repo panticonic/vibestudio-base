@@ -96,6 +96,40 @@ async function fixture() {
 }
 
 describe("semantic authored content preparation", () => {
+  it("preserves explicit content coordinates and replaces bytes with editable text atomically", async () => {
+    const f = await fixture();
+    const text = "\uFEFFa😀éz";
+    const bytes = new TextEncoder().encode(text);
+    const base64 = btoa(String.fromCharCode(...bytes));
+    f.semantic.acknowledgeContent(f.prepare(await f.semantic.dispatch("edit",
+      f.request("command:seed", f.create(base64)))));
+    const head = () => f.store.context("context:test")!.working.ref;
+    const repository = f.store.facts.repositoryAtPath(f.store.stateRoot(head()), "projects/art")!;
+    const file = () => f.store.facts.fileAtPath(f.store.stateRoot(head()), repository.repositoryId, "scene.png")!;
+    const read = await f.semantic.dispatch("readFile", { ingress, input: {
+      state: head(), repositoryId: repository.repositoryId, file: { kind: "id", fileId: file().state.fileId },
+    }});
+    expect(read).toMatchObject({ kind: "host-read", request: {
+      contentKind: "bytes", byteLength: bytes.length, coordinateExtent: bytes.length,
+    }});
+    const edit = { kind: "text-edit", repositoryId: repository.repositoryId, fileId: file().state.fileId,
+      edits: [{ start: 2, end: 4, text: "moon" }] };
+    await expect(f.semantic.dispatch("edit", f.request("command:invalid-text", [edit], head())))
+      .rejects.toMatchObject({ code: "InvalidReference", errorData: { referenceKind: "text-file" } });
+    expect(f.store.command("command:invalid-text")).toBeNull();
+    f.semantic.acknowledgeContent(f.prepare(await f.semantic.dispatch("edit",
+      f.request("command:replace", [{ kind: "content-replace", repositoryId: repository.repositoryId,
+        fileId: file().state.fileId, content: { kind: "text", text } }], head()))));
+    expect(file().state).toMatchObject({ contentKind: "text", byteLength: bytes.length, coordinateExtent: text.length });
+    const observation = await f.semantic.dispatch("edit", f.request("command:text", [edit], head()));
+    if (observation.kind !== "host-read") throw new Error("expected text observation");
+    f.semantic.acknowledgeContent(f.prepare(f.semantic.acknowledgeHostRead({
+      request: observation.request, files: [{ contentHash: sha256Hex(bytes), text }],
+    })));
+    const after = "\uFEFFamoonéz";
+    expect(file().state).toMatchObject({ contentKind: "text", coordinateExtent: after.length,
+      contentHash: sha256Hex(new TextEncoder().encode(after)) });
+  });
   it("persists large binary content before advancing semantic state and keeps bytes out of durable cells", async () => {
     const f = await fixture();
     const command = f.request("command:paint", f.create());
@@ -154,7 +188,7 @@ describe("semantic authored content preparation", () => {
     const command = f.request("command:mixed", [
       { kind: "text-edit", repositoryId: repository.repositoryId, fileId: textFile.state.fileId,
         edits: [{ start: 0, end: 4, text: inserted }] },
-      { kind: "binary-replace", repositoryId: repository.repositoryId, fileId: binaryFile.state.fileId, base64: f.large },
+      { kind: "content-replace", repositoryId: repository.repositoryId, fileId: binaryFile.state.fileId, content: { kind: "bytes", base64: f.large } },
     ], head);
     const observation = await f.semantic.dispatch("edit", command);
     expect(observation.kind).toBe("host-read");

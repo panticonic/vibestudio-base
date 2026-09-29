@@ -21,7 +21,6 @@ import {
   canonicalBase64Bytes,
   decodeUtf8,
   encodeUtf8,
-  encodeUtf8Base64,
   utf8ByteLength,
 } from "./portable-bytes.js";
 import {
@@ -642,10 +641,10 @@ export async function mutateSemanticFiles(
                   ...(modeChanged ? { mode: operation.mode } : {}),
                 }
               : {
-                  kind: "binary-replace",
+                  kind: "content-replace",
                   repositoryId: file.repositoryId,
                   fileId: file.fileId,
-                  base64: content.kind === "text" ? encodeUtf8Base64(content.text) : content.base64,
+                  content,
                   ...(modeChanged ? { mode: operation.mode } : {}),
                 }
           );

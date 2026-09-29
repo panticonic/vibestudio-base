@@ -10,6 +10,20 @@ const CWD = "/";
 const authority = { contextId: "context:test", commandId: "command:write" };
 
 describe("canonical write tool", () => {
+  it("replaces opaque content with text without changing the file identity", async () => {
+    const vcs = new StubVcs();
+    vcs.binaryFiles.set("meta/out.txt", btoa("opaque"));
+    const tool = createWriteTool(CWD, vcs, authority);
+    await expect(tool.execute("invocation:replace", { path: "meta/out.txt", content: "editable" }))
+      .resolves.toMatchObject({ details: { status: "applied" } });
+    expect(vcs.lastEditInput).toMatchObject({ changes: [{
+      kind: "content-replace", fileId: "file:meta/out.txt", content: { kind: "text", text: "editable" },
+    }] });
+    await expect(tool.execute("invocation:edit", { path: "meta/out.txt", content: "edited" }))
+      .resolves.toMatchObject({ details: { status: "applied" } });
+    expect(vcs.lastEditInput).toMatchObject({ changes: [{ kind: "text-edit", fileId: "file:meta/out.txt" }] });
+    expect(vcs.read("meta/out.txt")).toBe("edited");
+  });
   it("automatically carries a read observation into a later write", async () => {
     const observations = createMemoryWorkspaceFileObservationStore();
     const fs = new StubFs({ files: { "/meta/out.txt": "before" } });
