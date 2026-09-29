@@ -139,6 +139,11 @@
   --agentic-agent-message-surface: var(--color-panel);
   --agentic-agent-secondary-message-surface: var(--agentic-agent-message-surface);
   --agentic-player-message-surface: var(--color-panel);
+  /* Bubbles are framed sheets: a hairline in the sender's hue plus a lift, so
+     a message reads as an object on the transcript canvas, not a tint of it. */
+  --agentic-message-border: var(--gray-a5);
+  --agentic-player-message-border: var(--accent-a6);
+  --agentic-message-shadow: none;
   container-type: inline-size;
   min-inline-size: 0;
   inline-size: 100%;
@@ -150,14 +155,19 @@
 .radix-themes:where(.light, .light-theme) > .agentic-chat-root {
   --agentic-surface: var(--gray-3);
   --agentic-agent-message-surface: var(--color-panel-solid);
-  --agentic-agent-secondary-message-surface: var(--gray-2);
-  --agentic-player-message-surface: var(--accent-2);
+  --agentic-player-message-surface: var(--accent-3);
+  --agentic-message-border: var(--gray-a6);
+  --agentic-player-message-border: var(--accent-a7);
+  --agentic-message-shadow: 0 1px 2px var(--gray-a5), 0 6px 16px -8px var(--gray-a8);
 }
 
 .radix-themes:where(.dark, .dark-theme)[data-accent-color="blue"][data-gray-color="slate"] > .agentic-chat-root {
   --agentic-agent-message-surface: var(--gray-3);
   --agentic-agent-secondary-message-surface: var(--gray-2);
-  --agentic-player-message-surface: color-mix(in srgb, var(--color-panel-solid) 85%, var(--accent-9));
+  --agentic-player-message-surface: color-mix(in srgb, var(--color-panel-solid) 80%, var(--accent-9));
+  --agentic-message-border: var(--gray-a5);
+  --agentic-player-message-border: var(--accent-a7);
+  --agentic-message-shadow: 0 1px 3px var(--black-a6);
 }
 
 .agentic-chat-root,
@@ -527,6 +537,8 @@
   color: var(--gray-12);
   --card-background-color: var(--agentic-agent-message-surface);
   background-color: var(--agentic-agent-message-surface);
+  --base-card-surface-box-shadow: 0 0 0 1px var(--agentic-message-border);
+  box-shadow: var(--agentic-message-shadow);
   --card-padding: 10px;
 }
 
@@ -560,6 +572,7 @@
 }
 
 .message-card-client {
+  --agentic-message-border: var(--agentic-player-message-border);
   --card-background-color: var(--agentic-player-message-surface);
   background-color: var(--agentic-player-message-surface);
 }

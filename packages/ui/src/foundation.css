@@ -30,13 +30,6 @@
   --intent-consent-surface: var(--accent-a3);
   --intent-consent-border: var(--accent-a6);
 
-  --approval-info: var(--sky-9);
-  --approval-info-surface: var(--sky-a3);
-  --approval-warning: var(--amber-9);
-  --approval-warning-surface: var(--amber-a3);
-  --approval-danger: var(--red-9);
-  --approval-danger-surface: var(--red-a3);
-
   --surface-chrome: var(--gray-2);
   --surface-panel: var(--color-panel, var(--gray-1));
   --surface-card: var(--gray-2);
