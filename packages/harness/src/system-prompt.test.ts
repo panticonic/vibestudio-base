@@ -5,6 +5,16 @@ import {
 } from "./system-prompt.js";
 
 describe("composeSystemPrompt", () => {
+  it("uses the ergonomic bounded tree reads rather than an unspecified sibling group", () => {
+    expect(VIBESTUDIO_BASE_SYSTEM_PROMPT).toContain(
+      "panelTree.roots({ limit: 30 })",
+    );
+    expect(VIBESTUDIO_BASE_SYSTEM_PROMPT).toContain(
+      "panelTree.children(parentSlotId, { limit: 30 })",
+    );
+    expect(VIBESTUDIO_BASE_SYSTEM_PROMPT).not.toContain("panelTree.page()");
+  });
+
   it("keeps authored source distinct from live platform state", () => {
     expect(VIBESTUDIO_BASE_SYSTEM_PROMPT).toContain(
       "Filesystem tools show what is authored in the workspace",
