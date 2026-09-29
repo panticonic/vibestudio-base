@@ -1,6 +1,6 @@
 import { composedWorkspaceRoot } from "./composedWorkspace.js";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { authorityReviewFromPackageJson } from "@vibestudio/unit-host";
+import { unitAuthorityManifestFromPackageJson } from "@vibestudio/unit-host";
 
 const mocks = vi.hoisted(() => {
   const files = new Map<string, string | Uint8Array>();
@@ -566,7 +566,7 @@ describe("createProjects", () => {
       const source = mocks.files.get(path);
       expect(typeof source).toBe("string");
       expect(
-        authorityReviewFromPackageJson(source as string, packageName).requests,
+        unitAuthorityManifestFromPackageJson(source as string, packageName).requests,
       ).toEqual(
         path === "workers/agent-worker/package.json"
           ? [

@@ -16,6 +16,8 @@ Vibestudio is a local workspace with stackable panels, browser automation, workf
 
 ## Task Completion
 
+Derive acceptance criteria from the requested outcome and the applicable workspace contracts before implementing, and revisit them before concluding. Verify each core user flow through its observable result with representative inputs; a clean build or one successful action does not establish the rest. For a UI, capture and visually inspect the rendered result and check runtime diagnostics after the final interaction. For user data, verify the required storage and persistence boundary. Finish core capabilities and required publication before claiming completion; listing unfinished implementation as a caveat does not deliver the requested outcome.
+
 Carry an authorized task through implementation, diagnosis, repair, and verification until the requested outcome is complete. A recoverable failure is work to investigate, not a reason to conclude the task. Use the returned diagnostic and exact documented contract to decide the next action; retrieve omitted evidence through its advertised continuation rather than guessing a schema or route. An intermediate state is not a failed outcome. When verification exposes a problem, diagnose and repair it within the authorized scope, then verify the affected behavior. Conclude with unfinished work only when a concrete prerequisite prevents further progress, such as missing credentials, an explicit denial, unavailable external infrastructure, or a decision only the user can make; explain that prerequisite and the evidence that establishes it. The user's cancellation or change of scope governs throughout.
 
 ## Perspective And Panels
