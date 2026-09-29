@@ -93,16 +93,16 @@ To adopt dependency changes (a `@workspace/runtime` push, an `npm` version bump)
 
 ## Common failure shapes
 
-| Symptom                             | Cause                                                                     | Fix                                                                              |
-| ----------------------------------- | ------------------------------------------------------------------------- | -------------------------------------------------------------------------------- |
-| `MANIFEST_KIND`                     | `package.json` is missing `vibestudio.extension` (or has two kind blocks) | Add exactly one `vibestudio.extension` block                                     |
-| `MANIFEST_ACTIVATION`               | `activationEvents` is not exactly `["*"]` or `["onInvoke"]`               | Choose eager workspace startup or start-on-first-invocation                      |
-| Stays in `error` after update       | `activate()` threw                                                        | Read `lastError` from `runtime.supervision.describe(identity)` and retained logs |
-| `Cannot find module ...` at runtime | Dep was externalized but missing from runtime install                     | Set `dependencyMode: "external"` and confirm the package is in `dependencies`    |
-| `Named export ... not found`        | ESM imported a named export from a CJS package                            | Use `import pkg from "x"; const { fn } = pkg;`                                   |
-| `require is not defined`            | Code crossed an ESM/CJS boundary in a bundled dep                         | Switch the dep to `dependencyMode: "external"`                                   |
-| 503 from `/_r/ext/<name>/*`         | Extension is `pending-approval`, `building`, or `error`                   | Approve the declaration/update or check `lastError`                              |
-| 413 from fetch endpoint             | Request body exceeded 32 MB                                               | Split the upload or stream to disk via `ctx.fs`                                  |
+| Symptom                             | Cause                                                                             | Fix                                                                              |
+| ----------------------------------- | --------------------------------------------------------------------------------- | -------------------------------------------------------------------------------- |
+| `MANIFEST_KIND`                     | An `extensions/*` manifest declares configuration for another location-owned kind | Keep `vibestudio.extension` configuration and remove foreign kind configuration  |
+| `MANIFEST_ACTIVATION`               | `activationEvents` is not exactly `["*"]` or `["onInvoke"]`                       | Choose eager workspace startup or start-on-first-invocation                      |
+| Stays in `error` after update       | `activate()` threw                                                                | Read `lastError` from `runtime.supervision.describe(identity)` and retained logs |
+| `Cannot find module ...` at runtime | Dep was externalized but missing from runtime install                             | Set `dependencyMode: "external"` and confirm the package is in `dependencies`    |
+| `Named export ... not found`        | ESM imported a named export from a CJS package                                    | Use `import pkg from "x"; const { fn } = pkg;`                                   |
+| `require is not defined`            | Code crossed an ESM/CJS boundary in a bundled dep                                 | Switch the dep to `dependencyMode: "external"`                                   |
+| 503 from `/_r/ext/<name>/*`         | Extension is `pending-approval`, `building`, or `error`                           | Approve the declaration/update or check `lastError`                              |
+| 413 from fetch endpoint             | Request body exceeded 32 MB                                                       | Split the upload or stream to disk via `ctx.fs`                                  |
 
 ## Remove a Declaration
 

@@ -342,6 +342,10 @@ In **eval**, `rpc` is the same portable client shape used by panels and workers:
 example `rpc.call("main", "build.getBuild", ["panels/my-app"])` or
 `chat.rpc.call("main", "build.recompute", [])`.
 
+Project discovery is direct: `await workspace.projects()` lists `projects/*`
+repository roots, and `await workspace.projectForPath(path)` returns the owning
+project or `null`. These are methods on `workspace`, not a nested namespace.
+
 ### Using extensions
 
 Extensions are **declared** in `meta/vibestudio.yml` under `extensions:`. That declaration is the only way to add or remove one. To start using an extension, add it to the `extensions:` list in `meta/vibestudio.yml`; saving that change (a gated meta write) raises one joint approval covering every newly-declared extension. Once approved and running, call it. **From eval**, invoke an extension method via

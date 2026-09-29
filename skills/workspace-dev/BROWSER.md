@@ -223,7 +223,9 @@ const page = session.page;
 
 // Discover the live accessibility contract before choosing named locators.
 const buttons = await page.getByRole("button").all();
-const buttonSemantics = await Promise.all(buttons.map((button) => button.inspect()));
+const buttonSemantics = await Promise.all(
+  buttons.map((button) => button.inspect()),
+);
 // Records include role, accessibleName, text, attributes, visibility, box,
 // and nearest rendered ancestors (with their roles, names, and text).
 
@@ -291,10 +293,17 @@ await page
   .locator(".row")
   .first()
   .evaluate((row) => row.textContent?.trim());
-await page.locator(".row").evaluateAll((rows) => rows.map((row) => row.textContent?.trim()));
+await page
+  .locator(".row")
+  .evaluateAll((rows) => rows.map((row) => row.textContent?.trim()));
 await page.locator(".box").boundingBox();
 await page.locator(".box").inspect();
 ```
+
+`check`, `uncheck`, and `setChecked` dispatch at most one click and wait within
+the action timeout for the retained control to reach the requested state. This
+supports controlled components whose event handler persists asynchronously;
+the action never replays the click while waiting.
 
 A successful action establishes native dispatch, not completion of asynchronous
 application work. Await the specific rendered effect with `click({ expect })`
@@ -441,7 +450,10 @@ earlier errors. The host captures panel console messages from `webContents` as
 soon as the target is registered:
 
 ```ts
-const history = await handle.cdp.consoleHistory({ limit: 200, errorLimit: 100 });
+const history = await handle.cdp.consoleHistory({
+  limit: 200,
+  errorLimit: 100,
+});
 console.log(history.errors);
 console.log(history.dropped); // overflow is explicit
 ```

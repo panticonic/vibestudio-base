@@ -129,7 +129,21 @@ type ClickOptions = ActionOptions & {
 
 export interface CdpInteractionOutcome {
   protocol: "cdp-interaction-outcome.v1";
-  action: "click" | "dblclick" | "fill" | "clear" | "selectOption" | "focus" | "blur" | "selectText" | "scrollIntoView" | "dispatchEvent" | "press" | "hover" | "check" | "uncheck";
+  action:
+    | "click"
+    | "dblclick"
+    | "fill"
+    | "clear"
+    | "selectOption"
+    | "focus"
+    | "blur"
+    | "selectText"
+    | "scrollIntoView"
+    | "dispatchEvent"
+    | "press"
+    | "hover"
+    | "check"
+    | "uncheck";
   delivery: "dispatched";
   target: CdpDomInspection;
   effect:
@@ -370,20 +384,38 @@ export interface CdpDialogData {
 export class CdpDialog {
   constructor(
     readonly data: Readonly<CdpDialogData>,
-    private readonly respond: (accept: boolean, promptText?: string) => Promise<void>,
+    private readonly respond: (
+      accept: boolean,
+      promptText?: string,
+    ) => Promise<void>,
   ) {}
-  type(): CdpDialogData["type"] { return this.data.type; }
-  message(): string { return this.data.message; }
-  defaultValue(): string { return this.data.defaultPrompt; }
-  accept(promptText?: string): Promise<void> { return this.respond(true, promptText); }
-  dismiss(): Promise<void> { return this.respond(false); }
+  type(): CdpDialogData["type"] {
+    return this.data.type;
+  }
+  message(): string {
+    return this.data.message;
+  }
+  defaultValue(): string {
+    return this.data.defaultPrompt;
+  }
+  accept(promptText?: string): Promise<void> {
+    return this.respond(true, promptText);
+  }
+  dismiss(): Promise<void> {
+    return this.respond(false);
+  }
 }
 
 type DialogHandler = (dialog: CdpDialog) => void | Promise<void>;
 function dialogBlocksCommand(method: string): boolean {
-  return method.startsWith("Input.") || method === "Runtime.evaluate" ||
-    method === "Runtime.callFunctionOn" || method === "Page.navigate" ||
-    method === "Page.reload" || method === "Page.navigateToHistoryEntry";
+  return (
+    method.startsWith("Input.") ||
+    method === "Runtime.evaluate" ||
+    method === "Runtime.callFunctionOn" ||
+    method === "Page.navigate" ||
+    method === "Page.reload" ||
+    method === "Page.navigateToHistoryEntry"
+  );
 }
 
 export class CdpConnection {
@@ -392,24 +424,45 @@ export class CdpConnection {
   private eventListeners = new Map<string, Set<(params: unknown) => void>>();
   private closed = false;
   private closeError: Error | null = null;
-  private activeDialog: { dialog: CdpDialog; response: Promise<void> | null } | null = null;
+  private activeDialog: {
+    dialog: CdpDialog;
+    response: Promise<void> | null;
+  } | null = null;
   private readonly dialogHandlers = new Set<DialogHandler>();
 
-  dialog(): CdpDialog | null { return this.activeDialog?.dialog ?? null; }
+  dialog(): CdpDialog | null {
+    return this.activeDialog?.dialog ?? null;
+  }
   onDialog(handler: DialogHandler): () => void {
     this.dialogHandlers.add(handler);
-    return () => { this.dialogHandlers.delete(handler); };
+    return () => {
+      this.dialogHandlers.delete(handler);
+    };
   }
 
-  private dialogError(method: string, dialog: CdpDialog, cause?: unknown): CdpError {
-    return new CdpError(`Browser ${dialog.type()} dialog requires a response: ${dialog.message()}`, {
-      code: "cdp_dialog_open", operation: method, recovery: "handle-dialog-and-observe",
-      dialog: dialog.data, cause,
-      instruction: "Use page.dialog() to inspect and accept or dismiss the pending dialog, then observe the effect without repeating the input or evaluation. Register page.on('dialog', handler) before actions that intentionally open dialogs.",
-    });
+  private dialogError(
+    method: string,
+    dialog: CdpDialog,
+    cause?: unknown,
+  ): CdpError {
+    return new CdpError(
+      `Browser ${dialog.type()} dialog requires a response: ${dialog.message()}`,
+      {
+        code: "cdp_dialog_open",
+        operation: method,
+        recovery: "handle-dialog-and-observe",
+        dialog: dialog.data,
+        cause,
+        instruction:
+          "Use page.dialog() to inspect and accept or dismiss the pending dialog, then observe the effect without repeating the input or evaluation. Register page.on('dialog', handler) before actions that intentionally open dialogs.",
+      },
+    );
   }
 
-  private rejectDialogBlockedCommands(dialog: CdpDialog, cause?: unknown): void {
+  private rejectDialogBlockedCommands(
+    dialog: CdpDialog,
+    cause?: unknown,
+  ): void {
     for (const [id, command] of this.pending) {
       if (!dialogBlocksCommand(command.method)) continue;
       clearTimeout(command.timeout);
@@ -421,29 +474,43 @@ export class CdpConnection {
   private async receiveDialog(data: CdpDialogData): Promise<void> {
     const state: { dialog: CdpDialog; response: Promise<void> | null } = {
       response: null,
-      dialog: new CdpDialog(Object.freeze({ ...data, defaultPrompt: data.defaultPrompt ?? "" }), (accept, promptText) => {
-        if (this.activeDialog !== state || state.response) return Promise.reject(new CdpError(
-          "This browser dialog has already been answered, closed or replaced", {
-            code: "cdp_dialog_closed", operation: "Page.handleJavaScriptDialog", recovery: "handle-dialog-and-observe",
-          },
-        ));
-        // The native response belongs to the dialog, even when an event handler
-        // initiates accept/dismiss without returning its promise.
-        state.response = this.send("Page.handleJavaScriptDialog", {
-          accept, ...(promptText === undefined ? {} : { promptText }),
-        }).then(() => {
-          if (this.activeDialog === state) this.activeDialog = null;
-        });
-        return state.response;
-      }),
+      dialog: new CdpDialog(
+        Object.freeze({ ...data, defaultPrompt: data.defaultPrompt ?? "" }),
+        (accept, promptText) => {
+          if (this.activeDialog !== state || state.response)
+            return Promise.reject(
+              new CdpError(
+                "This browser dialog has already been answered, closed or replaced",
+                {
+                  code: "cdp_dialog_closed",
+                  operation: "Page.handleJavaScriptDialog",
+                  recovery: "handle-dialog-and-observe",
+                },
+              ),
+            );
+          // The native response belongs to the dialog, even when an event handler
+          // initiates accept/dismiss without returning its promise.
+          state.response = this.send("Page.handleJavaScriptDialog", {
+            accept,
+            ...(promptText === undefined ? {} : { promptText }),
+          }).then(() => {
+            if (this.activeDialog === state) this.activeDialog = null;
+          });
+          return state.response;
+        },
+      ),
     };
     this.activeDialog = state;
     try {
-      await Promise.all([...this.dialogHandlers].map((handler) => handler(state.dialog)));
+      await Promise.all(
+        [...this.dialogHandlers].map((handler) => handler(state.dialog)),
+      );
       await state.response;
-      if (this.activeDialog === state) this.rejectDialogBlockedCommands(state.dialog);
+      if (this.activeDialog === state)
+        this.rejectDialogBlockedCommands(state.dialog);
     } catch (error) {
-      if (this.activeDialog === state) this.rejectDialogBlockedCommands(state.dialog, error);
+      if (this.activeDialog === state)
+        this.rejectDialogBlockedCommands(state.dialog, error);
     }
   }
 
@@ -531,7 +598,9 @@ export class CdpConnection {
       if (this.activeDialog.response) {
         // No command has been dispatched yet: join the explicit decision before
         // sending new renderer work. Original pending commands are never replayed.
-        return this.activeDialog.response.then(() => this.send(method, params, options));
+        return this.activeDialog.response.then(() =>
+          this.send(method, params, options),
+        );
       }
       return Promise.reject(this.dialogError(method, this.activeDialog.dialog));
     }
@@ -884,6 +953,7 @@ async function __nsRun(P){
     case "checkedState":
     case "isChecked": { var e=nsFirst(d); return !!e && nsCheckedState(e); }
     case "retainedCheckedState": { var e=nsRetainedElement(a.token); if(!e.isConnected) throw new Error("Retained element was detached during the action"); return nsCheckedState(e); }
+    case "retainedCheckedStateEquals": { var e=nsRetainedElement(a.token); if(!e.isConnected) throw new Error("Retained element was detached during the action"); if(nsCheckedState(e)===a.checked) return true; return {__nsLocatorFailure:"state-timeout",state:a.checked?"checked":"unchecked",timeout:t}; }
     case "releaseRetainedElement": return nsRetainedElements().delete(a.token);
     case "isEnabled": { var e=nsFirst(d); return !!e && nsEnabled(e); }
     case "isDisabled": { var e=nsFirst(d); return !!e && !nsEnabled(e); }
@@ -1115,7 +1185,9 @@ export class CdpError extends Error {
       ...(options.expectedLocator
         ? { expectedLocator: options.expectedLocator }
         : {}),
-      ...(options.matchCount === undefined ? {} : { matchCount: options.matchCount }),
+      ...(options.matchCount === undefined
+        ? {}
+        : { matchCount: options.matchCount }),
       ...(options.candidates ? { candidates: options.candidates } : {}),
       ...(options.instruction ? { instruction: options.instruction } : {}),
       ...(options.dialog ? { dialog: options.dialog } : {}),
@@ -1180,14 +1252,19 @@ function describeLocator(descriptor: LocatorDescriptor): string {
 
 class WorkerCdpPage {
   private readonly dialogSubscriptions = new Map<DialogHandler, () => void>();
-  dialog(): CdpDialog | null { return this.connection.dialog(); }
+  dialog(): CdpDialog | null {
+    return this.connection.dialog();
+  }
   on(event: "dialog", handler: DialogHandler): this {
-    if (event !== "dialog") throw new TypeError(`Unsupported page event: ${event}`);
-    if (!this.dialogSubscriptions.has(handler)) this.dialogSubscriptions.set(handler, this.connection.onDialog(handler));
+    if (event !== "dialog")
+      throw new TypeError(`Unsupported page event: ${event}`);
+    if (!this.dialogSubscriptions.has(handler))
+      this.dialogSubscriptions.set(handler, this.connection.onDialog(handler));
     return this;
   }
   off(event: "dialog", handler: DialogHandler): this {
-    if (event !== "dialog") throw new TypeError(`Unsupported page event: ${event}`);
+    if (event !== "dialog")
+      throw new TypeError(`Unsupported page event: ${event}`);
     this.dialogSubscriptions.get(handler)?.();
     this.dialogSubscriptions.delete(handler);
     return this;
@@ -1553,14 +1630,28 @@ class WorkerCdpPage {
           timeout: timeout + 1_000,
           operation: `locator.${op}`,
         });
-        if (result && typeof result === "object" &&
-          (result as { __nsLocatorFailure?: string }).__nsLocatorFailure === "ambiguous") {
-          const failure = result as { matchCount: number; candidates: NonNullable<CdpFailureData["candidates"]> };
-          throw new CdpError(`Locator matched ${failure.matchCount} elements: ${failure.candidates.map((candidate) => `${candidate.role || candidate.tagName} ${JSON.stringify(candidate.accessibleName)}`).join(", ")}`, {
-            code: "cdp_locator_ambiguous", operation: op, recovery: "reobserve-locator",
-            matchCount: failure.matchCount, candidates: failure.candidates,
-            instruction: "Inspect the matching controls and narrow the locator to the intended element before acting.",
-          });
+        if (
+          result &&
+          typeof result === "object" &&
+          (result as { __nsLocatorFailure?: string }).__nsLocatorFailure ===
+            "ambiguous"
+        ) {
+          const failure = result as {
+            matchCount: number;
+            candidates: NonNullable<CdpFailureData["candidates"]>;
+          };
+          throw new CdpError(
+            `Locator matched ${failure.matchCount} elements: ${failure.candidates.map((candidate) => `${candidate.role || candidate.tagName} ${JSON.stringify(candidate.accessibleName)}`).join(", ")}`,
+            {
+              code: "cdp_locator_ambiguous",
+              operation: op,
+              recovery: "reobserve-locator",
+              matchCount: failure.matchCount,
+              candidates: failure.candidates,
+              instruction:
+                "Inspect the matching controls and narrow the locator to the intended element before acting.",
+            },
+          );
         }
         if (
           !result ||
@@ -1568,12 +1659,37 @@ class WorkerCdpPage {
           (result as { __nsLocatorFailure?: unknown }).__nsLocatorFailure !==
             "state-timeout"
         ) {
-          if (["fill", "clear", "selectOption", "focus", "blur", "scrollIntoView", "selectText", "dispatchEvent"].includes(op)) {
-            if (!result || typeof result !== "object" || (result as { __nsActionOutcome?: unknown }).__nsActionOutcome !== true) {
-              throw new Error(`Native locator ${op} returned no action observation`);
+          if (
+            [
+              "fill",
+              "clear",
+              "selectOption",
+              "focus",
+              "blur",
+              "scrollIntoView",
+              "selectText",
+              "dispatchEvent",
+            ].includes(op)
+          ) {
+            if (
+              !result ||
+              typeof result !== "object" ||
+              (result as { __nsActionOutcome?: unknown }).__nsActionOutcome !==
+                true
+            ) {
+              throw new Error(
+                `Native locator ${op} returned no action observation`,
+              );
             }
-            const observed = result as { value: unknown; target: Omit<CdpDomInspection, "selector"> };
-            this.recordLocatorInteraction(op as CdpInteractionOutcome["action"], descriptor, observed.target);
+            const observed = result as {
+              value: unknown;
+              target: Omit<CdpDomInspection, "selector">;
+            };
+            this.recordLocatorInteraction(
+              op as CdpInteractionOutcome["action"],
+              descriptor,
+              observed.target,
+            );
             return observed.value;
           }
           return result;
@@ -1990,9 +2106,13 @@ class WorkerCdpPage {
     descriptor: LocatorDescriptor,
     target: Omit<CdpDomInspection, "selector">,
   ): void {
-    this.onInteraction?.({ protocol: "cdp-interaction-outcome.v1", action,
-      delivery: "dispatched", target: { selector: describeLocator(descriptor), ...target },
-      effect: { status: "not-asserted" } });
+    this.onInteraction?.({
+      protocol: "cdp-interaction-outcome.v1",
+      action,
+      delivery: "dispatched",
+      target: { selector: describeLocator(descriptor), ...target },
+      effect: { status: "not-asserted" },
+    });
   }
 
   async hoverDescriptor(
@@ -2000,9 +2120,14 @@ class WorkerCdpPage {
     opts: ActionOptions = {},
   ): Promise<void> {
     const { x, y } = await this.resolveHitPoint(descriptor, opts.timeout);
-    const target = await this.runLocatorOp("inspect", descriptor, null, { timeout: 0 }) as Omit<CdpDomInspection, "selector">;
+    const target = (await this.runLocatorOp("inspect", descriptor, null, {
+      timeout: 0,
+    })) as Omit<CdpDomInspection, "selector">;
     await this.connection.send("Input.dispatchMouseEvent", {
-      type: "mouseMoved", x, y, button: "none",
+      type: "mouseMoved",
+      x,
+      y,
+      button: "none",
     });
     await this.afterAction();
     this.recordLocatorInteraction("hover", descriptor, target);
@@ -2016,7 +2141,9 @@ class WorkerCdpPage {
     await this.runLocatorOp("focusForKey", descriptor, null, {
       timeout: opts.timeout,
     });
-    const target = await this.runLocatorOp("inspect", descriptor, null, { timeout: 0 }) as Omit<CdpDomInspection, "selector">;
+    const target = (await this.runLocatorOp("inspect", descriptor, null, {
+      timeout: 0,
+    })) as Omit<CdpDomInspection, "selector">;
     await this.pressKey(key);
     this.recordLocatorInteraction("press", descriptor, target);
   }
@@ -2043,29 +2170,23 @@ class WorkerCdpPage {
         },
       )) as boolean;
       if (current === checked) return;
-      const target = await this.runLocatorOp("inspect", descriptor, null, { timeout: 0 }) as Omit<CdpDomInspection, "selector">;
+      const target = (await this.runLocatorOp("inspect", descriptor, null, {
+        timeout: 0,
+      })) as Omit<CdpDomInspection, "selector">;
       await this.dispatchClickAt(point);
-      const updated = (await this.runLocatorOp(
-        "retainedCheckedState",
+      await this.runLocatorOp(
+        "retainedCheckedStateEquals",
         descriptor,
-        retainedArg,
+        { ...retainedArg, checked },
         {
           timeout: opts.timeout,
         },
-      )) as boolean;
-      if (updated !== checked) {
-        const where = describeLocator(descriptor);
-        throw new CdpError(
-          `${checked ? "check" : "uncheck"} did not update ${where}'s checked state`,
-          {
-            locator: where,
-            code: "cdp_locator_state_mismatch",
-            operation: checked ? "check" : "uncheck",
-            recovery: "reobserve-locator",
-          },
-        );
-      }
-      this.recordLocatorInteraction(checked ? "check" : "uncheck", descriptor, target);
+      );
+      this.recordLocatorInteraction(
+        checked ? "check" : "uncheck",
+        descriptor,
+        target,
+      );
     } finally {
       await this.runLocatorOp(
         "releaseRetainedElement",

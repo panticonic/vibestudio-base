@@ -27,11 +27,11 @@ development](../extensiondev/SKILL.md) for trusted Node services.
 | Add a workspace from a folder, Git URL, or website link        | [Workspace creation](../templates/references/workspace-creation.md)  |
 | Publish a standalone workspace source                          | [Workspace authoring](../templates/references/template-authoring.md) |
 | Create a new panel, worker, package, or repo-local skill       | [Scaffold projects](PROJECTS.md)                                     |
-| Fork an existing panel or worker source                        | [Fork projects](PROJECTS.md#fork-existing-source)                     |
+| Fork an existing panel or worker source                        | [Fork projects](PROJECTS.md#fork-existing-source)                    |
 | Development loop                                               | [WORKFLOW.md](WORKFLOW.md)                                           |
 | External dependencies, overrides, and patches                  | [DEPENDENCIES.md](DEPENDENCIES.md)                                   |
 | Build, inspect, polish a panel                                 | [PANEL_DEBUG_LOOP.md](PANEL_DEBUG_LOOP.md)                           |
-| Reduce bundle size or optimize runtime cost                    | [Native performance profiling](../performance/SKILL.md)            |
+| Reduce bundle size or optimize runtime cost                    | [Native performance profiling](../performance/SKILL.md)              |
 | Panel lifecycle, observation, failure diagnosis, host commands | [PANEL_API.md](PANEL_API.md)                                         |
 | Workers, DOs, service-backed data, agent workers               | [WORKERS.md](WORKERS.md)                                             |
 | Build a workspace-enabled website                              | [WEBSITES.md](WEBSITES.md)                                           |
@@ -77,6 +77,11 @@ purpose, workflow, ownership, invariants, and diagnostics.
   data — build real empty states, real data-entry flows, and real persistence.
 - Use workspace-root-relative paths. Never put host checkout paths in workspace
   source or tool arguments.
+- Treat repository location as unit identity. A repository under `panels/`,
+  `workers/`, `apps/`, `extensions/`, `packages/`, or `skills/` must conform to
+  that location and its canonical package scope; manifests configure the known
+  kind and never select one. Verify the exact repository path to receive
+  manifest, source, type, build, and authority diagnostics through one report.
 - Treat an ordinary workspace's `admin`/`member` membership role as separate
   from the authenticated account's `accountRole`. Personal and System remain
   private regardless of ordinary workspace membership APIs.

@@ -18,6 +18,16 @@ Read the [creation API](TOOLS.md#creating-projects) for parameters and the
 changes. Use `verify` on the exact returned repository path for a build check.
 For guidance about existing code, edit that repository's own `SKILL.md`.
 
+The repository location is the unit type. `panels/<name>` must be a valid panel,
+`workers/<name>` a valid worker, and so on; `package.json` cannot change or
+override that classification. Its package name must match the canonical scope
+for that location (for example `panels/task-board` is
+`@workspace-panels/task-board`). Panel and worker manifests do not use empty
+`vibestudio.panel` or `vibestudio.worker` discriminator blocks. Missing,
+malformed, mismatched, or foreign-kind manifests are schema failures on the
+exact repository path, and protected publication refuses them instead of
+treating the repository as content.
+
 Each eval invocation has its own local variables and imports. Import the
 functions used by that invocation, even if an earlier invocation imported them.
 Store receipts and handles explicitly in `scope` for later calls; module builds

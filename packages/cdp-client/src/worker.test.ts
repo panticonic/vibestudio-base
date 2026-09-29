@@ -23,6 +23,7 @@ class FakeWebSocket {
   } | null = null;
   static emitNavigationEventBeforeResponse = false;
   static deferNextClickEffect = false;
+  static deferNextCheckPolls = 0;
 
   private listeners = new Map<
     string,
@@ -34,6 +35,7 @@ class FakeWebSocket {
   private inputValue = "";
   private checked = false;
   private checking = false;
+  private pendingChecked = false;
   private revealAfterLocatorEvaluation = false;
   private revealed = false;
   closed = false;
@@ -95,7 +97,11 @@ class FakeWebSocket {
       message.params?.["type"] === "mouseReleased" &&
       this.checking
     ) {
-      this.checked = !this.checked;
+      if (FakeWebSocket.deferNextCheckPolls > 0) {
+        this.pendingChecked = !this.checked;
+      } else {
+        this.checked = !this.checked;
+      }
       this.checking = false;
     }
     if (
@@ -287,10 +293,22 @@ class FakeWebSocket {
         timeout: 30_000,
       };
     }
-    const actionOutcome = (value: unknown) => ({ __nsActionOutcome: true, value,
-      target: { found: true, tagName: "INPUT", role: "textbox", accessibleName: "Name",
-        text: "", visible: true, id: "input", className: "", attributes: {},
-        boundingBox: { x: 0, y: 0, width: 100, height: 20 }, ancestors: [] },
+    const actionOutcome = (value: unknown) => ({
+      __nsActionOutcome: true,
+      value,
+      target: {
+        found: true,
+        tagName: "INPUT",
+        role: "textbox",
+        accessibleName: "Name",
+        text: "",
+        visible: true,
+        id: "input",
+        className: "",
+        attributes: {},
+        boundingBox: { x: 0, y: 0, width: 100, height: 20 },
+        ancestors: [],
+      },
     });
     switch (payload.op) {
       case "probe":
@@ -318,6 +336,18 @@ class FakeWebSocket {
         return this.checked;
       case "retainedCheckedState":
         return this.checked;
+      case "retainedCheckedStateEquals":
+        if (FakeWebSocket.deferNextCheckPolls > 0) {
+          FakeWebSocket.deferNextCheckPolls -= 1;
+          if (FakeWebSocket.deferNextCheckPolls === 0)
+            this.checked = this.pendingChecked;
+        }
+        return this.checked === payload.arg?.checked
+          ? true
+          : {
+              __nsLocatorFailure: "state-timeout",
+              state: payload.arg?.checked ? "checked" : "unchecked",
+            };
       case "releaseRetainedElement":
         return true;
       case "isChecked":
@@ -427,6 +457,7 @@ describe("worker CDP client", () => {
     FakeWebSocket.evaluationException = null;
     FakeWebSocket.emitNavigationEventBeforeResponse = false;
     FakeWebSocket.deferNextClickEffect = false;
+    FakeWebSocket.deferNextCheckPolls = 0;
     vi.restoreAllMocks();
     Object.defineProperty(globalThis, "WebSocket", {
       configurable: true,
@@ -703,23 +734,40 @@ describe("worker CDP client", () => {
     const socket = FakeWebSocket.instances[0]!;
     vi.useFakeTimers();
     FakeWebSocket.dropMethods.add("Input.dispatchMouseEvent");
-    const command = page.connection.send("Input.dispatchMouseEvent", { type: "mouseReleased" }).catch((error: unknown) => error);
-    socket.emitCdpEvent("Page.javascriptDialogOpening", { type: "confirm", message: "Delete this item?", url: "https://example.com" });
-    expect(await command).toMatchObject({ code: "cdp_dialog_open", errorData: {
-      operation: "Input.dispatchMouseEvent", recovery: "handle-dialog-and-observe",
-      dialog: { type: "confirm", message: "Delete this item?" },
-    } });
+    const command = page.connection
+      .send("Input.dispatchMouseEvent", { type: "mouseReleased" })
+      .catch((error: unknown) => error);
+    socket.emitCdpEvent("Page.javascriptDialogOpening", {
+      type: "confirm",
+      message: "Delete this item?",
+      url: "https://example.com",
+    });
+    expect(await command).toMatchObject({
+      code: "cdp_dialog_open",
+      errorData: {
+        operation: "Input.dispatchMouseEvent",
+        recovery: "handle-dialog-and-observe",
+        dialog: { type: "confirm", message: "Delete this item?" },
+      },
+    });
     expect(socket.closed).toBe(false);
     expect(vi.getTimerCount()).toBe(0);
     expect(page.dialog()?.defaultValue()).toBe("");
-    await expect(page.title()).rejects.toMatchObject({ code: "cdp_dialog_open" });
+    await expect(page.title()).rejects.toMatchObject({
+      code: "cdp_dialog_open",
+    });
     const pending = page.dialog()!;
     const dismissed = pending.dismiss();
     await vi.runOnlyPendingTimersAsync();
     await dismissed;
     expect(page.dialog()).toBeNull();
-    await expect(pending.accept()).rejects.toMatchObject({ code: "cdp_dialog_closed" });
-    expect(FakeWebSocket.sent).toContainEqual({ method: "Page.handleJavaScriptDialog", params: { accept: false } });
+    await expect(pending.accept()).rejects.toMatchObject({
+      code: "cdp_dialog_closed",
+    });
+    expect(FakeWebSocket.sent).toContainEqual({
+      method: "Page.handleJavaScriptDialog",
+      params: { accept: false },
+    });
     await browser.close();
   });
 
@@ -729,20 +777,40 @@ describe("worker CDP client", () => {
     const page = browser.contexts()[0]!.pages()[0]!;
     const socket = FakeWebSocket.instances[0]!;
     FakeWebSocket.dropMethods.add("Input.dispatchMouseEvent");
-    const handler = vi.fn(async (dialog: NonNullable<ReturnType<typeof page.dialog>>) => {
-      expect(dialog.message()).toBe("Your name?");
-      await dialog.accept("Test name");
-      socket.emitCdpResponse(commandId, {});
-    });
+    const handler = vi.fn(
+      async (dialog: NonNullable<ReturnType<typeof page.dialog>>) => {
+        expect(dialog.message()).toBe("Your name?");
+        await dialog.accept("Test name");
+        socket.emitCdpResponse(commandId, {});
+      },
+    );
     page.on("dialog", handler);
-    const dispatched = page.connection.send("Input.dispatchMouseEvent", { type: "mouseReleased" });
-    const commandId = [...(page.connection as unknown as { pending: Map<number, unknown> }).pending.keys()][0]!;
-    socket.emitCdpEvent("Page.javascriptDialogOpening", { type: "prompt", message: "Your name?", defaultPrompt: "", url: "https://example.com" });
+    const dispatched = page.connection.send("Input.dispatchMouseEvent", {
+      type: "mouseReleased",
+    });
+    const commandId = [
+      ...(
+        page.connection as unknown as { pending: Map<number, unknown> }
+      ).pending.keys(),
+    ][0]!;
+    socket.emitCdpEvent("Page.javascriptDialogOpening", {
+      type: "prompt",
+      message: "Your name?",
+      defaultPrompt: "",
+      url: "https://example.com",
+    });
     await dispatched;
     expect(handler).toHaveBeenCalledOnce();
     expect(page.dialog()).toBeNull();
-    expect(FakeWebSocket.sent.filter(({ method }) => method === "Input.dispatchMouseEvent")).toHaveLength(1);
-    expect(FakeWebSocket.sent).toContainEqual({ method: "Page.handleJavaScriptDialog", params: { accept: true, promptText: "Test name" } });
+    expect(
+      FakeWebSocket.sent.filter(
+        ({ method }) => method === "Input.dispatchMouseEvent",
+      ),
+    ).toHaveLength(1);
+    expect(FakeWebSocket.sent).toContainEqual({
+      method: "Page.handleJavaScriptDialog",
+      params: { accept: true, promptText: "Test name" },
+    });
     page.off("dialog", handler);
     await browser.close();
   });
@@ -754,23 +822,49 @@ describe("worker CDP client", () => {
     const socket = FakeWebSocket.instances[0]!;
     FakeWebSocket.dropMethods.add("Input.dispatchMouseEvent");
     FakeWebSocket.dropMethods.add("Page.handleJavaScriptDialog");
-    page.on("dialog", (dialog) => { void dialog.accept(); });
-    const original = page.connection.send("Input.dispatchMouseEvent", { type: "mouseReleased" });
-    const pending = (page.connection as unknown as { pending: Map<number, { method: string }> }).pending;
+    page.on("dialog", (dialog) => {
+      void dialog.accept();
+    });
+    const original = page.connection.send("Input.dispatchMouseEvent", {
+      type: "mouseReleased",
+    });
+    const pending = (
+      page.connection as unknown as { pending: Map<number, { method: string }> }
+    ).pending;
     const originalId = [...pending.keys()][0]!;
-    socket.emitCdpEvent("Page.javascriptDialogOpening", { type: "confirm", message: "Delete?", url: "https://example.com" });
-    await Promise.resolve(); await Promise.resolve(); await Promise.resolve();
-    const decisionId = [...pending].find(([, command]) => command.method === "Page.handleJavaScriptDialog")![0];
+    socket.emitCdpEvent("Page.javascriptDialogOpening", {
+      type: "confirm",
+      message: "Delete?",
+      url: "https://example.com",
+    });
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+    const decisionId = [...pending].find(
+      ([, command]) => command.method === "Page.handleJavaScriptDialog",
+    )![0];
     const title = page.title();
-    await expect(page.dialog()!.accept()).rejects.toMatchObject({ code: "cdp_dialog_closed" });
-    expect(FakeWebSocket.sent.filter(({ method }) => method === "Page.handleJavaScriptDialog")).toHaveLength(1);
-    expect(FakeWebSocket.sent.at(-1)?.method).toBe("Page.handleJavaScriptDialog");
+    await expect(page.dialog()!.accept()).rejects.toMatchObject({
+      code: "cdp_dialog_closed",
+    });
+    expect(
+      FakeWebSocket.sent.filter(
+        ({ method }) => method === "Page.handleJavaScriptDialog",
+      ),
+    ).toHaveLength(1);
+    expect(FakeWebSocket.sent.at(-1)?.method).toBe(
+      "Page.handleJavaScriptDialog",
+    );
     socket.emitCdpResponse(decisionId, {});
     socket.emitCdpResponse(originalId, {});
     await original;
     expect(await title).toBe("Example");
     expect(page.dialog()).toBeNull();
-    expect(FakeWebSocket.sent.filter(({ method }) => method === "Input.dispatchMouseEvent")).toHaveLength(1);
+    expect(
+      FakeWebSocket.sent.filter(
+        ({ method }) => method === "Input.dispatchMouseEvent",
+      ),
+    ).toHaveLength(1);
     await browser.close();
   });
 
@@ -783,7 +877,12 @@ describe("worker CDP client", () => {
     page.on("dialog", () => {});
     FakeWebSocket.dropMethods.add("Runtime.evaluate");
     const pending = page.title().catch((error: unknown) => error);
-    socket.emitCdpEvent("Page.javascriptDialogOpening", { type: "alert", message: "Notice", defaultPrompt: "", url: "https://example.com" });
+    socket.emitCdpEvent("Page.javascriptDialogOpening", {
+      type: "alert",
+      message: "Notice",
+      defaultPrompt: "",
+      url: "https://example.com",
+    });
     expect(await pending).toMatchObject({ code: "cdp_dialog_open" });
     expect(vi.getTimerCount()).toBe(0);
     await browser.close();
@@ -1310,6 +1409,34 @@ describe("worker CDP client", () => {
     ).resolves.toEqual(["two"]);
   });
 
+  it("waits for an asynchronously controlled checkbox without replaying the click", async () => {
+    installFakeWebSocket();
+    FakeWebSocket.deferNextCheckPolls = 2;
+    const browser = await BrowserImpl.connect("ws://cdp");
+    const page = browser.contexts()[0]!.pages()[0]!;
+
+    await page.getByRole("checkbox").check({ timeout: 1_000 });
+
+    expect(
+      FakeWebSocket.sent.filter(
+        ({ method, params }) =>
+          method === "Input.dispatchMouseEvent" &&
+          params?.["type"] === "mouseReleased",
+      ),
+    ).toHaveLength(1);
+    expect(
+      FakeWebSocket.sent.filter(
+        ({ method, params }) =>
+          method === "Runtime.evaluate" &&
+          String(params?.["expression"] ?? "").includes(
+            '"op":"retainedCheckedStateEquals"',
+          ),
+      ).length,
+    ).toBeGreaterThan(1);
+    await expect(page.getByRole("checkbox").isChecked()).resolves.toBe(true);
+    await browser.close();
+  });
+
   it("records text, selection and keyboard actions from native execution, without input contents", async () => {
     installFakeWebSocket();
     const onInteraction = vi.fn();
@@ -1319,15 +1446,21 @@ describe("worker CDP client", () => {
     await page.getByPlaceholder("Name").clear();
     await page.getByRole("combobox").selectOption("high");
     await page.getByPlaceholder("Name").press("Enter");
-    expect(onInteraction.mock.calls.map(([receipt]) => receipt.action)).toEqual([
-      "fill", "clear", "selectOption", "press",
-    ]);
+    expect(onInteraction.mock.calls.map(([receipt]) => receipt.action)).toEqual(
+      ["fill", "clear", "selectOption", "press"],
+    );
     for (const [receipt] of onInteraction.mock.calls) {
-      expect(receipt).toMatchObject({ protocol: "cdp-interaction-outcome.v1", delivery: "dispatched", target: { found: true } });
+      expect(receipt).toMatchObject({
+        protocol: "cdp-interaction-outcome.v1",
+        delivery: "dispatched",
+        target: { found: true },
+      });
       expect(JSON.stringify(receipt)).not.toContain("private input");
     }
     FakeWebSocket.rejectMethods.set("Runtime.evaluate", "page crashed");
-    await expect(page.getByPlaceholder("Name").fill("failed")).rejects.toThrow();
+    await expect(
+      page.getByPlaceholder("Name").fill("failed"),
+    ).rejects.toThrow();
     expect(onInteraction).toHaveBeenCalledTimes(4);
     await browser.close();
   });
@@ -1674,35 +1807,65 @@ describe("worker CDP client", () => {
       cloneNode: () => {
         const clone = {
           innerText: "PriorityLowNormalHigh",
-          querySelectorAll: () => [{ remove: () => { clone.innerText = "Priority"; } }],
+          querySelectorAll: () => [
+            {
+              remove: () => {
+                clone.innerText = "Priority";
+              },
+            },
+          ],
         };
         return clone;
       },
     };
     const focus = vi.fn();
     const filter = {
-      tagName: "SELECT", labels: [], focus,
-      getAttribute: (name: string) => name === "aria-label" ? "Filter priority" : null,
+      tagName: "SELECT",
+      labels: [],
+      focus,
+      getAttribute: (name: string) =>
+        name === "aria-label" ? "Filter priority" : null,
     };
     const editor = {
-      tagName: "SELECT", labels: [associatedLabel], focus,
+      tagName: "SELECT",
+      labels: [associatedLabel],
+      focus,
       getAttribute: () => null,
     };
     const document = { querySelectorAll: () => [filter, editor] };
     expect(await runInNewContext(expression, { document })).toBe(2);
-    expect(await runInNewContext(expression.replace('"name":"Priority"', '"name":"Priority","exact":true'), { document })).toBe(1);
-    const failure = await runInNewContext(expression.replace('"op":"count"', '"op":"selectOption"'), { document });
-    expect(failure).toMatchObject({ __nsLocatorFailure: "ambiguous", matchCount: 2, candidates: [
-      { role: "combobox", accessibleName: "Filter priority" },
-      { role: "combobox", accessibleName: "Priority" },
-    ] });
+    expect(
+      await runInNewContext(
+        expression.replace(
+          '"name":"Priority"',
+          '"name":"Priority","exact":true',
+        ),
+        { document },
+      ),
+    ).toBe(1);
+    const failure = await runInNewContext(
+      expression.replace('"op":"count"', '"op":"selectOption"'),
+      { document },
+    );
+    expect(failure).toMatchObject({
+      __nsLocatorFailure: "ambiguous",
+      matchCount: 2,
+      candidates: [
+        { role: "combobox", accessibleName: "Filter priority" },
+        { role: "combobox", accessibleName: "Priority" },
+      ],
+    });
     expect(focus).not.toHaveBeenCalled();
     vi.spyOn(page, "evaluate").mockResolvedValueOnce(failure);
-    await expect(page.getByRole("combobox", { name: "Priority" }).selectOption("high")).rejects.toMatchObject({
-      code: "cdp_locator_ambiguous", errorData: { operation: "selectOption", matchCount: 2 },
+    await expect(
+      page.getByRole("combobox", { name: "Priority" }).selectOption("high"),
+    ).rejects.toMatchObject({
+      code: "cdp_locator_ambiguous",
+      errorData: { operation: "selectOption", matchCount: 2 },
     });
-    expect(FakeWebSocket.sent.some((entry) => entry.method.startsWith("Input."))).toBe(false);
+    expect(
+      FakeWebSocket.sent.some((entry) => entry.method.startsWith("Input.")),
+    ).toBe(false);
     await browser.close();
   });
-
 });

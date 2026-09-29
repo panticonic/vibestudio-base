@@ -1,6 +1,6 @@
 import { composedWorkspaceRoot } from "./composedWorkspace.js";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { unitAuthorityManifestFromPackageJson } from "@vibestudio/unit-host";
+import { parseUnitAuthorityManifest } from "@vibestudio/shared/authorityManifest";
 
 const mocks = vi.hoisted(() => {
   const files = new Map<string, string | Uint8Array>();
@@ -553,7 +553,7 @@ describe("createProjects", () => {
       },
     ]);
 
-    for (const [path, packageName] of [
+    for (const [path] of [
       ["panels/react-panel/package.json", "@workspace-panels/react-panel"],
       ["panels/svelte-panel/package.json", "@workspace-panels/svelte-panel"],
       ["workers/plain-worker/package.json", "@workspace-workers/plain-worker"],
@@ -565,8 +565,11 @@ describe("createProjects", () => {
     ] as const) {
       const source = mocks.files.get(path);
       expect(typeof source).toBe("string");
+      const manifest = JSON.parse(source as string) as {
+        vibestudio: { authority: unknown };
+      };
       expect(
-        unitAuthorityManifestFromPackageJson(source as string, packageName).requests,
+        parseUnitAuthorityManifest(manifest.vibestudio.authority).requests,
       ).toEqual(
         path === "workers/agent-worker/package.json"
           ? [
