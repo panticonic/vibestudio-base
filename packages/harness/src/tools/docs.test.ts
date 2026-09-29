@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { parseUnitAuthorityManifest } from "@vibestudio/shared/authorityManifest";
 import { createDocsSearchTool, renderEntry, type CatalogEntry } from "./docs.js";
 
 describe("docs_search", () => {
@@ -198,7 +199,7 @@ describe("renderEntry (readable docs_open text)", () => {
     expect(text).toContain('workers.resolveService("example.notes.v1")');
     expect(text).toContain('import { workers, rpc } from "@workspace/runtime"');
     expect(text).toContain('runtime.workers.resolveService("example.notes.v1")');
-    expect(text.match(/service\.kind !== "durable-object"/gu)).toHaveLength(2);
+    expect(text.match(/service\.kind !== "durable-object"/gu)).toHaveLength(3);
     expect(text).toContain("Resolve and call it directly through the runtime");
   });
 
@@ -223,6 +224,15 @@ describe("renderEntry (readable docs_open text)", () => {
     };
 
     const text = renderEntry(entry);
+    const snippet = text.match(/```json\n([\s\S]+?)\n```/)?.[1];
+    expect(snippet).toBeDefined();
+    const authority = JSON.parse(snippet!).vibestudio.authority;
+    expect(parseUnitAuthorityManifest(authority)).toMatchObject({
+      requests: [{ capability: "workspace-service:gad.workspace", resource: { kind: "prefix", prefix: "" }, tier: "gated", evidence: "bounded-dynamic" }],
+      serviceRequests: [{ protocol: "vibestudio.gad.workspace.v1", availability: "required" }],
+    });
+    expect(text).toContain('rpc.call(service.targetId, "exactMethodName"');
+    expect(text).toContain("Installed panel code uses its own code identity");
     expect(text).toContain("Installed-unit declaration");
     expect(text).toContain('"workspace-service:gad.workspace"');
     expect(text).toContain("not a runtime permission");

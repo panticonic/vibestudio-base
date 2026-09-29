@@ -362,6 +362,15 @@ export function renderEntry(entry: CatalogEntry): string {
               )} request in the caller's package.json with resource { "kind": "prefix", "prefix": "" }, tier "gated", and evidence "bounded-dynamic". Manifest tiers are only "gated" or "critical"; the provider method's RPC tier "open" is a separate receiver policy. This request may exist before the provider; the live declaration, provider version, context visibility, and grant are still checked at runtime.`
         );
       }
+      if (!entry.parent && manifestCapability) {
+        parts.push("Installed consumer package.json (capability scopes belong in requests; protocol dependencies belong in serviceRequests):\n```json\n" + JSON.stringify({
+          vibestudio: { authority: {
+            requests: [{ capability: manifestCapability, resource: { kind: "prefix", prefix: "" }, tier: "gated", evidence: "bounded-dynamic" }],
+            serviceRequests: [{ protocol, availability: "required" }],
+            provides: [],
+          } },
+        }, null, 2) + "\n```");
+      }
       const consumerRestricted = access?.binding === "declared-for";
       if (consumerRestricted) {
         parts.push(
@@ -378,7 +387,9 @@ export function renderEntry(entry: CatalogEntry): string {
             entry.qualifiedName.split(".").at(-1)
           )}, [/* args */]);`
         : durableObjectGuard +
-          "// Open the method docs listed above, then call its exact method through rpc.call(...).";
+          (access?.target?.kind === "durable-object"
+            ? '// Open a method doc, then call: await rpc.call(service.targetId, "exactMethodName", [/* args */]);'
+            : '// Stateless worker services expose service.routeBasePath for their declared HTTP route.');
       const factoryObjectKey =
         access?.target?.kind === "durable-object" && access.target.defaultObjectKey === null
           ? "const objectKey = /* exact provider object key from the task/runtime context */;\n"
@@ -395,7 +406,12 @@ export function renderEntry(entry: CatalogEntry): string {
           factoryObjectKey +
           `const service = await workers.resolveService(${resolutionArgs});\n` +
           callExample + "\n\n") +
-          "Installed consumer code uses its own runtime (worker code creates it inside fetch()):\n" +
+          "Installed panel code uses its own code identity:\n" +
+          'import { workers, rpc } from "@workspace/runtime";\n' +
+          factoryObjectKey +
+          `const service = await workers.resolveService(${resolutionArgs});\n` +
+          callExample + "\n\n" +
+          "Installed worker code creates its runtime inside fetch():\n" +
           factoryObjectKey +
           `const service = await runtime.workers.resolveService(${resolutionArgs});\n` +
           callExample.replaceAll("rpc.call", "runtime.rpc.call")

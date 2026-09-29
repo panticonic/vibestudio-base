@@ -1,4 +1,7 @@
-import { EVAL_OPERATION_JOURNAL_MAX_ENTRIES } from "@vibestudio/service-schemas/eval";
+import {
+  EVAL_OPERATION_JOURNAL_MAX_ENTRIES,
+  EVAL_RESULT_RETURN_PREVIEW_CHARS,
+} from "@vibestudio/service-schemas/eval";
 
 export function consoleHistoryReceipt(
   history: import("@vibestudio/shared/panel/observation").PanelConsoleHistoryResult,
@@ -18,11 +21,28 @@ export function consoleHistoryReceipt(
   };
 }
 
+/** Copy bounded native values so guest mutations cannot alter completed evidence. */
+export function cdpEvaluationReceipt(value: unknown) {
+  const encoded = JSON.stringify(value) ?? "null";
+  const truncated = encoded.length > EVAL_RESULT_RETURN_PREVIEW_CHARS;
+  return {
+    protocol: "cdp-evaluation-outcome.v1" as const,
+    capturedAt: Date.now(),
+    value: truncated ? null : (JSON.parse(encoded) as unknown),
+    truncated,
+  };
+}
+
 export type OperationJournalEntry =
   | { type: "open"; source: string; id: string; kind: "workspace" | "browser" }
   | { type: "reload"; id: string }
   | { type: "close"; id: string }
   | { type: "interaction"; id: string; receipt: unknown }
+  | {
+      type: "evaluation";
+      id: string;
+      receipt: ReturnType<typeof cdpEvaluationReceipt>;
+    }
   | {
       type: "snapshot";
       id: string;

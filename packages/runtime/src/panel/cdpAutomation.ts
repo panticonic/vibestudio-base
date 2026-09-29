@@ -15,6 +15,7 @@ import type { PanelObservation } from "@vibestudio/shared/panel/observation";
 import type { CdpInteractionOutcome } from "@workspace/cdp-client";
 import {
   consoleHistoryReceipt,
+  cdpEvaluationReceipt,
   type OperationJournalEntry,
 } from "../shared/journal.js";
 
@@ -155,6 +156,17 @@ export function createCdpAutomation(
     ]);
     return new Proxy(resolvedPage as CdpPage & object, {
       get(target, property) {
+        if (property === "evaluate") {
+          return async (...args: Parameters<CdpPage["evaluate"]>) => {
+            const value = await resolvedPage.evaluate(...args);
+            options.recordOperation?.({
+              type: "evaluation",
+              id,
+              receipt: cdpEvaluationReceipt(value),
+            });
+            return value;
+          };
+        }
         if (property === "screenshot") {
           return async (
             screenshotOptions?: Parameters<CdpPage["screenshot"]>[0],

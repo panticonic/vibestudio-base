@@ -37,6 +37,58 @@ describe("createCdpAutomation screenshot", () => {
     expect(journal.entries).toHaveLength(1);
   });
 
+  it("journals native evaluation values without retaining mutable or oversized projections", async () => {
+    const result = { status: "Clicked successfully" };
+    const failure = new Error("page closed");
+    const evaluate = vi.fn(async () => result as unknown);
+    const journal = new Journal();
+    const cdp = createCdpAutomation(
+      { call: vi.fn(async () => ({ wsEndpoint: "ws://panel" })) } as never,
+      "panel:evaluate",
+      {
+        recordOperation: (entry) => currentJournal()?.append(entry),
+        loadModule: async () => ({
+          BrowserImpl: {
+            connect: async () => ({
+              contexts: () => [{ pages: () => [{ evaluate }] }],
+            }),
+          },
+        }),
+      },
+    );
+    const page = await cdp.page();
+    await withJournal(journal, async () => {
+      expect(await page.evaluate("document.body.innerText")).toBe(result);
+      result.status = "guest mutation";
+      evaluate.mockResolvedValueOnce("x".repeat(20_000));
+      await page.evaluate("large read");
+      evaluate.mockRejectedValueOnce(failure);
+      await expect(page.evaluate("crashed read")).rejects.toBe(failure);
+    });
+    expect(journal.entries).toEqual([
+      {
+        type: "evaluation",
+        id: "panel:evaluate",
+        receipt: {
+          protocol: "cdp-evaluation-outcome.v1",
+          capturedAt: expect.any(Number),
+          value: { status: "Clicked successfully" },
+          truncated: false,
+        },
+      },
+      {
+        type: "evaluation",
+        id: "panel:evaluate",
+        receipt: {
+          protocol: "cdp-evaluation-outcome.v1",
+          capturedAt: expect.any(Number),
+          value: null,
+          truncated: true,
+        },
+      },
+    ]);
+  });
+
   it("records completed native console and capture observations independently of returned projections", async () => {
     const history = {
       entries: [],

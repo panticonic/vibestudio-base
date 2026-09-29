@@ -121,31 +121,8 @@ export type WorkspaceServiceInfo = {
       routePath: string;
     }
 );
-export type ResolvedWorkspaceService = {
-  origin: "product" | "workspace";
-  name: string;
-  title?: string;
-  description?: string;
-  /**
-   * The protocol that matched resolveService(). Absent when resolution used
-   * the service name instead of a declared protocol.
-   */
-  protocol?: string;
-  protocols: string[];
-  source: string;
-} & (
-  | {
-      kind: "durable-object";
-      className: string;
-      objectKey: string;
-      targetId: string;
-    }
-  | {
-      kind: "worker";
-      routePath: string;
-      routeBasePath: string;
-    }
-);
+import type { ResolvedWorkspaceService } from "@vibestudio/workspace-contracts/workspaceConfigSchema";
+export type { ResolvedWorkspaceService } from "@vibestudio/workspace-contracts/workspaceConfigSchema";
 // ---------------------------------------------------------------------------
 // Client
 // ---------------------------------------------------------------------------
