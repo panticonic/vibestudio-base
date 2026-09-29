@@ -52,6 +52,28 @@ naming CAS bytes. The semantic workspace verifies those host-observed
 descriptors and derives the snapshot digest. Do not reconstruct an import as a sequence of ordinary
 authored edits or partial repository loops.
 
+## Verify the requested result
+
+Derive acceptance criteria from the requested behavior and the application's
+contracts. A successful build establishes executable source, not a working
+application. Exercise each core user flow with representative inputs and
+observe its completed result before starting a dependent action. For saved
+user data, verify the intended storage boundary and persistence after reload;
+wait for the loaded application state before judging the result.
+
+Inspect the actual rendered interface and runtime diagnostics after the final
+interaction. Use the panel lifecycle and browser guidance linked by this skill
+for exact handles, observations, screenshots, and cleanup. Keep the same
+application identity through source changes, and verify the requested release
+after publication when publication is part of delivery.
+
+Recovery does not erase an earlier problem. Preserve the original structured
+failure and the evidence of its repair, distinguish intentional failing checks
+from incidental errors, and report problems encountered even when the final
+application works. Do not clear diagnostics to manufacture a clean history,
+invent defects to demonstrate a development loop, or substitute a separate
+implementation to avoid a broken product path.
+
 ## Design principles
 
 Before scaffolding, decide on persistence and agent integration:

@@ -171,6 +171,13 @@ derived from the authenticated caller and its verified binding.
 
 ### Per-run authority
 
+For ordinary work, omit `authority` and let the protected operation use normal
+approval routing. Set an explicit authority intent when the user or owning
+workflow requires attenuation. `pregranted-only` asserts that the required
+grants already exist; it is not an unattended mode or a way to skip approval.
+An unavailable grant is a refusal to diagnose, not a reason to retry through
+another principal or broaden the requested authority.
+
 Authority intent only narrows the authority already admitted by the receiver,
 the installed harness, the verified session, live grants, relationships,
 denials, and locks:

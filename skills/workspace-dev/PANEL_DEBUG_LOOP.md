@@ -1,9 +1,10 @@
 # Panel Build, Debug, and Polish Loop
 
-Use this bounded recipe for a task that creates or edits a panel, checks a
-compiler failure, visually reviews it, exercises the live UI, and publishes it.
-It is the shortest complete path; read the larger API references only when a
-step returns a typed result you do not understand.
+Use this workflow to create or edit a panel, diagnose actual failures, inspect
+its rendered behavior, and deliver the requested result. Select the steps that
+the observed state requires; do not introduce artificial compiler or UI defects
+to demonstrate the workflow. Read the larger API references when an observed
+result needs further diagnosis.
 
 ## 1. Create once
 
@@ -23,7 +24,7 @@ scope.panelSource = scope.created[0].created; // already `panels/name`
 return scope.created;
 ```
 
-Never call `createProjects` again in this workflow. A later build, open,
+Reuse a project that was already created. A later build, open,
 screenshot, locator, or publication failure does not roll creation back. If
 the creation call itself has an uncertain result, inspect `scope`, `vcs.status`,
 and the existing repository before deciding what remains unfinished.
@@ -40,8 +41,9 @@ return {
 };
 ```
 
-Repair only the cited compiler diagnostic, then rerun this same report. Do not
-mix a separate UX fix into that edit when the task asks for distinct phases.
+Repair the cited source diagnostics, then rerun this same report. Keep an
+independent UI problem separate when the requested work needs a distinct review
+or verification boundary; otherwise group edits by their actual user intent.
 
 ## 3. Open the unpublished context build once
 
@@ -69,7 +71,7 @@ Do not call `openPanel` again to refresh it. Reuse `scope.panel`. After a
 reported kernel restart, recover the same panel with
 `getPanelHandle(scope.panelId)` rather than opening another slot.
 
-## 4. Capture and visually read the flawed state
+## 4. Inspect the rendered state
 
 Acquire one generation-fenced session for the current runtime incarnation and
 return the panel handle's native screenshot result directly. Omit an exact `authority.requests` list for
@@ -98,7 +100,7 @@ Eval attaches this canonical screenshot result as image content. No temp file,
 filesystem write authority, or follow-up `read` call is needed. Do not infer the
 visual defect from source/DOM text alone.
 
-## 5. Repair UX, rebuild the same panel, and reacquire the page
+## 5. Apply UI changes, rebuild the same panel, and reacquire the page
 
 Make the separate source edit and rerun the exact-context build report.
 
@@ -137,8 +139,8 @@ directly. Pass a signal only when the caller owns a real cancellation boundary
 explicit end-to-end deadline), not as a speculative safety timeout. If such a
 caller-owned cancellation fires, call `scope.panel.diagnose()` in the next cell
 to retrieve the exact observation, boot failure, console history, and ready
-document without rebuilding again. Capture and `read` the second screenshot
-exactly as in step 4.
+document without rebuilding again. Inspect a fresh screenshot after the change
+using the same native image result as in step 4.
 
 ## 6. Exercise the rendered contract
 
