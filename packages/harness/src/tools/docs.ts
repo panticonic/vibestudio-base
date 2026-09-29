@@ -343,7 +343,8 @@ export function renderEntry(entry: CatalogEntry): string {
           source?: string;
           capability?: string;
           declarationCapability?: string;
-          binding?: "consent" | "declared";
+          binding?: "consent" | "declared" | "declared-for";
+          declaredFor?: string[];
         }
       | undefined;
     const protocol = access?.protocols?.[0];
@@ -352,13 +353,19 @@ export function renderEntry(entry: CatalogEntry): string {
       const manifestCapability = access?.declarationCapability ?? access?.capability;
       if (!entry.parent && manifestCapability) {
         parts.push(
-          access?.binding === "declared"
+          access?.binding === "declared" || access?.binding === "declared-for"
             ? `Installed-unit declaration: declare an exact ${JSON.stringify(
                 manifestCapability
               )} request in the caller's package.json with resource { "kind": "prefix", "prefix": "" }, tier "gated", and evidence "bounded-dynamic". This records reviewed structural wiring; it is not a runtime permission and must not be added to eval authority requests. Individual receiver methods and their semantic effects remain authoritative.`
             : `Installed-unit authority: declare an exact ${JSON.stringify(
                 manifestCapability
               )} request in the caller's package.json with resource { "kind": "prefix", "prefix": "" }, tier "gated", and evidence "bounded-dynamic". Manifest tiers are only "gated" or "critical"; the provider method's RPC tier "open" is a separate receiver policy. This request may exist before the provider; the live declaration, provider version, context visibility, and grant are still checked at runtime.`
+        );
+      }
+      const consumerRestricted = access?.binding === "declared-for";
+      if (consumerRestricted) {
+        parts.push(
+          `Binding: declared-for ${JSON.stringify(access.declaredFor ?? [])}. Only these installed consumer repositories receive reviewed wiring without consent. Service resolution uses the actual calling runtime's code identity; importing runtime exports in eval does not adopt a consumer's identity. Verify the minimal call from a named consumer, through its UI or its own app-shaped RPC. Other callers still require consent, and receiver method authority applies independently.`
         );
       }
       const durableObjectGuard =
@@ -382,13 +389,13 @@ export function renderEntry(entry: CatalogEntry): string {
           : JSON.stringify(protocol);
       parts.push(
         "Finish docs_search/docs_open as agent tools before eval; `docs`, `docs.search`, and `docs.open` are not eval globals or runtime exports.\n\n" +
-          "This is a live workspace service. Resolve and call it directly through the runtime below; its receiver declaration and installed-unit authority are enforced by that call.\n\n" +
-          "Eval-side service resolution and proof (public exports only):\n" +
+          "This is a live workspace service. Resolve and call it directly through the runtime below; the actual caller's binding policy, receiver declaration, and installed-unit authority are enforced by that call.\n\n" +
+          (consumerRestricted ? "" : "Eval-side service resolution (caller consent may be required; public exports only):\n" +
           'import { workers, rpc } from "@workspace/runtime";\n' +
           factoryObjectKey +
           `const service = await workers.resolveService(${resolutionArgs});\n` +
-          callExample +
-          "\n\nInstalled worker code uses the runtime created inside fetch():\n" +
+          callExample + "\n\n") +
+          "Installed consumer code uses its own runtime (worker code creates it inside fetch()):\n" +
           factoryObjectKey +
           `const service = await runtime.workers.resolveService(${resolutionArgs});\n` +
           callExample.replaceAll("rpc.call", "runtime.rpc.call")

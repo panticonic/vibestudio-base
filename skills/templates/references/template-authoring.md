@@ -17,6 +17,18 @@ const inspection = await extensions.invoke(templates, "inspectAuthoring", [
 ]);
 ```
 
+Select the repositories that match the requested source; `authoringParts` is
+an inventory, not a request to include the whole workspace. Match the requested
+source to its repository kind and package identity: a reusable library is a
+package, while an extension provides a workspace capability. Do not substitute
+the extension that calls a library for the library's own source. The inspection
+adds the required closure automatically.
+
+Keep the exact inspection in `scope` and return a compact review containing its
+fingerprint, main event, manifest, and requested/required/included parts. If that
+review exceeds eval's bounded return, read the retained value in pages before
+claiming the plan is ready. A truncated preview is not the complete plan.
+
 Review `requestedParts`, `requiredParts`, and `includedParts`. Publish only
 that unchanged plan:
 

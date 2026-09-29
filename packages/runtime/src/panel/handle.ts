@@ -8,7 +8,6 @@ import {
   createPanelRuntime,
   type PanelRuntimeTree,
 } from "../shared/panelRuntime.js";
-import { currentJournal } from "../shared/journal.js";
 
 export type PanelHandle<
   T extends Rpc.ExposedMethods = Rpc.ExposedMethods,
@@ -69,11 +68,6 @@ export function createPanelHandleApi(
           ]
         : []),
     ],
-    onOpen: (entry) => currentJournal()?.append({ type: "open", ...entry }),
-    onReload: (id) => currentJournal()?.append({ type: "reload", id }),
-    onClose: (id) => currentJournal()?.append({ type: "close", id }),
-    onStateArgsSet: (id) =>
-      currentJournal()?.append({ type: "stateArgs.set", id }),
   });
   const subscriptions = new Set<() => void>();
   let destroyed = false;

@@ -1009,21 +1009,10 @@ export abstract class AgentWorkerBase extends AgentVesselBase {
         name: "list_addressees",
         label: "list_addressees",
         description:
-          "List everyone you can message right now: this channel's participants, your supervisor if you have one, your live subagent runs, and running agent instances elsewhere. Each row prints the exact `to` value notify accepts.",
-        parameters: {
-          type: "object",
-          properties: {
-            includeDirectory: {
-              type: "boolean",
-              description:
-                "Include agent instances in other channels (default true). Set false for just this conversation.",
-            },
-          },
-        } as never,
-        execute: async (_toolCallId, params) => {
-          const includeDirectory = (params as { includeDirectory?: unknown })
-            .includeDirectory;
-          const context = await this.addresseeContext(channelId);
+          "List this conversation's participants, your supervisor, and your child runs. Each row prints an exact `to` value for notify. Use discover_agents to find an agent in another conversation.",
+        parameters: { type: "object", properties: {}, additionalProperties: false } as never,
+        execute: async () => {
+          const context = this.conversationAddresseeContext(channelId);
           const lines: string[] = [];
           const rows: Record<string, unknown>[] = [];
           const push = (ref: string, kind: string, note: string) => {
@@ -1051,16 +1040,6 @@ export abstract class AgentWorkerBase extends AgentVesselBase {
               "subagent run",
               [run.status, run.taskChannelId].filter(Boolean).join(" · "),
             );
-          }
-          if (includeDirectory !== false) {
-            for (const entry of context.directory ?? []) {
-              if (entry.channelId === channelId) continue;
-              push(
-                `agent:${entry.instanceId}`,
-                "agent elsewhere",
-                entry.channelId,
-              );
-            }
           }
           return {
             content: [{ type: "text", text: lines.join("\n") }],
@@ -1180,7 +1159,7 @@ export abstract class AgentWorkerBase extends AgentVesselBase {
               "@handle (a participant here, or a workspace member by handle), participant:<id>, " +
               "user:<id>, owner (this conversation's person), parent (your supervisor), " +
               "run:<id> (a subagent you spawned), agent:<handle>@<channelId> (an agent " +
-              "instance elsewhere — the exact ref discover_agents/list_addressees print; a " +
+              "instance elsewhere — the exact ref discover_agents prints; a " +
               "idle or finished one wakes), channel:<id> (everyone in another conversation). An " +
               "unrecognized addressee fails the call with suggestions; nothing is ever " +
               "broadcast as a guess. Guest messages to other channels are not editable.",
@@ -1583,7 +1562,7 @@ export abstract class AgentWorkerBase extends AgentVesselBase {
         name: "inspect_subagent",
         label: "inspect_subagent",
         description:
-          "Inspects a supervised child's runtime or semantic workspace state; it never exposes the model's private context window. Use the bounded parent-relative 'diff' when the user's goal is to inspect, review, or compare child work without integrating it. No inspection preflight is required before merge_subagent when the goal instead calls for integration. Use 'status', 'diff'/'log', or an exact repo-prefixed file path. read_subagent returns what the child said. Do not poll a live child with this tool; suspend_turn wakes when the child reports.",
+          "Inspects a supervised child's semantic workspace state; it never exposes the model's private context window. Use the bounded parent-relative 'diff' when the user's goal is to inspect, review, or compare child work without integrating it. No inspection preflight is required before merge_subagent when the goal instead calls for integration. Use 'status', 'diff'/'log', or an exact repo-prefixed file path. read_subagent returns what the child said. Do not poll a live child with this tool; suspend_turn wakes when the child reports.",
         parameters: {
           type: "object",
           properties: {
@@ -1728,7 +1707,7 @@ export abstract class AgentWorkerBase extends AgentVesselBase {
         name: "read_subagent",
         label: "read_subagent",
         description:
-          "Read the canonical subagent task transcript after a cursor. Returns messages plus nextSeq. Use it for deliberate catch-up or debugging; suspend_turn({ reason:'waiting_for_background' }) parks the parent when only live background execution remains. Use inspect_subagent for child files, status, semantic diff, and runtime diagnostics.",
+          "Read the canonical subagent task transcript after a cursor. Returns messages plus nextSeq. Use it for deliberate catch-up or debugging; suspend_turn({ reason:'waiting_for_background' }) parks the parent when only live background execution remains. Use inspect_subagent for child files, semantic clean/dirty status, and semantic diff.",
         parameters: {
           type: "object",
           properties: {

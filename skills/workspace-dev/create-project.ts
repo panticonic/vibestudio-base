@@ -8,6 +8,32 @@ import {
   type ProjectType,
 } from "./project-manifest.js";
 
+// Reviewed envelopes for the code each executable scaffold emits. These are
+// requests, not grants; runtime ownership and user approval still apply.
+const EXECUTABLE_SCAFFOLD_AUTHORITY = {
+  requests: [
+    {
+      capability: "context.boundary",
+      resource: { kind: "prefix", prefix: "context" },
+      tier: "critical",
+      evidence: "bounded-dynamic",
+    },
+  ],
+  provides: [],
+} as const;
+const AGENTIC_WORKER_AUTHORITY = {
+  requests: [
+    ...EXECUTABLE_SCAFFOLD_AUTHORITY.requests,
+    {
+      capability: "context.clone",
+      resource: { kind: "exact", key: "context.clone" },
+      tier: "gated",
+      evidence: "exact",
+    },
+  ],
+  provides: [],
+} as const;
+
 export interface ProjectPublication {
   published: true;
   committedEventId: string;
@@ -784,8 +810,16 @@ async function resolveProject(
       }
 
       if (panelFramework === "svelte") {
+        const frameworkPackage = JSON.parse(
+          (await fs.readFile("packages/svelte/package.json", "utf-8")) as string,
+        );
+        const frameworkVersion = frameworkPackage.peerDependencies?.svelte;
+        if (frameworkPackage.name !== "@workspace/svelte" || typeof frameworkVersion !== "string" || !frameworkVersion) {
+          throw new Error("The installed Svelte framework must declare its required Svelte peer dependency");
+        }
         files["package.json"] = serializeProjectManifest({
           projectType: "panel",
+          authority: EXECUTABLE_SCAFFOLD_AUTHORITY,
           name,
           title,
           icon: manifestIcon,
@@ -811,22 +845,23 @@ async function resolveProject(
           dependencies: {
             "@workspace/runtime": "workspace:*",
             "@workspace/svelte": "workspace:*",
-            svelte: "^5.0.0",
+            svelte: frameworkVersion,
           },
         });
         files["index.ts"] = `export { default } from "./App.svelte";\n`;
-        files["App.svelte"] = `<script>
+        files["App.svelte"] = `<script lang="ts">
   import { theme, themeStyle } from "@workspace/svelte";
   import { onMount } from "svelte";
 
-  let mode = window.__vibestudioAgentMode ?? "live";
+  type DataMode = "fixture" | "live";
+  let mode: DataMode = (window as Window & { __vibestudioAgentMode?: DataMode }).__vibestudioAgentMode ?? "live";
   const data = {
     fixture: "${title} fixture data",
     live: "${title} live data",
   };
 
   onMount(() => {
-    const handler = (event) => { mode = event.detail; };
+    const handler = (event: Event) => { mode = (event as CustomEvent<DataMode>).detail; };
     window.addEventListener("vibestudio:agentModeChanged", handler);
     return () => window.removeEventListener("vibestudio:agentModeChanged", handler);
   });
@@ -862,6 +897,7 @@ async function resolveProject(
         // authority. Framework helpers can be added deliberately when needed.
         files["package.json"] = serializeProjectManifest({
           projectType: "panel",
+          authority: EXECUTABLE_SCAFFOLD_AUTHORITY,
           name,
           title,
           icon: manifestIcon,
@@ -990,6 +1026,7 @@ function ${toPascalCase(name)}Content() {
 
         files["package.json"] = serializeProjectManifest({
           projectType: "worker",
+          authority: AGENTIC_WORKER_AUTHORITY,
           name,
           title,
           icon: manifestIcon,
@@ -1090,6 +1127,7 @@ describe("${className}", () => {
         const className = toPascalCase(name);
         files["package.json"] = serializeProjectManifest({
           projectType: "worker",
+          authority: EXECUTABLE_SCAFFOLD_AUTHORITY,
           name,
           title,
           icon: manifestIcon,
@@ -1178,6 +1216,7 @@ export default {
         // Default stateless worker template
         files["package.json"] = serializeProjectManifest({
           projectType: "worker",
+          authority: EXECUTABLE_SCAFFOLD_AUTHORITY,
           name,
           title,
           icon: manifestIcon,

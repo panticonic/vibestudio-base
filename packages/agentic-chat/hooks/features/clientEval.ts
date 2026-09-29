@@ -284,8 +284,8 @@ APIs and workspace packages with static imports. \`return\` sends a value back;
             )}`,
           });
         }
-        if (result.panelJournalFooter) {
-          parts.push({ type: "text", text: result.panelJournalFooter });
+        if (result.operationJournalFooter) {
+          parts.push({ type: "text", text: result.operationJournalFooter });
         }
         if (parts.length === 0) {
           parts.push({ type: "text", text: "[client_eval] (no output)" });

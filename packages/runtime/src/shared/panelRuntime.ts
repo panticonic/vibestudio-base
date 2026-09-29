@@ -1,4 +1,9 @@
 import type { RpcClient } from "@vibestudio/rpc";
+import {
+  currentJournal,
+  consoleHistoryReceipt,
+  type OperationJournalEntry,
+} from "./journal.js";
 import type { PanelSourceUsage } from "@vibestudio/shared/panelSearchTypes";
 import type {
   PanelLifecycleResult,
@@ -236,6 +241,8 @@ export interface PanelRuntimeApi {
 
 export interface CreatePanelRuntimeOptions {
   rpc: Pick<RpcClient, "call" | "emit" | "on">;
+  /** The owning execution context supplies its journal across compiled module boundaries. */
+  recordOperation?: (entry: OperationJournalEntry) => void;
   /** Focus a live panel when this runtime has a native presentation host. */
   focusPanel?: (id: string, options?: PanelFocusOptions) => Promise<void>;
   selfId?: string | null;
@@ -274,6 +281,9 @@ export interface CreatePanelRuntimeOptions {
 export function createPanelRuntime(
   options: CreatePanelRuntimeOptions,
 ): PanelRuntimeApi {
+  const recordOperation =
+    options.recordOperation ??
+    ((entry: OperationJournalEntry) => currentJournal()?.append(entry));
   const metadataCache = new Map<string, PanelHandleMetadata>();
   const callState = <T>(method: string, args: unknown[]): Promise<T> =>
     callWorkspaceState<T>(options.rpc, method, args);
@@ -336,7 +346,9 @@ export function createPanelRuntime(
     ) {
       return result.attempt;
     }
-    const detail = await callPanelState<WorkspacePanelDetail | null>("detail", [id]);
+    const detail = await callPanelState<WorkspacePanelDetail | null>("detail", [
+      id,
+    ]);
     if (!detail) throw new Error(`Unknown panel slot: ${id}`);
     const holder = result.lease?.holderLabel;
     throw new PanelOperationError(
@@ -451,6 +463,7 @@ export function createPanelRuntime(
       kind: metadata.kind,
       requesterPanelId: requesterPanelId(),
       loadModule: options.loadModule,
+      recordOperation,
       navigate: (url) => navigatePanel(metadata.id, url).then(() => undefined),
       navigateHistory: (delta) =>
         navigateHistory(metadata.id, delta).then(() => undefined),
@@ -824,8 +837,7 @@ export function createPanelRuntime(
           stateArgs?: unknown;
         } | null>("main", "build.getPanelMetadata", [
           source,
-          navigateOptions?.ref ??
-            `ctx:${navigateOptions?.contextId ?? current.currentHistory.context_id}`,
+          navigateOptions?.ref,
         ]);
     if (!external && !panelMetadata)
       throw new Error(`Unknown panel source: ${source}`);
@@ -1236,7 +1248,7 @@ export function createPanelRuntime(
       text: string;
       structure: Record<string, unknown>;
     }>(id, "_agent.snapshot", [], waitOptions);
-    return {
+    const snapshot = {
       panelId: id,
       attemptId: observation.attemptId,
       runtimeEntityId,
@@ -1244,6 +1256,13 @@ export function createPanelRuntime(
       capturedAt: Date.now(),
       document,
     };
+    const { document: capturedDocument, ...provenance } = snapshot;
+    recordOperation({
+      type: "snapshot",
+      id,
+      receipt: { ...provenance, documentKind: capturedDocument.kind },
+    });
+    return snapshot;
   };
 
   const diagnosePanel = async (id: string): Promise<PanelDiagnosticPacket> => {
@@ -1264,6 +1283,14 @@ export function createPanelRuntime(
         available: true,
         ...history,
       };
+      recordOperation({
+        type: "consoleHistory",
+        id,
+        receipt: consoleHistoryReceipt(history, {
+          limit: 200,
+          errorLimit: 100,
+        }),
+      });
     } catch (error) {
       consoleHistory = {
         available: false,
@@ -1290,27 +1317,22 @@ export function createPanelRuntime(
     },
     reload: async (id, waitOptions) => {
       const detail = await requirePanelDetail(id);
-      let result: PanelObservation;
-      if (detail.currentHistory.source.startsWith("browser:")) {
-        await ensurePanelMaterialized(id);
-        await options.rpc.call("main", "runtime.supervision.restart", [
-          { kind: "panel", entityId: detail.entity.id },
-        ]);
-        result = await waitUntilReady(
-          await observePanel(id),
-          waitOptions?.signal,
-        );
-      } else {
-        // Code runtimes are immutable. Reload resolves the current source in
-        // its context and replaces this history cell with a fresh incarnation.
-        result = await rebuildPanel(id, detail, waitOptions);
-      }
+      await ensurePanelMaterialized(id);
+      await options.rpc.call("main", "runtime.supervision.restart", [
+        { kind: "panel", entityId: detail.entity.id },
+      ]);
+      const result = await waitUntilReady(
+        await observePanel(id),
+        waitOptions?.signal,
+      );
       options.onReload?.(id);
+      recordOperation({ type: "reload", id });
       return result;
     },
     archive: async (id) => {
       const result = await closePanel(id);
       options.onClose?.(id);
+      recordOperation({ type: "close", id });
       return result;
     },
     unload: (id) =>
@@ -1346,6 +1368,7 @@ export function createPanelRuntime(
         waitOptions,
       );
       options.onReload?.(id);
+      recordOperation({ type: "reload", id });
       return result;
     },
     focus: async (id, focusOptions) => {
@@ -1365,6 +1388,7 @@ export function createPanelRuntime(
       set: async (id, updates) => {
         const next = await updatePanelStateArgs(options.rpc, id, updates);
         options.onStateArgsSet?.(id);
+        recordOperation({ type: "stateArgs.set", id });
         return next;
       },
     },
@@ -1731,6 +1755,12 @@ export function createPanelRuntime(
         buildKey: runtimeEntity.buildKey ?? null,
       });
       options.onOpen?.({ source, id: panelHandle.id, kind: panelHandle.kind });
+      recordOperation({
+        type: "open",
+        source,
+        id: panelHandle.id,
+        kind: panelHandle.kind,
+      });
       return {
         panelHandle,
         ...(placement ? { placement } : {}),

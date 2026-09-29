@@ -155,9 +155,12 @@ describe("context-exact verify tool", () => {
       type: "text",
       text: expect.stringContaining("1 diagnostic"),
     });
-    expect((result.content[0] as { text: string }).text).not.toContain(
+    expect((result.content[0] as { text: string }).text).toContain(
       "Cannot find name",
     );
+    const modelEvidence = JSON.parse((result.content[0] as { text: string }).text.split("\n").at(-1)!);
+    expect(modelEvidence.diagnostics).toEqual((result.details as { report: UnitBuildReportWire }).report.diagnostics);
+    expect(modelEvidence.receipt).toEqual((result.details as { receipt: unknown }).receipt);
     expect((result.content[0] as { text: string }).text).toContain(
       "Do not rerun this unchanged build.",
     );
@@ -254,6 +257,8 @@ describe("context-exact verify tool", () => {
       result.details as { report: { diagnostics: Array<{ repair?: unknown }> } }
     ).report;
     expect(report.diagnostics[0]!.repair).toEqual(repair);
+    const modelEvidence = JSON.parse((result.content[0] as { text: string }).text.split("\n").at(-1)!);
+    expect(modelEvidence.diagnostics[0].repair).toEqual(repair);
   });
 
   it("classifies a skipped content target as a correctable request", async () => {
@@ -409,7 +414,40 @@ describe("context-exact verify tool", () => {
       operation: "test",
       status: "passed",
     });
+    const modelEvidence = JSON.parse((result.content[0] as { text: string }).text.split("\n").at(-1)!);
+    expect(modelEvidence).toEqual({
+      report: (result.details as { report: unknown }).report,
+      receipt: (result.details as { receipt: unknown }).receipt,
+    });
   });
+
+  it.each(["failed", "cancelled", "infrastructure-error"] as const)(
+    "preserves %s execution even when partial counts contain passed tests",
+    async (status) => {
+      const callMain = async <T>(method: string) => (method === "build.resolveTestSuite" ? {
+        protocol: "workspace-test-plan.v1", target: "packages/parser", suite: "unit",
+        runtime: "workerd", stateHash: `state:${"a".repeat(64)}`,
+      } : {
+        protocol: "workspace-test-artifact.v1", artifactKey: "b".repeat(64),
+        target: "packages/parser", suite: "unit", runtime: "workerd",
+        selectedFiles: ["parser.test.ts"], execution: { executionDigest: "c".repeat(64) },
+      }) as T;
+      const result = await createVerifyTool(callMain, () => "context-7", async () => ({
+        protocol: "workspace-test-execution-result.v1", artifactKey: "b".repeat(64),
+        executionDigest: "c".repeat(64), runtime: "workerd", status,
+        passed: 1, failed: status === "failed" ? 1 : 0, skipped: 0, durationMs: 1,
+        files: [{ file: "parser.test.ts", status: "pass" }],
+      })).execute("call-test", { operation: "test", target: "packages/parser" });
+      expect(result.isError).toBe(true);
+      expect(result.details).toMatchObject({ status, report: { status }, receipt: { status } });
+      if (status === "failed") {
+        expect(result.details).toMatchObject({ failureKind: "user-code", failure: { kind: "domain" } });
+      } else {
+        expect(result.details).not.toHaveProperty("failureKind");
+        expect(result.details).toMatchObject({ failure: { kind: status === "cancelled" ? "cancelled" : "infrastructure" } });
+      }
+    },
+  );
 
   it("does not present zero discovered tests as successful verification", async () => {
     const callMain = async <T>(method: string) =>

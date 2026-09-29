@@ -30,10 +30,12 @@ the child's prose report as the comparison. When the goal calls for
 integration, call `merge_subagent` directly and review its returned comparison;
 do not duplicate the same work with an inspection preflight.
 
-Use `query: "status"` for lifecycle and clean/dirty state, `query: "log"` for
-bounded committed history, an exact repo-prefixed path for one child file, and
-`query: "runtime"` only for external-engine process diagnostics. Use
-`read_subagent` for deliberate transcript catch-up or conversation debugging.
+Use `query: "status"` for the child's semantic clean/dirty state,
+`query: "log"` for bounded committed history, and an exact repo-prefixed path
+for one child file. These workspace queries do not prove that a tool is running
+or that an agent has finished. Use `read_subagent` for deliberate bounded
+transcript catch-up or conversation debugging; report an unobserved runtime
+state as unknown rather than inferring it from a clean workspace.
 Inspection never exposes the child's private model context window. Cursor reads
 are ordinary bounded replay and remain available after a turn settles.
 The parent task card observes the canonical task channel while work is active

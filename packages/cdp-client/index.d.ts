@@ -165,7 +165,9 @@ export interface CdpInteractionOutcome {
   action: "click" | "dblclick";
   delivery: "dispatched";
   target: CdpDomInspection;
-  effect: { status: "not-asserted" } | { status: "observed"; locator: string; state: WaitState };
+  effect:
+    | { status: "not-asserted" }
+    | { status: "observed"; locator: string; state: WaitState };
 }
 export interface ByTextOptions {
   /** Case-sensitive whole-string matching. Strings otherwise match case-insensitive substrings. */
@@ -192,7 +194,10 @@ export interface CdpLocator {
   getByTestId(testId: string): CdpLocator;
   getByAltText(text: TextMatcher, options?: ByTextOptions): CdpLocator;
   getByTitle(text: TextMatcher, options?: ByTextOptions): CdpLocator;
-  filter(options?: { hasText?: TextMatcher; hasTextExact?: boolean }): CdpLocator;
+  filter(options?: {
+    hasText?: TextMatcher;
+    hasTextExact?: boolean;
+  }): CdpLocator;
   nth(index: number): CdpLocator;
   first(): CdpLocator;
   last(): CdpLocator;
@@ -210,7 +215,7 @@ export interface CdpLocator {
   setChecked(checked: boolean, opts?: ActionOptions): Promise<void>;
   selectOption(
     value: string | string[] | SelectOptionMatcher | SelectOptionMatcher[],
-    opts?: ActionOptions
+    opts?: ActionOptions,
   ): Promise<string[]>;
   focus(opts?: ActionOptions): Promise<void>;
   blur(opts?: ActionOptions): Promise<void>;
@@ -239,11 +244,11 @@ export interface CdpLocator {
   allTextContents(): Promise<string[]>;
   evaluate<Result, Arg = unknown>(
     pageFunction: (element: Element, arg: Arg) => Result | Promise<Result>,
-    arg?: Arg
+    arg?: Arg,
   ): Promise<Result>;
   evaluateAll<Result, Arg = unknown>(
     pageFunction: (elements: Element[], arg: Arg) => Result | Promise<Result>,
-    arg?: Arg
+    arg?: Arg,
   ): Promise<Result>;
   boundingBox(): Promise<BoundingBox | null>;
   inspect(): Promise<CdpDomInspection>;
@@ -252,7 +257,36 @@ export interface CdpLocator {
 }
 
 /** A Playwright-style page bound to one CDP target. */
+export interface CdpDialogData {
+  type: "alert" | "confirm" | "prompt" | "beforeunload";
+  message: string;
+  defaultPrompt: string;
+  url: string;
+}
+
+export class CdpDialog {
+  readonly data: Readonly<CdpDialogData>;
+  constructor(
+    data: Readonly<CdpDialogData>,
+    respond: (accept: boolean, promptText?: string) => Promise<void>,
+  );
+  type(): CdpDialogData["type"];
+  message(): string;
+  defaultValue(): string;
+  accept(promptText?: string): Promise<void>;
+  dismiss(): Promise<void>;
+}
+
 export interface CdpPage {
+  dialog(): CdpDialog | null;
+  on(
+    event: "dialog",
+    handler: (dialog: CdpDialog) => void | Promise<void>,
+  ): this;
+  off(
+    event: "dialog",
+    handler: (dialog: CdpDialog) => void | Promise<void>,
+  ): this;
   goto(url: string): Promise<unknown>;
   reload(): Promise<void>;
   goBack(): Promise<void>;
@@ -273,13 +307,13 @@ export interface CdpPage {
    */
   profile(
     action: () => unknown | Promise<unknown>,
-    options?: CdpProfileOptions
+    options?: CdpProfileOptions,
   ): Promise<CdpProfileReport>;
   /** Evaluate in the page, bounded by the page default timeout unless overridden. */
   evaluate(
     pageFunction: string | ((arg?: unknown) => unknown),
     arg?: unknown,
-    options?: { timeout?: number; operation?: string }
+    options?: { timeout?: number; operation?: string },
   ): Promise<unknown>;
   /**
    * Find by CSS or `text=...`. A quoted JSON string is exact text; unquoted
@@ -298,15 +332,15 @@ export interface CdpPage {
   waitForFunction(
     pageFunction: string | ((arg?: unknown) => unknown),
     arg?: unknown,
-    options?: { timeout?: number; polling?: number | "raf" }
+    options?: { timeout?: number; polling?: number | "raf" },
   ): Promise<unknown>;
   waitForLoadState(
     state?: "load" | "domcontentloaded" | "networkidle",
-    options?: { timeout?: number }
+    options?: { timeout?: number },
   ): Promise<void>;
   waitForSelector(
     selector: string,
-    options?: { state?: WaitState; timeout?: number }
+    options?: { state?: WaitState; timeout?: number },
   ): Promise<CdpLocator | null>;
   keyboard: {
     down(key: string): Promise<void>;
@@ -328,11 +362,13 @@ export interface CdpPage {
 
 /** Low-level raw CDP connection. Use for protocol-level work beyond the Page API. */
 export class CdpConnection {
+  dialog(): CdpDialog | null;
+  onDialog(handler: (dialog: CdpDialog) => void | Promise<void>): () => void;
   static connect(
     wsEndpoint: string,
     authToken?: string,
     preferFetchUpgrade?: boolean,
-    options?: { commandTimeoutMs?: number }
+    options?: { commandTimeoutMs?: number },
   ): Promise<CdpConnection>;
   send(
     method: string,
@@ -341,7 +377,7 @@ export class CdpConnection {
       timeoutMs?: number;
       timeoutBehavior?: "disconnect" | "reject";
       timeoutError?: (timeoutMs: number) => Error;
-    }
+    },
   ): Promise<unknown>;
   on(method: string, listener: (params: unknown) => void): () => void;
   close(): void;
@@ -358,8 +394,11 @@ export interface CdpFailureData {
     | "cdp_locator_operation_failed"
     | "cdp_locator_not_actionable"
     | "cdp_locator_state_mismatch"
+    | "cdp_locator_ambiguous"
     | "cdp_interaction_outcome_not_observed"
-    | "cdp_workspace_navigation_forbidden";
+    | "cdp_workspace_navigation_forbidden"
+    | "cdp_dialog_open"
+    | "cdp_dialog_closed";
   operation: string;
   failureKind: "user-code" | "infrastructure";
   recovery:
@@ -367,12 +406,16 @@ export interface CdpFailureData {
     | "reobserve-locator"
     | "reacquire-page"
     | "inspect-panel-and-reacquire-page"
-    | "use-panel-handle-lifecycle";
+    | "use-panel-handle-lifecycle"
+    | "handle-dialog-and-observe";
   locator?: string;
   timeoutMs?: number;
   state?: WaitState;
   expectedLocator?: string;
+  matchCount?: number;
+  candidates?: Array<{ role: string; accessibleName: string; tagName: string }>;
   instruction?: string;
+  dialog?: Readonly<CdpDialogData>;
 }
 
 /** Structured error thrown by CDP evaluation, connection, and locator operations. */
@@ -393,8 +436,11 @@ export class CdpError extends Error {
       timeoutMs?: number;
       state?: WaitState;
       expectedLocator?: string;
+      matchCount?: number;
+      candidates?: CdpFailureData["candidates"];
       instruction?: string;
-    }
+      dialog?: Readonly<CdpDialogData>;
+    },
   );
 }
 
@@ -412,7 +458,9 @@ export const BrowserImpl: {
       preferFetchUpgrade?: boolean;
       /** Override the protocol safety deadline for diagnostics/tests. */
       commandTimeoutMs?: number;
-    }
+      /** Observe completed input outcomes independently of caller return projections. */
+      onInteraction?: (outcome: CdpInteractionOutcome) => void;
+    },
   ): Promise<Browser>;
 };
 
@@ -423,5 +471,5 @@ export type Options = {
 export function connect(
   wsEndpoint: string,
   browserName: string,
-  options?: Options & { authToken?: string }
+  options?: Options & { authToken?: string },
 ): Promise<Browser>;

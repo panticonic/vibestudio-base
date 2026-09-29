@@ -9,6 +9,7 @@
 import { Type } from "@sinclair/typebox";
 import type { AgentTool, AgentToolResult } from "@workspace/pi-core";
 import type { VcsWorkingMutationResult } from "@vibestudio/service-schemas/vcs";
+import type { WorkspaceServiceBinding } from "@vibestudio/workspace-contracts/types";
 import YAML from "yaml";
 import { generateDiffString } from "./edit-diff.js";
 import { resolveToolFile } from "../semantic-file-resolution.js";
@@ -27,6 +28,14 @@ const principalSchema = Type.Union([
   Type.Literal("session"),
   Type.Literal("mission"),
 ]);
+
+const bindingSchema = Type.Union([
+  Type.Literal("consent"),
+  Type.Literal("declared"),
+  Type.Object({ declaredFor: Type.Array(Type.String({ minLength: 1 }), { minItems: 1, uniqueItems: true }) }, { additionalProperties: false }),
+], {
+  description: "Service wiring policy: consent asks each caller to approve access; declared admits the listed principals through this reviewed workspace declaration; declaredFor admits only named consumer repository paths without an extra binding prompt. Receiver method authority still applies independently.",
+});
 
 const workspaceServiceSchema = Type.Union(
   [
@@ -83,6 +92,7 @@ const workspaceServiceSchema = Type.Union(
           uniqueItems: true,
           description: "Authenticated principal kinds allowed by the service declaration.",
         }),
+        binding: bindingSchema,
         transport: Type.Union([
           Type.Object(
             {
@@ -148,6 +158,7 @@ export type WorkspaceServiceToolInput =
       };
       protocols: string[];
       principals: Array<"host" | "user" | "code" | "session" | "mission">;
+      binding: WorkspaceServiceBinding;
       transport:
         | { kind: "durable-object"; className: string; objectKey?: string }
         | { kind: "worker"; routePath: string };
@@ -171,7 +182,7 @@ interface ServiceDeclaration {
     substanceKind?: "change-set" | "send" | "deletion" | "custom";
   };
   protocols?: string[];
-  authority: { principals: Array<"host" | "user" | "code" | "session" | "mission"> };
+  authority: { principals: Array<"host" | "user" | "code" | "session" | "mission">; binding?: WorkspaceServiceBinding };
   durableObject?: { className: string };
   worker?: { routePath: string };
 }
@@ -289,7 +300,7 @@ export function createWorkspaceServiceTool(
           notability: command.notability,
           presentation: { ...command.presentation },
           protocols: [...command.protocols],
-          authority: { principals: [...command.principals] },
+          authority: { principals: [...command.principals], binding: command.binding },
           ...transportDeclaration,
         };
         const serviceIndex = services.findIndex(({ name }) => name === serviceName);

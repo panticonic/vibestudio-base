@@ -1,4 +1,7 @@
-import { parseUnitAuthorityManifest } from "@vibestudio/shared/authorityManifest";
+import {
+  parseUnitAuthorityManifest,
+  type UnitAuthorityManifest,
+} from "@vibestudio/shared/authorityManifest";
 import {
   analyzeModuleImports,
   definitelyTypedCoordinate,
@@ -75,8 +78,7 @@ export class ProjectPreflightError extends Error {
   }
 }
 
-export interface BuildProjectManifestInput {
-  projectType: Exclude<ProjectType, "project">;
+interface BuildProjectManifestFields {
   name: string;
   title: string;
   icon?: string;
@@ -95,21 +97,18 @@ export interface BuildProjectManifestInput {
   devDependencies?: Record<string, string>;
 }
 
+export type BuildProjectManifestInput = BuildProjectManifestFields &
+  (
+    | { projectType: "panel" | "worker"; authority: UnitAuthorityManifest }
+    | { projectType: "package" | "skill"; authority?: never }
+  );
+
 const PACKAGE_SCOPES: Record<Exclude<ProjectType, "project">, string> = {
   panel: "@workspace-panels",
   package: "@workspace",
   skill: "@workspace-skills",
   worker: "@workspace-workers",
 };
-
-const EXECUTABLE_BASELINE_AUTHORITY = [
-  {
-    capability: "context.boundary",
-    resource: { kind: "prefix", prefix: "context" },
-    tier: "critical",
-    evidence: "bounded-dynamic",
-  },
-] as const;
 
 function assertProjectName(name: string): void {
   if (!/^[a-z][a-z0-9-]*$/.test(name)) {
@@ -178,7 +177,7 @@ export function buildProjectManifest(
       ...(input.exposeModules
         ? { exposeModules: [...input.exposeModules] }
         : {}),
-      authority: { requests: EXECUTABLE_BASELINE_AUTHORITY, provides: [] },
+      authority: parseUnitAuthorityManifest(input.authority),
       ...(input.template ? { template: input.template } : {}),
       ...(input.website ? { website: input.website } : {}),
       ...(input.durableClasses

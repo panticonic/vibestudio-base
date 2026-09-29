@@ -691,6 +691,39 @@ describe("modelCallExecutor", () => {
     );
   });
 
+  it("keeps a progressing prompt alive beyond one idle interval without polling another endpoint", async () => {
+    vi.useFakeTimers();
+    try {
+      const status = vi.fn();
+      const nativeFetch = vi.spyOn(globalThis, "fetch");
+      mocks.stream.mockImplementation(() => ({
+        async *[Symbol.asyncIterator]() {
+          yield { type: "start" };
+          for (const processed of [20, 40, 60, 80, 100]) {
+            await new Promise(resolve => setTimeout(resolve, 40));
+            yield { type: "prompt_progress", processed, total: 100, cache: 0 };
+          }
+        },
+        result: async () => ({ content: [{ type: "text", text: "actual answer" }], stopReason: "stop" }),
+      }));
+      const executing = modelCallExecutor.execute({
+        descriptor: descriptor({ modelSpec: { ...modelSpec, streamIdleTimeoutMs: 60 } }),
+        state: initialAgentState({ channelId: "channel-1", config }),
+        signal: new AbortController().signal,
+        deps: deps(), onEphemeral: status,
+      });
+      await vi.advanceTimersByTimeAsync(250);
+      await expect(executing).resolves.toMatchObject({ kind: "model", stopReason: "completed" });
+      expect(status.mock.calls.filter(([value]) => value.contentType === "vibestudio-ext-working")
+        .map(([value]) => JSON.parse(value.content).message)).toEqual([
+          "Reading prompt 20%…", "Reading prompt 40%…", "Reading prompt 60%…", "Reading prompt 80%…", "Reading prompt 100%…",
+        ]);
+      expect(nativeFetch).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("honors a configured semantic-progress deadline for every model transport", async () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     let returnCalled = false;

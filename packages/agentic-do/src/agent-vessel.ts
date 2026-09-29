@@ -60,6 +60,7 @@ import {
   type EvalRunResult,
 } from "@workspace/harness/tools/eval";
 import { resolveToolFile } from "@workspace/harness/semantic-file-resolution";
+import { splitRepoPath } from "@vibestudio/shared/runtime/entitySpec";
 import type {
   ChannelEvent,
   ParticipantDescriptor,
@@ -145,7 +146,11 @@ import {
   type VcsMergeInput,
   type VcsStateNodeRef,
 } from "@vibestudio/service-schemas/vcs";
-import { toCredentialConnectRequest, isTemplatedBaseUrl, resolveProviderModelBaseUrl } from "@workspace/model-catalog/providerConnect";
+import {
+  toCredentialConnectRequest,
+  isTemplatedBaseUrl,
+  resolveProviderModelBaseUrl,
+} from "@workspace/model-catalog/providerConnect";
 import {
   defaultPolicies,
   derivedTurnStatus,
@@ -181,10 +186,7 @@ import type {
 } from "@workspace/runtime/credentials";
 import { DOIdentity } from "./identity.js";
 import { SubscriptionManager } from "./subscription-manager.js";
-import {
-  SubagentRunStore,
-  type SubagentRunRow,
-} from "./subagent-runs.js";
+import { SubagentRunStore, type SubagentRunRow } from "./subagent-runs.js";
 import { ChannelClient } from "./channel-client.js";
 import { FeedbackIngest } from "./feedback-ingest.js";
 import { CardManager } from "./custom-cards.js";
@@ -1590,6 +1592,53 @@ export abstract class AgentVesselBase extends PanelDurableObjectBase {
       message: string;
     }>;
   }): Promise<void> {
+    const subagent = this.subagentIdentity();
+    if (
+      subagent?.taskChannelId === input.channelId &&
+      (input.reason === "work_failed" ||
+        input.reason === "model_retry_limit_exceeded")
+    ) {
+      // A failed execution cannot rely on a model-generated utterance to
+      // settle its supervisor. Publish the existing task lifecycle fact from
+      // the retained child identity; the task log fences competing terminals.
+      const evidence = await this.driver.modelExecutionEvidence(
+        input.channelId,
+      );
+      const modelFailure = [...evidence.calls]
+        .reverse()
+        .find(
+          (call) =>
+            call.messageId.startsWith(`m:${input.turnId}:`) &&
+            call.outcome === "failed",
+        );
+      const participantId =
+        this.subscriptions.getParticipantId(input.channelId) ??
+        this.participantId();
+      const actor: ActorRef = { kind: "agent", id: participantId };
+      await this.createChannelClient(input.channelId).publishAgenticEvent(
+        participantId,
+        {
+          kind: "task.failed",
+          actor,
+          turnId: input.turnId as never,
+          causality: { taskId: subagent.runId as never },
+          payload: {
+            protocol: AGENTIC_PROTOCOL_VERSION,
+            reason: modelFailure?.error ?? input.summary ?? input.reason,
+            terminalOutcome: "infrastructure_error",
+            details: { code: "subagent_turn_failed", turnId: input.turnId },
+            to: [
+              {
+                kind: "participant",
+                participantId: subagent.parentParticipantId,
+              },
+            ],
+          },
+          createdAt: new Date().toISOString(),
+        },
+        { idempotencyKey: `subagent-terminal:${subagent.runId}` },
+      );
+    }
     const runId = input.metadata.automation?.runId;
     if (!runId) return;
     const service = await this.rpc.call<{
@@ -1876,7 +1925,8 @@ export abstract class AgentVesselBase extends PanelDurableObjectBase {
       localModels: {
         // Loopback model runtime (design §6.3). The key crosses this boundary
         // per call and is never persisted vessel-side; the extension enforces
-        // do-kind + vessel-allowlist caller gating on getLoopbackAuth.
+        // canonical DO caller gating on getLoopbackAuth; the host checks
+        // sealed runtime-use authority and live provider attestation.
         ensureLoaded: async (modelId, signal) =>
           await this.rpc.call<{ baseUrl: string }>(
             "main",
@@ -1908,9 +1958,10 @@ export abstract class AgentVesselBase extends PanelDurableObjectBase {
           // endpoint; fall back to provider-scoped credentials for providers
           // whose registry entries do not carry a base URL.
           let summary: ModelCredentialSummary | null;
-          const resolveRequest = modelBaseUrl && !isTemplatedBaseUrl(modelBaseUrl)
-            ? { url: modelBaseUrl }
-            : { providerId };
+          const resolveRequest =
+            modelBaseUrl && !isTemplatedBaseUrl(modelBaseUrl)
+              ? { url: modelBaseUrl }
+              : { providerId };
           try {
             if (requestId) {
               summary = await this.rpc.call<ModelCredentialSummary | null>(
@@ -1954,14 +2005,24 @@ export abstract class AgentVesselBase extends PanelDurableObjectBase {
             // and parked the turn forever.
             throw err;
           }
-          const credentialBaseUrl = resolveProviderModelBaseUrl(providerId, modelBaseUrl ?? "", summary.metadata) || undefined;
-          installUrlBoundModelFetchProxy(credentialBaseUrl ?? modelBaseUrl ?? "*", (url, init) =>
-            this.credentials.fetch(url, init, { credentialId: summary.id }),
+          const credentialBaseUrl =
+            resolveProviderModelBaseUrl(
+              providerId,
+              modelBaseUrl ?? "",
+              summary.metadata,
+            ) || undefined;
+          installUrlBoundModelFetchProxy(
+            credentialBaseUrl ?? modelBaseUrl ?? "*",
+            (url, init) =>
+              this.credentials.fetch(url, init, { credentialId: summary.id }),
           );
           return {
             ...(credentialBaseUrl ? { baseUrl: credentialBaseUrl } : {}),
             authType:
-              providerId === "anthropic" && summary.metadata?.["modelAuthMethod"] === "subscription" ? "oauth" : "api_key",
+              providerId === "anthropic" &&
+              summary.metadata?.["modelAuthMethod"] === "subscription"
+                ? "oauth"
+                : "api_key",
             apiKey: createModelCredentialSentinel(
               this.getModelCredentialTokenClaims(providerId, summary),
             ),
@@ -2410,7 +2471,11 @@ export abstract class AgentVesselBase extends PanelDurableObjectBase {
   }
 
   @rpc({
-    website: { kind: "eligible", rationale: "Ordinary conversation and agent operations use caller-scoped approvals; launched execution retains its authenticated authority." },
+    website: {
+      kind: "eligible",
+      rationale:
+        "Ordinary conversation and agent operations use caller-scoped approvals; launched execution retains its authenticated authority.",
+    },
     principals: ["host", "user", "code", "website"],
     effect: { kind: "open" },
     tier: "open",
@@ -2768,29 +2833,16 @@ export abstract class AgentVesselBase extends PanelDurableObjectBase {
     }
   }
 
-  /**
-   * The lookup tables `resolveAddressee` (messaging plan §4.2) needs, assembled
-   * from what this vessel already knows durably: who is on the channel, who
-   * supervises it, and which child runs it retains.
-   *
-   * The directory and workspace-user tables are deliberately absent until the
-   * Gad directory lands (§4.4): an `agent:` ref or an off-roster `user:` ref
-   * therefore fails closed with "use discover_agents", which is the honest
-   * answer while there is nothing to discover them from.
-   */
-  protected async addresseeContext(
+  /** Conversation-local addressing facts, retained by this vessel. */
+  protected conversationAddresseeContext(
     channelId: string,
-  ): Promise<ResolveAddresseeContext> {
+  ): ResolveAddresseeContext {
     const parentParticipantId = this.subagentIdentity()?.parentParticipantId;
     const roster = this.rosterSnapshot(channelId).map(rosterParticipantRef);
     const automationOwnerUserId =
       this.driver.peekLoadedLoop(channelId)?.state?.openTurn?.metadata
         ?.automation?.ownerUserId;
     const ownerUserId = automationOwnerUserId ?? soleChannelUserId(roster);
-    const [directory, users] = await Promise.all([
-      this.agentDirectoryEntries(),
-      this.workspaceUserEntries(),
-    ]);
     return {
       channelId,
       roster,
@@ -2805,10 +2857,20 @@ export abstract class AgentVesselBase extends PanelDurableObjectBase {
           ? { participantId: run.childParticipantId }
           : {}),
       })),
-      directory,
-      users,
       ...(ownerUserId ? { ownerUserId } : {}),
     };
+  }
+
+  /** Enrich explicit address resolution with workspace directory and people. */
+  protected async addresseeContext(
+    channelId: string,
+  ): Promise<ResolveAddresseeContext> {
+    const context = this.conversationAddresseeContext(channelId);
+    const [directory, users] = await Promise.all([
+      this.agentDirectoryEntries(),
+      this.workspaceUserEntries(),
+    ]);
+    return { ...context, directory, users };
   }
 
   /** The workspace's people, as addressing sees them (messaging plan §4.2):
@@ -3234,7 +3296,11 @@ export abstract class AgentVesselBase extends PanelDurableObjectBase {
   // the agent. Host lifecycle code can interrupt an active vessel, but does not
   // join it to arbitrary channels on a product service's behalf.
   @rpc({
-    website: { kind: "eligible", rationale: "Ordinary conversation and agent operations use caller-scoped approvals; launched execution retains its authenticated authority." },
+    website: {
+      kind: "eligible",
+      rationale:
+        "Ordinary conversation and agent operations use caller-scoped approvals; launched execution retains its authenticated authority.",
+    },
     principals: ["code", "website"],
     effect: { kind: "open" },
     tier: "open",
@@ -3583,7 +3649,11 @@ This is one admitted recurring-automation tick. If this tick establishes that th
   // Symmetric with `subscribeChannel`: an owning userland service must be able
   // to detach a vessel during lifecycle cleanup.
   @rpc({
-    website: { kind: "eligible", rationale: "Ordinary conversation and agent operations use caller-scoped approvals; launched execution retains its authenticated authority." },
+    website: {
+      kind: "eligible",
+      rationale:
+        "Ordinary conversation and agent operations use caller-scoped approvals; launched execution retains its authenticated authority.",
+    },
     principals: ["user", "code", "website"],
     effect: { kind: "open" },
     tier: "open",
@@ -5345,7 +5415,11 @@ This is one admitted recurring-automation tick. If this tick establishes that th
    * `pause` method this does not require the controller to remain a channel
    * member while cancellation is already unwinding that membership. */
   @rpc({
-    website: { kind: "eligible", rationale: "Ordinary conversation and agent operations use caller-scoped approvals; launched execution retains its authenticated authority." },
+    website: {
+      kind: "eligible",
+      rationale:
+        "Ordinary conversation and agent operations use caller-scoped approvals; launched execution retains its authenticated authority.",
+    },
     principals: ["host", "user", "code", "website"],
     effect: { kind: "open" },
     tier: "open",
@@ -6859,11 +6933,14 @@ This is one admitted recurring-automation tick. If this tick establishes that th
 
   /** Shared terminal formatting for both the first-dispatch settlement and the
    * durable-recovery settlement, so both produce identical tool results. */
-  private deferredEvalSettlement(
+  private async deferredEvalSettlement(
     invocationId: string,
     statusResult: EvalRunResult,
-  ): DeferredEvalGateResult {
-    const formatted = formatEvalResult(statusResult);
+  ): Promise<DeferredEvalGateResult> {
+    const formatted = await formatEvalResult(statusResult, (digest) =>
+      this.rpc.call<string | null>("main", "blobstore.getBase64", [digest]),
+    );
+    statusResult = formatted.details ?? statusResult;
     const failure =
       statusResult.success === true
         ? undefined
@@ -7158,16 +7235,19 @@ This is one admitted recurring-automation tick. If this tick establishes that th
   }): Promise<void> {
     if (!payload.channelId || !payload.result) return;
     await this.assertOwnEvalCaller(payload.channelId);
+    const formatted = await formatEvalResult(payload.result, (digest) =>
+      this.rpc.call<string | null>("main", "blobstore.getBase64", [digest]),
+    );
+    const result = formatted.details ?? payload.result;
     this.forgetDeferredEval(payload.channelId, payload.runId);
-    const formatted = formatEvalResult(payload.result);
     const failure =
-      payload.result.success === true
+      result.success === true
         ? undefined
         : agentToolFailureFromUnknown(
             {
-              message: payload.result.error ?? "eval failed",
-              code: payload.result.failureCode,
-              errorData: payload.result.errorData,
+              message: result.error ?? "eval failed",
+              code: result.failureCode,
+              errorData: result.errorData,
             },
             {
               operation: "tool.eval",
@@ -7175,7 +7255,7 @@ This is one admitted recurring-automation tick. If this tick establishes that th
               causal: {
                 invocationId: payload.agentInvocationId ?? payload.runId,
               },
-              ...(payload.result.failureKind === "infrastructure"
+              ...(result.failureKind === "infrastructure"
                 ? { kind: "infrastructure" as const }
                 : {}),
             },
@@ -7188,8 +7268,8 @@ This is one admitted recurring-automation tick. If this tick establishes that th
           protocolContent: formatted.content,
           details: formatted.details,
         },
-        isError: payload.result.success !== true,
-        ...(payload.result.failureKind === "infrastructure"
+        isError: result.success !== true,
+        ...(result.failureKind === "infrastructure"
           ? { terminalOutcome: "infrastructure_error" as const }
           : {}),
         ...(failure ? { terminalReasonCode: failure.code, failure } : {}),
@@ -7484,7 +7564,11 @@ This is one admitted recurring-automation tick. If this tick establishes that th
    *  exist); a multi-channel agent forks the one channel and drops the rest in
    *  the clone (see {@link postClone}), so the old ≤1-subscription gate is gone. */
   @rpc({
-    website: { kind: "eligible", rationale: "Ordinary conversation and agent operations use caller-scoped approvals; launched execution retains its authenticated authority." },
+    website: {
+      kind: "eligible",
+      rationale:
+        "Ordinary conversation and agent operations use caller-scoped approvals; launched execution retains its authenticated authority.",
+    },
     principals: ["host", "code", "website"],
     effect: { kind: "open" },
     tier: "open",
@@ -7598,7 +7682,11 @@ This is one admitted recurring-automation tick. If this tick establishes that th
    * The child boots knowing everything the parent knew at the fork point.
    */
   @rpc({
-    website: { kind: "eligible", rationale: "Ordinary conversation and agent operations use caller-scoped approvals; launched execution retains its authenticated authority." },
+    website: {
+      kind: "eligible",
+      rationale:
+        "Ordinary conversation and agent operations use caller-scoped approvals; launched execution retains its authenticated authority.",
+    },
     principals: ["host", "code", "website"],
     effect: { kind: "open" },
     tier: "open",
@@ -8489,6 +8577,12 @@ This is one admitted recurring-automation tick. If this tick establishes that th
       });
     }
     const q = (query ?? "status").trim() || "status";
+    if (!["status", "diff", "log"].includes(q) && !splitRepoPath(q)) {
+      throw this.subagentReferenceError(
+        `Unknown child inspection query ${q}; use status, diff, log, or an exact repo-prefixed file path`,
+        { runId: run.runId, query: q, referenceKind: "child-file-path" },
+      );
+    }
     const vcs = createSubagentVcsClient(this.rpc);
     const childStatusStartedAt = performance.now();
     const childStatus = vcs.status({ contextId: run.childContextId });
@@ -9153,15 +9247,19 @@ This is one admitted recurring-automation tick. If this tick establishes that th
     const status = this.subagentTerminalStatus(event, run.runId);
     if (!status) return null;
     const actorParticipantId = event.actor.participantId ?? event.actor.id;
-    // A supervisor authors cancellation/abandonment/infrastructure failure
-    // facts when the child is unreachable.
+    // The retained child may report its own execution failure. Only the
+    // supervisor may cancel or abandon it, or report an unreachable child.
     const supervisorParticipantId =
       this.subscriptions.getParticipantId(run.taskChannelId) ??
       this.participantId();
-    return envelope.senderId === supervisorParticipantId &&
-      actorParticipantId === supervisorParticipantId
-      ? status
-      : null;
+    const supervisor =
+      envelope.senderId === supervisorParticipantId &&
+      actorParticipantId === supervisorParticipantId;
+    const childFailure =
+      status === "failed" &&
+      envelope.senderId === run.childParticipantId &&
+      actorParticipantId === run.childParticipantId;
+    return supervisor || childFailure ? status : null;
   }
 
   private subagentTerminalStatus(
@@ -9304,7 +9402,7 @@ This is one admitted recurring-automation tick. If this tick establishes that th
           [{ runId: run.runId, taskChannelId: run.taskChannelId }],
         );
         if (!activity.active)
-          this.subagentRuns.setStatus(run.runId, "completed");
+          this.subagentRuns.markExecutionIdle(run.runId);
         this.subagentRuns.touch(run.runId, Date.now());
         // A report can reach the parent before the child's closing event. Wake
         // the parent again after the collaborator becomes idle so a suspended

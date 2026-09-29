@@ -12,6 +12,11 @@
  */
 
 import type { ComponentType } from "react";
+import {
+  EVAL_OPERATION_JOURNAL_MAX_ENTRIES,
+  EVAL_OPERATION_JOURNAL_PREVIEW_CHARS,
+  type EvalOperationJournal,
+} from "@vibestudio/service-schemas/eval";
 import { parse } from "acorn";
 import { transformCode } from "./transform.js";
 import {
@@ -66,6 +71,11 @@ export interface LibraryModuleArtifact {
 export type SandboxFailureKind = "user-code" | "infrastructure" | "cancelled";
 
 export interface SandboxOptions {
+  /** Host-owned native operation evidence; never exposed in guest bindings. */
+  operationJournal?: {
+    readonly entries: readonly Record<string, unknown>[];
+    readonly truncated: boolean;
+  };
   /** Source syntax (default: "tsx") */
   syntax?: "javascript" | "typescript" | "jsx" | "tsx";
   /** Abort signal used to interrupt async eval work and native calls that honor cancellation. */
@@ -136,8 +146,9 @@ export interface SandboxResult {
   failureCode?: string;
   /** Structured guest/service failure data preserved for agent-facing diagnostics. */
   errorData?: unknown;
-  /** Agent-facing panel operation summary, when panel runtime journaling was active. */
-  panelJournalFooter?: string;
+  /** Agent-facing native operation summary, when panel runtime journaling was active. */
+  operationJournalFooter?: string;
+  operationJournal?: EvalOperationJournal;
 }
 
 class SandboxInfrastructureError extends Error {
@@ -160,10 +171,6 @@ const CORRECTABLE_IMPORT_FAILURE_CODES = new Set([
   "package_manifest_missing",
   "package_export_not_found",
   "package_export_target_missing",
-  // An undeclared package import in a managed system test is authored input,
-  // not a package-loader outage. Preserve the typed rejection so the agent can
-  // choose an available module or repair its code in the same turn.
-  "EUNEXPECTEDTESTPROMPT",
 ]);
 
 function structuredFailureCode(error: unknown): string | undefined {
@@ -209,7 +216,7 @@ function structuredFailureData(error: unknown): unknown | undefined {
 function structuredFailureKind(error: unknown): SandboxFailureKind | undefined {
   if (!error || typeof error !== "object") return undefined;
   const code = structuredFailureCode(error);
-  if (code?.startsWith("DO_SCHEMA_") || code === "DO_MAINTENANCE_IN_PROGRESS") {
+  if (code === "EUNEXPECTEDTESTPROMPT" || code?.startsWith("DO_SCHEMA_") || code === "DO_MAINTENANCE_IN_PROGRESS") {
     return "infrastructure";
   }
   const errorData = (error as { errorData?: unknown }).errorData;
@@ -280,7 +287,7 @@ async function runInfrastructurePhase<T>(
     const structuredCode = structuredFailureCode(error);
     if (structuredCode && CORRECTABLE_IMPORT_FAILURE_CODES.has(structuredCode))
       throw error;
-    if (error instanceof SandboxInfrastructureError) throw error;
+    if (structuredFailureKind(error) === "infrastructure" || error instanceof SandboxInfrastructureError) throw error;
     throw new SandboxInfrastructureError(code, error);
   }
 }
@@ -752,7 +759,7 @@ async function ensureRequires(
  * Handles circular references, functions, symbols, and other non-serializable types.
  */
 function safeSerialize(value: unknown, maxDepth = 10): unknown {
-  const seen = new WeakSet<object>();
+  const ancestors = new WeakSet<object>();
 
   function serialize(val: unknown, depth: number): unknown {
     if (val === null || val === undefined) return val;
@@ -768,38 +775,42 @@ function safeSerialize(value: unknown, maxDepth = 10): unknown {
     if (typeof val === "bigint") return val.toString();
     if (typeof val !== "object") return String(val);
     if (depth > maxDepth) return "[Max depth exceeded]";
-    if (seen.has(val)) return "[Circular]";
-    seen.add(val);
-    if (val instanceof Date) return val.toISOString();
-    if (val instanceof RegExp) return val.toString();
-    if (val instanceof Error)
-      return { name: val.name, message: val.message, stack: val.stack };
-    if (val instanceof Map)
-      return {
-        __type: "Map",
-        entries: serialize(Array.from(val.entries()), depth + 1),
-      };
-    if (val instanceof Set)
-      return {
-        __type: "Set",
-        values: serialize(Array.from(val.values()), depth + 1),
-      };
-    if (ArrayBuffer.isView(val) || val instanceof ArrayBuffer)
-      return `[${val.constructor.name}]`;
-    if (Array.isArray(val))
-      return val.map((item) => serialize(item, depth + 1));
-    const result: Record<string, unknown> = {};
-    for (const key of Object.keys(val)) {
-      try {
-        result[key] = serialize(
-          (val as Record<string, unknown>)[key],
-          depth + 1,
-        );
-      } catch {
-        result[key] = "[Unserializable]";
+    if (ancestors.has(val)) return "[Circular]";
+    ancestors.add(val);
+    try {
+      if (val instanceof Date) return val.toISOString();
+      if (val instanceof RegExp) return val.toString();
+      if (val instanceof Error)
+        return { name: val.name, message: val.message, stack: val.stack };
+      if (val instanceof Map)
+        return {
+          __type: "Map",
+          entries: serialize(Array.from(val.entries()), depth + 1),
+        };
+      if (val instanceof Set)
+        return {
+          __type: "Set",
+          values: serialize(Array.from(val.values()), depth + 1),
+        };
+      if (ArrayBuffer.isView(val) || val instanceof ArrayBuffer)
+        return `[${val.constructor.name}]`;
+      if (Array.isArray(val))
+        return val.map((item) => serialize(item, depth + 1));
+      const result: Record<string, unknown> = {};
+      for (const key of Object.keys(val)) {
+        try {
+          result[key] = serialize(
+            (val as Record<string, unknown>)[key],
+            depth + 1,
+          );
+        } catch {
+          result[key] = "[Unserializable]";
+        }
       }
+      return result;
+    } finally {
+      ancestors.delete(val);
     }
-    return result;
   }
 
   return serialize(value, 0);
@@ -1552,6 +1563,7 @@ export async function executeSandbox(
   const { syntax = "tsx", bindings = {} } = options;
   const { signal } = options;
   let deactivateDeadline: (() => void) | null = null;
+  let runtimeJournal: any | null = null;
 
   // Per-execution module registry + require. When the caller passes a `moduleMap`/`require`
   // (e.g. multi-tenant EvalDO, one map per owner), module state is isolated to that map.
@@ -1825,10 +1837,11 @@ export async function executeSandbox(
       tracking.enter(trackingContext);
     }
 
-    const runtimeModule = transformed.requires.includes("@workspace/runtime")
-      ? tryRequireRuntimeModule(requireFn)
-      : null;
-    const journal = createRuntimeJournal(runtimeModule);
+    // Scope-held panel/session functions still use this resident runtime even
+    // when the next cell contains no import. Journal every execution context.
+    const runtimeModule = tryRequireRuntimeModule(requireFn);
+    const journal = options.operationJournal ?? createRuntimeJournal(runtimeModule);
+    runtimeJournal = journal;
     const runUserCode = async () => {
       throwIfAborted(signal);
       const wrapped = wrapForTopLevelAwait(executableCode);
@@ -1869,17 +1882,17 @@ export async function executeSandbox(
       };
     };
 
-    const execution = journal
+    const execution = journal && !options.operationJournal
       ? await runtimeModule.journal.with(journal, runUserCode)
       : await runUserCode();
     throwIfAborted(signal);
-    let panelJournalFooter: string | undefined;
+    let operationJournalFooter: string | undefined;
     if (journal) {
       try {
-        panelJournalFooter = await renderPanelJournalFooter(journal);
+        operationJournalFooter = await renderOperationJournalFooter(journal);
       } catch (error) {
         capture.proxy.warn(
-          "[eval] Failed to render the panel journal footer:",
+          "[eval] Failed to render the operation journal footer:",
           error,
         );
       }
@@ -1889,7 +1902,8 @@ export async function executeSandbox(
       consoleOutput: formatConsoleOutput(capture.getEntries()),
       returnValue: execution.safeReturnValue,
       exports: execution.exports,
-      panelJournalFooter,
+      operationJournalFooter,
+      ...(journal ? { operationJournal: captureOperationJournal(journal) } : {}),
     };
   } catch (err) {
     const errorMessage = err instanceof Error ? err.message : String(err);
@@ -1926,6 +1940,9 @@ export async function executeSandbox(
               ? "eval_cancelled"
               : guestFailureCode(err),
       ...(errorData === undefined ? {} : { errorData }),
+      ...(runtimeJournal
+        ? { operationJournal: captureOperationJournal(runtimeJournal) }
+        : {}),
     };
   } finally {
     deactivateDeadline?.();
@@ -1957,7 +1974,32 @@ function createRuntimeJournal(runtimeModule: any): any | null {
   return new runtimeModule.journal.Journal();
 }
 
-async function renderPanelJournalFooter(
+function captureOperationJournal(journal: any): EvalOperationJournal {
+  const source = Array.isArray(journal?.entries) ? journal.entries : [];
+  const entries: Record<string, unknown>[] = [];
+  let characters = 0;
+  let truncated = journal?.truncated === true;
+  for (const entry of source) {
+    const value = safeSerialize(entry);
+    if (!value || typeof value !== "object" || Array.isArray(value)) {
+      truncated = true;
+      continue;
+    }
+    const encoded = JSON.stringify(value);
+    if (
+      entries.length >= EVAL_OPERATION_JOURNAL_MAX_ENTRIES ||
+      characters + encoded.length > EVAL_OPERATION_JOURNAL_PREVIEW_CHARS
+    ) {
+      truncated = true;
+      break;
+    }
+    entries.push(value as Record<string, unknown>);
+    characters += encoded.length;
+  }
+  return { protocol: "workspace-operations.v1", entries, truncated };
+}
+
+async function renderOperationJournalFooter(
   journal: any,
 ): Promise<string | undefined> {
   const entries = Array.isArray(journal?.entries) ? journal.entries : [];
@@ -1973,11 +2015,11 @@ async function renderPanelJournalFooter(
       case "stateArgs.set":
         return `set stateArgs on #${entry.id}`;
       default:
-        return String(entry.type ?? "panel operation");
+        return String(entry.type ?? "workspace operation");
     }
   });
   return [
-    "[panel] Operations:",
+    "[operations] Operations:",
     ...operations.map((line: string) => `- ${line}`),
   ].join("\n");
 }

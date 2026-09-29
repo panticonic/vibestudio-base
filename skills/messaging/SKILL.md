@@ -138,8 +138,8 @@ Notification is cheap. Keep it **rare**.
 
 ## Finding someone to talk to
 
-- `list_addressees` — everyone reachable from where you are: this channel's
-  roster, your supervisor, your live runs, and running agents elsewhere.
+- `list_addressees` — this conversation's roster, your supervisor, and your
+  child runs. It does not enumerate unrelated conversations.
 - `discover_agents({ query })` — search by _purpose_: "gmail triage", "nightly
   builds". Results carry each instance's own latest deliberate message as its
   overview, and print `agent:<handle>@<channelId>` refs ready to paste into

@@ -43,6 +43,7 @@ describe("workspace_service tool", () => {
         presentation: { domain: "automation", verb: "act" },
         protocols: ["example.todos.v1"],
         principals: ["code"],
+        binding: "consent",
         transport: { kind: "durable-object", className: "TodoStore" },
       })
     ).toBe(false);
@@ -54,7 +55,7 @@ describe("workspace_service tool", () => {
     ).toBe(true);
   });
 
-  it("upserts a service and its singleton in one validated semantic edit", async () => {
+  it.each(["consent", "declared", { declaredFor: ["panels/todos"] }] as const)("preserves explicit binding %j in one validated semantic edit", async (binding) => {
     const vcs = new StubVcs({ files: { "meta/vibestudio.yml": initial } });
     const validateConfig = vi.fn(async (content: string) => {
       expect(YAML.parse(content).services).toHaveLength(2);
@@ -72,6 +73,7 @@ describe("workspace_service tool", () => {
       presentation: { domain: "automation", verb: "manage" },
       protocols: ["example.todos.v1"],
       principals: ["user", "code"],
+      binding: typeof binding === "object" ? { declaredFor: [...binding.declaredFor] } : binding,
       transport: { kind: "durable-object", className: "TodoStore", objectKey: "main" },
     });
 
@@ -86,6 +88,7 @@ describe("workspace_service tool", () => {
         name: "todo-store",
         notability: "everyday",
         protocols: ["example.todos.v1"],
+        authority: { principals: ["user", "code"], binding },
         durableObject: { className: "TodoStore" },
       }),
     ]);
@@ -122,6 +125,7 @@ describe("workspace_service tool", () => {
         presentation: { domain: "automation", verb: "see" },
         protocols: ["example.todos.v1"],
         principals: ["code"],
+        binding: "consent",
         transport: { kind: "durable-object", className: "TodoStore", objectKey: "main" },
       })
     ).rejects.toThrow("candidate is invalid");

@@ -45,7 +45,6 @@ import { scriptedModelOutcome, type ModelScript } from "./scripted-model.js";
 const PI_REPLAY_METADATA_KEY = "pi";
 const MAX_PROVIDER_SESSION_ID_LENGTH = 64;
 const LOCAL_MODEL_SIGNAL_CONTENT_TYPE = "vibestudio-ext-working";
-const LOCAL_MODEL_PREFILL_POLL_MS = 1000;
 // A Codex request with no response headers or stream frames is not a long
 // generation; it is a dead transport. Keep the lease renewable by real
 // provider activity, but never let an absent provider response pin the agent
@@ -102,133 +101,6 @@ function emitLocalModelStatus(onEphemeral: OnEphemeral, channelId: string, messa
     content: JSON.stringify({ message }),
     contentType: LOCAL_MODEL_SIGNAL_CONTENT_TYPE,
   });
-}
-
-function startLocalModelPrefillSignals(input: {
-  baseUrl: string;
-  apiKey: string;
-  signal: AbortSignal;
-  emit(message: string): void;
-}): () => void {
-  const slotsUrl = localModelSlotsUrl(input.baseUrl);
-  if (!slotsUrl || input.signal.aborted) return () => {};
-  const abort = new AbortController();
-  const abortFromParent = () => abort.abort(input.signal.reason);
-  input.signal.addEventListener("abort", abortFromParent, { once: true });
-  let stopped = false;
-  let lastPercent: number | null = null;
-
-  const stop = () => {
-    if (stopped) return;
-    stopped = true;
-    input.signal.removeEventListener("abort", abortFromParent);
-    abort.abort();
-  };
-
-  void (async () => {
-    while (!stopped && !abort.signal.aborted) {
-      if (!(await waitForPrefillPollDelay(abort.signal))) return;
-      let percent: number | null = null;
-      try {
-        const response = await fetch(slotsUrl, {
-          headers: { Authorization: `Bearer ${input.apiKey}` },
-          signal: abort.signal,
-        });
-        if (!response.ok) {
-          stop();
-          return;
-        }
-        percent = prefillPercentFromSlots(await response.json());
-      } catch {
-        stop();
-        return;
-      }
-      if (percent !== null && percent > 0 && percent !== lastPercent) {
-        lastPercent = percent;
-        input.emit(`Reading prompt ${percent}%…`);
-      }
-    }
-  })();
-
-  return stop;
-}
-
-function localModelSlotsUrl(baseUrl: string): string | null {
-  try {
-    return `${baseUrl.replace(/\/+$/u, "")}/slots`;
-  } catch {
-    return null;
-  }
-}
-
-function waitForPrefillPollDelay(signal: AbortSignal): Promise<boolean> {
-  if (signal.aborted) return Promise.resolve(false);
-  return new Promise((resolve) => {
-    const timer = setTimeout(() => {
-      signal.removeEventListener("abort", onAbort);
-      resolve(true);
-    }, LOCAL_MODEL_PREFILL_POLL_MS);
-    const onAbort = () => {
-      clearTimeout(timer);
-      resolve(false);
-    };
-    signal.addEventListener("abort", onAbort, { once: true });
-  });
-}
-
-function prefillPercentFromSlots(value: unknown): number | null {
-  const slots = Array.isArray(value)
-    ? value
-    : value && typeof value === "object" && Array.isArray((value as { slots?: unknown }).slots)
-      ? (value as { slots: unknown[] }).slots
-      : [value];
-  const percents = slots
-    .map(prefillPercentFromSlot)
-    .filter((percent): percent is number => percent !== null);
-  return percents.length > 0 ? Math.max(...percents) : null;
-}
-
-function prefillPercentFromSlot(value: unknown): number | null {
-  if (!value || typeof value !== "object") return null;
-  const slot = value as Record<string, unknown>;
-  const direct = firstFiniteNumber(slot, [
-    "prompt_progress",
-    "promptProgress",
-    "prefill_progress",
-    "prefillProgress",
-    "progress",
-  ]);
-  if (direct !== null) return normalizePercent(direct);
-
-  const processed = firstFiniteNumber(slot, [
-    "n_prompt_tokens_processed",
-    "prompt_tokens_processed",
-    "processed_prompt_tokens",
-    "n_past",
-  ]);
-  const total = firstFiniteNumber(slot, [
-    "n_prompt_tokens",
-    "prompt_tokens",
-    "prompt_tokens_total",
-    "n_prompt_total",
-  ]);
-  if (processed === null || total === null || total <= 0) return null;
-  return normalizePercent((processed / total) * 100);
-}
-
-function firstFiniteNumber(record: Record<string, unknown>, keys: string[]): number | null {
-  for (const key of keys) {
-    const value = record[key];
-    const numeric =
-      typeof value === "number" ? value : typeof value === "string" ? Number(value) : NaN;
-    if (Number.isFinite(numeric)) return numeric;
-  }
-  return null;
-}
-
-function normalizePercent(value: number): number {
-  const percent = value <= 1 ? value * 100 : value;
-  return Math.max(0, Math.min(100, Math.round(percent)));
 }
 
 function isUnattendedModelRequest(request: ModelCallEffect["request"]): boolean {
@@ -1334,16 +1206,6 @@ async function executeModelCall(
     finishAttempt("failed", { error: error instanceof Error ? error.message : String(error) });
     throw error;
   }
-  let stopPrefillSignals: (() => void) | null =
-    isLoopback && liveBaseUrl
-      ? startLocalModelPrefillSignals({
-          baseUrl: liveBaseUrl,
-          apiKey: credentials.apiKey,
-          signal: streamAbort.signal,
-          emit: (message) => emitLocalModelStatus(onEphemeral, descriptor.channelId, message),
-        })
-      : null;
-
   const blockIds = new Map<number, string>();
   const toolCallProgress = new Map<
     number,
@@ -1357,7 +1219,7 @@ async function executeModelCall(
     ]();
     for (;;) {
       // Raw transport activity (including SSE keepalives) proves only that a
-      // socket is alive. Require provider-semantic events as a second,
+      // socket is alive. Require provider work events (prompt processing or generation) as a second,
       // renewable liveness lease so a stream cannot hold an interactive turn
       // open forever while producing no model progress.
       const next = await nextModelStreamEvent(iterator, modelProgressIdleTimeoutMs, (reason) => {
@@ -1382,8 +1244,6 @@ async function executeModelCall(
       progress.lastEventType = progressEventType;
       if (!sawFirstStreamEvent) {
         sawFirstStreamEvent = true;
-        stopPrefillSignals?.();
-        stopPrefillSignals = null;
         trace("stream.first-event", {
           eventType: String(event["type"] ?? ""),
         });
@@ -1392,7 +1252,11 @@ async function executeModelCall(
         trace("streaming");
       }
       const type = String(event["type"] ?? "");
-      if (type === "text_delta" || type === "thinking_delta") {
+      if (type === "prompt_progress") {
+        progress.stage = "prompt-processing";
+        emitLocalModelStatus(onEphemeral, descriptor.channelId,
+          `Reading prompt ${Math.round(Number(event["processed"]) / Number(event["total"]) * 100)}%…`);
+      } else if (type === "text_delta" || type === "thinking_delta") {
         const index = Number(event["contentIndex"] ?? event["index"] ?? 0);
         // First delta for this block IN THIS EXECUTION replaces the block's
         // accumulated text instead of appending. A retry of a retryably-failed
@@ -1484,8 +1348,6 @@ async function executeModelCall(
       }
     }
   } catch (err) {
-    stopPrefillSignals?.();
-    stopPrefillSignals = null;
     signal.removeEventListener("abort", forwardAbort);
     if (signal.aborted) {
       releaseProviderSession();
@@ -1506,8 +1368,6 @@ async function executeModelCall(
     return modelFailureOutcome(err, request, { modelBaseUrl });
   }
   void deltaCounter;
-  stopPrefillSignals?.();
-  stopPrefillSignals = null;
 
   let result: Record<string, unknown>;
   try {

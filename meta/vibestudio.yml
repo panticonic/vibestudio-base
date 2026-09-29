@@ -250,6 +250,7 @@ template:
     - skills/agents
     - skills/api-integrations
     - skills/architecture
+    - skills/automations
     - skills/capabilities
     - skills/extensiondev
     - skills/gad-context

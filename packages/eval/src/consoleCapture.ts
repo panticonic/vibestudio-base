@@ -105,11 +105,14 @@ function formatArg(arg: unknown): string {
 }
 
 function getCircularReplacer() {
-  const seen = new WeakSet();
-  return (_key: string, value: unknown) => {
+  const ancestors: object[] = [];
+  return function (this: unknown, _key: string, value: unknown) {
     if (typeof value === "object" && value !== null) {
-      if (seen.has(value as object)) return "[Circular]";
-      seen.add(value as object);
+      while (ancestors.length && ancestors[ancestors.length - 1] !== this) {
+        ancestors.pop();
+      }
+      if (ancestors.includes(value)) return "[Circular]";
+      ancestors.push(value);
     }
     return value;
   };

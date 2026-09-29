@@ -276,6 +276,23 @@ describe("formatConsoleEntry", () => {
     expect(formatted).toContain("[Circular]");
   });
 
+  it("preserves repeated references while stopping actual cycles", () => {
+    const device = { id: "phone" };
+    const cycle: Record<string, unknown> = { device };
+    cycle["self"] = cycle;
+    const formatted = formatConsoleEntry({
+      level: "log",
+      args: [{ summary: device, receipt: device, items: [device, device], cycle }],
+      timestamp: 0,
+    });
+    expect(JSON.parse(formatted)).toEqual({
+      summary: device,
+      receipt: device,
+      items: [device, device],
+      cycle: { device, self: "[Circular]" },
+    });
+  });
+
   it("handles primitives", () => {
     const entry: ConsoleEntry = {
       level: "log",

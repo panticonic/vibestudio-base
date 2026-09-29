@@ -12,6 +12,11 @@ import type {
   PanelScreenshotResult,
 } from "../core/index.js";
 import type { PanelObservation } from "@vibestudio/shared/panel/observation";
+import type { CdpInteractionOutcome } from "@workspace/cdp-client";
+import {
+  consoleHistoryReceipt,
+  type OperationJournalEntry,
+} from "../shared/journal.js";
 
 export type { CdpAutomation, CdpEndpoint };
 
@@ -22,6 +27,7 @@ type CdpClientModule = {
 const CDP_CLIENT_MODULE = "@workspace/cdp-client";
 
 interface CdpAutomationOptions {
+  recordOperation?: (entry: OperationJournalEntry) => void;
   kind?: "workspace" | "browser";
   requesterPanelId?: string | null;
   /** Closure-held module resolver used by confined hosted runtimes. */
@@ -39,7 +45,7 @@ function isCdpClientModule(value: unknown): value is CdpClientModule {
 }
 
 async function loadCdpClient(
-  loadModule?: (id: string) => unknown | Promise<unknown>
+  loadModule?: (id: string) => unknown | Promise<unknown>,
 ): Promise<CdpClientModule> {
   if (loadModule) {
     try {
@@ -50,9 +56,12 @@ async function loadCdpClient(
       // A closure-held loader is the hosted runtime's authority-bearing module
       // path. Falling through would hide its failure behind another runtime.
       const message = error instanceof Error ? error.message : String(error);
-      throw new Error(`Unable to load ${CDP_CLIENT_MODULE} for CDP automation. ${message}`, {
-        cause: error,
-      });
+      throw new Error(
+        `Unable to load ${CDP_CLIENT_MODULE} for CDP automation. ${message}`,
+        {
+          cause: error,
+        },
+      );
     }
   }
   try {
@@ -64,7 +73,7 @@ async function loadCdpClient(
     throw new Error(
       `Unable to load ${CDP_CLIENT_MODULE} for CDP automation. ${message}. ` +
         `Call handle.cdp.page() only from contexts that expose @workspace/cdp-client.`,
-      { cause: error }
+      { cause: error },
     );
   }
 }
@@ -72,7 +81,7 @@ async function loadCdpClient(
 export function createCdpAutomation(
   rpc: Pick<RpcClient, "call">,
   id: string,
-  options: CdpAutomationOptions = {}
+  options: CdpAutomationOptions = {},
 ): CdpAutomation {
   // CDP automation is available for every panel target — workspace panels and
   // browser panels alike. (A prior commit restricted this to browser panels to
@@ -82,12 +91,15 @@ export function createCdpAutomation(
     return rpc.call<CdpEndpoint>("main", "panelCdp.getCdpEndpoint", [id]);
   };
 
-  const workspaceNavigationError = (operation: string, lifecycleMethod: string): Error =>
+  const workspaceNavigationError = (
+    operation: string,
+    lifecycleMethod: string,
+  ): Error =>
     Object.assign(
       new Error(
         `Direct ${operation} is unavailable for workspace panel ${JSON.stringify(
-          id
-        )}; use ${lifecycleMethod} so panel generation and readiness remain coherent.`
+          id,
+        )}; use ${lifecycleMethod} so panel generation and readiness remain coherent.`,
       ),
       {
         name: "CdpError",
@@ -100,7 +112,7 @@ export function createCdpAutomation(
           recovery: "use-panel-handle-lifecycle" as const,
           instruction: `Use ${lifecycleMethod}, then call session.refresh() before continuing with automation.`,
         },
-      }
+      },
     );
 
   const connectPage = async (): Promise<CdpPage> => {
@@ -110,26 +122,31 @@ export function createCdpAutomation(
       isElectronWebview: boolean;
       preferFetchUpgrade: boolean;
       transportOptions?: { authToken: string };
+      onInteraction: (outcome: CdpInteractionOutcome) => void;
     } = {
       isElectronWebview: true,
       // Hosted EvalDO runtimes receive a closure-held loader and must route
       // CDP through the egress-aware fetch-upgrade transport. Browser panels
       // use their native WebSocket implementation instead.
       preferFetchUpgrade: Boolean(options.loadModule),
+      onInteraction: (receipt) =>
+        options.recordOperation?.({ type: "interaction", id, receipt }),
     };
-    if (endpoint.token) connectOptions.transportOptions = { authToken: endpoint.token };
-    const browser = await BrowserImpl.connect(endpoint.wsEndpoint, connectOptions);
+    if (endpoint.token)
+      connectOptions.transportOptions = { authToken: endpoint.token };
+    const browser = await BrowserImpl.connect(
+      endpoint.wsEndpoint,
+      connectOptions,
+    );
     const resolvedPage = browser.contexts()[0]?.pages()[0];
     if (!resolvedPage) {
       await browser.close();
       throw new Error(
         `CDP connected to panel ${JSON.stringify(id)}, but the target exposed no page. ` +
           "The panel may still be starting or its target may have been replaced; inspect " +
-          "handle.diagnose() and retry handle.cdp.page() once the panel is ready."
+          "handle.diagnose() and retry handle.cdp.page() once the panel is ready.",
       );
     }
-    if (options.kind !== "workspace") return resolvedPage;
-
     const navigationMethods = new Map<PropertyKey, string>([
       ["goto", "handle.navigate(...)"],
       ["reload", "handle.reload()"],
@@ -138,10 +155,33 @@ export function createCdpAutomation(
     ]);
     return new Proxy(resolvedPage as CdpPage & object, {
       get(target, property) {
+        if (property === "screenshot") {
+          return async (
+            screenshotOptions?: Parameters<CdpPage["screenshot"]>[0],
+          ) => {
+            const bytes = await resolvedPage.screenshot(screenshotOptions);
+            options.recordOperation?.({
+              type: "screenshot",
+              id,
+              receipt: {
+                capturedAt: Date.now(),
+                mimeType:
+                  screenshotOptions?.type === "jpeg"
+                    ? "image/jpeg"
+                    : "image/png",
+                byteSize: bytes.byteLength,
+              },
+            });
+            return bytes;
+          };
+        }
         const lifecycleMethod = navigationMethods.get(property);
-        if (lifecycleMethod) {
+        if (options.kind === "workspace" && lifecycleMethod) {
           return async () => {
-            throw workspaceNavigationError(`page.${String(property)}()`, lifecycleMethod);
+            throw workspaceNavigationError(
+              `page.${String(property)}()`,
+              lifecycleMethod,
+            );
           };
         }
         const value = Reflect.get(target, property, target) as unknown;
@@ -154,7 +194,7 @@ export function createCdpAutomation(
     if (observation.phase !== "ready" || !observation.runtimeEntityId) {
       throw Object.assign(
         new Error(
-          `Panel ${JSON.stringify(id)} is ${observation.phase}; CDP acquisition could not obtain a ready generation.`
+          `Panel ${JSON.stringify(id)} is ${observation.phase}; CDP acquisition could not obtain a ready generation.`,
         ),
         {
           code: "panel_cdp_generation_unavailable",
@@ -171,7 +211,7 @@ export function createCdpAutomation(
                   : "Inspect the panel lifecycle and repair its failed or stopped attempt before reacquiring CDP.",
             },
           },
-        }
+        },
       );
     }
     return {
@@ -183,7 +223,10 @@ export function createCdpAutomation(
     };
   };
 
-  const sameGeneration = (left: PanelCdpGeneration, right: PanelCdpGeneration): boolean =>
+  const sameGeneration = (
+    left: PanelCdpGeneration,
+    right: PanelCdpGeneration,
+  ): boolean =>
     left.panelId === right.panelId &&
     left.attemptId === right.attemptId &&
     left.runtimeEntityId === right.runtimeEntityId;
@@ -194,7 +237,7 @@ export function createCdpAutomation(
   const ensureReady = (): Promise<PanelObservation> => {
     if (!options.observe) {
       throw new Error(
-        "Generation-fenced CDP sessions are unavailable in this runtime; use a PanelHandle created by panelTree/openPanel."
+        "Generation-fenced CDP sessions are unavailable in this runtime; use a PanelHandle created by panelTree/openPanel.",
       );
     }
     return options.ensureReady ? options.ensureReady() : options.observe();
@@ -251,7 +294,9 @@ export function createCdpAutomation(
       return session;
     }
     throw Object.assign(
-      new Error(`Panel ${JSON.stringify(id)} changed generation during three CDP acquisitions`),
+      new Error(
+        `Panel ${JSON.stringify(id)} changed generation during three CDP acquisitions`,
+      ),
       {
         code: "panel_cdp_generation_churn",
         errorData: {
@@ -259,10 +304,11 @@ export function createCdpAutomation(
           panelId: id,
           recovery: {
             action: "reobserve",
-            instruction: "Inspect the panel lifecycle before acquiring another CDP session.",
+            instruction:
+              "Inspect the panel lifecycle before acquiring another CDP session.",
           },
         },
-      }
+      },
     );
   };
 
@@ -271,7 +317,10 @@ export function createCdpAutomation(
     const pending = (async () => {
       if (activeSession) {
         const current = generationOf(await ensureReady());
-        if (sameGeneration(activeSession.generation, current) && !activeSession.page.isClosed()) {
+        if (
+          sameGeneration(activeSession.generation, current) &&
+          !activeSession.page.isClosed()
+        ) {
           return activeSession;
         }
         await activeSession.close();
@@ -289,12 +338,23 @@ export function createCdpAutomation(
   return {
     page: connectPage,
     session: acquireSession,
-    consoleHistory: (options?: PanelConsoleHistoryOptions) => {
-      return rpc.call<PanelConsoleHistoryResult>("main", "panelCdp.consoleHistory", [id, options]);
+    consoleHistory: async (historyOptions?: PanelConsoleHistoryOptions) => {
+      const history = await rpc.call<PanelConsoleHistoryResult>(
+        "main",
+        "panelCdp.consoleHistory",
+        [id, historyOptions],
+      );
+      options.recordOperation?.({
+        type: "consoleHistory",
+        id,
+        receipt: consoleHistoryReceipt(history, historyOptions),
+      });
+      return history;
     },
     getCdpEndpoint,
     navigate: (url) => {
-      if (!options.navigate) throw new Error("Panel navigation runtime is unavailable");
+      if (!options.navigate)
+        throw new Error("Panel navigation runtime is unavailable");
       return options.navigate(url);
     },
     goBack: () => {
@@ -310,7 +370,8 @@ export function createCdpAutomation(
       return options.navigateHistory(1);
     },
     reload: () => {
-      if (!options.reload) throw new Error("Panel reload runtime is unavailable");
+      if (!options.reload)
+        throw new Error("Panel reload runtime is unavailable");
       return options.reload();
     },
     stop: () => {
@@ -324,8 +385,26 @@ export function createCdpAutomation(
         await p.close();
       }
     },
-    screenshot: (options?: PanelScreenshotOptions) => {
-      return rpc.call<PanelScreenshotResult>("main", "panelCdp.screenshot", [id, options]);
+    screenshot: async (screenshotOptions?: PanelScreenshotOptions) => {
+      const image = await rpc.call<PanelScreenshotResult>(
+        "main",
+        "panelCdp.screenshot",
+        [id, screenshotOptions],
+      );
+      options.recordOperation?.({
+        type: "screenshot",
+        id,
+        receipt: {
+          capturedAt: Date.now(),
+          mimeType: image.mimeType,
+          width: image.width,
+          height: image.height,
+          byteSize:
+            (image.data.length * 3) / 4 -
+            (image.data.endsWith("==") ? 2 : image.data.endsWith("=") ? 1 : 0),
+        },
+      });
+      return image;
     },
   };
 }

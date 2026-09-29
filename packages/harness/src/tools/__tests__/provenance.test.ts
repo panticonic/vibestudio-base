@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { Value } from "@sinclair/typebox/value";
 import { createMemoryAgentReferenceStore } from "../agent-pagination.js";
-import { putProvenanceReference } from "../provenance-reference.js";
+import { loadProvenanceReference, putProvenanceReference } from "../provenance-reference.js";
 import {
   createProvenanceTool,
   type ProvenanceToolDeps,
@@ -473,6 +473,7 @@ function fixture() {
       _input: Parameters<ProvenanceToolDeps["vcs"]["query"]>[0]
     ): ReturnType<ProvenanceToolDeps["vcs"]["query"]> => ({
       schemaVersion: 1,
+      state: { kind: "event", eventId: "event:query" },
       columns: ["work_unit_id", "intent_tier"],
       rows: [["work-unit:1", "stated"]],
       rowsRead: 1,
@@ -1064,6 +1065,23 @@ describe("question-shaped provenance surfaces", () => {
     );
   });
 
+  it.each([
+    { target: "packages/foo" },
+    { targets: ["@r1-abcd"] },
+    { walk: "cause" as const },
+    { scope: "turn" as const },
+  ])("rejects selectors that would silently be ignored by a query: %j", async (selector) => {
+    const f = fixture();
+    const tool = createProvenanceTool("/", f.value);
+    const result = await tool.execute("ambiguous-query", {
+      query: "SELECT work_unit_id FROM prov_work_units", ...selector,
+    });
+    expect(result.details).toMatchObject({ diagnostic: "invalid-input" });
+    expect(textOf(result)).toContain("Queries cover the visible context");
+    expect(f.query).not.toHaveBeenCalled();
+    expect(f.neighbors).not.toHaveBeenCalled();
+  });
+
   it("renders query results as a table with refs in the identity columns", async () => {
     const f = fixture();
     const tool = createProvenanceTool("/", f.value);
@@ -1083,6 +1101,7 @@ describe("question-shaped provenance surfaces", () => {
     const workUnitId = `work-unit:${"a".repeat(64)}`;
     f.query.mockResolvedValueOnce({
       schemaVersion: 1,
+      state: { kind: "event", eventId: "event:query" },
       columns: ["subject_id", "text"],
       rows: [[workUnitId, "Create the fixture"]],
       rowsRead: 1,
@@ -1098,6 +1117,31 @@ describe("question-shaped provenance surfaces", () => {
     expect(text).toContain("| subject_id | text |");
     expect(text).toMatch(/\| @r[0-9a-z]+-[0-9a-f]{4} \| Create the fixture \|/u);
     expect(text).not.toContain(workUnitId);
+  });
+
+  it.each(["repository_id", "repo"])("pins a query repository ref to its returned state through %s", async (column) => {
+    const f = fixture();
+    const repositoryId = `repository:${"b".repeat(64)}`;
+    const state = { kind: "application" as const, applicationId: "application:query" };
+    f.query.mockResolvedValueOnce({
+      schemaVersion: 1,
+      state,
+      columns: [column, "file_count"],
+      rows: [[repositoryId, 4]],
+      rowsRead: 1,
+      truncated: false,
+      refusal: null,
+    });
+    const references = createMemoryAgentReferenceStore();
+    const tool = createProvenanceTool("/", f.value, references);
+    const result = await tool.execute("query", { query: "SELECT repository_id, COUNT(*) FROM prov_files GROUP BY repository_id" });
+    const text = textOf(result);
+    const ref = text.match(/@r[0-9a-z]+-[0-9a-f]{4}/u)?.[0];
+    expect(ref).toBeTruthy();
+    expect(text).not.toContain(repositoryId);
+    expect(loadProvenanceReference(references, ref!).root).toEqual({ kind: "repository", repositoryId, state });
+    await tool.execute("bound-query", { query: `SELECT path FROM prov_files WHERE repository_id = '${ref}'` });
+    expect(f.query).toHaveBeenLastCalledWith(expect.objectContaining({ query: `SELECT path FROM prov_files WHERE repository_id = '${repositoryId}'` }));
   });
 
   it("binds a returned ref inside query text to its exact identity", async () => {
@@ -1123,6 +1167,7 @@ describe("question-shaped provenance surfaces", () => {
     const f = fixture();
     f.query.mockResolvedValueOnce({
       schemaVersion: 1,
+      state: { kind: "event", eventId: "event:query" },
       columns: [],
       rows: [],
       rowsRead: 0,

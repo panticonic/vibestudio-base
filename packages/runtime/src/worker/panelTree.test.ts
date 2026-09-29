@@ -206,6 +206,36 @@ describe("worker panelTree handles", () => {
     expect(envelopeFrom).toBe("worker:workers/identity-probe:probe");
   });
 
+  it("binds root service factories and callable members to the initialized worker runtime", async () => {
+    const calls: ReturnType<typeof parseReq>[] = [];
+    globalThis.fetch = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      const request = parseReq(init);
+      calls.push(request);
+      return respond(init, request.method === "workers.resolveService"
+        ? { kind: "durable-object", targetId: "do:workers/probe:Probe:chosen" }
+        : "value");
+    }) as typeof fetch;
+    const entry = await import("./index.js");
+    expect(() => entry.createDurableObjectServiceClient("probe.v1")).toThrow("not been initialized");
+    const runtime = entry.createWorkerRuntime({
+      WORKER_ID: "probe", WORKER_SOURCE: "workers/probe",
+      RPC_AUTH_TOKEN: "token", CONTEXT_ID: "ctx", GATEWAY_URL: "http://server.test",
+    });
+    try {
+      const client = entry.createDurableObjectServiceClient("probe.v1", "chosen");
+      expect(await client.call("read", "argument")).toBe("value");
+      expect(await entry.callMain("probe.read", "direct")).toBe("value");
+      expect(calls).toEqual([
+        { type: "call", targetId: "main", method: "workers.resolveService", args: ["probe.v1", "chosen"] },
+        { type: "call", targetId: "do:workers/probe:Probe:chosen", method: "read", args: ["argument"] },
+        { type: "call", targetId: "main", method: "probe.read", args: ["direct"] },
+      ]);
+    } finally {
+      runtime.destroy();
+    }
+    expect(() => entry.createDurableObjectServiceClient("probe.v1")).toThrow("not been initialized");
+  });
+
   it("routes bare handle RPC events through the refreshed runtime entity id", async () => {
     const calls: Array<{
       type?: string;
@@ -738,7 +768,12 @@ describe("worker panelTree handles", () => {
       ({ method }) =>
         method === "workspace-state.slot.commitPreparedNavigation",
     );
-    expect(replacements).toHaveLength(2);
+    // Reload restarts the current entity; rebuild replaces the navigation.
+    expect(calls.filter(({ method }) => method === "runtime.supervision.restart")).toEqual([
+      { type: "call", targetId: "main", method: "runtime.supervision.restart",
+        args: [{ kind: "panel", entityId: "panel:nav-parent-slot-current-entity" }] },
+    ]);
+    expect(replacements).toHaveLength(1);
     for (const call of replacements) {
       expect(call.args[0]).toMatchObject({
         slotId: "panel:tree/parent-slot",

@@ -94,10 +94,7 @@ export type {
   WebhookVerifierConfig,
 } from "../shared/webhooks.js";
 export type { NotificationClient } from "../shared/notifications.js";
-export {
-  doTargetId,
-  createDurableObjectServiceClient,
-} from "../shared/workerd.js";
+export { doTargetId } from "../shared/workerd.js";
 export type {
   DurableObjectServiceClient,
   ResolvedWorkspaceService,
@@ -164,8 +161,17 @@ function runtimeMember<K extends keyof WorkspaceRuntime>(
   name: K,
 ): WorkspaceRuntime[K] {
   return new Proxy(
-    {},
+    function () {},
     {
+      apply(_target, _thisArg, args) {
+        const runtime = activeRuntime;
+        if (!runtime) {
+          throw new Error(
+            `Worker runtime has not been initialized; cannot call ${String(name)}`,
+          );
+        }
+        return Reflect.apply(runtime[name] as (...args: unknown[]) => unknown, runtime, args);
+      },
       get(_target, property) {
         const runtime = activeRuntime;
         if (!runtime) {
@@ -203,6 +209,7 @@ export const extensions = runtimeMember("extensions");
 export const templates = runtimeMember("templates");
 export const notifications = runtimeMember("notifications");
 export const workers = runtimeMember("workers");
+export const createDurableObjectServiceClient = runtimeMember("createDurableObjectServiceClient");
 export const openExternal = runtimeMember("openExternal");
 export const createPanelSlot = runtimeMember("createPanelSlot");
 export const openPanel = runtimeMember("openPanel");
@@ -521,4 +528,3 @@ export function handleWorkerRpc(
 }
 
 export type * from "../shared/images.js";
-

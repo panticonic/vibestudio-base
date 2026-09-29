@@ -2532,6 +2532,7 @@ export class PubSubChannel extends DurableObjectBase {
         `join: invalid participant metadata at ${issue?.path.join(".") || "$"}: ${issue?.message ?? "invalid"}`,
       );
     }
+    const metadata = publicParticipantMetadata(input.metadata) ?? {};
     if (input.endpoint.kind !== "entity") {
       throw new Error(
         "join: executable participants require an entity delivery endpoint",
@@ -2576,7 +2577,7 @@ export class PubSubChannel extends DurableObjectBase {
       revision: input.revision,
       delivery: input.delivery,
       endpoint: input.endpoint,
-      metadata: input.metadata,
+      metadata,
       applicationConfig: input.applicationConfig,
     };
     if (
@@ -2619,7 +2620,7 @@ export class PubSubChannel extends DurableObjectBase {
             : "channel.subscription.opened",
         payload,
         senderId: participantId,
-        senderMetadata: input.metadata,
+        senderMetadata: metadata,
         messageId: `channel-subscription:${participantId}:${input.revision}`,
         idempotency: "idempotent-by-id",
       });
@@ -2627,7 +2628,7 @@ export class PubSubChannel extends DurableObjectBase {
       this.broadcastPresenceSignal(
         participantId,
         existing && Number(existing["active"]) === 1 ? "update" : "join",
-        input.metadata,
+        metadata,
       );
     }
 
@@ -6391,6 +6392,18 @@ export class PubSubChannel extends DurableObjectBase {
             `SELECT metric, upper_bound_ms, samples, total_ms, maximum_ms
                FROM channel_delivery_latency_histogram
               ORDER BY metric, upper_bound_ms`,
+          )
+          .toArray(),
+        longestDeliveries: this.sql
+          .exec(
+            `SELECT delivery_id, participant_id, event_id AS envelope_id, event_sequence, event_kind,
+                    created_at AS published_at,
+                    json_extract(terminal_outcome_json, '$.recipientExecutionStartedAt') AS execution_started_at,
+                    json_extract(terminal_outcome_json, '$.recipientExecutionStartedAt') - created_at AS duration_ms
+               FROM channel_delivery_mailbox
+              WHERE json_type(terminal_outcome_json, '$.recipientExecutionStartedAt') IN ('integer', 'real')
+              ORDER BY duration_ms DESC, delivery_id
+              LIMIT 10`,
           )
           .toArray(),
       },

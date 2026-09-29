@@ -30,6 +30,14 @@ await openExternal("https://docs.example.com");
 await session.close();
 ```
 
+Single-element locator actions and reads require one match. Multiple matches
+fail immediately with `cdp_locator_ambiguous`, the match count, and bounded
+accessible names; they never select the first control or wait for ambiguity to
+expire. Inspect the controls and narrow by an exact accessible name or a
+containing region before acting. Collection operations such as `count()`,
+`all()` and `evaluateAll()` keep their collection semantics. A select's
+associated label excludes its option text.
+
 For ordinary eval calls, omit `authority.requests` and let the run adapt to the
 authority already admitted for the agent. If the workflow deliberately uses an
 exhaustive per-run allowlist, `handle.cdp.page()` requires `panel.inspect` for
@@ -80,7 +88,7 @@ value directly, so do not append `.result?.value` as if using raw CDP.
 Navigation belongs to browser panels. On a workspace app panel, `page.goto()`,
 `page.reload()`, `page.goBack()`, and `page.goForward()` reject instead of
 bypassing the panel lifecycle. Use
-`await handle.reload()` for the current workspace build or
+`await handle.reload()` to reload the current renderer with its existing build and storage, or
 `await handle.rebuild()` after source changes; both return a
 `PanelObservation`, while the original `handle` remains the handle.
 
@@ -172,6 +180,22 @@ person. Focus the control and use locator keyboard actions such as
 postcondition. Assigning `.value` and dispatching a synthetic `input` event
 only proves that the DOM property changed; it does not establish that React
 accepted the interaction or updated application state.
+
+## Native JavaScript dialogs
+
+`alert`, `confirm`, `prompt`, and `beforeunload` pause browser execution.
+Prepare a `page.on("dialog", handler)` before an action that opens one. The
+handler receives a dialog with `type()`, `message()`, `defaultValue()`,
+`accept(promptText?)`, and `dismiss()`. Make the intended decision explicitly;
+no dialog is automatically accepted or dismissed. Remove a temporary handler
+with `page.off("dialog", handler)` when that workflow ends.
+
+Without a prepared decision, blocked input or evaluation fails immediately with
+`cdp_dialog_open`, carrying the actual dialog and recovery instruction. The
+connection remains usable. Inspect `page.dialog()`, respond to that pending
+dialog, then observe what the original action did. Do not repeat the click: it
+may still be waiting for the decision. A closed or replaced dialog rejects
+responses with `cdp_dialog_closed`.
 
 ## Where it runs
 
@@ -363,13 +387,15 @@ content-addressed storage rather than immediate visual inspection, use
 `blobstore.putBytes(bytes)`. Unsupported screenshot options are rejected rather
 than ignored.
 
-Page callbacks are intentionally moved into the browser realm. Functions passed
+Evaluation callbacks run in the browser realm. Functions passed
 to `page.evaluate`, `page.waitForFunction`, `locator.evaluate`, and
 `locator.evaluateAll` must be self-contained apart from their explicit
 argument. Exceptions preserve the
 browser's actual exception description and stack; locator failures also include
 the Playwright-style locator string. A generic `Uncaught` without the underlying
 exception is a platform defect, not a prompt for the agent to guess.
+Dialog handlers run in the calling runtime and may retain its variables; they
+are not browser evaluation callbacks.
 
 ### Not supported
 

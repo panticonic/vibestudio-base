@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { runInNewContext } from "node:vm";
 
 import { BrowserImpl, CdpConnection, CdpError } from "./worker";
 import { webSocketAuthProtocol } from "@vibestudio/rpc/protocol/webSocketAuthProtocol";
@@ -15,10 +16,18 @@ class FakeWebSocket {
   static instances: FakeWebSocket[] = [];
   static sent: Array<{ method: string; params?: Record<string, unknown> }> = [];
   static dropMethods = new Set<string>();
+  static rejectMethods = new Map<string, string>();
+  static evaluationException: {
+    text: string;
+    exception: { description: string };
+  } | null = null;
   static emitNavigationEventBeforeResponse = false;
   static deferNextClickEffect = false;
 
-  private listeners = new Map<string, Set<(event: { data?: string }) => void>>();
+  private listeners = new Map<
+    string,
+    Set<(event: { data?: string }) => void>
+  >();
   private nextTitle = "Example";
   private nextUrl = "https://example.com/current";
   private html = "<html><body>Hello</body></html>";
@@ -31,18 +40,24 @@ class FakeWebSocket {
 
   constructor(
     readonly url: string,
-    readonly protocols?: string | string[]
+    readonly protocols?: string | string[],
   ) {
     FakeWebSocket.instances.push(this);
     setTimeout(() => this.dispatch("open", {}), 0);
   }
 
-  addEventListener(event: string, handler: (event: { data?: string }) => void): void {
+  addEventListener(
+    event: string,
+    handler: (event: { data?: string }) => void,
+  ): void {
     const listeners = this.listeners.get(event) ?? new Set();
     listeners.add(handler);
     this.listeners.set(event, listeners);
   }
-  removeEventListener(event: string, handler: (event: { data?: string }) => void): void {
+  removeEventListener(
+    event: string,
+    handler: (event: { data?: string }) => void,
+  ): void {
     this.listeners.get(event)?.delete(handler);
   }
 
@@ -60,6 +75,21 @@ class FakeWebSocket {
         params: message.params,
       });
     if (message.method && FakeWebSocket.dropMethods.has(message.method)) return;
+    const rejection =
+      message.method && FakeWebSocket.rejectMethods.get(message.method);
+    if (rejection) {
+      setTimeout(
+        () =>
+          this.dispatch("message", {
+            data: JSON.stringify({
+              id: message.id,
+              error: { message: rejection },
+            }),
+          }),
+        0,
+      );
+      return;
+    }
     if (
       message.method === "Input.dispatchMouseEvent" &&
       message.params?.["type"] === "mouseReleased" &&
@@ -88,11 +118,14 @@ class FakeWebSocket {
               },
             }),
           }),
-        0
+        0,
       );
     }
     const result = this.resultFor(message.method, message.params);
-    if (message.method === "Page.navigate" && FakeWebSocket.emitNavigationEventBeforeResponse) {
+    if (
+      message.method === "Page.navigate" &&
+      FakeWebSocket.emitNavigationEventBeforeResponse
+    ) {
       this.dispatch("message", {
         data: JSON.stringify({
           method: "Page.loadEventFired",
@@ -100,22 +133,19 @@ class FakeWebSocket {
         }),
       });
     }
-    setTimeout(
-      () => {
-        if (
-          message.method === "Runtime.evaluate" &&
-          String(message.params?.["expression"] ?? "").includes("__nsRun") &&
-          this.revealAfterLocatorEvaluation
-        ) {
-          this.revealAfterLocatorEvaluation = false;
-          this.revealed = true;
-        }
-        this.dispatch("message", {
-          data: JSON.stringify({ id: message.id, result }),
-        });
-      },
-      0
-    );
+    setTimeout(() => {
+      if (
+        message.method === "Runtime.evaluate" &&
+        String(message.params?.["expression"] ?? "").includes("__nsRun") &&
+        this.revealAfterLocatorEvaluation
+      ) {
+        this.revealAfterLocatorEvaluation = false;
+        this.revealed = true;
+      }
+      this.dispatch("message", {
+        data: JSON.stringify({ id: message.id, result }),
+      });
+    }, 0);
     if (message.method === "Page.navigate") {
       // Real Chrome fires the load lifecycle event AFTER the navigate response. Emit it after the
       // response (queued later) so the client's navigation-settled wait — which goto() only registers
@@ -129,10 +159,14 @@ class FakeWebSocket {
                 params: { timestamp: 0 },
               }),
             }),
-          0
+          0,
         );
       }
     }
+  }
+
+  emitCdpResponse(id: number, result: unknown): void {
+    this.dispatch("message", { data: JSON.stringify({ id, result }) });
   }
 
   close(): void {
@@ -151,7 +185,10 @@ class FakeWebSocket {
     });
   }
 
-  private resultFor(method?: string, params?: Record<string, unknown>): unknown {
+  private resultFor(
+    method?: string,
+    params?: Record<string, unknown>,
+  ): unknown {
     if (method === "Page.navigate") {
       this.nextUrl = (params?.["url"] as string) ?? this.nextUrl;
       return {};
@@ -161,6 +198,9 @@ class FakeWebSocket {
     }
     if (method === "Page.captureScreenshot") return { data: "AAAA" };
     if (method !== "Runtime.evaluate") return {};
+    if (FakeWebSocket.evaluationException) {
+      return { exceptionDetails: FakeWebSocket.evaluationException };
+    }
 
     const expression = (params?.["expression"] as string) ?? "";
     if (expression.includes("boom-marker")) {
@@ -182,13 +222,17 @@ class FakeWebSocket {
       return { result: { value: this.runOp(expression) } };
     }
     // Direct arrow-function evals.
-    if (expression.includes("location.href")) return { result: { value: this.nextUrl } };
+    if (expression.includes("location.href"))
+      return { result: { value: this.nextUrl } };
     if (expression.includes("window.innerWidth")) {
       return { result: { value: { width: 1280, height: 720 } } };
     }
-    if (expression.includes("document.title")) return { result: { value: this.nextTitle } };
-    if (expression.includes("document.readyState")) return { result: { value: true } };
-    if (expression.includes("document.documentElement")) return { result: { value: this.html } };
+    if (expression.includes("document.title"))
+      return { result: { value: this.nextTitle } };
+    if (expression.includes("document.readyState"))
+      return { result: { value: true } };
+    if (expression.includes("document.documentElement"))
+      return { result: { value: this.html } };
     return { result: { value: undefined } };
   }
 
@@ -201,7 +245,9 @@ class FakeWebSocket {
       arg: {
         name?: string;
         value?: string;
-        values?: Array<string | { value?: string; label?: string; index?: number }>;
+        values?: Array<
+          string | { value?: string; label?: string; index?: number }
+        >;
         checked?: boolean;
         retainToken?: string;
         token?: string;
@@ -214,7 +260,9 @@ class FakeWebSocket {
         (s["by"] === "testid" && s["value"] === "missing") ||
         (s["by"] === "role" && s["name"] === "Revealed" && !this.revealed) ||
         (s["by"] === "role" &&
-          (s["name"] === "Done" || s["name"] === "Completed" || s["name"] === "Add another column"))
+          (s["name"] === "Done" ||
+            s["name"] === "Completed" ||
+            s["name"] === "Add another column")),
     );
     const requiredState = {
       waitFor: payload.state ?? "visible",
@@ -290,7 +338,9 @@ class FakeWebSocket {
       case "evaluate":
         return "<strong>Hello</strong>";
       case "roleCandidates":
-        if (payload.descriptor.steps.some((step) => step["name"] === "Completed")) {
+        if (
+          payload.descriptor.steps.some((step) => step["name"] === "Completed")
+        ) {
           return [
             { role: "radio", accessibleName: "Completed" },
             { role: "tab", accessibleName: "Completed" },
@@ -358,13 +408,17 @@ function installFakeWebSocket(): void {
 describe("worker CDP client", () => {
   const originalWebSocket = globalThis.WebSocket;
   const originalFetch = globalThis.fetch;
-  const originalWebSocketPair = (globalThis as Record<string, unknown>)["WebSocketPair"];
+  const originalWebSocketPair = (globalThis as Record<string, unknown>)[
+    "WebSocketPair"
+  ];
 
   afterEach(() => {
     vi.useRealTimers();
     FakeWebSocket.instances = [];
     FakeWebSocket.sent = [];
     FakeWebSocket.dropMethods.clear();
+    FakeWebSocket.rejectMethods.clear();
+    FakeWebSocket.evaluationException = null;
     FakeWebSocket.emitNavigationEventBeforeResponse = false;
     FakeWebSocket.deferNextClickEffect = false;
     vi.restoreAllMocks();
@@ -385,6 +439,92 @@ describe("worker CDP client", () => {
     });
   });
 
+  it("matches UI text without treating CSS, scripts, or their hidden containers as content", async () => {
+    installFakeWebSocket();
+    const browser = await BrowserImpl.connect("ws://cdp");
+    const page = browser.contexts()[0]!.pages()[0]!;
+    await page.getByText("1").count();
+    const expression = FakeWebSocket.sent
+      .filter((entry) => entry.method === "Runtime.evaluate")
+      .map((entry) => String(entry.params?.["expression"] ?? ""))
+      .find((value) => value.includes('"op":"count"'))!;
+    const leaf = (tagName: string, textContent: string) => ({
+      tagName,
+      textContent,
+      innerText: textContent,
+      querySelectorAll: () => [],
+    });
+    const sourceNodes = [
+      "STYLE",
+      "SCRIPT",
+      "TEMPLATE",
+      "NOSCRIPT",
+      "TITLE",
+      "HEAD",
+    ].map((tag) => leaf(tag, "source 1: height: 100dvh"));
+    const hiddenContainer = {
+      ...leaf("DIV", "source 1: height: 100dvh"),
+      childNodes: [sourceNodes[0]],
+      querySelectorAll: () => [sourceNodes[0]],
+    };
+    const document = {
+      querySelectorAll: () => [
+        ...sourceNodes,
+        hiddenContainer,
+        leaf("SPAN", "1"),
+      ],
+    };
+    await expect(runInNewContext(expression, { document })).resolves.toBe(1);
+    await browser.close();
+  });
+
+  it("resolves associated and ARIA labels on output elements without treating plain button text as a label", async () => {
+    installFakeWebSocket();
+    const browser = await BrowserImpl.connect("ws://cdp");
+    const page = browser.contexts()[0]!.pages()[0]!;
+    await page.getByLabel("Counter value", { exact: true }).count();
+    const expression = FakeWebSocket.sent
+      .filter((entry) => entry.method === "Runtime.evaluate")
+      .map((entry) => String(entry.params?.["expression"] ?? ""))
+      .find((value) => value.includes('"op":"count"'))!;
+    const node = (
+      tagName: string,
+      attributes: Record<string, string>,
+      innerText = "",
+    ) => ({
+      tagName,
+      innerText,
+      getAttribute: (name: string) => attributes[name] ?? null,
+      labels: [] as unknown[],
+    });
+    const ariaLabel = node("OUTPUT", { "aria-label": "Counter value" });
+    const ariaLabelledby = node("OUTPUT", {
+      "aria-labelledby": "counter-label",
+    });
+    const associated = node("OUTPUT", {});
+    associated.labels = [
+      {
+        cloneNode: () => ({
+          innerText: "Counter value",
+          querySelectorAll: () => [],
+        }),
+      },
+    ];
+    const plainButton = node("BUTTON", {}, "Counter value");
+    const document = {
+      querySelectorAll: () => [
+        ariaLabel,
+        ariaLabelledby,
+        associated,
+        plainButton,
+      ],
+      getElementById: (id: string) =>
+        id === "counter-label" ? node("SPAN", {}, "Counter value") : null,
+    };
+    await expect(runInNewContext(expression, { document })).resolves.toBe(3);
+    await browser.close();
+  });
+
   it("uses the Workers fetch-upgrade transport when WebSocket is not global", async () => {
     Object.defineProperty(globalThis, "WebSocket", {
       configurable: true,
@@ -399,7 +539,7 @@ describe("worker CDP client", () => {
         ({
           status: 101,
           webSocket: socket,
-        }) as unknown as Response
+        }) as unknown as Response,
     );
     Object.defineProperty(globalThis, "fetch", {
       configurable: true,
@@ -416,11 +556,18 @@ describe("worker CDP client", () => {
     expect(init).toMatchObject({ headers: { Upgrade: "websocket" } });
     expect(init?.signal).toBeInstanceOf(AbortSignal);
     const parsedUpgradeUrl = new URL(String(upgradeUrl));
-    const encodedHeaders = parsedUpgradeUrl.searchParams.get("__vibestudio_ws_headers");
+    const encodedHeaders = parsedUpgradeUrl.searchParams.get(
+      "__vibestudio_ws_headers",
+    );
     expect(encodedHeaders).toBeTruthy();
     const normalized = encodedHeaders!.replace(/-/g, "+").replace(/_/g, "/");
-    const padded = normalized.padEnd(normalized.length + ((4 - (normalized.length % 4)) % 4), "=");
-    expect(JSON.parse(atob(padded))).toEqual([["x-vibestudio-cdp-grant", "token"]]);
+    const padded = normalized.padEnd(
+      normalized.length + ((4 - (normalized.length % 4)) % 4),
+      "=",
+    );
+    expect(JSON.parse(atob(padded))).toEqual([
+      ["x-vibestudio-cdp-grant", "token"],
+    ]);
     parsedUpgradeUrl.searchParams.delete("__vibestudio_ws_headers");
     expect(parsedUpgradeUrl).toEqual(new URL("http://cdp/"));
     expect(accept).toHaveBeenCalledOnce();
@@ -439,7 +586,7 @@ describe("worker CDP client", () => {
         ({
           status: 101,
           webSocket: socket,
-        }) as unknown as Response
+        }) as unknown as Response,
     );
     Object.defineProperty(globalThis, "fetch", {
       configurable: true,
@@ -464,7 +611,8 @@ describe("worker CDP client", () => {
       value: undefined,
     });
     const fetchMock = vi.fn(
-      (_input: RequestInfo | URL, _init?: RequestInit) => new Promise<Response>(() => {})
+      (_input: RequestInfo | URL, _init?: RequestInit) =>
+        new Promise<Response>(() => {}),
     );
     Object.defineProperty(globalThis, "fetch", {
       configurable: true,
@@ -475,7 +623,7 @@ describe("worker CDP client", () => {
 
     const connection = CdpConnection.connect("ws://cdp", "token");
     const rejection = expect(connection).rejects.toThrow(
-      "CDP WebSocket upgrade timed out after 15000ms"
+      "CDP WebSocket upgrade timed out after 15000ms",
     );
     await vi.advanceTimersByTimeAsync(15_000);
 
@@ -495,15 +643,21 @@ describe("worker CDP client", () => {
 
     await expect(page.title()).resolves.toBe("Example");
     expect(page.url()).toBe("https://example.com/current");
-    await expect(page.content()).resolves.toBe("<html><body>Hello</body></html>");
+    await expect(page.content()).resolves.toBe(
+      "<html><body>Hello</body></html>",
+    );
     await page.goto("https://example.com/next");
     expect(page.url()).toBe("https://example.com/next");
-    await expect(page.waitForLoadState("domcontentloaded")).resolves.toBeUndefined();
-    await expect(page.waitForFunction(() => document.readyState === "complete")).resolves.toBe(
-      true
-    );
+    await expect(
+      page.waitForLoadState("domcontentloaded"),
+    ).resolves.toBeUndefined();
+    await expect(
+      page.waitForFunction(() => document.readyState === "complete"),
+    ).resolves.toBe(true);
 
-    expect(page.consoleEvents()).toEqual([{ type: "log", text: "ready 42", args: ["ready", 42] }]);
+    expect(page.consoleEvents()).toEqual([
+      { type: "log", text: "ready 42", args: ["ready", 42] },
+    ]);
     page.clearConsoleEvents();
     expect(page.consoleEvents()).toEqual([]);
   });
@@ -536,6 +690,186 @@ describe("worker CDP client", () => {
     expect(resolved).toBe(true);
   });
 
+  it("reports an unhandled native dialog immediately, retains its pending decision, and preserves the connection", async () => {
+    installFakeWebSocket();
+    const browser = await BrowserImpl.connect("ws://cdp");
+    const page = browser.contexts()[0]!.pages()[0]!;
+    const socket = FakeWebSocket.instances[0]!;
+    vi.useFakeTimers();
+    FakeWebSocket.dropMethods.add("Input.dispatchMouseEvent");
+    const command = page.connection.send("Input.dispatchMouseEvent", { type: "mouseReleased" }).catch((error: unknown) => error);
+    socket.emitCdpEvent("Page.javascriptDialogOpening", { type: "confirm", message: "Delete this item?", url: "https://example.com" });
+    expect(await command).toMatchObject({ code: "cdp_dialog_open", errorData: {
+      operation: "Input.dispatchMouseEvent", recovery: "handle-dialog-and-observe",
+      dialog: { type: "confirm", message: "Delete this item?" },
+    } });
+    expect(socket.closed).toBe(false);
+    expect(vi.getTimerCount()).toBe(0);
+    expect(page.dialog()?.defaultValue()).toBe("");
+    await expect(page.title()).rejects.toMatchObject({ code: "cdp_dialog_open" });
+    const pending = page.dialog()!;
+    const dismissed = pending.dismiss();
+    await vi.runOnlyPendingTimersAsync();
+    await dismissed;
+    expect(page.dialog()).toBeNull();
+    await expect(pending.accept()).rejects.toMatchObject({ code: "cdp_dialog_closed" });
+    expect(FakeWebSocket.sent).toContainEqual({ method: "Page.handleJavaScriptDialog", params: { accept: false } });
+    await browser.close();
+  });
+
+  it("uses a prepared dialog handler to settle the original command without replaying it", async () => {
+    installFakeWebSocket();
+    const browser = await BrowserImpl.connect("ws://cdp");
+    const page = browser.contexts()[0]!.pages()[0]!;
+    const socket = FakeWebSocket.instances[0]!;
+    FakeWebSocket.dropMethods.add("Input.dispatchMouseEvent");
+    const handler = vi.fn(async (dialog: NonNullable<ReturnType<typeof page.dialog>>) => {
+      expect(dialog.message()).toBe("Your name?");
+      await dialog.accept("Test name");
+      socket.emitCdpResponse(commandId, {});
+    });
+    page.on("dialog", handler);
+    const dispatched = page.connection.send("Input.dispatchMouseEvent", { type: "mouseReleased" });
+    const commandId = [...(page.connection as unknown as { pending: Map<number, unknown> }).pending.keys()][0]!;
+    socket.emitCdpEvent("Page.javascriptDialogOpening", { type: "prompt", message: "Your name?", defaultPrompt: "", url: "https://example.com" });
+    await dispatched;
+    expect(handler).toHaveBeenCalledOnce();
+    expect(page.dialog()).toBeNull();
+    expect(FakeWebSocket.sent.filter(({ method }) => method === "Input.dispatchMouseEvent")).toHaveLength(1);
+    expect(FakeWebSocket.sent).toContainEqual({ method: "Page.handleJavaScriptDialog", params: { accept: true, promptText: "Test name" } });
+    page.off("dialog", handler);
+    await browser.close();
+  });
+
+  it("owns a response initiated by a void-returning handler and queues new work until it settles", async () => {
+    installFakeWebSocket();
+    const browser = await BrowserImpl.connect("ws://cdp");
+    const page = browser.contexts()[0]!.pages()[0]!;
+    const socket = FakeWebSocket.instances[0]!;
+    FakeWebSocket.dropMethods.add("Input.dispatchMouseEvent");
+    FakeWebSocket.dropMethods.add("Page.handleJavaScriptDialog");
+    page.on("dialog", (dialog) => { void dialog.accept(); });
+    const original = page.connection.send("Input.dispatchMouseEvent", { type: "mouseReleased" });
+    const pending = (page.connection as unknown as { pending: Map<number, { method: string }> }).pending;
+    const originalId = [...pending.keys()][0]!;
+    socket.emitCdpEvent("Page.javascriptDialogOpening", { type: "confirm", message: "Delete?", url: "https://example.com" });
+    await Promise.resolve(); await Promise.resolve(); await Promise.resolve();
+    const decisionId = [...pending].find(([, command]) => command.method === "Page.handleJavaScriptDialog")![0];
+    const title = page.title();
+    await expect(page.dialog()!.accept()).rejects.toMatchObject({ code: "cdp_dialog_closed" });
+    expect(FakeWebSocket.sent.filter(({ method }) => method === "Page.handleJavaScriptDialog")).toHaveLength(1);
+    expect(FakeWebSocket.sent.at(-1)?.method).toBe("Page.handleJavaScriptDialog");
+    socket.emitCdpResponse(decisionId, {});
+    socket.emitCdpResponse(originalId, {});
+    await original;
+    expect(await title).toBe("Example");
+    expect(page.dialog()).toBeNull();
+    expect(FakeWebSocket.sent.filter(({ method }) => method === "Input.dispatchMouseEvent")).toHaveLength(1);
+    await browser.close();
+  });
+
+  it("rejects blocked commands when a dialog listener completes without making a decision", async () => {
+    installFakeWebSocket();
+    const browser = await BrowserImpl.connect("ws://cdp");
+    const page = browser.contexts()[0]!.pages()[0]!;
+    const socket = FakeWebSocket.instances[0]!;
+    vi.useFakeTimers();
+    page.on("dialog", () => {});
+    FakeWebSocket.dropMethods.add("Runtime.evaluate");
+    const pending = page.title().catch((error: unknown) => error);
+    socket.emitCdpEvent("Page.javascriptDialogOpening", { type: "alert", message: "Notice", defaultPrompt: "", url: "https://example.com" });
+    expect(await pending).toMatchObject({ code: "cdp_dialog_open" });
+    expect(vi.getTimerCount()).toBe(0);
+    await browser.close();
+  });
+
+  it.each([
+    ["Inspector.targetCrashed", "cdp_target_crashed", {}],
+    [
+      "Inspector.detached",
+      "cdp_target_detached",
+      { reason: "replaced_with_devtools" },
+    ],
+  ])(
+    "rejects pending work immediately on %s without advancing a deadline",
+    async (event, code, params) => {
+      installFakeWebSocket();
+      const browser = await BrowserImpl.connect("ws://cdp");
+      const page = browser.contexts()[0]!.pages()[0]!;
+      const socket = FakeWebSocket.instances[0]!;
+      vi.useFakeTimers();
+      FakeWebSocket.dropMethods.add("Runtime.evaluate");
+      const failure = page
+        .getByTestId("missing")
+        .innerText()
+        .catch((error: unknown) => error);
+
+      socket.emitCdpEvent(event, params);
+
+      expect(await failure).toMatchObject({
+        code,
+        errorData: {
+          code,
+          failureKind: "infrastructure",
+          operation: "innerText",
+        },
+      });
+      expect(socket.closed).toBe(true);
+      await expect(page.title()).rejects.toMatchObject({ code });
+      expect(vi.getTimerCount()).toBe(0);
+    },
+  );
+
+  it.each([
+    "Inspector.enable",
+    "Page.enable",
+    "Runtime.enable",
+    "DOM.enable",
+    "Runtime.evaluate",
+  ])(
+    "rejects initialization and retires the connection when %s fails",
+    async (method) => {
+      installFakeWebSocket();
+      FakeWebSocket.rejectMethods.set(method, `Cannot initialize ${method}`);
+      await expect(BrowserImpl.connect("ws://cdp")).rejects.toThrow(
+        `Cannot initialize ${method}`,
+      );
+      expect(FakeWebSocket.instances[0]!.closed).toBe(true);
+    },
+  );
+
+  it("propagates an invalid CSS selector immediately instead of retrying it as absent", async () => {
+    installFakeWebSocket();
+    const browser = await BrowserImpl.connect("ws://cdp");
+    const page = browser.contexts()[0]!.pages()[0]!;
+    await page.locator("[").innerText({ timeout: 1 });
+    const expression = [...FakeWebSocket.sent]
+      .reverse()
+      .find((entry) => entry.method === "Runtime.evaluate")!.params![
+      "expression"
+    ] as string;
+    const syntaxError = await runInNewContext(expression, {
+      document: {
+        querySelectorAll: () => {
+          throw new SyntaxError("'[' is not a valid selector");
+        },
+      },
+    }).catch((error: Error) => error);
+    expect(syntaxError.name).toBe("SyntaxError");
+    FakeWebSocket.evaluationException = {
+      text: "Uncaught",
+      exception: { description: `${syntaxError.name}: ${syntaxError.message}` },
+    };
+    const previousCount = FakeWebSocket.sent.length;
+    await expect(page.locator("[").innerText()).rejects.toMatchObject({
+      code: "cdp_evaluation_failed",
+      message: expect.stringContaining("not a valid selector"),
+      errorData: { locator: 'locator("[")', failureKind: "user-code" },
+    });
+    expect(FakeWebSocket.sent.slice(previousCount)).toHaveLength(1);
+    expect(FakeWebSocket.instances[0]!.closed).toBe(false);
+  });
+
   it("bounds a command that the relay never answers and closes the page connection", async () => {
     installFakeWebSocket();
     const browser = await BrowserImpl.connect("ws://cdp", {
@@ -552,8 +886,11 @@ describe("worker CDP client", () => {
       failure = error;
     }
     expect(failure).toBeInstanceOf(CdpError);
-    if (!(failure instanceof CdpError)) throw new Error("Expected a structured CdpError");
-    expect(failure.message).toContain("CDP command timed out after 10ms: Runtime.evaluate");
+    if (!(failure instanceof CdpError))
+      throw new Error("Expected a structured CdpError");
+    expect(failure.message).toContain(
+      "CDP command timed out after 10ms: Runtime.evaluate",
+    );
     expect(failure.errorData).toEqual({
       code: "cdp_command_timeout",
       operation: "Runtime.evaluate",
@@ -573,7 +910,9 @@ describe("worker CDP client", () => {
     page.setDefaultTimeout(10);
     FakeWebSocket.dropMethods.add("Runtime.evaluate");
 
-    const failure = await page.evaluate("new Promise(() => {})").catch((error: unknown) => error);
+    const failure = await page
+      .evaluate("new Promise(() => {})")
+      .catch((error: unknown) => error);
 
     expect(failure).toBeInstanceOf(CdpError);
     expect(failure).toMatchObject({
@@ -586,7 +925,10 @@ describe("worker CDP client", () => {
       },
     });
     expect(socket.closed).toBe(false);
-    expect((page.connection as unknown as { pending: Map<number, unknown> }).pending.size).toBe(0);
+    expect(
+      (page.connection as unknown as { pending: Map<number, unknown> }).pending
+        .size,
+    ).toBe(0);
 
     FakeWebSocket.dropMethods.delete("Runtime.evaluate");
     await expect(page.title()).resolves.toBe("Example");
@@ -598,8 +940,12 @@ describe("worker CDP client", () => {
     const page = browser.contexts()[0]!.pages()[0]!;
 
     await expect(page.locator("body").count()).resolves.toBe(1);
-    await expect(page.locator("body").textContent()).resolves.toBe("Hello text");
-    await expect(page.locator('text="Hello"').innerText()).resolves.toBe("Hello");
+    await expect(page.locator("body").textContent()).resolves.toBe(
+      "Hello text",
+    );
+    await expect(page.locator('text="Hello"').innerText()).resolves.toBe(
+      "Hello",
+    );
     expect(page.locator('text="Hello"')).toMatchObject({
       descriptor: { steps: [{ by: "text", value: "Hello", exact: true }] },
     });
@@ -607,7 +953,7 @@ describe("worker CDP client", () => {
       descriptor: { steps: [{ by: "text", value: "Hello", exact: false }] },
     });
     expect(() => page.locator('text="unterminated')).toThrow(
-      "quoted text must be a valid JSON string"
+      "quoted text must be a valid JSON string",
     );
     await expect(page.getByText("Hello").innerText()).resolves.toBe("Hello");
     const textEvaluation = FakeWebSocket.sent
@@ -616,24 +962,34 @@ describe("worker CDP client", () => {
       .find((expression) => expression.includes('"op":"innerText"'));
     expect(textEvaluation).toContain("nsHasTextMatchingDescendant");
     expect(textEvaluation).toContain(
-      'case "innerText": { var e=await nsWaitForState(d,"attached",t)'
+      'case "innerText": { var e=await nsWaitForState(d,"attached",t)',
     );
     expect(textEvaluation).not.toContain(
-      'case "innerText": { var e=await nsWaitForState(d,"visible",t)'
+      'case "innerText": { var e=await nsWaitForState(d,"visible",t)',
     );
-    await expect(page.getByRole("button", { name: "Sign in" }).isVisible()).resolves.toBe(true);
+    await expect(
+      page.getByRole("button", { name: "Sign in" }).isVisible(),
+    ).resolves.toBe(true);
     await expect(page.getByTestId("widget").isEnabled()).resolves.toBe(true);
     await expect(
-      page.getByRole("button", { name: "Add another column" }).isEnabled()
+      page.getByRole("button", { name: "Add another column" }).isEnabled(),
     ).resolves.toBe(false);
-    await expect(page.getByLabel("Email").getAttribute("id")).resolves.toBe("main");
-    await expect(page.locator("li").allInnerTexts()).resolves.toEqual(["Hello"]);
-    await expect(
-      page.locator("li").evaluateAll((elements) => elements.map((element) => element.textContent))
-    ).resolves.toEqual(["Hello"]);
-    await expect(page.locator("body").evaluate((element) => element.innerHTML)).resolves.toBe(
-      "<strong>Hello</strong>"
+    await expect(page.getByLabel("Email").getAttribute("id")).resolves.toBe(
+      "main",
     );
+    await expect(page.locator("li").allInnerTexts()).resolves.toEqual([
+      "Hello",
+    ]);
+    await expect(
+      page
+        .locator("li")
+        .evaluateAll((elements) =>
+          elements.map((element) => element.textContent),
+        ),
+    ).resolves.toEqual(["Hello"]);
+    await expect(
+      page.locator("body").evaluate((element) => element.innerHTML),
+    ).resolves.toBe("<strong>Hello</strong>");
     await expect(page.locator("body").inspect()).resolves.toMatchObject({
       found: true,
       tagName: "BODY",
@@ -657,10 +1013,10 @@ describe("worker CDP client", () => {
       .map((entry) => String(entry.params?.["expression"] ?? ""))
       .find((expression) => expression.includes('"op":"isEnabled"'));
     expect(locatorRuntime).toContain(
-      "return exact ? t===n : t.toLowerCase().indexOf(n.toLowerCase())!==-1"
+      "return exact ? t===n : t.toLowerCase().indexOf(n.toLowerCase())!==-1",
     );
     expect(locatorRuntime).toContain(
-      'case "isEnabled": { var e=nsFirst(d); return !!e && nsEnabled(e); }'
+      'case "isEnabled": { var e=nsFirst(d); return !!e && nsEnabled(e); }',
     );
   });
 
@@ -704,12 +1060,12 @@ describe("worker CDP client", () => {
     const waitEvaluations = FakeWebSocket.sent.filter(
       (entry) =>
         entry.method === "Runtime.evaluate" &&
-        String(entry.params?.["expression"] ?? "").includes('"op":"waitFor"')
+        String(entry.params?.["expression"] ?? "").includes('"op":"waitFor"'),
     );
     expect(waitEvaluations.length).toBeGreaterThan(1);
-    expect(String(waitEvaluations[0]?.params?.["expression"] ?? "")).not.toContain(
-      "await nsSleep(50)"
-    );
+    expect(
+      String(waitEvaluations[0]?.params?.["expression"] ?? ""),
+    ).not.toContain("await nsSleep(50)");
   });
 
   it("disconnects page automation without implying target ownership", async () => {
@@ -723,7 +1079,7 @@ describe("worker CDP client", () => {
 
     expect(socket.closed).toBe(true);
     await expect(page.title()).rejects.toThrow(
-      "Cannot send Runtime.evaluate: CDP connection closed by the client"
+      "Cannot send Runtime.evaluate: CDP connection closed by the client",
     );
   });
 
@@ -736,10 +1092,10 @@ describe("worker CDP client", () => {
     socket.remoteClose();
 
     await expect(page.title()).rejects.toThrow(
-      "runtime may have been replaced by handle.navigate() or handle.rebuild()"
+      "runtime may have been replaced by handle.navigate() or handle.rebuild()",
     );
     await expect(page.title()).rejects.toThrow(
-      "obtain a fresh page with await handle.cdp.page(); do not reuse the cached page"
+      "obtain a fresh page with await handle.cdp.page(); do not reuse the cached page",
     );
   });
 
@@ -761,9 +1117,9 @@ describe("worker CDP client", () => {
         mobile: false,
       },
     });
-    await expect(page.setViewportSize({ width: 0, height: 844 })).rejects.toThrow(
-      "positive integer width and height"
-    );
+    await expect(
+      page.setViewportSize({ width: 0, height: 844 }),
+    ).rejects.toThrow("positive integer width and height");
   });
 
   it("dispatches a real CDP mouse sequence for click (auto-waited)", async () => {
@@ -787,7 +1143,9 @@ describe("worker CDP client", () => {
       .find((expression) => expression.includes('"op":"probe"'));
     expect(probeEvaluation).toContain("document.elementFromPoint(x,y)");
     expect(probeEvaluation).toContain("hit!==el && !el.contains(hit)");
-    const mouse = FakeWebSocket.sent.filter((s) => s.method === "Input.dispatchMouseEvent");
+    const mouse = FakeWebSocket.sent.filter(
+      (s) => s.method === "Input.dispatchMouseEvent",
+    );
     expect(mouse.map((m) => m.params?.["type"])).toEqual([
       "mouseMoved",
       "mousePressed",
@@ -801,12 +1159,13 @@ describe("worker CDP client", () => {
     });
     const releaseIndex = FakeWebSocket.sent.findIndex(
       (event) =>
-        event.method === "Input.dispatchMouseEvent" && event.params?.["type"] === "mouseReleased"
+        event.method === "Input.dispatchMouseEvent" &&
+        event.params?.["type"] === "mouseReleased",
     );
     expect(
       FakeWebSocket.sent
         .slice(releaseIndex + 1)
-        .some((event) => event.method === "Runtime.evaluate")
+        .some((event) => event.method === "Runtime.evaluate"),
     ).toBe(false);
   });
 
@@ -824,22 +1183,27 @@ describe("worker CDP client", () => {
       .filter(
         (entry) =>
           entry.method === "Runtime.evaluate" &&
-          String(entry.params?.["expression"] ?? "").includes('"op":"probe"')
+          String(entry.params?.["expression"] ?? "").includes('"op":"probe"'),
       )
       .map((entry) => String(entry.params?.["expression"] ?? ""));
     expect(probes.length).toBeGreaterThan(1);
-    expect(probes.every((expression) => !expression.includes("await nsSleep(30)"))).toBe(true);
+    expect(
+      probes.every((expression) => !expression.includes("await nsSleep(30)")),
+    ).toBe(true);
   });
 
   it("returns an observed semantic postcondition from a click", async () => {
     installFakeWebSocket();
-    const browser = await BrowserImpl.connect("ws://cdp");
+    const onInteraction = vi.fn();
+    const browser = await BrowserImpl.connect("ws://cdp", { onInteraction });
     const page = browser.contexts()[0]!.pages()[0]!;
     const dialog = page.getByRole("dialog", { name: "Card details" });
 
-    const outcome = await page.getByRole("button", { name: "Open card" }).click({
-      expect: { locator: dialog, state: "visible" },
-    });
+    const outcome = await page
+      .getByRole("button", { name: "Open card" })
+      .click({
+        expect: { locator: dialog, state: "visible" },
+      });
 
     expect(outcome).toMatchObject({
       protocol: "cdp-interaction-outcome.v1",
@@ -851,6 +1215,7 @@ describe("worker CDP client", () => {
         state: "visible",
       },
     });
+    expect(onInteraction).toHaveBeenCalledExactlyOnceWith(outcome);
   });
 
   it("lets queued input run between locator wait probes", async () => {
@@ -860,13 +1225,17 @@ describe("worker CDP client", () => {
     const page = browser.contexts()[0]!.pages()[0]!;
 
     await page.getByRole("button", { name: "Trigger" }).click();
-    await page.getByRole("dialog", { name: "Revealed" }).waitFor({ timeout: 200 });
+    await page
+      .getByRole("dialog", { name: "Revealed" })
+      .waitFor({ timeout: 200 });
 
     const probes = FakeWebSocket.sent.filter(
       (entry) =>
         entry.method === "Runtime.evaluate" &&
         String(entry.params?.["expression"] ?? "").includes('"op":"waitFor"') &&
-        String(entry.params?.["expression"] ?? "").includes('"name":"Revealed"')
+        String(entry.params?.["expression"] ?? "").includes(
+          '"name":"Revealed"',
+        ),
     );
     expect(probes.length).toBeGreaterThan(1);
   });
@@ -905,7 +1274,9 @@ describe("worker CDP client", () => {
       .filter((entry) => entry.method === "Runtime.evaluate")
       .map((entry) => String(entry.params?.["expression"] ?? ""))
       .find((expression) => expression.includes('"op":"fill"'));
-    expect(fillEvaluation).toContain("Object.getOwnPropertyDescriptor(proto,name)");
+    expect(fillEvaluation).toContain(
+      "Object.getOwnPropertyDescriptor(proto,name)",
+    );
     expect(fillEvaluation).toContain("new InputEvent");
     expect(fillEvaluation).toContain("await nsAfterAction()");
     await page.locator("input").type("123");
@@ -919,12 +1290,18 @@ describe("worker CDP client", () => {
       .filter((entry) => entry.method === "Runtime.evaluate")
       .map((entry) => String(entry.params?.["expression"] ?? ""));
     expect(
-      checkboxOps.some((expression) => expression.includes('"op":"retainedCheckedState"'))
+      checkboxOps.some((expression) =>
+        expression.includes('"op":"retainedCheckedState"'),
+      ),
     ).toBe(true);
     expect(
-      checkboxOps.some((expression) => expression.includes('"op":"releaseRetainedElement"'))
+      checkboxOps.some((expression) =>
+        expression.includes('"op":"releaseRetainedElement"'),
+      ),
     ).toBe(true);
-    await expect(page.getByRole("combobox").selectOption("two")).resolves.toEqual(["two"]);
+    await expect(
+      page.getByRole("combobox").selectOption("two"),
+    ).resolves.toEqual(["two"]);
   });
 
   it("accepts Playwright-style select option matchers", async () => {
@@ -932,12 +1309,12 @@ describe("worker CDP client", () => {
     const browser = await BrowserImpl.connect("ws://cdp");
     const page = browser.contexts()[0]!.pages()[0]!;
 
-    await expect(page.getByRole("combobox").selectOption({ label: "Two" })).resolves.toEqual([
-      { label: "Two" },
-    ]);
-    await expect(page.getByRole("combobox").selectOption({ index: 1 })).resolves.toEqual([
-      { index: 1 },
-    ]);
+    await expect(
+      page.getByRole("combobox").selectOption({ label: "Two" }),
+    ).resolves.toEqual([{ label: "Two" }]);
+    await expect(
+      page.getByRole("combobox").selectOption({ index: 1 }),
+    ).resolves.toEqual([{ index: 1 }]);
 
     const selectEvaluation = FakeWebSocket.sent
       .filter((entry) => entry.method === "Runtime.evaluate")
@@ -954,7 +1331,9 @@ describe("worker CDP client", () => {
     const sentBefore = FakeWebSocket.sent.length;
 
     await expect(
-      page.getByRole("combobox").selectOption({ label: 42 as unknown as string })
+      page
+        .getByRole("combobox")
+        .selectOption({ label: 42 as unknown as string }),
     ).rejects.toThrow("selectOption option.label must be a string");
     expect(FakeWebSocket.sent).toHaveLength(sentBefore);
   });
@@ -968,20 +1347,22 @@ describe("worker CDP client", () => {
     await page.keyboard.insertText("replacement");
 
     const keyEvents = FakeWebSocket.sent.filter(
-      (event) => event.method === "Input.dispatchKeyEvent"
+      (event) => event.method === "Input.dispatchKeyEvent",
     );
     expect(
       keyEvents.some(
         (event) =>
           event.params?.["key"] === "A" &&
           event.params?.["type"] === "keyDown" &&
-          event.params?.["modifiers"] === 2
-      )
+          event.params?.["modifiers"] === 2,
+      ),
     ).toBe(true);
     expect(
       FakeWebSocket.sent.some(
-        (event) => event.method === "Input.insertText" && event.params?.["text"] === "replacement"
-      )
+        (event) =>
+          event.method === "Input.insertText" &&
+          event.params?.["text"] === "replacement",
+      ),
     ).toBe(true);
   });
 
@@ -992,14 +1373,16 @@ describe("worker CDP client", () => {
 
     await page.keyboard.press("Shift+Enter");
 
-    const events = FakeWebSocket.sent.filter((event) => event.method === "Input.dispatchKeyEvent");
+    const events = FakeWebSocket.sent.filter(
+      (event) => event.method === "Input.dispatchKeyEvent",
+    );
     expect(
       events.map((event) => ({
         type: event.params?.["type"],
         key: event.params?.["key"],
         text: event.params?.["text"],
         modifiers: event.params?.["modifiers"],
-      }))
+      })),
     ).toEqual([
       { type: "keyDown", key: "Shift", text: undefined, modifiers: 8 },
       { type: "keyDown", key: "Enter", text: undefined, modifiers: 8 },
@@ -1022,8 +1405,10 @@ describe("worker CDP client", () => {
       await page.keyboard.up(modifier);
       expect(
         FakeWebSocket.sent.filter(
-          (event) => event.method === "Input.dispatchKeyEvent" && event.params?.["type"] === "char"
-        )
+          (event) =>
+            event.method === "Input.dispatchKeyEvent" &&
+            event.params?.["type"] === "char",
+        ),
       ).toEqual([]);
 
       await page.keyboard.down("Shift");
@@ -1034,17 +1419,18 @@ describe("worker CDP client", () => {
         FakeWebSocket.sent
           .filter(
             (event) =>
-              event.method === "Input.dispatchKeyEvent" && event.params?.["type"] === "char"
+              event.method === "Input.dispatchKeyEvent" &&
+              event.params?.["type"] === "char",
           )
           .map((event) => ({
             text: event.params?.["text"],
             modifiers: event.params?.["modifiers"],
-          }))
+          })),
       ).toEqual([
         { text: "\r", modifiers: 8 },
         { text: "\r", modifiers: 0 },
       ]);
-    }
+    },
   );
 
   it("surfaces browser exception identity, message, and stack", async () => {
@@ -1060,10 +1446,11 @@ describe("worker CDP client", () => {
     } catch (error) {
       failure = error;
     }
-    if (!(failure instanceof CdpError)) throw new Error("Expected a structured CdpError");
+    if (!(failure instanceof CdpError))
+      throw new Error("Expected a structured CdpError");
     expect(failure.message).toBe(
       "Browser evaluation failed: ReferenceError: boom-marker is not defined\n" +
-        "    at save (https://example.com/panel.js:12:7)"
+        "    at save (https://example.com/panel.js:12:7)",
     );
     expect(failure.errorData).toEqual({
       code: "cdp_evaluation_failed",
@@ -1102,8 +1489,10 @@ describe("worker CDP client", () => {
     await expect(
       page.screenshot({ path: ".tmp/panel.png" } as unknown as {
         type?: "png";
-      })
-    ).rejects.toThrow("store it explicitly with @workspace/runtime blobstore.putBytes");
+      }),
+    ).rejects.toThrow(
+      "store it explicitly with @workspace/runtime blobstore.putBytes",
+    );
   });
 
   it("exposes a raw CdpConnection for protocol-level work", async () => {
@@ -1111,7 +1500,9 @@ describe("worker CDP client", () => {
     const conn = await CdpConnection.connect("ws://cdp", "token");
     const events: unknown[] = [];
     conn.on("Custom.event", (p) => events.push(p));
-    await expect(conn.send("Page.navigate", { url: "https://x" })).resolves.toBeDefined();
+    await expect(
+      conn.send("Page.navigate", { url: "https://x" }),
+    ).resolves.toBeDefined();
     conn.close();
   });
 
@@ -1121,10 +1512,10 @@ describe("worker CDP client", () => {
     const page = browser.contexts()[0]!.pages()[0]!;
 
     expect(page.getByRole("button", { name: "Go" }).toString()).toBe(
-      'getByRole("button", { name: "Go" })'
+      'getByRole("button", { name: "Go" })',
     );
     expect(page.getByRole("button", { name: /delete item/i }).toString()).toBe(
-      'getByRole("button", { name: /delete item/i })'
+      'getByRole("button", { name: /delete item/i })',
     );
     expect(page.getByRole("button", { name: /delete item/i })).toMatchObject({
       descriptor: {
@@ -1136,9 +1527,15 @@ describe("worker CDP client", () => {
         ],
       },
     });
-    expect(page.getByText("Hello").nth(2).toString()).toBe('getByText("Hello").nth(2)');
-    expect(page.locator("div").first().toString()).toBe('locator("div").first()');
-    expect(page.locator('text="Hello"').toString()).toBe('getByText("Hello", { exact: true })');
+    expect(page.getByText("Hello").nth(2).toString()).toBe(
+      'getByText("Hello").nth(2)',
+    );
+    expect(page.locator("div").first().toString()).toBe(
+      'locator("div").first()',
+    );
+    expect(page.locator('text="Hello"').toString()).toBe(
+      'getByText("Hello", { exact: true })',
+    );
     expect(page.getByTestId("save").toString()).toBe('getByTestId("save")');
   });
 
@@ -1172,7 +1569,7 @@ describe("worker CDP client", () => {
         code: "cdp_evaluation_failed",
         operation: "Runtime.evaluate",
         recovery: "correct-page-function",
-      })
+      }),
     );
 
     const failure = await page
@@ -1203,7 +1600,9 @@ describe("worker CDP client", () => {
       .click({ timeout: 40 })
       .catch((error: unknown) => error);
 
-    expect((err as Error).message).toContain('Available button names: "All 5", "Open 2", "Done 3"');
+    expect((err as Error).message).toContain(
+      'Available button names: "All 5", "Open 2", "Done 3"',
+    );
   });
 
   it("reports matching accessible targets when the requested role is wrong", async () => {
@@ -1217,7 +1616,7 @@ describe("worker CDP client", () => {
       .catch((error: unknown) => error);
 
     expect((err as Error).message).toContain(
-      'Available accessible targets: radio "Completed", tab "Completed"'
+      'Available accessible targets: radio "Completed", tab "Completed"',
     );
   });
 
@@ -1233,4 +1632,49 @@ describe("worker CDP client", () => {
       .catch((e: unknown) => e);
     expect((err as Error).message).toContain("40ms");
   });
+  it("uses control-free associated labels and refuses ambiguous single-element operations", async () => {
+    installFakeWebSocket();
+    const browser = await BrowserImpl.connect("ws://cdp");
+    const page = browser.contexts()[0]!.pages()[0]!;
+    await page.getByRole("combobox", { name: "Priority" }).count();
+    const expression = FakeWebSocket.sent
+      .filter((entry) => entry.method === "Runtime.evaluate")
+      .map((entry) => String(entry.params?.["expression"] ?? ""))
+      .find((value) => value.includes('"op":"count"'))!;
+    const associatedLabel = {
+      innerText: "PriorityLowNormalHigh",
+      cloneNode: () => {
+        const clone = {
+          innerText: "PriorityLowNormalHigh",
+          querySelectorAll: () => [{ remove: () => { clone.innerText = "Priority"; } }],
+        };
+        return clone;
+      },
+    };
+    const focus = vi.fn();
+    const filter = {
+      tagName: "SELECT", labels: [], focus,
+      getAttribute: (name: string) => name === "aria-label" ? "Filter priority" : null,
+    };
+    const editor = {
+      tagName: "SELECT", labels: [associatedLabel], focus,
+      getAttribute: () => null,
+    };
+    const document = { querySelectorAll: () => [filter, editor] };
+    expect(await runInNewContext(expression, { document })).toBe(2);
+    expect(await runInNewContext(expression.replace('"name":"Priority"', '"name":"Priority","exact":true'), { document })).toBe(1);
+    const failure = await runInNewContext(expression.replace('"op":"count"', '"op":"selectOption"'), { document });
+    expect(failure).toMatchObject({ __nsLocatorFailure: "ambiguous", matchCount: 2, candidates: [
+      { role: "combobox", accessibleName: "Filter priority" },
+      { role: "combobox", accessibleName: "Priority" },
+    ] });
+    expect(focus).not.toHaveBeenCalled();
+    vi.spyOn(page, "evaluate").mockResolvedValueOnce(failure);
+    await expect(page.getByRole("combobox", { name: "Priority" }).selectOption("high")).rejects.toMatchObject({
+      code: "cdp_locator_ambiguous", errorData: { operation: "selectOption", matchCount: 2 },
+    });
+    expect(FakeWebSocket.sent.some((entry) => entry.method.startsWith("Input."))).toBe(false);
+    await browser.close();
+  });
+
 });

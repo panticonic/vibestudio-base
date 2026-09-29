@@ -2,7 +2,7 @@
 
 import { Type, type Static } from "@sinclair/typebox";
 import type { AgentTool } from "@workspace/pi-core";
-import { vcsSemanticNodeRefSchema, type VcsSemanticNodeRef } from "@vibestudio/service-schemas/vcs";
+import { vcsSemanticNodeRefSchema, type VcsSemanticNodeRef, type VcsStateNodeRef } from "@vibestudio/service-schemas/vcs";
 import { splitRepoPath } from "@vibestudio/shared/runtime/entitySpec";
 import type { ToolVcs } from "./tool-vcs.js";
 import { resolveToolFile } from "../semantic-file-resolution.js";
@@ -74,7 +74,7 @@ const provenanceSchema = Type.Object(
     query: Type.Optional(
       Type.String({
         description:
-          "One read-only SELECT over the prov_* views. Start from `SELECT relation, meaning, columns FROM prov_schema` — one row per relation, so the whole contract arrives in a single page. A returned @ref may be used as a value; trusted code binds it to the exact identity.",
+          "One read-only SELECT over the prov_* views. Start from `SELECT relation, meaning, columns FROM prov_schema` — one row per relation, so the whole contract arrives in a single page. Queries cover the visible context; target does not scope a query and cannot be combined with query. Repository identities are not paths: inspect the repository path first, then compare repository_id to its returned @ref in SQL. Trusted code binds that ref to the exact identity.",
       })
     ),
     limit: Type.Optional(
@@ -122,7 +122,10 @@ export interface ProvenanceInvalidTargetDiagnostic {
   ];
 }
 
-export type ProvenanceToolDiagnostic = ProvenanceInvalidTargetDiagnostic;
+export type ProvenanceToolDiagnostic = ProvenanceInvalidTargetDiagnostic | {
+  diagnostic: "invalid-input";
+  fields: string[];
+};
 
 export interface WorkspacePathProvenanceDeps {
   vcs: Pick<ToolVcs, "status" | "resolveRepository" | "neighbors" | "inspect" | "readFile">;
@@ -181,7 +184,9 @@ function nodeIdentity(node: VcsSemanticNodeRef): string | null {
   }
 }
 
-const IDENTITY_COLUMN_NODES: Record<string, (value: string) => VcsSemanticNodeRef> = {
+type QueryIdentityNode = (value: string, state: VcsStateNodeRef) => VcsSemanticNodeRef;
+const IDENTITY_COLUMN_NODES: Record<string, QueryIdentityNode> = {
+  repository_id: (repositoryId, state) => ({ kind: "repository", repositoryId, state }),
   work_unit_id: (workUnitId) => ({ kind: "work-unit", workUnitId }),
   change_id: (changeId) => ({ kind: "change", changeId }),
   counteracted_change_id: (changeId) => ({ kind: "change", changeId }),
@@ -201,8 +206,9 @@ const IDENTITY_COLUMN_NODES: Record<string, (value: string) => VcsSemanticNodeRe
 };
 
 const POLYMORPHIC_IDENTITY_NODES: Partial<
-  Record<VcsSemanticNodeRef["kind"], (value: string) => VcsSemanticNodeRef>
+  Record<VcsSemanticNodeRef["kind"], QueryIdentityNode>
 > = {
+  repository: (repositoryId, state) => ({ kind: "repository", repositoryId, state }),
   "work-unit": (workUnitId) => ({ kind: "work-unit", workUnitId }),
   change: (changeId) => ({ kind: "change", changeId }),
   "applied-change": (appliedChangeId) => ({ kind: "applied-change", appliedChangeId }),
@@ -214,8 +220,9 @@ const POLYMORPHIC_IDENTITY_NODES: Partial<
 };
 
 const SELF_CONTAINED_IDENTITY_PREFIXES: ReadonlyArray<
-  readonly [string, (value: string) => VcsSemanticNodeRef]
+  readonly [string, QueryIdentityNode]
 > = [
+  ["repository:", (repositoryId, state) => ({ kind: "repository", repositoryId, state })],
   ["workspace-event:", (eventId) => ({ kind: "event", eventId })],
   ["event:", (eventId) => ({ kind: "event", eventId })],
   ["external-delta:", (deltaId) => ({ kind: "external-delta", deltaId })],
@@ -230,23 +237,24 @@ function queryIdentityNode(
   column: string,
   value: string,
   row: readonly (string | number | boolean | null)[],
-  columns: readonly string[]
+  columns: readonly string[],
+  state: VcsStateNodeRef
 ): VcsSemanticNodeRef | null {
   const fixed = IDENTITY_COLUMN_NODES[column];
-  if (fixed) return fixed(value);
+  if (fixed) return fixed(value, state);
 
   const inferred = SELF_CONTAINED_IDENTITY_PREFIXES.find(
     ([prefix]) =>
       value.startsWith(prefix) && /^[0-9a-f]{32,}$/u.test(value.slice(prefix.length))
   );
-  if (inferred) return inferred[1](value);
+  if (inferred) return inferred[1](value, state);
   if (!column.endsWith("_id")) return null;
 
   const kindColumn = `${column.slice(0, -"_id".length)}_kind`;
   const kindIndex = columns.indexOf(kindColumn);
   const kind = kindIndex >= 0 ? row[kindIndex] : null;
   if (typeof kind !== "string") return null;
-  return POLYMORPHIC_IDENTITY_NODES[kind as VcsSemanticNodeRef["kind"]]?.(value) ?? null;
+  return POLYMORPHIC_IDENTITY_NODES[kind as VcsSemanticNodeRef["kind"]]?.(value, state) ?? null;
 }
 
 /**
@@ -521,6 +529,18 @@ export function createProvenanceTool(
       const pages = { adjacency: 1, fileHistory: 1, limit: Math.min(input.limit ?? ORIENTATION_EDGE_LIMIT, 20) };
       let targetLabel = "session";
       try {
+        const conflictingFields = input.query !== undefined
+          ? ["target", "targets", "walk", "scope"].filter((field) => input[field as keyof ProvenanceToolInput] !== undefined)
+          : input.targets !== undefined
+            ? ["target", "walk", "scope"].filter((field) => input[field as keyof ProvenanceToolInput] !== undefined)
+            : [];
+        if (conflictingFields.length > 0) {
+          const mode = input.query !== undefined ? "query" : "targets";
+          return {
+            content: [{ type: "text" as const, text: `${mode} cannot be combined with ${conflictingFields.join(", ")}. Queries cover the visible context; express the set in SQL, comparing identity columns to returned @refs rather than managed paths.` }],
+            details: { diagnostic: "invalid-input" as const, fields: [mode, ...conflictingFields] },
+          };
+        }
         if (input.query) {
           const result = await deps.vcs.query({
             contextId: contextId(),
@@ -534,7 +554,7 @@ export function createProvenanceTool(
                 text: renderQueryBlock({
                   result,
                   identityColumns: (column, value, row, columns) => {
-                    const node = queryIdentityNode(column, value, row, columns);
+                    const node = queryIdentityNode(column, value, row, columns, result.state);
                     return node ? reference(node) : null;
                   },
                 }),

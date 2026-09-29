@@ -1,5 +1,5 @@
 // Builtin semantic-authority tests.
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { createInMemorySql } from "@vibestudio/durable/test-utils";
 import { contextMaterializationCommand } from "@vibestudio/shared/vcs/workspaceProjection";
 import {
@@ -472,6 +472,23 @@ describe("SemanticVcsStore reduced spine", () => {
       eventId: committed.event.eventId,
     });
     expect(() => store.assertIntegrity()).not.toThrow();
+  });
+
+  it("checks a shared immutable root once per assessment while validating it afresh next time", async () => {
+    const sql = await createInMemorySql();
+    createSemanticVcsSchema(sql);
+    const store = new SemanticVcsStore(sql, () => timestamp);
+    const initial = store.initializeWorkspace("context:root", "command:root-genesis");
+    for (let index = 0; index < 20; index++) {
+      store.initializeWorkspace(`context:shared-${index}`, `command:shared-${index}`);
+    }
+    const parity = vi.spyOn(store.facts, "assertIndexParity");
+    store.assertIntegrity();
+    expect(parity).toHaveBeenCalledTimes(1);
+    expect(parity).toHaveBeenCalledWith(initial.committed.workspaceFactRootId);
+    parity.mockImplementationOnce(() => { throw new Error("new storage corruption"); });
+    expect(() => store.assertIntegrity()).toThrow("new storage corruption");
+    expect(parity).toHaveBeenCalledTimes(2);
   });
 
   it("commits multiple integration sources as ordered semantic parents", async () => {

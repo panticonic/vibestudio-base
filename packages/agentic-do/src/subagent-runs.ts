@@ -307,6 +307,18 @@ export class SubagentRunStore {
     this.sql.exec(`UPDATE subagent_runs SET status = ? WHERE run_id = ?`, status, runId);
   }
 
+  /** Closing a turn makes a live execution idle. A retained terminal can be
+   * superseded only by an explicit new execution, never by a late close event.
+   * Keep the predicate in the mutation: another delivery may settle the run
+   * while the caller is awaiting the child's activity read. */
+  markExecutionIdle(runId: string): void {
+    this.sql.exec(
+      `UPDATE subagent_runs SET status = 'completed'
+       WHERE run_id = ? AND status IN ('starting', 'running')`,
+      runId,
+    );
+  }
+
   setSourceEventId(runId: string, sourceEventId: string): void {
     this.sql.exec(`UPDATE subagent_runs SET source_event_id = ? WHERE run_id = ?`, sourceEventId, runId);
   }

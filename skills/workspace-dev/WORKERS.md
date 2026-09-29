@@ -93,9 +93,12 @@ explicit fork/clone/subagent lifecycle APIs. A panel may move to an existing
 branch only through `panel.switchContext(contextId, opts?)` or an explicit
 panel-tree navigation carrying `contextId`.
 
-For workers and Durable Objects, the owning `contextId` also selects the
-default semantic working state. Omit `ref` to follow that context; use `ref: "main"` only
-to pin protected main, or another explicit immutable selector deliberately.
+For all code-backed runtimes, `contextId` selects filesystem/storage isolation.
+An omitted `ref` on direct creation selects the verified initiating caller's
+semantic workspace. Pass `ref: "ctx:<contextId>"` to build from a different
+runtime context, or `ref: "main"` to select protected main deliberately.
+Cloning builds from the cloned semantic frontier; reserved activation builds
+from the reservation's retained context unless an explicit `ref` is supplied.
 
 ## Worker Lifecycle and Environment Bindings
 
@@ -597,12 +600,28 @@ Workspace-built DOs are admitted dynamically from the caller's live semantic
 declarations and still require exact source/class/object-key receiver authority.
 An exported class is not a class-wide grant, and another key is another resource.
 
-For fast Vitest-only unit coverage, keep storage logic in methods like the above
-and use `createTestDO(...)` in a co-located worker test. That helper is
-intentionally test-only: it creates an in-memory sql.js-backed object in the
-test process and does not exercise service resolution, workerd persistence, or
-the RPC/policy boundary. Do not import `createTestDO` from agent eval or
-production panel/worker/DO code.
+For co-located workerd tests, import test registration and assertions from
+`@workspace/test-runtime` and test pure logic without host-only dependencies.
+Exercise actual durable persistence and RPC authority through the running
+object's ordinary service or durable-object interface shown above.
+
+`createTestDO(...)` from `@workspace/runtime/worker/test-utils` is a Node-only
+unit fixture. It constructs an in-memory sql.js-backed object, so tests using it
+must import `describe`, `it`, and `expect` from `vitest` and declare an explicit
+native suite in the worker's `package.json`:
+
+```json
+"vibestudio": {
+  "tests": [{ "name": "unit", "runtime": "native", "include": ["**/*.test.ts"] }]
+}
+```
+
+Run that declared suite through `verify({ operation: "test", target:
+"workers/my-store", suite: "unit" })`. Native execution requires its ordinary
+`native.code.execute-tests` authority; runtime selection never falls back after
+an error. This fixture does not prove workerd persistence or the RPC/policy
+boundary. It is not exported to workerd, browser tests, agent eval, or production
+worker/DO code.
 
 ## Durable Object current schema
 

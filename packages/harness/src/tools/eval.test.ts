@@ -1,10 +1,16 @@
 import { Value } from "@sinclair/typebox/value";
 import { describe, expect, it } from "vitest";
-import { createEvalTool, formatEvalResult, type EvalRunResult } from "./eval.js";
+import {
+  createEvalTool,
+  formatEvalResult,
+  type EvalRunResult,
+} from "./eval.js";
 
 /** Join the text parts of a formatted tool result. */
-function textOf(out: ReturnType<typeof formatEvalResult>): string {
-  return out.content.map((c) => (c as { type: string; text?: string }).text ?? "").join("\n");
+function textOf(out: Awaited<ReturnType<typeof formatEvalResult>>): string {
+  return out.content
+    .map((c) => (c as { type: string; text?: string }).text ?? "")
+    .join("\n");
 }
 
 function terminal(result: EvalRunResult): {
@@ -12,12 +18,43 @@ function terminal(result: EvalRunResult): {
   status: "terminal";
   snapshot: { status: "done"; result: EvalRunResult };
 } {
-  return { runId: "echo", status: "terminal", snapshot: { status: "done", result } };
+  return {
+    runId: "echo",
+    status: "terminal",
+    snapshot: { status: "done", result },
+  };
 }
 
 describe("formatEvalResult (shared by the eval tool's execute + the agent's deferred onEvalComplete)", () => {
-  it("presents one flat argument object instead of duplicating options across a union", () => {
-    const tool = createEvalTool(async () => ({ success: true, console: "" }) as never);
+  it("retains completed runtime operations when a later eval statement failed", async () => {
+    const operationJournal = {
+      protocol: "workspace-operations.v1" as const,
+      entries: [
+        {
+          type: "interaction",
+          id: "panel:test",
+          receipt: {
+            protocol: "cdp-interaction-outcome.v1",
+            effect: { status: "observed" },
+          },
+        },
+      ],
+      truncated: false,
+    };
+    const result = await formatEvalResult({
+      success: false,
+      console: "",
+      error: "later statement failed",
+      operationJournal,
+    });
+    expect(result.isError).toBe(true);
+    expect(result.details).toMatchObject({ operationJournal });
+    expect(textOf(result)).toContain("details.operationJournal");
+  });
+  it("presents one flat argument object instead of duplicating options across a union", async () => {
+    const tool = createEvalTool(
+      async () => ({ success: true, console: "" }) as never,
+    );
     const schema = tool.parameters as {
       type?: string;
       anyOf?: unknown;
@@ -31,32 +68,44 @@ describe("formatEvalResult (shared by the eval tool's execute + the agent's defe
     expect(schema.properties).toHaveProperty("authority");
   });
 
-  it("makes the JavaScript parser boundary explicit in the model-visible schema", () => {
-    const tool = createEvalTool(async () => ({ success: true, console: "" }) as never);
+  it("makes the JavaScript parser boundary explicit in the model-visible schema", async () => {
+    const tool = createEvalTool(
+      async () => ({ success: true, console: "" }) as never,
+    );
     const schema = JSON.stringify(tool.parameters);
 
     expect(schema).toContain("Omit this for TypeScript/TSX");
-    expect(schema).toContain("only for plain JavaScript with no type annotations");
+    expect(schema).toContain(
+      "only for plain JavaScript with no type annotations",
+    );
   });
 
-  it("directs API discovery through the live self-describing runtime", () => {
-    const tool = createEvalTool(async () => ({ success: true, console: "" }) as never);
+  it("directs API discovery through the live self-describing runtime", async () => {
+    const tool = createEvalTool(
+      async () => ({ success: true, console: "" }) as never,
+    );
     expect(tool.description).toContain("await help()");
     expect(tool.description).toContain('await help("workers")');
-    expect(tool.description).toContain("before guessing an API or return shape");
+    expect(tool.description).toContain(
+      "before guessing an API or return shape",
+    );
     expect(tool.description).toContain("handle.cdp.screenshot()");
     expect(tool.description).toContain("page.consoleEvents()");
-    expect(tool.description).toContain("{ entries, errors, dropped, capacity }");
+    expect(tool.description).toContain(
+      "{ entries, errors, dropped, capacity }",
+    );
   });
 
-  it("documents the warm notebook contract and makes a cold restart impossible to miss", () => {
-    const tool = createEvalTool(async () => ({ success: true, console: "" }) as never);
+  it("documents the warm notebook contract and makes a cold restart impossible to miss", async () => {
+    const tool = createEvalTool(
+      async () => ({ success: true, console: "" }) as never,
+    );
     expect(tool.description).toContain("retained for 30 minutes");
     expect(tool.description).toContain("objects with methods");
     expect(tool.description).toContain("[kernel] Restarted");
 
     const text = textOf(
-      formatEvalResult({
+      await formatEvalResult({
         success: true,
         console: "",
         scopeKeys: ["panelId"],
@@ -73,7 +122,7 @@ describe("formatEvalResult (shared by the eval tool's execute + the agent's defe
             },
           },
         },
-      })
+      }),
     );
 
     expect(text).toContain("[kernel] Restarted");
@@ -82,9 +131,9 @@ describe("formatEvalResult (shared by the eval tool's execute + the agent's defe
     expect(text).toContain("Reacquire lost handles from stable IDs");
   });
 
-  it("reports restart recovery as unavailable when hydration itself fails", () => {
+  it("reports restart recovery as unavailable when hydration itself fails", async () => {
     const text = textOf(
-      formatEvalResult({
+      await formatEvalResult({
         success: false,
         console: "",
         error: "scope backend unavailable",
@@ -96,7 +145,7 @@ describe("formatEvalResult (shared by the eval tool's execute + the agent's defe
             recovery: { status: "unavailable" },
           },
         },
-      })
+      }),
     );
 
     expect(text).toContain("[kernel] Restarted");
@@ -116,19 +165,27 @@ describe("formatEvalResult (shared by the eval tool's execute + the agent's defe
       Value.Check(tool.parameters, {
         code: "return 1",
         authority: { effects: "read-write" },
-      })
+      }),
     ).toBe(true);
     expect(
       Value.Check(tool.parameters, {
         code: "return 1",
         authority: { effects: "mutable" },
-      })
+      }),
     ).toBe(false);
-    expect(Value.Check(tool.parameters, { code: "return 1", timeoutMs: 250 })).toBe(true);
-    expect(Value.Check(tool.parameters, { code: "return 1", timeoutMs: 0 })).toBe(false);
-    expect(Value.Check(tool.parameters, { code: "return 1", timeoutMs: 1.5 })).toBe(false);
+    expect(
+      Value.Check(tool.parameters, { code: "return 1", timeoutMs: 250 }),
+    ).toBe(true);
+    expect(
+      Value.Check(tool.parameters, { code: "return 1", timeoutMs: 0 }),
+    ).toBe(false);
+    expect(
+      Value.Check(tool.parameters, { code: "return 1", timeoutMs: 1.5 }),
+    ).toBe(false);
     expect(tool.description).toContain("no implicit wall deadline");
-    expect(tool.description).toContain("never add a generic 120000/300000 safety timeout");
+    expect(tool.description).toContain(
+      "never add a generic 120000/300000 safety timeout",
+    );
     expect(tool.description).toContain("Bound a specific wait");
 
     await tool.execute("call-timeout", { code: "return 1", timeoutMs: 250 });
@@ -173,7 +230,10 @@ describe("formatEvalResult (shared by the eval tool's execute + the agent's defe
       return terminal({ success: true, console: "", scopeKeys: [] }) as never;
     });
 
-    await tool.execute("call-reset", { reset: true, code: "return Object.keys(scope)" } as never);
+    await tool.execute("call-reset", {
+      reset: true,
+      code: "return Object.keys(scope)",
+    } as never);
 
     expect(calls[0]?.[0]).toMatchObject({
       reset: true,
@@ -184,7 +244,11 @@ describe("formatEvalResult (shared by the eval tool's execute + the agent's defe
     const calls: unknown[][] = [];
     const tool = createEvalTool(async (_method, args) => {
       calls.push(args);
-      return terminal({ success: true, console: "", returnValue: "# Sandbox" }) as never;
+      return terminal({
+        success: true,
+        console: "",
+        returnValue: "# Sandbox",
+      }) as never;
     });
 
     await tool.execute("call-1", { path: "skills/sandbox/SKILL.md" } as never);
@@ -201,11 +265,19 @@ describe("formatEvalResult (shared by the eval tool's execute + the agent's defe
     const calls: unknown[][] = [];
     const tool = createEvalTool(async (_method, args) => {
       calls.push(args);
-      return terminal({ success: true, console: "", returnValue: { ok: true } }) as never;
+      return terminal({
+        success: true,
+        console: "",
+        returnValue: { ok: true },
+      }) as never;
     });
 
-    await tool.execute("call-ts", { path: ".vibestudio/eval/check.ts" } as never);
-    await tool.execute("call-js", { path: ".vibestudio/eval/check.js" } as never);
+    await tool.execute("call-ts", {
+      path: ".vibestudio/eval/check.ts",
+    } as never);
+    await tool.execute("call-js", {
+      path: ".vibestudio/eval/check.js",
+    } as never);
 
     expect(calls[0]?.[0]).toMatchObject({
       source: { kind: "context-file", path: ".vibestudio/eval/check.ts" },
@@ -214,14 +286,14 @@ describe("formatEvalResult (shared by the eval tool's execute + the agent's defe
       source: { kind: "context-file", path: ".vibestudio/eval/check.js" },
     });
   });
-  it("formats a successful run: console + return value + scope keys, raw result on details", () => {
+  it("formats a successful run: console + return value + scope keys, raw result on details", async () => {
     const result: EvalRunResult = {
       success: true,
       console: "hello",
       returnValue: { a: 1 },
       scopeKeys: ["x", "y"],
     };
-    const out = formatEvalResult(result);
+    const out = await formatEvalResult(result);
     const text = textOf(out);
     expect(text).toContain("[eval] Console:\nhello");
     expect(text).toContain("[eval] Return value:");
@@ -232,9 +304,9 @@ describe("formatEvalResult (shared by the eval tool's execute + the agent's defe
     expect(out.isError).toBe(false);
   });
 
-  it("keeps owned panel resources visible until the agent archives them", () => {
+  it("keeps owned panel resources visible until the agent archives them", async () => {
     const text = textOf(
-      formatEvalResult({
+      await formatEvalResult({
         success: true,
         console: "",
         panelResources: {
@@ -246,7 +318,7 @@ describe("formatEvalResult (shared by the eval tool's execute + the agent's defe
             },
           ],
         },
-      })
+      }),
     );
 
     expect(text).toContain("still owns open panels");
@@ -255,17 +327,31 @@ describe("formatEvalResult (shared by the eval tool's execute + the agent's defe
     expect(text).toContain("intentional user-facing result");
   });
 
-  it("projects a canonical panel screenshot as native image content without base64 text", () => {
+  it("projects a canonical panel screenshot as native image content without base64 text", async () => {
     const data = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAAB";
-    const out = formatEvalResult({
-      success: true,
-      console: "",
-      returnValue: { data, mimeType: "image/png", width: 1280, height: 720 },
-    });
+    const out = await formatEvalResult(
+      {
+        success: true,
+        console: "",
+        returnValue: {
+          protocol: "eval-image-artifact.v1",
+          digest: "a".repeat(64),
+          size: 24,
+          mimeType: "image/png",
+          width: 1280,
+          height: 720,
+        },
+      },
+      async () => data,
+    );
 
     expect(textOf(out)).toContain("attached image/png image (1280×720)");
     expect(textOf(out)).not.toContain(data);
-    expect(out.content[1]).toEqual({ type: "image", mimeType: "image/png", data });
+    expect(out.content[1]).toEqual({
+      type: "image",
+      mimeType: "image/png",
+      data,
+    });
     expect(out.details).toMatchObject({
       returnValue: {
         protocol: "eval-image-result.v1",
@@ -278,8 +364,41 @@ describe("formatEvalResult (shared by the eval tool's execute + the agent's defe
     expect(JSON.stringify(out.details)).not.toContain(data);
   });
 
-  it("formats a failure: error line, no return value", () => {
-    const out = formatEvalResult({ success: false, console: "", error: "boom" });
+  it("settles a missing image artifact as an infrastructure failure with its receipt preserved", async () => {
+    const artifact = {
+      protocol: "eval-image-artifact.v1",
+      digest: "b".repeat(64),
+      size: 400_000,
+      mimeType: "image/png",
+    };
+    for (const readArtifact of [
+      undefined,
+      async () => null,
+      async () => {
+        throw new Error("blob receiver crashed");
+      },
+    ]) {
+      const out = await formatEvalResult(
+        { success: true, console: "", returnValue: artifact },
+        readArtifact,
+      );
+      expect(out.isError).toBe(true);
+      expect(out.details).toMatchObject({
+        success: false,
+        failureKind: "infrastructure",
+        failureCode: "eval_artifact_unavailable",
+        returnValue: artifact,
+      });
+      expect(out.content.every((part) => part.type === "text")).toBe(true);
+    }
+  });
+
+  it("formats a failure: error line, no return value", async () => {
+    const out = await formatEvalResult({
+      success: false,
+      console: "",
+      error: "boom",
+    });
     const text = textOf(out);
     expect(text).toContain("[eval] Error: boom");
     expect(text).not.toContain("[eval] Return value");
@@ -287,7 +406,7 @@ describe("formatEvalResult (shared by the eval tool's execute + the agent's defe
     expect(out.isError).toBe(true);
   });
 
-  it("references structured failure data once and preserves it on tool details", () => {
+  it("references structured failure data once and preserves it on tool details", async () => {
     const result: EvalRunResult = {
       success: false,
       console: "",
@@ -299,43 +418,62 @@ describe("formatEvalResult (shared by the eval tool's execute + the agent's defe
         published: false,
       },
     };
-    const out = formatEvalResult(result);
+    const out = await formatEvalResult(result);
     const text = textOf(out);
 
-    expect(text).toContain("[eval] Structured failure: scaffold_publication_failed");
+    expect(text).toContain(
+      "[eval] Structured failure: scaffold_publication_failed",
+    );
     expect(text).not.toContain('"committedEventId": "event:committed"');
     expect(out.details).toBe(result);
   });
 
-  it("uses 'unknown error' when a failure has no error string", () => {
-    const text = textOf(formatEvalResult({ success: false, console: "" }));
+  it("uses 'unknown error' when a failure has no error string", async () => {
+    const text = textOf(
+      await formatEvalResult({ success: false, console: "" }),
+    );
     expect(text).toContain("[eval] Error: unknown error");
   });
 
-  it("does NOT print a return value on failure even if one is present", () => {
+  it("does NOT print a return value on failure even if one is present", async () => {
     const text = textOf(
-      formatEvalResult({ success: false, console: "", error: "x", returnValue: 42 })
+      await formatEvalResult({
+        success: false,
+        console: "",
+        error: "x",
+        returnValue: 42,
+      }),
     );
     expect(text).not.toContain("[eval] Return value");
   });
 
-  it("windows oversized console with its stable recovery slot", () => {
+  it("windows oversized console with its stable recovery slot", async () => {
     const big = "a".repeat(150_000);
-    const text = textOf(formatEvalResult({ success: true, console: big }));
+    const text = textOf(
+      await formatEvalResult({ success: true, console: big }),
+    );
     expect(text.length).toBeLessThan(big.length); // truncated
     expect(text).toContain("truncated");
     expect(text).toContain("scope.$lastLargeConsole");
   });
 
-  it("windows an oversized return value with its stable recovery slot", () => {
+  it("windows an oversized return value with its stable recovery slot", async () => {
     const big = "b".repeat(150_000);
-    const text = textOf(formatEvalResult({ success: true, console: "", returnValue: big }));
+    const text = textOf(
+      await formatEvalResult({ success: true, console: "", returnValue: big }),
+    );
     expect(text).toContain("scope.$lastLargeReturn");
     expect(text).toContain("truncated");
   });
 
-  it("does not truncate normal-sized output", () => {
-    const text = textOf(formatEvalResult({ success: true, console: "small", returnValue: "tiny" }));
+  it("does not truncate normal-sized output", async () => {
+    const text = textOf(
+      await formatEvalResult({
+        success: true,
+        console: "small",
+        returnValue: "tiny",
+      }),
+    );
     expect(text).not.toContain("truncated");
     expect(text).toContain("small");
     expect(text).toContain("tiny");

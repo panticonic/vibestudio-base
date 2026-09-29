@@ -1,13 +1,63 @@
-export type PanelJournalEntry =
+import { EVAL_OPERATION_JOURNAL_MAX_ENTRIES } from "@vibestudio/service-schemas/eval";
+
+export function consoleHistoryReceipt(
+  history: import("@vibestudio/shared/panel/observation").PanelConsoleHistoryResult,
+  options?: import("../core/types.js").PanelConsoleHistoryOptions,
+) {
+  const unfiltered = Object.keys(options ?? {}).every(
+    (key) => key === "limit" || key === "errorLimit",
+  );
+  return {
+    capturedAt: Date.now(),
+    errorCount: history.errors.length,
+    droppedErrors: history.dropped.errors,
+    errorCoverage:
+      unfiltered && options?.errorLimit !== 0
+        ? ("full" as const)
+        : ("filtered" as const),
+  };
+}
+
+export type OperationJournalEntry =
   | { type: "open"; source: string; id: string; kind: "workspace" | "browser" }
   | { type: "reload"; id: string }
   | { type: "close"; id: string }
+  | { type: "interaction"; id: string; receipt: unknown }
+  | {
+      type: "snapshot";
+      id: string;
+      receipt: Omit<
+        import("@vibestudio/shared/panel/observation").PanelSnapshotObservation,
+        "document"
+      > & { documentKind: "synth" };
+    }
+  | {
+      type: "consoleHistory";
+      id: string;
+      receipt: ReturnType<typeof consoleHistoryReceipt>;
+    }
+  | {
+      type: "screenshot";
+      id: string;
+      receipt: {
+        capturedAt: number;
+        mimeType: "image/png" | "image/jpeg";
+        width?: number;
+        height?: number;
+        byteSize: number;
+      };
+    }
   | { type: "stateArgs.set"; id: string };
 
 export class Journal {
-  readonly entries: PanelJournalEntry[] = [];
+  readonly entries: OperationJournalEntry[] = [];
+  truncated = false;
 
-  append(entry: PanelJournalEntry): void {
+  append(entry: OperationJournalEntry): void {
+    if (this.entries.length >= EVAL_OPERATION_JOURNAL_MAX_ENTRIES) {
+      this.truncated = true;
+      return;
+    }
     this.entries.push(entry);
   }
 }
@@ -17,14 +67,20 @@ const fanoutJournal: Journal = {
   get entries() {
     return [];
   },
-  append(entry: PanelJournalEntry): void {
+  get truncated() {
+    return [...active.keys()].some((journal) => journal.truncated);
+  },
+  append(entry: OperationJournalEntry): void {
     for (const journal of active.keys()) {
       journal.append(entry);
     }
   },
-} as Journal;
+};
 
-export async function withJournal<T>(journal: Journal, fn: () => Promise<T> | T): Promise<T> {
+export async function withJournal<T>(
+  journal: Journal,
+  fn: () => Promise<T> | T,
+): Promise<T> {
   active.set(journal, (active.get(journal) ?? 0) + 1);
   try {
     return await fn();

@@ -59,6 +59,9 @@ function runtimeHarness(
     onCreateSlotTiming?: NonNullable<
       Parameters<typeof createPanelRuntime>[0]["onCreateSlotTiming"]
     >;
+    recordOperation?: Parameters<
+      typeof createPanelRuntime
+    >[0]["recordOperation"];
   } = {},
 ) {
   let currentSlotId = "panel:tree/new";
@@ -414,6 +417,7 @@ function runtimeHarness(
       defaultOpenParentId: null,
       createCdp: () => ({}) as never,
       onCreateSlotTiming: options.onCreateSlotTiming,
+      recordOperation: options.recordOperation,
     }),
   };
 }
@@ -436,8 +440,41 @@ function runtimeFocusHarness() {
 }
 
 describe("panel runtime topology composition", () => {
+  it("sends completed lifecycle operations to the execution owner's journal port", async () => {
+    const recordOperation = vi.fn();
+    const { runtime } = runtimeHarness({ recordOperation });
+    const handle = runtime.getPanelHandle("panel:tree/new");
+    await handle.reload();
+    expect(recordOperation).toHaveBeenCalledWith({
+      type: "reload",
+      id: "panel:tree/new",
+    });
+  });
+  it("records a completed snapshot with its exact native panel generation", async () => {
+    const recordOperation = vi.fn();
+    const { runtime } = runtimeHarness({ recordOperation });
+    const snapshot = await runtime.getPanelHandle("panel:tree/new").snapshot();
+    expect(recordOperation).toHaveBeenCalledWith({
+      type: "snapshot",
+      id: "panel:tree/new",
+      receipt: {
+        panelId: snapshot.panelId,
+        attemptId: snapshot.attemptId,
+        runtimeEntityId: snapshot.runtimeEntityId,
+        buildKey: snapshot.buildKey,
+        capturedAt: snapshot.capturedAt,
+        documentKind: "synth",
+      },
+    });
+    expect(snapshot).toMatchObject({
+      panelId: "panel:tree/new",
+      runtimeEntityId: expect.any(String),
+      attemptId: expect.any(String),
+      document: { kind: "synth" },
+    });
+  });
   it.each([undefined, "main", "release-v1"])(
-    "reloads code by resolving a fresh incarnation at ref %s and replacing the current history cell",
+    "rebuilds code at ref %s while retaining the runtime context and replacing the current history cell",
     async (ref) => {
       const { runtime, call } = runtimeHarness();
       const original = call.getMockImplementation()!;
@@ -457,7 +494,7 @@ describe("panel runtime topology composition", () => {
 
       const observation = await runtime
         .getPanelHandle("panel:tree/new")
-        .reload();
+        .rebuild();
 
       expect(observation.runtimeEntityId).not.toBe("panel:nav-new");
       expect(call).toHaveBeenCalledWith("main", "runtime.createEntity", [
@@ -498,22 +535,27 @@ describe("panel runtime topology composition", () => {
     },
   );
 
-  it("reloads a browser in place without changing its runtime or history", async () => {
-    const { runtime, call } = runtimeHarness({ browserReady: true });
+  it.each([false, true])(
+    "reloads a renderer in place without replacing its runtime or storage (browser=%s)",
+    async (browserReady) => {
+      const { runtime, call } = runtimeHarness({ browserReady });
 
-    const observation = await runtime.getPanelHandle("panel:tree/new").reload();
+      const observation = await runtime
+        .getPanelHandle("panel:tree/new")
+        .reload();
 
-    expect(observation.runtimeEntityId).toBe("panel:nav-new");
-    expect(call).toHaveBeenCalledWith("main", "runtime.supervision.restart", [
-      { kind: "panel", entityId: "panel:nav-new" },
-    ]);
-    expect(call.mock.calls.map((entry) => entry[1])).not.toContain(
-      "runtime.createEntity",
-    );
-    expect(call.mock.calls.map((entry) => entry[1])).not.toContain(
-      "workspace-state.slot.commitPreparedNavigation",
-    );
-  });
+      expect(observation.runtimeEntityId).toBe("panel:nav-new");
+      expect(call).toHaveBeenCalledWith("main", "runtime.supervision.restart", [
+        { kind: "panel", entityId: "panel:nav-new" },
+      ]);
+      expect(call.mock.calls.map((entry) => entry[1])).not.toContain(
+        "runtime.createEntity",
+      );
+      expect(call.mock.calls.map((entry) => entry[1])).not.toContain(
+        "workspace-state.slot.commitPreparedNavigation",
+      );
+    },
+  );
 
   it("ledger:execution.panel", async () => {
     const { runtime, call } = runtimeHarness();

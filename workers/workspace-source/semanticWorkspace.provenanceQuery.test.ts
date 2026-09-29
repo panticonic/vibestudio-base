@@ -413,7 +413,7 @@ describe("provenance walks", () => {
 
 describe("the prov_* relational contract", () => {
   it("returns work units with the persisted resolved intent", async () => {
-    const { semantic } = await fixture();
+    const { semantic, workingHead } = await fixture();
     const result = await query(semantic, {
       contextId: "context:test",
       query:
@@ -421,6 +421,7 @@ describe("the prov_* relational contract", () => {
       visibilityContextIds: ["context:test"],
     });
     expect(result.refusal).toBeNull();
+    expect(result.state).toEqual(workingHead);
     expect(result.rows.length).toBeGreaterThan(0);
     expect(column(result, "intent_text")).toContain("Cap the retry backoff at 30 seconds");
     expect(new Set(column(result, "resolver_protocol"))).toEqual(new Set(["intent-ladder/v1"]));

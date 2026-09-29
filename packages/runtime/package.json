@@ -29,7 +29,11 @@
     "./worker/panel-durable-base": "./src/worker/panel-durable-base.ts",
     "./worker/rpc-fs": "./src/shared/rpcFs.ts",
     "./worker/sql-table-schema": "./src/worker/sql-table-schema.ts",
-    "./worker/test-utils": "./src/worker/durable-test-utils.ts",
+    "./worker/test-utils": {
+      "types": "./src/worker/durable-test-utils.ts",
+      "node": "./src/worker/durable-test-utils.ts",
+      "default": null
+    },
     "./workerd-client": "./src/shared/workerd.ts",
     "./workspace-presentation": "./src/shared/workspacePresentation.ts",
     "./internal/diagnostics": "./src/internal/diagnostics.ts",

@@ -345,6 +345,7 @@ export class SemanticVcsStore {
     const contexts = this.sql
       .exec(`SELECT context_id, committed_event_id, working_head_application_id FROM vcs_contexts`)
       .toArray() as Row[];
+    const checkedRoots = new Set<string>();
     for (const row of contexts) {
       const context = this.context(text(row, "context_id"));
       if (!context) throw new SemanticVcsError("IntegrityFailure", "Context disappeared");
@@ -355,9 +356,10 @@ export class SemanticVcsStore {
           `Context ${context.contextId} has a detached working chain`
         );
       }
-      this.facts.assertIndexParity(context.committed.workspaceFactRootId);
-      if (context.working.workspaceFactRootId !== context.committed.workspaceFactRootId) {
-        this.facts.assertIndexParity(context.working.workspaceFactRootId);
+      for (const rootId of [context.committed.workspaceFactRootId, context.working.workspaceFactRootId]) {
+        if (checkedRoots.has(rootId)) continue;
+        this.facts.assertIndexParity(rootId);
+        checkedRoots.add(rootId);
       }
     }
   }

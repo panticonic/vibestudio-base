@@ -18,6 +18,7 @@ function workerFiles(
     "package.json": `${JSON.stringify(
       buildProjectManifest({
         projectType: "worker",
+        authority: { requests: [], provides: [] },
         name: "example",
         title: "Example",
         entry: "index.ts",
@@ -36,9 +37,41 @@ function workerFiles(
 }
 
 describe("project dependency preflight", () => {
+  it("requires the executable owner's explicit authority instead of inventing a baseline", () => {
+    expect(() =>
+      buildProjectManifest({
+        projectType: "worker",
+        name: "missing-review",
+        title: "Missing review",
+        entry: "index.ts",
+      } as unknown as Parameters<typeof buildProjectManifest>[0]),
+    ).toThrow("vibestudio.authority must be an object");
+    const authority = {
+      requests: [
+        {
+          capability: "context.clone",
+          resource: { kind: "exact" as const, key: "context.clone" },
+          tier: "gated" as const,
+          evidence: "exact" as const,
+        },
+      ],
+      provides: [],
+    };
+    expect(
+      buildProjectManifest({
+        projectType: "worker",
+        name: "reviewed",
+        title: "Reviewed",
+        entry: "index.ts",
+        authority,
+      }),
+    ).toMatchObject({ vibestudio: { authority } });
+  });
+
   it("keeps website requirements advisory inside the panel manifest", () => {
     const manifest = buildProjectManifest({
       projectType: "panel",
+      authority: { requests: [], provides: [] },
       name: "portable-site",
       title: "Portable site",
       entry: "index.tsx",

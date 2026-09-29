@@ -1,6 +1,7 @@
 export { BrowserImpl, connect } from "./browser";
 export type { Browser, Options } from "./browser";
-export { CdpConnection, CdpError } from "./worker";
+export { CdpConnection, CdpDialog, CdpError } from "./worker";
+export type { CdpDialogData } from "./worker";
 export type { WorkerCdpPage as CdpPage } from "./worker";
 export type {
   CdpProfileCoverage,

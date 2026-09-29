@@ -254,4 +254,29 @@ describe("renderEntry (readable docs_open text)", () => {
     expect(text).toContain('workers.resolveService("vibestudio.channel.v1", objectKey)');
     expect(text).not.toContain('workers.resolveService("vibestudio.channel.v1");');
   });
+
+  it.each([false, true])("keeps named-consumer binding identity explicit on service and method docs (%s)", (method) => {
+    const text = renderEntry({
+      id: method ? "workspace:notes.get" : "workspace:notes",
+      surface: "workspace",
+      qualifiedName: method ? "notes.get" : "notes",
+      title: "Notes",
+      ...(method ? { parent: "workspace:notes", signature: "get(): string[]" } : { members: ["get"] }),
+      access: {
+        protocols: ["example.notes.v1"],
+        declarationCapability: "workspace-service:notes",
+        binding: "declared-for",
+        declaredFor: ["panels/notes"],
+        source: "workers/notes",
+        target: { kind: "durable-object", className: "NotesDO", defaultObjectKey: "notes" },
+      },
+    });
+    expect(text).toContain('Binding: declared-for ["panels/notes"]');
+    expect(text).toContain("does not adopt a consumer's identity");
+    expect(text).toContain("Verify the minimal call from a named consumer");
+    expect(text).toContain("Other callers still require consent");
+    expect(text).not.toContain("Eval-side service resolution");
+    expect(text).not.toContain("Installed-unit authority:");
+    expect(text).toContain('runtime.workers.resolveService("example.notes.v1")');
+  });
 });

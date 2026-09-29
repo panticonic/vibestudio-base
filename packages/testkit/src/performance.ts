@@ -252,7 +252,7 @@ export async function profilePanelInteraction(
   }
 }
 
-/** Profile reload across runtime replacement; a CDP page belongs to one incarnation. */
+/** Profile reload across renderer replacement; the runtime attempt remains unchanged. */
 export async function profilePanelReload(
   handle: PanelHandle,
   options?: { label?: string; eventLoopLimit?: number },

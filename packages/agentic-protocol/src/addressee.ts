@@ -13,9 +13,9 @@
  *    stance. Guessing is how an agent ends up telling the wrong participant
  *    something.
  *
- * This is also the read side of discovery: `list_addressees` enumerates
- * exactly these kinds, so what an agent can discover and what it can address
- * are the same set by construction.
+ * Discovery uses this same grammar: `list_addressees` enumerates the bound
+ * conversation, supervisor, and child runs; `discover_agents` searches other
+ * conversations. Resolution still leaves authorization to the write path.
  */
 
 import type { ParticipantRef } from "./events.js";
@@ -97,7 +97,13 @@ export type ResolvedAddressee =
 export interface AddresseeRunEntry {
   runId: string;
   taskChannelId: string;
-  status?: "starting" | "running" | "completed" | "failed" | "cancelled" | "abandoned";
+  status?:
+    | "starting"
+    | "running"
+    | "completed"
+    | "failed"
+    | "cancelled"
+    | "abandoned";
   /** The child's participant id on its task channel, when known. */
   participantId?: string;
 }
@@ -144,7 +150,11 @@ export function parseAddressee(ref: string): ParsedAddressee | AddresseeError {
   if (token.startsWith("@")) {
     const handle = token.slice(1).trim();
     if (handle.length === 0) {
-      return { code: "malformed", message: `"${ref}" is not a handle`, suggestions: [] };
+      return {
+        code: "malformed",
+        message: `"${ref}" is not a handle`,
+        suggestions: [],
+      };
     }
     return { kind: "handle", handle };
   }
@@ -160,7 +170,11 @@ export function parseAddressee(ref: string): ParsedAddressee | AddresseeError {
   const scheme = token.slice(0, separator);
   const rest = token.slice(separator + 1).trim();
   if (rest.length === 0) {
-    return { code: "malformed", message: `"${ref}" is missing its target`, suggestions: [] };
+    return {
+      code: "malformed",
+      message: `"${ref}" is missing its target`,
+      suggestions: [],
+    };
   }
   switch (scheme) {
     case "participant":
@@ -201,7 +215,7 @@ export function parseAddressee(ref: string): ParsedAddressee | AddresseeError {
 }
 
 export function isAddresseeError(
-  value: ParsedAddressee | ResolvedAddressee | AddresseeError
+  value: ParsedAddressee | ResolvedAddressee | AddresseeError,
 ): value is AddresseeError {
   return "code" in value && "message" in value;
 }
@@ -211,12 +225,14 @@ function participantIdOf(ref: ParticipantRef): string {
 }
 
 function userIdOf(participantId: string): string {
-  return participantId.startsWith("user:") ? participantId.slice("user:".length) : participantId;
+  return participantId.startsWith("user:")
+    ? participantId.slice("user:".length)
+    : participantId;
 }
 
 function resolveRosterUser(
   ctx: ResolveAddresseeContext,
-  userId: string
+  userId: string,
 ): ParticipantRef | undefined {
   const wanted = `user:${userId}`;
   return ctx.roster.find((ref) => {
@@ -226,7 +242,10 @@ function resolveRosterUser(
   });
 }
 
-function resolveUser(ctx: ResolveAddresseeContext, userId: string): ResolvedAddressee | AddresseeError {
+function resolveUser(
+  ctx: ResolveAddresseeContext,
+  userId: string,
+): ResolvedAddressee | AddresseeError {
   const rosterMatch = resolveRosterUser(ctx, userId);
   if (rosterMatch) {
     return {
@@ -243,7 +262,9 @@ function resolveUser(ctx: ResolveAddresseeContext, userId: string): ResolvedAddr
     return {
       code: "unknown-user",
       message: `no workspace user "${userId}"`,
-      suggestions: (ctx.users ?? []).slice(0, 5).map((entry) => `user:${entry.userId}`),
+      suggestions: (ctx.users ?? [])
+        .slice(0, 5)
+        .map((entry) => `user:${entry.userId}`),
     };
   }
   // Off-roster users still get the envelope on the sender's own channel; it is
@@ -263,7 +284,7 @@ function resolveUser(ctx: ResolveAddresseeContext, userId: string): ResolvedAddr
  */
 export function resolveAddressee(
   ref: string,
-  ctx: ResolveAddresseeContext
+  ctx: ResolveAddresseeContext,
 ): ResolvedAddressee | AddresseeError {
   const parsed = parseAddressee(ref);
   if (isAddresseeError(parsed)) return parsed;
@@ -279,7 +300,7 @@ export function resolveAddressee(
         if (resolved.error !== "ambiguous") {
           const needle = parsed.handle.toLowerCase();
           const members = (ctx.users ?? []).filter(
-            (entry) => entry.handle?.toLowerCase() === needle
+            (entry) => entry.handle?.toLowerCase() === needle,
           );
           if (members.length === 1) {
             return resolveUser(ctx, (members[0] as AddresseeUserEntry).userId);
@@ -320,7 +341,9 @@ export function resolveAddressee(
     }
 
     case "participant": {
-      const match = ctx.roster.find((entry) => participantIdOf(entry) === parsed.participantId);
+      const match = ctx.roster.find(
+        (entry) => participantIdOf(entry) === parsed.participantId,
+      );
       if (!match) {
         return {
           code: "unknown-handle",
@@ -358,7 +381,8 @@ export function resolveAddressee(
       if (!ctx.parent) {
         return {
           code: "not-a-subagent",
-          message: "`parent` is only addressable from a subagent; you have no supervising parent",
+          message:
+            "`parent` is only addressable from a subagent; you have no supervising parent",
           suggestions: [],
         };
       }
@@ -375,7 +399,9 @@ export function resolveAddressee(
       // Prefix match, as `send_to_subagent` accepted: the display form is
       // elided, so an agent copying a runId out of its transcript still hits.
       const exact = runs.find((entry) => entry.runId === parsed.runId);
-      const matches = exact ? [exact] : runs.filter((entry) => entry.runId.startsWith(parsed.runId));
+      const matches = exact
+        ? [exact]
+        : runs.filter((entry) => entry.runId.startsWith(parsed.runId));
       if (matches.length === 0) {
         return {
           code: "unknown-run",
@@ -402,7 +428,9 @@ export function resolveAddressee(
 
     case "agent": {
       const directory = ctx.directory ?? [];
-      const byHandle = directory.filter((entry) => entry.handle === parsed.handle);
+      const byHandle = directory.filter(
+        (entry) => entry.handle === parsed.handle,
+      );
       const matches = parsed.channelId
         ? byHandle.filter((entry) => entry.channelId === parsed.channelId)
         : byHandle;
@@ -412,7 +440,9 @@ export function resolveAddressee(
           message:
             `no agent instance "${parsed.handle}${parsed.channelId ? `@${parsed.channelId}` : ""}". ` +
             "Use discover_agents to find one.",
-          suggestions: directory.slice(0, 5).map((entry) => `agent:${entry.instanceId}`),
+          suggestions: directory
+            .slice(0, 5)
+            .map((entry) => `agent:${entry.instanceId}`),
         };
       }
       if (matches.length > 1) {
@@ -442,7 +472,11 @@ export function resolveAddressee(
       if (parsed.channelId === ctx.channelId) {
         return { kind: "channel", channelId: ctx.channelId, foreign: false };
       }
-      return { kind: "external-channel", channelId: parsed.channelId, foreign: true };
+      return {
+        kind: "external-channel",
+        channelId: parsed.channelId,
+        foreign: true,
+      };
     }
   }
 }
@@ -465,7 +499,9 @@ export function isAlertRung(value: unknown): value is AlertRung {
  * Addressing a person is what asks for their attention, so `inbox` is the
  * default there and `none` everywhere else. `interrupt` is never a default.
  */
-export function defaultAlertRung(addressees: readonly ResolvedAddressee[]): AlertRung {
+export function defaultAlertRung(
+  addressees: readonly ResolvedAddressee[],
+): AlertRung {
   return addressees.some(addresseeIsUser) ? "inbox" : "none";
 }
 

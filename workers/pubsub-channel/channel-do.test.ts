@@ -362,12 +362,12 @@ async function createGadBackedChannel(
 describe("PubSubChannel", () => {
   it("declares website eligibility only for the bounded conversation boundary", async () => {
     const { instance } = await createTestDO(PubSubChannel, { __objectKey: "website-chat" });
-    for (const method of ["subscribe", "sendAsCaller", "getReplayAfter"]) {
+    for (const method of ["subscribe", "sendAsCaller", "getReplayAfter", "getChannelPresence", "callMethod"]) {
       const authority = rpcMethodAuthority(instance, method);
       expect(authority?.website).toMatchObject({ kind: "eligible" });
       expect(authority?.principals).toContain("website");
     }
-    for (const method of ["adminUnsubscribeParticipant", "getChannelPresence", "callMethod"]) {
+    for (const method of ["adminUnsubscribeParticipant", "recordReceipt"]) {
       expect(rpcMethodAuthority(instance, method)?.website).toMatchObject({ kind: "closed" });
     }
   });
@@ -704,7 +704,6 @@ describe("PubSubChannel", () => {
     };
     for (const method of [
       "publish",
-      "recordReceipt",
       "sendSignal",
       "updateMetadata",
       "setTypingState",
@@ -713,14 +712,17 @@ describe("PubSubChannel", () => {
       expect(rpcMethodAuthority(instance, method)?.principals).toEqual([
         "user",
         "code",
+        "website",
       ]);
       expect(decisionFor(method)).toMatchObject({
         allowed: true,
         code: "allowed",
       });
     }
+    expect(rpcMethodAuthority(instance, "recordReceipt")?.principals).toEqual(["user", "code"]);
+    expect(decisionFor("recordReceipt")).toMatchObject({ allowed: true, code: "allowed" });
     expect(rpcMethodAuthority(instance, "getReplayBefore")?.principals).toEqual(
-      ["host", "user", "code"],
+      ["host", "user", "code", "website"],
     );
     expect(decisionFor("getReplayBefore")).toMatchObject({
       allowed: true,
@@ -1486,6 +1488,38 @@ describe("PubSubChannel", () => {
     expect(rows.length).toBeGreaterThan(1);
   });
 
+  it("retains only canonical public metadata for entity joins and their replay", async () => {
+    const { instance, gad } = await createGadBackedChannel();
+    const participantId = "do:workers/agent-worker:AiChatWorker:metadata-test";
+    const metadata = {
+      name: "Agent",
+      type: "agent",
+      methods: [{
+        name: "pause",
+        description: "private executable description",
+        parameters: { type: "object", properties: { private: { type: "string" } } },
+        returns: { type: "boolean" },
+      }],
+    };
+    await joinEntity(instance, participantId, metadata);
+    await joinEntity(instance, participantId, {
+      ...metadata,
+      methods: [{ ...metadata.methods[0]!, description: "changed private description" }],
+    });
+    const rows = gad.sql.exec(
+      "SELECT payload_ref_json FROM log_events WHERE payload_kind = ?",
+      "channel.subscription.opened",
+    ).toArray();
+    expect(rows).toHaveLength(1);
+    expect(JSON.parse(String(rows[0]!["payload_ref_json"])).metadata).toEqual({
+      name: "Agent",
+      type: "agent",
+      methods: [{ name: "pause" }],
+    });
+    const integrity = await gad.call<{ errors: Array<{ type: string }> }>("checkGadIntegrity", {});
+    expect(integrity.errors.filter((error) => error.type === "log-event-shape")).toEqual([]);
+  });
+
   it("does not persist full method schemas in durable participant metadata", async () => {
     const { instance, gad } = await createGadBackedChannel();
     setRpcCaller(instance, "panel:user", "panel");
@@ -1978,6 +2012,18 @@ describe("PubSubChannel", () => {
         )
         .toArray(),
     ).toEqual([expect.objectContaining({ samples: 1 })]);
+    const state = await instance.getState();
+    expect(state["deliveryLifecycle"]).toMatchObject({
+      longestDeliveries: [{
+        delivery_id: claim!.itemId,
+        participant_id: agentId,
+        envelope_id: expect.any(String),
+        event_sequence: expect.any(Number),
+        published_at: expect.any(Number),
+        execution_started_at: expect.any(Number),
+        duration_ms: expect.any(Number),
+      }],
+    });
     const [next] = instance.claimReadyWork("channel-delivery", {
       workerId: "driver-1",
       now: Date.now(),
@@ -3022,8 +3068,8 @@ describe("PubSubChannel", () => {
   it("declares inspection as a receiver-enforced channel capability", async () => {
     const { instance } = await createGadBackedChannel();
     expect(rpcMethodAuthority(instance, "inspectAgent")).toMatchObject({
-      website: { kind: "closed" },
-      principals: ["host", "user", "code"],
+      website: { kind: "eligible" },
+      principals: ["host", "user", "code", "website"],
       effect: {
         kind: "userland-capability",
         capability: "channel.admin",

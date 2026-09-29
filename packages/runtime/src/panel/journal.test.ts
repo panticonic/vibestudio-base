@@ -2,6 +2,13 @@ import { describe, expect, it } from "vitest";
 import { currentJournal, Journal, withJournal } from "../shared/journal.js";
 
 describe("panel operation journal", () => {
+  it("bounds retained operations and explicitly reports evidence truncation", () => {
+    const journal = new Journal();
+    for (let index = 0; index < 1000; index++)
+      journal.append({ type: "reload", id: String(index) });
+    expect(journal.entries).toHaveLength(100);
+    expect(journal.truncated).toBe(true);
+  });
   it("does not reject overlapping async journal scopes", async () => {
     const first = new Journal();
     const second = new Journal();
@@ -30,7 +37,10 @@ describe("panel operation journal", () => {
       "overlap",
       "first-after",
     ]);
-    expect(second.entries.map((entry) => entry.id)).toEqual(["second", "overlap"]);
+    expect(second.entries.map((entry) => entry.id)).toEqual([
+      "second",
+      "overlap",
+    ]);
     expect(currentJournal()).toBeNull();
   });
 });

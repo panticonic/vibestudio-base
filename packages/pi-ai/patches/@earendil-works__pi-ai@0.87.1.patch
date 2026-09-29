@@ -398,3 +398,66 @@ index 5915ca6..2190c6c 100644
      /**
       * Optional fetch implementation for provider HTTP requests.
       * Defaults to `globalThis.fetch`. Provider adapters that cannot inject a custom implementation may reject it.
+diff --git a/dist/api/openai-completions.js b/dist/api/openai-completions.js
+--- a/dist/api/openai-completions.js
++++ b/dist/api/openai-completions.js
+@@ -185,6 +185,9 @@
+             const cacheSessionId = cacheRetention === "none" ? undefined : options?.sessionId;
+             const client = createClient(model, normalizedContext, apiKey, options?.headers, options?.fetch, cacheSessionId, compat);
+             let params = buildParams(model, normalizedContext, options, compat, cacheRetention, grammarToolInputProperties);
++            // The bundled llama.cpp provider reports prompt work on this same
++            // completion stream, before it can produce generated tokens.
++            if (model.provider === "local") params.return_progress = true;
+             const nextParams = await options?.onPayload?.(params, model);
+             if (nextParams !== undefined) {
+                 params = nextParams;
+@@ -350,6 +353,9 @@
+                 }
+                 return block;
+             };
++            let lastPromptProcessed = -1;
++            let promptTotal;
++            let promptCache;
+             for await (const chunk of openaiStream) {
+                 if (!chunk || typeof chunk !== "object")
+                     continue;
+@@ -358,6 +364,22 @@
+                 output.responseId ||= chunk.id;
+                 if (typeof chunk.model === "string" && chunk.model.length > 0 && chunk.model !== model.id) {
+                     output.responseModel ||= chunk.model;
++                }
++                const prompt = chunk.prompt_progress;
++                if (prompt && typeof prompt === "object" &&
++                    typeof chunk.id === "string" && chunk.id.length > 0 &&
++                    chunk.id === output.responseId &&
++                    Number.isSafeInteger(prompt.total) && prompt.total > 0 &&
++                    Number.isSafeInteger(prompt.processed) && prompt.processed >= 0 && prompt.processed <= prompt.total &&
++                    Number.isSafeInteger(prompt.cache) && prompt.cache >= 0 && prompt.cache <= prompt.total &&
++                    (promptTotal === undefined || promptTotal === prompt.total) &&
++                    (promptCache === undefined || promptCache === prompt.cache) &&
++                    prompt.processed > lastPromptProcessed) {
++                    promptTotal = prompt.total;
++                    promptCache = prompt.cache;
++                    lastPromptProcessed = prompt.processed;
++                    stream.push({ type: "prompt_progress", total: prompt.total,
++                        processed: prompt.processed, cache: prompt.cache, partial: output });
+                 }
+                 if (chunk.usage) {
+                     output.usage = parseChunkUsage(chunk.usage, model);
+diff --git a/dist/types.d.ts b/dist/types.d.ts
+--- a/dist/types.d.ts
++++ b/dist/types.d.ts
+@@ -468,6 +468,13 @@
+  * `toolcall_delta` carries subsequent JSON updates.
+  */
+ export type AssistantMessageEvent = {
++    /** Request-specific, monotonic native prompt processing; no generated content. */
++    type: "prompt_progress";
++    total: number;
++    processed: number;
++    cache: number;
++    partial: AssistantMessage;
++} | {
+     type: "start";
+     partial: AssistantMessage;
+ } | {

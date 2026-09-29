@@ -6075,11 +6075,15 @@ export class SemanticWorkspace {
   }
 
   private query(input: VcsQueryInput): Row {
+    const state = this.deps.store.contextRequired(input.contextId).working.ref;
     this.materializeVisibilityBasis(input.visibilityContextIds ?? []);
-    return executeProvenanceQuery(this.deps.sql, {
-      query: input.query,
-      limit: input.limit,
-    }) as unknown as Row;
+    return {
+      state,
+      ...executeProvenanceQuery(this.deps.sql, {
+        query: input.query,
+        limit: input.limit,
+      }),
+    } as unknown as Row;
   }
 
   /**

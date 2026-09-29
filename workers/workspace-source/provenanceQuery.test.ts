@@ -97,6 +97,12 @@ describe("structural validation", () => {
     ).toMatchObject({ code: "recursive-cte", term: "RECURSIVE" });
   });
 
+  it("points an unknown relation to the complete executable catalog", () => {
+    const refusal = validateProvenanceQuery("SELECT * FROM absent_relation");
+    expect(refusal?.message).toContain("SELECT relation, meaning, columns FROM prov_schema");
+    expect(validateProvenanceQuery("SELECT relation, meaning, columns FROM prov_schema")).toBeNull();
+  });
+
   it("does not mistake a quoted literal for syntax", () => {
     expect(
       validateProvenanceQuery("SELECT * FROM prov_events WHERE message = 'drop table gad_changes'")

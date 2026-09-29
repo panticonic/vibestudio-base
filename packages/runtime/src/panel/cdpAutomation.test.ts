@@ -1,10 +1,165 @@
 import { describe, expect, it, vi } from "vitest";
 import { CdpError } from "@workspace/cdp-client";
 import { createCdpAutomation } from "./cdpAutomation.js";
+import { Journal, withJournal, currentJournal } from "../shared/journal.js";
 
 describe("createCdpAutomation screenshot", () => {
+  it("records native interaction receipts in the journal active when the action completes", async () => {
+    let onInteraction: ((receipt: unknown) => void) | undefined;
+    const page = { isClosed: () => false };
+    const connect = vi.fn(async (_endpoint: string, options: object) => {
+      onInteraction = (options as { onInteraction: (receipt: unknown) => void })
+        .onInteraction;
+      return { contexts: () => [{ pages: () => [page] }] };
+    });
+    const cdp = createCdpAutomation(
+      {
+        call: vi.fn(async () => ({ wsEndpoint: "ws://panel", token: "grant" })),
+      } as never,
+      "panel:journal",
+      {
+        loadModule: async () => ({ BrowserImpl: { connect }, CdpError }),
+        recordOperation: (entry) => currentJournal()?.append(entry),
+      },
+    );
+    await cdp.page();
+    const receipt = {
+      protocol: "cdp-interaction-outcome.v1",
+      delivery: { status: "observed" },
+    };
+    const journal = new Journal();
+    await withJournal(journal, async () => onInteraction!(receipt));
+    expect(journal.entries).toEqual([
+      { type: "interaction", id: "panel:journal", receipt },
+    ]);
+    // A resident session must not retain a previous cell's journal.
+    onInteraction!(receipt);
+    expect(journal.entries).toHaveLength(1);
+  });
+
+  it("records completed native console and capture observations independently of returned projections", async () => {
+    const history = {
+      entries: [],
+      errors: [],
+      page: { nextBeforeSeq: null, hasOlder: false },
+      dropped: { entries: 0, errors: 2 },
+      capacity: { entries: 200, errors: 100 },
+    };
+    const image = {
+      data: "iVBORw0KGgo=",
+      mimeType: "image/png" as const,
+      width: 1280,
+      height: 720,
+    };
+    const recordOperation = vi.fn();
+    const failure = new Error("native console unavailable");
+    let failConsole = false;
+    const call = vi.fn(async (_target: string, method: string) => {
+      if (method === "panelCdp.consoleHistory") {
+        if (failConsole) throw failure;
+        return history;
+      }
+      if (method === "panelCdp.screenshot") return image;
+      if (method === "panelCdp.getCdpEndpoint")
+        return { wsEndpoint: "ws://panel" };
+      throw new Error(method);
+    });
+    const bytes = new Uint8Array([1, 2, 3]);
+    const screenshot = vi.fn(async () => bytes);
+    const cdp = createCdpAutomation({ call } as never, "panel:observations", {
+      recordOperation,
+      loadModule: async () => ({
+        BrowserImpl: {
+          connect: async () => ({
+            contexts: () => [{ pages: () => [{ screenshot }] }],
+          }),
+        },
+      }),
+    });
+    // Evidence is recorded even when the caller returns only a compact count.
+    expect((await cdp.consoleHistory()).errors.length).toBe(0);
+    await cdp.screenshot();
+    const page = await cdp.page();
+    expect(await page.screenshot({ type: "jpeg" })).toBe(bytes);
+    expect(recordOperation.mock.calls.map(([entry]) => entry)).toEqual([
+      {
+        type: "consoleHistory",
+        id: "panel:observations",
+        receipt: {
+          capturedAt: expect.any(Number),
+          errorCount: 0,
+          droppedErrors: 2,
+          errorCoverage: "full",
+        },
+      },
+      {
+        type: "screenshot",
+        id: "panel:observations",
+        receipt: {
+          capturedAt: expect.any(Number),
+          mimeType: "image/png",
+          width: 1280,
+          height: 720,
+          byteSize: 8,
+        },
+      },
+      {
+        type: "screenshot",
+        id: "panel:observations",
+        receipt: {
+          capturedAt: expect.any(Number),
+          mimeType: "image/jpeg",
+          byteSize: 3,
+        },
+      },
+    ]);
+    failConsole = true;
+    await expect(cdp.consoleHistory()).rejects.toBe(failure);
+    expect(recordOperation).toHaveBeenCalledTimes(3);
+  });
+
+  it.each([
+    { errorLimit: 0 },
+    { levels: ["info"] as const },
+    { since: 1 },
+    { beforeSeq: 2 },
+    { contains: "irrelevant" },
+  ])(
+    "marks scoped or suppressed console errors as incomplete coverage: %j",
+    async (query) => {
+      const history = {
+        entries: [],
+        errors: [],
+        page: { nextBeforeSeq: null, hasOlder: false },
+        dropped: { entries: 0, errors: 0 },
+        capacity: { entries: 200, errors: 100 },
+      };
+      const recordOperation = vi.fn();
+      const cdp = createCdpAutomation(
+        { call: vi.fn(async () => history) } as never,
+        "panel:filtered",
+        { recordOperation },
+      );
+      await cdp.consoleHistory(
+        query as Parameters<typeof cdp.consoleHistory>[0],
+      );
+      expect(recordOperation).toHaveBeenCalledWith({
+        type: "consoleHistory",
+        id: "panel:filtered",
+        receipt: {
+          capturedAt: expect.any(Number),
+          errorCount: 0,
+          droppedErrors: 0,
+          errorCoverage: "filtered",
+        },
+      });
+    },
+  );
+
   it("treats the hosted module loader as authoritative without trying runtime fallbacks", async () => {
-    const hostedFailure = new Error("cell execution session is no longer active");
+    const hostedFailure = new Error(
+      "cell execution session is no longer active",
+    );
     const loadModule = vi.fn(async () => {
       throw hostedFailure;
     });
@@ -13,13 +168,19 @@ describe("createCdpAutomation screenshot", () => {
       CdpError,
     }));
     (globalThis as Record<string, unknown>)["__vibestudioRequire__"] = fallback;
-    const cdp = createCdpAutomation({ call: vi.fn() } as never, "panel:tree/retained", {
-      loadModule,
-    });
+    const cdp = createCdpAutomation(
+      { call: vi.fn() } as never,
+      "panel:tree/retained",
+      {
+        loadModule,
+      },
+    );
 
     try {
       await expect(cdp.page()).rejects.toMatchObject({
-        message: expect.stringContaining("cell execution session is no longer active"),
+        message: expect.stringContaining(
+          "cell execution session is no longer active",
+        ),
         cause: hostedFailure,
       });
       expect(loadModule).toHaveBeenCalledWith("@workspace/cdp-client");
@@ -42,18 +203,26 @@ describe("createCdpAutomation screenshot", () => {
     });
     const cdp = createCdpAutomation({ call } as never, "panel:child");
 
-    await expect(cdp.screenshot({ format: "png", quality: 90 })).resolves.toEqual(shot);
+    await expect(
+      cdp.screenshot({ format: "png", quality: 90 }),
+    ).resolves.toEqual(shot);
 
     expect(call).toHaveBeenCalledTimes(1);
     expect(call).toHaveBeenCalledWith("main", "panelCdp.screenshot", [
       "panel:child",
       { format: "png", quality: 90 },
     ]);
-    expect(call.mock.calls.some(([, method]) => method === "panelCdp.getCdpEndpoint")).toBe(false);
+    expect(
+      call.mock.calls.some(
+        ([, method]) => method === "panelCdp.getCdpEndpoint",
+      ),
+    ).toBe(false);
   });
 
   it("uses the composed panel runtime callbacks instead of host navigation methods", async () => {
-    const call = vi.fn(async (_target: string, _method: string, _args: unknown[]) => undefined);
+    const call = vi.fn(
+      async (_target: string, _method: string, _args: unknown[]) => undefined,
+    );
     const navigate = vi.fn(async () => undefined);
     const navigateHistory = vi.fn(async () => undefined);
     const reload = vi.fn(async () => undefined);
@@ -83,7 +252,10 @@ describe("createCdpAutomation screenshot", () => {
       contexts: () => [{ pages: () => [page] }],
       close: vi.fn(async () => undefined),
     }));
-    const loadModule = vi.fn(async () => ({ BrowserImpl: { connect }, CdpError }));
+    const loadModule = vi.fn(async () => ({
+      BrowserImpl: { connect },
+      CdpError,
+    }));
     const call = vi.fn(async (_target: string, method: string) => {
       if (method === "panelCdp.getCdpEndpoint") {
         return { wsEndpoint: "ws://panel", token: "grant" };
@@ -183,10 +355,14 @@ describe("createCdpAutomation screenshot", () => {
     expect(refreshed).toMatchObject({
       status: "replaced",
       previousGeneration: { attemptId: "attempt:old" },
-      session: { generation: { attemptId: "attempt:new" }, page: newPage },
+      session: { generation: { attemptId: "attempt:new" } },
     });
     expect(oldPage.close).toHaveBeenCalledOnce();
     expect(connect).toHaveBeenCalledTimes(2);
+    if (refreshed.status === "replaced" || refreshed.status === "reconnected") {
+      expect(refreshed.session.page.isClosed()).toBe(false);
+      await refreshed.session.close();
+    }
   });
 
   it("reconnects a closed page without pretending the panel generation changed", async () => {
@@ -222,7 +398,7 @@ describe("createCdpAutomation screenshot", () => {
       {
         loadModule: async () => ({ BrowserImpl: { connect }, CdpError }),
         observe: async () => generation,
-      }
+      },
     );
 
     const session = await cdp.session();
@@ -234,10 +410,13 @@ describe("createCdpAutomation screenshot", () => {
       generation: { attemptId: "attempt:stable" },
       session: {
         generation: { attemptId: "attempt:stable" },
-        page: secondPage,
       },
     });
     expect(connect).toHaveBeenCalledTimes(2);
+    if (refreshed.status === "replaced" || refreshed.status === "reconnected") {
+      expect(refreshed.session.page.isClosed()).toBe(false);
+      await refreshed.session.close();
+    }
   });
 
   it("rejects raw navigation on workspace pages with lifecycle recovery guidance", async () => {
@@ -261,7 +440,7 @@ describe("createCdpAutomation screenshot", () => {
           },
           CdpError,
         }),
-      }
+      },
     );
 
     const connected = await cdp.page();
@@ -297,10 +476,12 @@ describe("createCdpAutomation screenshot", () => {
           },
           CdpError,
         }),
-      }
+      },
     );
 
-    await expect((await cdp.page()).goto("https://example.com")).resolves.toEqual({
+    await expect(
+      (await cdp.page()).goto("https://example.com"),
+    ).resolves.toEqual({
       frameId: "frame",
     });
     expect(page.goto).toHaveBeenCalledWith("https://example.com");
@@ -334,13 +515,14 @@ describe("createCdpAutomation screenshot", () => {
             },
             CdpError,
           }),
-        }
+        },
       );
 
-      if (outcome === "success") await expect(cdp.click("button")).resolves.toBeUndefined();
+      if (outcome === "success")
+        await expect(cdp.click("button")).resolves.toBeUndefined();
       else await expect(cdp.click("button")).rejects.toBe(clickFailure);
       expect(page.close).toHaveBeenCalledOnce();
-    }
+    },
   );
 
   it("single-flights concurrent session acquisition and reuses the active session", async () => {
@@ -361,7 +543,7 @@ describe("createCdpAutomation screenshot", () => {
       {
         loadModule: async () => ({ BrowserImpl: { connect }, CdpError }),
         observe: async () => generation,
-      }
+      },
     );
 
     const [first, second] = await Promise.all([cdp.session(), cdp.session()]);

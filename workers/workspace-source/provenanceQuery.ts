@@ -230,7 +230,7 @@ export function validateProvenanceQuery(
       return refuse(
         "validation",
         "unknown-relation",
-        `\`${token.value}\` is not part of the provenance contract; run \`SELECT relation, column_name, meaning FROM prov_schema\` for the catalog`,
+        `\`${token.value}\` is not part of the provenance contract; run \`SELECT relation, meaning, columns FROM prov_schema\` for the catalog`,
         token.value
       );
     }
@@ -268,7 +268,7 @@ export function validateProvenanceQuery(
         return refuse(
           "validation",
           "unknown-relation",
-          `\`${next.value}\` is not part of the provenance contract; run \`SELECT relation, column_name, meaning FROM prov_schema\` for the catalog`,
+          `\`${next.value}\` is not part of the provenance contract; run \`SELECT relation, meaning, columns FROM prov_schema\` for the catalog`,
           next.value
         );
       }

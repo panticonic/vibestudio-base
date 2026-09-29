@@ -64,6 +64,7 @@ export type VerifyToolInput =
     };
 
 interface TestRunResult {
+  status: TestExecutionResultV1["status"];
   runtime: "browser" | "workerd" | "native";
   artifactKey?: string;
   executionDigest?: string;
@@ -108,11 +109,12 @@ export type VerifyToolDetails =
   | {
       operation: "test";
       target: string;
-      status: "passed" | "failed" | "no-tests";
+      status: TestExecutionResultV1["status"];
       report: TestRunResult;
       receipt: UnitVerificationReceiptV1;
       truncatedFiles: number;
       truncatedErrors: number;
+      failureKind?: "user-code";
       failure?: AgentToolFailure;
     };
 
@@ -169,7 +171,7 @@ export function createVerifyTool(
     name: "verify",
     label: "verify",
     description:
-      'Build or test one workspace unit against this conversation\'s exact semantic working state. Use { operation:"build", target } for compiler/bundler diagnostics and { operation:"test", target, suite?, file?, testName? } for a manifest-declared browser, workerd, or native suite. A successful build verifies only a context candidate: it does not publish source or update a live panel, worker, or Durable Object. Browser and workerd code stays sandboxed; only an explicitly native suite can request native approval. This boundary materializes the exact context, returns bounded evidence, and never treats zero discovered tests as success.',
+      'Build or test one workspace unit against this conversation\'s exact semantic working state. Use { operation:"build", target } for compiler/bundler diagnostics and { operation:"test", target, suite?, file?, testName? } for a manifest-declared browser, workerd, or native suite. Before adding or running tests, read package.json#vibestudio.tests and place test files inside the selected suite\'s include patterns; tests added to a production entry point are not discovered unless the manifest selects that file. A successful build verifies only a context candidate: it does not publish source or update a live panel, worker, or Durable Object. Browser and workerd code stays sandboxed; only an explicitly native suite can request native approval. This boundary materializes the exact context, returns bounded evidence, and never treats zero discovered tests as success.',
     parameters: verifySchema,
     execute: async (
       _toolCallId,
@@ -222,7 +224,7 @@ export function createVerifyTool(
                 recovery: {
                   action: "repair-source",
                   instruction:
-                    "This receipt already proves the current failure; do not rerun unchanged. Inspect details.report.diagnostics, or use details.receipt.reportRequest once when omitted diagnostics are required. Repair the source or dependencies, then rerun verify once with the same target.",
+                    "This receipt already proves the current failure; do not rerun unchanged. Inspect the returned diagnostics, or use receipt.reportRequest once when omitted diagnostics are required. Repair the source or dependencies, then rerun verify once with the same target.",
                 },
               })
             : report.status === "skipped"
@@ -233,7 +235,7 @@ export function createVerifyTool(
                   recovery: {
                     action: "correct-request",
                     instruction:
-                      "Use details.receipt.unit.repoPath to identify the requested content, then select the owning buildable unit before retrying.",
+                      "Use receipt.unit.repoPath to identify the requested content, then select the owning buildable unit before retrying.",
                   },
                 })
               : undefined;
@@ -244,7 +246,7 @@ export function createVerifyTool(
               text: renderBuild(
                 command.target,
                 bounded.report,
-                receipt.diagnostics!,
+                receipt,
               ),
             },
           ],
@@ -346,6 +348,7 @@ export function createVerifyTool(
         executionDigest = artifact.execution.executionDigest;
         report = {
           runtime: plan.runtime,
+          status: result.status,
           summary:
             result.status === "no-tests"
               ? "No tests matched the execution filter"
@@ -361,12 +364,7 @@ export function createVerifyTool(
           details: result.files,
         };
       }
-      const status =
-        report.total === 0
-          ? "no-tests"
-          : report.failed > 0
-            ? "failed"
-            : "passed";
+      const status = report.status;
       const bounded = boundTestReport(report);
       const receipt: UnitVerificationReceiptV1 = {
         protocol: "unit-verification-receipt.v1",
@@ -390,7 +388,7 @@ export function createVerifyTool(
               recovery: {
                 action: "repair-source",
                 instruction:
-                  "Inspect details.report.details, repair the failing source or tests, then rerun verify once.",
+                  "Inspect the returned report.details, repair the failing source or tests, then rerun verify once.",
               },
             })
           : status === "no-tests"
@@ -404,12 +402,23 @@ export function createVerifyTool(
                     "Inspect the unit's test files and correct target, file, or testName before retrying.",
                 },
               })
-            : undefined;
+            : status === "cancelled" || status === "infrastructure-error"
+              ? verificationFailure({
+                  code: `test_execution_${status.replaceAll("-", "_")}`,
+                  kind: status === "cancelled" ? "cancelled" : "infrastructure",
+                  message: `Test execution ${status} for ${command.target}; partial counts do not prove verification.`,
+                  recovery: {
+                    action: "stop",
+                    instruction: "Inspect the execution failure before starting a new verification attempt.",
+                  },
+                })
+              : undefined;
       return {
         content: [
           {
             type: "text",
-            text: renderTests(command.target, bounded.report, status),
+            text: renderTests(command.target, bounded.report, status) +
+              "\n" + JSON.stringify({ report: bounded.report, receipt }),
           },
         ],
         details: {
@@ -420,6 +429,7 @@ export function createVerifyTool(
           receipt,
           truncatedFiles: bounded.truncatedFiles,
           truncatedErrors: bounded.truncatedErrors,
+          ...(status === "failed" ? { failureKind: "user-code" as const } : {}),
           ...(failure ? { failure } : {}),
         },
         isError: status !== "passed",
@@ -431,13 +441,14 @@ export function createVerifyTool(
 function verificationFailure(input: {
   code: string;
   message: string;
+  kind?: AgentToolFailure["kind"];
   retryPolicy?: AgentToolFailure["retry"]["policy"];
   recovery: NonNullable<AgentToolFailure["recovery"]>;
 }): AgentToolFailure {
   return {
     protocol: "agent-tool-failure.v1",
     code: input.code,
-    kind: "domain",
+    kind: input.kind ?? "domain",
     message: input.message,
     operation: "tool.verify",
     stage: "execute",
@@ -584,8 +595,9 @@ function boundTestReport(report: TestRunResult): {
 function renderBuild(
   target: string,
   report: UnitBuildReportWire,
-  diagnostics: NonNullable<UnitVerificationReceiptV1["diagnostics"]>,
+  receipt: UnitVerificationReceiptV1,
 ): string {
+  const diagnostics = receipt.diagnostics!;
   const diagnosticSummary =
     diagnostics.total === diagnostics.retained
       ? `${diagnostics.total} diagnostic${diagnostics.total === 1 ? "" : "s"}`
@@ -595,15 +607,16 @@ function renderBuild(
     `${report.builds.length} target${report.builds.length === 1 ? "" : "s"}; ` +
     `${diagnosticSummary}). ` +
     "This verifies a context candidate only; protected main and every live runtime remain unchanged. " +
-    "Structured diagnostics are in details.report.diagnostics; exact reusable evidence and the full-report request are in details.receipt." +
-    (report.status === "failed" ? " Do not rerun this unchanged build." : "")
+    "The bounded diagnostics and exact reusable receipt follow; use receipt.reportRequest only when omitted diagnostics are required." +
+    (report.status === "failed" ? " Do not rerun this unchanged build." : "") +
+    "\n" + JSON.stringify({ diagnostics: report.diagnostics, receipt })
   );
 }
 
 function renderTests(
   target: string,
   report: TestRunResult,
-  status: "passed" | "failed" | "no-tests",
+  status: TestExecutionResultV1["status"],
 ): string {
   const errors = report.details.flatMap((file) =>
     (file.errors ?? []).map((error) => `${file.file}: ${error}`),

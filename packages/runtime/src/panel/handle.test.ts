@@ -744,7 +744,13 @@ describe("PanelHandle", () => {
         method === "workspace-state.slot.commitPreparedNavigation" &&
         (args[0] as { mutation: { kind: string } }).mutation.kind === "replace",
     );
-    expect(replacements).toHaveLength(2);
+    expect(replacements).toHaveLength(1);
+    // Reload restarts the current renderer; rebuilding replaces its source
+    // generation. Both operations must target the parent, never this child.
+    expect(rpcCall).toHaveBeenCalledWith(
+      "main", "runtime.supervision.restart",
+      [{ kind: "panel", entityId: "panel:nav-panel-parent-entity" }],
+    );
     for (const [, , args] of replacements) {
       expect(args[0]).toMatchObject({
         slotId: "panel:tree/panel-parent",

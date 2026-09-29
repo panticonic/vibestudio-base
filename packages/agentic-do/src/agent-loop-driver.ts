@@ -543,6 +543,12 @@ export function ensureAgentLoopDriverSchema(sql: SqlStorage): void {
   ensureFoldCacheSchema(sql);
   ensureScheduledModelResumeSchema(sql);
   ensureModelExecutionAttemptSchema(sql);
+  sql.exec(`CREATE TABLE IF NOT EXISTS turn_close_delivery_cursors (
+    log_id TEXT NOT NULL,
+    head TEXT NOT NULL,
+    delivered_seq INTEGER NOT NULL,
+    PRIMARY KEY (log_id, head)
+  )`);
 }
 
 function mapScheduledModelResumeRow(
@@ -878,6 +884,7 @@ export class AgentLoopDriver {
     if (this.retiredChannels.has(channelId)) return;
     this.loops.delete(channelId); // force re-validation against the remote head
     const loop = await this.loop(channelId);
+    await this.reconcileTurnCloseDeliveries(loop);
     if (this.inFlightModelCallIsQueuedOrRunningHere(loop)) {
       await this.settle(channelId);
       await this.recoverOpenTurnAfterReplay(channelId);
@@ -936,6 +943,7 @@ export class AgentLoopDriver {
     // calls are still missing their invocation.started events.
     await this.recoverOpenTurnAfterReplay(channelId);
     const loop = await this.loop(channelId);
+    await this.reconcileTurnCloseDeliveries(loop);
     await this.runStep(loop, incoming, APPEND_RETRIES);
     await this.settle(channelId);
     await this.recoverOpenTurnAfterReplay(channelId);
@@ -950,6 +958,7 @@ export class AgentLoopDriver {
    *  prompt — a prompt opens a turn in the same runStep, so the openTurn
    *  guard would otherwise skip compaction for the entire active session. */
   private async settle(channelId: string): Promise<void> {
+    await this.reconcileTurnCloseDeliveries(await this.loop(channelId));
     await this.maybeCompact(await this.loop(channelId));
     await this.reconcile(await this.loop(channelId));
     this.requestPump();
@@ -1366,59 +1375,136 @@ export class AgentLoopDriver {
       retries,
     );
     if (semanticEnvelope.payloadKind === "turn.closed") {
-      const payload = semanticEnvelope.payload as Record<string, unknown>;
-      const metadata = payload["metadata"];
-      if (
-        metadata &&
-        typeof metadata === "object" &&
-        !Array.isArray(metadata)
-      ) {
-        const turnId = String(semanticEnvelope.causality?.turnId ?? "");
-        const finalEntry = [...loop.state.entries]
-          .reverse()
-          .find(
-            (entry) =>
-              entry.kind === "assistant" &&
-              entry.messageId.startsWith(`m:${turnId}:`),
-          );
-        await this.deps.onTurnClosed?.({
-          channelId: loop.channelId,
-          turnId,
-          metadata: metadata as AgentTurnMetadata,
-          ...(typeof payload["reason"] === "string"
-            ? { reason: payload["reason"] }
-            : {}),
-          ...(typeof payload["summary"] === "string"
-            ? { summary: payload["summary"] }
-            : {}),
-          ...(finalEntry?.kind === "assistant"
-            ? { finalMessage: assistantMessageText(finalEntry.blocks) }
-            : {}),
-          effectFailures: loop.state.entries.flatMap((entry) => {
-            if (
-              entry.kind !== "tool-result" ||
-              entry.turnId !== turnId ||
-              !entry.isError ||
-              !entry.terminalOutcome
-            )
-              return [];
-            const failure = entry.failure as AgentToolFailure | undefined;
-            return [
-              {
-                invocationId: entry.invocationId,
-                name: entry.name,
-                outcome: entry.terminalOutcome,
-                code:
-                  failure?.code ??
-                  entry.terminalReasonCode ??
-                  entry.terminalOutcome,
-                message: failure?.message ?? String(entry.result),
-              },
-            ];
-          }),
+      await this.deliverTurnClose(loop, semanticEnvelope);
+    }
+  }
+
+  private turnCloseDeliveryCursor(loop: LoopInstance): number {
+    const row = this.deps.sql
+      .exec(
+        "SELECT delivered_seq FROM turn_close_delivery_cursors WHERE log_id = ? AND head = ?",
+        loop.logId,
+        loop.head,
+      )
+      .toArray()[0];
+    return Number(row?.["delivered_seq"] ?? 0);
+  }
+
+  /** The journal is the source of delivery work, including an append whose
+   * activation died before its callback. Drain before advancing or compacting
+   * a turn; acknowledge only after the consumer commits its idempotent effect. */
+  private async reconcileTurnCloseDeliveries(
+    loop: LoopInstance,
+  ): Promise<void> {
+    if (!this.deps.onTurnClosed) return;
+    let cursor = this.turnCloseDeliveryCursor(loop);
+    while (cursor < loop.state.lastSeq) {
+      const page = await this.deps.gad.call<LogEnvelope[]>("readLog", {
+        logId: loop.logId,
+        head: loop.head,
+        afterSeq: cursor,
+        limit: RECOVERY_READ_PAGE,
+      });
+      if (page.length === 0) break;
+      for (const envelope of page) {
+        if (
+          envelope.seq > loop.state.lastSeq ||
+          envelope.payloadKind !== "turn.closed"
+        )
+          continue;
+        await this.deliverTurnClose(loop, {
+          ...envelope,
+          payload: await hydrateStoredValueRefs(
+            envelope.payload,
+            {
+              getText: (digest) =>
+                this.executorDeps(loop.channelId).blobstore.getText(digest),
+            },
+            {
+              strict: true,
+              context: `turn close delivery ${envelope.envelopeId}`,
+            },
+          ),
         });
       }
+      cursor = Math.min(page[page.length - 1]!.seq, loop.state.lastSeq);
+      this.acknowledgeTurnCloseDelivery(loop, cursor);
     }
+  }
+
+  private acknowledgeTurnCloseDelivery(loop: LoopInstance, seq: number): void {
+    this.deps.sql.exec(
+      `INSERT INTO turn_close_delivery_cursors (log_id, head, delivered_seq)
+      VALUES (?, ?, ?) ON CONFLICT(log_id, head) DO UPDATE
+      SET delivered_seq = MAX(delivered_seq, excluded.delivered_seq)`,
+      loop.logId,
+      loop.head,
+      seq,
+    );
+  }
+
+  private async deliverTurnClose(
+    loop: LoopInstance,
+    envelope: LogEnvelope,
+  ): Promise<void> {
+    if (
+      !this.deps.onTurnClosed ||
+      envelope.seq <= this.turnCloseDeliveryCursor(loop)
+    )
+      return;
+    this.kill("before-turn-close-delivery");
+    const payload = envelope.payload as Record<string, unknown>;
+    const metadata = payload["metadata"];
+    const turnId = String(envelope.causality?.turnId ?? "");
+    const finalEntry = [...loop.state.entries]
+      .reverse()
+      .find(
+        (entry) =>
+          entry.kind === "assistant" &&
+          entry.messageId.startsWith(`m:${turnId}:`),
+      );
+    await this.deps.onTurnClosed?.({
+      channelId: loop.channelId,
+      turnId,
+      metadata:
+        metadata && typeof metadata === "object" && !Array.isArray(metadata)
+          ? (metadata as AgentTurnMetadata)
+          : {},
+      ...(typeof payload["reason"] === "string"
+        ? { reason: payload["reason"] }
+        : {}),
+      ...(typeof payload["summary"] === "string"
+        ? { summary: payload["summary"] }
+        : {}),
+      ...(finalEntry?.kind === "assistant"
+        ? { finalMessage: assistantMessageText(finalEntry.blocks) }
+        : {}),
+      effectFailures: loop.state.entries.flatMap((entry) => {
+        if (
+          entry.kind !== "tool-result" ||
+          entry.turnId !== turnId ||
+          !entry.isError ||
+          !entry.terminalOutcome
+        )
+          return [];
+        const failure = entry.failure as AgentToolFailure | undefined;
+        return [
+          {
+            invocationId: entry.invocationId,
+            name: entry.name,
+            outcome: entry.terminalOutcome,
+            code:
+              failure?.code ??
+              entry.terminalReasonCode ??
+              entry.terminalOutcome,
+            message: failure?.message ?? String(entry.result),
+          },
+        ];
+      }),
+    });
+
+    this.kill("after-turn-close-delivery");
+    this.acknowledgeTurnCloseDelivery(loop, envelope.seq);
   }
 
   private async ingestCommandAlreadyJournaled(

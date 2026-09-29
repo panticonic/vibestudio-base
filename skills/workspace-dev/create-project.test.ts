@@ -91,6 +91,9 @@ vi.mock("@workspace/runtime", () => ({
 function resetRuntimeMocks(): void {
   mocks.files.clear();
   mocks.dirs.clear();
+  addFile("packages/svelte/package.json", JSON.stringify({
+    name: "@workspace/svelte", peerDependencies: { svelte: "^5.56.9" },
+  }));
   mocks.status.mockReset();
   mocks.edit.mockReset();
   mocks.commit.mockReset();
@@ -564,7 +567,18 @@ describe("createProjects", () => {
       expect(typeof source).toBe("string");
       expect(
         authorityReviewFromPackageJson(source as string, packageName).requests,
-      ).toEqual([expect.objectContaining({ capability: "context.boundary" })]);
+      ).toEqual(
+        path === "workers/agent-worker/package.json"
+          ? [
+              expect.objectContaining({ capability: "context.boundary" }),
+              expect.objectContaining({
+                capability: "context.clone",
+                resource: { kind: "exact", key: "context.clone" },
+                tier: "gated",
+              }),
+            ]
+          : [expect.objectContaining({ capability: "context.boundary" })],
+      );
     }
     const durableManifest = JSON.parse(
       mocks.files.get("workers/durable-worker/package.json") as string,
@@ -1108,6 +1122,19 @@ describe("forkProject", () => {
 
 describe("scaffold runtime contract", () => {
   beforeEach(resetRuntimeMocks);
+
+  it("derives the Svelte scaffold dependency from the installed framework peer contract", async () => {
+    addFile("packages/svelte/package.json", JSON.stringify({
+      name: "@workspace/svelte", peerDependencies: { svelte: "^5.60.0" },
+    }));
+    addFile("templates/svelte/template.json", JSON.stringify({ framework: "svelte" }));
+    const { createProjects } = await import("./create-project.js");
+    await createProjects([{ projectType: "panel", name: "svelte-peer-probe", title: "Svelte Peer Probe", template: "svelte" }]);
+    const content = mocks.files.get("panels/svelte-peer-probe/package.json");
+    if (typeof content !== "string") throw new Error("Expected generated textual manifest");
+    const manifest = JSON.parse(content);
+    expect(manifest.dependencies.svelte).toBe("^5.60.0");
+  });
 
   it("pins the panel scaffold's React to the exact runtime Base declares", async () => {
     const { BASE_PANEL_REACT_VERSION, createProjects } =

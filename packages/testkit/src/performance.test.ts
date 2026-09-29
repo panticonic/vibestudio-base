@@ -122,7 +122,7 @@ describe("performance summaries", () => {
       max: 2,
     });
     vi.mocked(rpc.call).mockResolvedValue(metrics);
-    const observation = { attemptId: "attempt-2", status: "ready" };
+    const observation = { attemptId: "attempt-1", status: "ready" };
     const handle = {
       snapshot: vi
         .fn()
@@ -139,7 +139,7 @@ describe("performance summaries", () => {
       profilePanelReload(handle as never, { label: "reload" }),
     ).resolves.toMatchObject({
       beforeAttemptId: "attempt-1",
-      afterAttemptId: "attempt-2",
+      afterAttemptId: "attempt-1",
       report: { label: "reload", value: observation },
     });
     expect(handle.reload).toHaveBeenCalledOnce();

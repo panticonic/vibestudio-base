@@ -45,9 +45,9 @@ mix a separate UX fix into that edit when the task asks for distinct phases.
 
 ## 3. Open the unpublished context build once
 
-Before publication, a plain `openPanel(source)` opens protected main. It will
-not contain the edits you just made. Always pin the current context and retain
-one handle plus its stable id:
+Panel activation defaults to the verified caller's context. Pin the current
+context explicitly when retaining a handle across later source operations,
+and retain its stable id:
 
 ```ts
 import { openPanel } from "@workspace/runtime";
@@ -100,14 +100,28 @@ visual defect from source/DOM text alone.
 
 ## 5. Repair UX, rebuild the same panel, and reacquire the page
 
-Make the separate source edit, rerun the exact-context build report, then:
+Make the separate source edit and rerun the exact-context build report.
+
+A visible improvement must change the rendered interface. Editing a README
+does not improve the panel UI. Capture the changed interface after rebuilding
+and confirm the intended text, layout, or interaction change on the new runtime:
 
 ```ts
-const observation = await scope.panel.rebuild();
-const refreshed = await scope.panelSession.refresh();
-scope.panelSession = refreshed.session;
-const page = scope.panelSession.page;
+scope.rebuildObservation = await scope.panel.rebuild();
+scope.refreshReceipt = await scope.panelSession.refresh();
+scope.panelSession = scope.refreshReceipt.session;
+return {
+  status: scope.refreshReceipt.status,
+  generation: scope.panelSession.generation,
+  phase: scope.rebuildObservation.phase,
+};
 ```
+
+Keep this replacement receipt before a separate UI probe. If that probe fails,
+recover the locator and report the retained replacement receipt with the next
+observed interaction. Return the full interaction outcome or a bounded
+projection preserving its protocol, delivery, and effect; do not discard those
+coordinates when reporting only the new count.
 
 `rebuild()` keeps the panel id but replaces its runtime incarnation, so an old
 page must not be reused. A generation-fenced session reports `replaced` when
@@ -133,8 +147,12 @@ source and do not use `.first()`, `.last()`, or `.nth()` for repeated item
 actions. Repeated controls must have item-specific names such as
 `Complete Buy milk` and `Delete Buy milk`; repair the panel if they do not.
 
-Run add, complete, filter, and delete in one bounded cell against the fresh
-page. Actions auto-wait, so do not add sleeps. For newly authored or restyled UI,
+Exercise the application's data-entry, update, filtering, and removal flows
+against the fresh page. Retain each observed outcome in `scope` before starting
+the next action; a later failure must not erase earlier successful evidence.
+For an application with persistent user data, reload through the panel handle,
+refresh the generation-fenced session, and verify that the saved data survives.
+Actions auto-wait, so do not add sleeps. For newly authored or restyled UI,
 also follow [theme verification](WORKFLOW.md#theme-and-layout): inspect light and
 dark appearances, switch the host choice with the same panel open, and restore
 the prior setting. Check custom surfaces and open overlays, not just the theme
@@ -156,5 +174,5 @@ never means rerun scaffold or blindly push the rejected event.
 
 After publication, `scope.panel.rebuild()` may be used to verify protected main
 only after its requested ref has deliberately been changed to main. Report the
-two observed defects, both screenshot reads, exact build status, interaction
+requested changes, visual review, exact build status, interaction
 evidence, console errors, and publication receipt.

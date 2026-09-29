@@ -26,10 +26,12 @@ development](../extensiondev/SKILL.md) for trusted Node services.
 | -------------------------------------------------------------- | -------------------------------------------------------------------- |
 | Add a workspace from a folder, Git URL, or website link        | [Workspace creation](../templates/references/workspace-creation.md)  |
 | Publish a standalone workspace source                          | [Workspace authoring](../templates/references/template-authoring.md) |
-| Create a new panel, worker, package, or repo-local skill       | [Scaffold projects](#scaffold-projects)                              |
+| Create a new panel, worker, package, or repo-local skill       | [Scaffold projects](PROJECTS.md)                                     |
+| Fork an existing panel or worker source                        | [Fork projects](PROJECTS.md#fork-existing-source)                     |
 | Development loop                                               | [WORKFLOW.md](WORKFLOW.md)                                           |
 | External dependencies, overrides, and patches                  | [DEPENDENCIES.md](DEPENDENCIES.md)                                   |
 | Build, inspect, polish a panel                                 | [PANEL_DEBUG_LOOP.md](PANEL_DEBUG_LOOP.md)                           |
+| Reduce bundle size or optimize runtime cost                    | [Native performance profiling](../performance/SKILL.md)            |
 | Panel lifecycle, observation, failure diagnosis, host commands | [PANEL_API.md](PANEL_API.md)                                         |
 | Workers, DOs, service-backed data, agent workers               | [WORKERS.md](WORKERS.md)                                             |
 | Build a workspace-enabled website                              | [WEBSITES.md](WEBSITES.md)                                           |
@@ -94,6 +96,9 @@ purpose, workflow, ownership, invariants, and diagnostics.
   `workerd` for workers and portable logic, and `native` only for Node,
   Electron, extension, filesystem, socket, or process behavior. Runtime is
   reviewed source and never falls back to native.
+- Before adding a test to an existing unit, read its declared suite and put
+  the test in a file matched by that suite's `include` patterns. Adding test
+  code to a production entry point does not make it a selected test file.
 - Browser/workerd suite files import test primitives from
   `@workspace/test-runtime`, which must be a declared `workspace:*` production
   dependency. Test artifacts use the semantic executable dependency projection,
@@ -108,7 +113,11 @@ purpose, workflow, ownership, invariants, and diagnostics.
   complete disposable worker entities with normal workerd compatibility. An
   interactive client displays the child; the managed headless client is the
   always-available hosting fallback. A hosting failure is infrastructure,
-  never permission to reroute code to Node.
+  never permission to reroute code to Node. Tests access that runtime through
+  ordinary imports from `@workspace/runtime`, just like production panel code.
+  For example, assert that `document.documentElement` exists and that the
+  imported `rpc.call` is a function. Runtime bindings are module exports;
+  do not infer them from an undocumented window property.
 - In eval, use ambient `scope`, `scopes`, `db`, `ctx`, `help`, `chat`, and
   `agent` directly. Portable runtime bindings are also importable from
   `@workspace/runtime`; see [sandbox eval](../sandbox/EVAL.md).
@@ -170,10 +179,19 @@ building the UI:
 1. Read [the service-backed data workflow](WORKERS.md#durable-object-backed-app-databases).
 2. Define and verify the provider's real `@rpc` methods and its service declaration.
    Never invent a placeholder method name.
+   `workspace_service` requires an explicit `binding`: `consent` asks each caller
+   for access, `declared` makes the reviewed wiring available to the listed
+   principals, and `{ declaredFor: ["panels/my-app"] }` limits that wiring to
+   named consumers. Choose the intended policy for the application; receiver
+   method authority remains independent of this binding.
 3. Add the consumer's `authority.serviceRequests` declaration in the same change.
 4. In the consumer, narrow `workers.resolveService(...)` by `kind` before using
    kind-specific fields such as `targetId` or `routeBasePath`.
 5. Verify the provider, then a minimal consumer call, before expanding the UI.
+   With `declaredFor`, run that call from a named installed consumer, through
+   its UI or its own app-shaped RPC. An eval import retains the eval caller's
+   identity and does not acquire the consumer's binding. Other callers require
+   consent; do not widen the binding merely to make an authoring probe work.
 
 For an existing declared service, verification proves only the context candidate.
 Before the minimal live call can use a new or changed RPC method, commit the
@@ -187,58 +205,8 @@ part of the product. Keep UI projection methods out of the domain API.
 
 ## Scaffold projects
 
-Use `createProjects` for one coherent publication of related units:
-
-```ts
-import {
-  createProjects,
-  searchProjectCatalog,
-} from "@workspace-skills/workspace-dev";
-
-const [databaseCatalog, panelCatalog] = await Promise.all([
-  searchProjectCatalog({ resource: "icon", query: "database", limit: 5 }),
-  searchProjectCatalog({
-    resource: "icon",
-    query: "panels top left",
-    limit: 5,
-  }),
-]);
-const databaseIcon = databaseCatalog.entries[0]?.id;
-const panelIcon = panelCatalog.entries[0]?.id;
-if (!databaseIcon || !panelIcon)
-  throw new Error("Required catalog icons are unavailable");
-
-scope.created = await createProjects([
-  {
-    projectType: "worker",
-    name: "task-board-store",
-    title: "Task Board Store",
-    icon: databaseIcon,
-    template: "durable-service",
-  },
-  {
-    projectType: "panel",
-    name: "task-board",
-    title: "Task Board",
-    icon: panelIcon,
-  },
-]);
-return scope.created;
-```
-
-Pass a one-element array for a single unit. Each result returns the canonical
-repository path, created files, preflight evidence, and publication receipt.
-
-If publication fails after creation, follow the structured retry policy and
-recover or repair the already-created repository — never call `createProjects`
-again. If a later open or snapshot fails, resume from the stored creation
-receipt. An existing destination is not part of the attempt; choose a distinct
-name or stop.
-
-Use context-local project files when the user wants private scratch content
-rather than a published executable unit. For source adoption, use explicit
-copy, compare, and merge operations that preserve provenance; source ancestry
-does not grant access or install a live upstream.
+Read [PROJECTS.md](PROJECTS.md) for workspace scaffolding, supported project
+types, publication receipts, and exact build verification.
 
 ## Open and verify panels
 
@@ -246,9 +214,12 @@ does not grant access or install a live upstream.
 handshake. `createPanelSlot` returns only the durable tree placement. Neither a
 slot nor boot readiness proves rendered UI correctness.
 
-For unpublished code, pass the exact context and `ctx:<contextId>` ref. After
-open or rebuild, return the observation and a structured snapshot from the same
-handle. Keep the handle and stable panel ID together in scope.
+Panel metadata and runtime activation default to the verified caller's context,
+so code authored in that context can be opened directly. Root host callers use
+main. To select another source context, pass its exact context and
+`ctx:<contextId>` ref together. After open or rebuild, return the observation and
+a structured snapshot from the same handle. Keep the handle and stable panel ID
+together in scope.
 
 Use `PANEL_DEBUG_LOOP.md` for authoring and polish. For host chrome actions,
 follow [host commands](PANEL_API.md#host-commands): the panel owns command

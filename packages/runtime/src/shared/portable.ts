@@ -58,7 +58,7 @@ export type {
 
 // Pure panel-operation journaling (target-independent) under the `journal`
 // namespace — available identically on panel · worker · eval via the barrels.
-export type { PanelJournalEntry } from "./journal.js";
+export type { OperationJournalEntry } from "./journal.js";
 export const journal = helpfulNamespace("journal", {
   Journal,
   with: withJournal,

@@ -31,6 +31,7 @@ type CdpResponse = {
 };
 
 type PendingCommand = {
+  method: string;
   resolve: (value: unknown) => void;
   reject: (error: Error) => void;
   timeout: ReturnType<typeof setTimeout>;
@@ -89,7 +90,9 @@ export type CdpScreenshotOptions = {
 
 /** How a locator finds its element(s). Chains resolve left-to-right. */
 type TextMatcher = string | RegExp;
-type SerializedTextMatcher = string | { regex: { source: string; flags: string } };
+type SerializedTextMatcher =
+  | string
+  | { regex: { source: string; flags: string } };
 
 type LocatorStep =
   | { by: "css"; value: string }
@@ -165,8 +168,8 @@ function compileLocatorSelector(selector: string): LocatorStep {
   } catch (cause) {
     const error = new TypeError(
       `Invalid text locator ${JSON.stringify(
-        selector
-      )}: quoted text must be a valid JSON string, for example locator('text="Save changes"').`
+        selector,
+      )}: quoted text must be a valid JSON string, for example locator('text="Save changes"').`,
     );
     (error as Error & { cause?: unknown }).cause = cause;
     throw error;
@@ -174,14 +177,17 @@ function compileLocatorSelector(selector: string): LocatorStep {
   if (typeof value !== "string") {
     throw new TypeError(
       `Invalid text locator ${JSON.stringify(
-        selector
-      )}: text= must be followed by text or a quoted JSON string.`
+        selector,
+      )}: text= must be followed by text or a quoted JSON string.`,
     );
   }
   return { by: "text", value, exact: true };
 }
 
-type WebSocketCtor = new (url: string, protocols?: string | string[]) => WebSocket;
+type WebSocketCtor = new (
+  url: string,
+  protocols?: string | string[],
+) => WebSocket;
 
 type WorkerClientWebSocket = WebSocket & { accept?: () => void };
 
@@ -198,20 +204,25 @@ function runsInFetchUpgradeWorker(): boolean {
   // connection through Vibestudio's egress boundary. Fetch upgrades carry the
   // internal grant through the boundary explicitly, so prefer that transport
   // whenever the worker runtime is identifiable.
-  return typeof (globalThis as { WebSocketPair?: unknown }).WebSocketPair === "function";
+  return (
+    typeof (globalThis as { WebSocketPair?: unknown }).WebSocketPair ===
+    "function"
+  );
 }
 
 async function openWebSocket(
   wsEndpoint: string,
   authToken?: string,
-  preferFetchUpgrade = false
+  preferFetchUpgrade = false,
 ): Promise<{ socket: WorkerClientWebSocket; waitForOpen: boolean }> {
   const ctor = (globalThis as { WebSocket?: WebSocketCtor }).WebSocket;
   if (ctor && !preferFetchUpgrade && !runsInFetchUpgradeWorker()) {
     return {
       socket: new ctor(
         wsEndpoint,
-        authToken ? [webSocketAuthProtocol("inspection", authToken)] : undefined
+        authToken
+          ? [webSocketAuthProtocol("inspection", authToken)]
+          : undefined,
       ),
       waitForOpen: true,
     };
@@ -219,7 +230,7 @@ async function openWebSocket(
 
   if (typeof fetch !== "function") {
     throw new Error(
-      "CDP WebSocket transport is unavailable: this runtime exposes neither WebSocket nor fetch"
+      "CDP WebSocket transport is unavailable: this runtime exposes neither WebSocket nor fetch",
     );
   }
 
@@ -227,11 +238,16 @@ async function openWebSocket(
   if (upgradeUrl.protocol === "ws:") upgradeUrl.protocol = "http:";
   else if (upgradeUrl.protocol === "wss:") upgradeUrl.protocol = "https:";
   else {
-    throw new Error(`CDP endpoint must use ws: or wss:, received ${upgradeUrl.protocol}`);
+    throw new Error(
+      `CDP endpoint must use ws: or wss:, received ${upgradeUrl.protocol}`,
+    );
   }
   if (authToken) {
     const headerPairs = JSON.stringify([["x-vibestudio-cdp-grant", authToken]]);
-    const encoded = btoa(headerPairs).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+    const encoded = btoa(headerPairs)
+      .replace(/\+/g, "-")
+      .replace(/\//g, "_")
+      .replace(/=+$/g, "");
     // Workerd's outbound WebSocket proxy cannot carry arbitrary upgrade
     // headers directly. This transport metadata is decoded by the egress
     // boundary, verified there, and removed before the upstream handshake.
@@ -249,7 +265,9 @@ async function openWebSocket(
       timeout = setTimeout(() => {
         controller.abort();
         reject(
-          new Error(`CDP WebSocket upgrade timed out after ${CDP_WEBSOCKET_OPEN_TIMEOUT_MS}ms`)
+          new Error(
+            `CDP WebSocket upgrade timed out after ${CDP_WEBSOCKET_OPEN_TIMEOUT_MS}ms`,
+          ),
         );
       }, CDP_WEBSOCKET_OPEN_TIMEOUT_MS);
     });
@@ -257,7 +275,7 @@ async function openWebSocket(
     const socket = response.webSocket;
     if (!socket) {
       throw new Error(
-        `CDP WebSocket upgrade failed with HTTP ${response.status}: response contained no WebSocket`
+        `CDP WebSocket upgrade failed with HTTP ${response.status}: response contained no WebSocket`,
       );
     }
     socket.accept?.();
@@ -273,7 +291,7 @@ async function openWebSocket(
 
 function once(
   ws: WebSocket,
-  event: "open" | "message" | "error" | "close"
+  event: "open" | "message" | "error" | "close",
 ): Promise<Event | MessageEvent> {
   return new Promise((resolve, reject) => {
     let timeout: ReturnType<typeof setTimeout> | undefined;
@@ -303,7 +321,11 @@ function once(
         } catch {
           // The socket may already have failed while the timeout fired.
         }
-        reject(new Error(`CDP WebSocket open timed out after ${CDP_WEBSOCKET_OPEN_TIMEOUT_MS}ms`));
+        reject(
+          new Error(
+            `CDP WebSocket open timed out after ${CDP_WEBSOCKET_OPEN_TIMEOUT_MS}ms`,
+          ),
+        );
       }, CDP_WEBSOCKET_OPEN_TIMEOUT_MS);
     }
     ws.addEventListener(event, handle);
@@ -331,10 +353,37 @@ function decodeBase64(data: string): Uint8Array {
     for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
     return bytes;
   }
-  const bufferCtor = (globalThis as { Buffer?: { from(data: string, enc: string): Uint8Array } })
-    .Buffer;
+  const bufferCtor = (
+    globalThis as { Buffer?: { from(data: string, enc: string): Uint8Array } }
+  ).Buffer;
   if (bufferCtor) return bufferCtor.from(data, "base64");
   throw new Error("No base64 decoder is available in this runtime");
+}
+
+export interface CdpDialogData {
+  type: "alert" | "confirm" | "prompt" | "beforeunload";
+  message: string;
+  defaultPrompt: string;
+  url: string;
+}
+
+export class CdpDialog {
+  constructor(
+    readonly data: Readonly<CdpDialogData>,
+    private readonly respond: (accept: boolean, promptText?: string) => Promise<void>,
+  ) {}
+  type(): CdpDialogData["type"] { return this.data.type; }
+  message(): string { return this.data.message; }
+  defaultValue(): string { return this.data.defaultPrompt; }
+  accept(promptText?: string): Promise<void> { return this.respond(true, promptText); }
+  dismiss(): Promise<void> { return this.respond(false); }
+}
+
+type DialogHandler = (dialog: CdpDialog) => void | Promise<void>;
+function dialogBlocksCommand(method: string): boolean {
+  return method.startsWith("Input.") || method === "Runtime.evaluate" ||
+    method === "Runtime.callFunctionOn" || method === "Page.navigate" ||
+    method === "Page.reload" || method === "Page.navigateToHistoryEntry";
 }
 
 export class CdpConnection {
@@ -343,10 +392,64 @@ export class CdpConnection {
   private eventListeners = new Map<string, Set<(params: unknown) => void>>();
   private closed = false;
   private closeError: Error | null = null;
+  private activeDialog: { dialog: CdpDialog; response: Promise<void> | null } | null = null;
+  private readonly dialogHandlers = new Set<DialogHandler>();
+
+  dialog(): CdpDialog | null { return this.activeDialog?.dialog ?? null; }
+  onDialog(handler: DialogHandler): () => void {
+    this.dialogHandlers.add(handler);
+    return () => { this.dialogHandlers.delete(handler); };
+  }
+
+  private dialogError(method: string, dialog: CdpDialog, cause?: unknown): CdpError {
+    return new CdpError(`Browser ${dialog.type()} dialog requires a response: ${dialog.message()}`, {
+      code: "cdp_dialog_open", operation: method, recovery: "handle-dialog-and-observe",
+      dialog: dialog.data, cause,
+      instruction: "Use page.dialog() to inspect and accept or dismiss the pending dialog, then observe the effect without repeating the input or evaluation. Register page.on('dialog', handler) before actions that intentionally open dialogs.",
+    });
+  }
+
+  private rejectDialogBlockedCommands(dialog: CdpDialog, cause?: unknown): void {
+    for (const [id, command] of this.pending) {
+      if (!dialogBlocksCommand(command.method)) continue;
+      clearTimeout(command.timeout);
+      this.pending.delete(id);
+      command.reject(this.dialogError(command.method, dialog, cause));
+    }
+  }
+
+  private async receiveDialog(data: CdpDialogData): Promise<void> {
+    const state: { dialog: CdpDialog; response: Promise<void> | null } = {
+      response: null,
+      dialog: new CdpDialog(Object.freeze({ ...data, defaultPrompt: data.defaultPrompt ?? "" }), (accept, promptText) => {
+        if (this.activeDialog !== state || state.response) return Promise.reject(new CdpError(
+          "This browser dialog has already been answered, closed or replaced", {
+            code: "cdp_dialog_closed", operation: "Page.handleJavaScriptDialog", recovery: "handle-dialog-and-observe",
+          },
+        ));
+        // The native response belongs to the dialog, even when an event handler
+        // initiates accept/dismiss without returning its promise.
+        state.response = this.send("Page.handleJavaScriptDialog", {
+          accept, ...(promptText === undefined ? {} : { promptText }),
+        }).then(() => {
+          if (this.activeDialog === state) this.activeDialog = null;
+        });
+        return state.response;
+      }),
+    };
+    this.activeDialog = state;
+    try {
+      await Promise.all([...this.dialogHandlers].map((handler) => handler(state.dialog)));
+      await state.response;
+      if (this.activeDialog === state) this.rejectDialogBlockedCommands(state.dialog);
+    } catch (error) {
+      if (this.activeDialog === state) this.rejectDialogBlockedCommands(state.dialog, error);
+    }
+  }
 
   private constructor(
     private readonly ws: WebSocket,
-    private readonly commandTimeoutMs = CDP_COMMAND_TIMEOUT_MS
+    private readonly commandTimeoutMs = CDP_COMMAND_TIMEOUT_MS,
   ) {
     ws.addEventListener("message", (event) => {
       void this.handleMessage((event as MessageEvent).data);
@@ -360,8 +463,8 @@ export class CdpConnection {
             operation: "connect",
             failureKind: "infrastructure",
             recovery: "inspect-panel-and-reacquire-page",
-          }
-        )
+          },
+        ),
       );
     });
     ws.addEventListener("close", () => {
@@ -373,8 +476,8 @@ export class CdpConnection {
             operation: "connection",
             failureKind: "infrastructure",
             recovery: "reacquire-page",
-          }
-        )
+          },
+        ),
       );
     });
   }
@@ -383,23 +486,35 @@ export class CdpConnection {
     wsEndpoint: string,
     authToken?: string,
     preferFetchUpgrade = false,
-    options: { commandTimeoutMs?: number } = {}
+    options: { commandTimeoutMs?: number } = {},
   ): Promise<CdpConnection> {
     const { socket: ws, waitForOpen } = await openWebSocket(
       wsEndpoint,
       authToken,
-      preferFetchUpgrade
+      preferFetchUpgrade,
     );
     if (waitForOpen) await once(ws, "open");
-    return new CdpConnection(ws, options.commandTimeoutMs ?? CDP_COMMAND_TIMEOUT_MS);
+    return new CdpConnection(
+      ws,
+      options.commandTimeoutMs ?? CDP_COMMAND_TIMEOUT_MS,
+    );
   }
 
   send(
     method: string,
     params?: Record<string, unknown>,
-    options: CdpCommandOptions = {}
+    options: CdpCommandOptions = {},
   ): Promise<unknown> {
     if (this.closed) {
+      if (this.closeError instanceof CdpError) {
+        return Promise.reject(
+          new CdpError(`Cannot send ${method}: ${this.closeError.message}`, {
+            ...this.closeError.errorData,
+            cause: this.closeError,
+            operation: method,
+          }),
+        );
+      }
       const reason =
         this.closeError?.message ??
         "CDP connection is closed. Obtain a fresh page before sending more commands.";
@@ -409,8 +524,16 @@ export class CdpConnection {
           operation: method,
           failureKind: "infrastructure",
           recovery: "reacquire-page",
-        })
+        }),
       );
+    }
+    if (this.activeDialog && dialogBlocksCommand(method)) {
+      if (this.activeDialog.response) {
+        // No command has been dispatched yet: join the explicit decision before
+        // sending new renderer work. Original pending commands are never replayed.
+        return this.activeDialog.response.then(() => this.send(method, params, options));
+      }
+      return Promise.reject(this.dialogError(method, this.activeDialog.dialog));
     }
     const id = this.nextId++;
     const message = params ? { id, method, params } : { id, method };
@@ -427,7 +550,7 @@ export class CdpConnection {
               operation: method,
               failureKind: "infrastructure",
               recovery: "inspect-panel-and-reacquire-page",
-            }
+            },
           );
         if (options.timeoutBehavior === "reject") {
           this.pending.delete(id);
@@ -441,7 +564,7 @@ export class CdpConnection {
           // The transport may already be closed.
         }
       }, timeoutMs);
-      this.pending.set(id, { resolve, reject, timeout });
+      this.pending.set(id, { method, resolve, reject, timeout });
       try {
         this.ws.send(JSON.stringify(message));
       } catch (error) {
@@ -462,8 +585,8 @@ export class CdpConnection {
           operation: "close",
           failureKind: "user-code",
           recovery: "reacquire-page",
-        }
-      )
+        },
+      ),
     );
     this.ws.close();
   }
@@ -482,6 +605,8 @@ export class CdpConnection {
     }
     this.pending.clear();
     this.eventListeners.clear();
+    this.dialogHandlers.clear();
+    this.activeDialog = null;
   }
 
   on(method: string, listener: (params: unknown) => void): () => void {
@@ -505,7 +630,36 @@ export class CdpConnection {
       console.error("[cdp-client] failed to parse CDP frame:", err);
       return;
     }
+    if (this.closed) return;
     if (typeof parsed.id !== "number") {
+      if (parsed.method === "Page.javascriptDialogOpening") {
+        void this.receiveDialog(parsed.params as CdpDialogData);
+      } else if (parsed.method === "Page.javascriptDialogClosed") {
+        this.activeDialog = null;
+      }
+      if (
+        parsed.method === "Inspector.targetCrashed" ||
+        parsed.method === "Inspector.detached"
+      ) {
+        const crashed = parsed.method === "Inspector.targetCrashed";
+        const reason = (parsed.params as { reason?: unknown } | undefined)
+          ?.reason;
+        this.disconnect(
+          new CdpError(
+            crashed
+              ? "CDP target renderer crashed. Inspect panel diagnostics before acquiring a new page."
+              : `CDP inspector detached${typeof reason === "string" ? `: ${reason}` : "."}`,
+            {
+              code: crashed ? "cdp_target_crashed" : "cdp_target_detached",
+              operation: parsed.method,
+              failureKind: "infrastructure",
+              recovery: "inspect-panel-and-reacquire-page",
+            },
+          ),
+        );
+        this.ws.close();
+        return;
+      }
       if (parsed.method) {
         for (const listener of this.eventListeners.get(parsed.method) ?? []) {
           listener(parsed.params);
@@ -518,7 +672,11 @@ export class CdpConnection {
     this.pending.delete(parsed.id);
     clearTimeout(pending.timeout);
     if (parsed.error) {
-      pending.reject(new Error(parsed.error.message ?? parsed.error.data ?? "CDP command failed"));
+      pending.reject(
+        new Error(
+          parsed.error.message ?? parsed.error.data ?? "CDP command failed",
+        ),
+      );
       return;
     }
     pending.resolve(parsed.result);
@@ -543,9 +701,17 @@ function nsNorm(s){ return (s==null?"":String(s)).replace(/\s+/g," ").trim(); }
 function nsDedupe(a){ return a.filter(function(e,i){ return a.indexOf(e)===i; }); }
 function nsRetainedElements(){ var key=Symbol.for("@workspace/cdp-client/retained-elements"); var registry=globalThis[key]; if(!(registry instanceof Map)){ registry=new Map(); globalThis[key]=registry; } return registry; }
 function nsRetainedElement(token){ var e=nsRetainedElements().get(token); if(!e) throw new Error("Retained element lease is no longer available"); return e; }
-function nsText(el){ return nsNorm((el && (el.innerText!=null?el.innerText:el.textContent)) || ""); }
+function nsSourceText(el){ return !!el && /^(HEAD|TITLE|SCRIPT|STYLE|TEMPLATE|NOSCRIPT)$/.test(el.tagName||""); }
+function nsContentText(node){
+  if(!node||nsSourceText(node)) return "";
+  if(node.nodeType===3) return node.nodeValue||"";
+  if(!node.childNodes) return node.textContent!=null?node.textContent:(node.innerText||"");
+  var parts=[]; for(var i=0;i<node.childNodes.length;i++) parts.push(nsContentText(node.childNodes[i]));
+  return parts.join("");
+}
+function nsText(el){ if(!el||nsSourceText(el)) return ""; return nsNorm(el.innerText!=null && nsVisible(el) ? el.innerText : nsContentText(el)); }
 function nsValueMatch(value, q, exact){ var t=nsNorm(value); if(q&&typeof q==="object"&&q.regex){ return new RegExp(q.regex.source,q.regex.flags).test(t); } var n=nsNorm(q); return exact ? t===n : t.toLowerCase().indexOf(n.toLowerCase())!==-1; }
-function nsTextMatch(el, q, exact){ return nsValueMatch(nsText(el),q,exact); }
+function nsTextMatch(el, q, exact){ return !nsSourceText(el) && nsValueMatch(nsText(el),q,exact); }
 function nsHasTextMatchingDescendant(el,q,exact){ var all=el&&el.querySelectorAll?el.querySelectorAll("*"):[]; for(var i=0;i<all.length;i++){ if(nsTextMatch(all[i],q,exact)) return true; } return false; }
 function nsAttr(el, name){ return el && el.getAttribute ? el.getAttribute(name) : null; }
 function nsSetNativeProperty(el,name,value){ var proto=Object.getPrototypeOf(el); var descriptor=proto&&Object.getOwnPropertyDescriptor(proto,name); if(descriptor&&descriptor.set) descriptor.set.call(el,value); else el[name]=value; }
@@ -577,7 +743,7 @@ function nsAccName(el){
   var lb=nsAttr(el,"aria-labelledby");
   if(lb){ var parts=lb.split(/\s+/).map(function(id){ var e=document.getElementById(id); return e?nsText(e):""; }); var j=nsNorm(parts.join(" ")); if(j) return j; }
   if(el.tagName==="IMG"){ var alt=nsAttr(el,"alt"); if(alt) return nsNorm(alt); }
-  if(el.labels && el.labels.length) return nsNorm(Array.prototype.map.call(el.labels,function(l){return nsText(l);}).join(" "));
+  if(el.labels && el.labels.length) return nsNorm(Array.prototype.map.call(el.labels,function(l){return nsLabelText(l);}).join(" "));
   var t=nsText(el); if(t) return t;
   var ph=nsAttr(el,"placeholder"); if(ph) return nsNorm(ph);
   var ti=nsAttr(el,"title"); if(ti) return nsNorm(ti);
@@ -623,7 +789,7 @@ function nsStepFind(roots, step){
     switch(step.by){
       case "role": { if(nsRole(e)!==String(step.value).toLowerCase()) return false; if(step.name!=null) return nsValueMatch(nsAccName(e),step.name,step.exact); return true; }
       case "text": return nsTextMatch(e, step.value, step.exact);
-      case "label": { var tag=e.tagName?e.tagName.toLowerCase():""; var formish=(tag==="input"||tag==="textarea"||tag==="select"||tag==="button")||e.isContentEditable; return formish && nsValueMatch(nsAccName(e),step.value,step.exact); }
+      case "label": { return nsAssociatedLabelMatches(e,step.value,step.exact) || ((nsAttr(e,"aria-label")!=null || nsAttr(e,"aria-labelledby")!=null) && nsValueMatch(nsAccName(e),step.value,step.exact)); }
       case "placeholder": { var ph=nsAttr(e,"placeholder"); return ph!=null && nsValueMatch(ph,step.value,step.exact); }
       case "testid": return nsAttr(e,"data-testid")===step.value;
       case "alt": { var a=nsAttr(e,"alt"); return a!=null && nsValueMatch(a,step.value,step.exact); }
@@ -659,8 +825,16 @@ function nsLocate(descriptor){
   }
   return cur;
 }
-function nsFirst(descriptor){ var e=nsLocate(descriptor); return e.length?e[0]:null; }
-function nsFirstVisible(descriptor){ var e=nsLocate(descriptor); for(var i=0;i<e.length;i++){ if(nsVisible(e[i])) return e[i]; } return null; }
+function nsFirst(descriptor){
+  var matches=nsLocate(descriptor);
+  if(matches.length>1){
+    var failure=new Error("Locator matched "+matches.length+" elements");
+    failure.__nsLocatorFailure={__nsLocatorFailure:"ambiguous",matchCount:matches.length,candidates:matches.slice(0,8).map(function(e){return {role:nsRole(e),accessibleName:nsAccName(e),tagName:e.tagName};})};
+    throw failure;
+  }
+  return matches.length?matches[0]:null;
+}
+function nsFirstVisible(descriptor){ var e=nsFirst(descriptor); return e&&nsVisible(e)?e:null; }
 function nsBox(el){ var r=el.getBoundingClientRect(); return {x:r.x,y:r.y,width:r.width,height:r.height}; }
 function nsSleep(ms){ return new Promise(function(r){ setTimeout(r,ms); }); }
 function nsAfterAction(){ return nsSleep(0); }
@@ -677,9 +851,7 @@ async function nsWaitForState(descriptor, state, timeout){
   throw failure;
 }
 function nsActionable(descriptor, retainToken){
-  var matches=nsLocate(descriptor), el=null, visible=null;
-  for(var mi=0;mi<matches.length;mi++){ if(nsVisible(matches[mi])){ if(!visible) visible=matches[mi]; if(nsEnabled(matches[mi])){ el=matches[mi]; break; } } }
-  if(!el) el=visible;
+  var el=nsFirst(descriptor);
   if(!el) return {ok:false, reason:"not found"};
   if(!nsVisible(el)) return {ok:false, reason:"not visible"};
   if(!nsEnabled(el)) return {ok:false, reason:"not enabled"};
@@ -763,7 +935,10 @@ async function __nsRun(P){
 }
 `;
 
-const KEY_DEFS: Record<string, { keyCode?: number; key?: string; text?: string }> = {
+const KEY_DEFS: Record<
+  string,
+  { keyCode?: number; key?: string; text?: string }
+> = {
   Enter: { keyCode: 13, key: "Enter", text: "\r" },
   Tab: { keyCode: 9, key: "Tab" },
   Escape: { keyCode: 27, key: "Escape" },
@@ -819,7 +994,8 @@ function formatRuntimeException(details: RuntimeExceptionDetails): string {
     remote && Object.prototype.hasOwnProperty.call(remote, "value")
       ? String(remote.value)
       : undefined;
-  const primary = remote?.description || value || details.text || "Unknown browser exception";
+  const primary =
+    remote?.description || value || details.text || "Unknown browser exception";
   const frames = details.stackTrace?.callFrames ?? [];
   const stack =
     frames.length > 0 && !primary.includes("\n")
@@ -828,9 +1004,14 @@ function formatRuntimeException(details: RuntimeExceptionDetails): string {
           .map((frame) => {
             const name = frame.functionName || "<anonymous>";
             const url = frame.url || details.url || "<page>";
-            const line = typeof frame.lineNumber === "number" ? `:${frame.lineNumber + 1}` : "";
+            const line =
+              typeof frame.lineNumber === "number"
+                ? `:${frame.lineNumber + 1}`
+                : "";
             const column =
-              typeof frame.columnNumber === "number" ? `:${frame.columnNumber + 1}` : "";
+              typeof frame.columnNumber === "number"
+                ? `:${frame.columnNumber + 1}`
+                : "";
             return `    at ${name} (${url}${line}${column})`;
           })
           .join("\n")
@@ -842,7 +1023,9 @@ function formatRuntimeException(details: RuntimeExceptionDetails): string {
       typeof details.lineNumber === "number" ||
       typeof details.columnNumber === "number")
       ? `\n    at ${details.url || "<page>"}${
-          typeof details.lineNumber === "number" ? `:${details.lineNumber + 1}` : ""
+          typeof details.lineNumber === "number"
+            ? `:${details.lineNumber + 1}`
+            : ""
         }${typeof details.columnNumber === "number" ? `:${details.columnNumber + 1}` : ""}`
       : "";
   return `Browser evaluation failed: ${primary}${stack ? `\n${stack}` : location}`;
@@ -857,12 +1040,17 @@ export interface CdpFailureData {
   code:
     | "cdp_target_connection_failed"
     | "cdp_target_closed"
+    | "cdp_target_crashed"
+    | "cdp_target_detached"
     | "cdp_command_timeout"
+    | "cdp_dialog_open"
+    | "cdp_dialog_closed"
     | "cdp_evaluation_timeout"
     | "cdp_evaluation_failed"
     | "cdp_locator_operation_failed"
     | "cdp_locator_not_actionable"
     | "cdp_locator_state_mismatch"
+    | "cdp_locator_ambiguous"
     | "cdp_interaction_outcome_not_observed"
     | "cdp_workspace_navigation_forbidden";
   operation: string;
@@ -872,12 +1060,16 @@ export interface CdpFailureData {
     | "reobserve-locator"
     | "reacquire-page"
     | "inspect-panel-and-reacquire-page"
-    | "use-panel-handle-lifecycle";
+    | "use-panel-handle-lifecycle"
+    | "handle-dialog-and-observe";
   locator?: string;
   timeoutMs?: number;
   state?: WaitState;
   expectedLocator?: string;
+  matchCount?: number;
+  candidates?: Array<{ role: string; accessibleName: string; tagName: string }>;
   instruction?: string;
+  dialog?: Readonly<CdpDialogData>;
 }
 
 export class CdpError extends Error {
@@ -897,27 +1089,39 @@ export class CdpError extends Error {
       timeoutMs?: number;
       state?: WaitState;
       expectedLocator?: string;
+      matchCount?: number;
+      candidates?: CdpFailureData["candidates"];
       instruction?: string;
-    } = {}
+      dialog?: Readonly<CdpDialogData>;
+    } = {},
   ) {
     super(message);
     this.name = "CdpError";
     this.locator = options.locator;
     this.code = options.code ?? "cdp_locator_operation_failed";
     const failureKind = options.failureKind ?? "user-code";
-    this.errorKind = failureKind === "infrastructure" ? "infrastructure" : "application";
+    this.errorKind =
+      failureKind === "infrastructure" ? "infrastructure" : "application";
     this.errorData = {
       code: this.code,
       operation: options.operation ?? "locator",
       failureKind,
       recovery: options.recovery ?? "reobserve-locator",
       ...(options.locator ? { locator: options.locator } : {}),
-      ...(options.timeoutMs === undefined ? {} : { timeoutMs: options.timeoutMs }),
+      ...(options.timeoutMs === undefined
+        ? {}
+        : { timeoutMs: options.timeoutMs }),
       ...(options.state ? { state: options.state } : {}),
-      ...(options.expectedLocator ? { expectedLocator: options.expectedLocator } : {}),
+      ...(options.expectedLocator
+        ? { expectedLocator: options.expectedLocator }
+        : {}),
+      ...(options.matchCount === undefined ? {} : { matchCount: options.matchCount }),
+      ...(options.candidates ? { candidates: options.candidates } : {}),
       ...(options.instruction ? { instruction: options.instruction } : {}),
+      ...(options.dialog ? { dialog: options.dialog } : {}),
     };
-    if (options.cause !== undefined) (this as { cause?: unknown }).cause = options.cause;
+    if (options.cause !== undefined)
+      (this as { cause?: unknown }).cause = options.cause;
   }
 }
 
@@ -937,7 +1141,9 @@ function describeLocator(descriptor: LocatorDescriptor): string {
   const parts = descriptor.steps.map((step) => {
     if ("filter" in step) {
       return `filter(${
-        step.filter.hasText != null ? `{ hasText: ${matcher(step.filter.hasText)} }` : "{}"
+        step.filter.hasText != null
+          ? `{ hasText: ${matcher(step.filter.hasText)} }`
+          : "{}"
       })`;
     }
     if ("nth" in step) {
@@ -973,6 +1179,19 @@ function describeLocator(descriptor: LocatorDescriptor): string {
 }
 
 class WorkerCdpPage {
+  private readonly dialogSubscriptions = new Map<DialogHandler, () => void>();
+  dialog(): CdpDialog | null { return this.connection.dialog(); }
+  on(event: "dialog", handler: DialogHandler): this {
+    if (event !== "dialog") throw new TypeError(`Unsupported page event: ${event}`);
+    if (!this.dialogSubscriptions.has(handler)) this.dialogSubscriptions.set(handler, this.connection.onDialog(handler));
+    return this;
+  }
+  off(event: "dialog", handler: DialogHandler): this {
+    if (event !== "dialog") throw new TypeError(`Unsupported page event: ${event}`);
+    this.dialogSubscriptions.get(handler)?.();
+    this.dialogSubscriptions.delete(handler);
+    return this;
+  }
   private currentUrl = "";
   private currentViewportSize: CdpViewportSize | null = null;
   private defaultTimeout = 30_000;
@@ -1002,14 +1221,19 @@ class WorkerCdpPage {
     },
   };
 
-  constructor(readonly connection: CdpConnection) {
+  constructor(
+    readonly connection: CdpConnection,
+    private readonly onInteraction?: (outcome: CdpInteractionOutcome) => void,
+  ) {
     this.connection.on("Runtime.consoleAPICalled", (params) => {
       const event = params as {
         type?: string;
         args?: Array<{ value?: unknown; description?: string; type?: string }>;
       };
       const args = (event.args ?? []).map((arg) =>
-        Object.prototype.hasOwnProperty.call(arg, "value") ? arg.value : arg.description
+        Object.prototype.hasOwnProperty.call(arg, "value")
+          ? arg.value
+          : arg.description,
       );
       this.consoleBuffer.push({
         type: event.type ?? "log",
@@ -1020,18 +1244,19 @@ class WorkerCdpPage {
   }
 
   async initialize(): Promise<void> {
-    await Promise.allSettled([
+    await Promise.all([
+      this.connection.send("Inspector.enable"),
       this.connection.send("Page.enable"),
       this.connection.send("Runtime.enable"),
       this.connection.send("DOM.enable"),
     ]);
     this.currentUrl = String(
-      (await this.evaluateInternal(() => location.href).catch(() => "")) ?? ""
+      (await this.evaluateInternal(() => location.href)) ?? "",
     );
     const viewport = await this.evaluateInternal(() => ({
       width: window.innerWidth,
       height: window.innerHeight,
-    })).catch(() => null);
+    }));
     if (
       viewport &&
       typeof viewport === "object" &&
@@ -1102,7 +1327,7 @@ class WorkerCdpPage {
         } else {
           stoppedFrames.add(fid);
         }
-      })
+      }),
     );
     const timer = setTimeout(finish, timeout);
     cleanups.push(() => clearTimeout(timer));
@@ -1136,7 +1361,10 @@ class WorkerCdpPage {
   }
 
   private async navigateHistory(delta: number): Promise<void> {
-    const history = (await this.connection.send("Page.getNavigationHistory", {})) as {
+    const history = (await this.connection.send(
+      "Page.getNavigationHistory",
+      {},
+    )) as {
       currentIndex: number;
       entries: Array<{ id: number }>;
     };
@@ -1164,7 +1392,9 @@ class WorkerCdpPage {
 
   async content(): Promise<string> {
     return String(
-      (await this.evaluateInternal(() => document.documentElement?.outerHTML ?? "")) ?? ""
+      (await this.evaluateInternal(
+        () => document.documentElement?.outerHTML ?? "",
+      )) ?? "",
     );
   }
 
@@ -1176,11 +1406,16 @@ class WorkerCdpPage {
   /** Emulate a CSS viewport using the canonical CDP device-metrics override. */
   async setViewportSize(viewportSize: CdpViewportSize): Promise<void> {
     const { width, height } = viewportSize;
-    if (!Number.isInteger(width) || width <= 0 || !Number.isInteger(height) || height <= 0) {
+    if (
+      !Number.isInteger(width) ||
+      width <= 0 ||
+      !Number.isInteger(height) ||
+      height <= 0
+    ) {
       throw new TypeError(
         `setViewportSize requires positive integer width and height; received ${JSON.stringify(
-          viewportSize
-        )}`
+          viewportSize,
+        )}`,
       );
     }
     await this.connection.send("Emulation.setDeviceMetricsOverride", {
@@ -1203,7 +1438,7 @@ class WorkerCdpPage {
    */
   async profile(
     action: () => unknown | Promise<unknown>,
-    options?: CdpProfileOptions
+    options?: CdpProfileOptions,
   ): Promise<CdpProfileReport> {
     if (this.profileActive) {
       throw new Error("A profiling operation is already active on this page");
@@ -1225,7 +1460,7 @@ class WorkerCdpPage {
   async evaluate(
     pageFunction: string | ((arg?: unknown) => unknown),
     arg?: unknown,
-    options: { timeout?: number; operation?: string } = {}
+    options: { timeout?: number; operation?: string } = {},
   ): Promise<unknown> {
     const expression =
       typeof pageFunction === "function"
@@ -1234,14 +1469,14 @@ class WorkerCdpPage {
     return this.evaluateExpression(
       expression,
       options.operation ?? "Runtime.evaluate",
-      options.timeout ?? this.defaultTimeout
+      options.timeout ?? this.defaultTimeout,
     );
   }
 
   /** Internal browser reads retain transport-level timeout classification. */
   private async evaluateInternal(
     pageFunction: string | ((arg?: unknown) => unknown),
-    arg?: unknown
+    arg?: unknown,
   ): Promise<unknown> {
     const expression =
       typeof pageFunction === "function"
@@ -1253,7 +1488,7 @@ class WorkerCdpPage {
   private async evaluateExpression(
     expression: string,
     operation: string,
-    timeout?: number
+    timeout?: number,
   ): Promise<unknown> {
     const result = (await this.connection.send(
       "Runtime.evaluate",
@@ -1276,9 +1511,9 @@ class WorkerCdpPage {
                   failureKind: "user-code",
                   recovery: "reobserve-locator",
                   timeoutMs,
-                }
+                },
               ),
-          }
+          },
     )) as {
       result?: { value?: unknown };
       exceptionDetails?: RuntimeExceptionDetails;
@@ -1298,7 +1533,7 @@ class WorkerCdpPage {
     op: string,
     descriptor: LocatorDescriptor,
     arg: unknown,
-    opts: { timeout?: number; state?: WaitState } = {}
+    opts: { timeout?: number; state?: WaitState } = {},
   ): Promise<unknown> {
     const timeout = opts.timeout ?? this.defaultTimeout;
     const payload = {
@@ -1312,35 +1547,51 @@ class WorkerCdpPage {
       const deadline = Date.now() + timeout;
       for (;;) {
         const expr = `(async function(P){ ${INPAGE}\n return await __nsRun(P); })(${JSON.stringify(
-          payload
+          payload,
         )})`;
         const result = await this.evaluate(expr, undefined, {
           timeout: timeout + 1_000,
           operation: `locator.${op}`,
         });
+        if (result && typeof result === "object" &&
+          (result as { __nsLocatorFailure?: string }).__nsLocatorFailure === "ambiguous") {
+          const failure = result as { matchCount: number; candidates: NonNullable<CdpFailureData["candidates"]> };
+          throw new CdpError(`Locator matched ${failure.matchCount} elements: ${failure.candidates.map((candidate) => `${candidate.role || candidate.tagName} ${JSON.stringify(candidate.accessibleName)}`).join(", ")}`, {
+            code: "cdp_locator_ambiguous", operation: op, recovery: "reobserve-locator",
+            matchCount: failure.matchCount, candidates: failure.candidates,
+            instruction: "Inspect the matching controls and narrow the locator to the intended element before acting.",
+          });
+        }
         if (
           !result ||
           typeof result !== "object" ||
-          (result as { __nsLocatorFailure?: unknown }).__nsLocatorFailure !== "state-timeout"
+          (result as { __nsLocatorFailure?: unknown }).__nsLocatorFailure !==
+            "state-timeout"
         ) {
           return result;
         }
-        const state = (result as { state?: WaitState }).state ?? opts.state ?? "visible";
+        const state =
+          (result as { state?: WaitState }).state ?? opts.state ?? "visible";
         const remaining = deadline - Date.now();
         if (remaining <= 0) {
-          throw new CdpError(`Timeout ${timeout}ms waiting for element to be ${state}`, {
-            code: "cdp_locator_state_mismatch",
-            operation: op,
-            recovery: "reobserve-locator",
-            timeoutMs: timeout,
-            state,
-          });
+          throw new CdpError(
+            `Timeout ${timeout}ms waiting for element to be ${state}`,
+            {
+              code: "cdp_locator_state_mismatch",
+              operation: op,
+              recovery: "reobserve-locator",
+              timeoutMs: timeout,
+              state,
+            },
+          );
         }
         // Yield outside Runtime.evaluate. A long-lived in-page polling promise
         // can prevent Chromium from delivering a preceding CDP Input event to
         // the renderer, making the click's effect appear only after the wait
         // itself times out.
-        await new Promise((resolve) => setTimeout(resolve, Math.min(50, remaining)));
+        await new Promise((resolve) =>
+          setTimeout(resolve, Math.min(50, remaining)),
+        );
       }
     } catch (err) {
       const where = describeLocator(descriptor);
@@ -1356,6 +1607,8 @@ class WorkerCdpPage {
           timeoutMs: err.errorData.timeoutMs,
           state: err.errorData.state,
           expectedLocator: err.errorData.expectedLocator,
+          matchCount: err.errorData.matchCount,
+          candidates: err.errorData.candidates,
           instruction: err.errorData.instruction,
         });
       }
@@ -1381,7 +1634,10 @@ class WorkerCdpPage {
         {
           by: "role",
           value: role,
-          name: options.name === undefined ? undefined : serializeTextMatcher(options.name),
+          name:
+            options.name === undefined
+              ? undefined
+              : serializeTextMatcher(options.name),
           exact: options.exact,
         },
       ],
@@ -1389,7 +1645,9 @@ class WorkerCdpPage {
   }
   getByText(text: TextMatcher, options: ByTextOptions = {}): WorkerCdpLocator {
     return new WorkerCdpLocator(this, {
-      steps: [{ by: "text", value: serializeTextMatcher(text), exact: options.exact }],
+      steps: [
+        { by: "text", value: serializeTextMatcher(text), exact: options.exact },
+      ],
     });
   }
   getByLabel(text: TextMatcher, options: ByTextOptions = {}): WorkerCdpLocator {
@@ -1403,7 +1661,10 @@ class WorkerCdpPage {
       ],
     });
   }
-  getByPlaceholder(text: TextMatcher, options: ByTextOptions = {}): WorkerCdpLocator {
+  getByPlaceholder(
+    text: TextMatcher,
+    options: ByTextOptions = {},
+  ): WorkerCdpLocator {
     return new WorkerCdpLocator(this, {
       steps: [
         {
@@ -1419,9 +1680,14 @@ class WorkerCdpPage {
       steps: [{ by: "testid", value: testId }],
     });
   }
-  getByAltText(text: TextMatcher, options: ByTextOptions = {}): WorkerCdpLocator {
+  getByAltText(
+    text: TextMatcher,
+    options: ByTextOptions = {},
+  ): WorkerCdpLocator {
     return new WorkerCdpLocator(this, {
-      steps: [{ by: "alt", value: serializeTextMatcher(text), exact: options.exact }],
+      steps: [
+        { by: "alt", value: serializeTextMatcher(text), exact: options.exact },
+      ],
     });
   }
   getByTitle(text: TextMatcher, options: ByTextOptions = {}): WorkerCdpLocator {
@@ -1444,7 +1710,7 @@ class WorkerCdpPage {
   async waitForFunction(
     pageFunction: string | ((arg?: unknown) => unknown),
     arg?: unknown,
-    options?: { timeout?: number; polling?: number | "raf" }
+    options?: { timeout?: number; polling?: number | "raf" },
   ): Promise<unknown> {
     let actualArg = arg;
     let actualOptions = options ?? {};
@@ -1463,7 +1729,9 @@ class WorkerCdpPage {
         ? actualOptions.polling
         : 50;
     const source =
-      typeof pageFunction === "function" ? `(${pageFunction.toString()})` : pageFunction;
+      typeof pageFunction === "function"
+        ? `(${pageFunction.toString()})`
+        : pageFunction;
     const isFunction = typeof pageFunction === "function";
 
     return this.evaluate(
@@ -1482,16 +1750,16 @@ class WorkerCdpPage {
         }
         throw new Error("Timeout " + timeout + "ms exceeded waiting for function");
       })(${JSON.stringify(source)}, ${JSON.stringify(isFunction)}, ${JSON.stringify(
-        actualArg
+        actualArg,
       )}, ${JSON.stringify(timeout)}, ${JSON.stringify(polling)})`,
       undefined,
-      { timeout: timeout + 1_000, operation: "waitForFunction" }
+      { timeout: timeout + 1_000, operation: "waitForFunction" },
     );
   }
 
   async waitForLoadState(
     state: "load" | "domcontentloaded" | "networkidle" = "load",
-    options: { timeout?: number } = {}
+    options: { timeout?: number } = {},
   ): Promise<void> {
     const timeout = options.timeout ?? this.defaultTimeout;
     await this.evaluate(
@@ -1509,13 +1777,13 @@ class WorkerCdpPage {
         throw new Error("Timeout " + timeout + "ms exceeded waiting for load state " + state);
       })(${JSON.stringify(state)}, ${JSON.stringify(timeout)})`,
       undefined,
-      { timeout: timeout + 1_000, operation: "waitForLoadState" }
+      { timeout: timeout + 1_000, operation: "waitForLoadState" },
     );
   }
 
   async waitForSelector(
     selector: string,
-    options: { state?: WaitState; timeout?: number } = {}
+    options: { state?: WaitState; timeout?: number } = {},
   ): Promise<WorkerCdpElementHandle | null> {
     const loc = this.locator(selector);
     await loc.waitFor(options);
@@ -1530,7 +1798,7 @@ class WorkerCdpPage {
   async resolveHitPoint(
     descriptor: LocatorDescriptor,
     timeout: number = this.defaultTimeout,
-    retainToken?: string
+    retainToken?: string,
   ): Promise<{ x: number; y: number }> {
     type ActionabilityProbe = {
       ok: boolean;
@@ -1547,7 +1815,7 @@ class WorkerCdpPage {
         "probe",
         descriptor,
         retainToken ? { retainToken } : null,
-        { timeout: 0 }
+        { timeout: 0 },
       )) as ActionabilityProbe;
       const box = probe.box;
       const stable =
@@ -1558,7 +1826,11 @@ class WorkerCdpPage {
         Math.abs(previousBox.y - box.y) < 1 &&
         Math.abs(previousBox.width - box.width) < 1 &&
         Math.abs(previousBox.height - box.height) < 1;
-      if (stable && typeof probe.x === "number" && typeof probe.y === "number") {
+      if (
+        stable &&
+        typeof probe.x === "number" &&
+        typeof probe.y === "number"
+      ) {
         return { x: probe.x, y: probe.y };
       }
       previousBox = probe.ok ? box : undefined;
@@ -1566,7 +1838,9 @@ class WorkerCdpPage {
       if (remaining <= 0) break;
       // Keep Runtime.evaluate one-shot. Renderer input and framework work can
       // run while the worker waits between actionability observations.
-      await new Promise((resolve) => setTimeout(resolve, Math.min(30, remaining)));
+      await new Promise((resolve) =>
+        setTimeout(resolve, Math.min(30, remaining)),
+      );
     }
 
     const where = describeLocator(descriptor);
@@ -1581,16 +1855,20 @@ class WorkerCdpPage {
         : [];
     const candidateHint =
       candidates.length > 0
-        ? candidates.every((candidate) => candidate.role === candidates[0]?.role)
+        ? candidates.every(
+            (candidate) => candidate.role === candidates[0]?.role,
+          )
           ? ` Available ${candidates[0]?.role ?? "role"} names: ${candidates
-              .map((candidate) => JSON.stringify(candidate.accessibleName ?? ""))
+              .map((candidate) =>
+                JSON.stringify(candidate.accessibleName ?? ""),
+              )
               .join(", ")}. Inspect the role locator before choosing a name.`
           : ` Available accessible targets: ${candidates
               .map(
                 (candidate) =>
                   `${candidate.role ?? "unknown role"} ${JSON.stringify(
-                    candidate.accessibleName ?? ""
-                  )}`
+                    candidate.accessibleName ?? "",
+                  )}`,
               )
               .join(", ")}. Use the rendered role and accessible name.`
         : "";
@@ -1602,13 +1880,13 @@ class WorkerCdpPage {
         operation: "click",
         recovery: "reobserve-locator",
         timeoutMs: timeout,
-      }
+      },
     );
   }
 
   private async dispatchClickAt(
     point: { x: number; y: number },
-    opts: { clickCount?: number; button?: "left" | "right" | "middle" } = {}
+    opts: { clickCount?: number; button?: "left" | "right" | "middle" } = {},
   ): Promise<void> {
     const { x, y } = point;
     const button = opts.button ?? "left";
@@ -1641,7 +1919,7 @@ class WorkerCdpPage {
     opts: ClickOptions & {
       clickCount?: number;
       button?: "left" | "right" | "middle";
-    } = {}
+    } = {},
   ): Promise<CdpInteractionOutcome> {
     const point = await this.resolveHitPoint(descriptor, opts.timeout);
     const target = (await this.runLocatorOp("inspect", descriptor, null, {
@@ -1650,13 +1928,15 @@ class WorkerCdpPage {
     await this.dispatchClickAt(point, opts);
     const action = opts.clickCount === 2 ? "dblclick" : "click";
     if (!opts.expect) {
-      return {
+      const outcome: CdpInteractionOutcome = {
         protocol: "cdp-interaction-outcome.v1",
         action,
         delivery: "dispatched",
         target: { selector: describeLocator(descriptor), ...target },
         effect: { status: "not-asserted" },
       };
+      this.onInteraction?.(outcome);
+      return outcome;
     }
     const state = opts.expect.state ?? "visible";
     try {
@@ -1666,7 +1946,8 @@ class WorkerCdpPage {
       });
     } catch (cause) {
       const expectedLocator = opts.expect.locator.toString();
-      const timeoutMs = opts.expect.timeout ?? opts.timeout ?? this.defaultTimeout;
+      const timeoutMs =
+        opts.expect.timeout ?? opts.timeout ?? this.defaultTimeout;
       throw new CdpError(
         `${action} was dispatched to ${describeLocator(descriptor)}, but expected ${expectedLocator} to become ${state}`,
         {
@@ -1678,10 +1959,10 @@ class WorkerCdpPage {
           timeoutMs,
           state,
           expectedLocator,
-        }
+        },
       );
     }
-    return {
+    const outcome: CdpInteractionOutcome = {
       protocol: "cdp-interaction-outcome.v1",
       action,
       delivery: "dispatched",
@@ -1692,9 +1973,14 @@ class WorkerCdpPage {
         state,
       },
     };
+    this.onInteraction?.(outcome);
+    return outcome;
   }
 
-  async hoverDescriptor(descriptor: LocatorDescriptor, opts: ActionOptions = {}): Promise<void> {
+  async hoverDescriptor(
+    descriptor: LocatorDescriptor,
+    opts: ActionOptions = {},
+  ): Promise<void> {
     const { x, y } = await this.resolveHitPoint(descriptor, opts.timeout);
     await this.connection.send("Input.dispatchMouseEvent", {
       type: "mouseMoved",
@@ -1708,7 +1994,7 @@ class WorkerCdpPage {
   async pressDescriptor(
     descriptor: LocatorDescriptor,
     key: string,
-    opts: ActionOptions = {}
+    opts: ActionOptions = {},
   ): Promise<void> {
     await this.runLocatorOp("focusForKey", descriptor, null, {
       timeout: opts.timeout,
@@ -1719,20 +2005,34 @@ class WorkerCdpPage {
   async setCheckedDescriptor(
     descriptor: LocatorDescriptor,
     checked: boolean,
-    opts: ActionOptions = {}
+    opts: ActionOptions = {},
   ): Promise<void> {
     const retainToken = `${this.retainedElementOwner}-check-${++this.retainedElementSequence}`;
-    const point = await this.resolveHitPoint(descriptor, opts.timeout, retainToken);
+    const point = await this.resolveHitPoint(
+      descriptor,
+      opts.timeout,
+      retainToken,
+    );
     try {
       const retainedArg = { token: retainToken };
-      const current = (await this.runLocatorOp("retainedCheckedState", descriptor, retainedArg, {
-        timeout: opts.timeout,
-      })) as boolean;
+      const current = (await this.runLocatorOp(
+        "retainedCheckedState",
+        descriptor,
+        retainedArg,
+        {
+          timeout: opts.timeout,
+        },
+      )) as boolean;
       if (current === checked) return;
       await this.dispatchClickAt(point);
-      const updated = (await this.runLocatorOp("retainedCheckedState", descriptor, retainedArg, {
-        timeout: opts.timeout,
-      })) as boolean;
+      const updated = (await this.runLocatorOp(
+        "retainedCheckedState",
+        descriptor,
+        retainedArg,
+        {
+          timeout: opts.timeout,
+        },
+      )) as boolean;
       if (updated !== checked) {
         const where = describeLocator(descriptor);
         throw new CdpError(
@@ -1742,7 +2042,7 @@ class WorkerCdpPage {
             code: "cdp_locator_state_mismatch",
             operation: checked ? "check" : "uncheck",
             recovery: "reobserve-locator",
-          }
+          },
         );
       }
     } finally {
@@ -1750,14 +2050,15 @@ class WorkerCdpPage {
         "releaseRetainedElement",
         descriptor,
         { token: retainToken },
-        { timeout: 0 }
+        { timeout: 0 },
       ).catch(() => undefined);
     }
   }
 
   private keyboardModifiers(): number {
     let modifiers = 0;
-    for (const key of this.pressedModifiers) modifiers |= MODIFIER_BITS[key] ?? 0;
+    for (const key of this.pressedModifiers)
+      modifiers |= MODIFIER_BITS[key] ?? 0;
     return modifiers;
   }
 
@@ -1806,9 +2107,12 @@ class WorkerCdpPage {
     const def = KEY_DEFS[main];
     // Shift changes text; it does not make Enter/Space into non-text shortcuts.
     // Consult held modifiers too, including ones established by keyboard.down().
-    const shortcutModifiers = this.keyboardModifiers() & ~MODIFIER_BITS["Shift"]!;
+    const shortcutModifiers =
+      this.keyboardModifiers() & ~MODIFIER_BITS["Shift"]!;
     const text =
-      shortcutModifiers === 0 ? (def?.text ?? (main.length === 1 ? main : undefined)) : undefined;
+      shortcutModifiers === 0
+        ? (def?.text ?? (main.length === 1 ? main : undefined))
+        : undefined;
     if (text) {
       await this.connection.send("Input.dispatchKeyEvent", {
         type: "char",
@@ -1838,7 +2142,9 @@ class WorkerCdpPage {
   // ---- Screenshot -------------------------------------------------------
   async screenshot(options: CdpScreenshotOptions = {}): Promise<Uint8Array> {
     const supported = new Set(["type", "quality", "fullPage"]);
-    const unsupported = Object.keys(options).filter((key) => !supported.has(key));
+    const unsupported = Object.keys(options).filter(
+      (key) => !supported.has(key),
+    );
     if (unsupported.length > 0) {
       const pathHint = unsupported.includes("path")
         ? " CdpPage.screenshot returns Uint8Array; store it explicitly with @workspace/runtime blobstore.putBytes."
@@ -1846,21 +2152,25 @@ class WorkerCdpPage {
       throw new TypeError(
         `Unsupported screenshot option${unsupported.length === 1 ? "" : "s"} ${unsupported
           .map((key) => JSON.stringify(key))
-          .join(", ")}.${pathHint} Supported options: type, quality, fullPage.`
+          .join(", ")}.${pathHint} Supported options: type, quality, fullPage.`,
       );
     }
     if (
       options.quality !== undefined &&
-      (!Number.isInteger(options.quality) || options.quality < 0 || options.quality > 100)
+      (!Number.isInteger(options.quality) ||
+        options.quality < 0 ||
+        options.quality > 100)
     ) {
       throw new TypeError(
         `screenshot quality must be an integer from 0 to 100; received ${JSON.stringify(
-          options.quality
-        )}`
+          options.quality,
+        )}`,
       );
     }
     if (options.quality !== undefined && options.type !== "jpeg") {
-      throw new TypeError('screenshot quality is supported only when type is "jpeg"');
+      throw new TypeError(
+        'screenshot quality is supported only when type is "jpeg"',
+      );
     }
     // Keep the public page API Playwright-shaped (`type`) while speaking the
     // Chrome DevTools Protocol shape (`format`) on the wire.
@@ -1870,10 +2180,14 @@ class WorkerCdpPage {
       ...(type ? { format: type } : {}),
       ...(fullPage ? { captureBeyondViewport: true } : {}),
     };
-    const result = (await this.connection.send("Page.captureScreenshot", params)) as {
+    const result = (await this.connection.send(
+      "Page.captureScreenshot",
+      params,
+    )) as {
       data?: string;
     };
-    if (!result.data) throw new Error("CDP screenshot did not return image data");
+    if (!result.data)
+      throw new Error("CDP screenshot did not return image data");
     return decodeBase64(result.data);
   }
 
@@ -1891,7 +2205,7 @@ class WorkerCdpPage {
 class WorkerCdpLocator {
   constructor(
     protected readonly page: WorkerCdpPage,
-    protected readonly descriptor: LocatorDescriptor
+    protected readonly descriptor: LocatorDescriptor,
   ) {}
 
   private extend(step: LocatorStep): WorkerCdpLocator {
@@ -1913,7 +2227,10 @@ class WorkerCdpLocator {
     return this.extend({
       by: "role",
       value: role,
-      name: options.name === undefined ? undefined : serializeTextMatcher(options.name),
+      name:
+        options.name === undefined
+          ? undefined
+          : serializeTextMatcher(options.name),
       exact: options.exact,
     });
   }
@@ -1931,7 +2248,10 @@ class WorkerCdpLocator {
       exact: options.exact,
     });
   }
-  getByPlaceholder(text: TextMatcher, options: ByTextOptions = {}): WorkerCdpLocator {
+  getByPlaceholder(
+    text: TextMatcher,
+    options: ByTextOptions = {},
+  ): WorkerCdpLocator {
     return this.extend({
       by: "placeholder",
       value: serializeTextMatcher(text),
@@ -1941,7 +2261,10 @@ class WorkerCdpLocator {
   getByTestId(testId: string): WorkerCdpLocator {
     return this.extend({ by: "testid", value: testId });
   }
-  getByAltText(text: TextMatcher, options: ByTextOptions = {}): WorkerCdpLocator {
+  getByAltText(
+    text: TextMatcher,
+    options: ByTextOptions = {},
+  ): WorkerCdpLocator {
     return this.extend({
       by: "alt",
       value: serializeTextMatcher(text),
@@ -1955,10 +2278,15 @@ class WorkerCdpLocator {
       exact: options.exact,
     });
   }
-  filter(options: { hasText?: TextMatcher; hasTextExact?: boolean } = {}): WorkerCdpLocator {
+  filter(
+    options: { hasText?: TextMatcher; hasTextExact?: boolean } = {},
+  ): WorkerCdpLocator {
     return this.extend({
       filter: {
-        hasText: options.hasText === undefined ? undefined : serializeTextMatcher(options.hasText),
+        hasText:
+          options.hasText === undefined
+            ? undefined
+            : serializeTextMatcher(options.hasText),
         hasTextExact: options.hasTextExact,
       },
     });
@@ -2000,13 +2328,13 @@ class WorkerCdpLocator {
       "inputValue",
       this.descriptor,
       null,
-      opts
+      opts,
     )) as string;
     await this.page.runLocatorOp(
       "fill",
       this.descriptor,
       { value: `${current ?? ""}${text}` },
-      opts
+      opts,
     );
   }
   async clear(opts: ActionOptions = {}): Promise<void> {
@@ -2026,22 +2354,33 @@ class WorkerCdpLocator {
   }
   async selectOption(
     value: SelectOptionInput | SelectOptionInput[],
-    opts: ActionOptions = {}
+    opts: ActionOptions = {},
   ): Promise<string[]> {
     const values = Array.isArray(value) ? value : [value];
     for (const option of values) {
       if (typeof option === "string") continue;
       if (!option || typeof option !== "object" || Array.isArray(option)) {
         throw new TypeError(
-          "selectOption values must be strings or objects with value, label, or index"
+          "selectOption values must be strings or objects with value, label, or index",
         );
       }
       const keys = Object.keys(option);
-      if (keys.length === 0 || keys.some((key) => !["value", "label", "index"].includes(key))) {
-        throw new TypeError("selectOption option objects may only contain value, label, or index");
+      if (
+        keys.length === 0 ||
+        keys.some((key) => !["value", "label", "index"].includes(key))
+      ) {
+        throw new TypeError(
+          "selectOption option objects may only contain value, label, or index",
+        );
       }
-      if (option.value === undefined && option.label === undefined && option.index === undefined) {
-        throw new TypeError("selectOption option objects require value, label, or index");
+      if (
+        option.value === undefined &&
+        option.label === undefined &&
+        option.index === undefined
+      ) {
+        throw new TypeError(
+          "selectOption option objects require value, label, or index",
+        );
       }
       if (option.value !== undefined && typeof option.value !== "string") {
         throw new TypeError("selectOption option.value must be a string");
@@ -2049,15 +2388,20 @@ class WorkerCdpLocator {
       if (option.label !== undefined && typeof option.label !== "string") {
         throw new TypeError("selectOption option.label must be a string");
       }
-      if (option.index !== undefined && (!Number.isInteger(option.index) || option.index < 0)) {
-        throw new TypeError("selectOption option.index must be a non-negative integer");
+      if (
+        option.index !== undefined &&
+        (!Number.isInteger(option.index) || option.index < 0)
+      ) {
+        throw new TypeError(
+          "selectOption option.index must be a non-negative integer",
+        );
       }
     }
     return (await this.page.runLocatorOp(
       "selectOption",
       this.descriptor,
       { values },
-      opts
+      opts,
     )) as string[];
   }
   async focus(opts: ActionOptions = {}): Promise<void> {
@@ -2073,57 +2417,110 @@ class WorkerCdpLocator {
     await this.page.runLocatorOp("scrollIntoView", this.descriptor, null, opts);
   }
   async dispatchEvent(type: string, opts: ActionOptions = {}): Promise<void> {
-    await this.page.runLocatorOp("dispatchEvent", this.descriptor, { type }, opts);
+    await this.page.runLocatorOp(
+      "dispatchEvent",
+      this.descriptor,
+      { type },
+      opts,
+    );
   }
 
   // ---- State / reads ----------------------------------------------------
-  async waitFor(options: { state?: WaitState; timeout?: number } = {}): Promise<void> {
+  async waitFor(
+    options: { state?: WaitState; timeout?: number } = {},
+  ): Promise<void> {
     await this.page.runLocatorOp("waitFor", this.descriptor, null, {
       state: options.state ?? "visible",
       timeout: options.timeout,
     });
   }
   async count(): Promise<number> {
-    return Number((await this.page.runLocatorOp("count", this.descriptor, null)) ?? 0);
+    return Number(
+      (await this.page.runLocatorOp("count", this.descriptor, null)) ?? 0,
+    );
   }
   async isVisible(): Promise<boolean> {
-    return Boolean(await this.page.runLocatorOp("isVisible", this.descriptor, null));
+    return Boolean(
+      await this.page.runLocatorOp("isVisible", this.descriptor, null),
+    );
   }
   async isChecked(opts: ActionOptions = {}): Promise<boolean> {
-    return Boolean(await this.page.runLocatorOp("isChecked", this.descriptor, null, opts));
+    return Boolean(
+      await this.page.runLocatorOp("isChecked", this.descriptor, null, opts),
+    );
   }
   async isEnabled(opts: ActionOptions = {}): Promise<boolean> {
-    return Boolean(await this.page.runLocatorOp("isEnabled", this.descriptor, null, opts));
+    return Boolean(
+      await this.page.runLocatorOp("isEnabled", this.descriptor, null, opts),
+    );
   }
   async isDisabled(opts: ActionOptions = {}): Promise<boolean> {
-    return Boolean(await this.page.runLocatorOp("isDisabled", this.descriptor, null, opts));
+    return Boolean(
+      await this.page.runLocatorOp("isDisabled", this.descriptor, null, opts),
+    );
   }
   async isEditable(opts: ActionOptions = {}): Promise<boolean> {
-    return Boolean(await this.page.runLocatorOp("isEditable", this.descriptor, null, opts));
+    return Boolean(
+      await this.page.runLocatorOp("isEditable", this.descriptor, null, opts),
+    );
   }
-  async getAttribute(name: string, opts: ActionOptions = {}): Promise<string | null> {
-    const v = await this.page.runLocatorOp("getAttribute", this.descriptor, { name }, opts);
+  async getAttribute(
+    name: string,
+    opts: ActionOptions = {},
+  ): Promise<string | null> {
+    const v = await this.page.runLocatorOp(
+      "getAttribute",
+      this.descriptor,
+      { name },
+      opts,
+    );
     return v == null ? null : String(v);
   }
   async inputValue(opts: ActionOptions = {}): Promise<string> {
-    return String((await this.page.runLocatorOp("inputValue", this.descriptor, null, opts)) ?? "");
+    return String(
+      (await this.page.runLocatorOp(
+        "inputValue",
+        this.descriptor,
+        null,
+        opts,
+      )) ?? "",
+    );
   }
   async innerText(opts: ActionOptions = {}): Promise<string> {
-    return String((await this.page.runLocatorOp("innerText", this.descriptor, null, opts)) ?? "");
+    return String(
+      (await this.page.runLocatorOp(
+        "innerText",
+        this.descriptor,
+        null,
+        opts,
+      )) ?? "",
+    );
   }
   async textContent(): Promise<string | null> {
-    const v = await this.page.runLocatorOp("textContent", this.descriptor, null);
+    const v = await this.page.runLocatorOp(
+      "textContent",
+      this.descriptor,
+      null,
+    );
     return v == null ? null : String(v);
   }
   async allInnerTexts(): Promise<string[]> {
-    return (await this.page.runLocatorOp("allInnerTexts", this.descriptor, null)) as string[];
+    return (await this.page.runLocatorOp(
+      "allInnerTexts",
+      this.descriptor,
+      null,
+    )) as string[];
   }
   async allTextContents(): Promise<string[]> {
-    return (await this.page.runLocatorOp("allTextContents", this.descriptor, null)) as string[];
+    return (await this.page.runLocatorOp(
+      "allTextContents",
+      this.descriptor,
+      null,
+    )) as string[];
   }
   async evaluate<Result, Arg = unknown>(
     pageFunction: (element: Element, arg: Arg) => Result | Promise<Result>,
-    arg?: Arg
+    arg?: Arg,
   ): Promise<Result> {
     return (await this.page.runLocatorOp("evaluate", this.descriptor, {
       source: pageFunction.toString(),
@@ -2132,7 +2529,7 @@ class WorkerCdpLocator {
   }
   async evaluateAll<Result, Arg = unknown>(
     pageFunction: (elements: Element[], arg: Arg) => Result | Promise<Result>,
-    arg?: Arg
+    arg?: Arg,
   ): Promise<Result> {
     return (await this.page.runLocatorOp("evaluateAll", this.descriptor, {
       source: pageFunction.toString(),
@@ -2143,11 +2540,15 @@ class WorkerCdpLocator {
     return (await this.page.runLocatorOp(
       "boundingBox",
       this.descriptor,
-      null
+      null,
     )) as BoundingBox | null;
   }
   async inspect(): Promise<CdpDomInspection> {
-    const raw = (await this.page.runLocatorOp("inspect", this.descriptor, null)) as
+    const raw = (await this.page.runLocatorOp(
+      "inspect",
+      this.descriptor,
+      null,
+    )) as
       | (Omit<CdpDomInspection, "selector"> & { found: boolean })
       | { found: false };
     const selector = JSON.stringify(this.descriptor.steps);
@@ -2161,7 +2562,7 @@ class WorkerCdpElementHandle extends WorkerCdpLocator {}
 class WorkerBrowser {
   constructor(
     private readonly page: WorkerCdpPage,
-    private readonly connection: CdpConnection
+    private readonly connection: CdpConnection,
   ) {}
 
   contexts(): Array<{ pages(): WorkerCdpPage[] }> {
@@ -2182,18 +2583,30 @@ export const BrowserImpl = {
       preferFetchUpgrade?: boolean;
       /** Override the protocol safety deadline for diagnostics/tests. */
       commandTimeoutMs?: number;
-    } = {}
+      /** Observe completed input outcomes independently of caller return projections. */
+      onInteraction?: (outcome: CdpInteractionOutcome) => void;
+    } = {},
   ): Promise<WorkerBrowser> {
     const connection = await CdpConnection.connect(
       wsEndpoint,
       options.transportOptions?.authToken,
       options.preferFetchUpgrade,
-      { commandTimeoutMs: options.commandTimeoutMs }
+      { commandTimeoutMs: options.commandTimeoutMs },
     );
-    const page = new WorkerCdpPage(connection);
-    await page.initialize();
-    return new WorkerBrowser(page, connection);
+    const page = new WorkerCdpPage(connection, options.onInteraction);
+    try {
+      await page.initialize();
+      return new WorkerBrowser(page, connection);
+    } catch (error) {
+      connection.close();
+      throw error;
+    }
   },
 };
 
-export type { WorkerCdpPage, WorkerCdpLocator, WorkerCdpElementHandle, WorkerBrowser };
+export type {
+  WorkerCdpPage,
+  WorkerCdpLocator,
+  WorkerCdpElementHandle,
+  WorkerBrowser,
+};

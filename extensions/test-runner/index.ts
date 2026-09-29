@@ -16,6 +16,7 @@ export interface TestRunRequest {
 }
 
 export interface TestRunResult {
+  status: "passed" | "failed" | "no-tests";
   runtime: "native";
   artifactKey: string;
   executionDigest: string;
@@ -202,8 +203,12 @@ for (const module of vitest.state.getTestModules()) {
     });
 }
 fs.writeFileSync(${JSON.stringify(input.reportPath)}, JSON.stringify(report));
+const unhandledErrors = vitest.state.getUnhandledErrors();
 await vitest.close();
-if (report.numFailedTests > 0) process.exitCode = 1;
+if (unhandledErrors.length > 0) {
+  console.error(unhandledErrors);
+  process.exitCode = 2;
+} else if (report.numFailedTests > 0) process.exitCode = 1;
 `;
 }
 
@@ -348,17 +353,20 @@ export async function activate(ctx: ExtensionContextLike) {
         const passed = report.numPassedTests ?? 0;
         const failed = report.numFailedTests ?? 0;
         const total = report.numTotalTests ?? passed + failed;
-        if (total === 0) {
+        const status = total === 0 ? "no-tests" : failed > 0 ? "failed" : "passed";
+        const expectedCode = status === "failed" ? 1 : 0;
+        if (outcome.code !== expectedCode) {
           throw new Error(
-            `Native suite ${JSON.stringify(request.suite)} discovered no tests${outcome.stdout ? `: ${outcome.stdout}` : ""}`,
+            `Native test child exited ${outcome.code ?? "without a code"} after producing a ${status} report; verification did not complete${outcome.stderr ? `: ${outcome.stderr}` : ""}`,
           );
         }
         return {
           runtime: "native",
+          status,
           artifactKey: request.artifactKey,
           executionDigest: request.executionDigest,
           summary:
-            failed
+            status === "no-tests" ? "No tests matched the execution filter" : failed
                 ? `${failed} of ${total} tests failed`
                 : `${passed} tests passed`,
           passed,

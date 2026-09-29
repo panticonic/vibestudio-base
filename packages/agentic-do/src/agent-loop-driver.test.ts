@@ -735,6 +735,40 @@ describe("AgentLoopDriver", () => {
     ]);
   });
 
+  it.each(["before-turn-close-delivery", "after-turn-close-delivery"])(
+    "recovers ordinary terminal delivery after %s without another model call",
+    async (killPoint) => {
+      const delivered: Parameters<NonNullable<DriverDeps["onTurnClosed"]>>[0][] = [];
+      let armed = true;
+      const crashed = await makeHarness({
+        script: { model: [], tool: [] },
+        onTurnClosed: (input) => { delivered.push(input); },
+        executorOverride: (descriptor) => descriptor.kind === "model_call" ? {
+          kind: "model_call",
+          async execute() { throw new Error(rawInvalidToolSchemaError()); },
+        } satisfies EffectExecutor : null,
+        killPoint: (point) => {
+          if (armed && point === killPoint) { armed = false; throw new Error("activation lost"); }
+        },
+      });
+      await crashed.driver.handleIncoming(CHANNEL, promptIncoming());
+      await crashed.driver.dispatchReadyEffectsForTest().catch(() => {});
+      expect((await crashed.driver.loop(CHANNEL)).state.openTurn).toBeNull();
+      const attemptsBefore = (await crashed.driver.modelExecutionEvidence(CHANNEL)).calls.length;
+      const recovered = await makeHarness({
+        script: { model: [], tool: [] }, gad: crashed.gad,
+        driverSql: crashed.driverHost, blobs: crashed.blobs,
+        onTurnClosed: (input) => { delivered.push(input); },
+      });
+      await recovered.driver.wake(CHANNEL);
+      expect(delivered.at(-1)).toMatchObject({ reason: "work_failed", metadata: {} });
+      const count = delivered.length;
+      await recovered.driver.wake(CHANNEL);
+      expect(delivered).toHaveLength(count);
+      expect((await recovered.driver.modelExecutionEvidence(CHANNEL)).calls).toHaveLength(attemptsBefore);
+    },
+  );
+
   it("reports only the exact automation turn's final assistant message", async () => {
     const closed: Parameters<NonNullable<DriverDeps["onTurnClosed"]>>[0][] = [];
     let attempt = 0;

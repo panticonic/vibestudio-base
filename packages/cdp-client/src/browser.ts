@@ -1,7 +1,8 @@
 import { BrowserImpl } from "./worker";
 
 export { BrowserImpl };
-export { CdpConnection, CdpError } from "./worker";
+export { CdpConnection, CdpDialog, CdpError } from "./worker";
+export type { CdpDialogData } from "./worker";
 export type {
   CdpProfileCoverage,
   CdpProfileCoverageScript,

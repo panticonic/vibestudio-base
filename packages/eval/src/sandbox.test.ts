@@ -3,8 +3,82 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { tameRealmCodegen } from "@vibestudio/shared/evalConfinement";
 import { executeSandbox } from "./sandbox";
 import type { AsyncTrackingAPI } from "./asyncTracking";
+import {
+  Journal,
+  withJournal,
+  currentJournal,
+} from "../../runtime/src/shared/journal.js";
 
 describe("executeSandbox", () => {
+  it.each([false, true])(
+    "preserves completed operation receipts despite return projection or a later exception (%s)",
+    async (failLater) => {
+      const receipt = {
+        protocol: "cdp-interaction-outcome.v1",
+        delivery: "dispatched",
+        action: "click",
+        effect: { status: "observed", locator: "Count", state: "visible" },
+      };
+      const runtime = { journal: { Journal, with: withJournal } };
+      const result = await executeSandbox(
+        failLater
+          ? `scope.action(); throw new Error("later statement failed")`
+          : `return scope.action().effect`,
+        {
+          moduleMap: { "@workspace/runtime": runtime },
+          require: (id) => {
+            if (id === "@workspace/runtime") return runtime;
+            throw new Error(id);
+          },
+          bindings: {
+            scope: {
+              action: () => {
+                currentJournal()?.append({
+                  type: "interaction",
+                  id: "panel:test",
+                  receipt,
+                });
+                return receipt;
+              },
+            },
+          },
+        },
+      );
+      expect(result.success).toBe(!failLater);
+      expect(result.operationJournal).toEqual({
+        protocol: "workspace-operations.v1",
+        entries: [{ type: "interaction", id: "panel:test", receipt }],
+        truncated: false,
+      });
+      if (failLater) expect(result.error).toBe("later statement failed");
+      else expect(result.returnValue).toEqual(receipt.effect);
+    },
+  );
+
+  it("marks operation evidence incomplete when a receipt exceeds the wire budget", async () => {
+    const runtime = { journal: { Journal, with: withJournal } };
+    const result = await executeSandbox("scope.action()", {
+      moduleMap: { "@workspace/runtime": runtime },
+      require: (id) => {
+        if (id === "@workspace/runtime") return runtime;
+        throw new Error(id);
+      },
+      bindings: {
+        scope: {
+          action: () => currentJournal()?.append({
+            type: "interaction",
+            id: "panel:test",
+            receipt: { oversized: "x".repeat(30_000) },
+          }),
+        },
+      },
+    });
+    expect(result.success).toBe(true);
+    expect(result.operationJournal).toEqual({
+      protocol: "workspace-operations.v1", entries: [], truncated: true,
+    });
+  });
+
   let originalModuleMap: unknown;
   let originalRequire: unknown;
   let originalAsyncRequire: unknown;
@@ -151,6 +225,30 @@ describe("executeSandbox", () => {
     ).resolves.toMatchObject({
       success: false,
       error: "terminal eval failure",
+    });
+  });
+
+  it("preserves repeated references and marks only recursive ancestry as circular", async () => {
+    const result = await executeSandbox(
+      `const device = { id: "phone", platform: "android" };
+       const cycle = { device }; cycle.self = cycle;
+       return { summary: { device }, receipt: { device }, items: [device, device], cycle };`,
+      { syntax: "typescript" },
+    );
+    expect(result).toMatchObject({
+      success: true,
+      returnValue: {
+        summary: { device: { id: "phone", platform: "android" } },
+        receipt: { device: { id: "phone", platform: "android" } },
+        items: [
+          { id: "phone", platform: "android" },
+          { id: "phone", platform: "android" },
+        ],
+        cycle: {
+          device: { id: "phone", platform: "android" },
+          self: "[Circular]",
+        },
+      },
     });
   });
 
@@ -664,7 +762,7 @@ return fs.readFileSync("/tmp/a");`,
     });
   });
 
-  it("keeps an unexpected managed-test package prompt caller-correctable", async () => {
+  it("preserves an unexpected test-policy failure across module loading", async () => {
     const result = await executeSandbox(
       'import "typescript"; return "unreachable";',
       {
@@ -689,7 +787,7 @@ return fs.readFileSync("/tmp/a");`,
     expect(result).toMatchObject({
       success: false,
       error: "Unexpected authority prompt in system test",
-      failureKind: "user-code",
+      failureKind: "infrastructure",
       failureCode: "EUNEXPECTEDTESTPROMPT",
     });
   });
@@ -899,6 +997,20 @@ return fs.readFileSync("/tmp/a");`,
     });
   });
 
+  it("retains the host-owned operation journal without exposing it through guest journal state", async () => {
+    const guestJournal = { Journal: class {}, with: vi.fn(), current: () => null };
+    const hostJournal = { entries: [{ type: "build.profile", receipt: { stateHash: "state:exact" } }], truncated: false };
+    const result = await executeSandbox("return { measured: true };", {
+      syntax: "typescript", operationJournal: hostJournal,
+      require: () => ({ journal: guestJournal }),
+    });
+    expect(result).toMatchObject({ success: true, returnValue: { measured: true }, operationJournal: {
+      protocol: "workspace-operations.v1", entries: hostJournal.entries, truncated: false,
+    } });
+    expect(guestJournal.with).not.toHaveBeenCalled();
+    expect(guestJournal.current()).toBeNull();
+  });
+
   it("keeps guest exceptions distinct from infrastructure failures", async () => {
     const result = await executeSandbox('throw new Error("authored boom")', {
       syntax: "typescript",
@@ -926,6 +1038,14 @@ return fs.readFileSync("/tmp/a");`,
       failureKind: "user-code",
       failureCode: "guest_type_error",
     });
+  });
+
+  it("keeps a runtime test-policy rejection distinct from guest code", async () => {
+    const rejectPolicy = () => { throw Object.assign(new Error("Unexpected authority prompt in system test"), {
+      errorKind: "application", code: "EUNEXPECTEDTESTPROMPT",
+    }); };
+    const result = await executeSandbox("rejectPolicy();", { syntax: "typescript", bindings: { rejectPolicy } });
+    expect(result).toMatchObject({ success: false, failureKind: "infrastructure", failureCode: "EUNEXPECTEDTESTPROMPT" });
   });
 
   it("classifies structured Durable Object schema refusals as infrastructure", async () => {

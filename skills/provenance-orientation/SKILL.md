@@ -36,7 +36,7 @@ provenance({ target: "packages/example/src/index.ts", walk: "cause" });
 provenance({ target: "@r7-1c9a", walk: "cohort", scope: "turn" });
 provenance({ target: "packages/example/src/retry.ts", walk: "rejections" });
 provenance({ target: "search: retry backoff" });
-provenance({ query: "SELECT relation, meaning, column_count FROM prov_schema" });
+provenance({ query: "SELECT relation, meaning, columns FROM prov_schema" });
 provenance({ targets: ["@r3-11ab", "@r4-77cd"] });
 ```
 
@@ -45,6 +45,13 @@ semantic shorthand, a `search:` phrase, or a compact `@ref` you were given.
 `targets` expands up to ten refs at once instead of ten calls. Never repeat a
 long content-addressed identity: trusted code retains exact roots, and every
 rendered subject carries the `@ref` you pass back.
+
+Queries cover the visible context. Do not combine `query` with `target`,
+`targets`, or a walk: a target does not filter SQL. To restrict a query to a
+repository, inspect its managed root first and compare `repository_id` to the
+returned repository `@ref` in the query. A managed path is not a repository
+identity. Read `prov_schema.columns` for the complete column contract before
+writing joins or filters.
 
 ## What each walk gives you
 

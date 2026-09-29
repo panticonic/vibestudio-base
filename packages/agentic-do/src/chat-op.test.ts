@@ -33,7 +33,7 @@ import type {
   VcsStatusResult,
 } from "@vibestudio/service-schemas/vcs";
 import type { MissionRecord } from "@vibestudio/automation/mission";
-import { AgentVesselBase } from "./agent-vessel.js";
+import { AgentVesselBase, type SubagentIdentity } from "./agent-vessel.js";
 import type { ChannelClient } from "./channel-client.js";
 import type { AgentLoopDriver } from "./agent-loop-driver.js";
 
@@ -172,6 +172,8 @@ class TestVessel extends AgentVesselBase {
   callerIdForTest: string | null = null;
   callerKindForTest: string | null = null;
   blobTextReaderForTest: ((digest: string) => Promise<string | null>) | null =
+    null;
+  blobImageReaderForTest: ((digest: string) => Promise<string | null>) | null =
     null;
   automationLaunchForTest: MissionRecord | null = null;
   automationVisibleForTest: MissionRecord[] | null = null;
@@ -378,6 +380,13 @@ class TestVessel extends AgentVesselBase {
               vessel.blobTextReaderForTest
             ) {
               return vessel.blobTextReaderForTest(String(args[0]));
+            }
+            if (
+              targetId === "main" &&
+              method === "blobstore.getBase64" &&
+              vessel.blobImageReaderForTest
+            ) {
+              return vessel.blobImageReaderForTest(String(args[0]));
             }
             if (
               (vessel.automationLaunchForTest ||
@@ -2405,6 +2414,43 @@ describe("AgentVesselBase.onEvalComplete (deferred-eval resume)", () => {
     });
   });
 
+  it("settles an unavailable image artifact as an infrastructure failure with its receipt intact", async () => {
+    const vessel = await makeVessel();
+    const deliverSpy = stubDriver(vessel);
+    vessel.callerKindForTest = "do";
+    vessel.callerIdForTest = await expectedEvalCaller();
+    vessel.blobImageReaderForTest = async () => null;
+    const artifact = {
+      protocol: "eval-image-artifact.v1",
+      digest: "a".repeat(64),
+      size: 1,
+      mimeType: "image/png",
+    };
+
+    await vessel.onEvalComplete({
+      runId: "inv-image-artifact",
+      agentInvocationId: "call-image-artifact",
+      channelId: CHANNEL,
+      result: { success: true, console: "", returnValue: artifact },
+    });
+
+    expect(deliverSpy).toHaveBeenCalledTimes(1);
+    expect(deliverSpy.mock.calls[0]![1]).toMatchObject({
+      kind: "tool",
+      isError: true,
+      terminalOutcome: "infrastructure_error",
+      terminalReasonCode: "eval_artifact_unavailable",
+      result: {
+        details: {
+          success: false,
+          failureKind: "infrastructure",
+          failureCode: "eval_artifact_unavailable",
+          returnValue: artifact,
+        },
+      },
+    });
+  });
+
   it("preserves typed in-turn recovery on an eval infrastructure failure", async () => {
     const vessel = await makeVessel();
     const deliverSpy = stubDriver(vessel);
@@ -2802,6 +2848,17 @@ describe("AgentVesselBase turn recovery", () => {
 });
 
 class SubagentSpawnProbe extends TestVessel {
+  subagentIdentityForTest: SubagentIdentity | null = null;
+  modelFailureForTest = "403 local model authority rejected";
+  protected override subagentIdentity(): SubagentIdentity | null {
+    return this.subagentIdentityForTest;
+  }
+  async closeChildTurnForTest(reason?: string): Promise<void> {
+    await this.onTurnClosed({
+      channelId: "task-inv-1", turnId: "child-turn", metadata: {},
+      effectFailures: [], ...(reason ? { reason } : {}),
+    });
+  }
   rpcCalls: Array<{ target: string; method: string; args: unknown[] }> = [];
   childSettings: Record<string, unknown> = {};
   readonly vcsResponses = new Map<string, unknown[]>();
@@ -2822,6 +2879,10 @@ class SubagentSpawnProbe extends TestVessel {
   protected override async ensurePromptArtifacts(): Promise<void> {}
   protected override get driver(): AgentLoopDriver {
     return {
+      modelExecutionEvidence: vi.fn(async () => ({ calls: [
+        { messageId: "m:another-turn:1", outcome: "failed", error: "old error" },
+        { messageId: "m:child-turn:1", outcome: "failed", error: this.modelFailureForTest },
+      ] })),
       activateChannel: this.activateChannelSpy,
       wake: this.wakeSpy,
       abortChannel: vi.fn(async () => undefined),
@@ -3939,6 +4000,72 @@ describe("AgentVesselBase.runDeferredSpawn", () => {
     ).toBe(true);
   });
 
+  it.each(["work_failed", "model_retry_limit_exceeded"])(
+    "delivers a child's %s to its waiting supervisor without a model report", async (reason) => {
+      const parent = await makeSubagentSpawnProbe();
+      await parent.spawnForTest(CHANNEL, "inv-1", { mode: "fresh", task: "local model task" });
+      const child = await makeSubagentSpawnProbe();
+      child.subagentIdentityForTest = {
+        runId: "inv-1", task: "local model task", parentRef: AGENT_ID,
+        parentChannelId: CHANNEL, taskChannelId: "task-inv-1",
+        parentContextId: "ctx-1", depth: 1, parentParticipantId: AGENT_ID,
+      };
+      await child.closeChildTurnForTest(reason);
+      const terminal = child.channelStub.published.find(p => p.idempotencyKey === "subagent-terminal:inv-1");
+      expect(terminal).toMatchObject({ channelId: "task-inv-1", event: {
+        kind: "task.failed", turnId: "child-turn", causality: { taskId: "inv-1" },
+        payload: { reason: child.modelFailureForTest,
+          to: [{ kind: "participant", participantId: AGENT_ID }] },
+      } });
+      // Deliver as the retained child participant, exactly as the channel does.
+      const event = { ...terminal!.event, actor: { kind: "agent" as const, id: "participant-child" } };
+      await parent.processChannelEvent("task-inv-1", {
+        id: 9, messageId: "child-failure", type: AGENTIC_EVENT_PAYLOAD_KIND,
+        payload: event, senderId: "participant-child", ts: Date.now(),
+      });
+      expect(parent.subagentRunForTest("inv-1")).toMatchObject({ status: "failed" });
+      expect(parent.handleIncomingSpy).toHaveBeenCalledWith(CHANNEL,
+        expect.objectContaining({ command: expect.objectContaining({
+          content: expect.stringContaining(child.modelFailureForTest),
+        }) }));
+      expect(parent.channelStub.published).toContainEqual(expect.objectContaining({
+        channelId: CHANNEL, event: expect.objectContaining({ kind: "task.failed" }),
+      }));
+    },
+  );
+
+  it.each([undefined, "tool_terminated", "waiting", "usage_limit_reset"])(
+    "keeps a child resumable after a non-failure turn: %s", async (reason) => {
+      const child = await makeSubagentSpawnProbe();
+      child.subagentIdentityForTest = {
+        runId: "inv-1", task: "task", parentRef: AGENT_ID, parentChannelId: CHANNEL,
+        taskChannelId: "task-inv-1", parentContextId: "ctx-1", depth: 1,
+        parentParticipantId: AGENT_ID,
+      };
+      await child.closeChildTurnForTest(reason);
+      expect(child.channelStub.published.some(p => p.event.kind === "task.failed")).toBe(false);
+    },
+  );
+
+  it.each([
+    { sender: "foreign", actor: "participant-child", kind: "task.failed" },
+    { sender: "participant-child", actor: "foreign", kind: "task.failed" },
+    { sender: "participant-child", actor: "participant-child", kind: "task.cancelled" },
+  ])("rejects an unauthorized child terminal: %j", async ({ sender, actor, kind }) => {
+    const parent = await makeSubagentSpawnProbe();
+    await parent.spawnForTest(CHANNEL, "inv-1", { mode: "fresh", task: "task" });
+    await parent.processChannelEvent("task-inv-1", {
+      id: 9, messageId: "forged-terminal", type: AGENTIC_EVENT_PAYLOAD_KIND,
+      senderId: sender, ts: Date.now(), payload: {
+        kind, actor: { kind: "agent", id: actor }, causality: { taskId: "inv-1" },
+        payload: { protocol: AGENTIC_PROTOCOL_VERSION, reason: "forged" },
+        createdAt: new Date().toISOString(),
+      } as AgenticEvent,
+    });
+    expect(parent.subagentRunForTest("inv-1")).toMatchObject({ status: "running" });
+    expect(parent.handleIncomingSpy).not.toHaveBeenCalled();
+  });
+
   it("launches the child and returns a run handle immediately instead of parking the tool call", async () => {
     const probe = await makeSubagentSpawnProbe();
 
@@ -4159,6 +4286,15 @@ describe("AgentVesselBase.runDeferredSpawn", () => {
     );
     expect(seeds).toHaveLength(2);
     expect(seeds[1]?.event).toEqual(seeds[0]?.event);
+  });
+
+  it.each(["runtime", "worker", "build"])("rejects an unknown inspection query as an invalid reference: %s", async (query) => {
+    const probe = await makeSubagentSpawnProbe();
+    probe.insertSubagentRunForTest({ runId: "inv-invalid-query", status: "running" });
+    await expect(probe.inspectSubagentForTest("inv-invalid-query", query)).rejects.toMatchObject({
+      code: "InvalidReference", errorData: { referenceKind: "child-file-path", query },
+    });
+    expect(probe.rpcCalls.filter(({ method }) => method.startsWith("vcs."))).toEqual([]);
   });
 
   it("recovers a missing subagent row from the parent task card for inspect", async () => {
@@ -4931,6 +5067,26 @@ describe("AgentVesselBase.runDeferredSpawn", () => {
       }),
     );
   });
+
+  it.each(["failed", "cancelled", "abandoned"] as const)(
+    "does not replace a retained %s terminal with a late child turn closure",
+    async (outcome) => {
+      const probe = await makeSubagentSpawnProbe();
+      await probe.spawnForTest(CHANNEL, "inv-1", {
+        mode: "fresh",
+        label: "audit",
+        task: "audit an area",
+      });
+      await probe.settleSubagentForTest("inv-1", outcome, "Execution retired.");
+      await probe.reportSubagentForTest("inv-1", "Late report.", "success");
+      expect(probe.subagentRunForTest("inv-1")).toMatchObject({ status: outcome });
+      if (outcome === "abandoned") {
+        await expect(probe.sendToSubagentForTest("inv-1", "Continue.")).rejects.toMatchObject({
+          code: "SubagentTerminal",
+        });
+      }
+    },
+  );
 
   it("delivers reports from each sibling independently", async () => {
     const probe = await makeSubagentSpawnProbe();

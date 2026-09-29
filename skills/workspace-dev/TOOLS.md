@@ -7,7 +7,7 @@ Your working directory is the **context folder** — an isolated copy of the wor
 - All file paths are **relative to your working directory** (e.g., `panels/my-app/index.tsx`)
 - **NEVER** use host absolute paths (e.g., `/home/.../workspace/panels/...`). Runtime `fs.*` accepts context-root absolute paths like `/panels/my-app/index.tsx`, but prefer `panels/my-app/index.tsx` in examples and source edits.
 - **NEVER** use `Bash` for git operations, file listing, or file creation — use the structured tools
-- In eval, `rpc`, `services`, `fs`, `ctx`, `scope`, `scopes`, `db`, `help` (and, in agent eval, `chat`) are **injected free variables** — do **not** import them. Raw service catalog calls always work as `rpc.call("<svc>.<method>", [args])`; `services.<svc>` is convenience sugar and may be an ergonomic runtime client when the name collides (`services.workers` is `workers`). For workspace/npm **packages**, use a **static import** (`import { createProjects } from "@workspace-skills/workspace-dev"`). Dynamic `await import(...)` may work in some builds, but it bypasses the loader's static dependency planning and is not the supported pattern.
+- In eval, `rpc`, `services`, `fs`, `ctx`, `scope`, `scopes`, `db`, `help` (and, in agent eval, `chat`) are **injected free variables** — do **not** import them. Raw service catalog calls always work as `rpc.call("<svc>.<method>", [args])`; `services.<svc>` is convenience sugar and may be an ergonomic runtime client when the name collides (`services.workers` is `workers`). For workspace/npm **packages**, import the functions in each invocation that uses them (`import { createProjects } from "@workspace-skills/workspace-dev"`). Static imports and literal dynamic imports use the same per-owner loader; see the [canonical import contract](../sandbox/EVAL.md#imports).
 
 ---
 
@@ -107,7 +107,7 @@ filesystem/VCS request behind global build settlement.
 
 ## Creating Projects
 
-Create new projects via eval. Workspace skill packages are auto-resolved — just write the `import` statement.
+Read [PROJECTS.md](PROJECTS.md) for the scaffolding workflow. Create new projects via eval, importing each function in the invocation that uses it. Workspace skill packages are auto-resolved.
 
 Supported types: `panel`, `package`, `skill`, `project`, `worker`. Each scaffolds into its repo directory (`panels/`, `packages/`, `skills/`, `projects/`, `workers/`). The `skill` type is for a standalone cross-repo skill package. Do not use `projectType: "skill"` to document an existing package, worker, panel, extension, or project.
 
@@ -287,7 +287,7 @@ service names. Do **not** import the injected names from `@workspace/runtime`.
 
 **IMPORTANT:**
 
-- Use static `import` syntax for **packages** (workspace/npm). Dynamic `await import(...)` is a fallback only for ordinary browser/ESM code; do not use it for workspace packages.
+- Static imports and literal dynamic imports load workspace/npm packages through the same per-owner loader. Import the functions in every invocation that uses them; retain values and handles explicitly in `scope`. See the [canonical import contract](../sandbox/EVAL.md#imports).
 
 **Parameters:**
 | Name | Type | Required | Description |
@@ -478,10 +478,11 @@ eval({ code: `
 })
 ```
 
-`contextId` selects both the worker's runtime state partition and its default
-semantic working state. Omit `ref` to follow the owning context. Pass
-`ref: "main"` only when intentionally pinning protected main, or another exact
-selector when deliberately testing a different semantic state.
+`contextId` selects the runtime state partition. On direct creation, an omitted
+`ref` selects the verified initiating caller's semantic workspace independently
+of that partition. Pass `ref: "ctx:<contextId>"` to build from another context,
+or `ref: "main"` to select protected main deliberately. Clones build from their
+cloned semantic frontier; reserved activation defaults to its retained context.
 
 Launch/list/retire: `workers.create(source, { key, contextId, env, stateArgs, ref? })` creates an owned regular worker; `workers.createDurableObject(source, className, { key, contextId, stateArgs, ref? })` creates an owned disposable Durable Object. Both return `{ id, targetId, … }` handles accepted by `workers.destroy(handleOrId)`. `workers.resolveService(...)` and `workers.resolveDurableObject(...)` address existing targets but never transfer lifecycle ownership. `workers.list()` lists live regular worker **instances**; `build.listUnits()` is the declared-source/build-readiness view, while `runtime.supervision.list()` returns exact live driver identities. Discover sources with `workers.listSources()` and use each row's `entry` instead of guessing `index.ts`. The raw `runtime.createEntity/listEntities/retireEntity` methods are the canonical entity-lifecycle lower layer. To duplicate or tear down a whole context's durable state, use `runtime.cloneContext(...)` and `runtime.destroyContext(...)`; low-level cloneDO/destroyDO primitives are server-internal. See [WORKERS.md](WORKERS.md) for details.
 
@@ -812,10 +813,10 @@ search backend. Batch related queries.
 When the configured primary provider is OpenAI Codex, the tool schema also
 exposes:
 
-| Name | Type | Required | Description |
-|------|------|----------|-------------|
-| `search_context_size` | `low` \| `medium` \| `high` | No | Search context size (default `medium`) |
-| `freshness` | `cached` \| `indexed` \| `live` | No | Freshness mode (default `live`) |
+| Name                  | Type                            | Required | Description                            |
+| --------------------- | ------------------------------- | -------- | -------------------------------------- |
+| `search_context_size` | `low` \| `medium` \| `high`     | No       | Search context size (default `medium`) |
+| `freshness`           | `cached` \| `indexed` \| `live` | No       | Freshness mode (default `live`)        |
 
 ### web_fetch
 
