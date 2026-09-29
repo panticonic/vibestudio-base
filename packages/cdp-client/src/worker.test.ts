@@ -287,6 +287,11 @@ class FakeWebSocket {
         timeout: 30_000,
       };
     }
+    const actionOutcome = (value: unknown) => ({ __nsActionOutcome: true, value,
+      target: { found: true, tagName: "INPUT", role: "textbox", accessibleName: "Name",
+        text: "", visible: true, id: "input", className: "", attributes: {},
+        boundingBox: { x: 0, y: 0, width: 100, height: 20 }, ancestors: [] },
+    });
     switch (payload.op) {
       case "probe":
         if (payload.arg?.retainToken) this.checking = true;
@@ -374,17 +379,18 @@ class FakeWebSocket {
         };
       case "fill":
         this.inputValue = payload.arg?.value ?? "";
-        return true;
+        return actionOutcome(true);
       case "clear":
         this.inputValue = "";
-        return true;
+        return actionOutcome(true);
       case "selectOption":
-        return payload.arg?.values ?? [];
+        return actionOutcome(payload.arg?.values ?? []);
       case "focus":
       case "blur":
       case "scrollIntoView":
       case "selectText":
       case "dispatchEvent":
+        return actionOutcome(true);
       case "focusForKey":
         return true;
       default:
@@ -1302,6 +1308,28 @@ describe("worker CDP client", () => {
     await expect(
       page.getByRole("combobox").selectOption("two"),
     ).resolves.toEqual(["two"]);
+  });
+
+  it("records text, selection and keyboard actions from native execution, without input contents", async () => {
+    installFakeWebSocket();
+    const onInteraction = vi.fn();
+    const browser = await BrowserImpl.connect("ws://cdp", { onInteraction });
+    const page = browser.contexts()[0]!.pages()[0]!;
+    await page.getByPlaceholder("Name").fill("private input");
+    await page.getByPlaceholder("Name").clear();
+    await page.getByRole("combobox").selectOption("high");
+    await page.getByPlaceholder("Name").press("Enter");
+    expect(onInteraction.mock.calls.map(([receipt]) => receipt.action)).toEqual([
+      "fill", "clear", "selectOption", "press",
+    ]);
+    for (const [receipt] of onInteraction.mock.calls) {
+      expect(receipt).toMatchObject({ protocol: "cdp-interaction-outcome.v1", delivery: "dispatched", target: { found: true } });
+      expect(JSON.stringify(receipt)).not.toContain("private input");
+    }
+    FakeWebSocket.rejectMethods.set("Runtime.evaluate", "page crashed");
+    await expect(page.getByPlaceholder("Name").fill("failed")).rejects.toThrow();
+    expect(onInteraction).toHaveBeenCalledTimes(4);
+    await browser.close();
   });
 
   it("accepts Playwright-style select option matchers", async () => {

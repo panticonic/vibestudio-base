@@ -129,7 +129,7 @@ type ClickOptions = ActionOptions & {
 
 export interface CdpInteractionOutcome {
   protocol: "cdp-interaction-outcome.v1";
-  action: "click" | "dblclick";
+  action: "click" | "dblclick" | "fill" | "clear" | "selectOption" | "focus" | "blur" | "selectText" | "scrollIntoView" | "dispatchEvent" | "press" | "hover" | "check" | "uncheck";
   delivery: "dispatched";
   target: CdpDomInspection;
   effect:
@@ -862,6 +862,17 @@ function nsActionable(descriptor, retainToken){
   if(retainToken) nsRetainedElements().set(retainToken,el);
   return {ok:true, x:x, y:y, box:b};
 }
+function nsInspectElement(e){
+      if(!e) return {found:false};
+      var attrs={}; for(var i=0;i<e.attributes.length;i++){ attrs[e.attributes[i].name]=e.attributes[i].value; }
+      var ancestors=[]; var parent=e.parentElement;
+      while(parent&&ancestors.length<4){
+        var parentText=nsText(parent);
+        if(parentText){ ancestors.push({tagName:parent.tagName,role:nsRole(parent),accessibleName:nsAccName(parent),text:parentText.slice(0,400)}); }
+        parent=parent.parentElement;
+      }
+      return {found:true, tagName:e.tagName, id:e.id||"", className:typeof e.className==="string"?e.className:"", text:nsText(e).slice(0,4000), role:nsRole(e), accessibleName:nsAccName(e), visible:nsVisible(e), attributes:attrs, boundingBox:nsBox(e), ancestors:ancestors};
+    }
 async function __nsRun(P){
   var d=P.descriptor, a=P.arg, t=P.timeout;
   try { switch(P.op){
@@ -909,26 +920,15 @@ async function __nsRun(P){
         return true;
       }).slice(0,10).map(function(e){ return {role:nsRole(e), accessibleName:nsAccName(e), text:nsText(e).slice(0,160)}; });
     }
-    case "inspect": {
-      var e=nsFirst(d);
-      if(!e) return {found:false};
-      var attrs={}; for(var i=0;i<e.attributes.length;i++){ attrs[e.attributes[i].name]=e.attributes[i].value; }
-      var ancestors=[]; var parent=e.parentElement;
-      while(parent&&ancestors.length<4){
-        var parentText=nsText(parent);
-        if(parentText){ ancestors.push({tagName:parent.tagName,role:nsRole(parent),accessibleName:nsAccName(parent),text:parentText.slice(0,400)}); }
-        parent=parent.parentElement;
-      }
-      return {found:true, tagName:e.tagName, id:e.id||"", className:typeof e.className==="string"?e.className:"", text:nsText(e).slice(0,4000), role:nsRole(e), accessibleName:nsAccName(e), visible:nsVisible(e), attributes:attrs, boundingBox:nsBox(e), ancestors:ancestors};
-    }
-    case "fill": { var e=await nsWaitForState(d,"visible",t); if(!("value" in e) && !e.isContentEditable) throw new Error("Element is not fillable"); e.focus&&e.focus(); if(e.isContentEditable) e.textContent=a.value; else nsSetNativeProperty(e,"value",a.value); nsDispatchInput(e,a.value); await nsAfterAction(); return true; }
-    case "clear": { var e=await nsWaitForState(d,"visible",t); e.focus&&e.focus(); if(e.isContentEditable) e.textContent=""; else nsSetNativeProperty(e,"value",""); nsDispatchInput(e,""); await nsAfterAction(); return true; }
-    case "selectOption": { var e=await nsWaitForState(d,"visible",t); if(!e.tagName || e.tagName.toLowerCase()!=="select") throw new Error("Element is not a select"); var vals=a.values; var picked=[]; for(var i=0;i<e.options.length;i++){ var o=e.options[i]; var hit=vals.some(function(matcher){ return nsSelectOptionMatch(o,matcher,i); }); o.selected=hit; if(hit) picked.push(o.value); } e.dispatchEvent(new Event("input",{bubbles:true})); e.dispatchEvent(new Event("change",{bubbles:true})); await nsAfterAction(); return picked; }
-    case "focus": { var e=await nsWaitForState(d,"visible",t); e.focus&&e.focus(); await nsAfterAction(); return true; }
-    case "blur": { var e=await nsWaitForState(d,"attached",t); e.blur&&e.blur(); await nsAfterAction(); return true; }
-    case "scrollIntoView": { var e=await nsWaitForState(d,"attached",t); e.scrollIntoView({block:"center",inline:"center"}); await nsAfterAction(); return true; }
-    case "selectText": { var e=await nsWaitForState(d,"visible",t); if(e.select) e.select(); else { var r=document.createRange(); r.selectNodeContents(e); var sel=getSelection(); sel.removeAllRanges(); sel.addRange(r); } await nsAfterAction(); return true; }
-    case "dispatchEvent": { var e=await nsWaitForState(d,"attached",t); e.dispatchEvent(new Event(a.type,{bubbles:true})); await nsAfterAction(); return true; }
+    case "inspect": return nsInspectElement(nsFirst(d));
+    case "fill": { var e=await nsWaitForState(d,"visible",t); var target=nsInspectElement(e); if(!("value" in e) && !e.isContentEditable) throw new Error("Element is not fillable"); e.focus&&e.focus(); if(e.isContentEditable) e.textContent=a.value; else nsSetNativeProperty(e,"value",a.value); nsDispatchInput(e,a.value); await nsAfterAction(); return {__nsActionOutcome:true, value:true, target:target}; }
+    case "clear": { var e=await nsWaitForState(d,"visible",t); var target=nsInspectElement(e); e.focus&&e.focus(); if(e.isContentEditable) e.textContent=""; else nsSetNativeProperty(e,"value",""); nsDispatchInput(e,""); await nsAfterAction(); return {__nsActionOutcome:true, value:true, target:target}; }
+    case "selectOption": { var e=await nsWaitForState(d,"visible",t); var target=nsInspectElement(e); if(!e.tagName || e.tagName.toLowerCase()!=="select") throw new Error("Element is not a select"); var vals=a.values; var picked=[]; for(var i=0;i<e.options.length;i++){ var o=e.options[i]; var hit=vals.some(function(matcher){ return nsSelectOptionMatch(o,matcher,i); }); o.selected=hit; if(hit) picked.push(o.value); } e.dispatchEvent(new Event("input",{bubbles:true})); e.dispatchEvent(new Event("change",{bubbles:true})); await nsAfterAction(); return {__nsActionOutcome:true, value:picked, target:target}; }
+    case "focus": { var e=await nsWaitForState(d,"visible",t); var target=nsInspectElement(e); e.focus&&e.focus(); await nsAfterAction(); return {__nsActionOutcome:true, value:true, target:target}; }
+    case "blur": { var e=await nsWaitForState(d,"attached",t); var target=nsInspectElement(e); e.blur&&e.blur(); await nsAfterAction(); return {__nsActionOutcome:true, value:true, target:target}; }
+    case "scrollIntoView": { var e=await nsWaitForState(d,"attached",t); var target=nsInspectElement(e); e.scrollIntoView({block:"center",inline:"center"}); await nsAfterAction(); return {__nsActionOutcome:true, value:true, target:target}; }
+    case "selectText": { var e=await nsWaitForState(d,"visible",t); var target=nsInspectElement(e); if(e.select) e.select(); else { var r=document.createRange(); r.selectNodeContents(e); var sel=getSelection(); sel.removeAllRanges(); sel.addRange(r); } await nsAfterAction(); return {__nsActionOutcome:true, value:true, target:target}; }
+    case "dispatchEvent": { var e=await nsWaitForState(d,"attached",t); var target=nsInspectElement(e); e.dispatchEvent(new Event(a.type,{bubbles:true})); await nsAfterAction(); return {__nsActionOutcome:true, value:true, target:target}; }
     case "focusForKey": { var e=await nsWaitForState(d,"visible",t); e.focus&&e.focus(); await nsAfterAction(); return true; }
     default: throw new Error("Unknown op: "+P.op);
   }} catch(error) { if(error&&error.__nsLocatorFailure) return error.__nsLocatorFailure; throw error; }
@@ -1568,6 +1568,14 @@ class WorkerCdpPage {
           (result as { __nsLocatorFailure?: unknown }).__nsLocatorFailure !==
             "state-timeout"
         ) {
+          if (["fill", "clear", "selectOption", "focus", "blur", "scrollIntoView", "selectText", "dispatchEvent"].includes(op)) {
+            if (!result || typeof result !== "object" || (result as { __nsActionOutcome?: unknown }).__nsActionOutcome !== true) {
+              throw new Error(`Native locator ${op} returned no action observation`);
+            }
+            const observed = result as { value: unknown; target: Omit<CdpDomInspection, "selector"> };
+            this.recordLocatorInteraction(op as CdpInteractionOutcome["action"], descriptor, observed.target);
+            return observed.value;
+          }
           return result;
         }
         const state =
@@ -1977,18 +1985,27 @@ class WorkerCdpPage {
     return outcome;
   }
 
+  private recordLocatorInteraction(
+    action: CdpInteractionOutcome["action"],
+    descriptor: LocatorDescriptor,
+    target: Omit<CdpDomInspection, "selector">,
+  ): void {
+    this.onInteraction?.({ protocol: "cdp-interaction-outcome.v1", action,
+      delivery: "dispatched", target: { selector: describeLocator(descriptor), ...target },
+      effect: { status: "not-asserted" } });
+  }
+
   async hoverDescriptor(
     descriptor: LocatorDescriptor,
     opts: ActionOptions = {},
   ): Promise<void> {
     const { x, y } = await this.resolveHitPoint(descriptor, opts.timeout);
+    const target = await this.runLocatorOp("inspect", descriptor, null, { timeout: 0 }) as Omit<CdpDomInspection, "selector">;
     await this.connection.send("Input.dispatchMouseEvent", {
-      type: "mouseMoved",
-      x,
-      y,
-      button: "none",
+      type: "mouseMoved", x, y, button: "none",
     });
     await this.afterAction();
+    this.recordLocatorInteraction("hover", descriptor, target);
   }
 
   async pressDescriptor(
@@ -1999,7 +2016,9 @@ class WorkerCdpPage {
     await this.runLocatorOp("focusForKey", descriptor, null, {
       timeout: opts.timeout,
     });
+    const target = await this.runLocatorOp("inspect", descriptor, null, { timeout: 0 }) as Omit<CdpDomInspection, "selector">;
     await this.pressKey(key);
+    this.recordLocatorInteraction("press", descriptor, target);
   }
 
   async setCheckedDescriptor(
@@ -2024,6 +2043,7 @@ class WorkerCdpPage {
         },
       )) as boolean;
       if (current === checked) return;
+      const target = await this.runLocatorOp("inspect", descriptor, null, { timeout: 0 }) as Omit<CdpDomInspection, "selector">;
       await this.dispatchClickAt(point);
       const updated = (await this.runLocatorOp(
         "retainedCheckedState",
@@ -2045,6 +2065,7 @@ class WorkerCdpPage {
           },
         );
       }
+      this.recordLocatorInteraction(checked ? "check" : "uncheck", descriptor, target);
     } finally {
       await this.runLocatorOp(
         "releaseRetainedElement",

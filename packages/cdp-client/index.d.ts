@@ -162,7 +162,7 @@ export interface ClickOptions extends ActionOptions {
 }
 export interface CdpInteractionOutcome {
   protocol: "cdp-interaction-outcome.v1";
-  action: "click" | "dblclick";
+  action: "click" | "dblclick" | "fill" | "clear" | "selectOption" | "focus" | "blur" | "selectText" | "scrollIntoView" | "dispatchEvent" | "press" | "hover" | "check" | "uncheck";
   delivery: "dispatched";
   target: CdpDomInspection;
   effect:
