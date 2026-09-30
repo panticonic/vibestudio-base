@@ -291,6 +291,10 @@
 .chat-input-card.chat-surface-card::after {
   box-shadow: none;
 }
+.chat-input-card::before,
+.chat-input-card::after {
+  border-radius: inherit;
+}
 
 .chat-input-card .chat-input-textarea .rt-TextAreaInput:not(:disabled)::placeholder {
   color: var(--gray-11);
@@ -303,10 +307,18 @@
    centered (equal right/bottom gap) in the default view and then STAYS pinned
    to the bottom band (no drift) as the textarea grows past two lines. */
 .chat-input-card {
-  --card-border-radius: max(
+  --composer-bottom-left-radius: max(
     var(--radius-2),
-    calc(var(--vibestudio-viewport-corner-radius-hint, 0px) - var(--agentic-root-padding))
+    calc(var(--vibestudio-viewport-corner-radius-bottom-left-hint, 0px) -
+      max(var(--agentic-root-padding), var(--vibestudio-safe-area-inset-left, 0px), var(--vibestudio-safe-area-inset-bottom, 0px)))
   );
+  --composer-bottom-right-radius: max(
+    var(--radius-2),
+    calc(var(--vibestudio-viewport-corner-radius-bottom-right-hint, 0px) -
+      max(var(--agentic-root-padding), var(--vibestudio-safe-area-inset-right, 0px), var(--vibestudio-safe-area-inset-bottom, 0px)))
+  );
+  border-bottom-left-radius: var(--composer-bottom-left-radius);
+  border-bottom-right-radius: var(--composer-bottom-right-radius);
   --composer-min-h: 3.5rem; /* the default two-line composer height */
   --send-dock-gap: 0.75rem; /* right gap, matched to the centered bottom gap */
 }
@@ -331,7 +343,8 @@
 /* The editor is an inset surface of the composer; its curve follows the
    composer's radius after accounting for the shared edge gap. */
 .chat-input-card .rt-TextAreaRoot {
-  border-radius: max(var(--radius-2), calc(var(--card-border-radius) - var(--card-padding)));
+  border-bottom-left-radius: max(var(--radius-2), calc(var(--composer-bottom-left-radius) - var(--card-padding)));
+  border-bottom-right-radius: max(var(--radius-2), calc(var(--composer-bottom-right-radius) - var(--card-padding)));
 }
 
 /* No-zoom text entry on touch + a taller default band + a real (≥44px) touch
@@ -1766,6 +1779,7 @@
    exists. The accent glyph signals "this is going to do something on send". */
 .agent-setup-card {
   border: 1px solid var(--agentic-border);
+  --card-padding: var(--space-4);
 }
 .agent-setup-heading-icon {
   align-items: center;
