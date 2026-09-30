@@ -2853,6 +2853,9 @@ class SubagentSpawnProbe extends TestVessel {
   protected override subagentIdentity(): SubagentIdentity | null {
     return this.subagentIdentityForTest;
   }
+  async acceptsMessageForTest(channelId: string, event: ChannelEvent) {
+    return this.shouldRespond(channelId, event);
+  }
   async closeChildTurnForTest(reason?: string): Promise<void> {
     await this.onTurnClosed({
       channelId: "task-inv-1", turnId: "child-turn", metadata: {},
@@ -5009,6 +5012,28 @@ describe("AgentVesselBase.runDeferredSpawn", () => {
         to: [{ kind: "participant", participantId: "participant-child" }],
       },
     });
+  });
+
+  it("admits retained supervisor follow-up only on the child's owned task channel", async () => {
+    const child = await makeSubagentSpawnProbe();
+    child.subagentIdentityForTest = {
+      runId: "inv-1", task: "task", parentRef: "parent",
+      parentChannelId: CHANNEL, taskChannelId: "task-inv-1",
+      parentContextId: "ctx-1", depth: 1, parentParticipantId: "parent",
+    };
+    const event: ChannelEvent = {
+      id: 192, messageId: "follow-up", type: AGENTIC_EVENT_PAYLOAD_KIND,
+      senderId: "parent", ts: Date.now(), annotations: { agentHops: 6 },
+      payload: {
+        kind: "message.completed", actor: { kind: "agent", id: "parent" },
+        causality: { messageId: "follow-up" },
+        payload: { role: "assistant", blocks: [], outcome: "completed",
+          to: [{ kind: "participant", participantId: AGENT_ID }] },
+      },
+    };
+    await expect(child.acceptsMessageForTest("task-inv-1", event)).resolves.toBe(true);
+    await expect(child.acceptsMessageForTest(CHANNEL, event)).resolves.toBe(false);
+    await expect(child.acceptsMessageForTest("task-inv-1", { ...event, senderId: "peer" })).resolves.toBe(false);
   });
 
   it("counts only live child executions against the concurrency limit", async () => {
