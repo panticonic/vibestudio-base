@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { page } from "@vitest/browser/context";
 import { Theme } from "@radix-ui/themes";
@@ -38,10 +38,14 @@ describe("composer panel height", () => {
         </ChatProvider>
       </Theme>
     );
-    const view = render(content(70));
+    const view = render(content(350));
     const textarea = screen.getByPlaceholderText(/Type a message/) as HTMLTextAreaElement;
     await expect.poll(() => textarea.getBoundingClientRect().height).toBeGreaterThanOrEqual(44);
+    fireEvent.input(textarea, { target: { value: "Landscape draft" } });
+    await expect.poll(() => textarea.style.height).not.toBe("");
+    view.rerender(content(70));
     const panel = screen.getByTestId("panel");
+    await expect.poll(() => textarea.getBoundingClientRect().height).toBeLessThanOrEqual(44);
     const shortHeight = textarea.getBoundingClientRect().height;
     const send = screen.getByTitle("Send message");
     expect(textarea.value).toBe("Landscape draft");
