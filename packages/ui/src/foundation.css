@@ -4,6 +4,20 @@
  * Radix Themes. Product and game identities belong in separate skin files.
  */
 
+/* Optional host hint in CSS pixels, not measured display geometry. Touch
+   browsers get a restrained width-based approximation; hosts may override this
+   property on document.documentElement. Safe-area insets remain authoritative
+   for placing content. Subtract a surface's edge gap when choosing its radius. */
+:root {
+  --vibestudio-viewport-corner-radius-hint: 0px;
+}
+
+@media (pointer: coarse) {
+  :root {
+    --vibestudio-viewport-corner-radius-hint: clamp(16px, 6vw, 32px);
+  }
+}
+
 .radix-themes,
 :root {
   --motion-fast: 120ms;
@@ -250,6 +264,12 @@
 
   .radix-themes :where(.rt-TextFieldInput, .rt-TextAreaInput) {
     min-height: 42px;
+    /* Prevent iOS focus zoom from changing the panel viewport mid-edit. */
+    font-size: max(16px, 1em);
+  }
+
+  .radix-themes select {
+    font-size: max(16px, 1em);
   }
 
   /* A switch should retain its familiar visual proportions while exposing the

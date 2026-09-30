@@ -63,7 +63,8 @@ export function AgentSetupInline() {
     <Box
       className="agent-setup-scroll"
       style={{
-        height: "100%",
+        flex: "1 1 0",
+        minHeight: 0,
         width: "100%",
         padding: "var(--space-3)",
         boxSizing: "border-box",
@@ -76,7 +77,7 @@ export function AgentSetupInline() {
         justifyContent: "safe flex-end",
       }}
     >
-      <Flex direction="column" gap="2" align="center" style={{ width: "min(540px, 100%)" }}>
+      <Flex direction="column" gap="2" align="center" style={{ width: "min(540px, 100%)", flexShrink: 0 }}>
         <Card
           className="chat-surface-card agent-setup-card"
           size="3"

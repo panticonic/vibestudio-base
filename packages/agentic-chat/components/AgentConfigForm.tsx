@@ -8,6 +8,7 @@ import {
   Checkbox,
   Flex,
   SegmentedControl,
+  Select,
   Text,
   TextArea,
   TextField,
@@ -157,7 +158,7 @@ export function AgentConfigForm({
     (value.approvalLevel ?? 2) === (defaultAgentConfig.approvalLevel ?? 2);
 
   return (
-    <Flex direction="column" gap="4">
+    <Flex className="agent-config-form" direction="column" gap="4">
       {/* Provider + model */}
       {modelEditable ? (
         <ModelPicker
@@ -227,7 +228,7 @@ export function AgentConfigForm({
                 <option key={lvl} value={index} label={THINKING_LABELS[lvl]} />
               ))}
             </datalist>
-            <Flex justify="between" style={{ paddingInline: 2 }}>
+            <Flex className="agent-effort-labels" justify="between" style={{ paddingInline: 2 }}>
               {thinkingLevels.map((lvl) => {
                 const selected = lvl === effort;
                 return (
@@ -252,50 +253,38 @@ export function AgentConfigForm({
           label="Speed"
           hint="Runs about 1.5× faster and consumes Codex credits at a higher rate."
         >
-          <Flex align="center" gap="2">
-            <Checkbox
-              aria-label="Fast mode"
-              checked={value.fastMode ?? false}
-              onCheckedChange={(checked) => set({ fastMode: checked === true })}
-            />
-            <Text size="2">Fast mode</Text>
-          </Flex>
+          <Text as="label" size="2">
+            <Flex align="center" gap="2" className="agent-config-check-row">
+              <Checkbox
+                aria-label="Fast mode"
+                checked={value.fastMode ?? false}
+                onCheckedChange={(checked) => set({ fastMode: checked === true })}
+              />
+              <span>Fast mode</span>
+            </Flex>
+          </Text>
         </Field>
       )}
 
       {/* Reactiveness — only with >1 agent */}
       {showReactiveness && (
         <Field label="Reactiveness" hint="When this agent replies in a multi-agent channel.">
-          <SegmentedControl.Root
-            value={
-              policy === "all"
-                ? "all"
-                : policy === "from-participants"
-                  ? "specific"
-                  : policy === "mentioned-or-followup"
-                    ? "followup"
-                    : "mentioned"
-            }
-            onValueChange={(v) =>
-              set({
-                respondPolicy:
-                  v === "all"
-                    ? "all"
-                    : v === "specific"
-                      ? "from-participants"
-                      : v === "followup"
-                        ? "mentioned-or-followup"
-                        : "mentioned",
-              })
+          <Select.Root
+            value={policy}
+            onValueChange={(respondPolicy) =>
+              set({ respondPolicy: respondPolicy as AgentRespondPolicy })
             }
           >
-            <SegmentedControl.Item value="all">Everything</SegmentedControl.Item>
-            <SegmentedControl.Item value="mentioned">@mention</SegmentedControl.Item>
-            <SegmentedControl.Item value="followup">Mention + reply</SegmentedControl.Item>
-            {participants.length > 0 && (
-              <SegmentedControl.Item value="specific">Specific</SegmentedControl.Item>
-            )}
-          </SegmentedControl.Root>
+            <Select.Trigger aria-label="Reactiveness" style={{ width: "100%" }} />
+            <Select.Content>
+              <Select.Item value="all">Everything</Select.Item>
+              <Select.Item value="mentioned">@mention</Select.Item>
+              <Select.Item value="mentioned-or-followup">Mention + reply</Select.Item>
+              {participants.length > 0 && (
+                <Select.Item value="from-participants">Specific people</Select.Item>
+              )}
+            </Select.Content>
+          </Select.Root>
           {policy === "from-participants" && participants.length > 0 && (
             <Flex direction="column" gap="1" mt="2">
               {participants.map((p) => {
@@ -335,14 +324,15 @@ export function AgentConfigForm({
 
       {/* Advanced */}
       <Box>
-        <Text
-          size="1"
+        <Button
+          type="button"
+          variant="soft"
           color="gray"
-          style={{ cursor: "pointer" }}
+          aria-expanded={showAdvanced}
           onClick={() => setShowAdvanced((s) => !s)}
         >
           {showAdvanced ? "▾ Advanced" : "▸ Advanced"}
-        </Text>
+        </Button>
         {showAdvanced && (
           <Flex direction="column" gap="3" mt="2">
             <Field

@@ -303,6 +303,10 @@
    centered (equal right/bottom gap) in the default view and then STAYS pinned
    to the bottom band (no drift) as the textarea grows past two lines. */
 .chat-input-card {
+  --card-border-radius: max(
+    var(--radius-2),
+    calc(var(--vibestudio-viewport-corner-radius-hint, 0px) - var(--agentic-root-padding))
+  );
   --composer-min-h: 3.5rem; /* the default two-line composer height */
   --send-dock-gap: 0.75rem; /* right gap, matched to the centered bottom gap */
 }
@@ -324,11 +328,21 @@
   padding-inline-end: 5.5rem;
 }
 
+/* The editor is an inset surface of the composer; its curve follows the
+   composer's radius after accounting for the shared edge gap. */
+.chat-input-card .rt-TextAreaRoot {
+  border-radius: max(var(--radius-2), calc(var(--card-border-radius) - var(--card-padding)));
+}
+
 /* No-zoom text entry on touch + a taller default band + a real (≥44px) touch
    target for the chevron (it's slimmed to 24px on pointer:fine, which is a
    mis-tap hazard on touch — a missed "options" tap would hit primary send). */
 @media (pointer: coarse) {
+  .agentic-chat-root {
+    --agentic-root-padding: var(--space-2);
+  }
   .chat-input-card {
+    --card-padding: var(--space-2);
     --composer-min-h: 4rem;
   }
   .chat-input-card textarea {
@@ -1873,4 +1887,25 @@
 }
 .pending-delivery-text {
   min-width: 0;
+}
+
+/* Configuration surfaces also appear in dialogs outside the chat container. */
+.agent-config-form {
+  min-inline-size: 0;
+}
+.agent-effort-labels {
+  flex-wrap: wrap;
+  gap: var(--space-1);
+}
+@media (pointer: coarse) {
+  .agent-config-form input[type="range"],
+  .agent-config-check-row {
+    min-block-size: 44px;
+  }
+  .agent-config-form .rt-SegmentedControlItem {
+    white-space: normal;
+  }
+  .agent-settings-dialog {
+    padding: var(--space-4);
+  }
 }

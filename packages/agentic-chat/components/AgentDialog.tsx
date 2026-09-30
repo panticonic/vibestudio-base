@@ -287,7 +287,12 @@ export function AgentDialog({ open, onOpenChange, editParticipantId }: AgentDial
   return (
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
       <Dialog.Content
-        style={{ width: "min(460px, calc(100vw - 24px))", maxHeight: "min(85dvh, 680px)" }}
+        className="agent-settings-dialog"
+        style={{
+          width: "min(460px, calc(100vw - 24px))",
+          maxHeight: "min(85dvh, 680px)",
+          overflowY: "auto",
+        }}
       >
         <Dialog.Title>{title}</Dialog.Title>
         <Dialog.Description size="2" color="gray" mb="3">

@@ -165,7 +165,7 @@ export function ChatMessageArea({
   // (armed config) instead of an empty transcript.
   if (deferredAgent?.setupActive) {
     return (
-      <Flex direction="column" gap="1" style={{ minHeight: 0, flexGrow: 1 }}>
+      <Flex direction="column" gap="1" style={{ minHeight: 0, flex: "1 1 0" }}>
         <SignalPills client={clientRef.current} />
         <AgentSetupInline />
       </Flex>
@@ -173,7 +173,7 @@ export function ChatMessageArea({
   }
 
   return (
-    <Flex direction="column" gap="1" style={{ minHeight: 0, flexGrow: 1 }}>
+    <Flex direction="column" gap="1" style={{ minHeight: 0, flex: "1 1 0" }}>
       <SignalPills client={clientRef.current} />
       <MessageList
         emptyState={emptyState}
