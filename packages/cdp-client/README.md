@@ -140,6 +140,18 @@ property setters plus input/change events, including for controlled React inputs
 
 ## Reads & state
 
+Failed state waits, ambiguous locators, and exhausted actionability include
+`CdpError.errorData.evidence`: one bounded, read-only post-failure observation
+with a separate one-second deadline. It records match count, actual matching
+control states, capture time/URL, and containing-scope rendered text (page text
+when the scope is absent). Truncation is explicit. `status: "unavailable"`
+preserves collection failure without replacing the primary error. A supplied
+`inspectionIdentity` is copied once at connection creation and records the
+owning panel session, not the current lifecycle generation. Successful calls
+do not collect this packet; failure recovery never replays input or picks a
+replacement target. Failed interaction postconditions preserve both evidence
+for their expected locator and the dispatched-action receipt.
+
 ```ts
 await loc.textContent(); // innerText, inputValue, getAttribute("href")
 await loc.count(); // allTextContents, allInnerTexts

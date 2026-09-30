@@ -413,6 +413,44 @@ export class CdpConnection {
   isClosed(): boolean;
 }
 
+export interface CdpInspectionIdentity {
+  panelId: string;
+  attemptId: string;
+  runtimeEntityId: string;
+  buildKey: string | null;
+}
+
+/** Bounded live observation collected after failure; it never changes the action outcome. */
+export type CdpLocatorEvidence = { session?: CdpInspectionIdentity } & (
+  | {
+      status: "captured";
+      capturedAt: number;
+      url: string;
+      urlTruncated: boolean;
+      matchCount: number;
+      matchesTruncated: boolean;
+      matches: Array<{
+        tagName: string;
+        role: string;
+        accessibleName: string;
+        accessibleNameTruncated: boolean;
+        text: string;
+        textTruncated: boolean;
+        visible: boolean;
+        enabled: boolean;
+        checked: boolean | null;
+      }>;
+      snapshot: {
+        scope: "container" | "page";
+        scopeCount: number;
+        text: string;
+        totalChars: number;
+        truncated: boolean;
+      };
+    }
+  | { status: "unavailable"; reason: string }
+);
+
 export interface CdpFailureData {
   code:
     | "cdp_target_connection_failed"
@@ -445,6 +483,7 @@ export interface CdpFailureData {
   candidates?: Array<{ role: string; accessibleName: string; tagName: string }>;
   instruction?: string;
   dialog?: Readonly<CdpDialogData>;
+  evidence?: CdpLocatorEvidence;
 }
 
 /** Structured error thrown by CDP evaluation, connection, and locator operations. */
@@ -469,6 +508,7 @@ export class CdpError extends Error {
       candidates?: CdpFailureData["candidates"];
       instruction?: string;
       dialog?: Readonly<CdpDialogData>;
+      evidence?: CdpLocatorEvidence;
     },
   );
 }
@@ -489,6 +529,7 @@ export const BrowserImpl: {
       commandTimeoutMs?: number;
       /** Observe completed input outcomes independently of caller return projections. */
       onInteraction?: (outcome: CdpInteractionOutcome) => void;
+      inspectionIdentity?: CdpInspectionIdentity;
     },
   ): Promise<Browser>;
 };

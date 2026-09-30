@@ -841,7 +841,8 @@ function nsVisible(el){
   return s.visibility!=="hidden" && s.display!=="none" && Number(s.opacity||"1")>0 && r.width>0 && r.height>0;
 }
 function nsEnabled(el){ return !el.disabled && nsAttr(el,"aria-disabled")!=="true"; }
-function nsCheckedState(el){ if("checked" in el) return !!el.checked; var aria=nsAttr(el,"aria-checked"); if(aria==="true"||aria==="false") return aria==="true"; var data=nsAttr(el,"data-state"); if(data==="checked"||data==="on") return true; if(data==="unchecked"||data==="off") return false; throw new Error("Element is not checkable"); }
+function nsCheckedObservation(el){ if("checked" in el) return !!el.checked; var aria=nsAttr(el,"aria-checked"); if(aria==="true"||aria==="false") return aria==="true"; var data=nsAttr(el,"data-state"); if(data==="checked"||data==="on") return true; if(data==="unchecked"||data==="off") return false; return null; }
+function nsCheckedState(el){ var checked=nsCheckedObservation(el); if(checked===null) throw new Error("Element is not checkable"); return checked; }
 function nsEditable(el){
   if(el.isContentEditable) return true;
   var tag=el.tagName ? el.tagName.toLowerCase() : "";
@@ -949,10 +950,23 @@ function nsInspectElement(e){
       }
       return {found:true, tagName:e.tagName, id:e.id||"", className:typeof e.className==="string"?e.className:"", text:nsText(e).slice(0,4000), role:nsRole(e), accessibleName:nsAccName(e), visible:nsVisible(e), attributes:attrs, boundingBox:nsBox(e), ancestors:ancestors};
     }
+function nsFailureEvidence(descriptor){
+  var matches=nsLocate(descriptor), steps=descriptor.steps||[], boundary=steps.length-1;
+  while(boundary>=0&&!steps[boundary].by) boundary--;
+  var roots=boundary>0?nsLocate({steps:steps.slice(0,boundary)}):[];
+  var scope=roots.length?"container":"page";
+  if(!roots.length) roots=[document.body||document.documentElement];
+  var text=roots.filter(Boolean).map(function(root){return root.innerText==null?"":String(root.innerText);}).join("\n");
+  var url=String(location.href);
+  return {capturedAt:Date.now(),url:url.slice(0,2000),urlTruncated:url.length>2000,matchCount:matches.length,matchesTruncated:matches.length>8,
+    matches:matches.slice(0,8).map(function(e){var text=nsText(e), name=nsAccName(e);return {tagName:e.tagName,role:nsRole(e),accessibleName:name.slice(0,300),accessibleNameTruncated:name.length>300,text:text.slice(0,300),textTruncated:text.length>300,visible:nsVisible(e),enabled:nsEnabled(e),checked:nsCheckedObservation(e)};}),
+    snapshot:{scope:scope,scopeCount:roots.length,text:text.slice(0,4000),totalChars:text.length,truncated:text.length>4000}};
+}
 async function __nsRun(P){
   var d=P.descriptor, a=P.arg, t=P.timeout;
   try { switch(P.op){
     case "probe": return nsActionable(d, a&&a.retainToken);
+    case "failureEvidence": return nsFailureEvidence(d);
     case "waitFor": { await nsWaitForState(d, P.state||"visible", t); return true; }
     case "count": return nsLocate(d).length;
     case "exists": return !!nsFirst(d);
@@ -1108,11 +1122,46 @@ function formatRuntimeException(details: RuntimeExceptionDetails): string {
   return `Browser evaluation failed: ${primary}${stack ? `\n${stack}` : location}`;
 }
 
-/**
- * Error thrown by locator actions/reads. `message` names the target locator
- * (Playwright-style) and the underlying reason; `.locator` holds the rendered
- * locator string and `.cause` the original error.
- */
+/** Identity of the session owning the inspected target, not a newly acquired generation. */
+export interface CdpInspectionIdentity {
+  panelId: string;
+  attemptId: string;
+  runtimeEntityId: string;
+  buildKey: string | null;
+}
+
+export type CdpLocatorEvidence = {
+  session?: CdpInspectionIdentity;
+} & (
+  | {
+      status: "captured";
+      capturedAt: number;
+      url: string;
+      urlTruncated: boolean;
+      matchCount: number;
+      matchesTruncated: boolean;
+      matches: Array<{
+        tagName: string;
+        role: string;
+        accessibleName: string;
+        accessibleNameTruncated: boolean;
+        text: string;
+        textTruncated: boolean;
+        visible: boolean;
+        enabled: boolean;
+        checked: boolean | null;
+      }>;
+      snapshot: {
+        scope: "container" | "page";
+        scopeCount: number;
+        text: string;
+        totalChars: number;
+        truncated: boolean;
+      };
+    }
+  | { status: "unavailable"; reason: string }
+);
+
 export interface CdpFailureData {
   code:
     | "cdp_target_connection_failed"
@@ -1147,8 +1196,10 @@ export interface CdpFailureData {
   candidates?: Array<{ role: string; accessibleName: string; tagName: string }>;
   instruction?: string;
   dialog?: Readonly<CdpDialogData>;
+  evidence?: CdpLocatorEvidence;
 }
 
+/** Structured locator failure preserving its original cause and post-failure evidence. */
 export class CdpError extends Error {
   readonly locator?: string;
   readonly code: CdpFailureData["code"];
@@ -1170,6 +1221,7 @@ export class CdpError extends Error {
       candidates?: CdpFailureData["candidates"];
       instruction?: string;
       dialog?: Readonly<CdpDialogData>;
+      evidence?: CdpLocatorEvidence;
     } = {},
   ) {
     super(message);
@@ -1198,6 +1250,7 @@ export class CdpError extends Error {
       ...(options.candidates ? { candidates: options.candidates } : {}),
       ...(options.instruction ? { instruction: options.instruction } : {}),
       ...(options.dialog ? { dialog: options.dialog } : {}),
+      ...(options.evidence ? { evidence: options.evidence } : {}),
     };
     if (options.cause !== undefined)
       (this as { cause?: unknown }).cause = options.cause;
@@ -1322,6 +1375,7 @@ class WorkerCdpPage {
   constructor(
     readonly connection: CdpConnection,
     private readonly onInteraction?: (outcome: CdpInteractionOutcome) => void,
+    private readonly inspectionIdentity?: CdpInspectionIdentity,
   ) {
     this.connection.on("Runtime.consoleAPICalled", (params) => {
       const event = params as {
@@ -1626,6 +1680,39 @@ class WorkerCdpPage {
     return result.result?.value;
   }
 
+  /** One bounded, read-only observation after failure; never recurse through locator recovery. */
+  private async captureLocatorEvidence(
+    descriptor: LocatorDescriptor,
+  ): Promise<CdpLocatorEvidence> {
+    const session = this.inspectionIdentity;
+    try {
+      const observation = (await this.evaluate(
+        `(async function(P){ ${INPAGE}\n return await __nsRun(P); })(${JSON.stringify({ op: "failureEvidence", descriptor })})`,
+        undefined,
+        { timeout: 1_000, operation: "locator.failureEvidence" },
+      )) as Omit<
+        Extract<CdpLocatorEvidence, { status: "captured" }>,
+        "status" | "session"
+      >;
+      if (!observation || typeof observation.capturedAt !== "number")
+        throw new Error("Browser returned no failure observation");
+      return {
+        ...observation,
+        status: "captured",
+        ...(session ? { session } : {}),
+      };
+    } catch (error) {
+      return {
+        status: "unavailable",
+        reason: (error instanceof Error ? error.message : String(error)).slice(
+          0,
+          500,
+        ),
+        ...(session ? { session } : {}),
+      };
+    }
+  }
+
   /** Run an in-page op against a locator descriptor; failures name the locator. */
   async runLocatorOp(
     op: string,
@@ -1741,6 +1828,15 @@ class WorkerCdpPage {
     } catch (err) {
       const where = describeLocator(descriptor);
       const detail = err instanceof Error ? err.message : String(err);
+      const evidence =
+        err instanceof CdpError && err.errorData.evidence
+          ? err.errorData.evidence
+          : err instanceof CdpError &&
+              ["cdp_locator_state_mismatch", "cdp_locator_ambiguous"].includes(
+                err.code,
+              )
+            ? await this.captureLocatorEvidence(descriptor)
+            : undefined;
       if (err instanceof CdpError) {
         throw new CdpError(`${op} failed on ${where}: ${detail}`, {
           cause: err,
@@ -1755,6 +1851,8 @@ class WorkerCdpPage {
           matchCount: err.errorData.matchCount,
           candidates: err.errorData.candidates,
           instruction: err.errorData.instruction,
+          dialog: err.errorData.dialog,
+          evidence,
         });
       }
       throw new CdpError(`${op} failed on ${where}: ${detail}`, {
@@ -1763,6 +1861,7 @@ class WorkerCdpPage {
         code: "cdp_locator_operation_failed",
         operation: op,
         recovery: "reobserve-locator",
+        evidence,
       });
     }
   }
@@ -2015,6 +2114,7 @@ class WorkerCdpPage {
         operation: "click",
         recovery: "reobserve-locator",
         timeoutMs: timeout,
+        evidence: await this.captureLocatorEvidence(descriptor),
       },
     );
   }
@@ -2114,6 +2214,8 @@ class WorkerCdpPage {
           timeoutMs,
           state,
           expectedLocator,
+          evidence:
+            cause instanceof CdpError ? cause.errorData.evidence : undefined,
         },
       );
     }
@@ -2804,6 +2906,8 @@ export const BrowserImpl = {
       commandTimeoutMs?: number;
       /** Observe completed input outcomes independently of caller return projections. */
       onInteraction?: (outcome: CdpInteractionOutcome) => void;
+      /** Immutable provenance supplied by a generation-fenced panel session. */
+      inspectionIdentity?: CdpInspectionIdentity;
     } = {},
   ): Promise<WorkerBrowser> {
     const connection = await CdpConnection.connect(
@@ -2812,7 +2916,13 @@ export const BrowserImpl = {
       options.preferFetchUpgrade,
       { commandTimeoutMs: options.commandTimeoutMs },
     );
-    const page = new WorkerCdpPage(connection, options.onInteraction);
+    const page = new WorkerCdpPage(
+      connection,
+      options.onInteraction,
+      options.inspectionIdentity
+        ? Object.freeze({ ...options.inspectionIdentity })
+        : undefined,
+    );
     try {
       await page.initialize();
       return new WorkerBrowser(page, connection);

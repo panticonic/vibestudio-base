@@ -24,6 +24,7 @@ class FakeWebSocket {
   static emitNavigationEventBeforeResponse = false;
   static deferNextClickEffect = false;
   static deferNextCheckPolls = 0;
+  static dropFailureEvidence = false;
 
   private listeners = new Map<
     string,
@@ -77,6 +78,12 @@ class FakeWebSocket {
         params: message.params,
       });
     if (message.method && FakeWebSocket.dropMethods.has(message.method)) return;
+    if (
+      FakeWebSocket.dropFailureEvidence &&
+      message.method === "Runtime.evaluate" &&
+      String(message.params?.["expression"]).includes('"op":"failureEvidence"')
+    )
+      return;
     const rejection =
       message.method && FakeWebSocket.rejectMethods.get(message.method);
     if (rejection) {
@@ -318,6 +325,22 @@ class FakeWebSocket {
       },
     });
     switch (payload.op) {
+      case "failureEvidence":
+        return {
+          capturedAt: 123,
+          url: this.nextUrl,
+          urlTruncated: false,
+          matchCount: targetsMissing ? 0 : 1,
+          matchesTruncated: false,
+          matches: [],
+          snapshot: {
+            scope: "page",
+            scopeCount: 1,
+            text: "0 tasks left",
+            totalChars: 12,
+            truncated: false,
+          },
+        };
       case "probe":
         if (payload.arg?.retainToken) this.checking = true;
         return targetsMissing
@@ -472,6 +495,7 @@ describe("worker CDP client", () => {
     FakeWebSocket.emitNavigationEventBeforeResponse = false;
     FakeWebSocket.deferNextClickEffect = false;
     FakeWebSocket.deferNextCheckPolls = 0;
+    FakeWebSocket.dropFailureEvidence = false;
     vi.restoreAllMocks();
     Object.defineProperty(globalThis, "WebSocket", {
       configurable: true,
@@ -1403,6 +1427,7 @@ describe("worker CDP client", () => {
           'getByRole("button", { name: "Add another column", exact: true })',
         state: "visible",
         timeoutMs: 40,
+        evidence: { status: "captured", matchCount: 0 },
       },
     });
     expect(onInteraction).toHaveBeenCalledExactlyOnceWith(
@@ -2056,6 +2081,203 @@ describe("worker CDP client", () => {
     expect(
       page.getByRole("button", { name: "Active", exact: false }).toString(),
     ).toContain("exact: false");
+    await browser.close();
+  });
+
+  it("captures expected-versus-observed evidence only on failure with session provenance", async () => {
+    installFakeWebSocket();
+    const identity = {
+      panelId: "panel:todo",
+      attemptId: "attempt:old",
+      runtimeEntityId: "runtime:old",
+      buildKey: "build:old",
+    };
+    const browser = await BrowserImpl.connect("ws://cdp", {
+      inspectionIdentity: identity,
+    });
+    const page = browser.contexts()[0]!.pages()[0]!;
+    page.setDefaultTimeout(40);
+    await page.getByRole("button", { name: "Go" }).count();
+    expect(
+      FakeWebSocket.sent.some((e) =>
+        String(e.params?.["expression"]).includes('"op":"failureEvidence"'),
+      ),
+    ).toBe(false);
+    const failure = await page
+      .getByTestId("missing")
+      .innerText()
+      .catch((e) => e);
+    expect(failure).toMatchObject({
+      code: "cdp_locator_state_mismatch",
+      errorData: {
+        state: "attached",
+        evidence: {
+          status: "captured",
+          session: identity,
+          matchCount: 0,
+          snapshot: { text: "0 tasks left" },
+        },
+      },
+    });
+    expect(
+      FakeWebSocket.sent.filter((e) =>
+        String(e.params?.["expression"]).includes('"op":"failureEvidence"'),
+      ),
+    ).toHaveLength(1);
+    expect(FakeWebSocket.sent.some((e) => e.method.startsWith("Input."))).toBe(
+      false,
+    );
+    await browser.close();
+  });
+
+  it("bounds native failure snapshots and reports actual matching control state and scope", async () => {
+    installFakeWebSocket();
+    const browser = await BrowserImpl.connect("ws://cdp");
+    const page = browser.contexts()[0]!.pages()[0]!;
+    await page.locator("section").getByRole("checkbox").count();
+    const expression = FakeWebSocket.sent
+      .filter((e) => e.method === "Runtime.evaluate")
+      .map((e) => String(e.params?.["expression"]))
+      .filter((e) => e.includes('"op":"count"'))
+      .at(-1)!
+      .replace('"op":"count"', '"op":"failureEvidence"');
+    const controls = Array.from({ length: 10 }, () => ({
+      tagName: "INPUT",
+      checked: false,
+      disabled: true,
+      innerText: "x".repeat(400),
+      getAttribute: (key: string) =>
+        key === "aria-label"
+          ? "Complete task"
+          : key === "type"
+            ? "checkbox"
+            : null,
+      getBoundingClientRect: () => ({ width: 10, height: 10 }),
+    }));
+    const container = {
+      innerText: "0 tasks left\n" + "x".repeat(5000),
+      querySelectorAll: () => controls,
+    };
+    const document = {
+      body: { innerText: "Unrelated page text" },
+      querySelectorAll: () => [container],
+    };
+    const evidence = await runInNewContext(expression, {
+      document,
+      location: { href: "https://example.test" },
+      getComputedStyle: () => ({
+        visibility: "visible",
+        display: "block",
+        opacity: "1",
+      }),
+    });
+    expect(evidence).toMatchObject({
+      matchCount: 10,
+      matchesTruncated: true,
+      snapshot: {
+        scope: "container",
+        scopeCount: 1,
+        totalChars: 5013,
+        truncated: true,
+      },
+    });
+    expect(evidence.matches).toHaveLength(8);
+    expect(evidence.matches[0]).toMatchObject({
+      checked: false,
+      enabled: false,
+      visible: true,
+      textTruncated: true,
+    });
+    expect(evidence.snapshot.text).toHaveLength(4000);
+    expect(evidence.snapshot.text).toContain("0 tasks left");
+    controls[0]!.checked = true;
+    expect(
+      (
+        await runInNewContext(expression, {
+          document,
+          location: { href: "https://example.test" },
+          getComputedStyle: () => ({ display: "none" }),
+        })
+      ).matches[0],
+    ).toMatchObject({ checked: true, visible: false });
+    container.querySelectorAll = () => [];
+    expect(
+      await runInNewContext(expression, {
+        document,
+        location: { href: "https://example.test" },
+      }),
+    ).toMatchObject({ matchCount: 0, snapshot: { scope: "container" } });
+    document.querySelectorAll = () => [];
+    expect(
+      await runInNewContext(expression, {
+        document,
+        location: { href: "https://example.test" },
+      }),
+    ).toMatchObject({
+      matchCount: 0,
+      snapshot: { scope: "page", text: "Unrelated page text" },
+    });
+    await browser.close();
+  });
+
+  it("preserves the primary failure when evidence collection fails", async () => {
+    installFakeWebSocket();
+    const browser = await BrowserImpl.connect("ws://cdp");
+    const page = browser.contexts()[0]!.pages()[0]!;
+    page.setDefaultTimeout(40);
+    const evaluate = page.evaluate.bind(page);
+    vi.spyOn(page, "evaluate").mockImplementation((fn, arg, opts) => {
+      if (opts?.operation === "locator.failureEvidence")
+        return Promise.reject(new Error("Evidence target disappeared"));
+      return evaluate(fn, arg, opts);
+    });
+    const failure = await page
+      .getByTestId("missing")
+      .innerText()
+      .catch((e) => e);
+    expect(failure).toMatchObject({
+      code: "cdp_locator_state_mismatch",
+      errorData: {
+        state: "attached",
+        evidence: {
+          status: "unavailable",
+          reason: "Evidence target disappeared",
+        },
+      },
+    });
+    await browser.close();
+  });
+
+  it("bounds an unanswered evidence read without retiring the original page or replaying actions", async () => {
+    installFakeWebSocket();
+    const browser = await BrowserImpl.connect("ws://cdp");
+    const page = browser.contexts()[0]!.pages()[0]!;
+    page.setDefaultTimeout(40);
+    FakeWebSocket.dropFailureEvidence = true;
+    const failure = await page
+      .getByTestId("missing")
+      .innerText()
+      .catch((e) => e);
+    expect(failure).toMatchObject({
+      code: "cdp_locator_state_mismatch",
+      errorData: {
+        evidence: {
+          status: "unavailable",
+          reason: expect.stringContaining("1000ms"),
+        },
+      },
+    });
+    expect(page.isClosed()).toBe(false);
+    expect(
+      FakeWebSocket.sent.filter((e) =>
+        String(e.params?.["expression"]).includes('"op":"failureEvidence"'),
+      ),
+    ).toHaveLength(1);
+    expect(FakeWebSocket.sent.some((e) => e.method.startsWith("Input."))).toBe(
+      false,
+    );
+    FakeWebSocket.dropFailureEvidence = false;
+    await expect(page.getByRole("button").count()).resolves.toBe(1);
     await browser.close();
   });
 

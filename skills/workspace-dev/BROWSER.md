@@ -379,6 +379,31 @@ expected locators. A command timeout or closed target directs the caller to
 inspect panel diagnostics and acquire a fresh page from the stable panel handle;
 the old page connection is no longer reusable.
 
+Failed locator state waits, ambiguous targets, and exhausted pointer actionability
+also carry `errorData.evidence`. A single read-only observation is collected
+after failure, with a separate one-second deadline; successful operations do
+not collect it. `status: "captured"` includes capture time, page URL, match count,
+up to eight matches with their actual text/name, visibility, enabled and checked
+states (`checked: null` means not checkable), and a bounded rendered-text
+snapshot of the locator's containing scope. When the scope is absent or the
+locator is unscoped, the snapshot covers the page. Each bounded field and match
+list reports truncation explicitly. Generation-fenced sessions include their
+own immutable panel/attempt/runtime/build identity; this is not evidence that
+the session is still current. Compare it with the panel's current observation
+when diagnosing a stale generation.
+
+The eval result exposes this expected-versus-observed packet in model-facing
+text as well as tool details. A truncated text preview is explicitly marked;
+the full packet remains in `details.errorData`. `status: "unavailable"` records
+why observation failed without replacing the original error. Evidence is a
+post-failure observation, not a claim that the DOM stayed unchanged during the
+wait or collection. A failed interaction postcondition carries evidence for
+the expected locator and retains its completed action receipt in the journal.
+Read the actual state before repairing an assertion: after deleting the last
+active task, `"0 tasks left"` is a successful application result even if an
+assertion incorrectly expected `"1 task left"`. No evidence collection retries
+input, chooses a replacement locator, or relaxes the assertion.
+
 Controls repeated for collection items must have item-specific accessible
 names. Treat repeated `"Mark task as completed"` buttons as an accessibility
 defect and repair the app to expose names such as

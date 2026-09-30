@@ -316,6 +316,25 @@ export async function formatEvalResult(
       `[eval] Structured failure${result.failureCode ? `: ${result.failureCode}` : ""}. ` +
         "See details.errorData for the typed recovery data.",
     );
+    // Tool details are retained for inspection, but model-facing content must
+    // carry failure observations too; do not make the agent probe again merely
+    // to discover the state already captured by the browser client.
+    const data = result.errorData as Record<string, unknown> | null;
+    if (data && typeof data === "object" && data["evidence"] !== undefined) {
+      const packet = safeStringify({
+        locator: data["locator"],
+        expectedLocator: data["expectedLocator"],
+        state: data["state"],
+        timeoutMs: data["timeoutMs"],
+        evidence: data["evidence"],
+      });
+      parts.push(
+        `[eval] Browser failure evidence:\n${packet.slice(0, MAX_EVIDENCE_CHARS)}` +
+          (packet.length > MAX_EVIDENCE_CHARS
+            ? "\n[evidence preview truncated; full packet retained in details.errorData]"
+            : ""),
+      );
+    }
   }
   if (result.console) {
     parts.push(
@@ -461,6 +480,7 @@ function inlineSourcePathFromHint(
 // behavior — spill to blobstore/scope — is a separate follow-up.)
 const MAX_CONSOLE_CHARS = 100_000;
 const MAX_RETURN_CHARS = 100_000;
+const MAX_EVIDENCE_CHARS = 16_000;
 
 /**
  * Window to `max` chars (head+tail) with an actionable notice of how much was
