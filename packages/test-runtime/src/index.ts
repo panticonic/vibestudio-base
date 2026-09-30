@@ -140,8 +140,20 @@ function deepEqual(left: unknown, right: unknown): boolean {
   if (!left || !right || typeof left !== "object" || typeof right !== "object")
     return false;
   if (Array.isArray(left) !== Array.isArray(right)) return false;
-  const leftKeys = Object.keys(left as object).sort();
-  const rightKeys = Object.keys(right as object).sort();
+  if (Array.isArray(left) && Array.isArray(right)) {
+    return left.length === right.length &&
+      Array.from({ length: left.length }, (_, index) => index).every(
+        (index) => deepEqual(left[index], right[index]),
+      );
+  }
+  // Vitest's toEqual compares values, ignoring undefined object properties.
+  // JSON persistence drops those properties too; toEqual must have the same
+  // meaning in native tests and in the portable browser/workerd runtime.
+  const keys = (value: object) => Object.keys(value).filter(
+    (key) => (value as Record<string, unknown>)[key] !== undefined,
+  ).sort();
+  const leftKeys = keys(left);
+  const rightKeys = keys(right);
   return (
     leftKeys.length === rightKeys.length &&
     leftKeys.every(

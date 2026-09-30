@@ -19,6 +19,16 @@ import {
 } from "./index.js";
 
 vitestDescribe("portable test runtime", () => {
+  vitestIt("matches native toEqual for objects round-tripped through JSON", () => {
+    const value = { cards: [{ id: "card", due: undefined, closed: false }] };
+    const restored = JSON.parse(JSON.stringify(value));
+    vitestExpect(restored).toEqual(value);
+    expect(restored).toEqual(value);
+    expect({ value: null }).not.toEqual({ value: undefined });
+    expect({ value: 1 }).not.toEqual({ other: 1 });
+    expect([]).not.toEqual([undefined]);
+    expect([, 1]).toEqual([undefined, 1]);
+  });
   vitestIt(
     "collects async tests with their build-assigned file identity",
     async () => {
