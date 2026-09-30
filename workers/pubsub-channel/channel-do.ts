@@ -1992,25 +1992,14 @@ export class PubSubChannel extends DurableObjectBase {
   }
 
   private rosterSnapshot(): BootstrapSnapshot {
-    const participants: ParticipantSnapshot[] = [];
-    for (const row of this.sql
-      .exec(`SELECT id, metadata FROM participants ORDER BY id ASC`)
-      .toArray()) {
-      try {
-        const id = row["id"] as string;
-        const metadata = JSON.parse(row["metadata"] as string) as Record<
-          string,
-          unknown
-        >;
-        participants.push({
-          id,
-          ref: participantRefFromMetadata(id, metadata),
-          metadata,
-        });
-      } catch {
-        /* ignore corrupt participant metadata */
-      }
-    }
+    // Replay and explicit inspection must expose the same membership. Entity
+    // participants have durable relationships, not external session rows.
+    const participants: ParticipantSnapshot[] =
+      this.currentRosterParticipants().map(({ participantId, ref, metadata }) => ({
+        id: participantId,
+        ref,
+        metadata,
+      }));
     return { kind: "roster-snapshot", participants, ts: Date.now() };
   }
 
@@ -3685,6 +3674,16 @@ export class PubSubChannel extends DurableObjectBase {
       doRef?: { source: string; className: string; objectKey: string };
     }>
   > {
+    return this.currentRosterParticipants();
+  }
+
+  private currentRosterParticipants(): Array<{
+    participantId: string;
+    ref: ParticipantRef;
+    metadata: Record<string, unknown>;
+    transport: string;
+    doRef?: { source: string; className: string; objectKey: string };
+  }> {
     const rows = [
       ...this.sql
         .exec(
