@@ -362,6 +362,14 @@ default; `{ exact: true }` selects a case-sensitive whole-string match. The `isV
 snapshots and return `false` when there is no current match. Use `waitFor` when
 absence should be retried.
 
+`getByText` matches an element's text, not an arbitrary text-node fragment or
+its accessible name. Visible decorative descendants still contribute even
+when marked `aria-hidden`: an empty-state element containing `✓` and `No done
+tasks right now.` does not exactly equal `No done tasks right now.`. Read the
+failure snapshot or inspect the rendered element before choosing a deliberate
+substring assertion or a separately identifiable message element. Do not infer
+that the preceding action failed merely because its text assertion missed.
+
 Accessible names are computed from the live DOM. Descendant text such as a
 numeric badge is part of a button's name, so a visually grouped `Done` + `3`
 button may be named `"Done 3"`. Discover the names first, then use the exact

@@ -2012,6 +2012,37 @@ describe("worker CDP client", () => {
     });
   });
 
+  it("keeps exact element text distinct from a decorative descendant's accessible visibility", async () => {
+    installFakeWebSocket();
+    const browser = await BrowserImpl.connect("ws://cdp");
+    const page = browser.contexts()[0]!.pages()[0]!;
+    const mark = {
+      tagName: "SPAN",
+      textContent: "✓",
+      getAttribute: (key: string) => (key === "aria-hidden" ? "true" : null),
+      querySelectorAll: () => [],
+    };
+    const message = {
+      tagName: "DIV",
+      textContent: "✓ No done tasks right now.",
+      querySelectorAll: () => [mark],
+    };
+    const document = { querySelectorAll: () => [message, mark] };
+    const count = async (text: string, exact: boolean) => {
+      await page.getByText(text, { exact }).count();
+      const expression = FakeWebSocket.sent
+        .filter((entry) => entry.method === "Runtime.evaluate")
+        .map((entry) => String(entry.params?.["expression"] ?? ""))
+        .filter((value) => value.includes('"op":"count"'))
+        .at(-1)!;
+      return runInNewContext(expression, { document });
+    };
+    await expect(count("No done tasks right now.", true)).resolves.toBe(0);
+    await expect(count("✓ No done tasks right now.", true)).resolves.toBe(1);
+    await expect(count("No done tasks right now.", false)).resolves.toBe(1);
+    await browser.close();
+  });
+
   it("identifies named roles exactly on pages and scoped locators, with explicit pattern searches", async () => {
     installFakeWebSocket();
     const browser = await BrowserImpl.connect("ws://cdp");
