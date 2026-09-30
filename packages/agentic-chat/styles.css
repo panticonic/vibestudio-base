@@ -368,8 +368,18 @@
   }
 }
 
+/* A short panel (for example above a landscape keyboard) gives the composer
+   one line while preserving a 44px input band. This follows the actual panel
+   height, including native keyboard avoidance, rather than screen orientation. */
+@container (max-height: 160px) {
+  .chat-input-card {
+    --card-padding: var(--space-1);
+    --composer-min-h: 2.75rem;
+  }
+}
+
 /* Container-width responsive utilities — keyed on .agentic-chat-root,
-   which is a `container-type: inline-size` container. Narrow panels (not
+   which is a `container-type: size` container. Narrow panels (not
    just narrow viewports) get the compact header. */
 .chat-narrow-only {
   display: none !important;

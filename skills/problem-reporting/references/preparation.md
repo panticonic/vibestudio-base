@@ -2,6 +2,25 @@
 
 The shared strict bundle schema is `vibestudio.problem-report.v1`. Use the live service schema and returned draft rather than inventing JSON fields. Narrative has an independent 128 KiB UTF-8 budget; selected diagnostics have 256 KiB; attachments at most five/7 MiB decoded; total canonical JSON 10 MiB. Never silently shorten the user's narrative or chosen attachment.
 
+`problem.operation` and `problem.code` are product identifiers, not prose. Use
+the known operation token (for example `eval.returnImage`), or `null` when
+unknown. Tokens allow letters, digits, `_`, `.`, `:`, `@`, `/`, and `-`, but no
+spaces. Put human-readable descriptions in `symptom`, `expected`, or narrative.
+
+Every new reference entry has a report-local UUID. Its `coordinate` holds the
+actual panel, invocation, build, or other source identifier; those identifiers
+are not reference-entry UUIDs:
+
+```ts
+content.references.push({
+  id: crypto.randomUUID(),
+  kind: "panel",
+  coordinate: panel.id,
+});
+```
+
+Preserve the entry's UUID when editing it, just as for narrative and evidence.
+
 Narrative sections: goal, symptom, expected, reproduction, timeline, impact, investigation, findings, hypotheses, attempts, verification, questions. Each has a UUID, user/agent authorship, a report-local label, claim classification, Markdown, and evidence IDs. Summarize reasoning and findings; do not export hidden model reasoning. Mark a proposed cause inferred; call verification observed only after running the actual check.
 
 Use this exact section shape, checked against the live `problemReports.update` schema:
@@ -13,7 +32,8 @@ const section = {
   author: "agent",
   authorLabel: "Assistant",
   claims: "unverified",
-  markdown: "The user described an incorrect result. I have not independently reproduced it.",
+  markdown:
+    "The user described an incorrect result. I have not independently reproduced it.",
   evidenceIds: [],
 };
 ```
