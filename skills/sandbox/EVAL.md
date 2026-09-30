@@ -1072,7 +1072,12 @@ The blobstore is a curated runtime binding — reach it as `services.blobstore`
 (`putText`/`putBase64`/`getText`/`readText`/`getRange`/`grep`/…) work from agent eval; the
 admin methods (`delete`/`list`) are server-only. Raw calls
 use `rpc.call("main", "blobstore.<method>", [...])`. A binary
-artifact such as a `Uint8Array` screenshot can be stored directly:
+artifact such as a `Uint8Array` screenshot can be stored directly. For panel
+captures, returning `await handle.cdp.screenshot()` (directly or nested in an
+object or array with other checks) attaches native image content automatically.
+The returned structure contains compact image receipts, not base64 bytes; no
+temporary file is needed. Missing image artifacts fail delivery explicitly.
+For other byte artifacts:
 
 ```ts
 const png = await page.screenshot();

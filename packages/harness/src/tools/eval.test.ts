@@ -367,6 +367,60 @@ describe("formatEvalResult (shared by the eval tool's execute + the agent's defe
     expect(JSON.stringify(out.details)).not.toContain(data);
   });
 
+  it("attaches nested images and retains checks, deduplicating repeated artifacts", async () => {
+    const artifact = {
+      protocol: "eval-image-artifact.v1",
+      digest: "a".repeat(64),
+      size: 24,
+      mimeType: "image/png",
+    };
+    const reader = vi.fn(async () => "image-bytes");
+    const out = await formatEvalResult(
+      {
+        success: true,
+        console: "",
+        returnValue: {
+          checks: { passed: true },
+          screenshots: [artifact, { ...artifact }],
+        },
+      },
+      reader,
+    );
+    expect(out.isError).toBe(false);
+    expect(reader).toHaveBeenCalledTimes(1);
+    expect(out.content.filter((part) => part.type === "image")).toHaveLength(1);
+    expect(out.details).toMatchObject({
+      returnValue: {
+        checks: { passed: true },
+        screenshots: [
+          { protocol: "eval-image-result.v1", attached: true },
+          { protocol: "eval-image-result.v1", attached: true },
+        ],
+      },
+    });
+    expect(textOf(out)).toContain('"passed": true');
+    expect(JSON.stringify(out.details)).not.toContain("image-bytes");
+  });
+
+  it("fails explicitly if any nested artifact is missing, without partially delivering images", async () => {
+    const screenshots = ["a", "b"].map((letter) => ({
+      protocol: "eval-image-artifact.v1",
+      digest: letter.repeat(64),
+      size: 24,
+      mimeType: "image/png",
+    }));
+    const out = await formatEvalResult(
+      { success: true, console: "", returnValue: { screenshots } },
+      async (digest) => (digest.startsWith("a") ? "image-bytes" : null),
+    );
+    expect(out.isError).toBe(true);
+    expect(out.content.every((part) => part.type === "text")).toBe(true);
+    expect(out.details).toMatchObject({
+      failureCode: "eval_artifact_unavailable",
+      returnValue: { screenshots },
+    });
+  });
+
   it("settles a missing image artifact as an infrastructure failure with its receipt preserved", async () => {
     const artifact = {
       protocol: "eval-image-artifact.v1",

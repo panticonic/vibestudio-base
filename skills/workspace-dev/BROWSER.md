@@ -410,11 +410,19 @@ await page.locator('input[name="email"]').fill("user@example.com");
 
 `page.screenshot()` returns `Uint8Array` and has no filesystem `path` option.
 When a panel handle is available, prefer the one-call host capture and return
-its exact result from eval; eval attaches it as native image content and the
-operation remains read-only:
+its result from eval, directly or nested alongside verification data. Eval
+attaches each distinct image as native image content, keeps compact attached
+receipts in the returned structure, and does not count image bytes against the
+JSON preview budget. Capture remains read-only:
 
 ```ts
 return await handle.cdp.screenshot({ format: "png" });
+```
+
+Or combine visual evidence with checks in the same result:
+
+```ts
+return { screenshot: await handle.cdp.screenshot(), checks };
 ```
 
 For a standalone CDP page with no panel handle, persist its byte screenshot for

@@ -39,6 +39,16 @@ Repository and path filters are views over this workspace graph. They are
 useful for inspection, but they are not revision identity or commit boundaries.
 Do not reconstruct incoming obligations or provenance from a rendered file diff.
 
+Build verification enforces the platform TypeScript safety floor, even if a
+project's `tsconfig.json` weakens it: strict types, checked indexed access,
+complete return paths, no switch fallthrough, no unused labels or unreachable
+code, and consistent filename casing. Diagnostics retain the compiler's numeric
+identity in `compilerCode`, alongside the exact file and range. Indexed array,
+record, and string reads can be `undefined`; guard the value before using it.
+For a string character, `charAt()` returns an empty string when absent—use it
+only when that behavior matches the application. Repair the source rather than
+turning off the safety floor or asserting away an unproved invariant.
+
 For managed source moves and copies, use `vcs.move` and `vcs.copy`, or
 the managed runtime/agent filesystem adapter. A
 move preserves `fileId`; a copy creates a new `fileId`, records an

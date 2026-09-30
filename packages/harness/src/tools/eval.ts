@@ -11,6 +11,7 @@ import type { ImageContent } from "@workspace/pi-ai";
 import {
   createEvalExecutor,
   evalImageArtifactSchema,
+  mapEvalResultLeaves,
   evalAuthorityInputSchema,
   type EvalStartInput,
 } from "@vibestudio/service-schemas/eval";
@@ -238,15 +239,38 @@ export async function formatEvalResult(
   readArtifact?: (digest: string) => Promise<string | null>,
 ): Promise<AgentToolResult<EvalRunResult>> {
   const parts: string[] = [];
-  let returnedImage: Awaited<ReturnType<typeof imageContentFromEvalReturn>> =
-    null;
+  const images = new Map<
+    string,
+    NonNullable<Awaited<ReturnType<typeof imageContentFromEvalReturn>>>
+  >();
+  let projectedReturn = result.returnValue;
   try {
-    if (result.success)
-      returnedImage = await imageContentFromEvalReturn(
+    if (result.success) {
+      projectedReturn = await mapEvalResultLeaves(
         result.returnValue,
-        readArtifact,
+        async (value) => {
+          const parsed = evalImageArtifactSchema.safeParse(value);
+          if (!parsed.success) return undefined;
+          const artifact = parsed.data;
+          const key = `${artifact.digest}:${artifact.mimeType}`;
+          let image = images.get(key);
+          if (!image) {
+            image = (await imageContentFromEvalReturn(artifact, readArtifact))!;
+            images.set(key, image);
+          }
+          const { protocol: _protocol, ...metadata } = artifact;
+          return {
+            value: {
+              protocol: "eval-image-result.v1",
+              attached: true,
+              ...metadata,
+            },
+          };
+        },
       );
+    }
   } catch (error) {
+    images.clear();
     // The code's artifact receipt remains inspectable. Delivery failure must
     // still settle the invocation explicitly, including deferred delivery.
     result = {
@@ -261,6 +285,10 @@ export async function formatEvalResult(
       },
     };
   }
+  const rootArtifact = evalImageArtifactSchema.safeParse(result.returnValue);
+  const returnedImage = rootArtifact.success
+    ? images.get(`${rootArtifact.data.digest}:${rootArtifact.data.mimeType}`)
+    : undefined;
   const kernelEvent = result.kernel?.event;
   if (kernelEvent?.kind === "restarted") {
     if (kernelEvent.recovery.status === "complete") {
@@ -298,13 +326,14 @@ export async function formatEvalResult(
     parts.push(
       returnedImage
         ? `[eval] Return value: attached ${returnedImage.summary}.`
-        : `[eval] Return value:\n${clampText(safeStringify(result.returnValue), MAX_RETURN_CHARS, "$lastLargeReturn")}`,
+        : `[eval] Return value:\n${clampText(safeStringify(projectedReturn), MAX_RETURN_CHARS, "$lastLargeReturn")}`,
     );
   }
   const keys = result.scopeKeys ?? [];
   if (
     result.operationJournal &&
-    (result.operationJournal.entries.length || result.operationJournal.truncated)
+    (result.operationJournal.entries.length ||
+      result.operationJournal.truncated)
   ) {
     parts.push(
       `[operations] ${result.operationJournal.entries.length} completed operations retained in details.operationJournal${result.operationJournal.truncated ? "; operation evidence is truncated" : ""}.`,
@@ -325,23 +354,13 @@ export async function formatEvalResult(
         )}\nArchive temporary panels before finishing with panelTree.get(id).archive(). Leave only an intentional user-facing result open and mention it in the final response.`,
     );
   }
-  const details = returnedImage
-    ? {
-        ...result,
-        returnValue: {
-          protocol: "eval-image-result.v1",
-          attached: true,
-          digest: (result.returnValue as { digest: string }).digest,
-          size: (result.returnValue as { size: number }).size,
-          mimeType: returnedImage.content.mimeType,
-          ...returnedImage.dimensions,
-        },
-      }
+  const details = images.size
+    ? { ...result, returnValue: projectedReturn }
     : result;
   return {
     content: [
       { type: "text", text: parts.join("\n") || "[eval] (no output)" },
-      ...(returnedImage ? [returnedImage.content] : []),
+      ...[...images.values()].map((image) => image.content),
     ],
     details,
     isError: !result.success,
@@ -384,7 +403,7 @@ export function createEvalTool(
     name: "eval",
     label: "eval",
     description:
-      'Execute TypeScript/JS in your persistent notebook sandbox (a per-agent EvalDO, not the visible panel). The live heap—including objects with methods, module singletons, and client handles—is retained throughout admitted execution and cancellation, then for 30 minutes of notebook inactivity. Calls have no implicit wall deadline. Omit timeoutMs for ordinary work and lifecycle calls; never add a generic 120000/300000 safety timeout. A whole-cell deadline cancels the notebook operation and hides which nested wait stalled. Bound a specific wait with that API’s AbortSignal/timeout instead, and reserve eval timeoutMs for deliberately non-settling code or an explicit end-to-end deadline. Split intentionally bounded workflows when useful and keep live working objects in `scope`; store stable IDs and exact serializable data there for recovery, or durable records in `db`. Database calls are synchronous: `db.run(sql, ...bindings)` writes and `db.exec(sql, ...bindings)` returns an array of rows; pass each SQL binding as a separate argument. An unavoidable process restart is reported explicitly as `[kernel] Restarted` with exact restored/lost scope keys—reacquire lost handles from stable IDs before continuing. Set reset:true to clear scope/db atomically before this call; never call eval.reset from inside the running eval. The live runtime is self-describing: call `await help()` to list bindings or `await help("workers")` (and the analogous binding name) before guessing an API or return shape. Call workspace services via `rpc`/`services`; `chat.channelId` is only the channel where this agent is responding; for visible panel perspective use `parent`/`getParent()` and `panelTree` plus target panel stateArgs. `return` sends a bounded value back; console output is captured. Returning the exact result of `await handle.cdp.screenshot()` attaches native image content directly and requires no temp-file write. `page.consoleEvents()` returns the live event array; `await handle.cdp.consoleHistory()` returns `{ entries, errors, dropped, capacity }`. Very large console, error-data, and other return payloads are windowed with stable recovery pointers to `scope.$lastLargeConsole`, `scope.$lastLargeErrorData`, and `scope.$lastLargeReturn`, so prefer compact summaries and store large artifacts in scope/blobstore.',
+      'Execute TypeScript/JS in your persistent notebook sandbox (a per-agent EvalDO, not the visible panel). The live heap—including objects with methods, module singletons, and client handles—is retained throughout admitted execution and cancellation, then for 30 minutes of notebook inactivity. Calls have no implicit wall deadline. Omit timeoutMs for ordinary work and lifecycle calls; never add a generic 120000/300000 safety timeout. A whole-cell deadline cancels the notebook operation and hides which nested wait stalled. Bound a specific wait with that API’s AbortSignal/timeout instead, and reserve eval timeoutMs for deliberately non-settling code or an explicit end-to-end deadline. Split intentionally bounded workflows when useful and keep live working objects in `scope`; store stable IDs and exact serializable data there for recovery, or durable records in `db`. Database calls are synchronous: `db.run(sql, ...bindings)` writes and `db.exec(sql, ...bindings)` returns an array of rows; pass each SQL binding as a separate argument. An unavoidable process restart is reported explicitly as `[kernel] Restarted` with exact restored/lost scope keys—reacquire lost handles from stable IDs before continuing. Set reset:true to clear scope/db atomically before this call; never call eval.reset from inside the running eval. The live runtime is self-describing: call `await help()` to list bindings or `await help("workers")` (and the analogous binding name) before guessing an API or return shape. Call workspace services via `rpc`/`services`; `chat.channelId` is only the channel where this agent is responding; for visible panel perspective use `parent`/`getParent()` and `panelTree` plus target panel stateArgs. `return` sends a bounded value back; console output is captured. Screenshots from `await handle.cdp.screenshot()` attach native image content whether returned directly or nested alongside checks, for example `return { screenshot: await handle.cdp.screenshot(), checks }`; no temp-file write is needed. `page.consoleEvents()` returns the live event array; `await handle.cdp.consoleHistory()` returns `{ entries, errors, dropped, capacity }`. Very large console, error-data, and other return payloads are windowed with stable recovery pointers to `scope.$lastLargeConsole`, `scope.$lastLargeErrorData`, and `scope.$lastLargeReturn`, so prefer compact summaries and store large artifacts in scope/blobstore.',
     parameters: evalToolParameters,
     execute: async (
       toolCallId,

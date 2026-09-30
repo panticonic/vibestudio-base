@@ -108,7 +108,9 @@ reported kernel restart, recover the same panel with
 ## 4. Inspect the rendered state
 
 Acquire one generation-fenced session for the current runtime incarnation and
-return the panel handle's native screenshot result directly. Omit an exact `authority.requests` list for
+return the panel handle's native screenshot result, directly or nested alongside
+interaction receipts and checks. Both forms attach the image for visual inspection
+without embedding its bytes in JSON. Omit an exact `authority.requests` list for
 ordinary eval; if intentionally attenuating, `cdp.page()` requires the exact
 `panel.inspect` request documented in `BROWSER.md`.
 
