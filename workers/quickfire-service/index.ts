@@ -199,8 +199,13 @@ export class QuickfireSessionsDO extends DurableObjectBase {
     ]);
   }
 
-  @rpc({ website: {"kind":"closed","reason":"This receiver owns workspace orchestration or retained workspace data; websites require a reviewed bounded operation."},
-    principals: ["host", "user", "code"],
+  @rpc({
+    website: {
+      kind: "eligible",
+      rationale:
+        "Ordinary conversation and agent operations use caller-scoped approvals; launched execution retains its authenticated authority.",
+    },
+    principals: ["host", "user", "code", "website"],
     effect: { kind: "open" },
     tier: "open",
     sensitivity: "write",
@@ -280,8 +285,13 @@ export class QuickfireSessionsDO extends DurableObjectBase {
     return this.present(this.row(input.slotId)!, "fresh");
   }
 
-  @rpc({ website: {"kind":"closed","reason":"This receiver owns workspace orchestration or retained workspace data; websites require a reviewed bounded operation."},
-    principals: ["host", "user", "code"],
+  @rpc({
+    website: {
+      kind: "eligible",
+      rationale:
+        "Ordinary conversation and agent operations use caller-scoped approvals; launched execution retains its authenticated authority.",
+    },
+    principals: ["host", "user", "code", "website"],
     effect: { kind: "open" },
     tier: "open",
     sensitivity: "write",
@@ -297,8 +307,13 @@ export class QuickfireSessionsDO extends DurableObjectBase {
     return { cleared: true };
   }
 
-  @rpc({ website: {"kind":"closed","reason":"This receiver owns workspace orchestration or retained workspace data; websites require a reviewed bounded operation."},
-    principals: ["host", "user", "code"],
+  @rpc({
+    website: {
+      kind: "eligible",
+      rationale:
+        "Ordinary conversation and agent operations use caller-scoped approvals; launched execution retains its authenticated authority.",
+    },
+    principals: ["host", "user", "code", "website"],
     effect: { kind: "open" },
     tier: "open",
     sensitivity: "write",
@@ -328,8 +343,13 @@ export class QuickfireSessionsDO extends DurableObjectBase {
     return this.present(this.row(input.slotId)!, "promoted");
   }
 
-  @rpc({ website: {"kind":"closed","reason":"This receiver owns workspace orchestration or retained workspace data; websites require a reviewed bounded operation."},
-    principals: ["host", "user", "code"],
+  @rpc({
+    website: {
+      kind: "eligible",
+      rationale:
+        "Ordinary conversation and agent operations use caller-scoped approvals; launched execution retains its authenticated authority.",
+    },
+    principals: ["host", "user", "code", "website"],
     effect: { kind: "open" },
     tier: "open",
     sensitivity: "read",

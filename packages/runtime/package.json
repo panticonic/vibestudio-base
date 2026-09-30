@@ -38,7 +38,8 @@
     "./workspace-presentation": "./src/shared/workspacePresentation.ts",
     "./internal/diagnostics": "./src/internal/diagnostics.ts",
     "./images": "./src/shared/images.ts",
-    "./image-loader": "./src/shared/imageLoader.ts"
+    "./image-loader": "./src/shared/imageLoader.ts",
+    "./problem-reports": "./src/shared/problemReports.ts"
   },
   "dependencies": {
     "@vibestudio/browser-data": "workspace:*",

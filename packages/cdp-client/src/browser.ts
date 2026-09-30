@@ -2,7 +2,7 @@ import { BrowserImpl } from "./worker";
 
 export { BrowserImpl };
 export { CdpConnection, CdpDialog, CdpError } from "./worker";
-export type { CdpDialogData } from "./worker";
+export type { CdpDialogData, CdpInteractionOutcome } from "./worker";
 export type {
   CdpProfileCoverage,
   CdpProfileCoverageScript,
@@ -23,9 +23,11 @@ export type Options = {
 export async function connect(
   wsEndpoint: string,
   _browserName: string,
-  options: Options & { authToken?: string } = {}
+  options: Options & { authToken?: string } = {},
 ): Promise<Browser> {
   return BrowserImpl.connect(wsEndpoint, {
-    transportOptions: options.authToken ? { authToken: options.authToken } : undefined,
+    transportOptions: options.authToken
+      ? { authToken: options.authToken }
+      : undefined,
   });
 }

@@ -1,5 +1,7 @@
 import type { ComponentType, ReactNode } from "react";
 import type { Root } from "react-dom/client";
+import { reportSelectedProblem } from "@workspace/runtime/problem-reports";
+import { rpc as reportingRpc } from "@workspace/runtime";
 import { panel } from "@workspace/runtime";
 
 interface PanelRenderErrorDiagnosticRequest {
@@ -20,7 +22,7 @@ interface PanelErrorDiagnosticChatResult {
 }
 
 type PanelErrorDiagnosticLauncher = (
-  request: PanelRenderErrorDiagnosticRequest
+  request: PanelRenderErrorDiagnosticRequest,
 ) => Promise<PanelErrorDiagnosticChatResult>;
 
 interface PanelErrorDiagnosticLauncherGlobal {
@@ -29,7 +31,10 @@ interface PanelErrorDiagnosticLauncherGlobal {
 
 export interface ReactPanelOptions {
   rootId?: string;
-  ThemeComponent?: ComponentType<{ appearance: "light" | "dark"; children?: ReactNode }>;
+  ThemeComponent?: ComponentType<{
+    appearance: "light" | "dark";
+    children?: ReactNode;
+  }>;
 }
 
 type ReactNamespace = typeof import("react");
@@ -42,7 +47,8 @@ export interface ReactPanelInstance<Props> {
 }
 
 function getPanelErrorDiagnosticLauncher(): PanelErrorDiagnosticLauncher | null {
-  const g = globalThis as typeof globalThis & PanelErrorDiagnosticLauncherGlobal;
+  const g = globalThis as typeof globalThis &
+    PanelErrorDiagnosticLauncherGlobal;
   return typeof g.__vibestudioPanelErrorDiagnostics === "function"
     ? g.__vibestudioPanelErrorDiagnostics
     : null;
@@ -51,7 +57,7 @@ function getPanelErrorDiagnosticLauncher(): PanelErrorDiagnosticLauncher | null 
 export function createReactPanelMount(
   ReactLib: ReactNamespace,
   createRootFn: CreateRootFn,
-  options?: ReactPanelOptions
+  options?: ReactPanelOptions,
 ) {
   const rootId = options?.rootId ?? "root";
   const ThemeProvider = options?.ThemeComponent
@@ -75,12 +81,20 @@ export function createReactPanelMount(
             };
           }, []);
 
-          return ReactLib.createElement(ThemeComponent, { appearance: theme }, children);
+          return ReactLib.createElement(
+            ThemeComponent,
+            { appearance: theme },
+            children,
+          );
         };
       })()
     : null;
 
-  function ConnectionErrorBarrier({ children }: { children: ReactNode }): ReactNode {
+  function ConnectionErrorBarrier({
+    children,
+  }: {
+    children: ReactNode;
+  }): ReactNode {
     const [connError, setConnError] = ReactLib.useState<{
       code: number;
       reason: string;
@@ -109,9 +123,9 @@ export function createReactPanelMount(
                 borderBottom: "1px solid var(--intent-warning-border, #ffc107)",
               },
             },
-            `Backend unavailable: ${connError.reason}`
+            `Backend unavailable: ${connError.reason}`,
           ),
-          children
+          children,
         );
       }
       // Full-screen overlay — panel is disconnected from the app
@@ -136,12 +150,12 @@ export function createReactPanelMount(
           ReactLib.createElement(
             "div",
             { style: { fontSize: 18, fontWeight: 600, marginBottom: 8 } },
-            "Connection lost"
+            "Connection lost",
           ),
           ReactLib.createElement(
             "div",
             { style: { fontSize: 14, opacity: 0.7 } },
-            connError.reason
+            connError.reason,
           ),
           ReactLib.createElement(
             "button",
@@ -158,9 +172,9 @@ export function createReactPanelMount(
                 cursor: "pointer",
               },
             },
-            "Retry panel"
-          )
-        )
+            "Retry panel",
+          ),
+        ),
       );
     }
 
@@ -191,11 +205,16 @@ export function createReactPanelMount(
       debugChatError: null,
     };
 
-    static getDerivedStateFromError(error: Error): Partial<RenderErrorBoundaryState> {
+    static getDerivedStateFromError(
+      error: Error,
+    ): Partial<RenderErrorBoundaryState> {
       return { error };
     }
 
-    componentDidCatch(error: Error, errorInfo: { componentStack?: string }): void {
+    componentDidCatch(
+      error: Error,
+      errorInfo: { componentStack?: string },
+    ): void {
       console.error("[ReactPanel] render error caught:", error);
       console.error("[ReactPanel] component stack:", errorInfo.componentStack);
       this.setState({ errorInfo });
@@ -214,7 +233,9 @@ export function createReactPanelMount(
     handleDebugWithAgent = async (): Promise<void> => {
       const launcher = getPanelErrorDiagnosticLauncher();
       if (!launcher) {
-        this.setState({ debugChatError: "Panel diagnostics are not available in this host." });
+        this.setState({
+          debugChatError: "Panel diagnostics are not available in this host.",
+        });
         return;
       }
       const error = this.state.error;
@@ -226,8 +247,10 @@ export function createReactPanelMount(
           errorMessage: error?.message ?? String(error ?? "Unknown error"),
           errorStack: error?.stack,
           componentStack: this.state.errorInfo?.componentStack,
-          locationHref: typeof window !== "undefined" ? window.location.href : undefined,
-          userAgent: typeof navigator !== "undefined" ? navigator.userAgent : undefined,
+          locationHref:
+            typeof window !== "undefined" ? window.location.href : undefined,
+          userAgent:
+            typeof navigator !== "undefined" ? navigator.userAgent : undefined,
           timestamp: new Date().toISOString(),
         });
         this.setState({ debugChatOpening: false, debugChatOpened: true });
@@ -241,7 +264,8 @@ export function createReactPanelMount(
 
     render(): ReactNode {
       if (!this.state.error) return this.props.children;
-      const diagnosticLauncherAvailable = getPanelErrorDiagnosticLauncher() !== null;
+      const diagnosticLauncherAvailable =
+        getPanelErrorDiagnosticLauncher() !== null;
       return ReactLib.createElement(
         "div",
         {
@@ -263,12 +287,12 @@ export function createReactPanelMount(
           ReactLib.createElement(
             "h2",
             { style: { color: "var(--red-11, #f44336)", marginBottom: 16 } },
-            "Something went wrong"
+            "Something went wrong",
           ),
           ReactLib.createElement(
             "p",
             { style: { marginBottom: 16, opacity: 0.8 } },
-            "The panel encountered an error. You can debug it with an agent, try to recover, or reload the panel."
+            "The panel encountered an error. You can debug it with an agent, try to recover, or reload the panel.",
           ),
           ReactLib.createElement(
             "details",
@@ -285,7 +309,7 @@ export function createReactPanelMount(
             ReactLib.createElement(
               "summary",
               { style: { cursor: "pointer", marginBottom: 8 } },
-              "Error details"
+              "Error details",
             ),
             ReactLib.createElement(
               "pre",
@@ -298,7 +322,7 @@ export function createReactPanelMount(
                   color: "var(--red-11, #f44336)",
                 },
               },
-              this.state.error.toString()
+              this.state.error.toString(),
             ),
             this.state.errorInfo?.componentStack
               ? ReactLib.createElement(
@@ -313,13 +337,55 @@ export function createReactPanelMount(
                       fontSize: 10,
                     },
                   },
-                  this.state.errorInfo.componentStack
+                  this.state.errorInfo.componentStack,
                 )
-              : null
+              : null,
           ),
           ReactLib.createElement(
             "div",
-            { style: { display: "flex", flexWrap: "wrap", gap: 12, justifyContent: "center" } },
+            {
+              style: {
+                display: "flex",
+                flexWrap: "wrap",
+                gap: 12,
+                justifyContent: "center",
+              },
+            },
+            ReactLib.createElement(
+              "button",
+              {
+                onClick: () => {
+                  void reportSelectedProblem(reportingRpc, {
+                    problem: {
+                      category: "runtime",
+                      component: "renderer",
+                      operation: "panel.render",
+                      code: null,
+                      kind: "application",
+                      frames: [],
+                      externalFramesOmitted: 0,
+                      symptom: this.state.error?.message?.slice(0, 8192),
+                    },
+                    source: "panel",
+                    coordinate: String(panel.slotId),
+                    reference: {
+                      kind: "panel",
+                      coordinate: String(panel.slotId),
+                    },
+                    value: {
+                      name: this.state.error?.name,
+                      message: this.state.error?.message?.slice(0, 8192),
+                      stack: this.state.error?.stack?.slice(0, 16384),
+                      componentStack:
+                        this.state.errorInfo?.componentStack?.slice(0, 16384),
+                    },
+                  }).catch((error) =>
+                    this.setState({ debugChatError: String(error) }),
+                  );
+                },
+              },
+              "Report a problem",
+            ),
             diagnosticLauncherAvailable
               ? ReactLib.createElement(
                   "button",
@@ -334,7 +400,9 @@ export function createReactPanelMount(
                       color: "white",
                       border: "none",
                       borderRadius: 6,
-                      cursor: this.state.debugChatOpening ? "default" : "pointer",
+                      cursor: this.state.debugChatOpening
+                        ? "default"
+                        : "pointer",
                       fontSize: 14,
                       opacity: this.state.debugChatOpening ? 0.8 : 1,
                     },
@@ -343,7 +411,7 @@ export function createReactPanelMount(
                     ? "Opening..."
                     : this.state.debugChatOpened
                       ? "Debug Chat Opened"
-                      : "Debug with Agent"
+                      : "Debug with Agent",
                 )
               : null,
             ReactLib.createElement(
@@ -360,7 +428,7 @@ export function createReactPanelMount(
                   fontSize: 14,
                 },
               },
-              "Try Again"
+              "Try Again",
             ),
             ReactLib.createElement(
               "button",
@@ -376,8 +444,8 @@ export function createReactPanelMount(
                   fontSize: 14,
                 },
               },
-              "Reload Panel"
-            )
+              "Reload Panel",
+            ),
           ),
           this.state.debugChatError
             ? ReactLib.createElement(
@@ -390,10 +458,10 @@ export function createReactPanelMount(
                     overflowWrap: "anywhere",
                   },
                 },
-                this.state.debugChatError
+                this.state.debugChatError,
               )
-            : null
-        )
+            : null,
+        ),
       );
     }
   }
@@ -403,13 +471,14 @@ export function createReactPanelMount(
         ReactLib.createElement(
           ConnectionErrorBarrier,
           null,
-          ReactLib.createElement(ThemeProvider, null, children)
+          ReactLib.createElement(ThemeProvider, null, children),
         )
-    : ({ children }) => ReactLib.createElement(ConnectionErrorBarrier, null, children);
+    : ({ children }) =>
+        ReactLib.createElement(ConnectionErrorBarrier, null, children);
 
   return function mountReactPanel<Props>(
     Component: ComponentType<Props>,
-    initialProps?: Props
+    initialProps?: Props,
   ): ReactPanelInstance<Props> {
     const container = document.getElementById(rootId);
     if (!container) {
@@ -435,9 +504,12 @@ export function createReactPanelMount(
           ReactLib.createElement(
             Wrapper,
             null,
-            ReactLib.createElement(Component as ComponentType<any>, currentProps as any)
-          )
-        )
+            ReactLib.createElement(
+              Component as ComponentType<any>,
+              currentProps as any,
+            ),
+          ),
+        ),
       );
     };
 

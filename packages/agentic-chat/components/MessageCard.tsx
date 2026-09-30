@@ -1,3 +1,5 @@
+import { reportSelectedProblem } from "@workspace/runtime/problem-reports";
+import { rpc as reportingRpc, panel } from "@workspace/runtime";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Badge,
@@ -225,6 +227,43 @@ export const MessageCard = React.memo(function MessageCard({
   const handleCopy = useCallback(() => {
     onCopy(msg.id, msg.content);
   }, [onCopy, msg.id, msg.content]);
+  const [reportBusy, setReportBusy] = useState(false);
+  const [reportError, setReportError] = useState("");
+  const handleReport = async () => {
+    setReportBusy(true);
+    setReportError("");
+    const coordinate = JSON.stringify({
+      panelId: panel.slotId,
+      channelId:
+        typeof chat["channelId"] === "string" ? chat["channelId"] : null,
+      messageId: msg.id,
+    });
+    try {
+      await reportSelectedProblem(reportingRpc, {
+        problem: {
+          category: "quality",
+          component: "agent",
+          operation: "chat.result",
+          code: null,
+          kind: "unknown",
+          frames: [],
+          externalFramesOmitted: 0,
+        },
+        source: "chat",
+        coordinate,
+        reference: { kind: "message", coordinate },
+        value: {
+          messageId: msg.id,
+          senderId: msg.senderId,
+          content: msg.content,
+        },
+      });
+    } catch (error) {
+      setReportError(errorMessage(error, "Could not prepare report"));
+    } finally {
+      setReportBusy(false);
+    }
+  };
   const handleClearCopied = useCallback(() => {
     onClearCopied(msg.id);
   }, [onClearCopied, msg.id]);
@@ -926,7 +965,10 @@ export const MessageCard = React.memo(function MessageCard({
                     on our roster. The message is still an ordinary message —
                     someone talking — it just came from somewhere else. */}
                 {msg.origin ? (
-                  <GuestOriginChip origin={msg.origin} sender={msg.senderMetadata} />
+                  <GuestOriginChip
+                    origin={msg.origin}
+                    sender={msg.senderMetadata}
+                  />
                 ) : null}
               </Box>
               {showModelBadge && (
@@ -945,6 +987,22 @@ export const MessageCard = React.memo(function MessageCard({
                 >
                   {modelLabel}
                 </Badge>
+              )}
+              {hasContent && !isStreaming && (
+                <Button
+                  size="1"
+                  variant="ghost"
+                  color="gray"
+                  disabled={reportBusy}
+                  onClick={() => void handleReport()}
+                >
+                  Report a problem
+                </Button>
+              )}
+              {reportError && (
+                <Text size="1" color="red" role="alert">
+                  {reportError}
+                </Text>
               )}
               {/* Copy lives in the header (right after the handle) to keep the
                   card bottom free for content + the delivery badge. */}
@@ -1186,7 +1244,7 @@ function GuestOriginChip({
     void Promise.resolve(
       onOpenChannel?.(origin.channelId, {
         ...(origin.envelopeId ? { focusMessageId: origin.envelopeId } : {}),
-      })
+      }),
     ).catch(() => undefined);
   const replyRef = sender?.handle
     ? `agent:${sender.handle}@${origin.channelId}`
@@ -1258,7 +1316,11 @@ function EscalationFooter({
       participant?.metadata?.handle ??
       participantId.replace(/^user:/u, "");
     const state = receipts?.byParticipant[participantId];
-    return { participantId, name: String(name), state: state === "read" ? "read" : "sent" };
+    return {
+      participantId,
+      name: String(name),
+      state: state === "read" ? "read" : "sent",
+    };
   });
   if (people.length === 0) return null;
   return (
@@ -1319,7 +1381,9 @@ function CrossChannelDispatchRow({
   const handleOpen = () => {
     if (!onOpenChannel) return;
     void Promise.resolve(
-      onOpenChannel(dispatch.channelId, { focusMessageId: dispatch.envelopeId })
+      onOpenChannel(dispatch.channelId, {
+        focusMessageId: dispatch.envelopeId,
+      }),
     ).catch(() => undefined);
   };
   return (
@@ -1350,7 +1414,13 @@ function CrossChannelDispatchRow({
               {statusLabel ? ` · ${statusLabel}` : ""}
             </Text>
             {onOpenChannel ? (
-              <Button size="1" variant="ghost" color="gray" onClick={handleOpen} title="Open that conversation">
+              <Button
+                size="1"
+                variant="ghost"
+                color="gray"
+                onClick={handleOpen}
+                title="Open that conversation"
+              >
                 Open <ExternalLinkIcon />
               </Button>
             ) : null}

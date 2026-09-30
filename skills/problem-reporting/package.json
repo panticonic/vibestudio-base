@@ -1,0 +1,7 @@
+{
+  "name": "@workspace-skills/problem-reporting",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Prepare user-reviewed problem reports with bounded evidence and substantial narrative."
+}

@@ -13,7 +13,11 @@
  * only the injected `SurfaceContext` (plus, for the workspace picker, a getter
  * the caller supplies). None of it performs IO.
  */
-import { browserUrlFromEntry, type CommandSpec, type SurfaceContext } from "@workspace/omnibox-core";
+import {
+  browserUrlFromEntry,
+  type CommandSpec,
+  type SurfaceContext,
+} from "@workspace/omnibox-core";
 import type { ThemeAccentColor } from "@vibestudio/shared/theme";
 
 /** Accent swatches offered as quick theme commands (mirrors ThemeSettings). */
@@ -29,7 +33,8 @@ export const SLATE_ACCENTS = [
   "gray",
 ] as const satisfies readonly ThemeAccentColor[];
 
-const capitalize = (value: string) => value.charAt(0).toUpperCase() + value.slice(1);
+const capitalize = (value: string) =>
+  value.charAt(0).toUpperCase() + value.slice(1);
 
 const desktopOnly: CommandSpec["surfaces"] = ["desktop"];
 const everywhere: CommandSpec["surfaces"] = ["desktop", "mobile"];
@@ -48,7 +53,9 @@ export interface SlateDefinitionDeps {
  * The ordered slate. Ranking sorts by score, so this order only decides ties;
  * it is kept in spec-section order because that is how the table reads.
  */
-export function buildSlateDefinitions(deps: SlateDefinitionDeps): CommandSpec[] {
+export function buildSlateDefinitions(
+  deps: SlateDefinitionDeps,
+): CommandSpec[] {
   return [
     // ---- Panel --------------------------------------------------------------
     {
@@ -100,13 +107,15 @@ export function buildSlateDefinitions(deps: SlateDefinitionDeps): CommandSpec[] 
                 (entry) =>
                   !normalized ||
                   entry.title.toLowerCase().includes(normalized) ||
-                  entry.source.toLowerCase().includes(normalized)
+                  entry.source.toLowerCase().includes(normalized),
               )
               .slice(0, 20)
               .map((entry) => ({
                 value: entry.id,
                 label: entry.title,
-                ...(entry.location ? { meta: entry.location } : { meta: entry.source }),
+                ...(entry.location
+                  ? { meta: entry.location }
+                  : { meta: entry.source }),
               }));
           },
         },
@@ -118,7 +127,8 @@ export function buildSlateDefinitions(deps: SlateDefinitionDeps): CommandSpec[] 
       section: "Panel",
       icon: "📌",
       surfaces: everywhere,
-      availability: (ctx) => (ctx.focusedPanel && ctx.focusedPanel.pinned !== true ? true : "hidden"),
+      availability: (ctx) =>
+        ctx.focusedPanel && ctx.focusedPanel.pinned !== true ? true : "hidden",
     },
     {
       id: "panel.unpin",
@@ -126,7 +136,8 @@ export function buildSlateDefinitions(deps: SlateDefinitionDeps): CommandSpec[] 
       section: "Panel",
       icon: "📌",
       surfaces: everywhere,
-      availability: (ctx) => (ctx.focusedPanel?.pinned === true ? true : "hidden"),
+      availability: (ctx) =>
+        ctx.focusedPanel?.pinned === true ? true : "hidden",
     },
     {
       id: "panel.reload",
@@ -164,7 +175,8 @@ export function buildSlateDefinitions(deps: SlateDefinitionDeps): CommandSpec[] 
       section: "Navigate",
       icon: "←",
       surfaces: everywhere,
-      availability: (ctx) => (ctx.focusedPanel ? ctx.focusedPanel.canGoBack === true : "hidden"),
+      availability: (ctx) =>
+        ctx.focusedPanel ? ctx.focusedPanel.canGoBack === true : "hidden",
     },
     {
       id: "nav.forward",
@@ -172,7 +184,8 @@ export function buildSlateDefinitions(deps: SlateDefinitionDeps): CommandSpec[] 
       section: "Navigate",
       icon: "→",
       surfaces: everywhere,
-      availability: (ctx) => (ctx.focusedPanel ? ctx.focusedPanel.canGoForward === true : "hidden"),
+      availability: (ctx) =>
+        ctx.focusedPanel ? ctx.focusedPanel.canGoForward === true : "hidden",
     },
     {
       id: "nav.open-url",
@@ -190,7 +203,9 @@ export function buildSlateDefinitions(deps: SlateDefinitionDeps): CommandSpec[] 
           // The same parser the launcher uses, so what counts as an address is
           // one answer across the workspace.
           validate: (value) =>
-            browserUrlFromEntry(value) ? null : "That doesn't look like a web address.",
+            browserUrlFromEntry(value)
+              ? null
+              : "That doesn't look like a web address.",
         },
       ],
     },
@@ -225,7 +240,9 @@ export function buildSlateDefinitions(deps: SlateDefinitionDeps): CommandSpec[] 
       section: "Quickfire agent",
       icon: "✦",
       surfaces: everywhere,
-      args: [{ name: "prompt", label: "prompt", type: "string", required: false }],
+      args: [
+        { name: "prompt", label: "prompt", type: "string", required: false },
+      ],
     },
     {
       id: "quickfire.clear",
@@ -258,7 +275,9 @@ export function buildSlateDefinitions(deps: SlateDefinitionDeps): CommandSpec[] 
       section: "Quickfire agent",
       icon: "✧",
       surfaces: everywhere,
-      args: [{ name: "prompt", label: "prompt", type: "string", required: false }],
+      args: [
+        { name: "prompt", label: "prompt", type: "string", required: false },
+      ],
     },
 
     // ---- Debug --------------------------------------------------------------
@@ -320,7 +339,10 @@ export function buildSlateDefinitions(deps: SlateDefinitionDeps): CommandSpec[] 
           label: "accent",
           type: "enum",
           required: true,
-          options: SLATE_ACCENTS.map((accent) => ({ value: accent, label: capitalize(accent) })),
+          options: SLATE_ACCENTS.map((accent) => ({
+            value: accent,
+            label: capitalize(accent),
+          })),
         },
       ],
     },
@@ -345,7 +367,10 @@ export function buildSlateDefinitions(deps: SlateDefinitionDeps): CommandSpec[] 
             const normalized = query.trim().toLowerCase();
             return deps
               .workspaceNames()
-              .filter((name) => !normalized || name.toLowerCase().includes(normalized))
+              .filter(
+                (name) =>
+                  !normalized || name.toLowerCase().includes(normalized),
+              )
               .map((name) => ({ value: name, label: name }));
           },
         },
@@ -382,9 +407,18 @@ export function buildSlateDefinitions(deps: SlateDefinitionDeps): CommandSpec[] 
       icon: "⚑",
       surfaces: desktopOnly,
       accelerator: "⌘⇧A",
-      availability: (ctx) => ((ctx.pendingApprovals ?? 0) > 0 ? true : "hidden"),
+      availability: (ctx) =>
+        (ctx.pendingApprovals ?? 0) > 0 ? true : "hidden",
     },
 
+    {
+      id: "app.report-problem",
+      title: "Report a problem",
+      section: "Application",
+      icon: "⚑",
+      surfaces: desktopOnly,
+      keywords: ["bug", "error", "help vibestudio improve", "feedback"],
+    },
     // ---- Application --------------------------------------------------------
     {
       id: "app.shortcuts",

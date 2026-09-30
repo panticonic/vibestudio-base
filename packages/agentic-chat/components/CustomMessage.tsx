@@ -1,4 +1,12 @@
-import React, { Suspense, useCallback, useEffect, useMemo, useState } from "react";
+import { reportSelectedProblem } from "@workspace/runtime/problem-reports";
+import { rpc as reportingRpc, panel } from "@workspace/runtime";
+import React, {
+  Suspense,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 import {
   Badge,
   Box,
@@ -10,11 +18,18 @@ import {
   Spinner,
   Text,
 } from "@radix-ui/themes";
-import { DotsHorizontalIcon, ExclamationTriangleIcon, ReloadIcon } from "@radix-ui/react-icons";
+import {
+  DotsHorizontalIcon,
+  ExclamationTriangleIcon,
+  ReloadIcon,
+} from "@radix-ui/react-icons";
 import { EventErrorBoundary } from "@workspace/tool-ui/components/EventErrorBoundary";
 import { SurfaceFrame } from "@workspace/tool-ui/components/SurfaceFrame";
 import type { CustomMessageCardPayload } from "@workspace/agentic-core";
-import { foldCustomMessageState, validateCustomState } from "@workspace/agentic-core";
+import {
+  foldCustomMessageState,
+  validateCustomState,
+} from "@workspace/agentic-core";
 import {
   AGENTIC_EVENT_PAYLOAD_KIND,
   AGENTIC_PROTOCOL_VERSION,
@@ -36,11 +51,15 @@ interface ReadyCustomRenderProps extends CustomRenderProps {
 
 function useFoldedState(
   payload: CustomMessageCardPayload,
-  entry?: MessageTypeComponentEntry
+  entry?: MessageTypeComponentEntry,
 ): unknown {
   return useMemo(() => {
     if (entry?.status !== "ready") return payload.initialState;
-    return foldCustomMessageState(payload.initialState, payload.updates, entry.module.reduce);
+    return foldCustomMessageState(
+      payload.initialState,
+      payload.updates,
+      entry.module.reduce,
+    );
   }, [entry, payload.initialState, payload.lastSeq, payload.updates]);
 }
 
@@ -53,9 +72,10 @@ function useFoldedState(
  */
 export function customInspectorPayload(
   payload: CustomMessageCardPayload,
-  entry: MessageTypeComponentEntry | undefined
+  entry: MessageTypeComponentEntry | undefined,
 ): Record<string, unknown> {
-  const definition = entry && "definition" in entry ? entry.definition : undefined;
+  const definition =
+    entry && "definition" in entry ? entry.definition : undefined;
   return {
     message: {
       messageId: payload.messageId,
@@ -70,7 +90,10 @@ export function customInspectorPayload(
       updates: payload.updates,
     },
     registry: !entry
-      ? { status: "missing", note: "no registry entry — type never entered fetch/compile" }
+      ? {
+          status: "missing",
+          note: "no registry entry — type never entered fetch/compile",
+        }
       : entry.status === "ready"
         ? {
             status: "ready",
@@ -82,8 +105,12 @@ export function customInspectorPayload(
           ? {
               status: "loading",
               stage: entry.stage ?? "unknown",
-              stageStartedAt: entry.startedAt ? new Date(entry.startedAt).toISOString() : undefined,
-              stageElapsedMs: entry.startedAt ? Date.now() - entry.startedAt : undefined,
+              stageStartedAt: entry.startedAt
+                ? new Date(entry.startedAt).toISOString()
+                : undefined,
+              stageElapsedMs: entry.startedAt
+                ? Date.now() - entry.startedAt
+                : undefined,
             }
           : {
               status: "error",
@@ -121,6 +148,38 @@ function CardActionsMenu({
   onToggleInspect?: () => void;
   onCollapse?: (() => void) | undefined;
 }) {
+  const [reportBusy, setReportBusy] = useState(false);
+  const [reportError, setReportError] = useState("");
+  const report = async () => {
+    setReportBusy(true);
+    setReportError("");
+    const coordinate = JSON.stringify({
+      panelId: panel.slotId,
+      messageId: payload.messageId,
+      lastSeq: payload.lastSeq,
+    });
+    try {
+      await reportSelectedProblem(reportingRpc, {
+        problem: {
+          category: "runtime",
+          component: "renderer",
+          operation: "chat.custom-card",
+          code: null,
+          kind: "application",
+          frames: [],
+          externalFramesOmitted: 0,
+        },
+        source: "chat",
+        coordinate,
+        reference: { kind: "message", coordinate },
+        value: customInspectorPayload(payload, entry),
+      });
+    } catch (error) {
+      setReportError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setReportBusy(false);
+    }
+  };
   const copy = useCallback(async () => {
     const details = customInspectorPayload(payload, entry);
     await navigator.clipboard.writeText(JSON.stringify(details, null, 2));
@@ -140,13 +199,25 @@ function CardActionsMenu({
         </IconButton>
       </DropdownMenu.Trigger>
       <DropdownMenu.Content align="end">
-        <DropdownMenu.Item onSelect={() => void copy()}>Copy details</DropdownMenu.Item>
+        <DropdownMenu.Item onSelect={() => void copy()}>
+          Copy details
+        </DropdownMenu.Item>
+        <DropdownMenu.Item disabled={reportBusy} onSelect={() => void report()}>
+          Report a problem
+        </DropdownMenu.Item>
+        {reportError && (
+          <Text size="1" color="red" role="alert">
+            {reportError}
+          </Text>
+        )}
         {onToggleInspect && (
           <DropdownMenu.Item onSelect={onToggleInspect}>
             {inspectOpen ? "Hide inspector" : "Inspect"}
           </DropdownMenu.Item>
         )}
-        {onCollapse && <DropdownMenu.Item onSelect={onCollapse}>Collapse</DropdownMenu.Item>}
+        {onCollapse && (
+          <DropdownMenu.Item onSelect={onCollapse}>Collapse</DropdownMenu.Item>
+        )}
       </DropdownMenu.Content>
     </DropdownMenu.Root>
   );
@@ -158,7 +229,12 @@ const LOADING_STAGE_LABELS: Record<string, string> = {
   compiling: "Compiling renderer",
 };
 
-function CustomRenderer({ payload, entry, expanded, chat }: ReadyCustomRenderProps) {
+function CustomRenderer({
+  payload,
+  entry,
+  expanded,
+  chat,
+}: ReadyCustomRenderProps) {
   const state = useFoldedState(payload, entry);
   // Validate folded state against the registered JSON Schema before handing it
   // to the component. The same document was enforced at agent emission time;
@@ -167,9 +243,9 @@ function CustomRenderer({ payload, entry, expanded, chat }: ReadyCustomRenderPro
     () =>
       validateCustomState(
         entry.definition.cleared ? undefined : entry.definition.stateSchema,
-        state
+        state,
       ),
-    [entry, state]
+    [entry, state],
   );
   if (validationErrors) {
     return (
@@ -227,7 +303,12 @@ export const CustomPill = React.memo(function CustomPill({
 }) {
   if (payload.failed) {
     return (
-      <Flex align="center" gap="1" style={pillStyle("red")} title={payload.error?.message}>
+      <Flex
+        align="center"
+        gap="1"
+        style={pillStyle("red")}
+        title={payload.error?.message}
+      >
         <Badge color="red" size="1">
           Failed
         </Badge>
@@ -308,11 +389,21 @@ export const CustomPill = React.memo(function CustomPill({
       <EventErrorBoundary
         resetKey={resetKey}
         renderFallback={(error) => (
-          <CustomMessageErrorFallback error={error} payload={payload} chat={chat} compact />
+          <CustomMessageErrorFallback
+            error={error}
+            payload={payload}
+            chat={chat}
+            compact
+          />
         )}
       >
         <Suspense fallback={<Spinner size="1" />}>
-          <CustomRenderer payload={payload} entry={entry} expanded={expanded} chat={chat} />
+          <CustomRenderer
+            payload={payload}
+            entry={entry}
+            expanded={expanded}
+            chat={chat}
+          />
         </Suspense>
       </EventErrorBoundary>
     </Flex>
@@ -349,16 +440,30 @@ export const ExpandedCustom = React.memo(function ExpandedCustom({
   }
   const resetKey = customResetKey(payload, entry, expanded);
   return (
-    <ReadyCustomCard payload={payload} entry={entry} onCollapse={onCollapse} resetKey={resetKey}>
+    <ReadyCustomCard
+      payload={payload}
+      entry={entry}
+      onCollapse={onCollapse}
+      resetKey={resetKey}
+    >
       <Box>
         <EventErrorBoundary
           resetKey={resetKey}
           renderFallback={(error) => (
-            <CustomMessageErrorFallback error={error} payload={payload} chat={chat} />
+            <CustomMessageErrorFallback
+              error={error}
+              payload={payload}
+              chat={chat}
+            />
           )}
         >
           <Suspense fallback={<Spinner size="1" />}>
-            <CustomRenderer payload={payload} entry={entry} expanded={expanded} chat={chat} />
+            <CustomRenderer
+              payload={payload}
+              entry={entry}
+              expanded={expanded}
+              chat={chat}
+            />
           </Suspense>
         </EventErrorBoundary>
       </Box>
@@ -405,7 +510,9 @@ function ReadyCustomCard({
           <MetaRow label="message" value={payload.messageId} />
           <MetaRow
             label="owner"
-            value={payload.by ? `${payload.by.kind}:${payload.by.id}` : "unknown"}
+            value={
+              payload.by ? `${payload.by.kind}:${payload.by.id}` : "unknown"
+            }
           />
           <MetaRow label="cacheKey" value={entry.cacheKey} />
           {!entry.definition.cleared && entry.definition.source && (
@@ -421,7 +528,10 @@ function ReadyCustomCard({
           <Text size="1" color="gray" weight="medium" mt="1">
             Update history
           </Text>
-          <CustomUpdateHistory payload={payload} reducer={entry.module.reduce} />
+          <CustomUpdateHistory
+            payload={payload}
+            reducer={entry.module.reduce}
+          />
         </Flex>
       )}
       {children}
@@ -463,7 +573,8 @@ function CustomFailedCard({
               {payload.typeId} failed
             </Text>
             <Text size="1" color="red">
-              {payload.error?.message ?? "The agent reported a failure for this card."}
+              {payload.error?.message ??
+                "The agent reported a failure for this card."}
             </Text>
           </Flex>
         </Text>
@@ -509,10 +620,15 @@ function CustomDiagnosticCard({
   const stage = entry?.status === "loading" ? entry.stage : undefined;
   const startedAt = entry?.status === "loading" ? entry.startedAt : undefined;
   const elapsed = useElapsedSeconds(startedAt);
-  const stalled = loading && stage !== undefined && (elapsed ?? 0) >= LOAD_STALL_FEEDBACK_SECONDS;
-  const errorMessage = overrideMessage ?? (entry?.status === "error" ? entry.message : undefined);
+  const stalled =
+    loading &&
+    stage !== undefined &&
+    (elapsed ?? 0) >= LOAD_STALL_FEEDBACK_SECONDS;
+  const errorMessage =
+    overrideMessage ?? (entry?.status === "error" ? entry.message : undefined);
   const retry = entry?.status === "error" ? entry.retry : undefined;
-  const definition = entry && "definition" in entry ? entry.definition : undefined;
+  const definition =
+    entry && "definition" in entry ? entry.definition : undefined;
   const color = loading ? "gray" : "red";
   const [detailsOpen, setDetailsOpen] = useState(false);
 
@@ -541,7 +657,11 @@ function CustomDiagnosticCard({
               <ReloadIcon width={11} height={11} /> Retry
             </Button>
           )}
-          <CardActionsMenu payload={payload} entry={entry} onCollapse={onCollapse} />
+          <CardActionsMenu
+            payload={payload}
+            entry={entry}
+            onCollapse={onCollapse}
+          />
         </Flex>
       }
     >
@@ -583,7 +703,9 @@ function CustomDiagnosticCard({
             <MetaRow label="message" value={payload.messageId} />
             <MetaRow
               label="owner"
-              value={payload.by ? `${payload.by.kind}:${payload.by.id}` : "unknown"}
+              value={
+                payload.by ? `${payload.by.kind}:${payload.by.id}` : "unknown"
+              }
             />
             <MetaRow
               label="updates"
@@ -592,7 +714,11 @@ function CustomDiagnosticCard({
             {definition && !definition.cleared && definition.source && (
               <MetaRow
                 label="source"
-                value={definition.source.type === "file" ? definition.source.path : "inline code"}
+                value={
+                  definition.source.type === "file"
+                    ? definition.source.path
+                    : "inline code"
+                }
               />
             )}
             {definition && (
@@ -602,7 +728,10 @@ function CustomDiagnosticCard({
               />
             )}
             {definition?.imports && (
-              <MetaRow label="imports" value={Object.keys(definition.imports).join(", ")} />
+              <MetaRow
+                label="imports"
+                value={Object.keys(definition.imports).join(", ")}
+              />
             )}
             <Text size="1" color="gray" weight="medium" mt="1">
               Update history
@@ -639,7 +768,12 @@ function CustomUpdateHistory({
 }) {
   const steps = useMemo(() => {
     let state: unknown = payload.initialState;
-    const folded: Array<{ seq: number; update: unknown; state: unknown; error?: string }> = [];
+    const folded: Array<{
+      seq: number;
+      update: unknown;
+      state: unknown;
+      error?: string;
+    }> = [];
     for (const item of payload.updates) {
       if (reducer) {
         try {
@@ -664,7 +798,8 @@ function CustomUpdateHistory({
   if (payload.updates.length === 0) {
     return (
       <Text size="1" color="gray">
-        No updates — state is the initial state: {previewJson(payload.initialState)}
+        No updates — state is the initial state:{" "}
+        {previewJson(payload.initialState)}
       </Text>
     );
   }
@@ -679,7 +814,11 @@ function CustomUpdateHistory({
               reducer threw: {step.error} (state kept)
             </Text>
           ) : (
-            <Text size="1" color="gray" style={{ marginLeft: 80, wordBreak: "break-all" }}>
+            <Text
+              size="1"
+              color="gray"
+              style={{ marginLeft: 80, wordBreak: "break-all" }}
+            >
               → {previewJson(step.state)}
             </Text>
           )}
@@ -697,7 +836,10 @@ function MetaRow({ label, value }: { label: string; value: string }) {
       </Text>
       <Text
         size="1"
-        style={{ fontFamily: "var(--code-font-family, monospace)", wordBreak: "break-all" }}
+        style={{
+          fontFamily: "var(--code-font-family, monospace)",
+          wordBreak: "break-all",
+        }}
       >
         {value}
       </Text>
@@ -775,9 +917,11 @@ function UiFeedbackReporter({
           publish as (
             kind: string,
             payload: unknown,
-            options?: { idempotencyKey?: string }
+            options?: { idempotencyKey?: string },
           ) => Promise<unknown>
-        )(AGENTIC_EVENT_PAYLOAD_KIND, event, { idempotencyKey: `ui-feedback:${occurrenceKey}` });
+        )(AGENTIC_EVENT_PAYLOAD_KIND, event, {
+          idempotencyKey: `ui-feedback:${occurrenceKey}`,
+        });
         if (!cancelled) onDelivery?.("sent");
       } catch (publishError) {
         console.warn("Failed to publish ui.feedback diagnostic", publishError);
@@ -902,14 +1046,14 @@ function CustomMessageValidationError({
 function customResetKey(
   payload: CustomMessageCardPayload,
   entry: Extract<MessageTypeComponentEntry, { status: "ready" }>,
-  expanded: boolean
+  expanded: boolean,
 ): string {
   return `${entry.cacheKey}:${payload.messageId}:${payload.lastSeq}:${expanded ? "expanded" : "collapsed"}`;
 }
 
 function pillStyle(
   color: "blue" | "gray" | "red",
-  clickable = color !== "gray"
+  clickable = color !== "gray",
 ): React.CSSProperties {
   return {
     cursor: clickable ? "pointer" : "default",

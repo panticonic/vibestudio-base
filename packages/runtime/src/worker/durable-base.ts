@@ -34,6 +34,7 @@ import {
   rpcExposedMethodNames,
   rpcErrorDataOf,
   rpcErrorKindOf,
+  rpcDiagnosticIdOf,
   rpcMethodAuthority,
   rpc,
   type ConnectionlessRpcClient,
@@ -1262,6 +1263,9 @@ export abstract class DurableObjectBase {
           JSON.stringify({
             error: responseMessage.error,
             errorKind: responseMessage.errorKind,
+            ...(responseMessage.diagnosticId
+              ? { diagnosticId: responseMessage.diagnosticId }
+              : {}),
             ...(responseMessage.errorCode
               ? { errorCode: responseMessage.errorCode }
               : {}),
@@ -1293,6 +1297,9 @@ export abstract class DurableObjectBase {
         JSON.stringify({
           error: message,
           errorKind: rpcErrorKindOf(err),
+          ...(rpcDiagnosticIdOf(err)
+            ? { diagnosticId: rpcDiagnosticIdOf(err) }
+            : {}),
           ...(typeof errorCode === "string" ? { errorCode } : {}),
           ...(errorData === undefined ? {} : { errorData }),
         }),
@@ -1406,6 +1413,9 @@ export abstract class DurableObjectBase {
           JSON.stringify({
             error: responseMessage.error,
             errorKind: responseMessage.errorKind,
+            ...(responseMessage.diagnosticId
+              ? { diagnosticId: responseMessage.diagnosticId }
+              : {}),
             ...(responseMessage.errorCode
               ? { errorCode: responseMessage.errorCode }
               : {}),

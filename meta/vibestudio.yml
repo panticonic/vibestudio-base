@@ -66,6 +66,7 @@ services:
         - host
         - user
         - code
+        - website
         - session
         - mission
     description: Access your workspace's conversations, including sending messages and reading replies.
@@ -108,6 +109,7 @@ services:
         - host
         - user
         - code
+        - website
         - session
         - mission
     description: Read or change the AI model and provider settings for this workspace.
@@ -246,6 +248,7 @@ template:
     - panels/chat
     - panels/terminal
     - projects/default
+    - skills/problem-reporting
     - skills/agentic-development
     - skills/agents
     - skills/api-integrations
