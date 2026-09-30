@@ -351,8 +351,13 @@ judging saved data. Immediate reads during loading are intermediate evidence,
 not a persistence verdict. Diagnose a failed observation through its structured
 error and the panel's lifecycle/console packet.
 
-String locators use normalized, case-insensitive substring matching by default;
-`{ exact: true }` selects a case-sensitive whole-string match. The `isVisible`,
+Named role locators identify controls: `getByRole('button', { name: 'Active' })`
+matches the whole normalized, case-sensitive accessible name, not `Mark active…`.
+This intentionally differs from Playwright's fuzzy default. Use a regex or
+explicit `exact: false` for a partial-name search. Duplicate exact names still
+produce an ambiguity error; scope to their container instead of guessing.
+Other string locators use normalized, case-insensitive substring matching by
+default; `{ exact: true }` selects a case-sensitive whole-string match. The `isVisible`,
 `isChecked`, `isEnabled`, `isDisabled`, and `isEditable` methods are immediate
 snapshots and return `false` when there is no current match. Use `waitFor` when
 absence should be retried.

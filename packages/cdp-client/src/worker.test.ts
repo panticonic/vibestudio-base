@@ -1156,7 +1156,8 @@ describe("worker CDP client", () => {
         code: "cdp_locator_state_mismatch",
         operation: "waitFor",
         recovery: "reobserve-locator",
-        locator: 'getByRole("button", { name: "Add another column" })',
+        locator:
+          'getByRole("button", { name: "Add another column", exact: true })',
         timeoutMs: 25,
         state: "visible",
       },
@@ -1330,7 +1331,7 @@ describe("worker CDP client", () => {
       delivery: "dispatched",
       effect: {
         status: "observed",
-        locator: 'getByRole("dialog", { name: "Card details" })',
+        locator: 'getByRole("dialog", { name: "Card details", exact: true })',
         state: "visible",
       },
     });
@@ -1398,7 +1399,8 @@ describe("worker CDP client", () => {
       errorData: {
         code: "cdp_interaction_outcome_not_observed",
         locator: 'getByRole("button", { name: "Create task", exact: true })',
-        expectedLocator: 'getByRole("button", { name: "Add another column" })',
+        expectedLocator:
+          'getByRole("button", { name: "Add another column", exact: true })',
         state: "visible",
         timeoutMs: 40,
       },
@@ -1557,11 +1559,9 @@ describe("worker CDP client", () => {
     await page.getByRole("checkbox").check();
     onInteraction.mockClear();
     await expect(
-      page
-        .getByRole("checkbox")
-        .check({
-          expect: { locator: page.getByTestId("missing"), timeout: 40 },
-        }),
+      page.getByRole("checkbox").check({
+        expect: { locator: page.getByTestId("missing"), timeout: 40 },
+      }),
     ).rejects.toMatchObject({ code: "cdp_interaction_outcome_not_observed" });
     expect(onInteraction.mock.calls).toHaveLength(1);
     expect(onInteraction.mock.calls[0]?.[0]).toMatchObject({
@@ -1909,7 +1909,7 @@ describe("worker CDP client", () => {
     const page = browser.contexts()[0]!.pages()[0]!;
 
     expect(page.getByRole("button", { name: "Go" }).toString()).toBe(
-      'getByRole("button", { name: "Go" })',
+      'getByRole("button", { name: "Go", exact: true })',
     );
     expect(page.getByRole("button", { name: /delete item/i }).toString()).toBe(
       'getByRole("button", { name: /delete item/i })',
@@ -1987,6 +1987,78 @@ describe("worker CDP client", () => {
     });
   });
 
+  it("identifies named roles exactly on pages and scoped locators, with explicit pattern searches", async () => {
+    installFakeWebSocket();
+    const browser = await BrowserImpl.connect("ws://cdp");
+    const page = browser.contexts()[0]!.pages()[0]!;
+    const button = (name: string) => ({
+      tagName: "BUTTON",
+      getAttribute: (key: string) => (key === "aria-label" ? name : null),
+    });
+    const buttons = [
+      button("Active"),
+      button("Mark active Take a lunch break"),
+    ];
+    const document = { querySelectorAll: () => buttons };
+    const evaluateCount = async (
+      locator: ReturnType<typeof page.getByRole>,
+    ) => {
+      await locator.count();
+      const expression = FakeWebSocket.sent
+        .filter((entry) => entry.method === "Runtime.evaluate")
+        .map((entry) => String(entry.params?.["expression"] ?? ""))
+        .filter((value) => value.includes('"op":"count"'))
+        .at(-1)!;
+      return runInNewContext(expression, { document });
+    };
+    await expect(
+      evaluateCount(page.getByRole("button", { name: "Active" })),
+    ).resolves.toBe(1);
+    await expect(
+      evaluateCount(page.getByRole("button", { name: "active" })),
+    ).resolves.toBe(0);
+    await expect(
+      evaluateCount(page.getByRole("button", { name: "Active", exact: false })),
+    ).resolves.toBe(2);
+    await expect(
+      evaluateCount(page.getByRole("button", { name: /active/i })),
+    ).resolves.toBe(2);
+    const container = { querySelectorAll: () => buttons };
+    const scoped = page
+      .locator("section")
+      .getByRole("button", { name: "Active" });
+    await scoped.count();
+    const expression = FakeWebSocket.sent
+      .filter((entry) => entry.method === "Runtime.evaluate")
+      .map((entry) => String(entry.params?.["expression"] ?? ""))
+      .filter((value) => value.includes('"op":"count"'))
+      .at(-1)!;
+    expect(
+      await runInNewContext(expression, {
+        document: { querySelectorAll: () => [container] },
+      }),
+    ).toBe(1);
+    buttons.push(button("Active"));
+    await expect(
+      evaluateCount(page.getByRole("button", { name: "Active" })),
+    ).resolves.toBe(2);
+    const duplicateExpression = FakeWebSocket.sent
+      .filter((entry) => entry.method === "Runtime.evaluate")
+      .map((entry) => String(entry.params?.["expression"] ?? ""))
+      .filter((value) => value.includes('"op":"count"'))
+      .at(-1)!;
+    expect(
+      await runInNewContext(
+        duplicateExpression.replace('"op":"count"', '"op":"focus"'),
+        { document },
+      ),
+    ).toMatchObject({ __nsLocatorFailure: "ambiguous", matchCount: 2 });
+    expect(
+      page.getByRole("button", { name: "Active", exact: false }).toString(),
+    ).toContain("exact: false");
+    await browser.close();
+  });
+
   it("reports available accessible names when a named role locator misses", async () => {
     installFakeWebSocket();
     const browser = await BrowserImpl.connect("ws://cdp");
@@ -2033,7 +2105,9 @@ describe("worker CDP client", () => {
     installFakeWebSocket();
     const browser = await BrowserImpl.connect("ws://cdp");
     const page = browser.contexts()[0]!.pages()[0]!;
-    await page.getByRole("combobox", { name: "Priority" }).count();
+    await page
+      .getByRole("combobox", { name: "Priority", exact: false })
+      .count();
     const expression = FakeWebSocket.sent
       .filter((entry) => entry.method === "Runtime.evaluate")
       .map((entry) => String(entry.params?.["expression"] ?? ""))
@@ -2072,10 +2146,7 @@ describe("worker CDP client", () => {
     expect(await runInNewContext(expression, { document })).toBe(2);
     expect(
       await runInNewContext(
-        expression.replace(
-          '"name":"Priority"',
-          '"name":"Priority","exact":true',
-        ),
+        expression.replace('"exact":false', '"exact":true'),
         { document },
       ),
     ).toBe(1);
@@ -2094,7 +2165,9 @@ describe("worker CDP client", () => {
     expect(focus).not.toHaveBeenCalled();
     vi.spyOn(page, "evaluate").mockResolvedValueOnce(failure);
     await expect(
-      page.getByRole("combobox", { name: "Priority" }).selectOption("high"),
+      page
+        .getByRole("combobox", { name: "Priority", exact: false })
+        .selectOption("high"),
     ).rejects.toMatchObject({
       code: "cdp_locator_ambiguous",
       errorData: { operation: "selectOption", matchCount: 2 },

@@ -199,7 +199,9 @@ export interface ByTextOptions {
 }
 export type TextMatcher = string | RegExp;
 export interface ByRoleOptions {
+  /** String names identify the whole normalized accessible name; regex names search explicitly. */
   name?: TextMatcher;
+  /** Defaults to true for string names. Set false for case-insensitive substring search. */
   exact?: boolean;
 }
 

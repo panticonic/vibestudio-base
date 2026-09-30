@@ -1210,6 +1210,20 @@ function serializeTextMatcher(value: TextMatcher): SerializedTextMatcher {
     : { regex: { source: value.source, flags: value.flags } };
 }
 
+/** Named roles identify controls; partial-name searches must be explicit. */
+function roleLocatorStep(role: string, options: ByRoleOptions): LocatorStep {
+  return {
+    by: "role",
+    value: role,
+    name:
+      options.name === undefined
+        ? undefined
+        : serializeTextMatcher(options.name),
+    exact:
+      options.exact ?? (typeof options.name === "string" ? true : undefined),
+  };
+}
+
 /** Render a locator descriptor as a Playwright-style string for errors/toString(). */
 function describeLocator(descriptor: LocatorDescriptor): string {
   const q = (s: string) => JSON.stringify(s);
@@ -1237,7 +1251,7 @@ function describeLocator(descriptor: LocatorDescriptor): string {
       case "role": {
         const opts: string[] = [];
         if (step.name != null) opts.push(`name: ${matcher(step.name)}`);
-        if (step.exact) opts.push("exact: true");
+        if (step.exact !== undefined) opts.push(`exact: ${step.exact}`);
         return `getByRole(${q(step.value)}${opts.length ? `, { ${opts.join(", ")} }` : ""})`;
       }
       case "text":
@@ -1761,17 +1775,7 @@ class WorkerCdpPage {
   }
   getByRole(role: string, options: ByRoleOptions = {}): WorkerCdpLocator {
     return new WorkerCdpLocator(this, {
-      steps: [
-        {
-          by: "role",
-          value: role,
-          name:
-            options.name === undefined
-              ? undefined
-              : serializeTextMatcher(options.name),
-          exact: options.exact,
-        },
-      ],
+      steps: [roleLocatorStep(role, options)],
     });
   }
   getByText(text: TextMatcher, options: ByTextOptions = {}): WorkerCdpLocator {
@@ -2439,15 +2443,7 @@ class WorkerCdpLocator {
     return this.extend(compileLocatorSelector(selector));
   }
   getByRole(role: string, options: ByRoleOptions = {}): WorkerCdpLocator {
-    return this.extend({
-      by: "role",
-      value: role,
-      name:
-        options.name === undefined
-          ? undefined
-          : serializeTextMatcher(options.name),
-      exact: options.exact,
-    });
+    return this.extend(roleLocatorStep(role, options));
   }
   getByText(text: TextMatcher, options: ByTextOptions = {}): WorkerCdpLocator {
     return this.extend({

@@ -130,9 +130,11 @@ await page.setViewportSize({ width: 390, height: 844 });
 page.viewportSize(); // synchronous current CSS viewport
 ```
 
-Text matchers accept strings or `RegExp`. Strings use normalized,
-case-insensitive substring matching by default; `{ exact: true }` selects a
-case-sensitive whole-string match. Matcher source/flags are serialized explicitly
+Text matchers accept strings or `RegExp`. `getByRole` string names identify the
+normalized, case-sensitive whole accessible name by default (unlike Playwright's
+fuzzy default). Use a regex or explicit `{ exact: false }` for partial names.
+Other text helpers use case-insensitive substring matching by default;
+`{ exact: true }` selects a case-sensitive whole-string match. Matcher source/flags are serialized explicitly
 instead of degrading to `{}` at the CDP boundary. Form actions use native DOM
 property setters plus input/change events, including for controlled React inputs.
 
@@ -142,7 +144,9 @@ property setters plus input/change events, including for controlled React inputs
 await loc.textContent(); // innerText, inputValue, getAttribute("href")
 await loc.count(); // allTextContents, allInnerTexts
 await loc.evaluate((element) => element.innerHTML);
-await loc.evaluateAll((elements) => elements.map((element) => element.textContent));
+await loc.evaluateAll((elements) =>
+  elements.map((element) => element.textContent),
+);
 await loc.isVisible(); // isChecked, isEnabled, isDisabled, isEditable
 await loc.boundingBox();
 await loc.inspect();
