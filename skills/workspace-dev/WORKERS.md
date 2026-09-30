@@ -413,6 +413,25 @@ or existing units, the same underlying contracts apply:
 5. Call it from eval, panels, inline UI, apps, workers, or other DOs with
    `workers.resolveService(protocol, objectKey?)` and `rpc.call(...)`.
 
+### Large documents and resumable imports
+
+Transport chunks do not bound stored values. Appending each RPC chunk to one
+SQLite text/blob cell still produces an oversized cell; storing a whole board
+with embedded attachments has the same problem. Keep independently edited
+entities in bounded rows and binary attachments in the content-addressed blob
+store. When the application deliberately stores whole documents, put segmentation
+behind one document read/write abstraction: bound segments by UTF-8 bytes, retain
+their order in a manifest, and replace the manifest and segments transactionally.
+Callers should never manage the internal segment rows.
+
+An import has explicit receiving, completed, and cancelled states. Persist its
+identity and accepted offset so interrupted transfers can resume; reject gaps
+and conflicting retransmissions. Validate the complete document before publishing
+it atomically. Preserve existing document identities and revisions when migrating
+its representation. Receiving imports remain until explicitly completed or
+discarded; elapsed time is not cancellation. Separate RPC-size limits from stored
+value limits, and exercise the real import size when verification is requested.
+
 Minimal store:
 
 ```ts

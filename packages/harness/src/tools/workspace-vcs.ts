@@ -2,6 +2,7 @@
 
 import { Type } from "@sinclair/typebox";
 import { canonicalJson, sha256HexSyncText } from "@vibestudio/content-addressing";
+import { vcsSemanticNodeRefSchema } from "@vibestudio/service-schemas/vcs";
 import type { AgentTool, AgentToolResult } from "@workspace/pi-core";
 import type {
   VcsBlameInput,
@@ -494,7 +495,10 @@ export function createWorkspaceVcsTool(
           };
         }
         {
-          const result = await vcs.compare({ ...basis, ...(cursor ? { cursor } : {}) });
+          const result = await compareWithDiagnostics(vcs, references, {
+            ...basis,
+            ...(cursor ? { cursor } : {}),
+          });
           const review = renderCompareReview({ ...result, nextCursor: null });
           const continuationRef = result.nextCursor
             ? references.put("vcs-compare", {
@@ -793,6 +797,37 @@ export function createWorkspaceVcsTool(
       );
     },
   };
+}
+
+async function compareWithDiagnostics(
+  vcs: ToolWorkflowVcs,
+  references: AgentReferenceStore,
+  input: VcsCompareInput,
+) {
+  try {
+    return await vcs.compare(input);
+  } catch (error) {
+    if (!(error instanceof Error)) throw error;
+    const failure = error as Error & { errorData?: Record<string, unknown> };
+    const data = failure.errorData;
+    if (data?.["code"] !== "IntegrityFailure" || !Array.isArray(data["subjects"]))
+      throw error;
+    const targets = data["subjects"].flatMap((subject) => {
+      const parsed = vcsSemanticNodeRefSchema.safeParse(subject);
+      return parsed.success
+        ? [putProvenanceReference(references, parsed.data, 50)]
+        : [];
+    });
+    if (targets.length > 0) {
+      // Preserve the failure and retry policy; advertise inspection, never a retry.
+      const inspection = { tool: "provenance", arguments: { targets } };
+      Object.assign(error, {
+        errorData: { ...data, inspection },
+        message: `${error.message}\nInspect the recorded comparison: provenance(${JSON.stringify({ targets })}).`,
+      });
+    }
+    throw error;
+  }
 }
 
 function stateLabel(

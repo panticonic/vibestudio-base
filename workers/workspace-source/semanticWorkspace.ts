@@ -2965,17 +2965,22 @@ export class SemanticWorkspace {
               );
             })?.result ?? resultEndpoint;
         }
+        // A source can lack an identity that the target removes. Persist the
+        // target's removal as a tombstone in both the change and the fact state.
+        if (resultEndpoint["presence"] === "absent" && oursEndpoint["presence"] !== "absent") {
+          resultEndpoint = { ...resultEndpoint, presence: "deleted" };
+        }
         const theirsEndpoint = resultEndpoint;
         const forceTheirs = requested?.resolution === "theirs";
         const terminalId = coordinate.attribution.theirs.at(-1)?.changeId;
         const terminal = terminalId ? this.changeRequired(terminalId) : null;
-        const authored = forceTheirs
-          ? !this.sameCoordinateEndpoint(
-              coordinate.coordinate,
-              terminal?.result ?? null,
-              theirsEndpoint
-            )
-          : coordinate.status === "composed";
+        // Authored source history and its application are different transitions.
+        // Reuse a source change only when it exactly describes this application;
+        // otherwise author the actual target-to-result merge with source contributors.
+        const authored =
+          (!forceTheirs && coordinate.status === "composed") ||
+          !this.sameCoordinateEndpoint(coordinate.coordinate, terminal?.base ?? null, oursEndpoint) ||
+          !this.sameCoordinateEndpoint(coordinate.coordinate, terminal?.result ?? null, theirsEndpoint);
         const contentDerivations: NonNullable<MutationDraft["contentDerivations"]> = [];
         let changeRef: DraftChangeRef;
         if (!authored) {
@@ -5084,7 +5089,33 @@ export class SemanticWorkspace {
         : input.source.kind === "application"
           ? { kind: "application" as const, applicationId: input.source.applicationId }
           : { kind: "external-delta" as const, deltaId: input.source.deltaId };
-    const comparison = this.mergeComparison(asState(input.target), source, observed ?? new Map());
+    let comparison: NetMergeComparison;
+    try {
+      comparison = this.mergeComparison(
+        asState(input.target),
+        source,
+        observed ?? new Map(),
+      );
+    } catch (error) {
+      if (
+        !(error instanceof SemanticVcsError) ||
+        error.code !== "IntegrityFailure"
+      )
+        throw error;
+      // Keep the exact comparison basis: a coordinate alone cannot identify its history.
+      const stateSubjects = [
+        input.target,
+        ...(source.kind === "external-delta" ? [] : [source]),
+      ];
+      throw new SemanticVcsError(error.code, error.message, {
+        ...error.detail,
+        comparison: { target: input.target, source },
+        subjects: [
+          ...stateSubjects,
+          ...((error.detail["subjects"] as Row[] | undefined) ?? []),
+        ],
+      });
+    }
     if (!observed) {
       const contentHashes = this.mergeTextContentHashes(comparison);
       if (contentHashes.length > 0) {
@@ -8296,7 +8327,7 @@ export class SemanticWorkspace {
         ? ["presence", "content", "placement", "mode"]
         : ["presence", "path"];
     return aspects.every((aspect) =>
-      this.sameAspectValue(aspect, this.aspectValue(left, aspect), this.aspectValue(right, aspect))
+      this.sameValue(this.aspectValue(left, aspect), this.aspectValue(right, aspect))
     );
   }
 
@@ -8625,7 +8656,7 @@ export class SemanticWorkspace {
     changes: readonly ChangeRecord[],
     coordinate: MergeCoordinate,
     base: Row,
-    final: Row
+    final: Row,
   ): MergeAttributionEntry[] {
     const touching = changes.filter((change) => {
       const value = this.mergeChangeCoordinate(change);
@@ -8641,7 +8672,7 @@ export class SemanticWorkspace {
         this.sameAspectValue(
           aspect,
           this.aspectValue(base, aspect),
-          this.aspectValue(final, aspect)
+          this.aspectValue(final, aspect),
         )
       )
         continue;
@@ -8657,29 +8688,78 @@ export class SemanticWorkspace {
             aspect === "presence" &&
             (before === "absent" || before === "deleted") &&
             (current === "absent" || current === "deleted");
-          if (!this.sameAspectValue(aspect, before, current) && !equivalentMissingPresence) {
-            if (!this.isDecisionAccountedIntroduction(change, coordinate, aspect, current)) {
+          if (
+            !this.sameAspectValue(aspect, before, current) &&
+            !equivalentMissingPresence
+          ) {
+            if (
+              !this.isDecisionAccountedIntroduction(
+                change,
+                coordinate,
+                aspect,
+                current,
+              )
+            ) {
               continue;
             }
           }
           start = index;
         } else if (
           !this.sameAspectValue(aspect, before, current) &&
-          !this.isDecisionAccountedIntroduction(change, coordinate, aspect, current)
+          !this.isDecisionAccountedIntroduction(
+            change,
+            coordinate,
+            aspect,
+            current,
+          )
         ) {
           throw new SemanticVcsError(
             "IntegrityFailure",
             `Provenance discontinuity at ${coordinate.kind} ${coordinate.id}/${aspect}`,
-            { coordinates: [coordinate] }
+            {
+              coordinates: [coordinate],
+              attribution: {
+                aspect,
+                base,
+                final,
+                reached: current,
+                next: before,
+                firstChangeId: touching[start]!.changeId,
+                lastChangeId: change.changeId,
+              },
+              subjects: [
+                { kind: "change", changeId: touching[start]!.changeId },
+                { kind: "change", changeId: change.changeId },
+              ],
+            },
           );
         }
         current = after;
       }
-      if (start < 0 || !this.sameAspectValue(aspect, current, this.aspectValue(final, aspect))) {
+      if (
+        start < 0 ||
+        !this.sameAspectValue(aspect, current, this.aspectValue(final, aspect))
+      ) {
         throw new SemanticVcsError(
           "IntegrityFailure",
           `State difference is not covered at ${coordinate.kind} ${coordinate.id}/${aspect}`,
-          { coordinates: [coordinate] }
+          {
+            coordinates: [coordinate],
+            attribution: {
+              aspect,
+              base,
+              final,
+              reached: current,
+              examinedChangeCount: touching.length,
+              firstChangeId: touching[0]?.changeId ?? null,
+              lastChangeId: touching.at(-1)?.changeId ?? null,
+            },
+            subjects: [
+              ...new Set([touching[0]?.changeId, touching.at(-1)?.changeId]),
+            ]
+              .filter((changeId): changeId is string => changeId !== undefined)
+              .map((changeId) => ({ kind: "change", changeId })),
+          },
         );
       }
       first = Math.min(first, start);
@@ -8689,7 +8769,9 @@ export class SemanticWorkspace {
     return attributed.map((change) => ({
       changeId: change.changeId,
       workUnitId: change.workUnitId,
-      ...(!attributedActive.has(change.changeId) ? { undone: true as const } : {}),
+      ...(!attributedActive.has(change.changeId)
+        ? { undone: true as const }
+        : {}),
     }));
   }
 

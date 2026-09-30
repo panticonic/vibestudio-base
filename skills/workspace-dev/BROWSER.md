@@ -38,6 +38,13 @@ containing region before acting. Collection operations such as `count()`,
 `all()` and `evaluateAll()` keep their collection semantics. A select's
 associated label excludes its option text.
 
+Drive multi-step flows from the observed view. Open a dialog or editor before
+addressing its fields, and establish the resulting view before issuing dependent
+actions. On `cdp_locator_state_mismatch`, inspect the captured snapshot and match
+evidence, then perform the missing transition or choose a locator for the actual
+view. Repeating the same action or increasing its timeout cannot supply a missing
+UI transition.
+
 For ordinary eval calls, omit `authority.requests` and let the run adapt to the
 authority already admitted for the agent. If the workflow deliberately uses an
 exhaustive per-run allowlist, `handle.cdp.page()` requires `panel.inspect` for
