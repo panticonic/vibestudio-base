@@ -25,6 +25,25 @@ function input(overrides: {
 }
 
 describe("resolveShouldRespond", () => {
+  it("admits directed work from the retained supervisor after repeated reports", () => {
+    const task = input({
+      supervisorParticipantId: "parent",
+      event: {
+        senderParticipantId: "parent",
+        senderKind: "agent",
+        agentHops: 6,
+        to: [{ kind: "participant", participantId: "agent-a" }],
+      },
+    });
+    expect(resolveShouldRespond(task)).toEqual({
+      respond: true,
+      reason: "directed supervisor instruction",
+    });
+    expect(resolveShouldRespond({ ...task, supervisorParticipantId: undefined }).respond).toBe(false);
+    expect(resolveShouldRespond({ ...task, event: { ...task.event, senderParticipantId: "peer" } }).respond).toBe(false);
+    expect(resolveShouldRespond({ ...task, event: { ...task.event, to: [{ kind: "participant", participantId: "other" }] } }).respond).toBe(false);
+    expect(resolveShouldRespond({ ...task, event: { ...task.event, to: [{ kind: "all" }] } }).respond).toBe(false);
+  });
   it("never responds to own messages", () => {
     const decision = resolveShouldRespond(
       input({ event: { senderParticipantId: "agent-a" }, policy: "all" })

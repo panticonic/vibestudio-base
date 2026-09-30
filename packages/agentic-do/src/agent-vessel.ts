@@ -5072,6 +5072,7 @@ This is one admitted recurring-automation tick. If this tick establishes that th
     // hop cap is a per-channel fold and an A↔B ping-pong gets twice the depth
     // it should: each channel sees a fresh streak.
     this.recordInboundAgentHops(channelId, inboundHops);
+    const taskOwner = this.subagentIdentity();
     const decision = resolveShouldRespond({
       event: {
         senderParticipantId: event.senderId,
@@ -5089,7 +5090,19 @@ This is one admitted recurring-automation tick. If this tick establishes that th
       lastCompletedSender,
       conversationPolicy,
       agentHopLimit,
+      supervisorParticipantId:
+        taskOwner?.taskChannelId === channelId
+          ? taskOwner.parentParticipantId
+          : undefined,
     });
+    if (!decision.respond) {
+      console.debug("[agent-vessel] channel input not admitted", {
+        channelId,
+        envelopeId: event.messageId,
+        senderId: event.senderId,
+        reason: decision.reason,
+      });
+    }
     return decision.respond;
   }
 

@@ -796,6 +796,7 @@ function nsRole(el){
   var tag = el.tagName ? el.tagName.toLowerCase() : "";
   if(tag==="a") return el.hasAttribute("href") ? "link" : "";
   if(tag==="button") return "button";
+  if(tag==="dialog") return "dialog";
   if(tag==="select") return el.multiple ? "listbox" : "combobox";
   if(tag==="textarea") return "textbox";
   if(/^h[1-6]$/.test(tag)) return "heading";

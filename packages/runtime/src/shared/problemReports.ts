@@ -1,4 +1,5 @@
-/** Explicit-client reporting API. Draft preparation is available to agents; sharing is trusted human chrome. */
+import { problemReportingConversation } from "@vibestudio/shared/problemReportingConversation";
+/** Explicit-client reporting API. Agents prepare drafts and request sharing through targeted host approval. */
 import { createTypedServiceClient } from "@vibestudio/shared/typedServiceClient";
 import { reportDraftContent } from "@vibestudio/service-schemas/problemReportBundle";
 export { reportDraftContent } from "@vibestudio/service-schemas/problemReportBundle";
@@ -17,13 +18,13 @@ export {
   REPORT_MEDIA_TYPE,
 } from "@vibestudio/service-schemas/problemReportBundle";
 
-/** Open the same trusted composer. A selected server-prepared revision is copied as a new local review snapshot. */
-export function openProblemReport(
+/** Begin an agent-led reporting conversation with explicitly selected context. */
+export function startProblemReportConversation(
   rpc: Pick<RpcCaller, "call">,
-  prepared?: { reportId: string; revision: number; digest: string },
+  context?: { reportId: string; revision: number },
 ) {
   return rpc.call("main", "app.openShellSurface", [
-    { kind: "problem-report", ...(prepared ? { prepared } : {}) },
+    { kind: "command-agent", prompt: problemReportingConversation(context) },
   ]);
 }
 
@@ -70,20 +71,7 @@ export async function reportSelectedProblem(
     draft.revision,
     reportDraftContent(value),
   );
-  let revision = updated.revision;
-  let prepared;
-  try {
-    prepared = await reports.prepare(draft.id, revision);
-  } catch (error) {
-    const current = await reports.get(draft.id);
-    if (current.revision === revision) throw error;
-    revision = current.revision;
-    prepared = await reports.prepare(draft.id, revision);
-  }
-  await openProblemReport(rpc, {
-    reportId: draft.id,
-    revision,
-    digest: prepared.digest,
-  });
-  return { reportId: draft.id, revision };
+  const reference = await reports.forConversation(draft.id, updated.revision);
+  await startProblemReportConversation(rpc, reference);
+  return reference;
 }

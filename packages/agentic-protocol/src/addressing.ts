@@ -69,6 +69,8 @@ export interface ResolveShouldRespondInput {
   lastCompletedSender: string | null;
   conversationPolicy?: ConversationPolicy | undefined;
   agentHopLimit?: number | undefined;
+  /** Runtime-owned task relationship, never supplied by message metadata. */
+  supervisorParticipantId?: string | undefined;
 }
 
 export interface ShouldRespondDecision {
@@ -114,6 +116,19 @@ export function resolveShouldRespond(input: ResolveShouldRespondInput): ShouldRe
 
   const addressed = explicitlyAddressed(input);
   const senderIsAgent = event.senderKind === "agent";
+
+  // A directed instruction from the retained task owner admits task work.
+  // Conversation arbitration governs peer replies; it cannot exhaust a
+  // supervisor's ability to continue its own collaborator after a report.
+  if (
+    input.supervisorParticipantId === event.senderParticipantId &&
+    event.to?.some(
+      (selector) => selector.kind === "participant" &&
+        selector.participantId === self.participantId
+    )
+  ) {
+    return { respond: true, reason: "directed supervisor instruction" };
+  }
 
   // Loop breaker: refuse past the hop cap even when explicitly addressed.
   if (senderIsAgent) {

@@ -553,6 +553,25 @@ describe("worker CDP client", () => {
     await browser.close();
   });
 
+  it("finds HTML dialogs by their implicit role and accessible name", async () => {
+    installFakeWebSocket();
+    const browser = await BrowserImpl.connect("ws://cdp");
+    const page = browser.contexts()[0]!.pages()[0]!;
+    await page.getByRole("dialog", { name: "Create board", exact: true }).count();
+    const expression = FakeWebSocket.sent
+      .filter((entry) => entry.method === "Runtime.evaluate")
+      .map((entry) => String(entry.params?.["expression"] ?? ""))
+      .find((value) => value.includes('"op":"count"'))!;
+    const dialog = {
+      tagName: "DIALOG",
+      getAttribute: (name: string) => name === "aria-label" ? "Create board" : null,
+    };
+    await expect(runInNewContext(expression, {
+      document: { querySelectorAll: () => [dialog] },
+    })).resolves.toBe(1);
+    await browser.close();
+  });
+
   it("resolves associated and ARIA labels on output elements without treating plain button text as a label", async () => {
     installFakeWebSocket();
     const browser = await BrowserImpl.connect("ws://cdp");
