@@ -10,11 +10,17 @@
    for placing content. Subtract a surface's edge gap when choosing its radius. */
 :root {
   --vibestudio-viewport-corner-radius-hint: 0px;
+  /* Browsers supply env(); native panel hosts may publish measured values.
+     These properties are opt-in geometry, not global padding or clipping. */
+  --vibestudio-safe-area-inset-top: env(safe-area-inset-top, 0px);
+  --vibestudio-safe-area-inset-right: env(safe-area-inset-right, 0px);
+  --vibestudio-safe-area-inset-bottom: env(safe-area-inset-bottom, 0px);
+  --vibestudio-safe-area-inset-left: env(safe-area-inset-left, 0px);
 }
 
 @media (pointer: coarse) {
   :root {
-    --vibestudio-viewport-corner-radius-hint: clamp(16px, 6vw, 32px);
+    --vibestudio-viewport-corner-radius-hint: clamp(24px, 12vmin, 56px);
   }
 }
 

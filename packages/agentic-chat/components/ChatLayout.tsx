@@ -104,7 +104,7 @@ export const ChatLayout = React.memo(function ChatLayout({
           overflow: "hidden",
           gap: "var(--agentic-root-gap)",
           padding:
-            "max(var(--agentic-root-padding), env(safe-area-inset-top, 0)) max(var(--agentic-root-padding), env(safe-area-inset-right, 0)) max(var(--agentic-root-padding), env(safe-area-inset-bottom, 0)) max(var(--agentic-root-padding), env(safe-area-inset-left, 0))",
+            "max(var(--agentic-root-padding), var(--vibestudio-safe-area-inset-top, 0px)) max(var(--agentic-root-padding), var(--vibestudio-safe-area-inset-right, 0px)) max(var(--agentic-root-padding), var(--vibestudio-safe-area-inset-bottom, 0px)) max(var(--agentic-root-padding), var(--vibestudio-safe-area-inset-left, 0px))",
           ...style,
         }}
       >
