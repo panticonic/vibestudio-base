@@ -98,6 +98,7 @@ export const ChatLayout = React.memo(function ChatLayout({
         direction="column"
         style={{
           height: "100%",
+          containerType: "size",
           minWidth: 0,
           width: "100%",
           boxSizing: "border-box",
