@@ -233,20 +233,28 @@ export function ChatInput({ placeholder, defaultMentions, disabled = false }: Ch
     [participants, selfId, onReplaceAgent, onCallMethodResult, onInputChange]
   );
 
-  // Auto-resize textarea: rAF-coalesced onInput handler.
+  // Measure content independently of the textarea's intrinsic row height.
+  // The panel can resize without an input event (keyboard, rotation, split panes).
   const resizeRafRef = useRef(0);
   const handleTextAreaInput = useCallback(() => {
     const textArea = textAreaRef.current;
     if (!textArea) return;
     cancelAnimationFrame(resizeRafRef.current);
     resizeRafRef.current = requestAnimationFrame(() => {
-      textArea.style.height = "auto";
+      textArea.style.height = "0px";
       textArea.style.height = `${textArea.scrollHeight}px`;
     });
   }, []);
   useEffect(() => {
-    return () => cancelAnimationFrame(resizeRafRef.current);
-  }, []);
+    const panel = textAreaRef.current?.closest(".agentic-chat-root");
+    const observer = new ResizeObserver(handleTextAreaInput);
+    if (panel) observer.observe(panel);
+    handleTextAreaInput();
+    return () => {
+      observer.disconnect();
+      cancelAnimationFrame(resizeRafRef.current);
+    };
+  }, [handleTextAreaInput]);
 
   useEffect(() => {
     if (replyTo) textAreaRef.current?.focus();
