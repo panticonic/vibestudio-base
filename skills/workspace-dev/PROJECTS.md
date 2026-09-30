@@ -59,7 +59,8 @@ it does not list panel templates. Inspect `templates/` in the current workspace
 before choosing a non-default panel template. The Svelte template additionally
 uses the installed `@workspace/svelte` package.
 
-Use `createProjects` for one coherent publication of related units:
+For intentionally custom wiring, use `createProjects` for one coherent
+publication of independent repositories (the service wiring remains separate):
 
 ```ts
 import {
@@ -102,10 +103,13 @@ Pass a one-element array for a single unit. Each result returns the canonical
 repository path, created files, preflight evidence, and publication receipt.
 
 If publication fails after creation, follow the structured retry policy and
-recover or repair the already-created repository — never call `createProjects`
-again. If a later open or snapshot fails, resume from the stored creation
-receipt. An existing destination is not part of the attempt; choose a distinct
-name or stop.
+recover or repair the already-created candidate — never call `createApplication`
+or `createProjects` again. A connected candidate contains both repositories and
+the config edit; inspect all paths and diagnostics in the failure receipt.
+If a later open or snapshot fails, resume from the stored unit receipt:
+`scope.created.panel.created` for an application, or `scope.created[0].created`
+for the first result of `createProjects`. An existing destination is not part
+of the attempt; choose a distinct name or stop.
 
 Use context-local project files when the user wants private scratch content
 rather than a published executable unit. For source adoption, use explicit

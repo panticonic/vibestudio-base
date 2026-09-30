@@ -251,7 +251,8 @@ prefix (for example `source` → `source-copy`). Run `dryRun: true` first and
 inspect `preflight`, `rewrites`, and `warnings`; use `classMap` for workers with
 multiple Durable Object classes.
 
-If protected publication fails after commit, the helper throws
+Both `createApplication` and `createProjects` use the same publication and
+recovery contract. If protected publication fails after commit, the helper throws
 `ScaffoldPublicationError`; eval shows its `errorData` in the tool details.
 `errorData` contains:
 
@@ -261,7 +262,9 @@ If protected publication fails after commit, the helper throws
 - `vcsError.code`, message, and original typed data; and
 - `retry.commandIdPolicy`.
 
-Do not rerun `createProjects`, because the repositories and commit already exist.
+Do not rerun `createApplication` or `createProjects`, because the repositories
+and commit already exist. For a connected application, `files` also includes
+`meta/vibestudio.yml`; repair the entire candidate, not just the panel.
 First branch on `retry.commandIdPolicy`. For
 `reuse-identical-only-if-outcome-uncertain` or
 `reobserve-status-and-use-new-command`, use the receipt-driven recovery helper:

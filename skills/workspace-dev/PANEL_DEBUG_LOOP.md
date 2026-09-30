@@ -8,7 +8,24 @@ result needs further diagnosis.
 
 ## 1. Create once
 
-Creation is a durable phase. Store its receipt before doing anything else:
+Creation is a durable phase. For a new persistent app, store the connected
+application receipt and its canonical panel source before doing anything else:
+
+```ts
+import { createApplication } from "@workspace-skills/workspace-dev";
+
+scope.created = await createApplication({ name, title });
+scope.panelSource = scope.created.panel.created; // already `panels/name`
+scope.workerSource = scope.created.worker.created; // `workers/name-store`
+return scope.created;
+```
+
+This result is an object with `panel`, `worker`, `service`, and `publication`.
+The service, singleton, complete receiver contracts, and narrow consumer
+requests are already wired and published with both units. Customize the pair
+instead of registering a second service.
+
+For a standalone panel without a new store, use this alternative instead:
 
 ```ts
 import { createProjects } from "@workspace-skills/workspace-dev";
@@ -28,6 +45,11 @@ Reuse a project that was already created. A later build, open,
 screenshot, locator, or publication failure does not roll creation back. If
 the creation call itself has an uncertain result, inspect `scope`, `vcs.status`,
 and the existing repository before deciding what remains unfinished.
+If creation reports `scaffold_publication_failed`, the exact candidate is
+already committed but unpublished; a connected candidate also includes its
+workspace config edit. Follow [publication recovery](TOOLS.md#creating-projects)
+and the returned retry policy. Never call either creation API again to recover
+that candidate.
 
 ## 2. Author and observe the compiler result
 

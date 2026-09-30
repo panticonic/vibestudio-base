@@ -146,26 +146,28 @@ viewport as well as desktop width.
 
 ## Development loop
 
-1. Scaffold with eval. When building a panel with a backing service, create
-   both together so the user sees one approval prompt:
+1. Scaffold with eval. For a new persistent application, create its connected
+   panel, durable store, service declaration, singleton, and exact consumer
+   requests together:
 
 ```ts
-import { createProjects } from "@workspace-skills/workspace-dev";
+import { createApplication } from "@workspace-skills/workspace-dev";
 
-scope.created = await createProjects([
-  {
-    projectType: "worker",
-    name: "my-store",
-    title: "My Store",
-    template: "durable-service",
-  },
-  { projectType: "panel", name: "my-app", title: "My App" },
-]);
-// Each entry's `.created` is the full canonical source: "workers/my-store", "panels/my-app".
+scope.created = await createApplication({ name: "my-app", title: "My App" });
+scope.panelSource = scope.created.panel.created; // "panels/my-app"
+scope.workerSource = scope.created.worker.created; // "workers/my-app-store"
 return scope.created;
 ```
 
-Even for a single project, use `createProjects` with a one-element array.
+The result is `{ panel, worker, service, publication }`, not an array.
+`service.protocol` is `my-app.v1`; the singleton key is `main`. Both unit receipts
+have `{ created, files, preflight, publication }`. Customize this existing pair;
+do not declare its service again or scaffold replacement units.
+
+For a standalone unit or intentionally custom wiring, use `createProjects`
+with an array (one element for a single unit). That lower-level API returns an
+array of unit receipts and does not connect its repositories. See
+[PROJECTS.md](PROJECTS.md) for both creation contracts.
 
 Require `preflight.ok === true`,
 `preflight.scope === "planned-repository"`, and
@@ -184,15 +186,18 @@ Repair the named source/manifest rather than selecting another fork source.
 
 Creation, publication, and opening are distinct durable phases. Eval rejection
 does not roll back an earlier published phase. If opening or verification fails,
-reuse the `created` path from scope and retry only that phase; do not call
-`createProjects` again and do not add another `panels/` prefix.
+reuse the stored unit's `created` path and retry only that phase; do not call
+`createApplication` or `createProjects` again and do not add another `panels/`
+prefix. For a connected application, the panel path is `scope.created.panel.created`,
+not `scope.created[0].created`.
 
 If the eval instead fails with
-`errorData.code === "scaffold_publication_failed"`, the repository is already
-committed but unpublished. Do not scaffold again. Inspect
+`errorData.code === "scaffold_publication_failed"`, the candidate is already
+committed but unpublished. With `createApplication`, that candidate includes
+both repositories and their `meta/vibestudio.yml` edit. Do not scaffold again. Inspect
 `retry.commandIdPolicy`. Call `recoverProjectPublication(error)` only for an
 uncertain effect or a retryable refusal. For `repair-source-and-recommit`, repair
-all nested build diagnostics in the existing repository, run an exact-context
+all nested build diagnostics in the existing units or config, run an exact-context
 build, commit a new event, and publish from freshly observed status. For
 `stop-integrity-investigation`, preserve the receipt and stop mutation.
 

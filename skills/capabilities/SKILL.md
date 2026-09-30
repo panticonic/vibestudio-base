@@ -52,6 +52,12 @@ substitute.
 Workspace services resolve from the caller's semantic context, not a startup
 scan or static catalog.
 
+For a new persistent app, `createApplication` from
+`@workspace-skills/workspace-dev` already creates the service, singleton,
+complete provider contracts, and the paired panel's exact consumer request.
+See [connected scaffolding](../workspace-dev/PROJECTS.md); do not register that
+service a second time. For existing or intentionally custom providers:
+
 1. Add the provider method with its explicit `@rpc` receiver contract.
 2. Use `workspace_service` with `operation: "upsert"` to update service and
    singleton declaration atomically. Supply presentation, notability,

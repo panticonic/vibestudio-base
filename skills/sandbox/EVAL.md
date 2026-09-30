@@ -504,9 +504,13 @@ eval({ code: `
 })
 ```
 
+For a new persistent application, use `createApplication` rather than this standalone
+panel example; its result is an object, not an array. See
+[workspace scaffolding](../workspace-dev/PROJECTS.md).
+
 Guest/service exceptions with structured `errorData` retain that data in the
 eval result details and display a bounded failure-data preview. For
-`scaffold_publication_failed`, do not rerun creation. Branch on the structured
+`scaffold_publication_failed`, do not rerun either creation API. Branch on the structured
 `retry.commandIdPolicy`: use `recoverProjectPublication` from
 `@workspace-skills/workspace-dev` for receipt/main-state recovery, repair and
 recommit the cited source for `repair-source-and-recommit`, and stop on

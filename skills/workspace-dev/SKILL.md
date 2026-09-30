@@ -185,6 +185,12 @@ meaningful application data.
 For a panel or app backed by a workspace service, work contract-first before
 building the UI:
 
+For a new persistent app, `createApplication` supplies the initial provider,
+service, singleton, and exact consumer declarations together. The steps below
+verify and customize that existing contract; they do not require registering
+the scaffolded service again. For existing or custom units, author those
+declarations through their owning surfaces.
+
 1. Read [the service-backed data workflow](WORKERS.md#durable-object-backed-app-databases).
 2. Define and verify the provider's real `@rpc` methods and its service declaration.
    Never invent a placeholder method name.

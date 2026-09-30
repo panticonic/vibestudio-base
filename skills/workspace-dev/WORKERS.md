@@ -395,16 +395,18 @@ singleton declarations and the consuming panel's exact authority envelope.
 Use `workspace_service` for later intentional declaration changes. For custom
 or existing units, the same underlying contracts apply:
 
-1. Create `workers/<store>` with a `DurableObjectBase` subclass (or create it
-   together with its panel via `createProjects`).
+1. Create `workers/<store>` with a `DurableObjectBase` subclass. For a new
+   connected app, `createApplication` supplies this and its paired panel;
+   `createProjects` creates independent units without service wiring.
 2. Store durable rows in the DO's SQLite database through `this.sql`.
 3. Expose narrow app methods with explicit
    `@rpc({ website, principals, effect: { kind: "open" }, tier, sensitivity })`
    contracts; the effect must be a literal object so the exact build can document it
    without executing provider code. Do not expose a
    raw SQL console to normal UI callers.
-4. Declare a `services:` entry in `meta/vibestudio.yml` with the principal
-   families that may resolve the service.
+4. Use `workspace_service` to declare the service and matching singleton
+   atomically, with the principal families that may resolve it. Skip this
+   registration step for the service already created by `createApplication`.
 5. Call it from eval, panels, inline UI, apps, workers, or other DOs with
    `workers.resolveService(protocol, objectKey?)` and `rpc.call(...)`.
 
