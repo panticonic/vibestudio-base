@@ -117,7 +117,9 @@ export function createCdpAutomation(
       },
     );
 
-  const connectPage = async (): Promise<CdpPage> => {
+  const connectPage = async (
+    generation?: PanelCdpGeneration,
+  ): Promise<CdpPage> => {
     const { BrowserImpl } = await loadCdpClient(options.loadModule);
     const endpoint = await getCdpEndpoint();
     const connectOptions: {
@@ -125,6 +127,7 @@ export function createCdpAutomation(
       preferFetchUpgrade: boolean;
       transportOptions?: { authToken: string };
       onInteraction: (outcome: CdpInteractionOutcome) => void;
+      inspectionIdentity?: PanelCdpGeneration;
     } = {
       isElectronWebview: true,
       // Hosted EvalDO runtimes receive a closure-held loader and must route
@@ -138,6 +141,7 @@ export function createCdpAutomation(
           receipt: cdpInteractionReceipt(receipt),
         }),
     };
+    if (generation) connectOptions.inspectionIdentity = generation;
     if (endpoint.token)
       connectOptions.transportOptions = { authToken: endpoint.token };
     const browser = await BrowserImpl.connect(
@@ -265,7 +269,7 @@ export function createCdpAutomation(
       // A session is active inspection demand. Ensure residency/readiness here
       // without coupling automation to desktop focus.
       const before = generationOf(await ensureReady());
-      const page = await connectPage();
+      const page = await connectPage(before);
       const after = generationOf(await ensureReady());
       if (!sameGeneration(before, after)) {
         await page.close();

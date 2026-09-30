@@ -444,6 +444,12 @@ describe("createCdpAutomation screenshot", () => {
     });
     expect(oldPage.close).toHaveBeenCalledOnce();
     expect(connect).toHaveBeenCalledTimes(2);
+    expect(connect.mock.calls[0]?.[1]).toMatchObject({
+      inspectionIdentity: session.generation,
+    });
+    expect(connect.mock.calls[1]?.[1]).toMatchObject({
+      inspectionIdentity: refreshed.session.generation,
+    });
     expect(recordOperation.mock.calls.map(([entry]) => entry)).toEqual([
       {
         type: "cdp.session",

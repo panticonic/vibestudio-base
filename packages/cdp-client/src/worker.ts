@@ -117,7 +117,13 @@ type SelectOptionMatcher = {
   index?: number;
 };
 type SelectOptionInput = string | SelectOptionMatcher;
-type WaitState = "attached" | "detached" | "visible" | "hidden";
+type WaitState =
+  | "attached"
+  | "detached"
+  | "visible"
+  | "hidden"
+  | "checked"
+  | "unchecked";
 type InteractionOptions = ActionOptions & {
   /** Optional semantic postcondition observed after the browser event is delivered. */
   expect?: {
@@ -144,7 +150,7 @@ export interface CdpInteractionOutcome {
     | "hover"
     | "check"
     | "uncheck";
-  delivery: "dispatched";
+  delivery: "dispatched" | "not-needed";
   target: CdpDomInspection;
   effect:
     | { status: "not-asserted" }
@@ -836,7 +842,8 @@ function nsVisible(el){
   return s.visibility!=="hidden" && s.display!=="none" && Number(s.opacity||"1")>0 && r.width>0 && r.height>0;
 }
 function nsEnabled(el){ return !el.disabled && nsAttr(el,"aria-disabled")!=="true"; }
-function nsCheckedState(el){ if("checked" in el) return !!el.checked; var aria=nsAttr(el,"aria-checked"); if(aria==="true"||aria==="false") return aria==="true"; var data=nsAttr(el,"data-state"); if(data==="checked"||data==="on") return true; if(data==="unchecked"||data==="off") return false; throw new Error("Element is not checkable"); }
+function nsCheckedObservation(el){ if("checked" in el) return !!el.checked; var aria=nsAttr(el,"aria-checked"); if(aria==="true"||aria==="false") return aria==="true"; var data=nsAttr(el,"data-state"); if(data==="checked"||data==="on") return true; if(data==="unchecked"||data==="off") return false; return null; }
+function nsCheckedState(el){ var checked=nsCheckedObservation(el); if(checked===null) throw new Error("Element is not checkable"); return checked; }
 function nsEditable(el){
   if(el.isContentEditable) return true;
   var tag=el.tagName ? el.tagName.toLowerCase() : "";
@@ -914,6 +921,7 @@ async function nsWaitForState(descriptor, state, timeout){
   if(state==="detached") ok=!el;
   else if(state==="attached") ok=!!el;
   else if(state==="hidden") ok=!el||!nsVisible(el);
+  else if(state==="checked"||state==="unchecked") ok=!!el&&nsCheckedState(el)===(state==="checked");
   else ok=!!el&&nsVisible(el);
   if(ok) return el;
   var failure=new Error("Timeout "+timeout+"ms waiting for element to be "+state);
@@ -943,10 +951,23 @@ function nsInspectElement(e){
       }
       return {found:true, tagName:e.tagName, id:e.id||"", className:typeof e.className==="string"?e.className:"", text:nsText(e).slice(0,4000), role:nsRole(e), accessibleName:nsAccName(e), visible:nsVisible(e), attributes:attrs, boundingBox:nsBox(e), ancestors:ancestors};
     }
+function nsFailureEvidence(descriptor){
+  var matches=nsLocate(descriptor), steps=descriptor.steps||[], boundary=steps.length-1;
+  while(boundary>=0&&!steps[boundary].by) boundary--;
+  var roots=boundary>0?nsLocate({steps:steps.slice(0,boundary)}):[];
+  var scope=roots.length?"container":"page";
+  if(!roots.length) roots=[document.body||document.documentElement];
+  var text=roots.filter(Boolean).map(function(root){return root.innerText==null?"":String(root.innerText);}).join("\n");
+  var url=String(location.href);
+  return {capturedAt:Date.now(),url:url.slice(0,2000),urlTruncated:url.length>2000,matchCount:matches.length,matchesTruncated:matches.length>8,
+    matches:matches.slice(0,8).map(function(e){var text=nsText(e), name=nsAccName(e);return {tagName:e.tagName,role:nsRole(e),accessibleName:name.slice(0,300),accessibleNameTruncated:name.length>300,text:text.slice(0,300),textTruncated:text.length>300,visible:nsVisible(e),enabled:nsEnabled(e),checked:nsCheckedObservation(e)};}),
+    snapshot:{scope:scope,scopeCount:roots.length,text:text.slice(0,4000),totalChars:text.length,truncated:text.length>4000}};
+}
 async function __nsRun(P){
   var d=P.descriptor, a=P.arg, t=P.timeout;
   try { switch(P.op){
     case "probe": return nsActionable(d, a&&a.retainToken);
+    case "failureEvidence": return nsFailureEvidence(d);
     case "waitFor": { await nsWaitForState(d, P.state||"visible", t); return true; }
     case "count": return nsLocate(d).length;
     case "exists": return !!nsFirst(d);
@@ -1102,11 +1123,46 @@ function formatRuntimeException(details: RuntimeExceptionDetails): string {
   return `Browser evaluation failed: ${primary}${stack ? `\n${stack}` : location}`;
 }
 
-/**
- * Error thrown by locator actions/reads. `message` names the target locator
- * (Playwright-style) and the underlying reason; `.locator` holds the rendered
- * locator string and `.cause` the original error.
- */
+/** Identity of the session owning the inspected target, not a newly acquired generation. */
+export interface CdpInspectionIdentity {
+  panelId: string;
+  attemptId: string;
+  runtimeEntityId: string;
+  buildKey: string | null;
+}
+
+export type CdpLocatorEvidence = {
+  session?: CdpInspectionIdentity;
+} & (
+  | {
+      status: "captured";
+      capturedAt: number;
+      url: string;
+      urlTruncated: boolean;
+      matchCount: number;
+      matchesTruncated: boolean;
+      matches: Array<{
+        tagName: string;
+        role: string;
+        accessibleName: string;
+        accessibleNameTruncated: boolean;
+        text: string;
+        textTruncated: boolean;
+        visible: boolean;
+        enabled: boolean;
+        checked: boolean | null;
+      }>;
+      snapshot: {
+        scope: "container" | "page";
+        scopeCount: number;
+        text: string;
+        totalChars: number;
+        truncated: boolean;
+      };
+    }
+  | { status: "unavailable"; reason: string }
+);
+
 export interface CdpFailureData {
   code:
     | "cdp_target_connection_failed"
@@ -1141,8 +1197,10 @@ export interface CdpFailureData {
   candidates?: Array<{ role: string; accessibleName: string; tagName: string }>;
   instruction?: string;
   dialog?: Readonly<CdpDialogData>;
+  evidence?: CdpLocatorEvidence;
 }
 
+/** Structured locator failure preserving its original cause and post-failure evidence. */
 export class CdpError extends Error {
   readonly locator?: string;
   readonly code: CdpFailureData["code"];
@@ -1164,6 +1222,7 @@ export class CdpError extends Error {
       candidates?: CdpFailureData["candidates"];
       instruction?: string;
       dialog?: Readonly<CdpDialogData>;
+      evidence?: CdpLocatorEvidence;
     } = {},
   ) {
     super(message);
@@ -1192,6 +1251,7 @@ export class CdpError extends Error {
       ...(options.candidates ? { candidates: options.candidates } : {}),
       ...(options.instruction ? { instruction: options.instruction } : {}),
       ...(options.dialog ? { dialog: options.dialog } : {}),
+      ...(options.evidence ? { evidence: options.evidence } : {}),
     };
     if (options.cause !== undefined)
       (this as { cause?: unknown }).cause = options.cause;
@@ -1202,6 +1262,20 @@ function serializeTextMatcher(value: TextMatcher): SerializedTextMatcher {
   return typeof value === "string"
     ? value
     : { regex: { source: value.source, flags: value.flags } };
+}
+
+/** Named roles identify controls; partial-name searches must be explicit. */
+function roleLocatorStep(role: string, options: ByRoleOptions): LocatorStep {
+  return {
+    by: "role",
+    value: role,
+    name:
+      options.name === undefined
+        ? undefined
+        : serializeTextMatcher(options.name),
+    exact:
+      options.exact ?? (typeof options.name === "string" ? true : undefined),
+  };
 }
 
 /** Render a locator descriptor as a Playwright-style string for errors/toString(). */
@@ -1231,7 +1305,7 @@ function describeLocator(descriptor: LocatorDescriptor): string {
       case "role": {
         const opts: string[] = [];
         if (step.name != null) opts.push(`name: ${matcher(step.name)}`);
-        if (step.exact) opts.push("exact: true");
+        if (step.exact !== undefined) opts.push(`exact: ${step.exact}`);
         return `getByRole(${q(step.value)}${opts.length ? `, { ${opts.join(", ")} }` : ""})`;
       }
       case "text":
@@ -1302,6 +1376,7 @@ class WorkerCdpPage {
   constructor(
     readonly connection: CdpConnection,
     private readonly onInteraction?: (outcome: CdpInteractionOutcome) => void,
+    private readonly inspectionIdentity?: CdpInspectionIdentity,
   ) {
     this.connection.on("Runtime.consoleAPICalled", (params) => {
       const event = params as {
@@ -1606,6 +1681,39 @@ class WorkerCdpPage {
     return result.result?.value;
   }
 
+  /** One bounded, read-only observation after failure; never recurse through locator recovery. */
+  private async captureLocatorEvidence(
+    descriptor: LocatorDescriptor,
+  ): Promise<CdpLocatorEvidence> {
+    const session = this.inspectionIdentity;
+    try {
+      const observation = (await this.evaluate(
+        `(async function(P){ ${INPAGE}\n return await __nsRun(P); })(${JSON.stringify({ op: "failureEvidence", descriptor })})`,
+        undefined,
+        { timeout: 1_000, operation: "locator.failureEvidence" },
+      )) as Omit<
+        Extract<CdpLocatorEvidence, { status: "captured" }>,
+        "status" | "session"
+      >;
+      if (!observation || typeof observation.capturedAt !== "number")
+        throw new Error("Browser returned no failure observation");
+      return {
+        ...observation,
+        status: "captured",
+        ...(session ? { session } : {}),
+      };
+    } catch (error) {
+      return {
+        status: "unavailable",
+        reason: (error instanceof Error ? error.message : String(error)).slice(
+          0,
+          500,
+        ),
+        ...(session ? { session } : {}),
+      };
+    }
+  }
+
   /** Run an in-page op against a locator descriptor; failures name the locator. */
   async runLocatorOp(
     op: string,
@@ -1721,6 +1829,15 @@ class WorkerCdpPage {
     } catch (err) {
       const where = describeLocator(descriptor);
       const detail = err instanceof Error ? err.message : String(err);
+      const evidence =
+        err instanceof CdpError && err.errorData.evidence
+          ? err.errorData.evidence
+          : err instanceof CdpError &&
+              ["cdp_locator_state_mismatch", "cdp_locator_ambiguous"].includes(
+                err.code,
+              )
+            ? await this.captureLocatorEvidence(descriptor)
+            : undefined;
       if (err instanceof CdpError) {
         throw new CdpError(`${op} failed on ${where}: ${detail}`, {
           cause: err,
@@ -1735,6 +1852,8 @@ class WorkerCdpPage {
           matchCount: err.errorData.matchCount,
           candidates: err.errorData.candidates,
           instruction: err.errorData.instruction,
+          dialog: err.errorData.dialog,
+          evidence,
         });
       }
       throw new CdpError(`${op} failed on ${where}: ${detail}`, {
@@ -1743,6 +1862,7 @@ class WorkerCdpPage {
         code: "cdp_locator_operation_failed",
         operation: op,
         recovery: "reobserve-locator",
+        evidence,
       });
     }
   }
@@ -1755,17 +1875,7 @@ class WorkerCdpPage {
   }
   getByRole(role: string, options: ByRoleOptions = {}): WorkerCdpLocator {
     return new WorkerCdpLocator(this, {
-      steps: [
-        {
-          by: "role",
-          value: role,
-          name:
-            options.name === undefined
-              ? undefined
-              : serializeTextMatcher(options.name),
-          exact: options.exact,
-        },
-      ],
+      steps: [roleLocatorStep(role, options)],
     });
   }
   getByText(text: TextMatcher, options: ByTextOptions = {}): WorkerCdpLocator {
@@ -2005,6 +2115,7 @@ class WorkerCdpPage {
         operation: "click",
         recovery: "reobserve-locator",
         timeoutMs: timeout,
+        evidence: await this.captureLocatorEvidence(descriptor),
       },
     );
   }
@@ -2060,12 +2171,13 @@ class WorkerCdpPage {
     descriptor: LocatorDescriptor,
     target: Omit<CdpDomInspection, "selector">,
     opts: InteractionOptions,
+    delivery: CdpInteractionOutcome["delivery"] = "dispatched",
   ): Promise<CdpInteractionOutcome> {
     if (!opts.expect) {
       const outcome: CdpInteractionOutcome = {
         protocol: "cdp-interaction-outcome.v1",
         action,
-        delivery: "dispatched",
+        delivery,
         target: { selector: describeLocator(descriptor), ...target },
         effect: { status: "not-asserted" },
       };
@@ -2088,12 +2200,12 @@ class WorkerCdpPage {
       this.onInteraction?.({
         protocol: "cdp-interaction-outcome.v1",
         action,
-        delivery: "dispatched",
+        delivery,
         target: { selector: describeLocator(descriptor), ...target },
         effect: { status: "not-observed", locator: expectedLocator, state },
       });
       throw new CdpError(
-        `${action} was dispatched to ${describeLocator(descriptor)}, but expected ${expectedLocator} to become ${state}`,
+        `${action} ${delivery === "dispatched" ? "was dispatched to" : "needed no event for"} ${describeLocator(descriptor)}, but expected ${expectedLocator} to become ${state}`,
         {
           cause,
           locator: describeLocator(descriptor),
@@ -2103,13 +2215,15 @@ class WorkerCdpPage {
           timeoutMs,
           state,
           expectedLocator,
+          evidence:
+            cause instanceof CdpError ? cause.errorData.evidence : undefined,
         },
       );
     }
     const outcome: CdpInteractionOutcome = {
       protocol: "cdp-interaction-outcome.v1",
       action,
-      delivery: "dispatched",
+      delivery,
       target: { selector: describeLocator(descriptor), ...target },
       effect: {
         status: "observed",
@@ -2171,8 +2285,36 @@ class WorkerCdpPage {
   async setCheckedDescriptor(
     descriptor: LocatorDescriptor,
     checked: boolean,
-    opts: ActionOptions = {},
-  ): Promise<void> {
+    opts: InteractionOptions = {},
+  ): Promise<CdpInteractionOutcome> {
+    const action = checked ? "check" : "uncheck";
+    const state = checked ? "checked" : "unchecked";
+    const observation = {
+      ...opts,
+      expect: opts.expect ?? {
+        locator: new WorkerCdpLocator(this, descriptor),
+        state,
+      },
+    } satisfies InteractionOptions;
+    await this.runLocatorOp("waitFor", descriptor, null, {
+      state: "attached",
+      timeout: opts.timeout,
+    });
+    const initial = await this.runLocatorOp("checkedState", descriptor, null, {
+      timeout: opts.timeout,
+    });
+    if (initial === checked) {
+      const target = (await this.runLocatorOp("inspect", descriptor, null, {
+        timeout: 0,
+      })) as Omit<CdpDomInspection, "selector">;
+      return this.observeInteraction(
+        action,
+        descriptor,
+        target,
+        observation,
+        "not-needed",
+      );
+    }
     const retainToken = `${this.retainedElementOwner}-check-${++this.retainedElementSequence}`;
     const point = await this.resolveHitPoint(
       descriptor,
@@ -2189,23 +2331,40 @@ class WorkerCdpPage {
           timeout: opts.timeout,
         },
       )) as boolean;
-      if (current === checked) return;
       const target = (await this.runLocatorOp("inspect", descriptor, null, {
         timeout: 0,
       })) as Omit<CdpDomInspection, "selector">;
-      await this.dispatchClickAt(point);
-      await this.runLocatorOp(
-        "retainedCheckedStateEquals",
-        descriptor,
-        { ...retainedArg, checked },
-        {
-          timeout: opts.timeout,
-        },
-      );
-      this.recordLocatorInteraction(
-        checked ? "check" : "uncheck",
+      const delivery = current === checked ? "not-needed" : "dispatched";
+      if (delivery === "dispatched") {
+        await this.dispatchClickAt(point);
+        try {
+          await this.runLocatorOp(
+            "retainedCheckedStateEquals",
+            descriptor,
+            { ...retainedArg, checked },
+            { timeout: opts.timeout },
+          );
+        } catch (cause) {
+          this.onInteraction?.({
+            protocol: "cdp-interaction-outcome.v1",
+            action,
+            delivery,
+            target: { selector: describeLocator(descriptor), ...target },
+            effect: {
+              status: "not-observed",
+              locator: describeLocator(descriptor),
+              state,
+            },
+          });
+          throw cause;
+        }
+      }
+      return await this.observeInteraction(
+        action,
         descriptor,
         target,
+        observation,
+        delivery,
       );
     } finally {
       await this.runLocatorOp(
@@ -2387,15 +2546,7 @@ class WorkerCdpLocator {
     return this.extend(compileLocatorSelector(selector));
   }
   getByRole(role: string, options: ByRoleOptions = {}): WorkerCdpLocator {
-    return this.extend({
-      by: "role",
-      value: role,
-      name:
-        options.name === undefined
-          ? undefined
-          : serializeTextMatcher(options.name),
-      exact: options.exact,
-    });
+    return this.extend(roleLocatorStep(role, options));
   }
   getByText(text: TextMatcher, options: ByTextOptions = {}): WorkerCdpLocator {
     return this.extend({
@@ -2511,14 +2662,17 @@ class WorkerCdpLocator {
   ): Promise<CdpInteractionOutcome> {
     return this.page.pressDescriptor(this.descriptor, key, opts);
   }
-  async check(opts: ActionOptions = {}): Promise<void> {
-    await this.page.setCheckedDescriptor(this.descriptor, true, opts);
+  async check(opts: InteractionOptions = {}): Promise<CdpInteractionOutcome> {
+    return this.page.setCheckedDescriptor(this.descriptor, true, opts);
   }
-  async uncheck(opts: ActionOptions = {}): Promise<void> {
-    await this.page.setCheckedDescriptor(this.descriptor, false, opts);
+  async uncheck(opts: InteractionOptions = {}): Promise<CdpInteractionOutcome> {
+    return this.page.setCheckedDescriptor(this.descriptor, false, opts);
   }
-  async setChecked(checked: boolean, opts: ActionOptions = {}): Promise<void> {
-    await this.page.setCheckedDescriptor(this.descriptor, checked, opts);
+  async setChecked(
+    checked: boolean,
+    opts: InteractionOptions = {},
+  ): Promise<CdpInteractionOutcome> {
+    return this.page.setCheckedDescriptor(this.descriptor, checked, opts);
   }
   async selectOption(
     value: SelectOptionInput | SelectOptionInput[],
@@ -2753,6 +2907,8 @@ export const BrowserImpl = {
       commandTimeoutMs?: number;
       /** Observe completed input outcomes independently of caller return projections. */
       onInteraction?: (outcome: CdpInteractionOutcome) => void;
+      /** Immutable provenance supplied by a generation-fenced panel session. */
+      inspectionIdentity?: CdpInspectionIdentity;
     } = {},
   ): Promise<WorkerBrowser> {
     const connection = await CdpConnection.connect(
@@ -2761,7 +2917,13 @@ export const BrowserImpl = {
       options.preferFetchUpgrade,
       { commandTimeoutMs: options.commandTimeoutMs },
     );
-    const page = new WorkerCdpPage(connection, options.onInteraction);
+    const page = new WorkerCdpPage(
+      connection,
+      options.onInteraction,
+      options.inspectionIdentity
+        ? Object.freeze({ ...options.inspectionIdentity })
+        : undefined,
+    );
     try {
       await page.initialize();
       return new WorkerBrowser(page, connection);

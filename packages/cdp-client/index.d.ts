@@ -148,12 +148,18 @@ export interface CdpDomInspection {
   }>;
 }
 
-export type WaitState = "attached" | "detached" | "visible" | "hidden";
+export type WaitState =
+  | "attached"
+  | "detached"
+  | "visible"
+  | "hidden"
+  | "checked"
+  | "unchecked";
 export interface ActionOptions {
   timeout?: number;
 }
-export interface ClickOptions extends ActionOptions {
-  /** Assert one semantic locator state after the pointer event is delivered. */
+export interface InteractionOptions extends ActionOptions {
+  /** Observe one semantic locator state after the interaction completes. */
   expect?: {
     locator: CdpLocator;
     state?: WaitState;
@@ -162,12 +168,30 @@ export interface ClickOptions extends ActionOptions {
 }
 export interface CdpInteractionOutcome {
   protocol: "cdp-interaction-outcome.v1";
-  action: "click" | "dblclick" | "fill" | "clear" | "selectOption" | "focus" | "blur" | "selectText" | "scrollIntoView" | "dispatchEvent" | "press" | "hover" | "check" | "uncheck";
-  delivery: "dispatched";
+  action:
+    | "click"
+    | "dblclick"
+    | "fill"
+    | "clear"
+    | "selectOption"
+    | "focus"
+    | "blur"
+    | "selectText"
+    | "scrollIntoView"
+    | "dispatchEvent"
+    | "press"
+    | "hover"
+    | "check"
+    | "uncheck";
+  delivery: "dispatched" | "not-needed";
   target: CdpDomInspection;
   effect:
     | { status: "not-asserted" }
-    | { status: "observed"; locator: string; state: WaitState };
+    | {
+        status: "observed" | "not-observed";
+        locator: string;
+        state: WaitState;
+      };
 }
 export interface ByTextOptions {
   /** Case-sensitive whole-string matching. Strings otherwise match case-insensitive substrings. */
@@ -175,7 +199,9 @@ export interface ByTextOptions {
 }
 export type TextMatcher = string | RegExp;
 export interface ByRoleOptions {
+  /** String names identify the whole normalized accessible name; regex names search explicitly. */
   name?: TextMatcher;
+  /** Defaults to true for string names. Set false for case-insensitive substring search. */
   exact?: boolean;
 }
 
@@ -203,16 +229,19 @@ export interface CdpLocator {
   last(): CdpLocator;
   all(): Promise<CdpLocator[]>;
   // Actions (auto-waiting)
-  click(opts?: ClickOptions): Promise<CdpInteractionOutcome>;
-  dblclick(opts?: ClickOptions): Promise<CdpInteractionOutcome>;
+  click(opts?: InteractionOptions): Promise<CdpInteractionOutcome>;
+  dblclick(opts?: InteractionOptions): Promise<CdpInteractionOutcome>;
   hover(opts?: ActionOptions): Promise<void>;
   fill(value: string, opts?: ActionOptions): Promise<void>;
   type(text: string, opts?: ActionOptions): Promise<void>;
   clear(opts?: ActionOptions): Promise<void>;
-  press(key: string, opts?: ActionOptions): Promise<void>;
-  check(opts?: ActionOptions): Promise<void>;
-  uncheck(opts?: ActionOptions): Promise<void>;
-  setChecked(checked: boolean, opts?: ActionOptions): Promise<void>;
+  press(key: string, opts?: InteractionOptions): Promise<CdpInteractionOutcome>;
+  check(opts?: InteractionOptions): Promise<CdpInteractionOutcome>;
+  uncheck(opts?: InteractionOptions): Promise<CdpInteractionOutcome>;
+  setChecked(
+    checked: boolean,
+    opts?: InteractionOptions,
+  ): Promise<CdpInteractionOutcome>;
   selectOption(
     value: string | string[] | SelectOptionMatcher | SelectOptionMatcher[],
     opts?: ActionOptions,
@@ -384,6 +413,44 @@ export class CdpConnection {
   isClosed(): boolean;
 }
 
+export interface CdpInspectionIdentity {
+  panelId: string;
+  attemptId: string;
+  runtimeEntityId: string;
+  buildKey: string | null;
+}
+
+/** Bounded live observation collected after failure; it never changes the action outcome. */
+export type CdpLocatorEvidence = { session?: CdpInspectionIdentity } & (
+  | {
+      status: "captured";
+      capturedAt: number;
+      url: string;
+      urlTruncated: boolean;
+      matchCount: number;
+      matchesTruncated: boolean;
+      matches: Array<{
+        tagName: string;
+        role: string;
+        accessibleName: string;
+        accessibleNameTruncated: boolean;
+        text: string;
+        textTruncated: boolean;
+        visible: boolean;
+        enabled: boolean;
+        checked: boolean | null;
+      }>;
+      snapshot: {
+        scope: "container" | "page";
+        scopeCount: number;
+        text: string;
+        totalChars: number;
+        truncated: boolean;
+      };
+    }
+  | { status: "unavailable"; reason: string }
+);
+
 export interface CdpFailureData {
   code:
     | "cdp_target_connection_failed"
@@ -416,6 +483,7 @@ export interface CdpFailureData {
   candidates?: Array<{ role: string; accessibleName: string; tagName: string }>;
   instruction?: string;
   dialog?: Readonly<CdpDialogData>;
+  evidence?: CdpLocatorEvidence;
 }
 
 /** Structured error thrown by CDP evaluation, connection, and locator operations. */
@@ -440,6 +508,7 @@ export class CdpError extends Error {
       candidates?: CdpFailureData["candidates"];
       instruction?: string;
       dialog?: Readonly<CdpDialogData>;
+      evidence?: CdpLocatorEvidence;
     },
   );
 }
@@ -460,6 +529,7 @@ export const BrowserImpl: {
       commandTimeoutMs?: number;
       /** Observe completed input outcomes independently of caller return projections. */
       onInteraction?: (outcome: CdpInteractionOutcome) => void;
+      inspectionIdentity?: CdpInspectionIdentity;
     },
   ): Promise<Browser>;
 };

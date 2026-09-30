@@ -212,7 +212,7 @@ can create or acquire a panel handle directly before driving CDP automation.
 Playwright-style page. Actions
 auto-wait for the element to be visible/stable/enabled before acting and
 journal a `cdp-interaction-outcome.v1` receipt after the browser event is
-delivered. `click()`, `dblclick()`, and locator `press()` also return that
+delivered. `click()`, `dblclick()`, locator `press()`, and checkbox actions also return that
 receipt and accept an `expect` locator postcondition. Other actions such as
 `fill()` return no receipt (`selectOption()` returns selected values); inspect
 their native journal and await a separate locator assertion when needed.
@@ -297,7 +297,8 @@ await page.keyboard.type("replacement");
 await page.keyboard.insertText("inserted in one browser operation");
 await page.setViewportSize({ width: 390, height: 844 });
 page.viewportSize(); // synchronous current CSS viewport
-await page.getByRole("checkbox").check();
+const checked = await page.getByRole("checkbox").check();
+// checked.effect.status === "observed"; checked.effect.state === "checked"
 await page.getByRole("checkbox").uncheck();
 await page.getByRole("checkbox").setChecked(true);
 await page.getByLabel("Country").selectOption("US");
@@ -334,7 +335,12 @@ await page.locator(".box").inspect();
 `check`, `uncheck`, and `setChecked` dispatch at most one click and wait within
 the action timeout for the retained control to reach the requested state. This
 supports controlled components whose event handler persists asynchronously;
-the action never replays the click while waiting.
+the action never replays the click while waiting. They return the same native
+interaction receipt as `click` and `press`, with the requested checked/unchecked
+state observed by default. `delivery: "not-needed"` means the control already
+had that state and no pointer event was sent. An optional `expect` observes a
+further application postcondition; it is not silently ignored. Locator
+`waitFor` and interaction postconditions also accept `checked` and `unchecked`.
 
 A successful action establishes native dispatch, not completion of asynchronous
 application work. Await the specific rendered effect with `click({ expect })`
@@ -345,11 +351,24 @@ judging saved data. Immediate reads during loading are intermediate evidence,
 not a persistence verdict. Diagnose a failed observation through its structured
 error and the panel's lifecycle/console packet.
 
-String locators use normalized, case-insensitive substring matching by default;
-`{ exact: true }` selects a case-sensitive whole-string match. The `isVisible`,
+Named role locators identify controls: `getByRole('button', { name: 'Active' })`
+matches the whole normalized, case-sensitive accessible name, not `Mark active…`.
+This intentionally differs from Playwright's fuzzy default. Use a regex or
+explicit `exact: false` for a partial-name search. Duplicate exact names still
+produce an ambiguity error; scope to their container instead of guessing.
+Other string locators use normalized, case-insensitive substring matching by
+default; `{ exact: true }` selects a case-sensitive whole-string match. The `isVisible`,
 `isChecked`, `isEnabled`, `isDisabled`, and `isEditable` methods are immediate
 snapshots and return `false` when there is no current match. Use `waitFor` when
 absence should be retried.
+
+`getByText` matches an element's text, not an arbitrary text-node fragment or
+its accessible name. Visible decorative descendants still contribute even
+when marked `aria-hidden`: an empty-state element containing `✓` and `No done
+tasks right now.` does not exactly equal `No done tasks right now.`. Read the
+failure snapshot or inspect the rendered element before choosing a deliberate
+substring assertion or a separately identifiable message element. Do not infer
+that the preceding action failed merely because its text assertion missed.
 
 Accessible names are computed from the live DOM. Descendant text such as a
 numeric badge is part of a button's name, so a visually grouped `Done` + `3`
@@ -367,6 +386,31 @@ timeout. A failed `click({ expect })` is
 expected locators. A command timeout or closed target directs the caller to
 inspect panel diagnostics and acquire a fresh page from the stable panel handle;
 the old page connection is no longer reusable.
+
+Failed locator state waits, ambiguous targets, and exhausted pointer actionability
+also carry `errorData.evidence`. A single read-only observation is collected
+after failure, with a separate one-second deadline; successful operations do
+not collect it. `status: "captured"` includes capture time, page URL, match count,
+up to eight matches with their actual text/name, visibility, enabled and checked
+states (`checked: null` means not checkable), and a bounded rendered-text
+snapshot of the locator's containing scope. When the scope is absent or the
+locator is unscoped, the snapshot covers the page. Each bounded field and match
+list reports truncation explicitly. Generation-fenced sessions include their
+own immutable panel/attempt/runtime/build identity; this is not evidence that
+the session is still current. Compare it with the panel's current observation
+when diagnosing a stale generation.
+
+The eval result exposes this expected-versus-observed packet in model-facing
+text as well as tool details. A truncated text preview is explicitly marked;
+the full packet remains in `details.errorData`. `status: "unavailable"` records
+why observation failed without replacing the original error. Evidence is a
+post-failure observation, not a claim that the DOM stayed unchanged during the
+wait or collection. A failed interaction postcondition carries evidence for
+the expected locator and retains its completed action receipt in the journal.
+Read the actual state before repairing an assertion: after deleting the last
+active task, `"0 tasks left"` is a successful application result even if an
+assertion incorrectly expected `"1 task left"`. No evidence collection retries
+input, chooses a replacement locator, or relaxes the assertion.
 
 Controls repeated for collection items must have item-specific accessible
 names. Treat repeated `"Mark task as completed"` buttons as an accessibility

@@ -105,6 +105,12 @@ purpose, workflow, ownership, invariants, and diagnostics.
 - Use `verify` for exact-context build checks and focused tests. The canonical
   `build.getBuildReport` combines bundling, TypeScript, and static authority
   diagnostics for an executable unit; see [the development loop](WORKFLOW.md#semantic-workspace-development).
+  Builds enforce strict types and checked indexed access even when a local
+  `tsconfig.json` weakens those options. Array, record, and string indexing can
+  produce `undefined`; establish the invariant in source before using the value.
+  The report retains each diagnostic's exact file/range and `compilerCode`.
+  Assess the complete diagnostic list when repairing a candidate, including
+  independent errors alongside consequences of the primary defect.
 - Declare every in-app test suite in `package.json#vibestudio.tests`. Choose the
   production-matched runtime explicitly: `browser` for panels/DOM behavior,
   `workerd` for workers and portable logic, and `native` only for Node,

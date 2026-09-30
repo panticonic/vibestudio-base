@@ -485,6 +485,52 @@ describe("formatEvalResult (shared by the eval tool's execute + the agent's defe
     expect(out.details).toBe(result);
   });
 
+  it("delivers browser failure observations in model-facing content without losing original errors or receipts", async () => {
+    const result: EvalRunResult = {
+      success: false,
+      console: "",
+      error: "Expected 1 task left, no match",
+      failureCode: "cdp_locator_state_mismatch",
+      errorData: {
+        locator: 'getByText("1 task left")',
+        state: "attached",
+        evidence: {
+          status: "captured",
+          matchCount: 0,
+          snapshot: { text: "0 tasks left", truncated: false },
+        },
+      },
+      operationJournal: {
+        protocol: "workspace-operations.v1",
+        entries: [],
+        truncated: false,
+      },
+    };
+    const out = await formatEvalResult(result);
+    expect(textOf(out)).toContain("Browser failure evidence");
+    expect(textOf(out)).toContain("0 tasks left");
+    expect(textOf(out)).toContain('"state": "attached"');
+    expect(textOf(out)).toContain("Expected 1 task left, no match");
+    expect(out.isError).toBe(true);
+    expect(out.details).toBe(result);
+    const unavailable = await formatEvalResult({
+      ...result,
+      errorData: {
+        evidence: { status: "unavailable", reason: "target closed" },
+      },
+    });
+    expect(textOf(unavailable)).toContain("target closed");
+    const oversized = await formatEvalResult({
+      ...result,
+      errorData: { evidence: { snapshot: { text: "x".repeat(50000) } } },
+    });
+    expect(textOf(oversized)).toContain("evidence preview truncated");
+    expect(textOf(oversized).length).toBeLessThan(20000);
+    expect(oversized.details?.errorData).toEqual({
+      evidence: { snapshot: { text: "x".repeat(50000) } },
+    });
+  });
+
   it("uses 'unknown error' when a failure has no error string", async () => {
     const text = textOf(
       await formatEvalResult({ success: false, console: "" }),

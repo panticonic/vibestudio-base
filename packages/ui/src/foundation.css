@@ -4,6 +4,43 @@
  * Radix Themes. Product and game identities belong in separate skin files.
  */
 
+/* Optional host hint in CSS pixels, not measured display geometry. Touch
+   browsers get a restrained width-based approximation; hosts may override this
+   property on document.documentElement. Safe-area insets remain authoritative
+   for placing content. Subtract a surface's edge gap when choosing its radius. */
+:root {
+  --vibestudio-viewport-corner-radius-hint: 0px;
+  --vibestudio-viewport-corner-radius-top-left-hint: 0px;
+  --vibestudio-viewport-corner-radius-top-right-hint: 0px;
+  --vibestudio-viewport-corner-radius-bottom-left-hint: 0px;
+  --vibestudio-viewport-corner-radius-bottom-right-hint: 0px;
+  /* Browsers supply env(); native panel hosts may publish measured values.
+     These properties are opt-in geometry, not global padding or clipping. */
+  --vibestudio-safe-area-inset-top: env(safe-area-inset-top, 0px);
+  --vibestudio-safe-area-inset-right: env(safe-area-inset-right, 0px);
+  --vibestudio-safe-area-inset-bottom: env(safe-area-inset-bottom, 0px);
+  --vibestudio-safe-area-inset-left: env(safe-area-inset-left, 0px);
+}
+
+@media (pointer: coarse) {
+  :root {
+    --vibestudio-viewport-corner-radius-hint: clamp(24px, 12vmin, 56px);
+  }
+}
+
+/* A normal browser viewport has its own chrome. Only fullscreen/standalone
+   documents can infer that their viewport corners face the display corners.
+   Native hosts override individual corner hints from the measured panel slot. */
+@media (pointer: coarse) and (display-mode: standalone),
+       (pointer: coarse) and (display-mode: fullscreen) {
+  :root {
+    --vibestudio-viewport-corner-radius-top-left-hint: var(--vibestudio-viewport-corner-radius-hint);
+    --vibestudio-viewport-corner-radius-top-right-hint: var(--vibestudio-viewport-corner-radius-hint);
+    --vibestudio-viewport-corner-radius-bottom-left-hint: var(--vibestudio-viewport-corner-radius-hint);
+    --vibestudio-viewport-corner-radius-bottom-right-hint: var(--vibestudio-viewport-corner-radius-hint);
+  }
+}
+
 .radix-themes,
 :root {
   --motion-fast: 120ms;
@@ -250,6 +287,12 @@
 
   .radix-themes :where(.rt-TextFieldInput, .rt-TextAreaInput) {
     min-height: 42px;
+    /* Prevent iOS focus zoom from changing the panel viewport mid-edit. */
+    font-size: max(16px, 1em);
+  }
+
+  .radix-themes select {
+    font-size: max(16px, 1em);
   }
 
   /* A switch should retain its familiar visual proportions while exposing the

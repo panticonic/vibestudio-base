@@ -24,6 +24,7 @@ class FakeWebSocket {
   static emitNavigationEventBeforeResponse = false;
   static deferNextClickEffect = false;
   static deferNextCheckPolls = 0;
+  static dropFailureEvidence = false;
 
   private listeners = new Map<
     string,
@@ -77,6 +78,12 @@ class FakeWebSocket {
         params: message.params,
       });
     if (message.method && FakeWebSocket.dropMethods.has(message.method)) return;
+    if (
+      FakeWebSocket.dropFailureEvidence &&
+      message.method === "Runtime.evaluate" &&
+      String(message.params?.["expression"]).includes('"op":"failureEvidence"')
+    )
+      return;
     const rejection =
       message.method && FakeWebSocket.rejectMethods.get(message.method);
     if (rejection) {
@@ -259,7 +266,14 @@ class FakeWebSocket {
         token?: string;
       } | null;
       descriptor: { steps: Array<Record<string, unknown>> };
-      state?: "attached" | "detached" | "visible" | "hidden" | null;
+      state?:
+        | "attached"
+        | "detached"
+        | "visible"
+        | "hidden"
+        | "checked"
+        | "unchecked"
+        | null;
     };
     const targetsMissing = payload.descriptor.steps.some(
       (s) =>
@@ -311,6 +325,22 @@ class FakeWebSocket {
       },
     });
     switch (payload.op) {
+      case "failureEvidence":
+        return {
+          capturedAt: 123,
+          url: this.nextUrl,
+          urlTruncated: false,
+          matchCount: targetsMissing ? 0 : 1,
+          matchesTruncated: false,
+          matches: [],
+          snapshot: {
+            scope: "page",
+            scopeCount: 1,
+            text: "0 tasks left",
+            totalChars: 12,
+            truncated: false,
+          },
+        };
       case "probe":
         if (payload.arg?.retainToken) this.checking = true;
         return targetsMissing
@@ -322,6 +352,14 @@ class FakeWebSocket {
               box: { x: 0, y: 0, width: 100, height: 20 },
             };
       case "waitFor":
+        if (payload.state === "checked" || payload.state === "unchecked") {
+          return this.checked === (payload.state === "checked")
+            ? true
+            : {
+                __nsLocatorFailure: "state-timeout",
+                state: payload.state,
+              };
+        }
         return true;
       case "count":
         return 1;
@@ -332,7 +370,6 @@ class FakeWebSocket {
       case "isEditable":
         return !targetsMissing;
       case "checkedState":
-        this.checking = true;
         return this.checked;
       case "retainedCheckedState":
         return this.checked;
@@ -458,6 +495,7 @@ describe("worker CDP client", () => {
     FakeWebSocket.emitNavigationEventBeforeResponse = false;
     FakeWebSocket.deferNextClickEffect = false;
     FakeWebSocket.deferNextCheckPolls = 0;
+    FakeWebSocket.dropFailureEvidence = false;
     vi.restoreAllMocks();
     Object.defineProperty(globalThis, "WebSocket", {
       configurable: true,
@@ -1161,7 +1199,8 @@ describe("worker CDP client", () => {
         code: "cdp_locator_state_mismatch",
         operation: "waitFor",
         recovery: "reobserve-locator",
-        locator: 'getByRole("button", { name: "Add another column" })',
+        locator:
+          'getByRole("button", { name: "Add another column", exact: true })',
         timeoutMs: 25,
         state: "visible",
       },
@@ -1335,7 +1374,7 @@ describe("worker CDP client", () => {
       delivery: "dispatched",
       effect: {
         status: "observed",
-        locator: 'getByRole("dialog", { name: "Card details" })',
+        locator: 'getByRole("dialog", { name: "Card details", exact: true })',
         state: "visible",
       },
     });
@@ -1403,9 +1442,11 @@ describe("worker CDP client", () => {
       errorData: {
         code: "cdp_interaction_outcome_not_observed",
         locator: 'getByRole("button", { name: "Create task", exact: true })',
-        expectedLocator: 'getByRole("button", { name: "Add another column" })',
+        expectedLocator:
+          'getByRole("button", { name: "Add another column", exact: true })',
         state: "visible",
         timeoutMs: 40,
+        evidence: { status: "captured", matchCount: 0 },
       },
     });
     expect(onInteraction).toHaveBeenCalledExactlyOnceWith(
@@ -1475,7 +1516,12 @@ describe("worker CDP client", () => {
     const browser = await BrowserImpl.connect("ws://cdp");
     const page = browser.contexts()[0]!.pages()[0]!;
 
-    await page.getByRole("checkbox").check({ timeout: 1_000 });
+    const outcome = await page.getByRole("checkbox").check({ timeout: 1_000 });
+    expect(outcome).toMatchObject({
+      action: "check",
+      delivery: "dispatched",
+      effect: { status: "observed", state: "checked" },
+    });
 
     expect(
       FakeWebSocket.sent.filter(
@@ -1494,6 +1540,155 @@ describe("worker CDP client", () => {
       ).length,
     ).toBeGreaterThan(1);
     await expect(page.getByRole("checkbox").isChecked()).resolves.toBe(true);
+    await browser.close();
+  });
+
+  it("returns observed idempotent checkbox receipts without inventing a second click", async () => {
+    installFakeWebSocket();
+    const onInteraction = vi.fn();
+    const browser = await BrowserImpl.connect("ws://cdp", { onInteraction });
+    const page = browser.contexts()[0]!.pages()[0]!;
+    const checkbox = page.getByRole("checkbox");
+    await checkbox.check();
+    const actionability = vi
+      .spyOn(page, "resolveHitPoint")
+      .mockRejectedValue(new Error("Control is disabled"));
+    const noChange = await checkbox.check();
+    expect(noChange).toMatchObject({
+      action: "check",
+      delivery: "not-needed",
+      effect: { status: "observed", state: "checked" },
+    });
+    expect(
+      FakeWebSocket.sent.filter(
+        ({ method, params }) =>
+          method === "Input.dispatchMouseEvent" &&
+          params?.["type"] === "mouseReleased",
+      ),
+    ).toHaveLength(1);
+    expect(actionability).not.toHaveBeenCalled();
+    actionability.mockRestore();
+    expect(
+      await checkbox.setChecked(false, {
+        expect: { locator: checkbox, state: "unchecked" },
+      }),
+    ).toMatchObject({
+      action: "uncheck",
+      delivery: "dispatched",
+      effect: { status: "observed", state: "unchecked" },
+    });
+    expect(onInteraction.mock.calls.map(([receipt]) => receipt)).toHaveLength(
+      3,
+    );
+    const waits = FakeWebSocket.sent.filter(
+      ({ method, params }) =>
+        method === "Runtime.evaluate" &&
+        String(params?.["expression"]).includes('"op":"waitFor"'),
+    );
+    expect(
+      waits.some(({ params }) =>
+        String(params?.["expression"]).includes(
+          'state==="checked"||state==="unchecked"',
+        ),
+      ),
+    ).toBe(true);
+    await browser.close();
+  });
+
+  it("observes an external postcondition even when checkbox delivery is unnecessary", async () => {
+    installFakeWebSocket();
+    const onInteraction = vi.fn();
+    const browser = await BrowserImpl.connect("ws://cdp", { onInteraction });
+    const page = browser.contexts()[0]!.pages()[0]!;
+    await page.getByRole("checkbox").check();
+    onInteraction.mockClear();
+    await expect(
+      page.getByRole("checkbox").check({
+        expect: { locator: page.getByTestId("missing"), timeout: 40 },
+      }),
+    ).rejects.toMatchObject({ code: "cdp_interaction_outcome_not_observed" });
+    expect(onInteraction.mock.calls).toHaveLength(1);
+    expect(onInteraction.mock.calls[0]?.[0]).toMatchObject({
+      delivery: "not-needed",
+      effect: { status: "not-observed" },
+    });
+    expect(
+      FakeWebSocket.sent.filter(
+        ({ method, params }) =>
+          method === "Input.dispatchMouseEvent" &&
+          params?.["type"] === "mouseReleased",
+      ),
+    ).toHaveLength(1);
+    await browser.close();
+  });
+
+  it("does not mistake a missing control for an unchecked state", async () => {
+    installFakeWebSocket();
+    const browser = await BrowserImpl.connect("ws://cdp");
+    const page = browser.contexts()[0]!.pages()[0]!;
+    await expect(
+      page.getByTestId("missing").waitFor({ state: "unchecked", timeout: 40 }),
+    ).rejects.toThrow();
+    await browser.close();
+  });
+
+  it("observes checkbox postconditions and retains exactly one dispatched receipt on failure", async () => {
+    installFakeWebSocket();
+    const onInteraction = vi.fn();
+    const browser = await BrowserImpl.connect("ws://cdp", { onInteraction });
+    const page = browser.contexts()[0]!.pages()[0]!;
+    await expect(
+      page.getByRole("checkbox").check({
+        expect: { locator: page.getByTestId("missing"), timeout: 40 },
+      }),
+    ).rejects.toMatchObject({ code: "cdp_interaction_outcome_not_observed" });
+    expect(onInteraction).toHaveBeenCalledTimes(1);
+    expect(onInteraction.mock.calls[0]?.[0]).toMatchObject({
+      action: "check",
+      delivery: "dispatched",
+      effect: { status: "not-observed" },
+    });
+    expect(
+      FakeWebSocket.sent.filter(
+        ({ method, params }) =>
+          method === "Input.dispatchMouseEvent" &&
+          params?.["type"] === "mouseReleased",
+      ),
+    ).toHaveLength(1);
+    await browser.close();
+  });
+
+  it("retains delivery when a controlled checkbox never reaches its requested state", async () => {
+    installFakeWebSocket();
+    FakeWebSocket.deferNextCheckPolls = 1000;
+    const onInteraction = vi.fn();
+    const browser = await BrowserImpl.connect("ws://cdp", { onInteraction });
+    const page = browser.contexts()[0]!.pages()[0]!;
+    await expect(
+      page.getByRole("checkbox").check({ timeout: 40 }),
+    ).rejects.toThrow();
+    expect(onInteraction).toHaveBeenCalledTimes(1);
+    expect(onInteraction.mock.calls[0]?.[0]).toMatchObject({
+      action: "check",
+      delivery: "dispatched",
+      effect: { status: "not-observed", state: "checked" },
+    });
+    expect(
+      FakeWebSocket.sent.filter(
+        ({ method, params }) =>
+          method === "Input.dispatchMouseEvent" &&
+          params?.["type"] === "mouseReleased",
+      ),
+    ).toHaveLength(1);
+    expect(
+      FakeWebSocket.sent.some(
+        ({ method, params }) =>
+          method === "Runtime.evaluate" &&
+          String(params?.["expression"]).includes(
+            '"op":"releaseRetainedElement"',
+          ),
+      ),
+    ).toBe(true);
     await browser.close();
   });
 
@@ -1758,7 +1953,7 @@ describe("worker CDP client", () => {
     const page = browser.contexts()[0]!.pages()[0]!;
 
     expect(page.getByRole("button", { name: "Go" }).toString()).toBe(
-      'getByRole("button", { name: "Go" })',
+      'getByRole("button", { name: "Go", exact: true })',
     );
     expect(page.getByRole("button", { name: /delete item/i }).toString()).toBe(
       'getByRole("button", { name: /delete item/i })',
@@ -1836,6 +2031,306 @@ describe("worker CDP client", () => {
     });
   });
 
+  it("keeps exact element text distinct from a decorative descendant's accessible visibility", async () => {
+    installFakeWebSocket();
+    const browser = await BrowserImpl.connect("ws://cdp");
+    const page = browser.contexts()[0]!.pages()[0]!;
+    const mark = {
+      tagName: "SPAN",
+      textContent: "✓",
+      getAttribute: (key: string) => (key === "aria-hidden" ? "true" : null),
+      querySelectorAll: () => [],
+    };
+    const message = {
+      tagName: "DIV",
+      textContent: "✓ No done tasks right now.",
+      querySelectorAll: () => [mark],
+    };
+    const document = { querySelectorAll: () => [message, mark] };
+    const count = async (text: string, exact: boolean) => {
+      await page.getByText(text, { exact }).count();
+      const expression = FakeWebSocket.sent
+        .filter((entry) => entry.method === "Runtime.evaluate")
+        .map((entry) => String(entry.params?.["expression"] ?? ""))
+        .filter((value) => value.includes('"op":"count"'))
+        .at(-1)!;
+      return runInNewContext(expression, { document });
+    };
+    await expect(count("No done tasks right now.", true)).resolves.toBe(0);
+    await expect(count("✓ No done tasks right now.", true)).resolves.toBe(1);
+    await expect(count("No done tasks right now.", false)).resolves.toBe(1);
+    await browser.close();
+  });
+
+  it("identifies named roles exactly on pages and scoped locators, with explicit pattern searches", async () => {
+    installFakeWebSocket();
+    const browser = await BrowserImpl.connect("ws://cdp");
+    const page = browser.contexts()[0]!.pages()[0]!;
+    const button = (name: string) => ({
+      tagName: "BUTTON",
+      getAttribute: (key: string) => (key === "aria-label" ? name : null),
+    });
+    const buttons = [
+      button("Active"),
+      button("Mark active Take a lunch break"),
+    ];
+    const document = { querySelectorAll: () => buttons };
+    const evaluateCount = async (
+      locator: ReturnType<typeof page.getByRole>,
+    ) => {
+      await locator.count();
+      const expression = FakeWebSocket.sent
+        .filter((entry) => entry.method === "Runtime.evaluate")
+        .map((entry) => String(entry.params?.["expression"] ?? ""))
+        .filter((value) => value.includes('"op":"count"'))
+        .at(-1)!;
+      return runInNewContext(expression, { document });
+    };
+    await expect(
+      evaluateCount(page.getByRole("button", { name: "Active" })),
+    ).resolves.toBe(1);
+    await expect(
+      evaluateCount(page.getByRole("button", { name: "active" })),
+    ).resolves.toBe(0);
+    await expect(
+      evaluateCount(page.getByRole("button", { name: "Active", exact: false })),
+    ).resolves.toBe(2);
+    await expect(
+      evaluateCount(page.getByRole("button", { name: /active/i })),
+    ).resolves.toBe(2);
+    const container = { querySelectorAll: () => buttons };
+    const scoped = page
+      .locator("section")
+      .getByRole("button", { name: "Active" });
+    await scoped.count();
+    const expression = FakeWebSocket.sent
+      .filter((entry) => entry.method === "Runtime.evaluate")
+      .map((entry) => String(entry.params?.["expression"] ?? ""))
+      .filter((value) => value.includes('"op":"count"'))
+      .at(-1)!;
+    expect(
+      await runInNewContext(expression, {
+        document: { querySelectorAll: () => [container] },
+      }),
+    ).toBe(1);
+    buttons.push(button("Active"));
+    await expect(
+      evaluateCount(page.getByRole("button", { name: "Active" })),
+    ).resolves.toBe(2);
+    const duplicateExpression = FakeWebSocket.sent
+      .filter((entry) => entry.method === "Runtime.evaluate")
+      .map((entry) => String(entry.params?.["expression"] ?? ""))
+      .filter((value) => value.includes('"op":"count"'))
+      .at(-1)!;
+    expect(
+      await runInNewContext(
+        duplicateExpression.replace('"op":"count"', '"op":"focus"'),
+        { document },
+      ),
+    ).toMatchObject({ __nsLocatorFailure: "ambiguous", matchCount: 2 });
+    expect(
+      page.getByRole("button", { name: "Active", exact: false }).toString(),
+    ).toContain("exact: false");
+    await browser.close();
+  });
+
+  it("captures expected-versus-observed evidence only on failure with session provenance", async () => {
+    installFakeWebSocket();
+    const identity = {
+      panelId: "panel:todo",
+      attemptId: "attempt:old",
+      runtimeEntityId: "runtime:old",
+      buildKey: "build:old",
+    };
+    const browser = await BrowserImpl.connect("ws://cdp", {
+      inspectionIdentity: identity,
+    });
+    const page = browser.contexts()[0]!.pages()[0]!;
+    page.setDefaultTimeout(40);
+    await page.getByRole("button", { name: "Go" }).count();
+    expect(
+      FakeWebSocket.sent.some((e) =>
+        String(e.params?.["expression"]).includes('"op":"failureEvidence"'),
+      ),
+    ).toBe(false);
+    const failure = await page
+      .getByTestId("missing")
+      .innerText()
+      .catch((e) => e);
+    expect(failure).toMatchObject({
+      code: "cdp_locator_state_mismatch",
+      errorData: {
+        state: "attached",
+        evidence: {
+          status: "captured",
+          session: identity,
+          matchCount: 0,
+          snapshot: { text: "0 tasks left" },
+        },
+      },
+    });
+    expect(
+      FakeWebSocket.sent.filter((e) =>
+        String(e.params?.["expression"]).includes('"op":"failureEvidence"'),
+      ),
+    ).toHaveLength(1);
+    expect(FakeWebSocket.sent.some((e) => e.method.startsWith("Input."))).toBe(
+      false,
+    );
+    await browser.close();
+  });
+
+  it("bounds native failure snapshots and reports actual matching control state and scope", async () => {
+    installFakeWebSocket();
+    const browser = await BrowserImpl.connect("ws://cdp");
+    const page = browser.contexts()[0]!.pages()[0]!;
+    await page.locator("section").getByRole("checkbox").count();
+    const expression = FakeWebSocket.sent
+      .filter((e) => e.method === "Runtime.evaluate")
+      .map((e) => String(e.params?.["expression"]))
+      .filter((e) => e.includes('"op":"count"'))
+      .at(-1)!
+      .replace('"op":"count"', '"op":"failureEvidence"');
+    const controls = Array.from({ length: 10 }, () => ({
+      tagName: "INPUT",
+      checked: false,
+      disabled: true,
+      innerText: "x".repeat(400),
+      getAttribute: (key: string) =>
+        key === "aria-label"
+          ? "Complete task"
+          : key === "type"
+            ? "checkbox"
+            : null,
+      getBoundingClientRect: () => ({ width: 10, height: 10 }),
+    }));
+    const container = {
+      innerText: "0 tasks left\n" + "x".repeat(5000),
+      querySelectorAll: () => controls,
+    };
+    const document = {
+      body: { innerText: "Unrelated page text" },
+      querySelectorAll: () => [container],
+    };
+    const evidence = await runInNewContext(expression, {
+      document,
+      location: { href: "https://example.test" },
+      getComputedStyle: () => ({
+        visibility: "visible",
+        display: "block",
+        opacity: "1",
+      }),
+    });
+    expect(evidence).toMatchObject({
+      matchCount: 10,
+      matchesTruncated: true,
+      snapshot: {
+        scope: "container",
+        scopeCount: 1,
+        totalChars: 5013,
+        truncated: true,
+      },
+    });
+    expect(evidence.matches).toHaveLength(8);
+    expect(evidence.matches[0]).toMatchObject({
+      checked: false,
+      enabled: false,
+      visible: true,
+      textTruncated: true,
+    });
+    expect(evidence.snapshot.text).toHaveLength(4000);
+    expect(evidence.snapshot.text).toContain("0 tasks left");
+    controls[0]!.checked = true;
+    expect(
+      (
+        await runInNewContext(expression, {
+          document,
+          location: { href: "https://example.test" },
+          getComputedStyle: () => ({ display: "none" }),
+        })
+      ).matches[0],
+    ).toMatchObject({ checked: true, visible: false });
+    container.querySelectorAll = () => [];
+    expect(
+      await runInNewContext(expression, {
+        document,
+        location: { href: "https://example.test" },
+      }),
+    ).toMatchObject({ matchCount: 0, snapshot: { scope: "container" } });
+    document.querySelectorAll = () => [];
+    expect(
+      await runInNewContext(expression, {
+        document,
+        location: { href: "https://example.test" },
+      }),
+    ).toMatchObject({
+      matchCount: 0,
+      snapshot: { scope: "page", text: "Unrelated page text" },
+    });
+    await browser.close();
+  });
+
+  it("preserves the primary failure when evidence collection fails", async () => {
+    installFakeWebSocket();
+    const browser = await BrowserImpl.connect("ws://cdp");
+    const page = browser.contexts()[0]!.pages()[0]!;
+    page.setDefaultTimeout(40);
+    const evaluate = page.evaluate.bind(page);
+    vi.spyOn(page, "evaluate").mockImplementation((fn, arg, opts) => {
+      if (opts?.operation === "locator.failureEvidence")
+        return Promise.reject(new Error("Evidence target disappeared"));
+      return evaluate(fn, arg, opts);
+    });
+    const failure = await page
+      .getByTestId("missing")
+      .innerText()
+      .catch((e) => e);
+    expect(failure).toMatchObject({
+      code: "cdp_locator_state_mismatch",
+      errorData: {
+        state: "attached",
+        evidence: {
+          status: "unavailable",
+          reason: "Evidence target disappeared",
+        },
+      },
+    });
+    await browser.close();
+  });
+
+  it("bounds an unanswered evidence read without retiring the original page or replaying actions", async () => {
+    installFakeWebSocket();
+    const browser = await BrowserImpl.connect("ws://cdp");
+    const page = browser.contexts()[0]!.pages()[0]!;
+    page.setDefaultTimeout(40);
+    FakeWebSocket.dropFailureEvidence = true;
+    const failure = await page
+      .getByTestId("missing")
+      .innerText()
+      .catch((e) => e);
+    expect(failure).toMatchObject({
+      code: "cdp_locator_state_mismatch",
+      errorData: {
+        evidence: {
+          status: "unavailable",
+          reason: expect.stringContaining("1000ms"),
+        },
+      },
+    });
+    expect(page.isClosed()).toBe(false);
+    expect(
+      FakeWebSocket.sent.filter((e) =>
+        String(e.params?.["expression"]).includes('"op":"failureEvidence"'),
+      ),
+    ).toHaveLength(1);
+    expect(FakeWebSocket.sent.some((e) => e.method.startsWith("Input."))).toBe(
+      false,
+    );
+    FakeWebSocket.dropFailureEvidence = false;
+    await expect(page.getByRole("button").count()).resolves.toBe(1);
+    await browser.close();
+  });
+
   it("reports available accessible names when a named role locator misses", async () => {
     installFakeWebSocket();
     const browser = await BrowserImpl.connect("ws://cdp");
@@ -1882,7 +2377,9 @@ describe("worker CDP client", () => {
     installFakeWebSocket();
     const browser = await BrowserImpl.connect("ws://cdp");
     const page = browser.contexts()[0]!.pages()[0]!;
-    await page.getByRole("combobox", { name: "Priority" }).count();
+    await page
+      .getByRole("combobox", { name: "Priority", exact: false })
+      .count();
     const expression = FakeWebSocket.sent
       .filter((entry) => entry.method === "Runtime.evaluate")
       .map((entry) => String(entry.params?.["expression"] ?? ""))
@@ -1921,10 +2418,7 @@ describe("worker CDP client", () => {
     expect(await runInNewContext(expression, { document })).toBe(2);
     expect(
       await runInNewContext(
-        expression.replace(
-          '"name":"Priority"',
-          '"name":"Priority","exact":true',
-        ),
+        expression.replace('"exact":false', '"exact":true'),
         { document },
       ),
     ).toBe(1);
@@ -1943,7 +2437,9 @@ describe("worker CDP client", () => {
     expect(focus).not.toHaveBeenCalled();
     vi.spyOn(page, "evaluate").mockResolvedValueOnce(failure);
     await expect(
-      page.getByRole("combobox", { name: "Priority" }).selectOption("high"),
+      page
+        .getByRole("combobox", { name: "Priority", exact: false })
+        .selectOption("high"),
     ).rejects.toMatchObject({
       code: "cdp_locator_ambiguous",
       errorData: { operation: "selectOption", matchCount: 2 },
