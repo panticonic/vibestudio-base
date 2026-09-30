@@ -1,4 +1,5 @@
 export {
+  createApplication,
   createProjects,
   listProjectIcons,
   searchProjectCatalog,
@@ -11,6 +12,9 @@ export {
   ProjectIconError,
 } from "./create-project.js";
 export type {
+  CreateApplicationParams,
+  CreateApplicationResult,
+  CreatedProject,
   CreateProjectParams,
   ForkProjectOptions,
   ForkProjectResult,

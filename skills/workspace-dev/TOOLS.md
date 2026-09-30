@@ -149,9 +149,22 @@ shown in the skill index, such as `read("packages/data-model/SKILL.md")`.
 
 ### Usage
 
-When building related units — a panel and its backing DO store, for example —
-create them together with `createProjects` so the user sees one consolidated
-approval prompt instead of separate prompts for each:
+For a new persistent app, use `createApplication({ name, title?, icon? })`.
+It returns `{ panel, worker, service, publication }`; `panel.created` is the panel
+source path and `service` includes its protocol, source, class, singleton key,
+and docs ID. It creates a working React UI and SQLite store with complete RPC
+contracts, declaration, singleton, and exact consumer requests in one protected
+publication. See [PROJECTS.md](PROJECTS.md) for its naming and collision contract.
+
+```ts
+import { createApplication } from "@workspace-skills/workspace-dev";
+scope.created = await createApplication({ name: "task-board", title: "Task Board" });
+return scope.created;
+```
+
+For independent units or custom wiring, create related repositories together
+with `createProjects` for one consolidated publication. This lower-level API
+does not declare services or connect its units:
 
 ```
 eval({ code: `

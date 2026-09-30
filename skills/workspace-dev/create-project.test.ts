@@ -1,6 +1,7 @@
 import { composedWorkspaceRoot } from "./composedWorkspace.js";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { parseUnitAuthorityManifest } from "@vibestudio/shared/authorityManifest";
+import YAML from "yaml";
 
 const mocks = vi.hoisted(() => {
   const files = new Map<string, string | Uint8Array>();
@@ -9,7 +10,20 @@ const mocks = vi.hoisted(() => {
   const edit = vi.fn();
   const commit = vi.fn();
   const push = vi.fn();
-  return { files, dirs, status, edit, commit, push };
+  const resolveRepository = vi.fn();
+  const readFile = vi.fn();
+  const validateConfig = vi.fn();
+  return {
+    files,
+    dirs,
+    status,
+    edit,
+    commit,
+    push,
+    resolveRepository,
+    readFile,
+    validateConfig,
+  };
 });
 
 function normalize(p: string): string {
@@ -33,12 +47,15 @@ function addFile(p: string, content: string | Uint8Array): void {
 
 vi.mock("@workspace/runtime", () => ({
   vcs: {
+    resolveRepository: mocks.resolveRepository,
+    readFile: mocks.readFile,
     status: mocks.status,
     edit: mocks.edit,
     commit: mocks.commit,
     push: mocks.push,
   },
   contextId: "ctx:test",
+  rpc: { call: mocks.validateConfig },
   fs: {
     async exists(p: string): Promise<boolean> {
       const normalized = normalize(p);
@@ -90,10 +107,28 @@ vi.mock("@workspace/runtime", () => ({
 
 function resetRuntimeMocks(): void {
   mocks.files.clear();
+  mocks.resolveRepository
+    .mockReset()
+    .mockResolvedValue({ repositoryId: "repo:meta", repoPath: "meta" });
+  mocks.readFile
+    .mockReset()
+    .mockImplementation(async () => ({
+      repositoryId: "repo:meta",
+      fileId: "file:config",
+      content: {
+        kind: "text",
+        text: mocks.files.get("meta/vibestudio.yml") ?? "systemEpoch: 0\n",
+      },
+    }));
+  mocks.validateConfig.mockReset().mockResolvedValue(undefined);
   mocks.dirs.clear();
-  addFile("packages/svelte/package.json", JSON.stringify({
-    name: "@workspace/svelte", peerDependencies: { svelte: "^5.56.9" },
-  }));
+  addFile(
+    "packages/svelte/package.json",
+    JSON.stringify({
+      name: "@workspace/svelte",
+      peerDependencies: { svelte: "^5.56.9" },
+    }),
+  );
   mocks.status.mockReset();
   mocks.edit.mockReset();
   mocks.commit.mockReset();
@@ -112,6 +147,7 @@ function resetRuntimeMocks(): void {
     async (input: {
       changes: Array<{
         kind: string;
+        edits?: Array<{ text: string }>;
         repoPath: string;
         files: Array<{
           path: string;
@@ -122,6 +158,10 @@ function resetRuntimeMocks(): void {
       }>;
     }) => {
       for (const change of input.changes) {
+        if (change.kind === "text-edit") {
+          addFile("meta/vibestudio.yml", change.edits![0]!.text);
+          continue;
+        }
         for (const file of change.files) {
           addFile(
             `${change.repoPath}/${file.path}`,
@@ -154,6 +194,90 @@ function resetRuntimeMocks(): void {
 }
 
 describe("createProjects", () => {
+  it("creates a connected application in one validated edit and publication", async () => {
+    resetRuntimeMocks();
+    const { createApplication } = await import("./create-project.js");
+    const result = await createApplication({ name: "notes", title: "Notes" });
+    expect(result.panel.created).toBe("panels/notes");
+    expect(result.worker.created).toBe("workers/notes-store");
+    expect(result.service).toMatchObject({
+      protocol: "notes.v1",
+      className: "NotesStore",
+      objectKey: "main",
+    });
+    const config = YAML.parse(mocks.files.get("meta/vibestudio.yml") as string);
+    expect(config.services[0]).toMatchObject({
+      name: "notes-store",
+      authority: { binding: { declaredFor: ["panels/notes"] } },
+      protocols: ["notes.v1"],
+    });
+    expect(config.singletonObjects).toEqual([
+      { source: "workers/notes-store", className: "NotesStore", key: "main" },
+    ]);
+    const manifest = JSON.parse(
+      mocks.files.get("panels/notes/package.json") as string,
+    );
+    expect(manifest.vibestudio.authority.serviceRequests).toEqual([
+      { protocol: "notes.v1", availability: "required" },
+    ]);
+    expect(manifest.vibestudio.authority.requests).toContainEqual({
+      capability: "workspace-service:notes-store",
+      resource: {
+        kind: "exact",
+        key: "do:workers/notes-store:NotesStore:main",
+      },
+      tier: "gated",
+      evidence: "exact",
+    });
+    expect(mocks.edit).toHaveBeenCalledTimes(1);
+    expect(
+      mocks.edit.mock.calls[0]![0].changes.map(
+        (change: { kind: string }) => change.kind,
+      ),
+    ).toEqual(["repository-create", "repository-create", "text-edit"]);
+    expect(mocks.validateConfig).toHaveBeenCalledWith(
+      "main",
+      "workspace.validateConfig",
+      [expect.any(String)],
+    );
+    expect(mocks.commit).toHaveBeenCalledTimes(1);
+    expect(mocks.push).toHaveBeenCalledTimes(1);
+  });
+
+  it("refuses collisions and invalid complete config before any edit", async () => {
+    resetRuntimeMocks();
+    const { createApplication } = await import("./create-project.js");
+    addFile(
+      "meta/vibestudio.yml",
+      "services:\n  - source: workers/existing\n    name: notes-store\n",
+    );
+    await expect(createApplication({ name: "notes" })).rejects.toThrow(
+      "already declared",
+    );
+    expect(mocks.edit).not.toHaveBeenCalled();
+    addFile("meta/vibestudio.yml", "systemEpoch: 0\n");
+    mocks.validateConfig.mockRejectedValueOnce(new Error("invalid config"));
+    await expect(createApplication({ name: "notes" })).rejects.toThrow(
+      "invalid config",
+    );
+    expect(mocks.edit).not.toHaveBeenCalled();
+  });
+
+  it("retains config edits in exact-revision publication failure recovery", async () => {
+    resetRuntimeMocks();
+    const { createApplication } = await import("./create-project.js");
+    mocks.push.mockRejectedValueOnce(new Error("build gate failed"));
+    await expect(createApplication({ name: "notes" })).rejects.toMatchObject({
+      errorData: {
+        published: false,
+        files: expect.arrayContaining([
+          "meta/vibestudio.yml",
+          "panels/notes/index.tsx",
+          "workers/notes-store/index.ts",
+        ]),
+      },
+    });
+  });
   beforeEach(resetRuntimeMocks);
   afterEach(() => vi.restoreAllMocks());
 
@@ -1127,14 +1251,29 @@ describe("scaffold runtime contract", () => {
   beforeEach(resetRuntimeMocks);
 
   it("derives the Svelte scaffold dependency from the installed framework peer contract", async () => {
-    addFile("packages/svelte/package.json", JSON.stringify({
-      name: "@workspace/svelte", peerDependencies: { svelte: "^5.60.0" },
-    }));
-    addFile("templates/svelte/template.json", JSON.stringify({ framework: "svelte" }));
+    addFile(
+      "packages/svelte/package.json",
+      JSON.stringify({
+        name: "@workspace/svelte",
+        peerDependencies: { svelte: "^5.60.0" },
+      }),
+    );
+    addFile(
+      "templates/svelte/template.json",
+      JSON.stringify({ framework: "svelte" }),
+    );
     const { createProjects } = await import("./create-project.js");
-    await createProjects([{ projectType: "panel", name: "svelte-peer-probe", title: "Svelte Peer Probe", template: "svelte" }]);
+    await createProjects([
+      {
+        projectType: "panel",
+        name: "svelte-peer-probe",
+        title: "Svelte Peer Probe",
+        template: "svelte",
+      },
+    ]);
     const content = mocks.files.get("panels/svelte-peer-probe/package.json");
-    if (typeof content !== "string") throw new Error("Expected generated textual manifest");
+    if (typeof content !== "string")
+      throw new Error("Expected generated textual manifest");
     const manifest = JSON.parse(content);
     expect(manifest.dependencies.svelte).toBe("^5.60.0");
   });
@@ -1146,7 +1285,9 @@ describe("scaffold runtime contract", () => {
     const { join } = await import("node:path");
 
     // The shell realm provides this exact React; packages/react peers on it.
-    const baseRoot = composedWorkspaceRoot(join(import.meta.dirname, "..", ".."));
+    const baseRoot = composedWorkspaceRoot(
+      join(import.meta.dirname, "..", ".."),
+    );
     const reactPackage = JSON.parse(
       readFileSync(join(baseRoot, "packages", "react", "package.json"), "utf8"),
     ) as { peerDependencies?: Record<string, string> };

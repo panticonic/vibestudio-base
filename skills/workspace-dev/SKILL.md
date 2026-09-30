@@ -70,6 +70,10 @@ purpose, workflow, ownership, invariants, and diagnostics.
 
 ## Core rules
 
+- For a new persistent application, start with `createApplication({ name, title })`
+  from `@workspace-skills/workspace-dev`: it publishes the panel, durable store,
+  service, singleton, and exact consumer requests together. See [PROJECTS.md](PROJECTS.md).
+
 - Build production-ready systems. Workspace units are durable infrastructure,
   not throwaway prototypes: design for real use from the start with proper state
   persistence, exact current schemas, error surfaces, principled authority, and

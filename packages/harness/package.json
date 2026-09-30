@@ -18,6 +18,7 @@
     "./image-generation": "./src/image-generation.ts"
   },
   "dependencies": {
+    "@vibestudio/workspace-contracts": "workspace:*",
     "@vibestudio/content-addressing": "workspace:*",
     "@mozilla/readability": "^0.6.0",
     "@vibestudio/extension": "workspace:*",

@@ -1,4 +1,7 @@
-import { contextId, fs, vcs } from "@workspace/runtime";
+import { contextId, fs, vcs, rpc } from "@workspace/runtime";
+import YAML from "yaml";
+import { planServiceMutation } from "@vibestudio/workspace-contracts/serviceMutation";
+import type { VcsEditChange } from "@vibestudio/service-schemas/vcs";
 import {
   PROJECT_TYPES,
   assertProjectIdentity,
@@ -811,11 +814,20 @@ async function resolveProject(
 
       if (panelFramework === "svelte") {
         const frameworkPackage = JSON.parse(
-          (await fs.readFile("packages/svelte/package.json", "utf-8")) as string,
+          (await fs.readFile(
+            "packages/svelte/package.json",
+            "utf-8",
+          )) as string,
         );
         const frameworkVersion = frameworkPackage.peerDependencies?.svelte;
-        if (frameworkPackage.name !== "@workspace/svelte" || typeof frameworkVersion !== "string" || !frameworkVersion) {
-          throw new Error("The installed Svelte framework must declare its required Svelte peer dependency");
+        if (
+          frameworkPackage.name !== "@workspace/svelte" ||
+          typeof frameworkVersion !== "string" ||
+          !frameworkVersion
+        ) {
+          throw new Error(
+            "The installed Svelte framework must declare its required Svelte peer dependency",
+          );
         }
         files["package.json"] = serializeProjectManifest({
           projectType: "panel",
@@ -1258,6 +1270,13 @@ export default {
   };
 }
 
+export interface CreatedProject {
+  created: string;
+  files: string[];
+  preflight: ProjectPreflightReport;
+  publication: ProjectPublication;
+}
+
 /**
  * Create multiple workspace projects in a single atomic operation.
  *
@@ -1266,19 +1285,22 @@ export default {
  * related units (e.g. a DO service and its panel) so the user sees one
  * consolidated review instead of separate prompts for each.
  */
-export async function createProjects(projects: CreateProjectParams[]): Promise<
-  Array<{
-    created: string;
-    files: string[];
-    preflight: ProjectPreflightReport;
-    publication: ProjectPublication;
-  }>
-> {
+export async function createProjects(
+  projects: CreateProjectParams[],
+): Promise<CreatedProject[]> {
   if (projects.length === 0)
     throw new Error("createProjects requires at least one project");
 
   const resolved = await Promise.all(projects.map(resolveProject));
 
+  return publishProjects(resolved, await vcs.status({ contextId }));
+}
+
+async function publishProjects(
+  resolved: ResolvedProject[],
+  beforeCreate: Awaited<ReturnType<typeof vcs.status>>,
+  configChanges: VcsEditChange[] = [],
+): Promise<CreatedProject[]> {
   const allChanges: Array<{
     kind: "repository-create";
     repoPath: string;
@@ -1312,13 +1334,12 @@ export async function createProjects(projects: CreateProjectParams[]): Promise<
   const command = (operation: string) =>
     `workspace-dev:${operation}:${contextId}:${crypto.randomUUID()}`;
 
-  const beforeCreate = await vcs.status({ contextId });
   const created = await vcs.edit({
     contextId,
     expectedWorkingHead: beforeCreate.workingHead,
     commandId: command("create-repositories"),
     intentSummary: message,
-    changes: allChanges,
+    changes: [...allChanges, ...configChanges],
   });
   const committed = await vcs.commit({
     contextId,
@@ -1354,11 +1375,12 @@ export async function createProjects(projects: CreateProjectParams[]): Promise<
         code: "scaffold_publication_failed",
         stage: "push",
         created: resolved.map((p) => p.projectPath).join(", "),
-        files: resolved
-          .flatMap((p) =>
+        files: [
+          ...resolved.flatMap((p) =>
             Object.keys(p.files).map((f) => `${p.projectPath}/${f}`),
-          )
-          .sort(),
+          ),
+          ...(configChanges.length ? ["meta/vibestudio.yml"] : []),
+        ].sort(),
         committedEventId: committed.event.eventId,
         published: false,
         publicationRequest,
@@ -1368,6 +1390,180 @@ export async function createProjects(projects: CreateProjectParams[]): Promise<
       error,
     );
   }
+}
+
+export interface CreateApplicationParams {
+  /** Creates panels/<name> and workers/<name>-store. */
+  name: string;
+  title?: string;
+  icon?: string;
+}
+
+export interface CreateApplicationResult {
+  panel: CreatedProject;
+  worker: CreatedProject;
+  service: {
+    name: string;
+    protocol: string;
+    source: string;
+    className: string;
+    objectKey: string;
+    docsId: string;
+  };
+  publication: ProjectPublication;
+}
+
+/** A connected React panel and SQLite-backed service, published as one candidate. */
+export async function createApplication({
+  name,
+  title = name,
+  icon,
+}: CreateApplicationParams): Promise<CreateApplicationResult> {
+  const workerName = `${name}-store`;
+  const protocol = `${name}.v1`;
+  const className = toPascalCase(workerName);
+  const [panel, worker] = await Promise.all([
+    resolveProject({ projectType: "panel", name, title, icon }),
+    resolveProject({
+      projectType: "worker",
+      name: workerName,
+      title: `${title} Store`,
+      icon,
+      template: "durable-service",
+    }),
+  ]);
+  const manifest = JSON.parse(panel.files["package.json"] as string);
+  manifest.dependencies["@workspace/runtime"] = "workspace:*";
+  manifest.vibestudio.authority.serviceRequests = [
+    { protocol, availability: "required" },
+  ];
+  manifest.vibestudio.authority.requests.push({
+    capability: `workspace-service:${workerName}`,
+    resource: {
+      kind: "exact",
+      key: `do:${worker.projectPath}:${className}:main`,
+    },
+    tier: "gated",
+    evidence: "exact",
+  });
+  panel.files["package.json"] = JSON.stringify(manifest, null, 2) + "\n";
+  panel.files["index.tsx"] =
+    `import React, { useEffect, useState } from "react";
+import { rpc, workers } from "@workspace/runtime";
+
+type RecordItem = { id: string; title: string; createdAt: string; updatedAt: string };
+
+export default function App() {
+  const [records, setRecords] = useState<RecordItem[]>([]);
+  const [title, setTitle] = useState("");
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(true);
+  useEffect(() => {
+    let active = true;
+    async function load() {
+      try {
+        const service = await workers.resolveService(${JSON.stringify(protocol)});
+        if (service.kind !== "durable-object") throw new Error("Expected a durable record service");
+        const result = await rpc.call<RecordItem[]>(service.targetId, "listRecords", []);
+        if (active) setRecords(result);
+      } catch (cause) { if (active) setError(String(cause)); }
+      finally { if (active) setBusy(false); }
+    }
+    void load();
+    return () => { active = false; };
+  }, []);
+  async function save(event: React.FormEvent) {
+    event.preventDefault();
+    if (!title.trim() || busy) return;
+    setBusy(true);
+    setError("");
+    try {
+      const service = await workers.resolveService(${JSON.stringify(protocol)});
+      if (service.kind !== "durable-object") throw new Error("Expected a durable record service");
+      await rpc.call(service.targetId, "upsertRecord", [{ title: title.trim() }]);
+      setTitle("");
+      setRecords(await rpc.call<RecordItem[]>(service.targetId, "listRecords", []));
+    } catch (cause) { setError(String(cause)); }
+    finally { setBusy(false); }
+  }
+  return <main style={{ padding: 24 }}>
+    <h1>{${JSON.stringify(title)}}</h1>
+    <form onSubmit={save}>
+      <label>Record title <input value={title} onChange={event => setTitle(event.target.value)} disabled={busy} /></label>
+      <button type="submit" disabled={busy || !title.trim()}>Add record</button>
+    </form>
+    {error && <p role="alert">{error}</p>}
+    <ul>{records.map(record => <li key={record.id}>{record.title}</li>)}</ul>
+  </main>;
+}
+`;
+  panel.preflight = preflightProjectFiles({
+    projectType: "panel",
+    name,
+    files: panel.files,
+  });
+  const beforeCreate = await vcs.status({ contextId });
+  const repository = await vcs.resolveRepository({
+    state: beforeCreate.workingHead,
+    repoPath: "meta",
+  });
+  if (!repository) throw new Error("The workspace has no meta repository");
+  const file = await vcs.readFile({
+    state: beforeCreate.workingHead,
+    repositoryId: repository.repositoryId,
+    file: { kind: "path", path: "vibestudio.yml" },
+  });
+  if (!file || file.content.kind !== "text")
+    throw new Error("The workspace has no text meta/vibestudio.yml");
+  const document = YAML.parseDocument(file.content.text);
+  if (document.errors.length) throw document.errors[0];
+  const config = document.toJS();
+  if (!config || typeof config !== "object" || Array.isArray(config))
+    throw new Error("meta/vibestudio.yml must contain a configuration mapping");
+  const service = {
+    name: workerName,
+    protocol,
+    source: worker.projectPath,
+    className,
+    objectKey: "main",
+    docsId: `workspace:${workerName}`,
+  };
+  const plan = planServiceMutation(config, {
+    operation: "create",
+    name: workerName,
+    source: worker.projectPath,
+    title: `${title} Store`,
+    action: "Manage records",
+    description: `Stores records for ${title}.`,
+    notability: "everyday",
+    presentation: { domain: "files", verb: "manage" },
+    protocols: [protocol],
+    principals: ["user", "code"],
+    binding: { declaredFor: [panel.projectPath] },
+    transport: { kind: "durable-object", className, objectKey: "main" },
+  });
+  document.set("services", plan.services);
+  document.set("singletonObjects", plan.singletonObjects);
+  const candidate = String(document);
+  await rpc.call("main", "workspace.validateConfig", [candidate]);
+  const [createdPanel, createdWorker] = await publishProjects(
+    [panel, worker],
+    beforeCreate,
+    [
+      {
+        kind: "text-edit",
+        repositoryId: file.repositoryId,
+        fileId: file.fileId,
+        edits: [{ start: 0, end: file.content.text.length, text: candidate }],
+      },
+    ],
+  );
+  return {
+    panel: createdPanel!,
+    worker: createdWorker!,
+    service,
+    publication: createdPanel!.publication,
+  };
 }
 
 const COPY_SKIP_DIRS = new Set([

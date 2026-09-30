@@ -1,5 +1,27 @@
 # Scaffold workspace projects
 
+For a new application with a persistent store, use the connected scaffold:
+
+```ts
+import { createApplication } from "@workspace-skills/workspace-dev";
+scope.created = await createApplication({ name: "task-board", title: "Task Board" });
+return scope.created;
+```
+
+It creates `panels/task-board` (React) and `workers/task-board-store` (SQLite DO),
+with a working record-entry UI, complete RPC contracts, service protocol
+`task-board.v1`, singleton key `main`, and the panel's exact consumer request.
+The service uses reviewed `declaredFor` wiring for its paired panel; other callers
+still use ordinary service binding authority. There are no wildcard grants.
+Repositories and `meta/vibestudio.yml` are validated, edited, committed, and
+published together. Existing repositories, service names, protocols, or singleton
+declarations are never overwritten. The result contains `panel`, `worker`,
+`service`, and the shared `publication` receipt. Customize those existing units
+for the application's domain; do not scaffold a second pair.
+
+Use `createProjects` below for independent units or intentionally custom wiring.
+It does not connect a panel to a worker merely because both are in its array.
+
 `createProjects` creates and publishes repositories in the current workspace's
 protected main. This operation does not publish a workspace template to GitHub
 and does not require a GitHub destination. Workspace template authoring is a

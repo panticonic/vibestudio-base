@@ -65,6 +65,8 @@ scan or static catalog.
    import { rpc, workers } from "@workspace/runtime";
 
    const service = await workers.resolveService("example.protocol");
+   if (service.kind !== "durable-object")
+     throw new Error("Expected a Durable Object service");
    return rpc.call(service.targetId, "methodName", []);
    ```
 

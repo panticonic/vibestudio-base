@@ -375,23 +375,25 @@ agent eval. The eval `db` is private to that agent's EvalDO; it is good for
 scratch analysis and resumable diagnostics, but it is not an application
 database for panels, apps, workers, or other agents.
 
-When building a panel with a DO store, create both together with
-`createProjects` so the user sees one approval prompt:
+When building a new panel with a DO store, use `createApplication` to create a
+working connected pair, not two disconnected units:
 
 ```ts
 eval({
   code: `
-  import { createProjects } from "@workspace-skills/workspace-dev";
-  scope.created = await createProjects([
-    { projectType: "worker", name: "todo-store", title: "Todo Store", template: "durable-service" },
-    { projectType: "panel", name: "todo-app", title: "Todo App" },
-  ]);
+  import { createApplication } from "@workspace-skills/workspace-dev";
+  scope.created = await createApplication({ name: "todo-app", title: "Todo App" });
   return scope.created;
 `,
 });
 ```
 
 Canonical shape:
+
+The connected scaffold already supplies this shape, including service and
+singleton declarations and the consuming panel's exact authority envelope.
+Use `workspace_service` for later intentional declaration changes. For custom
+or existing units, the same underlying contracts apply:
 
 1. Create `workers/<store>` with a `DurableObjectBase` subclass (or create it
    together with its panel via `createProjects`).
