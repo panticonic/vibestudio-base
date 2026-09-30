@@ -6,57 +6,67 @@ the observed state requires; do not introduce artificial compiler or UI defects
 to demonstrate the workflow. Read the larger API references when an observed
 result needs further diagnosis.
 
-## 1. Create once
+## 1. Prepare once
 
-Creation is a durable phase. For a new persistent app, store the connected
-application receipt and its canonical panel source before doing anything else:
+For a new persistent app, author the explicit authority policy from
+[PROJECTS.md](PROJECTS.md), then prepare the connected candidate:
 
 ```ts
-import { createApplication } from "@workspace-skills/workspace-dev";
-
-scope.created = await createApplication({ name, title });
-scope.panelSource = scope.created.panel.created; // already `panels/name`
-scope.workerSource = scope.created.worker.created; // `workers/name-store`
-return scope.created;
+import { prepareApplication } from "@workspace-skills/workspace-dev";
+scope.prepared = await prepareApplication({
+  name,
+  title,
+  authority: scope.authorityPolicy,
+});
+scope.panelSource = scope.prepared.panel.created;
+scope.workerSource = scope.prepared.worker.created;
+return scope.prepared;
 ```
 
-This result is an object with `panel`, `worker`, `service`, and `publication`.
-The service, singleton, complete receiver contracts, and narrow consumer
-requests are already wired and published with both units. Customize the pair
-instead of registering a second service.
+The application receipt is an object, not an array. It exposes both units,
+service wiring, the exact context preparation head, and the supplied policy.
+Code/config are prepared together, but no commit, push, activation, or grant
+has occurred. Customize and review that existing pair instead of registering
+a second service.
 
-For a standalone panel without a new store, use this alternative instead:
+For a standalone panel without a new store, deliberately supply its ceiling:
 
 ```ts
-import { createProjects } from "@workspace-skills/workspace-dev";
-
-scope.created = await createProjects([
+import { prepareProjects } from "@workspace-skills/workspace-dev";
+scope.prepared = await prepareProjects([
   {
     projectType: "panel",
     name,
     title,
+    authority: scope.panelAuthority,
+    authorityReason: scope.panelAuthorityReason,
   },
 ]);
-scope.panelSource = scope.created[0].created; // already `panels/name`
-return scope.created;
+scope.panelSource = scope.prepared[0].created;
+return scope.prepared;
 ```
 
-Reuse a project that was already created. A later build, open,
-screenshot, locator, or publication failure does not roll creation back. If
-the creation call itself has an uncertain result, inspect `scope`, `vcs.status`,
-and the existing repository before deciding what remains unfinished.
-If creation reports `scaffold_publication_failed`, the exact candidate is
-already committed but unpublished; a connected candidate also includes its
-workspace config edit. Follow [publication recovery](TOOLS.md#creating-projects)
-and the returned retry policy. Never call either creation API again to recover
-that candidate.
+Author those authority values for the task before this invocation. Neither
+helper fills missing requests. Never call either preparation API again to
+recover an existing candidate. Inspect current VCS status and destinations
+after an uncertain edit; later build, open, screenshot, or publication failures
+do not roll preparation back. Follow ordinary VCS receipts/retry policy, not
+a scaffold-specific publication recovery helper.
+
+Before delivery, review the complete authority envelope and candidate diff,
+verify exact unit paths, and commit/push the exact reviewed candidate as
+described in [WORKFLOW.md](WORKFLOW.md#review-verify-and-publish). Context-pinned
+UI verification below can happen before publication.
 
 ## 2. Author and observe the compiler result
 
 Use `write`/`edit` for source. Build the exact working context, not main:
 
 ```ts
-const report = await services.build.getBuildReport(scope.panelSource, `ctx:${ctx.contextId}`);
+const report = await services.build.getBuildReport(
+  scope.panelSource,
+  `ctx:${ctx.contextId}`,
+);
 return {
   status: report.status,
   diagnostics: report.diagnostics,
@@ -112,7 +122,7 @@ either bounded read.
 scope.panelSession = await scope.panel.cdp.session();
 const page = scope.panelSession.page;
 const roles = await Promise.all(
-  (await page.getByRole("button").all()).map((item) => item.inspect())
+  (await page.getByRole("button").all()).map((item) => item.inspect()),
 );
 console.log(roles);
 return await scope.panel.cdp.screenshot({ format: "png" });

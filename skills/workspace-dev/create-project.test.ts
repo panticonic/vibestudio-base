@@ -2,6 +2,58 @@ import { composedWorkspaceRoot } from "./composedWorkspace.js";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { parseUnitAuthorityManifest } from "@vibestudio/shared/authorityManifest";
 import YAML from "yaml";
+import type { ApplicationAuthorityPolicy } from "./create-project.js";
+
+const noEffects = { requests: [], provides: [] };
+const recordMethods = {
+  listRecords: {
+    website: { kind: "closed" as const, reason: "Workspace-private records" },
+    principals: ["user", "code"] as const,
+    effect: { kind: "open" as const },
+    tier: "open" as const,
+    sensitivity: "read" as const,
+  },
+  upsertRecord: {
+    website: { kind: "closed" as const, reason: "Workspace-private records" },
+    principals: ["user", "code"] as const,
+    effect: { kind: "open" as const },
+    tier: "open" as const,
+    sensitivity: "write" as const,
+  },
+};
+function applicationPolicy(name: string): ApplicationAuthorityPolicy {
+  const className =
+    name
+      .split("-")
+      .map((part) => part[0]!.toUpperCase() + part.slice(1))
+      .join("") + "Store";
+  return {
+    rationale:
+      "Workspace-private records: the named panel may use its store, other callers require consent. No unrelated host effects or website access.",
+    panel: {
+      requests: [
+        {
+          capability: `workspace-service:${name}-store`,
+          resource: {
+            kind: "exact",
+            key: `do:workers/${name}-store:${className}:main`,
+          },
+          tier: "gated",
+          evidence: "exact",
+        },
+      ],
+      provides: [],
+      serviceRequests: [{ protocol: `${name}.v1`, availability: "required" }],
+    },
+    worker: noEffects,
+    methods: recordMethods,
+    service: {
+      principals: ["user", "code"],
+      binding: { declaredFor: [`panels/${name}`] },
+      notability: "everyday",
+    },
+  };
+}
 
 const mocks = vi.hoisted(() => {
   const files = new Map<string, string | Uint8Array>();
@@ -110,16 +162,14 @@ function resetRuntimeMocks(): void {
   mocks.resolveRepository
     .mockReset()
     .mockResolvedValue({ repositoryId: "repo:meta", repoPath: "meta" });
-  mocks.readFile
-    .mockReset()
-    .mockImplementation(async () => ({
-      repositoryId: "repo:meta",
-      fileId: "file:config",
-      content: {
-        kind: "text",
-        text: mocks.files.get("meta/vibestudio.yml") ?? "systemEpoch: 0\n",
-      },
-    }));
+  mocks.readFile.mockReset().mockImplementation(async () => ({
+    repositoryId: "repo:meta",
+    fileId: "file:config",
+    content: {
+      kind: "text",
+      text: mocks.files.get("meta/vibestudio.yml") ?? "systemEpoch: 0\n",
+    },
+  }));
   mocks.validateConfig.mockReset().mockResolvedValue(undefined);
   mocks.dirs.clear();
   addFile(
@@ -193,11 +243,77 @@ function resetRuntimeMocks(): void {
   });
 }
 
-describe("createProjects", () => {
-  it("creates a connected application in one validated edit and publication", async () => {
+describe("prepareProjects", () => {
+  it("requires deliberate authority decisions before any edit", async () => {
     resetRuntimeMocks();
-    const { createApplication } = await import("./create-project.js");
-    const result = await createApplication({ name: "notes", title: "Notes" });
+    const { prepareApplication, prepareProjects } =
+      await import("./create-project.js");
+    await expect(
+      prepareProjects([
+        { projectType: "panel", name: "missing-policy" } as never,
+      ]),
+    ).rejects.toThrow("explicit authority manifest");
+    await expect(
+      prepareApplication({ name: "missing-policy" } as never),
+    ).rejects.toThrow("explicit");
+    await expect(
+      prepareProjects([
+        {
+          projectType: "worker",
+          name: "missing-methods",
+          template: "durable-service",
+          authority: noEffects,
+          authorityReason: "Private store",
+        },
+      ]),
+    ).rejects.toThrow("explicit website");
+    expect(mocks.edit).not.toHaveBeenCalled();
+  });
+
+  it("does not fill in missing requests or change chosen binding policy", async () => {
+    resetRuntimeMocks();
+    const { prepareApplication } = await import("./create-project.js");
+    const policy = applicationPolicy("manual");
+    policy.panel = noEffects;
+    policy.service = {
+      ...policy.service,
+      binding: "consent",
+      notability: "headline",
+    };
+    const result = await prepareApplication({
+      name: "manual",
+      authority: policy,
+    });
+    expect(result.panel.authorityReview?.manifest.requests).toEqual([]);
+    expect(result.panel.authorityReview?.manifest.serviceRequests).toEqual([]);
+    expect(
+      YAML.parse(mocks.files.get("meta/vibestudio.yml") as string).services[0],
+    ).toMatchObject({
+      notability: "headline",
+      authority: { binding: "consent" },
+    });
+    expect(mocks.commit).not.toHaveBeenCalled();
+    expect(mocks.push).not.toHaveBeenCalled();
+  });
+
+  it("propagates a preparation failure without attempting commit or push", async () => {
+    resetRuntimeMocks();
+    const { prepareProjects } = await import("./create-project.js");
+    mocks.edit.mockRejectedValueOnce(new Error("Working head changed"));
+    await expect(
+      prepareProjects([{ projectType: "project", name: "race" }]),
+    ).rejects.toThrow("Working head changed");
+    expect(mocks.commit).not.toHaveBeenCalled();
+    expect(mocks.push).not.toHaveBeenCalled();
+  });
+  it("prepares a connected application in one validated edit without publishing", async () => {
+    resetRuntimeMocks();
+    const { prepareApplication } = await import("./create-project.js");
+    const result = await prepareApplication({
+      authority: applicationPolicy("notes"),
+      name: "notes",
+      title: "Notes",
+    });
     expect(result.panel.created).toBe("panels/notes");
     expect(result.worker.created).toBe("workers/notes-store");
     expect(result.service).toMatchObject({
@@ -240,51 +356,51 @@ describe("createProjects", () => {
       "workspace.validateConfig",
       [expect.any(String)],
     );
-    expect(mocks.commit).toHaveBeenCalledTimes(1);
-    expect(mocks.push).toHaveBeenCalledTimes(1);
+    expect(mocks.commit).not.toHaveBeenCalled();
+    expect(mocks.push).not.toHaveBeenCalled();
+    expect(result.preparation).toMatchObject({
+      publication: "unchanged",
+      liveRuntime: "unchanged",
+      workingHead: {
+        kind: "application",
+        applicationId: "application:created",
+      },
+    });
+    expect(result.authorityReview).toEqual(applicationPolicy("notes"));
   });
 
   it("refuses collisions and invalid complete config before any edit", async () => {
     resetRuntimeMocks();
-    const { createApplication } = await import("./create-project.js");
+    const { prepareApplication } = await import("./create-project.js");
     addFile(
       "meta/vibestudio.yml",
       "services:\n  - source: workers/existing\n    name: notes-store\n",
     );
-    await expect(createApplication({ name: "notes" })).rejects.toThrow(
-      "already declared",
-    );
+    await expect(
+      prepareApplication({
+        authority: applicationPolicy("notes"),
+        name: "notes",
+      }),
+    ).rejects.toThrow("already declared");
     expect(mocks.edit).not.toHaveBeenCalled();
     addFile("meta/vibestudio.yml", "systemEpoch: 0\n");
     mocks.validateConfig.mockRejectedValueOnce(new Error("invalid config"));
-    await expect(createApplication({ name: "notes" })).rejects.toThrow(
-      "invalid config",
-    );
+    await expect(
+      prepareApplication({
+        authority: applicationPolicy("notes"),
+        name: "notes",
+      }),
+    ).rejects.toThrow("invalid config");
     expect(mocks.edit).not.toHaveBeenCalled();
   });
 
-  it("retains config edits in exact-revision publication failure recovery", async () => {
-    resetRuntimeMocks();
-    const { createApplication } = await import("./create-project.js");
-    mocks.push.mockRejectedValueOnce(new Error("build gate failed"));
-    await expect(createApplication({ name: "notes" })).rejects.toMatchObject({
-      errorData: {
-        published: false,
-        files: expect.arrayContaining([
-          "meta/vibestudio.yml",
-          "panels/notes/index.tsx",
-          "workers/notes-store/index.ts",
-        ]),
-      },
-    });
-  });
   beforeEach(resetRuntimeMocks);
   afterEach(() => vi.restoreAllMocks());
 
   it("scaffolds a plain project as a content repo under projects/", async () => {
-    const { createProjects } = await import("./create-project.js");
+    const { prepareProjects } = await import("./create-project.js");
 
-    const [result] = await createProjects([
+    const [result] = await prepareProjects([
       {
         projectType: "project",
         name: "scratch-notes",
@@ -301,27 +417,21 @@ describe("createProjects", () => {
         semanticBuildGate: "pending-publication",
         projectType: "project",
       },
-      publication: {
-        published: true,
-        committedEventId: "event:committed",
-        publishedEventId: "event:committed",
-        mainEventId: "event:committed",
-        effectId: "effect:published",
-        appliedAt: "2026-07-24T00:00:00.000Z",
+      preparation: {
+        publication: "unchanged",
+        liveRuntime: "unchanged",
+        workingHead: {
+          kind: "application",
+          applicationId: "application:created",
+        },
       },
+      authorityReview: null,
     });
     expect(mocks.files.get("projects/scratch-notes/README.md")).toBe(
       "# Scratch Notes\n\nPlain workspace project.\n",
     );
     expect(mocks.files.has("projects/scratch-notes/package.json")).toBe(false);
-    expect(mocks.commit).toHaveBeenCalledWith(
-      expect.objectContaining({
-        expectedWorkingHead: {
-          kind: "application",
-          applicationId: "application:created",
-        },
-      }),
-    );
+    expect(mocks.commit).not.toHaveBeenCalled();
     expect(mocks.edit).toHaveBeenCalledWith(
       expect.objectContaining({
         expectedWorkingHead: {
@@ -336,28 +446,29 @@ describe("createProjects", () => {
         ],
       }),
     );
-    expect(mocks.push).toHaveBeenCalledWith(
-      expect.objectContaining({
-        expectedCommittedEventId: "event:committed",
-        expectedMainEventId: "event:main",
-      }),
-    );
+    expect(mocks.push).not.toHaveBeenCalled();
   });
 
   it("rejects removed agent scaffolding", async () => {
-    const { createProjects } = await import("./create-project.js");
+    const { prepareProjects } = await import("./create-project.js");
 
     await expect(
-      createProjects([{ projectType: "agent", name: "helper" }]),
+      prepareProjects([{ projectType: "agent", name: "helper" } as never]),
     ).rejects.toThrow(/panel, package, skill, project, worker/);
     expect(mocks.commit).not.toHaveBeenCalled();
   });
 
   it("declares the generated panel entry explicitly", async () => {
-    const { createProjects } = await import("./create-project.js");
+    const { prepareProjects } = await import("./create-project.js");
 
-    await createProjects([
-      { projectType: "panel", name: "hello", title: "Hello" },
+    await prepareProjects([
+      {
+        authority: noEffects,
+        authorityReason: "Fixture has no host effects",
+        projectType: "panel",
+        name: "hello",
+        title: "Hello",
+      },
     ]);
 
     expect(
@@ -367,14 +478,7 @@ describe("createProjects", () => {
         title: "Hello",
         entry: "index.tsx",
         authority: {
-          requests: [
-            {
-              capability: "context.boundary",
-              resource: { kind: "prefix", prefix: "context" },
-              tier: "critical",
-              evidence: "bounded-dynamic",
-            },
-          ],
+          requests: [],
           provides: [],
         },
         exposeModules: expect.arrayContaining(["react", "react/jsx-runtime"]),
@@ -387,10 +491,12 @@ describe("createProjects", () => {
       "skills/workspace-dev/assets/icons/lucide/messages-square.svg",
       '<svg stroke="currentColor"><path d="M1 1" /></svg>',
     );
-    const { createProjects } = await import("./create-project.js");
+    const { prepareProjects } = await import("./create-project.js");
 
-    await createProjects([
+    await prepareProjects([
       {
+        authority: noEffects,
+        authorityReason: "Fixture has no host effects",
         projectType: "panel",
         name: "inbox",
         title: "Inbox",
@@ -428,9 +534,15 @@ describe("createProjects", () => {
       const { fs } = await import("@workspace/runtime");
       const read = vi.spyOn(fs, "readFile");
       const list = vi.spyOn(fs, "readdir");
-      const { createProjects } = await import("./create-project.js");
-      await createProjects([
-        { projectType: "panel", name: "board", icon: `lucide:${name}` },
+      const { prepareProjects } = await import("./create-project.js");
+      await prepareProjects([
+        {
+          authority: noEffects,
+          authorityReason: "Fixture has no host effects",
+          projectType: "panel",
+          name: "board",
+          icon: `lucide:${name}`,
+        },
       ]);
       expect(mocks.files.get("panels/board/assets/icon.svg")).toBe(
         svg.replaceAll("currentColor", "#268CA3"),
@@ -494,7 +606,7 @@ describe("createProjects", () => {
         "<svg />",
       );
     }
-    const { searchProjectCatalog, createProjects, ProjectIconError } =
+    const { searchProjectCatalog, prepareProjects, ProjectIconError } =
       await import("./create-project.js");
     for (const query of [
       "layout dashboard",
@@ -509,8 +621,14 @@ describe("createProjects", () => {
       });
       expect(result.entries[0]?.id).toBe("lucide:layout-dashboard");
     }
-    const failure = (await createProjects([
-      { projectType: "panel", name: "board", icon: "lucide:layout-dashbord" },
+    const failure = (await prepareProjects([
+      {
+        authority: noEffects,
+        authorityReason: "Fixture has no host effects",
+        projectType: "panel",
+        name: "board",
+        icon: "lucide:layout-dashbord",
+      },
     ]).catch((error: unknown) => error)) as InstanceType<
       typeof ProjectIconError
     >;
@@ -578,11 +696,17 @@ describe("createProjects", () => {
 
   it("returns a structured catalog repair plan before creating an unknown icon", async () => {
     addFile("skills/workspace-dev/assets/icons/lucide/database.svg", "<svg />");
-    const { createProjects, ProjectIconError } =
+    const { prepareProjects, ProjectIconError } =
       await import("./create-project.js");
 
-    const failure = await createProjects([
-      { projectType: "panel", name: "board", icon: "lucide:columns-3x" },
+    const failure = await prepareProjects([
+      {
+        authority: noEffects,
+        authorityReason: "Fixture has no host effects",
+        projectType: "panel",
+        name: "board",
+        icon: "lucide:columns-3x",
+      },
     ]).catch((error: unknown) => error);
 
     expect(failure).toBeInstanceOf(ProjectIconError);
@@ -629,47 +753,74 @@ describe("createProjects", () => {
       "templates/default/template.json",
       JSON.stringify({ framework: "svelte" }),
     );
-    const { createProjects } = await import("./create-project.js");
+    const { prepareProjects } = await import("./create-project.js");
 
-    await createProjects([
-      { projectType: "panel", name: "default-panel", title: "Default Panel" },
+    await prepareProjects([
+      {
+        authority: noEffects,
+        authorityReason: "Fixture has no host effects",
+        projectType: "panel",
+        name: "default-panel",
+        title: "Default Panel",
+      },
     ]);
 
     expect(mocks.files.has("panels/default-panel/index.tsx")).toBe(true);
     expect(mocks.files.has("panels/default-panel/App.svelte")).toBe(false);
   });
 
-  it("generates every executable template with a publication-valid authority contract", async () => {
+  it("generates every executable template with the explicitly chosen authority contract", async () => {
     addFile(
       "templates/svelte/template.json",
       JSON.stringify({ framework: "svelte" }),
     );
-    const { createProjects } = await import("./create-project.js");
+    const { prepareProjects } = await import("./create-project.js");
 
-    await createProjects([
-      { projectType: "panel", name: "react-panel", title: "React Panel" },
-    ]);
-    await createProjects([
+    await prepareProjects([
       {
+        authority: noEffects,
+        authorityReason: "Fixture has no host effects",
+        projectType: "panel",
+        name: "react-panel",
+        title: "React Panel",
+      },
+    ]);
+    await prepareProjects([
+      {
+        authority: noEffects,
+        authorityReason: "Fixture has no host effects",
         projectType: "panel",
         name: "svelte-panel",
         title: "Svelte Panel",
         template: "svelte",
       },
     ]);
-    await createProjects([
-      { projectType: "worker", name: "plain-worker", title: "Plain Worker" },
-    ]);
-    await createProjects([
+    await prepareProjects([
       {
+        authority: noEffects,
+        authorityReason: "Fixture has no host effects",
+        methods: recordMethods,
+        projectType: "worker",
+        name: "plain-worker",
+        title: "Plain Worker",
+      },
+    ]);
+    await prepareProjects([
+      {
+        authority: noEffects,
+        authorityReason: "Fixture has no host effects",
+        methods: recordMethods,
         projectType: "worker",
         name: "durable-worker",
         title: "Durable Worker",
         template: "durable-service",
       },
     ]);
-    await createProjects([
+    await prepareProjects([
       {
+        authority: noEffects,
+        authorityReason: "Fixture has no host effects",
+        methods: recordMethods,
         projectType: "worker",
         name: "agent-worker",
         title: "Agent Worker",
@@ -694,18 +845,7 @@ describe("createProjects", () => {
       };
       expect(
         parseUnitAuthorityManifest(manifest.vibestudio.authority).requests,
-      ).toEqual(
-        path === "workers/agent-worker/package.json"
-          ? [
-              expect.objectContaining({ capability: "context.boundary" }),
-              expect.objectContaining({
-                capability: "context.clone",
-                resource: { kind: "exact", key: "context.clone" },
-                tier: "gated",
-              }),
-            ]
-          : [expect.objectContaining({ capability: "context.boundary" })],
-      );
+      ).toEqual([]);
     }
     const durableManifest = JSON.parse(
       mocks.files.get("workers/durable-worker/package.json") as string,
@@ -721,11 +861,17 @@ describe("createProjects", () => {
     );
   });
 
-  it("keeps the default panel at baseline authority instead of exposing the runtime umbrella", async () => {
-    const { createProjects } = await import("./create-project.js");
+  it("preserves the chosen empty panel ceiling without adding runtime authority", async () => {
+    const { prepareProjects } = await import("./create-project.js");
 
-    await createProjects([
-      { projectType: "panel", name: "minimal", title: "Minimal" },
+    await prepareProjects([
+      {
+        authority: noEffects,
+        authorityReason: "Fixture has no host effects",
+        projectType: "panel",
+        name: "minimal",
+        title: "Minimal",
+      },
     ]);
 
     const manifest = JSON.parse(
@@ -748,278 +894,30 @@ describe("createProjects", () => {
   });
 
   it("rejects names and titles that would produce invalid generated source", async () => {
-    const { createProjects } = await import("./create-project.js");
+    const { prepareProjects } = await import("./create-project.js");
 
     await expect(
-      createProjects([{ projectType: "panel", name: "Bad Name" }]),
+      prepareProjects([
+        {
+          authority: noEffects,
+          authorityReason: "Fixture has no host effects",
+          projectType: "panel",
+          name: "Bad Name",
+        },
+      ]),
     ).rejects.toThrow(/Project name/);
     await expect(
-      createProjects([
-        { projectType: "panel", name: "valid-name", title: 'Broken " title' },
+      prepareProjects([
+        {
+          authority: noEffects,
+          authorityReason: "Fixture has no host effects",
+          projectType: "panel",
+          name: "valid-name",
+          title: 'Broken " title',
+        },
       ]),
     ).rejects.toThrow(/Project title/);
     expect(mocks.commit).not.toHaveBeenCalled();
-  });
-
-  it("does not report a scaffold as published when protected publication is refused", async () => {
-    mocks.push.mockRejectedValueOnce(
-      Object.assign(new Error("Protected publication is not authorized"), {
-        errorData: {
-          code: "Unauthorized",
-          operation: "vcs.push",
-          authorityFailure: { reasonCode: "missing-grant" },
-        },
-      }),
-    );
-    const { createProjects, ScaffoldPublicationError } =
-      await import("./create-project.js");
-
-    const failure = await createProjects([
-      { projectType: "panel", name: "broken" },
-    ]).catch((error: unknown) => error);
-    expect(failure).toBeInstanceOf(ScaffoldPublicationError);
-    expect(
-      (failure as InstanceType<typeof ScaffoldPublicationError>).errorData,
-    ).toMatchObject({
-      code: "scaffold_publication_failed",
-      stage: "push",
-      created: "panels/broken",
-      files: ["panels/broken/index.tsx", "panels/broken/package.json"],
-      committedEventId: "event:committed",
-      published: false,
-      publicationRequest: {
-        contextId: "ctx:test",
-        expectedCommittedEventId: "event:committed",
-        expectedMainEventId: "event:main",
-        commandId: expect.stringContaining("workspace-dev:publish:ctx:test:"),
-      },
-      vcsError: {
-        code: "Unauthorized",
-        message: "Protected publication is not authorized",
-        errorData: {
-          code: "Unauthorized",
-          operation: "vcs.push",
-          authorityFailure: { reasonCode: "missing-grant" },
-        },
-      },
-      retry: {
-        operation: "vcs.push",
-        statusRequest: { contextId: "ctx:test" },
-        commandIdPolicy: "reobserve-status-and-use-new-command",
-      },
-    });
-  });
-
-  it("recovers an uncertain publication by replaying the exact push command and receipt", async () => {
-    mocks.push.mockRejectedValueOnce(
-      Object.assign(new Error("Host response was lost"), {
-        errorData: {
-          code: "ExternalEffectFailed",
-          effectId: "effect:uncertain",
-        },
-      }),
-    );
-    const {
-      createProjects,
-      recoverProjectPublication,
-      ScaffoldPublicationError,
-    } = await import("./create-project.js");
-    const failure = await createProjects([
-      {
-        projectType: "panel",
-        name: "recoverable",
-      },
-    ]).catch((error: unknown) => error);
-    expect(failure).toBeInstanceOf(ScaffoldPublicationError);
-    const typedFailure = failure as InstanceType<
-      typeof ScaffoldPublicationError
-    >;
-    const originalRequest = typedFailure.errorData.publicationRequest;
-    mocks.status.mockResolvedValueOnce({
-      contextId: "ctx:test",
-      committed: { kind: "event", eventId: "event:committed" },
-      workingHead: { kind: "event", eventId: "event:committed" },
-      clean: true,
-      mainEventId: "event:main",
-      mainRelation: "ahead",
-      workingCounts: { applications: 0, workUnits: 0, changes: 0 },
-      integrating: [],
-    });
-
-    await expect(recoverProjectPublication(typedFailure)).resolves.toEqual({
-      published: true,
-      committedEventId: "event:committed",
-      publishedEventId: "event:committed",
-      mainEventId: "event:committed",
-      effectId: "effect:published",
-      appliedAt: "2026-07-24T00:00:00.000Z",
-    });
-    expect(mocks.push).toHaveBeenLastCalledWith(originalRequest);
-    expect(mocks.edit).toHaveBeenCalledTimes(1);
-    expect(mocks.commit).toHaveBeenCalledTimes(1);
-  });
-
-  it("reobserves after a known refusal and uses a fresh command identity", async () => {
-    mocks.push.mockRejectedValueOnce(
-      Object.assign(new Error("Main advanced"), {
-        errorData: { code: "RevisionChanged" },
-      }),
-    );
-    const {
-      createProjects,
-      recoverProjectPublication,
-      ScaffoldPublicationError,
-    } = await import("./create-project.js");
-    const failure = (await createProjects([
-      {
-        projectType: "panel",
-        name: "reobserved",
-      },
-    ]).catch((error: unknown) => error)) as InstanceType<
-      typeof ScaffoldPublicationError
-    >;
-    mocks.status.mockResolvedValueOnce({
-      contextId: "ctx:test",
-      committed: { kind: "event", eventId: "event:committed" },
-      workingHead: { kind: "event", eventId: "event:committed" },
-      clean: true,
-      mainEventId: "event:new-main",
-      mainRelation: "ahead",
-      workingCounts: { applications: 0, workUnits: 0, changes: 0 },
-      integrating: [],
-    });
-
-    await recoverProjectPublication(failure);
-
-    const recoveredRequest = mocks.push.mock.calls.at(-1)?.[0];
-    expect(recoveredRequest).toMatchObject({
-      expectedCommittedEventId: "event:committed",
-      expectedMainEventId: "event:new-main",
-      commandId: expect.stringContaining(
-        "workspace-dev:recover-publication:ctx:test:",
-      ),
-    });
-    expect(recoveredRequest.commandId).not.toBe(
-      failure.errorData.publicationRequest.commandId,
-    );
-  });
-
-  it("refuses to retry a source-invalid scaffold commit", async () => {
-    mocks.push.mockRejectedValueOnce(
-      Object.assign(new Error("Build gate failed"), {
-        errorData: {
-          code: "BuildGateFailed",
-          diagnostics: [{ source: "tsc", message: "index.tsx is invalid" }],
-        },
-      }),
-    );
-    const {
-      createProjects,
-      recoverProjectPublication,
-      ScaffoldPublicationError,
-    } = await import("./create-project.js");
-    const failure = (await createProjects([
-      {
-        projectType: "panel",
-        name: "source-invalid",
-      },
-    ]).catch((error: unknown) => error)) as InstanceType<
-      typeof ScaffoldPublicationError
-    >;
-
-    expect(failure.errorData.retry.commandIdPolicy).toBe(
-      "repair-source-and-recommit",
-    );
-    expect(failure.errorData.recovery).toEqual({
-      action: "repair-source",
-      instruction: expect.stringContaining("repair the committed source"),
-    });
-    await expect(recoverProjectPublication(failure)).rejects.toMatchObject({
-      errorData: {
-        stage: "repair-source",
-        cause: { code: "BuildGateFailed" },
-        retry: { safeToRerun: false },
-      },
-    });
-    expect(mocks.status).toHaveBeenCalledTimes(1);
-    expect(mocks.push).toHaveBeenCalledTimes(1);
-  });
-
-  it("refuses recovery when the context no longer points exactly at the scaffold commit", async () => {
-    mocks.push.mockRejectedValueOnce(
-      Object.assign(new Error("Main advanced"), {
-        errorData: { code: "RevisionChanged" },
-      }),
-    );
-    const {
-      createProjects,
-      recoverProjectPublication,
-      ScaffoldPublicationRecoveryError,
-    } = await import("./create-project.js");
-    const failure = await createProjects([
-      {
-        projectType: "panel",
-        name: "changed",
-      },
-    ]).catch((error: unknown) => error);
-    mocks.status.mockResolvedValueOnce({
-      contextId: "ctx:test",
-      committed: { kind: "event", eventId: "event:committed" },
-      workingHead: { kind: "application", applicationId: "application:later" },
-      clean: false,
-      mainEventId: "event:new-main",
-      mainRelation: "diverged",
-      workingCounts: { applications: 1, workUnits: 1, changes: 1 },
-      integrating: [],
-    });
-
-    await expect(
-      recoverProjectPublication(
-        failure as Parameters<typeof recoverProjectPublication>[0],
-      ),
-    ).rejects.toMatchObject({
-      constructor: ScaffoldPublicationRecoveryError,
-      errorData: {
-        stage: "validate-context",
-        cause: { code: "ContextChanged" },
-        retry: { safeToRerun: false },
-      },
-    });
-    expect(mocks.push).toHaveBeenCalledTimes(1);
-  });
-
-  it("stops automatic recovery when the publication receipt fails integrity validation", async () => {
-    mocks.push.mockResolvedValueOnce({
-      eventId: "event:different",
-      mainEventId: "event:different",
-      effectId: "effect:invalid",
-      appliedAt: "2026-07-24T00:00:00.000Z",
-    });
-    const {
-      createProjects,
-      recoverProjectPublication,
-      ScaffoldPublicationError,
-      ScaffoldPublicationRecoveryError,
-    } = await import("./create-project.js");
-    const failure = await createProjects([
-      {
-        projectType: "panel",
-        name: "invalid-receipt",
-      },
-    ]).catch((error: unknown) => error);
-
-    expect(failure).toBeInstanceOf(ScaffoldPublicationError);
-    expect(
-      (failure as InstanceType<typeof ScaffoldPublicationError>).errorData.retry
-        .commandIdPolicy,
-    ).toBe("stop-integrity-investigation");
-    await expect(
-      recoverProjectPublication(
-        failure as Parameters<typeof recoverProjectPublication>[0],
-      ),
-    ).rejects.toBeInstanceOf(ScaffoldPublicationRecoveryError);
-    expect(mocks.push).toHaveBeenCalledTimes(1);
-    expect(mocks.status).toHaveBeenCalledTimes(1);
   });
 
   it("rejects an invalid executable manifest before the first VCS edit", async () => {
@@ -1044,11 +942,13 @@ describe("createProjects", () => {
   });
 
   it("returns the exact invalid project name and a valid generated-name recipe", async () => {
-    const { createProjects } = await import("./create-project.js");
+    const { prepareProjects } = await import("./create-project.js");
 
     await expect(
-      createProjects([
+      prepareProjects([
         {
+          authority: noEffects,
+          authorityReason: "Fixture has no host effects",
           projectType: "panel",
           name: "todo-2026-07-24T20:30:00.000Z",
         },
@@ -1062,44 +962,6 @@ describe("createProjects", () => {
 
 describe("forkProject", () => {
   beforeEach(resetRuntimeMocks);
-
-  it("does not report a fork as committed when protected publication is refused", async () => {
-    addFile(
-      "packages/source/package.json",
-      JSON.stringify({
-        name: "@workspace/source",
-        private: true,
-        type: "module",
-        exports: { ".": "./index.ts" },
-      }),
-    );
-    addFile("packages/source/index.ts", "export const source = true;\n");
-    mocks.push.mockRejectedValueOnce(
-      Object.assign(new Error("Main advanced"), {
-        errorData: {
-          code: "RevisionChanged",
-          actual: { kind: "event", eventId: "event:new" },
-        },
-      }),
-    );
-    const { forkProject, ScaffoldPublicationError } =
-      await import("./create-project.js");
-
-    const failure = await forkProject({
-      from: "packages/source",
-      to: "packages/new",
-    }).catch((error: unknown) => error);
-    expect(failure).toBeInstanceOf(ScaffoldPublicationError);
-    expect(
-      (failure as InstanceType<typeof ScaffoldPublicationError>).errorData,
-    ).toMatchObject({
-      created: "packages/new",
-      committedEventId: "event:committed",
-      published: false,
-      vcsError: { code: "RevisionChanged" },
-      retry: { commandIdPolicy: "reobserve-status-and-use-new-command" },
-    });
-  });
 
   it("rewrites a single-class worker fork and preserves binary files", async () => {
     addDir("workers/source/.git");
@@ -1131,20 +993,21 @@ describe("forkProject", () => {
 
     const { forkProject } = await import("./create-project.js");
     const result = await forkProject({
+      authority: noEffects,
+      authorityReason: "Fork fixture retains no host effects",
       from: "workers/source",
       to: "workers/new",
       title: "New Worker",
     });
 
-    expect(result.committed).toBe(true);
-    expect(result.publication).toMatchObject({
-      published: true,
-      committedEventId: "event:committed",
+    expect(result.preparation).toMatchObject({
+      publication: "unchanged",
+      liveRuntime: "unchanged",
     });
     expect(result.files).toContain("new-worker.ts");
-    // Managed writes authored the local chain, then one commit + push finished it.
-    expect(mocks.commit).toHaveBeenCalledTimes(1);
-    expect(mocks.push).toHaveBeenCalledTimes(1);
+    // Forks share the context-local preparation boundary, never automatic publication.
+    expect(mocks.commit).not.toHaveBeenCalled();
+    expect(mocks.push).not.toHaveBeenCalled();
     // The repository lifecycle transition seeded the projected files.
     expect(
       JSON.parse(mocks.files.get("workers/new/package.json") as string),
@@ -1197,6 +1060,8 @@ describe("forkProject", () => {
 
     const { forkProject } = await import("./create-project.js");
     await forkProject({
+      authority: noEffects,
+      authorityReason: "Fork fixture retains no host effects",
       from: "workers/source",
       to: "workers/source-copy",
       title: "Source Copy",
@@ -1238,6 +1103,8 @@ describe("forkProject", () => {
 
     await expect(
       forkProject({
+        authority: noEffects,
+        authorityReason: "Fork fixture retains no host effects",
         from: "packages/source",
         to: "packages/new",
         title: "unsafe\nfrontmatter",
@@ -1262,9 +1129,11 @@ describe("scaffold runtime contract", () => {
       "templates/svelte/template.json",
       JSON.stringify({ framework: "svelte" }),
     );
-    const { createProjects } = await import("./create-project.js");
-    await createProjects([
+    const { prepareProjects } = await import("./create-project.js");
+    await prepareProjects([
       {
+        authority: noEffects,
+        authorityReason: "Fixture has no host effects",
         projectType: "panel",
         name: "svelte-peer-probe",
         title: "Svelte Peer Probe",
@@ -1279,7 +1148,7 @@ describe("scaffold runtime contract", () => {
   });
 
   it("pins the panel scaffold's React to the exact runtime Base declares", async () => {
-    const { BASE_PANEL_REACT_VERSION, createProjects } =
+    const { BASE_PANEL_REACT_VERSION, prepareProjects } =
       await import("./create-project.js");
     const { existsSync, readFileSync } = await import("node:fs");
     const { join } = await import("node:path");
@@ -1303,8 +1172,10 @@ describe("scaffold runtime contract", () => {
     }
 
     // And the generated scaffold carries exactly that pin.
-    await createProjects([
+    await prepareProjects([
       {
+        authority: noEffects,
+        authorityReason: "Fixture has no host effects",
         projectType: "panel",
         name: "react-pin-probe",
         title: "React Pin Probe",

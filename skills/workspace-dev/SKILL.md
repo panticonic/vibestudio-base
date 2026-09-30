@@ -70,9 +70,11 @@ purpose, workflow, ownership, invariants, and diagnostics.
 
 ## Core rules
 
-- For a new persistent application, start with `createApplication({ name, title })`
-  from `@workspace-skills/workspace-dev`: it publishes the panel, durable store,
-  service, singleton, and exact consumer requests together. See [PROJECTS.md](PROJECTS.md).
+- For a new persistent application, author a complete authority policy and call
+  `prepareApplication({ name, title, authority })` from `@workspace-skills/workspace-dev`.
+  It prepares the connected code/config in the current context, without adding
+  requests, committing, publishing, or granting access. Review the actual
+  envelope, verify exact candidates, then commit/push explicitly. See [PROJECTS.md](PROJECTS.md).
 
 - Build production-ready systems. Workspace units are durable infrastructure,
   not throwaway prototypes: design for real use from the start with proper state
@@ -185,11 +187,12 @@ meaningful application data.
 For a panel or app backed by a workspace service, work contract-first before
 building the UI:
 
-For a new persistent app, `createApplication` supplies the initial provider,
-service, singleton, and exact consumer declarations together. The steps below
-verify and customize that existing contract; they do not require registering
-the scaffolded service again. For existing or custom units, author those
-declarations through their owning surfaces.
+For a new persistent app, `prepareApplication` requires deliberate unit manifests,
+service policy, complete literal receiver contracts, and a rationale. It prepares
+code and configuration but does not infer requests, principals, binding,
+notability, or exposure decisions. The steps below review and customize that
+existing candidate; do not register its service again. For existing or custom
+units, author declarations through their owning surfaces.
 
 1. Read [the service-backed data workflow](WORKERS.md#durable-object-backed-app-databases).
 2. Define and verify the provider's real `@rpc` methods and its service declaration.

@@ -375,29 +375,32 @@ agent eval. The eval `db` is private to that agent's EvalDO; it is good for
 scratch analysis and resumable diagnostics, but it is not an application
 database for panels, apps, workers, or other agents.
 
-When building a new panel with a DO store, use `createApplication` to create a
-working connected pair, not two disconnected units:
+When building a new panel with a DO store, author the explicit policy from
+[PROJECTS.md](PROJECTS.md), then use `prepareApplication` to prepare a connected
+context candidate, not two disconnected units or an automatic publication:
 
 ```ts
 eval({
   code: `
-  import { createApplication } from "@workspace-skills/workspace-dev";
-  scope.created = await createApplication({ name: "todo-app", title: "Todo App" });
-  return scope.created;
+  import { prepareApplication } from "@workspace-skills/workspace-dev";
+  scope.prepared = await prepareApplication({ name: "todo-app", title: "Todo App", authority: scope.authorityPolicy });
+  return scope.prepared;
 `,
 });
 ```
 
 Canonical shape:
 
-The connected scaffold already supplies this shape, including service and
-singleton declarations and the consuming panel's exact authority envelope.
+The connected scaffold supplies code, service, and singleton structure using
+the explicit supplied policy. It never adds missing consumer requests or
+chooses method contracts. Review, verify, and publish the exact candidate
+separately; preparation changes neither main nor live runtime.
 Use `workspace_service` for later intentional declaration changes. For custom
 or existing units, the same underlying contracts apply:
 
 1. Create `workers/<store>` with a `DurableObjectBase` subclass. For a new
-   connected app, `createApplication` supplies this and its paired panel;
-   `createProjects` creates independent units without service wiring.
+   connected app, `prepareApplication` supplies this and its paired panel;
+   `prepareProjects` creates independent units without service wiring.
 2. Store durable rows in the DO's SQLite database through `this.sql`.
 3. Expose narrow app methods with explicit
    `@rpc({ website, principals, effect: { kind: "open" }, tier, sensitivity })`
@@ -406,7 +409,7 @@ or existing units, the same underlying contracts apply:
    raw SQL console to normal UI callers.
 4. Use `workspace_service` to declare the service and matching singleton
    atomically, with the principal families that may resolve it. Skip this
-   registration step for the service already created by `createApplication`.
+   registration step for the service already created by `prepareApplication`.
 5. Call it from eval, panels, inline UI, apps, workers, or other DOs with
    `workers.resolveService(protocol, objectKey?)` and `rpc.call(...)`.
 

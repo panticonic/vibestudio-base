@@ -1,132 +1,172 @@
-# Scaffold workspace projects
+# Prepare workspace projects
 
-For a new application with a persistent store, use the connected scaffold:
+Workspace creation has two stages: prepare a context-local candidate, then
+review, verify, commit, and publish that exact candidate through ordinary VCS.
+Preparation never commits, pushes, activates code, or grants authority.
+There is no one-shot creation/publication API or publication-recovery helper.
 
-```ts
-import { createApplication } from "@workspace-skills/workspace-dev";
-scope.created = await createApplication({ name: "task-board", title: "Task Board" });
-return scope.created;
-```
+## Connected application and explicit authority
 
-It creates `panels/task-board` (React) and `workers/task-board-store` (SQLite DO),
-with a working record-entry UI, complete RPC contracts, service protocol
-`task-board.v1`, singleton key `main`, and the panel's exact consumer request.
-The service uses reviewed `declaredFor` wiring for its paired panel; other callers
-still use ordinary service binding authority. There are no wildcard grants.
-Repositories and `meta/vibestudio.yml` are validated, edited, committed, and
-published together. Existing repositories, service names, protocols, or singleton
-declarations are never overwritten. The result contains `panel`, `worker`,
-`service`, and the shared `publication` receipt. Customize those existing units
-for the application's domain; do not scaffold a second pair.
+Use `prepareApplication({ name, title?, icon?, authority })` for a React panel
+with a SQLite Durable Object store. It prepares `panels/<name>`,
+`workers/<name>-store`, protocol `<name>.v1`, singleton key `main`, and
+matching service configuration in one atomic context edit.
 
-Use `createProjects` below for independent units or intentionally custom wiring.
-It does not connect a panel to a worker merely because both are in its array.
+The model must supply the complete `ApplicationAuthorityPolicy`:
 
-`createProjects` creates and publishes repositories in the current workspace's
-protected main. This operation does not publish a workspace template to GitHub
-and does not require a GitHub destination. Workspace template authoring is a
-separate operation described by the templates skill.
+- `rationale`: explain the data, callers, effects, scopes, and excluded authority.
+- `panel` and `worker`: complete unit manifests (`requests`, `provides`, and
+  any `serviceRequests`). Empty requests are an explicit decision, not a default.
+- `service`: deliberate `principals`, `binding`, and `notability`.
+- `methods`: complete literal receiver contracts for `listRecords` and
+  `upsertRecord`, including website eligibility, principals or requirements,
+  effect, tier, and sensitivity.
 
-| `projectType` | Repository        | Standard scaffold                                                                         |
-| ------------- | ----------------- | ----------------------------------------------------------------------------------------- |
-| `panel`       | `panels/<name>`   | React panel; another installed panel template can be selected explicitly                  |
-| `worker`      | `workers/<name>`  | Stateless worker; `agentic` or `durable-service` select the corresponding worker scaffold |
-| `package`     | `packages/<name>` | Reusable workspace package                                                                |
-| `skill`       | `skills/<name>`   | Reusable cross-repository skill package with its own `SKILL.md`                           |
-| `project`     | `projects/<name>` | Content-only repository                                                                   |
+Preparation does not infer or add a consumer request, protocol request,
+context-boundary permission, or context-clone permission. It preserves the
+chosen policy; the exact build reports missing or incompatible declarations.
+Treat repair suggestions as evidence to assess, not permissions to add blindly.
+A rationale is review evidence, not an authorization or proof of least privilege.
 
-Read the [creation API](TOOLS.md#creating-projects) for parameters and the
-[development loop](WORKFLOW.md#semantic-workspace-development) for follow-up
-changes. Use `verify` on the exact returned repository path for a build check.
-For guidance about existing code, edit that repository's own `SKILL.md`.
-
-The repository location is the unit type. `panels/<name>` must be a valid panel,
-`workers/<name>` a valid worker, and so on; `package.json` cannot change or
-override that classification. Its package name must match the canonical scope
-for that location (for example `panels/task-board` is
-`@workspace-panels/task-board`). Panel and worker manifests do not use empty
-`vibestudio.panel` or `vibestudio.worker` discriminator blocks. Missing,
-malformed, mismatched, or foreign-kind manifests are schema failures on the
-exact repository path, and protected publication refuses them instead of
-treating the repository as content.
-
-Each eval invocation has its own local variables and imports. Import the
-functions used by that invocation, even if an earlier invocation imported them.
-Store receipts and handles explicitly in `scope` for later calls; module builds
-are cached, so repeating an import does not rebuild an unchanged package.
-`searchProjectCatalog` searches the curated icon catalog (`resource: "icon"`);
-it does not list panel templates. Inspect `templates/` in the current workspace
-before choosing a non-default panel template. The Svelte template additionally
-uses the installed `@workspace/svelte` package.
-
-For intentionally custom wiring, use `createProjects` for one coherent
-publication of independent repositories (the service wiring remains separate):
+This example deliberately chooses private workspace records with no downstream
+host effects. Derive different policy when the real application needs it;
+do not copy this envelope for credentials, sharing, egress, or destructive work:
 
 ```ts
-import {
-  createProjects,
-  searchProjectCatalog,
-} from "@workspace-skills/workspace-dev";
+import { prepareApplication } from "@workspace-skills/workspace-dev";
 
-const [databaseCatalog, panelCatalog] = await Promise.all([
-  searchProjectCatalog({ resource: "icon", query: "database", limit: 5 }),
-  searchProjectCatalog({
-    resource: "icon",
-    query: "panels top left",
-    limit: 5,
-  }),
-]);
-const databaseIcon = databaseCatalog.entries[0]?.id;
-const panelIcon = panelCatalog.entries[0]?.id;
-if (!databaseIcon || !panelIcon)
-  throw new Error("Required catalog icons are unavailable");
-
-scope.created = await createProjects([
-  {
-    projectType: "worker",
-    name: "task-board-store",
-    title: "Task Board Store",
-    icon: databaseIcon,
-    template: "durable-service",
+scope.authorityPolicy = {
+  rationale:
+    "Private workspace records. Only this panel receives reviewed service wiring; other callers need consent. No website access or downstream host effects.",
+  panel: {
+    requests: [
+      {
+        capability: "workspace-service:task-board-store",
+        resource: {
+          kind: "exact",
+          key: "do:workers/task-board-store:TaskBoardStore:main",
+        },
+        tier: "gated",
+        evidence: "exact",
+      },
+    ],
+    provides: [],
+    serviceRequests: [{ protocol: "task-board.v1", availability: "required" }],
   },
-  {
-    projectType: "panel",
-    name: "task-board",
-    title: "Task Board",
-    icon: panelIcon,
+  worker: { requests: [], provides: [] },
+  service: {
+    principals: ["user", "code"],
+    binding: { declaredFor: ["panels/task-board"] },
+    notability: "everyday",
   },
-]);
-return scope.created;
+  methods: {
+    listRecords: {
+      website: { kind: "closed", reason: "Workspace-private records" },
+      principals: ["user", "code"],
+      effect: { kind: "open" },
+      tier: "open",
+      sensitivity: "read",
+    },
+    upsertRecord: {
+      website: { kind: "closed", reason: "Workspace-private records" },
+      principals: ["user", "code"],
+      effect: { kind: "open" },
+      tier: "open",
+      sensitivity: "write",
+    },
+  },
+};
+scope.prepared = await prepareApplication({
+  name: "task-board",
+  title: "Task Board",
+  authority: scope.authorityPolicy,
+});
+scope.panelSource = scope.prepared.panel.created;
+scope.workerSource = scope.prepared.worker.created;
+return scope.prepared;
 ```
 
-Pass a one-element array for a single unit. Each result returns the canonical
-repository path, created files, preflight evidence, and publication receipt.
+The result is `{ panel, worker, service, preparation, authorityReview }`, not
+an array. Each unit has `{ created, files, preflight, preparation, authorityReview }`.
+`preparation` carries `contextId`, the exact returned `workingHead`,
+`publication: "unchanged"`, and `liveRuntime: "unchanged"`.
+The unit review contains the materialized manifest and rationale; the application
+review also includes the supplied service and receiver policy. `AUTHORITY.md`
+records the rationale in each executable repository. Review actual source and
+manifests again after customization; this receipt is not approval of later edits.
 
-If publication fails after creation, follow the structured retry policy and
-recover or repair the already-created candidate — never call `createApplication`
-or `createProjects` again. A connected candidate contains both repositories and
-the config edit; inspect all paths and diagnostics in the failure receipt.
-If a later open or snapshot fails, resume from the stored unit receipt:
-`scope.created.panel.created` for an application, or `scope.created[0].created`
-for the first result of `createProjects`. An existing destination is not part
-of the attempt; choose a distinct name or stop.
+Existing repository destinations, service names, protocols, and singleton
+identities are refused, not overwritten. The service is already declared in the
+candidate; use `workspace_service` only for intentional subsequent changes.
 
-Use context-local project files when the user wants private scratch content
-rather than a published executable unit. For source adoption, use explicit
-copy, compare, and merge operations that preserve provenance; source ancestry
-does not grant access or install a live upstream.
+## Independent repositories
+
+Use `prepareProjects(projects)` for standalone units or custom wiring. It
+returns an array of unit receipts and never connects its repositories implicitly.
+Every panel or worker requires explicit `authority` and `authorityReason`;
+a `durable-service` worker additionally requires `methods` with both complete
+receiver policies. A content repository needs no executable authority:
+
+```ts
+import { prepareProjects } from "@workspace-skills/workspace-dev";
+scope.prepared = await prepareProjects([
+  {
+    projectType: "project",
+    name: "notes",
+    title: "Notes",
+  },
+]);
+return scope.prepared;
+```
+
+| Type    | Repository      | Scaffold                                                    |
+| ------- | --------------- | ----------------------------------------------------------- |
+| panel   | panels/<name>   | React; an installed alternative template may be selected    |
+| worker  | workers/<name>  | Stateless; agentic or durable-service selects that scaffold |
+| package | packages/<name> | Reusable workspace package                                  |
+| skill   | skills/<name>   | Cross-repository skill package                              |
+| project | projects/<name> | Content-only repository                                     |
+
+Repository location determines unit kind and canonical package scope. A manifest
+cannot change a panel into content or another kind. Malformed or mismatched
+manifests fail verification on the exact repository path.
+
+Import the functions used by each eval invocation and retain receipts in
+`scope`. `searchProjectCatalog({ resource: "icon" })` discovers icons, not
+templates; inspect `templates/` before choosing an alternative panel framework.
+
+## Review, verify, and publish
+
+Preparation is a durable context edit, not delivery. Customize the candidate,
+review every requested capability/resource/tier, provided capability, principal,
+website decision, receiver effect, binding, and notability. Remove unnecessary
+requests; never widen authority merely to make verification pass.
+
+Run `verify` with each exact repository path. Review the complete candidate
+diff against main, then use normal `vcs.commit` and protected `vcs.push` with
+exact-state fences. The existing publication gate repeats build/typecheck and
+authority checks and performs normal user approval. See the
+[development loop](WORKFLOW.md#development-loop) and
+[VCS skill](../vibestudio-vcs/SKILL.md). Changed code or policy requires renewed
+review and verification; a previous preparation receipt is not a seal.
+
+On a failed build, open, or publication, repair the existing candidate. Never
+call either preparation API again to recover it. Connected panel paths are
+`scope.prepared.panel.created`; independent unit paths are
+`scope.prepared[0].created`. A lost edit response requires observing VCS and
+existing destinations, not blind recreation. Publication recovery uses ordinary
+typed VCS status/receipts and retry policy, not a scaffold-specific helper.
 
 ## Fork existing source
 
-Use `forkPanel({ from, name, dryRun })` or `forkWorker({ from, name,
-classMap?, dryRun })` from `@workspace-skills/workspace-dev` to derive a new
-source repository from an existing one. A source repository need not already
-have a running panel. Opening its source only launches that code; it does not
-create a derived source repository.
+`forkProject`, `forkPanel`, and `forkWorker` also prepare context-local source;
+they never commit or push. Executable forks require explicit `authority` and
+`authorityReason`, including dry runs. The requested ceiling replaces the
+source manifest rather than inheriting its permissions silently. Inspect copied
+receiver contracts, resource identities, and configuration references separately.
 
-First inspect a dry-run result for the selected source and destination. If its
-preflight is clean, run the same request without `dryRun: true`. Keep the
-returned committed publication receipt in `scope`; it identifies the created
-repository and source ancestry. Open the returned panel source, then observe and
-snapshot that handle to verify the result. See [forking tools](TOOLS.md) for the
-full result and worker class-map contract.
+Inspect a dry-run result first; `preparation` is null and no edit has occurred.
+Run the same request without `dryRun: true` to prepare it, retain the returned
+exact working-head receipt, then use the same review/verification/publication
+workflow. Worker `classMap` handles deliberate class renaming. Source ancestry
+does not confer authority or install a live upstream.

@@ -411,9 +411,9 @@ describe("formatEvalResult (shared by the eval tool's execute + the agent's defe
       success: false,
       console: "",
       error: "publication failed",
-      failureCode: "scaffold_publication_failed",
+      failureCode: "candidate_verification_failed",
       errorData: {
-        code: "scaffold_publication_failed",
+        code: "candidate_verification_failed",
         committedEventId: "event:committed",
         published: false,
       },
@@ -422,7 +422,7 @@ describe("formatEvalResult (shared by the eval tool's execute + the agent's defe
     const text = textOf(out);
 
     expect(text).toContain(
-      "[eval] Structured failure: scaffold_publication_failed",
+      "[eval] Structured failure: candidate_verification_failed",
     );
     expect(text).not.toContain('"committedEventId": "event:committed"');
     expect(out.details).toBe(result);

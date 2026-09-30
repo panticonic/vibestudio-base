@@ -10,6 +10,7 @@
     "./composedWorkspace": "./composedWorkspace.ts"
   },
   "dependencies": {
+    "@vibestudio/rpc": "workspace:*",
     "@vibestudio/workspace-contracts": "workspace:*",
     "@vibestudio/service-schemas": "workspace:*",
     "yaml": "^2.9.0",

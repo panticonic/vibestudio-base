@@ -116,8 +116,12 @@ theme-aware colors. For example, inside the supplied wrapper:
   background: var(--surface-card);
   border: 1px solid var(--surface-border);
 }
-.task-description { color: var(--gray-11); }
-.task-selected { background: var(--accent-a3); }
+.task-description {
+  color: var(--gray-11);
+}
+.task-selected {
+  background: var(--accent-a3);
+}
 ```
 
 Apply these tokens to component classes inside the theme wrapper, rather than
@@ -146,77 +150,62 @@ viewport as well as desktop width.
 
 ## Development loop
 
-1. Scaffold with eval. For a new persistent application, create its connected
-   panel, durable store, service declaration, singleton, and exact consumer
-   requests together:
+1. Prepare a context-local candidate. For a new persistent app, first author
+   the complete authority policy using [PROJECTS.md](PROJECTS.md): justify its
+   callers, data, effects, resources, website decisions, binding, and notability.
+   Then prepare code and wiring together:
 
 ```ts
-import { createApplication } from "@workspace-skills/workspace-dev";
-
-scope.created = await createApplication({ name: "my-app", title: "My App" });
-scope.panelSource = scope.created.panel.created; // "panels/my-app"
-scope.workerSource = scope.created.worker.created; // "workers/my-app-store"
-return scope.created;
+import { prepareApplication } from "@workspace-skills/workspace-dev";
+scope.prepared = await prepareApplication({
+  name: "my-app",
+  title: "My App",
+  authority: scope.authorityPolicy,
+});
+scope.panelSource = scope.prepared.panel.created;
+scope.workerSource = scope.prepared.worker.created;
+return scope.prepared;
 ```
 
-The result is `{ panel, worker, service, publication }`, not an array.
-`service.protocol` is `my-app.v1`; the singleton key is `main`. Both unit receipts
-have `{ created, files, preflight, publication }`. Customize this existing pair;
-do not declare its service again or scaffold replacement units.
+`scope.authorityPolicy` must be authored before this invocation; it is not
+inferred from the name or filled by the helper. The result is an object with
+`panel`, `worker`, `service`, `preparation`, and `authorityReview`.
+Each unit has its canonical `created` path, files, preflight, preparation,
+and review packet. For standalone units/custom wiring use `prepareProjects`
+with an array; executable inputs require an explicit manifest and rationale.
 
-For a standalone unit or intentionally custom wiring, use `createProjects`
-with an array (one element for a single unit). That lower-level API returns an
-array of unit receipts and does not connect its repositories. See
-[PROJECTS.md](PROJECTS.md) for both creation contracts.
+Preparation makes one atomic context edit and leaves publication/live runtime
+unchanged. Retain its exact `workingHead`, structural preflight, and authority
+review. Preflight does not certify the semantic build. Inspect structured
+dependency diagnostics and repair named source or manifests.
 
-Require `preflight.ok === true`,
-`preflight.scope === "planned-repository"`, and
-`preflight.semanticBuildGate === "pending-publication"` on each result, then
-retain `publication`. Preflight proves the mutation-free structural and
-dependency checks; protected publication proves the exact-state compiler and
-semantic-authority gate. If the eval fails with
-`errorData.code === "project_preflight_failed"`, use its dependency issues as
-the exact repair packet: each issue identifies its file and line, import
-specifier/kind, required manifest field, accepted package coordinates, and
-remediation. Production value imports belong to `dependencies` or
-`peerDependencies`; test-only and type-only imports may use
-`devDependencies`. This syntax-aware contract is shared with eval and renderer
-validation, and it deliberately ignores embedded examples and Node built-ins.
-Repair the named source/manifest rather than selecting another fork source.
+Never call either preparation API again to recover an existing candidate.
+After a lost response, inspect VCS status and destinations first. After a later
+build, open, or publication failure, reuse the retained canonical source path
+and repair that phase. Do not add another `panels/` prefix.
 
-Creation, publication, and opening are distinct durable phases. Eval rejection
-does not roll back an earlier published phase. If opening or verification fails,
-reuse the stored unit's `created` path and retry only that phase; do not call
-`createApplication` or `createProjects` again and do not add another `panels/`
-prefix. For a connected application, the panel path is `scope.created.panel.created`,
-not `scope.created[0].created`.
+### Review, verify, and publish
 
-If the eval instead fails with
-`errorData.code === "scaffold_publication_failed"`, the candidate is already
-committed but unpublished. With `createApplication`, that candidate includes
-both repositories and their `meta/vibestudio.yml` edit. Do not scaffold again. Inspect
-`retry.commandIdPolicy`. Call `recoverProjectPublication(error)` only for an
-uncertain effect or a retryable refusal. For `repair-source-and-recommit`, repair
-all nested build diagnostics in the existing units or config, run an exact-context
-build, commit a new event, and publish from freshly observed status. For
-`stop-integrity-investigation`, preserve the receipt and stop mutation.
-
-Skip scaffolding for context-local notes. Write inside a repo-shaped path such
-as `projects/tmp-name/note.md`; that work remains private until its semantic
-application chain is committed and its event is published. File-oriented APIs may
-canonicalize `projects/note.md` to `projects/note/note.md`; retain the returned
-canonical path.
+Stage two uses ordinary authoring and VCS. Review is over actual current code
+and policy, not just the preparation receipt. Any edits invalidate the earlier
+reviewed basis and require renewed review/verification.
 
 2. Edit with the `edit`/`write` filesystem tools, not eval. Keep semantic
    intent together: a coordinated rename, schema/client update, or multi-file
    behavior change should be one coherent work unit even when it crosses
    repository views.
 
+Review every requested capability/resource/tier and provided capability against
+the actual code and intended data use, including host effects, service callers,
+website eligibility, receiver effect/sensitivity, binding, and notability.
+Read `AUTHORITY.md` as rationale, not proof or a grant. Remove unjustified
+requests; a build suggestion is not a reason to request more authority.
+
 3. Keep the returned working head, then run the exact-context build report.
    For panels, `services.build.getBuildReport(source,
-\`ctx:${ctx.contextId}\`)` requests the canonical structured check, including
+\`ctx:${ctx.contextId}\`)`requests the canonical structured check, including
    missing authority requests for statically known calls. A declaration is a
-   request for review, not a grant. `runtime.supervision.health(identity)` only
+   request for review, not a grant.`runtime.supervision.health(identity)` only
    reads the exact live entity's health/log records and does not compile the
    working source. Read every error in the report, repair its cited
    file/line/column, and rerun until it is clean.
