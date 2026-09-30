@@ -1,5 +1,5 @@
 defaultAgentConfig:
-  model: openai-codex:gpt-6-sol
+  model: openai-codex:gpt-6.1-sol
 defaultAutomations:
   workspace-updates:
     action:
@@ -248,7 +248,6 @@ template:
     - panels/chat
     - panels/terminal
     - projects/default
-    - skills/problem-reporting
     - skills/agentic-development
     - skills/agents
     - skills/api-integrations
@@ -259,6 +258,7 @@ template:
     - skills/gad-context
     - skills/messaging
     - skills/phone-setup
+    - skills/problem-reporting
     - skills/provenance-orientation
     - skills/sandbox
     - skills/templates

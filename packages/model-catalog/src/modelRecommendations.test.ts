@@ -34,8 +34,8 @@ describe("modelRecommendations", () => {
   });
 
   it.each([
-    ["openai-codex", "gpt-6-sol"],
-    ["openai", "gpt-6-sol"],
+    ["openai-codex", "gpt-6.1-sol"],
+    ["openai", "gpt-6.1-sol"],
     ["anthropic", "claude-opus-5-5"],
     ["github-copilot", "gpt-6-sol"],
     ["kimi-coding", "k3-256k"],

@@ -14,8 +14,8 @@
         "ws@8": "8.21.1"
       },
       "patches": {
-        "@earendil-works/pi-ai@0.87.1": {
-          "path": "patches/@earendil-works__pi-ai@0.87.1.patch",
+        "@earendil-works/pi-ai@0.99.1": {
+          "path": "patches/@earendil-works__pi-ai@0.99.1.patch",
           "roots": [
             "@earendil-works/pi-ai"
           ]
@@ -34,6 +34,6 @@
     "./utils/transcript": "./src/utils/transcript.ts"
   },
   "dependencies": {
-    "@earendil-works/pi-ai": "0.87.1"
+    "@earendil-works/pi-ai": "0.99.1"
   }
 }

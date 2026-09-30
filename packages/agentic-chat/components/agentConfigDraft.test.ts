@@ -3,14 +3,14 @@ import type { AvailableAgent, ModelCatalog } from "@workspace/agentic-core";
 import { makeTestCatalogEntry } from "@workspace/model-catalog/testing";
 import { draftForAgent } from "./agentConfigDraft.js";
 
-const CATALOG_DEFAULT = "openai-codex:gpt-6-sol";
+const CATALOG_DEFAULT = "openai-codex:gpt-6.1-sol";
 const EFFECTIVE_DEFAULT = "openai-codex:gpt-6-luna";
 const WORKER_DEFAULT = "anthropic:claude-sonnet-4-6";
 
 const catalogDefault = makeTestCatalogEntry({
   ref: CATALOG_DEFAULT,
-  id: "gpt-6-sol",
-  name: "GPT-6 Sol",
+  id: "gpt-6.1-sol",
+  name: "GPT-6.1 Sol",
   provider: "openai-codex",
   baseUrl: "https://chatgpt.com/backend-api",
 });

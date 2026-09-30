@@ -14,7 +14,7 @@
 export const MODEL_SETTINGS_SERVICE_PROTOCOL = "vibestudio.models.v1";
 /** Workspace config field holding the full default agent config (model + behavior). */
 export const WORKSPACE_DEFAULT_AGENT_CONFIG_FIELD = "defaultAgentConfig";
-export const DEFAULT_AGENT_MODEL_REF = "openai-codex:gpt-6-sol";
+export const DEFAULT_AGENT_MODEL_REF = "openai-codex:gpt-6.1-sol";
 /** The local provider id, preferred model, and guaranteed small fallback. */
 export const LOCAL_PROVIDER_ID = "local";
 export const LOCAL_DEFAULT_MODEL = {
@@ -43,6 +43,7 @@ export function modelServiceTiers(
   const supportsPriority =
     provider === "openai-codex" &&
     (modelId === "gpt-6-astra" ||
+      modelId === "gpt-6.1-sol" ||
       modelId === "gpt-6-sol" ||
       modelId === "gpt-6-luna" ||
       modelId.startsWith("gpt-5.6-") ||

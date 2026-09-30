@@ -46,7 +46,7 @@ Edit `src/agent-config.ts` and set `DEFAULT_MODEL`.
 
 Examples:
 
-- OpenAI Codex: `openai-codex:gpt-6-sol`
+- OpenAI Codex: `openai-codex:gpt-6.1-sol`
 - Anthropic flagship: `anthropic:claude-opus-5-5`
 - Anthropic Sonnet: `anthropic:claude-sonnet-4-6`
 - Google Vertex flagship: `google-vertex:gemini-3.1-pro`

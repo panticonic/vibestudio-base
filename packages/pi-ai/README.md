@@ -2,6 +2,12 @@
 
 Workspace-owned integration boundary for `@earendil-works/pi-ai`.
 
+The upstream version is 0.99.1, including GPT-6.1 Sol. The patch retains
+Vibestudio's attributed Worker/WebSocket transport, request-specific diagnostics,
+renewable stream-liveness lease, session cleanup, explicit Anthropic OAuth
+selection, and native local-model prompt progress. The Codex event observer
+introduced upstream remains in both SSE and WebSocket paths.
+
 Consumers import this package (including its declared subpaths) instead of the
 upstream package. Its `vibestudio.dependencyResolution` declaration owns the
 exact upstream version, compatibility overrides, and patch. Build V2 reads
