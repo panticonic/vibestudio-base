@@ -49,6 +49,14 @@ server-side eval, that lifecycle call requires `authority.effects:
 
 ## Playwright compatibility notes
 
+Locator `click`, `dblclick`, `press`, `check`, `uncheck`, and `setChecked` return
+native interaction receipts and accept an optional semantic `expect` condition.
+Checkbox actions observe the requested checked/unchecked state automatically,
+dispatch at most one click, and never replay while waiting for controlled state.
+An already-correct control returns `delivery: "not-needed"` without requiring
+pointer actionability. Failed postconditions retain the delivery receipt before
+throwing. Locator waits include `checked` and `unchecked` states.
+
 The page and locator surface intentionally follows Playwright where possible.
 That includes synchronous accessors:
 
@@ -161,7 +169,7 @@ in its `CdpError`.
 ## Waiting
 
 ```ts
-await loc.waitFor({ state: "visible" }); // attached | detached | visible | hidden
+await loc.waitFor({ state: "visible" }); // attached | detached | visible | hidden | checked | unchecked
 await page.waitForLoadState("domcontentloaded");
 await page.waitForFunction(() => document.readyState === "complete");
 await page.waitForSelector(".ready");

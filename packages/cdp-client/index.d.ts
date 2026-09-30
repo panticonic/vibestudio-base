@@ -148,12 +148,18 @@ export interface CdpDomInspection {
   }>;
 }
 
-export type WaitState = "attached" | "detached" | "visible" | "hidden";
+export type WaitState =
+  | "attached"
+  | "detached"
+  | "visible"
+  | "hidden"
+  | "checked"
+  | "unchecked";
 export interface ActionOptions {
   timeout?: number;
 }
-export interface ClickOptions extends ActionOptions {
-  /** Assert one semantic locator state after the pointer event is delivered. */
+export interface InteractionOptions extends ActionOptions {
+  /** Observe one semantic locator state after the interaction completes. */
   expect?: {
     locator: CdpLocator;
     state?: WaitState;
@@ -162,12 +168,30 @@ export interface ClickOptions extends ActionOptions {
 }
 export interface CdpInteractionOutcome {
   protocol: "cdp-interaction-outcome.v1";
-  action: "click" | "dblclick" | "fill" | "clear" | "selectOption" | "focus" | "blur" | "selectText" | "scrollIntoView" | "dispatchEvent" | "press" | "hover" | "check" | "uncheck";
-  delivery: "dispatched";
+  action:
+    | "click"
+    | "dblclick"
+    | "fill"
+    | "clear"
+    | "selectOption"
+    | "focus"
+    | "blur"
+    | "selectText"
+    | "scrollIntoView"
+    | "dispatchEvent"
+    | "press"
+    | "hover"
+    | "check"
+    | "uncheck";
+  delivery: "dispatched" | "not-needed";
   target: CdpDomInspection;
   effect:
     | { status: "not-asserted" }
-    | { status: "observed"; locator: string; state: WaitState };
+    | {
+        status: "observed" | "not-observed";
+        locator: string;
+        state: WaitState;
+      };
 }
 export interface ByTextOptions {
   /** Case-sensitive whole-string matching. Strings otherwise match case-insensitive substrings. */
@@ -203,16 +227,19 @@ export interface CdpLocator {
   last(): CdpLocator;
   all(): Promise<CdpLocator[]>;
   // Actions (auto-waiting)
-  click(opts?: ClickOptions): Promise<CdpInteractionOutcome>;
-  dblclick(opts?: ClickOptions): Promise<CdpInteractionOutcome>;
+  click(opts?: InteractionOptions): Promise<CdpInteractionOutcome>;
+  dblclick(opts?: InteractionOptions): Promise<CdpInteractionOutcome>;
   hover(opts?: ActionOptions): Promise<void>;
   fill(value: string, opts?: ActionOptions): Promise<void>;
   type(text: string, opts?: ActionOptions): Promise<void>;
   clear(opts?: ActionOptions): Promise<void>;
-  press(key: string, opts?: ActionOptions): Promise<void>;
-  check(opts?: ActionOptions): Promise<void>;
-  uncheck(opts?: ActionOptions): Promise<void>;
-  setChecked(checked: boolean, opts?: ActionOptions): Promise<void>;
+  press(key: string, opts?: InteractionOptions): Promise<CdpInteractionOutcome>;
+  check(opts?: InteractionOptions): Promise<CdpInteractionOutcome>;
+  uncheck(opts?: InteractionOptions): Promise<CdpInteractionOutcome>;
+  setChecked(
+    checked: boolean,
+    opts?: InteractionOptions,
+  ): Promise<CdpInteractionOutcome>;
   selectOption(
     value: string | string[] | SelectOptionMatcher | SelectOptionMatcher[],
     opts?: ActionOptions,

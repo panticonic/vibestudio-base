@@ -259,7 +259,14 @@ class FakeWebSocket {
         token?: string;
       } | null;
       descriptor: { steps: Array<Record<string, unknown>> };
-      state?: "attached" | "detached" | "visible" | "hidden" | null;
+      state?:
+        | "attached"
+        | "detached"
+        | "visible"
+        | "hidden"
+        | "checked"
+        | "unchecked"
+        | null;
     };
     const targetsMissing = payload.descriptor.steps.some(
       (s) =>
@@ -322,6 +329,14 @@ class FakeWebSocket {
               box: { x: 0, y: 0, width: 100, height: 20 },
             };
       case "waitFor":
+        if (payload.state === "checked" || payload.state === "unchecked") {
+          return this.checked === (payload.state === "checked")
+            ? true
+            : {
+                __nsLocatorFailure: "state-timeout",
+                state: payload.state,
+              };
+        }
         return true;
       case "count":
         return 1;
@@ -332,7 +347,6 @@ class FakeWebSocket {
       case "isEditable":
         return !targetsMissing;
       case "checkedState":
-        this.checking = true;
         return this.checked;
       case "retainedCheckedState":
         return this.checked;
@@ -1456,7 +1470,12 @@ describe("worker CDP client", () => {
     const browser = await BrowserImpl.connect("ws://cdp");
     const page = browser.contexts()[0]!.pages()[0]!;
 
-    await page.getByRole("checkbox").check({ timeout: 1_000 });
+    const outcome = await page.getByRole("checkbox").check({ timeout: 1_000 });
+    expect(outcome).toMatchObject({
+      action: "check",
+      delivery: "dispatched",
+      effect: { status: "observed", state: "checked" },
+    });
 
     expect(
       FakeWebSocket.sent.filter(
@@ -1475,6 +1494,157 @@ describe("worker CDP client", () => {
       ).length,
     ).toBeGreaterThan(1);
     await expect(page.getByRole("checkbox").isChecked()).resolves.toBe(true);
+    await browser.close();
+  });
+
+  it("returns observed idempotent checkbox receipts without inventing a second click", async () => {
+    installFakeWebSocket();
+    const onInteraction = vi.fn();
+    const browser = await BrowserImpl.connect("ws://cdp", { onInteraction });
+    const page = browser.contexts()[0]!.pages()[0]!;
+    const checkbox = page.getByRole("checkbox");
+    await checkbox.check();
+    const actionability = vi
+      .spyOn(page, "resolveHitPoint")
+      .mockRejectedValue(new Error("Control is disabled"));
+    const noChange = await checkbox.check();
+    expect(noChange).toMatchObject({
+      action: "check",
+      delivery: "not-needed",
+      effect: { status: "observed", state: "checked" },
+    });
+    expect(
+      FakeWebSocket.sent.filter(
+        ({ method, params }) =>
+          method === "Input.dispatchMouseEvent" &&
+          params?.["type"] === "mouseReleased",
+      ),
+    ).toHaveLength(1);
+    expect(actionability).not.toHaveBeenCalled();
+    actionability.mockRestore();
+    expect(
+      await checkbox.setChecked(false, {
+        expect: { locator: checkbox, state: "unchecked" },
+      }),
+    ).toMatchObject({
+      action: "uncheck",
+      delivery: "dispatched",
+      effect: { status: "observed", state: "unchecked" },
+    });
+    expect(onInteraction.mock.calls.map(([receipt]) => receipt)).toHaveLength(
+      3,
+    );
+    const waits = FakeWebSocket.sent.filter(
+      ({ method, params }) =>
+        method === "Runtime.evaluate" &&
+        String(params?.["expression"]).includes('"op":"waitFor"'),
+    );
+    expect(
+      waits.some(({ params }) =>
+        String(params?.["expression"]).includes(
+          'state==="checked"||state==="unchecked"',
+        ),
+      ),
+    ).toBe(true);
+    await browser.close();
+  });
+
+  it("observes an external postcondition even when checkbox delivery is unnecessary", async () => {
+    installFakeWebSocket();
+    const onInteraction = vi.fn();
+    const browser = await BrowserImpl.connect("ws://cdp", { onInteraction });
+    const page = browser.contexts()[0]!.pages()[0]!;
+    await page.getByRole("checkbox").check();
+    onInteraction.mockClear();
+    await expect(
+      page
+        .getByRole("checkbox")
+        .check({
+          expect: { locator: page.getByTestId("missing"), timeout: 40 },
+        }),
+    ).rejects.toMatchObject({ code: "cdp_interaction_outcome_not_observed" });
+    expect(onInteraction.mock.calls).toHaveLength(1);
+    expect(onInteraction.mock.calls[0]?.[0]).toMatchObject({
+      delivery: "not-needed",
+      effect: { status: "not-observed" },
+    });
+    expect(
+      FakeWebSocket.sent.filter(
+        ({ method, params }) =>
+          method === "Input.dispatchMouseEvent" &&
+          params?.["type"] === "mouseReleased",
+      ),
+    ).toHaveLength(1);
+    await browser.close();
+  });
+
+  it("does not mistake a missing control for an unchecked state", async () => {
+    installFakeWebSocket();
+    const browser = await BrowserImpl.connect("ws://cdp");
+    const page = browser.contexts()[0]!.pages()[0]!;
+    await expect(
+      page.getByTestId("missing").waitFor({ state: "unchecked", timeout: 40 }),
+    ).rejects.toThrow();
+    await browser.close();
+  });
+
+  it("observes checkbox postconditions and retains exactly one dispatched receipt on failure", async () => {
+    installFakeWebSocket();
+    const onInteraction = vi.fn();
+    const browser = await BrowserImpl.connect("ws://cdp", { onInteraction });
+    const page = browser.contexts()[0]!.pages()[0]!;
+    await expect(
+      page.getByRole("checkbox").check({
+        expect: { locator: page.getByTestId("missing"), timeout: 40 },
+      }),
+    ).rejects.toMatchObject({ code: "cdp_interaction_outcome_not_observed" });
+    expect(onInteraction).toHaveBeenCalledTimes(1);
+    expect(onInteraction.mock.calls[0]?.[0]).toMatchObject({
+      action: "check",
+      delivery: "dispatched",
+      effect: { status: "not-observed" },
+    });
+    expect(
+      FakeWebSocket.sent.filter(
+        ({ method, params }) =>
+          method === "Input.dispatchMouseEvent" &&
+          params?.["type"] === "mouseReleased",
+      ),
+    ).toHaveLength(1);
+    await browser.close();
+  });
+
+  it("retains delivery when a controlled checkbox never reaches its requested state", async () => {
+    installFakeWebSocket();
+    FakeWebSocket.deferNextCheckPolls = 1000;
+    const onInteraction = vi.fn();
+    const browser = await BrowserImpl.connect("ws://cdp", { onInteraction });
+    const page = browser.contexts()[0]!.pages()[0]!;
+    await expect(
+      page.getByRole("checkbox").check({ timeout: 40 }),
+    ).rejects.toThrow();
+    expect(onInteraction).toHaveBeenCalledTimes(1);
+    expect(onInteraction.mock.calls[0]?.[0]).toMatchObject({
+      action: "check",
+      delivery: "dispatched",
+      effect: { status: "not-observed", state: "checked" },
+    });
+    expect(
+      FakeWebSocket.sent.filter(
+        ({ method, params }) =>
+          method === "Input.dispatchMouseEvent" &&
+          params?.["type"] === "mouseReleased",
+      ),
+    ).toHaveLength(1);
+    expect(
+      FakeWebSocket.sent.some(
+        ({ method, params }) =>
+          method === "Runtime.evaluate" &&
+          String(params?.["expression"]).includes(
+            '"op":"releaseRetainedElement"',
+          ),
+      ),
+    ).toBe(true);
     await browser.close();
   });
 

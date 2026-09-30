@@ -212,7 +212,7 @@ can create or acquire a panel handle directly before driving CDP automation.
 Playwright-style page. Actions
 auto-wait for the element to be visible/stable/enabled before acting and
 journal a `cdp-interaction-outcome.v1` receipt after the browser event is
-delivered. `click()`, `dblclick()`, and locator `press()` also return that
+delivered. `click()`, `dblclick()`, locator `press()`, and checkbox actions also return that
 receipt and accept an `expect` locator postcondition. Other actions such as
 `fill()` return no receipt (`selectOption()` returns selected values); inspect
 their native journal and await a separate locator assertion when needed.
@@ -297,7 +297,8 @@ await page.keyboard.type("replacement");
 await page.keyboard.insertText("inserted in one browser operation");
 await page.setViewportSize({ width: 390, height: 844 });
 page.viewportSize(); // synchronous current CSS viewport
-await page.getByRole("checkbox").check();
+const checked = await page.getByRole("checkbox").check();
+// checked.effect.status === "observed"; checked.effect.state === "checked"
 await page.getByRole("checkbox").uncheck();
 await page.getByRole("checkbox").setChecked(true);
 await page.getByLabel("Country").selectOption("US");
@@ -334,7 +335,12 @@ await page.locator(".box").inspect();
 `check`, `uncheck`, and `setChecked` dispatch at most one click and wait within
 the action timeout for the retained control to reach the requested state. This
 supports controlled components whose event handler persists asynchronously;
-the action never replays the click while waiting.
+the action never replays the click while waiting. They return the same native
+interaction receipt as `click` and `press`, with the requested checked/unchecked
+state observed by default. `delivery: "not-needed"` means the control already
+had that state and no pointer event was sent. An optional `expect` observes a
+further application postcondition; it is not silently ignored. Locator
+`waitFor` and interaction postconditions also accept `checked` and `unchecked`.
 
 A successful action establishes native dispatch, not completion of asynchronous
 application work. Await the specific rendered effect with `click({ expect })`

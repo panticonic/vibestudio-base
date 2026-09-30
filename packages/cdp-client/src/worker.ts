@@ -117,7 +117,13 @@ type SelectOptionMatcher = {
   index?: number;
 };
 type SelectOptionInput = string | SelectOptionMatcher;
-type WaitState = "attached" | "detached" | "visible" | "hidden";
+type WaitState =
+  | "attached"
+  | "detached"
+  | "visible"
+  | "hidden"
+  | "checked"
+  | "unchecked";
 type InteractionOptions = ActionOptions & {
   /** Optional semantic postcondition observed after the browser event is delivered. */
   expect?: {
@@ -144,7 +150,7 @@ export interface CdpInteractionOutcome {
     | "hover"
     | "check"
     | "uncheck";
-  delivery: "dispatched";
+  delivery: "dispatched" | "not-needed";
   target: CdpDomInspection;
   effect:
     | { status: "not-asserted" }
@@ -913,6 +919,7 @@ async function nsWaitForState(descriptor, state, timeout){
   if(state==="detached") ok=!el;
   else if(state==="attached") ok=!!el;
   else if(state==="hidden") ok=!el||!nsVisible(el);
+  else if(state==="checked"||state==="unchecked") ok=!!el&&nsCheckedState(el)===(state==="checked");
   else ok=!!el&&nsVisible(el);
   if(ok) return el;
   var failure=new Error("Timeout "+timeout+"ms waiting for element to be "+state);
@@ -2059,12 +2066,13 @@ class WorkerCdpPage {
     descriptor: LocatorDescriptor,
     target: Omit<CdpDomInspection, "selector">,
     opts: InteractionOptions,
+    delivery: CdpInteractionOutcome["delivery"] = "dispatched",
   ): Promise<CdpInteractionOutcome> {
     if (!opts.expect) {
       const outcome: CdpInteractionOutcome = {
         protocol: "cdp-interaction-outcome.v1",
         action,
-        delivery: "dispatched",
+        delivery,
         target: { selector: describeLocator(descriptor), ...target },
         effect: { status: "not-asserted" },
       };
@@ -2087,12 +2095,12 @@ class WorkerCdpPage {
       this.onInteraction?.({
         protocol: "cdp-interaction-outcome.v1",
         action,
-        delivery: "dispatched",
+        delivery,
         target: { selector: describeLocator(descriptor), ...target },
         effect: { status: "not-observed", locator: expectedLocator, state },
       });
       throw new CdpError(
-        `${action} was dispatched to ${describeLocator(descriptor)}, but expected ${expectedLocator} to become ${state}`,
+        `${action} ${delivery === "dispatched" ? "was dispatched to" : "needed no event for"} ${describeLocator(descriptor)}, but expected ${expectedLocator} to become ${state}`,
         {
           cause,
           locator: describeLocator(descriptor),
@@ -2108,7 +2116,7 @@ class WorkerCdpPage {
     const outcome: CdpInteractionOutcome = {
       protocol: "cdp-interaction-outcome.v1",
       action,
-      delivery: "dispatched",
+      delivery,
       target: { selector: describeLocator(descriptor), ...target },
       effect: {
         status: "observed",
@@ -2170,8 +2178,36 @@ class WorkerCdpPage {
   async setCheckedDescriptor(
     descriptor: LocatorDescriptor,
     checked: boolean,
-    opts: ActionOptions = {},
-  ): Promise<void> {
+    opts: InteractionOptions = {},
+  ): Promise<CdpInteractionOutcome> {
+    const action = checked ? "check" : "uncheck";
+    const state = checked ? "checked" : "unchecked";
+    const observation = {
+      ...opts,
+      expect: opts.expect ?? {
+        locator: new WorkerCdpLocator(this, descriptor),
+        state,
+      },
+    } satisfies InteractionOptions;
+    await this.runLocatorOp("waitFor", descriptor, null, {
+      state: "attached",
+      timeout: opts.timeout,
+    });
+    const initial = await this.runLocatorOp("checkedState", descriptor, null, {
+      timeout: opts.timeout,
+    });
+    if (initial === checked) {
+      const target = (await this.runLocatorOp("inspect", descriptor, null, {
+        timeout: 0,
+      })) as Omit<CdpDomInspection, "selector">;
+      return this.observeInteraction(
+        action,
+        descriptor,
+        target,
+        observation,
+        "not-needed",
+      );
+    }
     const retainToken = `${this.retainedElementOwner}-check-${++this.retainedElementSequence}`;
     const point = await this.resolveHitPoint(
       descriptor,
@@ -2188,23 +2224,40 @@ class WorkerCdpPage {
           timeout: opts.timeout,
         },
       )) as boolean;
-      if (current === checked) return;
       const target = (await this.runLocatorOp("inspect", descriptor, null, {
         timeout: 0,
       })) as Omit<CdpDomInspection, "selector">;
-      await this.dispatchClickAt(point);
-      await this.runLocatorOp(
-        "retainedCheckedStateEquals",
-        descriptor,
-        { ...retainedArg, checked },
-        {
-          timeout: opts.timeout,
-        },
-      );
-      this.recordLocatorInteraction(
-        checked ? "check" : "uncheck",
+      const delivery = current === checked ? "not-needed" : "dispatched";
+      if (delivery === "dispatched") {
+        await this.dispatchClickAt(point);
+        try {
+          await this.runLocatorOp(
+            "retainedCheckedStateEquals",
+            descriptor,
+            { ...retainedArg, checked },
+            { timeout: opts.timeout },
+          );
+        } catch (cause) {
+          this.onInteraction?.({
+            protocol: "cdp-interaction-outcome.v1",
+            action,
+            delivery,
+            target: { selector: describeLocator(descriptor), ...target },
+            effect: {
+              status: "not-observed",
+              locator: describeLocator(descriptor),
+              state,
+            },
+          });
+          throw cause;
+        }
+      }
+      return await this.observeInteraction(
+        action,
         descriptor,
         target,
+        observation,
+        delivery,
       );
     } finally {
       await this.runLocatorOp(
@@ -2510,14 +2563,17 @@ class WorkerCdpLocator {
   ): Promise<CdpInteractionOutcome> {
     return this.page.pressDescriptor(this.descriptor, key, opts);
   }
-  async check(opts: ActionOptions = {}): Promise<void> {
-    await this.page.setCheckedDescriptor(this.descriptor, true, opts);
+  async check(opts: InteractionOptions = {}): Promise<CdpInteractionOutcome> {
+    return this.page.setCheckedDescriptor(this.descriptor, true, opts);
   }
-  async uncheck(opts: ActionOptions = {}): Promise<void> {
-    await this.page.setCheckedDescriptor(this.descriptor, false, opts);
+  async uncheck(opts: InteractionOptions = {}): Promise<CdpInteractionOutcome> {
+    return this.page.setCheckedDescriptor(this.descriptor, false, opts);
   }
-  async setChecked(checked: boolean, opts: ActionOptions = {}): Promise<void> {
-    await this.page.setCheckedDescriptor(this.descriptor, checked, opts);
+  async setChecked(
+    checked: boolean,
+    opts: InteractionOptions = {},
+  ): Promise<CdpInteractionOutcome> {
+    return this.page.setCheckedDescriptor(this.descriptor, checked, opts);
   }
   async selectOption(
     value: SelectOptionInput | SelectOptionInput[],
