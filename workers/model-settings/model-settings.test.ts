@@ -114,9 +114,9 @@ const CATALOG: ModelCatalog = {
 };
 
 const CODEX_CATALOG_ENTRY = makeTestCatalogEntry({
-  ref: "openai-codex:gpt-6-sol",
-  id: "gpt-6-sol",
-  name: "GPT-6 Sol",
+  ref: "openai-codex:gpt-6.1-sol",
+  id: "gpt-6.1-sol",
+  name: "GPT-6.1 Sol",
   provider: "openai-codex",
   baseUrl: "https://chatgpt.com/backend-api/codex",
   recommended: true,
@@ -337,16 +337,16 @@ describe("ModelSettingsDO", () => {
     });
   });
 
-  it("projects the Codex 6 Sol registry entry and all enabled effort levels", async () => {
+  it("projects the Codex 6.1 Sol registry entry and all enabled effort levels", async () => {
     const catalog = await getModelCatalog();
     const sol = catalog.models.find((model) => model.ref === DEFAULT_AGENT_MODEL_REF);
 
-    expect(DEFAULT_AGENT_MODEL_REF).toBe("openai-codex:gpt-6-sol");
+    expect(DEFAULT_AGENT_MODEL_REF).toBe("openai-codex:gpt-6.1-sol");
     expect(catalog.providers.find((provider) => provider.id === "openai-codex")?.label).toBe(
       "ChatGPT"
     );
     expect(sol).toMatchObject({
-      id: "gpt-6-sol",
+      id: "gpt-6.1-sol",
       provider: "openai-codex",
       contextWindow: 272_000,
       thinkingLevels: ["minimal", "low", "medium", "high", "xhigh", "max"],
@@ -385,7 +385,7 @@ describe("ModelSettingsDO", () => {
 
     await expect(call("getSettings")).resolves.toMatchObject({
       defaultAgentConfig: {
-        model: "openai-codex:gpt-6-sol",
+        model: "openai-codex:gpt-6.1-sol",
         fastMode: false,
       },
     });
@@ -393,13 +393,13 @@ describe("ModelSettingsDO", () => {
     TestModelSettingsDO.config = {
       ...BASE_CONFIG,
       defaultAgentConfig: {
-        model: "openai-codex:gpt-6-sol",
+        model: "openai-codex:gpt-6.1-sol",
         fastMode: true,
       },
     };
     await expect(call("getSettings")).resolves.toMatchObject({
       defaultAgentConfig: {
-        model: "openai-codex:gpt-6-sol",
+        model: "openai-codex:gpt-6.1-sol",
         fastMode: true,
       },
     });
@@ -411,15 +411,15 @@ describe("ModelSettingsDO", () => {
     const { call } = await createTestDO(CodexModelSettingsDO);
 
     await expect(
-      call("setDefaultAgentConfig", { model: "openai-codex:gpt-6-sol" })
+      call("setDefaultAgentConfig", { model: "openai-codex:gpt-6.1-sol" })
     ).resolves.toMatchObject({
       defaultAgentConfig: {
-        model: "openai-codex:gpt-6-sol",
+        model: "openai-codex:gpt-6.1-sol",
         fastMode: false,
       },
     });
     expect(TestModelSettingsDO.writes.at(-1)?.value).toEqual({
-      model: "openai-codex:gpt-6-sol",
+      model: "openai-codex:gpt-6.1-sol",
       fastMode: false,
     });
 
@@ -429,7 +429,7 @@ describe("ModelSettingsDO", () => {
     };
     await expect(call("getSettings")).resolves.toMatchObject({
       defaultAgentConfig: {
-        model: "openai-codex:gpt-6-sol",
+        model: "openai-codex:gpt-6.1-sol",
         fastMode: false,
       },
     });
@@ -686,7 +686,7 @@ it("shows account model restrictions instead of marking every Copilot model read
     ...storedCredential("copilot", baseUrl),
     metadata: {
       modelProviderId: "github-copilot",
-      modelAvailableIds: JSON.stringify(["gpt-6-sol"]),
+      modelAvailableIds: JSON.stringify(["gpt-6.1-sol"]),
     },
   };
   const entry = makeTestCatalogEntry({
@@ -703,7 +703,7 @@ it("shows account model restrictions instead of marking every Copilot model read
     message: expect.stringContaining("not available with your connected provider account"),
   });
   expect(
-    applyCloudAvailability({ ...entry, id: "gpt-6-sol" }, [credential], "provider-credentials")
+    applyCloudAvailability({ ...entry, id: "gpt-6.1-sol" }, [credential], "provider-credentials")
       .availability.state
   ).toBe("ready");
 });

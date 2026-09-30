@@ -1,5 +1,5 @@
 diff --git a/dist/api/anthropic-messages.js b/dist/api/anthropic-messages.js
-index 5dd85f1..ce443cf 100644
+index 501971b2a..c24637972 100644
 --- a/dist/api/anthropic-messages.js
 +++ b/dist/api/anthropic-messages.js
 @@ -376,7 +376,7 @@ export const stream = (model, context, options) => {
@@ -11,7 +11,7 @@ index 5dd85f1..ce443cf 100644
                  client = created.client;
                  isOAuth = created.isOAuthToken;
              }
-@@ -695,7 +695,7 @@ export const streamSimple = (model, context, options) => {
+@@ -701,7 +701,7 @@ export const streamSimple = (model, context, options) => {
  function isOAuthToken(apiKey) {
      return apiKey.includes("sk-ant-oat");
  }
@@ -20,7 +20,7 @@ index 5dd85f1..ce443cf 100644
      // Copilot: Bearer auth.
      if (model.provider === "github-copilot") {
          const client = new Anthropic({
-@@ -712,7 +712,7 @@ function createClient(model, apiKey, optionsHeaders, fetch, dynamicHeaders, sess
+@@ -718,7 +718,7 @@ function createClient(model, apiKey, optionsHeaders, fetch, dynamicHeaders, sess
          return { client, isOAuthToken: false };
      }
      // OAuth: Bearer auth, Claude Code identity headers
@@ -30,7 +30,7 @@ index 5dd85f1..ce443cf 100644
              apiKey: null,
              authToken: apiKey,
 diff --git a/dist/api/openai-codex-responses.d.ts b/dist/api/openai-codex-responses.d.ts
-index 704476d..29e42f8 100644
+index 704476da0..29e42f855 100644
 --- a/dist/api/openai-codex-responses.d.ts
 +++ b/dist/api/openai-codex-responses.d.ts
 @@ -1,6 +1,11 @@
@@ -54,7 +54,7 @@ index 704476d..29e42f8 100644
 +export declare function releaseOpenAICodexWebSocketSession(sessionId?: string): void;
 +//# sourceMappingURL=openai-codex-responses.d.ts.map
 diff --git a/dist/api/openai-codex-responses.js b/dist/api/openai-codex-responses.js
-index dfdb6ec..92ec07c 100644
+index 40014b3b7..2a16f350e 100644
 --- a/dist/api/openai-codex-responses.js
 +++ b/dist/api/openai-codex-responses.js
 @@ -105,11 +105,11 @@ function sleep(ms, signal) {
@@ -147,18 +147,26 @@ index dfdb6ec..92ec07c 100644
              if (options?.signal?.aborted) {
                  throw new Error("Request was aborted");
              }
-@@ -475,8 +504,8 @@ function resolveCodexWebSocketUrl(baseUrl) {
+@@ -434,6 +463,7 @@ function getServiceTierCostMultiplier(model, serviceTier) {
+         case "flex":
+             return 0.5;
+         case "priority":
++        case "fast":
+             return model.id === "gpt-5.5" ? 2.5 : 2;
+         default:
+             return 1;
+@@ -475,8 +505,8 @@ function resolveCodexWebSocketUrl(baseUrl) {
  // ============================================================================
  // Response Processing
  // ============================================================================
 -async function processStream(response, output, stream, model, grammarToolInputProperties, options) {
--    await processResponsesStream(mapCodexEvents(parseSSE(response, options?.signal), output), output, stream, model, {
+-    await processResponsesStream(mapCodexEvents(parseSSE(response, options?.signal), output, model, options?.onProviderStreamEvent), output, stream, model, {
 +async function processStream(response, output, stream, model, grammarToolInputProperties, options, streamIdleTimeoutMs) {
-+    await processResponsesStream(mapCodexEvents(parseSSE(response, options?.signal, streamIdleTimeoutMs), output), output, stream, model, {
++    await processResponsesStream(mapCodexEvents(parseSSE(response, options?.signal, streamIdleTimeoutMs), output, model, options?.onProviderStreamEvent), output, stream, model, {
          serviceTier: options?.serviceTier,
          grammarToolInputProperties,
          resolveServiceTier: resolveCodexServiceTier,
-@@ -563,7 +592,31 @@ function normalizeCodexStatus(status) {
+@@ -579,7 +609,31 @@ function normalizeCodexStatus(status) {
  // ============================================================================
  // SSE Parsing
  // ============================================================================
@@ -191,7 +199,7 @@ index dfdb6ec..92ec07c 100644
      if (!response.body)
          return;
      const reader = response.body.getReader();
-@@ -578,7 +631,7 @@ async function* parseSSE(response, signal) {
+@@ -594,7 +648,7 @@ async function* parseSSE(response, signal) {
              if (signal?.aborted) {
                  throw new Error("Request was aborted");
              }
@@ -200,7 +208,7 @@ index dfdb6ec..92ec07c 100644
              if (signal?.aborted) {
                  throw new Error("Request was aborted");
              }
-@@ -685,7 +738,11 @@ export function closeOpenAICodexWebSocketSessions(sessionId) {
+@@ -701,7 +755,11 @@ export function closeOpenAICodexWebSocketSessions(sessionId) {
      }
      websocketSessionCache.clear();
  }
@@ -213,7 +221,7 @@ index dfdb6ec..92ec07c 100644
  function isWebSocketSseFallbackActive(sessionId) {
      return sessionId ? websocketSseFallbackSessions.has(sessionId) : false;
  }
-@@ -765,6 +822,86 @@ function closeWebSocketSilently(socket, code = 1000, reason = "done") {
+@@ -781,6 +839,86 @@ function closeWebSocketSilently(socket, code = 1000, reason = "done") {
      }
      catch { }
  }
@@ -300,7 +308,7 @@ index dfdb6ec..92ec07c 100644
  function scheduleSessionWebSocketExpiry(sessionId, accountId, entry) {
      if (entry.idleTimer) {
          clearTimeout(entry.idleTimer);
-@@ -781,18 +918,29 @@ function scheduleSessionWebSocketExpiry(sessionId, accountId, entry) {
+@@ -797,18 +935,29 @@ function scheduleSessionWebSocketExpiry(sessionId, accountId, entry) {
      }, SESSION_WEBSOCKET_CACHE_TTL_MS);
  }
  async function connectWebSocket(url, headers, signal, connectTimeoutMs = DEFAULT_WEBSOCKET_CONNECT_TIMEOUT_MS, env) {
@@ -331,7 +339,7 @@ index dfdb6ec..92ec07c 100644
          }
          catch (error) {
              reject(error instanceof Error ? error : new Error(String(error)));
-@@ -849,7 +997,7 @@ async function connectWebSocket(url, headers, signal, connectTimeoutMs = DEFAULT
+@@ -865,7 +1014,7 @@ async function connectWebSocket(url, headers, signal, connectTimeoutMs = DEFAULT
      });
  }
  async function acquireWebSocket(url, headers, sessionId, accountId, signal, connectTimeoutMs, env) {
@@ -340,7 +348,7 @@ index dfdb6ec..92ec07c 100644
          const socket = await connectWebSocket(url, headers, signal, connectTimeoutMs, env);
          return {
              socket,
-@@ -1185,6 +1333,10 @@ async function processWebSocketStream(url, body, headers, output, stream, model,
+@@ -1201,6 +1350,10 @@ async function processWebSocketStream(url, body, headers, output, stream, model,
          }
      }
      try {
@@ -349,9 +357,9 @@ index dfdb6ec..92ec07c 100644
 +            throw new Error("Codex WebSocket upgrade returned a pass-through WebSocket that cannot be consumed by this runtime");
 +        }
          socket.send(JSON.stringify({ type: "response.create", ...requestBody }));
-         await processResponsesStream(startWebSocketOutputOnFirstEvent(mapCodexEvents(parseWebSocket(socket, options?.signal, idleTimeoutMs), output), onStart), output, stream, model, {
+         await processResponsesStream(startWebSocketOutputOnFirstEvent(mapCodexEvents(parseWebSocket(socket, options?.signal, idleTimeoutMs), output, model, options?.onProviderStreamEvent), onStart), output, stream, model, {
              serviceTier: options?.serviceTier,
-@@ -1278,18 +1430,16 @@ function buildBaseCodexHeaders(initHeaders, additionalHeaders, accountId, token)
+@@ -1294,18 +1447,16 @@ function buildBaseCodexHeaders(initHeaders, additionalHeaders, accountId, token)
      headers.set("User-Agent", getPiUserAgent());
      return headers;
  }
@@ -374,7 +382,7 @@ index dfdb6ec..92ec07c 100644
      const headers = buildBaseCodexHeaders(initHeaders, additionalHeaders, accountId, token);
      headers.delete("accept");
      headers.delete("content-type");
-@@ -1297,7 +1447,7 @@ function buildWebSocketHeaders(initHeaders, additionalHeaders, accountId, token,
+@@ -1313,7 +1464,7 @@ function buildWebSocketHeaders(initHeaders, additionalHeaders, accountId, token,
      headers.delete("openai-beta");
      headers.set("OpenAI-Beta", OPENAI_BETA_RESPONSES_WEBSOCKETS);
      headers.set("x-client-request-id", requestId);
@@ -385,23 +393,11 @@ index dfdb6ec..92ec07c 100644
 -//# sourceMappingURL=openai-codex-responses.js.map
 \ No newline at end of file
 +//# sourceMappingURL=openai-codex-responses.js.map
-diff --git a/dist/types.d.ts b/dist/types.d.ts
-index 5915ca6..2190c6c 100644
---- a/dist/types.d.ts
-+++ b/dist/types.d.ts
-@@ -59,6 +59,8 @@ export interface ProviderRequestOptions<TModel = Model<Api>> {
-     /** Explicit parent context for telemetry produced by this logical request. */
-     telemetryContext?: TelemetryContext;
-     apiKey?: string;
-+    /** Credential method when auth material is injected by a trusted transport. */
-+    authType?: "api_key" | "oauth";
-     /**
-      * Optional fetch implementation for provider HTTP requests.
-      * Defaults to `globalThis.fetch`. Provider adapters that cannot inject a custom implementation may reject it.
 diff --git a/dist/api/openai-completions.js b/dist/api/openai-completions.js
+index eecd83c75..ffd1a9804 100644
 --- a/dist/api/openai-completions.js
 +++ b/dist/api/openai-completions.js
-@@ -185,6 +185,9 @@
+@@ -185,6 +185,9 @@ export const stream = (model, context, options) => {
              const cacheSessionId = cacheRetention === "none" ? undefined : options?.sessionId;
              const client = createClient(model, normalizedContext, apiKey, options?.headers, options?.fetch, cacheSessionId, compat);
              let params = buildParams(model, normalizedContext, options, compat, cacheRetention, grammarToolInputProperties);
@@ -411,7 +407,7 @@ diff --git a/dist/api/openai-completions.js b/dist/api/openai-completions.js
              const nextParams = await options?.onPayload?.(params, model);
              if (nextParams !== undefined) {
                  params = nextParams;
-@@ -350,6 +353,9 @@
+@@ -350,6 +353,9 @@ export const stream = (model, context, options) => {
                  }
                  return block;
              };
@@ -419,13 +415,12 @@ diff --git a/dist/api/openai-completions.js b/dist/api/openai-completions.js
 +            let promptTotal;
 +            let promptCache;
              for await (const chunk of openaiStream) {
+                 await options?.onProviderStreamEvent?.(chunk, model);
                  if (!chunk || typeof chunk !== "object")
-                     continue;
-@@ -358,6 +364,22 @@
-                 output.responseId ||= chunk.id;
+@@ -360,6 +366,22 @@ export const stream = (model, context, options) => {
                  if (typeof chunk.model === "string" && chunk.model.length > 0 && chunk.model !== model.id) {
                      output.responseModel ||= chunk.model;
-+                }
+                 }
 +                const prompt = chunk.prompt_progress;
 +                if (prompt && typeof prompt === "object" &&
 +                    typeof chunk.id === "string" && chunk.id.length > 0 &&
@@ -441,13 +436,24 @@ diff --git a/dist/api/openai-completions.js b/dist/api/openai-completions.js
 +                    lastPromptProcessed = prompt.processed;
 +                    stream.push({ type: "prompt_progress", total: prompt.total,
 +                        processed: prompt.processed, cache: prompt.cache, partial: output });
-                 }
++                }
                  if (chunk.usage) {
                      output.usage = parseChunkUsage(chunk.usage, model);
+                 }
 diff --git a/dist/types.d.ts b/dist/types.d.ts
+index 68aa0553d..4b585cecd 100644
 --- a/dist/types.d.ts
 +++ b/dist/types.d.ts
-@@ -468,6 +468,13 @@
+@@ -59,6 +59,8 @@ export interface ProviderRequestOptions<TModel = Model<Api>> {
+     /** Explicit parent context for telemetry produced by this logical request. */
+     telemetryContext?: TelemetryContext;
+     apiKey?: string;
++    /** Credential method when auth material is injected by a trusted transport. */
++    authType?: "api_key" | "oauth";
+     /**
+      * Optional fetch implementation for provider HTTP requests.
+      * Defaults to `globalThis.fetch`. Provider adapters that cannot inject a custom implementation may reject it.
+@@ -562,6 +564,13 @@ export type TranscriptContext = {
   * `toolcall_delta` carries subsequent JSON updates.
   */
  export type AssistantMessageEvent = {

@@ -8,7 +8,7 @@ import { makeTestCatalogEntry } from "@workspace/model-catalog/testing";
 import { AGENT_LAUNCH_WATCHDOG_MS, useDeferredAgent } from "./useDeferredAgent";
 import type { ChatParticipantMetadata } from "../types";
 
-const WORKSPACE_MODEL = "openai-codex:gpt-6-sol";
+const WORKSPACE_MODEL = "openai-codex:gpt-6.1-sol";
 const PANEL_MODEL = "openai-codex:gpt-6-luna";
 const USER_MODEL = "anthropic:claude-sonnet-4-6";
 
@@ -24,8 +24,8 @@ const MODEL_CATALOG: ModelCatalog = {
   models: [
     makeTestCatalogEntry({
       ref: WORKSPACE_MODEL,
-      id: "gpt-6-sol",
-      name: "GPT-6 Sol",
+      id: "gpt-6.1-sol",
+      name: "GPT-6.1 Sol",
       provider: "openai-codex",
       baseUrl: "https://chatgpt.com/backend-api",
     }),
@@ -467,8 +467,8 @@ describe("useDeferredAgent", () => {
       models: [
         makeTestCatalogEntry({
           ref: WORKSPACE_MODEL,
-          id: "gpt-6-sol",
-          name: "GPT-6 Sol",
+          id: "gpt-6.1-sol",
+          name: "GPT-6.1 Sol",
           provider: "openai-codex",
           baseUrl: "https://chatgpt.com/backend-api",
           availability: { state: "needs-setup", detail: "no-credential" },

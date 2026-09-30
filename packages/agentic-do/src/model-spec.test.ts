@@ -55,6 +55,32 @@ describe("local model materialization", () => {
 });
 
 describe("Codex service-tier materialization", () => {
+  it("materializes GPT-6.1 Sol with upstream provider and effort metadata", () => {
+    for (const provider of ["openai", "openai-codex"]) {
+      expect(
+        materializeModel(provider, "gpt-6.1-sol", null)?.spec,
+      ).toMatchObject({
+        id: "gpt-6.1-sol",
+        provider,
+        api:
+          provider === "openai" ? "openai-responses" : "openai-codex-responses",
+        contextWindow: 272_000,
+        maxTokens: 128_000,
+        cost: { input: 2, output: 10, cacheRead: 0.1, cacheWrite: 2.5 },
+        thinkingLevelMap: {
+          off: null,
+          minimal: provider === "openai" ? null : "low",
+          low: "low",
+          medium: "medium",
+          high: "high",
+          xhigh: "xhigh",
+          max: "max",
+        },
+        ...(provider === "openai-codex" ? { serviceTiers: ["priority"] } : {}),
+      });
+    }
+  });
+
   it("materializes GPT-6 Astra for API-key and Codex providers", () => {
     const expected = {
       contextWindow: 272_000,
@@ -93,8 +119,7 @@ describe("Codex service-tier materialization", () => {
       materializeModel("openai-codex", "gpt-5.6-sol", null)?.spec.serviceTiers,
     ).toEqual(["priority"]);
     expect(
-      materializeModel("openai-codex", "gpt-5.6-luna", null)?.spec
-        .serviceTiers,
+      materializeModel("openai-codex", "gpt-5.6-luna", null)?.spec.serviceTiers,
     ).toEqual(["priority"]);
     expect(
       materializeModel("openai-codex", "gpt-5.4-mini", null)?.spec.serviceTiers,

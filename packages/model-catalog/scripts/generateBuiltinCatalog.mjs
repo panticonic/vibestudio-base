@@ -18,6 +18,9 @@ const RETIRED_MODEL_IDS = new Set(["gpt-5.3-codex-spark"]);
 const providers = Object.fromEntries(
   getBuiltinProviders()
     .slice()
+    // The agent picker is a chat catalog. Classifier/image-only providers do
+    // not offer an agent model and must not appear as empty connection choices.
+    .filter((provider) => getBuiltinModels(provider).length > 0)
     .sort((left, right) => left.localeCompare(right))
     .map((provider) => [
       provider,

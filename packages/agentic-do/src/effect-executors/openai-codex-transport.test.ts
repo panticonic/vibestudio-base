@@ -26,7 +26,7 @@ const apiKey = [
   btoa(
     JSON.stringify({
       "https://api.openai.com/auth": { chatgpt_account_id: "account-test" },
-    })
+    }),
   ),
   "signature",
 ].join(".");
@@ -86,7 +86,7 @@ class FakeWebSocket {
       this.receive({
         type: "response.created",
         response: { id: "response-started", status: "in_progress", output: [] },
-      })
+      }),
     );
   }
 
@@ -98,7 +98,9 @@ class FakeWebSocket {
     if (this.closed) return;
     this.closed = true;
     this.readyState = 3;
-    queueMicrotask(() => this.emit("close", { type: "close", code, reason, wasClean: true }));
+    queueMicrotask(() =>
+      this.emit("close", { type: "close", code, reason, wasClean: true }),
+    );
   }
 
   private emit(type: string, event: unknown): void {
@@ -121,11 +123,65 @@ function sseResponse(chunks: string[]): Response {
         controller.enqueue(encoder.encode(chunk));
       },
     }),
-    { status: 200, headers: { "content-type": "text/event-stream" } }
+    { status: 200, headers: { "content-type": "text/event-stream" } },
   );
 }
 
 describe("OpenAI Codex transport liveness", () => {
+  it("sends GPT-6.1 Sol Fast requests, observes provider events, and prices the returned Fast tier", async () => {
+    const completed = {
+      ...terminalResponse,
+      response: {
+        ...terminalResponse.response,
+        service_tier: "fast",
+        usage: {
+          input_tokens: 1_000_000,
+          output_tokens: 1_000_000,
+          total_tokens: 2_000_000,
+          input_tokens_details: { cached_tokens: 0 },
+        },
+      },
+    };
+    const fetchMock = vi.fn(async (_url: unknown, _init?: RequestInit) =>
+      sseResponse([`data: ${JSON.stringify(completed)}\n\n`]),
+    );
+    const observer = vi.fn();
+    const payloadObserver = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    const response = await collect(
+      stream(
+        {
+          ...model,
+          id: "gpt-6.1-sol",
+          cost: { input: 2, output: 10, cacheRead: 0.1, cacheWrite: 2.5 },
+        },
+        context,
+        {
+          apiKey,
+          transport: "sse",
+          serviceTier: "priority",
+          onProviderStreamEvent: observer,
+          onPayload: payloadObserver,
+        },
+      ),
+    );
+    expect(payloadObserver).toHaveBeenCalledWith(
+      expect.objectContaining({
+        model: "gpt-6.1-sol",
+        service_tier: "priority",
+      }),
+      expect.objectContaining({ id: "gpt-6.1-sol" }),
+    );
+    expect(observer).toHaveBeenCalledWith(
+      completed,
+      expect.objectContaining({ id: "gpt-6.1-sol" }),
+    );
+    expect(response.result).toMatchObject({
+      stopReason: "stop",
+      usage: { cost: { input: 4, output: 20, total: 24 } },
+    });
+  });
+
   afterEach(() => {
     releaseOpenAICodexWebSocketSession();
     FakeWebSocket.instances = [];
@@ -144,13 +200,15 @@ describe("OpenAI Codex transport liveness", () => {
         transport: "auto",
         streamIdleTimeoutMs: 15,
         env: { TEST: "1" },
-      })
+      }),
     );
 
     expect(first.events.map((event) => event.type)).toEqual(["start", "error"]);
     expect(first.result).toMatchObject({
       stopReason: "error",
-      errorMessage: expect.stringContaining("WebSocket idle timeout after 15ms"),
+      errorMessage: expect.stringContaining(
+        "WebSocket idle timeout after 15ms",
+      ),
     });
     expect(FakeWebSocket.instances).toHaveLength(1);
     expect(FakeWebSocket.instances[0]?.closed).toBe(true);
@@ -160,7 +218,7 @@ describe("OpenAI Codex transport liveness", () => {
     });
 
     const fetchMock = vi.fn(async () =>
-      sseResponse([`data: ${JSON.stringify(terminalResponse)}\n\n`])
+      sseResponse([`data: ${JSON.stringify(terminalResponse)}\n\n`]),
     );
     vi.stubGlobal("fetch", fetchMock);
     const retry = await collect(
@@ -170,7 +228,7 @@ describe("OpenAI Codex transport liveness", () => {
         transport: "auto",
         streamIdleTimeoutMs: 15,
         env: { TEST: "1" },
-      })
+      }),
     );
 
     expect(retry.result.stopReason).toBe("stop");
@@ -185,7 +243,8 @@ describe("OpenAI Codex transport liveness", () => {
     vi.stubGlobal("WebSocketPair", class WebSocketPair {});
     const routedSocket = new FakeWebSocket("wss://routed.invalid");
     FakeWebSocket.instances = [];
-    FakeWebSocket.onSend = (socket) => queueMicrotask(() => socket.receive(terminalResponse));
+    FakeWebSocket.onSend = (socket) =>
+      queueMicrotask(() => socket.receive(terminalResponse));
     const fetchMock = vi.fn(async () => {
       // Fetch's web platform Response constructor rejects 101 even though the
       // Workers runtime returns an upgrade response carrying `webSocket`.
@@ -200,7 +259,7 @@ describe("OpenAI Codex transport liveness", () => {
         apiKey,
         sessionId: "workers-routed-upgrade-test",
         transport: "websocket",
-      })
+      }),
     );
 
     expect(response.result.stopReason).toBe("stop");
@@ -211,12 +270,13 @@ describe("OpenAI Codex transport liveness", () => {
   it("expires an SSE response body that stops delivering chunks", async () => {
     vi.stubGlobal(
       "fetch",
-      vi.fn(async () =>
-        new Response(new ReadableStream<Uint8Array>({ start() {} }), {
-          status: 200,
-          headers: { "content-type": "text/event-stream" },
-        })
-      )
+      vi.fn(
+        async () =>
+          new Response(new ReadableStream<Uint8Array>({ start() {} }), {
+            status: 200,
+            headers: { "content-type": "text/event-stream" },
+          }),
+      ),
     );
 
     const response = await collect(
@@ -224,13 +284,18 @@ describe("OpenAI Codex transport liveness", () => {
         apiKey,
         transport: "sse",
         streamIdleTimeoutMs: 15,
-      })
+      }),
     );
 
-    expect(response.events.map((event) => event.type)).toEqual(["start", "error"]);
+    expect(response.events.map((event) => event.type)).toEqual([
+      "start",
+      "error",
+    ]);
     expect(response.result).toMatchObject({
       stopReason: "error",
-      errorMessage: expect.stringContaining("SSE stream idle timeout after 15ms"),
+      errorMessage: expect.stringContaining(
+        "SSE stream idle timeout after 15ms",
+      ),
     });
   });
 
@@ -245,8 +310,8 @@ describe("OpenAI Codex transport liveness", () => {
           keepalive,
           keepalive,
           `data: ${JSON.stringify(terminalResponse)}\n\n`,
-        ])
-      )
+        ]),
+      ),
     );
 
     const startedAt = Date.now();
@@ -255,7 +320,7 @@ describe("OpenAI Codex transport liveness", () => {
         apiKey,
         transport: "sse",
         streamIdleTimeoutMs: 15,
-      })
+      }),
     );
 
     expect(Date.now() - startedAt).toBeGreaterThan(30);
@@ -271,7 +336,10 @@ describe("OpenAI Codex transport liveness", () => {
         response: { id: "response-started", status: "in_progress", output: [] },
       });
       for (const delay of [8, 16, 24, 32]) {
-        setTimeout(() => socket.receive({ type: "response.in_progress" }), delay);
+        setTimeout(
+          () => socket.receive({ type: "response.in_progress" }),
+          delay,
+        );
       }
       setTimeout(() => socket.receive(terminalResponse), 40);
     };
@@ -284,7 +352,7 @@ describe("OpenAI Codex transport liveness", () => {
         transport: "websocket",
         streamIdleTimeoutMs: 15,
         env: { TEST: "1" },
-      })
+      }),
     );
 
     expect(Date.now() - startedAt).toBeGreaterThan(30);
@@ -295,12 +363,13 @@ describe("OpenAI Codex transport liveness", () => {
   it("treats explicit cancellation as cancellation rather than idle failure", async () => {
     vi.stubGlobal(
       "fetch",
-      vi.fn(async () =>
-        new Response(new ReadableStream<Uint8Array>({ start() {} }), {
-          status: 200,
-          headers: { "content-type": "text/event-stream" },
-        })
-      )
+      vi.fn(
+        async () =>
+          new Response(new ReadableStream<Uint8Array>({ start() {} }), {
+            status: 200,
+            headers: { "content-type": "text/event-stream" },
+          }),
+      ),
     );
     const controller = new AbortController();
     const pending = collect(
@@ -309,7 +378,7 @@ describe("OpenAI Codex transport liveness", () => {
         transport: "sse",
         streamIdleTimeoutMs: 1_000,
         signal: controller.signal,
-      })
+      }),
     );
     setTimeout(() => controller.abort(new Error("test cancellation")), 10);
 
