@@ -33,11 +33,35 @@ export function cdpEvaluationReceipt(value: unknown) {
   };
 }
 
+/** Operation evidence is not a DOM inspection dump. Keep the exact action,
+ * target identity and assertion; callers still receive the rich click result. */
+export function cdpInteractionReceipt(
+  outcome: import("@workspace/cdp-client").CdpInteractionOutcome,
+) {
+  const { selector, found, tagName, id, role, accessibleName } = outcome.target;
+  return {
+    protocol: outcome.protocol,
+    action: outcome.action,
+    delivery: outcome.delivery,
+    target: { selector, found, tagName, id, role, accessibleName },
+    effect: { ...outcome.effect },
+  };
+}
+
 export type OperationJournalEntry =
   | { type: "open"; source: string; id: string; kind: "workspace" | "browser" }
   | { type: "reload"; id: string }
   | { type: "close"; id: string }
   | { type: "interaction"; id: string; receipt: unknown }
+  | {
+      type: "cdp.session";
+      id: string;
+      receipt: {
+        status: "acquired" | "current" | "reconnected" | "replaced";
+        generation: import("../core/types.js").PanelCdpGeneration;
+        previousGeneration?: import("../core/types.js").PanelCdpGeneration;
+      };
+    }
   | {
       type: "evaluation";
       id: string;

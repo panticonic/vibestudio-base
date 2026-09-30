@@ -497,13 +497,17 @@ describe("panel runtime topology composition", () => {
         .rebuild();
 
       expect(observation.runtimeEntityId).not.toBe("panel:nav-new");
+      expect(call).toHaveBeenCalledWith("main", "build.getPanelMetadata", [
+        "panels/new",
+        ref ?? "ctx:ctx:test",
+      ]);
       expect(call).toHaveBeenCalledWith("main", "runtime.createEntity", [
         expect.objectContaining({
           kind: "panel",
           execution: {
             surface: "code",
             source: "panels/new",
-            ...(ref ? { ref } : {}),
+            ref: ref ?? "ctx:ctx:test",
           },
           contextId: "ctx:test",
           stateArgs: { documentId: "doc-123" },

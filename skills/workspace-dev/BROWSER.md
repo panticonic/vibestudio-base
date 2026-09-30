@@ -211,11 +211,42 @@ can create or acquire a panel handle directly before driving CDP automation.
 `session.page` (or a one-off `handle.cdp.page()`) is the canonical
 Playwright-style page. Actions
 auto-wait for the element to be visible/stable/enabled before acting and
-return a `cdp-interaction-outcome.v1` receipt after the browser event is
-delivered. Delivery is not proof that application state changed. Pass a
-locator postcondition when the effect matters; the receipt then reports the
-observed semantic condition. Do not add sleeps between `fill()`, `press()`,
+journal a `cdp-interaction-outcome.v1` receipt after the browser event is
+delivered. `click()`, `dblclick()`, and locator `press()` also return that
+receipt and accept an `expect` locator postcondition. Other actions such as
+`fill()` return no receipt (`selectOption()` returns selected values); inspect
+their native journal and await a separate locator assertion when needed.
+Delivery is not proof that application state changed. With `expect`, the
+returned receipt reports the observed semantic condition. Do not add sleeps between `fill()`, `press()`,
 `click()`, or other sequential actions.
+
+In eval, native panel operations are also recorded automatically in
+`details.operationJournal`; returning a summary does not discard those receipts.
+An interaction journal entry retains the action, delivery, target selector and
+identity (`found`, `tagName`, `id`, `role`, `accessibleName`), and `effect`.
+It deliberately omits DOM ancestors, attributes, geometry, and repeated text.
+Use the returned click receipt or `locator.inspect()` when you need that rich
+inspection. `effect.status: "not-asserted"` proves dispatch only; use the
+`expect` postcondition below for `"observed"` evidence. A separate `waitFor()`
+checks the UI but does not retroactively change the click receipt.
+
+The journal is bounded. `truncated: true` means it is incomplete, not that the
+application action failed. Retain important outcomes in `scope`, return compact
+receipts, and reobserve current state; do not repeat a mutation just to recreate
+missing evidence. A complete workflow must not be inferred from a partial journal.
+
+Generation-fenced session acquisition and `session.refresh()` also journal a
+`cdp.session` operation. Its receipt has `status`, the selected `generation`,
+and (for a reconnect/replacement) `previousGeneration`. These completed lifecycle
+facts survive a later exception in the same eval. After refresh, keep
+`scope.session = refreshed.session`; a replaced runtime is a new page and does
+not promise preservation of renderer-local state. Reobserve the actual UI before
+choosing a postcondition. A failed assertion does not mean its action was not
+delivered: inspect the resulting state before deciding on another action.
+The dispatched action remains in the journal even if its postcondition throws,
+with `effect.status: "not-observed"`, the expected locator, and its requested
+state. `not-asserted` means no postcondition was requested; neither status
+claims that the application effect was observed.
 
 ```ts
 const session = await handle.cdp.session();

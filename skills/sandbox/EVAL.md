@@ -8,8 +8,9 @@ sent back.
 
 **Eval does not need a connected panel.** It keeps working even if the
 chat/editor panel — or the user — disconnects. It is a notebook kernel: the
-same live heap remains resident for 30 minutes after the latest cell, and every
-cell renews that idle lease. The in-DO SQLite `db` and exact serializable scope
+same live heap remains resident throughout admitted execution and cancellation,
+then for 30 minutes of inactivity. Every cell renews that idle lease; active
+detached work is not inactivity. The in-DO SQLite `db` and exact serializable scope
 snapshot survive unavoidable kernel restarts.
 
 ## Eval Perspective
@@ -386,7 +387,7 @@ open the `about/server-logs` viewer for a live follow. See
 ## Result Shape
 
 The one-call `eval` tool returns
-`{ success, console, returnValue?, error?, scopeKeys?, kernel? }`:
+`{ success, console, returnValue?, error?, operationJournal?, scopeKeys?, kernel? }`:
 
 - `success` — whether the run completed without throwing.
 - `console` — captured console output. Oversized output is windowed in the
@@ -396,6 +397,12 @@ The one-call `eval` tool returns
   Oversized values may be replaced with a structured truncation summary pointing
   at `scope.$lastLargeReturn`.
 - `error` — present on failure.
+- `operationJournal` — native operation receipts owned by this eval, retained
+  independently of its return value, including operations completed before a
+  later exception. Interaction entries preserve action, target identity, and
+  observed effect, not the rich DOM inspection. `truncated: true` explicitly
+  marks incomplete evidence. See [browser receipts](../workspace-dev/BROWSER.md#page-surface)
+  for assertions and recovery; never replay a mutation solely to refill a journal.
 - `scopeKeys` — the keys currently held in the live notebook `scope`.
 - `kernel` — structured notebook-incarnation metadata: the incarnation ID,
   start time, current idle-lease deadline, and (on the first result of an
@@ -644,7 +651,8 @@ The EvalDO's in-memory backing map remains authoritative while that kernel is
 warm: objects are not serialized and reconstructed between ordinary calls.
 Functions, class instances, handles, and open connections therefore retain
 identity and behavior across cells. Before each cell, the host renews one held
-kernel request; it expires 30 minutes after the latest cell. There is no
+kernel request; its 30-minute idle countdown starts after admitted execution and
+cancellation settle. There is no
 heartbeat, polling loop, or cell-end disconnect.
 
 After each cell, EvalDO also writes an exact recovery snapshot to its
@@ -880,6 +888,10 @@ Use `await help()` for live discovery and `await help("vcs")` or
 Then request only the method you need, such as `await help("vcs.edit")`, for
 its exact arguments, return schema, and typed errors. Pass the
 name as a string; do not call `help(workers)`.
+`help()` indexes injected runtime bindings and receiver services, not arbitrary
+package exports. For workspace skill/package functions, read that package's
+skill/API reference and exported source types, then import the documented API.
+An unknown help name is not evidence that a documented package is unavailable.
 
 ## Worker Management
 

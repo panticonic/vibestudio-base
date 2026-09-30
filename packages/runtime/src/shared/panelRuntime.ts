@@ -830,15 +830,15 @@ export function createPanelRuntime(
     );
     if (!current) throw new Error(`Unknown panel slot: ${id}`);
     const external = isOpenPanelBrowserUrl(source);
+    const contextId =
+      navigateOptions?.contextId ?? current.currentHistory.context_id;
+    const selectedRef = navigateOptions?.ref ?? `ctx:${contextId}`;
     const panelMetadata = external
       ? null
       : await options.rpc.call<{
           title?: string;
           stateArgs?: unknown;
-        } | null>("main", "build.getPanelMetadata", [
-          source,
-          navigateOptions?.ref,
-        ]);
+        } | null>("main", "build.getPanelMetadata", [source, selectedRef]);
     if (!external && !panelMetadata)
       throw new Error(`Unknown panel source: ${source}`);
     const stateArgsValidation = external
@@ -860,8 +860,6 @@ export function createPanelRuntime(
         })
       : {};
     const nextEnv = navigateOptions?.env ?? storedOptions.env;
-    const contextId =
-      navigateOptions?.contextId ?? current.currentHistory.context_id;
     const entryKey = `nav-${crypto.randomUUID()}`;
     const historySource = external ? `browser:${source}` : source;
     const entitySpec = {
@@ -871,7 +869,7 @@ export function createPanelRuntime(
         : ({
             surface: "code",
             source,
-            ...(navigateOptions?.ref ? { ref: navigateOptions.ref } : {}),
+            ref: selectedRef,
           } as const),
       key: entryKey,
       contextId,

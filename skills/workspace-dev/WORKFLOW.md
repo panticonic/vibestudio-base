@@ -70,9 +70,12 @@ after publication when publication is part of delivery.
 Recovery does not erase an earlier problem. Preserve the original structured
 failure and the evidence of its repair, distinguish intentional failing checks
 from incidental errors, and report problems encountered even when the final
-application works. Do not clear diagnostics to manufacture a clean history,
-invent defects to demonstrate a development loop, or substitute a separate
-implementation to avoid a broken product path.
+application works. Do not clear diagnostics to manufacture a clean history or
+substitute a separate implementation to avoid a broken product path. Do not
+invent defects merely to demonstrate a development loop. For explicitly
+requested fault-injection or regression tests, keep intentional failures in an
+isolated candidate, verify failed artifacts remain inactive, and repair them
+before publication.
 
 ## Design principles
 

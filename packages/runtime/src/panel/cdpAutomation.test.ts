@@ -25,13 +25,44 @@ describe("createCdpAutomation screenshot", () => {
     await cdp.page();
     const receipt = {
       protocol: "cdp-interaction-outcome.v1",
-      delivery: { status: "observed" },
+      action: "click",
+      delivery: "dispatched",
+      target: {
+        selector: "button",
+        found: true,
+        tagName: "BUTTON",
+        id: "save",
+        role: "button",
+        accessibleName: "Save",
+        ancestors: [{ text: "large DOM inspection".repeat(2_000) }],
+        attributes: { class: "styling" },
+      },
+      effect: { status: "observed", locator: "Saved", state: "visible" },
     };
     const journal = new Journal();
     await withJournal(journal, async () => onInteraction!(receipt));
     expect(journal.entries).toEqual([
-      { type: "interaction", id: "panel:journal", receipt },
+      {
+        type: "interaction",
+        id: "panel:journal",
+        receipt: {
+          protocol: receipt.protocol,
+          action: receipt.action,
+          delivery: receipt.delivery,
+          target: {
+            selector: "button",
+            found: true,
+            tagName: "BUTTON",
+            id: "save",
+            role: "button",
+            accessibleName: "Save",
+          },
+          effect: receipt.effect,
+        },
+      },
     ]);
+    expect(JSON.stringify(journal.entries).length).toBeLessThan(500);
+    expect(receipt.target.ancestors[0]!.text.length).toBeGreaterThan(24_000);
     // A resident session must not retain a previous cell's journal.
     onInteraction!(receipt);
     expect(journal.entries).toHaveLength(1);
@@ -384,6 +415,7 @@ describe("createCdpAutomation screenshot", () => {
       }) as never;
     const oldGeneration = generation("attempt:old", "panel-runtime:old");
     const newGeneration = generation("attempt:new", "panel-runtime:new");
+    const recordOperation = vi.fn();
     const observe = vi
       .fn()
       .mockResolvedValueOnce(oldGeneration)
@@ -394,6 +426,7 @@ describe("createCdpAutomation screenshot", () => {
     const cdp = createCdpAutomation({ call } as never, "panel:child", {
       loadModule,
       observe,
+      recordOperation,
     });
 
     const session = await cdp.session();
@@ -411,6 +444,33 @@ describe("createCdpAutomation screenshot", () => {
     });
     expect(oldPage.close).toHaveBeenCalledOnce();
     expect(connect).toHaveBeenCalledTimes(2);
+    expect(recordOperation.mock.calls.map(([entry]) => entry)).toEqual([
+      {
+        type: "cdp.session",
+        id: "panel:child",
+        receipt: {
+          status: "acquired",
+          generation: session.generation,
+        },
+      },
+      {
+        type: "cdp.session",
+        id: "panel:child",
+        receipt: {
+          status: "acquired",
+          generation: refreshed.session.generation,
+        },
+      },
+      {
+        type: "cdp.session",
+        id: "panel:child",
+        receipt: {
+          status: "replaced",
+          generation: refreshed.session.generation,
+          previousGeneration: session.generation,
+        },
+      },
+    ]);
     if (refreshed.status === "replaced" || refreshed.status === "reconnected") {
       expect(refreshed.session.page.isClosed()).toBe(false);
       await refreshed.session.close();

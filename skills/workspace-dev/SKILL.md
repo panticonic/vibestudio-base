@@ -1,6 +1,6 @@
 ---
 name: workspace-dev
-description: Create, develop, verify, and diagnose workspace panels, workers, Durable Objects, packages, external dependency policy, and repo-local skills.
+description: Prepare, fork, develop, verify, and diagnose workspace panels, workers, Durable Objects, packages, external dependency policy, and repo-local skills.
 ---
 
 # Workspace development
@@ -73,7 +73,10 @@ purpose, workflow, ownership, invariants, and diagnostics.
 - For a new persistent application, author a complete authority policy and call
   `prepareApplication({ name, title, authority })` from `@workspace-skills/workspace-dev`.
   It prepares the connected code/config in the current context, without adding
-  requests, committing, publishing, or granting access. Review the actual
+  requests, committing, publishing, or granting access. Its record methods are
+  editable starter code, not a limit on the app's domain features. Extend the
+  data, receiver contracts/policies, and UI to finish the requested application.
+  Review the actual
   envelope, verify exact candidates, then commit/push explicitly. See [PROJECTS.md](PROJECTS.md).
 
 - Build production-ready systems. Workspace units are durable infrastructure,

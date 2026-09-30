@@ -116,6 +116,9 @@ review, exact-context verification, and ordinary VCS commit/push. Read
 
 - `prepareApplication({ name, title?, icon?, authority })` prepares a React
   panel, SQLite DO store, protocol, singleton, and config in one edit.
+  The generated two-method record store is editable starting code, not a fixed
+  application API. Extend its data, methods, reviewed policies, and UI to deliver
+  the user's requested features before final verification/publication.
   `authority` is the required `ApplicationAuthorityPolicy`: rationale, complete
   panel/worker manifests, service principals/binding/notability, and both complete
   literal record-method contracts. No request or policy is inferred.
@@ -191,7 +194,8 @@ and exact receipts. There is no scaffold-specific publication recovery API.
 
 Execute TypeScript/JavaScript code server-side in your own notebook sandbox (a
 per-agent EvalDO). It runs even when no panel is open. The same live heap is
-retained for 30 minutes after the latest cell; every cell renews the lease.
+retained throughout admitted execution and cancellation, then for 30 minutes
+of inactivity; every cell renews the idle lease.
 After an unavoidable restart, `[kernel] Restarted` reports exact restored and
 lost scope keys. In eval, `rpc`, `services`, `fs`, `ctx`, `scope`, `scopes`,
 `db`, `help` (and, in agent eval, `chat`) are injected free variables; reach
@@ -697,7 +701,7 @@ const observation = await handle.rebuild();
 ```
 
 The live notebook heap is not replaced after each eval; its idle lease lasts 30
-minutes from the latest cell. Its durable recovery snapshot contains only exact
+minutes after admitted execution and cancellation settle. Its durable recovery snapshot contains only exact
 data and never reconstructs class instances, so a restarted kernel rehydrates
 `panelId` and reports `panelHandle` as lost. Reconstruct from the id only in
 that case. Reopening the source instead creates duplicates and can evict the

@@ -16,6 +16,7 @@ import type { CdpInteractionOutcome } from "@workspace/cdp-client";
 import {
   consoleHistoryReceipt,
   cdpEvaluationReceipt,
+  cdpInteractionReceipt,
   type OperationJournalEntry,
 } from "../shared/journal.js";
 
@@ -131,7 +132,11 @@ export function createCdpAutomation(
       // use their native WebSocket implementation instead.
       preferFetchUpgrade: Boolean(options.loadModule),
       onInteraction: (receipt) =>
-        options.recordOperation?.({ type: "interaction", id, receipt }),
+        options.recordOperation?.({
+          type: "interaction",
+          id,
+          receipt: cdpInteractionReceipt(receipt),
+        }),
     };
     if (endpoint.token)
       connectOptions.transportOptions = { authToken: endpoint.token };
@@ -276,20 +281,38 @@ export function createCdpAutomation(
         refresh: async (): Promise<PanelCdpSessionRefresh> => {
           const current = generationOf(await ensureReady());
           if (sameGeneration(session.generation, current) && !page.isClosed()) {
+            options.recordOperation?.({
+              type: "cdp.session",
+              id,
+              receipt: { status: "current", generation: current },
+            });
             return { status: "current", session };
           }
           await session.close();
+          const replacement = await acquireSession();
+          const status = sameGeneration(session.generation, current)
+            ? ("reconnected" as const)
+            : ("replaced" as const);
+          options.recordOperation?.({
+            type: "cdp.session",
+            id,
+            receipt: {
+              status,
+              generation: replacement.generation,
+              previousGeneration: session.generation,
+            },
+          });
           if (sameGeneration(session.generation, current)) {
             return {
               status: "reconnected",
               generation: current,
-              session: await acquireSession(),
+              session: replacement,
             };
           }
           return {
             status: "replaced",
             previousGeneration: session.generation,
-            session: await acquireSession(),
+            session: replacement,
           };
         },
         close: async () => {
@@ -303,6 +326,11 @@ export function createCdpAutomation(
         },
       };
       activeSession = session;
+      options.recordOperation?.({
+        type: "cdp.session",
+        id,
+        receipt: { status: "acquired", generation: session.generation },
+      });
       return session;
     }
     throw Object.assign(

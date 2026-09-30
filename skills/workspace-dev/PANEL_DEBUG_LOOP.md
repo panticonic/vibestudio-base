@@ -2,9 +2,11 @@
 
 Use this workflow to create or edit a panel, diagnose actual failures, inspect
 its rendered behavior, and deliver the requested result. Select the steps that
-the observed state requires; do not introduce artificial compiler or UI defects
-to demonstrate the workflow. Read the larger API references when an observed
-result needs further diagnosis.
+the observed state requires; do not invent defects merely to demonstrate the
+workflow. Explicitly requested fault-injection or regression tests are different:
+keep intentional failures in an isolated candidate, verify that failed artifacts
+remain inactive, and repair them before publication. Read the larger API
+references when an observed result needs further diagnosis.
 
 ## 1. Prepare once
 
@@ -189,8 +191,14 @@ refresh the generation-fenced session, and verify that the saved data survives.
 Actions auto-wait for an actionable control; dispatch does not establish that
 an asynchronous save, fetch, or React update finished. For each mutation,
 observe its rendered completion condition before another dependent action.
-Use `click({ expect: { locator, state } })` when the expected condition follows
-that click, or the expected locator's `waitFor({ state })` before reading it.
+Use `click({ expect: { locator, state } })` or `press("Enter", { expect: { locator, state } })`
+when the expected condition follows that action, or the expected locator's
+`waitFor({ state })` before reading it.
+Prefer the action's explicit `expect` when reporting an observed interaction:
+the native eval journal retains its target identity and semantic outcome even
+when you return only a compact summary. Rich target inspection remains on the
+returned interaction receipt, not the journal. A separate `waitFor()` does not promote
+a dispatch-only receipt to an observed one. See [browser receipt contracts](BROWSER.md#page-surface).
 After reload/reacquisition, wait for the application's loaded result rather
 than treating its first loading state as an empty database or a failure.
 Choose conditions from the delivered UI, not elapsed sleeps. If an observation

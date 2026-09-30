@@ -511,6 +511,11 @@ const observation = await handle.rebuild();
 const capture = await handle.snapshot();
 ```
 
+Code metadata and runtime creation use the same selected ref: an explicit
+navigation ref wins; otherwise the destination panel's context supplies the
+code state. Rebuild retains the current panel's context and explicit ref,
+not the inspecting agent's context.
+
 All readiness-bearing methods accept `{ signal?: AbortSignal }`; `navigate()`
 and `focus()` include it in their existing options object. Cancellation stops
 the caller's wait. It does not roll back a durable creation or destroy a panel

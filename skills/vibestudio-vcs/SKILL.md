@@ -5,6 +5,11 @@ description: Semantic workspace VCS for managed authoring, net-effect merges, pr
 
 # Vibestudio semantic VCS
 
+To scaffold or fork a panel/worker repository (including reviewing a dry-run
+plan), use [workspace development](../workspace-dev/PROJECTS.md). VCS commits
+and publishes the resulting reviewed context candidate; a context fork alone
+does not create a derived project repository.
+
 Managed workspace state is semantic history, not a Git worktree. Use
 `apply_patch` for atomic multi-file text/binary writes, exact replacements,
 deletes, and mode changes; `edit` or `write` for a single simple text change;
@@ -44,10 +49,10 @@ the sole agent-facing graph walker for typed roots and adjacency.
    use local comparison directly — no status or history preflight needed:
 
    ```js
-   vcs({ operation: "compare", view: "local" })
+   vcs({ operation: "compare", view: "local" });
    ```
 
-      Compare is read-only with no `intent` field. Never pass main as
+   Compare is read-only with no `intent` field. Never pass main as
    `source` here — that reverses the comparison and can truthfully show
    no changes.
 
@@ -58,7 +63,7 @@ the sole agent-facing graph walker for typed roots and adjacency.
    for a deliberate read-only preview:
 
    ```js
-   vcs({ operation: "compare", source: "event:...", limit: 500 })
+   vcs({ operation: "compare", source: "event:...", limit: 500 });
    ```
 
 6. Review both views in compare results:
@@ -75,8 +80,8 @@ the sole agent-facing graph walker for typed roots and adjacency.
    vcs({
      operation: "merge",
      source: "event:...",
-     intent: "Bring the reviewed child implementation into the parent"
-   })
+     intent: "Bring the reviewed child implementation into the parent",
+   });
    ```
 
 8. Review every returned `composed` entry. Deterministic non-overlapping text
@@ -91,30 +96,33 @@ the sole agent-facing graph walker for typed roots and adjacency.
    vcs({
      operation: "merge",
      source: "event:...",
-     resolutions: [{
-       coordinate: { kind: "file", id: "file:..." },
-       resolution: "current",
-       rationale: "The current file combines the retry contract with the local validation"
-     }],
-     intent: "Conclude the reviewed hand merge"
-   })
+     resolutions: [
+       {
+         coordinate: { kind: "file", id: "file:..." },
+         resolution: "current",
+         rationale:
+           "The current file combines the retry contract with the local validation",
+       },
+     ],
+     intent: "Conclude the reviewed hand merge",
+   });
    ```
 
-      To decline every unseen remainder (including clean coordinates), use
+   To decline every unseen remainder (including clean coordinates), use
    `resolutions: { allRemaining: { resolution: "ours" } }`. After authoring a
    combined parent result, use `current` with a required rationale. The blanket
    repeats safely across whole-group pages and never accepts source content
    implicitly.
 
 10. Use the merge result as the completion receipt. `status: "unchanged"` is an
-idempotent receipt, not an error — still inspect `resolution.complete`. If
-conflicts exceed the bounded result, continue only the filtered sequence by
-copying the advertised `compare` call containing its complete compact ref. A
-convergent or net-zero source still gets one
-decision-only merge call to establish conclusion and ancestry.
+    idempotent receipt, not an error — still inspect `resolution.complete`. If
+    conflicts exceed the bounded result, continue only the filtered sequence by
+    copying the advertised `compare` call containing its complete compact ref. A
+    convergent or net-zero source still gets one
+    decision-only merge call to establish conclusion and ancestry.
 11. Run focused tests and commit the complete application chain. The compact
-commit verifies that the context is clean at the committed event; request status
-separately only when you need additional orientation, then push if requested.
+    commit verifies that the context is clean at the committed event; request status
+    separately only when you need additional orientation, then push if requested.
 
 ## Commit and publication
 
@@ -138,7 +146,7 @@ checks. It never includes uncommitted work.
 - `IntegrityFailure`: stop. The state can't be explained by reachable
   provenance; never route around it.
 - `IntegrationIncomplete`: follow the returned merge recipe. Use `allRemaining:
-  ours` to decline the source remainder, or `current` with rationale after
+ours` to decline the source remainder, or `current` with rationale after
   reviewing a truthful combined parent state.
 - `NoEffect`: inspect current state. Report success only when the requested
   semantic outcome is already true.

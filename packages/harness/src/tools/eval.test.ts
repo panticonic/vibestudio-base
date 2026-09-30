@@ -100,7 +100,10 @@ describe("formatEvalResult (shared by the eval tool's execute + the agent's defe
     const tool = createEvalTool(
       async () => ({ success: true, console: "" }) as never,
     );
-    expect(tool.description).toContain("retained for 30 minutes");
+    expect(tool.description).toContain(
+      "retained throughout admitted execution and cancellation",
+    );
+    expect(tool.description).toContain("30 minutes of notebook inactivity");
     expect(tool.description).toContain("objects with methods");
     expect(tool.description).toContain("[kernel] Restarted");
 

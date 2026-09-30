@@ -12,6 +12,23 @@ with a SQLite Durable Object store. It prepares `panels/<name>`,
 `workers/<name>-store`, protocol `<name>.v1`, singleton key `main`, and
 matching service configuration in one atomic context edit.
 
+This is an editable connected starter, not a finished domain application or a
+fixed service API. Its initial records have `id`, `title`, and timestamps;
+`listRecords`/`upsertRecord` are starting methods, not the only methods your
+application may implement. Complete the user's features by editing the generated
+panel and worker normally: design the domain data, SQLite schema, typed RPC
+methods, and UI together. For an app needing richer state, change the record
+contract; do not stop because the starter lacks that state or operation.
+
+Review authority again when extending the implementation. Every new or changed
+receiver method needs its own complete literal policy (website eligibility,
+principals/requirements, effect, tier, sensitivity); update unit requests and
+service wiring only for the intended effects. The policy passed to preparation
+does not authorize future effects automatically. Verify both provider and
+consumer in the same candidate, then commit and publish the completed application,
+not merely the starter. See [WORKERS.md](WORKERS.md) for durable storage and RPC
+contracts and [PANEL_DEBUG_LOOP.md](PANEL_DEBUG_LOOP.md) for live verification.
+
 The model must supply the complete `ApplicationAuthorityPolicy`:
 
 - `rationale`: explain the data, callers, effects, scopes, and excluded authority.
@@ -131,9 +148,34 @@ Repository location determines unit kind and canonical package scope. A manifest
 cannot change a panel into content or another kind. Malformed or mismatched
 manifests fail verification on the exact repository path.
 
+Authority review includes reachable dependency implementations, not only the
+new entry file. In particular, the `agentic` worker inherits context creation,
+cloning, and teardown from `AgentWorkerBase`; an empty subclass is not an
+effect-free stateless worker. Inspect those lifecycle methods before deciding
+its ceiling. Live docs search accepts capability names, and receiver entries
+expose `access.authority`, including prepared leaves and resource contracts.
+Assess the primary and prepared capability tiers separately. Dynamic foreign
+context access requires a deliberately reviewed scope; do not copy another
+worker's broad ceiling merely because it builds.
+
+For context lifecycle receivers, the prepared boundary names
+`context/<encoded target context>/requester/<encoded runtime entity>` and is
+selected only for an existing foreign context. Creation/clone leaves are
+gated; destructive teardown leaves are critical. The separate clone primary
+uses literal key `context.clone` at gated tier. A dynamic family may need a
+bounded prefix such as `context/`, with an honest rationale covering the
+reachable foreign-state operations. Prefer a fixed target family when the
+application can actually restrict it; scope declarations cannot narrow code
+that still accepts arbitrary targets. Same-context/fresh-target runtime
+exemptions are not proof that inherited foreign-context methods are unreachable.
+
 Import the functions used by each eval invocation and retain receipts in
 `scope`. `searchProjectCatalog({ resource: "icon" })` discovers icons, not
 templates; inspect `templates/` before choosing an alternative panel framework.
+Select an installed panel scaffold with `template: "svelte"` (or its inspected
+template directory name) on the same `prepareProjects` item as `authority` and
+`authorityReason`. Omitting `template` explicitly selects React; it does not
+infer a framework from the project name or the available templates.
 
 ## Review, verify, and publish
 

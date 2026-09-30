@@ -5,6 +5,11 @@ description: Discover, create, publish, and agentically review workspace updates
 
 # Workspace templates
 
+For a new or derived panel/worker repository inside an existing workspace, use
+[workspace development](../workspace-dev/PROJECTS.md), including its dry-run
+fork plans. A workspace template and a project scaffold are different sources;
+this skill manages whole workspace templates, not panel/worker forks.
+
 `@workspace-extensions/templates` owns exact acquisition,
 manifest inspection, dependency composition, and snapshot publication. A
 template is a Git repository with `meta/vibestudio.yml`; it may declare other

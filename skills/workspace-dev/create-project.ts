@@ -1028,7 +1028,9 @@ export interface PrepareApplicationResult {
   authorityReview: ApplicationAuthorityPolicy;
 }
 
-/** Prepare a connected candidate; the supplied policy is intent, never a grant. */
+/** Prepare an editable connected starter, not a fixed domain API or finished app.
+ * Extend the generated record schema, receiver methods/policies and panel for
+ * the requested features. The supplied policy is intent, never a grant. */
 export async function prepareApplication({
   name,
   title = name,

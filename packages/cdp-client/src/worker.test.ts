@@ -1345,9 +1345,32 @@ describe("worker CDP client", () => {
     expect(probes.length).toBeGreaterThan(1);
   });
 
+  it("observes a keyboard postcondition through the same receipt contract as a click", async () => {
+    installFakeWebSocket();
+    const onInteraction = vi.fn();
+    const browser = await BrowserImpl.connect("ws://cdp", { onInteraction });
+    const page = browser.contexts()[0]!.pages()[0]!;
+    const expected = page.getByRole("dialog", { name: "Card details" });
+    const outcome = await page.getByPlaceholder("Name").press("Enter", {
+      expect: { locator: expected, state: "visible" },
+    });
+    expect(outcome).toMatchObject({
+      action: "press",
+      delivery: "dispatched",
+      effect: {
+        status: "observed",
+        locator: expected.toString(),
+        state: "visible",
+      },
+    });
+    expect(onInteraction).toHaveBeenCalledExactlyOnceWith(outcome);
+    await browser.close();
+  });
+
   it("describes the missing postcondition when a dispatched click has no observed effect", async () => {
     installFakeWebSocket();
-    const browser = await BrowserImpl.connect("ws://cdp");
+    const onInteraction = vi.fn();
+    const browser = await BrowserImpl.connect("ws://cdp", { onInteraction });
     const page = browser.contexts()[0]!.pages()[0]!;
     const expected = page.getByRole("button", { name: "Add another column" });
 
@@ -1366,6 +1389,24 @@ describe("worker CDP client", () => {
         timeoutMs: 40,
       },
     });
+    expect(onInteraction).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({
+        action: "click",
+        delivery: "dispatched",
+        effect: {
+          status: "not-observed",
+          locator: expected.toString(),
+          state: "visible",
+        },
+      }),
+    );
+    expect(
+      FakeWebSocket.sent.filter(
+        (event) =>
+          event.method === "Input.dispatchMouseEvent" &&
+          event.params?.["type"] === "mouseReleased",
+      ),
+    ).toHaveLength(1);
   });
 
   it("fills and reads back input value, and toggles a checkbox", async () => {
@@ -1462,6 +1503,31 @@ describe("worker CDP client", () => {
       page.getByPlaceholder("Name").fill("failed"),
     ).rejects.toThrow();
     expect(onInteraction).toHaveBeenCalledTimes(4);
+    await browser.close();
+  });
+
+  it("never passes portable Windows key codes as platform-native codes", async () => {
+    installFakeWebSocket();
+    const browser = await BrowserImpl.connect("ws://cdp");
+    const page = browser.contexts()[0]!.pages()[0]!;
+    await page.keyboard.press("Enter");
+    await page.keyboard.press("ArrowRight");
+    await page.keyboard.press("Shift+Tab");
+    const events = FakeWebSocket.sent.filter(
+      (entry) => entry.method === "Input.dispatchKeyEvent",
+    );
+    expect(events.length).toBeGreaterThan(0);
+    for (const event of events)
+      expect(event.params).not.toHaveProperty("nativeVirtualKeyCode");
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        params: expect.objectContaining({
+          type: "keyDown",
+          key: "Enter",
+          windowsVirtualKeyCode: 13,
+        }),
+      }),
+    );
     await browser.close();
   });
 

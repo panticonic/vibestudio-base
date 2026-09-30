@@ -118,8 +118,8 @@ type SelectOptionMatcher = {
 };
 type SelectOptionInput = string | SelectOptionMatcher;
 type WaitState = "attached" | "detached" | "visible" | "hidden";
-type ClickOptions = ActionOptions & {
-  /** Optional semantic postcondition observed after the pointer event is delivered. */
+type InteractionOptions = ActionOptions & {
+  /** Optional semantic postcondition observed after the browser event is delivered. */
   expect?: {
     locator: WorkerCdpLocator;
     state?: WaitState;
@@ -149,7 +149,7 @@ export interface CdpInteractionOutcome {
   effect:
     | { status: "not-asserted" }
     | {
-        status: "observed";
+        status: "observed" | "not-observed";
         locator: string;
         state: WaitState;
       };
@@ -2040,7 +2040,7 @@ class WorkerCdpPage {
 
   async clickDescriptor(
     descriptor: LocatorDescriptor,
-    opts: ClickOptions & {
+    opts: InteractionOptions & {
       clickCount?: number;
       button?: "left" | "right" | "middle";
     } = {},
@@ -2051,6 +2051,15 @@ class WorkerCdpPage {
     })) as Omit<CdpDomInspection, "selector"> & { found: boolean };
     await this.dispatchClickAt(point, opts);
     const action = opts.clickCount === 2 ? "dblclick" : "click";
+    return this.observeInteraction(action, descriptor, target, opts);
+  }
+
+  private async observeInteraction(
+    action: CdpInteractionOutcome["action"],
+    descriptor: LocatorDescriptor,
+    target: Omit<CdpDomInspection, "selector">,
+    opts: InteractionOptions,
+  ): Promise<CdpInteractionOutcome> {
     if (!opts.expect) {
       const outcome: CdpInteractionOutcome = {
         protocol: "cdp-interaction-outcome.v1",
@@ -2072,6 +2081,16 @@ class WorkerCdpPage {
       const expectedLocator = opts.expect.locator.toString();
       const timeoutMs =
         opts.expect.timeout ?? opts.timeout ?? this.defaultTimeout;
+      // Delivery is an accomplished fact even when observing its effect fails.
+      // Retain it before propagating the assertion error so recovery cannot
+      // mistake this for a safe-to-replay, undispatched action.
+      this.onInteraction?.({
+        protocol: "cdp-interaction-outcome.v1",
+        action,
+        delivery: "dispatched",
+        target: { selector: describeLocator(descriptor), ...target },
+        effect: { status: "not-observed", locator: expectedLocator, state },
+      });
       throw new CdpError(
         `${action} was dispatched to ${describeLocator(descriptor)}, but expected ${expectedLocator} to become ${state}`,
         {
@@ -2136,8 +2155,8 @@ class WorkerCdpPage {
   async pressDescriptor(
     descriptor: LocatorDescriptor,
     key: string,
-    opts: ActionOptions = {},
-  ): Promise<void> {
+    opts: InteractionOptions = {},
+  ): Promise<CdpInteractionOutcome> {
     await this.runLocatorOp("focusForKey", descriptor, null, {
       timeout: opts.timeout,
     });
@@ -2145,7 +2164,7 @@ class WorkerCdpPage {
       timeout: 0,
     })) as Omit<CdpDomInspection, "selector">;
     await this.pressKey(key);
-    this.recordLocatorInteraction("press", descriptor, target);
+    return this.observeInteraction("press", descriptor, target, opts);
   }
 
   async setCheckedDescriptor(
@@ -2210,8 +2229,9 @@ class WorkerCdpPage {
     return def
       ? {
           key: def.key ?? normalized,
+          // CDP's Windows code is portable; its native code is platform-specific.
+          // Supplying this same number as a native code corrupts macOS input.
           windowsVirtualKeyCode: def.keyCode,
-          nativeVirtualKeyCode: def.keyCode,
         }
       : {
           key: normalized,
@@ -2450,10 +2470,12 @@ class WorkerCdpLocator {
   }
 
   // ---- Actions (auto-waiting) -------------------------------------------
-  async click(opts: ClickOptions = {}): Promise<CdpInteractionOutcome> {
+  async click(opts: InteractionOptions = {}): Promise<CdpInteractionOutcome> {
     return this.page.clickDescriptor(this.descriptor, opts);
   }
-  async dblclick(opts: ClickOptions = {}): Promise<CdpInteractionOutcome> {
+  async dblclick(
+    opts: InteractionOptions = {},
+  ): Promise<CdpInteractionOutcome> {
     return this.page.clickDescriptor(this.descriptor, {
       ...opts,
       clickCount: 2,
@@ -2482,8 +2504,11 @@ class WorkerCdpLocator {
   async clear(opts: ActionOptions = {}): Promise<void> {
     await this.page.runLocatorOp("clear", this.descriptor, null, opts);
   }
-  async press(key: string, opts: ActionOptions = {}): Promise<void> {
-    await this.page.pressDescriptor(this.descriptor, key, opts);
+  async press(
+    key: string,
+    opts: InteractionOptions = {},
+  ): Promise<CdpInteractionOutcome> {
+    return this.page.pressDescriptor(this.descriptor, key, opts);
   }
   async check(opts: ActionOptions = {}): Promise<void> {
     await this.page.setCheckedDescriptor(this.descriptor, true, opts);
