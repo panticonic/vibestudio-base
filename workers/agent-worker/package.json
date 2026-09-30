@@ -194,7 +194,7 @@
           "evidence": "bounded-dynamic"
         },
         {
-          "capability": "git.publish",
+          "capability": "workspace.publish",
           "resource": {
             "kind": "prefix",
             "prefix": "workspace-source-change:"
