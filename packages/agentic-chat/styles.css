@@ -772,6 +772,23 @@
   box-shadow: none;
 }
 
+.message-card-subagent.subagent-state-working {
+  border-inline-start-color: var(--blue-9);
+}
+
+.message-card-subagent.subagent-state-waiting,
+.message-card-subagent.subagent-state-disconnected {
+  border-inline-start-color: var(--amber-9);
+}
+
+.message-card-subagent.subagent-state-failed {
+  border-inline-start-color: var(--red-9);
+}
+
+.message-card-subagent.subagent-state-idle {
+  border-inline-start-color: var(--green-9);
+}
+
 .subagent-summary {
   padding: 7px 9px 6px;
 }

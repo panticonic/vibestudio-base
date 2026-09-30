@@ -13,9 +13,9 @@ import { useChannelMessages } from "./useChannelMessages.js";
  * child's REAL transcript — the same messages, tool pills, and argument/result
  * inspection the child's own panel would show — instead of a bounded summary.
  *
- * Deliberately bounded: a card observes while the user has its transcript open,
- * and releases the observer when the card closes. Retained collaborators do
- * not require a permanent stream or a copied progress feed in the parent.
+ * A mounted card shares one observer between its compact activity status and
+ * expanded transcript, and releases it on unmount. Collapsing the transcript
+ * preserves live status without a copied progress feed in the parent.
  */
 
 export interface ChildTranscriptConnection {

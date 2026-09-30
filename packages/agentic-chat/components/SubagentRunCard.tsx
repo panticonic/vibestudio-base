@@ -1,6 +1,18 @@
 import { useMemo, useState } from "react";
-import { Badge, Box, Flex, IconButton, Popover, Text } from "@radix-ui/themes";
-import { ChevronDownIcon, ExternalLinkIcon, InfoCircledIcon } from "@radix-ui/react-icons";
+import {
+  Badge,
+  Box,
+  Flex,
+  IconButton,
+  Popover,
+  Spinner,
+  Text,
+} from "@radix-ui/themes";
+import {
+  ChevronDownIcon,
+  ExternalLinkIcon,
+  InfoCircledIcon,
+} from "@radix-ui/react-icons";
 import type { ChatMessage } from "@workspace/agentic-core";
 import { useOptionalChatMessageActions } from "../context/ChatContext";
 import { MarkdownPreview } from "./MarkdownPreview";
@@ -31,7 +43,9 @@ export interface SubagentActivityPreview {
 
 function compactActivity(value: string, max = 180): string {
   const normalized = value.replace(/\s+/g, " ").trim();
-  return normalized.length > max ? `${normalized.slice(0, max - 1)}…` : normalized;
+  return normalized.length > max
+    ? `${normalized.slice(0, max - 1)}…`
+    : normalized;
 }
 
 /** Convert one child-authored transcript row into compact parent-card copy. */
@@ -41,7 +55,7 @@ function activityPreview(message: ChatMessage): SubagentActivityPreview | null {
     const content = compactActivity(
       presentation.preview
         ? `${presentation.displayName} · ${presentation.preview}`
-        : presentation.displayName
+        : presentation.displayName,
     );
     const invocationStatus = message.invocation.execution.status;
     return {
@@ -62,8 +76,10 @@ function activityPreview(message: ChatMessage): SubagentActivityPreview | null {
     return { prefix: "Working", content: "Composing a response" };
   }
   if (!content) return null;
-  if (message.contentType === "thinking") return { prefix: "Thinking", content };
-  if (message.contentType === "toolcall-progress") return { prefix: "Preparing", content };
+  if (message.contentType === "thinking")
+    return { prefix: "Thinking", content };
+  if (message.contentType === "toolcall-progress")
+    return { prefix: "Preparing", content };
   if (message.contentType === "diagnostic" || message.error) {
     return { prefix: "Issue", content };
   }
@@ -78,7 +94,7 @@ function activityPreview(message: ChatMessage): SubagentActivityPreview | null {
 export function latestSubagentActivities(
   messages: ChatMessage[],
   childParticipantId: string | undefined,
-  limit = 3
+  limit = 3,
 ): SubagentActivityPreview[] {
   if (!childParticipantId) return [];
   const activities: SubagentActivityPreview[] = [];
@@ -88,7 +104,11 @@ export function latestSubagentActivities(
     const activity = activityPreview(message);
     if (!activity) continue;
     const previous = activities[activities.length - 1];
-    if (previous && previous.prefix === activity.prefix && previous.content === activity.content) {
+    if (
+      previous &&
+      previous.prefix === activity.prefix &&
+      previous.content === activity.content
+    ) {
       continue;
     }
     activities.push(activity);
@@ -121,7 +141,11 @@ function IdentifiersPopover({ rows }: { rows: Array<[string, string]> }) {
               <Text size="1" className="subagent-detail-name">
                 {name}
               </Text>
-              <Flex align="center" gap="1" className="subagent-detail-value-wrap">
+              <Flex
+                align="center"
+                gap="1"
+                className="subagent-detail-value-wrap"
+              >
                 <Text size="1" className="subagent-detail-value" title={value}>
                   {compactId(value)}
                 </Text>
@@ -152,20 +176,64 @@ export function SubagentRunCard({ msg }: { msg: ChatMessage }) {
     connection: childTranscript ?? null,
     channelId: subagent?.taskChannelId ?? null,
     contextId: subagent?.contextId ?? null,
-    // Retained collaborators can receive future work. A collapsed history
-    // card does not need a permanent subscription to wait for a terminal.
-    enabled: canObserve && open,
+    // The collapsed card displays live activity too. Share this canonical
+    // observer with the expanded transcript for the mounted card's lifetime.
+    enabled: canObserve,
   });
   const activities = useMemo(
-    () => latestSubagentActivities(observed.messages, subagent?.childParticipantId),
-    [observed.messages, subagent?.childParticipantId]
+    () =>
+      latestSubagentActivities(observed.messages, subagent?.childParticipantId),
+    [observed.messages, subagent?.childParticipantId],
   );
 
   if (!task || !subagent) return null;
 
   const description = task.execution.description.trim();
   const label = subagent.label || task.title || "Subagent";
-  const canOpenPanel = Boolean(forkState && subagent.taskChannelId && subagent.contextId);
+  const canOpenPanel = Boolean(
+    forkState && subagent.taskChannelId && subagent.contextId,
+  );
+  const childMessages = observed.messages.filter(
+    (message) => message.senderId === subagent.childParticipantId,
+  );
+  const latest = childMessages[childMessages.length - 1];
+  const working = childMessages.some(
+    (message) => message.contentType === "typing",
+  );
+  const waiting = childMessages.some(
+    (message) => message.lifecycle?.status === "waiting",
+  );
+  const failed = Boolean(
+    latest?.error || latest?.lifecycle?.status === "failed",
+  );
+  const status =
+    !canObserve || !subagent.childParticipantId
+      ? { key: "unobserved", label: "Conversation", color: "gray" as const }
+      : observed.error
+        ? {
+            key: "disconnected",
+            label: "Connection interrupted",
+            color: "amber" as const,
+          }
+        : observed.loading
+          ? {
+              key: "loading",
+              label: "Loading activity",
+              color: "gray" as const,
+            }
+          : working
+            ? { key: "working", label: "Working", color: "blue" as const }
+            : waiting
+              ? { key: "waiting", label: "Waiting", color: "amber" as const }
+              : failed
+                ? { key: "failed", label: "Failed", color: "red" as const }
+                : childMessages.length === 0
+                  ? {
+                      key: "not-started",
+                      label: "No activity yet",
+                      color: "gray" as const,
+                    }
+                  : { key: "idle", label: "Idle", color: "green" as const };
   const previews: SubagentActivityPreview[] =
     activities.length > 0
       ? activities
@@ -180,23 +248,33 @@ export function SubagentRunCard({ msg }: { msg: ChatMessage }) {
       ["Parent", subagent.parentContextId ?? undefined],
       ["Child", subagent.childEntityId],
     ] as Array<[string, string | undefined]>
-  ).filter((row): row is [string, string] => typeof row[1] === "string" && row[1].length > 0);
+  ).filter(
+    (row): row is [string, string] =>
+      typeof row[1] === "string" && row[1].length > 0,
+  );
 
   const handleOpenPanel = () => {
     if (!forkState || !subagent.taskChannelId || !subagent.contextId) return;
     forkState.actions.clearError();
     void Promise.resolve(
-      forkState.actions.openInNewPanel(subagent.taskChannelId, subagent.contextId)
+      forkState.actions.openInNewPanel(
+        subagent.taskChannelId,
+        subagent.contextId,
+      ),
     ).catch((cause) =>
-      forkState.actions.reportError("Could not open subagent conversation", cause)
+      forkState.actions.reportError(
+        "Could not open subagent conversation",
+        cause,
+      ),
     );
   };
 
   return (
     <Box className="message-row message-row-agent">
       <Box
-        className={`message-card-subagent${open ? " subagent-card-open" : ""}`}
+        className={`message-card-subagent subagent-state-${status.key}${open ? " subagent-card-open" : ""}`}
         data-testid="subagent-run-card"
+        data-subagent-status={status.key}
       >
         <div className="subagent-summary">
           <Flex align="center" gap="2" className="subagent-card-header">
@@ -213,20 +291,40 @@ export function SubagentRunCard({ msg }: { msg: ChatMessage }) {
               >
                 <ChevronDownIcon />
               </span>
-              <Text className="subagent-title" size="2" weight="medium" truncate>
+              <Text
+                className="subagent-title"
+                size="2"
+                weight="medium"
+                truncate
+              >
                 {label}
               </Text>
+              {status.key === "working" && (
+                <Spinner size="1" aria-label="Subagent working" />
+              )}
               {subagent.mode && (
-                <Badge className="subagent-mode-badge" size="1" variant="surface" color="gray">
+                <Badge
+                  className="subagent-mode-badge"
+                  size="1"
+                  variant="surface"
+                  color="gray"
+                >
                   {subagent.mode}
                 </Badge>
               )}
             </button>
             <Flex align="center" gap="2" className="subagent-card-actions">
-              <Badge className="subagent-status-badge" size="1" variant="soft" color="gray">
-                Conversation
+              <Badge
+                className="subagent-status-badge"
+                size="1"
+                variant="soft"
+                color={status.color}
+              >
+                {status.label}
               </Badge>
-              {detailRows.length > 0 && <IdentifiersPopover rows={detailRows} />}
+              {detailRows.length > 0 && (
+                <IdentifiersPopover rows={detailRows} />
+              )}
               <IconButton
                 size="1"
                 variant="ghost"
@@ -249,12 +347,17 @@ export function SubagentRunCard({ msg }: { msg: ChatMessage }) {
             >
               <span className="subagent-activity-text">
                 {preview.prefix ? (
-                  <span className="subagent-activity-prefix">{preview.prefix}</span>
+                  <span className="subagent-activity-prefix">
+                    {preview.prefix}
+                  </span>
                 ) : null}
                 <MarkdownPreview content={preview.content} />
               </span>
               {previews.length > 1 ? (
-                <span className="subagent-activity-history" aria-label="Recent child activity">
+                <span
+                  className="subagent-activity-history"
+                  aria-label="Recent child activity"
+                >
                   {previews.slice(1).map((item, index) => (
                     <span
                       className="subagent-activity-history-item"
