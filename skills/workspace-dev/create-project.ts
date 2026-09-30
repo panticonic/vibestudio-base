@@ -1,4 +1,13 @@
-import { contextId, fs, vcs } from "@workspace/runtime";
+import { contextId, fs, vcs, rpc } from "@workspace/runtime";
+import YAML from "yaml";
+import { planServiceMutation } from "@vibestudio/workspace-contracts/serviceMutation";
+import type { VcsEditChange } from "@vibestudio/service-schemas/vcs";
+import {
+  parseUnitAuthorityManifest,
+  type UnitAuthorityManifest,
+} from "@vibestudio/shared/authorityManifest";
+import type { ResolvedRpcAuthority } from "@vibestudio/rpc";
+import type { ServiceRegistration } from "@vibestudio/workspace-contracts/serviceMutation";
 import {
   PROJECT_TYPES,
   assertProjectIdentity,
@@ -8,433 +17,64 @@ import {
   type ProjectType,
 } from "./project-manifest.js";
 
-// Reviewed envelopes for the code each executable scaffold emits. These are
-// requests, not grants; runtime ownership and user approval still apply.
-const EXECUTABLE_SCAFFOLD_AUTHORITY = {
-  requests: [
-    {
-      capability: "context.boundary",
-      resource: { kind: "prefix", prefix: "context" },
-      tier: "critical",
-      evidence: "bounded-dynamic",
-    },
-  ],
-  provides: [],
-} as const;
-const AGENTIC_WORKER_AUTHORITY = {
-  requests: [
-    ...EXECUTABLE_SCAFFOLD_AUTHORITY.requests,
-    {
-      capability: "context.clone",
-      resource: { kind: "exact", key: "context.clone" },
-      tier: "gated",
-      evidence: "exact",
-    },
-  ],
-  provides: [],
-} as const;
-
-export interface ProjectPublication {
-  published: true;
-  committedEventId: string;
-  publishedEventId: string;
-  mainEventId: string;
-  effectId: string;
-  appliedAt: string;
+export interface ProjectPreparation {
+  protocol: "project-preparation.v1";
+  contextId: string;
+  workingHead: Awaited<ReturnType<typeof vcs.edit>>["workingHead"];
+  publication: "unchanged";
+  liveRuntime: "unchanged";
 }
 
-export interface ScaffoldPublicationFailureData {
-  code: "scaffold_publication_failed";
-  stage: "push";
-  created: string;
-  files: string[];
-  committedEventId: string;
-  published: false;
-  publicationRequest: {
-    contextId: string;
-    expectedCommittedEventId: string;
-    expectedMainEventId: string;
-    commandId: string;
-  };
-  vcsError: {
-    code: string;
-    message: string;
-    errorData?: unknown;
-  };
-  retry: {
-    operation: "vcs.push";
-    statusRequest: { contextId: string };
-    commandIdPolicy:
-      | "reuse-identical-only-if-outcome-uncertain"
-      | "reobserve-status-and-use-new-command"
-      | "repair-source-and-recommit"
-      | "stop-integrity-investigation";
-  };
-  recovery?: {
-    action: "repair-source";
-    instruction: string;
-  };
-}
-
-export class ScaffoldPublicationError extends Error {
-  readonly errorData: ScaffoldPublicationFailureData;
-
-  constructor(errorData: ScaffoldPublicationFailureData, cause: unknown) {
-    super(
-      `Project ${errorData.created} was committed as ${errorData.committedEventId} ` +
-        `but protected publication failed: ${errorData.vcsError.message}`,
-      { cause },
-    );
-    this.name = "ScaffoldPublicationError";
-    this.errorData = errorData;
-  }
-}
-
-export interface ScaffoldPublicationRecoveryFailureData {
-  code: "scaffold_publication_recovery_failed";
-  stage: "validate-receipt" | "validate-context" | "repair-source" | "push";
-  created: string;
-  committedEventId: string;
-  publicationRequest: ScaffoldPublicationFailureData["publicationRequest"];
-  observedStatus?: unknown;
-  cause: { code: string; message: string; errorData?: unknown };
-  retry: { operation: "recoverProjectPublication"; safeToRerun: boolean };
-}
-
-export class ScaffoldPublicationRecoveryError extends Error {
-  readonly errorData: ScaffoldPublicationRecoveryFailureData;
-
-  constructor(
-    errorData: ScaffoldPublicationRecoveryFailureData,
-    cause?: unknown,
-  ) {
-    super(
-      `Cannot recover publication for ${errorData.created} at ${errorData.stage}: ` +
-        errorData.cause.message,
-      cause === undefined ? undefined : { cause },
-    );
-    this.name = "ScaffoldPublicationRecoveryError";
-    this.errorData = errorData;
-  }
-}
-
-function errorDetail(error: unknown): {
-  code: string;
-  message: string;
-  errorData?: unknown;
-} {
-  const errorData =
-    error && typeof error === "object" && "errorData" in error
-      ? (error as { errorData?: unknown }).errorData
-      : undefined;
-  const code =
-    errorData && typeof errorData === "object" && "code" in errorData
-      ? String((errorData as { code: unknown }).code)
-      : error && typeof error === "object" && "code" in error
-        ? String((error as { code: unknown }).code)
-        : "Unknown";
-  return {
-    code,
-    message: error instanceof Error ? error.message : String(error),
-    ...(errorData === undefined ? {} : { errorData }),
-  };
-}
-
-function publicationFailureRecovery(
-  detail: ReturnType<typeof errorDetail>,
-  contextId: string,
-): Pick<ScaffoldPublicationFailureData, "retry" | "recovery"> {
-  const commandIdPolicy =
-    detail.code === "ExternalEffectFailed"
-      ? "reuse-identical-only-if-outcome-uncertain"
-      : detail.code === "BuildGateFailed"
-        ? "repair-source-and-recommit"
-        : detail.code === "IntegrityFailure"
-          ? "stop-integrity-investigation"
-          : "reobserve-status-and-use-new-command";
-  return {
-    retry: {
-      operation: "vcs.push",
-      statusRequest: { contextId },
-      commandIdPolicy,
-    },
-    ...(detail.code === "BuildGateFailed"
-      ? {
-          recovery: {
-            action: "repair-source" as const,
-            instruction:
-              "Inspect the bounded build diagnostics, repair the committed source, then commit and publish a new exact revision.",
-          },
-        }
-      : {}),
-  };
-}
-
-function publicationFromReceipt(
-  receipt: {
-    eventId: string;
-    mainEventId: string;
-    effectId: string;
-    appliedAt: string;
-  },
-  committedEventId: string,
-): ProjectPublication {
-  if (
-    !receipt ||
-    receipt.eventId !== committedEventId ||
-    !receipt.mainEventId ||
-    !receipt.effectId ||
-    !receipt.appliedAt
-  ) {
-    throw Object.assign(
-      new Error(
-        "vcs.push returned a receipt that does not prove the recorded commit",
-      ),
-      {
-        code: "IntegrityFailure",
-        errorData: {
-          code: "IntegrityFailure",
-          expectedCommittedEventId: committedEventId,
-          receipt,
-        },
-      },
-    );
-  }
-  return {
-    published: true,
-    committedEventId,
-    publishedEventId: receipt.eventId,
-    mainEventId: receipt.mainEventId,
-    effectId: receipt.effectId,
-    appliedAt: receipt.appliedAt,
-  };
-}
-
-function publicationFailureData(
-  input: ScaffoldPublicationFailureData | ScaffoldPublicationError,
-): ScaffoldPublicationFailureData {
-  const data =
-    input instanceof ScaffoldPublicationError ? input.errorData : input;
-  if (
-    !data ||
-    data.code !== "scaffold_publication_failed" ||
-    data.stage !== "push" ||
-    data.published !== false ||
-    !data.created ||
-    !data.committedEventId ||
-    data.publicationRequest?.expectedCommittedEventId !== data.committedEventId
-  ) {
-    throw new ScaffoldPublicationRecoveryError({
-      code: "scaffold_publication_recovery_failed",
-      stage: "validate-receipt",
-      created: data?.created ?? "unknown",
-      committedEventId: data?.committedEventId ?? "unknown",
-      publicationRequest: data?.publicationRequest ?? {
-        contextId: "unknown",
-        expectedCommittedEventId: "unknown",
-        expectedMainEventId: "unknown",
-        commandId: "unknown",
-      },
-      cause: {
-        code: "InvalidReceipt",
-        message: "The scaffold failure receipt is malformed",
-      },
-      retry: { operation: "recoverProjectPublication", safeToRerun: false },
-    });
-  }
-  return data;
-}
-
-/**
- * Finish a scaffold whose semantic commit succeeded but protected publication
- * did not return a success receipt. This never recreates files or commits.
- */
-export async function recoverProjectPublication(
-  input: ScaffoldPublicationFailureData | ScaffoldPublicationError,
-): Promise<ProjectPublication> {
-  const failure = publicationFailureData(input);
-  if (failure.retry.commandIdPolicy === "stop-integrity-investigation") {
-    throw new ScaffoldPublicationRecoveryError({
-      code: "scaffold_publication_recovery_failed",
-      stage: "validate-receipt",
-      created: failure.created,
-      committedEventId: failure.committedEventId,
-      publicationRequest: failure.publicationRequest,
-      cause: {
-        code: "IntegrityFailure",
-        message:
-          "The original publication receipt was invalid; automatic recovery is unsafe",
-        errorData: failure.vcsError.errorData,
-      },
-      retry: { operation: "recoverProjectPublication", safeToRerun: false },
-    });
-  }
-  if (failure.retry.commandIdPolicy === "repair-source-and-recommit") {
-    throw new ScaffoldPublicationRecoveryError({
-      code: "scaffold_publication_recovery_failed",
-      stage: "repair-source",
-      created: failure.created,
-      committedEventId: failure.committedEventId,
-      publicationRequest: failure.publicationRequest,
-      cause: {
-        code: "BuildGateFailed",
-        message:
-          "The committed scaffold did not pass the exact build gate. Repair every structured diagnostic, rebuild, and commit a new event before publishing; retrying this commit cannot succeed.",
-        errorData: failure.vcsError.errorData,
-      },
-      retry: { operation: "recoverProjectPublication", safeToRerun: false },
-    });
-  }
-  let status: Awaited<ReturnType<typeof vcs.status>>;
-  try {
-    status = await vcs.status(failure.retry.statusRequest);
-  } catch (error) {
-    throw new ScaffoldPublicationRecoveryError(
-      {
-        code: "scaffold_publication_recovery_failed",
-        stage: "validate-context",
-        created: failure.created,
-        committedEventId: failure.committedEventId,
-        publicationRequest: failure.publicationRequest,
-        cause: errorDetail(error),
-        retry: { operation: "recoverProjectPublication", safeToRerun: true },
-      },
-      error,
-    );
-  }
-  const exactCommit =
-    status.committed.kind === "event" &&
-    status.committed.eventId === failure.committedEventId &&
-    status.workingHead.kind === "event" &&
-    status.workingHead.eventId === failure.committedEventId;
-  if (!status.clean || !exactCommit) {
-    throw new ScaffoldPublicationRecoveryError({
-      code: "scaffold_publication_recovery_failed",
-      stage: "validate-context",
-      created: failure.created,
-      committedEventId: failure.committedEventId,
-      publicationRequest: failure.publicationRequest,
-      observedStatus: status,
-      cause: {
-        code: "ContextChanged",
-        message:
-          "The context is no longer clean at the exact scaffold commit; recovery will not publish a different state",
-      },
-      retry: { operation: "recoverProjectPublication", safeToRerun: false },
-    });
-  }
-
-  const uncertain =
-    failure.retry.commandIdPolicy ===
-    "reuse-identical-only-if-outcome-uncertain";
-  const request = uncertain
-    ? failure.publicationRequest
-    : {
-        contextId: failure.publicationRequest.contextId,
-        expectedCommittedEventId: failure.committedEventId,
-        expectedMainEventId: status.mainEventId,
-        commandId: `workspace-dev:recover-publication:${contextId}:${crypto.randomUUID()}`,
-      };
-  try {
-    return publicationFromReceipt(
-      await vcs.push(request),
-      failure.committedEventId,
-    );
-  } catch (error) {
-    throw new ScaffoldPublicationRecoveryError(
-      {
-        code: "scaffold_publication_recovery_failed",
-        stage: "push",
-        created: failure.created,
-        committedEventId: failure.committedEventId,
-        publicationRequest: request,
-        observedStatus: status,
-        cause: errorDetail(error),
-        retry: {
-          operation: "recoverProjectPublication",
-          safeToRerun: uncertain,
-        },
-      },
-      error,
-    );
-  }
-}
-
-// ---------------------------------------------------------------------------
-// writeProjectFiles — one atomic repository lifecycle edit, followed by one
-// whole-chain commit and protected publication.
-// ---------------------------------------------------------------------------
-
-/**
- * Create a repository and all of its initial files as one semantic mutation,
- * then commit and publish the resulting workspace event.
- */
-async function writeProjectFiles(
+function repositoryChange(
   dir: string,
   files: Record<string, string | Uint8Array>,
-  message: string,
-): Promise<ProjectPublication> {
-  const root = dir.replace(/^\/+/, "").replace(/\/+$/, "");
-  const command = (operation: string) =>
-    `workspace-dev:${operation}:${contextId}:${crypto.randomUUID()}`;
-  const beforeCreate = await vcs.status({ contextId });
-  const created = await vcs.edit({
-    contextId,
-    expectedWorkingHead: beforeCreate.workingHead,
-    commandId: command("create-repository"),
-    intentSummary: message,
-    changes: [
-      {
-        kind: "repository-create",
-        repoPath: root,
-        files: Object.entries(files)
-          .sort(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0))
-          .map(([filePath, content]) => ({
-            path: filePath.replace(/^\/+/, ""),
-            content:
-              typeof content === "string"
-                ? { kind: "text" as const, text: content }
-                : { kind: "bytes" as const, base64: bytesToBase64(content) },
-            mode: 0o644,
-          })),
-      },
-    ],
-  });
-  const committed = await vcs.commit({
-    contextId,
-    expectedWorkingHead: created.workingHead,
-    commandId: command("commit"),
-    message,
-  });
-  if (committed.event.kind !== "event") {
-    throw new Error("VCS commit did not return a committed event");
-  }
-  const publicationRequest = {
-    contextId,
-    expectedCommittedEventId: committed.event.eventId,
-    expectedMainEventId: beforeCreate.mainEventId,
-    commandId: command("publish"),
+): VcsEditChange {
+  return {
+    kind: "repository-create",
+    repoPath: dir,
+    files: Object.entries(files)
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([path, content]) => ({
+        path: path.replace(/^\/+/, ""),
+        content:
+          typeof content === "string"
+            ? { kind: "text" as const, text: content }
+            : { kind: "bytes" as const, base64: bytesToBase64(content) },
+        mode: 0o644,
+      })),
   };
-  try {
-    const published = await vcs.push(publicationRequest);
-    return publicationFromReceipt(published, committed.event.eventId);
-  } catch (error) {
-    const detail = errorDetail(error);
-    throw new ScaffoldPublicationError(
-      {
-        code: "scaffold_publication_failed",
-        stage: "push",
-        created: root,
-        files: Object.keys(files).sort(),
-        committedEventId: committed.event.eventId,
-        published: false,
-        publicationRequest,
-        vcsError: detail,
-        ...publicationFailureRecovery(detail, contextId),
-      },
-      error,
+}
+
+async function prepareChanges(
+  changes: VcsEditChange[],
+  summary: string,
+  status: Awaited<ReturnType<typeof vcs.status>>,
+): Promise<ProjectPreparation> {
+  const result = await vcs.edit({
+    contextId,
+    expectedWorkingHead: status.workingHead,
+    commandId: `workspace-dev:prepare:${contextId}:${crypto.randomUUID()}`,
+    intentSummary: summary,
+    changes,
+  });
+  return {
+    protocol: "project-preparation.v1",
+    contextId,
+    workingHead: result.workingHead,
+    publication: "unchanged",
+    liveRuntime: "unchanged",
+  };
+}
+
+function requireAuthority(
+  authority: UnitAuthorityManifest | undefined,
+  reason: string | undefined,
+): UnitAuthorityManifest {
+  if (!authority || !reason?.trim())
+    throw new Error(
+      "Executable preparation requires an explicit authority manifest and authorityReason explaining its complete requested scope. Empty requests are deliberate, not a default.",
     );
-  }
+  return parseUnitAuthorityManifest(authority);
 }
 
 function bytesToBase64(bytes: Uint8Array): string {
@@ -477,13 +117,14 @@ function toPascalCase(str: string): string {
     .join("");
 }
 
-export interface CreateProjectParams {
-  projectType: string;
+interface PrepareProjectFields {
   name: string;
   title?: string;
   /** Emoji, ./relative image path, or lucide:<name>/brand:<name> from the offline catalog. */
   icon?: string;
   template?: string;
+  /** Required for the durable-service template. */
+  methods?: RecordStoreMethodPolicies;
   /** Add a portable browser entry to this panel. Requirements are advisory. */
   website?:
     | boolean
@@ -493,6 +134,20 @@ export interface CreateProjectParams {
         suggestedTemplates?: Array<{ label: string; locator: { url: string } }>;
       };
 }
+
+export type PrepareProjectParams = PrepareProjectFields &
+  (
+    | {
+        projectType: "panel" | "worker";
+        authority: UnitAuthorityManifest;
+        authorityReason: string;
+      }
+    | {
+        projectType: "package" | "skill" | "project";
+        authority?: never;
+        authorityReason?: never;
+      }
+  );
 
 export type ProjectIconCatalog = string[];
 
@@ -596,7 +251,7 @@ async function catalogNames(kind: "lucide" | "brand"): Promise<string[]> {
   return names;
 }
 
-/** Return the exact icon ids accepted by {@link createProjects}. */
+/** Return the exact icon ids accepted by {@link prepareProjects}. */
 export async function listProjectIcons(): Promise<ProjectIconCatalog> {
   return (await projectCatalogEntries())
     .sort((left, right) => left.id.localeCompare(right.id))
@@ -761,7 +416,7 @@ async function materializeCatalogIcon(
 }
 
 async function resolveProject(
-  params: CreateProjectParams,
+  params: PrepareProjectParams,
 ): Promise<ResolvedProject> {
   const { projectType, name, title = name, icon, template, website } = params;
 
@@ -781,6 +436,13 @@ async function resolveProject(
   }
 
   const files: Record<string, string> = {};
+  const authority =
+    canonicalProjectType === "panel" || canonicalProjectType === "worker"
+      ? requireAuthority(params.authority, params.authorityReason)
+      : undefined;
+  if (authority)
+    files["AUTHORITY.md"] =
+      `# Authority intent\n\n${params.authorityReason}\n\nThis rationale is review evidence, not a grant. The manifest and receiver contracts define the requested ceiling.\n`;
   const manifestIcon = await materializeCatalogIcon(icon, files);
 
   switch (projectType) {
@@ -811,15 +473,24 @@ async function resolveProject(
 
       if (panelFramework === "svelte") {
         const frameworkPackage = JSON.parse(
-          (await fs.readFile("packages/svelte/package.json", "utf-8")) as string,
+          (await fs.readFile(
+            "packages/svelte/package.json",
+            "utf-8",
+          )) as string,
         );
         const frameworkVersion = frameworkPackage.peerDependencies?.svelte;
-        if (frameworkPackage.name !== "@workspace/svelte" || typeof frameworkVersion !== "string" || !frameworkVersion) {
-          throw new Error("The installed Svelte framework must declare its required Svelte peer dependency");
+        if (
+          frameworkPackage.name !== "@workspace/svelte" ||
+          typeof frameworkVersion !== "string" ||
+          !frameworkVersion
+        ) {
+          throw new Error(
+            "The installed Svelte framework must declare its required Svelte peer dependency",
+          );
         }
         files["package.json"] = serializeProjectManifest({
           projectType: "panel",
-          authority: EXECUTABLE_SCAFFOLD_AUTHORITY,
+          authority: authority!,
           name,
           title,
           icon: manifestIcon,
@@ -897,7 +568,7 @@ async function resolveProject(
         // authority. Framework helpers can be added deliberately when needed.
         files["package.json"] = serializeProjectManifest({
           projectType: "panel",
-          authority: EXECUTABLE_SCAFFOLD_AUTHORITY,
+          authority: authority!,
           name,
           title,
           icon: manifestIcon,
@@ -1026,7 +697,7 @@ function ${toPascalCase(name)}Content() {
 
         files["package.json"] = serializeProjectManifest({
           projectType: "worker",
-          authority: AGENTIC_WORKER_AUTHORITY,
+          authority: authority!,
           name,
           title,
           icon: manifestIcon,
@@ -1127,7 +798,7 @@ describe("${className}", () => {
         const className = toPascalCase(name);
         files["package.json"] = serializeProjectManifest({
           projectType: "worker",
-          authority: EXECUTABLE_SCAFFOLD_AUTHORITY,
+          authority: authority!,
           name,
           title,
           icon: manifestIcon,
@@ -1164,12 +835,7 @@ export class ${className} extends DurableObjectBase {
     return ["records"];
   }
 
-  @rpc({ website: {"kind":"closed","reason":"This receiver owns workspace orchestration or retained workspace data; websites require a reviewed bounded operation."},
-    principals: ["user", "code"],
-    effect: { kind: "open" },
-    tier: "open",
-    sensitivity: "write",
-  })
+  @rpc(${literalMethodPolicy(params.methods?.upsertRecord)})
   upsertRecord(input: { id?: string; title: string }): { id: string } {
     this.ensureReady();
     const id = input.id ?? crypto.randomUUID();
@@ -1186,12 +852,7 @@ export class ${className} extends DurableObjectBase {
     return { id };
   }
 
-  @rpc({ website: {"kind":"closed","reason":"This receiver owns workspace orchestration or retained workspace data; websites require a reviewed bounded operation."},
-    principals: ["user", "code"],
-    effect: { kind: "open" },
-    tier: "open",
-    sensitivity: "read",
-  })
+  @rpc(${literalMethodPolicy(params.methods?.listRecords)})
   listRecords(): Array<{ id: string; title: string; createdAt: string; updatedAt: string }> {
     this.ensureReady();
     const rows = this.sql
@@ -1216,7 +877,7 @@ export default {
         // Default stateless worker template
         files["package.json"] = serializeProjectManifest({
           projectType: "worker",
-          authority: EXECUTABLE_SCAFFOLD_AUTHORITY,
+          authority: authority!,
           name,
           title,
           icon: manifestIcon,
@@ -1258,116 +919,281 @@ export default {
   };
 }
 
-/**
- * Create multiple workspace projects in a single atomic operation.
- *
- * All repositories are created, committed, and published together — one VCS
- * edit, one commit, one push, one approval prompt. Use this whenever building
- * related units (e.g. a DO service and its panel) so the user sees one
- * consolidated review instead of separate prompts for each.
- */
-export async function createProjects(projects: CreateProjectParams[]): Promise<
-  Array<{
-    created: string;
-    files: string[];
-    preflight: ProjectPreflightReport;
-    publication: ProjectPublication;
-  }>
-> {
-  if (projects.length === 0)
-    throw new Error("createProjects requires at least one project");
+export interface PreparedProject {
+  created: string;
+  files: string[];
+  preflight: ProjectPreflightReport;
+  preparation: ProjectPreparation;
+  authorityReview: {
+    manifest: UnitAuthorityManifest;
+    rationale: string;
+  } | null;
+}
 
+/** Create context-local repositories. Review, verify, commit and publish separately. */
+export async function prepareProjects(
+  projects: PrepareProjectParams[],
+): Promise<PreparedProject[]> {
+  if (!projects.length)
+    throw new Error("prepareProjects requires at least one project");
   const resolved = await Promise.all(projects.map(resolveProject));
+  const preparation = await prepareChanges(
+    resolved.map((project) =>
+      repositoryChange(project.projectPath, project.files),
+    ),
+    `Prepare ${resolved.map((project) => project.projectPath).join(", ")}`,
+    await vcs.status({ contextId }),
+  );
+  return resolved.map((project, i) =>
+    preparedProject(project, projects[i]!.authorityReason, preparation),
+  );
+}
 
-  const allChanges: Array<{
-    kind: "repository-create";
-    repoPath: string;
-    files: Array<{
-      path: string;
-      content:
-        | { kind: "text"; text: string }
-        | { kind: "bytes"; base64: string };
-      mode: number;
-    }>;
-  }> = resolved.map((project) => ({
-    kind: "repository-create" as const,
-    repoPath: project.projectPath,
-    files: Object.entries(project.files)
-      .sort(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0))
-      .map(([filePath, content]) => ({
-        path: filePath.replace(/^\/+/, ""),
-        content:
-          typeof content === "string"
-            ? { kind: "text" as const, text: content }
-            : {
-                kind: "bytes" as const,
-                base64: bytesToBase64(content as unknown as Uint8Array),
-              },
-        mode: 0o644,
-      })),
-  }));
-
-  const names = resolved.map((p) => `${p.projectType} ${p.name}`).join(", ");
-  const message = `Scaffold ${names}`;
-  const command = (operation: string) =>
-    `workspace-dev:${operation}:${contextId}:${crypto.randomUUID()}`;
-
-  const beforeCreate = await vcs.status({ contextId });
-  const created = await vcs.edit({
-    contextId,
-    expectedWorkingHead: beforeCreate.workingHead,
-    commandId: command("create-repositories"),
-    intentSummary: message,
-    changes: allChanges,
-  });
-  const committed = await vcs.commit({
-    contextId,
-    expectedWorkingHead: created.workingHead,
-    commandId: command("commit"),
-    message,
-  });
-  if (committed.event.kind !== "event") {
-    throw new Error("VCS commit did not return a committed event");
-  }
-  const publicationRequest = {
-    contextId,
-    expectedCommittedEventId: committed.event.eventId,
-    expectedMainEventId: beforeCreate.mainEventId,
-    commandId: command("publish"),
+function preparedProject(
+  project: ResolvedProject,
+  rationale: string | undefined,
+  preparation: ProjectPreparation,
+): PreparedProject {
+  const executable =
+    project.projectType === "panel" || project.projectType === "worker";
+  return {
+    created: project.projectPath,
+    files: Object.keys(project.files),
+    preflight: project.preflight,
+    preparation,
+    authorityReview: executable
+      ? {
+          manifest: JSON.parse(project.files["package.json"] as string)
+            .vibestudio.authority,
+          rationale: rationale!,
+        }
+      : null,
   };
-  try {
-    const published = await vcs.push(publicationRequest);
-    const publication = publicationFromReceipt(
-      published,
-      committed.event.eventId,
-    );
-    return resolved.map((project) => ({
-      created: project.projectPath,
-      files: Object.keys(project.files),
-      preflight: project.preflight,
-      publication,
-    }));
-  } catch (error) {
-    const detail = errorDetail(error);
-    throw new ScaffoldPublicationError(
-      {
-        code: "scaffold_publication_failed",
-        stage: "push",
-        created: resolved.map((p) => p.projectPath).join(", "),
-        files: resolved
-          .flatMap((p) =>
-            Object.keys(p.files).map((f) => `${p.projectPath}/${f}`),
-          )
-          .sort(),
-        committedEventId: committed.event.eventId,
-        published: false,
-        publicationRequest,
-        vcsError: detail,
-        ...publicationFailureRecovery(detail, contextId),
-      },
-      error,
+}
+
+export interface RecordStoreMethodPolicies {
+  upsertRecord: ResolvedRpcAuthority;
+  listRecords: ResolvedRpcAuthority;
+}
+
+/** Receiver policy must be literal source, not runtime-inferred metadata. */
+function literalMethodPolicy(policy: ResolvedRpcAuthority | undefined): string {
+  if (
+    !policy ||
+    !policy.website ||
+    !policy.effect ||
+    !policy.tier ||
+    !policy.sensitivity ||
+    (!policy.principals && !policy.requires)
+  ) {
+    throw new Error(
+      "Durable-store methods require explicit website, principals or requires, effect, tier, and sensitivity decisions",
     );
   }
+  return JSON.stringify(policy, (_key, value) => {
+    if (typeof value === "function" || typeof value === "undefined")
+      throw new Error("Receiver policy must contain only literal JSON values");
+    return value;
+  });
+}
+
+export interface ApplicationAuthorityPolicy {
+  rationale: string;
+  panel: UnitAuthorityManifest;
+  worker: UnitAuthorityManifest;
+  service: Pick<ServiceRegistration, "principals" | "binding" | "notability">;
+  methods: RecordStoreMethodPolicies;
+}
+
+export interface PrepareApplicationParams {
+  /** Creates panels/<name> and workers/<name>-store. */
+  name: string;
+  title?: string;
+  icon?: string;
+  authority: ApplicationAuthorityPolicy;
+}
+
+export interface PrepareApplicationResult {
+  panel: PreparedProject;
+  worker: PreparedProject;
+  service: {
+    name: string;
+    protocol: string;
+    source: string;
+    className: string;
+    objectKey: string;
+    docsId: string;
+  };
+  preparation: ProjectPreparation;
+  authorityReview: ApplicationAuthorityPolicy;
+}
+
+/** Prepare a connected candidate; the supplied policy is intent, never a grant. */
+export async function prepareApplication({
+  name,
+  title = name,
+  icon,
+  authority,
+}: PrepareApplicationParams): Promise<PrepareApplicationResult> {
+  const workerName = `${name}-store`;
+  const protocol = `${name}.v1`;
+  const className = toPascalCase(workerName);
+  if (
+    !authority?.service ||
+    !authority.methods ||
+    !authority.service.binding ||
+    !authority.service.notability ||
+    !authority.service.principals?.length
+  )
+    throw new Error(
+      "prepareApplication requires explicit service principals, binding, notability, receiver policies, and unit manifests with a rationale",
+    );
+  literalMethodPolicy(authority.methods.listRecords);
+  literalMethodPolicy(authority.methods.upsertRecord);
+  authority = JSON.parse(JSON.stringify(authority));
+  const [panel, worker] = await Promise.all([
+    resolveProject({
+      projectType: "panel",
+      name,
+      title,
+      icon,
+      authority: authority.panel,
+      authorityReason: authority.rationale,
+    }),
+    resolveProject({
+      projectType: "worker",
+      name: workerName,
+      title: `${title} Store`,
+      icon,
+      template: "durable-service",
+      authority: authority.worker,
+      authorityReason: authority.rationale,
+      methods: authority.methods,
+    }),
+  ]);
+  const manifest = JSON.parse(panel.files["package.json"] as string);
+  manifest.dependencies["@workspace/runtime"] = "workspace:*";
+  panel.files["package.json"] = JSON.stringify(manifest, null, 2) + "\n";
+  panel.files["index.tsx"] =
+    `import React, { useEffect, useState } from "react";
+import { rpc, workers } from "@workspace/runtime";
+
+type RecordItem = { id: string; title: string; createdAt: string; updatedAt: string };
+
+export default function App() {
+  const [records, setRecords] = useState<RecordItem[]>([]);
+  const [title, setTitle] = useState("");
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(true);
+  useEffect(() => {
+    let active = true;
+    async function load() {
+      try {
+        const service = await workers.resolveService(${JSON.stringify(protocol)});
+        if (service.kind !== "durable-object") throw new Error("Expected a durable record service");
+        const result = await rpc.call<RecordItem[]>(service.targetId, "listRecords", []);
+        if (active) setRecords(result);
+      } catch (cause) { if (active) setError(String(cause)); }
+      finally { if (active) setBusy(false); }
+    }
+    void load();
+    return () => { active = false; };
+  }, []);
+  async function save(event: React.FormEvent) {
+    event.preventDefault();
+    if (!title.trim() || busy) return;
+    setBusy(true);
+    setError("");
+    try {
+      const service = await workers.resolveService(${JSON.stringify(protocol)});
+      if (service.kind !== "durable-object") throw new Error("Expected a durable record service");
+      await rpc.call(service.targetId, "upsertRecord", [{ title: title.trim() }]);
+      setTitle("");
+      setRecords(await rpc.call<RecordItem[]>(service.targetId, "listRecords", []));
+    } catch (cause) { setError(String(cause)); }
+    finally { setBusy(false); }
+  }
+  return <main style={{ padding: 24 }}>
+    <h1>{${JSON.stringify(title)}}</h1>
+    <form onSubmit={save}>
+      <label>Record title <input value={title} onChange={event => setTitle(event.target.value)} disabled={busy} /></label>
+      <button type="submit" disabled={busy || !title.trim()}>Add record</button>
+    </form>
+    {error && <p role="alert">{error}</p>}
+    <ul>{records.map(record => <li key={record.id}>{record.title}</li>)}</ul>
+  </main>;
+}
+`;
+  panel.preflight = preflightProjectFiles({
+    projectType: "panel",
+    name,
+    files: panel.files,
+  });
+  const beforeCreate = await vcs.status({ contextId });
+  const repository = await vcs.resolveRepository({
+    state: beforeCreate.workingHead,
+    repoPath: "meta",
+  });
+  if (!repository) throw new Error("The workspace has no meta repository");
+  const file = await vcs.readFile({
+    state: beforeCreate.workingHead,
+    repositoryId: repository.repositoryId,
+    file: { kind: "path", path: "vibestudio.yml" },
+  });
+  if (!file || file.content.kind !== "text")
+    throw new Error("The workspace has no text meta/vibestudio.yml");
+  const document = YAML.parseDocument(file.content.text);
+  if (document.errors.length) throw document.errors[0];
+  const config = document.toJS();
+  if (!config || typeof config !== "object" || Array.isArray(config))
+    throw new Error("meta/vibestudio.yml must contain a configuration mapping");
+  const service = {
+    name: workerName,
+    protocol,
+    source: worker.projectPath,
+    className,
+    objectKey: "main",
+    docsId: `workspace:${workerName}`,
+  };
+  const plan = planServiceMutation(config, {
+    operation: "create",
+    name: workerName,
+    source: worker.projectPath,
+    title: `${title} Store`,
+    action: "Manage records",
+    description: `Stores records for ${title}.`,
+    notability: authority.service.notability,
+    presentation: { domain: "files", verb: "manage" },
+    protocols: [protocol],
+    principals: authority.service.principals,
+    binding: authority.service.binding,
+    transport: { kind: "durable-object", className, objectKey: "main" },
+  });
+  document.set("services", plan.services);
+  document.set("singletonObjects", plan.singletonObjects);
+  const candidate = String(document);
+  await rpc.call("main", "workspace.validateConfig", [candidate]);
+  const preparation = await prepareChanges(
+    [
+      repositoryChange(panel.projectPath, panel.files),
+      repositoryChange(worker.projectPath, worker.files),
+      {
+        kind: "text-edit",
+        repositoryId: file.repositoryId,
+        fileId: file.fileId,
+        edits: [{ start: 0, end: file.content.text.length, text: candidate }],
+      },
+    ],
+    `Prepare connected application ${name}`,
+    beforeCreate,
+  );
+  return {
+    panel: preparedProject(panel, authority.rationale, preparation),
+    worker: preparedProject(worker, authority.rationale, preparation),
+    service,
+    preparation,
+    authorityReview: authority,
+  };
 }
 
 const COPY_SKIP_DIRS = new Set([
@@ -1437,6 +1263,8 @@ export interface ForkProjectOptions {
         tests?: boolean;
       };
   classMap?: Record<string, string>;
+  authority?: UnitAuthorityManifest;
+  authorityReason?: string;
 }
 
 export interface ForkProjectResult {
@@ -1446,9 +1274,9 @@ export interface ForkProjectResult {
   preflight: ProjectPreflightReport;
   rewrites: Array<{ file: string; description: string }>;
   warnings: string[];
-  committed: boolean;
   dryRun: boolean;
-  publication: ProjectPublication | null;
+  preparation: ProjectPreparation | null;
+  authorityReview: PreparedProject["authorityReview"];
 }
 
 function rewriteEnabled(
@@ -1708,6 +1536,22 @@ export async function forkProject(
       "Fork destination must identify a canonical project type so the planned repository can be preflighted",
     );
   }
+  const executable = effectiveType === "panel" || effectiveType === "worker";
+  const authorityReview = executable
+    ? {
+        manifest: requireAuthority(options.authority, options.authorityReason),
+        rationale: options.authorityReason!,
+      }
+    : null;
+  if (authorityReview) {
+    const manifest = JSON.parse(planned["package.json"] as string);
+    manifest.vibestudio.authority = authorityReview.manifest;
+    planned["package.json"] = JSON.stringify(manifest, null, 2) + "\n";
+    planned["AUTHORITY.md"] =
+      `# Authority intent\n\n${authorityReview.rationale}\n\nThis rationale is review evidence, not a grant. The manifest and receiver contracts define the requested ceiling.\n`;
+    if (!createdFiles.includes("AUTHORITY.md"))
+      createdFiles.push("AUTHORITY.md");
+  }
   const preflight = preflightProjectFiles({
     projectType: effectiveType,
     name: newName,
@@ -1740,19 +1584,19 @@ export async function forkProject(
       preflight,
       rewrites,
       warnings,
-      committed: false,
       dryRun: true,
-      publication: null,
+      preparation: null,
+      authorityReview,
     };
   }
 
   const initialFiles: Record<string, string | Uint8Array> = {};
   for (const [rel, content] of Object.entries(planned))
     initialFiles[rel] = content;
-  const publication = await writeProjectFiles(
-    to,
-    initialFiles,
-    `Fork ${from} -> ${to}`,
+  const preparation = await prepareChanges(
+    [repositoryChange(to, initialFiles)],
+    `Prepare fork ${from} -> ${to}`,
+    await vcs.status({ contextId }),
   );
   return {
     source: from,
@@ -1761,9 +1605,9 @@ export async function forkProject(
     preflight,
     rewrites,
     warnings,
-    committed: true,
     dryRun: false,
-    publication,
+    preparation,
+    authorityReview,
   };
 }
 
@@ -1772,12 +1616,16 @@ export async function forkPanel(params: {
   name: string;
   title?: string;
   dryRun?: boolean;
+  authority: UnitAuthorityManifest;
+  authorityReason: string;
 }): Promise<ForkProjectResult> {
   return forkProject({
     from: params.from,
     to: `panels/${params.name}`,
     title: params.title,
     dryRun: params.dryRun,
+    authority: params.authority,
+    authorityReason: params.authorityReason,
   });
 }
 
@@ -1787,6 +1635,8 @@ export async function forkWorker(params: {
   title?: string;
   classMap?: Record<string, string>;
   dryRun?: boolean;
+  authority: UnitAuthorityManifest;
+  authorityReason: string;
 }): Promise<ForkProjectResult> {
   return forkProject({
     from: params.from,
@@ -1794,5 +1644,7 @@ export async function forkWorker(params: {
     title: params.title,
     classMap: params.classMap,
     dryRun: params.dryRun,
+    authority: params.authority,
+    authorityReason: params.authorityReason,
   });
 }

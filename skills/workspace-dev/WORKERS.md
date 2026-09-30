@@ -60,7 +60,7 @@ Generated from `runtimeSurface.worker.ts`. Use `await help()` at runtime for the
 | `runtime` | value |  | Portable typed runtime lifecycle and supervision client for the current workspace context. |
 | `workspace` | namespace | `getInfo`, `getActive`, `getConfig`, `validateConfig`, `setInitPanels`, `setConfigField`, `applyPreparedConfig`, `getAgentsMd`, `listSkills`, `readSkill`, `sourceTree`, `ensureContextFolder`, `findUnitForPath`, `projects` | Workspace catalog, source tree, and unit helpers. Does not include panelTree; use runtime.panelTree for panel-tree handles. |
 | `createPanelSlot` | value |  | Commit a panel and promptly return its durable handle without focusing or waiting for activation, build, or boot. Server reconciliation owns activation after commit and recovers it across transient failure or restart. Pass operationId for retry-stable identity; use handle.observe() when current lifecycle state matters. |
-| `openPanel` | value |  | Create a panel and return its handle after the exact attempt is application boot-ready, with no fixed readiness deadline. Pass options.signal for caller-owned cancellation and operationId for retry-stable identity. It defaults under the caller and focused; use parentId:null for a root or focus:false to suppress presentation. options.placement accepts "side" (default), "side-if-room", "replace", or "split-below". The returned PanelHandle is the complete lifecycle and inspection API. Use `const session = await handle.cdp.session(); const page = session.page` for multi-step automation. The session records the immutable panel generation; after rebuild/navigation call `await session.refresh()` and use the returned session instead of replaying an uncertain action. For a one-off read, `await handle.cdp.page()` remains available and returns a Promise, not a page proxy. For a one-call host image use `await handle.cdp.screenshot({ format: "png" })`. For host-captured logs since panel creation use `await handle.cdp.consoleHistory()` (live page console events are separate). |
+| `openPanel` | value |  | Create a panel and return its handle after the exact attempt is application boot-ready, with no fixed readiness deadline. Pass options.signal for caller-owned cancellation and operationId for retry-stable identity. It defaults under the caller and focused; use parentId:null for a root or focus:false to suppress presentation. options.placement accepts "side" (default), "side-if-room", "replace", or "split-below". The returned PanelHandle is the complete lifecycle and inspection API. Use `let session = await handle.cdp.session(); const page = session.page` for multi-step automation. The session records the immutable panel generation; after rebuild/navigation call `session = (await session.refresh()).session` and reacquire `session.page` instead of replaying an uncertain action. refresh() returns a receipt with status (current, reconnected, or replaced) and session, not the session itself. For a one-off read, `await handle.cdp.page()` remains available and returns a Promise, not a page proxy. For a one-call host image use `await handle.cdp.screenshot({ format: "png" })`. For host-captured logs since panel creation use `await handle.cdp.consoleHistory()` (live page console events are separate). |
 | `getPanelHandle` | value |  | Alias for runtime.panelTree.get(id, kind?). |
 | `panelTree` | namespace | `self`, `get`, `rootOwners`, `roots`, `rootsForOwner`, `children`, `page`, `path`, `search`, `parent`, `navigate`, `navigateHistory` | Runtime property, not workspace.panelTree. self/get are synchronous handle factories. Use roots(input?) for the current human subject, rootOwners() then rootsForOwner(ownerUserId) for cross-owner inspection, or children(parentSlotId); each returns a bounded page with entries. page(...) is the advanced discriminated-group primitive. search(...) returns hits containing entry.node and entry.handle. Handle navigate/navigateHistory/focus/reload/rebuild return a boot-ready PanelObservation; observe is the sole live status read. |
 | `handleRpcPost` | value |  |  |
@@ -375,34 +375,41 @@ agent eval. The eval `db` is private to that agent's EvalDO; it is good for
 scratch analysis and resumable diagnostics, but it is not an application
 database for panels, apps, workers, or other agents.
 
-When building a panel with a DO store, create both together with
-`createProjects` so the user sees one approval prompt:
+When building a new panel with a DO store, author the explicit policy from
+[PROJECTS.md](PROJECTS.md), then use `prepareApplication` to prepare a connected
+context candidate, not two disconnected units or an automatic publication:
 
 ```ts
 eval({
   code: `
-  import { createProjects } from "@workspace-skills/workspace-dev";
-  scope.created = await createProjects([
-    { projectType: "worker", name: "todo-store", title: "Todo Store", template: "durable-service" },
-    { projectType: "panel", name: "todo-app", title: "Todo App" },
-  ]);
-  return scope.created;
+  import { prepareApplication } from "@workspace-skills/workspace-dev";
+  scope.prepared = await prepareApplication({ name: "todo-app", title: "Todo App", authority: scope.authorityPolicy });
+  return scope.prepared;
 `,
 });
 ```
 
 Canonical shape:
 
-1. Create `workers/<store>` with a `DurableObjectBase` subclass (or create it
-   together with its panel via `createProjects`).
+The connected scaffold supplies code, service, and singleton structure using
+the explicit supplied policy. It never adds missing consumer requests or
+chooses method contracts. Review, verify, and publish the exact candidate
+separately; preparation changes neither main nor live runtime.
+Use `workspace_service` for later intentional declaration changes. For custom
+or existing units, the same underlying contracts apply:
+
+1. Create `workers/<store>` with a `DurableObjectBase` subclass. For a new
+   connected app, `prepareApplication` supplies this and its paired panel;
+   `prepareProjects` creates independent units without service wiring.
 2. Store durable rows in the DO's SQLite database through `this.sql`.
 3. Expose narrow app methods with explicit
    `@rpc({ website, principals, effect: { kind: "open" }, tier, sensitivity })`
    contracts; the effect must be a literal object so the exact build can document it
    without executing provider code. Do not expose a
    raw SQL console to normal UI callers.
-4. Declare a `services:` entry in `meta/vibestudio.yml` with the principal
-   families that may resolve the service.
+4. Use `workspace_service` to declare the service and matching singleton
+   atomically, with the principal families that may resolve it. Skip this
+   registration step for the service already created by `prepareApplication`.
 5. Call it from eval, panels, inline UI, apps, workers, or other DOs with
    `workers.resolveService(protocol, objectKey?)` and `rpc.call(...)`.
 

@@ -39,7 +39,7 @@ aliases. Use `searchProjectCatalog` when you need to discover a name:
 
 ```ts
 import {
-  createProjects,
+  prepareProjects,
   searchProjectCatalog,
 } from "@workspace-skills/workspace-dev";
 
@@ -50,11 +50,21 @@ const catalog = await searchProjectCatalog({
 });
 const icon = catalog.entries[0]?.id;
 if (!icon) throw new Error("The messages icon is unavailable");
-return createProjects([{ projectType: "panel", name: "inbox", icon }]);
+return prepareProjects([
+  {
+    projectType: "panel",
+    name: "inbox",
+    icon,
+    authority: scope.panelAuthority,
+    authorityReason: scope.panelAuthorityReason,
+  },
+]);
 ```
 
 The scaffold copies only the selected SVG into `assets/icon.svg`
-and writes `vibestudio.icon: "./assets/icon.svg"`; no icon library enters the
+and prepares it in the current context without publication. Author the complete
+unit authority values before this invocation; see [PROJECTS.md](../PROJECTS.md).
+It writes `vibestudio.icon: "./assets/icon.svg"`; no icon library enters the
 unit's runtime bundle. Valid requests read only their selected SVG; catalog
 search lists filenames on demand without loading artwork. Catalog search returns
 12 entries by default (at most 500); `listProjectIcons()` returns all ids.

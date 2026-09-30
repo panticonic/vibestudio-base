@@ -498,19 +498,28 @@ import them. Just write the import — no `imports` parameter needed:
 
 ```
 eval({ code: `
-  import { createProjects } from "@workspace-skills/workspace-dev";
-  return await createProjects([{ projectType: "panel", name: "my-app", title: "My App" }]);
+  import { prepareProjects } from "@workspace-skills/workspace-dev";
+  return await prepareProjects([{
+    projectType: "panel", name: "my-app", title: "My App",
+    authority: scope.panelAuthority, authorityReason: scope.panelAuthorityReason,
+  }]);
 `
 })
 ```
 
+For a new persistent application, use `prepareApplication` rather than this standalone
+panel example; its result is an object, not an array. Author the complete
+authority policy before either invocation; preparation never adds missing
+requests or publishes. Review and verify the candidate, then commit/push
+explicitly through VCS. See
+[workspace scaffolding](../workspace-dev/PROJECTS.md).
+
 Guest/service exceptions with structured `errorData` retain that data in the
-eval result details and display a bounded failure-data preview. For
-`scaffold_publication_failed`, do not rerun creation. Branch on the structured
-`retry.commandIdPolicy`: use `recoverProjectPublication` from
-`@workspace-skills/workspace-dev` for receipt/main-state recovery, repair and
-recommit the cited source for `repair-source-and-recommit`, and stop on
-`stop-integrity-investigation`. Do not infer recovery from the error string.
+eval result details and display a bounded failure-data preview. Failed preparation
+or later publication uses ordinary typed VCS status/receipt recovery; there is
+no scaffold-specific publication wrapper or recovery API. After an uncertain
+edit, inspect current state rather than preparing the same destinations again.
+Do not infer recovery from the error string.
 Failed tool invocations also
 persist one `agent-tool-failure.v1` object in the terminal trajectory event.
 Branch on its code, kind, stage, retry policy, and ordered causes rather than
@@ -598,7 +607,7 @@ File-loaded code also supports package-local aliases declared through
 ```
 eval({
   code: `
-    import { createProjects } from "@workspace-skills/workspace-dev";
+    import { prepareProjects } from "@workspace-skills/workspace-dev";
     import Ajv from "ajv";
     const ajv = new Ajv();
     console.log("Ajv loaded:", typeof ajv.compile);

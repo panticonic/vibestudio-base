@@ -2464,9 +2464,9 @@ describe("AgentVesselBase.onEvalComplete (deferred-eval resume)", () => {
         console: "",
         error: "protected publication build gate failed",
         failureKind: "infrastructure",
-        failureCode: "scaffold_publication_failed",
+        failureCode: "candidate_verification_failed",
         errorData: {
-          code: "scaffold_publication_failed",
+          code: "candidate_verification_failed",
           recovery: {
             action: "repair-source",
             instruction: "Inspect diagnostics and publish a repaired revision.",
@@ -2480,7 +2480,7 @@ describe("AgentVesselBase.onEvalComplete (deferred-eval resume)", () => {
       kind: "tool",
       isError: true,
       terminalOutcome: "infrastructure_error",
-      terminalReasonCode: "scaffold_publication_failed",
+      terminalReasonCode: "candidate_verification_failed",
       failure: {
         kind: "infrastructure",
         recovery: { action: "repair-source" },

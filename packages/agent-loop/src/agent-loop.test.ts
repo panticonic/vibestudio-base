@@ -760,10 +760,10 @@ describe("agent-loop core lifecycle", () => {
       isError: true,
       reason: "protected publication build gate failed",
       terminalOutcome: "infrastructure_error",
-      terminalReasonCode: "scaffold_publication_failed",
+      terminalReasonCode: "candidate_verification_failed",
       failure: {
         protocol: "agent-tool-failure.v1",
-        code: "scaffold_publication_failed",
+        code: "candidate_verification_failed",
         kind: "infrastructure",
         message: "protected publication build gate failed",
         operation: "tool.eval",
@@ -777,7 +777,7 @@ describe("agent-loop core lifecycle", () => {
         causes: [
           {
             role: "primary",
-            code: "scaffold_publication_failed",
+            code: "candidate_verification_failed",
             message: "protected publication build gate failed",
           },
         ],

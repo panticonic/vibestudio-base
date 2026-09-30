@@ -1079,7 +1079,7 @@ return fs.readFileSync("/tmp/a");`,
     const result = await executeSandbox(
       `const error = new Error("publication failed");
        error.errorData = {
-         code: "scaffold_publication_failed",
+         code: "candidate_verification_failed",
          stage: "push",
          committedEventId: "event:committed",
          published: false
@@ -1092,9 +1092,9 @@ return fs.readFileSync("/tmp/a");`,
       success: false,
       error: "publication failed",
       failureKind: "user-code",
-      failureCode: "scaffold_publication_failed",
+      failureCode: "candidate_verification_failed",
       errorData: {
-        code: "scaffold_publication_failed",
+        code: "candidate_verification_failed",
         stage: "push",
         committedEventId: "event:committed",
         published: false,
@@ -1133,52 +1133,7 @@ return fs.readFileSync("/tmp/a");`,
     });
   });
 
-  it("classifies a generated scaffold build-gate failure as infrastructure", async () => {
-    const result = await executeSandbox(
-      `const error = new Error("publication failed");
-       error.errorData = {
-         code: "scaffold_publication_failed",
-         stage: "push",
-         committedEventId: "event:committed",
-         published: false,
-         vcsError: { code: "BuildGateFailed", errorData: { diagnostics: [] } }
-       };
-       throw error;`,
-      { syntax: "typescript" },
-    );
 
-    expect(result).toMatchObject({
-      success: false,
-      failureKind: "infrastructure",
-      failureCode: "scaffold_publication_failed",
-    });
-  });
-
-  it("classifies a closed scaffold approval rendezvous as infrastructure", async () => {
-    const result = await executeSandbox(
-      `const error = new Error("publication approval failed");
-       error.errorData = {
-         code: "scaffold_publication_failed",
-         stage: "push",
-         published: false,
-         vcsError: {
-           code: "EACQUIRE",
-           errorData: {
-             acquisition: { acquisitionId: "acq:1", pending: false },
-             authorityFailure: { reasonCode: "approval-required" }
-           }
-         }
-       };
-       throw error;`,
-      { syntax: "typescript" },
-    );
-
-    expect(result).toMatchObject({
-      success: false,
-      failureKind: "infrastructure",
-      failureCode: "scaffold_publication_failed",
-    });
-  });
 
   it("exposes a lazy import loader to runtime helpers during eval", async () => {
     const result = await executeSandbox(

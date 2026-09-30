@@ -7,13 +7,21 @@ import { describe, expect, it } from "vitest";
 
 import { preflightProjectFiles, type ProjectType } from "./project-manifest.js";
 
-const workspaceRoot = composedWorkspaceRoot(fileURLToPath(new URL("../../", import.meta.url)));
+const workspaceRoot = composedWorkspaceRoot(
+  fileURLToPath(new URL("../../", import.meta.url)),
+);
 const SKIP_DIRECTORIES = new Set([".git", "build", "dist", "node_modules"]);
-const TEXT_FILE = /\.(?:[cm]?[jt]sx?|json|md|mdx|svelte|css|scss|html|ya?ml|toml|txt)$/i;
+const TEXT_FILE =
+  /\.(?:[cm]?[jt]sx?|json|md|mdx|svelte|css|scss|html|ya?ml|toml|txt)$/i;
 
-function repositoryFiles(directory: string, prefix = ""): Record<string, string | Uint8Array> {
+function repositoryFiles(
+  directory: string,
+  prefix = "",
+): Record<string, string | Uint8Array> {
   const files: Record<string, string | Uint8Array> = {};
-  for (const entry of fs.readdirSync(path.join(directory, prefix), { withFileTypes: true })) {
+  for (const entry of fs.readdirSync(path.join(directory, prefix), {
+    withFileTypes: true,
+  })) {
     if (SKIP_DIRECTORIES.has(entry.name)) continue;
     const relative = prefix ? `${prefix}/${entry.name}` : entry.name;
     if (entry.isDirectory()) {
@@ -29,13 +37,17 @@ function repositoryFiles(directory: string, prefix = ""): Record<string, string 
   return files;
 }
 
-function executableRepositories(type: Extract<ProjectType, "panel" | "worker">): string[] {
+function executableRepositories(
+  type: Extract<ProjectType, "panel" | "worker">,
+): string[] {
   const section = type === "panel" ? "panels" : "workers";
   const root = path.join(workspaceRoot, section);
   return fs
     .readdirSync(root, { withFileTypes: true })
     .filter(
-      (entry) => entry.isDirectory() && fs.existsSync(path.join(root, entry.name, "package.json"))
+      (entry) =>
+        entry.isDirectory() &&
+        fs.existsSync(path.join(root, entry.name, "package.json")),
     )
     .map((entry) => `${section}/${entry.name}`)
     .sort();
@@ -73,20 +85,27 @@ describe("panel debugging guidance", () => {
   it("keeps the bounded loop explicit about context refs and durable phase receipts", () => {
     const skill = fs.readFileSync(
       path.join(workspaceRoot, "skills/workspace-dev/SKILL.md"),
-      "utf8"
+      "utf8",
     );
     const loop = fs.readFileSync(
       path.join(workspaceRoot, "skills/workspace-dev/PANEL_DEBUG_LOOP.md"),
-      "utf8"
+      "utf8",
     );
 
     expect(skill).toContain("PANEL_DEBUG_LOOP.md");
-    expect(loop).toContain("Never call `createProjects` again");
+    expect(loop).toContain("Never call either preparation API again");
+    expect(loop).toContain("authority: scope.authorityPolicy");
+    expect(loop).toContain("no commit, push, activation, or grant");
     expect(loop).toContain("ref: `ctx:${ctx.contextId}`");
     expect(loop).toContain("requestedRef");
-    expect(loop).toContain("const refreshed = await scope.panelSession.refresh()");
+    expect(loop).toContain(
+      "scope.refreshReceipt = await scope.panelSession.refresh()",
+    );
+    expect(loop).toContain("scope.panelSession = scope.refreshReceipt.session");
     expect(loop).toContain("const page = scope.panelSession.page");
-    expect(loop).toContain('return await scope.panel.cdp.screenshot({ format: "png" })');
+    expect(loop).toContain(
+      'return await scope.panel.cdp.screenshot({ format: "png" })',
+    );
     expect(loop).toContain("No temp file");
   });
 });
@@ -95,15 +114,15 @@ describe("host command guidance", () => {
   it("keeps panel authoring and app hosting discoverable from their skills", () => {
     const skill = fs.readFileSync(
       path.join(workspaceRoot, "skills/workspace-dev/SKILL.md"),
-      "utf8"
+      "utf8",
     );
     const panelApi = fs.readFileSync(
       path.join(workspaceRoot, "skills/workspace-dev/PANEL_API.md"),
-      "utf8"
+      "utf8",
     );
     const runtimeApi = fs.readFileSync(
       path.join(workspaceRoot, "skills/sandbox/RUNTIME_API.md"),
-      "utf8"
+      "utf8",
     );
     // `skills/appdev` ships in System; check its half of the contract where
     // the composed workspace actually carries it.
@@ -117,13 +136,17 @@ describe("host command guidance", () => {
 
     expect(skill).toContain("PANEL_API.md#host-commands");
     expect(panelApi).toContain("## Host commands");
-    expect(panelApi).toContain('import { useHostCommands } from "@workspace/react"');
+    expect(panelApi).toContain(
+      'import { useHostCommands } from "@workspace/react"',
+    );
     expect(panelApi).toContain("Registration is a complete replacement");
     expect(panelApi).toContain("exactly once per panel runtime");
     expect(runtimeApi).toContain("registerHostCommands");
     expect(runtimeApi).toContain("onHostCommandRun");
     if (appSkill !== null && appAuthoring !== null) {
-      expect(appSkill).toContain("AUTHORING.md#hosting-panel-contributed-commands");
+      expect(appSkill).toContain(
+        "AUTHORING.md#hosting-panel-contributed-commands",
+      );
       expect(appAuthoring).toContain("## Hosting panel-contributed commands");
       expect(appAuthoring).toContain('target: "shell"');
       expect(appAuthoring).toContain("unknown future shell event");

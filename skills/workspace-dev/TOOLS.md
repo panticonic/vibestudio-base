@@ -7,7 +7,7 @@ Your working directory is the **context folder** — an isolated copy of the wor
 - All file paths are **relative to your working directory** (e.g., `panels/my-app/index.tsx`)
 - **NEVER** use host absolute paths (e.g., `/home/.../workspace/panels/...`). Runtime `fs.*` accepts context-root absolute paths like `/panels/my-app/index.tsx`, but prefer `panels/my-app/index.tsx` in examples and source edits.
 - **NEVER** use `Bash` for git operations, file listing, or file creation — use the structured tools
-- In eval, `rpc`, `services`, `fs`, `ctx`, `scope`, `scopes`, `db`, `help` (and, in agent eval, `chat`) are **injected free variables** — do **not** import them. Raw service catalog calls always work as `rpc.call("<svc>.<method>", [args])`; `services.<svc>` is convenience sugar and may be an ergonomic runtime client when the name collides (`services.workers` is `workers`). For workspace/npm **packages**, import the functions in each invocation that uses them (`import { createProjects } from "@workspace-skills/workspace-dev"`). Static imports and literal dynamic imports use the same per-owner loader; see the [canonical import contract](../sandbox/EVAL.md#imports).
+- In eval, `rpc`, `services`, `fs`, `ctx`, `scope`, `scopes`, `db`, `help` (and, in agent eval, `chat`) are **injected free variables** — do **not** import them. Raw service catalog calls always work as `rpc.call("<svc>.<method>", [args])`; `services.<svc>` is convenience sugar and may be an ergonomic runtime client when the name collides (`services.workers` is `workers`). For workspace/npm **packages**, import the functions in each invocation that uses them (`import { prepareProjects } from "@workspace-skills/workspace-dev"`). Static imports and literal dynamic imports use the same per-owner loader; see the [canonical import contract](../sandbox/EVAL.md#imports).
 
 ---
 
@@ -107,168 +107,83 @@ filesystem/VCS request behind global build settlement.
 
 ## Creating Projects
 
-Read [PROJECTS.md](PROJECTS.md) for the scaffolding workflow. Create new projects via eval, importing each function in the invocation that uses it. Workspace skill packages are auto-resolved.
+Creation is stage one: a context-local preparation edit. It never commits,
+pushes, activates a runtime, or grants authority. Stage two is deliberate
+review, exact-context verification, and ordinary VCS commit/push. Read
+[PROJECTS.md](PROJECTS.md) for the complete policy example and receipt contract.
 
-Supported types: `panel`, `package`, `skill`, `project`, `worker`. Each scaffolds into its repo directory (`panels/`, `packages/`, `skills/`, `projects/`, `workers/`). The `skill` type is for a standalone cross-repo skill package. Do not use `projectType: "skill"` to document an existing package, worker, panel, extension, or project.
+### Preparation API
 
-The scaffold runs the semantic development loop for you: it authors one
-coherent lifecycle work unit, commits the complete local chain from the exact
-working head, and publishes the resulting event through semantic
-ancestry/integration validation, the affected-unit build/typecheck/authority gate,
-approval, and an atomic protected-ref update. Post-publication build and
-activation remain separate projections, and failed activation retains the
-previous runnable artifact.
-Follow-up `edit`/`write` changes remain context-local until you commit the
-complete chain and choose to publish it.
+- `prepareApplication({ name, title?, icon?, authority })` prepares a React
+  panel, SQLite DO store, protocol, singleton, and config in one edit.
+  `authority` is the required `ApplicationAuthorityPolicy`: rationale, complete
+  panel/worker manifests, service principals/binding/notability, and both complete
+  literal record-method contracts. No request or policy is inferred.
+- `prepareProjects(projects)` prepares independent repositories in one edit
+  and returns an array. Each input has `projectType`, `name`, optional
+  `title`, `icon`, `template`, and portable panel `website` entry options.
+  Executable inputs require `authority` and `authorityReason`; the
+  `durable-service` template also requires `methods`.
+- `forkProject({ from, to, authority?, authorityReason?, dryRun?, rewrite?, classMap? })`
+  prepares copied source. `forkPanel` and `forkWorker` take `from`, `name`,
+  required `authority` and `authorityReason`, optional `title`, `dryRun`,
+  and (worker only) `classMap`. Executable forks replace the copied ceiling
+  with explicit policy; they do not inherit authority silently.
+  Dry runs perform preflight without mutation.
 
-Do **not** use `createProjects` for a context-local temporary repo that might
-never be published. A repo path is established by writing any file inside it:
-`write`/`edit` to `projects/tmp-name/note.md` is enough. You may leave that work
-on the context's working head, commit the local chain as a context event, or
-publish that event when it should become visible on
-`main`.
+Supported repository kinds are `panel`, `worker`, `package`, `skill`,
+and `project`. Location is identity; `projectType` cannot override an existing
+repository's kind. Use repo-local `SKILL.md` for its guidance, not a new skill
+repository. Use ordinary writes under `projects/` for private scratch content.
 
-### Project-Specific Skill Docs
+Import preparation functions in each eval invocation. Author the policy for
+the real task before calling them; do not use an example envelope as an
+automatic solution to an authority diagnostic.
 
-Any workspace repo can include a top-level `SKILL.md` that is discovered as an
-agent skill. For guidance tied to one repo, add or edit that repo's own file
-instead of creating a separate `skills/<name>` repo.
+### Receipts and review
 
-Examples:
+A prepared unit returns `{ created, files, preflight, preparation, authorityReview }`.
+A connected app returns `{ panel, worker, service, preparation, authorityReview }`,
+not an array. Keep it in `scope.prepared`; the panel path is
+`scope.prepared.panel.created` for an application, or
+`scope.prepared[0].created` for the first independent unit.
+The preparation receipt identifies the exact context working head and explicitly
+reports `publication: "unchanged"` and `liveRuntime: "unchanged"`.
 
-- `packages/data-model/SKILL.md` for package APIs, schemas, and test commands
-- `workers/customer-agent/SKILL.md` for worker behavior, queues, and diagnostics
-- `panels/chat/SKILL.md` for panel-specific UI conventions
-- `extensions/browser-data/SKILL.md` for extension setup and operational notes
-- `projects/customer-vault/SKILL.md` for a plain content repo's structure
+The authority review packet shows the requested manifest and rationale;
+application review additionally exposes service and receiver choices.
+`AUTHORITY.md` records the supplied executable rationale. These are review
+evidence, not grants. Verify the actual current source after edits.
 
-Use `skills/<name>/SKILL.md` only for cross-repo workflows or reusable skill
-packages. The built-in onboarding skill stays in `skills/onboarding/SKILL.md`
-because it describes the whole workspace. Read repo-local skills using the path
-shown in the skill index, such as `read("packages/data-model/SKILL.md")`.
+Preflight proves mutation-free manifest, source, and dependency checks;
+it does not prove semantic builds or authorize publication. Its pending
+semantic gate is discharged by exact build verification and protected push.
+On `ProjectPreflightError.errorData`, inspect each dependency issue's file,
+line, import syntax, coordinate, required manifest field, and accepted package
+coordinates. Production imports belong in dependencies/peerDependencies;
+test-only and type-only imports may use devDependencies. Repair the named
+source/manifest; do not probe unrelated fork sources.
 
-### Usage
+Fork rewriting owns package name, entry, title, and class metadata structurally.
+It does not apply worker source-string replacements to an already-rewritten
+manifest. Inspect dry-run rewrites/warnings and use an explicit class map when
+multiple classes need renaming.
 
-When building related units — a panel and its backing DO store, for example —
-create them together with `createProjects` so the user sees one consolidated
-approval prompt instead of separate prompts for each:
+### Verify and publish separately
 
-```
-eval({ code: `
-  import { createProjects, searchProjectCatalog } from "@workspace-skills/workspace-dev";
-  const [databaseCatalog, panelCatalog] = await Promise.all([
-    searchProjectCatalog({ resource: "icon", query: "database", limit: 5 }),
-    searchProjectCatalog({ resource: "icon", query: "panels top left", limit: 5 }),
-  ]);
-  const databaseIcon = databaseCatalog.entries[0]?.id;
-  const panelIcon = panelCatalog.entries[0]?.id;
-  if (!databaseIcon || !panelIcon) throw new Error("Required catalog icons are unavailable");
-  return await createProjects([
-    { projectType: "worker", name: "task-board-store", title: "Task Board Store", icon: databaseIcon, template: "durable-service" },
-    { projectType: "panel", name: "task-board", title: "Task Board", icon: panelIcon },
-  ]);
-`
-})
-```
+Review the complete requested authority against the application's intended
+effects, resources, callers, website access, and data sensitivity. Empty
+requests are deliberate; blanket context-boundary or clone requests are never
+added by scaffolding. Use exact `verify` targets, then compare with main,
+commit the reviewed complete chain, and push its exact event through ordinary
+VCS. See [WORKFLOW.md](WORKFLOW.md#development-loop). Publication has one
+existing protected gate and user decision, not a new preparation approval path.
 
-Even for a single project, use `createProjects` with a one-element array.
-
-**`createProjects(projects)` parameters (per project):**
-| Name | Type | Required | Description |
-|------|------|----------|-------------|
-| `projectType` | string | Yes | One of: `panel`, `package`, `skill`, `project`, `worker` |
-| `name` | string | Yes | Stable kebab-case identifier matching `^[a-z][a-z0-9-]*$` |
-| `title` | string | No | Human-readable title (defaults to name) |
-| `icon` | string | No | Emoji, local relative asset, `lucide:<name>` from Lucide Static 1.27.0, or a selected `brand:<name>` |
-| `template` | string | No | Panel template name; for workers use `durable-service` for an app database, `agentic` for an agent, or omit it for a stateless HTTP worker |
-
-All Lucide Static 1.27.0 SVG names and aliases are available offline; known ids
-such as `lucide:columns-3` and `lucide:layout-dashboard` can be passed directly.
-Brand marks remain a selected set. For discovery, call
-`searchProjectCatalog({ resource: "icon", query, limit })` and choose an exact
-entry id. Only the chosen SVG is copied into the project; no catalog enters its
-runtime bundle. An invalid catalog id throws `ProjectIconError` before any VCS
-mutation, with the exact bounded query/result, suggestions, and recovery in
-`errorData`.
-
-The typed catalog result records the resource, normalized query, total count,
-bounded entries (12 by default, at most 500), and truncation count. Pass an entry's exact `id` directly.
-`listProjectIcons()` remains the unbounded convenience read when every icon is
-genuinely needed.
-
-For an isolated generated name, append a lowercase base-36 suffix such as
-`` `todo-list-${Date.now().toString(36)}` ``. Do not append a raw ISO timestamp:
-its uppercase `T`/`Z`, colons, and periods are not valid repository identity.
-
-`createProjects` returns an array of results, one per project.
-Each result includes
-`{ created, files, preflight, publication }`.
-`preflight` is the mutation-free proof that the complete planned repository
-passed the canonical manifest and source checks. Both fresh scaffolds and forks
-must pass it; there is no legacy-fork bypass.
-`publication.published` is `true` and the remaining fields name the exact
-committed/published event, new main, durable effect, and application time.
-
-Module dependency validation is one shared platform contract, not a
-`forkProject` regex. It recognizes static imports/exports, literal dynamic
-imports, and literal `require` calls while excluding comments, embedded source
-examples, regular expressions, Node built-ins, and self-references.
-Production value imports belong in `dependencies` (or `peerDependencies`);
-test-only and type-only imports may use `devDependencies`. For type-only
-imports, the matching `@types` coordinate is accepted.
-
-On failure, inspect the structured `ProjectPreflightError.errorData`:
-
-- `code: "project_preflight_failed"` and `stage: "dependency-contract"`;
-- `projectType`, `projectName`, and canonical `packageName`;
-- `issues[].code` (`dependency_missing` or `dependency_wrong_field`);
-- the `coordinate`, `expectedField`, optional `declaredField`, and
-  `acceptedCoordinates`; and
-- every source occurrence with `file`, `specifier`, `kind`, `syntax`,
-  `line`, and `column`, plus an actionable `remediation`.
-
-This packet is the repair plan. Do not probe unrelated fork sources after a
-canonical source reports a dependency defect.
-
-Forking owns `package.json` through a structural manifest rewrite: package name,
-entry, title, and Durable Object class metadata are updated as typed fields.
-Generic worker source-string replacement never runs over the rewritten
-manifest, including when the destination name contains the source name as a
-prefix (for example `source` → `source-copy`). Run `dryRun: true` first and
-inspect `preflight`, `rewrites`, and `warnings`; use `classMap` for workers with
-multiple Durable Object classes.
-
-If protected publication fails after commit, the helper throws
-`ScaffoldPublicationError`; eval shows its `errorData` in the tool details.
-`errorData` contains:
-
-- `code: "scaffold_publication_failed"` and `stage: "push"`;
-- `created`, `files`, `committedEventId`, and `published: false`;
-- the exact original `publicationRequest`;
-- `vcsError.code`, message, and original typed data; and
-- `retry.commandIdPolicy`.
-
-Do not rerun `createProjects`, because the repositories and commit already exist.
-First branch on `retry.commandIdPolicy`. For
-`reuse-identical-only-if-outcome-uncertain` or
-`reobserve-status-and-use-new-command`, use the receipt-driven recovery helper:
-
-```ts
-import { recoverProjectPublication } from "@workspace-skills/workspace-dev";
-return await recoverProjectPublication(scaffoldError);
-```
-
-It calls `vcs.status`, refuses if the context is not clean at the exact recorded
-commit, reuses the original command only for an identical uncertain external
-effect, and otherwise uses a fresh command against the newly observed main.
-For `repair-source-and-recommit`, do not call the recovery helper: consume every
-`BuildGateFailed` diagnostic, edit the existing repository, rebuild the exact
-context, commit a new event, and publish it from fresh status. The helper rejects
-this policy explicitly because retrying source-invalid bytes cannot succeed.
-`ScaffoldPublicationRecoveryError.errorData` says whether another recovery call
-is safe; it never recreates files or commits. A malformed or mismatched
-publication receipt records `stop-integrity-investigation` and is never
-auto-recovered.
+Preparation, publication, and activation are distinct phases. A later failure
+does not undo an earlier edit. Never call either preparation API again to recover
+an existing candidate. Inspect current VCS status and destinations after a lost
+edit response; for publication failures, use the normal typed VCS retry policy
+and exact receipts. There is no scaffold-specific publication recovery API.
 
 ---
 

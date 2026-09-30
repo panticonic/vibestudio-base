@@ -9,8 +9,8 @@
 import { Type } from "@sinclair/typebox";
 import type { AgentTool, AgentToolResult } from "@workspace/pi-core";
 import type { VcsWorkingMutationResult } from "@vibestudio/service-schemas/vcs";
-import type { WorkspaceServiceBinding } from "@vibestudio/workspace-contracts/types";
 import YAML from "yaml";
+import { planServiceMutation, type ServiceRegistration, type ServiceMutation } from "@vibestudio/workspace-contracts/serviceMutation";
 import { generateDiffString } from "./edit-diff.js";
 import { resolveToolFile } from "../semantic-file-resolution.js";
 import {
@@ -143,62 +143,10 @@ const workspaceServiceSchema = Type.Union(
 );
 
 export type WorkspaceServiceToolInput =
-  | {
-      operation: "upsert";
-      name: string;
-      source: string;
-      title: string;
-      action: string;
-      description: string;
-      notability: "headline" | "everyday";
-      presentation: {
-        domain: "files" | "sharing" | "accounts" | "web" | "automation" | "people" | "computer";
-        verb: "see" | "act" | "manage";
-        substanceKind?: "change-set" | "send" | "deletion" | "custom";
-      };
-      protocols: string[];
-      principals: Array<"host" | "user" | "code" | "session" | "mission">;
-      binding: WorkspaceServiceBinding;
-      transport:
-        | { kind: "durable-object"; className: string; objectKey?: string }
-        | { kind: "worker"; routePath: string };
-    }
-  | {
-      operation: "remove";
-      name: string;
-      removeSingleton?: boolean;
-    };
+  | (ServiceRegistration & { operation: "upsert" })
+  | Extract<ServiceMutation, { operation: "remove" }>;
 
-interface ServiceDeclaration {
-  source: string;
-  name: string;
-  title?: string;
-  action?: string;
-  description?: string;
-  notability?: "headline" | "everyday";
-  presentation: {
-    domain: "files" | "sharing" | "accounts" | "web" | "automation" | "people" | "computer";
-    verb: "see" | "act" | "manage";
-    substanceKind?: "change-set" | "send" | "deletion" | "custom";
-  };
-  protocols?: string[];
-  authority: { principals: Array<"host" | "user" | "code" | "session" | "mission">; binding?: WorkspaceServiceBinding };
-  durableObject?: { className: string };
-  worker?: { routePath: string };
-}
-
-interface SingletonDeclaration {
-  source: string;
-  className: string;
-  key: string;
-  contextId?: string;
-}
-
-interface WorkspaceConfigDocument {
-  services?: ServiceDeclaration[];
-  singletonObjects?: SingletonDeclaration[];
-  [key: string]: unknown;
-}
+type WorkspaceConfigDocument = Parameters<typeof planServiceMutation>[0];
 
 export interface WorkspaceServiceToolDetails {
   changed: boolean;
@@ -214,29 +162,10 @@ export interface WorkspaceServiceToolDeps {
   validateConfig(content: string): Promise<void>;
 }
 
-function isServiceDeclaration(value: unknown): value is ServiceDeclaration {
-  return Boolean(
-    value &&
-    typeof value === "object" &&
-    typeof (value as { source?: unknown }).source === "string" &&
-    typeof (value as { name?: unknown }).name === "string"
-  );
-}
-
-function isSingletonDeclaration(value: unknown): value is SingletonDeclaration {
-  return Boolean(
-    value &&
-    typeof value === "object" &&
-    typeof (value as { source?: unknown }).source === "string" &&
-    typeof (value as { className?: unknown }).className === "string" &&
-    typeof (value as { key?: unknown }).key === "string"
-  );
-}
-
 export function createWorkspaceServiceTool(
   vcs: ToolEditingVcs,
   context: ToolMutationContext,
-  deps: WorkspaceServiceToolDeps
+  deps: WorkspaceServiceToolDeps,
 ): AgentTool<typeof workspaceServiceSchema, WorkspaceServiceToolDetails> {
   return {
     name: "workspace_service",
@@ -248,7 +177,7 @@ export function createWorkspaceServiceTool(
     execute: async (
       _toolCallId,
       input,
-      signal
+      signal,
     ): Promise<AgentToolResult<WorkspaceServiceToolDetails>> => {
       if (signal?.aborted) throw new Error("Operation aborted");
       // AgentTool invokes execute only after validating the discriminated
@@ -257,117 +186,48 @@ export function createWorkspaceServiceTool(
       const operation = command.operation;
       const serviceName = command.name;
       const workingHead = await resolveToolWorkingState(vcs, context);
-      const file = await resolveToolFile(vcs, workingHead, "meta/vibestudio.yml");
+      const file = await resolveToolFile(
+        vcs,
+        workingHead,
+        "meta/vibestudio.yml",
+      );
       if (!file || file.content.kind !== "text") {
-        throw new Error("The current workspace has no text meta/vibestudio.yml document");
+        throw new Error(
+          "The current workspace has no text meta/vibestudio.yml document",
+        );
       }
       const sourceContent = file.content.text;
       const document = YAML.parseDocument(sourceContent);
       if (document.errors.length > 0) throw document.errors[0];
       const raw = document.toJS() as WorkspaceConfigDocument | null;
       if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
-        throw new Error("meta/vibestudio.yml must contain a configuration mapping");
+        throw new Error(
+          "meta/vibestudio.yml must contain a configuration mapping",
+        );
       }
-      const services = Array.isArray(raw.services) ? raw.services.filter(isServiceDeclaration) : [];
-      const singletons = Array.isArray(raw.singletonObjects)
-        ? raw.singletonObjects.filter(isSingletonDeclaration)
-        : [];
-
-      if (operation === "upsert") {
-        const transport = command.transport;
-        const className = "className" in transport ? transport.className : undefined;
-        const routePath = "routePath" in transport ? transport.routePath : undefined;
-        if (transport.kind === "durable-object" && !className) {
-          throw new Error("A durable-object service requires transport.className");
-        }
-        if (transport.kind === "worker" && !routePath) {
-          throw new Error("A worker service requires transport.routePath");
-        }
-        if (transport.kind !== "durable-object" && transport.kind !== "worker") {
-          throw new Error('Service transport.kind must be "durable-object" or "worker"');
-        }
-        const source = command.source;
-        const transportDeclaration =
-          transport.kind === "durable-object"
-            ? { durableObject: { className: className! } }
-            : { worker: { routePath: routePath! } };
-        const declaration: ServiceDeclaration = {
-          source,
-          name: serviceName,
-          title: command.title,
-          action: command.action,
-          description: command.description,
-          notability: command.notability,
-          presentation: { ...command.presentation },
-          protocols: [...command.protocols],
-          authority: { principals: [...command.principals], binding: command.binding },
-          ...transportDeclaration,
-        };
-        const serviceIndex = services.findIndex(({ name }) => name === serviceName);
-        if (serviceIndex >= 0) services[serviceIndex] = declaration;
-        else services.push(declaration);
-
-        if (transport.kind === "durable-object" && transport.objectKey) {
-          const singleton: SingletonDeclaration = {
-            source,
-            className: className!,
-            key: transport.objectKey,
-          };
-          const singletonIndex = singletons.findIndex(
-            ({ source, className }) =>
-              source === singleton.source && className === singleton.className
-          );
-          if (singletonIndex >= 0) singletons[singletonIndex] = singleton;
-          else singletons.push(singleton);
-        }
-      } else {
-        const serviceIndex = services.findIndex(({ name }) => name === serviceName);
-        if (serviceIndex < 0) {
-          return {
-            content: [{ type: "text", text: `No service named ${serviceName} is declared.` }],
-            details: {
-              changed: false,
-              operation: "remove",
-              serviceName,
-              diff: "",
-              diagnostic: "not-found",
+      const plan = planServiceMutation(raw, command);
+      if (plan.diagnostic) {
+        return {
+          content: [
+            {
+              type: "text",
+              text:
+                plan.diagnostic === "not-found"
+                  ? `No service named ${serviceName} is declared.`
+                  : "No changes made: another service still uses the singleton.",
             },
-          };
-        }
-        const [removed] = services.splice(serviceIndex, 1);
-        if (command.removeSingleton && removed?.durableObject) {
-          const stillUsed = services.some(
-            (service) =>
-              service.source === removed.source &&
-              service.durableObject?.className === removed.durableObject?.className
-          );
-          if (stillUsed) {
-            return {
-              content: [
-                {
-                  type: "text",
-                  text: `No changes made: another service still uses ${removed.source}:${removed.durableObject.className}.`,
-                },
-              ],
-              details: {
-                changed: false,
-                operation: "remove",
-                serviceName,
-                diff: "",
-                diagnostic: "singleton-still-used",
-              },
-            };
-          }
-          const singletonIndex = singletons.findIndex(
-            ({ source, className }) =>
-              source === removed.source && className === removed.durableObject?.className
-          );
-          if (singletonIndex >= 0) singletons.splice(singletonIndex, 1);
-        }
+          ],
+          details: {
+            changed: false,
+            operation: "remove",
+            serviceName,
+            diff: "",
+            diagnostic: plan.diagnostic,
+          },
+        };
       }
-
-      document.set("services", services);
-      document.set("singletonObjects", singletons);
+      document.set("services", plan.services);
+      document.set("singletonObjects", plan.singletonObjects);
       const candidate = String(document);
       await deps.validateConfig(candidate);
       if (signal?.aborted) throw new Error("Operation aborted");
@@ -386,7 +246,8 @@ export function createWorkspaceServiceTool(
         ],
       });
       const diff = generateDiffString(sourceContent, candidate).diff;
-      const docsId = operation === "upsert" ? `workspace:${serviceName}` : undefined;
+      const docsId =
+        operation === "upsert" ? `workspace:${serviceName}` : undefined;
       return {
         content: [
           {

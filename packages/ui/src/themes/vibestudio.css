@@ -1,3 +1,11 @@
+/*
+ * Vibestudio product skin. The shell and every panel mount the same identity:
+ * the brand blue accent over a cool slate neutral. Radix owns the component
+ * contract; this file only supplies the ramps, so each step keeps its Radix
+ * meaning (1–2 backgrounds, 3–5 component fills, 6–8 borders, 9–10 solids,
+ * 11–12 text). Alpha steps are the minimal-alpha colour that composites to the
+ * matching solid step over the appearance background, as Radix derives them.
+ */
 .radix-themes {
   --brand-ink: var(--gray-12);
   --brand-ink-contrast: var(--gray-1);
@@ -9,65 +17,60 @@
   --brand-tile-shadow: none;
 }
 
-/* Keep the product's blue and slate ramps scoped to the shipped defaults. */
+/* The ramps apply to the shipped identity only; a user-chosen accent or gray
+   falls through to the stock Radix scales untouched. */
 .radix-themes[data-accent-color="blue"][data-gray-color="slate"] {
-  --blue-1: #f4f7fc;
-  --blue-2: #ebf1fa;
-  --blue-3: #dfe9f7;
-  --blue-4: #d3e0f4;
-  --blue-5: #c2d3ef;
-  --blue-6: #a9c2e6;
-  --blue-7: #87a9d7;
-  --blue-8: #6289c3;
-  --blue-9: #204fa3;
-  --blue-10: #1b468e;
-  --blue-11: #183e70;
-  --blue-12: #14243d;
+  --blue-1: #fbfcff;
+  --blue-2: #f4f7ff;
+  --blue-3: #e9efff;
+  --blue-4: #dce6ff;
+  --blue-5: #cddbff;
+  --blue-6: #b8cbfb;
+  --blue-7: #9bb4f4;
+  --blue-8: #7193ea;
+  --blue-9: #2d5fdc;
+  --blue-10: #2553c6;
+  --blue-11: #1d4db4;
+  --blue-12: #11244d;
+  --blue-a1: #0040ff04;
+  --blue-a2: #0046ff0b;
+  --blue-a3: #0046ff16;
+  --blue-a4: #0049ff23;
+  --blue-a5: #0047ff32;
+  --blue-a6: #0044f147;
+  --blue-a7: #0040e364;
+  --blue-a8: #003dd98e;
+  --blue-a9: #003dd5d2;
+  --blue-a10: #0036bcda;
+  --blue-a11: #0036aae2;
+  --blue-a12: #001440ee;
+  --blue-surface: #f4f7ffcc;
   --blue-contrast: #ffffff;
-  --blue-a1: #204fa303;
-  --blue-a2: #204fa306;
-  --blue-a3: #204fa30c;
-  --blue-a4: #204fa314;
-  --blue-a5: #204fa31f;
-  --blue-a6: #204fa32d;
-  --blue-a7: #204fa342;
-  --blue-a8: #204fa366;
-  --blue-a9: #204fa399;
-  --blue-a10: #1b468eca;
-  --blue-a11: #183e70f2;
-  --blue-a12: #14243dfd;
-  --color-background: #ffffff;
-  --color-panel-solid: #ffffff;
-  --surface-raised: #f1f3f7;
-  --tool-surface-gray-background: var(--gray-2);
-  --tool-surface-blue-background: var(--gray-2);
-  --tool-surface-green-background: var(--gray-2);
-  --tool-surface-amber-background: var(--gray-2);
-  --tool-surface-red-background: var(--gray-2);
   --slate-1: #ffffff;
-  --slate-2: #f1f3f7;
-  --slate-3: #eaedf3;
-  --slate-4: #e0e5ee;
-  --slate-5: #dfe4ec;
-  --slate-6: #d4d9e2;
-  --slate-7: #bfc8d6;
-  --slate-8: #a1acbd;
-  --slate-9: #7c8799;
-  --slate-10: #6a778c;
-  --slate-11: #58677d;
-  --slate-12: #14243d;
-  --slate-a1: #14243d04;
-  --slate-a2: #14243d08;
-  --slate-a3: #14243d0d;
-  --slate-a4: #14243d13;
-  --slate-a5: #14243d1c;
-  --slate-a6: #14243d29;
-  --slate-a7: #14243d3d;
-  --slate-a8: #14243d59;
-  --slate-a9: #14243d78;
-  --slate-a10: #14243d8c;
-  --slate-a11: #14243db3;
-  --slate-a12: #14243df0;
+  --slate-2: #f6f8fb;
+  --slate-3: #edf1f6;
+  --slate-4: #e4e9f0;
+  --slate-5: #dae0ea;
+  --slate-6: #ccd4e0;
+  --slate-7: #b6c0d0;
+  --slate-8: #94a1b6;
+  --slate-9: #66748b;
+  --slate-10: #5a687e;
+  --slate-11: #445166;
+  --slate-12: #0e1a2d;
+  --slate-a1: #ffffff00;
+  --slate-a2: #00398e09;
+  --slate-a3: #00398012;
+  --slate-a4: #002f711b;
+  --slate-a5: #00296e25;
+  --slate-a6: #00286433;
+  --slate-a7: #00235b49;
+  --slate-a8: #001f516b;
+  --slate-a9: #00173e99;
+  --slate-a10: #001638a5;
+  --slate-a11: #00122ebb;
+  --slate-a12: #000d21f1;
+  --slate-surface: #ffffffcc;
   --gray-1: var(--slate-1);
   --gray-2: var(--slate-2);
   --gray-3: var(--slate-3);
@@ -92,83 +95,63 @@
   --gray-a10: var(--slate-a10);
   --gray-a11: var(--slate-a11);
   --gray-a12: var(--slate-a12);
-}
-
-.radix-themes:where(.light, .light-theme)[data-accent-color="blue"][data-gray-color="slate"]
-  .agentic-chat-root
-  .rt-BaseButton.rt-variant-soft:where(:not([data-accent-color]), [data-accent-color=""]):not(:disabled):not([data-disabled]) {
-  background-color: var(--accent-3);
-}
-
-@media (hover: hover) {
-  .radix-themes:where(.light, .light-theme)[data-accent-color="blue"][data-gray-color="slate"]
-    .agentic-chat-root
-    .rt-BaseButton.rt-variant-soft:where(:not([data-accent-color]), [data-accent-color=""]):not(:disabled):not([data-disabled]):hover {
-    background-color: var(--accent-4);
-  }
+  --color-background: #ffffff;
+  --color-panel-solid: #ffffff;
 }
 
 .radix-themes.dark[data-accent-color="blue"][data-gray-color="slate"],
 .radix-themes.dark-theme[data-accent-color="blue"][data-gray-color="slate"] {
-  --blue-1: #111c2b;
-  --blue-2: #17243a;
-  --blue-3: #202d43;
-  --blue-4: #293a52;
-  --blue-5: #334764;
-  --blue-6: #3e5677;
-  --blue-7: #4a6588;
-  --blue-8: #5c7ba2;
-  --blue-9: #496fa8;
-  --blue-10: #5275aa;
-  --blue-11: #afc8f0;
-  --blue-12: #dce8fb;
+  --blue-1: #0f1627;
+  --blue-2: #131d33;
+  --blue-3: #172850;
+  --blue-4: #1a3166;
+  --blue-5: #203b78;
+  --blue-6: #28468a;
+  --blue-7: #3253a1;
+  --blue-8: #3c63c2;
+  --blue-9: #3d6ff0;
+  --blue-10: #4f7df5;
+  --blue-11: #9dbaff;
+  --blue-12: #dce6ff;
+  --blue-a1: #0025901e;
+  --blue-a2: #2363fe1d;
+  --blue-a3: #2a68ff3d;
+  --blue-a4: #2c6afd56;
+  --blue-a5: #3572fe6a;
+  --blue-a6: #4079fe7e;
+  --blue-a7: #497eff97;
+  --blue-a8: #4b7ffebc;
+  --blue-a9: #4075feef;
+  --blue-a10: #5282fff4;
+  --blue-a11: #9dbaffff;
+  --blue-a12: #dce6ffff;
+  --blue-surface: #131d3380;
   --blue-contrast: #ffffff;
-  --blue-a1: #afc8f00a;
-  --blue-a2: #afc8f014;
-  --blue-a3: #afc8f021;
-  --blue-a4: #afc8f030;
-  --blue-a5: #afc8f040;
-  --blue-a6: #afc8f052;
-  --blue-a7: #afc8f066;
-  --blue-a8: #afc8f07a;
-  --blue-a9: #496fa8bd;
-  --blue-a10: #5275aadd;
-  --blue-a11: #afc8f0fa;
-  --blue-a12: #dce8fbff;
-  --color-background: #202124;
-  --color-panel-solid: #292b2f;
-  --surface-raised: #34373c;
-  --tool-surface-gray-background: var(--color-panel);
-  --tool-surface-blue-background: var(--color-panel);
-  --tool-surface-green-background: var(--color-panel);
-  --tool-surface-amber-background: var(--color-panel);
-  --tool-surface-red-background: var(--color-panel);
-  --slate-1: #202124;
-  --slate-2: #292b2f;
-  --slate-3: #34373c;
-  --slate-4: #3c4046;
-  --slate-5: #454a51;
-  --slate-6: #50565f;
-  --slate-7: #646c77;
-  --slate-8: #79828f;
-  --slate-9: #858e9a;
-  --slate-10: #98a0ab;
-  --slate-11: #c9cdd3;
-  --slate-12: #f4f5f6;
-  --slate-a1: #f4f5f603;
-  --slate-a2: #f4f5f608;
-  --slate-a3: #f4f5f60d;
-  --slate-a4: #f4f5f613;
-  --slate-a5: #f4f5f61c;
-  --slate-a6: #f4f5f629;
-  --slate-a7: #f4f5f63d;
-  --slate-a8: #f4f5f659;
-  --slate-a9: #f4f5f678;
-  --slate-a10: #f4f5f68c;
-  --slate-a11: #f4f5f6b3;
-  --slate-a12: #f4f5f6f0;
-  --brand-signal: #dc9584;
-  --brand-signal-soft: #dc95841f;
+  --slate-1: #111419;
+  --slate-2: #171b22;
+  --slate-3: #1e232c;
+  --slate-4: #252b36;
+  --slate-5: #2c3340;
+  --slate-6: #353d4c;
+  --slate-7: #434d5f;
+  --slate-8: #58647a;
+  --slate-9: #6b778c;
+  --slate-10: #78849a;
+  --slate-11: #b1bbcb;
+  --slate-12: #eef1f6;
+  --slate-a1: #11141900;
+  --slate-a2: #aac7ff0a;
+  --slate-a3: #a8c2f516;
+  --slate-a4: #acc6f921;
+  --slate-a5: #adc8fb2c;
+  --slate-a6: #b2cbfd39;
+  --slate-a7: #b4cefe4e;
+  --slate-a8: #b9d1fe6c;
+  --slate-a9: #c4d9fe80;
+  --slate-a10: #c7dafd90;
+  --slate-a11: #dfebfec6;
+  --slate-a12: #f6f9fef6;
+  --slate-surface: #171b2280;
   --gray-1: var(--slate-1);
   --gray-2: var(--slate-2);
   --gray-3: var(--slate-3);
@@ -193,6 +176,10 @@
   --gray-a10: var(--slate-a10);
   --gray-a11: var(--slate-a11);
   --gray-a12: var(--slate-a12);
+  --color-background: var(--slate-1);
+  --color-panel-solid: var(--slate-2);
+  --brand-signal: #ec8a76;
+  --brand-signal-soft: #ec8a7624;
 }
 
 .vibestudio-logo {
