@@ -99,7 +99,10 @@ function createRpcCall() {
         return {
           status: "assigned",
           lease: null,
-          attempt: readyAttempt(String(args[0]), `panel:nav-${String(args[0]).replace(/^panel:tree\//, "")}-entity`),
+          attempt: readyAttempt(
+            String(args[0]),
+            `panel:nav-${String(args[0]).replace(/^panel:tree\//, "")}-entity`,
+          ),
         };
       case "workspace-state.slot.commitPreparedNavigation": {
         const input = args[0] as {
@@ -748,7 +751,8 @@ describe("PanelHandle", () => {
     // Reload restarts the current renderer; rebuilding replaces its source
     // generation. Both operations must target the parent, never this child.
     expect(rpcCall).toHaveBeenCalledWith(
-      "main", "runtime.supervision.restart",
+      "main",
+      "runtime.supervision.restart",
       [{ kind: "panel", entityId: "panel:nav-panel-parent-entity" }],
     );
     for (const [, , args] of replacements) {
@@ -997,7 +1001,12 @@ describe("PanelHandle", () => {
   });
 
   it("loads the canonical CDP page client only when requested", async () => {
-    const page = { marker: "async-page" };
+    const page = {
+      marker: "async-page",
+      title: vi.fn(async function (this: { marker: string }) {
+        return this.marker;
+      }),
+    };
     const connect = vi.fn(async () => ({
       contexts: () => [{ pages: () => [page] }],
     }));
@@ -1013,9 +1022,13 @@ describe("PanelHandle", () => {
       on: vi.fn(),
     } as never);
 
-    await expect(getPanelHandle("panel-1", "browser").cdp.page()).resolves.toBe(
-      page,
+    const connectedPage = await getPanelHandle("panel-1", "browser").cdp.page();
+    expect((connectedPage as unknown as { marker: string }).marker).toBe(
+      page.marker,
     );
+    // The canonical page proxy must preserve the browser client's receiver.
+    expect(await connectedPage.title()).toBe("async-page");
+    expect(page.title).toHaveBeenCalledOnce();
 
     expect(loadCdpClient).toHaveBeenCalledOnce();
   });

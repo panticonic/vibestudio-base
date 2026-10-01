@@ -194,6 +194,7 @@ import {
   AgentLoopDriver,
   ensureAgentLoopDriverSchema,
   type DriverDeps,
+  type AgentTurnClosedInput,
 } from "./agent-loop-driver.js";
 import {
   inspectEffectOutbox,
@@ -1572,26 +1573,7 @@ export abstract class AgentVesselBase extends PanelDurableObjectBase {
     return this._driver;
   }
 
-  protected async onTurnClosed(input: {
-    channelId: string;
-    turnId: string;
-    metadata: AgentTurnMetadata;
-    reason?: string;
-    summary?: string;
-    finalMessage?: string;
-    effectFailures: Array<{
-      invocationId: string;
-      name: string;
-      outcome:
-        | "tool_error"
-        | "infrastructure_error"
-        | "cancelled"
-        | "stale_dispatch"
-        | "abandoned";
-      code: string;
-      message: string;
-    }>;
-  }): Promise<void> {
+  protected async onTurnClosed(input: AgentTurnClosedInput): Promise<void> {
     const subagent = this.subagentIdentity();
     if (
       subagent?.taskChannelId === input.channelId &&
@@ -9414,8 +9396,7 @@ This is one admitted recurring-automation tick. If this tick establishes that th
           "readSubagentExecutionActivity",
           [{ runId: run.runId, taskChannelId: run.taskChannelId }],
         );
-        if (!activity.active)
-          this.subagentRuns.markExecutionIdle(run.runId);
+        if (!activity.active) this.subagentRuns.markExecutionIdle(run.runId);
         this.subagentRuns.touch(run.runId, Date.now());
         // A report can reach the parent before the child's closing event. Wake
         // the parent again after the collaborator becomes idle so a suspended

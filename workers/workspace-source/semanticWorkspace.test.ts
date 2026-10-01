@@ -889,7 +889,7 @@ describe("SemanticWorkspace repository counteractions", () => {
           adoptedCopy.applicationId
         )
         .toArray()
-    ).toEqual([{ relation: "copies" }]);
+    ).toEqual([{ relation: "incorporates" }]);
     const adoptedCopyBlame = await semantic.dispatch("blame", {
       ingress,
       input: {
@@ -906,7 +906,10 @@ describe("SemanticWorkspace repository counteractions", () => {
         spans: [
           {
             stop: "import-boundary",
-            path: expect.arrayContaining([expect.objectContaining({ kind: "copies-content" })]),
+            path: expect.arrayContaining([
+              expect.objectContaining({ kind: "incorporates-content" }),
+              expect.objectContaining({ kind: "copies-content" }),
+            ]),
           },
         ],
       },

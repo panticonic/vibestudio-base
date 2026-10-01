@@ -46,6 +46,10 @@ describe("panel runtime startup boundary", () => {
           "VIBESTUDIO_USERLAND_NODE_MODULES is required for exact-pair tests",
         );
       }
+      if (!process.env["VIBESTUDIO_USERLAND_SOURCE_ALIASES"])
+        throw new Error(
+          "The host-owned userland source graph is required for this build probe",
+        );
       const entryPoint = new URL(`./${entryFile}`, import.meta.url).pathname;
       const result = await build({
         absWorkingDir: repositoryRoot,
@@ -59,12 +63,9 @@ describe("panel runtime startup boundary", () => {
         platform: "browser",
         target: "es2022",
         conditions: ["vibestudio-panel", "browser", "import", "default"],
-        alias: {
-          "@workspace/agentic-protocol/stored-values": path.join(
-            process.env["VIBESTUDIO_USERLAND_ROOT"]!,
-            "packages/agentic-protocol/src/stored-values.ts",
-          ),
-        },
+        alias: JSON.parse(
+          process.env["VIBESTUDIO_USERLAND_SOURCE_ALIASES"] ?? "{}",
+        ),
         nodePaths: [
           path.join(repositoryRoot, "node_modules"),
           projectedNodeModules,

@@ -460,7 +460,7 @@ For runtime failures, choose the narrowest log surface first:
 `handle.diagnose()` for the canonical observation plus bounded renderer evidence,
 `runtime.supervision.health(identity)` for exact live-entity state, and
 `serverLog` for host
-behavior. See [server logs](../server-logs/SKILL.md).
+behavior. The `serverLog` service and `skills/server-logs/SKILL.md` are owned by the System workspace. For an ordinary panel, start with its local diagnostic packet before switching to System for host logs.
 
 Tie every verification result to its exact build/state provenance. If the
 runtime appears unchanged, verify the active build ref and traverse the

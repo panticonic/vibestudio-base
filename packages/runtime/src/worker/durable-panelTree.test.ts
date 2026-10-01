@@ -203,7 +203,10 @@ describe("PanelDurableObjectBase panelTree handles", () => {
         if (body.method === "panelRuntime.ensureSlot")
           return respond(
             init,
-            assignedRuntimeSlot(String(body.args[0]), workspaceDetailFor(String(body.args[0])).entity.id),
+            assignedRuntimeSlot(
+              String(body.args[0]),
+              workspaceDetailFor(String(body.args[0])).entity.id,
+            ),
           );
         if (body.method === "panelRuntime.observeSlot")
           return respond(init, readyRuntimeSlot(String(body.args[0])));
@@ -431,7 +434,10 @@ describe("PanelDurableObjectBase panelTree handles", () => {
         if (body.method === "panelRuntime.ensureSlot")
           return respond(
             init,
-            assignedRuntimeSlot(String(body.args[0]), workspaceDetailFor(String(body.args[0])).entity.id),
+            assignedRuntimeSlot(
+              String(body.args[0]),
+              workspaceDetailFor(String(body.args[0])).entity.id,
+            ),
           );
         if (body.method === "panelRuntime.observeSlot")
           return respond(init, readyRuntimeSlot(String(body.args[0])));
@@ -551,7 +557,10 @@ describe("PanelDurableObjectBase panelTree handles", () => {
         if (body.method === "panelRuntime.ensureSlot")
           return respond(
             init,
-            assignedRuntimeSlot(String(body.args[0]), workspaceDetailFor(String(body.args[0])).entity.id),
+            assignedRuntimeSlot(
+              String(body.args[0]),
+              workspaceDetailFor(String(body.args[0])).entity.id,
+            ),
           );
         if (body.method === "panelRuntime.observeSlot")
           return respond(init, readyRuntimeSlot(String(body.args[0])));
@@ -652,7 +661,10 @@ describe("PanelDurableObjectBase panelTree handles", () => {
         if (body.method === "panelRuntime.ensureSlot")
           return respond(
             init,
-            assignedRuntimeSlot(String(body.args[0]), workspaceDetailFor(String(body.args[0])).entity.id),
+            assignedRuntimeSlot(
+              String(body.args[0]),
+              workspaceDetailFor(String(body.args[0])).entity.id,
+            ),
           );
         return respond(init, undefined);
       },
@@ -755,7 +767,15 @@ describe("PanelDurableObjectBase panelTree handles", () => {
       ({ method }) =>
         method === "workspace-state.slot.commitPreparedNavigation",
     );
-    expect(replacements).toHaveLength(2);
+    expect(replacements).toHaveLength(1);
+    expect(calls).toContainEqual({
+      type: "call",
+      targetId: "main",
+      method: "runtime.supervision.restart",
+      args: [
+        { kind: "panel", entityId: "panel:nav-parent-slot-current-entity" },
+      ],
+    });
     for (const call of replacements) {
       expect(call.args[0]).toMatchObject({
         slotId: "panel:tree/parent-slot",

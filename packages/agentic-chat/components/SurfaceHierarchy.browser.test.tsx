@@ -14,10 +14,41 @@ function paintedCardColor(element: Element): string {
   return getComputedStyle(element, "::before").backgroundColor;
 }
 
+function themeColor(parent: HTMLElement, value: string): string {
+  const sample = document.createElement("span");
+  sample.style.backgroundColor = value;
+  parent.append(sample);
+  const color = getComputedStyle(sample).backgroundColor;
+  sample.remove();
+  return color;
+}
+
+function luminance(color: string): number {
+  const canvas = document.createElement("canvas");
+  canvas.width = canvas.height = 1;
+  const context = canvas.getContext("2d")!;
+  context.fillStyle = color;
+  context.fillRect(0, 0, 1, 1);
+  const channels = [...context.getImageData(0, 0, 1, 1).data]
+    .slice(0, 3)
+    .map((channel) => {
+      const value = channel / 255;
+      return value <= 0.04045
+        ? value / 12.92
+        : ((value + 0.055) / 1.055) ** 2.4;
+    });
+  return channels[0]! * 0.2126 + channels[1]! * 0.7152 + channels[2]! * 0.0722;
+}
+
+function contrast(first: string, second: string): number {
+  const values = [luminance(first), luminance(second)].sort((a, b) => b - a);
+  return (values[0]! + 0.05) / (values[1]! + 0.05);
+}
+
 describe("chat surface hierarchy", () => {
   for (const appearance of ["light", "dark"] as const) {
     for (const width of [390, 926]) {
-      it(`keeps product surfaces neutral in ${appearance} mode at ${width}px`, async () => {
+      it(`preserves readable themed surface hierarchy in ${appearance} mode at ${width}px`, async () => {
         await page.viewport(width, 900);
         render(
           <Theme
@@ -55,7 +86,9 @@ describe("chat surface hierarchy", () => {
                 </div>
                 <div className="message-card-body">
                   <Flex>
-                    <Text data-testid="secondary-metadata">Supporting detail</Text>
+                    <Text data-testid="secondary-metadata">
+                      Supporting detail
+                    </Text>
                   </Flex>
                 </div>
               </Card>
@@ -71,11 +104,18 @@ describe("chat surface hierarchy", () => {
               >
                 Error prose
               </Card>
-              <div className="expanded-thinking" data-testid="expanded-thinking" />
+              <div
+                className="expanded-thinking"
+                data-testid="expanded-thinking"
+              />
               <Button variant="soft" data-testid="enabled-soft-button">
                 Action
               </Button>
-              <Button variant="soft" disabled data-testid="disabled-soft-button">
+              <Button
+                variant="soft"
+                disabled
+                data-testid="disabled-soft-button"
+              >
                 Disabled
               </Button>
               <SurfaceFrame title="Interactive UI" tone="blue">
@@ -105,42 +145,82 @@ describe("chat surface hierarchy", () => {
         const secondaryAgentColor = paintedCardColor(secondaryAgent);
         const secondaryPlayerColor = paintedCardColor(secondaryPlayer);
         const secondaryErrorColor = paintedCardColor(secondaryError);
-        const expandedThinkingColor = getComputedStyle(expandedThinking).backgroundColor;
+        const expandedThinkingColor =
+          getComputedStyle(expandedThinking).backgroundColor;
         const toolColor = paintedCardColor(tool!);
-        const enabledSoftButtonColor = getComputedStyle(enabledSoftButton).backgroundColor;
-        const disabledSoftButtonColor = getComputedStyle(disabledSoftButton).backgroundColor;
+        const enabledSoftButtonColor =
+          getComputedStyle(enabledSoftButton).backgroundColor;
+        const disabledSoftButtonColor =
+          getComputedStyle(disabledSoftButton).backgroundColor;
         expect(getComputedStyle(secondaryProse).fontSize).toBe("14px");
         expect(getComputedStyle(secondaryProse).color).toBe(
-          appearance === "light" ? "rgb(20, 36, 61)" : "rgb(244, 245, 246)",
+          getComputedStyle(transcript).color,
         );
+        const mutedToken = document.createElement("span");
+        mutedToken.style.color = "var(--gray-11)";
+        transcript.append(mutedToken);
         expect(getComputedStyle(secondaryMetadata).color).toBe(
-          appearance === "light" ? "rgb(88, 103, 125)" : "rgb(201, 205, 211)",
+          getComputedStyle(mutedToken).color,
         );
+        expect(getComputedStyle(secondaryMetadata).color).not.toBe(
+          getComputedStyle(secondaryProse).color,
+        );
+        mutedToken.remove();
         expect(enabledSoftButtonColor).not.toBe(disabledSoftButtonColor);
         expect(secondaryAgentColor).not.toBe(transcriptColor);
         expect(secondaryPlayerColor).not.toBe(transcriptColor);
-        expect(getComputedStyle(secondaryAgent, "::after").boxShadow).not.toBe("none");
-        expect(getComputedStyle(secondaryPlayer, "::after").boxShadow).not.toBe("none");
+        expect(getComputedStyle(secondaryAgent, "::after").boxShadow).not.toBe(
+          "none",
+        );
+        expect(getComputedStyle(secondaryPlayer, "::after").boxShadow).not.toBe(
+          "none",
+        );
 
+        // The shipped theme owns the palette. Verify readable, distinct
+        // semantic surfaces rather than pinning a previous theme's RGB values.
+        expect(transcriptColor).toBe(
+          themeColor(
+            transcript,
+            `var(--gray-${appearance === "light" ? 3 : 1})`,
+          ),
+        );
+        expect(agentColor).toBe(
+          themeColor(
+            transcript,
+            appearance === "light"
+              ? "var(--color-panel-solid)"
+              : "var(--gray-3)",
+          ),
+        );
+        expect(playerColor).not.toBe(agentColor);
+        expect(secondaryPlayerColor).toBe(playerColor);
+        expect(secondaryErrorColor).not.toBe(secondaryAgentColor);
+        expect(toolColor).toBe(
+          themeColor(
+            transcript,
+            appearance === "light"
+              ? "var(--tool-surface-blue-background)"
+              : "var(--gray-2)",
+          ),
+        );
+        expect(
+          contrast(getComputedStyle(secondaryProse).color, secondaryAgentColor),
+        ).toBeGreaterThanOrEqual(4.5);
+        expect(
+          contrast(
+            getComputedStyle(secondaryMetadata).color,
+            secondaryAgentColor,
+          ),
+        ).toBeGreaterThanOrEqual(4.5);
         if (appearance === "light") {
-          expect(transcriptColor).toBe("rgb(234, 237, 243)");
-          expect(agentColor).toBe("rgb(255, 255, 255)");
-          expect(playerColor).toBe("rgb(235, 241, 250)");
-          expect(playerColor).not.toBe(agentColor);
-          expect(secondaryAgentColor).toBe("rgb(241, 243, 247)");
-          expect(toolColor).toBe("rgb(241, 243, 247)");
-          expect(enabledSoftButtonColor).toBe("rgb(223, 233, 247)");
-          expect(secondaryPlayerColor).toBe(playerColor);
-          expect(secondaryErrorColor).not.toBe(secondaryAgentColor);
-          expect(expandedThinkingColor).toBe("rgb(241, 243, 247)");
+          expect(playerColor).toBe(themeColor(transcript, "var(--accent-3)"));
+          expect(expandedThinkingColor).toBe(
+            themeColor(transcript, "var(--gray-2)"),
+          );
         } else {
-          expect(transcriptColor).toBe("rgb(32, 33, 36)");
-          expect(agentColor).toBe("rgb(52, 55, 60)");
-          expect(playerColor).toBe("color(srgb 0.179608 0.208627 0.25549)");
-          expect(secondaryAgentColor).toBe("rgb(41, 43, 47)");
-          expect(secondaryPlayerColor).toBe(playerColor);
-          expect(secondaryErrorColor).not.toBe(secondaryAgentColor);
-          expect(toolColor).toBe("rgb(41, 43, 47)");
+          expect(secondaryAgentColor).toBe(
+            themeColor(transcript, "var(--gray-2)"),
+          );
           expect(getComputedStyle(tool!).borderTopColor).not.toBe(
             getComputedStyle(agent).borderTopColor,
           );

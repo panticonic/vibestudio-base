@@ -48,14 +48,14 @@ Use owner skills for GitHub, Google Workspace, and web-search providers.
 Import `credentials` from `@workspace/runtime` (not an ambient eval global).
 Prefer provider OAuth over static tokens when available.
 
-| Method | Use for |
-| --- | --- |
-| `requestCredentialInput` | User-entered static API keys or tokens |
-| `connect` | Host-owned OAuth (host stores tokens; userland supplies public config and audience) |
-| `configureClient` | Separate OAuth client material storage |
-| `fetch` | Authenticated HTTP requests |
-| `gitHttp` | Git smart HTTP |
-| `forAudience` / `hookForUrl` | Only when their live contract matches the caller's transport |
+| Method                       | Use for                                                                             |
+| ---------------------------- | ----------------------------------------------------------------------------------- |
+| `requestCredentialInput`     | User-entered static API keys or tokens                                              |
+| `connect`                    | Host-owned OAuth (host stores tokens; userland supplies public config and audience) |
+| `configureClient`            | Separate OAuth client material storage                                              |
+| `fetch`                      | Authenticated HTTP requests                                                         |
+| `gitHttp`                    | Git smart HTTP                                                                      |
+| `forAudience` / `hookForUrl` | Only when their live contract matches the caller's transport                        |
 
 Read the live schema for supported OAuth flow discriminants. Choose
 authorization-code with PKCE for redirect-capable interactive clients, device
@@ -89,7 +89,8 @@ credential-free HTTP(S) URLs and logical credential names, never concrete
 secrets. Imports return unpublished semantic candidates and never advance
 protected main by themselves.
 
-For external-project onboarding, read
-[EXTERNAL_GIT_PROJECTS.md](../onboarding/EXTERNAL_GIT_PROJECTS.md). For webhook
-receivers, use live capability docs and the owning unit's authority contract;
+For an external Git project, import the credential-free remote through the
+managed Git bridge, inspect its unpublished candidate, and publish only when
+authorized. Personal provides the optional `skills/onboarding` workflow; open
+that workspace for its guided account setup. For webhook receivers, use live capability docs and the owning unit's authority contract;
 credential storage is not a substitute for request verification.

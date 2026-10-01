@@ -8912,6 +8912,30 @@ export class SemanticWorkspace {
     source: VcsMergeInput["source"]
   ): Map<string, string> {
     if (!applicationIds.length) return new Map();
+    // Accounted source history and its coordinate receipt are one relation.
+    // Equal endpoint bytes cannot make a missing accepted decision valid.
+    const orphan = this.deps.sql
+      .exec(
+        `SELECT source.decision_id FROM gad_decision_source_changes source
+         JOIN gad_integration_decisions decision ON decision.decision_id = source.decision_id
+         LEFT JOIN gad_merge_decision_entries entry
+           ON entry.decision_id = source.decision_id
+          AND entry.coordinate_kind = source.coordinate_kind
+          AND entry.coordinate_id = source.coordinate_id
+        WHERE decision.work_unit_id IN (
+          SELECT application.work_unit_id FROM gad_work_unit_applications application
+          JOIN json_each(?) selected ON application.application_id = CAST(selected.value AS TEXT)
+        ) AND ${source.kind === "event" ? "decision.source_event_id" : "decision.source_delta_id"} = ?
+          AND entry.decision_id IS NULL LIMIT 1`,
+        canonicalJson(applicationIds),
+        source.kind === "event" ? source.eventId : source.deltaId,
+      )
+      .toArray()[0] as Row | undefined;
+    if (orphan)
+      throw new SemanticVcsError(
+        "IntegrityFailure",
+        `Merge decision ${String(orphan["decision_id"])} has accounted history without its coordinate receipt`,
+      );
     const rows = this.deps.sql
       .exec(
         `SELECT entry.coordinate_kind, entry.coordinate_id, decision.decision_id

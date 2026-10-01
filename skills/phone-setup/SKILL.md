@@ -10,7 +10,8 @@ action supported by discovery, then rediscover. Don't require the user to
 interpret adb, Xcode, provider, or pairing internals.
 
 This is the end-user flow through a connected desktop. For repository work on a
-developer device, use [mobile debug](../../extensions/mobile-debug/SKILL.md).
+developer device, open the System workspace and use its `extensions/mobile-debug`
+unit when installed. This Base skill covers the account setup flow below.
 
 ## Setup owner
 
@@ -43,15 +44,20 @@ the same client as the card:
 import { phoneSetup } from "@workspace-skills/phone-setup";
 const phone = await phoneSetup();
 const providers = await phone.providers();
-if (providers.length !== 1) throw new Error("Choose a desktop in the setup card.");
+if (providers.length !== 1)
+  throw new Error("Choose a desktop in the setup card.");
 const provider = providers[0];
 await phone.prepare(provider.providerId, "android");
 const found = await phone.devices(provider.providerId, "android");
-const ready = found.devices.filter(device => device.ready);
-if (ready.length !== 1) throw new Error("Choose a ready phone in the setup card.");
+const ready = found.devices.filter((device) => device.ready);
+if (ready.length !== 1)
+  throw new Error("Choose a ready phone in the setup card.");
 const device = ready[0];
-const paired = await phone.provision({ providerId: provider.providerId,
-  platform: device.platform, deviceId: device.deviceId });
+const paired = await phone.provision({
+  providerId: provider.providerId,
+  platform: device.platform,
+  deviceId: device.deviceId,
+});
 const workspace = await phone.waitForWorkspace(paired);
 return { paired, workspace }; // Success ONLY if workspace.status === "ready".
 ```

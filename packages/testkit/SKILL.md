@@ -6,13 +6,14 @@ description: Write and run deterministic in-system tests with @workspace/testkit
 # Testkit
 
 `@workspace/testkit` is the deterministic layer beneath agentic system tests.
-Use it when expected behavior can be asserted directly. Use
-[system testing](../../skills/system-testing/SKILL.md) when a model must
-interpret instructions or outcomes.
+Use it when expected behavior can be asserted directly. When a model must
+interpret instructions or outcomes, use the `skills/system-testing` unit in a
+development workspace that declares the System Testing template. Base alone
+does not include that runner.
 
 For the complete public API, read `src/index.ts`; for ready-to-run recipes, read
 [`references/examples.ts`](references/examples.ts). Use the
-[performance skill](../../skills/performance/SKILL.md) for measurement design,
+System workspace’s installed `skills/performance` unit for measurement design,
 cold/warm semantics, and cleanup rules.
 
 ## Eval conventions

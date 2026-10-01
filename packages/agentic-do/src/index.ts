@@ -29,6 +29,7 @@ export {
 } from "./agent-config.js";
 export type { ModelCredentialSetupProps } from "./agent-config.js";
 export type { RespondPolicy } from "@workspace/agent-loop";
+export type { AgentTurnClosedInput } from "./agent-loop-driver.js";
 export { AgentLoopDriver } from "./agent-loop-driver.js";
 export { EffectOutbox } from "./effect-outbox.js";
 export { FoldCache } from "./fold-cache.js";
@@ -44,8 +45,15 @@ export {
 export type { CustomMessageHandle } from "./custom-cards.js";
 export { FeedbackIngest, formatFeedbackNote } from "./feedback-ingest.js";
 export { installMessageTypes } from "./ui-install.js";
-export type { ActionBarSpec, InstallMessageTypesOptions, MessageTypeSpec } from "./ui-install.js";
+export type {
+  ActionBarSpec,
+  InstallMessageTypesOptions,
+  MessageTypeSpec,
+} from "./ui-install.js";
 // Registration-time renderer lint (re-exported so agent workers don't need a
 // direct agentic-core dependency just for this).
-export { DEFAULT_HOST_MODULES, lintRendererSource } from "@workspace/agentic-core";
+export {
+  DEFAULT_HOST_MODULES,
+  lintRendererSource,
+} from "@workspace/agentic-core";
 export type { RendererLintIssue } from "@workspace/agentic-core";

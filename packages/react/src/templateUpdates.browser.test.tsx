@@ -53,6 +53,7 @@ it.each([390, 1280])(
         .fn()
         .mockResolvedValue({ workspaceEpoch: 0, checks: [] }),
       prepareUpdate: vi.fn(),
+      updateAssistant: vi.fn(async () => null),
     };
     const onReviewWithAgent = vi.fn();
     render(

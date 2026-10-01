@@ -17,7 +17,7 @@ the source's outgoing policy and destination's incoming policy must allow it
 before ordinary operation authority is considered. See [RPC.md](RPC.md) for
 the calling contract. Do not create a separate forwarding channel.
 
-Use [app development](../appdev/SKILL.md) for trusted apps and [extension
+Use the `skills/appdev/SKILL.md` skill in the System workspace for trusted apps and [extension
 development](../extensiondev/SKILL.md) for trusted Node services.
 
 ## Read by task
@@ -31,7 +31,7 @@ development](../extensiondev/SKILL.md) for trusted Node services.
 | Development loop                                               | [WORKFLOW.md](WORKFLOW.md)                                           |
 | External dependencies, overrides, and patches                  | [DEPENDENCIES.md](DEPENDENCIES.md)                                   |
 | Build, inspect, polish a panel                                 | [PANEL_DEBUG_LOOP.md](PANEL_DEBUG_LOOP.md)                           |
-| Reduce bundle size or optimize runtime cost                    | [Native performance profiling](../performance/SKILL.md)              |
+| Reduce bundle size or optimize runtime cost                    | System workspace: `skills/performance/SKILL.md`                      |
 | Panel lifecycle, observation, failure diagnosis, host commands | [PANEL_API.md](PANEL_API.md)                                         |
 | Workers, DOs, service-backed data, agent workers               | [WORKERS.md](WORKERS.md)                                             |
 | Build a workspace-enabled website                              | [WEBSITES.md](WEBSITES.md)                                           |
@@ -43,7 +43,7 @@ development](../extensiondev/SKILL.md) for trusted Node services.
 | Icons and unit identity                                        | [references/icons.md](references/icons.md)                           |
 
 Also read [capabilities](../capabilities/SKILL.md) before adding authority,
-[performance](../performance/SKILL.md) before changing startup cost, and
+the System workspace’s `skills/performance/SKILL.md` before changing startup cost, and
 [Vibestudio VCS](../vibestudio-vcs/SKILL.md) before managed-source operations.
 
 ## Diagnose panel loading first

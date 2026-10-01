@@ -36,7 +36,7 @@ try {
   await page.waitForSelector(".dashboard");
 
   const results = await page.evaluate(() =>
-    Array.from(document.querySelectorAll(".item")).map((el) => el.textContent)
+    Array.from(document.querySelectorAll(".item")).map((el) => el.textContent),
   );
   console.log("Scraped", results.length, "items");
 } finally {
@@ -114,7 +114,7 @@ eval. Read-only diagnostics can use `handle.cdp.screenshot()` or
 imports with bounded concurrency rather than an unbounded `Promise.all`.
 
 When the root is an `about/collection` panel, read its co-located
-[collection conductor skill](../../about/collection/SKILL.md) for recursive
+collection conductor skill at `about/collection/SKILL.md` in the Personal workspace (the collection panel and its conductor are Personal sources) for recursive
 grouping, semantic titles, notes, and orchestration-context rules.
 
 With a known slot id:
@@ -127,7 +127,8 @@ let observation = await handle.observe(); // exact attempt, host state, and prov
 if (observation.phase === "pending") {
   observation = await handle.focus(); // materializes it; requires read-write eval authority
 }
-if (observation.phase !== "ready") throw new Error(`Panel is ${observation.phase}`);
+if (observation.phase !== "ready")
+  throw new Error(`Panel is ${observation.phase}`);
 const session = await handle.cdp.session();
 const page = session.page;
 ```
@@ -234,7 +235,7 @@ const report = await page.profile(
     await page.getByRole("button", { name: "Open settings" }).click();
     await page.getByRole("dialog", { name: "Settings" }).waitFor();
   },
-  { label: "open settings" }
+  { label: "open settings" },
 );
 ```
 
@@ -244,7 +245,7 @@ JavaScript coverage. The callback defines completion; await a semantic UI or
 network condition instead of sleeping. Use `disableCache: true` for a distinct
 cold HTTP-cache run. Use `javascriptCoverage: true` only for a separate
 attribution run because coverage adds overhead. Read
-[`performance`](../performance/SKILL.md) for the complete cross-layer workflow.
+the `skills/performance/SKILL.md` skill in the System workspace for the complete cross-layer workflow.
 
 Historical console diagnostics are not a CDP page feature. CDP console events
 only include messages after the client connects. For "something already went
@@ -397,7 +398,9 @@ await page.locator(".title").innerText();
 await page.locator(".title").textContent();
 await page.locator(".row").allInnerTexts();
 await page.locator(".row").allTextContents();
-await page.locator(".row").evaluateAll((rows) => rows.map((row) => row.textContent?.trim()));
+await page
+  .locator(".row")
+  .evaluateAll((rows) => rows.map((row) => row.textContent?.trim()));
 await page.locator(".box").boundingBox();
 await page.locator(".box").inspect();
 // inspect() includes role and accessibleName in addition to DOM/visibility data.
@@ -424,22 +427,30 @@ The most powerful method — run arbitrary JS in the page context:
 
 ```typescript
 // Get text content
-const text = await page.evaluate(() => document.querySelector("h1")?.textContent);
+const text = await page.evaluate(
+  () => document.querySelector("h1")?.textContent,
+);
 
 // Get multiple elements
 const items = await page.evaluate(() =>
   Array.from(document.querySelectorAll(".item")).map((el) => ({
     title: el.querySelector("h3")?.textContent,
     href: el.querySelector("a")?.getAttribute("href"),
-  }))
+  })),
 );
 
 // Pass arguments
-const text = await page.evaluate((sel) => document.querySelector(sel)?.textContent, ".my-class");
+const text = await page.evaluate(
+  (sel) => document.querySelector(sel)?.textContent,
+  ".my-class",
+);
 
 // Compute a page-specific value that the locator API does not expose
 const selectedIds = await page.evaluate(() =>
-  Array.from(document.querySelectorAll("[aria-selected=true]"), (element) => element.id)
+  Array.from(
+    document.querySelectorAll("[aria-selected=true]"),
+    (element) => element.id,
+  ),
 );
 ```
 
@@ -489,7 +500,7 @@ const path = "scratch/panel-before.png";
 await fs.mkdir("scratch", { recursive: true });
 await fs.writeFile(
   path,
-  Uint8Array.from(atob(shot.data), (character) => character.charCodeAt(0))
+  Uint8Array.from(atob(shot.data), (character) => character.charCodeAt(0)),
 );
 return {
   path,
@@ -592,7 +603,7 @@ const stories = await page.evaluate(() =>
   Array.from(document.querySelectorAll(".titleline > a")).map((el) => ({
     title: el.textContent,
     href: el.getAttribute("href"),
-  }))
+  })),
 );
 console.log("Scraped", stories.length, "stories");
 
@@ -616,7 +627,9 @@ await page.waitForSelector(".dashboard");
 console.log("Logged in, now at:", await page.evaluate(() => location.href));
 
 // Still logged in — same page, same session
-const dashboardData = await page.evaluate(() => document.querySelector(".stats")?.textContent);
+const dashboardData = await page.evaluate(
+  () => document.querySelector(".stats")?.textContent,
+);
 console.log("Dashboard:", dashboardData);
 ```
 
@@ -643,8 +656,12 @@ if (host) {
   while (status.state === "running") {
     status = await browserData.observeSensitiveImport(operationId);
   }
-  if (status.state !== "complete") throw new Error(status.error ?? status.state);
-  console.log("Cookies imported through the sealed host operation", status.counts);
+  if (status.state !== "complete")
+    throw new Error(status.error ?? status.state);
+  console.log(
+    "Cookies imported through the sealed host operation",
+    status.counts,
+  );
 }
 
 // Reuse operationId for a transport retry of the same exact request.
@@ -657,7 +674,9 @@ const title = await page.title();
 console.log("Page title:", title);
 
 // Check if logged in
-const isLoggedIn = await page.evaluate(() => document.querySelector("img.avatar") !== null);
+const isLoggedIn = await page.evaluate(
+  () => document.querySelector("img.avatar") !== null,
+);
 console.log(isLoggedIn ? "Logged in!" : "Not logged in");
 ```
 

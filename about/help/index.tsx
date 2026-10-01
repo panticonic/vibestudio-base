@@ -15,17 +15,14 @@ import {
 } from "@radix-ui/react-icons";
 import { buildPanelLink } from "@workspace/runtime";
 import { useIsMobile } from "@workspace/react";
-import {
-  AboutThemeRoot,
-  AboutPage,
-} from "@workspace/about-shared/ui";
+import { AboutThemeRoot, AboutPage } from "@workspace/about-shared/ui";
 
 interface HelpSection {
   title: string;
   icon: ReactNode;
   content: string;
   mobileContent?: string;
-  link?: { label: string; panel: string };
+  link?: { label: string; panel: string; workspace: "system" | "personal" };
 }
 
 const helpSections: HelpSection[] = [
@@ -63,7 +60,11 @@ const helpSections: HelpSection[] = [
     content:
       "When an agent or panel needs network, filesystem, credential, or other sensitive access, Vibestudio pauses it and asks you. " +
       "Allow once for a narrow exception; only create a lasting trust grant when you recognize the requester and scope.",
-    link: { label: "Review saved permissions", panel: "about/permissions" },
+    link: {
+      label: "Review saved permissions",
+      panel: "about/permissions",
+      workspace: "system",
+    },
   },
   {
     title: "Credentials",
@@ -71,7 +72,11 @@ const helpSections: HelpSection[] = [
     content:
       "Passwords and service tokens are stored outside panel code. A panel receives only the credential binding you approve, " +
       "and you can revoke stored credentials from the credential manager.",
-    link: { label: "Manage credentials", panel: "about/credentials" },
+    link: {
+      label: "Manage credentials",
+      panel: "about/credentials",
+      workspace: "personal",
+    },
   },
   {
     title: "Phone and remote access",
@@ -123,7 +128,9 @@ function HelpPage() {
           </Text>
           {section.link ? (
             <Link
-              href={buildPanelLink(section.link.panel)}
+              href={buildPanelLink(section.link.panel, {
+                workspace: { role: section.link.workspace },
+              })}
               size="2"
               mt="2"
               style={{ display: "inline-block" }}

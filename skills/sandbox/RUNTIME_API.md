@@ -71,6 +71,7 @@ Generated from `runtimeSurface.panel.ts`. Use `await help()` at runtime for the 
 | `hosts` | value |  | Portable owner-scoped attached-host access for development sessions. |
 | `runtime` | value |  | Portable typed runtime lifecycle and supervision client for the current workspace context. |
 | `isRpcConnectionLost` | value |  | Recognize a retired or disconnected RPC session. |
+| `launchAgentIntoChannel` | value |  | Launch and subscribe an agent through explicit runtime clients and one owned identity. A module-level factory, not a runtime instance member. |
 | `createConversationClient` | value |  | Bind a conversation client to an explicit RPC client. A module-level factory, not a runtime instance member. |
 | `createPanelRuntime` | value |  | Create the complete panel API with explicit transport, bootstrap, presentation inputs and lifetime ownership. No injected globals are required. |
 | `connectWorkspace` | value |  | Explicitly ask the presentation host to connect this website to its workspace, then bind the same runtime API used by installed panels. Calls never connect implicitly. |
@@ -167,10 +168,10 @@ Workspace host logs are exposed through the service catalog, not as an
 eval, or raw RPC calls such as
 `rpc.call("main", "serverLog.query", [{ level: "warn", limit: 100 }])`.
 Live following uses
-`rpc.stream("main", "events.watch", [["server-log:append"]], { signal })`,
+`EventsClient.openWatch(rpc, ["server-log:append"], crypto.randomUUID(), { signal })`,
 normally through `EventsClient`; cancelling that response is the only
 unsubscribe operation. Humans can open the `about/server-logs` viewer. See
-[`server-logs`](../server-logs/SKILL.md) for the full contract and exact cleanup
+the `skills/server-logs/SKILL.md` skill in the System workspace for the full contract and exact cleanup
 pattern.
 
 ## People, Membership, and Presence
@@ -276,7 +277,9 @@ try {
   const rotated = await webhooks.rotateSecret(created.subscriptionId);
   // Do not print or return rotated.secret. Store it only if the integration needs it.
   return {
-    created: listed.some((row) => row.subscriptionId === created.subscriptionId),
+    created: listed.some(
+      (row) => row.subscriptionId === created.subscriptionId,
+    ),
   };
 } finally {
   await webhooks.revokeSubscription(created.subscriptionId);
@@ -428,9 +431,10 @@ for (const owner of rootOwnerPage.owners) {
 }
 const workspaceRoots = await panelTree.rootsForOwner(null, { limit: 100 });
 const children = await panelTree.children(created.id, { limit: 100 });
-const existing = (await panelTree.search({ query: "spectrolite", limit: 20 })).hits.find(
-  ({ entry }) => entry.handle.source === "panels/spectrolite"
-)?.entry.handle;
+const existing = (
+  await panelTree.search({ query: "spectrolite", limit: 20 })
+).hits.find(({ entry }) => entry.handle.source === "panels/spectrolite")?.entry
+  .handle;
 const byKnownSlot = panelTree.get("panel-slot-id");
 const before = await byKnownSlot.observe(); // exact attempt and provenance
 await byKnownSlot.setTitle("Semantic panel title", { explicit: true });
@@ -464,8 +468,9 @@ try {
 ```
 
 For recursive collection supervision, semantic grouping, shared orchestration
-contexts, notes, and bounded child-panel automation, read the co-located
-[collection conductor skill](../../about/collection/SKILL.md).
+contexts, notes, and bounded child-panel automation, open Personal and use its
+optional `about/collection` unit. The panel tree API above remains available
+in every Base composition.
 
 ### Eval And Visible Panel Perspective
 
@@ -483,13 +488,17 @@ For the complete root/child verification and cleanup pattern, see
 import { gad, panelTree, rpc, workers } from "@workspace/runtime";
 
 const target = panelTree.get("panel-slot-id");
-const stateArgs = target ? await target.stateArgs.get<Record<string, unknown>>() : {};
+const stateArgs = target
+  ? await target.stateArgs.get<Record<string, unknown>>()
+  : {};
 const channelId = String(stateArgs.channelName ?? stateArgs.channelId ?? "");
 
 const health = channelId ? await gad.inspectAgentHealth({ channelId }) : null;
 
 // Optional read-only agent debug for a DO-backed agent in that channel.
-const channel = channelId ? await workers.resolveService("vibestudio.channel.v1", channelId) : null;
+const channel = channelId
+  ? await workers.resolveService("vibestudio.channel.v1", channelId)
+  : null;
 const debug =
   channel?.kind === "durable-object"
     ? await rpc.call(channel.targetId, "inspectAgent", [

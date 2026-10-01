@@ -255,6 +255,27 @@ function awaitEffectBoundary<T>(
   });
 }
 
+export interface AgentTurnClosedInput {
+  channelId: string;
+  turnId: string;
+  metadata: AgentTurnMetadata;
+  reason?: string;
+  summary?: string;
+  finalMessage?: string;
+  effectFailures: Array<{
+    invocationId: string;
+    name: string;
+    outcome:
+      | "tool_error"
+      | "infrastructure_error"
+      | "cancelled"
+      | "stale_dispatch"
+      | "abandoned";
+    code: string;
+    message: string;
+  }>;
+}
+
 export interface DriverDeps {
   sql: SqlStorage;
   gad: GadPort;
@@ -282,26 +303,7 @@ export interface DriverDeps {
     branchId: string;
     effectId: string;
   }): void | Promise<void>;
-  onTurnClosed?(input: {
-    channelId: string;
-    turnId: string;
-    metadata: AgentTurnMetadata;
-    reason?: string;
-    summary?: string;
-    finalMessage?: string;
-    effectFailures: Array<{
-      invocationId: string;
-      name: string;
-      outcome:
-        | "tool_error"
-        | "infrastructure_error"
-        | "cancelled"
-        | "stale_dispatch"
-        | "abandoned";
-      code: string;
-      message: string;
-    }>;
-  }): void | Promise<void>;
+  onTurnClosed?(input: AgentTurnClosedInput): void | Promise<void>;
   /** Compaction trigger thresholds. The vessel sizes `triggerBytes` relative
    *  to the model context window (the deleted CompactionTrigger used ~0.8× the
    *  window); the constants are conservative fallbacks. A turn is never

@@ -15,18 +15,18 @@ reconstruct enough of the record to impute that axiom before you act against it.
 
 ## Name your question, then use its mechanism
 
-| Your question | Mechanism |
-| --- | --- |
-| Why do these bytes exist? | already attached to the managed `read` — stop there when it answers |
-| What was actually being attempted? | `provenance({ target, walk: "cause" })` |
-| What else happened under that intent? | `provenance({ target, walk: "cohort" })` |
-| How are these two things related? | cause-walk both, intersect the refs; or one `query` join |
-| What has this coordinate been *for*? | `vcs({ operation: "blame" })` and file history, read as intent drift |
-| What was tried and rejected here? | `provenance({ target, walk: "rejections" })` |
-| Which subjects match a description? | `provenance({ target: "search: some words" })` |
-| Which record mentions a name or decision no current file holds? | `memory_recall({ query })` — see [memory](../memory/SKILL.md) |
-| A set-shaped question ("all X where Y") | `provenance({ query: "SELECT …" })` |
-| Nothing above fits | `provenance({ target })` for one subject's immediate edges |
+| Your question                                                   | Mechanism                                                                                                 |
+| --------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| Why do these bytes exist?                                       | already attached to the managed `read` — stop there when it answers                                       |
+| What was actually being attempted?                              | `provenance({ target, walk: "cause" })`                                                                   |
+| What else happened under that intent?                           | `provenance({ target, walk: "cohort" })`                                                                  |
+| How are these two things related?                               | cause-walk both, intersect the refs; or one `query` join                                                  |
+| What has this coordinate been _for_?                            | `vcs({ operation: "blame" })` and file history, read as intent drift                                      |
+| What was tried and rejected here?                               | `provenance({ target, walk: "rejections" })`                                                              |
+| Which subjects match a description?                             | `provenance({ target: "search: some words" })`                                                            |
+| Which record mentions a name or decision no current file holds? | In Personal, use its installed `memory_recall({ query })` tool; elsewhere use the provenance search above |
+| A set-shaped question ("all X where Y")                         | `provenance({ query: "SELECT …" })`                                                                       |
+| Nothing above fits                                              | `provenance({ target })` for one subject's immediate edges                                                |
 
 Each of these is meant to cost one call. If you are about to spend five calls
 walking a chain by hand, you have picked the wrong mechanism.
@@ -66,7 +66,7 @@ writing joins or filters.
   patterns across a cohort, not in a single edit.
 - **rejections** — counteracted changes with the intent of the work that undid
   them, revert work, superseded external deltas, and merge coordinates resolved
-  `ours`/`current`. A user saying *no* is the strongest evidence the record
+  `ours`/`current`. A user saying _no_ is the strongest evidence the record
   holds; consult it before repeating work that was already rejected.
 
 ## The abduction pattern
@@ -76,7 +76,7 @@ writing joins or filters.
 2. **Hypothesize** the axiom that makes all three consistent. The axiom is a
    property of the environment, not of the file you are looking at. Ask what
    the recorded choices have in common — three settings all kept short is
-   evidence about *time*, not about retries, sockets, and uploads separately.
+   evidence about _time_, not about retries, sockets, and uploads separately.
 3. **Check** it against the rejections and the intent-annotated history. If a
    rejection contradicts your hypothesis, the hypothesis is wrong, not the
    rejection.
@@ -88,6 +88,7 @@ writing joins or filters.
    name. Ask instead what property the rejected work shares with yours. If your
    change has that property, the rejection is about your change, whatever
    coordinate it was recorded at — say so before acting, and let the user decide.
+
 4. **Write it down** if it will recur — as ordinary prose in the relevant notes
    file, with the edit's own intent naming the evidence it came from. There is
    no theory store: a recovered axiom is a paragraph in a tracked file, with

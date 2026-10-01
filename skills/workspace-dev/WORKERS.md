@@ -130,7 +130,7 @@ bytes approximate cold parse/evaluation pressure; lazy bytes show deferred
 feature cost; total sealed bytes show storage and module-map transport cost.
 Never claim that code splitting reduced all three. Pair those measurements with
 one cold and one verified-cache activation trace as described by the
-[performance skill](../performance/SKILL.md).
+performance skill at `skills/performance/SKILL.md` in the System workspace.
 
 Discover launchable sources with `await workers.listSources()`. The result
 includes every regular and Durable Object worker, its workspace `source`, the
@@ -685,7 +685,8 @@ and restore operate only on that same current target.
 
 DO methods are reachable over RPC only when explicitly opted in, and the
 workspace realm enforces a per-method caller policy (default-deny). Two layers,
-kept separate — both required. Full design: [`docs/capability-approval-design.md`](../../../docs/capability-approval-design.md).
+kept separate — both required. The installed receiver contract is described
+below; use live capability documentation for the current callable schemas.
 
 ### Layer 1 — `@rpc` exposure (which methods are callable)
 
@@ -994,5 +995,4 @@ the route's `caller-token` auth admits them.
 and cannot be invoked from a worker — design the upper layer (e.g. a server
 service) to own GC.
 
-See [`docs/architecture/storage.md`](../../../docs/architecture/storage.md#blobstore-content-addressable-objects)
-for the full design.
+Blobs are immutable and content addressed. Store their returned digest in durable application state; fetch by that digest when rendering. A worker does not own garbage collection or enumerate another caller’s blobs.
