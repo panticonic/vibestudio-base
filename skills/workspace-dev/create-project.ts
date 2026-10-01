@@ -7,6 +7,7 @@ import {
   type UnitAuthorityManifest,
 } from "@vibestudio/shared/authorityManifest";
 import type { ResolvedRpcAuthority } from "@vibestudio/rpc";
+import { validateUnitIconDeclaration } from "@vibestudio/shared/unitManifest";
 import type { ServiceRegistration } from "@vibestudio/workspace-contracts/serviceMutation";
 import {
   PROJECT_TYPES,
@@ -390,6 +391,7 @@ async function materializeCatalogIcon(
   icon: string | undefined,
   files: Record<string, string>,
 ): Promise<string | undefined> {
+  validateUnitIconDeclaration(icon);
   const declaredKind = /^(lucide|brand):/u.exec(icon ?? "")?.[1] as
     | "lucide"
     | "brand"

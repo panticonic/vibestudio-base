@@ -10,6 +10,7 @@ import {
   type ModuleImportSyntax,
 } from "@vibestudio/module-imports";
 import { parse as parseSvelte } from "svelte/compiler";
+import { validateUnitIconDeclaration } from "@vibestudio/shared/unitManifest";
 
 export const PROJECT_TYPES = [
   "panel",
@@ -143,6 +144,7 @@ export function buildProjectManifest(
   input: BuildProjectManifestInput,
 ): Record<string, unknown> {
   assertProjectIdentity(input.name, input.title);
+  validateUnitIconDeclaration(input.icon);
   const executable =
     input.projectType === "panel" || input.projectType === "worker";
   const testRuntime =
