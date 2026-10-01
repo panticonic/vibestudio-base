@@ -70,6 +70,7 @@ class FakeWebSocket {
       type?: string;
       method?: string;
       params?: Record<string, unknown>;
+      sessionId?: string;
     };
     if (typeof message.id !== "number") return;
     if (message.method)
@@ -92,6 +93,7 @@ class FakeWebSocket {
           this.dispatch("message", {
             data: JSON.stringify({
               id: message.id,
+              ...(message.sessionId ? { sessionId: message.sessionId } : {}),
               error: { message: rejection },
             }),
           }),
@@ -178,6 +180,10 @@ class FakeWebSocket {
     }
   }
 
+  emitRawFrame(data: string): void {
+    this.dispatch("message", { data });
+  }
+
   emitCdpResponse(id: number, result: unknown): void {
     this.dispatch("message", { data: JSON.stringify({ id, result }) });
   }
@@ -202,6 +208,8 @@ class FakeWebSocket {
     method?: string,
     params?: Record<string, unknown>,
   ): unknown {
+    if (method === "Page.getFrameTree")
+      return { frameTree: { frame: { id: "main" } } };
     if (method === "Page.navigate") {
       this.nextUrl = (params?.["url"] as string) ?? this.nextUrl;
       return {};
@@ -452,6 +460,7 @@ class FakeWebSocket {
         return actionOutcome(true);
       case "selectOption":
         return actionOutcome(payload.arg?.values ?? []);
+      case "setInputFiles":
       case "focus":
       case "blur":
       case "scrollIntoView":
@@ -512,6 +521,87 @@ describe("worker CDP client", () => {
       writable: true,
       value: originalWebSocketPair,
     });
+  });
+
+  it("uploads portable file bytes through hidden file inputs and keeps them out of interaction receipts", async () => {
+    installFakeWebSocket();
+    const receipts: unknown[] = [];
+    const browser = await BrowserImpl.connect("ws://cdp", {
+      onInteraction: (value) => receipts.push(value),
+    });
+    const page = browser.contexts()[0]!.pages()[0]!;
+    await page
+      .locator("#upload")
+      .setInputFiles({
+        name: "note.txt",
+        mimeType: "text/plain",
+        buffer: new Uint8Array([0, 255, 65]),
+      });
+    const expression = FakeWebSocket.sent
+      .filter((e) => e.method === "Runtime.evaluate")
+      .map((e) => String(e.params?.["expression"]))
+      .find((e) => e.includes('"op":"setInputFiles"'))!;
+    const events: string[] = [];
+    const input = {
+      tagName: "INPUT",
+      type: "file",
+      multiple: false,
+      attributes: [],
+      files: [] as unknown[],
+      getAttribute: () => null,
+      querySelectorAll: () => [],
+      getBoundingClientRect: () => ({ x: 0, y: 0, width: 0, height: 0 }),
+      dispatchEvent: (event: Event) => {
+        events.push(event.type);
+      },
+    };
+    class Transfer {
+      files: unknown[] = [];
+      items = { add: (file: unknown) => this.files.push(file) };
+    }
+    await runInNewContext(expression, {
+      document: { querySelectorAll: () => [input] },
+      DataTransfer: Transfer,
+      File,
+      Uint8Array,
+      atob,
+      Event,
+      setTimeout,
+      getComputedStyle: () => ({ display: "none" }),
+    });
+    const file = input.files[0] as File;
+    expect(file.name).toBe("note.txt");
+    expect(file.type).toBe("text/plain");
+    expect(new Uint8Array(await file.arrayBuffer())).toEqual(
+      new Uint8Array([0, 255, 65]),
+    );
+    expect(events).toEqual(["input", "change"]);
+    expect(JSON.stringify(receipts)).not.toContain("AP9B");
+    await page.locator("#upload").setInputFiles([]);
+    const clear = FakeWebSocket.sent
+      .filter((e) => e.method === "Runtime.evaluate")
+      .map((e) => String(e.params?.["expression"]))
+      .filter((e) => e.includes('"op":"setInputFiles"'))
+      .at(-1)!;
+    await runInNewContext(clear, {
+      document: { querySelectorAll: () => [input] },
+      DataTransfer: Transfer,
+      File,
+      Uint8Array,
+      atob,
+      Event,
+      setTimeout,
+      getComputedStyle: () => ({ display: "none" }),
+    });
+    expect(input.files).toEqual([]);
+    input.type = "text";
+    await expect(
+      runInNewContext(clear, { document: { querySelectorAll: () => [input] } }),
+    ).rejects.toThrow("input of type file");
+    await expect(
+      page.locator("#upload").setInputFiles("/tmp/private" as never),
+    ).rejects.toThrow("payloads");
+    await browser.close();
   });
 
   it("matches UI text without treating CSS, scripts, or their hidden containers as content", async () => {
@@ -653,7 +743,7 @@ describe("worker CDP client", () => {
 
     const [upgradeUrl, init] = fetchMock.mock.calls[0]!;
     expect(init).toMatchObject({ headers: { Upgrade: "websocket" } });
-    expect(init?.signal).toBeInstanceOf(AbortSignal);
+    expect(init?.signal).toBeUndefined();
     const parsedUpgradeUrl = new URL(String(upgradeUrl));
     const encodedHeaders = parsedUpgradeUrl.searchParams.get(
       "__vibestudio_ws_headers",
@@ -703,15 +793,56 @@ describe("worker CDP client", () => {
     expect(FakeWebSocket.instances[0]).toBe(socket);
   });
 
-  it("bounds a fetch upgrade that never resolves", async () => {
+  it("scopes child session events and failures without closing the parent", async () => {
+    installFakeWebSocket();
+    const connection = await CdpConnection.connect("ws://cdp");
+    const socket = FakeWebSocket.instances[0]!;
+    const child = connection.session("child");
+    const observed = vi.fn(),
+      root = vi.fn();
+    child.on("Page.loadEventFired", observed);
+    connection.on("Page.loadEventFired", root);
+    socket.emitRawFrame(
+      JSON.stringify({
+        method: "Page.loadEventFired",
+        sessionId: "child",
+        params: { timestamp: 1 },
+      }),
+    );
+    await vi.waitFor(() => expect(observed).toHaveBeenCalledOnce());
+    expect(root).not.toHaveBeenCalled();
+    FakeWebSocket.dropMethods.add("Runtime.evaluate");
+    const pending = child.send("Runtime.evaluate", {});
+    const rejected = expect(pending).rejects.toThrow("detached");
+    socket.emitRawFrame(
+      JSON.stringify({
+        method: "Target.detachedFromTarget",
+        params: { sessionId: "child" },
+      }),
+    );
+    await rejected;
+    expect(child.isClosed()).toBe(true);
+    expect(connection.isClosed()).toBe(false);
+    FakeWebSocket.dropMethods.clear();
+    await expect(connection.send("Page.enable")).resolves.toEqual({});
+    connection.close();
+  });
+
+  it("joins explicit cancellation of a slow fetch upgrade without a deadline", async () => {
     Object.defineProperty(globalThis, "WebSocket", {
       configurable: true,
       writable: true,
       value: undefined,
     });
     const fetchMock = vi.fn(
-      (_input: RequestInfo | URL, _init?: RequestInit) =>
-        new Promise<Response>(() => {}),
+      (_input: RequestInfo | URL, init?: RequestInit) =>
+        new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener(
+            "abort",
+            () => reject(init.signal?.reason),
+            { once: true },
+          );
+        }),
     );
     Object.defineProperty(globalThis, "fetch", {
       configurable: true,
@@ -719,14 +850,21 @@ describe("worker CDP client", () => {
       value: fetchMock,
     });
     vi.useFakeTimers();
-
-    const connection = CdpConnection.connect("ws://cdp", "token");
-    const rejection = expect(connection).rejects.toThrow(
-      "CDP WebSocket upgrade timed out after 15000ms",
-    );
-    await vi.advanceTimersByTimeAsync(15_000);
-
-    await rejection;
+    const controller = new AbortController();
+    let settled = false;
+    const pending = CdpConnection.connect("ws://cdp", "token", false, {
+      signal: controller.signal,
+    })
+      .catch((error) => error)
+      .finally(() => {
+        settled = true;
+      });
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(settled).toBe(false);
+    expect(vi.getTimerCount()).toBe(0);
+    const reason = new Error("Owner cancelled acquisition");
+    controller.abort(reason);
+    expect(await pending).toBe(reason);
     expect(fetchMock.mock.calls[0]?.[1]?.signal?.aborted).toBe(true);
   });
 
@@ -787,6 +925,147 @@ describe("worker CDP client", () => {
     socket.emitCdpEvent("Page.loadEventFired", { timestamp: 0 });
     await reload;
     expect(resolved).toBe(true);
+  });
+
+  it("joins same-document navigation even when its event precedes the command response", async () => {
+    installFakeWebSocket();
+    const browser = await BrowserImpl.connect("ws://cdp");
+    const page = browser.contexts()[0]!.pages()[0]!;
+    FakeWebSocket.dropMethods.add("Page.navigate");
+    const navigation = page.goto("https://example.com/current#section");
+    const socket = FakeWebSocket.instances[0]!;
+    socket.emitCdpEvent("Page.navigatedWithinDocument", { frameId: "main" });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    const commands = (
+      page.connection as unknown as { pending: Map<number, unknown> }
+    ).pending;
+    socket.emitCdpResponse([...commands.keys()][0]!, { frameId: "main" });
+    await expect(navigation).resolves.toEqual({ frameId: "main" });
+    await browser.close();
+  });
+
+  it("keeps navigation pending without a deadline and rejects on target loss", async () => {
+    installFakeWebSocket();
+    const browser = await BrowserImpl.connect("ws://cdp");
+    const page = browser.contexts()[0]!.pages()[0]!;
+    vi.useFakeTimers();
+    let settled = false;
+    const navigation = page
+      .reload()
+      .catch((error) => error)
+      .finally(() => {
+        settled = true;
+      });
+    await vi.advanceTimersByTimeAsync(120_000);
+    expect(settled).toBe(false);
+    expect(vi.getTimerCount()).toBe(0);
+    FakeWebSocket.instances[0]!.remoteClose();
+    expect(await navigation).toMatchObject({ code: "cdp_target_closed" });
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("keeps default locator waits pending until target loss", async () => {
+    installFakeWebSocket();
+    const browser = await BrowserImpl.connect("ws://cdp");
+    const page = browser.contexts()[0]!.pages()[0]!;
+    vi.useFakeTimers();
+    let settled = false;
+    const observation = page
+      .getByTestId("missing")
+      .waitFor()
+      .catch((error) => error)
+      .finally(() => {
+        settled = true;
+      });
+    await vi.advanceTimersByTimeAsync(31_000);
+    expect(settled).toBe(false);
+    FakeWebSocket.instances[0]!.remoteClose();
+    expect(await observation).toMatchObject({ code: "cdp_target_closed" });
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("observes function readiness outside the renderer without an implicit deadline", async () => {
+    installFakeWebSocket();
+    const browser = await BrowserImpl.connect("ws://cdp");
+    const page = browser.contexts()[0]!.pages()[0]!;
+    vi.useFakeTimers();
+    let settled = false;
+    const observation = page
+      .waitForFunction(() => false)
+      .catch((error) => error)
+      .finally(() => {
+        settled = true;
+      });
+    await vi.advanceTimersByTimeAsync(31_000);
+    expect(settled).toBe(false);
+    const command = FakeWebSocket.sent.at(-1)!;
+    expect(command.params).not.toHaveProperty("timeout");
+    expect(command.params!["expression"]).not.toContain("setTimeout");
+    FakeWebSocket.instances[0]!.remoteClose();
+    expect(await observation).toMatchObject({ code: "cdp_target_closed" });
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("uses the current owner when cancelling a retained page's observation", async () => {
+    installFakeWebSocket();
+    const firstOwner = new AbortController();
+    const nextOwner = new AbortController();
+    let owner = firstOwner;
+    const browser = await BrowserImpl.connect("ws://cdp", {
+      operationSignal: () => owner.signal,
+    });
+    const page = browser.contexts()[0]!.pages()[0]!;
+    owner = nextOwner;
+    vi.useFakeTimers();
+    const observation = page
+      .waitForFunction(() => false)
+      .catch((error) => error);
+    await vi.advanceTimersByTimeAsync(1);
+    firstOwner.abort(new Error("Previous invocation ended"));
+    expect(FakeWebSocket.instances[0]!.closed).toBe(false);
+    const reason = new Error("Current invocation cancelled");
+    nextOwner.abort(reason);
+    expect(await observation).toBe(reason);
+    expect(FakeWebSocket.instances[0]!.closed).toBe(true);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("propagates owner cancellation to navigation after the command response", async () => {
+    installFakeWebSocket();
+    const owner = new AbortController();
+    const browser = await BrowserImpl.connect("ws://cdp", {
+      operationSignal: () => owner.signal,
+    });
+    vi.useFakeTimers();
+    const navigation = browser
+      .contexts()[0]!
+      .pages()[0]!
+      .reload()
+      .catch((error) => error);
+    await vi.advanceTimersByTimeAsync(1);
+    const reason = new Error("Navigation owner cancelled");
+    owner.abort(reason);
+    expect(await navigation).toBe(reason);
+    expect(FakeWebSocket.instances[0]!.closed).toBe(true);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("keeps explicit readiness deadlines scoped to the requested native evaluation", async () => {
+    installFakeWebSocket();
+    const browser = await BrowserImpl.connect("ws://cdp");
+    const page = browser.contexts()[0]!.pages()[0]!;
+    vi.useFakeTimers();
+    const observation = page
+      .waitForFunction(() => false, undefined, { timeout: 100 })
+      .catch((error) => error);
+    await vi.advanceTimersByTimeAsync(101);
+    expect(await observation).toBeInstanceOf(Error);
+    const evaluation = FakeWebSocket.sent
+      .filter((command) => command.method === "Runtime.evaluate")
+      .at(-1)!;
+    expect(evaluation.params!["timeout"]).toBeLessThanOrEqual(100);
+    await browser.close();
+    expect(vi.getTimerCount()).toBe(0);
   });
 
   it("reports an unhandled native dialog immediately, retains its pending decision, and preserves the connection", async () => {
@@ -1037,68 +1316,121 @@ describe("worker CDP client", () => {
     expect(FakeWebSocket.instances[0]!.closed).toBe(false);
   });
 
-  it("bounds a command that the relay never answers and closes the page connection", async () => {
+  it("keeps slow commands owned until the response or target closure", async () => {
     installFakeWebSocket();
-    const browser = await BrowserImpl.connect("ws://cdp", {
-      commandTimeoutMs: 10,
-    });
+    const browser = await BrowserImpl.connect("ws://cdp");
     const page = browser.contexts()[0]!.pages()[0]!;
     const socket = FakeWebSocket.instances[0]!;
+    vi.useFakeTimers();
     FakeWebSocket.dropMethods.add("Runtime.evaluate");
-
-    let failure: unknown;
-    try {
-      await page.title();
-    } catch (error) {
-      failure = error;
-    }
-    expect(failure).toBeInstanceOf(CdpError);
-    if (!(failure instanceof CdpError))
-      throw new Error("Expected a structured CdpError");
-    expect(failure.message).toContain(
-      "CDP command timed out after 10ms: Runtime.evaluate",
-    );
-    expect(failure.errorData).toEqual({
-      code: "cdp_command_timeout",
-      operation: "Runtime.evaluate",
-      failureKind: "infrastructure",
-      recovery: "inspect-panel-and-reacquire-page",
+    let settled = false;
+    const pending = page.title().finally(() => {
+      settled = true;
     });
-    expect(socket.closed).toBe(true);
+    await vi.advanceTimersByTimeAsync(120_000);
+    expect(settled).toBe(false);
+    expect(socket.closed).toBe(false);
+    expect(vi.getTimerCount()).toBe(0);
+    const commands = (
+      page.connection as unknown as { pending: Map<number, unknown> }
+    ).pending;
+    socket.emitCdpResponse([...commands.keys()][0]!, {
+      result: { value: "Slow title" },
+    });
+    await expect(pending).resolves.toBe("Slow title");
+    const closed = page.title().catch((error: unknown) => error);
+    socket.remoteClose();
+    await expect(closed).resolves.toMatchObject({ code: "cdp_target_closed" });
+    expect(commands.size).toBe(0);
   });
 
-  it("bounds evaluation by the page default without closing the healthy transport", async () => {
+  it.each(["{", "null", '{"id":"invalid"}'])(
+    "propagates invalid protocol frame %s to all pending commands",
+    async (frame) => {
+      installFakeWebSocket();
+      const browser = await BrowserImpl.connect("ws://cdp");
+      const page = browser.contexts()[0]!.pages()[0]!;
+      const socket = FakeWebSocket.instances[0]!;
+      FakeWebSocket.dropMethods.add("Runtime.evaluate");
+      const pending = [page.title(), page.content()].map((p) =>
+        p.catch((error: unknown) => error),
+      );
+      socket.emitRawFrame(frame);
+      for (const result of await Promise.all(pending))
+        expect(result).toMatchObject({
+          code: "cdp_protocol_error",
+          errorData: { failureKind: "infrastructure" },
+        });
+      expect(socket.closed).toBe(true);
+      expect(
+        (page.connection as unknown as { pending: Map<number, unknown> })
+          .pending.size,
+      ).toBe(0);
+    },
+  );
+
+  it("serializes typed page callback arguments and infers the result", async () => {
     installFakeWebSocket();
-    const browser = await BrowserImpl.connect("ws://cdp", {
-      commandTimeoutMs: 1_000,
-    });
+    const browser = await BrowserImpl.connect("ws://cdp");
+    try {
+      const page = browser.contexts()[0]!.pages()[0]!;
+      const result: Promise<number> = page.evaluate(
+        (input: { value: number }) => input.value + 1,
+        { value: 7 },
+      );
+      await result;
+      const expression = [...FakeWebSocket.sent]
+        .reverse()
+        .find((entry) => entry.method === "Runtime.evaluate")!.params![
+        "expression"
+      ] as string;
+      expect(runInNewContext(expression)).toBe(8);
+    } finally {
+      await browser.close();
+    }
+  });
+
+  it("passes only an explicitly requested evaluation deadline to the browser", async () => {
+    installFakeWebSocket();
+    const browser = await BrowserImpl.connect("ws://cdp");
+    const page = browser.contexts()[0]!.pages()[0]!;
+    page.setDefaultTimeout(10);
+    await page.evaluate("1");
+    expect(FakeWebSocket.sent.at(-1)?.params).not.toHaveProperty("timeout");
+    await page.evaluate("1", undefined, { timeout: 250 });
+    expect(FakeWebSocket.sent.at(-1)?.params).toHaveProperty("timeout", 250);
+    await browser.close();
+  });
+
+  it("does not impose a one-second deadline on a zero-wait locator probe", async () => {
+    installFakeWebSocket();
+    const browser = await BrowserImpl.connect("ws://cdp");
     const page = browser.contexts()[0]!.pages()[0]!;
     const socket = FakeWebSocket.instances[0]!;
-    page.setDefaultTimeout(10);
+    vi.useFakeTimers();
     FakeWebSocket.dropMethods.add("Runtime.evaluate");
-
-    const failure = await page
-      .evaluate("new Promise(() => {})")
-      .catch((error: unknown) => error);
-
-    expect(failure).toBeInstanceOf(CdpError);
-    expect(failure).toMatchObject({
-      code: "cdp_evaluation_timeout",
-      errorData: {
-        code: "cdp_evaluation_timeout",
-        operation: "Runtime.evaluate",
-        failureKind: "user-code",
-        timeoutMs: 10,
-      },
+    let settled = false;
+    const pending = page
+      .runLocatorOp(
+        "probe",
+        { steps: [{ by: "role", value: "button" }] },
+        null,
+        { timeout: 0 },
+      )
+      .finally(() => {
+        settled = true;
+      });
+    await vi.advanceTimersByTimeAsync(2_000);
+    expect(settled).toBe(false);
+    expect(vi.getTimerCount()).toBe(0);
+    const commands = (
+      page.connection as unknown as { pending: Map<number, unknown> }
+    ).pending;
+    socket.emitCdpResponse([...commands.keys()][0]!, {
+      result: { value: { ok: true } },
     });
-    expect(socket.closed).toBe(false);
-    expect(
-      (page.connection as unknown as { pending: Map<number, unknown> }).pending
-        .size,
-    ).toBe(0);
-
-    FakeWebSocket.dropMethods.delete("Runtime.evaluate");
-    await expect(page.title()).resolves.toBe("Example");
+    await expect(pending).resolves.toEqual({ ok: true });
+    await browser.close();
   });
 
   it("compiles CSS, text selectors, and getBy locators into one descriptor model", async () => {
@@ -2362,37 +2694,40 @@ describe("worker CDP client", () => {
     await browser.close();
   });
 
-  it("bounds an unanswered evidence read without retiring the original page or replaying actions", async () => {
+  it("retains the primary locator failure when its evidence target closes", async () => {
     installFakeWebSocket();
     const browser = await BrowserImpl.connect("ws://cdp");
     const page = browser.contexts()[0]!.pages()[0]!;
     page.setDefaultTimeout(40);
+    vi.useFakeTimers();
     FakeWebSocket.dropFailureEvidence = true;
-    const failure = await page
+    let settled = false;
+    const pending = page
       .getByTestId("missing")
       .innerText()
-      .catch((e) => e);
-    expect(failure).toMatchObject({
+      .catch((error) => error)
+      .finally(() => {
+        settled = true;
+      });
+    await vi.advanceTimersByTimeAsync(50);
+    expect(
+      FakeWebSocket.sent.some((e) =>
+        String(e.params?.["expression"]).includes('"op":"failureEvidence"'),
+      ),
+    ).toBe(true);
+    await vi.advanceTimersByTimeAsync(2_000);
+    expect(settled).toBe(false);
+    FakeWebSocket.instances[0]!.remoteClose();
+    expect(await pending).toMatchObject({
       code: "cdp_locator_state_mismatch",
       errorData: {
         evidence: {
           status: "unavailable",
-          reason: expect.stringContaining("1000ms"),
+          reason: expect.stringContaining("closed"),
         },
       },
     });
-    expect(page.isClosed()).toBe(false);
-    expect(
-      FakeWebSocket.sent.filter((e) =>
-        String(e.params?.["expression"]).includes('"op":"failureEvidence"'),
-      ),
-    ).toHaveLength(1);
-    expect(FakeWebSocket.sent.some((e) => e.method.startsWith("Input."))).toBe(
-      false,
-    );
-    FakeWebSocket.dropFailureEvidence = false;
-    await expect(page.getByRole("button").count()).resolves.toBe(1);
-    await browser.close();
+    expect(vi.getTimerCount()).toBe(0);
   });
 
   it("reports available accessible names when a named role locator misses", async () => {

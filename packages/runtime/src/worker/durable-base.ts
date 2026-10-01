@@ -64,7 +64,11 @@ import {
   createNotificationClient,
   type NotificationClient,
 } from "../shared/notifications.js";
-import { _initFsWithRpc } from "./fs.js";
+import { createRpcFs } from "../shared/rpcFs.js";
+import {
+  createBlobstoreClient,
+  type BlobstoreClient,
+} from "../shared/blobstore.js";
 import type { AuthenticatedCaller } from "@vibestudio/rpc";
 import {
   DIRECT_AUTHORITY_ACCEPTED_AT_HEADER,
@@ -300,6 +304,7 @@ export abstract class DurableObjectBase {
   private _credentials: CredentialClient | null = null;
   private _notifications: NotificationClient | null = null;
   private _fs: RuntimeFs | null = null;
+  private _blobstore: BlobstoreClient | null = null;
   private readonly _durableWorkReadiness: DurableWorkReadiness;
 
   constructor(ctx: DurableObjectContext, env: unknown) {
@@ -704,9 +709,14 @@ export abstract class DurableObjectBase {
     return this._notifications;
   }
 
+  /** Blob storage uses this object's identity and invocation authority. */
+  protected get blobstore(): BlobstoreClient {
+    return (this._blobstore ??= createBlobstoreClient(this.rpc, this.fs));
+  }
+
   /** Filesystem client */
   protected get fs(): RuntimeFs {
-    if (!this._fs) this._fs = _initFsWithRpc(this.rpc);
+    if (!this._fs) this._fs = createRpcFs(this.rpc);
     return this._fs;
   }
 
@@ -1984,6 +1994,7 @@ export abstract class DurableObjectBase {
     this._credentials = null;
     this._notifications = null;
     this._fs = null;
+    this._blobstore = null;
   }
 
   // --- Introspection ---

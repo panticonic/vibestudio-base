@@ -11,15 +11,39 @@ technology. Do not add a second icon under `vibestudio.agent`.
 
 Credentials are URL-bound and may only be used through host-mediated egress.
 
-The portable `@workspace/runtime` surface is shared by panels, workers, Durable
-Objects, and eval. In particular, `services` is the same dynamic service
-namespace everywhere, `hosts` is the same owner-scoped attached-host client,
-and `runtime` is the same typed lifecycle/supervision client—not an eval-only
-compatibility surface.
+Runtime clients share the same contracts across panels, workers, Durable Objects,
+and eval. Their bindings belong to the executing owner. Module-level exports from
+`@workspace/runtime` bind to the initialized panel, plain worker, or eval runtime;
+they do not initialize a Durable Object's runtime. In a Durable Object, use
+`this.rpc`, `this.fs`, `this.credentials`, `this.notifications`, and
+`this.blobstore`. These clients preserve the object's identity and the current
+invocation's authority. For panel operations, use the instance methods on
+`PanelDurableObjectBase`. Do not call `createWorkerRuntime` to initialize an
+object or assign its clients to module globals.
 
 Filesystem calls have no implicit RPC deadline. They run until they settle or
 the owning execution aborts them through an `AbortSignal`; any settled-operation
 telemetry is observational and never aborts a call.
+
+## Large documents and resumable imports
+
+Transport chunks do not bound stored values. Appending each RPC chunk to one
+SQLite text/blob cell still produces an oversized cell; storing a whole board
+with embedded attachments has the same problem. Keep independently edited
+entities in bounded rows and binary attachments in the content-addressed blob
+store (`await this.blobstore.putBytes(bytes)` in a Durable Object). When the
+application deliberately stores whole documents, put segmentation
+behind one document read/write abstraction: bound segments by UTF-8 bytes, retain
+their order in a manifest, and replace the manifest and segments transactionally.
+Callers should never manage the internal segment rows.
+
+An import has explicit receiving, completed, and cancelled states. Persist its
+identity and accepted offset so interrupted transfers can resume; reject gaps
+and conflicting retransmissions. Validate the complete document before publishing
+it atomically. Preserve existing document identities and revisions when migrating
+its representation. Receiving imports remain until explicitly completed or
+discarded; elapsed time is not cancellation. Separate RPC-size limits from stored
+value limits, and exercise the real import size when verification is requested.
 
 ## Worker Runtime Surface
 
@@ -41,7 +65,7 @@ Generated from `runtimeSurface.worker.ts`. Use `await help()` at runtime for the
 | `createDurableObjectServiceClient` | value |  | Resolve a Durable Object-backed service and call it through unified RPC. |
 | `gatewayConfig` | value |  | Gateway base URL and bearer token for Vibestudio service routes. |
 | `gatewayFetch` | value |  | Gateway-origin fetch helper. It accepts relative paths and absolute URLs on the configured gateway origin, then authenticates that request; cross-origin targets are rejected. Use credentials.fetch for external egress. |
-| `openExternal` | callable |  | Call `await openExternal(url, options?)` from `@workspace/runtime` in server-side eval, panel/client eval, worker, or Durable Object code to open the system browser. The call itself owns the approval prompt and resumes after the user decides. |
+| `openExternal` | callable |  | Call `await openExternal(url, options?)` from the initialized panel, plain-worker, or eval runtime to open the system browser. A Durable Object uses its own `this.rpc.call("main", "externalOpen.openExternal", [url, options])`. The call owns the approval prompt and resumes after the user decides. |
 | `workers` | namespace | `listSources`, `create`, `createDurableObject`, `list`, `destroy`, `resetStorage`, `listStorageBackups`, `restoreStorageBackup`, `listServices`, `resolveService`, `resolveDurableObject`, `durableObjectService` | Worker discovery, lifecycle, and manifest-declared service resolution. Use create/list/destroy for regular worker instances; listSources() returns every launchable source with its real manifest entry point and Durable Object classes. |
 | `workspaces` | namespace | `create`, `receipt` | Create workspaces from exact inspected template pins and reconcile durable receipts. Available to panels, workers, eval and connected websites under ordinary caller authorization. Creation returns no routing credentials or authority over the new workspace. |
 | `credentials` | namespace | `store`, `connect`, `beginWebsitePublication`, `configureClient`, `requestCredentialInput`, `getClientConfigStatus`, `deleteClientConfig`, `listStoredCredentials`, `summarizeStoredCredentials`, `inspectStoredCredentials`, `revokeCredential`, `resolveCredential`, `deriveCredential`, `fetch`, `publishFetch`, `hookForUrl`, `gitHttp`, `forAudience` | Typed credential lifecycle and credentialed network access. Use store(input) to persist a URL-bound credential, fetch(url, init?, { credentialId? }?) for credentialed HTTP and a standard Response, hookForUrl(url, { credentialId? }?) for a bound fetch function, gitHttp({ credentialId?, gitIntent? }) for smart-HTTP, and forAudience(descriptor) for a credential-bound handle. The underlying RPC transport is internal. |
@@ -55,7 +79,7 @@ Generated from `runtimeSurface.worker.ts`. Use `await help()` at runtime for the
 | `extensions` | namespace | `use`, `invoke`, `invokeProvider`, `on` |  |
 | `templates` | namespace | `inspect`, `inspectAuthoring`, `authoringParts`, `publishAuthoring` | Exact source inspection and publication through the admitted template receiver. |
 | `notifications` | namespace | `show`, `dismiss` |  |
-| `services` | value |  | Portable dynamic service namespace. Rich runtime clients are available by name; other services dispatch through the caller-scoped main service boundary. The same client is available in panels, workers, Durable Objects, and eval. |
+| `services` | value |  | Portable dynamic service namespace. Rich runtime clients are available by name; other services dispatch through the caller-scoped main service boundary. The client contract is shared by panels, workers, Durable Objects, and eval; Durable Objects bind clients to their own instance RPC. |
 | `hosts` | value |  | Portable owner-scoped attached-host access for development sessions. |
 | `runtime` | value |  | Portable typed runtime lifecycle and supervision client for the current workspace context. |
 | `workspace` | namespace | `getInfo`, `getActive`, `getConfig`, `validateConfig`, `setInitPanels`, `setConfigField`, `applyPreparedConfig`, `getAgentsMd`, `listSkills`, `readSkill`, `sourceTree`, `ensureContextFolder`, `findUnitForPath`, `projects` | Workspace catalog, source tree, and unit helpers. Does not include panelTree; use runtime.panelTree for panel-tree handles. |
@@ -412,25 +436,6 @@ or existing units, the same underlying contracts apply:
    registration step for the service already created by `prepareApplication`.
 5. Call it from eval, panels, inline UI, apps, workers, or other DOs with
    `workers.resolveService(protocol, objectKey?)` and `rpc.call(...)`.
-
-### Large documents and resumable imports
-
-Transport chunks do not bound stored values. Appending each RPC chunk to one
-SQLite text/blob cell still produces an oversized cell; storing a whole board
-with embedded attachments has the same problem. Keep independently edited
-entities in bounded rows and binary attachments in the content-addressed blob
-store. When the application deliberately stores whole documents, put segmentation
-behind one document read/write abstraction: bound segments by UTF-8 bytes, retain
-their order in a manifest, and replace the manifest and segments transactionally.
-Callers should never manage the internal segment rows.
-
-An import has explicit receiving, completed, and cancelled states. Persist its
-identity and accepted offset so interrupted transfers can resume; reject gaps
-and conflicting retransmissions. Validate the complete document before publishing
-it atomically. Preserve existing document identities and revisions when migrating
-its representation. Receiving imports remain until explicitly completed or
-discarded; elapsed time is not cancellation. Separate RPC-size limits from stored
-value limits, and exercise the real import size when verification is requested.
 
 Minimal store:
 

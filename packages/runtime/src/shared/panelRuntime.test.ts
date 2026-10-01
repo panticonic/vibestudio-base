@@ -1288,3 +1288,51 @@ describe("panel runtime topology composition", () => {
     expect(handle.title).toBe("Support inbox");
   });
 });
+
+describe("recursive panel ownership", () => {
+  it("reports closed descendants as well as the archived root", async () => {
+    const root = "panel:tree/owned-root";
+    const child = "panel:tree/owned-child";
+    const onClose = vi.fn();
+    let acknowledged = false;
+    const call = vi.fn(async (_target: string, method: string) => {
+      if (method === "workspace-state.slot.close")
+        return { closeId: root, closedCount: 2 };
+      if (method === "workspace-state.slot.closeCleanupPage")
+        return {
+          items: acknowledged
+            ? []
+            : [
+                {
+                  closeId: root,
+                  ownerUserId: "user",
+                  slotId: root,
+                  entityId: "panel:root-entity",
+                },
+                {
+                  closeId: root,
+                  ownerUserId: "user",
+                  slotId: child,
+                  entityId: null,
+                },
+              ],
+          nextCursor: null,
+        };
+      if (method === "workspace-state.slot.closeCleanupAck") {
+        acknowledged = true;
+        return;
+      }
+      if (method === "runtime.retireEntity") return;
+      throw new Error(`Unexpected call ${method}`);
+    });
+    const runtime = createPanelRuntime({
+      rpc: { call, emit: vi.fn(), on: vi.fn() } as never,
+      onClose,
+    });
+    await runtime.panelTree.get(root).archive();
+    expect(onClose.mock.calls).toEqual([[root], [child]]);
+    expect(
+      call.mock.calls.filter(([, method]) => method === "runtime.retireEntity"),
+    ).toHaveLength(1);
+  });
+});

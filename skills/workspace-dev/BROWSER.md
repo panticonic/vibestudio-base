@@ -390,13 +390,13 @@ Automation failures are structured as `CdpError.errorData` with `code`,
 `cdp_locator_state_mismatch` and includes its locator, requested state, and
 timeout. A failed `click({ expect })` is
 `cdp_interaction_outcome_not_observed` and includes both the dispatched and
-expected locators. A command timeout or closed target directs the caller to
+expected locators. A crashed, detached, or closed target directs the caller to
 inspect panel diagnostics and acquire a fresh page from the stable panel handle;
 the old page connection is no longer reusable.
 
 Failed locator state waits, ambiguous targets, and exhausted pointer actionability
 also carry `errorData.evidence`. A single read-only observation is collected
-after failure, with a separate one-second deadline; successful operations do
+after failure, without a separate transport deadline; successful operations do
 not collect it. `status: "captured"` includes capture time, page URL, match count,
 up to eight matches with their actual text/name, visibility, enabled and checked
 states (`checked: null` means not checkable), and a bounded rendered-text
@@ -444,7 +444,7 @@ await page.goForward();
 await page.title();
 page.url(); // string, synchronous like Playwright
 await page.content(); // full HTML
-// Evaluation is bounded by the page's default timeout unless overridden.
+// No default deadline. An explicit evaluation timeout is enforced by Chromium.
 await page.evaluate(() => document.title);
 await page.evaluate(() => new Promise(() => {}), undefined, { timeout: 5_000 });
 const bytes = await page.screenshot({ fullPage: true });
@@ -458,6 +458,14 @@ await page.close(); // disconnect automation only; the panel remains open
 await page.locator("button.submit").click();
 await page.locator('input[name="email"]').fill("user@example.com");
 ```
+
+Actions and waits have no default deadline. Use `timeout` only for a caller
+requirement; `setDefaultTimeout(ms)` selects one for subsequent readiness waits
+and zero disables it. Target destruction, crash and transport loss propagate to
+pending waits. Function checks run as individual observations rather than a
+renderer polling loop. Navigation completion requires lifecycle evidence;
+elapsed time never implies success. `networkidle` is unsupported: observe the
+application's actual readiness condition instead.
 
 `page.screenshot()` returns `Uint8Array` and has no filesystem `path` option.
 When a panel handle is available, prefer the one-call host capture and return
@@ -505,13 +513,78 @@ exception is a platform defect, not a prompt for the agent to guess.
 Dialog handlers run in the calling runtime and may retain its variables; they
 are not browser evaluation callbacks.
 
-### Not supported
+## Browser files, network, frames, and popups
 
-The CDP client deliberately omits a few Playwright features. These
-are out of scope: file uploads (`setInputFiles`), multiple pages/popups,
-cross-origin frames, and full network request interception (`route`). For
-protocol-level needs beyond the page surface, use raw `CdpConnection.send` (see
-below).
+Use portable byte payloads for uploads, including hidden file inputs:
+
+```ts
+await page.locator("input[type=file]").setInputFiles({
+  name: "notes.md",
+  mimeType: "text/markdown",
+  buffer: new Uint8Array([35, 32, 65]),
+});
+await page.locator("input[type=file]").setInputFiles([]); // clear
+```
+
+Observe native requests and responses without intercepting application traffic:
+
+```ts
+page.on("requestfailed", (request) =>
+  console.log(request.url(), request.failure()),
+);
+const responsePending = page.waitForResponse(
+  (response) => response.url().endsWith("/export") && response.ok(),
+);
+await page.getByRole("button", { name: "Export" }).click();
+const response = await responsePending;
+const exported = await response.json(); // body retrieval waits for native completion
+```
+
+`page.requests()` retains recent request diagnostics. Responses expose status,
+headers, body/text/json, redirects and native loading failures. Capture source
+exports or structured responses when available; visible card titles alone do not
+establish that descriptions, comments, checklists, attachments or history migrated.
+
+Frame locators use each frame's native execution context and input coordinates,
+including nested frames and cross-origin frames:
+
+```ts
+await page
+  .frameLocator("iframe")
+  .frameLocator("iframe.details")
+  .getByRole("button", { name: "Save" })
+  .click();
+const frame = page.locator("iframe").nth(1).contentFrame();
+```
+
+Register activity waits before the triggering action. Hosted panel handles expose
+approved downloads and durable popup panel references, never arbitrary host paths:
+
+```ts
+const pendingDownload = page.waitForDownload();
+await page.getByRole("link", { name: "Download" }).click();
+const download = await pendingDownload;
+await download.finished();
+const bytes = await download.body(); // use readChunk(offset, length) for large files
+
+const pendingPopup = page.waitForPopup();
+await page.getByRole("button", { name: "Open" }).click();
+const popup = await pendingPopup;
+const popupPage = await panelTree.get(popup.panelId).cdp.page();
+```
+
+Downloads and popups use existing browser permissions. Permission denial, provider
+loss, cancellation, and native failures settle waiting callers. No implicit
+elapsed-time deadline supplies a successful or failed outcome. Popups are durable
+panels; archive temporary panels when finished. Raw unhosted CDP connections do
+not provide the host's download or popup lifecycle.
+
+## Not supported
+
+Full request interception (`route`) is not part of this surface. Raw
+`CdpConnection.send(method, params)` and `.on(event, listener)` remain available
+for native protocol operations. Child sessions use `.session(id)` and keep their
+commands, events, dialogs and failures scoped to that native session.
 
 ## Protocol-level work
 

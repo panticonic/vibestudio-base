@@ -245,6 +245,8 @@ export interface CreatePanelRuntimeOptions {
   contextId?: string | null | (() => string | null | Promise<string | null>);
   /** The owning execution context supplies its journal across compiled module boundaries. */
   recordOperation?: (entry: OperationJournalEntry) => void;
+  /** Active invocation ownership, resolved at each operation on retained handles. */
+  operationSignal?: () => AbortSignal | undefined;
   /** Focus a live panel when this runtime has a native presentation host. */
   focusPanel?: (id: string, options?: PanelFocusOptions) => Promise<void>;
   selfId?: string | null;
@@ -465,6 +467,7 @@ export function createPanelRuntime(
       kind: metadata.kind,
       requesterPanelId: requesterPanelId(),
       loadModule: options.loadModule,
+      operationSignal: options.operationSignal,
       recordOperation,
       navigate: (url) => navigatePanel(metadata.id, url).then(() => undefined),
       navigateHistory: (delta) =>
@@ -797,6 +800,9 @@ export function createPanelRuntime(
         limit: 200,
       });
       if (page.items.length === 0) break;
+      // Every receipt belongs to the durably closed subtree, including
+      // unloaded descendants. Ownership observers must see all closed slots.
+      for (const item of page.items) options.onClose?.(item.slotId);
       for (const item of page.items) {
         if (item.entityId) {
           await options.rpc.call("main", "runtime.retireEntity", [
@@ -1331,7 +1337,6 @@ export function createPanelRuntime(
     },
     archive: async (id) => {
       const result = await closePanel(id);
-      options.onClose?.(id);
       recordOperation({ type: "close", id });
       return result;
     },
@@ -1574,7 +1579,8 @@ export function createPanelRuntime(
       (!external
         ? (typeof options.contextId === "function"
             ? await options.contextId()
-            : options.contextId)?.trim()
+            : options.contextId
+          )?.trim()
         : undefined) ||
       undefined;
     const operationIdentity = openOptions?.operationId

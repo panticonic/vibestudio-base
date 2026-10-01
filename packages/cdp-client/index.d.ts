@@ -1,3 +1,21 @@
+export { CdpDownload } from "./src/download";
+export type { BrowserPopup as CdpPopup } from "@vibestudio/shared/panel/browserAutomation";
+import type { BrowserPopup as CdpPopup } from "@vibestudio/shared/panel/browserAutomation";
+import type { CdpDownload } from "./src/download";
+export { CdpRequest, CdpResponse } from "./src/network";
+import type {
+  CdpRequest,
+  CdpResponse,
+  CdpNetworkEvent,
+  CdpNetworkEvents,
+  CdpResponseMatcher,
+} from "./src/network";
+export type {
+  CdpNetworkFailure,
+  CdpNetworkEvent,
+  CdpNetworkEvents,
+  CdpResponseMatcher,
+} from "./src/network";
 // Public type surface for @workspace/cdp-client — a workerd-native
 // CDP client with a Playwright-style Page/Locator API implemented over raw CDP.
 // Kept in sync with src/worker.ts (the implementation for the worker/workerd and
@@ -174,6 +192,7 @@ export interface CdpInteractionOutcome {
     | "fill"
     | "clear"
     | "selectOption"
+    | "setInputFiles"
     | "focus"
     | "blur"
     | "selectText"
@@ -209,7 +228,14 @@ export interface ByRoleOptions {
  * A Playwright-style locator. Actions auto-wait for readiness and resolve
  * after their browser event turn, so the next action observes framework state.
  */
+export type CdpFilePayload = {
+  name: string;
+  mimeType?: string;
+  buffer: Uint8Array;
+};
+
 export interface CdpLocator {
+  contentFrame(): CdpFrameLocator;
   // Scoping / chaining
   /** CSS, or `text=...` compiled into the same semantic engine as getByText. */
   locator(selector: string): CdpLocator;
@@ -234,6 +260,11 @@ export interface CdpLocator {
   hover(opts?: ActionOptions): Promise<void>;
   fill(value: string, opts?: ActionOptions): Promise<void>;
   type(text: string, opts?: ActionOptions): Promise<void>;
+  /** Upload portable bytes; an empty array clears the input. Hidden file inputs are supported. */
+  setInputFiles(
+    files: CdpFilePayload | CdpFilePayload[],
+    opts?: ActionOptions,
+  ): Promise<void>;
   clear(opts?: ActionOptions): Promise<void>;
   press(key: string, opts?: InteractionOptions): Promise<CdpInteractionOutcome>;
   check(opts?: InteractionOptions): Promise<CdpInteractionOutcome>;
@@ -306,7 +337,37 @@ export class CdpDialog {
   dismiss(): Promise<void>;
 }
 
+export interface CdpFrameLocator {
+  locator(selector: string): CdpLocator;
+  getByRole(role: string, options?: ByRoleOptions): CdpLocator;
+  getByText(text: TextMatcher, options?: ByTextOptions): CdpLocator;
+  getByLabel(text: TextMatcher, options?: ByTextOptions): CdpLocator;
+  getByPlaceholder(text: TextMatcher, options?: ByTextOptions): CdpLocator;
+  getByTestId(id: string): CdpLocator;
+  getByAltText(text: TextMatcher, options?: ByTextOptions): CdpLocator;
+  getByTitle(text: TextMatcher, options?: ByTextOptions): CdpLocator;
+  frameLocator(selector: string): CdpFrameLocator;
+  evaluate<Result, Arg = unknown>(
+    fn: string | ((arg: Arg) => Result | Promise<Result>),
+    arg?: Arg,
+  ): Promise<Result>;
+}
+
 export interface CdpPage {
+  waitForPopup(): Promise<CdpPopup>;
+  waitForDownload(): Promise<CdpDownload>;
+  downloads(): Promise<CdpDownload[]>;
+  frameLocator(selector: string): CdpFrameLocator;
+  on<K extends CdpNetworkEvent>(
+    event: K,
+    handler: (value: CdpNetworkEvents[K]) => void,
+  ): this;
+  off<K extends CdpNetworkEvent>(
+    event: K,
+    handler: (value: CdpNetworkEvents[K]) => void,
+  ): this;
+  requests(): CdpRequest[];
+  waitForResponse(matcher: CdpResponseMatcher): Promise<CdpResponse>;
   dialog(): CdpDialog | null;
   on(
     event: "dialog",
@@ -324,7 +385,7 @@ export interface CdpPage {
   /** Playwright-compatible synchronous current URL. Do not await or attach `.catch()`. */
   url(): string;
   content(): Promise<string>;
-  /** Set the default timeout (ms) for auto-waiting actions/reads. Default 30000. */
+  /** Set a caller-selected deadline for actions/reads. Default: no deadline; zero disables it. */
   setDefaultTimeout(timeoutMs: number): void;
   /** Emulate a CSS viewport on the current target. */
   setViewportSize(viewportSize: CdpViewportSize): Promise<void>;
@@ -338,12 +399,12 @@ export interface CdpPage {
     action: () => unknown | Promise<unknown>,
     options?: CdpProfileOptions,
   ): Promise<CdpProfileReport>;
-  /** Evaluate in the page, bounded by the page default timeout unless overridden. */
-  evaluate(
-    pageFunction: string | ((arg?: unknown) => unknown),
-    arg?: unknown,
+  /** Evaluate in the page; an explicit timeout is forwarded to Chrome. */
+  evaluate<Result = unknown, Arg = unknown>(
+    pageFunction: string | ((arg: Arg) => Result | Promise<Result>),
+    arg?: Arg,
     options?: { timeout?: number; operation?: string },
-  ): Promise<unknown>;
+  ): Promise<Result>;
   /**
    * Find by CSS or `text=...`. A quoted JSON string is exact text; unquoted
    * text is substring matching. Prefer getBy* helpers for resilient locators.
@@ -397,18 +458,37 @@ export class CdpConnection {
     wsEndpoint: string,
     authToken?: string,
     preferFetchUpgrade?: boolean,
-    options?: { commandTimeoutMs?: number },
+    options?: {
+      signal?: AbortSignal;
+      operationSignal?: () => AbortSignal | undefined;
+    },
   ): Promise<CdpConnection>;
   send(
     method: string,
     params?: Record<string, unknown>,
-    options?: {
-      timeoutMs?: number;
-      timeoutBehavior?: "disconnect" | "reject";
-      timeoutError?: (timeoutMs: number) => Error;
-    },
+    sessionId?: string,
   ): Promise<unknown>;
+  onClosed(listener: (error: Error) => void): () => void;
+  onDisconnect(listener: (error: Error) => void): () => void;
+  session(id: string): CdpSession;
+  on(
+    method: string,
+    listener: (params: unknown) => void,
+    sessionId?: string,
+  ): () => void;
+  close(): void;
+  isClosed(): boolean;
+}
+
+export class CdpSession {
+  readonly id: string;
+  send(method: string, params?: Record<string, unknown>): Promise<unknown>;
   on(method: string, listener: (params: unknown) => void): () => void;
+  onClosed(listener: (error: Error) => void): () => void;
+  onDisconnect(listener: (error: Error) => void): () => void;
+  session(id: string): CdpSession;
+  dialog(): CdpDialog | null;
+  onDialog(handler: (dialog: CdpDialog) => void | Promise<void>): () => void;
   close(): void;
   isClosed(): boolean;
 }
@@ -455,7 +535,7 @@ export interface CdpFailureData {
   code:
     | "cdp_target_connection_failed"
     | "cdp_target_closed"
-    | "cdp_command_timeout"
+    | "cdp_protocol_error"
     | "cdp_evaluation_timeout"
     | "cdp_evaluation_failed"
     | "cdp_locator_operation_failed"
@@ -525,11 +605,13 @@ export const BrowserImpl: {
       transportOptions?: { authToken?: string };
       /** Hosted EvalDO runtimes must use the egress-aware fetch upgrade. */
       preferFetchUpgrade?: boolean;
-      /** Override the protocol safety deadline for diagnostics/tests. */
-      commandTimeoutMs?: number;
+      /** Cancels connection acquisition; the connected browser owns its lifetime. */
+      signal?: AbortSignal;
+      operationSignal?: () => AbortSignal | undefined;
       /** Observe completed input outcomes independently of caller return projections. */
       onInteraction?: (outcome: CdpInteractionOutcome) => void;
       inspectionIdentity?: CdpInspectionIdentity;
+      browserOperation?: import("./src/download").BrowserOperation;
     },
   ): Promise<Browser>;
 };

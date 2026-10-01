@@ -150,6 +150,13 @@ that already consumes theme tokens. For a manually mounted or non-React panel,
 use `panel.getTheme()` and `panel.onThemeChange()` from `@workspace/runtime` to
 drive its own styling and release the subscription on teardown.
 
+Scope view state to the record it describes. When switching or creating a
+board, project, or similar container, clear or deliberately restore its own
+search, filters, selected child, and open detail view. A query retained from an
+unrelated container must not make newly created data appear missing. Give empty
+filtered views a visible way to clear the filter. Verify creation after a
+filtered view and navigation between containers through the UI.
+
 Verify a newly authored or restyled UI in both host appearances, including a
 switch while the panel stays open. Check readability of surfaces, controls,
 overlays, and interaction states; merely observing a theme hook or `.dark`
