@@ -5,6 +5,7 @@ describe("lintRendererSource", () => {
   it("accepts host modules, declared imports, relative and type-only imports", () => {
     const code = `
 import { Flex } from "@radix-ui/themes";
+import { OperationNotice } from "@workspace/ui/feedback";
 import { useState } from "react";
 import dayjs from "dayjs";
 import type { CardState } from "@workspace/example-card/reducer";
@@ -13,7 +14,9 @@ import { helper } from "./helper";
 // import { ghost } from "commented-out";
 export default function Card() { return null; }
 `;
-    expect(lintRendererSource(code, { imports: { dayjs: "npm:^1" } })).toEqual([]);
+    expect(lintRendererSource(code, { imports: { dayjs: "npm:^1" } })).toEqual(
+      [],
+    );
   });
 
   it("flags value imports of undeclared workspace packages", () => {
@@ -42,12 +45,18 @@ export default function Card() {
   });
 
   it("flags re-export sources too", () => {
-    const issues = lintRendererSource(`export { reduce } from "@workspace/other/mod";`);
-    expect(issues.map((issue) => issue.specifier)).toEqual(["@workspace/other/mod"]);
+    const issues = lintRendererSource(
+      `export { reduce } from "@workspace/other/mod";`,
+    );
+    expect(issues.map((issue) => issue.specifier)).toEqual([
+      "@workspace/other/mod",
+    ]);
   });
 
   it("flags dynamic relative imports that the file loader cannot bundle", () => {
-    const issues = lintRendererSource(`const helper = await import("./helper");`);
+    const issues = lintRendererSource(
+      `const helper = await import("./helper");`,
+    );
     expect(issues).toEqual([
       {
         specifier: "./helper",

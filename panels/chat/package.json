@@ -16,7 +16,8 @@
       "@workspace/runtime",
       "@workspace/model-catalog/providerConnect",
       "@workspace/react/responsive",
-      "@workspace/ui"
+      "@workspace/ui",
+      "@workspace/ui/feedback"
     ],
     "authority": {
       "provides": [],

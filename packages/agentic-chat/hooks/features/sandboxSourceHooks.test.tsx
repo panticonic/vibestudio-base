@@ -634,12 +634,21 @@ describe("sandbox source hooks", () => {
   });
 
   it("renders the compiled model credential card with the panel's exposed modules", async () => {
-    const workspaceRoot = process.env["VIBESTUDIO_USERLAND_ROOT"] ?? process.cwd();
+    const workspaceRoot =
+      process.env["VIBESTUDIO_USERLAND_ROOT"] ?? process.cwd();
     const providerConnectModule = "@workspace/model-catalog/providerConnect";
     const panelManifest = JSON.parse(
-      await readFile(path.join(workspaceRoot, "panels/chat/package.json"), "utf8"),
+      await readFile(
+        path.join(workspaceRoot, "panels/chat/package.json"),
+        "utf8",
+      ),
     ) as { vibestudio?: { exposeModules?: string[] } };
-    expect(panelManifest.vibestudio?.exposeModules).toContain(providerConnectModule);
+    expect(panelManifest.vibestudio?.exposeModules).toContain(
+      providerConnectModule,
+    );
+    expect(panelManifest.vibestudio?.exposeModules).toContain(
+      "@workspace/ui/feedback",
+    );
 
     const moduleMap = (globalThis as Record<string, unknown>)[
       "__vibestudioModuleMap__"

@@ -814,13 +814,25 @@ function nsRole(el){
   }
   return "";
 }
+// Name-from-content excludes decorative/hidden descendants. Text locators
+// intentionally retain their rendered text, including aria-hidden decorations.
+function nsNameContent(node){
+  if(!node||nsSourceText(node)||nsAttr(node,"aria-hidden")==="true"||node.hidden) return "";
+  if(node.nodeType===3) return node.nodeValue||"";
+  if(node.nodeType===1 && typeof getComputedStyle==="function"){
+    var style=getComputedStyle(node); if(style.display==="none"||style.visibility==="hidden") return "";
+  }
+  if(!node.childNodes) return nsContentText(node);
+  var parts=[]; for(var i=0;i<node.childNodes.length;i++) parts.push(nsNameContent(node.childNodes[i]));
+  return parts.join("");
+}
 function nsAccName(el){
   var al=nsAttr(el,"aria-label"); if(al) return nsNorm(al);
   var lb=nsAttr(el,"aria-labelledby");
   if(lb){ var parts=lb.split(/\s+/).map(function(id){ var e=document.getElementById(id); return e?nsText(e):""; }); var j=nsNorm(parts.join(" ")); if(j) return j; }
   if(el.tagName==="IMG"){ var alt=nsAttr(el,"alt"); if(alt) return nsNorm(alt); }
   if(el.labels && el.labels.length) return nsNorm(Array.prototype.map.call(el.labels,function(l){return nsLabelText(l);}).join(" "));
-  var t=nsText(el); if(t) return t;
+  var t=nsNorm(nsNameContent(el)); if(t) return t;
   var ph=nsAttr(el,"placeholder"); if(ph) return nsNorm(ph);
   var ti=nsAttr(el,"title"); if(ti) return nsNorm(ti);
   return "";
@@ -829,7 +841,7 @@ function nsLabelText(label){
   var clone=label.cloneNode(true);
   var controls=clone.querySelectorAll?clone.querySelectorAll("input,textarea,select,button,meter,output,progress"):[];
   for(var i=0;i<controls.length;i++) controls[i].remove();
-  return nsText(clone);
+  return nsNorm(nsNameContent(clone));
 }
 function nsAssociatedLabelMatches(el,q,exact){
   if(!el.labels) return false;
@@ -2395,7 +2407,6 @@ class WorkerCdpPage {
         }
       : {
           key: normalized,
-          text: normalized.length === 1 ? normalized : undefined,
         };
   }
 

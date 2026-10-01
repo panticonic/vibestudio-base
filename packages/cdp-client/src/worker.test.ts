@@ -557,18 +557,23 @@ describe("worker CDP client", () => {
     installFakeWebSocket();
     const browser = await BrowserImpl.connect("ws://cdp");
     const page = browser.contexts()[0]!.pages()[0]!;
-    await page.getByRole("dialog", { name: "Create board", exact: true }).count();
+    await page
+      .getByRole("dialog", { name: "Create board", exact: true })
+      .count();
     const expression = FakeWebSocket.sent
       .filter((entry) => entry.method === "Runtime.evaluate")
       .map((entry) => String(entry.params?.["expression"] ?? ""))
       .find((value) => value.includes('"op":"count"'))!;
     const dialog = {
       tagName: "DIALOG",
-      getAttribute: (name: string) => name === "aria-label" ? "Create board" : null,
+      getAttribute: (name: string) =>
+        name === "aria-label" ? "Create board" : null,
     };
-    await expect(runInNewContext(expression, {
-      document: { querySelectorAll: () => [dialog] },
-    })).resolves.toBe(1);
+    await expect(
+      runInNewContext(expression, {
+        document: { querySelectorAll: () => [dialog] },
+      }),
+    ).resolves.toBe(1);
     await browser.close();
   });
 
@@ -1779,6 +1784,28 @@ describe("worker CDP client", () => {
     expect(FakeWebSocket.sent).toHaveLength(sentBefore);
   });
 
+  it("delivers printable keyboard text once, without text on down or up edges", async () => {
+    installFakeWebSocket();
+    const browser = await BrowserImpl.connect("ws://cdp");
+    const page = browser.contexts()[0]!.pages()[0]!;
+    await page.keyboard.type("aZ.");
+    const events = FakeWebSocket.sent.filter(
+      (event) => event.method === "Input.dispatchKeyEvent",
+    );
+    expect(events.filter((event) => event.params?.["text"])).toHaveLength(3);
+    expect(
+      events
+        .filter((event) => event.params?.["text"])
+        .map((event) => event.params?.["type"]),
+    ).toEqual(["char", "char", "char"]);
+    expect(
+      events
+        .filter((event) => event.params?.["text"])
+        .map((event) => event.params?.["text"]),
+    ).toEqual(["a", "Z", "."]);
+    await browser.close();
+  });
+
   it("supports page keyboard chords and text insertion", async () => {
     installFakeWebSocket();
     const browser = await BrowserImpl.connect("ws://cdp");
@@ -2029,6 +2056,43 @@ describe("worker CDP client", () => {
         locator: 'getByTestId("save")',
       },
     });
+  });
+
+  it("names a segmented radio from accessible content without its decorative label clone", async () => {
+    installFakeWebSocket();
+    const browser = await BrowserImpl.connect("ws://cdp");
+    const page = browser.contexts()[0]!.pages()[0]!;
+    await page.getByRole("radio", { name: "Saved", exact: true }).count();
+    const expression = FakeWebSocket.sent
+      .filter((entry) => entry.method === "Runtime.evaluate")
+      .map((entry) => String(entry.params?.["expression"] ?? ""))
+      .find((value) => value.includes('"op":"count"'))!;
+    const text = { nodeType: 3, nodeValue: "Saved" };
+    const decorative = {
+      nodeType: 1,
+      tagName: "SPAN",
+      childNodes: [text],
+      getAttribute: (key: string) => (key === "aria-hidden" ? "true" : null),
+    };
+    const label = {
+      nodeType: 1,
+      tagName: "SPAN",
+      childNodes: [text],
+      getAttribute: () => null,
+    };
+    const radio = {
+      tagName: "BUTTON",
+      innerText: "Saved Saved",
+      textContent: "SavedSaved",
+      childNodes: [decorative, label],
+      getAttribute: (key: string) => (key === "role" ? "radio" : null),
+    };
+    await expect(
+      runInNewContext(expression, {
+        document: { querySelectorAll: () => [radio] },
+      }),
+    ).resolves.toBe(1);
+    await browser.close();
   });
 
   it("keeps exact element text distinct from a decorative descendant's accessible visibility", async () => {

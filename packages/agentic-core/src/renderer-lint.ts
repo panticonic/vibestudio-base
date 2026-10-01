@@ -21,6 +21,7 @@ export const DEFAULT_HOST_MODULES: readonly string[] = [
   "@radix-ui/react-icons",
   "@workspace/runtime",
   "@workspace/react/responsive",
+  "@workspace/ui/feedback",
   "@vibestudio/browser-data/client",
 ];
 
@@ -40,7 +41,7 @@ export function lintRendererSource(
     imports?: Record<string, string> | undefined;
     /** Host-exposed modules; defaults to the chat panel's exposeModules. */
     hostModules?: readonly string[] | undefined;
-  } = {}
+  } = {},
 ): RendererLintIssue[] {
   const allowed = new Set([
     ...(opts.hostModules ?? DEFAULT_HOST_MODULES),
@@ -62,7 +63,8 @@ export function lintRendererSource(
       });
       continue;
     }
-    if (reference.syntax !== "import" && reference.syntax !== "export") continue;
+    if (reference.syntax !== "import" && reference.syntax !== "export")
+      continue;
     if (specifier.startsWith("./") || specifier.startsWith("../")) continue;
     if (allowed.has(specifier)) continue;
     issues.push({

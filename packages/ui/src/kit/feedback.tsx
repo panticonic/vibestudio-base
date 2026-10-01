@@ -8,12 +8,28 @@
  */
 import { useEffect, useRef, useState } from "react";
 import type { CSSProperties, ReactNode } from "react";
-import { Badge as RadixBadge, Box, Button, Flex, Text } from "@radix-ui/themes";
+import {
+  Badge as RadixBadge,
+  Box,
+  Button,
+  Callout,
+  Flex,
+  Text,
+} from "@radix-ui/themes";
 
 /** The shared status vocabulary, mapped onto the semantic intent tokens. */
-export type Intent = "info" | "success" | "warning" | "error" | "consent" | "neutral";
+export type Intent =
+  | "info"
+  | "success"
+  | "warning"
+  | "error"
+  | "consent"
+  | "neutral";
 
-const INTENT_RADIX_COLOR: Record<Intent, React.ComponentProps<typeof RadixBadge>["color"]> = {
+const INTENT_RADIX_COLOR: Record<
+  Intent,
+  React.ComponentProps<typeof RadixBadge>["color"]
+> = {
   info: "blue",
   success: "grass",
   warning: "amber",
@@ -72,6 +88,38 @@ export function StatusBadge({
   );
 }
 
+/** Persistent operation feedback. Domain owners choose the message and intent;
+ * this component owns presentation and announcement, never settlement or expiry. */
+export function OperationNotice({
+  children,
+  intent = "info",
+  actions,
+}: {
+  children: ReactNode;
+  intent?: Intent;
+  actions?: ReactNode;
+}) {
+  return (
+    <Callout.Root
+      size="1"
+      color={INTENT_RADIX_COLOR[intent]}
+      style={{ minWidth: 0, overflowWrap: "anywhere" }}
+    >
+      <Callout.Text
+        role={intent === "error" ? "alert" : "status"}
+        aria-atomic="true"
+      >
+        {children}
+      </Callout.Text>
+      {actions ? (
+        <Flex gap="2" wrap="wrap">
+          {actions}
+        </Flex>
+      ) : null}
+    </Callout.Root>
+  );
+}
+
 export interface NarrationPillProps {
   children: ReactNode;
   icon?: ReactNode;
@@ -106,7 +154,11 @@ const INTENT_VAR: Record<Intent, { fg: string; bg: string; border: string }> = {
     bg: "var(--intent-consent-surface)",
     border: "var(--intent-consent-border)",
   },
-  neutral: { fg: "var(--gray-11)", bg: "var(--gray-a3)", border: "var(--gray-a6)" },
+  neutral: {
+    fg: "var(--gray-11)",
+    bg: "var(--gray-a3)",
+    border: "var(--gray-a6)",
+  },
 };
 
 /**
@@ -183,7 +235,9 @@ export function EmptyState({
         ...style,
       }}
     >
-      {icon != null && <Box style={{ color: "var(--gray-9)", opacity: 0.9 }}>{icon}</Box>}
+      {icon != null && (
+        <Box style={{ color: "var(--gray-9)", opacity: 0.9 }}>{icon}</Box>
+      )}
       <Box>
         <Text as="div" size="3" weight="medium">
           {title}
