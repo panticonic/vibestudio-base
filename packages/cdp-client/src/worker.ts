@@ -1,15 +1,37 @@
+import { CdpDownload, type BrowserOperation } from "./download";
+import type {
+  BrowserPopup,
+  BrowserDownload,
+} from "@vibestudio/shared/panel/browserAutomation";
+export { CdpDownload } from "./download";
+export type { BrowserPopup as CdpPopup } from "@vibestudio/shared/panel/browserAutomation";
 // Workerd-native CDP client. Speaks raw Chrome DevTools Protocol
 // over a WebSocket (via globalThis.WebSocket), so it runs in a Cloudflare
 // Worker / Durable Object isolate AND in panels. Exposes a Playwright-shaped
 // `Page`/`Locator` surface implemented entirely over the Runtime/DOM/Input/Page
 // CDP domains — no Node deps, no vendored browser bundle.
 //
-// Deliberately out of scope (no CDP-only path in a connectionless isolate):
-// file uploads (setInputFiles), multi-page/popup lifecycle, cross-origin
-// frames, and full network request interception (route). Raw `CdpConnection`
-// is always available for protocol-level work those cases would need.
+// Portable uploads, network observation and native frame sessions share this
+// surface. Hosted downloads/popups use the owning panel lifecycle. Full network
+// interception (route) remains outside the page API; raw CDP is available.
 
 import { webSocketAuthProtocol } from "@vibestudio/rpc/protocol/webSocketAuthProtocol";
+import { FrameRegistry } from "./frames";
+import type { FrameTransport } from "./frames";
+import { NetworkObserver } from "./network";
+import type {
+  CdpNetworkEvent,
+  CdpNetworkEvents,
+  CdpResponseMatcher,
+} from "./network";
+export { CdpRequest, CdpResponse } from "./network";
+export type {
+  CdpNetworkFailure,
+  CdpNetworkEvent,
+  CdpNetworkEvents,
+  CdpResponseMatcher,
+} from "./network";
+
 import { runCdpProfile } from "./profile";
 import type { CdpProfileOptions, CdpProfileReport } from "./profile";
 
@@ -25,25 +47,21 @@ export type {
 } from "./profile";
 
 type CdpResponse = {
+  sessionId?: string;
   id?: number;
   result?: unknown;
   error?: { message?: string; data?: string };
 };
 
 type PendingCommand = {
+  sessionId?: string;
   method: string;
   resolve: (value: unknown) => void;
   reject: (error: Error) => void;
-  timeout: ReturnType<typeof setTimeout>;
-};
-
-type CdpCommandOptions = {
-  timeoutMs?: number;
-  timeoutBehavior?: "disconnect" | "reject";
-  timeoutError?: (timeoutMs: number) => Error;
 };
 
 type CdpEvent = {
+  sessionId?: string;
   method: string;
   params?: unknown;
 };
@@ -111,6 +129,12 @@ type LocatorDescriptor = { steps: LocatorStep[] };
 type ByTextOptions = { exact?: boolean };
 type ByRoleOptions = { name?: TextMatcher; exact?: boolean };
 type ActionOptions = { timeout?: number };
+/** Portable file payload. Paths on the caller's host are never inferred. */
+export type CdpFilePayload = {
+  name: string;
+  mimeType?: string;
+  buffer: Uint8Array;
+};
 type SelectOptionMatcher = {
   value?: string;
   label?: string;
@@ -141,6 +165,7 @@ export interface CdpInteractionOutcome {
     | "fill"
     | "clear"
     | "selectOption"
+    | "setInputFiles"
     | "focus"
     | "blur"
     | "selectText"
@@ -211,13 +236,6 @@ type WebSocketCtor = new (
 
 type WorkerClientWebSocket = WebSocket & { accept?: () => void };
 
-const CDP_WEBSOCKET_OPEN_TIMEOUT_MS = 15_000;
-// A browser-side evaluate/locator operation has its own action timeout, but a
-// broken relay/provider must not leave the EvalDO waiting forever. Once this
-// deadline fires the connection is no longer trustworthy: close it so the
-// bridge detaches the relay session and the caller can acquire a fresh page.
-const CDP_COMMAND_TIMEOUT_MS = 60_000;
-
 function runsInFetchUpgradeWorker(): boolean {
   // workerd exposes both WebSocket and WebSocketPair. The former is the
   // server-side WebSocket surface and does not reliably route an outbound
@@ -234,6 +252,7 @@ async function openWebSocket(
   wsEndpoint: string,
   authToken?: string,
   preferFetchUpgrade = false,
+  signal?: AbortSignal,
 ): Promise<{ socket: WorkerClientWebSocket; waitForOpen: boolean }> {
   const ctor = (globalThis as { WebSocket?: WebSocketCtor }).WebSocket;
   if (ctor && !preferFetchUpgrade && !runsInFetchUpgradeWorker()) {
@@ -274,49 +293,27 @@ async function openWebSocket(
     upgradeUrl.searchParams.set("__vibestudio_ws_headers", encoded);
   }
 
-  const controller = new AbortController();
-  let timeout: ReturnType<typeof setTimeout> | undefined;
-  const responsePromise = fetch(upgradeUrl, {
+  const response = (await fetch(upgradeUrl, {
     headers: { Upgrade: "websocket" },
-    signal: controller.signal,
-  }) as Promise<Response & { webSocket?: WorkerClientWebSocket | null }>;
-  try {
-    const deadline = new Promise<never>((_, reject) => {
-      timeout = setTimeout(() => {
-        controller.abort();
-        reject(
-          new Error(
-            `CDP WebSocket upgrade timed out after ${CDP_WEBSOCKET_OPEN_TIMEOUT_MS}ms`,
-          ),
-        );
-      }, CDP_WEBSOCKET_OPEN_TIMEOUT_MS);
-    });
-    const response = await Promise.race([responsePromise, deadline]);
-    const socket = response.webSocket;
-    if (!socket) {
-      throw new Error(
-        `CDP WebSocket upgrade failed with HTTP ${response.status}: response contained no WebSocket`,
-      );
-    }
-    socket.accept?.();
-    return { socket, waitForOpen: false };
-  } finally {
-    if (timeout) clearTimeout(timeout);
-    // Some Worker fetch implementations do not reject promptly when an
-    // Upgrade request is aborted. Keep that eventual rejection handled after
-    // the bounded race has already released the caller.
-    void responsePromise.catch(() => undefined);
-  }
+    signal,
+  })) as Response & { webSocket?: WorkerClientWebSocket | null };
+  const socket = response.webSocket;
+  if (!socket)
+    throw new Error(
+      `CDP WebSocket upgrade failed with HTTP ${response.status}: response contained no WebSocket`,
+    );
+  socket.accept?.();
+  return { socket, waitForOpen: false };
 }
 
 function once(
   ws: WebSocket,
   event: "open" | "message" | "error" | "close",
+  signal?: AbortSignal,
 ): Promise<Event | MessageEvent> {
   return new Promise((resolve, reject) => {
-    let timeout: ReturnType<typeof setTimeout> | undefined;
     const cleanup = () => {
-      if (timeout) clearTimeout(timeout);
+      signal?.removeEventListener("abort", handleAbort);
       ws.removeEventListener(event, handle);
       ws.removeEventListener("error", handleError);
       ws.removeEventListener("close", handleClose);
@@ -327,30 +324,28 @@ function once(
     };
     const handleError = () => {
       cleanup();
-      reject(new Error(`CDP WebSocket ${event} failed`));
+      reject(
+        signal?.aborted
+          ? signal.reason
+          : new Error(`CDP WebSocket ${event} failed`),
+      );
     };
     const handleClose = () => {
       cleanup();
-      reject(new Error(`CDP WebSocket closed before ${event}`));
+      reject(
+        signal?.aborted
+          ? signal.reason
+          : new Error(`CDP WebSocket closed before ${event}`),
+      );
     };
-    if (event === "open") {
-      timeout = setTimeout(() => {
-        cleanup();
-        try {
-          ws.close();
-        } catch {
-          // The socket may already have failed while the timeout fired.
-        }
-        reject(
-          new Error(
-            `CDP WebSocket open timed out after ${CDP_WEBSOCKET_OPEN_TIMEOUT_MS}ms`,
-          ),
-        );
-      }, CDP_WEBSOCKET_OPEN_TIMEOUT_MS);
-    }
+    const handleAbort = () => {
+      ws.close();
+    };
     ws.addEventListener(event, handle);
     if (event !== "error") ws.addEventListener("error", handleError);
     if (event !== "close") ws.addEventListener("close", handleClose);
+    signal?.addEventListener("abort", handleAbort, { once: true });
+    if (signal?.aborted) handleAbort();
   });
 }
 
@@ -426,9 +421,11 @@ function dialogBlocksCommand(method: string): boolean {
 
 export class CdpConnection {
   private nextId = 1;
+  private readonly sessions = new Map<string, CdpSession>();
   private pending = new Map<number, PendingCommand>();
   private eventListeners = new Map<string, Set<(params: unknown) => void>>();
   private closed = false;
+  private readonly disconnectListeners = new Set<(error: Error) => void>();
   private closeError: Error | null = null;
   private activeDialog: {
     dialog: CdpDialog;
@@ -471,7 +468,6 @@ export class CdpConnection {
   ): void {
     for (const [id, command] of this.pending) {
       if (!dialogBlocksCommand(command.method)) continue;
-      clearTimeout(command.timeout);
       this.pending.delete(id);
       command.reject(this.dialogError(command.method, dialog, cause));
     }
@@ -522,7 +518,7 @@ export class CdpConnection {
 
   private constructor(
     private readonly ws: WebSocket,
-    private readonly commandTimeoutMs = CDP_COMMAND_TIMEOUT_MS,
+    private readonly operationSignal?: () => AbortSignal | undefined,
   ) {
     ws.addEventListener("message", (event) => {
       void this.handleMessage((event as MessageEvent).data);
@@ -559,24 +555,30 @@ export class CdpConnection {
     wsEndpoint: string,
     authToken?: string,
     preferFetchUpgrade = false,
-    options: { commandTimeoutMs?: number } = {},
+    options: {
+      signal?: AbortSignal;
+      operationSignal?: () => AbortSignal | undefined;
+    } = {},
   ): Promise<CdpConnection> {
+    options.signal?.throwIfAborted();
     const { socket: ws, waitForOpen } = await openWebSocket(
       wsEndpoint,
       authToken,
       preferFetchUpgrade,
+      options.signal,
     );
-    if (waitForOpen) await once(ws, "open");
-    return new CdpConnection(
-      ws,
-      options.commandTimeoutMs ?? CDP_COMMAND_TIMEOUT_MS,
-    );
+    if (waitForOpen) await once(ws, "open", options.signal);
+    else if (options.signal?.aborted) {
+      ws.close();
+      options.signal.throwIfAborted();
+    }
+    return new CdpConnection(ws, options.operationSignal);
   }
 
   send(
     method: string,
     params?: Record<string, unknown>,
-    options: CdpCommandOptions = {},
+    sessionId?: string,
   ): Promise<unknown> {
     if (this.closed) {
       if (this.closeError instanceof CdpError) {
@@ -600,51 +602,42 @@ export class CdpConnection {
         }),
       );
     }
-    if (this.activeDialog && dialogBlocksCommand(method)) {
+    if (!sessionId && this.activeDialog && dialogBlocksCommand(method)) {
       if (this.activeDialog.response) {
         // No command has been dispatched yet: join the explicit decision before
         // sending new renderer work. Original pending commands are never replayed.
-        return this.activeDialog.response.then(() =>
-          this.send(method, params, options),
-        );
+        return this.activeDialog.response.then(() => this.send(method, params));
       }
       return Promise.reject(this.dialogError(method, this.activeDialog.dialog));
     }
     const id = this.nextId++;
-    const message = params ? { id, method, params } : { id, method };
+    const message = {
+      id,
+      method,
+      ...(params ? { params } : {}),
+      ...(sessionId ? { sessionId } : {}),
+    };
     return new Promise((resolve, reject) => {
-      const timeoutMs = options.timeoutMs ?? this.commandTimeoutMs;
-      const timeout = setTimeout(() => {
-        const error =
-          options.timeoutError?.(timeoutMs) ??
-          new CdpError(
-            `CDP command timed out after ${timeoutMs}ms: ${method}. ` +
-              "The target connection was closed; acquire a fresh page and inspect panel diagnostics.",
-            {
-              code: "cdp_command_timeout",
-              operation: method,
-              failureKind: "infrastructure",
-              recovery: "inspect-panel-and-reacquire-page",
-            },
-          );
-        if (options.timeoutBehavior === "reject") {
-          this.pending.delete(id);
+      let releaseOwner = () => {};
+      this.pending.set(id, {
+        method,
+        sessionId,
+        resolve: (value) => {
+          releaseOwner();
+          resolve(value);
+        },
+        reject: (error) => {
+          releaseOwner();
           reject(error);
-          return;
-        }
-        this.disconnect(error);
-        try {
-          this.ws.close();
-        } catch {
-          // The transport may already be closed.
-        }
-      }, timeoutMs);
-      this.pending.set(id, { method, resolve, reject, timeout });
+        },
+      });
+      releaseOwner = this.bindOperationCancellation();
+      if (this.closed) return;
       try {
         this.ws.send(JSON.stringify(message));
       } catch (error) {
-        clearTimeout(timeout);
         this.pending.delete(id);
+        releaseOwner();
         reject(error);
       }
     });
@@ -675,22 +668,100 @@ export class CdpConnection {
     this.closed = true;
     this.closeError = error;
     for (const pending of this.pending.values()) {
-      clearTimeout(pending.timeout);
       pending.reject(error);
     }
     this.pending.clear();
+    for (const listener of this.disconnectListeners) listener(error);
+    this.disconnectListeners.clear();
     this.eventListeners.clear();
     this.dialogHandlers.clear();
     this.activeDialog = null;
   }
 
-  on(method: string, listener: (params: unknown) => void): () => void {
-    const listeners = this.eventListeners.get(method) ?? new Set();
+  private bindOperationCancellation(): () => void {
+    if (this.closed) return () => {};
+    const signal = this.operationSignal?.();
+    if (!signal) return () => {};
+    const cancel = () => {
+      const reason = signal.reason;
+      this.disconnect(
+        reason instanceof Error
+          ? reason
+          : new Error("CDP operation cancelled", { cause: reason }),
+      );
+      this.ws.close();
+    };
+    if (signal.aborted) {
+      cancel();
+      return () => {};
+    }
+    signal.addEventListener("abort", cancel, { once: true });
+    return () => signal.removeEventListener("abort", cancel);
+  }
+
+  onClosed(listener: (error: Error) => void): () => void {
+    if (this.closeError) listener(this.closeError);
+    else this.disconnectListeners.add(listener);
+    return () => this.disconnectListeners.delete(listener);
+  }
+
+  onDisconnect(listener: (error: Error) => void): () => void {
+    const releaseOwner = this.bindOperationCancellation();
+    if (this.closeError) {
+      releaseOwner();
+      listener(this.closeError);
+    } else this.disconnectListeners.add(listener);
+    return () => {
+      releaseOwner();
+      this.disconnectListeners.delete(listener);
+    };
+  }
+
+  session(id: string): CdpSession {
+    let session = this.sessions.get(id);
+    if (!session) {
+      session = new CdpSession(this, id);
+      this.sessions.set(id, session);
+    }
+    return session;
+  }
+  /** @internal Authoritative child detach settles only commands owned by that child. */
+  detachSession(id: string, error: Error): void {
+    for (const [commandId, command] of this.pending) {
+      if (command.sessionId === id) {
+        this.pending.delete(commandId);
+        command.reject(error);
+      }
+    }
+    this.sessions.get(id)?.disconnect(error);
+  }
+  rejectSessionDialogCommands(
+    sessionId: string,
+    dialog: CdpDialog,
+    cause?: unknown,
+  ): void {
+    for (const [id, command] of this.pending) {
+      if (
+        command.sessionId !== sessionId ||
+        !dialogBlocksCommand(command.method)
+      )
+        continue;
+      this.pending.delete(id);
+      command.reject(this.dialogError(command.method, dialog, cause));
+    }
+  }
+  on(
+    method: string,
+    listener: (params: unknown) => void,
+    sessionId?: string,
+  ): () => void {
+    const key = JSON.stringify([sessionId ?? null, method]);
+    const listeners = this.eventListeners.get(key) ?? new Set();
     listeners.add(listener);
-    this.eventListeners.set(method, listeners);
+    this.eventListeners.set(key, listeners);
     return () => {
       listeners.delete(listener);
-      if (listeners.size === 0) this.eventListeners.delete(method);
+      if (listeners.size === 0) this.eventListeners.delete(key);
     };
   }
 
@@ -698,24 +769,53 @@ export class CdpConnection {
     let parsed: CdpResponse & CdpEvent;
     try {
       parsed = JSON.parse(await messageText(data)) as CdpResponse & CdpEvent;
+      if (
+        !parsed ||
+        typeof parsed !== "object" ||
+        Array.isArray(parsed) ||
+        ("id" in parsed
+          ? !Number.isSafeInteger(parsed.id) ||
+            (!("result" in parsed) && !parsed.error)
+          : typeof parsed.method !== "string")
+      )
+        throw new Error("CDP frame is neither a command response nor an event");
     } catch (err) {
-      // A malformed CDP frame must not abort the handler with an unhandled
-      // rejection — that would silently stop all further dispatch. Drop the bad
-      // frame and keep the connection processing.
-      console.error("[cdp-client] failed to parse CDP frame:", err);
+      this.disconnect(
+        new CdpError("Invalid CDP protocol frame", {
+          code: "cdp_protocol_error",
+          operation: "receive",
+          failureKind: "infrastructure",
+          recovery: "inspect-panel-and-reacquire-page",
+          cause: err,
+        }),
+      );
+      this.ws.close();
       return;
     }
     if (this.closed) return;
     if (typeof parsed.id !== "number") {
-      if (parsed.method === "Page.javascriptDialogOpening") {
+      if (
+        !parsed.sessionId &&
+        parsed.method === "Page.javascriptDialogOpening"
+      ) {
         void this.receiveDialog(parsed.params as CdpDialogData);
-      } else if (parsed.method === "Page.javascriptDialogClosed") {
+      } else if (
+        !parsed.sessionId &&
+        parsed.method === "Page.javascriptDialogClosed"
+      ) {
         this.activeDialog = null;
       }
       if (
         parsed.method === "Inspector.targetCrashed" ||
         parsed.method === "Inspector.detached"
       ) {
+        if (parsed.sessionId) {
+          this.detachSession(
+            parsed.sessionId,
+            new Error(`CDP child target ${parsed.method}`),
+          );
+          return;
+        }
         const crashed = parsed.method === "Inspector.targetCrashed";
         const reason = (parsed.params as { reason?: unknown } | undefined)
           ?.reason;
@@ -735,8 +835,14 @@ export class CdpConnection {
         this.ws.close();
         return;
       }
+      if (parsed.method === "Target.detachedFromTarget") {
+        const id = (parsed.params as { sessionId?: string }).sessionId;
+        if (id) this.detachSession(id, new Error("CDP child target detached"));
+      }
       if (parsed.method) {
-        for (const listener of this.eventListeners.get(parsed.method) ?? []) {
+        for (const listener of this.eventListeners.get(
+          JSON.stringify([parsed.sessionId ?? null, parsed.method]),
+        ) ?? []) {
           listener(parsed.params);
         }
       }
@@ -744,8 +850,14 @@ export class CdpConnection {
     }
     const pending = this.pending.get(parsed.id);
     if (!pending) return;
+    if (pending.sessionId !== parsed.sessionId) {
+      this.disconnect(
+        new Error("CDP response session does not match its command owner"),
+      );
+      this.ws.close();
+      return;
+    }
     this.pending.delete(parsed.id);
-    clearTimeout(pending.timeout);
     if (parsed.error) {
       pending.reject(
         new Error(
@@ -757,6 +869,138 @@ export class CdpConnection {
     pending.resolve(parsed.result);
   }
 }
+
+/** A flattened child session shares transport and cancellation ownership with its panel. */
+export class CdpSession {
+  private error: Error | null = null;
+  private readonly closedListeners = new Set<(error: Error) => void>();
+  private readonly subscriptions: Array<() => void> = [];
+  private activeDialog: {
+    dialog: CdpDialog;
+    response: Promise<void> | null;
+  } | null = null;
+  private readonly dialogHandlers = new Set<DialogHandler>();
+  constructor(
+    private readonly parent: CdpConnection,
+    readonly id: string,
+  ) {
+    this.subscriptions.push(
+      parent.onClosed((error) => this.disconnect(error)),
+      this.on("Page.javascriptDialogOpening", (raw) => {
+        void this.receiveDialog(raw as CdpDialogData);
+      }),
+      this.on("Page.javascriptDialogClosed", () => {
+        this.activeDialog = null;
+      }),
+    );
+  }
+  dialog(): CdpDialog | null {
+    return this.activeDialog?.dialog ?? null;
+  }
+  onDialog(handler: DialogHandler): () => void {
+    this.dialogHandlers.add(handler);
+    return () => this.dialogHandlers.delete(handler);
+  }
+  send(method: string, params?: Record<string, unknown>): Promise<unknown> {
+    if (this.error) return Promise.reject(this.error);
+    if (this.activeDialog?.response && dialogBlocksCommand(method))
+      return this.activeDialog.response.then(() => this.send(method, params));
+    if (this.activeDialog && dialogBlocksCommand(method))
+      return Promise.reject(
+        new CdpError("Browser child dialog requires a response", {
+          code: "cdp_dialog_open",
+          operation: method,
+          recovery: "handle-dialog-and-observe",
+          dialog: this.activeDialog.dialog.data,
+        }),
+      );
+    return this.parent.send(method, params, this.id);
+  }
+  on(method: string, listener: (params: unknown) => void): () => void {
+    const release = this.parent.on(method, listener, this.id);
+    return release;
+  }
+  onClosed(listener: (error: Error) => void): () => void {
+    if (this.error) listener(this.error);
+    else this.closedListeners.add(listener);
+    return () => this.closedListeners.delete(listener);
+  }
+  onDisconnect(listener: (error: Error) => void): () => void {
+    let settled = false;
+    const notify = (error: Error) => {
+      if (!settled) {
+        settled = true;
+        listener(error);
+      }
+    };
+    const releaseParent = this.parent.onDisconnect(notify);
+    const releaseChild = this.onClosed(notify);
+    return () => {
+      releaseParent();
+      releaseChild();
+    };
+  }
+  private async receiveDialog(data: CdpDialogData): Promise<void> {
+    const state: { dialog: CdpDialog; response: Promise<void> | null } = {
+      response: null,
+      dialog: new CdpDialog(
+        Object.freeze({ ...data, defaultPrompt: data.defaultPrompt ?? "" }),
+        (accept, promptText) => {
+          if (this.activeDialog !== state || state.response)
+            return Promise.reject(
+              new CdpError("Browser dialog already answered or closed", {
+                code: "cdp_dialog_closed",
+                operation: "Page.handleJavaScriptDialog",
+                recovery: "handle-dialog-and-observe",
+              }),
+            );
+          state.response = this.send("Page.handleJavaScriptDialog", {
+            accept,
+            ...(promptText === undefined ? {} : { promptText }),
+          }).then(() => {
+            if (this.activeDialog === state) this.activeDialog = null;
+          });
+          return state.response;
+        },
+      ),
+    };
+    this.activeDialog = state;
+    try {
+      await Promise.all(
+        [...this.dialogHandlers].map((handler) => handler(state.dialog)),
+      );
+      await state.response;
+      if (this.activeDialog === state)
+        this.parent.rejectSessionDialogCommands(this.id, state.dialog);
+    } catch (error) {
+      if (this.activeDialog === state)
+        this.parent.rejectSessionDialogCommands(this.id, state.dialog, error);
+    }
+  }
+  session(id: string): CdpSession {
+    return this.parent.session(id);
+  }
+  isClosed(): boolean {
+    return !!this.error || this.parent.isClosed();
+  }
+  close(): void {
+    this.parent.detachSession(
+      this.id,
+      new Error("CDP child session closed by its owner"),
+    );
+  }
+  disconnect(error: Error): void {
+    if (this.error) return;
+    this.error = error;
+    for (const release of this.subscriptions.splice(0)) release();
+    for (const listener of this.closedListeners) listener(error);
+    this.closedListeners.clear();
+    this.dialogHandlers.clear();
+    this.activeDialog = null;
+  }
+}
+
+type CdpChannel = CdpConnection | CdpSession | FrameChannel;
 
 // ---------------------------------------------------------------------------
 // In-page runtime. A single self-contained program injected into the target
@@ -1016,6 +1260,22 @@ async function __nsRun(P){
     case "fill": { var e=await nsWaitForState(d,"visible",t); var target=nsInspectElement(e); if(!("value" in e) && !e.isContentEditable) throw new Error("Element is not fillable"); e.focus&&e.focus(); if(e.isContentEditable) e.textContent=a.value; else nsSetNativeProperty(e,"value",a.value); nsDispatchInput(e,a.value); await nsAfterAction(); return {__nsActionOutcome:true, value:true, target:target}; }
     case "clear": { var e=await nsWaitForState(d,"visible",t); var target=nsInspectElement(e); e.focus&&e.focus(); if(e.isContentEditable) e.textContent=""; else nsSetNativeProperty(e,"value",""); nsDispatchInput(e,""); await nsAfterAction(); return {__nsActionOutcome:true, value:true, target:target}; }
     case "selectOption": { var e=await nsWaitForState(d,"visible",t); var target=nsInspectElement(e); if(!e.tagName || e.tagName.toLowerCase()!=="select") throw new Error("Element is not a select"); var vals=a.values; var picked=[]; for(var i=0;i<e.options.length;i++){ var o=e.options[i]; var hit=vals.some(function(matcher){ return nsSelectOptionMatch(o,matcher,i); }); o.selected=hit; if(hit) picked.push(o.value); } e.dispatchEvent(new Event("input",{bubbles:true})); e.dispatchEvent(new Event("change",{bubbles:true})); await nsAfterAction(); return {__nsActionOutcome:true, value:picked, target:target}; }
+    case "setInputFiles": {
+      var e=await nsWaitForState(d,"attached",t);
+      if(e.tagName!=="INPUT" || e.type!=="file") throw new Error("setInputFiles requires an input of type file");
+      if(e.webkitdirectory) throw new Error("Directory uploads require directory entries, not file payloads");
+      if(!e.multiple && a.files.length>1) throw new Error("File input does not allow multiple files");
+      var target=nsInspectElement(e), transfer=new DataTransfer();
+      for(var f of a.files){
+        var raw=atob(f.base64), bytes=Uint8Array.from(raw,function(c){return c.charCodeAt(0);});
+        transfer.items.add(new File([bytes],f.name,{type:f.mimeType}));
+      }
+      nsSetNativeProperty(e,"files",transfer.files);
+      e.dispatchEvent(new Event("input",{bubbles:true}));
+      e.dispatchEvent(new Event("change",{bubbles:true}));
+      await nsAfterAction();
+      return {__nsActionOutcome:true,value:true,target:target};
+    }
     case "focus": { var e=await nsWaitForState(d,"visible",t); var target=nsInspectElement(e); e.focus&&e.focus(); await nsAfterAction(); return {__nsActionOutcome:true, value:true, target:target}; }
     case "blur": { var e=await nsWaitForState(d,"attached",t); var target=nsInspectElement(e); e.blur&&e.blur(); await nsAfterAction(); return {__nsActionOutcome:true, value:true, target:target}; }
     case "scrollIntoView": { var e=await nsWaitForState(d,"attached",t); var target=nsInspectElement(e); e.scrollIntoView({block:"center",inline:"center"}); await nsAfterAction(); return {__nsActionOutcome:true, value:true, target:target}; }
@@ -1169,7 +1429,7 @@ export interface CdpFailureData {
     | "cdp_target_closed"
     | "cdp_target_crashed"
     | "cdp_target_detached"
-    | "cdp_command_timeout"
+    | "cdp_protocol_error"
     | "cdp_dialog_open"
     | "cdp_dialog_closed"
     | "cdp_evaluation_timeout"
@@ -1330,23 +1590,67 @@ class WorkerCdpPage {
   dialog(): CdpDialog | null {
     return this.connection.dialog();
   }
-  on(event: "dialog", handler: DialogHandler): this {
-    if (event !== "dialog")
-      throw new TypeError(`Unsupported page event: ${event}`);
-    if (!this.dialogSubscriptions.has(handler))
-      this.dialogSubscriptions.set(handler, this.connection.onDialog(handler));
+  readonly frames: FrameRegistry;
+  private readonly network: NetworkObserver;
+  private readonly networkSubscriptions = new Map<
+    Function,
+    Map<CdpNetworkEvent, () => void>
+  >();
+  on(event: "dialog", handler: DialogHandler): this;
+  on<K extends CdpNetworkEvent>(
+    event: K,
+    handler: (value: CdpNetworkEvents[K]) => void,
+  ): this;
+  on(event: "dialog" | CdpNetworkEvent, handler: any): this {
+    if (event === "dialog") {
+      if (!this.dialogSubscriptions.has(handler))
+        this.dialogSubscriptions.set(
+          handler,
+          this.connection.onDialog(handler),
+        );
+    } else {
+      if (
+        !["request", "response", "requestfinished", "requestfailed"].includes(
+          event,
+        )
+      )
+        throw new TypeError(`Unsupported page event: ${event}`);
+      const subscriptions = this.networkSubscriptions.get(handler) ?? new Map();
+      if (!subscriptions.has(event))
+        subscriptions.set(event, this.network.on(event, handler));
+      this.networkSubscriptions.set(handler, subscriptions);
+    }
     return this;
   }
-  off(event: "dialog", handler: DialogHandler): this {
-    if (event !== "dialog")
-      throw new TypeError(`Unsupported page event: ${event}`);
-    this.dialogSubscriptions.get(handler)?.();
-    this.dialogSubscriptions.delete(handler);
+  off(event: "dialog", handler: DialogHandler): this;
+  off<K extends CdpNetworkEvent>(
+    event: K,
+    handler: (value: CdpNetworkEvents[K]) => void,
+  ): this;
+  off(event: "dialog" | CdpNetworkEvent, handler: any): this {
+    if (event === "dialog") {
+      this.dialogSubscriptions.get(handler)?.();
+      this.dialogSubscriptions.delete(handler);
+    } else {
+      const subscriptions = this.networkSubscriptions.get(handler);
+      subscriptions?.get(event)?.();
+      subscriptions?.delete(event);
+      if (!subscriptions?.size) this.networkSubscriptions.delete(handler);
+    }
     return this;
+  }
+  /** Most recent 1000 requests; bodies are fetched only on explicit response.body/text/json calls. */
+  requests() {
+    return this.network.requests();
+  }
+  /** Register before the action; settles on a matching response or authoritative cancellation/disconnect. */
+  waitForResponse(matcher: CdpResponseMatcher) {
+    return this.network.waitForResponse(matcher);
   }
   private currentUrl = "";
+  private mainFrameId: string | undefined;
   private currentViewportSize: CdpViewportSize | null = null;
-  private defaultTimeout = 30_000;
+  private defaultTimeout = Infinity;
   private readonly consoleBuffer: CdpConsoleEvent[] = [];
   private readonly pressedModifiers = new Set<string>();
   private retainedElementSequence = 0;
@@ -1374,10 +1678,29 @@ class WorkerCdpPage {
   };
 
   constructor(
-    readonly connection: CdpConnection,
+    readonly connection: CdpChannel,
     private readonly onInteraction?: (outcome: CdpInteractionOutcome) => void,
     private readonly inspectionIdentity?: CdpInspectionIdentity,
+    frames?: FrameRegistry,
+    private readonly browserOperation?: BrowserOperation,
+    network?: NetworkObserver,
   ) {
+    this.frames = frames ?? new FrameRegistry(connection);
+    this.network = network ?? new NetworkObserver(connection);
+    if (!network)
+      this.frames.onChannel((channel) => {
+        if (channel !== connection) this.network.attach(channel);
+      });
+    // Passive teardown must not retain an invocation's cancellation owner.
+    this.connection.onClosed((error) => {
+      if (!network) this.network.close(error);
+      if (!frames) this.frames.close();
+    });
+    this.connection.on("Page.frameNavigated", (params) => {
+      const frame = (params as { frame?: { id?: string; parentId?: string } })
+        .frame;
+      if (frame && !frame.parentId) this.mainFrameId = frame.id;
+    });
     this.connection.on("Runtime.consoleAPICalled", (params) => {
       const event = params as {
         type?: string;
@@ -1402,7 +1725,13 @@ class WorkerCdpPage {
       this.connection.send("Page.enable"),
       this.connection.send("Runtime.enable"),
       this.connection.send("DOM.enable"),
+      this.connection.send("Network.enable"),
+      this.frames.autoAttach(),
     ]);
+    const frameTree = (await this.connection.send("Page.getFrameTree")) as {
+      frameTree?: { frame?: { id?: string } };
+    };
+    this.mainFrameId = frameTree.frameTree?.frame?.id;
     this.currentUrl = String(
       (await this.evaluateInternal(() => location.href)) ?? "",
     );
@@ -1420,14 +1749,127 @@ class WorkerCdpPage {
     }
   }
 
+  private nativeBrowserOperation(): BrowserOperation {
+    if (!this.browserOperation)
+      throw new Error(
+        "Downloads and popup discovery require a hosted PanelHandle.cdp page",
+      );
+    return async (request) => {
+      const owner = new AbortController();
+      const release = this.connection.onDisconnect((error) =>
+        owner.abort(error),
+      );
+      try {
+        owner.signal.throwIfAborted();
+        return await this.browserOperation!(request, owner.signal);
+      } finally {
+        release();
+      }
+    };
+  }
+  /** Register before the action; returns the canonical child panel ID for panelTree.get(id). */
+  private waitForBrowserActivity<T>(
+    activity: "popup" | "download",
+  ): Promise<T> {
+    this.nativeBrowserOperation();
+    return new Promise((resolve, reject) => {
+      const cleanup: Array<() => void> = [];
+      let settled = false;
+      const finish = (value?: T, error?: Error) => {
+        if (settled) return;
+        settled = true;
+        for (const release of cleanup) release();
+        if (error) reject(error);
+        else resolve(value!);
+      };
+      cleanup.push(
+        this.connection.on(`Vibestudio.${activity}`, (raw) => {
+          const payload = raw as { popup?: T; download?: T; error?: string };
+          if (payload.error) finish(undefined, new Error(payload.error));
+          else finish(payload[activity]);
+        }),
+      );
+      const release = this.connection.onDisconnect((error) =>
+        finish(undefined, error),
+      );
+      if (settled) release();
+      else cleanup.push(release);
+    });
+  }
+  waitForPopup(): Promise<BrowserPopup> {
+    return this.waitForBrowserActivity("popup");
+  }
+  async waitForDownload(): Promise<CdpDownload> {
+    const operation = this.nativeBrowserOperation();
+    return new CdpDownload(
+      await this.waitForBrowserActivity<BrowserDownload>("download"),
+      operation,
+    );
+  }
+  async downloads(): Promise<CdpDownload[]> {
+    const operation = this.nativeBrowserOperation();
+    return (
+      (await operation({ operation: "listDownloads" })) as BrowserDownload[]
+    ).map((record) => new CdpDownload(record, operation));
+  }
+  frameLocator(selector: string): WorkerCdpFrameLocator {
+    return new WorkerCdpFrameLocator(this, {
+      steps: [compileLocatorSelector(selector)],
+    });
+  }
+  /** @internal Resolve the iframe owner in its parent's execution context. */
+  async resolveFrame(
+    descriptor: LocatorDescriptor,
+  ): Promise<{ frameId: string; objectId: string }> {
+    await this.runLocatorOp("waitFor", descriptor, null, { state: "attached" });
+    const result = (await this.connection.send("Runtime.evaluate", {
+      expression: `(function(){${INPAGE} return nsFirst(${JSON.stringify(descriptor)});})()`,
+      returnByValue: false,
+    })) as {
+      result?: { objectId?: string };
+      exceptionDetails?: RuntimeExceptionDetails;
+    };
+    if (result.exceptionDetails)
+      throw new Error(formatRuntimeException(result.exceptionDetails));
+    const objectId = result.result?.objectId;
+    if (!objectId) throw new Error("Frame locator has no attached element");
+    try {
+      const node = (await this.connection.send("DOM.describeNode", {
+        objectId,
+      })) as { node: { nodeName: string; frameId?: string } };
+      if (
+        !node.node.frameId ||
+        !["IFRAME", "FRAME"].includes(node.node.nodeName)
+      )
+        throw new Error("frameLocator requires an iframe or frame element");
+      return { frameId: node.node.frameId, objectId };
+    } catch (error) {
+      await this.connection
+        .send("Runtime.releaseObject", { objectId })
+        .catch(() => undefined);
+      throw error;
+    }
+  }
+  /** @internal */ framePage(descriptor: LocatorDescriptor): WorkerCdpPage {
+    return new WorkerCdpPage(
+      new FrameChannel(this, descriptor),
+      this.onInteraction,
+      this.inspectionIdentity,
+      this.frames,
+      this.browserOperation,
+      this.network,
+    );
+  }
+
   // ---- Navigation -------------------------------------------------------
   async goto(url: string): Promise<unknown> {
-    const settled = this.waitForNavigationSettled(this.defaultTimeout);
-    let result: { frameId?: string; errorText?: string };
+    const settled = this.waitForNavigationSettled();
+    let result: { frameId?: string; errorText?: string; isDownload?: boolean };
     try {
       result = (await this.connection.send("Page.navigate", { url })) as {
         frameId?: string;
         errorText?: string;
+        isDownload?: boolean;
       };
     } catch (error) {
       settled.cancel();
@@ -1436,66 +1878,80 @@ class WorkerCdpPage {
     // Await the navigation settling (main frame stops loading / load event fires) before returning.
     // Without this, `goto` returns the instant Page.navigate is acknowledged, so a follow-up
     // screenshot/evaluate races the in-flight navigation — during a cross-origin swap the page is
-    // momentarily detached and the command fails with "Not attached to an active page". Best-effort:
-    // resolve on timeout rather than throw, so a slow page doesn't hard-fail the call.
-    if (!result.errorText) {
+    // momentarily detached and the command fails with "Not attached to an active page".
+    // Readiness is established by lifecycle events, never by elapsed time.
+    if (result.isDownload) {
+      settled.cancel();
+    } else if (!result.errorText) {
       settled.setFrameId(result.frameId);
       await settled.promise;
     } else {
       settled.cancel();
+      throw new Error(`Page.navigate failed: ${result.errorText}`);
     }
     this.currentUrl = url;
     return result;
   }
 
-  /** Resolve once the page finishes (re)loading after a navigation, or after `timeout` ms. */
-  private waitForNavigationSettled(timeout: number): {
+  /** Join navigation lifecycle; propagate target loss instead of manufacturing readiness. */
+  private waitForNavigationSettled(): {
     promise: Promise<void>;
     setFrameId(frameId: string | undefined): void;
     cancel(): void;
   } {
-    let frameId: string | undefined;
+    let frameId = this.mainFrameId;
     const stoppedFrames = new Set<string>();
     let resolvePromise!: () => void;
-    const promise = new Promise<void>((resolve) => {
+    let rejectPromise!: (error: Error) => void;
+    const promise = new Promise<void>((resolve, reject) => {
       resolvePromise = resolve;
+      rejectPromise = reject;
     });
+    // Navigation command may still be pending when the connection fails.
+    void promise.catch(() => {});
     const cleanups: Array<() => void> = [];
     let finished = false;
-    const finish = (): void => {
+    const finish = (error?: Error): void => {
       if (finished) return;
       finished = true;
       for (const cleanup of cleanups.splice(0)) cleanup();
-      resolvePromise();
+      if (error) rejectPromise(error);
+      else resolvePromise();
     };
     // Install listeners before Page.navigate. Fast navigations can emit their
     // lifecycle event before the navigate response reaches the client.
     cleanups.push(this.connection.on("Page.loadEventFired", () => finish()));
+    const observeFrameCompletion = (params: unknown): void => {
+      const fid = (params as { frameId?: string }).frameId;
+      if (!fid) return;
+      if (frameId) {
+        if (fid === frameId) finish();
+      } else {
+        stoppedFrames.add(fid);
+      }
+    };
     cleanups.push(
-      this.connection.on("Page.frameStoppedLoading", (params) => {
-        const fid = (params as { frameId?: string }).frameId;
-        if (!fid) return;
-        if (frameId) {
-          if (fid === frameId) finish();
-        } else {
-          stoppedFrames.add(fid);
-        }
-      }),
+      this.connection.on("Page.frameStoppedLoading", observeFrameCompletion),
     );
-    const timer = setTimeout(finish, timeout);
-    cleanups.push(() => clearTimeout(timer));
+    cleanups.push(
+      this.connection.on(
+        "Page.navigatedWithinDocument",
+        observeFrameCompletion,
+      ),
+    );
+    cleanups.push(this.connection.onDisconnect((error) => finish(error)));
     return {
       promise,
       setFrameId: (nextFrameId) => {
-        frameId = nextFrameId;
+        frameId = nextFrameId ?? frameId;
         if (frameId && stoppedFrames.has(frameId)) finish();
       },
-      cancel: finish,
+      cancel: () => finish(),
     };
   }
 
   async reload(): Promise<void> {
-    const settled = this.waitForNavigationSettled(this.defaultTimeout);
+    const settled = this.waitForNavigationSettled();
     try {
       await this.connection.send("Page.reload", {});
       await settled.promise;
@@ -1523,7 +1979,7 @@ class WorkerCdpPage {
     };
     const target = history.entries[history.currentIndex + delta];
     if (!target) return;
-    const settled = this.waitForNavigationSettled(this.defaultTimeout);
+    const settled = this.waitForNavigationSettled();
     try {
       await this.connection.send("Page.navigateToHistoryEntry", {
         entryId: target.id,
@@ -1551,9 +2007,11 @@ class WorkerCdpPage {
     );
   }
 
-  /** Set the default timeout (ms) used by auto-waiting actions/reads. Default 30000. */
+  /** Set a caller-selected deadline for actions/reads. By default there is no deadline. */
   setDefaultTimeout(timeoutMs: number): void {
-    this.defaultTimeout = timeoutMs;
+    if (!Number.isFinite(timeoutMs) || timeoutMs < 0)
+      throw new TypeError("Timeout must be a nonnegative finite number");
+    this.defaultTimeout = timeoutMs === 0 ? Infinity : timeoutMs;
   }
 
   /** Emulate a CSS viewport using the canonical CDP device-metrics override. */
@@ -1601,6 +2059,7 @@ class WorkerCdpPage {
       return await runCdpProfile({
         page: this,
         transport: this.connection,
+        networkAlreadyEnabled: true,
         action,
         options,
       });
@@ -1610,11 +2069,11 @@ class WorkerCdpPage {
   }
 
   // ---- Evaluate ---------------------------------------------------------
-  async evaluate(
-    pageFunction: string | ((arg?: unknown) => unknown),
-    arg?: unknown,
+  async evaluate<Result = unknown, Arg = unknown>(
+    pageFunction: string | ((arg: Arg) => Result | Promise<Result>),
+    arg?: Arg,
     options: { timeout?: number; operation?: string } = {},
-  ): Promise<unknown> {
+  ): Promise<Result> {
     const expression =
       typeof pageFunction === "function"
         ? `(${pageFunction.toString()})(${JSON.stringify(arg)})`
@@ -1622,11 +2081,11 @@ class WorkerCdpPage {
     return this.evaluateExpression(
       expression,
       options.operation ?? "Runtime.evaluate",
-      options.timeout ?? this.defaultTimeout,
-    );
+      options.timeout,
+    ) as Promise<Result>;
   }
 
-  /** Internal browser reads retain transport-level timeout classification. */
+  /** Internal browser reads settle through the owning CDP response or lifecycle. */
   private async evaluateInternal(
     pageFunction: string | ((arg?: unknown) => unknown),
     arg?: unknown,
@@ -1643,31 +2102,12 @@ class WorkerCdpPage {
     operation: string,
     timeout?: number,
   ): Promise<unknown> {
-    const result = (await this.connection.send(
-      "Runtime.evaluate",
-      {
-        expression,
-        awaitPromise: true,
-        returnByValue: true,
-      },
-      timeout === undefined
-        ? {}
-        : {
-            timeoutMs: timeout,
-            timeoutBehavior: "reject",
-            timeoutError: (timeoutMs) =>
-              new CdpError(
-                `Browser evaluation timed out after ${timeoutMs}ms during ${operation}.`,
-                {
-                  code: "cdp_evaluation_timeout",
-                  operation,
-                  failureKind: "user-code",
-                  recovery: "reobserve-locator",
-                  timeoutMs,
-                },
-              ),
-          },
-    )) as {
+    const result = (await this.connection.send("Runtime.evaluate", {
+      expression,
+      awaitPromise: true,
+      returnByValue: true,
+      ...(timeout === undefined ? {} : { timeout }),
+    })) as {
       result?: { value?: unknown };
       exceptionDetails?: RuntimeExceptionDetails;
     };
@@ -1690,7 +2130,7 @@ class WorkerCdpPage {
       const observation = (await this.evaluate(
         `(async function(P){ ${INPAGE}\n return await __nsRun(P); })(${JSON.stringify({ op: "failureEvidence", descriptor })})`,
         undefined,
-        { timeout: 1_000, operation: "locator.failureEvidence" },
+        { operation: "locator.failureEvidence" },
       )) as Omit<
         Extract<CdpLocatorEvidence, { status: "captured" }>,
         "status" | "session"
@@ -1730,13 +2170,12 @@ class WorkerCdpPage {
       state: opts.state ?? null,
     };
     try {
-      const deadline = Date.now() + timeout;
+      const deadline = timeout === 0 ? Infinity : Date.now() + timeout;
       for (;;) {
         const expr = `(async function(P){ ${INPAGE}\n return await __nsRun(P); })(${JSON.stringify(
           payload,
         )})`;
         const result = await this.evaluate(expr, undefined, {
-          timeout: timeout + 1_000,
           operation: `locator.${op}`,
         });
         if (
@@ -1773,6 +2212,7 @@ class WorkerCdpPage {
               "fill",
               "clear",
               "selectOption",
+              "setInputFiles",
               "focus",
               "blur",
               "scrollIntoView",
@@ -1822,9 +2262,7 @@ class WorkerCdpPage {
         // can prevent Chromium from delivering a preceding CDP Input event to
         // the renderer, making the click's effect appear only after the wait
         // itself times out.
-        await new Promise((resolve) =>
-          setTimeout(resolve, Math.min(50, remaining)),
-        );
+        await this.pauseObservation(Math.min(50, remaining));
       }
     } catch (err) {
       const where = describeLocator(descriptor);
@@ -1969,51 +2407,59 @@ class WorkerCdpPage {
         : pageFunction;
     const isFunction = typeof pageFunction === "function";
 
-    return this.evaluate(
-      `(async function(source, isFunction, arg, timeout, polling) {
-        const deadline = Date.now() + timeout;
-        const predicateOrValue = isFunction
-          ? (0, eval)(source)
-          : new Function("arg", "return (" + source + ")");
-        while (Date.now() <= deadline) {
-          let value = await (
-            typeof predicateOrValue === "function" ? predicateOrValue(arg) : predicateOrValue
-          );
-          if (typeof value === "function") value = await value(arg);
-          if (value) return value === true ? true : value;
-          await new Promise(resolve => setTimeout(resolve, polling));
-        }
-        throw new Error("Timeout " + timeout + "ms exceeded waiting for function");
-      })(${JSON.stringify(source)}, ${JSON.stringify(isFunction)}, ${JSON.stringify(
-        actualArg,
-      )}, ${JSON.stringify(timeout)}, ${JSON.stringify(polling)})`,
-      undefined,
-      { timeout: timeout + 1_000, operation: "waitForFunction" },
-    );
+    const expression = `(async function(source, isFunction, arg) {
+      const predicate = isFunction ? (0, eval)(source) : new Function("arg", "return (" + source + ")");
+      let value = await (typeof predicate === "function" ? predicate(arg) : predicate);
+      if (typeof value === "function") value = await value(arg);
+      return value;
+    })(${JSON.stringify(source)}, ${JSON.stringify(isFunction)}, ${JSON.stringify(actualArg)})`;
+    const deadline = timeout === 0 ? Infinity : Date.now() + timeout;
+    for (;;) {
+      const budget = deadline - Date.now();
+      const value = await this.evaluate(expression, undefined, {
+        operation: "waitForFunction",
+        ...(Number.isFinite(budget) ? { timeout: Math.max(1, budget) } : {}),
+      });
+      if (value) return value;
+      const remaining = deadline - Date.now();
+      if (remaining <= 0)
+        throw new Error(`Timeout ${timeout}ms exceeded waiting for function`);
+      await this.pauseObservation(Math.min(polling, remaining));
+    }
   }
 
   async waitForLoadState(
     state: "load" | "domcontentloaded" | "networkidle" = "load",
     options: { timeout?: number } = {},
   ): Promise<void> {
-    const timeout = options.timeout ?? this.defaultTimeout;
-    await this.evaluate(
-      `(async function(state, timeout) {
-        const deadline = Date.now() + timeout;
-        function reached() {
-          const ready = document.readyState;
-          if (state === "domcontentloaded") return ready === "interactive" || ready === "complete";
-          return ready === "complete";
-        }
-        while (Date.now() <= deadline) {
-          if (reached()) return true;
-          await new Promise(resolve => setTimeout(resolve, 50));
-        }
-        throw new Error("Timeout " + timeout + "ms exceeded waiting for load state " + state);
-      })(${JSON.stringify(state)}, ${JSON.stringify(timeout)})`,
-      undefined,
-      { timeout: timeout + 1_000, operation: "waitForLoadState" },
+    if (state === "networkidle")
+      throw new TypeError(
+        "networkidle is not supported; observe the application's readiness condition explicitly",
+      );
+    await this.waitForFunction(
+      (requested) =>
+        requested === "domcontentloaded"
+          ? document.readyState === "interactive" ||
+            document.readyState === "complete"
+          : document.readyState === "complete",
+      state,
+      options,
     );
+  }
+
+  /** Scheduling interval, not a deadline; target loss cancels the pending timer. */
+  private pauseObservation(interval: number): Promise<void> {
+    return new Promise((resolve, reject) => {
+      let unsubscribe = () => {};
+      const timer = setTimeout(() => {
+        unsubscribe();
+        resolve();
+      }, interval);
+      unsubscribe = this.connection.onDisconnect((error) => {
+        clearTimeout(timer);
+        reject(error);
+      });
+    });
   }
 
   async waitForSelector(
@@ -2042,7 +2488,7 @@ class WorkerCdpPage {
       reason?: string;
       box?: BoundingBox;
     };
-    const deadline = Date.now() + timeout;
+    const deadline = timeout === 0 ? Infinity : Date.now() + timeout;
     let previousBox: BoundingBox | undefined;
     let probe: ActionabilityProbe = { ok: false, reason: "not found" };
     for (;;) {
@@ -2073,9 +2519,7 @@ class WorkerCdpPage {
       if (remaining <= 0) break;
       // Keep Runtime.evaluate one-shot. Renderer input and framework work can
       // run while the worker waits between actionability observations.
-      await new Promise((resolve) =>
-        setTimeout(resolve, Math.min(30, remaining)),
-      );
+      await this.pauseObservation(Math.min(30, remaining));
     }
 
     const where = describeLocator(descriptor);
@@ -2541,6 +2985,10 @@ class WorkerCdpLocator {
     return describeLocator(this.descriptor);
   }
 
+  contentFrame(): WorkerCdpFrameLocator {
+    return new WorkerCdpFrameLocator(this.page, this.descriptor);
+  }
+
   // ---- Scoped sub-locators / chaining -----------------------------------
   locator(selector: string): WorkerCdpLocator {
     return this.extend(compileLocatorSelector(selector));
@@ -2638,6 +3086,40 @@ class WorkerCdpLocator {
   }
   async fill(value: string, opts: ActionOptions = {}): Promise<void> {
     await this.page.runLocatorOp("fill", this.descriptor, { value }, opts);
+  }
+  async setInputFiles(
+    files: CdpFilePayload | CdpFilePayload[],
+    opts: ActionOptions = {},
+  ): Promise<void> {
+    const payload = (Array.isArray(files) ? files : [files]).map((file) => {
+      if (
+        !file ||
+        typeof file.name !== "string" ||
+        !file.name ||
+        (file.mimeType !== undefined && typeof file.mimeType !== "string") ||
+        !ArrayBuffer.isView(file.buffer) ||
+        Object.prototype.toString.call(file.buffer) !== "[object Uint8Array]"
+      )
+        throw new TypeError(
+          "setInputFiles expects {name, mimeType?, buffer: Uint8Array} payloads",
+        );
+      let binary = "";
+      for (let offset = 0; offset < file.buffer.byteLength; offset += 8192)
+        binary += String.fromCharCode(
+          ...file.buffer.subarray(offset, offset + 8192),
+        );
+      return {
+        name: file.name,
+        mimeType: file.mimeType ?? "",
+        base64: btoa(binary),
+      };
+    });
+    await this.page.runLocatorOp(
+      "setInputFiles",
+      this.descriptor,
+      { files: payload },
+      opts,
+    );
   }
   async type(text: string, opts: ActionOptions = {}): Promise<void> {
     const current = (await this.page.runLocatorOp(
@@ -2879,6 +3361,179 @@ class WorkerCdpLocator {
   }
 }
 
+/** Frame locators are lazy: every operation resolves the current iframe and document generation. */
+export class WorkerCdpFrameLocator {
+  private readonly page: WorkerCdpPage;
+  constructor(parent: WorkerCdpPage, descriptor: LocatorDescriptor) {
+    this.page = parent.framePage(descriptor);
+  }
+  locator(selector: string) {
+    return this.page.locator(selector);
+  }
+  getByRole(role: string, options: ByRoleOptions = {}) {
+    return this.page.getByRole(role, options);
+  }
+  getByText(text: TextMatcher, options: ByTextOptions = {}) {
+    return this.page.getByText(text, options);
+  }
+  getByLabel(text: TextMatcher, options: ByTextOptions = {}) {
+    return this.page.getByLabel(text, options);
+  }
+  getByPlaceholder(text: TextMatcher, options: ByTextOptions = {}) {
+    return this.page.getByPlaceholder(text, options);
+  }
+  getByTestId(id: string) {
+    return this.page.getByTestId(id);
+  }
+  getByAltText(text: TextMatcher, options: ByTextOptions = {}) {
+    return this.page.getByAltText(text, options);
+  }
+  getByTitle(text: TextMatcher, options: ByTextOptions = {}) {
+    return this.page.getByTitle(text, options);
+  }
+  frameLocator(selector: string) {
+    return this.page.frameLocator(selector);
+  }
+  evaluate<Result, Arg = unknown>(
+    fn: string | ((arg: Arg) => Result | Promise<Result>),
+    arg?: Arg,
+  ): Promise<Result> {
+    return this.page.evaluate(fn, arg);
+  }
+}
+
+/** Route DOM work to the frame's current world and input through its owning parent viewport. */
+class FrameChannel implements FrameTransport {
+  constructor(
+    private readonly parent: WorkerCdpPage,
+    private readonly descriptor: LocatorDescriptor,
+  ) {}
+  session(id: string): CdpSession {
+    return this.parent.connection.session(id);
+  }
+  dialog(): CdpDialog | null {
+    return this.parent.connection.dialog();
+  }
+  onDialog(handler: DialogHandler): () => void {
+    return this.parent.connection.onDialog(handler);
+  }
+  on(method: string, listener: (params: unknown) => void): () => void {
+    return this.parent.connection.on(method, listener);
+  }
+  onClosed(listener: (error: Error) => void): () => void {
+    return this.parent.connection.onClosed(listener);
+  }
+  onDisconnect(listener: (error: Error) => void): () => void {
+    return this.parent.connection.onDisconnect(listener);
+  }
+  isClosed(): boolean {
+    return this.parent.connection.isClosed();
+  }
+  close(): void {
+    /* A lazy frame view owns no independent target or transport. */
+  }
+  private async protocolChannel(): Promise<FrameTransport> {
+    const frame = await this.parent.resolveFrame(this.descriptor);
+    try {
+      return (await this.parent.frames.resolve(frame.frameId)).channel;
+    } finally {
+      await this.parent.connection
+        .send("Runtime.releaseObject", { objectId: frame.objectId })
+        .catch(() => undefined);
+    }
+  }
+  /** Box-model quads are relative to the native target's root, not to every nested frame. */
+  private async forwardTargetPointer(
+    source: FrameTransport,
+    params: Record<string, unknown>,
+  ): Promise<unknown> {
+    const targetRoot = this.parent.frames.targetFrame(source);
+    if (!targetRoot) return source.send("Input.dispatchMouseEvent", params);
+    const frame = await this.parent.resolveFrame(this.descriptor);
+    try {
+      if (frame.frameId === targetRoot)
+        return this.dispatchPointer(frame, source, params);
+      if (this.parent.connection instanceof FrameChannel)
+        return this.parent.connection.forwardTargetPointer(source, params);
+      throw new Error("Input target is outside the locator's frame ancestry");
+    } finally {
+      await this.parent.connection
+        .send("Runtime.releaseObject", { objectId: frame.objectId })
+        .catch(() => undefined);
+    }
+  }
+  private async dispatchPointer(
+    frame: { frameId: string; objectId: string },
+    channel: FrameTransport,
+    params: Record<string, unknown>,
+  ): Promise<unknown> {
+    const model = (await this.parent.connection.send("DOM.getBoxModel", {
+      objectId: frame.objectId,
+    })) as { model: { content: number[] } };
+    const context = await this.parent.frames.resolve(frame.frameId);
+    const viewport = (await channel.send("Runtime.evaluate", {
+      expression: "({width: innerWidth, height: innerHeight})",
+      contextId: context.contextId,
+      returnByValue: true,
+    })) as { result: { value: { width: number; height: number } } };
+    const { width, height } = viewport.result.value,
+      q = model.model.content;
+    const u = Number(params["x"]) / width,
+      v = Number(params["y"]) / height;
+    // Project the unit rectangle onto Chromium's content quad, including CSS perspective.
+    const dx1 = q[2]! - q[4]!,
+      dx2 = q[6]! - q[4]!;
+    const dy1 = q[3]! - q[5]!,
+      dy2 = q[7]! - q[5]!;
+    const sx = q[0]! - q[2]! + q[4]! - q[6]!,
+      sy = q[1]! - q[3]! + q[5]! - q[7]!;
+    const determinant = dx1 * dy2 - dx2 * dy1;
+    const g = sx === 0 && sy === 0 ? 0 : (sx * dy2 - dx2 * sy) / determinant;
+    const h = sx === 0 && sy === 0 ? 0 : (dx1 * sy - sx * dy1) / determinant;
+    const divisor = g * u + h * v + 1;
+    const x =
+      ((q[2]! - q[0]! + g * q[2]!) * u +
+        (q[6]! - q[0]! + h * q[6]!) * v +
+        q[0]!) /
+      divisor;
+    const y =
+      ((q[3]! - q[1]! + g * q[3]!) * u +
+        (q[7]! - q[1]! + h * q[7]!) * v +
+        q[1]!) /
+      divisor;
+    if (!Number.isFinite(x) || !Number.isFinite(y))
+      throw new Error("Frame content quad is degenerate");
+    const parentChannel = this.parent.connection;
+    if (parentChannel instanceof FrameChannel)
+      return parentChannel.forwardTargetPointer(
+        await parentChannel.protocolChannel(),
+        { ...params, x, y },
+      );
+    return parentChannel.send("Input.dispatchMouseEvent", { ...params, x, y });
+  }
+  async send(
+    method: string,
+    params?: Record<string, unknown>,
+  ): Promise<unknown> {
+    const frame = await this.parent.resolveFrame(this.descriptor);
+    try {
+      const context = await this.parent.frames.resolve(frame.frameId);
+      if (method === "Runtime.evaluate")
+        return context.channel.send(method, {
+          ...params,
+          contextId: context.contextId,
+        });
+      if (method === "Input.dispatchMouseEvent")
+        return this.dispatchPointer(frame, context.channel, params!);
+      return context.channel.send(method, params);
+    } finally {
+      await this.parent.connection
+        .send("Runtime.releaseObject", { objectId: frame.objectId })
+        .catch(() => undefined);
+    }
+  }
+}
+
 class WorkerCdpElementHandle extends WorkerCdpLocator {}
 
 class WorkerBrowser {
@@ -2903,19 +3558,25 @@ export const BrowserImpl = {
       transportOptions?: { authToken?: string };
       /** Hosted EvalDO runtimes must use the egress-aware fetch upgrade. */
       preferFetchUpgrade?: boolean;
-      /** Override the protocol safety deadline for diagnostics/tests. */
-      commandTimeoutMs?: number;
+      /** Cancels connection acquisition; the connected browser owns its lifetime. */
+      signal?: AbortSignal;
+      /** Current invocation owner, resolved anew for retained page handles. */
+      operationSignal?: () => AbortSignal | undefined;
       /** Observe completed input outcomes independently of caller return projections. */
       onInteraction?: (outcome: CdpInteractionOutcome) => void;
       /** Immutable provenance supplied by a generation-fenced panel session. */
       inspectionIdentity?: CdpInspectionIdentity;
+      browserOperation?: BrowserOperation;
     } = {},
   ): Promise<WorkerBrowser> {
     const connection = await CdpConnection.connect(
       wsEndpoint,
       options.transportOptions?.authToken,
       options.preferFetchUpgrade,
-      { commandTimeoutMs: options.commandTimeoutMs },
+      {
+        signal: options.signal ?? options.operationSignal?.(),
+        operationSignal: options.operationSignal,
+      },
     );
     const page = new WorkerCdpPage(
       connection,
@@ -2923,6 +3584,8 @@ export const BrowserImpl = {
       options.inspectionIdentity
         ? Object.freeze({ ...options.inspectionIdentity })
         : undefined,
+      undefined,
+      options.browserOperation,
     );
     try {
       await page.initialize();

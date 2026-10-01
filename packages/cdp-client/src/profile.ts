@@ -5,7 +5,10 @@ type ProtocolTransport = {
 
 type ProfilePage = {
   url(): string;
-  evaluate(pageFunction: string | ((arg?: unknown) => unknown), arg?: unknown): Promise<unknown>;
+  evaluate(
+    pageFunction: string | ((arg?: unknown) => unknown),
+    arg?: unknown,
+  ): Promise<unknown>;
 };
 
 export interface CdpProfileOptions {
@@ -157,7 +160,9 @@ function safeUrl(raw: string): string {
   }
 }
 
-async function readMetrics(transport: ProtocolTransport): Promise<MetricSnapshot> {
+async function readMetrics(
+  transport: ProtocolTransport,
+): Promise<MetricSnapshot> {
   const response = (await transport.send("Performance.getMetrics")) as {
     metrics?: Array<{ name?: string; value?: number }>;
   };
@@ -167,9 +172,9 @@ async function readMetrics(transport: ProtocolTransport): Promise<MetricSnapshot
         (metric): metric is { name: string; value: number } =>
           typeof metric.name === "string" &&
           typeof metric.value === "number" &&
-          Number.isFinite(metric.value)
+          Number.isFinite(metric.value),
       )
-      .map((metric) => [metric.name, metric.value])
+      .map((metric) => [metric.name, metric.value]),
   );
 }
 
@@ -177,20 +182,34 @@ function metric(snapshot: MetricSnapshot, name: string): number {
   return snapshot.get(name) ?? 0;
 }
 
-function metricDelta(before: MetricSnapshot, after: MetricSnapshot, name: string): number {
+function metricDelta(
+  before: MetricSnapshot,
+  after: MetricSnapshot,
+  name: string,
+): number {
   return Math.max(0, metric(after, name) - metric(before, name));
 }
 
-function runtimeMetrics(before: MetricSnapshot, after: MetricSnapshot): CdpProfileRuntimeMetrics {
+function runtimeMetrics(
+  before: MetricSnapshot,
+  after: MetricSnapshot,
+): CdpProfileRuntimeMetrics {
   return {
     taskDurationMs: rounded(metricDelta(before, after, "TaskDuration") * 1_000),
-    scriptDurationMs: rounded(metricDelta(before, after, "ScriptDuration") * 1_000),
-    layoutDurationMs: rounded(metricDelta(before, after, "LayoutDuration") * 1_000),
-    styleRecalcDurationMs: rounded(metricDelta(before, after, "RecalcStyleDuration") * 1_000),
+    scriptDurationMs: rounded(
+      metricDelta(before, after, "ScriptDuration") * 1_000,
+    ),
+    layoutDurationMs: rounded(
+      metricDelta(before, after, "LayoutDuration") * 1_000,
+    ),
+    styleRecalcDurationMs: rounded(
+      metricDelta(before, after, "RecalcStyleDuration") * 1_000,
+    ),
     layoutCount: metricDelta(before, after, "LayoutCount"),
     styleRecalcCount: metricDelta(before, after, "RecalcStyleCount"),
     jsHeapUsedBytes: metric(after, "JSHeapUsedSize"),
-    jsHeapDeltaBytes: metric(after, "JSHeapUsedSize") - metric(before, "JSHeapUsedSize"),
+    jsHeapDeltaBytes:
+      metric(after, "JSHeapUsedSize") - metric(before, "JSHeapUsedSize"),
     nodes: metric(after, "Nodes"),
     documents: metric(after, "Documents"),
   };
@@ -207,19 +226,26 @@ async function readPageBaseline(page: ProfilePage): Promise<PageBaseline> {
   };
 }
 
-async function readPageSnapshot(page: ProfilePage, baseline: PageBaseline): Promise<PageSnapshot> {
+async function readPageSnapshot(
+  page: ProfilePage,
+  baseline: PageBaseline,
+): Promise<PageSnapshot> {
   const result = await page.evaluate(async (value?: unknown) => {
     // Marker used by protocol fakes and diagnostics to identify this bounded read.
     const __vibestudioProfileSnapshot = true;
     void __vibestudioProfileSnapshot;
     const start = value as { timeOrigin: number; now: number };
     const number = (candidate: unknown): number =>
-      typeof candidate === "number" && Number.isFinite(candidate) ? candidate : 0;
+      typeof candidate === "number" && Number.isFinite(candidate)
+        ? candidate
+        : 0;
     const sameDocument = performance.timeOrigin === start.timeOrigin;
     const cutoff = sameDocument ? start.now : 0;
     const afterCutoff = (entry: PerformanceEntry) => entry.startTime >= cutoff;
 
-    const buffered = async (type: string): Promise<Array<Record<string, unknown>>> => {
+    const buffered = async (
+      type: string,
+    ): Promise<Array<Record<string, unknown>>> => {
       if (typeof PerformanceObserver !== "function") return [];
       return await new Promise((resolve) => {
         const entries: Array<Record<string, unknown>> = [];
@@ -272,32 +298,44 @@ async function readPageSnapshot(page: ProfilePage, baseline: PageBaseline): Prom
       });
     };
 
-    const [largestPaint, layoutShifts, interactions, longTasks] = await Promise.all([
-      buffered("largest-contentful-paint"),
-      buffered("layout-shift"),
-      buffered("event"),
-      buffered("longtask"),
-    ]);
+    const [largestPaint, layoutShifts, interactions, longTasks] =
+      await Promise.all([
+        buffered("largest-contentful-paint"),
+        buffered("layout-shift"),
+        buffered("event"),
+        buffered("longtask"),
+      ]);
     const resources = performance
       .getEntriesByType("resource")
       .filter(afterCutoff) as PerformanceResourceTiming[];
-    const paints = performance.getEntriesByName("first-contentful-paint").filter(afterCutoff);
+    const paints = performance
+      .getEntriesByName("first-contentful-paint")
+      .filter(afterCutoff);
     const paint = paints[paints.length - 1];
     const navigations = performance.getEntriesByType("navigation");
     const navigation = !sameDocument
-      ? (navigations[navigations.length - 1] as PerformanceNavigationTiming | undefined)
+      ? (navigations[navigations.length - 1] as
+          | PerformanceNavigationTiming
+          | undefined)
       : undefined;
-    const shifts = layoutShifts.filter((entry) => entry["hadRecentInput"] !== true);
+    const shifts = layoutShifts.filter(
+      (entry) => entry["hadRecentInput"] !== true,
+    );
     const interactionDurations = interactions
       .filter((entry) => number(entry["interactionId"]) > 0)
       .map((entry) => number(entry["duration"]));
-    const longTaskDurations = longTasks.map((entry) => number(entry["duration"]));
+    const longTaskDurations = longTasks.map((entry) =>
+      number(entry["duration"]),
+    );
 
     return {
       ...(navigation
         ? {
             navigation: {
-              ttfbMs: Math.max(0, navigation.responseStart - navigation.requestStart),
+              ttfbMs: Math.max(
+                0,
+                navigation.responseStart - navigation.requestStart,
+              ),
               responseStartMs: navigation.responseStart,
               domContentLoadedMs: navigation.domContentLoadedEventEnd,
               loadMs: navigation.loadEventEnd,
@@ -308,27 +346,35 @@ async function readPageSnapshot(page: ProfilePage, baseline: PageBaseline): Prom
       ...(largestPaint.length
         ? {
             largestContentfulPaintMs: Math.max(
-              ...largestPaint.map((entry) => number(entry["startTime"]))
+              ...largestPaint.map((entry) => number(entry["startTime"])),
             ),
           }
         : {}),
-      cumulativeLayoutShift: shifts.reduce((sum, entry) => sum + number(entry["value"]), 0),
+      cumulativeLayoutShift: shifts.reduce(
+        (sum, entry) => sum + number(entry["value"]),
+        0,
+      ),
       layoutShiftCount: shifts.length,
       ...(interactionDurations.length
         ? { interactionLatencyMs: Math.max(...interactionDurations) }
         : {}),
       longTasks: {
         count: longTaskDurations.length,
-        totalDurationMs: longTaskDurations.reduce((sum, duration) => sum + duration, 0),
-        maxDurationMs: longTaskDurations.length ? Math.max(...longTaskDurations) : 0,
+        totalDurationMs: longTaskDurations.reduce(
+          (sum, duration) => sum + duration,
+          0,
+        ),
+        maxDurationMs: longTaskDurations.length
+          ? Math.max(...longTaskDurations)
+          : 0,
       },
       resourceEncodedBytes: resources.reduce(
         (sum, resource) => sum + number(resource.encodedBodySize),
-        0
+        0,
       ),
       resourceDecodedBytes: resources.reduce(
         (sum, resource) => sum + number(resource.decodedBodySize),
-        0
+        0,
       ),
     };
   }, baseline);
@@ -394,7 +440,11 @@ function createNetworkCapture(transport: ProtocolTransport): {
         timestamp?: number;
         type?: string;
         request?: { url?: string; method?: string };
-        redirectResponse?: { status?: number; mimeType?: string; encodedDataLength?: number };
+        redirectResponse?: {
+          status?: number;
+          mimeType?: string;
+          encodedDataLength?: number;
+        };
       };
       if (!event.requestId) return;
       const priorKey = current.get(event.requestId);
@@ -403,7 +453,9 @@ function createNetworkCapture(transport: ProtocolTransport): {
         if (prior) {
           prior.status = finite(event.redirectResponse.status);
           prior.mimeType = event.redirectResponse.mimeType;
-          prior.transferBytes = finite(event.redirectResponse.encodedDataLength);
+          prior.transferBytes = finite(
+            event.redirectResponse.encodedDataLength,
+          );
           prior.completedAt = event.timestamp;
         }
       }
@@ -420,7 +472,7 @@ function createNetworkCapture(transport: ProtocolTransport): {
         fromCache: false,
         startedAt: event.timestamp,
       });
-    })
+    }),
   );
   cleanups.push(
     transport.on("Network.responseReceived", (raw) => {
@@ -441,9 +493,11 @@ function createNetworkCapture(transport: ProtocolTransport): {
       record.status = finite(event.response?.status);
       record.mimeType = event.response?.mimeType;
       record.fromCache = Boolean(
-        record.fromCache || event.response?.fromDiskCache || event.response?.fromServiceWorker
+        record.fromCache ||
+        event.response?.fromDiskCache ||
+        event.response?.fromServiceWorker,
       );
-    })
+    }),
   );
   cleanups.push(
     transport.on("Network.requestServedFromCache", (raw) => {
@@ -451,27 +505,35 @@ function createNetworkCapture(transport: ProtocolTransport): {
       if (!event.requestId) return;
       const record = records.get(current.get(event.requestId) ?? "");
       if (record) record.fromCache = true;
-    })
+    }),
   );
   cleanups.push(
     transport.on("Network.loadingFinished", (raw) => {
-      const event = raw as { requestId?: string; timestamp?: number; encodedDataLength?: number };
+      const event = raw as {
+        requestId?: string;
+        timestamp?: number;
+        encodedDataLength?: number;
+      };
       if (!event.requestId) return;
       const record = records.get(current.get(event.requestId) ?? "");
       if (!record) return;
       record.completedAt = event.timestamp;
       record.transferBytes = finite(event.encodedDataLength);
-    })
+    }),
   );
   cleanups.push(
     transport.on("Network.loadingFailed", (raw) => {
-      const event = raw as { requestId?: string; timestamp?: number; errorText?: string };
+      const event = raw as {
+        requestId?: string;
+        timestamp?: number;
+        errorText?: string;
+      };
       if (!event.requestId) return;
       const record = records.get(current.get(event.requestId) ?? "");
       if (!record) return;
       record.completedAt = event.timestamp;
       record.failedReason = event.errorText ?? "Network request failed";
-    })
+    }),
   );
 
   return {
@@ -485,28 +547,35 @@ function createNetworkCapture(transport: ProtocolTransport): {
 function networkMetrics(
   records: Map<string, NetworkRecord>,
   page: PageSnapshot,
-  maxRecords: number
+  maxRecords: number,
 ): CdpProfileNetworkMetrics {
-  const requests = [...records.values()].map((record): CdpProfileNetworkRequest => {
-    const durationMs =
-      record.startedAt !== undefined && record.completedAt !== undefined
-        ? Math.max(0, (record.completedAt - record.startedAt) * 1_000)
-        : undefined;
-    return {
-      url: record.url,
-      method: record.method,
-      type: record.type,
-      ...(record.status !== undefined ? { status: record.status } : {}),
-      ...(record.mimeType ? { mimeType: record.mimeType } : {}),
-      ...(durationMs !== undefined ? { durationMs: rounded(durationMs) } : {}),
-      transferBytes: record.transferBytes,
-      fromCache: record.fromCache,
-      ...(record.failedReason ? { failedReason: record.failedReason } : {}),
-    };
-  });
+  const requests = [...records.values()].map(
+    (record): CdpProfileNetworkRequest => {
+      const durationMs =
+        record.startedAt !== undefined && record.completedAt !== undefined
+          ? Math.max(0, (record.completedAt - record.startedAt) * 1_000)
+          : undefined;
+      return {
+        url: record.url,
+        method: record.method,
+        type: record.type,
+        ...(record.status !== undefined ? { status: record.status } : {}),
+        ...(record.mimeType ? { mimeType: record.mimeType } : {}),
+        ...(durationMs !== undefined
+          ? { durationMs: rounded(durationMs) }
+          : {}),
+        transferBytes: record.transferBytes,
+        fromCache: record.fromCache,
+        ...(record.failedReason ? { failedReason: record.failedReason } : {}),
+      };
+    },
+  );
   const byType: CdpProfileNetworkMetrics["byType"] = {};
   for (const request of requests) {
-    const aggregate = byType[request.type] ?? { requestCount: 0, transferBytes: 0 };
+    const aggregate = byType[request.type] ?? {
+      requestCount: 0,
+      transferBytes: 0,
+    };
     aggregate.requestCount += 1;
     aggregate.transferBytes += request.transferBytes;
     byType[request.type] = aggregate;
@@ -515,7 +584,10 @@ function networkMetrics(
     requestCount: requests.length,
     failedCount: requests.filter((request) => request.failedReason).length,
     cacheHits: requests.filter((request) => request.fromCache).length,
-    transferBytes: requests.reduce((sum, request) => sum + request.transferBytes, 0),
+    transferBytes: requests.reduce(
+      (sum, request) => sum + request.transferBytes,
+      0,
+    ),
     resourceEncodedBytes: page.resourceEncodedBytes,
     resourceDecodedBytes: page.resourceDecodedBytes,
     byType,
@@ -526,14 +598,20 @@ function networkMetrics(
   };
 }
 
-function usedBytesForScript(ranges: CoverageRange[]): { totalBytes: number; usedBytes: number } {
+function usedBytesForScript(ranges: CoverageRange[]): {
+  totalBytes: number;
+  usedBytes: number;
+} {
   const valid = ranges.filter(
     (range) =>
       Number.isFinite(range.startOffset) &&
       Number.isFinite(range.endOffset) &&
-      range.endOffset > range.startOffset
+      range.endOffset > range.startOffset,
   );
-  const totalBytes = valid.reduce((largest, range) => Math.max(largest, range.endOffset), 0);
+  const totalBytes = valid.reduce(
+    (largest, range) => Math.max(largest, range.endOffset),
+    0,
+  );
   const boundaries = [
     ...new Set(valid.flatMap((range) => [range.startOffset, range.endOffset])),
   ].sort((left, right) => left - right);
@@ -544,7 +622,10 @@ function usedBytesForScript(ranges: CoverageRange[]): { totalBytes: number; used
     const owning = valid
       .filter((range) => range.startOffset <= start && range.endOffset >= end)
       .sort(
-        (left, right) => left.endOffset - left.startOffset - (right.endOffset - right.startOffset)
+        (left, right) =>
+          left.endOffset -
+          left.startOffset -
+          (right.endOffset - right.startOffset),
       )[0];
     if (owning && owning.count > 0) usedBytes += end - start;
   }
@@ -562,7 +643,10 @@ function coverageMetrics(raw: CoverageResult): CdpProfileCoverage {
       unusedBytes: Math.max(0, totalBytes - usedBytes),
     };
   });
-  const totalBytes = scripts.reduce((sum, script) => sum + script.totalBytes, 0);
+  const totalBytes = scripts.reduce(
+    (sum, script) => sum + script.totalBytes,
+    0,
+  );
   const usedBytes = scripts.reduce((sum, script) => sum + script.usedBytes, 0);
   return {
     scriptCount: scripts.length,
@@ -582,11 +666,19 @@ export async function runCdpProfile(input: {
   transport: ProtocolTransport;
   action: () => unknown | Promise<unknown>;
   options?: CdpProfileOptions;
+  /** The page owns Network for its lifetime; profiling must not disable it. */
+  networkAlreadyEnabled?: boolean;
 }): Promise<CdpProfileReport> {
   const options = input.options ?? {};
   const maxNetworkRecords = options.maxNetworkRecords ?? 20;
-  if (!Number.isInteger(maxNetworkRecords) || maxNetworkRecords < 1 || maxNetworkRecords > 100) {
-    throw new TypeError("maxNetworkRecords must be an integer from 1 through 100");
+  if (
+    !Number.isInteger(maxNetworkRecords) ||
+    maxNetworkRecords < 1 ||
+    maxNetworkRecords > 100
+  ) {
+    throw new TypeError(
+      "maxNetworkRecords must be an integer from 1 through 100",
+    );
   }
 
   const network = createNetworkCapture(input.transport);
@@ -594,11 +686,15 @@ export async function runCdpProfile(input: {
   let cacheDisabled = false;
   try {
     await Promise.all([
-      input.transport.send("Network.enable"),
+      ...(input.networkAlreadyEnabled
+        ? []
+        : [input.transport.send("Network.enable")]),
       input.transport.send("Performance.enable"),
     ]);
     if (options.disableCache) {
-      await input.transport.send("Network.setCacheDisabled", { cacheDisabled: true });
+      await input.transport.send("Network.setCacheDisabled", {
+        cacheDisabled: true,
+      });
       cacheDisabled = true;
     }
     if (options.javascriptCoverage) {
@@ -623,7 +719,9 @@ export async function runCdpProfile(input: {
       readMetrics(input.transport),
       readPageSnapshot(input.page, baseline),
       coverageStarted
-        ? (input.transport.send("Profiler.takePreciseCoverage") as Promise<CoverageResult>)
+        ? (input.transport.send(
+            "Profiler.takePreciseCoverage",
+          ) as Promise<CoverageResult>)
         : Promise.resolve(undefined),
     ]);
 
@@ -642,18 +740,29 @@ export async function runCdpProfile(input: {
     network.cleanup();
     const cleanup: Array<Promise<unknown>> = [];
     if (coverageStarted) {
-      cleanup.push(input.transport.send("Profiler.stopPreciseCoverage").catch(() => undefined));
-      cleanup.push(input.transport.send("Profiler.disable").catch(() => undefined));
+      cleanup.push(
+        input.transport
+          .send("Profiler.stopPreciseCoverage")
+          .catch(() => undefined),
+      );
+      cleanup.push(
+        input.transport.send("Profiler.disable").catch(() => undefined),
+      );
     }
     if (cacheDisabled) {
       cleanup.push(
         input.transport
           .send("Network.setCacheDisabled", { cacheDisabled: false })
-          .catch(() => undefined)
+          .catch(() => undefined),
       );
     }
-    cleanup.push(input.transport.send("Performance.disable").catch(() => undefined));
-    cleanup.push(input.transport.send("Network.disable").catch(() => undefined));
+    cleanup.push(
+      input.transport.send("Performance.disable").catch(() => undefined),
+    );
+    if (!input.networkAlreadyEnabled)
+      cleanup.push(
+        input.transport.send("Network.disable").catch(() => undefined),
+      );
     await Promise.all(cleanup);
   }
 }

@@ -142,7 +142,7 @@ property setters plus input/change events, including for controlled React inputs
 
 Failed state waits, ambiguous locators, and exhausted actionability include
 `CdpError.errorData.evidence`: one bounded, read-only post-failure observation
-with a separate one-second deadline. It records match count, actual matching
+without a separate transport deadline. It records match count, actual matching
 control states, capture time/URL, and containing-scope rendered text (page text
 when the scope is absent). Truncation is explicit. `status: "unavailable"`
 preserves collection failure without replacing the primary error. A supplied
@@ -260,19 +260,78 @@ page.consoleEvents(); // [{ type, text, args }] captured since connect
 page.clearConsoleEvents();
 ```
 
-## Not supported (use raw `CdpConnection`)
+## Browser files, network, frames, and popups
 
-These have no CDP-only path in a connectionless isolate and are intentionally
-out of scope:
+Use portable byte payloads for uploads, including hidden file inputs:
 
-- **File uploads** (`setInputFiles`)
-- **Multiple pages / popups** (single-target by design)
-- **Cross-origin frames** (operations target the main frame)
-- **Full network request interception** (`route`) — observation via
-  `CdpConnection.on("Network.*", …)` works
+```ts
+await page.locator("input[type=file]").setInputFiles({
+  name: "notes.md",
+  mimeType: "text/markdown",
+  buffer: new Uint8Array([35, 32, 65]),
+});
+await page.locator("input[type=file]").setInputFiles([]); // clear
+```
 
-For anything beyond the `Page`/`Locator` surface, `CdpConnection.send(method,
-params)` / `.on(event, cb)` give you the entire CDP protocol.
+Observe native requests and responses without intercepting application traffic:
+
+```ts
+page.on("requestfailed", (request) =>
+  console.log(request.url(), request.failure()),
+);
+const responsePending = page.waitForResponse(
+  (response) => response.url().endsWith("/export") && response.ok(),
+);
+await page.getByRole("button", { name: "Export" }).click();
+const response = await responsePending;
+const exported = await response.json(); // body retrieval waits for native completion
+```
+
+`page.requests()` retains recent request diagnostics. Responses expose status,
+headers, body/text/json, redirects and native loading failures. Capture source
+exports or structured responses when available; visible card titles alone do not
+establish that descriptions, comments, checklists, attachments or history migrated.
+
+Frame locators use each frame's native execution context and input coordinates,
+including nested frames and cross-origin frames:
+
+```ts
+await page
+  .frameLocator("iframe")
+  .frameLocator("iframe.details")
+  .getByRole("button", { name: "Save" })
+  .click();
+const frame = page.locator("iframe").nth(1).contentFrame();
+```
+
+Register activity waits before the triggering action. Hosted panel handles expose
+approved downloads and durable popup panel references, never arbitrary host paths:
+
+```ts
+const pendingDownload = page.waitForDownload();
+await page.getByRole("link", { name: "Download" }).click();
+const download = await pendingDownload;
+await download.finished();
+const bytes = await download.body(); // use readChunk(offset, length) for large files
+
+const pendingPopup = page.waitForPopup();
+await page.getByRole("button", { name: "Open" }).click();
+const popup = await pendingPopup;
+const popupPage = await panelTree.get(popup.panelId).cdp.page();
+```
+
+Downloads and popups use existing browser permissions. Permission denial, provider
+loss, cancellation, and native failures settle waiting callers. No implicit
+elapsed-time deadline supplies a successful or failed outcome. Popups are durable
+panels; archive temporary panels when finished. Raw unhosted CDP connections do
+not provide the host's download or popup lifecycle.
+
+## Not supported
+
+Full request interception (`route`) is not part of this surface. Raw
+`CdpConnection.send(method, params)` and `.on(event, listener)` remain available
+for native protocol operations. Child sessions use `.session(id)` and keep their
+commands, events, dialogs and failures scoped to that native session.
 
 ## Build conditions
 
@@ -285,3 +344,37 @@ params)` / `.on(event, cb)` give you the entire CDP protocol.
 | `default`          | `src/index.ts`   |
 
 Types are published from `index.d.ts` (kept in sync with `src/worker.ts`).
+
+### Transport completion
+
+CDP acquisition and command dispatch have no elapsed-time safety deadline.
+Commands settle on their correlated response, explicit connection closure,
+renderer crash/detachment, or a transport/protocol failure. Invalid frames retire
+that connection and reject its pending commands. Connection acquisition accepts
+an optional `signal`; abort cancels and joins the upgrade or socket opening.
+An established browser has its own lifetime and must be closed by its owner.
+Actions, locator waits, function waits and navigation have no default deadline.
+A caller can select a readiness budget with `timeout` or `setDefaultTimeout`;
+zero disables the budget. Function and load checks use one-shot observations,
+yielding outside the renderer so they cannot strand browser input behind a
+long-lived evaluation. Target loss rejects pending observations and navigation
+waits. Hosted eval cancellation is carried through the active invocation
+owner, including operations on a retained page; it closes the automation
+connection and rejects its pending observations with the cancellation cause.
+Navigation never treats elapsed time as successful readiness. `page.evaluate` forwards only an explicitly
+provided `timeout` to Chrome's native evaluation request, rather than abandoning
+a dispatched evaluation with a local timer.
+
+### Native integration verification
+
+From the host checkout, explicitly run the native Chromium lifecycle check:
+
+```sh
+VIBESTUDIO_USERLAND_TEMPLATE=base VIBESTUDIO_RUN_CDP_SDK_NATIVE=1 \
+node --import tsx node_modules/vitest/vitest.mjs run \
+  --config vitest.userland.config.ts tests/workspace-integration/cdp-sdk-native.test.ts
+```
+
+It owns and retires its browser, profile, connections and download staging. Its
+investigation deadline cancels the SDK operation and joins cleanup; this is test
+containment and does not impose a production browser deadline.

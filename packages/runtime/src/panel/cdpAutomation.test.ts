@@ -12,6 +12,8 @@ describe("createCdpAutomation screenshot", () => {
         .onInteraction;
       return { contexts: () => [{ pages: () => [page] }] };
     });
+    let currentOwner = new AbortController();
+    const operationSignal = () => currentOwner.signal;
     const cdp = createCdpAutomation(
       {
         call: vi.fn(async () => ({ wsEndpoint: "ws://panel", token: "grant" })),
@@ -20,9 +22,16 @@ describe("createCdpAutomation screenshot", () => {
       {
         loadModule: async () => ({ BrowserImpl: { connect }, CdpError }),
         recordOperation: (entry) => currentJournal()?.append(entry),
+        operationSignal,
       },
     );
     await cdp.page();
+    const passedSignal = (
+      connect.mock.calls[0]![1] as { operationSignal: () => AbortSignal }
+    ).operationSignal;
+    expect(passedSignal()).toBe(currentOwner.signal);
+    currentOwner = new AbortController();
+    expect(passedSignal()).toBe(currentOwner.signal);
     const receipt = {
       protocol: "cdp-interaction-outcome.v1",
       action: "click",

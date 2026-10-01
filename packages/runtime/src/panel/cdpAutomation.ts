@@ -30,6 +30,7 @@ const CDP_CLIENT_MODULE = "@workspace/cdp-client";
 
 interface CdpAutomationOptions {
   recordOperation?: (entry: OperationJournalEntry) => void;
+  operationSignal?: () => AbortSignal | undefined;
   kind?: "workspace" | "browser";
   requesterPanelId?: string | null;
   /** Closure-held module resolver used by confined hosted runtimes. */
@@ -125,15 +126,30 @@ export function createCdpAutomation(
     const connectOptions: {
       isElectronWebview: boolean;
       preferFetchUpgrade: boolean;
+      operationSignal?: () => AbortSignal | undefined;
       transportOptions?: { authToken: string };
       onInteraction: (outcome: CdpInteractionOutcome) => void;
       inspectionIdentity?: PanelCdpGeneration;
+      browserOperation: (
+        request: import("@vibestudio/shared/panel/browserAutomation").BrowserAutomationRequest,
+        signal?: AbortSignal,
+      ) => Promise<unknown>;
     } = {
       isElectronWebview: true,
       // Hosted EvalDO runtimes receive a closure-held loader and must route
       // CDP through the egress-aware fetch-upgrade transport. Browser panels
       // use their native WebSocket implementation instead.
       preferFetchUpgrade: Boolean(options.loadModule),
+      operationSignal: options.operationSignal,
+      browserOperation: (request, signal) => {
+        const owner = options.operationSignal?.();
+        return rpc.call("main", "panelCdp.browserOperation", [id, request], {
+          signal:
+            signal && owner
+              ? AbortSignal.any([signal, owner])
+              : (signal ?? owner),
+        });
+      },
       onInteraction: (receipt) =>
         options.recordOperation?.({
           type: "interaction",

@@ -1,7 +1,7 @@
 import { BrowserImpl } from "./worker";
 
 export { BrowserImpl };
-export { CdpConnection, CdpDialog, CdpError } from "./worker";
+export { CdpConnection, CdpSession, CdpDialog, CdpError } from "./worker";
 export type { CdpDialogData, CdpInteractionOutcome } from "./worker";
 export type {
   CdpProfileCoverage,
@@ -31,3 +31,17 @@ export async function connect(
       : undefined,
   });
 }
+
+export { CdpRequest, CdpResponse } from "./network";
+export type {
+  CdpNetworkFailure,
+  CdpNetworkEvents,
+  CdpNetworkEvent,
+  CdpResponseMatcher,
+} from "./network";
+export type { CdpFilePayload } from "./worker";
+
+export { CdpDownload } from "./download";
+export type { BrowserPopup as CdpPopup } from "@vibestudio/shared/panel/browserAutomation";
+
+export type { WorkerCdpFrameLocator as CdpFrameLocator } from "./worker";
