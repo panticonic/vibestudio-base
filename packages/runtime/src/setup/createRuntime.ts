@@ -86,6 +86,7 @@ export function createRuntime(deps: RuntimeDeps) {
     ? (deps.parentId ?? parentRuntimeId)
     : null;
   const panelRuntime = createPanelHandleApi(base.rpc, {
+    contextId: base.contextId,
     selfId: slotId,
     selfRpcTargetId: entityId,
     parentId: parentSlotId,

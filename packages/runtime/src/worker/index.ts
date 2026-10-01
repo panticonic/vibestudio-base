@@ -391,6 +391,7 @@ export function createWorkerRuntime(env: WorkerEnv): WorkerRuntime {
 
   panelRuntime = createPanelRuntime({
     rpc,
+    contextId: env.CONTEXT_ID,
     selfHandle: () =>
       createNonPanelRuntimeHandle({
         id: selfId,

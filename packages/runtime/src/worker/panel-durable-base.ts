@@ -24,6 +24,8 @@ export abstract class PanelDurableObjectBase extends DurableObjectBase {
     if (!this._panelRuntime) {
       this._panelRuntime = createPanelRuntime({
         rpc: this.rpc,
+        contextId: () =>
+          this.rpc.call<string | null>("main", "runtime.resolveContext", [this.rpcSelfId]),
         selfHandle: () =>
           createNonPanelRuntimeHandle({
             id: String(this.env["DO_ID"] ?? this.ctx.id.toString()),

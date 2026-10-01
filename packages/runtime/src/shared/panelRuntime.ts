@@ -241,6 +241,8 @@ export interface PanelRuntimeApi {
 
 export interface CreatePanelRuntimeOptions {
   rpc: Pick<RpcClient, "call" | "emit" | "on">;
+  /** Owning runtime's context; workspace panels reuse it unless explicitly overridden. */
+  contextId?: string | null | (() => string | null | Promise<string | null>);
   /** The owning execution context supplies its journal across compiled module boundaries. */
   recordOperation?: (entry: OperationJournalEntry) => void;
   /** Focus a live panel when this runtime has a native presentation host. */
@@ -1567,7 +1569,14 @@ export function createPanelRuntime(
             "browser",
         )
       : source;
-    const requestedContextId = openOptions?.contextId?.trim() || undefined;
+    const requestedContextId =
+      openOptions?.contextId?.trim() ||
+      (!external
+        ? (typeof options.contextId === "function"
+            ? await options.contextId()
+            : options.contextId)?.trim()
+        : undefined) ||
+      undefined;
     const operationIdentity = openOptions?.operationId
       ? await derivePanelOperationIdentity({
           operationId: openOptions.operationId,

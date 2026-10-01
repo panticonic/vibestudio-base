@@ -22,6 +22,7 @@ type PanelRuntimeRpc = Pick<RpcClient, "call" | "emit" | "on">;
 export function createPanelHandleApi(
   rpc: PanelRuntimeRpc,
   options: {
+    contextId?: string | null;
     selfId?: string | null;
     selfRpcTargetId?: string | null;
     parentId?: string | null;
@@ -32,6 +33,7 @@ export function createPanelHandleApi(
   const shell = (globalThis as any).__vibestudioShell;
   const runtime = createPanelRuntime({
     rpc,
+    contextId: options.contextId,
     ...(typeof shell?.focusPanel === "function"
       ? { focusPanel: (id, focusOptions) => shell.focusPanel(id, focusOptions) }
       : {}),
