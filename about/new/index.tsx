@@ -1,7 +1,15 @@
 /** One keyboard-first launcher for panels, browser destinations, and Agentic Chat. */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
-import { Box, Button, Callout, Flex, Link, Spinner, Text } from "@radix-ui/themes";
+import {
+  Box,
+  Button,
+  Callout,
+  Flex,
+  Link,
+  Spinner,
+  Text,
+} from "@radix-ui/themes";
 import {
   ClockIcon,
   EnterIcon,
@@ -553,6 +561,7 @@ function NewPanelPage() {
     suggestionId: string;
   } | null>(null);
   const catalogFetchRef = useRef<Promise<void> | null>(null);
+  const serviceDiscoveryRef = useRef<Promise<void> | null>(null);
   const lastCatalogFetchRef = useRef(0);
   const liveRefreshRef = useRef(0);
   const liveRefreshInFlightRef = useRef<Promise<void> | null>(null);
@@ -593,14 +602,29 @@ function NewPanelPage() {
       return Promise.resolve();
     }
     lastCatalogFetchRef.current = Date.now();
-    const request = Promise.all([
-      workspace.sourceTree(),
-      workers.listServices(),
-    ])
-      .then(([tree, services]) => {
-        setHasBrowserData(
-          services.some((service) => service.name === "browser.data"),
-        );
+    // Service availability enhances history, but neither its latency nor its
+    // failure determines whether the workspace's panel catalog is usable.
+    if (!serviceDiscoveryRef.current) {
+      const discovery = workers
+        .listServices()
+        .then((services) => {
+          setHasBrowserData(
+            services.some((service) => service.name === "browser.data"),
+          );
+        })
+        .catch((cause: unknown) => {
+          setHistoryError(true);
+          console.warn("[new-panel] Browser service discovery failed", cause);
+        })
+        .finally(() => {
+          if (serviceDiscoveryRef.current === discovery)
+            serviceDiscoveryRef.current = null;
+        });
+      serviceDiscoveryRef.current = discovery;
+    }
+    const request = workspace
+      .sourceTree()
+      .then((tree) => {
         const groups = collectLaunchablePanelGroups(tree.children);
         setPanelGroups(groups);
         cachePanelGroups(groups);
@@ -1004,7 +1028,13 @@ function NewPanelPage() {
       title="New Panel"
       subtitle="Open a website, search the web, revisit a page, or ask an agent."
       maxWidth={720}
-      actions={hasBrowserData ? <Link href={buildPanelLink("about/search")} size="2">Search settings</Link> : undefined}
+      actions={
+        hasBrowserData ? (
+          <Link href={buildPanelLink("about/search")} size="2">
+            Search settings
+          </Link>
+        ) : undefined
+      }
     >
       <Box className="launcher-search">
         <div className="launcher-field">

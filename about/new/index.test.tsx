@@ -193,6 +193,52 @@ describe("new panel launcher", () => {
     expect(screen.queryByText(/History suggestions couldn/)).toBeNull();
   });
 
+  it("makes the cold catalog usable while service discovery is still pending", async () => {
+    let discover!: (services: { name: string }[]) => void;
+    mocks.listServices.mockReturnValue(
+      new Promise((resolve) => {
+        discover = resolve;
+      }),
+    );
+    render(<AboutPanelRoot />);
+
+    expect(await findRow("Terminal")).toBeTruthy();
+    expect(await findRow("About Vibestudio")).toBeTruthy();
+    expect(mocks.getHistory).not.toHaveBeenCalled();
+    fireEvent.change(screen.getByRole("combobox"), {
+      target: { value: "terminal" },
+    });
+    expect(await findRow("Terminal")).toBeTruthy();
+
+    await act(async () => discover([{ name: "browser.data" }]));
+    fireEvent.change(screen.getByRole("combobox"), { target: { value: "" } });
+    expect(await screen.findByText("Example Docs")).toBeTruthy();
+  });
+
+  it("preserves panel launching when browser service discovery fails", async () => {
+    const failure = new Error("Service catalog disconnected");
+    const warning = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      mocks.listServices.mockRejectedValue(failure);
+      render(<AboutPanelRoot />);
+      expect(await findRow("Terminal")).toBeTruthy();
+      expect(
+        screen.queryByText(/panel catalog could not be loaded/i),
+      ).toBeNull();
+      expect(warning).toHaveBeenCalledWith(
+        "[new-panel] Browser service discovery failed",
+        failure,
+      );
+      const link = screen
+        .getByText("Terminal", { selector: ".launcher-title" })
+        .closest("a");
+      expect(link?.getAttribute("href")).toBe("/panels/terminal/");
+      expect(link?.getAttribute("aria-disabled")).not.toBe("true");
+    } finally {
+      warning.mockRestore();
+    }
+  });
+
   it("quietly reconciles history after the workspace review resolves", async () => {
     mocks.getHistory.mockRejectedValueOnce(
       Object.assign(new Error("workspace review pending"), {
