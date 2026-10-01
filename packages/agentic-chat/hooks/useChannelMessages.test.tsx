@@ -402,6 +402,22 @@ describe("useChannelMessages", () => {
     });
   });
 
+  it("propagates the original local publication replay failure", async () => {
+    let latest: UseChannelMessagesResult | undefined;
+    const failure = new Error("Replay stream disconnected");
+    const client = createClient([], { getReplayAfter: vi.fn().mockRejectedValue(failure) });
+    render(
+      <Probe
+        client={client}
+        onValue={(value) => {
+          latest = value;
+        }}
+      />
+    );
+    await expect(latest!.backfillAfterLocalPublish(42)).rejects.toBe(failure);
+    expect(latest!.messages).toEqual([]);
+  });
+
   it("loads earlier typed envelopes before the replay anchor and updates pagination metadata", async () => {
     let latest: UseChannelMessagesResult | undefined;
     const current = messageCompleted("current", "Current message", "2026-05-21T08:01:00.000Z");

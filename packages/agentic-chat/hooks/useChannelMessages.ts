@@ -453,54 +453,50 @@ export function useChannelMessages<T extends ParticipantMetadata = ParticipantMe
       if (!c || pubsubId === undefined) return;
       const cursor = newestSeqRef.current ?? 0;
       if (cursor >= pubsubId) return;
-      try {
-        for await (const result of iterateChannelReplayAfterPages(
-          (request) => c.getReplayAfter(request),
-          { after: cursor, throughSeq: pubsubId }
-        )) {
-          for (const raw of result.logEvents) {
-            const payload = raw.payload as Record<string, unknown> | undefined;
-            if (raw.type === CREDENTIAL_CONNECT_PAYLOAD_KIND && payload) {
-              channelStateRef.current = reduceChannelView(
-                channelStateRef.current,
-                pubsubChannelEventToEnvelope(c.channelId, CREDENTIAL_CONNECT_PAYLOAD_KIND, {
-                  pubsubId: raw.id,
-                  senderId: raw.senderId,
-                  ts: raw.ts,
-                  senderMetadata: raw.senderMetadata as
-                    | { name?: string; type?: string; handle?: string }
-                    | undefined,
-                  payload,
-                })
-              );
-              continue;
-            }
-            if (raw.type === AGENTIC_EVENT_PAYLOAD_KIND && payload) {
-              rememberAttachments(
-                attachmentsByMessageIdRef.current,
-                payload as unknown as AgenticEvent,
-                raw.attachments as WireAttachment[] | undefined
-              );
-              const envelope = pubsubAgenticEventToEnvelope(c.channelId, {
+      for await (const result of iterateChannelReplayAfterPages(
+        (request) => c.getReplayAfter(request),
+        { after: cursor, throughSeq: pubsubId }
+      )) {
+        for (const raw of result.logEvents) {
+          const payload = raw.payload as Record<string, unknown> | undefined;
+          if (raw.type === CREDENTIAL_CONNECT_PAYLOAD_KIND && payload) {
+            channelStateRef.current = reduceChannelView(
+              channelStateRef.current,
+              pubsubChannelEventToEnvelope(c.channelId, CREDENTIAL_CONNECT_PAYLOAD_KIND, {
                 pubsubId: raw.id,
                 senderId: raw.senderId,
                 ts: raw.ts,
                 senderMetadata: raw.senderMetadata as
                   | { name?: string; type?: string; handle?: string }
                   | undefined,
-                payload: payload as unknown as AgenticEvent,
-              });
-              channelStateRef.current = reduceChannelView(channelStateRef.current, envelope);
-              if (raw.id < (oldestRootIdRef.current ?? Infinity)) oldestRootIdRef.current = raw.id;
-              if (newestSeqRef.current === null || raw.id > newestSeqRef.current)
-                newestSeqRef.current = raw.id;
-            }
+                payload,
+              })
+            );
+            continue;
+          }
+          if (raw.type === AGENTIC_EVENT_PAYLOAD_KIND && payload) {
+            rememberAttachments(
+              attachmentsByMessageIdRef.current,
+              payload as unknown as AgenticEvent,
+              raw.attachments as WireAttachment[] | undefined
+            );
+            const envelope = pubsubAgenticEventToEnvelope(c.channelId, {
+              pubsubId: raw.id,
+              senderId: raw.senderId,
+              ts: raw.ts,
+              senderMetadata: raw.senderMetadata as
+                | { name?: string; type?: string; handle?: string }
+                | undefined,
+              payload: payload as unknown as AgenticEvent,
+            });
+            channelStateRef.current = reduceChannelView(channelStateRef.current, envelope);
+            if (raw.id < (oldestRootIdRef.current ?? Infinity)) oldestRootIdRef.current = raw.id;
+            if (newestSeqRef.current === null || raw.id > newestSeqRef.current)
+              newestSeqRef.current = raw.id;
           }
         }
-        rebuildFromChannelState();
-      } catch (err) {
-        console.error("[useChannelMessages] backfillAfterLocalPublish failed:", err);
       }
+      rebuildFromChannelState();
     },
     [rebuildFromChannelState]
   );
