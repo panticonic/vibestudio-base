@@ -1,7 +1,10 @@
 # Panel API
 
-Import panel APIs from `@workspace/runtime`. The same portable surface works in
-panels, workers, Durable Objects, and server-side eval.
+Import panel APIs from `@workspace/runtime` in panels, initialized plain workers,
+and server-side eval. Durable Objects use the owning instance methods on
+`PanelDurableObjectBase` from `@workspace/runtime/worker/panel-durable-base`;
+module-level runtime clients do not bind to an object. Both forms share the same
+panel completion contract.
 
 ## The completion contract
 
@@ -141,7 +144,9 @@ type PanelRuntimeTreeRootOwnerPage = {
 
 type PanelRuntimeTreePage = {
   revision: number;
-  group: { kind: "roots"; ownerUserId: string | null } | { kind: "children"; parentSlotId: string };
+  group:
+    | { kind: "roots"; ownerUserId: string | null }
+    | { kind: "children"; parentSlotId: string };
   entries: Array<{ node: PanelTreeNode; handle: PanelHandle }>;
   nextCursor: string | null;
 };
@@ -266,7 +271,7 @@ function TaskPanel({ canRefresh }: { canRefresh: boolean }) {
           ]
         : []),
     ],
-    [canRefresh]
+    [canRefresh],
   );
 
   useHostCommands(commands, (commandId) => {
@@ -306,7 +311,9 @@ Non-React panel code can use the same panel-local contract imperatively:
 ```ts
 import { panel, type HostCommand } from "@workspace/runtime";
 
-const commands: HostCommand[] = [{ id: "task-refresh", label: "Refresh tasks", group: "Tasks" }];
+const commands: HostCommand[] = [
+  { id: "task-refresh", label: "Refresh tasks", group: "Tasks" },
+];
 const unsubscribe = panel.onHostCommandRun((commandId) => {
   if (commandId === "task-refresh") void refreshTasks();
 });
@@ -350,12 +357,12 @@ await panel.openCommandAgent({
 Under the hood this is the open host method `app.openShellSurface(target)`
 (also `panel.openShellSurface(target)`), whose targets are:
 
-| Target | Opens |
-| --- | --- |
-| `{ kind: "command-agent", panelId?, mode?, prompt? }` | the command overlay about a panel; the shell focuses that panel first so the overlay, the focused panel and the bound conversation agree |
-| `{ kind: "about", page }` | an About page by id (`permissions`, `credentials`, `automations`, …) |
-| `{ kind: "panel-command", panelId, commandId }` | a host command that panel contributed — routed exactly like a palette selection |
-| `{ kind: "settings", section?: "connection" \| "devices" \| "profile" \| "appearance" \| "apps" \| "hosts" \| "templates" }`, `"workspace-chooser"` | management chrome |
+| Target                                                                                                                                              | Opens                                                                                                                                    |
+| --------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| `{ kind: "command-agent", panelId?, mode?, prompt? }`                                                                                               | the command overlay about a panel; the shell focuses that panel first so the overlay, the focused panel and the bound conversation agree |
+| `{ kind: "about", page }`                                                                                                                           | an About page by id (`permissions`, `credentials`, `automations`, …)                                                                     |
+| `{ kind: "panel-command", panelId, commandId }`                                                                                                     | a host command that panel contributed — routed exactly like a palette selection                                                          |
+| `{ kind: "settings", section?: "connection" \| "devices" \| "profile" \| "appearance" \| "apps" \| "hosts" \| "templates" }`, `"workspace-chooser"` | management chrome                                                                                                                        |
 
 `panel.describeShellSurfaces()` lists the kinds this host can open; offer only
 those instead of probing. Hosts without shell chrome (headless server, some
@@ -497,10 +504,10 @@ compile error, or throwing entry module.
 | `focus(opts?)`                                  | Assign/present the panel and wait for ready                                                                                    |
 | `children()` / `parent()`                       | Tree relationships                                                                                                             |
 | `stateArgs.get()` / `stateArgs.set()`           | Validated host-owned application state args                                                                                    |
-| `archive()` / `unload()`                        | Durable subtree removal or live-runtime release                                                                                 |
+| `archive()` / `unload()`                        | Durable subtree removal or live-runtime release                                                                                |
 | `tree()` / `state()` / `routes()` / `setMode()` | Optional workspace `_agent` application inspection                                                                             |
 | `cdp.session()` / `cdp.page()`                  | Generation-fenced multi-step automation or a one-off canonical CDP page                                                        |
-| `click(selector)`                               | Approval-gated one-off CDP convenience                                                                                          |
+| `click(selector)`                               | Approval-gated one-off CDP convenience                                                                                         |
 
 `navigate()`, `reload()`, `rebuild()`, and `focus()` return
 `Promise<PanelObservation>`, not another `PanelHandle`. Keep using the original
