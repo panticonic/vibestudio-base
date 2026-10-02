@@ -37,6 +37,30 @@ providers:
   gitInterop:
     extension: extensions/git-bridge
 services:
+  - name: mission-control
+    title: Mission Control
+    description: Projects, tasks, saved views and links to agent execution.
+    action: organize projects and agentic work
+    source: workers/mission-control-store
+    protocols:
+      - mission-control.v1
+    durableObject:
+      className: MissionControlStore
+    authority:
+      binding:
+        declaredFor:
+          - panels/mission-control
+          - workers/mission-agent
+      principals:
+        - host
+        - user
+        - code
+        - session
+        - mission
+    notability: everyday
+    presentation:
+      domain: automation
+      verb: manage
   - action: manage your workspace files, history, and setup
     authority:
       binding: declared
@@ -183,6 +207,9 @@ services:
     source: workers/testkit-driver
     title: Test runner
 singletonObjects:
+  - className: MissionControlStore
+    key: main
+    source: workers/mission-control-store
   - className: TestkitDriverDO
     key: workspace-testkit-driver
     source: workers/testkit-driver
@@ -231,6 +258,7 @@ template:
     - packages/harness
     - packages/integrations
     - packages/model-catalog
+    - packages/mission-control
     - packages/omnibox-core
     - packages/pubsub
     - packages/quickfire-core
@@ -243,6 +271,7 @@ template:
     - packages/ui
     - packages/vcs-engine
     - panels/chat
+    - panels/mission-control
     - panels/terminal
     - projects/default
     - skills/agentic-development
@@ -267,6 +296,8 @@ template:
     - templates/default
     - workers/agent-worker
     - workers/missions
+    - workers/mission-control-store
+    - workers/mission-agent
     - workers/model-settings
     - workers/pubsub-channel
     - workers/quickfire-service

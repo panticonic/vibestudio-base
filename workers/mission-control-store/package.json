@@ -1,0 +1,99 @@
+{
+  "name": "@workspace-workers/mission-control-store",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "vibestudio": {
+    "title": "Mission Control data",
+    "icon": "lucide:orbit",
+    "entry": "index.ts",
+    "durable": {
+      "classes": [
+        {
+          "className": "MissionControlStore"
+        }
+      ]
+    },
+    "authority": {
+      "provides": [],
+      "serviceRequests": [
+        {
+          "protocol": "vibestudio.missions.v1",
+          "availability": "required"
+        },
+        {
+          "protocol": "vibestudio.channel.v1",
+          "availability": "required"
+        }
+      ],
+      "requests": [
+        {
+          "capability": "workspace.runtime-state.manage",
+          "resource": {
+            "kind": "prefix",
+            "prefix": ""
+          },
+          "tier": "gated",
+          "evidence": "bounded-dynamic"
+        },
+        {
+          "capability": "workspace-service:missions",
+          "resource": {
+            "kind": "exact",
+            "key": "do:workers/missions:MissionsDO:workspace-missions"
+          },
+          "tier": "gated",
+          "evidence": "exact"
+        },
+        {
+          "capability": "workspace-service:channel",
+          "resource": {
+            "kind": "prefix",
+            "prefix": ""
+          },
+          "tier": "gated",
+          "evidence": "bounded-dynamic"
+        },
+        {
+          "capability": "userland:workers/missions/missions.run#*",
+          "resource": {
+            "kind": "prefix",
+            "prefix": ""
+          },
+          "tier": "gated",
+          "evidence": "bounded-dynamic"
+        },
+        {
+          "capability": "userland:workers/missions/missions.edit#*",
+          "resource": {
+            "kind": "prefix",
+            "prefix": ""
+          },
+          "tier": "gated",
+          "evidence": "bounded-dynamic"
+        }
+      ]
+    },
+    "tests": [
+      {
+        "name": "native-contract",
+        "runtime": "native",
+        "include": [
+          "**/*.test.ts"
+        ]
+      }
+    ]
+  },
+  "dependencies": {
+    "@workspace/runtime": "workspace:*",
+    "@workspace/mission-control": "workspace:*",
+    "@vibestudio/workspace-contracts": "workspace:*",
+    "zod": "^3.25.76",
+    "@workspace/agentic-core": "workspace:*"
+  },
+  "devDependencies": {
+    "vitest": "^3.2.7",
+    "@vibestudio/durable": "workspace:*",
+    "@vibestudio/rpc": "workspace:*"
+  }
+}

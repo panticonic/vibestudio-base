@@ -1,21 +1,21 @@
 {
-  "name": "@workspace-workers/agent-worker",
+  "name": "@workspace-workers/mission-agent",
   "version": "0.1.0",
   "private": true,
   "type": "module",
   "vibestudio": {
-    "icon": "./assets/icon.svg",
+    "icon": "lucide:orbit",
     "entry": "index.ts",
     "durable": {
       "classes": [
         {
-          "className": "AiChatWorker"
+          "className": "MissionAgent"
         }
       ]
     },
     "agent": {
-      "displayName": "Chat Agent",
-      "description": "General-purpose coding & chat agent"
+      "displayName": "Mission lead",
+      "description": "Organizes projects and task execution in Mission Control"
     },
     "exposeModules": [
       "@workspace/runtime",
@@ -27,6 +27,10 @@
       "serviceRequests": [
         {
           "protocol": "vibestudio.missions.v1",
+          "availability": "required"
+        },
+        {
+          "protocol": "mission-control.v1",
           "availability": "required"
         }
       ],
@@ -255,9 +259,28 @@
           },
           "tier": "gated",
           "evidence": "intentional-broad"
+        },
+        {
+          "capability": "workspace-service:mission-control",
+          "resource": {
+            "kind": "exact",
+            "key": "do:workers/mission-control-store:MissionControlStore:main"
+          },
+          "tier": "gated",
+          "evidence": "exact"
         }
       ]
-    }
+    },
+    "title": "Mission lead",
+    "tests": [
+      {
+        "name": "native-contract",
+        "runtime": "native",
+        "include": [
+          "**/*.test.ts"
+        ]
+      }
+    ]
   },
   "dependencies": {
     "@workspace/agentic-core": "workspace:*",
@@ -268,15 +291,15 @@
     "zod": "^3.25.76",
     "@panticonic/pi-ai": "0.99.2-vibestudio.9",
     "@panticonic/pi-chord": "0.99.2-vibestudio.9",
-    "@panticonic/pi-durable": "0.99.2-vibestudio.9"
+    "@panticonic/pi-durable": "0.99.2-vibestudio.9",
+    "@workspace/mission-control": "workspace:*",
+    "@vibestudio/workspace-contracts": "workspace:*",
+    "@vibestudio/service-schemas": "workspace:*",
+    "@workspace-workers/agent-worker": "workspace:*"
   },
   "devDependencies": {
-    "@vibestudio/service-schemas": "workspace:*",
     "@vibestudio/rpc": "workspace:*",
     "@workspace/agentic-protocol": "workspace:*",
     "vitest": "^3.2.7"
-  },
-  "exports": {
-    ".": "./ai-chat-worker.ts"
   }
 }

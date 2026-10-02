@@ -1,0 +1,26 @@
+{
+  "name": "@workspace/mission-control",
+  "version": "0.1.0",
+  "type": "module",
+  "exports": {
+    ".": "./index.ts"
+  },
+  "dependencies": {
+    "zod": "^3.25.76",
+    "@vibestudio/workspace-contracts": "workspace:*"
+  },
+  "devDependencies": {
+    "vitest": "^3.2.7"
+  },
+  "vibestudio": {
+    "tests": [
+      {
+        "name": "native-contract",
+        "runtime": "native",
+        "include": [
+          "**/*.test.ts"
+        ]
+      }
+    ]
+  }
+}
