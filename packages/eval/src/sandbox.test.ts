@@ -989,6 +989,36 @@ return fs.readFileSync("/tmp/a");`,
     expect(loadImport).toHaveBeenCalledOnce();
   });
 
+  it.each([false, null, 0, "", undefined])(
+    "reuses an acquired library exporting %j",
+    async (value) => {
+      const moduleMap: Record<string, unknown> = {};
+      const loadImport = vi.fn(async () => ({
+        format: "cjs" as const,
+        requiredModules: [],
+        bundle: `module.exports = ${value === undefined ? "undefined" : JSON.stringify(value)};`,
+      }));
+      const options = {
+        imports: { "@workspace/widget": "latest" },
+        moduleMap,
+        require: (id: string) => {
+          if (Object.hasOwn(moduleMap, id)) return moduleMap[id];
+          throw new Error(`Module missing: ${id}`);
+        },
+        loadImport,
+      };
+      for (let iteration = 0; iteration < 2; iteration++) {
+        const result = await executeSandbox(
+          'return require("@workspace/widget");',
+          options,
+        );
+        expect(result.success).toBe(true);
+        expect(moduleMap["@workspace/widget"]).toBe(value);
+      }
+      expect(loadImport).toHaveBeenCalledOnce();
+    },
+  );
+
   it("does not link a private library against the ambient panel's peers", async () => {
     const globals = globalThis as Record<string, unknown>;
     const loadReact = vi.fn(async () => ({ marker: "ambient React" }));

@@ -357,7 +357,7 @@ async function loadLibraryBundle(
   const existing = loadedLibraryMetadata(moduleMap, specifier);
   if (
     existing?.bundle === artifact.bundle &&
-    moduleMap[specifier] !== undefined
+    Object.hasOwn(moduleMap, specifier)
   ) {
     // Two refs may resolve to byte-identical artifacts. The acquired artifact
     // is already active, but remember the newly requested ref so future calls
@@ -382,7 +382,7 @@ async function loadLibraryBundle(
   await runInfrastructurePhase("package_load_failed", () =>
     Promise.all(
       artifact.requiredModules.map(async (dependency) => {
-        if (moduleMap[dependency] !== undefined) return;
+        if (Object.hasOwn(moduleMap, dependency)) return;
         if (!(await loadLazyHostModule(dependency, moduleMap, moduleMap))) {
           // A private realm may satisfy a peer through its injected require.
           // Resolve it before execution; never run a partially linked module.
@@ -463,7 +463,7 @@ async function loadImports(
     // @radix-ui/*, …) never go through the build service. Asking it for
     // "react" can even resolve to an unrelated workspace unit via basename
     // matching (workspace/packages/react) and build that instead.
-    if (moduleMap[specifier] !== undefined) {
+    if (Object.hasOwn(moduleMap, specifier)) {
       if (!existing || existing.ref === importRefKey(ref)) continue;
     } else {
       if (installPreloadedModuleAlias(specifier, moduleMap)) continue;
@@ -526,6 +526,7 @@ async function loadLazyHostModule(
   const hasGeneratedLoader =
     !!loaders &&
     typeof loaders === "object" &&
+    Object.hasOwn(loaders, specifier) &&
     typeof (loaders as Record<string, unknown>)[specifier] === "function";
   const hasNativeImport =
     nativeSpecifiers instanceof Set && nativeSpecifiers.has(specifier);
@@ -538,7 +539,7 @@ async function loadLazyHostModule(
     );
   }
   const loaded = await asyncRequire(specifier);
-  if (moduleMap[specifier] === undefined) moduleMap[specifier] = loaded;
+  if (!Object.hasOwn(moduleMap, specifier)) moduleMap[specifier] = loaded;
   return true;
 }
 
@@ -552,7 +553,7 @@ function installPreloadedModuleAlias(
   const flatBare = specifier.match(/^workspace-([^/]+)$/u);
   if (flatBare) candidates.push(`@workspace/${flatBare[1]}`);
   for (const candidate of candidates) {
-    if (moduleMap[candidate] !== undefined) {
+    if (Object.hasOwn(moduleMap, candidate)) {
       moduleMap[specifier] = moduleMap[candidate];
       return true;
     }
@@ -584,7 +585,7 @@ function installLazyImportLoader(
     const ref = refValue === "latest" ? undefined : refValue;
     const existing = loadedLibraryMetadata(moduleMap, specifier);
     if (
-      moduleMap[specifier] !== undefined &&
+      Object.hasOwn(moduleMap, specifier) &&
       (!existing || existing.ref === importRefKey(ref))
     ) {
       return moduleMap[specifier];
@@ -671,7 +672,7 @@ async function ensureRequires(
   let validation = validateRequires(requires, requireFn);
   if (!validation.valid && options.loadImport) {
     const moduleMap = getModuleMap(options.moduleMap);
-    const missing = requires.filter((r) => !moduleMap[r]);
+    const missing = requires.filter((r) => !Object.hasOwn(moduleMap, r));
     const inferredImports = await inferSandboxImports(
       missing,
       options.loadImport,
@@ -704,7 +705,7 @@ async function ensureRequires(
 
   if (!validation.valid) {
     const missingModules = requires.filter(
-      (r) => !getModuleMap(options.moduleMap)[r],
+      (r) => !Object.hasOwn(getModuleMap(options.moduleMap), r),
     );
     const missingDeclarations = await getMissingPackageDeclarations(
       missingModules,
@@ -1718,7 +1719,9 @@ export async function executeSandbox(
     if (!validation.valid && options.loadImport) {
       throwIfAborted(signal);
       // Auto-resolve: build missing workspace packages on-demand
-      const missingModules = transformed.requires.filter((r) => !moduleMap[r]);
+      const missingModules = transformed.requires.filter(
+        (r) => !Object.hasOwn(moduleMap, r),
+      );
       const autoImports = await withAbort(
         inferSandboxImports(missingModules, options.loadImport, {
           importerPath: options.sourcePath,
@@ -1769,7 +1772,9 @@ export async function executeSandbox(
         };
       }
       const available = Object.keys(moduleMap);
-      const missingModules = transformed.requires.filter((r) => !moduleMap[r]);
+      const missingModules = transformed.requires.filter(
+        (r) => !Object.hasOwn(moduleMap, r),
+      );
       // For npm packages, suggest the imports parameter
       const suggestedImports = Object.fromEntries(
         missingModules.map((m) => [
