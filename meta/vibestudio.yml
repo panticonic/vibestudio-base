@@ -220,7 +220,6 @@ template:
     - extensions/test-runner
     - meta
     - packages/about-shared
-    - packages/agent-loop
     - packages/agentic-chat
     - packages/agentic-core
     - packages/agentic-do
@@ -233,8 +232,6 @@ template:
     - packages/integrations
     - packages/model-catalog
     - packages/omnibox-core
-    - packages/pi-ai
-    - packages/pi-core
     - packages/pubsub
     - packages/quickfire-core
     - packages/react

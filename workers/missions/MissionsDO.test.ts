@@ -251,15 +251,24 @@ describe("MissionsDO", () => {
     });
   });
 
-
   it("keeps distinct declared defaults distinct even when their watch actions match", async () => {
     const { callAs } = await createMissions();
     const charter = continuingAgentCharter();
     if (charter.execution.kind !== "agent") throw new Error("Expected agent");
     charter.execution.action = { kind: "watch", code: "return signal();" };
     const input = { name: "Watcher", charter };
-    const first = await callAs<MissionRecord>(alice, "provisionDefault", "first", input);
-    const second = await callAs<MissionRecord>(alice, "provisionDefault", "second", input);
+    const first = await callAs<MissionRecord>(
+      alice,
+      "provisionDefault",
+      "first",
+      input,
+    );
+    const second = await callAs<MissionRecord>(
+      alice,
+      "provisionDefault",
+      "second",
+      input,
+    );
     expect(second.missionId).not.toBe(first.missionId);
   });
 
@@ -716,141 +725,144 @@ describe("MissionsDO", () => {
     });
   });
 
-  it.each(["queued", "running"] as const)("reconciles a %s turn from receiver-owned evidence", async (initialState) => {
-    const harness = await createMissions(IdempotentCommandMissionsDO);
-    const dispatchKeys: string[] = [];
-    let admissions = 0;
-    let executorStatus:
-      | { state: "not-found" }
-      | { state: "queued"; channelId: string }
-      | {
-          state: "running";
-          channelId: string;
-          turnId: string;
-          waiting: boolean;
-        }
-      | {
-          state: "terminal";
-          outcome: "succeeded";
-          finalMessage: string;
-        } = {
-      state: initialState,
-      channelId: "do:workers/pubsub-channel:PubSubChannel:fresh",
-      turnId: "turn:live",
-      waiting: true,
-    };
-    let acknowledged = false;
-    harness.rpcCall.mockImplementation(
-      async (target, method, args = [], options) => {
-        if (target === "main" && method === "authority.compileAuthorityPlan")
-          return policy();
-        if (target === "main" && method === "authority.acquireForTarget")
-          return { requestIds: [], grantIds: [], denialIds: [] };
-        if (target === "main" && method === "runtime.createContext")
-          return { contextId: "ctx:fresh" };
-        if (target === "main" && method === "runtime.createEntity") {
-          const input = args[0] as { className?: string };
-          return input.className === "PubSubChannel"
-            ? {
-                targetId: "do:workers/pubsub-channel:PubSubChannel:fresh",
-                contextId: "ctx:fresh",
-              }
-            : {
-                targetId: "do:workers/summary:SummaryAgent:daily-run",
-                contextId: "ctx:fresh",
-              };
-        }
-        if (method === "subscribeChannel") return undefined;
-        if (target === "main" && method === "authority.admitExecution") {
-          admissions += 1;
-          return {
-            authoritySessionId: `admission:turn:${admissions}`,
-            nonce: `nonce:turn:${admissions}`,
-          };
-        }
-        if (method === "runAutomationTurn") {
-          dispatchKeys.push(
-            (options as { idempotencyKey?: string }).idempotencyKey ?? "",
-          );
-          return undefined;
-        }
-        if (method === "describeAutomationRun") return executorStatus;
-        if (method === "acknowledgeAutomationRun") {
-          acknowledged = true;
-          return undefined;
-        }
-        if (target === "main" && method === "authority.finishExecution")
-          return undefined;
-        if (target === "main" && method.startsWith("workspace-state.alarm"))
-          return undefined;
-        throw new Error(`Unexpected RPC ${target}.${method}`);
-      },
-    );
-    const mission = await harness.callAs<MissionRecord>(alice, "launch", {
-      name: "Daily summary",
-      charter: agentCharter(),
-    });
-    const run = await harness.callAs<MissionRunRecord>(
-      alice,
-      "runNow",
-      mission.missionId,
-    );
-    expect(run.phase).toBe("executing");
-    harness.sql.exec(
-      "UPDATE mission_runs SET progress_at=? WHERE run_id=?",
-      Date.now() - 60_001,
-      run.runId,
-    );
+  it.each(["queued", "running"] as const)(
+    "reconciles a %s turn from receiver-owned evidence",
+    async (initialState) => {
+      const harness = await createMissions(IdempotentCommandMissionsDO);
+      const dispatchKeys: string[] = [];
+      let admissions = 0;
+      let executorStatus:
+        | { state: "not-found" }
+        | { state: "queued"; channelId: string }
+        | {
+            state: "running";
+            channelId: string;
+            nativeTaskId: number;
+            waiting: boolean;
+          }
+        | {
+            state: "terminal";
+            outcome: "succeeded";
+            finalMessage: string;
+          } = {
+        state: initialState,
+        channelId: "do:workers/pubsub-channel:PubSubChannel:fresh",
+        nativeTaskId: 12,
+        waiting: true,
+      };
+      let acknowledged = false;
+      harness.rpcCall.mockImplementation(
+        async (target, method, args = [], options) => {
+          if (target === "main" && method === "authority.compileAuthorityPlan")
+            return policy();
+          if (target === "main" && method === "authority.acquireForTarget")
+            return { requestIds: [], grantIds: [], denialIds: [] };
+          if (target === "main" && method === "runtime.createContext")
+            return { contextId: "ctx:fresh" };
+          if (target === "main" && method === "runtime.createEntity") {
+            const input = args[0] as { className?: string };
+            return input.className === "PubSubChannel"
+              ? {
+                  targetId: "do:workers/pubsub-channel:PubSubChannel:fresh",
+                  contextId: "ctx:fresh",
+                }
+              : {
+                  targetId: "do:workers/summary:SummaryAgent:daily-run",
+                  contextId: "ctx:fresh",
+                };
+          }
+          if (method === "subscribeChannel") return undefined;
+          if (target === "main" && method === "authority.admitExecution") {
+            admissions += 1;
+            return {
+              authoritySessionId: `admission:turn:${admissions}`,
+              nonce: `nonce:turn:${admissions}`,
+            };
+          }
+          if (method === "runAutomationTurn") {
+            dispatchKeys.push(
+              (options as { idempotencyKey?: string }).idempotencyKey ?? "",
+            );
+            return undefined;
+          }
+          if (method === "describeAutomationRun") return executorStatus;
+          if (method === "acknowledgeAutomationRun") {
+            acknowledged = true;
+            return undefined;
+          }
+          if (target === "main" && method === "authority.finishExecution")
+            return undefined;
+          if (target === "main" && method.startsWith("workspace-state.alarm"))
+            return undefined;
+          throw new Error(`Unexpected RPC ${target}.${method}`);
+        },
+      );
+      const mission = await harness.callAs<MissionRecord>(alice, "launch", {
+        name: "Daily summary",
+        charter: agentCharter(),
+      });
+      const run = await harness.callAs<MissionRunRecord>(
+        alice,
+        "runNow",
+        mission.missionId,
+      );
+      expect(run.phase).toBe("executing");
+      harness.sql.exec(
+        "UPDATE mission_runs SET progress_at=? WHERE run_id=?",
+        Date.now() - 60_001,
+        run.runId,
+      );
 
-    const wake = await harness.instance.alarm();
+      const wake = await harness.instance.alarm();
 
-    expect(dispatchKeys).toEqual([`${run.runId}:dispatch`]);
-    expect(
-      await harness.callAs<MissionRunRecord>(alice, "getRun", run.runId),
-    ).toMatchObject({ phase: "executing" });
+      expect(dispatchKeys).toEqual([`${run.runId}:dispatch`]);
+      expect(
+        await harness.callAs<MissionRunRecord>(alice, "getRun", run.runId),
+      ).toMatchObject({ phase: "executing" });
 
-    executorStatus = { state: "not-found" };
-    harness.sql.exec(
-      "UPDATE mission_runs SET progress_at=? WHERE run_id=?",
-      Date.now() - 60_001,
-      run.runId,
-    );
-    await harness.instance.alarm();
+      executorStatus = { state: "not-found" };
+      harness.sql.exec(
+        "UPDATE mission_runs SET progress_at=? WHERE run_id=?",
+        Date.now() - 60_001,
+        run.runId,
+      );
+      await harness.instance.alarm();
 
-    expect(dispatchKeys).toEqual([
-      `${run.runId}:dispatch`,
-      `${run.runId}:dispatch`,
-    ]);
-    expect(
-      harness.sql
-        .exec(
-          "SELECT authority_session_id FROM mission_runs WHERE run_id=?",
-          run.runId,
-        )
-        .one(),
-    ).toEqual({ authority_session_id: "admission:turn:3" });
+      expect(dispatchKeys).toEqual([
+        `${run.runId}:dispatch`,
+        `${run.runId}:dispatch`,
+      ]);
+      expect(
+        harness.sql
+          .exec(
+            "SELECT authority_session_id FROM mission_runs WHERE run_id=?",
+            run.runId,
+          )
+          .one(),
+      ).toEqual({ authority_session_id: "admission:turn:3" });
 
-    executorStatus = {
-      state: "terminal",
-      outcome: "succeeded",
-      finalMessage: "Summary sent.",
-    };
-    harness.sql.exec(
-      "UPDATE mission_runs SET progress_at=? WHERE run_id=?",
-      Date.now() - 60_001,
-      run.runId,
-    );
-    await harness.instance.alarm();
-    expect(
-      await harness.callAs<MissionRunRecord>(alice, "getRun", run.runId),
-    ).toMatchObject({
-      phase: "terminal",
-      outcome: "succeeded",
-      finalMessage: "Summary sent.",
-    });
-    expect(acknowledged).toBe(true);
-    expect(wake?.wakeAt).toBeGreaterThan(Date.now());
-  });
+      executorStatus = {
+        state: "terminal",
+        outcome: "succeeded",
+        finalMessage: "Summary sent.",
+      };
+      harness.sql.exec(
+        "UPDATE mission_runs SET progress_at=? WHERE run_id=?",
+        Date.now() - 60_001,
+        run.runId,
+      );
+      await harness.instance.alarm();
+      expect(
+        await harness.callAs<MissionRunRecord>(alice, "getRun", run.runId),
+      ).toMatchObject({
+        phase: "terminal",
+        outcome: "succeeded",
+        finalMessage: "Summary sent.",
+      });
+      expect(acknowledged).toBe(true);
+      expect(wake?.wakeAt).toBeGreaterThan(Date.now());
+    },
+  );
 
   it("skips a scheduled occurrence that was missed while the workspace was unavailable", async () => {
     const harness = await createMissions();
@@ -928,7 +940,12 @@ describe("MissionsDO", () => {
       mission.missionId,
     );
     const effectFailure = {
-      invocationId: "notify-call",
+      source: {
+        kind: "native-tool" as const,
+        invocationId: "notify-call",
+        nativeTaskId: 12,
+        nativeEntryId: 13,
+      },
       name: "notify",
       outcome: "tool_error" as const,
       code: "EDELIVERY",

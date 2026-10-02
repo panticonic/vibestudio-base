@@ -2,10 +2,9 @@
  * @workspace/agentic-do — Composable agent modules for Durable Objects.
  *
  * Agent DOs extend AgentWorkerBase (AgentVesselBase + workspace defaults).
- * Turn semantics live entirely in the pure `@workspace/agent-loop`; this
- * package contributes the impure driver (outbox, fold cache, executors) and
- * the DO surface. Non-agent DOs (e.g. PubSub channel DOs) extend
- * DurableObjectBase directly.
+ * Native Pi tasks own execution and durable waits. This package supplies
+ * product channel, authority, resource and presentation boundaries. Non-agent
+ * DOs extend DurableObjectBase directly.
  */
 
 export { AgentWorkerBase } from "./agent-worker-base.js";
@@ -28,12 +27,7 @@ export {
   PROVIDER_CREDENTIAL_SETUPS,
 } from "./agent-config.js";
 export type { ModelCredentialSetupProps } from "./agent-config.js";
-export type { RespondPolicy } from "@workspace/agent-loop";
-export type { AgentTurnClosedInput } from "./agent-loop-driver.js";
-export { AgentLoopDriver } from "./agent-loop-driver.js";
-export { EffectOutbox } from "./effect-outbox.js";
-export { FoldCache } from "./fold-cache.js";
-export * from "./effect-executors/index.js";
+export type { RespondPolicy } from "@workspace/agentic-protocol";
 export { DOIdentity } from "./identity.js";
 export { SubscriptionManager } from "./subscription-manager.js";
 export { ChannelClient } from "./channel-client.js";

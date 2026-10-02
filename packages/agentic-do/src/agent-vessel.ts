@@ -1,16 +1,106 @@
+import { createProvider, Type, type Api, type Model } from "@panticonic/pi-ai";
+import { authorNativeTool } from "@workspace/harness";
+import { openAICompletionsApi } from "@panticonic/pi-ai/api/openai-completions.lazy";
+import { BACKGROUND_CONTEXT } from "@panticonic/pi-chord/context";
+import {
+  defineExtension,
+  bindTool,
+  type Conversation,
+  type ConversationId,
+  type EntryId,
+  type Extension,
+  type Harness,
+  type HarnessCommit,
+  type ModelRequestTarget,
+  type ModelRequestApi,
+  type ModelRequestConnection,
+  type SubmissionId,
+  type TaskId,
+  type Tx,
+  type ToolRegistration,
+  type ToolExecutionApi,
+  type ToolExecutionResult,
+  type SettledSubmissionRecord,
+} from "@panticonic/pi-durable";
+import { copyJson, type Context, type JsonValue } from "@panticonic/pi-chord";
+import type { NativeEvalExecution } from "@workspace/harness/tools/eval";
+import {
+  NativeChannelOwner,
+  type NativeChannelConfiguration,
+} from "./native-channel-owner.js";
+import { parseDoTargetId } from "@vibestudio/shared/workspaceServiceRpc";
+import type {
+  ExportChannelKnowledgeInput,
+  ImportChannelKnowledgeInput,
+  NativeChannelKnowledge,
+} from "@workspace/agentic-core/native-channel-knowledge";
+import {
+  retainedNativeChannelKnowledgeConfiguration,
+  exportNativeChannelKnowledge,
+  importNativeChannelKnowledge,
+} from "./native-channel-knowledge.js";
+import { createNativeAutomationRuns } from "./native-automation-runs.js";
+import { createNativeEvalExecution } from "./native-eval-tool.js";
+import { createNativeSuspendExecution } from "./native-suspend-tool.js";
+import {
+  createNativeChannelMethodExecution,
+  consumeNativeChannelMethodReceipt,
+  nativeChannelMethodReceiptKey,
+  readCanonicalChannelProviderOutcome,
+  readCanonicalChannelProviderTerminal,
+} from "./native-channel-method.js";
+import {
+  notifyModelCredentialChange,
+  createProtectedLocalModelAuth,
+} from "./native-model-provider.js";
+import { retainedAgentExecutionOwner } from "./native-agent-session.js";
+import {
+  observeNativeModelConnection,
+  prepareNativeModelEvidence,
+  readNativeChannelInspection,
+  readNativeModelExecutionEvidence,
+} from "./native-model-evidence.js";
+import { contextIdForTargetKey } from "@vibestudio/shared/runtime/contextIdentity";
+import {
+  createNativeProductModelPolicy,
+  nativeProductStream,
+  type NativeProductModelSettings,
+} from "./native-product-model-policy.js";
+import {
+  nativeAnswerEnvelopeId,
+  waitForNativeAnswerPublication,
+  type NativePublishedAnswer,
+} from "./native-channel-publication.js";
+import { createNativeModelReset } from "./native-model-reset.js";
+import { createNativeConversationCancellation } from "./native-conversation-cancellation.js";
+import { retainNativeSubagentTerminal } from "./native-subagent-terminal.js";
+import {
+  createNativeChildLaunch,
+  type NativeChildLaunchIntent,
+} from "./native-child-launch.js";
+import { createNativeInputSettlement } from "./native-input-settlement.js";
+import { withPreparedNativeModel } from "./native-prepared-model-helper.js";
+import type { CredentialedModelConnection } from "./native-model-transport.js";
+import { OwnedMethodCalls } from "./owned-method-calls.js";
+import {
+  prepareNativeProductContexts,
+  recordNativeProductInput,
+  nativeTaskProductContext,
+} from "./native-product-context.js";
+import type { NativeInvocationExecution } from "./native-invocation-boundary.js";
+import {
+  recordNativeChannelInputAdmission,
+  retainedNativeConversationChannel,
+  verifyNativeChannelDeliveryReplay,
+  type NativeChannelIntake,
+  type NativeChannelInputPrepare,
+  waitForNativeChannelSourceMessageAt,
+} from "./native-channel-session.js";
 import { WorkspaceAutomationSchema } from "@vibestudio/workspace-contracts/automations";
 /**
- * AgentVesselBase (WS1 §2.7) — the thin, event-sourced agent vessel.
- *
- * Replaces TrajectoryVesselBase (8,662 lines). Composition only:
- *
- *   DOIdentity + SubscriptionManager + ChannelClient   — transport plumbing
- *   FeedbackIngest + CardManager                       — UX surfaces (unchanged)
- *   AgentLoopDriver (+ pure @workspace/agent-loop)     — ALL turn semantics
- *
- * Every durable decision lives in the trajectory log; this class only wires
- * ports (blobstore, credentials, local tools, channel calls) and translates
- * the DO surface (subscribe/envelope/methodCall/fork/alarm) into commands.
+ * Product composition over one native Pi Session. This vessel owns channel
+ * membership, presentation, automation provenance and child resources; native
+ * tasks own model/tool execution, durable waits and cancellation.
  */
 
 import {
@@ -20,16 +110,12 @@ import {
 import {
   type DurableObjectContext,
   type LifecyclePrepareInput,
-  type LifecyclePrepareResult,
-  type LifecycleResumeInput,
 } from "@workspace/runtime/worker/durable-base";
-import { PanelDurableObjectBase } from "@workspace/runtime/worker/panel-durable-base";
-import { assertExactSqlTableSchema } from "@workspace/runtime/worker/sql-table-schema";
+
 import {
-  isTerminalAuthorityFailure,
-  RemoteRpcError,
   rpc,
-  withCausalParent,
+  withRpcAbortSignal,
+  type RpcCaller,
   type RpcClient,
 } from "@vibestudio/rpc";
 import { withExecutionAdmission } from "@vibestudio/rpc/internal";
@@ -39,7 +125,6 @@ import {
 } from "@workspace/runtime/workerd-client";
 import type {
   ChannelAgenticContext,
-  ChannelReplayEnvelope,
   RegisterMessageTypeInput,
   RpcChannelMessage,
 } from "@workspace/pubsub";
@@ -53,12 +138,7 @@ import {
   composeSystemPrompt,
   type SystemPromptMode,
 } from "@workspace/harness/system-prompt";
-import {
-  evalToolParameters,
-  formatEvalResult,
-  normalizeEvalToolSource,
-  type EvalRunResult,
-} from "@workspace/harness/tools/eval";
+
 import { resolveToolFile } from "@workspace/harness/semantic-file-resolution";
 import { splitRepoPath } from "@vibestudio/shared/runtime/entitySpec";
 import type {
@@ -68,13 +148,12 @@ import type {
 import {
   AGENTIC_EVENT_PAYLOAD_KIND,
   AGENTIC_PROTOCOL_VERSION,
-  agentToolFailureFromUnknown,
   hydrateStoredValueRefs,
   isRespondPolicy,
-  participantRefFromActor,
   participantRefFromMetadata,
-  renderAgentToolFailure,
   resolveShouldRespond,
+  resolveHandle,
+  isHandleResolutionFailure,
   type ActorRef,
   type AgenticEvent,
   type AutomationDefinitionSnapshot,
@@ -90,20 +169,11 @@ import {
   stableSha256Hex,
 } from "@vibestudio/content-addressing";
 import { createTypedServiceClient } from "@vibestudio/shared/typedServiceClient";
-import {
-  createDeferredEvalExecutor,
-  evalAuthorityInputSchema,
-} from "@vibestudio/service-schemas/eval";
-import {
-  channelTrajectoryFor,
-  commandIdForTrajectoryInvocation,
-  logIdForChannel,
-} from "@vibestudio/trajectory-identity";
-import type { AgentTool, AgentToolResult } from "@workspace/pi-core";
+
 import {
   createAgentEntity,
   createSubagentContext,
-  initAgentFromTrajectoryFork,
+  importAgentChannelKnowledge,
   publishAgentTaskSeed,
   subscribeAgentToChannel,
 } from "@workspace/agentic-core/agent-launch";
@@ -116,7 +186,6 @@ import {
 import type { DoAlarmSchedule } from "@vibestudio/shared/doDispatcher";
 import {
   MISSION_COMPLETION_PROTOCOL,
-  missionCompletionResponse,
   missionExecutionImageDigest,
   type AutomationExecutorRunStatus,
   type MissionAgentAction,
@@ -126,14 +195,7 @@ import {
   type MissionRecord,
   type MissionTrigger,
 } from "@vibestudio/automation/mission";
-import type {
-  ClaimRequest,
-  ClaimSettlement,
-  DurableWorkQueue,
-  SettleRequest,
-  WorkClaim,
-} from "@vibestudio/shared/durableWork";
-import { executeLocalTool } from "./local-tool-execution.js";
+
 import {
   AGENT_INSPECTION_METHODS,
   isAgentInspectionMethod,
@@ -146,32 +208,20 @@ import {
   type VcsMergeInput,
   type VcsStateNodeRef,
 } from "@vibestudio/service-schemas/vcs";
-import {
-  toCredentialConnectRequest,
-  isTemplatedBaseUrl,
-  resolveProviderModelBaseUrl,
-} from "@workspace/model-catalog/providerConnect";
-import {
-  defaultPolicies,
-  derivedTurnStatus,
-  ids,
-  type AgentLoopConfig,
-  type AgentTurnMetadata,
-  type EffectOutcome,
-  type RespondPolicy,
-  type RosterEntry,
-  type StepPolicy,
-  type ThinkingLevel,
-} from "@workspace/agent-loop";
-import {
-  createModelCredentialSentinel,
-  installUrlBoundModelFetchProxy,
-} from "./model-fetch-proxy.js";
-import { modelTransportRuntimeEvidence } from "./effect-executors/index.js";
-import {
-  assertAgentToolParametersSchema,
-  prepareAgentToolArguments,
-} from "./tool-arguments.js";
+import { toCredentialConnectRequest } from "@workspace/model-catalog/providerConnect";
+import type { RespondPolicy } from "@workspace/agentic-protocol";
+import type { ModelFailureClass } from "@workspace/agentic-core/model-failures";
+import type { RosterEntry } from "@workspace/agentic-core/agent-channel-roster";
+import type { AgentThinkingLevel as ThinkingLevel } from "@workspace/model-catalog/catalog";
+
+import { modelTransportRuntimeEvidence } from "./model-transport-runtime.js";
+
+import type { AgentProductMetadata } from "@workspace/agentic-core/agent-product-metadata";
+
+interface NativeChannelSelection {
+  readonly targetChannelId: string;
+  readonly intake: NativeChannelIntake;
+}
 
 export interface AgentToolExecutionContext {
   readonly invocationId: string;
@@ -179,34 +229,23 @@ export interface AgentToolExecutionContext {
   readonly commandId: string;
   /** Immutable caller bound to the exact trajectory invocation that caused the tool call. */
   readonly rpc: RpcClient;
+  readonly metadata?: AgentProductMetadata;
 }
 import type {
   ConnectCredentialRequest,
   StoredCredentialSummary as ModelCredentialSummary,
 } from "@workspace/runtime/credentials";
 import { DOIdentity } from "./identity.js";
-import { SubscriptionManager } from "./subscription-manager.js";
+import {
+  SubscriptionManager,
+  type PreparedChannelSubscription,
+} from "./subscription-manager.js";
+import { createNativeChannelBootstrap } from "./native-channel-bootstrap.js";
 import { SubagentRunStore, type SubagentRunRow } from "./subagent-runs.js";
 import { ChannelClient } from "./channel-client.js";
-import { FeedbackIngest } from "./feedback-ingest.js";
+import { ChannelMethodRelays } from "./channel-method-relays.js";
+
 import { CardManager } from "./custom-cards.js";
-import {
-  AgentLoopDriver,
-  ensureAgentLoopDriverSchema,
-  type DriverDeps,
-  type AgentTurnClosedInput,
-} from "./agent-loop-driver.js";
-import {
-  inspectEffectOutbox,
-  outboxExternalId,
-  parseOutboxExternalId,
-} from "./effect-outbox.js";
-import {
-  CredentialApprovalDeferredError,
-  CredentialPendingError,
-  type EphemeralEmit,
-  type ExecutorDeps,
-} from "./effect-executors/index.js";
 import {
   LOCAL_FALLBACK_MODEL_REF,
   LOCAL_MODELS_EXTENSION_ID,
@@ -216,26 +255,11 @@ import {
   type MaterializedModel,
 } from "./model-spec.js";
 
-function authorityAcquisitionRequired(error: unknown): boolean {
-  if (!error || typeof error !== "object") return false;
-  const candidate = error as {
-    code?: unknown;
-    errorData?: { acquisition?: { ownerRuntimeId?: unknown } };
-  };
-  return (
-    candidate.code === "EACQUIRE" &&
-    typeof candidate.errorData?.acquisition?.ownerRuntimeId === "string"
-  );
-}
-
-const DELTA_BATCH_MS = 100;
-const MAX_BUFFERED_DELTA_EVENTS = 256;
-const MAX_PENDING_SIGNAL_BATCHES = 4;
 const CHANNEL_STATE_CACHE_MS = 5_000;
 /** Final backstop cadence for undelivered deferred-eval cancel intents. The
  * primary triggers are lifecycle events (resume, retire); this alarm only
  * covers an EvalDO outage that outlives them. */
-const EVAL_CANCEL_INTENT_RETRY_MS = 60_000;
+
 const BLOB_TEXT_CACHE_MAX_BYTES = 8 * 1024 * 1024;
 /** ~256KB of serialized session entries before compaction — comfortably
  *  under modern model context windows while keeping plenty of recent
@@ -248,8 +272,7 @@ const DEFAULT_MAX_SUBAGENT_DEPTH = 3;
 const DEFAULT_MAX_SUBAGENTS = 3;
 const PARTICIPANT_HANDLE_PATTERN = /^[a-zA-Z][a-zA-Z0-9_-]{0,63}$/;
 const SUBAGENT_MERGE_PROTOCOL = "vibestudio.subagent-merge.v1";
-const CHANNEL_ENVELOPE_RETRY_MS = 250;
-const CHANNEL_ENVELOPE_MAX_RETRY_MS = 30_000;
+
 const SUBAGENT_RUN_HANDLE_LENGTH = 24;
 
 /** Tool-facing run handle. The canonical id is the spawning invocation id and
@@ -417,7 +440,7 @@ export interface AgentSettings {
   fastMode: boolean;
   fallbackModel?: string;
   fallbackThinkingLevel?: ThinkingLevel;
-  fallbackOn?: string[];
+  fallbackOn?: ModelFailureClass[];
   fallbackScope?: "unattended" | "all-turns";
   approvalLevel: ApprovalLevel;
   respondPolicy: RespondPolicy;
@@ -450,7 +473,7 @@ function isThinkingLevel(value: unknown): value is ThinkingLevel {
   );
 }
 
-function isFallbackOn(value: unknown): value is string[] {
+function isFallbackOn(value: unknown): value is ModelFailureClass[] {
   return (
     Array.isArray(value) &&
     value.length > 0 &&
@@ -514,10 +537,6 @@ export function resolveRespondFromHandles(
   return respondFrom.map((entry) => handleToId.get(entry) ?? entry);
 }
 
-function participantIdFromRef(ref: ParticipantRef): string {
-  return ref.participantId ?? ref.id;
-}
-
 function configuredParticipantHandle(config: unknown): string | null {
   if (!config || typeof config !== "object") return null;
   const handle = (config as Record<string, unknown>)["handle"];
@@ -555,27 +574,6 @@ export function deriveSubagentParticipantHandle(
   const candidate = `${trimmedBase}-${suffix}`;
   const handle = /^[a-zA-Z]/.test(candidate) ? candidate : `a-${candidate}`;
   return handle.slice(0, 64);
-}
-
-/**
- * Summarize a loop's folded turn state for `agent.describe()` — derived status +
- * the live pending-effect counts. Pure (given the folded `AgentState`) + exported
- * so it can be verified against a REAL folded loop state in the loop-driver tests.
- */
-export function summarizeTurn(state: Parameters<typeof derivedTurnStatus>[0]): {
-  status: ReturnType<typeof derivedTurnStatus>;
-  lastSeq: number;
-  pendingInvocations: number;
-  pendingApprovals: number;
-  pendingCredentialWaits: number;
-} {
-  return {
-    status: derivedTurnStatus(state),
-    lastSeq: state.lastSeq,
-    pendingInvocations: Object.keys(state.pendingInvocations).length,
-    pendingApprovals: Object.keys(state.pendingApprovals).length,
-    pendingCredentialWaits: Object.keys(state.pendingCredentialWaits).length,
-  };
 }
 
 export interface AgentPromptResources {
@@ -642,7 +640,7 @@ export interface AgentAlarmSource {
   fire(now: number): Promise<void>;
 }
 
-export interface AgentInitiatedTurnOptions extends AgentTurnMetadata {
+export interface AgentInitiatedTurnOptions extends AgentProductMetadata {
   steeringId?: string;
 }
 
@@ -668,22 +666,17 @@ const HOT_PATH_TRACE_SWEEP_INTERVAL = 64;
 
 /** Result of the deferred-eval gate: parked, or a settled tool result whose
  * typed terminal fields flow unchanged into the trajectory invocation event. */
-type DeferredEvalGateResult =
-  | { deferred: true; reason: "external-result" }
-  | {
-      result: unknown;
-      isError: boolean;
-      terminalOutcome?: "infrastructure_error";
-      terminalReasonCode?: string;
-      failure?: ReturnType<typeof agentToolFailureFromUnknown>;
-    };
 
-export abstract class AgentVesselBase extends PanelDurableObjectBase {
-  static override schemaVersion = 4;
+interface NativeProductChannelConfiguration extends NativeChannelConfiguration {
+  readonly modelPolicy: NativeProductModelSettings;
+}
+
+export abstract class AgentVesselBase extends NativeChannelOwner<NativeProductChannelConfiguration> {
+  static override schemaVersion = 1;
 
   protected readonly identity: DOIdentity;
   protected readonly subscriptions: SubscriptionManager;
-  protected readonly feedback: FeedbackIngest;
+
   protected readonly cards: CardManager;
   protected readonly subagentRuns: SubagentRunStore;
   /** Activation-local admission intents make concurrent sibling snapshots
@@ -692,15 +685,9 @@ export abstract class AgentVesselBase extends PanelDurableObjectBase {
     string,
     "completed" | "failed" | "cancelled" | "abandoned"
   >();
-  private _driver: AgentLoopDriver | null = null;
-  private readonly localTools = new Map<string, Map<string, AgentTool>>();
+
   /** Deferred evals are child resources of the channel that started them. */
-  private readonly deferredEvalRuns = new Map<string, Set<string>>();
-  private readonly deferredEvalBackstopWarnings = new Set<string>();
-  private readonly deltaBuffers = new Map<
-    string,
-    { events: AgenticEvent[]; timer: unknown }
-  >();
+
   private readonly channelClients = new Map<string, ChannelClient>();
   private readonly channelConfigCache = new Map<
     string,
@@ -727,28 +714,15 @@ export abstract class AgentVesselBase extends PanelDurableObjectBase {
   private readonly alarmDeadlines = new Map<string, number>();
   /** Derived scheduling state only; the durable trace rows remain authoritative. */
   private readonly hotPathTraceInsertsSinceSweep = new Map<string, number>();
-  private readonly directMethodCalls = new Map<string, AbortController>();
-  /**
-   * In-flight `chat.callMethod` relays initiated on behalf of an EvalDO sandbox
-   * (keyed by transportCallId). The agent issues the call via ChannelClient,
-   * then the channel's durable invocation terminal — broadcast back to us, the
-   * caller — settles the awaiting promise in settleChatOpCall. This is a
-   * loop-independent pending-call mechanism (parallel to the loop's
-   * effect-outbox channel_call path) so the eval relay can return the delivered
-   * result synchronously to the RPC caller. */
-  private readonly chatOpPendingCalls = new Map<
-    string,
-    {
-      resolve: (value: { content: unknown }) => void;
-      reject: (error: Error) => void;
-      responderSessionId: string;
-      timer?: ReturnType<typeof setTimeout>;
-    }
-  >();
+  private readonly directMethodCalls = new OwnedMethodCalls<{
+    result: unknown;
+    isError?: boolean;
+  }>();
+  /** Actual finite Eval RPC relays, retained until transport/provider/hydration join. */
+  private readonly channelMethodRelays = new ChannelMethodRelays();
 
   constructor(ctx: DurableObjectContext, env: unknown) {
     super(ctx, env);
-    this.prepareSchemaStorage();
     this.identity = new DOIdentity(this.sql);
     this.subscriptions = new SubscriptionManager(
       this.sql,
@@ -756,7 +730,7 @@ export abstract class AgentVesselBase extends PanelDurableObjectBase {
       this.identity,
     );
     this.subagentRuns = new SubagentRunStore(this.sql);
-    this.feedback = new FeedbackIngest(this.sql);
+
     this.cards = new CardManager({
       sql: this.sql,
       createChannelClient: (channelId) => this.createChannelClient(channelId),
@@ -765,238 +739,33 @@ export abstract class AgentVesselBase extends PanelDurableObjectBase {
       getActor: () => ({ kind: "agent", id: this.participantId() }),
       getAgentId: () => this.objectKey,
     });
-    this.prepareSchemaForActivation();
   }
 
-  protected override afterSchemaReady(): void {
-    this.registerAgentAlarmSource({
-      id: "agent-loop-driver",
-      nextWakeAt: () =>
-        this._driver?.nextWakeAt() ?? this.driverNextWakeAtFromSql(),
-      fire: async () => {
-        await this.driver.reconcileForRecovery();
-      },
-    });
-    this.registerAgentAlarmSource({
-      id: "durable-work-recovery",
-      nextWakeAt: () => this.nextDurableWorkRecoveryAt(),
-      fire: async () => {
-        const queues = this.readyDurableWorkQueues();
-        if (queues.length > 0) this.markWorkReady(...queues);
-      },
-    });
-    this.registerAgentAlarmSource({
-      id: "deferred-eval-cancel",
-      nextWakeAt: () => this.nextEvalCancelIntentWakeAt(),
-      fire: async () => {
-        await this.drainEvalCancelIntents();
-      },
-    });
-  }
+  protected override afterSchemaReady(): void {}
 
-  protected createTables(): void {
+  protected override createAgentTables(): void {
     DOIdentity.createTables(this.sql);
     SubscriptionManager.createTables(this.sql);
-    this.sql.exec(`
-      CREATE TABLE IF NOT EXISTS channel_delivery_admissions (
-        delivery_id TEXT PRIMARY KEY,
-        channel_id TEXT NOT NULL,
-        participant_id TEXT NOT NULL,
-        subscription_revision INTEGER NOT NULL,
-        event_sequence INTEGER NOT NULL,
-        agentic_context_json TEXT,
-        state TEXT NOT NULL CHECK (state IN ('admitted', 'processed', 'declined')),
-        outcome_json TEXT,
-        created_at INTEGER NOT NULL,
-        updated_at INTEGER NOT NULL
-      )
-    `);
-    const wakeQueueDefinition = this.sql
-      .exec(
-        `SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'agent_wake_queue'`,
-      )
-      .toArray()[0]?.["sql"];
-    if (
-      typeof wakeQueueDefinition === "string" &&
-      (!wakeQueueDefinition.includes("'turn-recovery'") ||
-        wakeQueueDefinition.includes("'subagent-terminal-publish'"))
-    ) {
-      this.ctx.storage.transactionSync(() => {
-        this.sql.exec(
-          `ALTER TABLE agent_wake_queue RENAME TO agent_wake_queue_before_turn_recovery`,
-        );
-        this.sql.exec(`
-          CREATE TABLE agent_wake_queue (
-            wake_id TEXT PRIMARY KEY,
-            channel_id TEXT NOT NULL,
-            wake_kind TEXT NOT NULL CHECK (wake_kind IN (
-              'scheduled-model-resume',
-              'turn-recovery',
-              'subagent-cancel-settle'
-            )),
-            payload_json TEXT NOT NULL,
-            prerequisite_delivery_id TEXT,
-            idempotency_key TEXT NOT NULL UNIQUE,
-            attempts INTEGER NOT NULL DEFAULT 0,
-            next_attempt_at INTEGER NOT NULL,
-            lease_owner TEXT,
-            lease_generation INTEGER NOT NULL DEFAULT 0,
-            created_at INTEGER NOT NULL,
-            last_attempt_at INTEGER,
-            disposition TEXT NOT NULL DEFAULT 'ready'
-              CHECK (disposition IN ('ready', 'leased', 'retrying', 'terminal-completed', 'terminal-poison'))
-          )
-        `);
-        this.sql.exec(`
-          INSERT INTO agent_wake_queue
-          SELECT * FROM agent_wake_queue_before_turn_recovery
-          WHERE wake_kind != 'subagent-terminal-publish'
-        `);
-        this.sql.exec(`DROP TABLE agent_wake_queue_before_turn_recovery`);
-      });
-    }
-    this.sql.exec(`
-      CREATE TABLE IF NOT EXISTS agent_wake_queue (
-        wake_id TEXT PRIMARY KEY,
-        channel_id TEXT NOT NULL,
-        wake_kind TEXT NOT NULL CHECK (wake_kind IN (
-          'scheduled-model-resume',
-          'turn-recovery',
-          'subagent-cancel-settle'
-        )),
-        payload_json TEXT NOT NULL,
-        prerequisite_delivery_id TEXT,
-        idempotency_key TEXT NOT NULL UNIQUE,
-        attempts INTEGER NOT NULL DEFAULT 0,
-        next_attempt_at INTEGER NOT NULL,
-        lease_owner TEXT,
-        lease_generation INTEGER NOT NULL DEFAULT 0,
-        created_at INTEGER NOT NULL,
-        last_attempt_at INTEGER,
-        disposition TEXT NOT NULL DEFAULT 'ready'
-          CHECK (disposition IN ('ready', 'leased', 'retrying', 'terminal-completed', 'terminal-poison'))
-      )
-    `);
-    assertExactSqlTableSchema(this.sql, {
-      table: "agent_wake_queue",
-      columns: [
-        ["wake_id", "TEXT", false],
-        ["channel_id", "TEXT", true],
-        ["wake_kind", "TEXT", true],
-        ["payload_json", "TEXT", true],
-        ["prerequisite_delivery_id", "TEXT", false],
-        ["idempotency_key", "TEXT", true],
-        ["attempts", "INTEGER", true, "0"],
-        ["next_attempt_at", "INTEGER", true],
-        ["lease_owner", "TEXT", false],
-        ["lease_generation", "INTEGER", true, "0"],
-        ["created_at", "INTEGER", true],
-        ["last_attempt_at", "INTEGER", false],
-        ["disposition", "TEXT", true, "'ready'"],
-      ],
-      primaryKey: ["wake_id"],
-    });
-    this.sql.exec(`
-      CREATE INDEX IF NOT EXISTS idx_agent_wake_claim
-        ON agent_wake_queue(disposition, next_attempt_at, channel_id, created_at)
-    `);
-    this.sql.exec(`
-      CREATE TABLE IF NOT EXISTS agent_hot_path_trace (
-        sequence INTEGER PRIMARY KEY AUTOINCREMENT,
-        channel_id TEXT NOT NULL,
-        phase TEXT NOT NULL,
-        source TEXT,
-        item_id TEXT,
-        generation INTEGER,
-        started_at INTEGER NOT NULL,
-        duration_ms INTEGER,
-        details_json TEXT NOT NULL
-      );
-      CREATE INDEX IF NOT EXISTS idx_agent_hot_path_trace_channel
-        ON agent_hot_path_trace(channel_id, sequence)
-    `);
     SubagentRunStore.createTables(this.sql);
-    FeedbackIngest.createTables(this.sql);
     CardManager.createTables(this.sql);
-    ensureAgentLoopDriverSchema(this.sql);
-    // Durable cancel intents for deferred eval runs: recorded before
-    // unsubscribe/retire proceeds, deleted only on an acknowledged
-    // eval.cancel, redriven by lifecycle events + the backstop alarm.
-    this.sql.exec(`
-      CREATE TABLE IF NOT EXISTS deferred_eval_cancel_intents (
-        channel_id       TEXT NOT NULL,
-        run_id           TEXT NOT NULL,
-        created_at       INTEGER NOT NULL,
-        attempts         INTEGER NOT NULL DEFAULT 0,
-        next_attempt_at  INTEGER NOT NULL,
-        PRIMARY KEY (channel_id, run_id)
-      )
-    `);
-    assertExactSqlTableSchema(this.sql, {
-      table: "deferred_eval_cancel_intents",
-      columns: [
-        ["channel_id", "TEXT", true],
-        ["run_id", "TEXT", true],
-        ["created_at", "INTEGER", true],
-        ["attempts", "INTEGER", true, "0"],
-        ["next_attempt_at", "INTEGER", true],
-      ],
-      primaryKey: ["channel_id", "run_id"],
-    });
+    this.sql.exec(`CREATE TABLE IF NOT EXISTS agent_hot_path_trace (
+      sequence INTEGER PRIMARY KEY AUTOINCREMENT,
+      channel_id TEXT NOT NULL, phase TEXT NOT NULL, source TEXT, item_id TEXT,
+      generation INTEGER, started_at INTEGER NOT NULL, duration_ms INTEGER,
+      details_json TEXT NOT NULL
+    ); CREATE INDEX IF NOT EXISTS idx_agent_hot_path_trace_channel
+      ON agent_hot_path_trace(channel_id, sequence)`);
   }
 
   protected override requiredTables(): readonly string[] {
     return [
+      ...super.requiredTables(),
       "do_identity",
       "subscriptions",
-      "channel_delivery_admissions",
-      "agent_wake_queue",
       "agent_hot_path_trace",
       "subagent_runs",
-      "feedback_seen",
-      "pending_feedback",
       "custom_cards",
-      "effect_outbox",
-      "fold_cache",
-      "scheduled_model_resumes",
-      "model_execution_attempts",
-      "model_execution_attempt_diagnostics",
-      "deferred_eval_cancel_intents",
     ];
-  }
-
-  protected override durableWorkQueues(): readonly DurableWorkQueue[] {
-    return ["agent-wake", "agent-effect"];
-  }
-
-  protected override releaseDurableWorkClaims(
-    previousWorkerId: string | null,
-    _nextWorkerId: string,
-  ): void {
-    if (!previousWorkerId) return;
-    const now = Date.now();
-    this.sql.exec(
-      `UPDATE agent_wake_queue
-          SET disposition = 'ready',
-              lease_owner = NULL,
-              next_attempt_at = ?
-        WHERE disposition = 'leased' AND lease_owner = ?`,
-      now,
-      previousWorkerId,
-    );
-    try {
-      this.sql.exec(
-        `UPDATE effect_outbox
-            SET disposition = 'ready',
-                lease_owner = NULL,
-                next_attempt_at = ?
-          WHERE disposition = 'leased' AND lease_owner = ?`,
-        now,
-        previousWorkerId,
-      );
-    } catch {
-      // Effect storage is lazy.
-    }
   }
 
   protected traceHotPath(
@@ -1076,61 +845,35 @@ export abstract class AgentVesselBase extends PanelDurableObjectBase {
     }));
   }
 
-  override async releaseForLifecycle(
-    input: LifecyclePrepareInput,
-  ): Promise<LifecyclePrepareResult> {
-    const releasedEffects = this._driver
-      ? await this._driver.releaseActivation()
-      : 0;
-    if (input.mode === "retire") {
-      const abandonedSubagents = await this.abandonLiveSubagentsForRetirement();
-      const channelIds = this.subscriptions.listChannelIds();
-      for (const channelId of channelIds)
-        await this.unsubscribeChannel(channelId);
-      return {
-        status: "ready",
-        detail: {
-          mode: input.mode,
-          releasedEffects,
-          retiredSubscriptions: channelIds.length,
-          abandonedSubagents,
-        },
-      };
-    }
-    return {
-      status: "ready",
-      detail: { mode: input.mode, releasedEffects },
-    };
-  }
-
   /** Retirement is the final owner of every live child obligation. Fence each
    * child first, then publish the supervisor-authored durable terminal while
    * the parent is still subscribed to both channels. A partial failure keeps
    * retirement uncommitted; retrying is idempotent at both boundaries. */
-  private async abandonLiveSubagentsForRetirement(): Promise<number> {
-    let abandoned = 0;
-    for (const run of this.subagentRuns.listLive()) {
-      const reason = "supervisor retired";
-      await this.rpc.call(run.childEntityId, "retireSubagentExecution", [
-        { runId: run.runId, taskChannelId: run.taskChannelId, reason },
-      ]);
-      await this.settleSubagentTerminal(run, "abandoned", reason);
-      abandoned += 1;
-    }
-    return abandoned;
-  }
-
-  override async resumeAfterRestart(
-    input: LifecycleResumeInput,
-  ): Promise<void> {
-    await super.resumeAfterRestart(input);
-    // Eval terminal delivery was activation-local. Re-observe every parked
-    // eval through its deterministic run id now, instead of waiting for the
-    // periodic lost-push reconciliation cadence.
-    this.driver.reconcileDeferredEvalRuns();
-    // Cancel intents recorded while EvalDO was unavailable redrive on this
-    // lifecycle event (the alarm remains only as the final backstop).
-    await this.drainEvalCancelIntents();
+  private async retireRetainedSubagents(): Promise<void> {
+    const results = await Promise.allSettled(
+      this.subagentRuns
+        .listAll()
+        .filter((run) => run.status !== "abandoned")
+        .map(async (run) => {
+          await this.agentRpc.call(
+            run.childEntityId,
+            "retireSubagentExecution",
+            [
+              {
+                runId: run.runId,
+                taskChannelId: run.taskChannelId,
+                reason: "supervisor retired",
+              },
+            ],
+          );
+          await this.settleSubagentTerminal(
+            run,
+            "abandoned",
+            "supervisor retired",
+          );
+        }),
+    );
+    this.requireResourceCleanup(results);
   }
 
   // ── Subclass surface (WS1 §3.2 — names preserved where semantics survive) ─
@@ -1162,7 +905,7 @@ export abstract class AgentVesselBase extends PanelDurableObjectBase {
    *  this to "notify-only" (the old `silentPolicy` behavior). */
   protected getPublishPolicy(
     _channelId: string,
-  ): "all" | "turn-final" | "notify-only" | "say-only" | undefined {
+  ): "all" | "turn-final" | "notify-only" | undefined {
     return undefined;
   }
 
@@ -1238,6 +981,7 @@ export abstract class AgentVesselBase extends PanelDurableObjectBase {
   protected async setAgentDescription(
     channelId: string,
     description: string | null,
+    rpc: RpcClient = this.rpc,
   ): Promise<void> {
     if (description)
       this.setStateValue(`agent:description:${channelId}`, description);
@@ -1248,21 +992,16 @@ export abstract class AgentVesselBase extends PanelDurableObjectBase {
       channelId,
       this.subscriptions.getConfig(channelId),
     );
-    await this.createChannelClient(channelId).updateMetadata(participantId, {
-      name: descriptor.name,
-      type: descriptor.type,
-      handle: descriptor.handle,
-      ...(descriptor.metadata ?? {}),
-      ...(descriptor.methods?.length ? { methods: descriptor.methods } : {}),
-    });
-  }
-
-  private subscriptionContextOrNull(channelId: string): string | null {
-    try {
-      return this.subscriptions.getContextId(channelId);
-    } catch {
-      return null;
-    }
+    await this.createChannelClient(channelId, rpc).updateMetadata(
+      participantId,
+      {
+        name: descriptor.name,
+        type: descriptor.type,
+        handle: descriptor.handle,
+        ...(descriptor.metadata ?? {}),
+        ...(descriptor.methods?.length ? { methods: descriptor.methods } : {}),
+      },
+    );
   }
 
   /** Workspace-level prompt resources. Workspace agents load AGENTS.md and the
@@ -1324,10 +1063,9 @@ export abstract class AgentVesselBase extends PanelDurableObjectBase {
   }
 
   /** Local tools registered with the local-tool executor. */
-  protected getLoopTools(
+  protected getTools(
     _channelId: string,
-    _execution?: AgentToolExecutionContext,
-  ): AgentTool[] | Promise<AgentTool[]> {
+  ): ToolRegistration[] | Promise<ToolRegistration[]> {
     return [];
   }
 
@@ -1346,16 +1084,10 @@ export abstract class AgentVesselBase extends PanelDurableObjectBase {
   }
 
   /** Step policies composed onto the pure loop (silent agents, card flows…). */
-  protected getStepPolicies(_channelId: string): StepPolicy[] {
-    return defaultPolicies();
-  }
 
   /** Test seam: replace effect executors (e.g. inject a scripted model so a
    *  full turn can be driven without a live model). Production returns
    *  undefined — the real executors run. */
-  protected getDriverExecutorOverride(): DriverDeps["executorOverride"] {
-    return undefined;
-  }
 
   /** Roster method names this agent expects (warning surface only). */
   protected getExpectedChannelToolNames(_channelId: string): readonly string[] {
@@ -1422,18 +1154,31 @@ export abstract class AgentVesselBase extends PanelDurableObjectBase {
     return {};
   }
 
-  /** Fork hook. The clone has been re-identified and its subscription renamed
-   *  old→new, but the new channel is not yet (re)subscribed. Subclasses purge
-   *  or migrate the per-channel state the clone copied wholesale from the
-   *  parent here — and may set flags that the subsequent subscribeChannel
-   *  reads. Without this, any agent that keys SQLite by channelId or runs a
-   *  per-channel scheduler would have the clone act on a channel it no longer
-   *  holds a subscription on. */
+  /** Original knowledge-fork product preparation. The receiver has fresh execution storage;
+   * this hook runs after canonical membership and before prompt/tool configuration. */
   protected async onChannelForked(_ctx: ClonedChannelContext): Promise<void> {}
+
+  /** Required receiving product preparation, after canonical membership and before model/tool configuration. */
+  protected async prepareNativeChannelProduct(
+    _channelId: string,
+    _config: unknown,
+    _fork: ClonedChannelContext | null,
+    _context: Context,
+  ): Promise<void> {}
+
+  /** Original bootstrap-owned activation after the configured channel can accept genuine native input. */
+  protected async activateNativeChannelProduct(
+    _channelId: string,
+    _context: Context,
+  ): Promise<void> {}
 
   // ── Wiring ────────────────────────────────────────────────────────────────
 
-  protected createChannelClient(channelId: string): ChannelClient {
+  protected createChannelClient(
+    channelId: string,
+    rpc: RpcCaller = this.rpc,
+  ): ChannelClient {
+    if (rpc !== this.rpc) return new ChannelClient(rpc, channelId);
     let client = this.channelClients.get(channelId);
     if (!client) {
       client = new ChannelClient(this.rpc, channelId);
@@ -1443,8 +1188,6 @@ export abstract class AgentVesselBase extends PanelDurableObjectBase {
   }
 
   private _identityBootstrapped = false;
-  private _durableWorkActivationRecovered = false;
-  private _durableWorkActivationRecovery: Promise<void> | null = null;
 
   /** Bootstrap identity from the canonical workerd environment. */
   protected ensureIdentity(): void {
@@ -1493,216 +1236,6 @@ export abstract class AgentVesselBase extends PanelDurableObjectBase {
         handle: descriptor.handle,
       },
     };
-  }
-
-  /** Cognitive ancestry is narrower than channel membership: only a forked
-   * child's parent chain owns its inherited assistant/tool protocol history. */
-  private lineageSelfIds(channelId: string): string[] {
-    const subagent = this.subagentIdentity();
-    if (subagent?.mode !== "fork" || subagent.taskChannelId !== channelId) {
-      return [];
-    }
-    return [
-      ...new Set([
-        ...(subagent.lineageParticipantIds ?? []),
-        subagent.parentParticipantId,
-      ]),
-    ];
-  }
-
-  protected get driver(): AgentLoopDriver {
-    this._driver ??= new AgentLoopDriver({
-      sql: this.sql,
-      gad: {
-        call: <T>(method: string, args: Record<string, unknown>) =>
-          this.callGad<T>(method, args),
-      },
-      executorDeps: this.executorDeps(),
-      selfRefFor: (channelId) => this.selfRef(channelId),
-      lineageSelfIdsFor: (channelId) => this.lineageSelfIds(channelId),
-      configFor: (channelId) => this.loopConfig(channelId),
-      policiesFor: (channelId) => this.getStepPolicies(channelId),
-      onEphemeral: (emit) => this.emitEphemeral(emit),
-      onTurnClosed: (input) => this.onTurnClosed(input),
-      now: () => Date.now(),
-      // Idle-history budget before a fold-shrinking compaction. Kept well
-      // below typical model context windows so context never grows to the
-      // model's hard limit (the deleted CompactionTrigger used ~0.8× the
-      // window); a subclass can tune via getCompactionTriggerBytes.
-      compaction: { triggerBytes: this.getCompactionTriggerBytes() },
-      scheduleAlarm: (at) => {
-        this.scheduleAgentAlarm(
-          "agent-loop-driver",
-          Math.max(at, Date.now() + 50),
-        );
-      },
-      notifyWorkReady: () => this.markWorkReady("agent-effect"),
-      commitTerminalOutcome: async (input, commitLocal) => {
-        const wakeId = `turn-recovery:${outboxExternalId(input.branchId, input.effectId)}`;
-        const now = Date.now();
-        this.ctx.storage.transactionSync(() => {
-          this.sql.exec(
-            `INSERT OR IGNORE INTO agent_wake_queue (
-               wake_id, channel_id, wake_kind, payload_json, prerequisite_delivery_id,
-               idempotency_key, attempts, next_attempt_at, lease_generation, created_at,
-               disposition
-             ) VALUES (?, ?, 'turn-recovery', '{}', NULL, ?, 0, ?, 0, ?, 'ready')`,
-            wakeId,
-            input.channelId,
-            wakeId,
-            now,
-            now,
-          );
-          commitLocal();
-        });
-        this.markWorkReady("agent-wake");
-        // Persist the recovery edge before continuing the remote-log cascade.
-        // This request may be the last code the current activation executes.
-        await this.persistAlarmSchedule({ wakeAt: now });
-      },
-      clearTerminalOutcomeRecovery: (input) => {
-        this.sql.exec(
-          `DELETE FROM agent_wake_queue WHERE wake_id = ? AND disposition = 'ready'`,
-          `turn-recovery:${outboxExternalId(input.branchId, input.effectId)}`,
-        );
-      },
-      executorOverride: this.getDriverExecutorOverride(),
-    });
-    this._driver.connectSpecProvider = async (providerId) =>
-      this.getModelCredentialSetupProps(providerId) ?? { providerId };
-    return this._driver;
-  }
-
-  protected async onTurnClosed(input: AgentTurnClosedInput): Promise<void> {
-    const subagent = this.subagentIdentity();
-    if (
-      subagent?.taskChannelId === input.channelId &&
-      (input.reason === "work_failed" ||
-        input.reason === "model_retry_limit_exceeded")
-    ) {
-      // A failed execution cannot rely on a model-generated utterance to
-      // settle its supervisor. Publish the existing task lifecycle fact from
-      // the retained child identity; the task log fences competing terminals.
-      const evidence = await this.driver.modelExecutionEvidence(
-        input.channelId,
-      );
-      const modelFailure = [...evidence.calls]
-        .reverse()
-        .find(
-          (call) =>
-            call.messageId.startsWith(`m:${input.turnId}:`) &&
-            call.outcome === "failed",
-        );
-      const participantId =
-        this.subscriptions.getParticipantId(input.channelId) ??
-        this.participantId();
-      const actor: ActorRef = { kind: "agent", id: participantId };
-      await this.createChannelClient(input.channelId).publishAgenticEvent(
-        participantId,
-        {
-          kind: "task.failed",
-          actor,
-          turnId: input.turnId as never,
-          causality: { taskId: subagent.runId as never },
-          payload: {
-            protocol: AGENTIC_PROTOCOL_VERSION,
-            reason: modelFailure?.error ?? input.summary ?? input.reason,
-            terminalOutcome: "infrastructure_error",
-            details: { code: "subagent_turn_failed", turnId: input.turnId },
-            to: [
-              {
-                kind: "participant",
-                participantId: subagent.parentParticipantId,
-              },
-            ],
-          },
-          createdAt: new Date().toISOString(),
-        },
-        { idempotencyKey: `subagent-terminal:${subagent.runId}` },
-      );
-    }
-    const runId = input.metadata.automation?.runId;
-    if (!runId) return;
-    const service = await this.rpc.call<{
-      kind: "durable-object" | "worker";
-      targetId?: string;
-    }>("main", "workers.resolveService", ["vibestudio.missions.v1"]);
-    if (service.kind !== "durable-object" || !service.targetId) {
-      throw new Error("The automation ledger must resolve to a Durable Object");
-    }
-    const failed = Boolean(input.reason && input.reason !== "tool_terminated");
-    const completionKey = automationCompletionStateKey(runId);
-    const recordedCompletion = automationCompletionForTurn(
-      this.getStateValue(completionKey),
-      input.channelId,
-      input.turnId,
-    );
-    const evalCompletion =
-      !failed && input.metadata.automation?.action === "eval"
-        ? automationCompletionFromEvalSummary(input.summary)
-        : null;
-    const completionResponse =
-      recordedCompletion?.response ?? evalCompletion?.response;
-    const outcome = failed
-      ? "failed"
-      : input.effectFailures.length > 0
-        ? "completed-with-errors"
-        : "succeeded";
-    const terminal: Extract<
-      AutomationExecutorRunStatus,
-      { state: "terminal" }
-    > = {
-      state: "terminal",
-      channelId: input.channelId,
-      turnId: input.turnId,
-      outcome,
-      ...(input.finalMessage
-        ? { finalMessage: input.finalMessage }
-        : !failed && completionResponse
-          ? { finalMessage: completionResponse }
-          : !failed && input.summary
-            ? { finalMessage: input.summary }
-            : {}),
-      ...(!failed && completionResponse ? { completionResponse } : {}),
-      ...(input.effectFailures.length > 0
-        ? { effectFailures: input.effectFailures }
-        : {}),
-      ...(failed
-        ? {
-            failure: {
-              code: "EAGENTTURN",
-              stage: "executing",
-              message:
-                input.summary ?? input.reason ?? "Automation turn failed",
-              retry: "manual" as const,
-            },
-          }
-        : {}),
-    };
-    // The receiver records terminal truth before the cross-object callback.
-    // If the callback or its response is lost, MissionsDO can reconcile this
-    // exact result instead of guessing from elapsed time or redispatching.
-    this.setStateValue(
-      automationRunReceiptKey(runId),
-      JSON.stringify(terminal),
-    );
-    await this.rpc.call(service.targetId, "finishRun", [
-      {
-        runId,
-        outcome: terminal.outcome,
-        ...(terminal.finalMessage
-          ? { finalMessage: terminal.finalMessage }
-          : {}),
-        ...(terminal.completionResponse
-          ? { completionResponse: terminal.completionResponse }
-          : {}),
-        ...(terminal.failure ? { failure: terminal.failure } : {}),
-        ...(terminal.effectFailures
-          ? { effectFailures: terminal.effectFailures }
-          : {}),
-      },
-    ]);
-    if (recordedCompletion) this.deleteStateValue(completionKey);
   }
 
   protected registerAgentAlarmSource(source: AgentAlarmSource): void {
@@ -1769,33 +1302,6 @@ export abstract class AgentVesselBase extends PanelDurableObjectBase {
     }
   }
 
-  private driverNextWakeAtFromSql(): number | null {
-    const due: number[] = [];
-    try {
-      const row = this.sql
-        .exec(
-          `SELECT MIN(next_attempt_at) AS due
-             FROM effect_outbox
-            WHERE disposition IN ('retrying', 'parked')`,
-        )
-        .toArray()[0];
-      const value = row?.["due"];
-      if (typeof value === "number") due.push(value);
-    } catch {
-      // Driver tables are created lazily.
-    }
-    try {
-      const row = this.sql
-        .exec(`SELECT MIN(reset_at_ms) AS due FROM scheduled_model_resumes`)
-        .toArray()[0];
-      const value = row?.["due"];
-      if (typeof value === "number") due.push(value);
-    } catch {
-      // Driver tables are created lazily.
-    }
-    return due.length ? Math.min(...due) : null;
-  }
-
   private _gadClient: DurableObjectServiceClient | null = null;
 
   protected async callGad<T>(method: string, ...args: unknown[]): Promise<T> {
@@ -1806,403 +1312,20 @@ export abstract class AgentVesselBase extends PanelDurableObjectBase {
     return this._gadClient.call<T>(method, ...args);
   }
 
+  protected async callGadWith<T>(
+    rpc: RpcClient,
+    method: string,
+    ...args: unknown[]
+  ): Promise<T> {
+    return createGadServiceClient({
+      call: <R>(targetId: string, name: string, values: unknown[]) =>
+        rpc.call<R>(targetId, name, values),
+    }).call<T>(method, ...args);
+  }
+
   /** Resolve the exact durable command coordinate used by mutation replay.
    * Missing commands are ordinary for read-only tools; every other inspection
    * failure stays exceptional so uncertainty can never authorize a duplicate. */
-  private async completedMutationEvidence(
-    commandId: string,
-    rpc: RpcClient,
-  ): Promise<{ commandId: string; command: unknown } | null> {
-    try {
-      const inspected = await createSubagentVcsClient(rpc).inspect({
-        node: { kind: "command", commandId },
-        edgeLimit: 1,
-      });
-      return inspected.node.kind === "command" &&
-        inspected.node.value.status === "complete"
-        ? { commandId, command: inspected.node }
-        : null;
-    } catch (error) {
-      const code =
-        typeof error === "object" && error !== null
-          ? ((error as { code?: unknown }).code ??
-            (error as { errorData?: { code?: unknown } }).errorData?.code)
-          : undefined;
-      if (code === "InvalidReference") return null;
-      throw error;
-    }
-  }
-
-  private executorDeps(): ExecutorDeps {
-    this.ensureIdentity();
-    const ref = this.identity.ref;
-    return {
-      selfRef: {
-        kind: "agent",
-        id: this.participantId(),
-        participantId: this.participantId(),
-      },
-      blobstore: {
-        getText: (digest) => this.getCachedBlobText(digest),
-        putText: async (value) => {
-          const stored = await this.rpc.call<{ digest: string; size: number }>(
-            "main",
-            "blobstore.putText",
-            [value],
-          );
-          this.rememberBlobText(stored.digest, value);
-          return stored;
-        },
-      },
-      channel: {
-        callMethod: async (input) => {
-          await this.createChannelClient(input.channelId).callMethod(
-            this.participantId(),
-            input.targetParticipantId,
-            input.transportCallId,
-            input.method,
-            input.args,
-            {
-              invocationId: input.invocationId,
-              transportCallId: input.transportCallId,
-              ...(input.turnId ? { turnId: input.turnId } : {}),
-              ...(input.timeoutMs ? { timeoutMs: input.timeoutMs } : {}),
-            },
-          );
-        },
-        cancelMethodCall: async (channelId, transportCallId) => {
-          await this.createChannelClient(channelId).cancelCall(
-            this.participantId(),
-            transportCallId,
-          );
-        },
-        publish: async (input) => {
-          // The agent outbox owns this effect until the channel acknowledges
-          // durable acceptance. The channel's idempotency key makes a retry
-          // after an ambiguous transport failure safe.
-          await this.createChannelClient(input.channelId).publish(
-            this.participantId(),
-            input.payloadKind,
-            input.payload,
-            input.idempotencyKey
-              ? { idempotencyKey: input.idempotencyKey }
-              : undefined,
-          );
-        },
-        recordReadReceipt: async (input) => {
-          await this.createChannelClient(input.channelId).recordReadReceipt(
-            this.participantId(),
-            input.messageId,
-            input.turnId,
-          );
-        },
-        sendSignalEvent: async (channelId, event) => {
-          await this.createChannelClient(channelId).sendSignalEvent(
-            this.participantId(),
-            AGENTIC_EVENT_PAYLOAD_KIND,
-            event,
-          );
-        },
-      },
-      localModels: {
-        // Loopback model runtime (design §6.3). The key crosses this boundary
-        // per call and is never persisted vessel-side; the extension enforces
-        // canonical DO caller gating on getLoopbackAuth; the host checks
-        // sealed runtime-use authority and live provider attestation.
-        ensureLoaded: async (modelId, signal) =>
-          await this.rpc.call<{ baseUrl: string }>(
-            "main",
-            "extensions.invoke",
-            [LOCAL_MODELS_EXTENSION_ID, "ensureLoaded", [modelId]],
-            { signal },
-          ),
-        getLoopbackAuth: async (signal) =>
-          await this.rpc.call<{ apiKey: string }>(
-            "main",
-            "extensions.invoke",
-            [LOCAL_MODELS_EXTENSION_ID, "getLoopbackAuth", []],
-            { signal },
-          ),
-      },
-      promptArtifacts: {
-        prepare: (channelId, signal) =>
-          this.preparePromptArtifacts(channelId, signal),
-      },
-      credentials: {
-        getApiKey: async ({
-          providerId,
-          modelBaseUrl,
-          requestId,
-          idempotencyKey,
-          signal,
-        }) => {
-          // Prefer URL-bound credentials when the model exposes a concrete
-          // endpoint; fall back to provider-scoped credentials for providers
-          // whose registry entries do not carry a base URL.
-          let summary: ModelCredentialSummary | null;
-          const resolveRequest =
-            modelBaseUrl && !isTemplatedBaseUrl(modelBaseUrl)
-              ? { url: modelBaseUrl }
-              : { providerId };
-          try {
-            if (requestId) {
-              summary = await this.rpc.call<ModelCredentialSummary | null>(
-                "main",
-                "credentials.resolveCredential",
-                [resolveRequest],
-                {
-                  idempotencyKey: idempotencyKey ?? requestId,
-                  authorityAcquisition: "return",
-                  signal,
-                },
-              );
-            } else {
-              summary = await this.rpc.call<ModelCredentialSummary | null>(
-                "main",
-                "credentials.resolveCredential",
-                [resolveRequest],
-                { signal },
-              );
-            }
-            if (!summary)
-              throw new CredentialPendingError(providerId, modelBaseUrl);
-          } catch (err) {
-            if (authorityAcquisitionRequired(err)) {
-              throw new CredentialApprovalDeferredError(
-                providerId,
-                modelBaseUrl,
-              );
-            }
-            if (isTerminalAuthorityFailure(err)) throw err;
-            if (!(err instanceof CredentialPendingError)) {
-              console.warn(
-                `[AgentVessel] resolveCredential(${modelBaseUrl ?? providerId}) failed:`,
-                err instanceof Error ? err.message : err,
-              );
-            }
-            // Only a successful resolver returning null means "no credential".
-            // Service exposure, authority, transport, and implementation
-            // failures are not credential absence and must retain their real
-            // identity; collapsing them here produced a bogus reconnect card
-            // and parked the turn forever.
-            throw err;
-          }
-          const credentialBaseUrl =
-            resolveProviderModelBaseUrl(
-              providerId,
-              modelBaseUrl ?? "",
-              summary.metadata,
-            ) || undefined;
-          installUrlBoundModelFetchProxy(
-            credentialBaseUrl ?? modelBaseUrl ?? "*",
-            (url, init) =>
-              this.credentials.fetch(url, init, { credentialId: summary.id }),
-          );
-          return {
-            ...(credentialBaseUrl ? { baseUrl: credentialBaseUrl } : {}),
-            authType:
-              providerId === "anthropic" &&
-              summary.metadata?.["modelAuthMethod"] === "subscription"
-                ? "oauth"
-                : "api_key",
-            apiKey: createModelCredentialSentinel(
-              this.getModelCredentialTokenClaims(providerId, summary),
-            ),
-          };
-        },
-        registerCredentialInterest: async () => {
-          // The agent-owned connect method resolves this durable wait after the
-          // host has stored the credential; no separate panel acknowledgement
-          // or server-side interest registry is required.
-        },
-      },
-      localTools: {
-        run: async ({
-          channelId,
-          tool,
-          invocationId,
-          args,
-          signal,
-          onProgress,
-        }) => {
-          const trajectory = channelTrajectoryFor(channelId);
-          const causalRpc = withCausalParent(this.rpc, {
-            kind: "trajectory-invocation",
-            logId: trajectory.logId,
-            head: trajectory.head,
-            invocationId,
-          });
-          const admissionNonce =
-            this.driver.peekLoadedLoop(channelId)?.state.openTurn?.metadata
-              ?.automation?.authoritySessionNonce;
-          const execution = Object.freeze({
-            invocationId,
-            commandId: commandIdForTrajectoryInvocation({
-              logId: trajectory.logId,
-              head: trajectory.head,
-              invocationId,
-            }),
-            rpc: admissionNonce
-              ? withExecutionAdmission(causalRpc, admissionNonce)
-              : causalRpc,
-          }) satisfies AgentToolExecutionContext;
-          let resolvedTool: AgentTool | undefined;
-          let executionAdmitted = false;
-          try {
-            // The `eval` tool DEFERS: the agent can't hold a connection for a multi-minute run.
-            // eval.start receives this verified parent scope and delegates it to the EvalDO.
-            if (tool === "eval") {
-              return await this.runDeferredEval(
-                channelId,
-                invocationId,
-                args,
-                execution.rpc,
-              );
-            }
-            // `spawn_subagent` is an agentic lifecycle operation, not workspace authorship.
-            if (tool === "spawn_subagent") {
-              return await this.runDeferredSpawn(
-                channelId,
-                invocationId,
-                args,
-                execution.rpc,
-              );
-            }
-            const registry = await this.toolRegistry(channelId, execution);
-            resolvedTool = registry.get(tool);
-            if (!resolvedTool) {
-              const failure = agentToolFailureFromUnknown(
-                Object.assign(new Error(`unknown tool: ${tool}`), {
-                  code: "tool_not_found",
-                }),
-                {
-                  operation: `tool.${tool}`,
-                  stage: "resolve",
-                  causal: { invocationId, commandId: execution.commandId },
-                },
-              );
-              return {
-                result: {
-                  protocolContent: [
-                    { type: "text", text: renderAgentToolFailure(failure) },
-                  ],
-                  details: { failure },
-                },
-                isError: true,
-                terminalReasonCode: failure.code,
-                failure,
-              };
-            }
-            const params = prepareAgentToolArguments(resolvedTool, args);
-            executionAdmitted = true;
-            const result = await executeLocalTool(resolvedTool, {
-              invocationId,
-              params,
-              parentSignal: signal,
-              onProgress,
-            });
-            return {
-              result: {
-                protocolContent: result.content,
-                details: result.details,
-              },
-              isError: result.isError === true,
-              ...(result.isError !== true && result.terminate === true
-                ? { terminate: true }
-                : {}),
-            };
-          } catch (err) {
-            if (
-              executionAdmitted &&
-              resolvedTool?.cancellationMode === "settle"
-            ) {
-              const evidence = await this.completedMutationEvidence(
-                execution.commandId,
-                execution.rpc,
-              );
-              if (evidence) {
-                return {
-                  result: {
-                    protocolContent: [
-                      {
-                        type: "text",
-                        text: `Recovered completed workspace mutation ${evidence.commandId}; its result raced with cancellation or transport failure.`,
-                      },
-                    ],
-                    details: { replayed: true, evidence },
-                  },
-                  summary: "Recovered a completed workspace mutation",
-                  isError: false,
-                };
-              }
-            }
-            const failure = agentToolFailureFromUnknown(err, {
-              operation: `tool.${tool}`,
-              stage: signal.aborted ? "cancel" : "execute",
-              causal: { invocationId, commandId: execution.commandId },
-              ...(signal.aborted ? { kind: "cancelled" as const } : {}),
-            });
-            return {
-              result: {
-                protocolContent: [
-                  {
-                    type: "text",
-                    text: renderAgentToolFailure(failure),
-                  },
-                ],
-                details: { failure },
-              },
-              isError: true,
-              terminalReasonCode: failure.code,
-              failure,
-            };
-          }
-        },
-        alreadyApplied: async (state, invocationId) => {
-          const parent = {
-            kind: "trajectory-invocation" as const,
-            logId: state.logId,
-            head: state.head,
-            invocationId,
-          };
-          const commandId = commandIdForTrajectoryInvocation(parent);
-          return this.completedMutationEvidence(
-            commandId,
-            withCausalParent(this.rpc, parent),
-          );
-        },
-      },
-      http: {
-        post: async (input) => {
-          if (!input.target)
-            throw new Error("http_call requires a target service/method");
-          try {
-            const result = await this.rpc.call(
-              "main",
-              `${input.target.service}.${input.target.method}`,
-              [input.request],
-              {
-                idempotencyKey: input.idempotencyKey,
-                authorityAcquisition: "return",
-              },
-            );
-            return { deferred: false, result, isError: false };
-          } catch (error) {
-            if (authorityAcquisitionRequired(error)) {
-              return { deferred: true, reason: "authority" };
-            }
-            throw error;
-          }
-        },
-      },
-      callbackAddress: {
-        source: ref.source,
-        className: ref.className,
-        objectKey: ref.objectKey,
-      },
-      env: this.env,
-    };
-  }
 
   private async getCachedBlobText(digest: string): Promise<string | null> {
     const cached = this.blobTextCache.get(digest);
@@ -2261,106 +1384,15 @@ export abstract class AgentVesselBase extends PanelDurableObjectBase {
     return service.targetId;
   }
 
-  /** Batched delta signals (~100ms) — never durable (WS1 §2.4.1).
-   * Per-channel pumps preserve order without allowing a slow UI transport to
-   * create an unbounded promise chain. Dropped intermediate observations are
-   * repaired by the replayable durable terminal. */
-  private readonly signalPumps = new Map<
-    string,
-    { running: boolean; pending: Array<() => Promise<void>> }
-  >();
-
-  private sendOrderedSignal(channelId: string, events: AgenticEvent[]): void {
-    this.enqueueEphemeralSignal(channelId, () =>
-      this.createChannelClient(channelId)
-        .sendSignalEvent(
-          this.participantId(),
-          AGENTIC_EVENT_PAYLOAD_KIND,
-          events.length === 1 ? events[0] : events,
-        )
-        .catch(() => {}),
-    );
-  }
-
-  private sendOrderedSignalMessage(
-    channelId: string,
-    content: string,
-    contentType?: string,
-  ): void {
-    this.enqueueEphemeralSignal(channelId, () =>
-      this.createChannelClient(channelId)
-        .sendSignal(this.participantId(), content, contentType)
-        .catch(() => {}),
-    );
-  }
-
-  private enqueueEphemeralSignal(
-    channelId: string,
-    send: () => Promise<void>,
-  ): void {
-    const pump = this.signalPumps.get(channelId) ?? {
-      running: false,
-      pending: [],
-    };
-    if (pump.pending.length >= MAX_PENDING_SIGNAL_BATCHES) pump.pending.shift();
-    pump.pending.push(send);
-    this.signalPumps.set(channelId, pump);
-    if (pump.running) return;
-    pump.running = true;
-    void (async () => {
-      try {
-        while (pump.pending.length > 0) await pump.pending.shift()!();
-      } finally {
-        pump.running = false;
-        if (
-          pump.pending.length === 0 &&
-          this.signalPumps.get(channelId) === pump
-        ) {
-          this.signalPumps.delete(channelId);
-        }
-      }
-    })();
-  }
-
-  private emitEphemeral(emit: EphemeralEmit): void {
-    if (emit.kind === "signal-message") {
-      this.sendOrderedSignalMessage(
-        emit.channelId,
-        emit.content,
-        emit.contentType,
-      );
-      return;
-    }
-    const buffer = this.deltaBuffers.get(emit.channelId) ?? {
-      events: [],
-      timer: null,
-    };
-    if (buffer.events.length >= MAX_BUFFERED_DELTA_EVENTS)
-      buffer.events.shift();
-    buffer.events.push(emit.event);
-    if (!buffer.timer) {
-      buffer.timer = setTimeout(() => {
-        const drained = this.deltaBuffers.get(emit.channelId);
-        this.deltaBuffers.delete(emit.channelId);
-        const events = drained?.events ?? [];
-        if (events.length > 0) this.sendOrderedSignal(emit.channelId, events);
-      }, DELTA_BATCH_MS);
-    }
-    this.deltaBuffers.set(emit.channelId, buffer);
-  }
-
   // ── Settings (Ref-kind KV; the log journals what each call actually used) ─
 
-  protected updateSettings(patch: StoredSettings): AgentSettings {
+  protected async updateSettings(
+    patch: StoredSettings,
+  ): Promise<AgentSettings> {
     const next = { ...this.storedSettings(), ...patch };
     this.setStateValue(AGENT_SETTINGS_KEY, JSON.stringify(next));
-    // Config is PER-AGENT: a change applies to EVERY channel the agent is in,
-    // so drop each channel's cached loop + fold so the next wake refolds with it.
-    for (const channelId of this.subscriptions.listChannelIds()) {
-      this.driver.dropLoop(channelId);
-      const { logId, head } = channelTrajectoryFor(channelId);
-      this.driver.foldCache.delete(logId, head);
-    }
+    for (const channelId of this.nativeReasoningChannelIds())
+      await this.refreshNativeChannelConfiguration(channelId);
     return this.getAgentSettings();
   }
 
@@ -2476,96 +1508,6 @@ export abstract class AgentVesselBase extends PanelDurableObjectBase {
     return this.getDefaultRespondPolicy();
   }
 
-  private loopConfig(channelId: string): AgentLoopConfig {
-    const settings = this.getAgentSettings();
-    // Tool-call review is a channel-wide interaction preference. The chat
-    // header writes it to channel config; the agent setting supplies the
-    // initial value until the channel makes an explicit selection. Host
-    // authority is evaluated separately for each concrete operation.
-    const channelConfig =
-      (this.subscriptions.getConfig(channelId) as Record<
-        string,
-        unknown
-      > | null) ?? this.channelConfigCache.get(channelId)?.value;
-    const channelApprovalLevel = channelConfig?.["approvalLevel"];
-    const approvalLevel =
-      channelApprovalLevel === 0 ||
-      channelApprovalLevel === 1 ||
-      channelApprovalLevel === 2
-        ? channelApprovalLevel
-        : settings.approvalLevel;
-    const publishPolicy = this.getPublishPolicy(channelId);
-    const subagentIdentity = this.subagentIdentity();
-    const materialized = this.materializedModel(channelId, settings.model);
-    if (!materialized) {
-      throw new Error(
-        `Agent model ${JSON.stringify(settings.model)} could not be materialized; ` +
-          "select a model present in the current catalog before starting the agent",
-      );
-    }
-    const fallbackModelRef = settings.fallbackModel ?? LOCAL_FALLBACK_MODEL_REF;
-    const fallbackMaterialized = this.materializedModel(
-      channelId,
-      fallbackModelRef,
-    );
-    if (settings.fallbackModel && !fallbackMaterialized) {
-      throw new Error(
-        `Agent fallback model ${JSON.stringify(settings.fallbackModel)} could not be materialized; ` +
-          "select a fallback model present in the current catalog before starting the agent",
-      );
-    }
-    const toolSchemasHash =
-      // Tool-capability gate (design §6.4): omit tool schemas at the source
-      // for models whose chat template can't parse them.
-      !materialized.toolsCapable
-        ? undefined
-        : (this.getStateValue(`agent:toolsHash:${channelId}`) ?? undefined);
-    return {
-      model: settings.model,
-      modelSpec: materialized.spec,
-      modelAuth: materialized.auth,
-      ...(fallbackMaterialized
-        ? {
-            fallbackModelRef,
-            fallbackModelSpec: fallbackMaterialized.spec,
-            fallbackModelAuth: fallbackMaterialized.auth,
-            ...(settings.fallbackThinkingLevel
-              ? { fallbackThinkingLevel: settings.fallbackThinkingLevel }
-              : {}),
-            ...(settings.fallbackOn
-              ? { fallbackFailureCodes: settings.fallbackOn }
-              : {}),
-            ...(settings.fallbackScope
-              ? { fallbackScope: settings.fallbackScope }
-              : {}),
-          }
-        : {}),
-      thinkingLevel: settings.thinkingLevel,
-      fastMode: settings.fastMode,
-      approvalLevel,
-      respondPolicy: settings.respondPolicy,
-      systemPromptHash:
-        this.getStateValue(`agent:promptHash:${channelId}`) ?? "",
-      toolSchemasHash,
-      activeToolNames: JSON.parse(
-        this.getStateValue(`agent:toolNames:${channelId}`) ?? "[]",
-      ) as string[],
-      localToolExecutionModes: JSON.parse(
-        this.getStateValue(`agent:toolExecutionModes:${channelId}`) ?? "{}",
-      ) as Record<string, "sequential" | "parallel">,
-      localToolCancellationModes: JSON.parse(
-        this.getStateValue(`agent:toolCancellationModes:${channelId}`) ?? "{}",
-      ) as Record<string, "interruptible" | "settle">,
-      roster: { participants: [] }, // roster snapshots fold from system.event
-      maxSubagentDepth: this.getMaxSubagentDepth(),
-      maxSubagents: this.getMaxSubagents(),
-      ...(publishPolicy ? { publishPolicy } : {}),
-      ...(subagentIdentity?.taskChannelId === channelId
-        ? { finalResponseParticipantId: subagentIdentity.parentParticipantId }
-        : {}),
-    };
-  }
-
   /** Materialize the journaled model spec (design §6.2): local refs from the
    *  cached extension entry (refreshed in ensurePromptArtifacts), cloud refs
    *  from the pi-ai registry — an INPUT to materialization here at the impure
@@ -2594,7 +1536,7 @@ export abstract class AgentVesselBase extends PanelDurableObjectBase {
   }
 
   /** Cache the local-models extension entry for a `local:*` agent model so
-   *  the synchronous loopConfig() can materialize its journaled spec. The
+   *  the native configuration can materialize its retained model descriptor. The
    *  bundled fallback has a truthful static descriptor for first boot; every
    *  other local model requires its extension-provided metadata. */
   private async refreshLocalModelEntry(channelId: string): Promise<void> {
@@ -2628,181 +1570,10 @@ export abstract class AgentVesselBase extends PanelDurableObjectBase {
     }
   }
 
-  /** Compose + blob-spill the exact prompt/tool/model snapshot that will be
-   * journaled before a model call. This is the impure executor for the
-   * loop-owned `prompt_artifacts` effect; channel delivery only journals the
-   * prerequisite and never awaits this method. */
-  private async preparePromptArtifacts(
-    channelId: string,
-    signal?: AbortSignal,
-  ): Promise<Partial<AgentLoopConfig>> {
-    const preparationStartedAt = Date.now();
-    this.traceHotPath(channelId, "prompt-artifacts.started");
-    const stage = async <T>(
-      phase: string,
-      operation: () => T | Promise<T>,
-    ): Promise<T> => {
-      const startedAt = Date.now();
-      try {
-        const value = await operation();
-        this.traceHotPath(channelId, `${phase}.completed`, { startedAt });
-        return value;
-      } catch (error) {
-        this.traceHotPath(channelId, `${phase}.failed`, {
-          startedAt,
-          details: { error: error instanceof Error ? error.name : "unknown" },
-        });
-        throw error;
-      }
-    };
-    const throwIfAborted = () => {
-      if (!signal?.aborted) return;
-      throw signal.reason instanceof Error
-        ? signal.reason
-        : new Error("prompt artifact preparation aborted");
-    };
-    throwIfAborted();
-    await stage("prompt-artifacts.local-model", () =>
-      this.refreshLocalModelEntry(channelId),
-    );
-    throwIfAborted();
-    const systemPrompt = await stage("prompt-artifacts.resources", () =>
-      this.composePrompt(channelId),
-    );
-    throwIfAborted();
-    const registry = await stage("prompt-artifacts.tool-registry", () =>
-      this.toolRegistry(channelId),
-    );
-    const schemas: Array<{
-      name: string;
-      description?: string;
-      parameters?: unknown;
-    }> = [...registry.values()].map((tool) => {
-      assertAgentToolParametersSchema(tool.name, tool.parameters);
-      return {
-        name: tool.name,
-        description: tool.description,
-        parameters: tool.parameters,
-      };
-    });
-    const executionModes = Object.fromEntries(
-      [...registry.values()].map((tool) => [
-        tool.name,
-        tool.executionMode === "parallel" ? "parallel" : "sequential",
-      ]),
-    ) satisfies Record<string, "sequential" | "parallel">;
-    const cancellationModes = Object.fromEntries(
-      [...registry.values()].map((tool) => [
-        tool.name,
-        tool.cancellationMode === "settle" ? "settle" : "interruptible",
-      ]),
-    ) satisfies Record<string, "interruptible" | "settle">;
-    // Channel tools: roster participants' advertised methods become model
-    // tools dispatched as channel_call effects (the panel's UI surface —
-    // inline_ui/feedback/action_bar). eval is a LOCAL tool now, not a channel method.
-    const seenTools = new Set(registry.keys());
-    const selfId = this.participantId();
-    for (const participant of this.rosterSnapshot(channelId)) {
-      if (
-        participant.participantId === selfId ||
-        participantIdFromRef(participant.ref) === selfId
-      ) {
-        continue;
-      }
-      if (participant.methods.length > 0) {
-        throwIfAborted();
-      }
-      for (const method of participant.methods) {
-        if (seenTools.has(method.name)) continue;
-        seenTools.add(method.name);
-        const parameters = method.parameters ?? {
-          type: "object",
-          properties: {},
-          additionalProperties: true,
-        };
-        assertAgentToolParametersSchema(method.name, parameters);
-        schemas.push({
-          name: method.name,
-          description:
-            method.description ??
-            `Channel method on @${participant.handle ?? participant.participantId}`,
-          parameters,
-        });
-      }
-    }
-    const schemasJson = JSON.stringify(schemas);
-    const names = JSON.stringify([...registry.keys()]);
-    const executionModesJson = JSON.stringify(executionModes);
-    const cancellationModesJson = JSON.stringify(cancellationModes);
-    const signature = stableSha256Hex({
-      systemPrompt,
-      schemas,
-      executionModes,
-      cancellationModes,
-    });
-    const promptHashKey = `agent:promptHash:${channelId}`;
-    const toolsHashKey = `agent:toolsHash:${channelId}`;
-    const toolNamesKey = `agent:toolNames:${channelId}`;
-    const toolExecutionModesKey = `agent:toolExecutionModes:${channelId}`;
-    const toolCancellationModesKey = `agent:toolCancellationModes:${channelId}`;
-    const artifactSigKey = `agent:artifactSig:${channelId}`;
-    const existingPromptHash = this.getStateValue(promptHashKey) ?? "";
-    const existingToolsHash = this.getStateValue(toolsHashKey) ?? "";
-    if (
-      !existingPromptHash ||
-      !existingToolsHash ||
-      this.getStateValue(artifactSigKey) !== signature ||
-      this.getStateValue(toolNamesKey) !== names ||
-      this.getStateValue(toolExecutionModesKey) !== executionModesJson ||
-      this.getStateValue(toolCancellationModesKey) !== cancellationModesJson
-    ) {
-      const prompt = await stage("prompt-artifacts.prompt-blob", () =>
-        this.rpc.call<{ digest?: string }>("main", "blobstore.putText", [
-          systemPrompt,
-        ]),
-      );
-      throwIfAborted();
-      const tools = await stage("prompt-artifacts.tools-blob", () =>
-        this.rpc.call<{ digest?: string }>("main", "blobstore.putText", [
-          schemasJson,
-        ]),
-      );
-      throwIfAborted();
-      const promptHash =
-        typeof prompt?.digest === "string" ? prompt.digest : "";
-      const toolsHash = typeof tools?.digest === "string" ? tools.digest : "";
-      if (
-        !/^[0-9a-f]{64}$/u.test(promptHash) ||
-        !/^[0-9a-f]{64}$/u.test(toolsHash)
-      ) {
-        throw new Error(
-          "prompt artifact storage returned an invalid content digest",
-        );
-      }
-      this.setStateValue(promptHashKey, promptHash);
-      this.setStateValue(toolsHashKey, toolsHash);
-      this.setStateValue(toolNamesKey, names);
-      this.setStateValue(toolExecutionModesKey, executionModesJson);
-      this.setStateValue(toolCancellationModesKey, cancellationModesJson);
-      this.setStateValue(artifactSigKey, signature);
-    }
-    throwIfAborted();
-    const { roster: _foldOwnedRoster, ...patch } = this.loopConfig(channelId);
-    this.traceHotPath(channelId, "prompt-artifacts.completed", {
-      startedAt: preparationStartedAt,
-      details: { toolCount: schemas.length },
-    });
-    return patch;
-  }
-
-  /** Explicit refresh API: materialize, then journal the same config patch the
-   * durable prompt prerequisite would have produced. */
+  /** Refresh the admitted native channel configuration from current prompt,
+   * model and tool definitions. Already admitted requests retain their snapshot. */
   protected async ensurePromptArtifacts(channelId: string): Promise<void> {
-    const patch = await this.preparePromptArtifacts(channelId);
-    await this.driver.handleIncoming(channelId, {
-      type: "command",
-      command: { kind: "setConfig", patch },
-    });
+    await this.refreshNativeChannelConfiguration(channelId);
   }
 
   /** Last roster snapshot for a channel (set by refreshRoster). */
@@ -2818,12 +1589,11 @@ export abstract class AgentVesselBase extends PanelDurableObjectBase {
   /** Conversation-local addressing facts, retained by this vessel. */
   protected conversationAddresseeContext(
     channelId: string,
+    metadata?: AgentProductMetadata,
   ): ResolveAddresseeContext {
     const parentParticipantId = this.subagentIdentity()?.parentParticipantId;
     const roster = this.rosterSnapshot(channelId).map(rosterParticipantRef);
-    const automationOwnerUserId =
-      this.driver.peekLoadedLoop(channelId)?.state?.openTurn?.metadata
-        ?.automation?.ownerUserId;
+    const automationOwnerUserId = metadata?.automation?.ownerUserId;
     const ownerUserId = automationOwnerUserId ?? soleChannelUserId(roster);
     return {
       channelId,
@@ -2846,8 +1616,9 @@ export abstract class AgentVesselBase extends PanelDurableObjectBase {
   /** Enrich explicit address resolution with workspace directory and people. */
   protected async addresseeContext(
     channelId: string,
+    metadata?: AgentProductMetadata,
   ): Promise<ResolveAddresseeContext> {
-    const context = this.conversationAddresseeContext(channelId);
+    const context = this.conversationAddresseeContext(channelId, metadata);
     const [directory, users] = await Promise.all([
       this.agentDirectoryEntries(),
       this.workspaceUserEntries(),
@@ -2909,68 +1680,15 @@ export abstract class AgentVesselBase extends PanelDurableObjectBase {
     }
   }
 
-  private async toolRegistry(
-    channelId: string,
-    execution?: AgentToolExecutionContext,
-  ): Promise<Map<string, AgentTool>> {
-    if (execution) {
-      const registry = new Map<string, AgentTool>();
-      if (this.includeMemoryRecallTool()) {
-        registry.set("memory_recall", this.createMemoryRecallTool());
-      }
-      registry.set(
-        "launch_automation",
-        this.createAutomationLaunchTool(channelId, execution),
-      );
-      registry.set(
-        "control_automation",
-        this.createAutomationControlTool(channelId, execution),
-      );
-      registry.set(
-        "complete_automation",
-        this.createAutomationCompletionTool(channelId),
-      );
-      for (const tool of await this.getLoopTools(channelId, execution)) {
-        registry.set(tool.name, tool);
-      }
-      return registry;
-    }
-    let registry = this.localTools.get(channelId);
-    if (!registry) {
-      registry = new Map();
-      if (this.includeMemoryRecallTool()) {
-        registry.set("memory_recall", this.createMemoryRecallTool());
-      }
-      registry.set(
-        "launch_automation",
-        this.createAutomationLaunchTool(channelId),
-      );
-      registry.set(
-        "control_automation",
-        this.createAutomationControlTool(channelId),
-      );
-      registry.set(
-        "complete_automation",
-        this.createAutomationCompletionTool(channelId),
-      );
-      for (const tool of await this.getLoopTools(channelId)) {
-        registry.set(tool.name, tool);
-      }
-      this.localTools.set(channelId, registry);
-    }
-    return registry;
-  }
-
   protected createAutomationLaunchTool(
     channelId: string,
     execution?: AgentToolExecutionContext,
-  ): AgentTool {
+  ): ToolRegistration {
     return {
       name: "launch_automation",
-      label: "launch_automation",
       description:
         "Create and immediately start one recurring or manual automation. By default the current agent wakes in this conversation; choose a fresh conversation only for a separate topic or genuinely long-running background task. If shared context would help and wake-ups can be more than one hour apart, ask the user which mode they want when their intent is unclear. A prompt action is an instruction for the future agent, not a final message payload: preserve requested effects such as notifying the owner instead of supplying only the text to send. A watch action runs deterministic code first: return {protocol: 'automation-signal.v1', prompt: null} to finish quietly without a model call, or a nonempty prompt string to continue this run with the agent. The nonempty watch prompt is the future agent's task: preserve requested effects there. For owner notifications, explicitly instruct it to call notify with to: owner and alert: inbox; a final chat reply does not send an inbox notification. Model-facing tools such as notify are available to prompt actions and signaled watch turns, not as eval JavaScript globals. List concrete external service operations known at launch so the host can pre-acquire eligible standing grants; this list is not a runtime allowlist, and omitted authority falls back to ordinary user approval during a run. The running automation is added to this chat as an inspectable pill before the tool returns.",
-      parameters: {
+      parameters: Type.Unsafe<Record<string, JsonValue>>({
         type: "object",
         properties: {
           name: { type: "string", description: "Short automation name." },
@@ -3065,16 +1783,14 @@ export abstract class AgentVesselBase extends PanelDurableObjectBase {
         },
         required: ["name", "summary", "action", "trigger"],
         additionalProperties: false,
-      } as never,
-      execute: async (toolCallId, params) => {
+      }),
+      execute: async (params) => {
         if (!execution) {
           throw new Error(
             "launch_automation requires an admitted agent invocation",
           );
         }
-        const activeTurn =
-          this.driver.peekLoadedLoop(channelId)?.state.openTurn;
-        if (activeTurn?.metadata?.automation) {
+        if (execution.metadata?.automation) {
           throw new Error(
             "A scheduled automation cannot launch another automation",
           );
@@ -3082,7 +1798,7 @@ export abstract class AgentVesselBase extends PanelDurableObjectBase {
         const automation = await this.launchAutomation(
           channelId,
           params,
-          execution.commandId || toolCallId,
+          execution.commandId,
           execution.rpc,
         );
         return {
@@ -3092,22 +1808,21 @@ export abstract class AgentVesselBase extends PanelDurableObjectBase {
               text: `${automation.name} is running. Its automation pill is now available in this chat.`,
             },
           ],
-          details: automation,
-        } as AgentToolResult<MissionRecord>;
+          details: copyJson(automation, { omitUndefinedProperties: true }),
+        };
       },
-    } as AgentTool;
+    };
   }
 
   protected createAutomationControlTool(
     channelId: string,
     execution?: AgentToolExecutionContext,
-  ): AgentTool {
+  ): ToolRegistration {
     return {
       name: "control_automation",
-      label: "control_automation",
       description:
         "Control an automation owned by the current user directly. Use pause when the user says stop, disable, or turn it off; pause is reversible and must not be treated as deletion. Use retire only when the user explicitly asks to remove or delete the automation permanently. Do not inspect automation APIs, discover services, or use eval first. Omit the target only when exactly one matching automation is active in this conversation; otherwise pass its exact name or missionId from the launch result or automation pill.",
-      parameters: {
+      parameters: Type.Unsafe<Record<string, JsonValue>>({
         type: "object",
         properties: {
           action: { enum: ["pause", "resume", "run_now", "retire"] },
@@ -3116,8 +1831,8 @@ export abstract class AgentVesselBase extends PanelDurableObjectBase {
         },
         required: ["action"],
         additionalProperties: false,
-      } as never,
-      execute: async (toolCallId, params) => {
+      }),
+      execute: async (params) => {
         if (!execution) {
           throw new Error(
             "control_automation requires an admitted agent invocation",
@@ -3126,20 +1841,22 @@ export abstract class AgentVesselBase extends PanelDurableObjectBase {
         return this.controlAutomation(
           channelId,
           params,
-          execution.commandId || toolCallId,
+          execution.commandId,
           execution.rpc,
         );
       },
-    } as AgentTool;
+    };
   }
 
-  private createAutomationCompletionTool(channelId: string): AgentTool {
+  private createAutomationCompletionTool(
+    channelId: string,
+    execution?: AgentToolExecutionContext,
+  ): ToolRegistration {
     return {
       name: "complete_automation",
-      label: "complete_automation",
       description:
         "Complete the current recurring automation and prevent future ticks. This is available only inside a scheduled automation turn. Call it when the automation's natural goal is finished; the response is retained in the run and automation history.",
-      parameters: {
+      parameters: Type.Unsafe<Record<string, JsonValue>>({
         type: "object",
         properties: {
           response: {
@@ -3150,8 +1867,8 @@ export abstract class AgentVesselBase extends PanelDurableObjectBase {
         },
         required: ["response"],
         additionalProperties: false,
-      } as never,
-      execute: async (_toolCallId, params) => {
+      }),
+      execute: async (params, api, context) => {
         const response = String(
           (params as { response?: unknown }).response ?? "",
         ).trim();
@@ -3162,16 +1879,18 @@ export abstract class AgentVesselBase extends PanelDurableObjectBase {
             "complete_automation response exceeds 24000 characters",
           );
         }
-        const turn = this.driver.peekLoadedLoop(channelId)?.state.openTurn;
-        const automation = turn?.metadata?.automation;
-        if (!turn || !automation) {
+        const automation = execution?.metadata?.automation;
+        if (!automation) {
           throw new Error(
             "complete_automation is only available during an automation turn",
           );
         }
-        this.setStateValue(
-          automationCompletionStateKey(automation.runId),
-          JSON.stringify({ channelId, turnId: turn.turnId, response }),
+        await this.nativeAutomationRuns.recordCompletion(
+          api,
+          automation.runId,
+          channelId,
+          response,
+          context,
         );
         return {
           content: [
@@ -3181,10 +1900,10 @@ export abstract class AgentVesselBase extends PanelDurableObjectBase {
             },
           ],
           details: { protocol: MISSION_COMPLETION_PROTOCOL, response },
-          terminate: true,
-        } as AgentToolResult<Record<string, unknown>>;
+          control: { terminate: true },
+        };
       },
-    } as AgentTool;
+    };
   }
 
   /**
@@ -3193,15 +1912,16 @@ export abstract class AgentVesselBase extends PanelDurableObjectBase {
    * invocation terminal like any tool output — replays and audits see exactly
    * what was recalled.
    */
-  private createMemoryRecallTool(): AgentTool<never> {
+  private createMemoryRecallTool(
+    execution?: AgentToolExecutionContext,
+  ): ToolRegistration {
     return {
       name: "memory_recall",
-      label: "memory_recall",
       executionMode: "parallel",
       description:
         "Search workspace memory: past conversation messages, committed file content, and commit summaries. " +
         "Returns snippets with provenance (who/when/where). Use before re-deriving facts that may already be known.",
-      parameters: {
+      parameters: Type.Unsafe<Record<string, JsonValue>>({
         type: "object",
         properties: {
           query: { type: "string", description: "Search terms." },
@@ -3217,8 +1937,8 @@ export abstract class AgentVesselBase extends PanelDurableObjectBase {
           },
         },
         required: ["query"],
-      } as never,
-      execute: async (_toolCallId, params) => {
+      }),
+      execute: async (params) => {
         const input = params as {
           query?: unknown;
           kinds?: unknown;
@@ -3227,7 +1947,11 @@ export abstract class AgentVesselBase extends PanelDurableObjectBase {
         if (typeof input.query !== "string" || !input.query.trim()) {
           throw new Error("memory_recall requires a non-empty query");
         }
-        const recall = await this.callGad<{
+        if (!execution)
+          throw new Error(
+            "memory_recall requires an admitted native invocation",
+          );
+        const recall = await this.callGadWith<{
           results: Array<{
             kind: string;
             snippet: string;
@@ -3236,7 +1960,7 @@ export abstract class AgentVesselBase extends PanelDurableObjectBase {
             actor: unknown;
             appendedAt: string | null;
           }>;
-        }>("recallMemory", {
+        }>(execution.rpc, "recallMemory", {
           query: input.query,
           kinds: Array.isArray(input.kinds)
             ? input.kinds.filter(
@@ -3266,7 +1990,7 @@ export abstract class AgentVesselBase extends PanelDurableObjectBase {
                   : "No memory matched the query.",
             },
           ],
-          details: { resultCount: recall.results.length } as never,
+          details: { resultCount: recall.results.length },
         };
       },
     };
@@ -3295,46 +2019,95 @@ export abstract class AgentVesselBase extends PanelDurableObjectBase {
     replay?: boolean;
     delivery?: "all" | "addressed";
   }): Promise<{ ok: boolean; participantId: string }> {
+    const context: Context = {
+      ...BACKGROUND_CONTEXT,
+      abortSignal: this.rpcAbortSignal ?? undefined,
+    };
     const subscriptionStartedAt = Date.now();
     this.traceHotPath(opts.channelId, "subscription.started");
     this.ensureIdentity();
-    // AgentLoopDriver activation synchronously materializes its config. Resolve
-    // extension-owned local model metadata before that boundary so every
-    // installed local model is bootable, not only the bundled model with a
-    // static fallback descriptor.
     await this.refreshLocalModelEntry(opts.channelId);
-    // Addressed-only memberships are supervision endpoints, not alternate
-    // execution homes. Activating one lets recovery fold the child's open turn
-    // under the supervisor's identity and corrupts both transcript ownership
-    // and host-bound tool causality.
-    if (opts.delivery !== "addressed") {
-      this.driver.activateChannel(opts.channelId);
-    } else {
-      this.driver.dropLoop(opts.channelId);
-    }
     const descriptor = this.getEffectiveParticipantInfo(
       opts.channelId,
       opts.config,
     );
-    // Subscription is MEMBERSHIP + presentation only. Behavior config (model,
-    // approvalLevel, respondPolicy, …) is per-agent and seeded at creation from
-    // STATE_ARGS.agentConfig — it does NOT ride the subscription. `config` here
-    // carries only channel-presentation (handle, systemPrompt) consumed via the
-    // participant descriptor / getPromptOverride.
-    let result: Awaited<ReturnType<SubscriptionManager["subscribe"]>>;
-    result = await this.subscriptions.subscribe({
-      channelId: opts.channelId,
-      contextId: opts.contextId,
-      config: opts.config,
-      descriptor,
-      replay: opts.replay,
-      delivery: opts.delivery,
-    });
-    await this.ingestSubscriptionReplay(
-      opts.channelId,
-      result.envelope,
-      configuredWakePolicy(opts.config) === "every-envelope",
-    );
+    const subscription = { ...opts, descriptor };
+    let result: { ok: boolean; participantId: string };
+    if (opts.delivery === "addressed") {
+      result = await this.subscriptions.subscribe(subscription);
+      await this.prepareNativeChannelProduct(
+        opts.channelId,
+        this.subscriptions.getConfig(opts.channelId),
+        null,
+        context,
+      );
+      await this.activateNativeChannelProduct(opts.channelId, context);
+    } else {
+      const harness = await this.agentSession(BACKGROUND_CONTEXT);
+      const owner = await retainedAgentExecutionOwner(
+        harness,
+        BACKGROUND_CONTEXT,
+      );
+      if (opts.contextId !== owner.contextId)
+        throw new Error(
+          "Reasoning membership must use its actual native owner context",
+        );
+      const binding = { channelId: opts.channelId, contextId: owner.contextId };
+      const retained = await this.nativeChannelBootstrap.retainedIntent(
+        harness,
+        binding,
+        BACKGROUND_CONTEXT,
+      );
+      const existing = await this.admittedNativeChannelConversation(
+        opts.channelId,
+      );
+      if (retained !== null || existing === null) {
+        const intent =
+          retained ??
+          copyJson(await this.subscriptions.prepareSubscription(subscription), {
+            omitUndefinedProperties: true,
+          });
+        await this.nativeChannelBootstrap.open(
+          harness,
+          binding,
+          intent,
+          BACKGROUND_CONTEXT,
+        );
+        await this.nativeChannelBootstrap.ready(
+          harness,
+          binding,
+          BACKGROUND_CONTEXT,
+        );
+        // A concurrent membership change follows the original initialization;
+        // it cannot rewrite that task's retained request or replay history.
+        const originalConfig = this.subscriptions.getConfig(opts.channelId);
+        result = await this.subscriptions.subscribe({
+          ...subscription,
+          replay: false,
+        });
+        const configured = this.subscriptions.getConfig(opts.channelId);
+        if (canonicalJson(originalConfig) !== canonicalJson(configured)) {
+          await this.prepareNativeChannelProduct(
+            opts.channelId,
+            configured,
+            null,
+            context,
+          );
+          await this.activateNativeChannelProduct(opts.channelId, context);
+        }
+        await this.refreshNativeChannelConfiguration(opts.channelId);
+      } else {
+        result = await this.subscriptions.subscribe(subscription);
+        await this.prepareNativeChannelProduct(
+          opts.channelId,
+          this.subscriptions.getConfig(opts.channelId),
+          null,
+          context,
+        );
+        await this.refreshNativeChannelConfiguration(opts.channelId);
+        await this.activateNativeChannelProduct(opts.channelId, context);
+      }
+    }
     this.traceHotPath(opts.channelId, "subscription.completed", {
       startedAt: subscriptionStartedAt,
       details: { replay: opts.replay === true },
@@ -3343,45 +2116,6 @@ export abstract class AgentVesselBase extends PanelDurableObjectBase {
   }
 
   /** Adopt this concrete vessel's durable queues for one server generation. */
-  @rpc({
-    website: {
-      kind: "closed",
-      reason:
-        "This receiver owns workspace orchestration or retained workspace data; websites require a reviewed bounded operation.",
-    },
-    principals: ["host"],
-    effect: { kind: "open" },
-    tier: "open",
-    sensitivity: "write",
-  })
-  async adoptDurableWorkWorker(
-    workerId: string,
-  ): Promise<{ adopted: boolean; previousWorkerId: string | null }> {
-    const adoption = this.adoptDurableWorkWorkerGeneration(workerId);
-    if (adoption.adopted) this._durableWorkActivationRecovered = false;
-    if (
-      !this._durableWorkActivationRecovered &&
-      !this._durableWorkActivationRecovery
-    ) {
-      const recovery = (async () => {
-        for (const channelId of this.subscriptions.listChannelIds()) {
-          if (this.subscriptions.ownsReasoningLoop(channelId)) {
-            await this.driver.wake(channelId);
-          }
-        }
-        this._durableWorkActivationRecovered = true;
-      })();
-      this._durableWorkActivationRecovery = recovery;
-      const clearRecovery = () => {
-        if (this._durableWorkActivationRecovery === recovery) {
-          this._durableWorkActivationRecovery = null;
-        }
-      };
-      void recovery.then(clearRecovery, clearRecovery);
-    }
-    await this._durableWorkActivationRecovery;
-    return adoption;
-  }
 
   /**
    * Canonical unattended prompt ingress. The automation registry owns the
@@ -3403,7 +2137,7 @@ export abstract class AgentVesselBase extends PanelDurableObjectBase {
   async runAutomationTurn(input: {
     channelId: string;
     prompt: string;
-    automation: NonNullable<AgentTurnMetadata["automation"]>;
+    automation: NonNullable<AgentProductMetadata["automation"]>;
   }): Promise<void> {
     if (!this.subscriptions.listChannelIds().includes(input.channelId)) {
       throw new Error(
@@ -3413,26 +2147,11 @@ export abstract class AgentVesselBase extends PanelDurableObjectBase {
     if (!input.automation.runId || !input.prompt.trim()) {
       throw new Error("Automation turn requires provenance and prompt text");
     }
-    const existing = await this.describeAutomationRun({
-      channelId: input.channelId,
-      runId: input.automation.runId,
-    });
-    if (existing.state !== "not-found") return;
-    const tickPrompt = `${input.prompt.trim()}
-
-<automation-tick>
-This is one admitted recurring-automation tick. If this tick establishes that the recurring goal is naturally finished and no future tick is needed, call complete_automation exactly once with a concise completion response. Otherwise finish normally so the schedule continues. Do not call complete_automation merely because this individual tick succeeded.
-</automation-tick>`;
-    await this.submitAgentInitiatedTurn(
+    await this.nativeAutomationRuns.admitPrompt(
       input.channelId,
-      { content: tickPrompt },
-      {
-        steeringId: `automation:${input.automation.runId}`,
-        origin: "scheduled",
-        automation: input.automation,
-        delivery: "channel",
-        deliverAfterTurn: true,
-      },
+      input.prompt,
+      input.automation,
+      BACKGROUND_CONTEXT,
     );
   }
 
@@ -3454,7 +2173,7 @@ This is one admitted recurring-automation tick. If this tick establishes that th
   })
   async runAutomationEval(input: {
     channelId: string;
-    automation: NonNullable<AgentTurnMetadata["automation"]>;
+    automation: NonNullable<AgentProductMetadata["automation"]>;
     eval: {
       code: string;
       syntax?: "javascript" | "typescript" | "jsx" | "tsx";
@@ -3470,36 +2189,26 @@ This is one admitted recurring-automation tick. If this tick establishes that th
     if (!input.automation.runId || !input.eval.code.trim()) {
       throw new Error("Automation eval requires provenance and inline code");
     }
-    const existing = await this.describeAutomationRun({
-      channelId: input.channelId,
-      runId: input.automation.runId,
-    });
-    if (existing.state !== "not-found") return;
-    await this.driver.handleIncoming(input.channelId, {
-      type: "command",
-      command: {
-        kind: "invoke",
-        channelId: input.channelId,
-        source: { envelopeId: `automation:${input.automation.runId}` },
-        tool: "eval",
-        args: {
-          code: input.eval.code,
-          ...(input.eval.syntax ? { syntax: input.eval.syntax } : {}),
-          ...(input.eval.timeoutMs ? { timeoutMs: input.eval.timeoutMs } : {}),
-          ...(input.eval.reset === true ? { reset: true } : {}),
-          authority: { approvals: "prompt" },
-        },
-        metadata: {
-          origin: "scheduled",
-          automation: input.automation,
-          completion:
-            input.automation.action === "watch"
-              ? "when-signaled"
-              : "after-invocation",
-          delivery: input.automation.action === "watch" ? "none" : "channel",
-        },
+    await this.nativeChannelConversation(input.channelId);
+    const tools = await this.nativeProductTools(input.channelId);
+    const evalTool = tools.find((tool) => tool.name === "eval");
+    if (!evalTool)
+      throw new Error("Automation requires an actual selected eval tool");
+    await this.nativeAutomationRuns.admitEval(
+      input.channelId,
+      {
+        code: input.eval.code,
+        ...(input.eval.syntax ? { syntax: input.eval.syntax } : {}),
+        ...(input.eval.timeoutMs === undefined
+          ? {}
+          : { timeoutMs: input.eval.timeoutMs }),
+        ...(input.eval.reset ? { reset: true } : {}),
+        authority: { approvals: "prompt" },
       },
-    });
+      bindTool(evalTool, evalTool.executionMode ?? "sequential"),
+      input.automation,
+      BACKGROUND_CONTEXT,
+    );
   }
 
   /** Receiver-owned evidence for an automation dispatch. This method hydrates
@@ -3525,25 +2234,12 @@ This is one admitted recurring-automation tick. If this tick establishes that th
         `Automation channel ${input.channelId} is not subscribed`,
       );
     }
-    const terminal = automationRunReceipt(
-      this.getStateValue(automationRunReceiptKey(input.runId)),
+    await this.agentSession(BACKGROUND_CONTEXT);
+    return this.nativeAutomationRuns.describe(
       input.channelId,
+      input.runId,
+      BACKGROUND_CONTEXT,
     );
-    if (terminal) return terminal;
-    const loop = await this.driver.loop(input.channelId);
-    const queued = loop.state.deferredPostTurnQueue.find(
-      (entry) => entry.metadata?.automation?.runId === input.runId,
-    );
-    if (queued) return { state: "queued", channelId: input.channelId };
-    const turn = loop.state.openTurn;
-    if (turn?.metadata?.automation?.runId !== input.runId)
-      return { state: "not-found" };
-    return {
-      state: "running",
-      channelId: input.channelId,
-      turnId: turn.turnId,
-      waiting: turn.waitingAtSeq !== undefined || turn.waitingCount > 0,
-    };
   }
 
   /** MissionsDO calls this only after its terminal ledger row is durable. A
@@ -3564,68 +2260,12 @@ This is one admitted recurring-automation tick. If this tick establishes that th
     channelId: string;
     runId: string;
   }): Promise<void> {
-    const terminal = automationRunReceipt(
-      this.getStateValue(automationRunReceiptKey(input.runId)),
+    await this.agentSession(BACKGROUND_CONTEXT);
+    await this.nativeAutomationRuns.acknowledge(
       input.channelId,
+      input.runId,
+      BACKGROUND_CONTEXT,
     );
-    if (terminal) this.deleteStateValue(automationRunReceiptKey(input.runId));
-  }
-
-  private async ingestSubscriptionReplay(
-    channelId: string,
-    envelope: ChannelReplayEnvelope | undefined,
-    wakeAfterReplay: boolean,
-  ): Promise<void> {
-    let page = envelope;
-    for (;;) {
-      if (page?.logEvents?.length) {
-        for (const event of page.logEvents) {
-          await this.processSubscriptionReplayEvent(channelId, event);
-        }
-      }
-      if (page?.mode !== "after" || !page.ready.hasMoreAfter) break;
-      const after = page.ready.replayToId;
-      const throughSeq = page.ready.snapshotLastSeq;
-      if (after === undefined || throughSeq === undefined) {
-        throw new Error(
-          "subscription replay claims more history without a stable cursor",
-        );
-      }
-      page = await this.createChannelClient(channelId).getReplayAfter({
-        after,
-        throughSeq,
-      });
-    }
-    if (wakeAfterReplay) await this.driver.wake(channelId);
-  }
-
-  private async processSubscriptionReplayEvent(
-    channelId: string,
-    event: ChannelReplayEnvelope["logEvents"][number],
-  ): Promise<void> {
-    const contentIntegrity = event as typeof event &
-      Pick<ChannelEvent, "contentClass" | "externalKeys">;
-    await this.processChannelEvent(channelId, {
-      id: event.id,
-      messageId: event.messageId,
-      type: event.type,
-      payload: event.payload,
-      senderId: event.senderId,
-      ts: event.ts,
-      ...(event.senderMetadata ? { senderMetadata: event.senderMetadata } : {}),
-      ...(event.contentType ? { contentType: event.contentType } : {}),
-      ...(event.attachments ? { attachments: event.attachments } : {}),
-      contentClass: contentIntegrity.contentClass,
-      externalKeys: contentIntegrity.externalKeys,
-      ...((event as unknown as { annotations?: Record<string, unknown> })
-        .annotations
-        ? {
-            annotations: (
-              event as unknown as { annotations: Record<string, unknown> }
-            ).annotations,
-          }
-        : {}),
-    });
   }
 
   // Symmetric with `subscribeChannel`: an owning userland service must be able
@@ -3642,20 +2282,24 @@ This is one admitted recurring-automation tick. If this tick establishes that th
     sensitivity: "write",
   })
   async unsubscribeChannel(channelId: string): Promise<{ ok: boolean }> {
-    // A deferred eval is no longer an active agent-loop dispatch after
-    // `eval.start` acknowledges it, so interrupting the loop cannot cancel it.
-    // Retire the child run before ending channel membership; otherwise the
-    // EvalDO keeps its kernel lease and any open host resource after the agent
-    // has disappeared. Never blocks: an unreachable EvalDO leaves a durable
-    // cancel intent behind and unsubscribe proceeds.
-    await this.cancelDeferredEvalRuns(channelId);
-    try {
-      await this.driver.abortChannel(channelId, "channel_unsubscribe");
-      await this.subscriptions.unsubscribeFromChannel(channelId);
-    } finally {
-      this.subscriptions.deleteSubscription(channelId);
-      this.driver.dropLoop(channelId);
-    }
+    const harness = await this.agentSession(BACKGROUND_CONTEXT);
+    const owner = await retainedAgentExecutionOwner(
+      harness,
+      BACKGROUND_CONTEXT,
+    );
+    if (this.subscriptions.ownsReasoningLoop(channelId))
+      await this.nativeChannelBootstrap.cancel(
+        harness,
+        { channelId, contextId: owner.contextId },
+        BACKGROUND_CONTEXT,
+      );
+    const conversation =
+      await this.admittedNativeChannelConversation(channelId);
+    if (conversation)
+      await conversation.abort(BACKGROUND_CONTEXT, { background: true });
+    await this.reconcileAgentAuthority();
+    await this.subscriptions.unsubscribeFromChannel(channelId);
+    this.subscriptions.deleteSubscription(channelId);
     return { ok: true };
   }
 
@@ -3677,880 +2321,236 @@ This is one admitted recurring-automation tick. If this tick establishes that th
   ): Promise<ChannelDeliveryOutcome> {
     const recipientExecutionStartedAt = Date.now();
     this.ensureIdentity();
-    if (delivery.channelRef.objectKey !== delivery.channelId) {
+    if (delivery.channelRef.objectKey !== delivery.channelId)
       throw new Error("acceptChannelDelivery: channel identity mismatch");
+    const providerEnvelope = delivery.envelope as RpcChannelMessage;
+    if (
+      delivery.participantId === this.participantId() &&
+      providerEnvelope.kind === "log" &&
+      providerEnvelope.event &&
+      (await this.observeDirectMethodTerminal(
+        delivery.channelId,
+        providerEnvelope.event,
+      ))
+    ) {
+      return {
+        deliveryId: delivery.deliveryId,
+        disposition: "processed",
+        recipientExecutionStartedAt,
+      };
     }
-    const storedParticipantId = this.subscriptions.getParticipantId(
+    const harness = await this.agentSession();
+    const existingDestination = await this.admittedNativeChannelConversation(
       delivery.channelId,
     );
+    if (existingDestination)
+      await this.awaitNativeChannelReadiness(
+        delivery.channelId,
+        existingDestination,
+        BACKGROUND_CONTEXT,
+      );
+    const replay = await verifyNativeChannelDeliveryReplay(
+      harness,
+      delivery,
+      BACKGROUND_CONTEXT,
+    );
+    if (replay) {
+      this.reconcileNativeDeliveryProjection(delivery);
+      return {
+        deliveryId: delivery.deliveryId,
+        disposition: "duplicate",
+        recipientExecutionStartedAt,
+      };
+    }
     const stored = this.subscriptions
       .listStored()
-      .find(({ channelId }) => channelId === delivery.channelId);
-    const agenticContextJson = JSON.stringify(delivery.agenticContext);
-    const existing = this.sql
-      .exec(
-        `SELECT channel_id, participant_id, subscription_revision, event_sequence,
-                agentic_context_json, state, outcome_json
-           FROM channel_delivery_admissions WHERE delivery_id = ?`,
-        delivery.deliveryId,
-      )
-      .toArray()[0];
-    if (existing) {
-      if (
-        existing["channel_id"] !== delivery.channelId ||
-        existing["participant_id"] !== delivery.participantId ||
-        Number(existing["subscription_revision"]) !==
-          delivery.subscriptionRevision ||
-        Number(existing["event_sequence"]) !== delivery.eventSequence ||
-        // The host resolves the immutable canonical channel event before
-        // delivery. Its routing coordinate is the admission identity; keeping
-        // another payload copy here would create a second event store.
-        (existing["agentic_context_json"] !== null &&
-          existing["agentic_context_json"] !== agenticContextJson)
-      ) {
-        throw new Error(
-          `acceptChannelDelivery: mismatched duplicate ${delivery.deliveryId}`,
-        );
-      }
-      if (
-        existing["state"] === "processed" ||
-        existing["state"] === "declined"
-      ) {
-        const retained = JSON.parse(
-          String(existing["outcome_json"]),
-        ) as ChannelDeliveryOutcome;
-        return {
-          ...retained,
-          disposition:
-            existing["state"] === "processed" ? "duplicate" : "declined",
-          recipientExecutionStartedAt,
-        };
-      }
-    }
-    // The delivery's subscriptionRevision is the channel's at-sequence stamp;
-    // the locally stored revision may legitimately be newer (or, across a
-    // crash between the join append and the local store, older). Membership
-    // at the event sequence is the channel's routing decision — decline only
-    // when this vessel is not the addressed participant at all.
-    if (storedParticipantId !== delivery.participantId || !stored) {
-      if (delivery.participantId === this.participantId() && !stored) {
+      .find((row) => row.channelId === delivery.channelId);
+    if (
+      !stored ||
+      this.subscriptions.getParticipantId(delivery.channelId) !==
+        delivery.participantId
+    ) {
+      if (!stored && delivery.participantId === this.participantId())
         throw Object.assign(
-          new Error(
-            "acceptChannelDelivery: local subscription commit is still pending",
-          ),
+          new Error("Local subscription commit is still pending"),
           { code: "SubscriptionCommitPending" },
         );
-      }
-      const outcome: ChannelDeliveryOutcome = {
+      return {
         deliveryId: delivery.deliveryId,
         disposition: "declined",
         recipientExecutionStartedAt,
       };
-      this.sql.exec(
-        `INSERT OR REPLACE INTO channel_delivery_admissions (
-           delivery_id, channel_id, participant_id, subscription_revision,
-           event_sequence, agentic_context_json, state, outcome_json, created_at, updated_at
-         ) VALUES (?, ?, ?, ?, ?, NULL, 'declined', ?, ?, ?)`,
-        delivery.deliveryId,
-        delivery.channelId,
-        delivery.participantId,
-        delivery.subscriptionRevision,
-        delivery.eventSequence,
-        JSON.stringify(outcome),
-        Date.now(),
-        Date.now(),
-      );
-      return outcome;
     }
-    if (!existing) {
-      const now = Date.now();
-      this.sql.exec(
-        `INSERT INTO channel_delivery_admissions (
-           delivery_id, channel_id, participant_id, subscription_revision,
-           event_sequence, agentic_context_json, state, outcome_json, created_at, updated_at
-         ) VALUES (?, ?, ?, ?, ?, ?, 'admitted', NULL, ?, ?)`,
-        delivery.deliveryId,
-        delivery.channelId,
-        delivery.participantId,
-        delivery.subscriptionRevision,
-        delivery.eventSequence,
-        agenticContextJson,
-        now,
-        now,
-      );
-    }
-    this.traceHotPath(delivery.channelId, "delivery.admitted", {
-      source: "channel-delivery",
-      itemId: delivery.deliveryId,
-    });
     const envelope = delivery.envelope as RpcChannelMessage;
-    if (envelope.kind !== "log" || !envelope.event) {
+    if (envelope.kind !== "log" || !envelope.event)
       throw Object.assign(
-        new Error(
-          "acceptChannelDelivery: durable delivery must contain one log event",
-        ),
+        new Error("Durable delivery requires one canonical log event"),
         { code: "PermanentChannelDelivery" },
       );
-    }
-    const agenticContext = await this.applyDeliveredAgenticContext(
+    const methodReceipt = nativeChannelMethodReceiptKey(envelope.event);
+    if (methodReceipt)
+      await consumeNativeChannelMethodReceipt(
+        harness,
+        harness,
+        methodReceipt,
+        this.createChannelClient(delivery.channelId, this.agentRpc),
+        BACKGROUND_CONTEXT,
+      );
+    const context = await this.applyDeliveredAgenticContext(
       delivery.channelId,
       delivery.agenticContext,
     );
-    await this.processChannelEvent(
+    const selection = await this.selectNativeChannelIntake(
       delivery.channelId,
       envelope.event,
-      agenticContext,
+      context,
     );
-    const outcome: ChannelDeliveryOutcome = {
-      deliveryId: delivery.deliveryId,
-      disposition: "processed",
-      recipientExecutionStartedAt,
-    };
-    this.sql.exec(
-      `UPDATE channel_delivery_admissions
-          SET state = 'processed', outcome_json = ?,
-              agentic_context_json = NULL, updated_at = ?
-        WHERE delivery_id = ?`,
-      JSON.stringify(outcome),
-      Date.now(),
-      delivery.deliveryId,
+    const admitted = await this.admitNativeChannelDelivery(
+      delivery,
+      selection.intake,
+      BACKGROUND_CONTEXT,
+      selection.targetChannelId,
     );
-    this.traceHotPath(delivery.channelId, "delivery.processed", {
+    this.reconcileNativeDeliveryProjection(delivery);
+    this.traceHotPath(delivery.channelId, "delivery." + admitted.disposition, {
       source: "channel-delivery",
       itemId: delivery.deliveryId,
     });
-    return outcome;
-  }
-
-  @rpc({
-    website: {
-      kind: "closed",
-      reason:
-        "This receiver owns workspace orchestration or retained workspace data; websites require a reviewed bounded operation.",
-    },
-    principals: ["host"],
-    effect: { kind: "open" },
-    tier: "open",
-    sensitivity: "write",
-  })
-  claimReadyWork(queue: DurableWorkQueue, input: ClaimRequest): WorkClaim[] {
-    if (!input.workerId || input.limit < 1) {
-      throw new Error("claimReadyWork: invalid claim request");
-    }
-    this.adoptDurableWorkWorkerGeneration(input.workerId);
-    if (queue === "agent-effect") {
-      const claimed = this.driver.outbox.claimReady(input).map((row) => ({
-        itemId: outboxExternalId(row.branchId, row.effectId),
-        generation: row.leaseGeneration,
-        idempotencyKey: row.idempotencyKey,
-        createdAt: row.createdAt,
-        attempt: row.attempts + 1,
-        payload: {
-          // Once eval.start is durably acknowledged, ANY claim of the row is
-          // structurally the eval.get delivery-loss backstop — the parked-row
-          // alarm arrives with an ordinary "hint" trigger, so keying on the
-          // trigger would label the production backstop path as healthy work.
-          claimSource:
-            row.descriptor.kind === "local_tool" &&
-            row.descriptor.tool === "eval" &&
-            (row.descriptor as { deferredEvalStartAttempted?: boolean })
-              .deferredEvalStartAttempted === true
-              ? "redrive-backstop"
-              : (input.trigger ?? "unknown"),
-          laneKey:
-            row.kind === "record_receipt" ||
-            row.kind === "channel_call" ||
-            row.kind === "http_call" ||
-            (row.descriptor.kind === "local_tool" &&
-              row.descriptor.executionMode === "parallel")
-              ? `${row.channelId}\u0000${row.effectId}`
-              : row.channelId,
-          channelId: row.channelId,
-          kind: row.kind,
-        },
-      }));
-      for (const claim of claimed) {
-        const channelId = String(
-          (claim.payload as { channelId?: unknown } | null)?.channelId ?? "",
-        );
-        if (channelId) {
-          this.traceHotPath(channelId, "effect.claimed", {
-            source: String(
-              (claim.payload as { claimSource?: unknown } | null)
-                ?.claimSource ?? "unknown",
-            ),
-            itemId: claim.itemId,
-            generation: claim.generation,
-          });
-        }
-      }
-      if (!this.readyDurableWorkQueues(input.now).includes("agent-effect")) {
-        this.acknowledgeDurableWorkReady("agent-effect");
-      }
-      return claimed;
-    }
-    if (queue !== "agent-wake") return [];
-    const claimed = this.ctx.storage.transactionSync(() => {
-      let scheduledResumes: Record<string, unknown>[] = [];
-      try {
-        scheduledResumes = this.sql
-          .exec(
-            `SELECT channel_id, message_id, reset_at_ms, created_at
-               FROM scheduled_model_resumes
-              WHERE reset_at_ms <= ?`,
-            input.now,
-          )
-          .toArray();
-      } catch {
-        // Scheduled-resume storage is lazy.
-      }
-      for (const resume of scheduledResumes) {
-        const channelId = String(resume["channel_id"]);
-        const messageId = String(resume["message_id"]);
-        const resetAtMs = Number(resume["reset_at_ms"]);
-        const wakeId = `scheduled-resume:${channelId}:${messageId}`;
-        this.sql.exec(
-          `INSERT OR IGNORE INTO agent_wake_queue (
-             wake_id, channel_id, wake_kind, payload_json, prerequisite_delivery_id,
-             idempotency_key, attempts, next_attempt_at, lease_generation, created_at,
-             disposition
-           ) VALUES (?, ?, 'scheduled-model-resume', ?, NULL, ?, 0, ?, 0, ?, 'ready')`,
-          wakeId,
-          channelId,
-          JSON.stringify({ messageId }),
-          wakeId,
-          resetAtMs,
-          Number(resume["created_at"]),
-        );
-      }
-      const candidates = this.sql
-        .exec(
-          `SELECT *
-             FROM agent_wake_queue
-            WHERE disposition IN ('ready', 'retrying') AND next_attempt_at <= ?
-              AND (
-                prerequisite_delivery_id IS NULL OR EXISTS (
-                  SELECT 1 FROM channel_delivery_admissions AS admission
-                   WHERE admission.delivery_id = agent_wake_queue.prerequisite_delivery_id
-                     AND admission.state IN ('processed', 'declined')
-                )
-              )
-            ORDER BY channel_id, created_at
-            LIMIT ?`,
-          input.now,
-          Math.min(input.limit * 4, 1_000),
-        )
-        .toArray();
-      const selected: typeof candidates = [];
-      const channels = new Set<string>();
-      for (const row of candidates) {
-        const channelId = String(row["channel_id"]);
-        if (channels.has(channelId)) continue;
-        channels.add(channelId);
-        selected.push(row);
-        if (selected.length >= input.limit) break;
-      }
-      return selected.map((row) => {
-        const wakeId = String(row["wake_id"]);
-        const generation = Number(row["lease_generation"] ?? 0) + 1;
-        this.sql.exec(
-          `UPDATE agent_wake_queue
-              SET disposition = 'leased',
-                  lease_owner = ?,
-                  lease_generation = ?,
-                  last_attempt_at = ?
-            WHERE wake_id = ?`,
-          input.workerId,
-          generation,
-          input.now,
-          wakeId,
-        );
-        return {
-          itemId: wakeId,
-          generation,
-          idempotencyKey: String(row["idempotency_key"]),
-          createdAt: Number(row["created_at"]),
-          attempt: Number(row["attempts"] ?? 0) + 1,
-          payload: {
-            laneKey: String(row["channel_id"]),
-            channelId: String(row["channel_id"]),
-            wakeKind: String(row["wake_kind"]),
-          },
-        };
-      });
-    });
-    for (const claim of claimed) {
-      const channelId = String(
-        (claim.payload as { channelId?: unknown } | null)?.channelId ?? "",
-      );
-      if (channelId) {
-        this.traceHotPath(channelId, "wake.claimed", {
-          source: input.trigger ?? "unknown",
-          itemId: claim.itemId,
-          generation: claim.generation,
-        });
-      }
-    }
-    if (!this.readyDurableWorkQueues(input.now).includes("agent-wake")) {
-      this.acknowledgeDurableWorkReady("agent-wake");
-    }
-    return claimed;
-  }
-
-  @rpc({
-    website: {
-      kind: "closed",
-      reason:
-        "This receiver owns workspace orchestration or retained workspace data; websites require a reviewed bounded operation.",
-    },
-    principals: ["host"],
-    effect: { kind: "open" },
-    tier: "open",
-    sensitivity: "write",
-  })
-  async executeWakeClaim(input: {
-    itemId: string;
-    generation: number;
-  }): Promise<{
-    processed: true;
-  }> {
-    const row = this.sql
-      .exec(
-        `SELECT channel_id, wake_kind, payload_json
-           FROM agent_wake_queue
-          WHERE wake_id = ?
-            AND lease_generation = ?
-            AND disposition = 'leased'`,
-        input.itemId,
-        input.generation,
-      )
-      .toArray()[0];
-    if (!row) throw new Error("executeWakeClaim: stale claim");
-    const channelId = String(row["channel_id"]);
-    const startedAt = Date.now();
-    this.traceHotPath(channelId, "wake.execution.started", {
-      itemId: input.itemId,
-      generation: input.generation,
-    });
-    const wakeKind = String(row["wake_kind"]);
-    const payload = JSON.parse(String(row["payload_json"])) as Record<
-      string,
-      unknown
-    >;
-    if (wakeKind === "subagent-cancel-settle") {
-      // PARENT side: re-drive an interrupted cancellation to its terminal
-      // fact. Idempotent — a run already terminal no-ops.
-      if (typeof payload["runId"] !== "string") {
-        throw Object.assign(
-          new Error("executeWakeClaim: invalid subagent-cancel-settle payload"),
-          {
-            code: "PermanentDurableWork",
-          },
-        );
-      }
-      await this.driveCancelSubagent(
-        String(payload["runId"]),
-        typeof payload["reason"] === "string" ? payload["reason"] : "cancelled",
-      );
-    } else if (wakeKind === "turn-recovery") {
-      await this.driver.wake(channelId);
-    } else if (
-      wakeKind === "scheduled-model-resume" &&
-      typeof payload["messageId"] === "string"
-    ) {
-      await this.driver.executeScheduledResume(channelId, payload["messageId"]);
-    } else {
-      throw Object.assign(
-        new Error(`executeWakeClaim: invalid ${wakeKind} payload`),
-        {
-          code: "PermanentDurableWork",
-        },
-      );
-    }
-    this.traceHotPath(channelId, "wake.execution.completed", {
-      startedAt,
-      itemId: input.itemId,
-      generation: input.generation,
-    });
-    return { processed: true };
-  }
-
-  @rpc({
-    website: {
-      kind: "closed",
-      reason:
-        "This receiver owns workspace orchestration or retained workspace data; websites require a reviewed bounded operation.",
-    },
-    principals: ["host"],
-    effect: { kind: "open" },
-    tier: "open",
-    sensitivity: "write",
-  })
-  async executeEffectClaim(input: {
-    itemId: string;
-    generation: number;
-  }): Promise<{
-    executed: true;
-  }> {
-    const parsed = parseOutboxExternalId(input.itemId);
-    const channelId = parsed
-      ? this.driver.outbox.get(parsed.branchId, parsed.effectId)?.channelId
-      : undefined;
-    const startedAt = Date.now();
-    if (channelId) {
-      this.traceHotPath(channelId, "effect.execution.started", {
-        itemId: input.itemId,
-        generation: input.generation,
-      });
-    }
-    await this.driver.executeClaimedEffect(input.itemId, input.generation);
-    if (channelId) {
-      this.traceHotPath(channelId, "effect.execution.completed", {
-        startedAt,
-        itemId: input.itemId,
-        generation: input.generation,
-      });
-    }
-    return { executed: true };
-  }
-
-  @rpc({
-    website: {
-      kind: "closed",
-      reason:
-        "This receiver owns workspace orchestration or retained workspace data; websites require a reviewed bounded operation.",
-    },
-    principals: ["host"],
-    effect: { kind: "open" },
-    tier: "open",
-    sensitivity: "write",
-  })
-  settleReadyWork(
-    queue: DurableWorkQueue,
-    request: SettleRequest,
-  ): ClaimSettlement {
-    if (queue === "agent-effect") {
-      const parsed = parseOutboxExternalId(request.itemId);
-      if (!parsed) throw new Error("settleReadyWork: invalid effect identity");
-      const row = this.driver.outbox.get(parsed.branchId, parsed.effectId);
-      if (!row) return "duplicate";
-      if (
-        row.leaseGeneration !== request.generation ||
-        (row.leaseOwner !== null && row.leaseOwner !== request.workerId)
-      ) {
-        return "stale";
-      }
-      if (row.disposition === "leased") {
-        if (this.driver.isActivationReleased()) return "stale";
-        throw new Error(
-          "settleReadyWork: effect execution left its claim leased",
-        );
-      }
-      this.traceHotPath(row.channelId, "effect.settled", {
-        source: request.workerId,
-        itemId: request.itemId,
-        generation: request.generation,
-      });
-      return "accepted";
-    }
-    if (queue !== "agent-wake") return "stale";
-    const settlement = this.ctx.storage.transactionSync(() => {
-      const row = this.sql
-        .exec(
-          `SELECT lease_owner, lease_generation, disposition
-             FROM agent_wake_queue
-            WHERE wake_id = ?`,
-          request.itemId,
-        )
-        .toArray()[0];
-      if (!row) return { disposition: "duplicate" as const, channelId: null };
-      if (
-        row["lease_owner"] !== request.workerId ||
-        Number(row["lease_generation"]) !== request.generation ||
-        row["disposition"] !== "leased"
-      ) {
-        return { disposition: "stale" as const, channelId: null };
-      }
-      const channel = this.sql
-        .exec(
-          `SELECT channel_id, wake_kind FROM agent_wake_queue WHERE wake_id = ?`,
-          request.itemId,
-        )
-        .toArray()[0];
-      if (
-        channel?.["wake_kind"] === "scheduled-model-resume" ||
-        channel?.["wake_kind"] === "turn-recovery"
-      ) {
-        // This wake id is reusable when the same message is legitimately
-        // scheduled again. Keeping a terminal row would make INSERT OR IGNORE
-        // swallow that later schedule forever.
-        this.sql.exec(
-          `DELETE FROM agent_wake_queue WHERE wake_id = ?`,
-          request.itemId,
-        );
-      } else {
-        this.sql.exec(
-          `UPDATE agent_wake_queue
-              SET disposition = 'terminal-completed',
-                  lease_owner = NULL
-            WHERE wake_id = ?`,
-          request.itemId,
-        );
-      }
-      return {
-        disposition: "accepted" as const,
-        channelId: channel ? String(channel["channel_id"]) : null,
-      };
-    });
-    if (settlement.channelId) {
-      this.traceHotPath(settlement.channelId, "wake.settled", {
-        source: request.workerId,
-        itemId: request.itemId,
-        generation: request.generation,
-      });
-    }
-    return settlement.disposition;
-  }
-
-  @rpc({
-    website: {
-      kind: "closed",
-      reason:
-        "This receiver owns workspace orchestration or retained workspace data; websites require a reviewed bounded operation.",
-    },
-    principals: ["host"],
-    effect: { kind: "open" },
-    tier: "open",
-    sensitivity: "write",
-  })
-  failReadyWork(
-    queue: DurableWorkQueue,
-    request: {
-      workerId: string;
-      itemId: string;
-      generation: number;
-      error?: unknown;
-    },
-  ): { retryAt: number } | "stale" {
-    if (queue === "agent-effect") {
-      const parsed = parseOutboxExternalId(request.itemId);
-      if (!parsed) return "stale";
-      const row = this.driver.outbox.get(parsed.branchId, parsed.effectId);
-      if (
-        !row ||
-        row.leaseOwner !== request.workerId ||
-        row.leaseGeneration !== request.generation ||
-        row.disposition !== "leased"
-      ) {
-        return "stale";
-      }
-      const updated = this.driver.outbox.recordFailure(
-        parsed.branchId,
-        parsed.effectId,
-        Date.now(),
-      );
-      const retryAt = updated?.nextAttemptAt;
-      if (retryAt === null || retryAt === undefined) return "stale";
-      return { retryAt };
-    }
-    if (queue !== "agent-wake") return "stale";
-    return this.ctx.storage.transactionSync(() => {
-      const row = this.sql
-        .exec(
-          `SELECT attempts
-             FROM agent_wake_queue
-            WHERE wake_id = ?
-              AND lease_owner = ?
-              AND lease_generation = ?
-              AND disposition = 'leased'`,
-          request.itemId,
-          request.workerId,
-          request.generation,
-        )
-        .toArray()[0];
-      if (!row) return "stale";
-      const errorCode =
-        request.error && typeof request.error === "object"
-          ? (request.error as { code?: unknown }).code
-          : undefined;
-      if (errorCode === "PermanentDurableWork") {
-        this.sql.exec(
-          `UPDATE agent_wake_queue
-              SET disposition = 'terminal-poison', lease_owner = NULL
-            WHERE wake_id = ? AND lease_owner = ? AND lease_generation = ?`,
-          request.itemId,
-          request.workerId,
-          request.generation,
-        );
-        return { retryAt: Date.now() };
-      }
-      const attempts = Number(row["attempts"] ?? 0) + 1;
-      const delay = Math.min(
-        CHANNEL_ENVELOPE_RETRY_MS * 2 ** Math.min(attempts - 1, 7),
-        CHANNEL_ENVELOPE_MAX_RETRY_MS,
-      );
-      const retryAt = Date.now() + delay;
-      this.sql.exec(
-        `UPDATE agent_wake_queue
-            SET attempts = ?,
-                disposition = 'retrying',
-                next_attempt_at = ?,
-                lease_owner = NULL
-          WHERE wake_id = ?
-            AND lease_owner = ?
-            AND lease_generation = ?`,
-        attempts,
-        retryAt,
-        request.itemId,
-        request.workerId,
-        request.generation,
-      );
-      return { retryAt };
-    });
-  }
-
-  @rpc({
-    website: {
-      kind: "closed",
-      reason:
-        "This receiver owns workspace orchestration or retained workspace data; websites require a reviewed bounded operation.",
-    },
-    principals: ["host"],
-    effect: { kind: "open" },
-    tier: "open",
-    sensitivity: "read",
-  })
-  durableWorkStatus(): {
-    readyQueues: DurableWorkQueue[];
-    nextRecoveryAt: number | null;
-  } {
     return {
-      readyQueues: this.readyDurableWorkQueues(),
-      nextRecoveryAt: this.nextDurableWorkRecoveryAt(),
+      deliveryId: delivery.deliveryId,
+      disposition: admitted.disposition,
+      recipientExecutionStartedAt,
     };
   }
 
-  private readyDurableWorkQueues(now = Date.now()): DurableWorkQueue[] {
-    const wakeReady =
-      this.sql
-        .exec(
-          `SELECT 1
-             FROM agent_wake_queue
-            WHERE disposition IN ('ready', 'retrying') AND next_attempt_at <= ?
-            LIMIT 1`,
-          now,
-        )
-        .toArray().length > 0;
-    let effectReady = false;
-    let scheduledResumeReady = false;
-    try {
-      effectReady =
-        this.sql
-          .exec(
-            `SELECT 1
-               FROM effect_outbox
-              WHERE (
-                disposition IN ('ready', 'retrying', 'parked')
-                AND (next_attempt_at IS NULL OR next_attempt_at <= ?)
-              )
-              LIMIT 1`,
-            now,
-          )
-          .toArray().length > 0;
-    } catch {
-      // Effect storage is lazy.
-    }
-    try {
-      scheduledResumeReady =
-        this.sql
-          .exec(
-            `SELECT 1 FROM scheduled_model_resumes WHERE reset_at_ms <= ? LIMIT 1`,
-            now,
-          )
-          .toArray().length > 0;
-    } catch {
-      // Scheduled-resume storage is lazy.
-    }
-    return [
-      ...(wakeReady || scheduledResumeReady ? (["agent-wake"] as const) : []),
-      ...(effectReady ? (["agent-effect"] as const) : []),
-    ];
-  }
-
-  private nextDurableWorkRecoveryAt(): number | null {
-    const wakeValue = this.sql
-      .exec(
-        `SELECT MIN(next_attempt_at) AS due
-           FROM agent_wake_queue
-          WHERE disposition = 'retrying'`,
-      )
-      .toArray()[0]?.["due"];
-    const wakeAt = typeof wakeValue === "number" ? wakeValue : null;
-    let effectAt: number | null = null;
-    try {
-      const effectValue = this.sql
-        .exec(
-          `SELECT MIN(next_attempt_at) AS due
-             FROM effect_outbox
-            WHERE disposition IN ('retrying', 'parked')`,
-        )
-        .toArray()[0]?.["due"];
-      effectAt = typeof effectValue === "number" ? effectValue : null;
-    } catch {
-      // Effect storage is lazy.
-    }
-    const candidates = [wakeAt, effectAt].filter(
-      (value): value is number => typeof value === "number",
-    );
-    return candidates.length > 0 ? Math.min(...candidates) : null;
-  }
-
-  async processChannelEvent(
+  private async selectNativeChannelIntake(
     channelId: string,
     event: ChannelEvent,
-    deliveredContext?: ChannelAgenticContext,
-  ): Promise<void> {
-    // Invalidate the cached participant roster on any presence change, in the one sink both the
-    // live stream and subscription-replay paths funnel through, so neither path
-    // serves stale presence data to response policy or tool materialization.
-    if (event.type === "presence") {
-      this.participantCache.delete(channelId);
-      this.localTools.delete(channelId);
-    }
-    const handledBySubclass = await this.onChannelEvent(channelId, event);
-    if (await this.routeSupervisedTaskTerminal(channelId, event)) return;
-    if (handledBySubclass) return;
+    deliveredContext: ChannelAgenticContext,
+  ): Promise<NativeChannelSelection> {
+    const targetChannelId = this.subscriptions.ownsReasoningLoop(channelId)
+      ? channelId
+      : this.subagentRuns.getByTaskChannel(channelId)?.parentChannelId;
+    if (!targetChannelId)
+      throw new Error("Channel delivery has no owned reasoning destination");
+    const passive: NativeChannelSelection = {
+      targetChannelId,
+      intake: {
+        kind: "observation",
+        entry: {
+          kind: "vibestudio.channel-observation",
+          data: {
+            sourceChannelId: channelId,
+            eventId: event.messageId,
+            sequence: event.id,
+            payloadKind: event.type,
+          },
+        },
+      },
+    };
+    if (event.type === "presence") this.participantCache.delete(channelId);
+    const handled = await this.onChannelEvent(channelId, event);
+    const terminal = await this.routeSupervisedTaskTerminal(channelId, event);
+    if (terminal) return terminal;
+    if (handled) return passive;
     if (event.type !== AGENTIC_EVENT_PAYLOAD_KIND) {
-      await this.routeConfiguredObservation(channelId, event);
-      return;
+      const observation = this.configuredNativeObservation(channelId, event);
+      return observation ? { targetChannelId, intake: observation } : passive;
     }
-    const maybeFeedback = event.payload as AgenticEvent | null;
+    const agentic = event.payload as AgenticEvent;
+    if (agentic.kind === "ui.feedback") {
+      const payload = (agentic as AgenticEvent<"ui.feedback">).payload;
+      return payload.target.participantId === this.participantId()
+        ? { targetChannelId, intake: { kind: "feedback", payload } }
+        : passive;
+    }
+    if (await this.settleChatOpCall(channelId, event)) return passive;
     if (
-      maybeFeedback &&
-      (maybeFeedback as { kind?: string }).kind === "ui.feedback"
+      agentic.kind === "message.edited" ||
+      agentic.kind === "message.retracted"
     ) {
-      const payload = (maybeFeedback as AgenticEvent<"ui.feedback">).payload;
-      if (
-        (payload.target as { participantId?: string })?.participantId ===
-        this.participantId()
-      ) {
-        this.feedback.ingest(channelId, payload);
-      }
-      return;
+      if (event.senderId === this.participantId()) return passive;
+      return {
+        targetChannelId,
+        intake:
+          agentic.kind === "message.edited"
+            ? {
+                kind: "message-edit",
+                content: this.turnContent(channelId, event),
+              }
+            : { kind: "message-retract" },
+      };
     }
-    // chatOp callMethod relay settles first: a terminal for a call WE initiated
-    // on behalf of the EvalDO's `chat.callMethod` resolves its awaiting promise.
-    // Like routeInvocationTerminal this must run before the message.completed
-    // gate and self-sender skip (the channel journals terminals with us, the
-    // caller, as sender).
-    if (await this.settleChatOpCall(channelId, event)) return;
-    // Outcome routing first: a channel invocation terminal for one of our
-    // pending channel_call effects settles that effect. This must run BEFORE
-    // the message.completed gate and the self-sender skip — the channel
-    // journals call terminals with the CALLER (us) as sender.
-    if (await this.routeInvocationTerminal(channelId, event)) return;
-
-    // Edit/retract mutations target an existing message and may arrive outside
-    // an open turn — route them BEFORE the message.completed-only gate, and skip
-    // our own (the fold still enforces the author guard).
-    if (await this.routeMessageMutation(channelId, event)) return;
-
-    // Wake discipline (WS-5). A channel subscribed with a non-default wakePolicy
-    // (task channels the supervisor watches, subscribed "explicit") retains
-    // envelopes in the durable log and wakes only for explicit child-to-parent
-    // communication. Ordinary child turn closure is progress, not a new prompt.
     const wakePolicy =
       this.subscriptions.getConfig(channelId)?.wakePolicy ?? "every-envelope";
     if (wakePolicy !== "every-envelope") {
-      if (await this.resolveWake(channelId, event, wakePolicy)) return;
+      if (wakePolicy === "manual") return passive;
+      if (
+        agentic.kind !== "message.completed" ||
+        event.senderId === this.participantId()
+      )
+        return passive;
+      const payload = agentic.payload as {
+        saliency?: string;
+        mentions?: string[];
+        to?: Array<{ kind?: string; participantId?: string }>;
+      };
+      const run = this.subagentRuns.getByTaskChannel(channelId);
+      if (
+        payload.saliency === "say" ||
+        this.eventAddressesSelf(channelId, payload) ||
+        run?.childParticipantId === event.senderId
+      )
+        return (
+          this.nativeExplicitChildReport(channelId, event, agentic) ?? passive
+        );
+      return passive;
     }
-
-    const agentic = event.payload as AgenticEvent | null;
-    if (!agentic || (agentic as { kind?: string }).kind !== "message.completed")
-      return;
-    if (event.senderId === this.participantId()) return;
-
-    const respond = await this.shouldRespond(
-      channelId,
-      event,
-      deliveredContext,
-    );
-    if (!respond) return;
-
-    // Sender's canonical message identity — the read-ack / edit / retract
-    // correlation key. NOT derived from the recv envelope id.
-    const sourceMessageId =
-      ((agentic as AgenticEvent).causality?.messageId as string | undefined) ??
-      undefined;
-
-    // Validate identity before recording ingestion or allowing a subclass to
-    // consume content. A transport envelope is not a durable source identity.
-    if (!sourceMessageId) {
-      throw new Error(
-        `channel input ${event.messageId} has no canonical source message identity; refusing an unwalkable turn`,
-      );
-    }
-
-    // The host resolves this exact durable message's persisted class. Do not
-    // read a class from the delivered payload: a participant controls payload
-    // bytes, while the GAD provenance row is product-sealed.
-
-    await this.dispatchApprovedInput(channelId, event, sourceMessageId);
+    if (
+      agentic.kind !== "message.completed" ||
+      event.senderId === this.participantId()
+    )
+      return passive;
+    if (!(await this.shouldRespond(channelId, event, deliveredContext)))
+      return passive;
+    if (
+      typeof agentic.causality?.messageId !== "string" ||
+      !agentic.causality.messageId
+    )
+      throw new Error("Channel input has no canonical source message identity");
+    return {
+      targetChannelId,
+      intake: { kind: "input", content: this.turnContent(channelId, event) },
+    };
   }
 
-  private async routeConfiguredObservation(
+  private configuredNativeObservation(
     channelId: string,
     event: ChannelEvent,
-  ): Promise<boolean> {
-    const subscriptionConfig = this.subscriptions.getConfig(channelId);
-    const configured = subscriptionConfig?.observations;
-    if (configured === undefined) return false;
-    const observationConfig = resolveAgentObservationConfig(configured);
-    if (!observationConfig) {
-      console.warn("[agent-vessel] invalid observation configuration", {
-        channelId,
-        envelopeId: event.messageId,
-        payloadKind: event.type,
-        truncated: false,
-      });
-      return false;
-    }
-    if (configuredWakePolicy(subscriptionConfig) !== "every-envelope")
-      return false;
-    if (!observationConfig.payloadKinds.has(event.type)) return false;
-    if (event.senderId === this.participantId()) {
-      console.debug(
-        "[agent-vessel] skipped self-authored channel observation",
-        {
-          channelId,
-          envelopeId: event.messageId,
-          payloadKind: event.type,
-          truncated: false,
-        },
-      );
-      return false;
-    }
-
-    const observation = this.resolveChannelObservation(channelId, event);
-    if (!observation) return false;
-    await this.driver.handleIncoming(channelId, {
-      type: "command",
-      command: {
-        kind: "prompt",
-        channelId,
-        source: { envelopeId: event.messageId },
-        content: `Channel observation: ${event.type}`,
-        structuredInput: observation,
-        senderRef: observation.source.sender,
-      },
-    });
-    console.debug("[agent-vessel] dispatched channel observation", {
-      channelId,
-      envelopeId: event.messageId,
-      payloadKind: event.type,
-      truncated: observation.truncated !== undefined,
-    });
-    return true;
+  ): NativeChannelIntake | null {
+    const config = this.subscriptions.getConfig(channelId);
+    const observation =
+      config?.observations === undefined
+        ? null
+        : resolveAgentObservationConfig(config.observations);
+    if (
+      !observation ||
+      configuredWakePolicy(config) !== "every-envelope" ||
+      !observation.payloadKinds.has(event.type) ||
+      event.senderId === this.participantId()
+    )
+      return null;
+    const input = this.resolveChannelObservation(channelId, event);
+    return input
+      ? {
+          kind: "input",
+          content:
+            "Channel observation: " +
+            event.type +
+            "\n\n" +
+            canonicalJson(input),
+        }
+      : null;
   }
 
   /** Explicit cancellation, abandonment, and infrastructure failure facts
@@ -4559,32 +2559,33 @@ This is one admitted recurring-automation tick. If this tick establishes that th
   private async routeSupervisedTaskTerminal(
     channelId: string,
     event: ChannelEvent,
-  ): Promise<boolean> {
-    if (event.type !== AGENTIC_EVENT_PAYLOAD_KIND) return false;
+  ): Promise<NativeChannelSelection | null> {
+    if (event.type !== AGENTIC_EVENT_PAYLOAD_KIND) return null;
     const agentic = event.payload as AgenticEvent;
     const runId = agentic.causality?.taskId;
-    if (typeof runId !== "string") return false;
+    if (typeof runId !== "string") return null;
     const run = this.subagentRuns.get(runId);
-    if (!run || run.taskChannelId !== channelId) return false;
-    const terminalStatus = this.authorizedSubagentTerminalStatus(run, event);
+    if (
+      !run ||
+      (run.taskChannelId !== channelId && run.parentChannelId !== channelId)
+    )
+      return null;
+    const terminalStatus = this.authorizedSubagentTerminalStatus(
+      run,
+      event,
+      channelId,
+    );
     if (!terminalStatus) {
       console.warn(
         `[agent-vessel] ignoring task terminal for ${runId}: publisher is neither the child nor an authorized supervisor terminal source`,
       );
-      return false;
+      return null;
     }
-    // The task channel is the sole first-write-wins authority for competing
-    // child/supervisor terminals. Mirror these exact winning bytes before
-    // advancing any local projection; a failed mirror keeps this mailbox
-    // delivery retryable and can never leave the parent card permanently live.
-    await this.mirrorSubagentTerminalToParent(run, agentic);
+    // Parent publication is the supervisor's resource receipt. A child failure
+    // originates in the child's channel and is mirrored before input admission.
+    if (channelId === run.taskChannelId)
+      await this.mirrorSubagentTerminalToParent(run, event);
     const payload = agentic.payload as Record<string, unknown>;
-    // Competing terminals (child completion racing a supervisor cancellation)
-    // are fenced at PUBLICATION: both publishers share idempotency key
-    // `subagent-terminal:<runId>`, so at most one terminal event ever commits
-    // to the task log. Re-processing here is therefore always the SAME
-    // durable terminal (a delivery retry after a failed supervisor wake), and
-    // must re-run in full — status idempotently, prompt re-dispatched.
     const details =
       payload["details"] && typeof payload["details"] === "object"
         ? (payload["details"] as Record<string, unknown>)
@@ -4630,102 +2631,18 @@ This is one admitted recurring-automation tick. If this tick establishes that th
     ]
       .filter(Boolean)
       .join("\n\n");
-    try {
-      await this.driver.handleIncoming(run.parentChannelId, {
-        type: "command",
-        command: {
-          kind: "prompt",
-          channelId: run.parentChannelId,
-          source: { envelopeId: event.messageId },
-          sourceMessageId: event.messageId,
-          content,
-          senderRef: participantRefFromActor(agentic.actor),
-          metadata: { deliverAfterTurn: true, supervisedRunId: runId },
-        },
-      });
-      this.subagentRuns.setStatus(runId, terminalStatus);
-      this.subagentRuns.touch(runId, event.ts);
-    } finally {
-      this.admittingSubagentTerminals.delete(runId);
-    }
-    // The supervisor must remain observably live until its exact terminal
-    // report is durably admitted to the reasoning loop. Otherwise a
-    // concurrent suspend_turn can see no live children before the report is
-    // available, reject the suspension, and send the model chasing an empty
-    // retained transcript. A delivery retry re-enters this same transition;
-    // only successful admission advances the retained run to terminal.
-    return true;
+    this.admittingSubagentTerminals.delete(runId);
+    return {
+      targetChannelId: run.parentChannelId,
+      intake: { kind: "input", content, whenBusy: "followUp" },
+    };
   }
 
   /** Deliver an addressing-approved message to the reasoning loop. */
-  protected async dispatchApprovedInput(
-    channelId: string,
-    event: ChannelEvent,
-    sourceMessageId: string | undefined,
-  ): Promise<void> {
-    const agentic = event.payload as AgenticEvent | null;
-    const metadata = this.turnMetadata(event);
-    const command = {
-      channelId,
-      source: { envelopeId: event.messageId },
-      ...(sourceMessageId ? { sourceMessageId } : {}),
-      content: this.turnContent(channelId, event),
-      senderRef: participantRefFromActor((agentic as AgenticEvent).actor),
-      agentHops: event.annotations?.["agentHops"] as number | undefined,
-      ...(metadata ? { metadata } : {}),
-    };
-    await this.driver.handleIncoming(channelId, {
-      type: "command",
-      command: {
-        // Replayed history is deduped downstream by envelope id
-        // (alreadyIngested) — only messages the loop never saw open a turn,
-        // so backlog that arrived while the agent was down still gets a
-        // response after replay.
-        kind: "prompt",
-        ...command,
-      },
-    });
-  }
 
   /** Route a `message.edited` / `message.retracted` channel event to the loop
    *  as an edit/retract command. The fold enforces the author guard and the
    *  read-wins cutoff; here we only skip our own events and require a target. */
-  private async routeMessageMutation(
-    channelId: string,
-    event: ChannelEvent,
-  ): Promise<boolean> {
-    if (event.type !== AGENTIC_EVENT_PAYLOAD_KIND) return false;
-    const agentic = event.payload as AgenticEvent | null;
-    const kind = (agentic as { kind?: string } | null)?.kind;
-    if (kind !== "message.edited" && kind !== "message.retracted") return false;
-    if (event.senderId === this.participantId()) return true; // our own; nothing to do
-    const sourceMessageId = (agentic as AgenticEvent).causality?.messageId as
-      | string
-      | undefined;
-    const by = participantRefFromActor((agentic as AgenticEvent).actor);
-    if (!sourceMessageId || !by) return true;
-    if (kind === "message.edited") {
-      const payload = (agentic as AgenticEvent<"message.edited">).payload;
-      await this.driver.handleIncoming(channelId, {
-        type: "command",
-        command: { kind: "edit", sourceMessageId, blocks: payload.blocks, by },
-      });
-    } else {
-      await this.driver.handleIncoming(channelId, {
-        type: "command",
-        command: { kind: "retract", sourceMessageId, by },
-      });
-    }
-    return true;
-  }
-
-  /** Channel terminals for our pending channel_call/approval-form effects. */
-  private static readonly INVOCATION_TERMINAL_KINDS = new Set([
-    "invocation.completed",
-    "invocation.failed",
-    "invocation.cancelled",
-    "invocation.abandoned",
-  ]);
 
   /** Settle our pending channel_call effects from the channel's durable
    *  invocation terminals (the channel broadcasts them to all subscribers,
@@ -4733,153 +2650,10 @@ This is one admitted recurring-automation tick. If this tick establishes that th
    *  channel_call at-least-once protocol — without it a turn that invokes a
    *  panel method (inline UI, feedback, …) never advances. Duplicate delivery is
    *  a no-op: the outbox row is gone after the first settle. */
-  private async routeInvocationTerminal(
-    channelId: string,
-    event: ChannelEvent,
-  ): Promise<boolean> {
-    const agentic = event.payload as AgenticEvent;
-    const kind = (agentic as { kind?: string }).kind ?? "";
-    if (!kind.startsWith("invocation.")) return false;
-    if (!AgentVesselBase.INVOCATION_TERMINAL_KINDS.has(kind)) {
-      return true; // started/output traffic is never a prompt
-    }
-    const causality = ((agentic as { causality?: Record<string, unknown> })
-      .causality ?? {}) as Record<string, unknown>;
-    const invocationId =
-      typeof causality["invocationId"] === "string"
-        ? (causality["invocationId"] as string)
-        : null;
-    if (!invocationId) return true;
-    const effectId = ids.invocationEffect(invocationId);
-    const row = this.driver.outbox.getForChannel(channelId, effectId);
-    if (!row || row.kind !== "channel_call") {
-      // Live invocation execution is intentionally concurrent with model
-      // streaming. A fast channel method may therefore publish its terminal
-      // before the model outcome has derived the channel_call effect that
-      // consumes it. Failing this inbox claim retains the canonical terminal
-      // for the short durable retry path instead of losing it and waiting for
-      // the channel_call's minute-scale redrive backstop.
-      if (
-        event.senderId === this.participantId() &&
-        (await this.driver.channelCallMayMaterialize(channelId, effectId))
-      ) {
-        throw new Error(
-          `channel invocation terminal arrived before effect ${effectId}`,
-        );
-      }
-      return true; // not ours or already settled
-    }
-    const descriptor =
-      row.descriptor as import("@workspace/agent-loop").ChannelCallEffect;
-    const payload = ((agentic as { payload?: Record<string, unknown> })
-      .payload ?? {}) as Record<string, unknown>;
-    const isError = kind !== "invocation.completed";
-    const responderSessionId = participantIdFromRef(descriptor.target);
-    const hydratedResult = await this.hydrateTransportValue(
-      payload["result"],
-      channelId,
-      responderSessionId,
-      "channel-tool-result",
-    );
-    let outcome: EffectOutcome;
-    if (descriptor.purpose === "approval-form") {
-      const raw = hydratedResult;
-      const granted =
-        !isError &&
-        !!raw &&
-        typeof raw === "object" &&
-        (raw as { granted?: unknown }).granted === true;
-      outcome = {
-        kind: "approval",
-        granted,
-        resolvedBy: descriptor.target,
-        ...(typeof payload["reason"] === "string"
-          ? { reason: payload["reason"] as string }
-          : {}),
-      };
-      if (isError) {
-        await this.publishApprovalDeliveryDiagnostic(
-          channelId,
-          descriptor,
-          payload["reason"],
-        );
-      }
-    } else {
-      outcome = {
-        kind: "tool",
-        result: hydratedResult ?? payload["error"] ?? payload["reason"] ?? null,
-        isError,
-        ...(typeof payload["reason"] === "string"
-          ? { reason: payload["reason"] as string }
-          : {}),
-      };
-    }
-    await this.driver.deliverEffectOutcome(effectId, outcome, { channelId });
-    return true;
-  }
 
-  private async publishApprovalDeliveryDiagnostic(
-    channelId: string,
-    descriptor: import("@workspace/agent-loop").ChannelCallEffect,
-    reason: unknown,
-  ): Promise<void> {
-    const participantId =
-      this.subscriptions.getParticipantId(channelId) ?? this.participantId();
-    const messageId = `approval-delivery-failed:${descriptor.transportCallId}`;
-    const reasonText =
-      typeof reason === "string" && reason.trim()
-        ? reason
-        : "approval prompt unavailable";
-    const event: AgenticEvent<"message.completed"> = {
-      kind: "message.completed",
-      actor: {
-        kind: "agent",
-        id: participantId,
-        displayName: this.getEffectiveParticipantInfo(
-          channelId,
-          this.subscriptions.getConfig(channelId),
-        ).name,
-      },
-      turnId: descriptor.turnId as never,
-      causality: { messageId: messageId as never },
-      payload: {
-        protocol: AGENTIC_PROTOCOL_VERSION,
-        role: "assistant",
-        blocks: [
-          {
-            blockId: `${messageId}:diagnostic` as never,
-            type: "diagnostic",
-            content:
-              "Approval prompt could not be delivered. The requested action was denied.",
-            metadata: {
-              code: "approval_prompt_unavailable",
-              severity: "error",
-              reason: reasonText,
-              invocationId: descriptor.invocationId,
-            },
-          },
-        ],
-        outcome: "completed",
-      },
-      createdAt: new Date().toISOString(),
-    };
-    await this.createChannelClient(channelId)
-      .publishAgenticEvent(participantId, event, {
-        idempotencyKey: messageId,
-        senderMetadata: { type: "agent", name: participantId },
-      })
-      .catch((err) => {
-        console.error(
-          `[AgentVessel] approval diagnostic emit failed for ${channelId}:`,
-          err,
-        );
-      });
-  }
-
-  protected turnContent(channelId: string, event: ChannelEvent): unknown {
+  protected turnContent(_channelId: string, event: ChannelEvent): string {
     const agentic = event.payload as { payload?: { blocks?: unknown[] } };
-    const blocks = agentic.payload?.blocks ?? [];
-    const text = blocks
+    return (agentic.payload?.blocks ?? [])
       .map((block) =>
         block &&
         typeof block === "object" &&
@@ -4889,17 +2663,15 @@ This is one admitted recurring-automation tick. If this tick establishes that th
       )
       .filter(Boolean)
       .join("\n");
-    const notes = this.feedback.consume(channelId);
-    return notes.length > 0
-      ? [...notes, text].filter(Boolean).join("\n\n")
-      : text;
   }
 
-  protected turnMetadata(event: ChannelEvent): AgentTurnMetadata | undefined {
+  protected turnMetadata(
+    event: ChannelEvent,
+  ): AgentProductMetadata | undefined {
     const agentic = event.payload as { payload?: { metadata?: unknown } };
     const metadata = agentic.payload?.metadata;
     return metadata && typeof metadata === "object" && !Array.isArray(metadata)
-      ? (metadata as AgentTurnMetadata)
+      ? (metadata as AgentProductMetadata)
       : undefined;
   }
 
@@ -5214,12 +2986,17 @@ This is one admitted recurring-automation tick. If this tick establishes that th
       }));
     const fingerprint = JSON.stringify(roster);
     if (this.getStateValue(`agent:roster:${channelId}`) !== fingerprint) {
-      await this.driver.handleIncoming(channelId, {
-        type: "command",
-        command: { kind: "setRoster", roster: { participants: roster } },
-      });
       this.setStateValue(`agent:roster:${channelId}`, fingerprint);
-      this.localTools.delete(channelId);
+      this.participantCache.set(channelId, {
+        expiresAt: Date.now() + CHANNEL_STATE_CACHE_MS,
+        value: context.relationships.map(({ participantId, metadata }) => ({
+          participantId,
+          ref: participantRefFromMetadata(participantId, metadata),
+          metadata,
+        })),
+      });
+      if (this.subscriptions.ownsReasoningLoop(channelId))
+        await this.refreshNativeChannelConfiguration(channelId);
     }
     return context;
   }
@@ -5280,31 +3057,84 @@ This is one admitted recurring-automation tick. If this tick establishes that th
     transportCallId: string,
     methodName: string,
     args: unknown,
+    admission?: { providerClaimGeneration?: number; invocationId?: string },
   ): Promise<{ result: unknown; isError?: boolean }> {
     this.assertChannelDeliveryCaller("onMethodCall", channelId);
-    const directCallKey = this.directMethodCallKey(channelId, transportCallId);
-    this.directMethodCalls
-      .get(directCallKey)
-      ?.abort("superseded provider generation");
-    const controller = new AbortController();
-    this.directMethodCalls.set(directCallKey, controller);
-    try {
-      return (
-        (await this.handleStandardAgentMethodCall(
-          channelId,
-          methodName,
-          args,
-          controller.signal,
-        )) ?? {
-          result: { error: `unknown method: ${methodName}` },
-          isError: true,
-        }
+    const generation = admission?.providerClaimGeneration;
+    const invocationId = admission?.invocationId;
+    if (
+      !Number.isSafeInteger(generation) ||
+      generation! < 1 ||
+      typeof invocationId !== "string" ||
+      !invocationId
+    )
+      throw new Error(
+        "Method execution requires its actual channel provider claim",
       );
-    } finally {
-      if (this.directMethodCalls.get(directCallKey) === controller) {
-        this.directMethodCalls.delete(directCallKey);
-      }
-    }
+    const originalArgs = args === undefined ? undefined : copyJson(args);
+    const client = this.createChannelClient(channelId);
+    const isTerminal = async () =>
+      !!(await readCanonicalChannelProviderOutcome(client, {
+        channelId,
+        targetId: this.participantId(),
+        invocationId,
+        callId: transportCallId,
+        method: methodName,
+        args: originalArgs,
+      }));
+    const directCallKey = this.directMethodCallKey(channelId, transportCallId);
+    return this.directMethodCalls.run(
+      directCallKey,
+      canonicalJson({
+        channelId,
+        transportCallId,
+        invocationId,
+        generation,
+        methodName,
+        args: originalArgs,
+      }),
+      async (signal) => {
+        const accepted = await client.markMethodCallExecutionStarted(
+          this.participantId(),
+          transportCallId,
+          generation!,
+        );
+        if (!accepted.accepted || (await isTerminal()))
+          throw new Error("Channel method provider claim is no longer current");
+        signal.throwIfAborted();
+        return (
+          (await this.handleAgentMethodCall(
+            channelId,
+            methodName,
+            originalArgs,
+            signal,
+            transportCallId,
+          )) ?? {
+            result: { error: `unknown method: ${methodName}` },
+            isError: true,
+          }
+        );
+      },
+      isTerminal,
+    );
+  }
+
+  /** Product method dispatch runs inside the single authenticated, claimed
+   * finite operation. Products customize effects here, preserving its signal. */
+  protected async handleAgentMethodCall(
+    channelId: string,
+    methodName: string,
+    args: unknown,
+    signal: AbortSignal,
+    transportCallId: string,
+  ): Promise<{ result: unknown; isError?: boolean } | null> {
+    return this.handleStandardAgentMethodCall(
+      channelId,
+      methodName,
+      args,
+      signal,
+      transportCallId,
+    );
   }
 
   @rpc({
@@ -5323,10 +3153,10 @@ This is one admitted recurring-automation tick. If this tick establishes that th
     transportCallId: string,
   ): Promise<void> {
     this.assertChannelDeliveryCaller("cancelDirectMethodCall", channelId);
-    const controller = this.directMethodCalls.get(
+    await this.directMethodCalls.cancel(
       this.directMethodCallKey(channelId, transportCallId),
+      new Error(`method call cancelled on ${channelId}`),
     );
-    if (controller) controller.abort(`method call cancelled on ${channelId}`);
   }
 
   /**
@@ -5366,17 +3196,17 @@ This is one admitted recurring-automation tick. If this tick establishes that th
     return this.readStandardAgentInspection(channelId, methodName);
   }
 
-  private readStandardAgentInspection(
+  private async readStandardAgentInspection(
     channelId: string,
     methodName: AgentInspectionMethod,
-  ): { result: unknown; isError?: boolean } {
+  ): Promise<{ result: unknown; isError?: boolean }> {
     switch (methodName) {
       case "getDebugState":
-        return { result: this.activationDebugState(channelId) };
+        return { result: await this.activationDebugState(channelId) };
       case "getAgentSettings":
         return { result: this.inspectAgentSettings() };
       case "inspectMethodSuspensions":
-        return { result: { outbox: inspectEffectOutbox(this.sql) } };
+        return { result: await this.nativeChannelInspection(channelId) };
     }
   }
 
@@ -5398,8 +3228,26 @@ This is one admitted recurring-automation tick. If this tick establishes that th
     sensitivity: "read",
   })
   async getModelExecutionEvidence(channelId: string): Promise<unknown> {
-    const evidence = await this.driver.modelExecutionEvidence(channelId);
+    const harness = this.existingAgentSession();
+    if (!harness)
+      return { loaded: false, channelId, observation: "not-loaded" } as const;
+    const conversation =
+      await this.admittedNativeChannelConversation(channelId);
+    if (!conversation)
+      return {
+        loaded: true,
+        channelId,
+        conversationId: null,
+        observation: "no-admitted-conversation",
+      } as const;
+    const evidence = await readNativeModelExecutionEvidence(
+      harness,
+      conversation.id,
+      BACKGROUND_CONTEXT,
+    );
     return {
+      loaded: true,
+      channelId,
       ...evidence,
       transportRuntime: modelTransportRuntimeEvidence(),
       hotPathTrace: this.hotPathTrace(channelId),
@@ -5462,6 +3310,7 @@ This is one admitted recurring-automation tick. If this tick establishes that th
     methodName: string,
     args: unknown,
     signal?: AbortSignal,
+    transportCallId?: string,
   ): Promise<{ result: unknown; isError?: boolean } | null> {
     if (!this.isParticipantMethodEnabled(methodName)) return null;
     if (isAgentInspectionMethod(methodName)) {
@@ -5492,7 +3341,7 @@ This is one admitted recurring-automation tick. If this tick establishes that th
             isError: true,
           };
         }
-        const runId = ids.invocationEffect(invocationId);
+        const runId = invocationId;
         try {
           const result = await this.rpc.call<{ ok: boolean }>(
             "main",
@@ -5509,11 +3358,23 @@ This is one admitted recurring-automation tick. If this tick establishes that th
         }
       }
       case "resume": {
-        await this.driver.wake(channelId);
+        await this.submitAgentInitiatedTurn(
+          channelId,
+          {
+            content:
+              "Check the conversation and carry on with any outstanding work.",
+          },
+          {
+            steeringId: transportCallId
+              ? `method-resume:${transportCallId}`
+              : crypto.randomUUID(),
+            origin: "agent-initiated",
+          },
+        );
         return { result: { resumed: true } };
       }
       case "scheduleResumeAtReset": {
-        const result = await this.driver.scheduleResumeAtReset(
+        const result = await this.scheduleNativeResumeAtReset(
           channelId,
           (args ?? {}) as { messageId?: unknown; resetAt?: unknown },
         );
@@ -5562,19 +3423,22 @@ This is one admitted recurring-automation tick. If this tick establishes that th
           [connectParams],
           { signal },
         );
-        const effectId = ids.credentialWaitEffect(
-          ids.credKey(channelId, input.providerId),
+        const harness = await this.agentSession(BACKGROUND_CONTEXT);
+        const owner = await retainedAgentExecutionOwner(
+          harness,
+          BACKGROUND_CONTEXT,
         );
-        const resumed = await this.driver.deliverEffectOutcome(
-          effectId,
-          {
-            kind: "credential",
-            resolved: true,
-          } satisfies EffectOutcome,
-          { channelId },
-        );
-        if (resumed) await this.driver.wake(channelId);
-        return { result: { credential, resumed } };
+        const conversation =
+          await this.admittedNativeChannelConversation(channelId);
+        if (conversation)
+          await notifyModelCredentialChange(
+            harness,
+            owner,
+            conversation.id,
+            input.providerId,
+            BACKGROUND_CONTEXT,
+          );
+        return { result: { credential, resumed: conversation !== null } };
       }
       case "setModel": {
         const model = (args as { model?: unknown } | null)?.model;
@@ -5586,7 +3450,7 @@ This is one admitted recurring-automation tick. If this tick establishes that th
             isError: true,
           };
         }
-        return { result: this.updateSettings({ model }) };
+        return { result: await this.updateSettings({ model }) };
       }
       case "setThinkingLevel": {
         const level = (args as { level?: unknown } | null)?.level;
@@ -5606,7 +3470,7 @@ This is one admitted recurring-automation tick. If this tick establishes that th
             isError: true,
           };
         }
-        return { result: this.updateSettings({ thinkingLevel: level }) };
+        return { result: await this.updateSettings({ thinkingLevel: level }) };
       }
       case "setFastMode": {
         const enabled = (args as { enabled?: unknown } | null)?.enabled;
@@ -5616,7 +3480,7 @@ This is one admitted recurring-automation tick. If this tick establishes that th
             isError: true,
           };
         }
-        return { result: this.updateSettings({ fastMode: enabled }) };
+        return { result: await this.updateSettings({ fastMode: enabled }) };
       }
       case "setApprovalLevel": {
         const level = (args as { level?: unknown } | null)?.level;
@@ -5626,7 +3490,7 @@ This is one admitted recurring-automation tick. If this tick establishes that th
             isError: true,
           };
         }
-        return { result: this.updateSettings({ approvalLevel: level }) };
+        return { result: await this.updateSettings({ approvalLevel: level }) };
       }
       case "setRespondPolicy": {
         const input = args as { policy?: unknown; from?: unknown } | null;
@@ -5643,7 +3507,7 @@ This is one admitted recurring-automation tick. If this tick establishes that th
           ? input.from.filter((id): id is string => typeof id === "string")
           : undefined;
         return {
-          result: this.updateSettings({
+          result: await this.updateSettings({
             respondPolicy: input.policy,
             ...(from !== undefined ? { respondFrom: from } : {}),
           }),
@@ -5663,7 +3527,7 @@ This is one admitted recurring-automation tick. If this tick establishes that th
         };
       }
       case "getModelExecutionEvidence":
-        return { result: await this.driver.modelExecutionEvidence(channelId) };
+        return { result: await this.getModelExecutionEvidence(channelId) };
       default:
         return null;
     }
@@ -6029,7 +3893,7 @@ This is one admitted recurring-automation tick. If this tick establishes that th
     raw: unknown,
     requestIdentity: string,
     callerRpc: RpcClient,
-  ): Promise<AgentToolResult<unknown>> {
+  ): Promise<ToolExecutionResult> {
     if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
       throw new Error("control_automation requires an object");
     }
@@ -6113,8 +3977,8 @@ This is one admitted recurring-automation tick. If this tick establishes that th
           text: `${mission.name} was ${verb}.`,
         },
       ],
-      details: result,
-    } as AgentToolResult<unknown>;
+      details: copyJson(result, { omitUndefinedProperties: true }),
+    } as ToolExecutionResult;
   }
 
   private async launchAutomation(
@@ -6318,13 +4182,6 @@ This is one admitted recurring-automation tick. If this tick establishes that th
    *  server dispatches these via doDispatch / callTarget as callerKind
    *  "server". The DO relay is open, so without this any authenticated caller
    *  could forge a completion or wake and drive the agent loop. */
-  private assertServerCaller(method: string): void {
-    if (this.rpcCallerKind !== "server") {
-      throw new Error(
-        `${method}: refusing caller ${this.rpcCallerId ?? "unknown"} (kind ${this.rpcCallerKind ?? "unknown"}) — server-only`,
-      );
-    }
-  }
 
   /** The channel→agent callback boundary. Effect terminals
    *  (`deliverEffectOutcome`) and method dispatch (`onMethodCall`) arrive from
@@ -6486,7 +4343,7 @@ This is one admitted recurring-automation tick. If this tick establishes that th
    * result. The channel broadcasts the durable invocation terminal back to us
    * (the caller); settleChatOpCall matches it by transportCallId and resolves
    * the promise registered here. Loop-independent (does not touch the
-   * effect-outbox) so the eval relay returns the result inline.
+   * native invocation) so the eval relay returns the result inline.
    */
   private async relayChannelCall(
     channelId: string,
@@ -6502,602 +4359,102 @@ This is one admitted recurring-automation tick. If this tick establishes that th
     // read-only inspection methods locally; all other self-calls retain the
     // normal channel semantics.
     if (targetPid === this.participantId() && isAgentInspectionMethod(method)) {
-      const inspection = this.readStandardAgentInspection(channelId, method);
+      const inspection = await this.readStandardAgentInspection(
+        channelId,
+        method,
+      );
       return { content: inspection.result };
     }
     const callId = crypto.randomUUID();
-    const timeoutMs = options?.timeoutMs;
-    const settled = new Promise<{ content: unknown }>((resolve, reject) => {
-      const entry: {
-        resolve: (value: { content: unknown }) => void;
-        reject: (error: Error) => void;
-        responderSessionId: string;
-        timer?: ReturnType<typeof setTimeout>;
-      } = { resolve, reject, responderSessionId: targetPid };
-      if (timeoutMs && timeoutMs > 0) {
-        entry.timer = setTimeout(() => {
-          if (this.chatOpPendingCalls.delete(callId)) {
-            reject(
-              new Error(
-                `chat.callMethod(${method}) timed out after ${timeoutMs}ms`,
-              ),
-            );
-          }
-        }, timeoutMs);
-      }
-      this.chatOpPendingCalls.set(callId, entry);
-    });
-    try {
-      await this.createChannelClient(channelId).callMethod(
-        this.participantId(),
-        targetPid,
-        callId,
+    const controller = new AbortController();
+    return this.channelMethodRelays.call({
+      request: {
+        channelId,
+        callerId: this.participantId(),
+        targetIds: [targetPid],
         method,
-        args,
-        {
-          invocationId: callId,
-          transportCallId: callId,
-          ...(timeoutMs && timeoutMs > 0 ? { timeoutMs } : {}),
-        },
-      );
-    } catch (err) {
-      const entry = this.chatOpPendingCalls.get(callId);
-      if (entry?.timer) clearTimeout(entry.timer);
-      this.chatOpPendingCalls.delete(callId);
-      throw err instanceof Error ? err : new Error(String(err));
-    }
-    return settled;
+        args: copyJson(args),
+      },
+      route: { targetId: targetPid, invocationId: callId, callId },
+      dispatch: this.createChannelClient(
+        channelId,
+        withRpcAbortSignal(this.rpc, controller.signal),
+      ),
+      cleanup: this.createChannelClient(channelId, this.agentRpc),
+      dispatchController: controller,
+      callerSignal: this.rpcAbortSignal,
+      ...(options?.timeoutMs ? { timeoutMs: options.timeoutMs } : {}),
+      hydrate: (value) =>
+        this.hydrateTransportValue(
+          value,
+          channelId,
+          targetPid,
+          "chat-method-result",
+        ),
+    });
   }
 
-  /** Settle a pending chatOp relay call from a channel invocation terminal.
-   *  Returns true when the event settled (or was a non-terminal phase of) one
-   *  of our relay calls — so processChannelEvent stops routing it further. */
+  /** Delivery is readiness only; the owned relay rereads its canonical route. */
+  /** A canonical provider terminal is finite-operation lifecycle work, not
+   * reasoning input. It is consumed before opening an agent session. */
+  private async observeDirectMethodTerminal(
+    channelId: string,
+    event: ChannelEvent,
+  ): Promise<boolean> {
+    if (event.type !== AGENTIC_EVENT_PAYLOAD_KIND) return false;
+    const terminal = event.payload as {
+      kind?: unknown;
+      causality?: { transportCallId?: unknown; invocationId?: unknown };
+    };
+    if (
+      !(
+        terminal.kind === "invocation.completed" ||
+        terminal.kind === "invocation.failed" ||
+        terminal.kind === "invocation.cancelled" ||
+        terminal.kind === "invocation.abandoned"
+      ) ||
+      typeof terminal.causality?.transportCallId !== "string" ||
+      typeof terminal.causality.invocationId !== "string"
+    )
+      return false;
+    if (
+      await this.directMethodCalls.observeTerminal(
+        this.directMethodCallKey(channelId, terminal.causality.transportCallId),
+      )
+    )
+      return true;
+    // A replacement has no activation-local dedup record. The canonical start
+    // still proves that this is this provider's original terminal, so replay
+    // does not manufacture a native conversation or autonomous checkup.
+    return !!(await readCanonicalChannelProviderTerminal(
+      this.createChannelClient(channelId),
+      {
+        channelId,
+        targetId: this.participantId(),
+        invocationId: terminal.causality.invocationId,
+        callId: terminal.causality.transportCallId,
+      },
+    ));
+  }
+
   private async settleChatOpCall(
     channelId: string,
     event: ChannelEvent,
   ): Promise<boolean> {
-    if (this.chatOpPendingCalls.size === 0) return false;
-    const agentic = event.payload as AgenticEvent | null;
-    const kind = (agentic as { kind?: string } | null)?.kind ?? "";
-    if (!kind.startsWith("invocation.")) return false;
-    const causality = ((agentic as { causality?: Record<string, unknown> })
-      ?.causality ?? {}) as Record<string, unknown>;
-    const transportCallId =
-      typeof causality["transportCallId"] === "string"
-        ? (causality["transportCallId"] as string)
-        : typeof causality["invocationId"] === "string"
-          ? (causality["invocationId"] as string)
-          : null;
-    if (!transportCallId) return false;
-    const entry = this.chatOpPendingCalls.get(transportCallId);
-    if (!entry) return false;
-    if (!AgentVesselBase.INVOCATION_TERMINAL_KINDS.has(kind)) {
-      // started/output for our own relay call — consume but keep waiting.
-      return true;
-    }
-    this.chatOpPendingCalls.delete(transportCallId);
-    if (entry.timer) clearTimeout(entry.timer);
-    const payload = ((agentic as { payload?: Record<string, unknown> })
-      ?.payload ?? {}) as Record<string, unknown>;
-    if (kind === "invocation.completed") {
-      // Hydrate any stored-value refs the provider spilled, then resolve with
-      // the delivered content (ChatMethodResult shape). hydrate is async; the
-      // settle hook stays sync by resolving inside the promise chain.
-      void Promise.resolve()
-        .then(() =>
-          this.hydrateTransportValue(
-            payload["result"],
-            channelId,
-            entry.responderSessionId,
-            "chat-method-result",
-          ),
-        )
-        .then(
-          (content) => entry.resolve({ content }),
-          (err) =>
-            entry.reject(err instanceof Error ? err : new Error(String(err))),
-        );
-    } else {
-      const reason =
-        payload["error"] ?? payload["reason"] ?? payload["result"] ?? null;
-      const message =
-        typeof reason === "string" && reason.length > 0
-          ? reason
-          : reason &&
-              typeof reason === "object" &&
-              typeof (reason as { error?: unknown }).error === "string"
-            ? (reason as { error: string }).error
-            : `chat.callMethod failed (${kind})`;
-      entry.reject(new Error(message));
-    }
-    return true;
+    return this.channelMethodRelays.hint(channelId, event);
   }
 
-  /** Channel DO settle path: terminals for our channel_call effects POST back
-   *  here. Duplicate delivery is a no-op (deterministic terminal ids). */
-  @rpc({
-    website: {
-      kind: "closed",
-      reason:
-        "This receiver owns workspace orchestration or retained workspace data; websites require a reviewed bounded operation.",
-    },
-    principals: ["host", "code"],
-    effect: { kind: "open" },
-    tier: "open",
-    sensitivity: "write",
-  })
-  async deliverEffectOutcome(
-    effectId: string,
-    outcome: EffectOutcome,
-    address?: { branchId?: string; channelId?: string },
-  ): Promise<void> {
-    this.assertChannelDeliveryCaller(
-      "deliverEffectOutcome",
-      address?.channelId,
-    );
-    await this.driver.deliverEffectOutcome(effectId, outcome, address);
-  }
-
-  /** Best-effort host wake hint. Durable outbox state, not this notification,
-   * owns continuation; a lost hint is recovered by the ordinary redrive alarm. */
-  @rpc({
-    website: {
-      kind: "closed",
-      reason:
-        "This receiver owns workspace orchestration or retained workspace data; websites require a reviewed bounded operation.",
-    },
-    principals: ["host"],
-    effect: { kind: "open" },
-    tier: "open",
-    sensitivity: "write",
-  })
-  async onAuthorityChanged(_acquisitionId: string): Promise<void> {
-    this.assertServerCaller("onAuthorityChanged");
-    // Authority acquisition and credential availability are independent
-    // continuations. Only authority-deferred HTTP calls are eligible here;
-    // Credential waits resume exclusively when the agent-owned connect
-    // operation succeeds; authority changes cannot imply credential presence.
-    this.driver.nudgeAuthorityRedrive();
-  }
-
-  /**
-   * The deferral half of the agent's `eval` tool. Kicks off a durable background run (`eval.start`,
-   * idempotent on a deterministic effect id derived from `invocationId`, while keeping that run id
-   * distinct from authorship. Crash-replay / deferRedrive therefore never duplicates the eval. It
-   * returns `{deferred:true}` while in flight. The result normally
-   * arrives directly from this agent's own EvalDO; if that was lost, a ~60s deferRedrive re-runs this and the
-   * `get` backstop completes the invocation INLINE (`done` → result, `cancelled` → error).
-   */
-  protected async runDeferredEval(
-    channelId: string,
-    invocationId: string,
-    args: unknown,
-    scopedRpc: RpcClient,
-  ): Promise<DeferredEvalGateResult> {
-    const runId = ids.invocationEffect(invocationId);
-    // Durable state FIRST (single source of truth: the outbox row). Once a
-    // previous dispatch durably recorded an eval.start attempt, the run
-    // identity is settled server-side: never re-validate the arguments (a
-    // later deploy may have tightened the schema after EvalDO already holds a
-    // durable terminal) and never call eval.start again (EvalDO.dispose()
-    // deletes runs; a fresh start would re-INSERT and RE-EXECUTE a
-    // side-effectful eval). eval.get is the only permitted operation.
-    if (this.driver.hasDeferredEvalStartAttempted(channelId, runId)) {
-      return await this.recoverStartedDeferredEval(
-        channelId,
-        invocationId,
-        runId,
-        scopedRpc,
-      );
-    }
-    const p = prepareAgentToolArguments(
-      {
-        name: "eval",
-        parameters: evalToolParameters,
-      } as unknown as import("@workspace/pi-core").AgentTool,
-      args ?? {},
-    ) as {
-      code?: string;
-      path?: string;
-      sourcePath?: string;
-      reset?: boolean;
-      syntax?: "javascript" | "typescript" | "jsx" | "tsx";
-      imports?: Record<string, string>;
-      timeoutMs?: number;
-      authority?: Partial<
-        import("@vibestudio/service-schemas/eval").EvalAuthorityIntent
-      >;
-    };
-    let source;
-    try {
-      source = normalizeEvalToolSource(p);
-    } catch (error) {
-      return {
-        result: `[eval] ${error instanceof Error ? error.message : String(error)}`,
-        isError: true,
-      };
-    }
-    let authority;
-    try {
-      authority =
-        p.authority === undefined
-          ? undefined
-          : evalAuthorityInputSchema.parse(p.authority);
-    } catch (error) {
-      return {
-        result: `[eval] Invalid authority: ${error instanceof Error ? error.message : String(error)}`,
-        isError: true,
-      };
-    }
-    this.trackDeferredEval(channelId, runId);
-    const executeDeferred = createDeferredEvalExecutor(
-      <T>(method: string, callArgs: unknown[]) =>
-        scopedRpc.call<T>("main", method, callArgs),
-      {
-        onBackstopError: (err) => {
-          if (this.deferredEvalBackstopWarnings.has(runId)) return;
-          this.deferredEvalBackstopWarnings.add(runId);
-          console.warn(
-            `[AgentVessel] eval.get backstop for ${runId} failed (run parked; push/redrive covers it):`,
-            err instanceof Error ? err.message : err,
-          );
-        },
-      },
-    );
-    // Commit the single-dispatch fence before crossing into EvalDO. The RPC
-    // outcome is inherently ambiguous: any rejection may follow
-    // server-side acceptance. Recovery is therefore read-only (`eval.get`) and
-    // can never recreate a disposed side-effectful run.
-    this.driver.markDeferredEvalStartAttempted(channelId, runId);
-    let settlement;
-    try {
-      settlement = await executeDeferred({
-        scope: { key: channelId },
-        reset: p.reset === true,
-        source,
-        imports: p.imports,
-        ...(p.timeoutMs === undefined ? {} : { timeoutMs: p.timeoutMs }),
-        authority,
-        runId,
-      });
-    } catch (error) {
-      // A structured service/application/access rejection is a completed RPC:
-      // eval.start definitively rejected the request before admitting an
-      // EvalDO run. In particular, exact preauthorization validates its
-      // prospective invocation during prepareRun, before dispatch. Treating
-      // that response as an ambiguous lost acknowledgement strands a bogus
-      // started fence and replaces the actionable error with
-      // runtime_generation_lost. Only transport/unstructured failures retain
-      // the conservative read-only recovery path below.
-      if (
-        error instanceof RemoteRpcError &&
-        (error.errorKind === "service" ||
-          error.errorKind === "application" ||
-          error.errorKind === "access")
-      ) {
-        this.forgetDeferredEval(channelId, runId);
-        return this.deferredEvalSettlement(invocationId, {
-          success: false,
-          console: "",
-          error: error.message,
-          ...(error.code ? { failureCode: error.code } : {}),
-          ...(error.errorData ? { errorData: error.errorData } : {}),
-        });
-      }
-      console.warn(
-        `[AgentVessel] eval.start outcome for ${runId} is ambiguous; reconciling read-only:`,
-        error instanceof Error ? error.message : error,
-      );
-      return await this.recoverStartedDeferredEval(
-        channelId,
-        invocationId,
-        runId,
-        scopedRpc,
-      );
-    }
-    if (!settlement.deferred) {
-      this.forgetDeferredEval(channelId, runId);
-      // eval.start returned the result inline — no push channel was exercised,
-      // so this must not inflate the push side of the push-vs-backstop ratio.
-      this.traceHotPath(channelId, "deferred-eval.completed", {
-        source: "inline",
-      });
-      return this.deferredEvalSettlement(invocationId, settlement.result);
-    }
-    await this.publishDeferredEvalPending(channelId, invocationId, runId);
-    return { deferred: true, reason: "external-result" };
-  }
-
-  /**
-   * Redrive path for a run whose eval.start ack is durably recorded: the ONLY
-   * consultation is the read-only durable run state (`eval.get`). A terminal
-   * settles inline; a live run stays parked. A missing row is not immediately
-   * terminal because the host may still be reconciling an ambiguously
-   * acknowledged, idempotent start. The run stays parked for push/redrive; a
-   * persistently absent generation is settled by the durable retry budget
-   * without ever re-executing the eval body.
-   */
-  private async recoverStartedDeferredEval(
-    channelId: string,
-    invocationId: string,
-    runId: string,
-    scopedRpc: RpcClient,
-  ): Promise<DeferredEvalGateResult> {
-    this.trackDeferredEval(channelId, runId);
-    let snapshot: { status: string; result?: EvalRunResult };
-    try {
-      snapshot = await scopedRpc.call("main", "eval.get", [
-        { scopeKey: channelId, runId },
-      ]);
-    } catch (error) {
-      // EvalDO unreachable: leave the run parked; the terminal push or the
-      // next redrive recovers it. An outage must never settle the invocation.
-      if (!this.deferredEvalBackstopWarnings.has(runId)) {
-        this.deferredEvalBackstopWarnings.add(runId);
-        console.warn(
-          `[AgentVessel] eval.get recovery for started run ${runId} failed (run stays parked):`,
-          error instanceof Error ? error.message : error,
-        );
-      }
-      return { deferred: true, reason: "external-result" };
-    }
-    if (snapshot.status === "unknown") {
-      return { deferred: true, reason: "external-result" };
-    }
-    if (
-      snapshot.status === "done" ||
-      snapshot.status === "approval-route-lost"
-    ) {
-      if (!snapshot.result)
-        throw new Error(`eval: terminal run ${runId} has no result`);
-      this.forgetDeferredEval(channelId, runId);
-      this.traceHotPath(channelId, "deferred-eval.completed", {
-        source: "backstop-poll",
-      });
-      return this.deferredEvalSettlement(invocationId, snapshot.result);
-    }
-    if (snapshot.status === "cancelled") {
-      this.forgetDeferredEval(channelId, runId);
-      this.traceHotPath(channelId, "deferred-eval.completed", {
-        source: "backstop-poll",
-      });
-      if (snapshot.result) {
-        return this.deferredEvalSettlement(invocationId, snapshot.result);
-      }
-      return this.deferredEvalSettlement(invocationId, {
-        success: false,
-        console: "",
-        error: "eval: run cancelled",
-        failureKind: "cancelled",
-        failureCode: "eval_cancelled",
-      });
-    }
-    await this.publishDeferredEvalPending(channelId, invocationId, runId);
-    return { deferred: true, reason: "external-result" };
-  }
-
-  /**
-   * A deferred invocation is deliberately non-terminal, but it must never look
-   * like an empty terminal. Publish a durable, idempotent lifecycle fact after
-   * eval.start is acknowledged (and on read-only recovery) so the UI and an
-   * operator can distinguish "pending; do not retry" from every settled state.
-   */
-  private async publishDeferredEvalPending(
-    channelId: string,
-    invocationId: string,
-    runId: string,
-  ): Promise<void> {
-    const participantId =
-      this.subscriptions.getParticipantId(channelId) ?? this.participantId();
-    const actor = this.cardActor(channelId, participantId);
-    const event: AgenticEvent<"invocation.progress"> = {
-      kind: "invocation.progress",
-      actor,
-      causality: { invocationId: invocationId as never },
-      payload: {
-        protocol: AGENTIC_PROTOCOL_VERSION,
-        message: `Eval is running as ${runId}; this invocation is pending. Do not retry.`,
-        data: {
-          eval: {
-            runId,
-            state: "running",
-            retryDirective: "do_not_retry",
-          },
-        },
-      },
-      createdAt: new Date().toISOString(),
-    };
-    try {
-      await this.createChannelClient(channelId).publishAgenticEvent(
-        participantId,
-        event,
-        {
-          idempotencyKey: `eval-pending:${runId}`,
-          senderMetadata: actor.metadata,
-        },
-      );
-    } catch (error) {
-      // The invocation outbox and EvalDO run remain authoritative. A failed
-      // explanatory projection must not settle or re-execute durable eval.
-      console.warn(
-        `[AgentVessel] failed to publish pending state for ${runId}; eval remains parked:`,
-        error instanceof Error ? error.message : error,
-      );
-    }
-  }
-
-  /** Shared terminal formatting for both the first-dispatch settlement and the
-   * durable-recovery settlement, so both produce identical tool results. */
-  private async deferredEvalSettlement(
-    invocationId: string,
-    statusResult: EvalRunResult,
-  ): Promise<DeferredEvalGateResult> {
-    const formatted = await formatEvalResult(statusResult, (digest) =>
-      this.rpc.call<string | null>("main", "blobstore.getBase64", [digest]),
-    );
-    statusResult = formatted.details ?? statusResult;
-    const failure =
-      statusResult.success === true
-        ? undefined
-        : agentToolFailureFromUnknown(
-            {
-              message: statusResult.error ?? "eval failed",
-              code: statusResult.failureCode,
-              errorData: statusResult.errorData,
-            },
-            {
-              operation: "tool.eval",
-              stage: "execute",
-              causal: { invocationId },
-              ...(statusResult.failureKind === "infrastructure"
-                ? { kind: "infrastructure" as const }
-                : {}),
-            },
-          );
-    return {
-      result: {
-        protocolContent: formatted.content,
-        details: formatted.details,
-      },
-      // Preserve the structured diagnostic, but do not lie about its
-      // terminal outcome. A user-code exception is still a failed eval tool
-      // invocation; callers (and the system-test harness) must be able to
-      // distinguish it from a successful execution and explicitly classify
-      // deliberate failures when appropriate.
-      isError: statusResult.success !== true,
-      ...(statusResult.failureKind === "infrastructure"
-        ? { terminalOutcome: "infrastructure_error" as const }
-        : {}),
-      ...(failure ? { terminalReasonCode: failure.code, failure } : {}),
-    };
-  }
-
-  private trackDeferredEval(channelId: string, runId: string): void {
-    const runs = this.deferredEvalRuns.get(channelId) ?? new Set<string>();
-    runs.add(runId);
-    this.deferredEvalRuns.set(channelId, runs);
-  }
-
-  private forgetDeferredEval(channelId: string, runId: string): void {
-    this.deferredEvalBackstopWarnings.delete(runId);
-    const runs = this.deferredEvalRuns.get(channelId);
-    if (!runs) return;
-    runs.delete(runId);
-    if (runs.size === 0) this.deferredEvalRuns.delete(channelId);
-  }
-
-  /** Persist the cancellation obligation while the deferred outbox row still
-   * names the exact EvalDO run. Interrupt/abort may remove that row, so every
-   * terminal channel lifecycle must call this before changing loop state. */
-  private recordDeferredEvalCancelIntents(channelId: string): void {
-    const runIds = new Set<string>(this.deferredEvalRuns.get(channelId) ?? []);
-    for (const row of this.driver.deferredEvalRows(channelId))
-      runIds.add(row.effectId);
-    if (runIds.size === 0) return;
-    const now = Date.now();
-    for (const runId of runIds) {
-      this.sql.exec(
-        `INSERT OR IGNORE INTO deferred_eval_cancel_intents
-           (channel_id, run_id, created_at, attempts, next_attempt_at)
-         VALUES (?, ?, ?, 0, ?)`,
-        channelId,
-        runId,
-        now,
-        now,
-      );
-    }
-    this.deferredEvalRuns.delete(channelId);
-  }
-
-  /** Close the turn only after its EvalDO cancellation obligation is durable,
-   * then deliver that cancellation after the loop can no longer resume from a
-   * racing eval terminal. Delivery failure remains a durable retry intent. */
+  /** Abort and join the original native conversation, including its owned tools,
+   * then reconcile retained host authority receipts. */
   private async interruptChannelAndCancelDeferredEvals(
     channelId: string,
-    flushDeferred: boolean,
+    _flushDeferred: boolean,
   ): Promise<void> {
-    this.recordDeferredEvalCancelIntents(channelId);
-    try {
-      await this.driver.interruptChannel(channelId, flushDeferred);
-    } finally {
-      await this.drainEvalCancelIntents();
-    }
-  }
-
-  /**
-   * Retire every deferred eval owned by a channel. NEVER throws: an EvalDO
-   * outage is exactly the failure class this hardens against, and it must not
-   * block unsubscribe/retire. Each run's cancellation is first recorded as a
-   * durable, idempotent cancel intent; the intent is deleted only after
-   * EvalDO acknowledges `eval.cancel`, and surviving intents are redriven by
-   * lifecycle events (resume) with the cancel-intent alarm as the final
-   * backstop. EvalDO's own cancelRunsForLifecycle + reconcileOrphanedRuns
-   * bound any residual leak.
-   *
-   * The run set is enumerated from DURABLE state (the parked local_tool:eval
-   * outbox rows) — the in-memory map is only a cache and is empty right after
-   * a generation change.
-   */
-  private async cancelDeferredEvalRuns(channelId: string): Promise<void> {
-    this.recordDeferredEvalCancelIntents(channelId);
-    await this.drainEvalCancelIntents();
-  }
-
-  /**
-   * Attempt every due cancel intent once; delete an intent only on an
-   * acknowledged `eval.cancel` (idempotent on EvalDO). A failed attempt keeps
-   * the intent durable and re-arms the backstop alarm. Never throws.
-   */
-  protected async drainEvalCancelIntents(): Promise<void> {
-    // Every drain trigger is a lifecycle event (retire, resume, backstop
-    // alarm) — attempt ALL surviving intents each time. `next_attempt_at`
-    // only schedules the backstop alarm; it is not an attempt gate.
-    const intents = (
-      this.sql
-        .exec(
-          `SELECT channel_id, run_id FROM deferred_eval_cancel_intents ORDER BY created_at`,
-        )
-        .toArray() as Array<Record<string, unknown>>
-    ).map((row) => ({
-      channelId: String(row["channel_id"]),
-      runId: String(row["run_id"]),
-    }));
-    for (const intent of intents) {
-      try {
-        await this.rpc.call("main", "eval.cancel", [
-          { scopeKey: intent.channelId, runId: intent.runId },
-        ]);
-        this.sql.exec(
-          `DELETE FROM deferred_eval_cancel_intents WHERE channel_id = ? AND run_id = ?`,
-          intent.channelId,
-          intent.runId,
-        );
-      } catch (error) {
-        console.warn(
-          `[AgentVessel] deferred-eval cancel intent for ${intent.runId} not yet delivered (kept durable):`,
-          error instanceof Error ? error.message : error,
-        );
-        this.sql.exec(
-          `UPDATE deferred_eval_cancel_intents
-              SET attempts = attempts + 1,
-                  next_attempt_at = ?
-            WHERE channel_id = ? AND run_id = ?`,
-          Date.now() + EVAL_CANCEL_INTENT_RETRY_MS,
-          intent.channelId,
-          intent.runId,
-        );
-      }
-    }
-  }
-
-  private nextEvalCancelIntentWakeAt(): number | null {
-    const row = this.sql
-      .exec(
-        `SELECT MIN(next_attempt_at) AS due FROM deferred_eval_cancel_intents`,
-      )
-      .toArray()[0];
-    const value = row?.["due"];
-    return typeof value === "number" ? value : null;
+    const conversation =
+      await this.admittedNativeChannelConversation(channelId);
+    if (conversation)
+      await conversation.abort(BACKGROUND_CONTEXT, { background: true });
+    await this.reconcileAgentAuthority();
   }
 
   /**
@@ -7211,72 +4568,6 @@ This is one admitted recurring-automation tick. If this tick establishes that th
    * identity is carried separately for causality and never reconstructed from
    * the effect id. Duplicate settlement is an idempotent driver no-op.
    */
-  @rpc({
-    website: {
-      kind: "closed",
-      reason:
-        "This receiver owns workspace orchestration or retained workspace data; websites require a reviewed bounded operation.",
-    },
-    principals: ["code"],
-    effect: { kind: "open" },
-    tier: "open",
-    sensitivity: "write",
-  })
-  async onEvalComplete(payload: {
-    runId: string;
-    agentInvocationId?: string;
-    result?: EvalRunResult;
-    channelId?: string;
-  }): Promise<void> {
-    if (!payload.channelId || !payload.result) return;
-    await this.assertOwnEvalCaller(payload.channelId);
-    const formatted = await formatEvalResult(payload.result, (digest) =>
-      this.rpc.call<string | null>("main", "blobstore.getBase64", [digest]),
-    );
-    const result = formatted.details ?? payload.result;
-    this.forgetDeferredEval(payload.channelId, payload.runId);
-    const failure =
-      result.success === true
-        ? undefined
-        : agentToolFailureFromUnknown(
-            {
-              message: result.error ?? "eval failed",
-              code: result.failureCode,
-              errorData: result.errorData,
-            },
-            {
-              operation: "tool.eval",
-              stage: "execute",
-              causal: {
-                invocationId: payload.agentInvocationId ?? payload.runId,
-              },
-              ...(result.failureKind === "infrastructure"
-                ? { kind: "infrastructure" as const }
-                : {}),
-            },
-          );
-    const delivered = await this.driver.deliverEffectOutcome(
-      payload.runId,
-      {
-        kind: "tool",
-        result: {
-          protocolContent: formatted.content,
-          details: formatted.details,
-        },
-        isError: result.success !== true,
-        ...(result.failureKind === "infrastructure"
-          ? { terminalOutcome: "infrastructure_error" as const }
-          : {}),
-        ...(failure ? { terminalReasonCode: failure.code, failure } : {}),
-      },
-      { channelId: payload.channelId },
-    );
-    if (delivered) {
-      this.traceHotPath(payload.channelId, "deferred-eval.completed", {
-        source: "direct-push",
-      });
-    }
-  }
 
   // ── Custom message recovery (CardManager read path) ─────────────────────
 
@@ -7286,12 +4577,13 @@ This is one admitted recurring-automation tick. If this tick establishes that th
   protected async indexOwnCustomMessages(
     channelId: string,
     reducerLookup?: (typeId: string) => CustomMessageReducer | undefined | null,
+    rpc: RpcClient = this.rpc,
   ): Promise<Map<string, Map<string, unknown>>> {
     const selfParticipantId = this.subscriptions.getParticipantId(channelId);
     if (!selfParticipantId) return new Map();
 
     const byMessageId = new Map<string, { typeId: string; state: unknown }>();
-    const channel = this.createChannelClient(channelId);
+    const channel = this.createChannelClient(channelId, rpc);
     for await (const envelope of iterateChannelReplayAfterPages(
       (request) => channel.getReplayAfter(request),
       { after: 0 },
@@ -7322,7 +4614,13 @@ This is one admitted recurring-automation tick. If this tick establishes that th
           if (!messageId || !typeId) continue;
           byMessageId.set(messageId, {
             typeId,
-            state: await this.hydrateTransportValue(payload["initialState"]),
+            state: await this.hydrateTransportValue(
+              payload["initialState"],
+              undefined,
+              undefined,
+              "card-recovery",
+              rpc,
+            ),
           });
           continue;
         }
@@ -7335,7 +4633,13 @@ This is one admitted recurring-automation tick. If this tick establishes that th
           const existing = byMessageId.get(messageId);
           if (!existing) continue;
           const reducer = reducerLookup?.(existing.typeId) ?? null;
-          const update = await this.hydrateTransportValue(payload["update"]);
+          const update = await this.hydrateTransportValue(
+            payload["update"],
+            undefined,
+            undefined,
+            "card-recovery",
+            rpc,
+          );
           byMessageId.set(messageId, {
             typeId: existing.typeId,
             state: reducer ? reducer(existing.state, update) : update,
@@ -7361,6 +4665,7 @@ This is one admitted recurring-automation tick. If this tick establishes that th
     channelId?: string | null,
     originSessionId?: string | null,
     via = "channel-value-hydration",
+    rpc: RpcClient = this.rpc,
   ): Promise<unknown> {
     // A result authored by another session is outside content: the standing
     // task authority goes before its bytes reach the model.
@@ -7370,7 +4675,7 @@ This is one admitted recurring-automation tick. If this tick establishes that th
       );
     return hydrateStoredValueRefs(value, {
       getText: (digest) =>
-        this.rpc.call<string | null>("main", "blobstore.getText", [digest]),
+        rpc.call<string | null>("main", "blobstore.getText", [digest]),
     });
   }
 
@@ -7445,75 +4750,128 @@ This is one admitted recurring-automation tick. If this tick establishes that th
     channelId: string,
     input: { content: string },
     opts?: AgentInitiatedTurnOptions,
+    context: Context = BACKGROUND_CONTEXT,
   ): Promise<void> {
-    const { steeringId, ...turnMetadata } = opts ?? {};
-    const metadata: AgentTurnMetadata = {
-      ...turnMetadata,
-      origin: turnMetadata.origin ?? "agent-initiated",
-    };
-    await this.driver.handleIncoming(channelId, {
-      type: "command",
-      command: {
-        kind: "prompt",
-        channelId,
-        source: { envelopeId: steeringId ?? `agent-init:${Date.now()}` },
-        content: input.content,
-        senderRef: { kind: "system", id: metadata.origin ?? "agent-initiated" },
-        metadata,
+    const conversation = await this.nativeChannelConversation(
+      channelId,
+      context,
+    );
+    await conversation.submit(
+      {
+        type: "input",
+        requestId: opts?.steeringId ?? crypto.randomUUID(),
+        whenBusy: opts?.deliverAfterTurn ? "followUp" : "steer",
+        content: async (tx, submissionId) => {
+          await recordNativeProductInput(tx, submissionId, channelId, opts);
+          await recordNativeChannelInputAdmission(
+            tx,
+            conversation.id,
+            submissionId,
+          );
+          return input.content;
+        },
       },
-    });
+      context,
+    );
   }
 
   /** Resolve the current model's API key (out-of-loop helpers like draft
    *  writers). When no credential is configured, publishes a connect-only
    *  credential card (resumeAfterConnect: false — one-shot flows have no
    *  parked turn to resume) and throws with the canonical message. */
-  protected async resolveModelApiKey(
+  private readonly nativeHelperConnections =
+    new Set<CredentialedModelConnection>();
+  private readonly nativeHelperOperations = new Set<{
+    controller: AbortController;
+    operation: Promise<unknown>;
+  }>();
+
+  protected async withNativeModelConnection<T>(
     channelId: string,
-    opts?: { connectCard?: boolean },
-  ): Promise<string> {
-    const model = this.getAgentSettings().model;
-    const providerId = model.includes(":")
-      ? model.slice(0, model.indexOf(":"))
-      : "anthropic";
-    const modelId = model.includes(":")
-      ? model.slice(model.indexOf(":") + 1)
-      : model;
+    selected: Model<Api>,
+    dispatch: (
+      model: Model<Api>,
+      connection: CredentialedModelConnection,
+    ) => Promise<T>,
+    context: Context = {
+      ...BACKGROUND_CONTEXT,
+      abortSignal: this.rpcAbortSignal ?? undefined,
+    },
+    rpc: RpcClient = this.rpc,
+  ): Promise<T> {
+    await this.agentSession(context);
+    this.assertNativeAgentAdmission();
+    const controller = new AbortController();
+    const abortSignal = context.abortSignal
+      ? AbortSignal.any([context.abortSignal, controller.signal])
+      : controller.signal;
+    const operation = Promise.resolve().then(() =>
+      withPreparedNativeModel(
+        {
+          rpc,
+          egressFetch: fetch,
+          own: (connection) => {
+            this.nativeHelperConnections.add(connection);
+          },
+          released: (connection) => {
+            this.nativeHelperConnections.delete(connection);
+          },
+          credentialMissing: (model) =>
+            this.publishCredentialConnectCard(
+              channelId,
+              model.provider,
+              {
+                resumeAfterConnect: false,
+                modelRef: `${model.provider}:${model.id}`,
+              },
+              rpc,
+            ),
+        },
+        selected,
+        dispatch,
+        { ...context, abortSignal },
+      ),
+    );
+    const owned = { controller, operation };
+    this.nativeHelperOperations.add(owned);
     try {
-      const { getBuiltinModel: getModel } =
-        await import("@workspace/pi-ai/providers/all");
-      const registryModel = getModel(providerId as never, modelId as never) as
-        | { baseUrl?: string }
-        | undefined;
-      const modelBaseUrl =
-        typeof registryModel?.baseUrl === "string"
-          ? registryModel.baseUrl
-          : undefined;
-      const resolved = await this.executorDeps().credentials.getApiKey({
-        providerId,
-        ...(modelBaseUrl ? { modelBaseUrl } : {}),
-      });
-      return resolved.apiKey;
-    } catch (err) {
-      if (
-        err instanceof CredentialPendingError &&
-        opts?.connectCard !== false
-      ) {
-        await this.publishCredentialConnectCard(channelId, providerId, {
-          resumeAfterConnect: false,
-        });
-      }
-      throw new Error(
-        `No URL-bound model credential is configured for model provider: ${providerId}`,
-      );
+      return await operation;
+    } finally {
+      this.nativeHelperOperations.delete(owned);
     }
+  }
+
+  private async releaseNativeModelHelpers(reason: Error): Promise<void> {
+    const operations = [...this.nativeHelperOperations];
+    for (const { controller } of operations) controller.abort(reason);
+    await Promise.allSettled(operations.map(({ operation }) => operation));
+    const outcomes = await Promise.allSettled(
+      [...this.nativeHelperConnections].map(async (connection) => {
+        await connection.close(BACKGROUND_CONTEXT);
+        this.nativeHelperConnections.delete(connection);
+      }),
+    );
+    const failures = outcomes
+      .filter(
+        (outcome): outcome is PromiseRejectedResult =>
+          outcome.status === "rejected",
+      )
+      .map((outcome) => outcome.reason);
+    if (failures.length === 1) throw failures[0];
+    if (failures.length)
+      throw new AggregateError(
+        failures,
+        "One-shot model resource cleanup failed",
+        { cause: failures[0] },
+      );
   }
 
   /** The credential-connect inline card (same renderer the chat panel ships). */
   protected async publishCredentialConnectCard(
     channelId: string,
     providerId: string,
-    opts: { resumeAfterConnect: boolean; reason?: string },
+    opts: { resumeAfterConnect: boolean; reason?: string; modelRef?: string },
+    rpc: RpcClient = this.rpc,
   ): Promise<void> {
     const participantId =
       this.subscriptions.getParticipantId(channelId) ?? this.participantId();
@@ -7531,7 +4889,7 @@ This is one admitted recurring-automation tick. If this tick establishes that th
         },
         props: {
           providerId,
-          modelRef: this.getAgentSettings().model,
+          modelRef: opts.modelRef ?? this.getAgentSettings().model,
           agentParticipantId: participantId,
           resumeAfterConnect: opts.resumeAfterConnect,
           ...(opts.reason ? { reason: opts.reason } : {}),
@@ -7540,17 +4898,14 @@ This is one admitted recurring-automation tick. If this tick establishes that th
       },
       createdAt: new Date().toISOString(),
     };
-    await this.createChannelClient(channelId)
-      .publishAgenticEvent(participantId, event, {
+    await this.createChannelClient(channelId, rpc).publishAgenticEvent(
+      participantId,
+      event,
+      {
         idempotencyKey: cardId,
         senderMetadata: { type: "agent", name: participantId },
-      })
-      .catch((err) => {
-        console.error(
-          `[AgentVessel] credential card emit failed for ${providerId}:`,
-          err,
-        );
-      });
+      },
+    );
   }
 
   // ── Fork ─────────────────────────────────────────────────────────────────
@@ -7576,148 +4931,177 @@ This is one admitted recurring-automation tick. If this tick establishes that th
     return { ok: true };
   }
 
+  protected exportNativeChannelKnowledgeConfiguration(
+    _channelId: string,
+  ): JsonValue {
+    return null;
+  }
+
+  protected async restoreNativeChannelKnowledgeConfiguration(
+    _channelId: string,
+    configuration: JsonValue,
+  ): Promise<void> {
+    if (configuration !== null)
+      throw new Error("This agent cannot restore foreign domain configuration");
+  }
+
+  /** Immutable original settings composition; domain hooks never carry execution storage. */
+  protected exportNativeAgentKnowledgeConfiguration(
+    channelId: string,
+  ): JsonValue {
+    return copyJson(
+      {
+        kind: "vibestudio.agent-configuration",
+        agentSettings: this.getAgentSettings(),
+        domain: this.exportNativeChannelKnowledgeConfiguration(channelId),
+      },
+      { omitUndefinedProperties: true },
+    );
+  }
+
+  protected async restoreNativeAgentKnowledgeConfiguration(
+    channelId: string,
+    configuration: JsonValue,
+  ): Promise<void> {
+    if (configuration !== null) {
+      if (
+        typeof configuration !== "object" ||
+        Array.isArray(configuration) ||
+        configuration["kind"] !== "vibestudio.agent-configuration" ||
+        !configuration["agentSettings"] ||
+        typeof configuration["agentSettings"] !== "object" ||
+        Array.isArray(configuration["agentSettings"]) ||
+        !("domain" in configuration)
+      )
+        throw new Error(
+          "Imported agent configuration is not its original typed settings",
+        );
+      const settings = this.validatedSettings(configuration["agentSettings"]);
+      this.setStateValue(AGENT_SETTINGS_KEY, JSON.stringify(settings));
+      await this.restoreNativeChannelKnowledgeConfiguration(
+        channelId,
+        configuration["domain"]!,
+      );
+    }
+  }
+
   @rpc({
     website: {
       kind: "closed",
-      reason:
-        "This receiver owns workspace orchestration or retained workspace data; websites require a reviewed bounded operation.",
+      reason: "Knowledge export belongs to the owned channel fork operation.",
+    },
+    principals: ["host", "code"],
+    effect: { kind: "open" },
+    tier: "open",
+    sensitivity: "read",
+  })
+  async exportChannelKnowledge(
+    input: ExportChannelKnowledgeInput,
+  ): Promise<NativeChannelKnowledge> {
+    if (!this.subscriptions.ownsReasoningLoop(input.channelId))
+      throw new Error("Knowledge export requires owned reasoning membership");
+    const conversation = await this.nativeChannelConversation(input.channelId);
+    const harness = this.admittedAgentSession();
+    const binding = await retainedNativeConversationChannel(
+      harness,
+      conversation.id,
+      BACKGROUND_CONTEXT,
+    );
+    const channel = this.createChannelClient(input.channelId, this.agentRpc);
+    const channelRef = parseDoTargetId(await channel.resolveTarget());
+    if (!channelRef || channelRef.objectKey !== input.channelId)
+      throw new Error(
+        "Knowledge export resolved a different canonical channel",
+      );
+    return exportNativeChannelKnowledge(
+      {
+        harness,
+        conversation,
+        binding,
+        participantId: this.participantId(),
+        channelRef,
+        channel,
+        configuration: () =>
+          this.exportNativeAgentKnowledgeConfiguration(input.channelId),
+      },
+      input,
+      BACKGROUND_CONTEXT,
+    );
+  }
+
+  @rpc({
+    website: {
+      kind: "closed",
+      reason: "Knowledge import belongs to the owned channel fork operation.",
     },
     principals: ["host", "code"],
     effect: { kind: "open" },
     tier: "open",
     sensitivity: "write",
   })
-  async postClone(
-    _parentObjectKey: string,
-    newChannelId: string,
-    oldChannelId: string,
-    forkPointPubsubId: number,
-    // The clone's new context. A true context fork (`runtime.cloneContext`) lands
-    // the clone in a fresh, isolated context; thread it so the agent's subscription
-    // re-homes to it (the entity record is already in the new context).
-    newContextId: string,
-  ): Promise<void> {
-    if (!newContextId) throw new Error("postClone requires newContextId");
-    // fix identity (cloneDO copied the parent's)
-    this.sql.exec(
-      `INSERT OR REPLACE INTO state (key, value) VALUES ('__objectKey', ?)`,
-      this.objectKey,
-    );
-    const from = channelTrajectoryFor(oldChannelId);
-    const to = channelTrajectoryFor(newChannelId);
-    const atSeq = await this.resolveTrajectorySeqForChannelSeq(
-      from.logId,
-      oldChannelId,
-      forkPointPubsubId,
-    );
-    await this.callGad("forkLog", {
-      fromLogId: from.logId,
-      fromHead: from.head,
-      toLogId: to.logId,
-      toHead: to.head,
-      atSeq,
-    });
-    const driver = this.driver;
-    // caches: wiped, reconverge (P3)
-    this.sql.exec(`DELETE FROM effect_outbox`);
-    this.sql.exec(`DELETE FROM fold_cache`);
-    this.subscriptions.rename(oldChannelId, newChannelId, newContextId);
-    // Per-channel fork: the clone is a NEW entity and must NOT ghost-join the
-    // parent's OTHER channels (cloneDO copied the whole subscriptions table).
-    // Drop every subscription except the forked one — delete the local row and
-    // the driver loop, but DO NOT call the channel DO to unsubscribe: the copied
-    // rows still carry the PARENT's participantId, so an unsubscribe would evict
-    // the parent from its own channels. This runs BEFORE driver.wake so the
-    // driver never wakes a loop for a channel the clone no longer holds.
-    for (const otherChannelId of this.subscriptions.listChannelIds()) {
-      if (otherChannelId === newChannelId) continue;
-      this.subscriptions.deleteSubscription(otherChannelId);
-      driver.dropLoop(otherChannelId);
-    }
-    // Subclass fork cleanup/setup runs with the rename applied but BEFORE the
-    // new channel is (re)subscribed, so subclasses can purge per-channel state
-    // the clone copied and influence the upcoming subscribe.
-    await this.onChannelForked({
-      oldChannelId,
-      newChannelId,
-      forkPointPubsubId,
-    });
-    await this.subscribeChannel({
-      channelId: newChannelId,
-      // After rename, getContextId(newChannelId) reflects newContextId.
-      contextId: this.subscriptions.getContextId(newChannelId),
-      config: this.subscriptions.getConfig(newChannelId) ?? undefined,
-      replay: false,
-    });
-    await driver.wake(newChannelId); // fork policy settles pre-cut pendings
-  }
-
-  private async resolveTrajectorySeqForChannelSeq(
-    trajectoryLogId: string,
-    channelId: string,
-    channelSeq: number,
-  ): Promise<number> {
-    const fork = await this.callGad<{ seq: number }>(
-      "resolveTrajectoryForkPoint",
-      {
-        trajectoryId: trajectoryLogId,
-        branchId: trajectoryLogId,
-        channelId,
-        channelSeq,
-      },
-    );
-    return fork.seq;
-  }
-
-  /**
-   * Re-root a FRESH child vessel's identity + trajectory from a parent agent's
-   * trajectory at `seq` — the sibling of {@link postClone} for the
-   * `spawn_subagent(mode:"fork")` path. No DO storage was cloned (the entity was
-   * just created), so there is nothing to wipe: outbox/fold caches start empty.
-   * The child boots knowing everything the parent knew at the fork point.
-   */
-  @rpc({
-    website: {
-      kind: "eligible",
-      rationale:
-        "Ordinary conversation and agent operations use caller-scoped approvals; launched execution retains its authenticated authority.",
-    },
-    principals: ["host", "code", "website"],
-    effect: { kind: "open" },
-    tier: "open",
-    sensitivity: "write",
-  })
-  async initFromTrajectoryFork(opts: {
-    parentLogId: string;
-    seq: number;
-    taskChannelId: string;
-    contextId: string;
-    config?: unknown;
-  }): Promise<{ ok: boolean; participantId: string }> {
+  async importChannelKnowledge(
+    input: ImportChannelKnowledgeInput,
+  ): Promise<{ ok: boolean; participantId: string }> {
     this.ensureIdentity();
-    // Fix identity for parity with postClone (a fresh DO already has it correct).
-    this.sql.exec(
-      `INSERT OR REPLACE INTO state (key, value) VALUES ('__objectKey', ?)`,
-      this.objectKey,
+    const harness = await this.agentSession(BACKGROUND_CONTEXT);
+    const owner = await retainedAgentExecutionOwner(
+      harness,
+      BACKGROUND_CONTEXT,
     );
-    // `seq` is already a TRAJECTORY seq (the parent's folded head), not a channel
-    // seq — no resolveTrajectorySeqForChannelSeq indirection needed.
-    await this.ensureSubagentTaskTrajectoryFork({
-      parentLogId: opts.parentLogId,
-      parentSeq: opts.seq,
-      taskChannelId: opts.taskChannelId,
-    });
-    const subscription = await this.subscribeChannel({
-      channelId: opts.taskChannelId,
-      contextId: opts.contextId,
-      config: opts.config,
+    if (owner.contextId !== input.contextId)
+      throw new Error("Knowledge import changed its receiving host context");
+    const descriptor = this.getEffectiveParticipantInfo(
+      input.channelId,
+      input.config,
+    );
+    const prepared = await this.subscriptions.prepareSubscription({
+      channelId: input.channelId,
+      contextId: input.contextId,
+      descriptor,
+      config: input.config,
       replay: false,
     });
-    // Fold hydration preserves the inherited semantic entries but normalizes
-    // all pre-cut prompt/control projections. Wake validates that quiescent
-    // boundary; only the later child seed may open executable work.
-    await this.driver.wake(opts.taskChannelId);
-    return subscription;
+    const intent = copyJson(prepared, { omitUndefinedProperties: true });
+    await importNativeChannelKnowledge(
+      harness,
+      input,
+      {
+        initialize: async (tx, id) => {
+          await this.nativeChannelBootstrap.bindImported(
+            tx,
+            id,
+            { channelId: input.channelId, contextId: input.contextId },
+            intent,
+            {
+              operationId: input.operationId,
+              parentChannelId: input.parentChannelId,
+              throughSequence: input.knowledge.throughSequence,
+              knowledgeDigest: sha256HexSyncText(
+                canonicalJson(input.knowledge),
+              ),
+            },
+          );
+          await this.bindNativeChannelPublication(tx, id, {
+            channelId: input.channelId,
+            participantId: this.rpcSelfId,
+            actor: {
+              kind: "agent",
+              id: this.rpcSelfId,
+              participantId: this.rpcSelfId,
+              displayName: descriptor.name,
+            },
+            policy: this.getPublishPolicy(input.channelId) ?? "all",
+          });
+        },
+      },
+      BACKGROUND_CONTEXT,
+    );
+    await this.nativeChannelBootstrap.ready(
+      harness,
+      { channelId: input.channelId, contextId: input.contextId },
+      BACKGROUND_CONTEXT,
+    );
+    return { ok: true, participantId: this.participantId() };
   }
 
   // ── Subagents ──────────────────────────────────────────────────────────────
@@ -7767,32 +5151,6 @@ This is one admitted recurring-automation tick. If this tick establishes that th
   /** A wait must have a concrete wake source: live supervised work or a
    * durably admitted turn. Yielding lets the loop release its own queued work
    * without polling or borrowing the foreground turn's execution identity. */
-  protected async guardBackgroundSuspension(channelId: string) {
-    const loop = await this.driver.loop(channelId);
-    if (loop.state.deferredPostTurnQueue.length > 0) return { suspend: true };
-    const supervised = this.subagentRuns
-      .listAll()
-      .filter((run) => run.parentChannelId === channelId);
-    const live = supervised.filter(
-      (run) => run.status === "starting" || run.status === "running",
-    );
-    if (live.length > 0) return { suspend: true };
-
-    const completedRunsAwaitingIntegration = supervised
-      .filter(
-        (run) => run.semanticIntegrationSnapshot?.["state"] !== "complete",
-      )
-      .map((run) => subagentRunHandle(run.runId));
-    return {
-      suspend: false,
-      reason: "no_live_supervised_runs",
-      message:
-        completedRunsAwaitingIntegration.length > 0
-          ? `Turn not suspended: no supervised subagent is live and no terminal report is waiting to enter this conversation. Review the retained result(s) ${completedRunsAwaitingIntegration.join(", ")} and continue the user goal; integrate only when the goal calls for incorporating the child work.`
-          : "Turn not suspended: no supervised subagent is live. Continue or finish the foreground request.",
-      details: { completedRunsAwaitingIntegration },
-    };
-  }
 
   private currentSubagentDepth(): number {
     return this.subagentIdentity()?.depth ?? 0;
@@ -7801,57 +5159,11 @@ This is one admitted recurring-automation tick. If this tick establishes that th
   private toolText(
     text: string,
     details?: Record<string, unknown>,
-  ): AgentToolResult<Record<string, unknown>> {
-    return { content: [{ type: "text", text }], details: details ?? {} };
-  }
-
-  /**
-   * Fork only completed conversational history. The currently open parent turn
-   * contains executable control state (and often an assistant tool-call block
-   * whose results do not exist yet); inheriting it produces dangling calls and
-   * lets a child continue the supervisor's work before its own task seed.
-   */
-  private async trajectoryForkSeq(channelId: string): Promise<number> {
-    try {
-      const loop = await this.driver.loop(channelId);
-      return loop.state.openTurn
-        ? Math.max(0, loop.state.openTurn.openedAtSeq - 1)
-        : loop.state.lastSeq;
-    } catch {
-      return 0;
-    }
-  }
-
-  private async ensureSubagentTaskTrajectoryFork(input: {
-    parentLogId: string;
-    parentSeq: number;
-    taskChannelId: string;
-  }): Promise<number> {
-    const to = channelTrajectoryFor(input.taskChannelId);
-    const existing = await this.callGad<{
-      parentLogId: string | null;
-      parentHead: string | null;
-      forkSeq: number | null;
-    } | null>("getLogHead", { logId: to.logId, head: to.head });
-    const parentHead = input.parentLogId;
-    const equivalentExisting =
-      existing?.parentLogId === input.parentLogId &&
-      existing.parentHead === parentHead &&
-      existing.forkSeq != null;
-    if (existing && !equivalentExisting) {
-      throw new Error(
-        `subagent task trajectory already exists with different fork lineage: ${to.logId}:${to.head}`,
-      );
-    }
-    const atSeq = equivalentExisting ? existing.forkSeq! : input.parentSeq;
-    await this.callGad("forkLog", {
-      fromLogId: input.parentLogId,
-      fromHead: parentHead,
-      toLogId: to.logId,
-      toHead: to.head,
-      atSeq,
-    });
-    return atSeq;
+  ): ToolExecutionResult {
+    return {
+      content: [{ type: "text", text }],
+      details: copyJson(details ?? {}, { omitUndefinedProperties: true }),
+    };
   }
 
   /**
@@ -7862,405 +5174,361 @@ This is one admitted recurring-automation tick. If this tick establishes that th
    * then returns a run handle.
    * Guarded by depth/fan-out. Any failure settles inline as a tool error.
    */
-  protected async runDeferredSpawn(
-    channelId: string,
-    invocationId: string,
-    args: unknown,
-    invocationRpc: RpcClient,
-  ): Promise<{ result: unknown; isError: boolean }> {
-    try {
+  protected nativeChildLaunchOffer(channelId: string): JsonValue {
+    const parent = this.subagentIdentity();
+    return copyJson(
+      {
+        channelId,
+        settings: this.getAgentSettings(),
+        channelConfig: this.subscriptions.getConfig(channelId) ?? {},
+        source: String(this.env["WORKER_SOURCE"] ?? ""),
+        className: String(
+          this.env["WORKER_CLASS_NAME"] ?? this.constructor.name,
+        ),
+        depth: this.currentSubagentDepth() + 1,
+        maxDepth: this.getMaxSubagentDepth(),
+        maxSubagents: this.getMaxSubagents(),
+        lineageParticipantIds: [
+          ...new Set([
+            ...(parent?.lineageParticipantIds ?? []),
+            ...(parent?.mode === "fork" ? [parent.parentParticipantId] : []),
+            this.participantId(),
+          ]),
+        ],
+      },
+      { omitUndefinedProperties: true },
+    );
+  }
+
+  private readonly nativeChildLaunch = createNativeChildLaunch({
+    prepare: async (args, api, context) => {
+      const execution = await this.bindNativeToolExecution(api, context);
+      const binding = await retainedNativeConversationChannel(
+        this.admittedAgentSession(),
+        api.conversationId,
+        context,
+      );
+      const offer = api.executionData;
+      if (
+        !offer ||
+        typeof offer !== "object" ||
+        Array.isArray(offer) ||
+        offer["channelId"] !== binding.channelId ||
+        !offer["settings"] ||
+        typeof offer["settings"] !== "object" ||
+        Array.isArray(offer["settings"]) ||
+        !offer["channelConfig"] ||
+        typeof offer["channelConfig"] !== "object" ||
+        Array.isArray(offer["channelConfig"]) ||
+        typeof offer["source"] !== "string" ||
+        !offer["source"] ||
+        typeof offer["className"] !== "string" ||
+        !offer["className"] ||
+        typeof offer["depth"] !== "number" ||
+        typeof offer["maxDepth"] !== "number" ||
+        typeof offer["maxSubagents"] !== "number" ||
+        !Array.isArray(offer["lineageParticipantIds"])
+      )
+        throw new Error(
+          "Native child launch lost its original offered configuration",
+        );
       const p = (args ?? {}) as {
         mode?: unknown;
         task?: unknown;
         config?: unknown;
         label?: unknown;
       };
-      const mode: "fresh" | "fork" = p.mode === "fork" ? "fork" : "fresh";
-      const task = typeof p.task === "string" ? p.task : "";
-      if (!task.trim()) {
-        return {
-          result: "spawn_subagent requires a non-empty durable task",
-          isError: true,
-        };
-      }
-      // Idempotency: a re-driven spawn returns the SAME run handle.
-      const existingRun = this.subagentRuns.get(invocationId);
-      if (existingRun) {
-        if (existingRun.status === "starting") {
-          console.warn(
-            `[AgentVessel] resetting stale starting subagent run ${existingRun.runId}`,
-          );
-          await this.rollbackFailedSubagentSpawn(existingRun);
-        } else {
-          if (existingRun.status === "running" && task.trim()) {
-            console.info(
-              `[AgentVessel] retrying subagent seed for existing run ${existingRun.runId}`,
-            );
-            await this.publishSubagentSeed(existingRun, task);
-          }
-          return {
-            result: {
-              protocolContent: [
-                {
-                  type: "text",
-                  text: subagentLaunchReceipt(existingRun),
-                },
-              ],
-              details: this.subagentRunDetails(existingRun),
-            },
-            isError: false,
-          };
-        }
-      }
-
-      const loopConfig = this.loopConfig(channelId);
-      const maxDepth =
-        loopConfig.maxSubagentDepth ?? DEFAULT_MAX_SUBAGENT_DEPTH;
-      const maxSubagents = loopConfig.maxSubagents ?? DEFAULT_MAX_SUBAGENTS;
-      const childDepth = this.currentSubagentDepth() + 1;
-      if (childDepth > maxDepth) {
-        return {
-          result: `subagent depth limit reached (max ${maxDepth})`,
-          isError: true,
-        };
-      }
-      if (this.subagentRuns.countLive() >= maxSubagents) {
-        return {
-          result: `subagent execution limit reached (max ${maxSubagents}); wait for or cancel a live run before spawning another`,
-          isError: true,
-        };
-      }
-
-      const runId = invocationId;
-      const targetKey = `subagent:${runId}`;
-      const taskChannelId = `task-${runId}`;
-      const label =
-        typeof p.label === "string" && p.label.trim()
-          ? p.label
-          : mode === "fork"
-            ? "forked subagent"
-            : "subagent";
-      const requestedChildConfig =
-        p.config && typeof p.config === "object"
-          ? (p.config as Record<string, unknown>)
-          : undefined;
-      // A Pi subagent is a child of THIS agent, so its behavioral defaults
-      // should be the parent's effective settings rather than whichever model
-      // happens to be the worker-wide default. Besides being the unsurprising
-      // product behavior, this keeps unattended/headless trees uniform: a
-      // parent pinned to a model, approval posture, or stream watchdog cannot
-      // silently spawn a differently configured child. Explicit child config
-      // remains an override.
-      const parentChannelConfig =
-        (this.subscriptions.getConfig(channelId) as Record<
-          string,
-          unknown
-        > | null) ?? {};
-      const inheritedPromptConfig = Object.fromEntries(
-        ["systemPrompt", "systemPromptMode"].flatMap((key) =>
-          parentChannelConfig[key] === undefined
-            ? []
-            : [[key, parentChannelConfig[key]]],
+      if (p.mode !== "fresh" && p.mode !== "fork")
+        throw new Error("spawn_subagent requires fresh or fork mode");
+      if (typeof p.task !== "string" || !p.task.trim())
+        throw new Error("spawn_subagent requires a non-empty durable task");
+      if (offer["depth"] > offer["maxDepth"])
+        throw new Error(
+          `subagent depth limit reached (max ${offer["maxDepth"]})`,
+        );
+      if (
+        (await this.liveSubagentExecutionCount(execution.rpc)) >=
+        offer["maxSubagents"]
+      )
+        throw new Error(
+          `subagent execution limit reached (max ${offer["maxSubagents"]})`,
+        );
+      const settings = offer["settings"];
+      const channelConfig = offer["channelConfig"];
+      const overrides = p.config === undefined ? {} : copyJson(p.config);
+      if (
+        !overrides ||
+        typeof overrides !== "object" ||
+        Array.isArray(overrides)
+      )
+        throw new Error("Child configuration must be an object");
+      const config = {
+        ...settings,
+        ...Object.fromEntries(
+          ["systemPrompt", "systemPromptMode"].flatMap((key) =>
+            channelConfig[key] === undefined ? [] : [[key, channelConfig[key]]],
+          ),
         ),
-      );
-      const childConfig: Record<string, unknown> = {
-        model: loopConfig.model,
-        thinkingLevel: loopConfig.thinkingLevel,
-        ...(loopConfig.fallbackModelRef
-          ? { fallbackModel: loopConfig.fallbackModelRef }
-          : {}),
-        ...(loopConfig.fallbackThinkingLevel
-          ? { fallbackThinkingLevel: loopConfig.fallbackThinkingLevel }
-          : {}),
-        ...(loopConfig.fallbackFailureCodes
-          ? { fallbackOn: [...loopConfig.fallbackFailureCodes] }
-          : {}),
-        ...(loopConfig.fallbackScope
-          ? { fallbackScope: loopConfig.fallbackScope }
-          : {}),
-        approvalLevel: loopConfig.approvalLevel,
-        respondPolicy: loopConfig.respondPolicy,
-        ...inheritedPromptConfig,
-        ...(requestedChildConfig ?? {}),
+        ...overrides,
       };
-      // Validate the effective Pi model configuration before minting any
-      // context or entity. A caller typo is a local argument error, not a
-      // partially-created lifecycle that must be repaired through teardown.
-      // This uses the same materialization boundary as loopConfig(), so child
-      // admission and execution cannot disagree about catalog availability.
-      const childModel = childConfig["model"];
       if (
-        typeof childModel !== "string" ||
-        !this.materializedModel(channelId, childModel)
-      ) {
-        return {
-          result:
-            `Agent model ${JSON.stringify(childModel)} could not be materialized; ` +
-            "select a model present in the current catalog before starting the agent",
-          isError: true,
-        };
-      }
-      const childFallbackModel = childConfig["fallbackModel"];
-      if (
-        childFallbackModel !== undefined &&
-        (typeof childFallbackModel !== "string" ||
-          !this.materializedModel(channelId, childFallbackModel))
-      ) {
-        return {
-          result:
-            `Agent fallback model ${JSON.stringify(childFallbackModel)} could not be materialized; ` +
-            "select a fallback model present in the current catalog before starting the agent",
-          isError: true,
-        };
-      }
-      // A Pi child inherits the parent's executable identity. Letting model
-      // arguments choose an arbitrary package here conflates the task's source
-      // repository with a runtime worker and can launch the wrong code (or a
-      // non-runtime package). Model selection does not replace the worker.
-      const source = String(this.env["WORKER_SOURCE"] ?? "");
-      const className =
-        childConfig && typeof childConfig["className"] === "string"
-          ? String(childConfig["className"])
-          : String(this.env["WORKER_CLASS_NAME"] ?? this.constructor.name);
-      if (!source) {
-        return {
-          result: "spawn_subagent could not resolve a child source",
-          isError: true,
-        };
-      }
-
-      const parentContextId = this.subscriptions.getContextId(channelId);
-      const ownerEntityId = this.participantId();
-      const ownerRuntimeContextId = await invocationRpc.call<string | null>(
-        "main",
-        "runtime.resolveContext",
-        [ownerEntityId],
-      );
-      if (ownerRuntimeContextId && ownerRuntimeContextId !== parentContextId) {
-        console.warn("[AgentVessel] spawn_subagent context mismatch", {
-          channelId,
-          invocationId,
-          ownerEntityId,
-          ownerRuntimeContextId,
-          subscriptionContextId: parentContextId,
-        });
+        typeof config["model"] !== "string" ||
+        !this.materializedModel(binding.channelId, config["model"])
+      )
         throw new Error(
-          `spawn_subagent context mismatch: owner ${ownerEntityId} is registered in ` +
-            `${ownerRuntimeContextId}, but channel ${channelId} is subscribed as ${parentContextId}`,
+          "Child model cannot be materialized: " + String(config["model"]),
         );
-      }
-
-      // 1) Child context (deterministic; runtime records the lifecycle edge).
-      const { contextId } = await createSubagentContext(invocationRpc, {
-        parentContextId,
-        ownerEntityId,
-        targetKey,
-      });
-
-      // 2) Child agent entity in that context. createEntity derives parentId from
-      //    the verified caller (this vessel) → the entity→entity edge lands.
-      const parentSubagent = this.subagentIdentity();
-      const lineageParticipantIds =
-        mode === "fork"
-          ? [
-              ...new Set([
-                ...(parentSubagent?.lineageParticipantIds ?? []),
-                ...(parentSubagent?.mode === "fork"
-                  ? [parentSubagent.parentParticipantId]
-                  : []),
-                this.participantId(),
-              ]),
-            ]
-          : [];
-      const childHandle = await createAgentEntity(invocationRpc, {
-        source,
-        className,
-        key: targetKey,
-        contextId,
-        agentChannelId: taskChannelId,
-        config: childConfig,
-        stateArgs: {
-          subagent: {
-            runId,
-            task,
-            mode,
-            parentRef: ownerEntityId,
-            parentChannelId: channelId,
-            taskChannelId,
-            parentContextId,
-            depth: childDepth,
-            parentParticipantId: this.participantId(),
-            lineageParticipantIds,
-          },
-        },
-      });
-
-      // 3) Record the run BEFORE any wake so replay + teardown can find it.
-      const now = Date.now();
-      const run: SubagentRunRow = {
-        runId,
-        taskChannelId,
-        parentContextId: parentContextId ?? null,
-        childContextId: contextId,
-        childEntityId: childHandle.id ?? childHandle.targetId,
-        childParticipantId: null,
-        parentChannelId: channelId,
-        mode,
-        label,
-        depth: childDepth,
-        status: "starting",
-        sourceEventId: null,
-        semanticIntegrationSnapshot: null,
-        startedAt: now,
-        lastActivityAt: now,
-        launchConfig: observableSubagentLaunchConfig(childConfig),
-      };
-      this.subagentRuns.insert(run);
-
-      // 4) For forked subagents, the spawn orchestrator creates the task
-      // trajectory fork before ANY task-channel participant subscribes. That
-      // keeps observer-side roster/presence bookkeeping from claiming the task
-      // trajectory as a root log.
-      const parentLogId = logIdForChannel(channelId);
-      const parentSeq =
-        mode === "fork" ? await this.trajectoryForkSeq(channelId) : 0;
-      if (mode === "fork") {
-        await this.ensureSubagentTaskTrajectoryFork({
-          parentLogId,
-          parentSeq,
-          taskChannelId,
+      const fallback = config["fallbackModel"];
+      if (
+        fallback !== undefined &&
+        (typeof fallback !== "string" ||
+          !this.materializedModel(binding.channelId, fallback))
+      )
+        throw new Error(
+          "Child fallback model cannot be materialized: " + String(fallback),
+        );
+      const targetKey = `subagent:${execution.invocationId}`;
+      let knowledge: NativeChannelKnowledge | null = null;
+      if (p.mode === "fork") {
+        const snapshot = await this.createChannelClient(
+          binding.channelId,
+          execution.rpc,
+        ).getReplayAfter({ after: 0 });
+        const throughSequence = snapshot.ready.snapshotLastSeq;
+        if (typeof throughSequence !== "number")
+          throw new Error("Child fork has no canonical channel frontier");
+        knowledge = await this.exportChannelKnowledge({
+          operationId: targetKey,
+          channelId: binding.channelId,
+          throughSequence,
         });
       }
-
-      // 5) Bring the child online on the task channel.
-      let childParticipantId: string;
-      if (mode === "fork") {
-        const childSubscription = await initAgentFromTrajectoryFork(
-          invocationRpc,
-          childHandle,
-          {
-            parentLogId,
-            seq: parentSeq,
-            taskChannelId,
-            contextId,
-            config: childConfig,
-          },
-        );
-        childParticipantId = childSubscription.participantId;
-      } else {
-        const childSubscription = await subscribeAgentToChannel(
-          invocationRpc,
-          childHandle,
-          {
-            channelId: taskChannelId,
-            contextId,
-            config: childConfig,
-            replay: false,
-          },
-        );
-        childParticipantId = childSubscription.participantId;
-      }
-      this.subagentRuns.setChildParticipantId(runId, childParticipantId);
-      const effectiveChildSettings = await invocationRpc.call<
-        Record<string, unknown>
-      >(childHandle.targetId, "getAgentSettings", []);
-      for (const key of ["model", "thinkingLevel"] as const) {
-        const requested = requestedChildConfig?.[key];
-        if (
-          requested !== undefined &&
-          effectiveChildSettings[key] !== requested
-        ) {
-          throw new Error(
-            `spawn_subagent effective ${key} mismatch: requested ${JSON.stringify(requested)}, ` +
-              `started ${JSON.stringify(effectiveChildSettings[key])}`,
-          );
-        }
-      }
-      const effectiveLaunchConfig =
-        observableSubagentLaunchConfig(effectiveChildSettings) ??
-        observableSubagentLaunchConfig(childConfig);
-      this.subagentRuns.setLaunchConfig(runId, effectiveLaunchConfig);
-
-      // 6) Supervisor stance on the task channel (§9): delivery interest
-      // "addressed" — child tool activity stays in the canonical task log
-      // with ZERO supervisor mailbox rows; only utterances addressed to the
-      // supervisor (child `notify` carries the parent audience) create parent
-      // work. NOTE: any future parent-made channel_call against a task
-      // channel would need addressed invocation terminals before it could
-      // settle under this stance.
-      await this.subscribeChannel({
-        channelId: taskChannelId,
-        contextId,
-        config: { wakePolicy: "explicit" },
-        replay: false,
-        delivery: "addressed",
-      });
-
-      // 6b) Stamp task provenance on the task channel so its getProvenance
-      //     reports kind:"task" (B1) — parent home channel + context + runId.
-      await this.createChannelClient(taskChannelId).recordTaskProvenance({
-        parentChannelId: channelId,
-        parentContextId: parentContextId ?? "",
-        runId,
-      });
-
-      // 6) Durable run record on the parent's home channel (the subagent card),
-      // then transition from setup to live before the child sees a task prompt.
-      const startedRun = this.subagentRuns.get(runId);
-      if (!startedRun?.childParticipantId) {
-        throw new Error(
-          `Subagent ${runId} reached publication without its participant identity`,
-        );
-      }
-      await this.publishSubagentStarted(startedRun);
-      this.subagentRuns.setStatus(runId, "running");
-      const runningRun = this.subagentRuns.get(runId) ?? {
-        ...startedRun,
-        status: "running" as const,
-      };
-
-      // 7) Seed the task prompt (both modes, when provided).
-      await this.publishSubagentSeed(runningRun, task);
-
       return {
-        result: {
-          protocolContent: [
-            { type: "text", text: subagentLaunchReceipt(runningRun) },
-          ],
-          details: this.subagentRunDetails(runningRun),
-        },
-        isError: false,
+        kind: "vibestudio.child-launch",
+        conversationId: api.conversationId,
+        taskId: api.taskId,
+        invocationId: execution.invocationId,
+        channelId: binding.channelId,
+        targetKey,
+        childContextId: contextIdForTargetKey(targetKey),
+        taskChannelId: `task-${execution.invocationId}`,
+        prepared: copyJson(
+          {
+            mode: p.mode,
+            task: p.task,
+            label:
+              typeof p.label === "string" && p.label.trim()
+                ? p.label
+                : p.mode === "fork"
+                  ? "forked subagent"
+                  : "subagent",
+            config,
+            source: offer["source"],
+            className:
+              typeof config["className"] === "string"
+                ? config["className"]
+                : offer["className"],
+            parentContextId: binding.contextId,
+            ownerEntityId: this.participantId(),
+            depth: offer["depth"],
+            lineageParticipantIds:
+              p.mode === "fork" ? offer["lineageParticipantIds"] : [],
+            requestedConfig: overrides,
+            knowledge,
+            startedAt: Date.now(),
+          },
+          { omitUndefinedProperties: true },
+        ),
       };
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      console.warn("[AgentVessel] spawn_subagent failed", {
-        channelId,
-        invocationId,
-        message,
-      });
-      const run = this.subagentRuns.get(invocationId);
-      if (run && (run.status === "starting" || run.status === "running")) {
-        if (run.status === "running") {
-          try {
-            await this.settleSubagentTerminal(run, "failed", message);
-          } catch (terminalErr) {
-            console.error(
-              `[AgentVessel] subagent setup failure terminal emit failed for ${run.runId}:`,
-              terminalErr,
-            );
-          }
-        }
-        if (run.status === "starting") {
-          await this.rollbackFailedSubagentSpawn(run).catch((rollbackError) => {
-            console.error(
-              `[AgentVessel] subagent spawn rollback failed for ${run.runId}:`,
-              rollbackError,
-            );
-          });
-        }
-      }
-      return { result: message, isError: true };
+    },
+    launch: (intent, api, context) =>
+      this.performNativeChildLaunch(intent, api, context),
+    cleanup: async (intent, api, context) => {
+      const execution = await this.bindNativeToolExecution(api, context);
+      if (execution.invocationId !== intent.invocationId)
+        throw new Error("Child cleanup changed its actual owner");
+      if (this.subscriptions.getParticipantId(intent.taskChannelId))
+        await this.unsubscribeChannel(intent.taskChannelId);
+      await execution.rpc.call("main", "runtime.destroyContext", [
+        { contextId: intent.childContextId, recursive: true },
+      ]);
+      const run = this.subagentRuns.get(intent.invocationId);
+      if (run)
+        await this.settleSubagentTerminal(
+          run,
+          "abandoned",
+          "Child launch cancelled before completion",
+          api,
+          context,
+          execution.rpc,
+          "resource:" + run.runId,
+        );
+    },
+  });
+
+  protected executeNativeSpawn(
+    ...args: Parameters<typeof this.nativeChildLaunch.execute>
+  ) {
+    return this.nativeChildLaunch.execute(...args);
+  }
+  protected cancelNativeSpawn(
+    ...args: Parameters<typeof this.nativeChildLaunch.cancel>
+  ) {
+    return this.nativeChildLaunch.cancel(...args);
+  }
+
+  private async performNativeChildLaunch(
+    intent: NativeChildLaunchIntent,
+    api: ToolExecutionApi,
+    context: Context,
+  ): Promise<ToolExecutionResult> {
+    const execution = await this.bindNativeToolExecution(api, context);
+    if (execution.invocationId !== intent.invocationId)
+      throw new Error("Child launch changed its original invocation");
+    const p = intent.prepared;
+    if (
+      !p ||
+      typeof p !== "object" ||
+      Array.isArray(p) ||
+      (p["mode"] !== "fresh" && p["mode"] !== "fork") ||
+      typeof p["task"] !== "string" ||
+      typeof p["label"] !== "string" ||
+      typeof p["source"] !== "string" ||
+      typeof p["className"] !== "string" ||
+      typeof p["parentContextId"] !== "string" ||
+      typeof p["ownerEntityId"] !== "string" ||
+      typeof p["depth"] !== "number" ||
+      typeof p["startedAt"] !== "number" ||
+      !Array.isArray(p["lineageParticipantIds"]) ||
+      !p["config"] ||
+      typeof p["config"] !== "object" ||
+      Array.isArray(p["config"])
+    )
+      throw new Error("Child launch lost its retained original plan");
+    const config = p["config"];
+    const runId = intent.invocationId;
+    const existing = this.subagentRuns.get(runId);
+    if (existing && existing.status !== "starting") {
+      if (existing.status === "running")
+        await this.publishSubagentSeed(existing, p["task"]);
+      return this.toolText(
+        subagentLaunchReceipt(existing),
+        this.subagentRunDetails(existing),
+      );
     }
+    const invocationRpc = execution.rpc;
+    const { contextId } = await createSubagentContext(invocationRpc, {
+      parentContextId: p["parentContextId"],
+      ownerEntityId: p["ownerEntityId"],
+      targetKey: intent.targetKey,
+    });
+    if (contextId !== intent.childContextId)
+      throw new Error(
+        "Child provisioning changed its admitted resource identity",
+      );
+    const child = await createAgentEntity(invocationRpc, {
+      source: p["source"],
+      className: p["className"],
+      key: intent.targetKey,
+      contextId,
+      agentChannelId: intent.taskChannelId,
+      config,
+      stateArgs: {
+        subagent: {
+          runId,
+          task: p["task"],
+          mode: p["mode"],
+          parentRef: p["ownerEntityId"],
+          parentChannelId: intent.channelId,
+          taskChannelId: intent.taskChannelId,
+          parentContextId: p["parentContextId"],
+          depth: p["depth"],
+          parentParticipantId: this.participantId(),
+          lineageParticipantIds: p["lineageParticipantIds"],
+        },
+      },
+    });
+    const run: SubagentRunRow = existing ?? {
+      runId,
+      taskChannelId: intent.taskChannelId,
+      parentContextId: p["parentContextId"],
+      childContextId: contextId,
+      childEntityId: child.id ?? child.targetId,
+      childParticipantId: null,
+      parentChannelId: intent.channelId,
+      mode: p["mode"],
+      label: p["label"],
+      depth: p["depth"],
+      status: "starting",
+      sourceEventId: null,
+      semanticIntegrationSnapshot: null,
+      startedAt: p["startedAt"],
+      lastActivityAt: p["startedAt"],
+      launchConfig: observableSubagentLaunchConfig(config),
+    };
+    if (
+      run.childContextId !== contextId ||
+      run.childEntityId !== (child.id ?? child.targetId)
+    )
+      throw new Error("Child launch record changed its actual resource owner");
+    this.subagentRuns.insert(run);
+    const subscription =
+      p["mode"] === "fork"
+        ? await importAgentChannelKnowledge(invocationRpc, child, {
+            operationId: intent.targetKey,
+            parentChannelId: intent.channelId,
+            channelId: intent.taskChannelId,
+            contextId,
+            knowledge: p["knowledge"] as unknown as NativeChannelKnowledge,
+            config,
+          })
+        : await subscribeAgentToChannel(invocationRpc, child, {
+            channelId: intent.taskChannelId,
+            contextId,
+            config,
+            replay: false,
+          });
+    this.subagentRuns.setChildParticipantId(runId, subscription.participantId);
+    const effective = await invocationRpc.call<Record<string, unknown>>(
+      child.targetId,
+      "getAgentSettings",
+      [],
+    );
+    for (const key of ["model", "thinkingLevel"] as const)
+      if (effective[key] !== config[key])
+        throw new Error("Child launch changed original " + key);
+    this.subagentRuns.setLaunchConfig(
+      runId,
+      observableSubagentLaunchConfig(effective),
+    );
+    await this.subscribeChannel({
+      channelId: intent.taskChannelId,
+      contextId,
+      config: { wakePolicy: "explicit" },
+      replay: false,
+      delivery: "addressed",
+    });
+    await this.createChannelClient(
+      intent.taskChannelId,
+      invocationRpc,
+    ).recordTaskProvenance({
+      parentChannelId: intent.channelId,
+      parentContextId: p["parentContextId"],
+      runId,
+    });
+    const started = this.subagentRuns.get(runId);
+    if (!started?.childParticipantId)
+      throw new Error("Child launch has no actual participant identity");
+    await this.publishSubagentStarted(started, execution.rpc);
+    this.subagentRuns.setStatus(runId, "running");
+    const running = this.subagentRuns.get(runId);
+    if (!running)
+      throw new Error("Child launch lost its retained collaborator");
+    await this.publishSubagentSeed(running, p["task"]);
+    return this.toolText(
+      subagentLaunchReceipt(running),
+      this.subagentRunDetails(running),
+    );
   }
 
   private subagentRunDetails(run: SubagentRunRow): Record<string, unknown> {
@@ -8290,167 +5558,12 @@ This is one admitted recurring-automation tick. If this tick establishes that th
         { runId },
       );
     }
-    if (existing) return this.hydrateSubagentParentContext(existing.run);
-    // Recovery scans durable lifecycle cards by their exact causality id. An
-    // abbreviated reference can only identify an already indexed run.
-    if (
-      !parentChannelId ||
-      runId.trim().endsWith("...") ||
-      runId.trim().endsWith("…")
-    ) {
-      return null;
+    if (existing) {
+      if (!existing.run.parentContextId)
+        throw new Error("Child run lost its original parent context");
+      return existing.run;
     }
-    return this.recoverSubagentRunFromParentChannel(runId, parentChannelId);
-  }
-
-  private async hydrateSubagentParentContext(
-    run: SubagentRunRow,
-  ): Promise<SubagentRunRow> {
-    if (run.parentContextId) return run;
-    let parentContextId: string | null = null;
-    try {
-      const provenance = await this.createChannelClient(
-        run.taskChannelId,
-      ).getProvenance();
-      if (provenance && typeof provenance === "object") {
-        const record = provenance as Record<string, unknown>;
-        if (
-          record["kind"] === "task" &&
-          typeof record["parentContextId"] === "string"
-        ) {
-          parentContextId = record["parentContextId"];
-        }
-      }
-    } catch {
-      // Older task channels may not expose provenance; fall back below.
-    }
-    parentContextId =
-      parentContextId ?? this.subscriptionContextOrNull(run.parentChannelId);
-    if (!parentContextId) return run;
-    this.subagentRuns.setParentContextId(run.runId, parentContextId);
-    return { ...run, parentContextId };
-  }
-
-  private async recoverSubagentRunFromParentChannel(
-    runId: string,
-    parentChannelId: string,
-  ): Promise<SubagentRunRow | null> {
-    // The subagent lifecycle card is durably published on the parent channel.
-    // Rebuild this local index from that stream after hibernation or teardown.
-    let recovered: SubagentRunRow | null = null;
-    const channel = this.createChannelClient(parentChannelId);
-    for await (const page of iterateChannelReplayAfterPages(
-      (request) => channel.getReplayAfter(request),
-      { after: 0 },
-    )) {
-      for (const event of page.logEvents) {
-        if (event.type !== AGENTIC_EVENT_PAYLOAD_KIND) continue;
-        const agentic =
-          event.payload && typeof event.payload === "object"
-            ? (event.payload as AgenticEvent & { payload?: unknown })
-            : null;
-        if (!agentic) continue;
-        const eventKind =
-          typeof agentic.kind === "string" ? agentic.kind : null;
-        if (!eventKind) continue;
-        const taskId = (agentic.causality as { taskId?: unknown } | undefined)
-          ?.taskId;
-        if (taskId !== runId) continue;
-        const payload =
-          agentic.payload && typeof agentic.payload === "object"
-            ? (agentic.payload as Record<string, unknown>)
-            : {};
-        const details =
-          payload["details"] && typeof payload["details"] === "object"
-            ? (payload["details"] as Record<string, unknown>)
-            : null;
-        const subagent =
-          details?.["subagent"] && typeof details["subagent"] === "object"
-            ? (details["subagent"] as Record<string, unknown>)
-            : null;
-        if (eventKind === "task.started" && subagent) {
-          const taskChannelId = subagent["taskChannelId"];
-          const contextId = subagent["contextId"];
-          const parentContextId = subagent["parentContextId"];
-          const childEntityId = subagent["childEntityId"];
-          const childParticipantId = subagent["childParticipantId"];
-          if (
-            typeof taskChannelId !== "string" ||
-            typeof contextId !== "string" ||
-            typeof childEntityId !== "string" ||
-            typeof childParticipantId !== "string" ||
-            !childParticipantId.trim()
-          ) {
-            continue;
-          }
-          const mode = subagent["mode"] === "fork" ? "fork" : "fresh";
-          const startedAt =
-            Date.parse(
-              typeof agentic.createdAt === "string" ? agentic.createdAt : "",
-            ) ||
-            event.ts ||
-            Date.now();
-          recovered = {
-            runId,
-            taskChannelId,
-            parentContextId:
-              typeof parentContextId === "string"
-                ? parentContextId
-                : this.subscriptionContextOrNull(parentChannelId),
-            childContextId: contextId,
-            childEntityId,
-            childParticipantId,
-            parentChannelId,
-            mode,
-            label:
-              typeof subagent["label"] === "string"
-                ? subagent["label"]
-                : "subagent",
-            depth: this.currentSubagentDepth() + 1,
-            status: "running",
-            sourceEventId: null,
-            semanticIntegrationSnapshot: null,
-            startedAt,
-            lastActivityAt: startedAt,
-            launchConfig:
-              subagent["launchConfig"] &&
-              typeof subagent["launchConfig"] === "object" &&
-              !Array.isArray(subagent["launchConfig"])
-                ? (subagent["launchConfig"] as Record<string, unknown>)
-                : null,
-          };
-          continue;
-        }
-        if (!recovered) continue;
-        const result =
-          payload["result"] && typeof payload["result"] === "object"
-            ? (payload["result"] as Record<string, unknown>)
-            : null;
-        const terminalDetails =
-          result?.["details"] && typeof result["details"] === "object"
-            ? (result["details"] as Record<string, unknown>)
-            : details;
-        if (
-          terminalDetails &&
-          typeof terminalDetails["sourceEventId"] === "string"
-        ) {
-          recovered = {
-            ...recovered,
-            sourceEventId: terminalDetails["sourceEventId"],
-          };
-        }
-        if (eventKind === "task.failed") {
-          recovered = { ...recovered, status: "failed" };
-        } else if (eventKind === "task.cancelled") {
-          recovered = { ...recovered, status: "cancelled" };
-        } else if (eventKind === "task.abandoned") {
-          recovered = { ...recovered, status: "abandoned" };
-        }
-      }
-    }
-    if (!recovered) return null;
-    this.subagentRuns.insert(recovered);
-    return this.subagentRuns.get(runId) ?? recovered;
+    return null;
   }
 
   private async publishSubagentSeed(
@@ -8492,7 +5605,8 @@ This is one admitted recurring-automation tick. If this tick establishes that th
     runId: string,
     message: string,
     parentChannelId?: string,
-  ): Promise<AgentToolResult<Record<string, unknown>>> {
+    toolRpc: RpcClient = this.rpc,
+  ): Promise<ToolExecutionResult> {
     const run = await this.resolveSubagentRun(runId, parentChannelId);
     if (!run) {
       throw this.subagentReferenceError(`unknown subagent run ${runId}`, {
@@ -8535,7 +5649,7 @@ This is one admitted recurring-automation tick. If this tick establishes that th
       );
     }
     const messageId = `subagent-msg:${toolCallId}`;
-    await this.createChannelClient(run.taskChannelId).send(
+    await this.createChannelClient(run.taskChannelId, toolRpc).send(
       participantId,
       messageId,
       message,
@@ -8561,7 +5675,7 @@ This is one admitted recurring-automation tick. If this tick establishes that th
     query: string,
     parentChannelId?: string,
     page: { limit: number; cursor?: string } = { limit: 20 },
-  ): Promise<AgentToolResult<Record<string, unknown>>> {
+  ): Promise<ToolExecutionResult> {
     const wrapperStartedAt = performance.now();
     const wrapperWallStartedAt = Date.now();
     const run = await this.resolveSubagentRun(runId, parentChannelId);
@@ -8721,7 +5835,7 @@ This is one admitted recurring-automation tick. If this tick establishes that th
     resolutions: VcsMergeInput["resolutions"] = [],
     intentSummary?: string,
     toolRpc: RpcClient = this.rpc,
-  ): Promise<AgentToolResult<Record<string, unknown>>> {
+  ): Promise<ToolExecutionResult> {
     const wrapperStartedAt = performance.now();
     const wrapperWallStartedAt = Date.now();
     const run = await this.resolveSubagentRun(runId, parentChannelId);
@@ -8851,7 +5965,8 @@ This is one admitted recurring-automation tick. If this tick establishes that th
     runId: string,
     afterSeq: number,
     parentChannelId?: string,
-  ): Promise<AgentToolResult<Record<string, unknown>>> {
+    toolRpc: RpcClient = this.rpc,
+  ): Promise<ToolExecutionResult> {
     const run = await this.resolveSubagentRun(runId, parentChannelId);
     if (!run) {
       throw this.subagentReferenceError(`unknown subagent run ${runId}`, {
@@ -8860,6 +5975,7 @@ This is one admitted recurring-automation tick. If this tick establishes that th
     }
     const envelope = await this.createChannelClient(
       run.taskChannelId,
+      toolRpc,
     ).getReplayAfter({
       after: Number.isFinite(afterSeq) ? afterSeq : 0,
     });
@@ -8911,51 +6027,93 @@ This is one admitted recurring-automation tick. If this tick establishes that th
   /** Cancel current execution while retaining the collaborator and context. */
   protected async cancelSubagent(
     runId: string,
-    toolCallId: string,
     reason: string,
-    parentChannelId?: string,
-    toolRpc: RpcClient = this.rpc,
-  ): Promise<AgentToolResult<Record<string, unknown>>> {
-    const run = await this.resolveSubagentRun(runId, parentChannelId);
-    if (!run)
-      throw this.subagentReferenceError(`unknown subagent run ${runId}`, {
-        runId,
-      });
-    if (run.status !== "starting" && run.status !== "running") {
-      return this.toolText(
-        `Subagent ${subagentRunHandle(run.runId)} is already ${run.status}; no cancellation was performed.`,
-        { ...this.subagentRunDetails(run), cancelled: false, terminal: true },
+    api: ToolExecutionApi,
+    context: Context,
+    parentChannelId: string,
+    toolRpc: RpcClient,
+    admit = true,
+  ): Promise<ToolExecutionResult> {
+    let intent = api.continuation;
+    if (intent === undefined) {
+      if (!admit) return { content: [] };
+      const run = await this.resolveSubagentRun(runId, parentChannelId);
+      if (!run)
+        throw this.subagentReferenceError("unknown subagent run " + runId, {
+          runId,
+        });
+      const activity =
+        run.status === "abandoned"
+          ? { active: false }
+          : await toolRpc.call<{ active: boolean }>(
+              run.childEntityId,
+              "readSubagentExecutionActivity",
+              [{ runId: run.runId, taskChannelId: run.taskChannelId }],
+              { signal: context.abortSignal },
+            );
+      if (!activity.active)
+        return this.toolText(
+          "Subagent " +
+            subagentRunHandle(run.runId) +
+            " is already " +
+            run.status,
+          { ...this.subagentRunDetails(run), cancelled: false, terminal: true },
+        );
+      const execution = await this.bindNativeToolExecution(api, context);
+      intent = copyJson(
+        {
+          kind: "vibestudio.child-cancellation",
+          conversationId: api.conversationId,
+          taskId: api.taskId,
+          operationId: execution.invocationId,
+          run,
+          reason,
+        },
+        { omitUndefinedProperties: true },
       );
+      await api.retainContinuation(intent, () => {}, context);
     }
-    // Durable cancel intent BEFORE any side effect: a crash anywhere between
-    // the child abort and the terminal settle re-drives through the wake
-    // queue instead of leaking a fenced-but-`running` run and its slot.
-    const wakeId = `subagent-cancel-settle:${run.runId}:${toolCallId}`;
-    const now = Date.now();
-    this.ctx.storage.transactionSync(() => {
-      this.sql.exec(
-        `INSERT OR IGNORE INTO agent_wake_queue (
-           wake_id, channel_id, wake_kind, payload_json, prerequisite_delivery_id,
-           idempotency_key, attempts, next_attempt_at, lease_generation, created_at,
-           disposition
-         ) VALUES (?, ?, 'subagent-cancel-settle', ?, NULL, ?, 0, ?, 0, ?, 'ready')`,
-        wakeId,
-        run.parentChannelId,
-        JSON.stringify({ runId: run.runId, reason }),
-        wakeId,
-        // Eligible only after a grace delay: the inline drive below is the
-        // normal path; the wake row is the crash-recovery driver.
-        now + CHANNEL_ENVELOPE_RETRY_MS,
-        now,
-      );
-    });
-    await this.driveCancelSubagent(run.runId, reason, toolRpc);
-    const terminal = this.subagentRuns.get(run.runId) ?? {
-      ...run,
-      status: "cancelled" as const,
-    };
-    return this.toolText(`cancelled subagent ${subagentRunHandle(run.runId)}`, {
-      ...this.subagentRunDetails(terminal),
+    if (
+      !intent ||
+      typeof intent !== "object" ||
+      Array.isArray(intent) ||
+      intent["kind"] !== "vibestudio.child-cancellation" ||
+      intent["conversationId"] !== api.conversationId ||
+      intent["taskId"] !== api.taskId ||
+      typeof intent["operationId"] !== "string" ||
+      typeof intent["reason"] !== "string" ||
+      !intent["run"] ||
+      typeof intent["run"] !== "object" ||
+      Array.isArray(intent["run"])
+    )
+      throw new Error("Child cancellation lost its original native owner");
+    const run = intent["run"] as unknown as SubagentRunRow;
+    if (run.parentChannelId !== parentChannelId)
+      throw new Error("Child cancellation changed its original parent");
+    await toolRpc.call(
+      run.childEntityId,
+      "cancelSubagentExecution",
+      [
+        {
+          operationId: intent["operationId"],
+          runId: run.runId,
+          taskChannelId: run.taskChannelId,
+          reason: intent["reason"],
+        },
+      ],
+      { signal: context.abortSignal },
+    );
+    await this.settleSubagentTerminal(
+      run,
+      "cancelled",
+      intent["reason"],
+      api,
+      context,
+      toolRpc,
+      intent["operationId"],
+    );
+    return this.toolText("Cancelled subagent " + subagentRunHandle(run.runId), {
+      ...this.subagentRunDetails(this.subagentRuns.get(run.runId) ?? run),
       cancelled: true,
       retained: true,
     });
@@ -8964,17 +6122,6 @@ This is one admitted recurring-automation tick. If this tick establishes that th
   /** Idempotent core of cancellation: interrupt the current execution, then
    *  settle its cancellation fact. The retained collaborator may later run
    *  another assignment through the same handle and context. */
-  private async driveCancelSubagent(
-    runId: string,
-    reason: string,
-    toolRpc: RpcClient = this.rpc,
-  ): Promise<void> {
-    const run = this.subagentRuns.get(runId);
-    if (!run || (run.status !== "starting" && run.status !== "running")) return;
-    await toolRpc.call(run.childEntityId, "cancelSubagentExecution", [
-      { runId: run.runId, taskChannelId: run.taskChannelId, reason },
-    ]);
-  }
 
   @rpc({
     website: {
@@ -8988,6 +6135,7 @@ This is one admitted recurring-automation tick. If this tick establishes that th
     sensitivity: "write",
   })
   async cancelSubagentExecution(input: {
+    operationId: string;
     runId: string;
     taskChannelId: string;
     reason: string;
@@ -8996,13 +6144,29 @@ This is one admitted recurring-automation tick. If this tick establishes that th
     if (
       !subagent ||
       subagent.runId !== input.runId ||
+      subagent.taskChannelId !== input.taskChannelId ||
       subagent.parentRef !== this.rpcCallerId
     ) {
       throw new Error(
         "cancelSubagentExecution: caller does not own this subagent run",
       );
     }
-    await this.driver.abortChannel(input.taskChannelId, input.reason);
+    const context = {
+      ...BACKGROUND_CONTEXT,
+      abortSignal: this.rpcAbortSignal ?? undefined,
+    };
+    const conversation = await this.admittedNativeChannelConversation(
+      input.taskChannelId,
+    );
+    if (!conversation)
+      throw new Error("Child cancellation has no admitted native conversation");
+    const taskId = await this.nativeConversationCancellation.admit(
+      conversation,
+      input.operationId,
+      context,
+    );
+    await this.admittedAgentSession().waitForTask(taskId, context);
+    await this.reconcileAgentAuthority();
     return { cancelled: true };
   }
 
@@ -9034,9 +6198,51 @@ This is one admitted recurring-automation tick. If this tick establishes that th
     return { active: await this.subagentExecutionActive(input.taskChannelId) };
   }
 
+  private async liveSubagentExecutionCount(
+    rpc: RpcCaller,
+    parentChannelId?: string,
+  ): Promise<number> {
+    const runs = this.subagentRuns
+      .listAll()
+      .filter(
+        (run) =>
+          run.status !== "abandoned" &&
+          (parentChannelId === undefined ||
+            run.parentChannelId === parentChannelId),
+      );
+    const activity = await Promise.all(
+      runs.map(async (run) => {
+        if (run.status === "starting") return true; // Original provisioning still owns the slot.
+        const state = await rpc.call<{ active: boolean }>(
+          run.childEntityId,
+          "readSubagentExecutionActivity",
+          [{ runId: run.runId, taskChannelId: run.taskChannelId }],
+        );
+        return state.active;
+      }),
+    );
+    return activity.filter(Boolean).length;
+  }
+
   protected async subagentExecutionActive(channelId: string): Promise<boolean> {
-    await this.driver.loop(channelId);
-    return this.driver.hasOpenTurn(channelId);
+    const conversation =
+      await this.admittedNativeChannelConversation(channelId);
+    if (!conversation) return false;
+    const inspection =
+      await this.admittedAgentSession().inspect(BACKGROUND_CONTEXT);
+    return (
+      inspection.tasks.some(
+        ({ record }) =>
+          record.conversationId === conversation.id &&
+          !record.background &&
+          record.state.status !== "terminal",
+      ) ||
+      inspection.submissions.some(
+        (submission) =>
+          submission.conversationId === conversation.id &&
+          (submission.status === "queued" || submission.status === "placed"),
+      )
+    );
   }
 
   @rpc({
@@ -9059,13 +6265,17 @@ This is one admitted recurring-automation tick. If this tick establishes that th
     if (
       !subagent ||
       subagent.runId !== input.runId ||
+      subagent.taskChannelId !== input.taskChannelId ||
       subagent.parentRef !== this.rpcCallerId
     ) {
       throw new Error(
         "retireSubagentExecution: caller does not own this subagent run",
       );
     }
-    await this.driver.abortChannel(input.taskChannelId, input.reason);
+    await this.interruptChannelAndCancelDeferredEvals(
+      input.taskChannelId,
+      true,
+    );
     return { retired: true };
   }
 
@@ -9093,16 +6303,27 @@ This is one admitted recurring-automation tick. If this tick establishes that th
     run: SubagentRunRow,
     outcome: "failed" | "cancelled" | "abandoned",
     text: string,
+    port?: Pick<ToolExecutionApi, "commit">,
+    context: Context = BACKGROUND_CONTEXT,
+    rpc: RpcClient = this.rpc,
+    operationId = "resource:" + run.runId,
   ): Promise<void> {
     const canonicalStatus = await this.publishSubagentTerminal(
       run,
       outcome,
       text,
+      port,
+      context,
+      rpc,
+      operationId,
     );
     this.subagentRuns.setStatus(run.runId, canonicalStatus);
   }
 
-  private async publishSubagentStarted(run: SubagentRunRow): Promise<void> {
+  private async publishSubagentStarted(
+    run: SubagentRunRow,
+    rpc: RpcClient,
+  ): Promise<void> {
     const participantId =
       this.subscriptions.getParticipantId(run.parentChannelId) ??
       this.participantId();
@@ -9142,36 +6363,63 @@ This is one admitted recurring-automation tick. If this tick establishes that th
           },
         },
       },
-      createdAt: new Date().toISOString(),
+      createdAt: new Date(run.startedAt).toISOString(),
     } as unknown as AgenticEvent;
-    await this.createChannelClient(run.parentChannelId).publishAgenticEvent(
-      participantId,
-      event,
-      {
-        idempotencyKey: `subagent-started:${run.runId}`,
-        senderMetadata: actor.metadata,
-      },
-    );
+    await this.createChannelClient(
+      run.parentChannelId,
+      rpc,
+    ).publishAgenticEvent(participantId, event, {
+      idempotencyKey: `subagent-started:${run.runId}`,
+      senderMetadata: actor.metadata,
+    });
   }
 
   private async publishSubagentTerminal(
     run: SubagentRunRow,
     outcome: "failed" | "cancelled" | "abandoned",
     text: string,
+    port: Pick<ToolExecutionApi, "commit"> | undefined,
+    context: Context,
+    rpc: RpcClient,
+    operationId: string,
   ): Promise<"failed" | "cancelled" | "abandoned"> {
-    const kindByOutcome = {
-      failed: "task.failed",
-      cancelled: "task.cancelled",
-      abandoned: "task.abandoned",
-    } as const;
-    const terminalOutcomeByOutcome = {
-      failed: "tool_error",
-      cancelled: "cancelled",
-      abandoned: "abandoned",
-    } as const;
     const participantId =
-      this.subscriptions.getParticipantId(run.taskChannelId) ??
+      this.subscriptions.getParticipantId(run.parentChannelId) ??
       this.participantId();
+    const channel = this.createChannelClient(run.parentChannelId, rpc);
+    const key = "subagent-terminal:" + run.runId + ":" + operationId;
+    const canonicalStatus = (canonical: ChannelEvent | null) => {
+      if (!canonical) return null;
+      if (
+        canonical.type !== AGENTIC_EVENT_PAYLOAD_KIND ||
+        canonical.senderId !== participantId
+      )
+        throw new Error(
+          "Supervisor terminal receipt changed its original sender",
+        );
+      const accepted = canonical.payload as AgenticEvent;
+      const status = this.subagentTerminalStatus(accepted, run.runId);
+      if (
+        !status ||
+        ![
+          participantId,
+          ...(status === "failed" ? [run.childParticipantId] : []),
+        ].includes(accepted.actor.participantId ?? accepted.actor.id)
+      )
+        throw new Error(
+          "Supervisor terminal receipt changed its original owner",
+        );
+      return status;
+    };
+    const accepted = canonicalStatus(
+      (await channel.getEnvelope("ik:" + key)) as ChannelEvent | null,
+    );
+    if (accepted) return accepted;
+    const conversation = await this.admittedNativeChannelConversation(
+      run.parentChannelId,
+    );
+    if (!conversation || !run.parentContextId)
+      throw new Error("Supervisor terminal publication lost its native parent");
     const actor: ActorRef = {
       kind: "agent",
       id: participantId,
@@ -9183,59 +6431,69 @@ This is one admitted recurring-automation tick. If this tick establishes that th
         taskChannelId: run.taskChannelId,
       },
     };
-    // The retained committed source event travels with the terminal event so a
-    // replay-recovered receipt keeps its raw-VCS recovery recipe (the run row
-    // may have been refreshed after `run` was captured).
+    const kindByOutcome = {
+      failed: "task.failed",
+      cancelled: "task.cancelled",
+      abandoned: "task.abandoned",
+    } as const;
+    const terminalOutcome = {
+      failed: "tool_error",
+      cancelled: "cancelled",
+      abandoned: "abandoned",
+    } as const;
     const sourceEventId =
-      this.subagentRuns.get(run.runId)?.sourceEventId ??
-      run.sourceEventId ??
-      null;
-    const terminalDetails = {
-      runId: subagentRunHandle(run.runId),
-      outcome: terminalOutcomeByOutcome[outcome],
-      ...(sourceEventId ? { sourceEventId } : {}),
-    };
-    const payload: Record<string, unknown> = {
-      protocol: AGENTIC_PROTOCOL_VERSION,
-      reason: text,
-      terminalOutcome: terminalOutcomeByOutcome[outcome],
-      to: [{ kind: "participant", participantId }],
-      details: terminalDetails,
-    };
-    const event = {
-      kind: kindByOutcome[outcome],
-      actor,
-      causality: {
-        taskId: run.runId as never,
-        invocationId: run.runId as never,
+      this.subagentRuns.get(run.runId)?.sourceEventId ?? run.sourceEventId;
+    const event = await retainNativeSubagentTerminal(
+      port ?? conversation,
+      conversation.id,
+      {
+        operationId,
+        runId: run.runId,
+        parentChannelId: run.parentChannelId,
+        parentContextId: run.parentContextId,
+        childEntityId: run.childEntityId,
+        childContextId: run.childContextId,
+        taskChannelId: run.taskChannelId,
+        senderId: participantId,
       },
-      payload,
-      createdAt: new Date().toISOString(),
-    } as unknown as AgenticEvent;
-    const taskChannel = this.createChannelClient(run.taskChannelId);
-    await taskChannel.publishAgenticEvent(participantId, event, {
-      idempotencyKey: `subagent-terminal:${run.runId}`,
+      () =>
+        ({
+          kind: kindByOutcome[outcome],
+          actor,
+          causality: { taskId: run.runId, invocationId: run.runId },
+          createdAt: new Date().toISOString(),
+          payload: {
+            protocol: AGENTIC_PROTOCOL_VERSION,
+            reason: text,
+            terminalOutcome: terminalOutcome[outcome],
+            to: [{ kind: "participant", participantId }],
+            details: {
+              runId: subagentRunHandle(run.runId),
+              outcome: terminalOutcome[outcome],
+              ...(sourceEventId ? { sourceEventId } : {}),
+            },
+          },
+        }) as unknown as AgenticEvent,
+      context,
+    );
+    await channel.publishAgenticEvent(participantId, event, {
+      idempotencyKey: key,
       senderMetadata: actor.metadata,
     });
-    const canonicalEnvelope = (await taskChannel.getEnvelope(
-      `ik:subagent-terminal:${run.runId}`,
-    )) as ChannelEvent | null;
-    const canonicalStatus = canonicalEnvelope
-      ? this.authorizedSubagentTerminalStatus(run, canonicalEnvelope)
-      : null;
-    if (!canonicalEnvelope || !canonicalStatus) {
+    const settled = canonicalStatus(
+      (await channel.getEnvelope("ik:" + key)) as ChannelEvent | null,
+    );
+    if (!settled)
       throw new Error(
-        `subagent terminal ${run.runId} has no authorized canonical task-channel event`,
+        "Supervisor cancellation has no canonical parent receipt",
       );
-    }
-    const canonicalEvent = canonicalEnvelope.payload as AgenticEvent;
-    await this.mirrorSubagentTerminalToParent(run, canonicalEvent);
-    return canonicalStatus;
+    return settled;
   }
 
   private authorizedSubagentTerminalStatus(
     run: SubagentRunRow,
     envelope: ChannelEvent,
+    sourceChannelId: string,
   ): "failed" | "cancelled" | "abandoned" | null {
     if (envelope.type !== AGENTIC_EVENT_PAYLOAD_KIND) return null;
     const event = envelope.payload as AgenticEvent;
@@ -9245,12 +6503,14 @@ This is one admitted recurring-automation tick. If this tick establishes that th
     // The retained child may report its own execution failure. Only the
     // supervisor may cancel or abandon it, or report an unreachable child.
     const supervisorParticipantId =
-      this.subscriptions.getParticipantId(run.taskChannelId) ??
+      this.subscriptions.getParticipantId(run.parentChannelId) ??
       this.participantId();
     const supervisor =
+      sourceChannelId === run.parentChannelId &&
       envelope.senderId === supervisorParticipantId &&
       actorParticipantId === supervisorParticipantId;
     const childFailure =
+      sourceChannelId === run.taskChannelId &&
       status === "failed" &&
       envelope.senderId === run.childParticipantId &&
       actorParticipantId === run.childParticipantId;
@@ -9276,8 +6536,20 @@ This is one admitted recurring-automation tick. If this tick establishes that th
 
   private async mirrorSubagentTerminalToParent(
     run: SubagentRunRow,
-    canonicalEvent: AgenticEvent,
+    canonicalEnvelope: ChannelEvent,
   ): Promise<void> {
+    const canonicalEvent = canonicalEnvelope.payload as AgenticEvent;
+    if (
+      !canonicalEnvelope.messageId ||
+      !this.authorizedSubagentTerminalStatus(
+        run,
+        canonicalEnvelope,
+        run.taskChannelId,
+      )
+    )
+      throw new Error(
+        "Subagent terminal mirror lost its original canonical child source",
+      );
     if (!this.subagentTerminalStatus(canonicalEvent, run.runId)) {
       throw new Error(
         `refusing to mirror a non-canonical terminal for subagent ${run.runId}`,
@@ -9289,26 +6561,19 @@ This is one admitted recurring-automation tick. If this tick establishes that th
     await this.createChannelClient(run.parentChannelId).publishAgenticEvent(
       participantId,
       canonicalEvent,
-      { idempotencyKey: `subagent-terminal:${run.runId}` },
+      {
+        idempotencyKey: `subagent-terminal:${run.runId}:source:${sha256HexSyncText(
+          canonicalJson({
+            channelId: run.taskChannelId,
+            messageId: canonicalEnvelope.messageId,
+          }),
+        )}`,
+      },
     );
   }
 
   /** Compensation for a spawn transaction that never reached a published
    * running result. This is intentionally unreachable from normal lifecycle. */
-  private async rollbackFailedSubagentSpawn(
-    run: SubagentRunRow,
-  ): Promise<void> {
-    if (run.status !== "starting") {
-      throw new Error(
-        `refusing spawn rollback for ${run.runId} in ${run.status}`,
-      );
-    }
-    await this.unsubscribeChannel(run.taskChannelId);
-    await this.rpc.call("main", "runtime.destroyContext", [
-      { contextId: run.childContextId, recursive: true },
-    ]);
-    this.subagentRuns.delete(run.runId);
-  }
 
   // ── Wake discipline (explicit supervisor messages / manual) ─────────────────
 
@@ -9354,162 +6619,115 @@ This is one admitted recurring-automation tick. If this tick establishes that th
    * supervisor message is routed to the owning run's parent channel; ordinary
    * progress remains in the durable task-channel log and parent task card.
    */
-  private async resolveWake(
-    channelId: string,
-    event: ChannelEvent,
-    wakePolicy: "explicit" | "manual",
-  ): Promise<boolean> {
-    if (wakePolicy === "manual") {
-      // Never auto-wake; the supervisor reads via the read_subagent tool.
-      return true;
-    }
-    // explicit
-    if (event.senderId === this.participantId()) return true; // our own traffic never wakes us
-    const agentic = event.payload as AgenticEvent | null;
-    const kind = (agentic as { kind?: string } | null)?.kind ?? "";
-    if (agentic !== null && kind === "message.completed") {
-      const payload =
-        ((agentic as AgenticEvent).payload as {
-          saliency?: string;
-          mentions?: string[];
-          to?: Array<{ kind?: string; participantId?: string }>;
-        }) ?? {};
-      if (
-        payload.saliency === "say" ||
-        this.eventAddressesSelf(channelId, payload) ||
-        this.subagentRuns.getByTaskChannel(channelId)?.childParticipantId ===
-          event.senderId
-      ) {
-        await this.wakeSupervisorFromExplicitChildMessage(
-          channelId,
-          event,
-          agentic,
-        );
-      }
-      return true;
-    }
-    if (agentic !== null && kind === "turn.closed") {
-      const run = this.subagentRuns.getByTaskChannel(channelId);
-      if (run?.childParticipantId === event.senderId) {
-        const activity = await this.rpc.call<{ active: boolean }>(
-          run.childEntityId,
-          "readSubagentExecutionActivity",
-          [{ runId: run.runId, taskChannelId: run.taskChannelId }],
-        );
-        if (!activity.active) this.subagentRuns.markExecutionIdle(run.runId);
-        this.subagentRuns.touch(run.runId, Date.now());
-        // A report can reach the parent before the child's closing event. Wake
-        // the parent again after the collaborator becomes idle so a suspended
-        // parent can consume the already-admitted report without phantom work.
-        await this.driver.wake(run.parentChannelId);
-      }
-      return true;
-    }
-    return true;
-  }
 
   /** Route an intentional child-to-supervisor update to the parent without
    *  presenting it as a replacement user request. */
-  private async wakeSupervisorFromExplicitChildMessage(
+  private nativeExplicitChildReport(
     channelId: string,
     event: ChannelEvent,
     agentic: AgenticEvent,
-  ): Promise<void> {
+  ): NativeChannelSelection | null {
     const run = this.subagentRuns.getByTaskChannel(channelId);
-    if (!run) {
-      console.error(
-        "[AgentVessel] refusing explicit task message without an owning subagent run",
-        {
-          taskChannelId: channelId,
-          eventId: event.id ?? null,
-        },
-      );
-      return;
-    }
-    if (run.childParticipantId !== event.senderId) {
-      console.error(
-        "[AgentVessel] refusing task report from a participant other than the retained child",
-        { taskChannelId: channelId, senderId: event.senderId },
-      );
-      return;
-    }
+    if (!run || run.childParticipantId !== event.senderId) return null;
     const update = this.extractMessageText(agentic).trim();
-    if (!update) return;
-    this.subagentRuns.touch(run.runId, Date.now());
-    const label = run.label ? `"${run.label}"` : subagentRunHandle(run.runId);
-    const sourceMessageId =
-      (agentic.causality?.messageId as string | undefined) ?? event.messageId;
-    const content =
-      `Subagent ${label} sent a report for the existing user request.` +
-      `\n\nReport:\n${update}`;
-    await this.driver.handleIncoming(run.parentChannelId, {
-      type: "command",
-      command: {
-        kind: "prompt",
-        channelId: run.parentChannelId,
-        source: {
-          envelopeId: `subagent-explicit:${run.runId}:${event.id ?? event.messageId}`,
-        },
-        ...(sourceMessageId ? { sourceMessageId } : {}),
-        content,
-        senderRef: participantRefFromActor(agentic.actor),
-        metadata: { deliverAfterTurn: true, supervisedRunId: run.runId },
+    if (!update) return null;
+    const label = run.label
+      ? JSON.stringify(run.label)
+      : subagentRunHandle(run.runId);
+    return {
+      targetChannelId: run.parentChannelId,
+      intake: {
+        kind: "input",
+        whenBusy: "followUp",
+        content:
+          "Subagent " +
+          label +
+          " sent a report for the existing user request.\n\nReport:\n" +
+          update,
       },
-    });
+    };
+  }
+
+  private reconcileNativeDeliveryProjection(
+    delivery: ChannelDeliveryInput,
+  ): void {
+    const envelope = delivery.envelope as RpcChannelMessage;
+    if (
+      envelope.kind !== "log" ||
+      !envelope.event ||
+      envelope.event.type !== AGENTIC_EVENT_PAYLOAD_KIND
+    )
+      return;
+    const event = envelope.event;
+    const agentic = event.payload as AgenticEvent;
+    const runId = agentic.causality?.taskId;
+    const run = typeof runId === "string" ? this.subagentRuns.get(runId) : null;
+    if (
+      run &&
+      (run.taskChannelId === delivery.channelId ||
+        run.parentChannelId === delivery.channelId)
+    ) {
+      const status = this.authorizedSubagentTerminalStatus(
+        run,
+        event,
+        delivery.channelId,
+      );
+      if (status) {
+        this.subagentRuns.setStatus(run.runId, status);
+        this.subagentRuns.touch(run.runId, event.ts);
+      }
+    }
   }
 
   // ── Lifecycle ────────────────────────────────────────────────────────────
 
   override async alarm(): Promise<DoAlarmSchedule | null> {
-    await super.alarm();
+    const native = await super.alarm();
     await this.fireAgentAlarms(Date.now());
-    return this.nextAgentAlarmSchedule();
+    const domain = this.nextAgentAlarmSchedule();
+    if (!native) return domain;
+    if (!domain) return native;
+    return { wakeAt: Math.min(native.wakeAt, domain.wakeAt) };
   }
 
-  private activationDebugState(channelId?: string): Record<string, unknown> {
-    const channels = channelId
-      ? [channelId]
-      : this.subscriptions.listChannelIds();
-    const loops: Record<string, unknown> = {};
-    for (const id of channels) {
-      const loop = this._driver?.peekLoadedLoop(id) ?? null;
-      const subscriptionConfig = this.subscriptions.getConfig(id);
-      const promptPresentation = {
-        configured: typeof subscriptionConfig?.systemPrompt === "string",
-        mode:
-          typeof subscriptionConfig?.systemPromptMode === "string"
-            ? subscriptionConfig.systemPromptMode
-            : "append",
-        artifactHash: this.getStateValue(`agent:promptHash:${id}`) ?? null,
-      };
-      if (loop) {
-        loops[id] = {
-          loaded: true,
-          turnStatus: derivedTurnStatus(loop.state),
-          lastSeq: loop.state.lastSeq,
-          pendingInvocations: Object.keys(loop.state.pendingInvocations),
-          pendingApprovals: Object.keys(loop.state.pendingApprovals),
-          pendingCredentialWaits: Object.keys(
-            loop.state.pendingCredentialWaits,
-          ),
-          activeToolNames: loop.state.config.activeToolNames,
-          settings: this.inspectAgentSettings(),
-          promptPresentation,
-        };
-      } else {
-        loops[id] = {
-          loaded: false,
-          note: "No folded loop is loaded in this activation; inspect GAD for durable trajectory state.",
-          promptPresentation,
-        };
-      }
-    }
+  private async nativeChannelInspection(channelId: string) {
+    const harness = this.existingAgentSession();
+    if (!harness)
+      return { loaded: false, channelId, observation: "not-loaded" } as const;
+    const conversation =
+      await this.admittedNativeChannelConversation(channelId);
+    if (!conversation)
+      return {
+        loaded: true,
+        channelId,
+        conversationId: null,
+        observation: "no-admitted-conversation",
+      } as const;
+    return {
+      loaded: true,
+      channelId,
+      ...(await readNativeChannelInspection(
+        harness,
+        conversation.id,
+        BACKGROUND_CONTEXT,
+      )),
+    };
+  }
+
+  private async activationDebugState(
+    channelId?: string,
+  ): Promise<Record<string, unknown>> {
+    const channels = channelId ? [channelId] : this.nativeReasoningChannelIds();
+    const conversations = Object.fromEntries(
+      await Promise.all(
+        channels.map(
+          async (id) => [id, await this.nativeChannelInspection(id)] as const,
+        ),
+      ),
+    );
     return {
       participantId: this.participantId(),
-      loops,
-      outbox: inspectEffectOutbox(this.sql),
-      activeDispatches:
-        this._driver?.activeDispatchDiagnostics?.(channelId) ?? [],
+      conversations,
       retainedSubagentRuns: this.subagentRuns.listAll().length,
       liveSubagentRuns: this.subagentRuns.countLive(),
     };
@@ -9536,19 +6754,10 @@ This is one admitted recurring-automation tick. If this tick establishes that th
    * + active tools + this channel's turn state + an effect summary.
    */
   async describeSelf(channelId: string): Promise<Record<string, unknown>> {
-    let turn: Record<string, unknown> = { status: "idle" };
-    try {
-      const loop = await this.driver.loop(channelId);
-      turn = summarizeTurn(loop.state);
-    } catch {
-      /* loop not loadable yet — report idle */
-    }
-    let activeTools: string[] = [];
-    try {
-      activeTools = [...(await this.toolRegistry(channelId)).keys()];
-    } catch {
-      /* tools unavailable */
-    }
+    const execution = await this.nativeChannelInspection(channelId);
+    const activeTools = (await this.nativeProductTools(channelId)).map(
+      (tool) => tool.name,
+    );
     return {
       identity: {
         id: this.participantId(),
@@ -9561,8 +6770,7 @@ This is one admitted recurring-automation tick. If this tick establishes that th
       config: this.getAgentSettings(),
       channels: this.subscriptions.listAll(),
       tools: { active: activeTools },
-      turn,
-      effects: { outbox: { total: this.driver.outbox.all().length } },
+      execution,
     };
   }
 
@@ -9572,7 +6780,7 @@ This is one admitted recurring-automation tick. If this tick establishes that th
    * which is a UX convenience; all sensitive operations are gated by out-of-band
    * app approvals. Writes the per-agent record (applies to all the agent's channels).
    */
-  configureAgent(patch: Record<string, unknown>): AgentSettings {
+  private validatedSettings(patch: Record<string, unknown>): StoredSettings {
     const next: StoredSettings = {};
     if ("model" in patch) {
       if (typeof patch["model"] !== "string" || !patch["model"]) {
@@ -9652,47 +6860,953 @@ This is one admitted recurring-automation tick. If this tick establishes that th
       }
       next.respondFrom = from as string[];
     }
-    return this.updateSettings(next);
+    return next;
   }
-}
 
-function automationCompletionStateKey(runId: string): string {
-  return `automation:completion:${runId}`;
-}
+  async configureAgent(patch: Record<string, unknown>): Promise<AgentSettings> {
+    return this.updateSettings(this.validatedSettings(patch));
+  }
 
-function automationRunReceiptKey(runId: string): string {
-  return `automation:terminal:${runId}`;
-}
+  private readonly nativeChannelBootstrap = createNativeChannelBootstrap({
+    join: async (binding, intent) => {
+      const prepared = intent as unknown as PreparedChannelSubscription;
+      if (
+        prepared.channelId !== binding.channelId ||
+        prepared.input.contextId !== binding.contextId
+      )
+        throw new Error(
+          "Native bootstrap changed its admitted membership context",
+        );
+      return (await this.subscriptions.joinPrepared(prepared)).envelope;
+    },
+    replayAfter: (binding, request) =>
+      this.createChannelClient(binding.channelId, this.agentRpc).getReplayAfter(
+        request,
+      ),
+    contextForEvent: (binding, event, projected) => {
+      if (!projected || projected.status !== "completed" || projected.retracted)
+        return [];
+      const content = this.turnContent(binding.channelId, {
+        ...event,
+        payload: { payload: { blocks: projected.blocks ?? [] } },
+      });
+      return content
+        ? [
+            {
+              role: "user",
+              content: `[Channel participant ${projected.actor.id}]\n${content}`,
+              timestamp: event.ts,
+            },
+          ]
+        : [];
+    },
+    prepareConfiguration: async (binding, intent, context, imported) => {
+      const conversation = await this.admittedNativeChannelConversation(
+        binding.channelId,
+      );
+      if (!conversation)
+        throw new Error("Native configuration has no bound conversation");
+      const configuration = await retainedNativeChannelKnowledgeConfiguration(
+        this.admittedAgentSession(),
+        conversation.id,
+        context,
+      );
+      await this.restoreNativeAgentKnowledgeConfiguration(
+        binding.channelId,
+        configuration,
+      );
+      const prepared = intent as unknown as PreparedChannelSubscription;
+      const fork = imported
+        ? {
+            oldChannelId: imported.parentChannelId,
+            newChannelId: binding.channelId,
+            forkPointPubsubId: imported.throughSequence,
+          }
+        : null;
+      if (fork) await this.onChannelForked(fork);
+      await this.prepareNativeChannelProduct(
+        binding.channelId,
+        prepared.input.applicationConfig?.value,
+        fork,
+        context,
+      );
+      return this.prepareNativeChannelInitialization(binding.channelId);
+    },
+    afterConfiguration: (binding, _intent, context) =>
+      this.activateNativeChannelProduct(binding.channelId, context),
+  });
 
-function automationRunReceipt(
-  value: string | null,
-  channelId: string,
-): Extract<AutomationExecutorRunStatus, { state: "terminal" }> | null {
-  if (!value) return null;
-  try {
-    const candidate = JSON.parse(value) as Partial<
-      Extract<AutomationExecutorRunStatus, { state: "terminal" }>
-    >;
-    if (
-      candidate.state !== "terminal" ||
-      candidate.channelId !== channelId ||
-      typeof candidate.turnId !== "string" ||
-      ![
-        "succeeded",
-        "completed-with-errors",
-        "failed",
-        "interrupted",
-        "cancelled",
-      ].includes(String(candidate.outcome))
-    ) {
-      return null;
+  protected override nativeProductExtensions(): readonly Extension[] {
+    return [
+      this.nativeModelPolicyExtension,
+      defineExtension({
+        name: "vibestudio.product-lifecycle",
+        tasks: [
+          this.nativeChannelBootstrap.task,
+          this.nativeInputSettlement.task,
+          this.nativeConversationCancellation.task,
+          this.nativeModelReset.task,
+          ...this.nativeAutomationRuns.tasks,
+        ],
+      }),
+    ];
+  }
+
+  private readonly nativeModelPolicy = createNativeProductModelPolicy();
+  private readonly nativeModelPolicyExtension = defineExtension({
+    name: "vibestudio.product-model-policy",
+    hooks: [this.nativeModelPolicy.generationHooks],
+  });
+
+  protected override async prepareNativeChannelConfiguration(
+    tx: Tx,
+    id: ConversationId,
+    configuration: NativeProductChannelConfiguration,
+  ): Promise<void> {
+    await this.nativeModelPolicy.configure(tx, id, configuration.modelPolicy);
+  }
+
+  protected override async awaitNativeChannelReadiness(
+    channelId: string,
+    _conversation: Conversation,
+    context: Context,
+  ): Promise<Conversation> {
+    const harness = this.admittedAgentSession();
+    const owner = await retainedAgentExecutionOwner(harness, context);
+    return this.nativeChannelBootstrap.ready(
+      harness,
+      { channelId, contextId: owner.contextId },
+      context,
+    );
+  }
+
+  protected override nativeReasoningChannelIds(): readonly string[] {
+    return this.subscriptions
+      .listChannelIds()
+      .filter((channelId) => this.subscriptions.ownsReasoningLoop(channelId));
+  }
+
+  private async nativeProductTools(
+    channelId: string,
+  ): Promise<ToolRegistration[]> {
+    const author = (
+      make: (execution?: AgentToolExecutionContext) => ToolRegistration,
+    ) =>
+      authorNativeTool(make, (api, context) =>
+        this.bindNativeToolExecution(api, context),
+      );
+    const tools = [
+      ...(this.includeMemoryRecallTool()
+        ? [author((execution) => this.createMemoryRecallTool(execution))]
+        : []),
+      author((execution) =>
+        this.createAutomationLaunchTool(channelId, execution),
+      ),
+      author((execution) =>
+        this.createAutomationControlTool(channelId, execution),
+      ),
+      author((execution) =>
+        this.createAutomationCompletionTool(channelId, execution),
+      ),
+      ...(await this.getTools(channelId)),
+    ];
+    return [...new Map(tools.map((tool) => [tool.name, tool])).values()];
+  }
+
+  protected override async getNativeChannelConfiguration(
+    channelId: string,
+  ): Promise<NativeProductChannelConfiguration> {
+    await this.refreshLocalModelEntry(channelId);
+    const settings = this.getAgentSettings();
+    const divider = settings.model.indexOf(":");
+    const provider =
+      divider < 0 ? "anthropic" : settings.model.slice(0, divider);
+    const modelId =
+      divider < 0 ? settings.model : settings.model.slice(divider + 1);
+    const materialized = this.materializedModel(channelId, settings.model);
+    if (!materialized)
+      throw new Error("Agent model cannot be materialized: " + settings.model);
+    const fallbackRef = settings.fallbackModel ?? LOCAL_FALLBACK_MODEL_REF;
+    const fallback = this.materializedModel(channelId, fallbackRef);
+    if (!fallback)
+      throw new Error(
+        "Agent fallback model cannot be materialized: " + fallbackRef,
+      );
+    const models = [materialized, fallback];
+    const localModels = [
+      ...new Map(
+        models
+          .filter((model) => model.spec.provider === LOCAL_PROVIDER_ID)
+          .map((model) => [model.spec.id, model]),
+      ).values(),
+    ];
+    if (localModels.length)
+      this.installNativeModelProvider(
+        createProvider({
+          id: LOCAL_PROVIDER_ID,
+          name: "Local models",
+          auth: { apiKey: createProtectedLocalModelAuth() },
+          models: localModels.map(({ spec, toolsCapable }) => ({
+            id: spec.id,
+            name: spec.name,
+            api: "openai-completions",
+            provider: LOCAL_PROVIDER_ID,
+            baseUrl: spec.baseUrl,
+            reasoning: spec.reasoning,
+            input: spec.input,
+            cost: spec.cost,
+            contextWindow: spec.contextWindow,
+            maxTokens: spec.maxTokens,
+            capabilities: { tools: toolsCapable },
+            compat: { supportsReasoningEffort: false },
+          })),
+          api: openAICompletionsApi(),
+        }),
+      );
+    for (const model of models)
+      if (!this.nativeModels().getModel(model.spec.provider, model.spec.id))
+        throw new Error(
+          "Native provider does not contain selected model: " +
+            model.spec.provider +
+            ":" +
+            model.spec.id,
+        );
+    const modelPolicy: NativeProductModelSettings = {
+      primaryModel: { provider, modelId },
+      fallbackModel: {
+        provider: fallback.spec.provider,
+        modelId: fallback.spec.id,
+      },
+      ...(settings.fallbackThinkingLevel
+        ? { fallbackThinkingLevel: settings.fallbackThinkingLevel }
+        : {}),
+      ...(settings.fallbackOn ? { fallbackOn: [...settings.fallbackOn] } : {}),
+      fallbackScope: settings.fallbackScope ?? "unattended",
+      fastMode: settings.fastMode,
+    };
+    const descriptor = this.getEffectiveParticipantInfo(
+      channelId,
+      this.subscriptions.getConfig(channelId),
+    );
+    return {
+      modelPolicy,
+      agent: {
+        model: { provider, modelId },
+        thinkingLevel: settings.thinkingLevel,
+        stream: nativeProductStream(provider, modelId, settings.fastMode),
+        extensions: [this.nativeModelPolicyExtension],
+        instructions: await this.composePrompt(channelId),
+      },
+      tools: await this.nativeProductTools(channelId),
+      projection: {
+        channelId,
+        participantId: this.rpcSelfId,
+        actor: {
+          kind: "agent",
+          id: this.rpcSelfId,
+          participantId: this.rpcSelfId,
+          displayName: descriptor.name,
+        },
+        policy: this.getPublishPolicy(channelId) ?? "all",
+      },
+    };
+  }
+
+  protected override async releaseAgentResources(
+    input: LifecyclePrepareInput,
+    harness: Harness,
+  ): Promise<void> {
+    const reason = new Error("Agent activation released");
+    const cleanup: Promise<unknown>[] = [
+      this.channelMethodRelays.release(reason),
+      this.directMethodCalls.release(reason),
+      this.releaseNativeModelHelpers(reason),
+      this.nativeAutomationRuns.drain(BACKGROUND_CONTEXT),
+    ];
+    if (input.mode === "retire") {
+      for (const channelId of this.subscriptions.listChannelIds()) {
+        if (!this.subscriptions.ownsReasoningLoop(channelId)) continue;
+        cleanup.push(
+          (async () => {
+            const owner = await retainedAgentExecutionOwner(
+              harness,
+              BACKGROUND_CONTEXT,
+            );
+            await this.nativeChannelBootstrap.cancel(
+              harness,
+              { channelId, contextId: owner.contextId },
+              BACKGROUND_CONTEXT,
+            );
+            const conversation =
+              await this.admittedNativeChannelConversation(channelId);
+            if (conversation)
+              await conversation.abort(BACKGROUND_CONTEXT, {
+                background: true,
+              });
+          })(),
+        );
+      }
     }
-    return candidate as Extract<
-      AutomationExecutorRunStatus,
-      { state: "terminal" }
-    >;
-  } catch {
-    return null;
+    this.requireResourceCleanup(await Promise.allSettled(cleanup));
+    if (input.mode === "retire") await this.retireRetainedSubagents();
+    // Abort handlers can create settlement/publication debt. Drain it while the
+    // original channel membership still exists; unsubscribe is the final step.
+    await this.nativeAutomationRuns.drain(BACKGROUND_CONTEXT);
+    if (input.mode === "retire") {
+      await this.drainNativeRetirement(harness);
+      this.requireResourceCleanup(
+        await Promise.allSettled(
+          this.subscriptions
+            .listChannelIds()
+            .map((channelId) =>
+              this.subscriptions.unsubscribeFromChannel(channelId),
+            ),
+        ),
+      );
+    }
+  }
+
+  private async drainNativeRetirement(harness: Harness): Promise<void> {
+    // Cleanup handlers can admit their owned publication/acknowledgement tasks.
+    // Join each concrete generation of that debt before releasing membership.
+    for (;;) {
+      const tasks = (await harness.inspect(BACKGROUND_CONTEXT)).tasks
+        .map(({ record }) => record)
+        .filter((task) => task.state.status !== "terminal");
+      if (!tasks.length) return;
+      this.requireResourceCleanup(
+        await Promise.allSettled(
+          tasks.map(async (task) => {
+            await harness.abortTask(task.id, BACKGROUND_CONTEXT);
+            await harness.waitForTask(task.id, BACKGROUND_CONTEXT);
+          }),
+        ),
+      );
+    }
+  }
+
+  private requireResourceCleanup(
+    results: PromiseSettledResult<unknown>[],
+  ): void {
+    const failures = results.flatMap((result) =>
+      result.status === "rejected" ? [result.reason] : [],
+    );
+    if (failures.length === 1) throw failures[0];
+    if (failures.length)
+      throw new AggregateError(failures, "Agent resource cleanup failed", {
+        cause: failures[0],
+      });
+  }
+
+  private readonly nativeAutomationRuns = createNativeAutomationRuns({
+    harness: () => this.admittedAgentSession(),
+    conversation: (channelId, context) =>
+      this.nativeChannelConversation(channelId, context),
+    finishRun: async (input, context) => {
+      const service = await this.agentRpc.call<{
+        kind: "durable-object" | "worker";
+        targetId?: string;
+      }>("main", "workers.resolveService", ["vibestudio.missions.v1"], {
+        signal: context.abortSignal,
+      });
+      if (service.kind !== "durable-object" || !service.targetId)
+        throw new Error(
+          "The automation ledger must resolve to a Durable Object",
+        );
+      await this.agentRpc.call(service.targetId, "finishRun", [input], {
+        signal: context.abortSignal,
+      });
+    },
+  });
+
+  private readonly nativeEvalExecution = createNativeEvalExecution({
+    harness: () => this.admittedAgentSession(),
+    acknowledgements: this.agentEvalAcknowledgements,
+    scopeForConversation: async (conversationId, context) =>
+      (
+        await retainedNativeConversationChannel(
+          this.admittedAgentSession(),
+          conversationId,
+          context,
+        )
+      ).channelId,
+    bindExecution: (api, context) => this.bindNativeToolExecution(api, context),
+    readArtifact: (digest) => this.getCachedBlobText(digest),
+  });
+
+  protected executeNativeEval(
+    ...args: Parameters<NativeEvalExecution["execute"]>
+  ) {
+    return this.nativeEvalExecution.execute(...args);
+  }
+  protected cancelNativeEval(
+    ...args: Parameters<NativeEvalExecution["cancel"]>
+  ) {
+    return this.nativeEvalExecution.cancel(...args);
+  }
+
+  protected override async prepareNativeChannelInput(
+    tx: Tx,
+    input: Parameters<NativeChannelInputPrepare>[1],
+  ): Promise<void> {
+    const envelope = input.delivery.envelope as RpcChannelMessage;
+    const interaction =
+      envelope.kind === "log" && envelope.event
+        ? this.turnMetadata(envelope.event)?.interaction
+        : undefined;
+    // Channel-authored UI choices are product input; execution authority and
+    // unattended origin come only from the original admitted automation path.
+    await recordNativeProductInput(
+      tx,
+      input.submissionId,
+      input.binding.channelId,
+      interaction ? { interaction } : undefined,
+    );
+  }
+
+  @rpc({
+    website: {
+      kind: "closed",
+      reason:
+        "Native settlement inspection belongs to the owned agent session.",
+    },
+    principals: ["host", "code"],
+    effect: { kind: "open" },
+    tier: "open",
+    sensitivity: "read",
+  })
+  async waitForNativeRun(input: {
+    taskId?: number;
+    channelId: string;
+    inputMessageId?: string;
+  }): Promise<{
+    channelId: string;
+    conversationId: number;
+    taskId?: number;
+    inputs: SettledSubmissionRecord[];
+    answers: NativePublishedAnswer[];
+  }> {
+    const context = {
+      ...BACKGROUND_CONTEXT,
+      abortSignal: this.rpcAbortSignal ?? undefined,
+    };
+    const harness = await this.agentSession(context);
+    if (input.taskId === undefined && !input.inputMessageId)
+      throw new Error("Native settlement requires its exact input or task");
+    let conversationId: ConversationId;
+    let inputIds: readonly SubmissionId[];
+    let selectedTaskId: TaskId | undefined;
+    if (input.taskId !== undefined) {
+      if (!Number.isSafeInteger(input.taskId) || input.taskId <= 0)
+        throw new Error("Native settlement requires its actual task ID");
+      const task = await harness.getTask(input.taskId as TaskId, context);
+      if (!task) throw new Error("Native settlement task does not exist");
+      const binding = await retainedNativeConversationChannel(
+        harness,
+        task.conversationId,
+        context,
+      );
+      if (binding.channelId !== input.channelId)
+        throw new Error("Native settlement task belongs to another channel");
+      const product = await nativeTaskProductContext(harness, task.id, context);
+      if (!product?.inputs.length)
+        throw new Error("Native settlement has no original admitted input");
+      conversationId = task.conversationId;
+      inputIds = product.inputs;
+      selectedTaskId = task.id;
+    } else {
+      const conversation = await this.admittedNativeChannelConversation(
+        input.channelId,
+      );
+      if (!conversation)
+        throw new Error(
+          "Native settlement has no admitted channel conversation",
+        );
+      conversationId = conversation.id;
+      inputIds = [];
+    }
+    if (input.inputMessageId !== undefined) {
+      const channelRef = parseDoTargetId(
+        await this.createChannelClient(
+          input.channelId,
+          this.agentRpc,
+        ).resolveTarget(),
+      );
+      if (!channelRef || channelRef.objectKey !== input.channelId)
+        throw new Error("Native settlement resolved another source channel");
+      const source = await waitForNativeChannelSourceMessageAt(
+        harness,
+        {
+          channelRef,
+          participantId: this.rpcSelfId,
+          messageId: input.inputMessageId,
+        },
+        context,
+      );
+      if (source.conversationId !== conversationId)
+        throw new Error(
+          "Native settlement input belongs to another destination conversation",
+        );
+      if (source.submissionType !== "input")
+        throw new Error(
+          "The requested channel message was admitted as context rather than a model input",
+        );
+      if (source.submissionId === null)
+        throw new Error("Native source admission lost its actual submission");
+      if (
+        selectedTaskId !== undefined &&
+        !inputIds.includes(source.submissionId)
+      )
+        throw new Error(
+          "Native settlement task does not answer the requested input",
+        );
+      inputIds = [source.submissionId];
+    }
+    const inputs = await Promise.all(
+      inputIds.map(async (id) => {
+        const submission = await harness.submission(id, context);
+        if (!submission)
+          throw new Error("Native settlement lost its original submission");
+        return submission.wait(context);
+      }),
+    );
+    const answers = await Promise.all(
+      inputs
+        .filter(
+          (
+            record,
+          ): record is Extract<SettledSubmissionRecord, { status: "done" }> =>
+            record.status === "done",
+        )
+        .filter((record) => record.answer !== undefined)
+        .map((record) =>
+          waitForNativeAnswerPublication(
+            harness,
+            conversationId,
+            record.answer!,
+            context,
+          ),
+        ),
+    );
+    return {
+      channelId: input.channelId,
+      conversationId,
+      ...(selectedTaskId === undefined ? {} : { taskId: selectedTaskId }),
+      inputs,
+      answers,
+    };
+  }
+
+  protected override async prepareNativeProductCommit(
+    tx: Tx,
+    staged: HarnessCommit,
+    _context: Context,
+  ): Promise<void> {
+    await prepareNativeProductContexts(tx, staged);
+    await this.nativeModelPolicy.prepareCommit(tx, staged);
+    await prepareNativeModelEvidence(tx, staged, _context);
+    await this.nativeAutomationRuns.prepare(tx, staged);
+    await this.nativeInputSettlement.prepareCommit(tx, staged);
+  }
+
+  protected override async nativeInvocationExecution(
+    execution: NativeInvocationExecution,
+    taskId: TaskId,
+    context: Context,
+  ): Promise<NativeInvocationExecution> {
+    const product = await nativeTaskProductContext(
+      this.admittedAgentSession(),
+      taskId,
+      context,
+    );
+    const nonce = product?.metadata?.automation?.authoritySessionNonce;
+    return Object.freeze({
+      ...execution,
+      ...(product?.metadata ? { metadata: product.metadata } : {}),
+      rpc: nonce ? withExecutionAdmission(execution.rpc, nonce) : execution.rpc,
+    });
+  }
+
+  protected override observeNativeModelConnection(
+    request: ModelRequestTarget,
+    api: ModelRequestApi,
+    connection: ModelRequestConnection,
+    context: Context,
+  ): Promise<ModelRequestConnection> {
+    return observeNativeModelConnection(request, api, connection, context);
+  }
+
+  private readonly nativeModelReset = createNativeModelReset({
+    conversation: async (channelId, _context) => {
+      const conversation =
+        await this.admittedNativeChannelConversation(channelId);
+      if (!conversation)
+        throw new Error("Provider reset has no admitted native channel");
+      return conversation;
+    },
+  });
+
+  private async scheduleNativeResumeAtReset(
+    channelId: string,
+    input: { messageId?: unknown; resetAt?: unknown },
+  ) {
+    if (
+      typeof input.messageId !== "string" ||
+      !input.messageId ||
+      typeof input.resetAt !== "string"
+    )
+      return {
+        scheduled: false,
+        reason:
+          "Provider reset requires the failed message and its exact reset deadline",
+      };
+    const envelope = (await this.createChannelClient(channelId).getEnvelope(
+      nativeAnswerEnvelopeId(input.messageId),
+    )) as ChannelEvent | null;
+    if (
+      !envelope ||
+      envelope.type !== AGENTIC_EVENT_PAYLOAD_KIND ||
+      envelope.senderId !==
+        (this.subscriptions.getParticipantId(channelId) ?? this.participantId())
+    )
+      return {
+        scheduled: false,
+        reason: "Provider reset message is not an answer from this agent",
+      };
+    const event = envelope.payload as AgenticEvent;
+    if (
+      event.kind !== "message.completed" ||
+      event.causality?.messageId !== input.messageId
+    )
+      return {
+        scheduled: false,
+        reason: "Provider reset requires its exact canonical model answer",
+      };
+    const metadata =
+      "metadata" in event.payload ? event.payload.metadata : undefined;
+    const entryId = metadata?.["nativeEntryId"];
+    const conversationId = metadata?.["nativeConversationId"];
+    const conversation =
+      await this.admittedNativeChannelConversation(channelId);
+    if (
+      !conversation ||
+      conversationId !== conversation.id ||
+      typeof entryId !== "number" ||
+      !Number.isSafeInteger(entryId) ||
+      entryId <= 0
+    )
+      return {
+        scheduled: false,
+        reason:
+          "Provider reset message has no original native answer coordinate",
+      };
+    return this.nativeModelReset.schedule(
+      channelId,
+      { entryId: entryId as EntryId, resetAt: input.resetAt },
+      { ...BACKGROUND_CONTEXT, abortSignal: this.rpcAbortSignal ?? undefined },
+    );
+  }
+
+  private readonly nativeConversationCancellation =
+    createNativeConversationCancellation(() => this.admittedAgentSession());
+
+  private readonly nativeInputSettlement = createNativeInputSettlement({
+    onSettled: (channelId, submission, metadata, context) =>
+      this.runDetached(() =>
+        this.onNativeInputSettled(channelId, submission, metadata, context),
+      ),
+  });
+
+  protected async onNativeInputSettled(
+    channelId: string,
+    submission: SettledSubmissionRecord,
+    _metadata: AgentProductMetadata | undefined,
+    context: Context,
+  ): Promise<void> {
+    const child = this.subagentIdentity();
+    if (!child || child.taskChannelId !== channelId) return;
+    // The native settlement notification owns this exact delivery through reply loss.
+    await this.agentRpc.call(
+      child.parentRef,
+      "onSubagentInputSettled",
+      [
+        {
+          runId: child.runId,
+          taskChannelId: channelId,
+          submissionId: submission.id,
+        },
+      ],
+      { signal: context.abortSignal },
+    );
+  }
+
+  @rpc({
+    website: {
+      kind: "closed",
+      reason: "Only the retained supervisor reads child settlement.",
+    },
+    principals: ["code"],
+    effect: { kind: "open" },
+    tier: "open",
+    sensitivity: "read",
+  })
+  async readSubagentInputSettlement(input: {
+    runId: string;
+    taskChannelId: string;
+    submissionId: number;
+  }): Promise<{ submission: SettledSubmissionRecord; active: boolean }> {
+    const child = this.subagentIdentity();
+    if (
+      !child ||
+      child.runId !== input.runId ||
+      child.taskChannelId !== input.taskChannelId ||
+      child.parentRef !== this.rpcCallerId ||
+      !Number.isSafeInteger(input.submissionId) ||
+      input.submissionId <= 0
+    )
+      throw new Error(
+        "Child settlement read changed its original supervisor or input",
+      );
+    const context = {
+      ...BACKGROUND_CONTEXT,
+      abortSignal: this.rpcAbortSignal ?? undefined,
+    };
+    const conversation = await this.admittedNativeChannelConversation(
+      input.taskChannelId,
+    );
+    const submission = await this.admittedAgentSession().submission(
+      input.submissionId as SubmissionId,
+      context,
+    );
+    const record = await submission?.status(context);
+    if (
+      !conversation ||
+      !record ||
+      record.conversationId !== conversation.id ||
+      record.type !== "input" ||
+      (record.status !== "done" && record.status !== "unanswered")
+    )
+      throw new Error("Child settlement has no actual terminal native input");
+    return {
+      submission: record as SettledSubmissionRecord,
+      active: await this.subagentExecutionActive(input.taskChannelId),
+    };
+  }
+
+  @rpc({
+    website: {
+      kind: "closed",
+      reason: "Only the retained child reports its input settlement.",
+    },
+    principals: ["code"],
+    effect: { kind: "open" },
+    tier: "open",
+    sensitivity: "write",
+  })
+  async onSubagentInputSettled(input: {
+    runId: string;
+    taskChannelId: string;
+    submissionId: number;
+  }): Promise<{ recorded: true }> {
+    const run = this.subagentRuns.get(input.runId);
+    if (
+      !run ||
+      run.childEntityId !== this.rpcCallerId ||
+      run.taskChannelId !== input.taskChannelId
+    )
+      throw new Error(
+        "Child settlement sender does not own this supervised run",
+      );
+    const source = await this.agentRpc.call<{
+      submission: SettledSubmissionRecord;
+      active: boolean;
+    }>(run.childEntityId, "readSubagentInputSettlement", [input], {
+      signal: this.rpcAbortSignal ?? undefined,
+    });
+    if (
+      source.submission.id !== input.submissionId ||
+      source.submission.type !== "input" ||
+      (source.submission.status !== "done" &&
+        source.submission.status !== "unanswered")
+    )
+      throw new Error(
+        "Child settlement acknowledgement changed its actual source",
+      );
+    if (!source.active) this.subagentRuns.markExecutionIdle(run.runId);
+    return { recorded: true };
+  }
+
+  protected override async notifyNativeModelCredentialMissing(
+    request: ModelRequestTarget,
+    _api: ModelRequestApi,
+    context: Context,
+  ): Promise<void> {
+    const binding = await retainedNativeConversationChannel(
+      this.admittedAgentSession(),
+      request.conversationId,
+      context,
+    );
+    await this.publishCredentialConnectCard(
+      binding.channelId,
+      request.model.provider,
+      {
+        resumeAfterConnect: true,
+        modelRef: `${request.model.provider}:${request.model.id}`,
+      },
+    );
+  }
+
+  private readonly nativeSuspendExecution = createNativeSuspendExecution({
+    bindExecution: (api, context) => this.bindNativeToolExecution(api, context),
+    channelForConversation: async (conversationId, context) =>
+      (
+        await retainedNativeConversationChannel(
+          this.admittedAgentSession(),
+          conversationId,
+          context,
+        )
+      ).channelId,
+    background: async (channelId, api, context) => {
+      const execution = await this.bindNativeToolExecution(api, context);
+      const live = await this.liveSubagentExecutionCount(
+        execution.rpc,
+        channelId,
+      );
+      const runs = this.subagentRuns
+        .listAll()
+        .filter((run) => run.parentChannelId === channelId);
+      return {
+        live: live > 0,
+        unintegrated: runs
+          .filter(
+            (run) =>
+              run.status === "completed" && !run.semanticIntegrationSnapshot,
+          )
+          .map((run) => run.runId),
+      };
+    },
+  });
+
+  protected executeNativeSuspend(
+    ...args: Parameters<typeof this.nativeSuspendExecution.execute>
+  ) {
+    return this.nativeSuspendExecution.execute(...args);
+  }
+  protected cancelNativeSuspend(
+    ...args: Parameters<typeof this.nativeSuspendExecution.cancel>
+  ) {
+    return this.nativeSuspendExecution.cancel(...args);
+  }
+
+  private readonly nativeMethodExecution = createNativeChannelMethodExecution({
+    harness: () => this.admittedAgentSession(),
+    bindExecution: (api, context) => this.bindNativeToolExecution(api, context),
+    channelClient: (channelId, execution) =>
+      this.createChannelClient(channelId, execution.rpc),
+  });
+
+  protected executeNativeAskUser(
+    args: Record<string, JsonValue>,
+    api: ToolExecutionApi,
+    context: Context,
+    channelId: string,
+    capturedRoster: readonly RosterEntry[],
+  ) {
+    return this.nativeMethodExecution.execute(
+      async () => {
+        const humans = capturedRoster.filter(
+          (entry) => entry.ref.kind === "user",
+        );
+        const hint = typeof args["to"] === "string" ? args["to"].trim() : "";
+        const refs = humans.map((entry) => ({
+          ...entry.ref,
+          participantId: entry.ref.participantId ?? entry.participantId,
+          ...(entry.handle
+            ? { metadata: { ...entry.ref.metadata, handle: entry.handle } }
+            : {}),
+        }));
+        const selected = hint
+          ? resolveHandle(hint.replace(/^@/, ""), refs, { kinds: ["user"] })
+          : null;
+        if (selected && isHandleResolutionFailure(selected))
+          throw new Error(
+            `ask_user target is ${selected.error}: ${hint}; suggestions: ${selected.suggestions.join(", ")}`,
+          );
+        const targets = selected
+          ? [
+              humans[
+                humans.findIndex(
+                  (human) =>
+                    human.ref.id === selected.id &&
+                    human.ref.kind === selected.kind,
+                )
+              ]!,
+            ]
+          : humans;
+        if (!targets.length)
+          throw new Error("ask_user requires a captured human recipient");
+        const question = args["question"];
+        if (typeof question !== "string" || !question.trim())
+          throw new Error("ask_user requires a nonempty question");
+        const options = Array.isArray(args["options"])
+          ? args["options"].filter(
+              (option): option is string => typeof option === "string",
+            )
+          : [];
+        const multiSelect = args["multiSelect"] === true;
+        const form = options.length
+          ? {
+              title: question,
+              fields: [
+                {
+                  key: "answer",
+                  type: multiSelect ? "multiSelect" : "select",
+                  label: question,
+                  required: true,
+                  options: options.map((option) => ({
+                    value: option,
+                    label: option,
+                  })),
+                  ...(args["allowFreeform"] === false
+                    ? { allowFreeText: false }
+                    : {}),
+                  ...(multiSelect
+                    ? {}
+                    : { submitOnSelect: args["allowFreeform"] !== true }),
+                },
+              ],
+              hideSubmit: multiSelect ? false : args["allowFreeform"] !== true,
+            }
+          : {
+              title: question,
+              fields: [
+                {
+                  key: "answer",
+                  type: "string",
+                  label: question,
+                  required: true,
+                },
+              ],
+            };
+        return {
+          channelId,
+          callerId: this.participantId(),
+          targetIds: targets.map((entry) => entry.participantId),
+          method: "feedback_form",
+          args: copyJson(form, { omitUndefinedProperties: true }),
+        };
+      },
+      api,
+      context,
+    );
+  }
+
+  protected cancelNativeAskUser(
+    _args: Record<string, JsonValue>,
+    api: ToolExecutionApi,
+    context: Context,
+  ) {
+    return this.nativeMethodExecution.cancel(api, context);
   }
 }
 
@@ -9744,48 +7858,4 @@ function automationDefinitionSnapshot(
             }
           : null,
   };
-}
-
-function automationCompletionForTurn(
-  value: string | null,
-  channelId: string,
-  turnId: string,
-): { response: string } | null {
-  if (!value) return null;
-  try {
-    const candidate = JSON.parse(value) as {
-      channelId?: unknown;
-      turnId?: unknown;
-      response?: unknown;
-    };
-    return candidate.channelId === channelId &&
-      candidate.turnId === turnId &&
-      typeof candidate.response === "string" &&
-      candidate.response.trim()
-      ? { response: candidate.response.trim() }
-      : null;
-  } catch {
-    return null;
-  }
-}
-
-function automationCompletionFromEvalSummary(
-  summary: string | undefined,
-): { response: string } | null {
-  if (!summary) return null;
-  try {
-    const value = JSON.parse(summary) as unknown;
-    const direct = missionCompletionResponse(value);
-    if (direct) return direct;
-    if (!value || typeof value !== "object" || Array.isArray(value))
-      return null;
-    const details = (value as { details?: unknown }).details;
-    if (!details || typeof details !== "object" || Array.isArray(details))
-      return null;
-    return missionCompletionResponse(
-      (details as { returnValue?: unknown }).returnValue,
-    );
-  } catch {
-    return null;
-  }
 }

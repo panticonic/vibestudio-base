@@ -42,6 +42,7 @@ import {
   type RpcEnvelope,
   type RpcEvent,
   type RpcRequest,
+  type RpcRequestContext,
   type ResolvedRpcAuthority,
 } from "@vibestudio/rpc";
 import type { AuthorizationContext } from "@vibestudio/rpc";
@@ -103,11 +104,14 @@ import {
   dispatchWithDurableObjectSchemaGuard,
   durableObjectSchemaDescriptor,
   installDurableObjectSchema,
+  type DurableObjectSchemaDescriptor,
+  type DurableObjectSchemaUpgrade,
   validateDurableObjectSchemaIndexes,
 } from "@vibestudio/durable/schema";
 import { DurableWorkReadiness, InvocationContext } from "@vibestudio/durable";
 
 interface RpcInvocationContext {
+  requestSignal?: AbortSignal;
   verifiedCaller: AttestedCaller | null;
   /** False once the inbound invocation has returned, even though
    * AsyncLocalStorage may still be present in deferred work it spawned. */
@@ -240,6 +244,9 @@ export interface DurableObjectContext {
      * atomic-write semantics. The callback must be synchronous.
      */
     transactionSync<T>(callback: () => T): T;
+    transaction<T>(callback: () => Promise<T>): Promise<T>;
+    /** Join native storage durability before releasing an owned connection. */
+    sync(): Promise<void>;
   };
   // Tagged accept: tags survive hibernation, retrievable via getWebSockets(tag)
   acceptWebSocket(ws: WebSocket, tags?: string[]): void;
@@ -286,8 +293,8 @@ export abstract class DurableObjectBase {
   protected env: Record<string, unknown>;
 
   private _schemaReady = false;
-  private _schemaInstalled = false;
-  private _schemaPreparationError: unknown = null;
+  private schemaInitialization: Promise<void> | null = null;
+
   private _connectionless: ConnectionlessRpcClient | null = null;
   private readonly _directRpcNonces: DurableDirectRpcNonceLedger;
   protected _currentRpcCallerId: string | null = null;
@@ -335,10 +342,10 @@ export abstract class DurableObjectBase {
   static rpcMethods?: ServiceMethodSchemas;
 
   /** Subclasses define their SQL tables here. Called during schema init. */
-  protected abstract createTables(): void;
+  protected abstract createTables(): void | Promise<void>;
 
   /** Activation-local initialization that requires the committed schema. */
-  protected afterSchemaReady(): void {}
+  protected afterSchemaReady(): void | Promise<void> {}
 
   protected rpcSchemaCodeSource(
     _method: string,
@@ -440,6 +447,11 @@ export abstract class DurableObjectBase {
     return [];
   }
 
+  /** Components name owned tables; a complete composition owns the whole store. */
+  protected schemaTables(): readonly string[] | undefined {
+    return this.requiredTables();
+  }
+
   protected schemaIndexDefinitions(): readonly string[] | undefined {
     return undefined;
   }
@@ -472,43 +484,65 @@ export abstract class DurableObjectBase {
    * Lazily called on first fetch() or alarm(). Safe for subclasses to call
    * earlier from their constructor if they need schema before first request.
    */
+  /** Synchronous helpers require admission through the asynchronous ready gate. */
   protected ensureReady(): void {
-    if (this._schemaPreparationError !== null) {
-      const error = this._schemaPreparationError;
-      this._schemaPreparationError = null;
-      throw error;
-    }
-    if (this._schemaReady) return;
-    if (!this._schemaInstalled) {
-      this.ensureSchema();
-      this._schemaInstalled = true;
-    }
-    if (this.env["VIBESTUDIO_SCHEMA_PROBE"] !== true) this.afterSchemaReady();
-    this._schemaReady = true; // only after success — allows retry on next request if init throws
+    if (!this._schemaReady)
+      throw new Error(
+        "Schema initialization must finish before accessing durable state",
+      );
   }
 
-  /** Install schema storage before subclass helpers can create or query tables. */
-  protected prepareSchemaStorage(): void {
-    if (this._schemaInstalled) return;
-    try {
-      this.ensureSchema();
-      this._schemaInstalled = true;
-    } catch (error) {
-      this._schemaPreparationError = error;
-    }
+  /** One shared initialization promise per activation; failed attempts can retry. */
+  protected initializeSchema(): Promise<void> {
+    if (this._schemaReady) return Promise.resolve();
+    if (this.schemaInitialization) return this.schemaInitialization;
+    const initialization = (async () => {
+      await this.ensureSchema();
+      if (this.env["VIBESTUDIO_SCHEMA_PROBE"] !== true)
+        await this.afterSchemaReady();
+      this._schemaReady = true;
+    })();
+    this.schemaInitialization = initialization;
+    void initialization
+      .finally(() => {
+        if (this.schemaInitialization === initialization)
+          this.schemaInitialization = null;
+      })
+      .catch(() => {});
+    return initialization;
   }
 
-  /**
-   * Establish constructor-time schema invariants without letting a refusal
-   * escape workerd's request error boundary. The first request observes a
-   * captured failure through ensureReady(); a later request may retry.
-   */
-  protected prepareSchemaForActivation(): void {
-    try {
-      this.ensureReady();
-    } catch (error) {
-      this._schemaPreparationError = error;
+  protected schemaUpgrades(): readonly DurableObjectSchemaUpgrade[] {
+    return [];
+  }
+
+  private async ensureSchema(): Promise<void> {
+    const descriptor = this.env["VIBESTUDIO_SCHEMA_DESCRIPTOR"] as
+      | DurableObjectSchemaDescriptor
+      | undefined;
+    const version = (this.constructor as typeof DurableObjectBase)
+      .schemaVersion;
+    if (
+      descriptor &&
+      (descriptor.className !==
+        String(this.env["WORKER_CLASS_NAME"] ?? this.constructor.name) ||
+        descriptor.version !== version ||
+        typeof descriptor.freshSchemaFingerprint !== "string")
+    ) {
+      throw new Error(
+        "Schema descriptor does not match the admitted runtime image",
+      );
     }
+    await installDurableObjectSchema({
+      className: String(this.env["WORKER_CLASS_NAME"] ?? this.constructor.name),
+      version,
+      storage: this.ctx.storage,
+      schemaTables: this.schemaTables(),
+      expectedFingerprint: descriptor?.freshSchemaFingerprint,
+      upgrades: this.schemaUpgrades(),
+      createSchema: () => this.createTables(),
+      validateSchema: () => this.validateSchema(),
+    });
   }
 
   private schemaDescriptorResponse(): Response {
@@ -519,22 +553,11 @@ export abstract class DurableObjectBase {
         ),
         version: (this.constructor as typeof DurableObjectBase).schemaVersion,
         storage: this.ctx.storage,
-        schemaTables: this.requiredTables(),
+        schemaTables: this.schemaTables(),
         createSchema: () => this.createTables(),
         validateSchema: () => this.validateSchema(),
       }),
     );
-  }
-
-  private ensureSchema(): void {
-    installDurableObjectSchema({
-      className: String(this.env["WORKER_CLASS_NAME"] ?? this.constructor.name),
-      version: (this.constructor as typeof DurableObjectBase).schemaVersion,
-      storage: this.ctx.storage,
-      schemaTables: this.requiredTables(),
-      createSchema: () => this.createTables(),
-      validateSchema: () => this.validateSchema(),
-    });
   }
 
   // --- State KV (generic, always available) ---
@@ -629,6 +652,12 @@ export abstract class DurableObjectBase {
     return this.connectionlessClient().client;
   }
 
+  /** Activation-owned work has its own lifetime and cannot borrow an inbound
+   * caller's transient authority. Guest effects need separately admitted facts. */
+  protected runDetached<R>(operation: () => R): R {
+    return this._invocationContext.runDetached(operation);
+  }
+
   private connectionlessClient(): ConnectionlessRpcClient {
     if (!this._connectionless) {
       const token = this.env["RPC_AUTH_TOKEN"];
@@ -667,10 +696,29 @@ export abstract class DurableObjectBase {
         // lifecycle/capability methods. The decorator allow-list is the security
         // boundary; stopping before DurableObjectBase would make those methods
         // impossible to call on every subclass.
-        collectExposableMethods(
-          this,
-          rpcExposedMethodNames(this),
-          Object.prototype,
+        Object.fromEntries(
+          Object.entries(
+            collectExposableMethods(
+              this,
+              rpcExposedMethodNames(this),
+              Object.prototype,
+            ),
+          ).map(([name, handler]) => [
+            name,
+            async (request: RpcRequestContext) => {
+              const invocation = this.activeInvocationContext;
+              const previous = invocation?.requestSignal;
+              if (invocation) invocation.requestSignal = request.signal;
+              try {
+                return await handler(request);
+              } finally {
+                if (invocation) {
+                  if (previous === undefined) delete invocation.requestSignal;
+                  else invocation.requestSignal = previous;
+                }
+              }
+            },
+          ]),
         ),
         Object.fromEntries(
           [...rpcExposedMethodNames(this)].map((name) => {
@@ -774,6 +822,11 @@ export abstract class DurableObjectBase {
   }
 
   /** Correlation id of the inbound call, when the caller stamped one. */
+  /** The actual inbound observation lifetime; capture before awaiting or detaching. */
+  protected get rpcAbortSignal(): AbortSignal | null {
+    return this.activeInvocationContext?.requestSignal ?? null;
+  }
+
   protected get rpcRequestId(): string | null {
     const context = this._invocationContext.current();
     return context ? context.requestId : this._currentRpcRequestId;
@@ -1051,7 +1104,7 @@ export abstract class DurableObjectBase {
 
   /** Override in subclasses for timed callbacks. Return the one exact next wake. */
   async alarm(): Promise<DoAlarmSchedule | null> {
-    this.ensureReady();
+    await this.initializeSchema();
     const queues = this.pendingDurableWorkReadyQueues();
     if (queues.length > 0) this.emitWorkReadyHint(...queues);
     return null;
@@ -1088,7 +1141,7 @@ export abstract class DurableObjectBase {
           ),
           objectKey,
         },
-        ensureReady: () => this.ensureReady(),
+        ensureReady: () => this.initializeSchema(),
         dispatch: () => this.dispatchFetch(request),
       });
     } finally {
@@ -1180,8 +1233,7 @@ export abstract class DurableObjectBase {
           // Live module replacement may update the class schema while this
           // activation retains its previous schemaReady cache. Lifecycle is the
           // generation boundary, so revalidate the one current schema here.
-          this.ensureSchema();
-          this._schemaInstalled = true;
+          await this.ensureSchema();
           const result =
             method === "__lifecycle/prepare"
               ? await (async () => {
@@ -1971,7 +2023,7 @@ export abstract class DurableObjectBase {
     _ws: WebSocket,
     _msg: string | ArrayBuffer,
   ): Promise<void> {
-    this.ensureReady();
+    await this.initializeSchema();
   }
 
   async webSocketClose(
@@ -1980,11 +2032,11 @@ export abstract class DurableObjectBase {
     _reason: string,
     _wasClean: boolean,
   ): Promise<void> {
-    this.ensureReady();
+    await this.initializeSchema();
   }
 
   async webSocketError(_ws: WebSocket, _error: unknown): Promise<void> {
-    this.ensureReady();
+    await this.initializeSchema();
   }
 
   // --- Clone support ---

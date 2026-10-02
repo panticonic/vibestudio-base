@@ -47,6 +47,48 @@ class EchoDO extends TestDurableObjectBase {
   }
 }
 
+class ObservationSignalProbeDO extends TestDurableObjectBase {
+  readonly signals = new Map<string, AbortSignal>();
+  started: (label: string) => void = () => {};
+  protected createTables(): void {}
+  @rpc({
+    website: { kind: "closed", reason: "Owned observation fixture" },
+    principals: ["host"],
+    effect: { kind: "open" },
+    tier: "open",
+    sensitivity: "read",
+  })
+  async observe(
+    label: string,
+  ): Promise<{ aborted: boolean; joined: boolean; isolated: boolean }> {
+    const signal = this.rpcAbortSignal;
+    if (!signal)
+      throw new Error("Observation has no real inbound request signal");
+    this.signals.set(label, signal);
+    this.started(label);
+    let joined = false;
+    try {
+      await new Promise<void>((resolve) => {
+        if (signal.aborted) resolve();
+        else signal.addEventListener("abort", () => resolve(), { once: true });
+      });
+    } finally {
+      joined = true;
+    }
+    return {
+      aborted: signal.aborted,
+      joined,
+      isolated: this.rpcAbortSignal === signal,
+    };
+  }
+  detachedSignal(): AbortSignal | null {
+    return this.runDetached(() => this.rpcAbortSignal);
+  }
+  outsideSignal(): AbortSignal | null {
+    return this.rpcAbortSignal;
+  }
+}
+
 class DetachedRpcProbeDO extends TestDurableObjectBase {
   protected createTables(): void {}
 
@@ -307,8 +349,8 @@ class SchemaProbeDO extends TestDurableObjectBase {
     );
   }
 
-  initializeSchemaForTest(): void {
-    this.ensureReady();
+  initializeSchemaForTest(): Promise<void> {
+    return this.initializeSchema();
   }
 }
 
@@ -436,6 +478,104 @@ class RuntimeRenamedSchemaProbeDO extends TestDurableObjectBase {
 }
 
 describe("DurableObjectBase request parsing", () => {
+  it("propagates exact request cancellation to owned observations without cancelling sibling requests", async () => {
+    const { instance } = await createTestDO(ObservationSignalProbeDO, {
+      WORKER_SOURCE: "workers/test",
+      WORKER_CLASS_NAME: "ObservationSignalProbeDO",
+      __objectKey: "signal",
+    });
+    const target = "do:workers/test:ObservationSignalProbeDO:signal";
+    let firstStarted!: () => void;
+    let secondStarted!: () => void;
+    const firstReady = new Promise<void>((resolve) => {
+      firstStarted = resolve;
+    });
+    const secondReady = new Promise<void>((resolve) => {
+      secondStarted = resolve;
+    });
+    instance.started = (label) => {
+      if (label === "first") firstStarted();
+      else secondStarted();
+    };
+    const post = (envelope: RpcEnvelope) =>
+      instance.fetch(
+        new Request("http://test/signal/__rpc", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(envelope),
+        }),
+      );
+    const caller = () => ({
+      callerId: "main",
+      callerKind: "server" as const,
+      authorization: createTestDirectAuthority({
+        callerKind: "server",
+        method: "observe",
+        source: "workers/test",
+        className: "ObservationSignalProbeDO",
+        objectKey: "signal",
+      }),
+    });
+    const start = (label: string) =>
+      post({
+        from: "main",
+        target,
+        delivery: { caller: caller() },
+        provenance: [],
+        message: {
+          type: "request",
+          fromId: "main",
+          requestId: label,
+          method: "observe",
+          args: [label],
+        },
+      });
+    const cancel = (requestId: string, from = "main") =>
+      post({
+        from,
+        target,
+        delivery: { caller: { callerId: from, callerKind: "server" } },
+        provenance: [],
+        message: { type: "request-cancel", fromId: from, requestId },
+      });
+    const first = start("first");
+    const second = start("second");
+    try {
+      const started = (gate: Promise<void>, response: Promise<Response>) =>
+        Promise.race([
+          gate,
+          response.then(async (result) => {
+            throw new Error(
+              `Observation returned before admission: ${JSON.stringify(await result.clone().json())}`,
+            );
+          }),
+        ]);
+      await Promise.all([
+        started(firstReady, first),
+        started(secondReady, second),
+      ]);
+      expect(instance.signals.get("first")).not.toBe(
+        instance.signals.get("second"),
+      );
+      expect(instance.detachedSignal()).toBeNull();
+      await cancel("first", "other-server");
+      expect(instance.signals.get("first")?.aborted).toBe(false);
+      await cancel("first");
+      const result = await first;
+      await expect(result.json()).resolves.toMatchObject({
+        message: { result: { aborted: true, joined: true, isolated: true } },
+      });
+      expect(instance.signals.get("second")?.aborted).toBe(false);
+      expect(instance.outsideSignal()).toBeNull();
+      await cancel("second");
+      await expect((await second).json()).resolves.toMatchObject({
+        message: { result: { aborted: true, joined: true, isolated: true } },
+      });
+    } finally {
+      await Promise.allSettled([cancel("first"), cancel("second")]);
+      await Promise.allSettled([first, second]);
+    }
+  });
   it("publishes the declared worker class identity when bundling changes the constructor name", async () => {
     const { instance } = await createTestDO(RuntimeRenamedSchemaProbeDO, {
       WORKER_CLASS_NAME: "PublishedSchemaProbeDO",
@@ -1379,7 +1519,7 @@ describe("DurableObjectBase schema readiness", () => {
       initialize: false,
     });
 
-    expect(() => instance.initializeSchemaForTest()).toThrow(
+    await expect(instance.initializeSchemaForTest()).rejects.toThrow(
       /schema identity table is malformed/,
     );
   });
