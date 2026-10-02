@@ -8,8 +8,8 @@
  * config and hosted by `policy-host.ts`.
  *
  * State taxonomy (P1): the channel log in GAD is the authority;
- * `pending_calls` (calls.ts), `policy_state:*` (policy-host.ts), and
- * `dedup_keys` are declared caches — deletable at any moment; `participants`
+ * `pending_calls` (calls.ts) and `policy_state:*` (policy-host.ts) are
+ * declared caches — deletable at any moment; `participants`
  * is operational transport state (live connections, observed into the log as
  * presence events).
  */
@@ -25,7 +25,7 @@ import {
   type DurableObjectServiceClient,
 } from "@workspace/runtime/worker/kernel";
 import { canonicalJson } from "@vibestudio/content-addressing";
-import type { ChannelEvent } from "@workspace/pubsub";
+import type { ChannelEvent, PublishReceipt } from "@workspace/pubsub";
 import {
   channelSubscriptionQueuingStrategy,
   encodeChannelSubscriptionRecord,
@@ -60,6 +60,7 @@ import type {
 import {
   AGENTIC_EVENT_PAYLOAD_KIND,
   AGENTIC_PROTOCOL_VERSION,
+  agenticEventSchema,
   participantRefFromMetadata,
   publicParticipantMetadata,
   type AgenticEvent,
@@ -115,9 +116,6 @@ const PRESENCE_AWAY_MS = 30 * 60 * 1000;
 const PRESENCE_LAST_SEEN_RETENTION_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
 /** Default channel-envelope replay window. */
 const REPLAY_LIMIT = 50;
-/** Dedup keys are a latency cache; the durable dedupe is the `ik:{key}`
- *  envelope id in the log lineage. */
-const DEDUP_TTL_MS = 5 * 60 * 1000;
 const INVITE_INDEX_RETRY_MS = 5_000;
 const INVITE_INDEX_REVISION_KEY = "inviteIndexRevision";
 
@@ -503,16 +501,8 @@ export class PubSubChannel extends DurableObjectBase {
         PRIMARY KEY (metric, upper_bound_ms)
       )
     `);
-    this.sql.exec(`
-      CREATE TABLE IF NOT EXISTS dedup_keys (
-        key TEXT PRIMARY KEY,
-        result_id INTEGER,
-        created_at INTEGER NOT NULL
-      )
-    `);
-    this.sql.exec(
-      `CREATE INDEX IF NOT EXISTS idx_dedup_keys_created ON dedup_keys(created_at)`,
-    );
+    // Retire the old sequence-only receipt cache. The journal owns retry results.
+    this.sql.exec(`DROP TABLE IF EXISTS dedup_keys`);
     ChannelDeliveryProjection.createTables(this.sql);
     this.sql.exec(`
       CREATE TABLE IF NOT EXISTS channel_maintenance_queue (
@@ -696,7 +686,6 @@ export class PubSubChannel extends DurableObjectBase {
       "pending_calls",
       "provider_call_claims",
       "channel_delivery_latency_histogram",
-      "dedup_keys",
       "channel_relationships",
       "channel_delivery_mailbox",
       "channel_delivery_event_context",
@@ -3165,31 +3154,22 @@ export class PubSubChannel extends DurableObjectBase {
       attachments?: StoredAttachment[];
       idempotencyKey?: string;
     },
-  ): Promise<{ id?: number }> {
+  ): Promise<PublishReceipt> {
     this.assertParticipantCaller(participantId, "publish");
     this.assertGuestAdmission(participantId);
     this.markParticipantActive(participantId);
     const ref = opts?.ref;
     const attachments = opts?.attachments;
     const idempotencyKey = opts?.idempotencyKey;
+    const receiptFor = (accepted: ChannelEvent): PublishReceipt => {
+      this.assertPublishOwner(accepted, participantId, type);
+      return { id: accepted.id, payload: accepted.payload };
+    };
     if (idempotencyKey) {
-      const existing = this.sql
-        .exec(`SELECT result_id FROM dedup_keys WHERE key = ?`, idempotencyKey)
-        .toArray();
-      const existingId = existing[0]?.["result_id"] as
-        | number
-        | null
-        | undefined;
-      if (existingId != null) return { id: existingId };
       const inFlight = this.publishDedupInFlight.get(idempotencyKey);
-      if (inFlight) return { id: (await inFlight).id };
-      if (existing.length > 0) {
-        // A previous publish reserved the key but failed or the DO restarted
-        // before storing a result. Let this request become the new owner.
-        this.sql.exec(
-          `DELETE FROM dedup_keys WHERE key = ? AND result_id IS NULL`,
-          idempotencyKey,
-        );
+      if (inFlight) {
+        const accepted = await inFlight;
+        return receiptFor(accepted);
       }
     }
 
@@ -3202,7 +3182,7 @@ export class PubSubChannel extends DurableObjectBase {
         senderId: participantId,
         senderMetadata,
         // Durable idempotency is the deterministic envelope id in the log
-        // lineage; dedup_keys is only a latency cache (WS2 §3.2). Client
+        // lineage. The journal returns the original accepted payload. Client
         // retries carry a stable key with volatile payload fields, so this
         // path — and ONLY this path — appends first-write-wins.
         messageId: idempotencyKey ? `ik:${idempotencyKey}` : undefined,
@@ -3211,13 +3191,14 @@ export class PubSubChannel extends DurableObjectBase {
       }),
     );
 
+    const receipt = receiptFor(event);
     broadcast(
       this.broadcastDeps,
       event,
       { kind: "log", phase: "live", ref },
       participantId,
     );
-    return { id: event.id };
+    return receipt;
   }
 
   /** Update recipient visibility without appending another channel message.
@@ -3341,13 +3322,19 @@ export class PubSubChannel extends DurableObjectBase {
         ? { idempotency: "idempotent-by-id" as const }
         : {}),
     });
+    this.assertPublishOwner(logged, senderId, AGENTIC_EVENT_PAYLOAD_KIND);
+    const accepted = agenticEventSchema.parse(logged.payload);
+    const acceptedMessageId = accepted.causality?.messageId;
+    if (accepted.kind !== event.kind || !acceptedMessageId) {
+      throw new Error("Accepted publication is not a completed message");
+    }
     broadcast(
       this.broadcastDeps,
       logged,
       { kind: "log", phase: "live" },
       senderId,
     );
-    return { id: logged.id, messageId };
+    return { id: logged.id, messageId: acceptedMessageId };
   }
 
   /** Policy fold state (replaces getConversationState — WS2 §4.4). */
@@ -3366,43 +3353,27 @@ export class PubSubChannel extends DurableObjectBase {
     return this.policyHost.getState(name ?? DEFAULT_POLICY_NAME);
   }
 
+  private assertPublishOwner(event: ChannelEvent, senderId: string, type: string): void {
+    if (event.senderId !== senderId || event.type !== type) {
+      throw new Error("Idempotency key belongs to another participant or payload type");
+    }
+  }
+
   private async runDedupedPublish(
     idempotencyKey: string | undefined,
     append: () => Promise<ChannelEvent>,
   ): Promise<ChannelEvent> {
     if (!idempotencyKey) return append();
 
-    let promise!: Promise<ChannelEvent>;
-    promise = (async () => {
-      this.sql.exec(
-        `INSERT OR IGNORE INTO dedup_keys (key, result_id, created_at) VALUES (?, NULL, ?)`,
-        idempotencyKey,
-        Date.now(),
-      );
-      try {
-        const event = await append();
-        this.sql.exec(
-          `UPDATE dedup_keys SET result_id = ?, created_at = ? WHERE key = ?`,
-          event.id,
-          Date.now(),
-          idempotencyKey,
-        );
-        return event;
-      } catch (err) {
-        this.sql.exec(
-          `DELETE FROM dedup_keys WHERE key = ? AND result_id IS NULL`,
-          idempotencyKey,
-        );
-        throw err;
-      } finally {
-        if (this.publishDedupInFlight.get(idempotencyKey) === promise) {
-          this.publishDedupInFlight.delete(idempotencyKey);
-        }
-      }
-    })();
-
+    const promise = append();
     this.publishDedupInFlight.set(idempotencyKey, promise);
-    return promise;
+    try {
+      return await promise;
+    } finally {
+      if (this.publishDedupInFlight.get(idempotencyKey) === promise) {
+        this.publishDedupInFlight.delete(idempotencyKey);
+      }
+    }
   }
 
   /**
@@ -4287,7 +4258,6 @@ export class PubSubChannel extends DurableObjectBase {
     const tableNames = [
       "participants",
       "pending_calls",
-      "dedup_keys",
       "fork_ops",
       "fork_view_cursor",
       "fork_message_loci",
@@ -4883,13 +4853,6 @@ export class PubSubChannel extends DurableObjectBase {
 
   // ── Alarm — single scheduler over pure next-time sources (WS2 §8.2) ──────
 
-  private nextDedupSweepAt(): number | null {
-    const oldest = this.sql
-      .exec(`SELECT MIN(created_at) AS oldest FROM dedup_keys`)
-      .toArray()[0]?.["oldest"];
-    return typeof oldest === "number" ? oldest + DEDUP_TTL_MS : null;
-  }
-
   private nextPresenceTransitionAt(): number | null {
     const row = this.sql
       .exec(
@@ -4953,7 +4916,6 @@ export class PubSubChannel extends DurableObjectBase {
   private nextAlarmSchedule(): DoAlarmSchedule | null {
     const now = Date.now();
     const sources = [
-      this.nextDedupSweepAt(),
       this.nextPresenceTransitionAt(),
       this.nextPresenceRetentionSweepAt(),
       this.nextInviteIndexSyncAt(),
@@ -4991,13 +4953,6 @@ export class PubSubChannel extends DurableObjectBase {
     this.sql.exec(
       `DELETE FROM presence_last_seen WHERE last_seen < ?`,
       Date.now() - PRESENCE_LAST_SEEN_RETENTION_MS,
-    );
-
-    // Dedup TTL sweep — unconditional (no latch; a key inserted while no
-    // publish succeeds is still swept).
-    this.sql.exec(
-      `DELETE FROM dedup_keys WHERE created_at < ?`,
-      Date.now() - DEDUP_TTL_MS,
     );
 
     if (this.durableWorkStatus().readyQueues.length > 0) {
@@ -6047,7 +6002,6 @@ export class PubSubChannel extends DurableObjectBase {
     this.sql.exec(`DELETE FROM provider_call_claims`);
     this.sql.exec(`DELETE FROM channel_delivery_latency_histogram`);
     this.deleteStateValue("deliveryReadyEdgeAlarmSpins");
-    this.sql.exec(`DELETE FROM dedup_keys`);
     await this.policyHost.rebuildAfterFork();
     // Rebuild pending_calls for any started-without-terminal in the inherited
     // prefix (they will be abandoned/redelivered by normal roster flow).

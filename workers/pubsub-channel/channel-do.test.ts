@@ -1456,10 +1456,11 @@ describe("PubSubChannel", () => {
     });
     blockAppend = true;
 
+    const originalPayload = agenticEvent();
     const first = instance.publish(
       "panel:user",
       AGENTIC_EVENT_PAYLOAD_KIND,
-      agenticEvent(),
+      originalPayload,
       {
         idempotencyKey: "initial-prompt:chat-race",
       },
@@ -1478,8 +1479,8 @@ describe("PubSubChannel", () => {
     expect(appendCalls).toBe(1);
     releaseAppend.resolve();
     await expect(Promise.all([first, second])).resolves.toEqual([
-      { id: 2 },
-      { id: 2 },
+      { id: 2, payload: originalPayload },
+      { id: 2, payload: originalPayload },
     ]);
 
     const rows = gad.sql
@@ -5518,8 +5519,8 @@ describe("PubSubChannel policy folds and cache amnesia (WS2)", () => {
     );
   });
 
-  it("dedupes idempotent publishes durably across a dedup_keys wipe", async () => {
-    const { instance, gad, sql } = await createGadBackedChannel();
+  it("returns the original accepted payload on idempotent retries and owner restart", async () => {
+    const { instance, gad, db } = await createGadBackedChannel();
     setRpcCaller(instance, "panel:user", "panel");
     await instance.subscribe("panel:user", {
       contextId: "ctx-1",
@@ -5528,34 +5529,73 @@ describe("PubSubChannel policy folds and cache amnesia (WS2)", () => {
     });
 
     const payload = agenticEvent();
-    const first = await instance.publish(
-      "panel:user",
-      AGENTIC_EVENT_PAYLOAD_KIND,
-      payload,
-      {
-        idempotencyKey: "durable-key-1",
-      },
-    );
+    const first = await instance.publish("panel:user", AGENTIC_EVENT_PAYLOAD_KIND, payload, {
+      idempotencyKey: "durable-key-1",
+    });
 
-    // wipe the latency cache — the durable dedupe is the ik:{key} envelope id
-    sql.exec(`DELETE FROM dedup_keys`);
-
-    const second = await instance.publish(
-      "panel:user",
-      AGENTIC_EVENT_PAYLOAD_KIND,
-      payload,
-      {
+    const retry = {
+      ...payload,
+      causality: { messageId: "unaccepted-retry-id" },
+      createdAt: new Date(Date.now() + 1).toISOString(),
+    };
+    const restarted = await createGadBackedChannel({ gad, db });
+    setRpcCaller(restarted.instance, "panel:user", "panel");
+    for (const owner of [instance, restarted.instance]) {
+      const second = await owner.publish("panel:user", AGENTIC_EVENT_PAYLOAD_KIND, retry, {
         idempotencyKey: "durable-key-1",
-      },
-    );
-    expect(second.id).toBe(first.id);
+      });
+      expect(second).toEqual(first);
+      expect(second).toMatchObject({ payload });
+    }
     const rows = gad.sql
-      .exec(
-        `SELECT envelope_id FROM log_events WHERE envelope_id = ?`,
-        "ik:durable-key-1",
-      )
+      .exec(`SELECT envelope_id FROM log_events WHERE envelope_id = ?`, "ik:durable-key-1")
       .toArray();
     expect(rows).toHaveLength(1);
+  });
+
+  it("returns the accepted message identity when a caller retries through sendAsCaller", async () => {
+    const { instance } = await createGadBackedChannel();
+    setRpcCaller(instance, "panel:user", "panel");
+    await instance.subscribe("panel:user", {
+      contextId: "ctx-1", name: "User", type: "panel",
+    });
+    const payload = agenticEvent();
+    const first = await instance.publish("panel:user", AGENTIC_EVENT_PAYLOAD_KIND, payload, {
+      idempotencyKey: "caller-retry",
+    });
+    await expect(instance.sendAsCaller("retry", { idempotencyKey: "caller-retry" }))
+      .resolves.toEqual({ id: first.id, messageId: payload.causality.messageId });
+    setRpcCaller(instance, "panel:other", "panel");
+    await expect(instance.sendAsCaller("other", { idempotencyKey: "caller-retry" }))
+      .rejects.toThrow("Idempotency key belongs to another participant or payload type");
+  });
+
+  it("rejects a retry key owned by another publisher or payload type", async () => {
+    const { instance, gad, db } = await createGadBackedChannel();
+    setRpcCaller(instance, "panel:user", "panel");
+    await instance.subscribe("panel:user", {
+      contextId: "ctx-1", name: "User", type: "panel",
+    });
+    await instance.publish("panel:user", "private.original", { secret: "owner-only" }, {
+      idempotencyKey: "private-key",
+    });
+    const restarted = await createGadBackedChannel({ gad, db });
+    for (const owner of [instance, restarted.instance]) {
+      setRpcCaller(owner, "panel:other", "panel");
+      await owner.subscribe("panel:other", {
+        contextId: "ctx-1", name: "Other", type: "panel",
+      });
+      await expect(owner.publish("panel:other", "private.original", {}, {
+        idempotencyKey: "private-key",
+      })).rejects.toThrow("Idempotency key belongs to another participant or payload type");
+      setRpcCaller(owner, "panel:user", "panel");
+      await expect(owner.publish("panel:user", "different.type", {}, {
+        idempotencyKey: "private-key",
+      })).rejects.toThrow("Idempotency key belongs to another participant or payload type");
+    }
+    expect(gad.sql.exec(
+      "SELECT envelope_id FROM log_events WHERE envelope_id = ?", "ik:private-key",
+    ).toArray()).toHaveLength(1);
   });
 
   it("treats duplicate pending callMethod as a durable redrive", async () => {

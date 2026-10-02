@@ -1261,7 +1261,9 @@ describe("connectViaRpc", () => {
       await client.ready();
       // Clear call history from subscribe
       mockRpc.call.mockClear();
-      mockRpc.call.mockResolvedValue({ id: 42 });
+      mockRpc.call.mockImplementation(async (_target, _method, args) => ({
+        id: 42, payload: args[2],
+      }));
     });
 
     it("publish() calls rpc.call with correct arguments", async () => {
@@ -1274,6 +1276,21 @@ describe("connectViaRpc", () => {
         { id: "m1", content: "hello" },
         expect.objectContaining({}),
       ]);
+    });
+
+    it("send() returns the owner-accepted message identity on retries", async () => {
+      const acceptedId = "00000000-0000-4000-8000-000000000099";
+      let accepted: unknown;
+      mockRpc.call.mockImplementation(async (_target, _method, args) => {
+        accepted ??= { ...args[2], causality: { messageId: acceptedId } };
+        return { id: 42, payload: accepted };
+      });
+      const first = await client.send("first", { idempotencyKey: "retry-key" });
+      const second = await client.send("retry", {
+        idempotencyKey: "retry-key",
+      });
+      expect(first).toEqual({ pubsubId: 42, messageId: acceptedId });
+      expect(second).toEqual(first);
     });
 
     it("send() publishes a typed agentic event envelope payload", async () => {

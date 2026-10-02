@@ -705,3 +705,9 @@ export interface AgenticClient<T extends AgenticParticipantMetadata = AgenticPar
  * Status of an execution pause.
  */
 export type PauseStatus = "paused" | "resumed" | "cancelled";
+
+/** The journaled result of a publish, including the original payload on retries. */
+export interface PublishReceipt {
+  id: number;
+  payload: unknown;
+}

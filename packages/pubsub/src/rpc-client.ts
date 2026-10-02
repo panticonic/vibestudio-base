@@ -47,12 +47,14 @@ import type {
   JsonSchema,
   MethodExecutionContext,
   MethodExecutionResult,
+  PublishReceipt,
 } from "./protocol-types.js";
 import {
   AGENTIC_EVENT_PAYLOAD_KIND,
   AGENTIC_PROTOCOL_VERSION,
   CREDENTIAL_CONNECT_PAYLOAD_KIND,
   hydrateStoredValueRefs,
+  agenticEventSchema,
   type AgenticEvent,
   type MessageBlockInput,
   type MessageId,
@@ -2188,21 +2190,41 @@ export function connectViaRpc<T extends ParticipantMetadata = ParticipantMetadat
     });
   }
 
-  async function publish<P>(
+  async function publishAccepted<P>(
     type: string,
     payload: P,
     publishOptions: PublishOptions = {}
-  ): Promise<number | undefined> {
+  ): Promise<PublishReceipt> {
     if (closed) throw new PubSubError("not connected", "connection");
     const { attachments, idempotencyKey } = publishOptions;
 
-    const result = await callChannel<{ id?: number }>("publish", pid, type, payload, {
+    return callChannel<PublishReceipt>("publish", pid, type, payload, {
       ref: undefined,
       senderMetadata: undefined,
       attachments: attachments ? toStoredAttachments(attachments) : undefined,
       idempotencyKey,
     });
-    return result?.id;
+  }
+
+  async function publish<P>(
+    type: string,
+    payload: P,
+    options: PublishOptions = {}
+  ): Promise<number> {
+    return (await publishAccepted(type, payload, options)).id;
+  }
+
+  async function publishMessage(event: AgenticEvent, options: PublishOptions) {
+    const receipt = await publishAccepted(AGENTIC_EVENT_PAYLOAD_KIND, event, options);
+    const accepted = agenticEventSchema.parse(receipt.payload);
+    const messageId = accepted.causality?.messageId;
+    if (accepted.kind !== event.kind || !messageId) {
+      throw new PubSubError(
+        "Accepted message receipt does not identify this operation",
+        "validation"
+      );
+    }
+    return { messageId, pubsubId: receipt.id };
   }
 
   async function updateMetadata(
@@ -2317,11 +2339,10 @@ export function connectViaRpc<T extends ParticipantMetadata = ParticipantMetadat
       },
       createdAt: new Date().toISOString(),
     };
-    const pubsubId = await publish(AGENTIC_EVENT_PAYLOAD_KIND, event, {
+    return publishMessage(event, {
       attachments: sendOptions?.attachments,
       idempotencyKey: sendOptions?.idempotencyKey,
     });
-    return { messageId: id, pubsubId };
   }
 
   /** The author's participant ref — actor and `payload.by` for mutations. */
@@ -2771,10 +2792,9 @@ export function connectViaRpc<T extends ParticipantMetadata = ParticipantMetadat
     };
     if (input.displayMode !== undefined) event.payload.displayMode = input.displayMode;
     if (input.initialState !== undefined) event.payload.initialState = input.initialState;
-    const pubsubId = await publish(AGENTIC_EVENT_PAYLOAD_KIND, event, {
+    return publishMessage(event, {
       idempotencyKey: options?.idempotencyKey ?? `custom:start:${messageId}`,
     });
-    return { messageId, pubsubId };
   }
 
   async function updateCustomMessage(

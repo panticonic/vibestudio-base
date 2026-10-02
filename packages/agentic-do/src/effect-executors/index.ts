@@ -370,7 +370,7 @@ export const credentialWaitExecutor: EffectExecutor<CredentialWaitEffect> = {
       },
       // Include the occurrence discriminator (startedAtSeq) so a LATER wait for
       // the same credKey publishes a fresh card instead of replaying the first
-      // (stale/expired) card via the channel's durable dedup_keys table.
+      // (stale/expired) card via the channel's durable log.
       idempotencyKey: `credcard:${descriptor.credKey}:${descriptor.startedAtSeq}`,
     });
     await deps.credentials.registerCredentialInterest({
