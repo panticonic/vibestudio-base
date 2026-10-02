@@ -81,6 +81,16 @@ describe("transformCode", () => {
       expect(reactCount).toBe(1);
     });
 
+    it("discovers literal calls with JavaScript grammar instead of import-looking text", async () => {
+      const result = await transformCode(`
+        // require("comment-only")
+        const description = 'require("string-only")';
+        const peer = require /* host peer */ ("re\\u0061ct");
+        return peer;
+      `, { syntax: "typescript" });
+      expect(result.requires).toEqual(["react"]);
+    });
+
     it("returns empty array when no imports", async () => {
       const result = await transformCode(
         `const x = 42; export default x;`,
