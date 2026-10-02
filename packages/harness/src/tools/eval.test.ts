@@ -485,6 +485,38 @@ describe("formatEvalResult (shared by the eval tool's execute + the agent's defe
     expect(out.details).toBe(result);
   });
 
+  it("returns exhausted browser readiness as an agent tool error with recovery evidence", async () => {
+    const failure: EvalRunResult = {
+      success: false,
+      console: "",
+      error:
+        'Readiness budget exhausted after 100 observations: getByRole("button", { name: "Create new", exact: true })',
+      failureKind: "user-code",
+      failureCode: "cdp_locator_not_actionable",
+      errorData: {
+        observations: 100,
+        maxObservations: 100,
+        locator: 'getByRole("button", { name: "Create new", exact: true })',
+        evidence: {
+          status: "captured",
+          matchCount: 0,
+          snapshot: { text: "＋ Create new", truncated: false },
+        },
+      },
+    };
+    const tool = createEvalTool(async () => terminal(failure) as never);
+    const result = await tool.execute("missing-button", {
+      code: "await page.getByRole('button', { name: 'Create new' }).click()",
+    });
+    expect(result.isError).toBe(true);
+    expect(result.details).toEqual(failure);
+    expect(textOf(result)).toContain("cdp_locator_not_actionable");
+    expect(textOf(result)).toContain("100 observations");
+    expect(textOf(result)).toContain("＋ Create new");
+    // Deferred completions use the same formatter as immediate tool returns.
+    expect(await formatEvalResult(failure)).toEqual(result);
+  });
+
   it("delivers browser failure observations in model-facing content without losing original errors or receipts", async () => {
     const result: EvalRunResult = {
       success: false,

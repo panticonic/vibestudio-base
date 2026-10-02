@@ -538,6 +538,7 @@ export interface CdpFailureData {
     | "cdp_protocol_error"
     | "cdp_evaluation_timeout"
     | "cdp_evaluation_failed"
+    | "cdp_readiness_exhausted"
     | "cdp_locator_operation_failed"
     | "cdp_locator_not_actionable"
     | "cdp_locator_state_mismatch"
@@ -557,6 +558,9 @@ export interface CdpFailureData {
     | "handle-dialog-and-observe";
   locator?: string;
   timeoutMs?: number;
+  /** Completed readiness observations, including the initial observation. */
+  observations?: number;
+  maxObservations?: number;
   state?: WaitState;
   expectedLocator?: string;
   matchCount?: number;
@@ -582,6 +586,8 @@ export class CdpError extends Error {
       failureKind?: CdpFailureData["failureKind"];
       recovery?: CdpFailureData["recovery"];
       timeoutMs?: number;
+      observations?: number;
+      maxObservations?: number;
       state?: WaitState;
       expectedLocator?: string;
       matchCount?: number;
