@@ -870,6 +870,107 @@ return fs.readFileSync("/tmp/a");`,
     expect(loadImport).not.toHaveBeenCalled();
   });
 
+  it.each(["cjs", "async-cjs"] as const)(
+    "links a %s library's lazy host peers before initializing it",
+    async (format) => {
+      const globals = globalThis as Record<string, unknown>;
+      const moduleMap = globals["__vibestudioModuleMap__"] as Record<
+        string,
+        unknown
+      >;
+      const react = { marker: "the panel's React" };
+      const loadReact = vi.fn(async () => {
+        moduleMap["react"] = react;
+        return react;
+      });
+      (globals["__vibestudioModuleLoaders__"] as Record<string, unknown>)[
+        "react"
+      ] = loadReact;
+      globals["__vibestudioRequireAsync__"] = (id: string) => {
+        if (id !== "react")
+          throw new Error(`Unexpected host dependency: ${id}`);
+        return loadReact();
+      };
+      const loadImport = vi.fn(async () => ({
+        format,
+        bundle: 'module.exports = { peer: require("react") };',
+      }));
+      const result = await executeSandbox(
+        'import { peer } from "@workspace/widget"; return peer.marker;',
+        {
+          syntax: "typescript",
+          imports: { "@workspace/widget": "latest" },
+          loadImport,
+        },
+      );
+      expect(result).toMatchObject({
+        success: true,
+        returnValue: "the panel's React",
+      });
+      expect(loadReact).toHaveBeenCalledOnce();
+      expect(loadImport).toHaveBeenCalledOnce();
+      expect((moduleMap["@workspace/widget"] as { peer: unknown }).peer).toBe(
+        react,
+      );
+    },
+  );
+
+  it("preserves a library peer loader failure without building a replacement", async () => {
+    const globals = globalThis as Record<string, unknown>;
+    const failure = new Error("React chunk disconnected");
+    (globals["__vibestudioModuleLoaders__"] as Record<string, unknown>)[
+      "react"
+    ] = async () => {
+      throw failure;
+    };
+    globals["__vibestudioRequireAsync__"] = async () => {
+      throw failure;
+    };
+    const loadImport = vi.fn(async () => ({
+      format: "cjs" as const,
+      bundle: 'module.exports = require("react");',
+    }));
+    const result = await executeSandbox('import "@workspace/widget";', {
+      imports: { "@workspace/widget": "latest" },
+      loadImport,
+    });
+    expect(result).toMatchObject({
+      success: false,
+      error: failure.message,
+      failureKind: "infrastructure",
+      failureCode: "package_load_failed",
+    });
+    expect(loadImport).toHaveBeenCalledOnce();
+  });
+
+  it("does not link a private library against the ambient panel's peers", async () => {
+    const globals = globalThis as Record<string, unknown>;
+    const loadReact = vi.fn(async () => ({ marker: "ambient React" }));
+    (globals["__vibestudioModuleLoaders__"] as Record<string, unknown>)[
+      "react"
+    ] = loadReact;
+    globals["__vibestudioRequireAsync__"] = loadReact;
+    const moduleMap: Record<string, unknown> = {};
+    const result = await executeSandbox('import "@workspace/widget";', {
+      moduleMap,
+      require: (id) => {
+        if (id in moduleMap) return moduleMap[id];
+        throw new Error(`Private module missing: ${id}`);
+      },
+      imports: { "@workspace/widget": "latest" },
+      loadImport: async () => ({
+        format: "cjs",
+        bundle: 'module.exports = require("react");',
+      }),
+    });
+    expect(result).toMatchObject({
+      success: false,
+      error: "Private module missing: react",
+    });
+    expect(loadReact).not.toHaveBeenCalled();
+    expect(moduleMap).toEqual({});
+  });
+
   it("tracks build-loaded refs independently in each module registry", async () => {
     const firstModuleMap: Record<string, unknown> = {};
     const secondModuleMap: Record<string, unknown> = {};

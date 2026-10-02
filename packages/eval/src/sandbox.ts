@@ -18,7 +18,7 @@ import {
   type EvalOperationJournal,
 } from "@vibestudio/service-schemas/eval";
 import { parse } from "acorn";
-import { transformCode } from "./transform.js";
+import { extractRequires, transformCode } from "./transform.js";
 import {
   execute,
   executeDefault,
@@ -366,6 +366,20 @@ async function loadLibraryBundle(
       | ((id: string) => unknown)
       | undefined);
   if (!resolvedRequire) throw new Error("__vibestudioRequire__ not available");
+
+  // A library's provided peers remain external even when they have not yet
+  // been requested by authored source. Link those peers before executing its
+  // synchronous CommonJS imports, using the same dependency discovery as the
+  // source transform. Only the owning realm's declared host loaders qualify;
+  // private EvalDO registries never borrow a panel's modules.
+  await runInfrastructurePhase("package_load_failed", () =>
+    Promise.all(
+      extractRequires(artifact.bundle).map(async (dependency) => {
+        if (moduleMap[dependency] !== undefined) return;
+        await loadLazyHostModule(dependency, moduleMap, moduleMap);
+      }),
+    ),
+  );
 
   const body =
     artifact.format === "async-cjs"

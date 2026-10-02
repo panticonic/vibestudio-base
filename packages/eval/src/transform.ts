@@ -73,7 +73,7 @@ export async function transformCode(source: string, options: TransformOptions): 
  * Extract module specifiers from require() calls.
  * Used to validate all dependencies are available before execution.
  */
-function extractRequires(code: string): string[] {
+export function extractRequires(code: string): string[] {
   const matches = Array.from(code.matchAll(/require\(["']([^"']+)["']\)/g));
   const specifiers: string[] = [];
   for (const match of matches) {
