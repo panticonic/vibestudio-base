@@ -3,6 +3,7 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeAll, describe, expect, it, vi } from "vitest";
 import { Theme } from "@radix-ui/themes";
+import { Blob as NodeBlob } from "node:buffer";
 import { makeTestCatalogEntry } from "@workspace/model-catalog/testing";
 import { ChatInput } from "./ChatInput";
 import { ChatProvider } from "../context/ChatProvider";
@@ -107,6 +108,92 @@ async function keyDown(init: KeyboardEventInit & { key: string }): Promise<void>
     fireEvent.keyDown(textarea(), init);
   });
 }
+
+it("dictates into the draft selection without sending and releases the microphone", async () => {
+  const original = {
+    MediaRecorder: globalThis.MediaRecorder,
+    AudioContext: globalThis.AudioContext,
+    OfflineAudioContext: globalThis.OfflineAudioContext,
+    Blob: globalThis.Blob,
+  };
+  const mediaDescriptor = Object.getOwnPropertyDescriptor(navigator, "mediaDevices");
+  const stop = vi.fn();
+  const track = { stop, onended: null };
+  const stream = { getTracks: () => [track], getAudioTracks: () => [track] };
+  class Recorder {
+    state = "inactive";
+    mimeType = "audio/test";
+    ondataavailable: ((event: { data: Blob }) => void) | null = null;
+    onstop: (() => void) | null = null;
+    start() {
+      this.state = "recording";
+    }
+    stop() {
+      this.state = "inactive";
+      this.ondataavailable?.({ data: new Blob(["audio"]) });
+      this.onstop?.();
+    }
+  }
+  const close = vi.fn(async () => {});
+  class Context {
+    close = close;
+    async decodeAudioData() {
+      return { duration: 0.02 };
+    }
+  }
+  class Offline {
+    destination = {};
+    createBufferSource() {
+      return { buffer: null, connect() {}, start() {} };
+    }
+    async startRendering() {
+      return { getChannelData: () => new Float32Array(320) };
+    }
+  }
+  Object.assign(globalThis, {
+    MediaRecorder: Recorder,
+    AudioContext: Context,
+    OfflineAudioContext: Offline,
+    Blob: NodeBlob,
+  });
+  Object.defineProperty(navigator, "mediaDevices", {
+    configurable: true,
+    value: { getUserMedia: async () => stream },
+  });
+  try {
+    const rpc = {
+      call: vi.fn(async () => ({})),
+      stream: vi.fn(async () => new Response('{"type":"result","text":"Hello."}\n')),
+    };
+    const harness = renderInput({
+      input: "Before selected after",
+      context: {
+        chat: {
+          rpc,
+          contextId: "context",
+          channelId: "chat",
+        } as unknown as ChatContextValue["chat"],
+      },
+    });
+    textarea().setSelectionRange(7, 15);
+    await act(async () =>
+      fireEvent.click(screen.getByRole("button", { name: "Dictate in English" }))
+    );
+    expect(textarea().readOnly).toBe(true);
+    await keyDown({ key: "Enter" });
+    expect(harness.onSendMessage).not.toHaveBeenCalled();
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Stop dictation" })));
+    await waitFor(() => expect(harness.onInputChange).toHaveBeenCalledWith("Before Hello. after"));
+    expect(harness.onSendMessage).not.toHaveBeenCalled();
+    expect(stop).toHaveBeenCalled();
+    expect(close).toHaveBeenCalled();
+    expect(textarea().readOnly).toBe(false);
+  } finally {
+    Object.assign(globalThis, original);
+    if (mediaDescriptor) Object.defineProperty(navigator, "mediaDevices", mediaDescriptor);
+    else Reflect.deleteProperty(navigator, "mediaDevices");
+  }
+});
 
 describe("ChatInput keyboard shortcuts", () => {
   it("Enter sends with default mode (no after-turn metadata)", async () => {

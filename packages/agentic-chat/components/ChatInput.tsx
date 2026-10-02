@@ -24,6 +24,8 @@ import { ImageInput, getAttachmentInputsFromPendingImages } from "./ImageInput";
 import { MentionAutocomplete } from "./MentionAutocomplete";
 import { ModelCommandMenu } from "./ModelCommandMenu";
 import { SendButton } from "./SendButton";
+import { DictationButton, DictationStatus } from "./DictationControl";
+import { useDictation } from "../hooks/useDictation";
 import { useMentionAutocomplete, type MentionCandidate } from "../hooks/useMentionAutocomplete";
 import { useAccountProfiles, type AccountRpc } from "../hooks/useAccountProfiles";
 import {
@@ -140,6 +142,25 @@ export function ChatInput({ placeholder, defaultMentions, disabled = false }: Ch
   }, [isTouch]);
 
   const textAreaRef = useRef<HTMLTextAreaElement>(null);
+  const speechRpc = chat?.rpc?.stream ? { stream: chat.rpc.stream.bind(chat.rpc) } : undefined;
+  const dictation = useDictation(
+    speechRpc,
+    `${chat?.contextId}:${chat?.channelId}`,
+    !disabled && connected,
+    (text) => {
+      const field = textAreaRef.current;
+      const start = field?.selectionStart ?? input.length;
+      const end = field?.selectionEnd ?? start;
+      const before = input.slice(0, start);
+      const after = input.slice(end);
+      const insertion = `${before && !/\s$/.test(before) ? " " : ""}${text}${after && !/^\s/.test(after) ? " " : ""}`;
+      onInputChange(before + insertion + after);
+      requestAnimationFrame(() => {
+        field?.focus();
+        field?.setSelectionRange(start + insertion.length, start + insertion.length);
+      });
+    }
+  );
   const [sendError, setSendError] = useState<string | null>(null);
   const [showImageInput, setShowImageInput] = useState(false);
   const [selectedMentionIds, setSelectedMentionIds] = useState<Record<string, string>>({});
@@ -151,7 +172,10 @@ export function ChatInput({ placeholder, defaultMentions, disabled = false }: Ch
 
   // --- `/model` composer quick-switcher (item 7) -------------------------
   const [modelMenuIndex, setModelMenuIndex] = useState(0);
-  const [modelMenuPos, setModelMenuPos] = useState<{ left: number; top: number } | null>(null);
+  const [modelMenuPos, setModelMenuPos] = useState<{
+    left: number;
+    top: number;
+  } | null>(null);
   const [modelSwitchNotice, setModelSwitchNotice] = useState<string | null>(null);
 
   const modelQuery = useMemo(() => {
@@ -308,7 +332,7 @@ export function ChatInput({ placeholder, defaultMentions, disabled = false }: Ch
     async (mode: "default" | "after-turn" = "default") => {
       try {
         setSendError(null);
-        if (disabled) return;
+        if (disabled || dictation.busy) return;
         // A `/model …` line is a command, never a chat message. If it resolves
         // to models, switch to the top match; otherwise coach instead of
         // sending the literal text to the agent.
@@ -373,6 +397,7 @@ export function ChatInput({ placeholder, defaultMentions, disabled = false }: Ch
       modelMenuIndex,
       switchModel,
       disabled,
+      dictation.busy,
     ]
   );
 
@@ -422,6 +447,13 @@ export function ChatInput({ placeholder, defaultMentions, disabled = false }: Ch
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
+      if (dictation.busy) {
+        if (e.key === "Escape") {
+          e.preventDefault();
+          dictation.cancel();
+        } else if (e.key === "Enter") e.preventDefault();
+        return;
+      }
       if (modelMenuOpen) {
         if (e.key === "ArrowDown") {
           e.preventDefault();
@@ -504,6 +536,8 @@ export function ChatInput({ placeholder, defaultMentions, disabled = false }: Ch
       modelMenuIndex,
       switchModel,
       onInputChange,
+      dictation.busy,
+      dictation.cancel,
     ]
   );
 
@@ -520,7 +554,8 @@ export function ChatInput({ placeholder, defaultMentions, disabled = false }: Ch
   }, [handleSendMessage]);
 
   const inputDisabled = disabled || !connected;
-  const canSend = !inputDisabled && (input.trim().length > 0 || pendingImages.length > 0);
+  const canSend =
+    !inputDisabled && !dictation.busy && (input.trim().length > 0 || pendingImages.length > 0);
 
   return (
     <>
@@ -580,7 +615,7 @@ export function ChatInput({ placeholder, defaultMentions, disabled = false }: Ch
             the field, not beside it). It stays put as the textarea grows; the
             textarea reserves right-padding so text never runs under it. */}
         <Box style={{ position: "relative" }}>
-          {mentions.open && (
+          {mentions.open && !dictation.busy && (
             <MentionAutocomplete
               candidates={mentions.candidates}
               selectedIndex={mentions.selectedIndex}
@@ -589,7 +624,7 @@ export function ChatInput({ placeholder, defaultMentions, disabled = false }: Ch
               onSelect={insertMention}
             />
           )}
-          {modelMenuOpen && (
+          {modelMenuOpen && !dictation.busy && (
             <ModelCommandMenu
               candidates={modelCandidates}
               selectedIndex={modelMenuIndex}
@@ -602,7 +637,7 @@ export function ChatInput({ placeholder, defaultMentions, disabled = false }: Ch
             ref={textAreaRef}
             size="2"
             variant="surface"
-            className="chat-input-textarea"
+            className={`chat-input-textarea${dictation.supported ? " chat-input-with-dictation" : ""}`}
             style={{
               width: "100%",
               // Match the dock's default band so the send button sits centered in
@@ -620,8 +655,10 @@ export function ChatInput({ placeholder, defaultMentions, disabled = false }: Ch
             onInput={handleTextAreaInput}
             onKeyDown={handleKeyDown}
             disabled={inputDisabled}
+            readOnly={dictation.busy}
           />
-          <Box className="chat-input-send-dock">
+          <Box className="chat-input-send-dock" style={{ gap: "0.5rem" }}>
+            <DictationButton dictation={dictation} disabled={inputDisabled} size={sendButtonSize} />
             <SendButton
               intent={primaryActionIntent}
               agentBusy={agentBusy}
@@ -636,6 +673,7 @@ export function ChatInput({ placeholder, defaultMentions, disabled = false }: Ch
             />
           </Box>
         </Box>
+        <DictationStatus dictation={dictation} />
         {/* Transient "Sending…" ghost — the only sub-row, shown only in flight. */}
         {pendingSendCount > 0 && (
           <Flex

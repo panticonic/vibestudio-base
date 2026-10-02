@@ -302,6 +302,7 @@ export interface ChatSandboxValue {
   channelId: string | null;
   rpc: {
     call: (target: string, method: string, args: unknown[]) => Promise<unknown>;
+    stream?: ConnectionConfig["rpc"]["stream"];
   };
 }
 
