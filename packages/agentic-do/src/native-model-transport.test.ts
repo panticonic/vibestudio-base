@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { BACKGROUND_CONTEXT } from "@panticonic/pi-chord/context";
+import { copyJson } from "@panticonic/pi-chord";
 import type { Model } from "@panticonic/pi-ai";
 import { stream } from "@panticonic/pi-ai/api/openai-codex-responses";
 import { normalizeContext } from "@panticonic/pi-ai/utils/transcript";
@@ -11,6 +12,7 @@ import {
   createLoopbackModelConnection,
 } from "./native-model-transport.js";
 import { isModelCredentialSentinel } from "./model-credential.js";
+import { createProtectedNativeModels } from "./native-model-provider.js";
 
 const model = {
   id: "test",
@@ -709,6 +711,8 @@ describe("credentialed model transport ownership", () => {
     // settled fetch here destroys a real Workers WebSocket during Close.
     expect(headSignal?.aborted).toBe(false);
     expect(socket.closeCalls).toBe(1);
+    expect(socket.readyState).toBe(2);
+    expect(socket.listeners.get("close")?.size).toBe(1);
     socket.finish();
     await closing;
     expect(socket.listeners.get("close")?.size).toBe(0);
@@ -767,15 +771,29 @@ describe("credentialed model transport ownership", () => {
       `${codex.baseUrl}/codex/responses`,
       { headers: new Headers() },
     );
-    socket.emit("error", { error: new Error("Transport error") });
+    const original = new Error("Transport error");
+    socket.emit("error", { error: original });
+    socket.emit("error", { error: new Error("Later transport error") });
     let released = false;
-    const closing = connection.close(BACKGROUND_CONTEXT).then(() => {
-      released = true;
-    });
+    const closing = connection.close(BACKGROUND_CONTEXT).then(
+      () => {
+        throw new Error("A failed socket cannot close successfully");
+      },
+      (error: unknown) => {
+        released = true;
+        expect(error).toBe(original);
+      },
+    );
     await Promise.resolve();
     expect(released).toBe(false);
+    expect(socket.readyState).toBe(2);
+    expect(socket.listeners.get("error")?.size).toBe(1);
     socket.finish();
     await closing;
+    await expect(connection.close(BACKGROUND_CONTEXT)).rejects.toBe(original);
+    expect(
+      [...socket.listeners.values()].every((listeners) => !listeners.size),
+    ).toBe(true);
   });
 
   it("propagates socket cleanup failure without pretending a repeated close released it", async () => {
@@ -902,7 +920,231 @@ describe("credentialed model transport ownership", () => {
     await closing;
   });
 
+  it.each(["before-owned-join", "during-provider-close"] as const)(
+    "joins the installed Codex provider's authoritative CLOSED state %s without requiring another close event",
+    async (completion) => {
+      const socket = new Socket();
+      // Workers can expose CLOSED before delivering a close listener. The
+      // provider owns its Close request; our connection still owns joining it.
+      socket.onClose = () => {
+        if (completion === "during-provider-close") socket.readyState = 3;
+      };
+      socket.onSend = () =>
+        queueMicrotask(() =>
+          socket.emit("message", {
+            data: JSON.stringify({
+              type: "response.completed",
+              response: {
+                id: "response-authoritative-close",
+                status: "completed",
+                output: [],
+                usage: { input_tokens: 0, output_tokens: 0, total_tokens: 0 },
+              },
+            }),
+          }),
+        );
+      const connection = createCredentialedModelConnection(
+        {
+          model: codex,
+          credential: credential(),
+          rpc: rpcFixture(),
+          egressFetch: async () => upgraded(socket),
+        },
+        BACKGROUND_CONTEXT,
+      );
+      const events = stream(codex, normalizeContext({ messages: [] }), {
+        ...connection.options,
+        transport: "websocket",
+      });
+      for await (const _event of events) {
+        /* The actual installed provider receives its terminal response. */
+      }
+      expect((await events.result()).stopReason).toBe("stop");
+      // The provider has already requested Close before its owner joins.
+      expect(socket.closeCalls).toBe(1);
+      if (completion === "before-owned-join") {
+        expect(socket.readyState).toBe(2);
+        expect(socket.listeners.get("close")?.size).toBe(1);
+        socket.readyState = 3;
+      }
+      expect(socket.readyState).toBe(3);
+      await connection.close(BACKGROUND_CONTEXT);
+      expect(socket.listeners.get("close")?.size).toBe(0);
+      await connection.close(BACKGROUND_CONTEXT);
+      expect(socket.closeCalls).toBe(1);
+    },
+  );
 
+  it.each(["before-owned-join", "during-owned-join"] as const)(
+    "propagates the installed Codex provider's terminal socket error %s without waiting for CloseEvent",
+    async (completion) => {
+      const socket = new Socket();
+      socket.onClose = () => {};
+      socket.onSend = () =>
+        queueMicrotask(() =>
+          socket.emit("message", {
+            data: JSON.stringify({
+              type: "response.completed",
+              response: {
+                id: "response-terminal-error",
+                status: "completed",
+                output: [],
+                usage: { input_tokens: 0, output_tokens: 0, total_tokens: 0 },
+              },
+            }),
+          }),
+        );
+      const connection = createCredentialedModelConnection(
+        {
+          model: codex,
+          credential: credential(),
+          rpc: rpcFixture(),
+          egressFetch: async () => upgraded(socket),
+        },
+        BACKGROUND_CONTEXT,
+      );
+      const events = stream(codex, normalizeContext({ messages: [] }), {
+        ...connection.options,
+        transport: "websocket",
+      });
+      for await (const _event of events) {
+        /* The real provider completes and removes its own stream listeners. */
+      }
+      expect((await events.result()).stopReason).toBe("stop");
+      expect(socket.closeCalls).toBe(1);
+      expect(socket.readyState).toBe(2);
+      expect(socket.listeners.get("error")?.size).toBe(1);
+      const original = new Error(
+        "Upstream disconnected during Close handshake",
+      );
+      const fail = () => {
+        socket.readyState = 3;
+        socket.emit("error", {
+          error: original,
+          message: "Original upstream failure",
+        });
+      };
+      if (completion === "before-owned-join") fail();
+      let joined = false;
+      const closing = connection.close(BACKGROUND_CONTEXT).then(
+        () => {
+          throw new Error("A failed socket cannot close successfully");
+        },
+        (error: unknown) => {
+          joined = true;
+          expect(error).toBe(original);
+        },
+      );
+      if (completion === "during-owned-join") {
+        await Promise.resolve();
+        expect(joined).toBe(false);
+        fail();
+      }
+      await closing;
+      expect(
+        [...socket.listeners.values()].every((listeners) => !listeners.size),
+      ).toBe(true);
+      await expect(connection.close(BACKGROUND_CONTEXT)).rejects.toBe(original);
+      expect(socket.closeCalls).toBe(1);
+    },
+  );
+
+  it("retains an ErrorEvent message when the terminal socket exposes no error value", async () => {
+    const socket = new Socket();
+    const connection = createCredentialedModelConnection(
+      {
+        model: codex,
+        credential: credential(),
+        rpc: rpcFixture(),
+        egressFetch: async () => upgraded(socket),
+      },
+      BACKGROUND_CONTEXT,
+    );
+    await connection.options.connectWebSocket(
+      `${codex.baseUrl}/codex/responses`,
+      { headers: new Headers() },
+    );
+    socket.readyState = 3;
+    socket.emit("error", { message: "Upstream frame parser failed" });
+    await expect(connection.close(BACKGROUND_CONTEXT)).rejects.toThrow(
+      "Upstream frame parser failed",
+    );
+    expect(socket.closeCalls).toBe(0);
+    expect(
+      [...socket.listeners.values()].every((listeners) => !listeners.size),
+    ).toBe(true);
+  });
+
+  it("runs builtin Codex through Models with host-protected auth and the owned transport", async () => {
+    const models = createProtectedNativeModels();
+    const selected = models.getModel("openai-codex", "gpt-6.1-sol");
+    if (!selected) throw new Error("Builtin Codex model is missing");
+    const samplingParams =
+      selected.samplingParams === undefined
+        ? undefined
+        : copyJson(selected.samplingParams);
+    if (
+      samplingParams !== undefined &&
+      (samplingParams === null ||
+        typeof samplingParams !== "object" ||
+        Array.isArray(samplingParams))
+    )
+      throw new Error(
+        "Selected model sampling parameters must be a JSON record",
+      );
+    const socket = new Socket();
+    socket.onSend = () =>
+      queueMicrotask(() =>
+        socket.emit("message", {
+          data: JSON.stringify({
+            type: "response.completed",
+            response: {
+              id: "response-models",
+              status: "completed",
+              output: [],
+              usage: { input_tokens: 0, output_tokens: 0, total_tokens: 0 },
+            },
+          }),
+        }),
+      );
+    const egressFetch = vi.fn<typeof fetch>(async () => upgraded(socket));
+    const rpc = rpcFixture();
+    const connection = createCredentialedModelConnection(
+      {
+        model: { ...structuredClone(selected), samplingParams },
+        credential: credential(),
+        rpc,
+        egressFetch,
+      },
+      BACKGROUND_CONTEXT,
+    );
+    try {
+      const events = models.stream(
+        selected,
+        normalizeContext({ messages: [] }),
+        {
+          ...connection.options,
+          transport: "websocket",
+        },
+      );
+      for await (const _event of events) {
+        /* Consume the installed registry's actual provider. */
+      }
+      expect(await events.result()).toMatchObject({
+        stopReason: "stop",
+        provider: "openai-codex",
+        model: "gpt-6.1-sol",
+      });
+      expect(egressFetch).toHaveBeenCalledOnce();
+      expect(socket.sent).toHaveLength(1);
+      expect(rpc.stream).not.toHaveBeenCalled();
+      const headers = egressFetch.mock.calls[0]![1]?.headers as Headers;
+      expect(headers.get(EGRESS_CREDENTIAL_HEADER)).toBe("credential-a");
+      expect(headers.has("authorization")).toBe(false);
+    } finally {
+      await connection.close(BACKGROUND_CONTEXT);
+    }
+  });
 });
 
 describe("content-free model transport lifecycle diagnostics", () => {
@@ -932,18 +1174,25 @@ describe("content-free model transport lifecycle diagnostics", () => {
     observed.send("private request content");
     socket.emit("message", { data: "private frame content" });
     socket.emit("message", { data: "another private frame" });
+    const original = new Error("sensitive token");
     socket.emit("error", {
       message: "private provider diagnostic",
-      error: new Error("sensitive token"),
+      error: original,
     });
     await connection.options.onProviderStreamEvent?.(
       { type: "response.completed", response: { private: "sensitive answer" } },
       codex,
     );
     let joined = false;
-    const closing = connection.close(BACKGROUND_CONTEXT).then(() => {
-      joined = true;
-    });
+    const closing = connection.close(BACKGROUND_CONTEXT).then(
+      () => {
+        throw new Error("A failed socket cannot close successfully");
+      },
+      (error: unknown) => {
+        joined = true;
+        expect(error).toBe(original);
+      },
+    );
     await Promise.resolve();
     expect(joined).toBe(false);
     expect(events.map((event) => event.milestone)).toEqual([

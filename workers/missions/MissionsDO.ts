@@ -121,6 +121,10 @@ export class MissionsDO extends DurableObjectBase {
   static override schemaVersion = 5;
   static override rpcMethods = missionsMethods;
 
+  // A run has exactly one lifecycle driver. Cancellation is retained in durable
+  // state, so an activation change cannot lose an accepted stop request.
+  private readonly runDrivers = new Map<string, Promise<void>>();
+
   constructor(ctx: DurableObjectContext, env: unknown) {
     super(ctx, env);
   }
@@ -765,6 +769,32 @@ export class MissionsDO extends DurableObjectBase {
   }
 
   @schemaRpc()
+  async cancel(missionId: string): Promise<MissionRecord> {
+    const mission = this.requireMission(missionId);
+    const runs = this.sql.exec(
+      "SELECT run_id FROM mission_runs WHERE mission_id=? AND phase!='terminal' ORDER BY started_at,run_id",
+      missionId,
+    ).toArray();
+    this.ctx.storage.transactionSync(() => {
+      if (mission.state === "active") this.sql.exec(
+        "UPDATE missions SET state='paused',next_run_at=NULL,updated_at=? WHERE mission_id=?",
+        Date.now(), missionId,
+      );
+      for (const run of runs) this.setStateValue(`cancel-run:${String(run["run_id"])}`, "requested");
+    });
+    // Join preparation before stopping the resulting executor. No phase can
+    // dispatch after the stop request without encountering the lifecycle gate.
+    for (const run of runs) {
+      const runId = String(run["run_id"]);
+      const owner = this.runDrivers.get(runId);
+      if (owner) await owner;
+      await this.advanceRun(runId);
+      if (this.requireRunRow(runId).phase === "terminal") this.deleteStateValue(`cancel-run:${runId}`);
+    }
+    return this.requireMission(missionId);
+  }
+
+  @schemaRpc()
   pause(missionId: string): MissionRecord {
     const mission = this.requireMission(missionId);
     this.requireActive(mission);
@@ -781,6 +811,9 @@ export class MissionsDO extends DurableObjectBase {
     const mission = this.requireMission(missionId);
     if (mission.state !== "paused")
       throw denied("Only paused automations can resume");
+    if (this.sql.exec("SELECT run_id FROM mission_runs WHERE mission_id=? AND phase!='terminal'", missionId).toArray()
+      .some(row => this.getStateValue(`cancel-run:${String(row["run_id"])}`)))
+      throw denied("Cancellation must finish before scheduling resumes");
     const now = Date.now();
     const completion = this.completionBeforeRun(mission, now);
     if (completion) this.markCompleted(missionId, completion, now);
@@ -1126,6 +1159,12 @@ export class MissionsDO extends DurableObjectBase {
     const runId = await deterministicRunId(subject, occurrenceKey);
     const existing = this.getRunRow(runId);
     if (existing) return this.rowToRun(existing);
+    // Deterministic identity and authority preparation yield to other commands.
+    // Recheck admission against the current owner state before creating work.
+    const latest = this.requireMission(mission.missionId, true);
+    this.requireActive(latest);
+    if (latest.revisionDigest !== mission.revisionDigest)
+      throw denied("Automation revision changed before run admission");
     const active = this.activeRunRow(mission.missionId);
     if (active) {
       this.sql.exec(
@@ -1190,9 +1229,35 @@ export class MissionsDO extends DurableObjectBase {
   }
 
   private async advanceRun(runId: string): Promise<void> {
+    const active = this.runDrivers.get(runId);
+    if (active) return active;
+    // The durable run owns execution. A manual command admits the run but
+    // cannot lend its transient caller or task closure to the executor.
+    const driver = this.runDetached(() => this.driveRun(runId));
+    this.runDrivers.set(runId, driver);
+    try { await driver; }
+    finally { if (this.runDrivers.get(runId) === driver) this.runDrivers.delete(runId); }
+  }
+
+  private checkRunCancellation(runId: string): void {
+    if (this.getStateValue(`cancel-run:${runId}`))
+      throw Object.assign(new Error("Automation run was cancelled"), { code: "ERUNCANCELLED" });
+  }
+
+  private async cancelRun(row: RunRow): Promise<void> {
+    if (row.executor_id && row.channel_id) {
+      await this.rpc.call(row.executor_id, "interruptChannel", [row.channel_id, true]);
+    }
+    await this.closeAdmission(this.requireRunRow(row.run_id));
+    this.terminalizeRun(this.requireRunRow(row.run_id), "cancelled", {});
+    this.deleteStateValue(`cancel-run:${row.run_id}`);
+  }
+
+  private async driveRun(runId: string): Promise<void> {
     try {
       let row = this.getRunRow(runId);
       if (!row || row.phase === "terminal") return;
+      this.checkRunCancellation(runId);
       if (row.phase === "executing" && row.progress_at + 60_000 > Date.now())
         return;
       const mission = this.requireMission(row.mission_id, true);
@@ -1216,6 +1281,7 @@ export class MissionsDO extends DurableObjectBase {
       if (row.phase === "admitted") {
         this.setPhase(runId, "context-preparing");
         row = this.requireRunRow(runId);
+        this.checkRunCancellation(runId);
       }
       if (row.phase === "context-preparing") {
         let contextId = row.context_id;
@@ -1244,6 +1310,7 @@ export class MissionsDO extends DurableObjectBase {
           runId,
         );
         row = this.requireRunRow(runId);
+        this.checkRunCancellation(runId);
       }
       if (row.phase === "executor-preparing") {
         const target =
@@ -1281,6 +1348,7 @@ export class MissionsDO extends DurableObjectBase {
           runId,
         );
         row = this.requireRunRow(runId);
+        this.checkRunCancellation(runId);
       }
       if (row.phase === "execution-admitting") {
         const admission = await this.admit(mission, row);
@@ -1291,13 +1359,16 @@ export class MissionsDO extends DurableObjectBase {
           runId,
         );
         row = this.requireRunRow(runId);
+        this.checkRunCancellation(runId);
       }
       if (row.phase === "dispatching") {
         const admission = await this.admit(mission, row);
         if (admission) this.recordAdmission(runId, admission);
+        this.checkRunCancellation(runId);
         if (execution.kind === "method")
           await this.dispatchMethod(mission, row, requireAdmission(admission));
         else await this.dispatchAgent(mission, row, admission);
+        this.checkRunCancellation(runId);
       }
       if (row.phase === "executing") {
         if (execution.kind === "method") {
@@ -1310,7 +1381,14 @@ export class MissionsDO extends DurableObjectBase {
       }
     } catch (error) {
       const row = this.getRunRow(runId);
-      if (!row || row.phase === "terminal") return;
+      if (!row || row.phase === "terminal") {
+        this.deleteStateValue(`cancel-run:${runId}`);
+        return;
+      }
+      if (this.getStateValue(`cancel-run:${runId}`)) {
+        await this.cancelRun(row);
+        return;
+      }
       if (retryFor(error) === "automatic") {
         this.deferRun(row, error);
         return;
@@ -1688,6 +1766,7 @@ export class MissionsDO extends DurableObjectBase {
           : null,
         row.run_id,
       );
+      this.deleteStateValue(`cancel-run:${row.run_id}`);
       if (completion) this.markCompleted(mission.missionId, completion, now);
       if (acknowledgeExecutor) this.enqueueExecutorTerminalAck(row, now);
     });

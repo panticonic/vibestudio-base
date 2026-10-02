@@ -4,7 +4,6 @@ import {
 } from "@workspace/agentic-protocol";
 import { observeNativeModelStream } from "./native-model-stream.js";
 import type { Api, Model, Models, Provider } from "@panticonic/pi-ai";
-import { builtinModels } from "@panticonic/pi-ai/providers/all";
 import type { Context } from "@panticonic/pi-chord";
 import { BACKGROUND_CONTEXT } from "@panticonic/pi-chord/context";
 import {
@@ -50,7 +49,11 @@ import {
   type NativeChannelIntake,
   type NativeChannelInputPrepare,
 } from "./native-channel-session.js";
-import { createProtectedModelProvider } from "./native-model-provider.js";
+import {
+  createProtectedModelProvider,
+  createProtectedNativeModels,
+  hostProtectedModelProvider,
+} from "./native-model-provider.js";
 import { retainedAgentExecutionOwner } from "./native-agent-session.js";
 
 /** Product configuration captures prompt, tools and channel presentation together. */
@@ -71,7 +74,7 @@ export abstract class NativeChannelOwner<
   Configuration extends NativeChannelConfiguration = NativeChannelConfiguration,
 > extends NativeAgentOwner {
   private readonly nativeRegistry = createRegistry();
-  private readonly nativeModelRegistry = builtinModels();
+  private readonly nativeModelRegistry = createProtectedNativeModels();
   private readonly nativeDefinitions = new Map<string, Configuration>();
   private readonly nativeChannels = new Map<string, Promise<Conversation>>();
   private readonly nativeChannelClients = new Map<string, ChannelClient>();
@@ -158,7 +161,7 @@ export abstract class NativeChannelOwner<
   }
 
   protected installNativeModelProvider(provider: Provider): void {
-    this.nativeModelRegistry.setProvider(provider);
+    this.nativeModelRegistry.setProvider(hostProtectedModelProvider(provider));
   }
 
   /** Settlement may read an existing conversation after new admission seals. */

@@ -12,7 +12,6 @@ export { AgentVesselBase } from "./agent-vessel.js";
 export type {
   AgentSettings,
   AgentInitiatedTurnOptions,
-  AgentAlarmSource,
   AgentToolExecutionContext,
   ApprovalLevel,
   ClonedChannelContext,

@@ -51,7 +51,7 @@ import {
 } from "./native-channel-method.js";
 import {
   notifyModelCredentialChange,
-  createProtectedLocalModelAuth,
+  createProtectedModelAuth,
 } from "./native-model-provider.js";
 import { retainedAgentExecutionOwner } from "./native-agent-session.js";
 import {
@@ -183,7 +183,6 @@ import {
   subagentRuntimePrompt,
   type SubagentIdentity,
 } from "@workspace/agentic-core/subagent-prompt";
-import type { DoAlarmSchedule } from "@vibestudio/shared/doDispatcher";
 import {
   MISSION_COMPLETION_PROTOCOL,
   missionExecutionImageDigest,
@@ -634,12 +633,6 @@ export interface ClonedChannelContext {
   forkPointPubsubId: number;
 }
 
-export interface AgentAlarmSource {
-  id: string;
-  nextWakeAt(): number | null;
-  fire(now: number): Promise<void>;
-}
-
 export interface AgentInitiatedTurnOptions extends AgentProductMetadata {
   steeringId?: string;
 }
@@ -710,8 +703,6 @@ export abstract class AgentVesselBase extends NativeChannelOwner<NativeProductCh
   >();
   private readonly blobTextReads = new Map<string, Promise<string | null>>();
   private blobTextCacheBytes = 0;
-  private readonly alarmSources = new Map<string, AgentAlarmSource>();
-  private readonly alarmDeadlines = new Map<string, number>();
   /** Derived scheduling state only; the durable trace rows remain authoritative. */
   private readonly hotPathTraceInsertsSinceSweep = new Map<string, number>();
   private readonly directMethodCalls = new OwnedMethodCalls<{
@@ -1236,70 +1227,6 @@ export abstract class AgentVesselBase extends NativeChannelOwner<NativeProductCh
         handle: descriptor.handle,
       },
     };
-  }
-
-  protected registerAgentAlarmSource(source: AgentAlarmSource): void {
-    this.alarmSources.set(source.id, source);
-    const next = source.nextWakeAt();
-    if (next === null) {
-      this.alarmDeadlines.delete(source.id);
-    } else {
-      this.alarmDeadlines.set(source.id, next);
-    }
-  }
-
-  protected unregisterAgentAlarmSource(sourceId: string): void {
-    this.alarmSources.delete(sourceId);
-    this.alarmDeadlines.delete(sourceId);
-  }
-
-  protected scheduleAgentAlarm(sourceId: string, timeMs: number): void {
-    if (!Number.isFinite(timeMs)) return;
-    this.alarmDeadlines.set(
-      sourceId,
-      Math.max(Math.round(timeMs), Date.now() + 1),
-    );
-  }
-
-  protected clearAgentAlarm(sourceId: string): void {
-    this.alarmDeadlines.delete(sourceId);
-  }
-
-  protected nextAgentAlarmSchedule(): DoAlarmSchedule | null {
-    for (const source of this.alarmSources.values()) {
-      const next = source.nextWakeAt();
-      if (next === null) this.alarmDeadlines.delete(source.id);
-      else this.alarmDeadlines.set(source.id, next);
-    }
-    const deadlines = [
-      ...this.alarmDeadlines.values(),
-      this.nextDurableWorkReadyEdgeAt(),
-    ].filter(
-      (value): value is number =>
-        typeof value === "number" && Number.isFinite(value) && value >= 0,
-    );
-    return deadlines.length === 0 ? null : { wakeAt: Math.min(...deadlines) };
-  }
-
-  protected override nextAlarmAfterRequest(): DoAlarmSchedule | null {
-    return this.nextAgentAlarmSchedule();
-  }
-
-  private async fireAgentAlarms(now: number): Promise<void> {
-    const due = [...this.alarmSources.values()]
-      .map((source) => ({ source, wakeAt: source.nextWakeAt() }))
-      .filter(
-        (entry): entry is { source: AgentAlarmSource; wakeAt: number } =>
-          typeof entry.wakeAt === "number" && entry.wakeAt <= now,
-      )
-      .sort((a, b) => a.wakeAt - b.wakeAt);
-    // Reconcile every due source before entering any source handler. A long
-    // handler must not leave later sources looking not-yet-due merely because
-    // this activation is still occupied.
-    for (const { source } of due) this.alarmDeadlines.delete(source.id);
-    for (const { source } of due) {
-      await source.fire(now);
-    }
   }
 
   private _gadClient: DurableObjectServiceClient | null = null;
@@ -4450,6 +4377,7 @@ export abstract class AgentVesselBase extends NativeChannelOwner<NativeProductCh
     channelId: string,
     _flushDeferred: boolean,
   ): Promise<void> {
+    await this.agentSession(BACKGROUND_CONTEXT);
     const conversation =
       await this.admittedNativeChannelConversation(channelId);
     if (conversation)
@@ -6681,15 +6609,6 @@ export abstract class AgentVesselBase extends NativeChannelOwner<NativeProductCh
 
   // ── Lifecycle ────────────────────────────────────────────────────────────
 
-  override async alarm(): Promise<DoAlarmSchedule | null> {
-    const native = await super.alarm();
-    await this.fireAgentAlarms(Date.now());
-    const domain = this.nextAgentAlarmSchedule();
-    if (!native) return domain;
-    if (!domain) return native;
-    return { wakeAt: Math.min(native.wakeAt, domain.wakeAt) };
-  }
-
   private async nativeChannelInspection(channelId: string) {
     const harness = this.existingAgentSession();
     if (!harness)
@@ -7045,7 +6964,7 @@ export abstract class AgentVesselBase extends NativeChannelOwner<NativeProductCh
         createProvider({
           id: LOCAL_PROVIDER_ID,
           name: "Local models",
-          auth: { apiKey: createProtectedLocalModelAuth() },
+          auth: { apiKey: createProtectedModelAuth() },
           models: localModels.map(({ spec, toolsCapable }) => ({
             id: spec.id,
             name: spec.name,

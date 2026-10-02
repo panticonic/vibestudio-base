@@ -338,15 +338,32 @@ function createModelConnection(
     let sends = 0;
     let messages = 0;
     let errors = 0;
+    let socketFailure: { reason: unknown } | undefined;
     const metadata = () => ({ socketId, sends, messages, errors });
     const onMessage = () => {
       messages += 1;
       if (messages === 1)
         report({ milestone: "message_observed", ...metadata() });
     };
-    const onError = () => {
+    const onError = (event: unknown) => {
       errors += 1;
       if (errors === 1) report({ milestone: "socket_error", ...metadata() });
+      const errorEvent =
+        typeof event === "object" && event !== null
+          ? (event as { error?: unknown; message?: unknown })
+          : undefined;
+      socketFailure ??= {
+        reason:
+          errorEvent?.error ??
+          new Error(
+            typeof errorEvent?.message === "string"
+              ? errorEvent.message
+              : "Model socket failed",
+          ),
+      };
+      // Workers reports a terminal network failure with ErrorEvent and CLOSED,
+      // without a subsequent CloseEvent. A nonterminal error retains ownership.
+      if (socket.readyState === 3) finish();
     };
     let finished = false;
     let closeRequested = false;
@@ -367,18 +384,28 @@ function createModelConnection(
       socket.removeEventListener("error", onError);
       signal.removeEventListener("abort", onAbort);
       resources.delete(resource);
-      closedResolve();
+      if (socketFailure) {
+        cleanupFailures.add(socketFailure.reason);
+        closedReject(socketFailure.reason);
+      } else closedResolve();
     };
     const requestClose = (
       code = 1000,
       reason = "Model invocation complete",
     ) => {
-      if (finished || closeRequested) return;
+      if (finished) return;
+      // A provider may request Close before the owner joins its connection.
+      // Observe terminal state before deciding another Close is unnecessary.
+      if (socket.readyState === 3) {
+        finish();
+        return;
+      }
+      if (closeRequested) return;
       closeRequested = true;
       report({ milestone: "close_requested", ...metadata() });
       try {
+        socket.close(code, reason);
         if (socket.readyState === 3) finish();
-        else socket.close(code, reason);
       } catch (error) {
         cleanupFailures.add(error);
         report({ milestone: "operation_error", ...metadata() });
@@ -399,7 +426,7 @@ function createModelConnection(
     const onClose = () => {
       report({ milestone: "close_observed", ...metadata() });
       // A peer Close on older compatibility dates requires a reciprocal Close.
-      // The observed event, not an idle timer or error event, settles ownership.
+      // CloseEvent or terminal ErrorEvent settles the retained resource.
       try {
         if (socket.readyState !== 3)
           socket.close(1000, "Model connection closed");

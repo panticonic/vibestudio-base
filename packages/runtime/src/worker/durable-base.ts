@@ -1117,7 +1117,11 @@ export abstract class DurableObjectBase {
    * explicitly clears the alarm. Alarm delivery bypasses this hook because an
    * alarm returns the same projection directly to AlarmDriver.
    */
-  protected nextAlarmAfterRequest(): DoAlarmSchedule | null | undefined {
+  protected nextAlarmAfterRequest():
+    | DoAlarmSchedule
+    | null
+    | undefined
+    | Promise<DoAlarmSchedule | null | undefined> {
     return undefined;
   }
 
@@ -1792,7 +1796,7 @@ export abstract class DurableObjectBase {
             await this._causalRpcOperations.drain(context);
           }
         })();
-        const nextAlarm = this.nextAlarmAfterRequest();
+        const nextAlarm = await this.nextAlarmAfterRequest();
         if (nextAlarm === null) this.deleteAlarm();
         else if (nextAlarm !== undefined) this.setAlarmAt(nextAlarm.wakeAt);
         return result;

@@ -423,6 +423,14 @@ export abstract class NativeAgentOwner extends PanelDurableObjectBase {
     }
   }
 
+  /** Replay the native versioned wake after ordinary requests. The source owns
+   * both runnable wakes and authoritative clears; no ambient alarm overwrites it. */
+  protected override async nextAlarmAfterRequest(): Promise<undefined> {
+    const harness = this.existingAgentSession();
+    if (harness) await harness.flushWake(BACKGROUND_CONTEXT);
+    return undefined;
+  }
+
   override async alarm() {
     const harness = await this.agentSession();
     await this.reconcileAgentAuthority();

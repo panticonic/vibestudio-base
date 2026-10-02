@@ -1,4 +1,5 @@
-import type { ApiKeyAuth } from "@panticonic/pi-ai";
+import type { ApiKeyAuth, Provider } from "@panticonic/pi-ai";
+import { builtinModels } from "@panticonic/pi-ai/providers/all";
 import type { Context, JsonValue } from "@panticonic/pi-chord";
 import type {
   ConversationId,
@@ -31,20 +32,36 @@ import {
 import { isModelCredentialSentinel } from "./model-credential.js";
 
 /** Resolve only the opaque credential supplied by the already admitted native model port. */
-export function createProtectedLocalModelAuth(): ApiKeyAuth {
+export function createProtectedModelAuth(): ApiKeyAuth {
   return {
-    name: "Host-attested loopback access",
+    name: "Host-attested model access",
     async resolve({ credential, signal }) {
       signal.throwIfAborted();
       return typeof credential?.key === "string" &&
         isModelCredentialSentinel(credential.key)
         ? {
             auth: { apiKey: credential.key },
-            source: "Host-attested loopback access",
+            source: "Host-attested model access",
           }
         : undefined;
     },
   };
+}
+
+/** Native provider APIs retain their implementation and catalog. Credential
+ * resolution belongs to the protected request port, including OAuth providers. */
+export function hostProtectedModelProvider(provider: Provider): Provider {
+  return { ...provider, auth: { apiKey: createProtectedModelAuth() } };
+}
+
+export function createProtectedNativeModels(): ReturnType<
+  typeof builtinModels
+> {
+  const models = builtinModels();
+  for (const provider of models.getProviders()) {
+    models.setProvider(hostProtectedModelProvider(provider));
+  }
+  return models;
 }
 
 const LOCAL_PROVIDER = "local";

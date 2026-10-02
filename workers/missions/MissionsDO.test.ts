@@ -39,6 +39,23 @@ class IdentityMissionsDO extends MissionsDO {
   }
 }
 
+class ExecutionOwnershipMissionsDO extends MissionsDO {
+  commandAfterExecution: ReturnType<ExecutionOwnershipMissionsDO["invocationForTest"]> | null = null;
+
+  override async runNow(missionId: string): Promise<MissionRunRecord> {
+    const result = await super.runNow(missionId);
+    this.commandAfterExecution = this.invocationForTest();
+    return result;
+  }
+
+  invocationForTest() {
+    return {
+      caller: this.caller,
+      authorization: this.authorization,
+    };
+  }
+}
+
 function agentCharter(summary = "Prepare a daily summary"): MissionCharter {
   return {
     summary,
@@ -1159,5 +1176,155 @@ describe("MissionsDO", () => {
       { method: "authority.finishExecution", revision: 2, state: "active" },
       { method: "authority.retireTarget", revision: 2, state: "active" },
     ]);
+  });
+});
+
+describe("MissionsDO durable execution ownership", () => {
+  it("runs fresh executors without borrowing the manual command's caller or task closure", async () => {
+    const harness = await createMissions(ExecutionOwnershipMissionsDO);
+    const instance = harness.instance;
+    if (!(instance instanceof ExecutionOwnershipMissionsDO))
+      throw new Error("Expected the execution ownership fixture");
+    const invocations: Array<{ method: string; invocation: ReturnType<ExecutionOwnershipMissionsDO["invocationForTest"]> }> = [];
+    harness.rpcCall.mockImplementation(async (target, method, args = []) => {
+      invocations.push({ method, invocation: instance.invocationForTest() });
+      if (method === "authority.compileAuthorityPlan") return policy();
+      if (method === "authority.acquireForTarget") return { requestIds: [], grantIds: [], denialIds: [] };
+      if (method === "runtime.createContext") return { contextId: "context:owned-run" };
+      if (method === "runtime.createEntity") return { targetId: "do:workers/summary:SummaryAgent:owned-run", contextId: (args[0] as { contextId?: string }).contextId };
+      if (method === "subscribeChannel" || method === "runAutomationTurn") return undefined;
+      if (method === "authority.admitExecution") return { authoritySessionId: "admission:owned-run", nonce: "nonce:owned-run" };
+      if (method.startsWith("workspace-state.alarm")) return undefined;
+      throw new Error(`Unexpected RPC ${target}.${method}`);
+    });
+    const mission = await harness.callAs<MissionRecord>(alice, "launch", { name: "Independent mission", charter: agentCharter() });
+    invocations.length = 0;
+    const run = await harness.callAs<MissionRunRecord>(alice, "runNow", mission.missionId);
+    expect(run).toMatchObject({ phase: "executing", authoritySessionId: "admission:owned-run" });
+    expect(invocations.find(call => call.method === "authority.acquireForTarget")?.invocation).toMatchObject({ caller: { callerId: alice.callerId, userId: alice.userId }, authorization: expect.any(Object) });
+    const executionCalls = invocations.filter(call => ["runtime.createContext", "runtime.createEntity", "subscribeChannel", "authority.admitExecution", "runAutomationTurn"].includes(call.method));
+    expect(executionCalls.map(call => call.method)).toEqual(expect.arrayContaining(["runtime.createContext", "runtime.createEntity", "subscribeChannel", "authority.admitExecution", "runAutomationTurn"]));
+    for (const call of executionCalls) expect(call.invocation).toEqual({ caller: null, authorization: null });
+    expect(instance.commandAfterExecution).toMatchObject({ caller: { callerId: alice.callerId, userId: alice.userId }, authorization: expect.any(Object) });
+    expect(instance.invocationForTest()).toEqual({ caller: null, authorization: null });
+  });
+});
+
+describe("MissionsDO cancellation ownership", () => {
+  it("pauses recurrence and joins an executing agent before terminalizing its run", async () => {
+    const harness = await createMissions();
+    let interruptEntered!: () => void;
+    let finishInterrupt!: () => void;
+    const entered = new Promise<void>(resolve => { interruptEntered = resolve; });
+    const interrupted = new Promise<void>(resolve => { finishInterrupt = resolve; });
+    harness.rpcCall.mockImplementation(async (target, method, args = []) => {
+      harness.calls.push({ target, method, args });
+      if (method === "authority.compileAuthorityPlan") return policy();
+      if (method === "runAutomationTurn") return undefined;
+      if (method === "interruptChannel") { interruptEntered(); await interrupted; return { interrupted: true }; }
+      if (method.startsWith("workspace-state.alarm")) return undefined;
+      throw new Error(`Unexpected RPC ${target}.${method}`);
+    });
+    const charter = continuingAgentCharter();
+    charter.trigger = { kind: "schedule", everyMs: 60000 };
+    const mission = await harness.callAs<MissionRecord>(alice, "launch", { name: "Recurring review", charter });
+    const run = await harness.callAs<MissionRunRecord>(alice, "runNow", mission.missionId);
+    const cancellation = harness.callAs<MissionRecord>(alice, "cancel", mission.missionId);
+    await entered;
+    expect(await harness.callAs<MissionRecord>(alice, "get", mission.missionId)).toMatchObject({ state: "paused" });
+    expect(await harness.callAs<MissionRunRecord>(alice, "getRun", run.runId)).toMatchObject({ phase: "executing" });
+    finishInterrupt();
+    expect(await cancellation).toMatchObject({ missionId: mission.missionId, state: "paused" });
+    expect(await harness.callAs<MissionRunRecord>(alice, "getRun", run.runId)).toMatchObject({ phase: "terminal", outcome: "cancelled" });
+    expect(harness.calls.find(call => call.method === "interruptChannel")).toMatchObject({ target: "do:workers/summary:SummaryAgent:daily", args: ["conversation:daily", true] });
+    expect(harness.sql.exec("SELECT key FROM state WHERE key LIKE 'cancel-run:%'").toArray()).toEqual([]);
+    expect(await harness.callAs<MissionRecord>(alice, "resume", mission.missionId)).toMatchObject({ state: "active" });
+  });
+
+  it("joins in-flight context preparation and never dispatches after cancellation was requested", async () => {
+    const harness = await createMissions();
+    let contextEntered!: () => void;
+    let finishContext!: (value: { contextId: string }) => void;
+    const entered = new Promise<void>(resolve => { contextEntered = resolve; });
+    const prepared = new Promise<{ contextId: string }>(resolve => { finishContext = resolve; });
+    harness.rpcCall.mockImplementation(async (target, method, args = []) => {
+      harness.calls.push({ target, method, args });
+      if (method === "authority.compileAuthorityPlan") return policy();
+      if (method === "authority.acquireForTarget") return { requestIds: [], grantIds: [], denialIds: [] };
+      if (method === "runtime.createContext") { contextEntered(); return prepared; }
+      if (method === "runtime.createEntity") return { targetId: "do:workers/pubsub-channel:PubSubChannel:prepared" };
+      if (method.startsWith("workspace-state.alarm")) return undefined;
+      throw new Error(`Unexpected RPC ${target}.${method}`);
+    });
+    const mission = await harness.callAs<MissionRecord>(alice, "launch", { name: "Prepared work", charter: agentCharter() });
+    const start = harness.callAs<MissionRunRecord>(alice, "runNow", mission.missionId);
+    await entered;
+    const cancellation = harness.callAs<MissionRecord>(alice, "cancel", mission.missionId);
+    // The queued RPC enters asynchronously. Reading the paused owner after it
+    // verifies that the cancellation intent was accepted before inspecting it.
+    expect(await harness.callAs<MissionRecord>(alice, "get", mission.missionId)).toMatchObject({ state: "paused" });
+    expect(harness.sql.exec("SELECT phase FROM mission_runs").one()).toEqual({ phase: "context-preparing" });
+    expect(harness.sql.exec("SELECT key FROM state WHERE key LIKE 'cancel-run:%'").toArray()).toHaveLength(1);
+    finishContext({ contextId: "context:prepared" });
+    const run = await start;
+    await cancellation;
+    expect(run).toMatchObject({ phase: "terminal", outcome: "cancelled", contextId: "context:prepared" });
+    expect(harness.calls.filter(call => ["runAutomationTurn", "authority.admitExecution", "subscribeChannel"].includes(call.method))).toEqual([]);
+  });
+
+  it("joins fresh task execution and closes its admitted authority before acknowledging cancellation", async () => {
+    const harness = await createMissions();
+    let closeEntered!: () => void;
+    let finishClose!: () => void;
+    const entered = new Promise<void>(resolve => { closeEntered = resolve; });
+    const closed = new Promise<void>(resolve => { finishClose = resolve; });
+    harness.rpcCall.mockImplementation(async (target, method, args = []) => {
+      harness.calls.push({ target, method, args });
+      if (method === "authority.compileAuthorityPlan") return policy();
+      if (method === "authority.acquireForTarget") return { requestIds: [], grantIds: [], denialIds: [] };
+      if (method === "runtime.createContext") return { contextId: "context:task" };
+      if (method === "runtime.createEntity") return { targetId: "do:workers/summary:SummaryAgent:task", contextId: (args[0] as { contextId?: string }).contextId };
+      if (method === "subscribeChannel" || method === "runAutomationTurn" || method === "interruptChannel") return undefined;
+      if (method === "authority.admitExecution") return { authoritySessionId: "admission:task", nonce: "nonce:task" };
+      if (method === "authority.finishExecution") { closeEntered(); await closed; return undefined; }
+      if (method.startsWith("workspace-state.alarm")) return undefined;
+      throw new Error(`Unexpected RPC ${target}.${method}`);
+    });
+    const mission = await harness.callAs<MissionRecord>(alice, "launch", { name: "Fresh task", charter: agentCharter() });
+    const run = await harness.callAs<MissionRunRecord>(alice, "runNow", mission.missionId);
+    expect(run).toMatchObject({ phase: "executing", authoritySessionId: "admission:task" });
+    const cancellation = harness.callAs<MissionRecord>(alice, "cancel", mission.missionId);
+    await entered;
+    expect(await harness.callAs<MissionRunRecord>(alice, "getRun", run.runId)).toMatchObject({ phase: "executing" });
+    expect(harness.calls.find(call => call.method === "interruptChannel")).toBeDefined();
+    finishClose();
+    await cancellation;
+    expect(await harness.callAs<MissionRunRecord>(alice, "getRun", run.runId)).toMatchObject({ phase: "terminal", outcome: "cancelled" });
+    expect(harness.calls.find(call => call.method === "authority.finishExecution")).toMatchObject({ args: [{ authoritySessionId: "admission:task" }] });
+  });
+
+  it("propagates the original interruption failure and retains the cancellation until retry joins it", async () => {
+    const harness = await createMissions();
+    let canInterrupt = false;
+    harness.rpcCall.mockImplementation(async (target, method, args = []) => {
+      harness.calls.push({ target, method, args });
+      if (method === "authority.compileAuthorityPlan") return policy();
+      if (method === "runAutomationTurn") return undefined;
+      if (method === "interruptChannel") {
+        if (!canInterrupt) throw new Error("Executor stop failed: original evidence");
+        return { interrupted: true };
+      }
+      if (method.startsWith("workspace-state.alarm")) return undefined;
+      throw new Error(`Unexpected RPC ${target}.${method}`);
+    });
+    const mission = await harness.callAs<MissionRecord>(alice, "launch", { name: "Work", charter: continuingAgentCharter() });
+    const run = await harness.callAs<MissionRunRecord>(alice, "runNow", mission.missionId);
+    await expect(harness.callAs(alice, "cancel", mission.missionId)).rejects.toThrow("Executor stop failed: original evidence");
+    expect(await harness.callAs<MissionRunRecord>(alice, "getRun", run.runId)).toMatchObject({ phase: "executing" });
+    await expect(harness.callAs(alice, "resume", mission.missionId)).rejects.toThrow(/cancellation.*finish/i);
+    expect(harness.sql.exec("SELECT key FROM state WHERE key LIKE 'cancel-run:%'").toArray()).toHaveLength(1);
+    canInterrupt = true;
+    await harness.callAs(alice, "cancel", mission.missionId);
+    expect(await harness.callAs<MissionRunRecord>(alice, "getRun", run.runId)).toMatchObject({ phase: "terminal", outcome: "cancelled" });
   });
 });

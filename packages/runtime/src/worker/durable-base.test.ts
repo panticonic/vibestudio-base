@@ -403,6 +403,16 @@ class DerivedAlarmProbeDO extends TestDurableObjectBase {
   }
 }
 
+class AsyncProjectionProbeDO extends EchoDO {
+  projection: Promise<undefined> = Promise.resolve(undefined);
+  projectionObserved: () => void = () => {};
+
+  protected override async nextAlarmAfterRequest(): Promise<undefined> {
+    this.projectionObserved();
+    return this.projection;
+  }
+}
+
 class AlarmRescheduleProbeDO extends TestDurableObjectBase {
   protected createTables(): void {}
 
@@ -1236,6 +1246,52 @@ describe("DurableObjectBase durable replay protection", () => {
 });
 
 describe("DurableObjectBase server-driven alarm durability", () => {
+  it("joins asynchronous source publication before returning an ordinary read", async () => {
+    const fixture = await createTestDO(AsyncProjectionProbeDO);
+    let complete!: () => void;
+    fixture.instance.projection = new Promise<undefined>((resolve) => {
+      complete = () => resolve(undefined);
+    });
+    let observed!: () => void;
+    const publicationObserved = new Promise<void>((resolve) => {
+      observed = resolve;
+    });
+    fixture.instance.projectionObserved = observed;
+    const pending = fixture.call("echo", "read-only");
+    let settled = false;
+    void pending.then(
+      () => { settled = true; },
+      () => { settled = true; },
+    );
+    try {
+      await publicationObserved;
+      expect(settled).toBe(false);
+      complete();
+      await expect(pending).resolves.toEqual(["read-only"]);
+    } finally {
+      complete();
+      await pending;
+      fixture.db.close();
+    }
+  });
+
+  it("propagates the original asynchronous source publication failure to an ordinary read", async () => {
+    const fixture = await createTestDO(AsyncProjectionProbeDO);
+    const original = new Error("canonical source publication unavailable");
+    let fail!: (reason: Error) => void;
+    fixture.instance.projection = new Promise((_resolve, reject) => {
+      fail = reject;
+    });
+    fixture.instance.projectionObserved = () => {
+      fail(original);
+    };
+    try {
+      await expect(fixture.call("echo", "read-only")).rejects.toThrow(original.message);
+    } finally {
+      fixture.db.close();
+    }
+  });
+
   it("returns the alarm handler's explicit schedule without re-entering workspace state", async () => {
     let rpcRequestCount = 0;
     const server = createServer((_request, response) => {
