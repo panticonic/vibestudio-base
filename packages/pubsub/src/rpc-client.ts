@@ -202,8 +202,6 @@ interface ResolvedService {
   targetId?: string;
 }
 
-export const CHANNEL_CLOSE_TIMEOUT_MS = 15_000;
-
 export interface RpcChannelTargetOptions {
   /** Transport used for the context-bound service resolution call. */
   rpc: Pick<RpcConnectOptions["rpc"], "call">;
@@ -2680,7 +2678,7 @@ export function connectViaRpc<T extends ParticipantMetadata = ParticipantMetadat
             await rpc.call(await getDoTarget(), "unsubscribe", [
               pid,
               subscription.subscriptionId,
-            ], { timeoutMs: CHANNEL_CLOSE_TIMEOUT_MS });
+            ]);
           }
         }
       } catch (error) {

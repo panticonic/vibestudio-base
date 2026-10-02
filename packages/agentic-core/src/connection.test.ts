@@ -96,7 +96,6 @@ describe("ConnectionManager", () => {
       CHANNEL_TARGET,
       "unsubscribe",
       ["panel:panel-1", expect.any(String)],
-      { timeoutMs: 15_000 },
     );
   });
 
@@ -356,7 +355,6 @@ describe("ConnectionManager owned readiness", () => {
           CHANNEL_TARGET,
           "unsubscribe",
           expect.any(Array),
-          expect.any(Object),
         ),
       );
       expect(retired).toBe(false);
@@ -406,7 +404,6 @@ it("preserves the pending owner when a replacement is already cancelled", async 
         CHANNEL_TARGET,
         "unsubscribe",
         expect.any(Array),
-        expect.any(Object),
       ),
     );
     expect(retired).toBe(false);

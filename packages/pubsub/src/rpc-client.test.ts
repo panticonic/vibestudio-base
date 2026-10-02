@@ -4,7 +4,6 @@
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import {
-  CHANNEL_CLOSE_TIMEOUT_MS,
   connectViaRpc,
   resolveRpcChannelTarget,
 } from "./rpc-client.js";
@@ -801,7 +800,7 @@ describe("connectViaRpc", () => {
         expect(mockRpc.call).toHaveBeenCalledWith(DO_TARGET, "unsubscribe", [
           SELF_ID,
           expect.any(String),
-        ], { timeoutMs: CHANNEL_CLOSE_TIMEOUT_MS });
+        ]);
       });
       expect(settled).toBe(false);
 
@@ -810,38 +809,36 @@ describe("connectViaRpc", () => {
       expect(settled).toBe(true);
     });
 
-    it("aborts the subscription when cooperative close does not answer", async () => {
+    it("propagates the original cooperative leave failure and retires the subscription", async () => {
       vi.useFakeTimers();
+      const original = new Error(
+        "The channel owner rejected cooperative leave",
+      );
+      let rejectLeave!: (error: Error) => void;
+      const leaving = new Promise<void>((_resolve, reject) => {
+        rejectLeave = reject;
+      });
       mockRpc.call.mockImplementation(
-        async (
-          target: string,
-          method: string,
-          _args: unknown[],
-          options?: { timeoutMs?: number }
-        ) => {
+        async (target: string, method: string) => {
           if (target === "main" && method === "workers.resolveService") {
             return { kind: "durable-object", targetId: DO_TARGET };
           }
-          if (target === DO_TARGET && method === "unsubscribe") {
-            await new Promise<void>((_resolve, reject) => {
-              setTimeout(
-                () => reject(new Error("cooperative close timed out")),
-                options?.timeoutMs
-              );
-            });
-          }
+          if (target === DO_TARGET && method === "unsubscribe") await leaving;
           return undefined;
-        }
+        },
       );
       const client = connectViaRpc({ rpc: mockRpc as any, channel: CHANNEL });
       await emitReplayAndReady(emit, []);
       await client.ready();
-
       const closing = client.close();
-      const rejected = expect(closing).rejects.toThrow("cooperative close timed out");
-      await vi.advanceTimersByTimeAsync(CHANNEL_CLOSE_TIMEOUT_MS);
-
-      await rejected;
+      const rejected = expect(closing).rejects.toBe(original);
+      try {
+        await vi.advanceTimersByTimeAsync(60_000);
+        expect(streamSignals.at(-1)?.aborted).toBe(false);
+      } finally {
+        rejectLeave(original);
+        await rejected;
+      }
       expect(streamSignals.at(-1)?.aborted).toBe(true);
     });
 
@@ -947,7 +944,7 @@ describe("connectViaRpc", () => {
       expect(mockRpc.call).toHaveBeenCalledWith(DO_TARGET, "unsubscribe", [
         "user:usr_alice",
         expect.any(String),
-      ], { timeoutMs: CHANNEL_CLOSE_TIMEOUT_MS });
+      ]);
     });
 
     it("resolves ready() from the subscribe acknowledgment after applying fallback replay", async () => {
@@ -2915,7 +2912,7 @@ describe("connectViaRpc", () => {
       expect(mockRpc.call).toHaveBeenCalledWith(DO_TARGET, "unsubscribe", [
         SELF_ID,
         expect.any(String),
-      ], { timeoutMs: CHANNEL_CLOSE_TIMEOUT_MS });
+      ]);
 
       // Verify disconnect handler fired
       expect(disconnectFn).toHaveBeenCalledTimes(1);
