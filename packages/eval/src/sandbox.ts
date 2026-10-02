@@ -12,13 +12,14 @@
  */
 
 import type { ComponentType } from "react";
+import type { BuildBundleResult } from "@vibestudio/service-schemas/build";
 import {
   EVAL_OPERATION_JOURNAL_MAX_ENTRIES,
   EVAL_OPERATION_JOURNAL_PREVIEW_CHARS,
   type EvalOperationJournal,
 } from "@vibestudio/service-schemas/eval";
 import { parse } from "acorn";
-import { extractRequires, transformCode } from "./transform.js";
+import { transformCode } from "./transform.js";
 import {
   execute,
   executeDefault,
@@ -63,10 +64,7 @@ export interface SandboxImportLoader {
   resolveWorkspaceImport?: (specifier: string) => Promise<boolean>;
 }
 
-export interface LibraryModuleArtifact {
-  bundle: string;
-  format: "cjs" | "async-cjs";
-}
+export type LibraryModuleArtifact = BuildBundleResult;
 
 export type SandboxFailureKind = "user-code" | "infrastructure" | "cancelled";
 
@@ -216,7 +214,11 @@ function structuredFailureData(error: unknown): unknown | undefined {
 function structuredFailureKind(error: unknown): SandboxFailureKind | undefined {
   if (!error || typeof error !== "object") return undefined;
   const code = structuredFailureCode(error);
-  if (code === "EUNEXPECTEDTESTPROMPT" || code?.startsWith("DO_SCHEMA_") || code === "DO_MAINTENANCE_IN_PROGRESS") {
+  if (
+    code === "EUNEXPECTEDTESTPROMPT" ||
+    code?.startsWith("DO_SCHEMA_") ||
+    code === "DO_MAINTENANCE_IN_PROGRESS"
+  ) {
     return "infrastructure";
   }
   const errorData = (error as { errorData?: unknown }).errorData;
@@ -243,7 +245,11 @@ async function runInfrastructurePhase<T>(
     const structuredCode = structuredFailureCode(error);
     if (structuredCode && CORRECTABLE_IMPORT_FAILURE_CODES.has(structuredCode))
       throw error;
-    if (structuredFailureKind(error) === "infrastructure" || error instanceof SandboxInfrastructureError) throw error;
+    if (
+      structuredFailureKind(error) === "infrastructure" ||
+      error instanceof SandboxInfrastructureError
+    )
+      throw error;
     throw new SandboxInfrastructureError(code, error);
   }
 }
@@ -369,14 +375,19 @@ async function loadLibraryBundle(
 
   // A library's provided peers remain external even when they have not yet
   // been requested by authored source. Link those peers before executing its
-  // synchronous CommonJS imports, using the same dependency discovery as the
-  // source transform. Only the owning realm's declared host loaders qualify;
+  // synchronous CommonJS imports. The compiler's artifact contract owns this
+  // list; generated require helpers cannot be recovered from source scanning.
+  // Only the owning realm's declared host loaders qualify;
   // private EvalDO registries never borrow a panel's modules.
   await runInfrastructurePhase("package_load_failed", () =>
     Promise.all(
-      extractRequires(artifact.bundle).map(async (dependency) => {
+      artifact.requiredModules.map(async (dependency) => {
         if (moduleMap[dependency] !== undefined) return;
-        await loadLazyHostModule(dependency, moduleMap, moduleMap);
+        if (!(await loadLazyHostModule(dependency, moduleMap, moduleMap))) {
+          // A private realm may satisfy a peer through its injected require.
+          // Resolve it before execution; never run a partially linked module.
+          resolvedRequire(dependency);
+        }
       }),
     ),
   );
@@ -402,20 +413,14 @@ async function loadLibraryBundle(
       ) {
         throw originalError;
       }
-      const dependencyArtifact = await runInfrastructurePhase(
-        "package_load_failed",
-        () => loadImport(dependency, undefined, Object.keys(moduleMap)),
-      );
-      await loadLibraryBundle(
-        dependency,
-        dependencyArtifact,
+      await loadImports(
+        { [dependency]: "latest" },
+        loadImport,
         moduleMap,
         resolvedRequire,
         compileFunction,
         freezeModuleNamespace,
-        loadImport,
         confinement,
-        undefined,
       );
       return resolvedRequire(dependency);
     }
@@ -1810,7 +1815,8 @@ export async function executeSandbox(
     // Scope-held panel/session functions still use this resident runtime even
     // when the next cell contains no import. Journal every execution context.
     const runtimeModule = tryRequireRuntimeModule(requireFn);
-    const journal = options.operationJournal ?? createRuntimeJournal(runtimeModule);
+    const journal =
+      options.operationJournal ?? createRuntimeJournal(runtimeModule);
     runtimeJournal = journal;
     const runUserCode = async () => {
       throwIfAborted(signal);
@@ -1852,9 +1858,10 @@ export async function executeSandbox(
       };
     };
 
-    const execution = journal && !options.operationJournal
-      ? await runtimeModule.journal.with(journal, runUserCode)
-      : await runUserCode();
+    const execution =
+      journal && !options.operationJournal
+        ? await runtimeModule.journal.with(journal, runUserCode)
+        : await runUserCode();
     throwIfAborted(signal);
     let operationJournalFooter: string | undefined;
     if (journal) {
@@ -1873,7 +1880,9 @@ export async function executeSandbox(
       returnValue: execution.safeReturnValue,
       exports: execution.exports,
       operationJournalFooter,
-      ...(journal ? { operationJournal: captureOperationJournal(journal) } : {}),
+      ...(journal
+        ? { operationJournal: captureOperationJournal(journal) }
+        : {}),
     };
   } catch (err) {
     const errorMessage = err instanceof Error ? err.message : String(err);

@@ -1,5 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
-import type { SandboxOptions, SandboxResult, ScopeManager } from "@workspace/eval";
+import type {
+  SandboxOptions,
+  SandboxResult,
+  ScopeManager,
+} from "@workspace/eval";
 import {
   METHOD_EXECUTION_RESULT,
   type MethodExecutionContext,
@@ -23,7 +27,9 @@ function scopeManager(initial: Record<string, unknown> = {}) {
   } as unknown as ScopeManager;
 }
 
-function context(signal = new AbortController().signal): MethodExecutionContext {
+function context(
+  signal = new AbortController().signal,
+): MethodExecutionContext {
   return {
     callId: "call-1",
     invocationId: "invocation-1",
@@ -42,10 +48,13 @@ function context(signal = new AbortController().signal): MethodExecutionContext 
 
 function method(
   overrides: {
-    executeSandbox?: (code: string, options?: SandboxOptions) => Promise<SandboxResult>;
+    executeSandbox?: (
+      code: string,
+      options?: SandboxOptions,
+    ) => Promise<SandboxResult>;
     loadSourceFile?: (path: string) => Promise<string>;
     manager?: ScopeManager;
-  } = {}
+  } = {},
 ) {
   const manager = overrides.manager ?? scopeManager();
   const executeSandbox =
@@ -59,7 +68,11 @@ function method(
     manager,
     executeSandbox,
     definition: buildClientEvalMethod({
-      importLoader: vi.fn(async () => ({ bundle: "", format: "cjs" as const })),
+      importLoader: vi.fn(async () => ({
+        bundle: "",
+        format: "cjs" as const,
+        requiredModules: [],
+      })),
       executeSandbox,
       loadSourceFile:
         overrides.loadSourceFile ??
@@ -75,30 +88,38 @@ describe("client_eval", () => {
     const { definition } = method();
 
     expect(definition.parameters.safeParse({}).success).toBe(false);
-    expect(definition.parameters.safeParse({ code: "return 1", path: "run.ts" }).success).toBe(
-      false
-    );
+    expect(
+      definition.parameters.safeParse({ code: "return 1", path: "run.ts" })
+        .success,
+    ).toBe(false);
     expect(
       definition.parameters.safeParse({
         code: "return 1",
         imports: { "@workspace-skills/onboarding": "workspace:*" },
-      }).success
+      }).success,
     ).toBe(true);
   });
 
   it("executes with the panel chat, durable scope, cancellation, and deadline", async () => {
     const manager = scopeManager({ existing: true });
     let seen: SandboxOptions | undefined;
-    const executeSandbox = vi.fn(async (_code: string, options?: SandboxOptions) => {
-      seen = options;
-      (options?.bindings?.["scope"] as Record<string, unknown>)["answer"] = 42;
-      return { success: true, consoleOutput: "hello", returnValue: { ok: true } };
-    });
+    const executeSandbox = vi.fn(
+      async (_code: string, options?: SandboxOptions) => {
+        seen = options;
+        (options?.bindings?.["scope"] as Record<string, unknown>)["answer"] =
+          42;
+        return {
+          success: true,
+          consoleOutput: "hello",
+          returnValue: { ok: true },
+        };
+      },
+    );
     const { definition } = method({ executeSandbox, manager });
 
     const result = await definition.execute(
       { code: "return 42", syntax: "typescript", timeoutMs: 1000 },
-      context()
+      context(),
     );
 
     expect(seen?.bindings).toMatchObject({
@@ -122,7 +143,10 @@ describe("client_eval", () => {
     }));
     const { definition } = method({ executeSandbox, loadSourceFile });
 
-    await definition.execute({ path: "skills/onboarding/check.ts", syntax: "tsx" }, context());
+    await definition.execute(
+      { path: "skills/onboarding/check.ts", syntax: "tsx" },
+      context(),
+    );
 
     expect(loadSourceFile).toHaveBeenCalledWith("skills/onboarding/check.ts");
     expect(executeSandbox).toHaveBeenCalledWith(
@@ -130,7 +154,7 @@ describe("client_eval", () => {
       expect.objectContaining({
         sourcePath: "skills/onboarding/check.ts",
         loadSourceFile,
-      })
+      }),
     );
   });
 
@@ -147,7 +171,7 @@ describe("client_eval", () => {
 
     const result = await definition.execute(
       { code: "return callMain('x')", syntax: "tsx" },
-      context()
+      context(),
     );
 
     expect(result).toMatchObject({
@@ -166,9 +190,11 @@ describe("client_eval", () => {
     expect(terminal.content.content).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
-          text: expect.stringContaining('import { callMain } from "@workspace/runtime"'),
+          text: expect.stringContaining(
+            'import { callMain } from "@workspace/runtime"',
+          ),
         }),
-      ])
+      ]),
     );
   });
 });

@@ -114,6 +114,7 @@ describe("sandbox source hooks", () => {
       return {
         bundle: `module.exports = { label: "ready" };`,
         format: "cjs" as const,
+        requiredModules: [],
       };
     };
     const messages = [
@@ -246,6 +247,7 @@ describe("sandbox source hooks", () => {
       return {
         bundle: `module.exports = { label: "ready" };`,
         format: "cjs" as const,
+        requiredModules: [],
       };
     };
 
@@ -322,6 +324,7 @@ describe("sandbox source hooks", () => {
       return {
         bundle: `module.exports = { label: ${JSON.stringify(ref)} };`,
         format: "cjs" as const,
+        requiredModules: [],
       };
     };
     const message = (ref: string, renderedAt: string) =>
@@ -373,6 +376,7 @@ describe("sandbox source hooks", () => {
       return {
         bundle: `module.exports = { label: ${JSON.stringify(ref)} };`,
         format: "cjs" as const,
+        requiredModules: [],
       };
     };
     const code = `import { label } from "label-lib"; export default function App() { return label; }`;
@@ -555,6 +559,7 @@ describe("sandbox source hooks", () => {
       return {
         bundle: `module.exports = { label: "ready" };`,
         format: "cjs" as const,
+        requiredModules: [],
       };
     };
     const data = {

@@ -29,10 +29,13 @@ vi.mock("@workspace/tool-ui", () => ({
 
 import { useAgenticChat } from "./useAgenticChat";
 import type { ChatContextValue, ConnectionConfig } from "../types";
-import { FULL_AGENTIC_CHAT_FEATURES, type AgenticChatFeature } from "../features";
+import {
+  FULL_AGENTIC_CHAT_FEATURES,
+  type AgenticChatFeature,
+} from "../features";
 
 function createClient(
-  channelConfig: { title?: string; titleExplicit?: boolean } = {}
+  channelConfig: { title?: string; titleExplicit?: boolean } = {},
 ): PubSubClient & {
   updateChannelConfig: ReturnType<typeof vi.fn>;
 } {
@@ -49,7 +52,9 @@ function createClient(
     onConfigChange: vi.fn(() => () => undefined),
     getMessageTypes: vi.fn(async () => []),
     updateChannelConfig: vi.fn(async () => undefined),
-  } as unknown as PubSubClient & { updateChannelConfig: ReturnType<typeof vi.fn> };
+  } as unknown as PubSubClient & {
+    updateChannelConfig: ReturnType<typeof vi.fn>;
+  };
 }
 
 function createRpcCall() {
@@ -81,7 +86,11 @@ function Probe({
     metadata: { name: "Chat Panel", type: "panel", handle: "alice" },
     ...(loadDynamicImports
       ? {
-          importLoader: vi.fn(async () => ({ bundle: "", format: "cjs" as const })),
+          importLoader: vi.fn(async () => ({
+            bundle: "",
+            format: "cjs" as const,
+            requiredModules: [],
+          })),
         }
       : {}),
     features,
@@ -103,7 +112,9 @@ describe("useAgenticChat set_title", () => {
   it("uses the runtime RPC id, not the channel participant id, for browser handoff", async () => {
     const client = createClient();
     pubsubMock.connectViaRpc.mockReturnValue(client);
-    const latestContext: { current: ChatContextValue | null } = { current: null };
+    const latestContext: { current: ChatContextValue | null } = {
+      current: null,
+    };
     const config: ConnectionConfig = {
       clientId: "panel:slot-id",
       rpc: {
@@ -120,7 +131,7 @@ describe("useAgenticChat set_title", () => {
         onContext={(value) => {
           latestContext.current = value;
         }}
-      />
+      />,
     );
 
     await waitFor(() => {
@@ -131,7 +142,7 @@ describe("useAgenticChat set_title", () => {
       kind: "panel",
     });
     expect(pubsubMock.connectViaRpc).toHaveBeenCalledWith(
-      expect.objectContaining({ clientId: "panel:slot-id" })
+      expect.objectContaining({ clientId: "panel:slot-id" }),
     );
 
     unmount();
@@ -140,12 +151,16 @@ describe("useAgenticChat set_title", () => {
   it("keeps child transcript connection material stable across parent updates", async () => {
     const client = createClient();
     let publishConfig: ((config: { title?: string }) => void) | undefined;
-    client.onConfigChange = vi.fn((callback: (config: { title?: string }) => void) => {
-      publishConfig = callback;
-      return () => undefined;
-    }) as never;
+    client.onConfigChange = vi.fn(
+      (callback: (config: { title?: string }) => void) => {
+        publishConfig = callback;
+        return () => undefined;
+      },
+    ) as never;
     pubsubMock.connectViaRpc.mockReturnValue(client);
-    const latestContext: { current: ChatContextValue | null } = { current: null };
+    const latestContext: { current: ChatContextValue | null } = {
+      current: null,
+    };
     const config: ConnectionConfig = {
       clientId: "panel:slot-id",
       rpc: {
@@ -162,14 +177,16 @@ describe("useAgenticChat set_title", () => {
         onContext={(value) => {
           latestContext.current = value;
         }}
-      />
+      />,
     );
     await waitFor(() => expect(publishConfig).toBeDefined());
     const initialConnection = latestContext.current!.childTranscript;
 
     act(() => publishConfig?.({ title: "Parent changed" }));
 
-    await waitFor(() => expect(latestContext.current?.channelTitle).toBe("Parent changed"));
+    await waitFor(() =>
+      expect(latestContext.current?.channelTitle).toBe("Parent changed"),
+    );
     expect(latestContext.current?.childTranscript).toBe(initialConnection);
     unmount();
   });
@@ -181,7 +198,9 @@ describe("useAgenticChat set_title", () => {
       throw new Error("ReadError(Reset(513))");
     });
     pubsubMock.connectViaRpc.mockReturnValue(client);
-    const latestContext: { current: ChatContextValue | null } = { current: null };
+    const latestContext: { current: ChatContextValue | null } = {
+      current: null,
+    };
     const config: ConnectionConfig = {
       clientId: "panel:chat",
       rpc: {
@@ -198,14 +217,16 @@ describe("useAgenticChat set_title", () => {
         onContext={(value) => {
           latestContext.current = value;
         }}
-      />
+      />,
     );
 
     await waitFor(
       () => {
-        expect(latestContext.current?.connectionError?.message).toBe("ReadError(Reset(513))");
+        expect(latestContext.current?.connectionError?.message).toBe(
+          "ReadError(Reset(513))",
+        );
       },
-      { timeout: 200 }
+      { timeout: 200 },
     );
     expect(pubsubMock.connectViaRpc).toHaveBeenCalledOnce();
 
@@ -222,7 +243,9 @@ describe("useAgenticChat set_title", () => {
     pubsubMock.connectViaRpc
       .mockReturnValueOnce(failedClient)
       .mockReturnValueOnce(recoveredClient);
-    const latestContext: { current: ChatContextValue | null } = { current: null };
+    const latestContext: { current: ChatContextValue | null } = {
+      current: null,
+    };
     const config: ConnectionConfig = {
       clientId: "panel:chat",
       rpc: {
@@ -236,10 +259,10 @@ describe("useAgenticChat set_title", () => {
     const { unmount } = render(
       <Probe
         config={config}
-        onContext={value => {
+        onContext={(value) => {
           latestContext.current = value;
         }}
-      />
+      />,
     );
 
     await waitFor(() => expect(latestContext.current?.connected).toBe(true), {
@@ -258,7 +281,7 @@ describe("useAgenticChat set_title", () => {
       (options: { methods: Record<string, MethodDefinition> }) => {
         methods = options.methods;
         return client;
-      }
+      },
     );
     const call = createRpcCall();
     const config: ConnectionConfig = {
@@ -288,7 +311,7 @@ describe("useAgenticChat set_title", () => {
       (options: { methods: Record<string, MethodDefinition> }) => {
         methods = options.methods;
         return client;
-      }
+      },
     );
     const config: ConnectionConfig = {
       clientId: "panel:chat",
@@ -312,7 +335,7 @@ describe("useAgenticChat set_title", () => {
         "inline_ui",
         "load_action_bar",
         "client_eval",
-      ])
+      ]),
     );
 
     unmount();
@@ -325,7 +348,7 @@ describe("useAgenticChat set_title", () => {
       (options: { methods: Record<string, MethodDefinition> }) => {
         methods = options.methods;
         return client;
-      }
+      },
     );
     const config: ConnectionConfig = {
       clientId: "panel:chat",
@@ -337,7 +360,9 @@ describe("useAgenticChat set_title", () => {
       },
     };
 
-    const { unmount } = render(<Probe config={config} features={[]} loadDynamicImports={false} />);
+    const { unmount } = render(
+      <Probe config={config} features={[]} loadDynamicImports={false} />,
+    );
 
     await waitFor(() => expect(methods).toBeDefined());
     for (const name of [
@@ -356,7 +381,9 @@ describe("useAgenticChat set_title", () => {
   });
 
   it("projects an explicit channel title onto an attached panel", async () => {
-    let onConfigChange: ((config: { title?: string; titleExplicit?: boolean }) => void) | undefined;
+    let onConfigChange:
+      | ((config: { title?: string; titleExplicit?: boolean }) => void)
+      | undefined;
     const client = {
       ...createClient(),
       onConfigChange: vi.fn((handler) => {
@@ -396,7 +423,10 @@ describe("useAgenticChat set_title", () => {
   });
 
   it("projects a durable explicit title when the panel connects late", async () => {
-    const client = createClient({ title: "Existing task title", titleExplicit: true });
+    const client = createClient({
+      title: "Existing task title",
+      titleExplicit: true,
+    });
     pubsubMock.connectViaRpc.mockReturnValue(client);
     const call = createRpcCall();
     const config: ConnectionConfig = {
