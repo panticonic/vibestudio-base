@@ -25,12 +25,6 @@ export type ConnectionStatus =
   | "connected"
   | "error";
 
-/** A local channel subscription is expected to reach its replay boundary
- * promptly. More importantly, every connection attempt must have a terminal
- * outcome: without a deadline a lost ready marker leaves callers displaying a
- * permanent loading state and leaves the half-open transport alive forever. */
-export const CONNECTION_READY_TIMEOUT_MS = 15_000;
-
 /**
  * Client-supplied participant metadata for connecting (WP6 §5). `handle` is
  * OPTIONAL here: a human panel no longer asserts one — the channel derives the
@@ -69,6 +63,8 @@ export class ConnectionManager {
   private unsubscribers: Array<() => void> = [];
   private connectAbortController: AbortController | null = null;
   private disconnectPromise: Promise<void> | null = null;
+  private connectTask: Promise<PubSubClient<ChatParticipantMetadata>> | null =
+    null;
 
   constructor(opts: {
     config: ConnectionConfig;
@@ -100,6 +96,18 @@ export class ConnectionManager {
     options: ConnectionConnectOptions,
   ): Promise<PubSubClient<ChatParticipantMetadata>> {
     options.signal?.throwIfAborted();
+    const task = this.connectOwned(options);
+    this.connectTask = task;
+    const retire = () => {
+      if (this.connectTask === task) this.connectTask = null;
+    };
+    void task.then(retire, retire);
+    return task;
+  }
+
+  private async connectOwned(
+    options: ConnectionConnectOptions,
+  ): Promise<PubSubClient<ChatParticipantMetadata>> {
     const { channelId, channelTargetId, methods, channelConfig, contextId } =
       options;
     const replayMessageLimit = Math.min(
@@ -143,8 +151,6 @@ export class ConnectionManager {
       throw new Error("Connection attempt was superseded");
     }
     this.setStatus("connecting");
-    let readyTimedOut = false;
-    let readyTimer: ReturnType<typeof setTimeout> | null = null;
 
     let newClient: PubSubClient<ChatParticipantMetadata> | null = null;
     const unsubs: Array<() => void> = [];
@@ -157,17 +163,10 @@ export class ConnectionManager {
           channel: channelId,
           protocol: this.config.protocol,
           signal: readyAbort.signal,
-          resolutionTimeoutMs: CONNECTION_READY_TIMEOUT_MS,
         }));
       if (this.connectAbortController !== readyAbort) {
         throw new Error("Connection attempt was superseded");
       }
-      // The replay deadline begins only after the service is runnable. A human
-      // reviewing a fresh workspace is not a slow or half-open channel.
-      readyTimer = setTimeout(() => {
-        readyTimedOut = true;
-        readyAbort.abort();
-      }, CONNECTION_READY_TIMEOUT_MS);
       newClient = connectViaRpc<ChatParticipantMetadata>({
         rpc: this.config.rpc,
         channel: channelId,
@@ -306,13 +305,7 @@ export class ConnectionManager {
       return newClient;
     } catch (err) {
       for (const unsub of unsubs) unsub();
-      const error = readyTimedOut
-        ? new Error(
-            `Channel ${channelId} did not finish loading within ${CONNECTION_READY_TIMEOUT_MS / 1_000} seconds`,
-          )
-        : err instanceof Error
-          ? err
-          : new Error(String(err));
+      const error = err instanceof Error ? err : new Error(String(err));
       if (this.connectAbortController !== readyAbort) {
         await newClient?.close().catch(() => undefined);
         throw error;
@@ -327,14 +320,16 @@ export class ConnectionManager {
       throw error;
     } finally {
       options.signal?.removeEventListener("abort", onAbort);
-      if (readyTimer !== null) clearTimeout(readyTimer);
     }
   }
 
   disconnect(): Promise<void> {
     this.connectAbortController?.abort();
     this.connectAbortController = null;
-    if (this.disconnectPromise) return this.disconnectPromise;
+    const connecting = this.connectTask;
+    this.connectTask = null;
+    const previousClosing = this.disconnectPromise;
+    if (previousClosing && !connecting && !this._client) return previousClosing;
 
     for (const unsub of this.unsubscribers) {
       unsub();
@@ -346,8 +341,12 @@ export class ConnectionManager {
     this._clientId = null;
     this.setStatus("disconnected");
 
-    if (!client) return Promise.resolve();
-    const closing = client.close();
+    if (!client && !connecting && !previousClosing) return Promise.resolve();
+    const closing = Promise.all([
+      previousClosing,
+      client?.close(),
+      connecting?.catch(() => undefined),
+    ]).then(() => undefined);
     const tracked = closing.finally(() => {
       if (this.disconnectPromise === tracked) this.disconnectPromise = null;
     });
