@@ -870,10 +870,6 @@ export function connectViaRpc<T extends ParticipantMetadata = ParticipantMetadat
 
       case "log":
       case "signal": {
-        if (msg.id !== undefined && msg.id > 0) {
-          lastSeenSeq = Math.max(lastSeenSeq ?? 0, msg.id);
-        }
-
         // Method lifecycle (caller settle / provider abort) runs first, before
         // the replayMode:skip short-circuit — a cold reconnect must still settle
         // in-flight calls from replayed invocation.* events.
@@ -1014,7 +1010,11 @@ export function connectViaRpc<T extends ParticipantMetadata = ParticipantMetadat
     }
     // A replay key acknowledges completed processing. Registering it before
     // hydration/handlers would turn a transient throw into permanent loss on
-    // the next attempt.
+    // the next attempt. The recovery cursor acknowledges that same completed
+    // delivery, rather than receipt of a header whose payload can still fail.
+    if (msg.id !== undefined && msg.id > 0) {
+      lastSeenSeq = Math.max(lastSeenSeq ?? 0, msg.id);
+    }
     rememberReplayMessage(msg);
   }
 
@@ -1860,9 +1860,6 @@ export function connectViaRpc<T extends ParticipantMetadata = ParticipantMetadat
           for (const bufferedMsg of buffered) await handleServerMessage(bufferedMsg, generation);
           return;
         }
-      }
-      if (msg.id !== undefined && msg.id > 0) {
-        lastSeenSeq = Math.max(lastSeenSeq ?? 0, msg.id);
       }
       await handleServerMessage(msg, generation);
     }

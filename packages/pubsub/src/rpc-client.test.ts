@@ -2364,6 +2364,86 @@ describe("connectViaRpc", () => {
       await client.close();
     });
 
+    it("keeps failed hydration outside the durable replay cursor", async () => {
+      const coordinator = createRecoveryCoordinator();
+      const mock = createMockRpc();
+      const client = connectViaRpc({
+        rpc: mock.rpc as any,
+        channel: CHANNEL,
+        recoveryCoordinator: coordinator,
+      });
+      try {
+        await emitReplayAndReady(mock.emit, []);
+        await client.ready();
+        const events = client.events({ includeReplay: true });
+        mock.emit({
+          stream: "log",
+          phase: "live",
+          id: 1,
+          type: AGENTIC_EVENT_PAYLOAD_KIND,
+          payload: messageEvent("committed", "before disconnect"),
+          senderId: "agent-1",
+          ts: Date.now(),
+        });
+        await events.next();
+        const originalCall = mock.rpc.call.getMockImplementation()!;
+        const stored = JSON.stringify("restored content");
+        let connected = false;
+        mock.rpc.call.mockImplementation(async (...args: unknown[]) => {
+          if (args[0] === "main" && args[1] === "blobstore.getText") {
+            if (!connected)
+              throw new RpcBoundaryError(
+                "Connection lost while hydrating",
+                "transport",
+                "CONNECTION_LOST"
+              );
+            return stored;
+          }
+          return originalCall(...args);
+        });
+        const errors: Error[] = [];
+        client.onError((error) => errors.push(error));
+        const pendingEvent = {
+          stream: "log",
+          phase: "live",
+          id: 2,
+          type: AGENTIC_EVENT_PAYLOAD_KIND,
+          payload: {
+            ...messageEvent("restored", ""),
+            payload: {
+              ...messageEvent("restored", "").payload,
+              content: {
+                protocol: "vibestudio.blob-ref.v1",
+                digest: "stored-content",
+                size: stored.length,
+                originalBytes: stored.length,
+                encoding: "json",
+              },
+            },
+          },
+          senderId: "agent-1",
+          ts: Date.now(),
+        };
+        mock.emit(pendingEvent);
+        await vi.waitFor(() => expect(errors).toHaveLength(1));
+        connected = true;
+        await coordinator.run("resubscribe");
+        const metadata = mock.rpc.stream.mock.calls[1]?.[2]?.[1] as {
+          sinceId?: number;
+        };
+        expect(metadata.sinceId).toBe(1);
+        mock.emit({ ...pendingEvent, phase: "replay" });
+        await emitReplayAndReady(mock.emit, []);
+        const recovered = await events.next();
+        expect(recovered.value).toMatchObject({
+          pubsubId: 2,
+          payload: { payload: { content: "restored content" } },
+        });
+      } finally {
+        await client.close();
+      }
+    });
+
     it("never regresses the durable replay cursor when an overlapping reader replays an older event", async () => {
       const coordinator = createRecoveryCoordinator();
       const mock = createMockRpc();
