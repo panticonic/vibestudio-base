@@ -32,6 +32,7 @@ import {
 } from "@workspace/agentic-protocol";
 import type { PubSubClient } from "@workspace/pubsub";
 import {
+  compareModelVersions,
   isModelAgentLaunchable,
   type ModelCatalog,
 } from "@workspace/model-catalog/catalog";
@@ -732,13 +733,7 @@ export function useQuickfireSessionCore(
         catalog.providers.map((provider) => [provider.id, provider.label]),
       );
       const choices = [...catalog.models]
-        .sort(
-          (a, b) =>
-            Number(isModelAgentLaunchable(b)) -
-              Number(isModelAgentLaunchable(a)) ||
-            Number(b.recommended) - Number(a.recommended) ||
-            a.name.localeCompare(b.name),
-        )
+        .sort(compareModelVersions)
         .map((model) => ({
           ref: model.ref,
           name: model.name,

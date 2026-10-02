@@ -4,8 +4,8 @@ import { getProviderConnectPreset } from "@workspace/model-catalog/providerConne
  *
  * Provider and model are separate decisions: the provider menu establishes
  * where the agent runs, then the model menu shows only that provider's models.
- * The workspace recommendation stays first instead of being displaced by live
- * availability or by the user's current exploratory selection.
+ * Providers keep the workspace recommendation first; models show newer
+ * versions first, independently of availability or the current selection.
  */
 
 import { useMemo, useRef } from "react";
@@ -26,6 +26,7 @@ import type {
   ModelCatalogProvider,
 } from "@workspace/agentic-core";
 import {
+  compareModelVersions,
   isModelUsable,
   LOCAL_FALLBACK_MODEL_REF,
   LOCAL_PROVIDER_ID,
@@ -37,7 +38,7 @@ export interface ModelPickerProps {
   /** Currently selected "provider:modelId" ref. */
   value: string;
   onChange: (ref: string) => void;
-  /** Workspace-recommended model. Its provider and model remain first. */
+  /** Workspace-recommended model, labeled in the menu and used as the default. */
   recommendedModelRef?: string | null;
   /** Deep-link a failing local model to its server log. */
   onOpenServerLog?: (server: "utility" | "main") => void;
@@ -71,22 +72,6 @@ function measuredTokensPerSec(model: ModelCatalogEntry): number | null {
     : null;
 }
 
-function availabilityRank(model: ModelCatalogEntry): number {
-  switch (availabilityOf(model).state) {
-    case "ready":
-      return 0;
-    case "startable":
-      return 1;
-    case "starting":
-    case "downloading":
-      return 2;
-    case "needs-setup":
-      return 3;
-    case "error":
-      return 4;
-  }
-}
-
 /** Stable product ordering: recommendation first, experimental local last. */
 export function orderModelPickerProviders(
   providers: readonly ModelCatalogProvider[],
@@ -104,23 +89,11 @@ export function orderModelPickerProviders(
   });
 }
 
-/** Recommended model first, then live usability, then a predictable name sort. */
+/** Newest versions first, with stable names within each version. */
 export function orderProviderModels(
   models: readonly ModelCatalogEntry[],
-  provider: ModelCatalogProvider | null,
-  recommendedModelRef: string | null | undefined,
 ): ModelCatalogEntry[] {
-  const recommendation =
-    providerIdFromRef(recommendedModelRef) === provider?.id
-      ? recommendedModelRef
-      : provider?.recommendedModelRef;
-  return [...models].sort((left, right) => {
-    if (left.ref === recommendation)
-      return right.ref === recommendation ? 0 : -1;
-    if (right.ref === recommendation) return 1;
-    const availability = availabilityRank(left) - availabilityRank(right);
-    return availability || left.name.localeCompare(right.name);
-  });
+  return [...models].sort(compareModelVersions);
 }
 
 /** Select the provider's natural default without hiding setup-required models. */
@@ -129,12 +102,17 @@ export function modelRefForProvider(
   provider: ModelCatalogProvider,
   recommendedModelRef: string | null | undefined,
 ): string | null {
+  const providerModels = models.filter(
+    (model) => model.provider === provider.id,
+  );
+  const recommendation =
+    providerIdFromRef(recommendedModelRef) === provider.id
+      ? recommendedModelRef
+      : provider.recommendedModelRef;
   return (
-    orderProviderModels(
-      models.filter((model) => model.provider === provider.id),
-      provider,
-      recommendedModelRef,
-    )[0]?.ref ?? null
+    providerModels.find((model) => model.ref === recommendation)?.ref ??
+    orderProviderModels(providerModels)[0]?.ref ??
+    null
   );
 }
 
@@ -307,10 +285,8 @@ export function ModelPicker({
     () =>
       orderProviderModels(
         models.filter((model) => model.provider === selectedProvider?.id),
-        selectedProvider,
-        recommendedRef,
       ),
-    [models, recommendedRef, selectedProvider],
+    [models, selectedProvider],
   );
   const providerRecommendation =
     providerIdFromRef(recommendedRef) === selectedProvider?.id

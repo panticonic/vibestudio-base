@@ -246,3 +246,29 @@ export interface ModelSettingsSnapshot {
   /** Full default agent config (model + behavior) applied to new agents. */
   defaultAgentConfig: DefaultAgentConfig;
 }
+
+/** Newer numeric model versions first; names break ties within a version. */
+export function compareModelVersions(
+  left: Pick<ModelCatalogEntry, "name">,
+  right: Pick<ModelCatalogEntry, "name">,
+): number {
+  const leftVersion =
+    left.name
+      .match(/\d+(?:\.\d+)*/)?.[0]
+      .split(".")
+      .map(Number) ?? [];
+  const rightVersion =
+    right.name
+      .match(/\d+(?:\.\d+)*/)?.[0]
+      .split(".")
+      .map(Number) ?? [];
+  for (
+    let index = 0;
+    index < Math.max(leftVersion.length, rightVersion.length);
+    index++
+  ) {
+    const difference = (rightVersion[index] ?? 0) - (leftVersion[index] ?? 0);
+    if (difference) return difference;
+  }
+  return left.name.localeCompare(right.name, undefined, { numeric: true });
+}

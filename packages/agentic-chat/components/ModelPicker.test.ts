@@ -60,25 +60,21 @@ describe("provider/model picker ordering", () => {
     ).toEqual(["openai-codex", "mistral", "local"]);
   });
 
-  it("keeps the recommended model first even while it still needs setup", () => {
-    const readyOlder = model("openai-codex:gpt-5.5", "GPT-5.5", {
+  it("orders newer versions first regardless of recommendation or availability", () => {
+    const readyNewer = model("openai-codex:gpt-5.5", "GPT-5.5", {
       state: "ready",
       detail: "credentialed",
     });
     const recommended = model(
-      "openai-codex:gpt-5.6-sol",
-      "GPT-5.6 Sol",
+      "openai-codex:gpt-5.4-sol",
+      "GPT-5.4 Sol",
       { state: "needs-setup", detail: "no-credential" },
       true,
     );
 
     expect(
-      orderProviderModels(
-        [readyOlder, recommended],
-        codex,
-        recommended.ref,
-      ).map((entry) => entry.ref),
-    ).toEqual([recommended.ref, readyOlder.ref]);
+      orderProviderModels([readyNewer, recommended]).map((entry) => entry.ref),
+    ).toEqual([readyNewer.ref, recommended.ref]);
   });
 
   it("selects a provider's recommendation when the provider changes", () => {
