@@ -86,13 +86,16 @@ function selectedGitMap<T>(
 
 function projectManifest(
   config: WorkspaceConfig,
+  /** Repositories whose files this release owns. */
   selected: ReadonlySet<string>,
+  /** Local selection plus repositories reacquired through declared dependencies. */
+  available: ReadonlySet<string>,
   packageOwners: ReadonlyMap<string, string>,
   presentation: { name: string; description: string },
   includeWorkspaceDefaults: boolean,
   dependencies: readonly import("@vibestudio/workspace-contracts/types").WorkspaceTemplateDependency[],
 ): string {
-  const upstreams = selectedGitMap(config.git?.upstreams, selected);
+  const upstreams = selectedGitMap(config.git?.upstreams, available);
   const portableUpstreams = upstreams
     ? Object.fromEntries(
         Object.entries(upstreams).map(([section, repos]) => [
@@ -120,7 +123,7 @@ function projectManifest(
               : "extension" in declaration
                 ? declaration.extension
                 : null;
-          return ref !== null && selected.has(ref);
+          return ref !== null && available.has(ref);
         }),
       )
     : undefined;
@@ -129,7 +132,7 @@ function projectManifest(
         Object.entries(config.trust)
           .map(([key, values]) => [
             key,
-            values?.filter((repoPath: string) => selected.has(repoPath)),
+            values?.filter((repoPath: string) => available.has(repoPath)),
           ])
           .filter(([, values]) => Array.isArray(values) && values.length > 0),
       )
@@ -137,7 +140,7 @@ function projectManifest(
   const hostTargets = config.hostTargets
     ? Object.fromEntries(
         Object.entries(config.hostTargets).filter(
-          ([, target]) => target && selected.has(target.app),
+          ([, target]) => target && available.has(target.app),
         ),
       )
     : undefined;
@@ -147,31 +150,33 @@ function projectManifest(
       ? {
           defaultAutomations: Object.fromEntries(
             Object.entries(config.defaultAutomations).filter(
-              ([, value]) => value === null || selected.has(value.source),
+              ([, value]) => value === null || available.has(value.source),
             ),
           ),
         }
       : {}),
-    ...(config.defaultRepo && selected.has(config.defaultRepo)
+    ...(config.defaultRepo && available.has(config.defaultRepo)
       ? { defaultRepo: config.defaultRepo }
       : {}),
-    ...(selectedRecords(config.initPanels, selected)
-      ? { initPanels: selectedRecords(config.initPanels, selected) }
+    ...(selectedRecords(config.initPanels, available)
+      ? { initPanels: selectedRecords(config.initPanels, available) }
       : {}),
-    ...(selectedRecords(config.singletonObjects, selected)
-      ? { singletonObjects: selectedRecords(config.singletonObjects, selected) }
+    ...(selectedRecords(config.singletonObjects, available)
+      ? {
+          singletonObjects: selectedRecords(config.singletonObjects, available),
+        }
       : {}),
-    ...(selectedRecords(config.services, selected)
-      ? { services: selectedRecords(config.services, selected) }
+    ...(selectedRecords(config.services, available)
+      ? { services: selectedRecords(config.services, available) }
       : {}),
-    ...(selectedRecords(config.routes, selected)
-      ? { routes: selectedRecords(config.routes, selected) }
+    ...(selectedRecords(config.routes, available)
+      ? { routes: selectedRecords(config.routes, available) }
       : {}),
-    ...(selectedRecords(config.extensions, selected)
-      ? { extensions: selectedRecords(config.extensions, selected) }
+    ...(selectedRecords(config.extensions, available)
+      ? { extensions: selectedRecords(config.extensions, available) }
       : {}),
-    ...(selectedRecords(config.apps, selected)
-      ? { apps: selectedRecords(config.apps, selected) }
+    ...(selectedRecords(config.apps, available)
+      ? { apps: selectedRecords(config.apps, available) }
       : {}),
     ...(includeWorkspaceDefaults && config.panelRestorePolicy
       ? { panelRestorePolicy: config.panelRestorePolicy }
@@ -180,11 +185,11 @@ function projectManifest(
       ? { defaultAgentConfig: config.defaultAgentConfig }
       : {}),
     ...(config.git &&
-    (selectedGitMap(config.git.remotes, selected) || portableUpstreams)
+    (selectedGitMap(config.git.remotes, available) || portableUpstreams)
       ? {
           git: {
-            ...(selectedGitMap(config.git.remotes, selected)
-              ? { remotes: selectedGitMap(config.git.remotes, selected) }
+            ...(selectedGitMap(config.git.remotes, available)
+              ? { remotes: selectedGitMap(config.git.remotes, available) }
               : {}),
             ...(portableUpstreams ? { upstreams: portableUpstreams } : {}),
           },
@@ -431,6 +436,7 @@ export async function inspectTemplateAuthoring(
   const projectedManifest = projectManifest(
     observation.authoredTop as WorkspaceConfig,
     new Set(includedParts),
+    new Set([...includedParts, ...inherited]),
     packageOwners,
     { name, description },
     observation.manifest.inventory.repositories.every(

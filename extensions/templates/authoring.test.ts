@@ -214,3 +214,26 @@ it("retains declared workspace defaults when incidental repositories are exclude
   );
   expect(plan.includedParts).not.toContain("projects/scratch");
 });
+
+it("preserves authored startup configuration referencing a dependency without copying its unit", async () => {
+  const current = observation("event:onboarding");
+  const startup = [
+    { source: "panels/news", stateArgs: { initialPrompt: "Welcome me" } },
+  ];
+  const source = {
+    ...current,
+    authoredTop: { systemEpoch: 0, initPanels: startup },
+    runtimeTop: { systemEpoch: 0, initPanels: startup },
+    templateDependencies: [{ url: "https://example.test/base.git" }],
+  };
+  const result = await inspectTemplateAuthoring(
+    context() as never,
+    source as never,
+    { name: "Personal", description: "Personal workspace", parts: [] },
+    { repositories: ["panels/news"] },
+  );
+  const manifest = YAML.parse(result.manifest);
+  expect(manifest.initPanels).toEqual(startup);
+  expect(manifest.template.repositories).toEqual(["meta"]);
+  expect(manifest.template.dependencies).toEqual(source.templateDependencies);
+});
