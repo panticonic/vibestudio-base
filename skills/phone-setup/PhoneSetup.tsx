@@ -58,6 +58,13 @@ export default function PhoneSetup({
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const running = useRef(false);
+  const readinessOwner = useRef<AbortController | null>(null);
+  useEffect(
+    () => () => {
+      readinessOwner.current?.abort(new Error("Phone setup panel closed"));
+    },
+    [],
+  );
   const client = useRef<ReturnType<typeof phoneSetup> | null>(null);
   const getClient = () =>
     (client.current ??= phoneSetup().catch((error) => {
@@ -124,9 +131,16 @@ export default function PhoneSetup({
   const checkWorkspace = async (result: PhoneProvisioningResult) => {
     setPhase("opening");
     setMessage("Phone paired. Opening your workspace…");
-    const readiness = await (
-      await getClient()
-    ).waitForWorkspace(result, setMessage);
+    const controller = new AbortController();
+    readinessOwner.current = controller;
+    let readiness;
+    try {
+      readiness = await (
+        await getClient()
+      ).waitForWorkspace(result, setMessage, controller.signal);
+    } finally {
+      if (readinessOwner.current === controller) readinessOwner.current = null;
+    }
     setMessage(readiness.message);
     if (readiness.status === "ready") setPhase("ready");
     else if (readiness.status === "failed") setError(readiness.message);

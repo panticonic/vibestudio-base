@@ -12,6 +12,23 @@ import {
 } from "@vibestudio/service-schemas/clients/phoneSetupStream";
 
 /** One public client for both the inline card and agent automation. */
+function nextReadinessObservation(signal?: AbortSignal): Promise<void> {
+  signal?.throwIfAborted();
+  return new Promise((resolve, reject) => {
+    const finish = () => {
+      signal?.removeEventListener("abort", cancel);
+      resolve();
+    };
+    const timer = setTimeout(finish, 1_000);
+    const cancel = () => {
+      clearTimeout(timer);
+      signal?.removeEventListener("abort", cancel);
+      reject(signal?.reason);
+    };
+    signal?.addEventListener("abort", cancel, { once: true });
+  });
+}
+
 export async function phoneSetup() {
   const service = await workers.resolveService(
     "vibestudio.phone-provisioning.v1",
@@ -19,9 +36,9 @@ export async function phoneSetup() {
   if (service.kind !== "durable-object")
     throw new Error("Phone setup service is unavailable.");
   const { targetId } = service;
-  const readiness = async (deviceId: string) =>
+  const readiness = async (deviceId: string, signal?: AbortSignal) =>
     PhoneWorkspaceReadinessSchema.parse(
-      await rpc.call(targetId, "readiness", [{ deviceId }]),
+      await rpc.call(targetId, "readiness", [{ deviceId }], { signal }),
     );
   return {
     providers: async () =>
@@ -51,24 +68,19 @@ export async function phoneSetup() {
       );
     },
     readiness,
-    /** A waiting/failed result is deliberately not success; checking again never re-pairs. */
+    /** Observe the paired phone until its actual workspace lifecycle settles.
+     * Slow startup and pending approvals remain opening; elapsed time is not failure. */
     waitForWorkspace: async (
       paired: PhoneProvisioningResult,
       onProgress?: (message: string) => void,
-      timeoutMs = 180_000,
+      signal?: AbortSignal,
     ) => {
-      const deadline = Date.now() + timeoutMs;
       for (;;) {
-        const current = await readiness(paired.pairedDevice.deviceId).catch(
-          (error) => ({
-            status: "failed" as const,
-            message: `The phone is paired, but workspace readiness could not be checked: ${error instanceof Error ? error.message : String(error)}`,
-          }),
-        );
+        signal?.throwIfAborted();
+        const current = await readiness(paired.pairedDevice.deviceId, signal);
         onProgress?.(current.message);
-        if (current.status !== "opening" || Date.now() >= deadline)
-          return current;
-        await new Promise((resolve) => setTimeout(resolve, 1_000));
+        if (current.status !== "opening") return current;
+        await nextReadinessObservation(signal);
       }
     },
   };

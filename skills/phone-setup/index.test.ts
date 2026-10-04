@@ -52,7 +52,7 @@ it("uses public arguments and retains the paired result while readiness is pendi
     deviceId: "serial",
   });
   expect(result).toEqual(paired);
-  expect(await phone.waitForWorkspace(result, undefined, 0)).toEqual({
+  expect(await phone.readiness(result.pairedDevice.deviceId)).toEqual({
     status: "opening",
     message: "Loading workspace",
   });
@@ -61,14 +61,51 @@ it("uses public arguments and retains the paired result while readiness is pendi
     "phone-service",
     "readiness",
     [{ deviceId: "phone" }],
+    { signal: undefined },
   );
 });
-it("reports a readiness failure as a partial outcome so pairing evidence is not lost", async () => {
-  transport.call.mockRejectedValue(new Error("Connection interrupted"));
+it("propagates the original readiness failure without losing the paired result", async () => {
+  const failure = new Error("Connection interrupted");
+  transport.call.mockRejectedValue(failure);
   const phone = await phoneSetup();
-  expect(await phone.waitForWorkspace(paired)).toMatchObject({
-    status: "failed",
-    message: expect.stringContaining("The phone is paired"),
-  });
+  await expect(phone.waitForWorkspace(paired)).rejects.toBe(failure);
+  expect(paired.pairingStatus).toBe("paired");
   expect(transport.stream).not.toHaveBeenCalled();
+});
+it("keeps slow startup opening until authoritative readiness and cancels an owned observation", async () => {
+  vi.useFakeTimers();
+  try {
+    transport.call
+      .mockImplementationOnce(async () => {
+        vi.setSystemTime(Date.now() + 300_000);
+        return { status: "opening", message: "Loading" };
+      })
+      .mockResolvedValueOnce({ status: "ready", message: "Ready" });
+    const phone = await phoneSetup();
+    const waiting = phone.waitForWorkspace(paired);
+    await vi.advanceTimersByTimeAsync(1_000);
+    await expect(waiting).resolves.toEqual({
+      status: "ready",
+      message: "Ready",
+    });
+    transport.call.mockResolvedValue({
+      status: "opening",
+      message: "Pending approval",
+    });
+    const controller = new AbortController();
+    const cancelled = phone.waitForWorkspace(
+      paired,
+      undefined,
+      controller.signal,
+    );
+    const reason = new Error("Panel closed");
+    const assertion = expect(cancelled).rejects.toBe(reason);
+    await vi.advanceTimersByTimeAsync(0);
+    controller.abort(reason);
+    await assertion;
+    expect(vi.getTimerCount()).toBe(0);
+    expect(transport.stream).not.toHaveBeenCalled();
+  } finally {
+    vi.useRealTimers();
+  }
 });

@@ -73,6 +73,11 @@ verification by the desktop after normal approval; no SDK or terminal steps.
 No desktop: ask the user to open the desktop app on the same account/server.
 No ready phone: explain the observed physical action, then rediscover.
 
+`waitForWorkspace` observes the actual workspace lifecycle without an implicit deadline.
+An optional third `AbortSignal` cancels its pending RPC/observation and propagates
+the original cancellation reason. A transport failure rejects with its original
+error; pairing evidence remains in the result you already retained.
+
 Once paired, retain the result. If workspace preparation is slow or fails,
 repeat `phone.readiness(paired.pairedDevice.deviceId)` or `waitForWorkspace`.
 Never reinstall or create another invite just to check readiness. Tell the user
