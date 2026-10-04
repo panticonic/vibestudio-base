@@ -1,18 +1,23 @@
+import { canonicalBase64Bytes } from "./portable-bytes.js";
 /**
  * Eval tool — runs code in the agent's own server-side EvalDO via the `eval` service
  * (owner = the agent's verified identity). Replaces the former panel-advertised `eval`
- * channel method: it's a LOCAL agent tool, so the loop dispatches it in-process (the
- * EvalDO runs the code, not the panel). REPL scope + a synchronous SQLite `db` persist
+ * channel method: the native task owns the admission and waits on its receipt.
+ * EvalDO runs the code. REPL scope + a synchronous SQLite `db` persist
  * in the EvalDO across calls.
  */
-import { Type, type Static } from "@sinclair/typebox";
-import type { AgentTool, AgentToolResult } from "@workspace/pi-core";
-import type { ImageContent } from "@workspace/pi-ai";
+import { Type, type Static } from "@panticonic/pi-ai";
+import type { JsonRepresentation } from "@panticonic/pi-chord";
+import type { AgentToolFailure } from "@workspace/agentic-protocol";
+import type {
+  ToolRegistration,
+  ToolExecutionResult,
+} from "@panticonic/pi-durable";
+import { toolDetails } from "./native-tool-json.js";
+import type { ImageContent } from "@panticonic/pi-ai";
 import {
-  createEvalExecutor,
   evalImageArtifactSchema,
   mapEvalResultLeaves,
-  evalAuthorityInputSchema,
   type EvalStartInput,
 } from "@vibestudio/service-schemas/eval";
 
@@ -64,24 +69,34 @@ const evalCommonSchema = {
             }),
             {
               description:
-                "Exact per-run capability allowlist. Omit to adapt to the authority already admitted for the caller; provide a list (including []) to enforce only that list.",
+                "Optional access ceiling: omit unless restricting the run's access. [] forbids every protected operation, including calls listed in preauthorize. To derive an exact ceiling, use services.authority.preflight({service,method,args}); its non-open leaves expose capability and resourceKey. Read help('authority.preflight') for that contract; authority is a service, not a runtime export.",
             },
           ),
         ),
         preauthorize: Type.Optional(
           Type.Array(
             Type.Object({
-              service: Type.String(),
-              method: Type.String(),
+              service: Type.String({
+                description:
+                  "Host service name, without the RPC target or method; for example fs.",
+              }),
+              method: Type.String({
+                description:
+                  "Unqualified method name within that service; for example readFile.",
+              }),
               args: Type.Array(Type.Unknown()),
             }),
+            {
+              description:
+                "Authorize these exact service operations before starting code, without executing them. The host derives the required access. Omit requests unless the user also requires an access ceiling; if supplied, it must cover these operations. Valid only with approvals prompt (the default). Normal approval routing applies.",
+            },
           ),
         ),
       },
       {
         additionalProperties: false,
         description:
-          "Optional per-run authority attenuation. Omitted requests adapt to admitted authority; supplied requests are the exact allowlist. pregranted-only never opens an approval card; effects selects ordinary read-write execution or dispatcher-enforced read-only execution.",
+          "Optional run policy. effects blocks mutations, requests restricts access, approvals controls approval routing, and preauthorize prepares specific calls before execution. These fields are independent: preparation does not impose an access ceiling. Omit fields whose restriction was not requested.",
       },
     ),
   ),
@@ -236,8 +251,8 @@ export function normalizeEvalToolSource(params: {
  */
 export async function formatEvalResult(
   result: EvalRunResult,
-  readArtifact?: (digest: string) => Promise<string | null>,
-): Promise<AgentToolResult<EvalRunResult>> {
+  readImageBase64?: (digest: string) => Promise<string | null>,
+): Promise<ToolExecutionResult<JsonRepresentation<EvalRunResult>>> {
   const parts: string[] = [];
   const images = new Map<
     string,
@@ -255,7 +270,10 @@ export async function formatEvalResult(
           const key = `${artifact.digest}:${artifact.mimeType}`;
           let image = images.get(key);
           if (!image) {
-            image = (await imageContentFromEvalReturn(artifact, readArtifact))!;
+            image = (await imageContentFromEvalReturn(
+              artifact,
+              readImageBase64,
+            ))!;
             images.set(key, image);
           }
           const { protocol: _protocol, ...metadata } = artifact;
@@ -381,14 +399,14 @@ export async function formatEvalResult(
       { type: "text", text: parts.join("\n") || "[eval] (no output)" },
       ...[...images.values()].map((image) => image.content),
     ],
-    details,
+    details: toolDetails(details),
     isError: !result.success,
-  } as AgentToolResult<EvalRunResult>;
+  };
 }
 
 async function imageContentFromEvalReturn(
   value: unknown,
-  readArtifact?: (digest: string) => Promise<string | null>,
+  readImageBase64?: (digest: string) => Promise<string | null>,
 ): Promise<{
   content: ImageContent;
   summary: string;
@@ -396,12 +414,14 @@ async function imageContentFromEvalReturn(
 } | null> {
   const parsed = evalImageArtifactSchema.safeParse(value);
   if (!parsed.success) return null;
-  if (!readArtifact)
+  if (!readImageBase64)
     throw new Error("eval image artifact reader is unavailable");
   const artifact = parsed.data;
-  const data = await readArtifact(artifact.digest);
-  if (data === null || data.length === 0)
+  const stored = await readImageBase64(artifact.digest);
+  if (stored === null || stored.length === 0)
     throw new Error(`eval image artifact ${artifact.digest} is unavailable`);
+  // Model image content carries base64, never text-decoded binary bytes.
+  const { base64: data } = canonicalBase64Bytes(stored);
   const dimensions = {
     ...(artifact.width === undefined ? {} : { width: artifact.width }),
     ...(artifact.height === undefined ? {} : { height: artifact.height }),
@@ -413,46 +433,38 @@ async function imageContentFromEvalReturn(
   };
 }
 
+/** A refused admission is a tool failure, not an EvalDO execution receipt. */
+export type EvalToolDetails = EvalRunResult | { failure: AgentToolFailure };
+
+export type NativeEvalExecution = Required<
+  Pick<
+    ToolRegistration<
+      typeof evalToolParameters,
+      JsonRepresentation<EvalToolDetails>
+    >,
+    "execute" | "cancel"
+  >
+>;
+
+export interface EvalToolOptions {
+  /** The owning agent binds, admits, and consumes its native domain receipt. */
+  execution: NativeEvalExecution;
+}
+
 export function createEvalTool(
-  callMain: <T>(method: string, args: unknown[]) => Promise<T>,
-  opts: { subKey?: string } = {},
-): AgentTool<typeof evalToolParameters> {
-  const executeEval = createEvalExecutor(callMain);
+  options: EvalToolOptions,
+): ToolRegistration<
+  typeof evalToolParameters,
+  JsonRepresentation<EvalToolDetails>
+> {
   return {
     name: "eval",
-    label: "eval",
     description:
-      'Execute TypeScript/JS in your persistent notebook sandbox (a per-agent EvalDO, not the visible panel). The live heap—including objects with methods, module singletons, and client handles—is retained throughout admitted execution and cancellation, then for 30 minutes of notebook inactivity. Calls have no implicit wall deadline. Omit timeoutMs for ordinary work and lifecycle calls; never add a generic 120000/300000 safety timeout. A whole-cell deadline cancels the notebook operation and hides which nested wait stalled. Bound a specific wait with that API’s AbortSignal/timeout instead, and reserve eval timeoutMs for deliberately non-settling code or an explicit end-to-end deadline. Split intentionally bounded workflows when useful and keep live working objects in `scope`; store stable IDs and exact serializable data there for recovery, or durable records in `db`. Database calls are synchronous: `db.run(sql, ...bindings)` writes and `db.exec(sql, ...bindings)` returns an array of rows; pass each SQL binding as a separate argument. An unavoidable process restart is reported explicitly as `[kernel] Restarted` with exact restored/lost scope keys—reacquire lost handles from stable IDs before continuing. Set reset:true to clear scope/db atomically before this call; never call eval.reset from inside the running eval. The live runtime is self-describing: call `await help()` to list bindings or `await help("workers")` (and the analogous binding name) before guessing an API or return shape. Call workspace services via `rpc`/`services`; `chat.channelId` is only the channel where this agent is responding; for visible panel perspective use `parent`/`getParent()` and `panelTree` plus target panel stateArgs. `return` sends a bounded value back; console output is captured. Screenshots from `await handle.cdp.screenshot()` attach native image content whether returned directly or nested alongside checks, for example `return { screenshot: await handle.cdp.screenshot(), checks }`; no temp-file write is needed. `page.consoleEvents()` returns the live event array; `await handle.cdp.consoleHistory()` returns `{ entries, errors, dropped, capacity }`. Very large console, error-data, and other return payloads are windowed with stable recovery pointers to `scope.$lastLargeConsole`, `scope.$lastLargeErrorData`, and `scope.$lastLargeReturn`, so prefer compact summaries and store large artifacts in scope/blobstore.',
+      'Execute TypeScript/JS in your persistent notebook sandbox (a per-agent EvalDO, not the visible panel). The live heap—including objects with methods, module singletons, and client handles—is retained throughout admitted execution and cancellation, then for 30 minutes of notebook inactivity. Calls have no implicit wall deadline. Omit timeoutMs for ordinary work and lifecycle calls; never add a generic 120000/300000 safety timeout. A whole-cell deadline cancels the notebook operation and hides which nested wait stalled. Bound a specific wait with that API’s AbortSignal/timeout instead, and reserve eval timeoutMs for deliberately non-settling code or an explicit end-to-end deadline. Split intentionally bounded workflows when useful and keep live working objects in `scope`; imports and local declarations are cell-local, so reimport helpers in a later cell or retain their handles explicitly in `scope`; store stable IDs and exact serializable data there for recovery, or durable records in `db`. Database calls are synchronous: `db.run(sql, ...bindings)` writes and `db.exec(sql, ...bindings)` returns an array of rows; pass each SQL binding as a separate argument. An unavoidable process restart is reported explicitly as `[kernel] Restarted` with exact restored/lost scope keys—reacquire lost handles from stable IDs before continuing. Set reset:true to clear scope/db atomically before this call; never call eval.reset from inside the running eval. The live runtime is self-describing: call `await help()` to list bindings or `await help("workers")` (and the analogous binding name) before guessing an API or return shape. Call workspace services via `rpc`/`services`; `chat.channelId` is only the channel where this agent is responding; for visible panel perspective use `parent`/`getParent()` and `panelTree` plus target panel stateArgs. `return` sends a bounded value back; console output is captured. Screenshots from `await handle.cdp.screenshot()` attach native image content whether returned directly or nested alongside checks, for example `return { screenshot: await handle.cdp.screenshot(), checks }`; no temp-file write is needed. `page.consoleEvents()` returns the live event array; `await handle.cdp.consoleHistory()` returns `{ entries, errors, dropped, capacity }`. Very large console, error-data, and other return payloads are windowed with stable recovery pointers to `scope.$lastLargeConsole`, `scope.$lastLargeErrorData`, and `scope.$lastLargeReturn`, so prefer compact summaries and store large artifacts in scope/blobstore.',
     parameters: evalToolParameters,
-    execute: async (
-      toolCallId,
-      params,
-    ): Promise<AgentToolResult<EvalRunResult>> => {
-      // Some model transports materialize an optional string as "". Treat an
-      // empty path as omitted when inline code is present; it is never a valid
-      // context-relative file and should not turn an otherwise valid eval into
-      // a mutually-exclusive-arguments error.
-      const source = normalizeEvalToolSource(params);
-      const result = await executeEval({
-        // The tool invocation id is the durable eval handle. A vessel replay
-        // therefore addresses the already-accepted run instead of duplicating
-        // arbitrary code after a lost response.
-        runId: toolCallId,
-        scope: opts.subKey ? { key: opts.subKey } : undefined,
-        reset: params.reset,
-        timeoutMs: params.timeoutMs,
-        source,
-        imports: params.imports,
-        authority:
-          params.authority === undefined
-            ? undefined
-            : evalAuthorityInputSchema.parse(params.authority),
-      });
-      // Formatting (with large-output windowing) is shared with the agent's deferred resume.
-      return formatEvalResult(result, (digest) =>
-        callMain<string | null>("blobstore.getBase64", [digest]),
-      );
-    },
+    execute: options.execution.execute,
+    replay: "safe",
+    cancel: options.execution.cancel,
   };
 }
 

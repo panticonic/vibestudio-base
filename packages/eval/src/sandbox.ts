@@ -12,6 +12,7 @@
  */
 
 import type { ComponentType } from "react";
+import type { BuildBundleResult } from "@vibestudio/service-schemas/build";
 import {
   EVAL_OPERATION_JOURNAL_MAX_ENTRIES,
   EVAL_OPERATION_JOURNAL_PREVIEW_CHARS,
@@ -63,10 +64,7 @@ export interface SandboxImportLoader {
   resolveWorkspaceImport?: (specifier: string) => Promise<boolean>;
 }
 
-export interface LibraryModuleArtifact {
-  bundle: string;
-  format: "cjs" | "async-cjs";
-}
+export type LibraryModuleArtifact = BuildBundleResult;
 
 export type SandboxFailureKind = "user-code" | "infrastructure" | "cancelled";
 
@@ -216,7 +214,11 @@ function structuredFailureData(error: unknown): unknown | undefined {
 function structuredFailureKind(error: unknown): SandboxFailureKind | undefined {
   if (!error || typeof error !== "object") return undefined;
   const code = structuredFailureCode(error);
-  if (code === "EUNEXPECTEDTESTPROMPT" || code?.startsWith("DO_SCHEMA_") || code === "DO_MAINTENANCE_IN_PROGRESS") {
+  if (
+    code === "EUNEXPECTEDTESTPROMPT" ||
+    code?.startsWith("DO_SCHEMA_") ||
+    code === "DO_MAINTENANCE_IN_PROGRESS"
+  ) {
     return "infrastructure";
   }
   const errorData = (error as { errorData?: unknown }).errorData;
@@ -243,7 +245,11 @@ async function runInfrastructurePhase<T>(
     const structuredCode = structuredFailureCode(error);
     if (structuredCode && CORRECTABLE_IMPORT_FAILURE_CODES.has(structuredCode))
       throw error;
-    if (structuredFailureKind(error) === "infrastructure" || error instanceof SandboxInfrastructureError) throw error;
+    if (
+      structuredFailureKind(error) === "infrastructure" ||
+      error instanceof SandboxInfrastructureError
+    )
+      throw error;
     throw new SandboxInfrastructureError(code, error);
   }
 }
@@ -351,7 +357,7 @@ async function loadLibraryBundle(
   const existing = loadedLibraryMetadata(moduleMap, specifier);
   if (
     existing?.bundle === artifact.bundle &&
-    moduleMap[specifier] !== undefined
+    Object.hasOwn(moduleMap, specifier)
   ) {
     // Two refs may resolve to byte-identical artifacts. The acquired artifact
     // is already active, but remember the newly requested ref so future calls
@@ -366,6 +372,25 @@ async function loadLibraryBundle(
       | ((id: string) => unknown)
       | undefined);
   if (!resolvedRequire) throw new Error("__vibestudioRequire__ not available");
+
+  // A library's provided peers remain external even when they have not yet
+  // been requested by authored source. Link those peers before executing its
+  // synchronous CommonJS imports. The compiler's artifact contract owns this
+  // list; generated require helpers cannot be recovered from source scanning.
+  // Only the owning realm's declared host loaders qualify;
+  // private EvalDO registries never borrow a panel's modules.
+  await runInfrastructurePhase("package_load_failed", () =>
+    Promise.all(
+      artifact.requiredModules.map(async (dependency) => {
+        if (Object.hasOwn(moduleMap, dependency)) return;
+        if (!(await loadLazyHostModule(dependency, moduleMap, moduleMap))) {
+          // A private realm may satisfy a peer through its injected require.
+          // Resolve it before execution; never run a partially linked module.
+          resolvedRequire(dependency);
+        }
+      }),
+    ),
+  );
 
   const body =
     artifact.format === "async-cjs"
@@ -388,20 +413,14 @@ async function loadLibraryBundle(
       ) {
         throw originalError;
       }
-      const dependencyArtifact = await runInfrastructurePhase(
-        "package_load_failed",
-        () => loadImport(dependency, undefined, Object.keys(moduleMap)),
-      );
-      await loadLibraryBundle(
-        dependency,
-        dependencyArtifact,
+      await loadImports(
+        { [dependency]: "latest" },
+        loadImport,
         moduleMap,
         resolvedRequire,
         compileFunction,
         freezeModuleNamespace,
-        loadImport,
         confinement,
-        undefined,
       );
       return resolvedRequire(dependency);
     }
@@ -444,7 +463,7 @@ async function loadImports(
     // @radix-ui/*, …) never go through the build service. Asking it for
     // "react" can even resolve to an unrelated workspace unit via basename
     // matching (workspace/packages/react) and build that instead.
-    if (moduleMap[specifier] !== undefined) {
+    if (Object.hasOwn(moduleMap, specifier)) {
       if (!existing || existing.ref === importRefKey(ref)) continue;
     } else {
       if (installPreloadedModuleAlias(specifier, moduleMap)) continue;
@@ -507,6 +526,7 @@ async function loadLazyHostModule(
   const hasGeneratedLoader =
     !!loaders &&
     typeof loaders === "object" &&
+    Object.hasOwn(loaders, specifier) &&
     typeof (loaders as Record<string, unknown>)[specifier] === "function";
   const hasNativeImport =
     nativeSpecifiers instanceof Set && nativeSpecifiers.has(specifier);
@@ -519,7 +539,7 @@ async function loadLazyHostModule(
     );
   }
   const loaded = await asyncRequire(specifier);
-  if (moduleMap[specifier] === undefined) moduleMap[specifier] = loaded;
+  if (!Object.hasOwn(moduleMap, specifier)) moduleMap[specifier] = loaded;
   return true;
 }
 
@@ -533,7 +553,7 @@ function installPreloadedModuleAlias(
   const flatBare = specifier.match(/^workspace-([^/]+)$/u);
   if (flatBare) candidates.push(`@workspace/${flatBare[1]}`);
   for (const candidate of candidates) {
-    if (moduleMap[candidate] !== undefined) {
+    if (Object.hasOwn(moduleMap, candidate)) {
       moduleMap[specifier] = moduleMap[candidate];
       return true;
     }
@@ -565,7 +585,7 @@ function installLazyImportLoader(
     const ref = refValue === "latest" ? undefined : refValue;
     const existing = loadedLibraryMetadata(moduleMap, specifier);
     if (
-      moduleMap[specifier] !== undefined &&
+      Object.hasOwn(moduleMap, specifier) &&
       (!existing || existing.ref === importRefKey(ref))
     ) {
       return moduleMap[specifier];
@@ -652,7 +672,7 @@ async function ensureRequires(
   let validation = validateRequires(requires, requireFn);
   if (!validation.valid && options.loadImport) {
     const moduleMap = getModuleMap(options.moduleMap);
-    const missing = requires.filter((r) => !moduleMap[r]);
+    const missing = requires.filter((r) => !Object.hasOwn(moduleMap, r));
     const inferredImports = await inferSandboxImports(
       missing,
       options.loadImport,
@@ -685,7 +705,7 @@ async function ensureRequires(
 
   if (!validation.valid) {
     const missingModules = requires.filter(
-      (r) => !getModuleMap(options.moduleMap)[r],
+      (r) => !Object.hasOwn(getModuleMap(options.moduleMap), r),
     );
     const missingDeclarations = await getMissingPackageDeclarations(
       missingModules,
@@ -1699,7 +1719,9 @@ export async function executeSandbox(
     if (!validation.valid && options.loadImport) {
       throwIfAborted(signal);
       // Auto-resolve: build missing workspace packages on-demand
-      const missingModules = transformed.requires.filter((r) => !moduleMap[r]);
+      const missingModules = transformed.requires.filter(
+        (r) => !Object.hasOwn(moduleMap, r),
+      );
       const autoImports = await withAbort(
         inferSandboxImports(missingModules, options.loadImport, {
           importerPath: options.sourcePath,
@@ -1750,7 +1772,9 @@ export async function executeSandbox(
         };
       }
       const available = Object.keys(moduleMap);
-      const missingModules = transformed.requires.filter((r) => !moduleMap[r]);
+      const missingModules = transformed.requires.filter(
+        (r) => !Object.hasOwn(moduleMap, r),
+      );
       // For npm packages, suggest the imports parameter
       const suggestedImports = Object.fromEntries(
         missingModules.map((m) => [
@@ -1796,7 +1820,8 @@ export async function executeSandbox(
     // Scope-held panel/session functions still use this resident runtime even
     // when the next cell contains no import. Journal every execution context.
     const runtimeModule = tryRequireRuntimeModule(requireFn);
-    const journal = options.operationJournal ?? createRuntimeJournal(runtimeModule);
+    const journal =
+      options.operationJournal ?? createRuntimeJournal(runtimeModule);
     runtimeJournal = journal;
     const runUserCode = async () => {
       throwIfAborted(signal);
@@ -1838,9 +1863,10 @@ export async function executeSandbox(
       };
     };
 
-    const execution = journal && !options.operationJournal
-      ? await runtimeModule.journal.with(journal, runUserCode)
-      : await runUserCode();
+    const execution =
+      journal && !options.operationJournal
+        ? await runtimeModule.journal.with(journal, runUserCode)
+        : await runUserCode();
     throwIfAborted(signal);
     let operationJournalFooter: string | undefined;
     if (journal) {
@@ -1859,7 +1885,9 @@ export async function executeSandbox(
       returnValue: execution.safeReturnValue,
       exports: execution.exports,
       operationJournalFooter,
-      ...(journal ? { operationJournal: captureOperationJournal(journal) } : {}),
+      ...(journal
+        ? { operationJournal: captureOperationJournal(journal) }
+        : {}),
     };
   } catch (err) {
     const errorMessage = err instanceof Error ? err.message : String(err);

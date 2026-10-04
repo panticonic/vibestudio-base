@@ -1,11 +1,18 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { compileComponent, executeSandbox, loadSourceFileBundle } from "./index";
+import {
+  compileComponent,
+  executeSandbox,
+  loadSourceFileBundle,
+} from "./index";
 
 function missing(path: string): Error & { code: string } {
   return Object.assign(new Error(`Missing ${path}`), { code: "ENOENT" });
 }
 
-function filesystemError(path: string, code: "EISDIR" | "ENOTDIR"): Error & { code: string } {
+function filesystemError(
+  path: string,
+  code: "EISDIR" | "ENOTDIR",
+): Error & { code: string } {
   return Object.assign(new Error(`${code}: ${path}`), { code });
 }
 
@@ -15,33 +22,51 @@ describe("source file bundles", () => {
   let originalPreload: unknown;
 
   beforeEach(() => {
-    originalModuleMap = (globalThis as Record<string, unknown>)["__vibestudioModuleMap__"];
-    originalRequire = (globalThis as Record<string, unknown>)["__vibestudioRequire__"];
-    originalPreload = (globalThis as Record<string, unknown>)["__vibestudioPreloadModules__"];
+    originalModuleMap = (globalThis as Record<string, unknown>)[
+      "__vibestudioModuleMap__"
+    ];
+    originalRequire = (globalThis as Record<string, unknown>)[
+      "__vibestudioRequire__"
+    ];
+    originalPreload = (globalThis as Record<string, unknown>)[
+      "__vibestudioPreloadModules__"
+    ];
 
     const moduleMap: Record<string, unknown> = {};
-    (globalThis as Record<string, unknown>)["__vibestudioModuleMap__"] = moduleMap;
-    (globalThis as Record<string, unknown>)["__vibestudioRequire__"] = (id: string) => {
+    (globalThis as Record<string, unknown>)["__vibestudioModuleMap__"] =
+      moduleMap;
+    (globalThis as Record<string, unknown>)["__vibestudioRequire__"] = (
+      id: string,
+    ) => {
       if (id in moduleMap) return moduleMap[id];
       throw new Error(`Module not found: ${id}`);
     };
-    (globalThis as Record<string, unknown>)["__vibestudioPreloadModules__"] = async (ids: string[]) =>
-      ids.map((id) => {
-        if (id in moduleMap) return moduleMap[id];
-        throw new Error(`Module not found: ${id}`);
-      });
+    (globalThis as Record<string, unknown>)["__vibestudioPreloadModules__"] =
+      async (ids: string[]) =>
+        ids.map((id) => {
+          if (id in moduleMap) return moduleMap[id];
+          throw new Error(`Module not found: ${id}`);
+        });
   });
 
   afterEach(() => {
     if (originalModuleMap === undefined)
       delete (globalThis as Record<string, unknown>)["__vibestudioModuleMap__"];
-    else (globalThis as Record<string, unknown>)["__vibestudioModuleMap__"] = originalModuleMap;
+    else
+      (globalThis as Record<string, unknown>)["__vibestudioModuleMap__"] =
+        originalModuleMap;
     if (originalRequire === undefined)
       delete (globalThis as Record<string, unknown>)["__vibestudioRequire__"];
-    else (globalThis as Record<string, unknown>)["__vibestudioRequire__"] = originalRequire;
+    else
+      (globalThis as Record<string, unknown>)["__vibestudioRequire__"] =
+        originalRequire;
     if (originalPreload === undefined)
-      delete (globalThis as Record<string, unknown>)["__vibestudioPreloadModules__"];
-    else (globalThis as Record<string, unknown>)["__vibestudioPreloadModules__"] = originalPreload;
+      delete (globalThis as Record<string, unknown>)[
+        "__vibestudioPreloadModules__"
+      ];
+    else
+      (globalThis as Record<string, unknown>)["__vibestudioPreloadModules__"] =
+        originalPreload;
   });
 
   it("loads an entry file and nested relative imports", async () => {
@@ -73,17 +98,14 @@ describe("source file bundles", () => {
     });
     const calls: string[] = [];
     await expect(
-      loadSourceFileBundle(
-        "src/main.ts",
-        async (path) => {
-          calls.push(path);
-          if (path === "src/main.ts") {
-            return `import { label } from "./catalog"; export default label;`;
-          }
-          if (path === "src/catalog") throw missing(path);
-          throw lost;
-        },
-      ),
+      loadSourceFileBundle("src/main.ts", async (path) => {
+        calls.push(path);
+        if (path === "src/main.ts") {
+          return `import { label } from "./catalog"; export default label;`;
+        }
+        if (path === "src/catalog") throw missing(path);
+        throw lost;
+      }),
     ).rejects.toBe(lost);
     expect(calls).toEqual(["src/main.ts", "src/catalog", "src/catalog.tsx"]);
   });
@@ -99,7 +121,9 @@ describe("source file bundles", () => {
       if (code === undefined) throw missing(path);
       return code;
     });
-    expect(bundle.resolutions["src/main.ts\n./catalog"]).toBe("src/catalog/index.ts");
+    expect(bundle.resolutions["src/main.ts\n./catalog"]).toBe(
+      "src/catalog/index.ts",
+    );
   });
 
   it("continues after an ENOTDIR candidate failure", async () => {
@@ -110,7 +134,9 @@ describe("source file bundles", () => {
       if (path === "src/catalog.tsx") return `export const label = "ready";`;
       throw missing(path);
     });
-    expect(bundle.resolutions["src/main.ts\n./catalog"]).toBe("src/catalog.tsx");
+    expect(bundle.resolutions["src/main.ts\n./catalog"]).toBe(
+      "src/catalog.tsx",
+    );
   });
 
   it("preserves structured import failures in compile results", async () => {
@@ -167,7 +193,11 @@ describe("source file bundles", () => {
       },
       loadImport: async (specifier, ref) => {
         loadCalls.push({ specifier, ref });
-        return { bundle: `module.exports = { double: (n) => n * 2 };`, format: "cjs" as const };
+        return {
+          bundle: `module.exports = { double: (n) => n * 2 };`,
+          format: "cjs" as const,
+          requiredModules: [],
+        };
       },
       bindings: { input: 21 },
     });
@@ -193,7 +223,11 @@ describe("source file bundles", () => {
       },
       loadImport: async (specifier, ref) => {
         loadCalls.push({ specifier, ref });
-        return { bundle: `module.exports = { double: (n) => n * 2 };`, format: "cjs" as const };
+        return {
+          bundle: `module.exports = { double: (n) => n * 2 };`,
+          format: "cjs" as const,
+          requiredModules: [],
+        };
       },
       bindings: { input: 21 },
     });
@@ -241,7 +275,9 @@ describe("source file bundles", () => {
     });
 
     expect(result.success).toBe(false);
-    expect(result.error).toContain('Node built-in module "node:child_process" is not available');
+    expect(result.error).toContain(
+      'Node built-in module "node:child_process" is not available',
+    );
     expect(result.error).toContain("@workspace/runtime");
     expect(result.error).not.toContain("npm:latest");
   });
@@ -261,7 +297,11 @@ describe("source file bundles", () => {
       },
       loadImport: async (specifier, ref) => {
         loadCalls.push({ specifier, ref });
-        return { bundle: `module.exports = {};`, format: "cjs" as const };
+        return {
+          bundle: `module.exports = {};`,
+          format: "cjs" as const,
+          requiredModules: [],
+        };
       },
     });
 
@@ -278,7 +318,8 @@ describe("source file bundles", () => {
       sourcePath: "packages/app/src/main.ts",
       loadSourceFile: async (path) => {
         if (path === "packages/app/src/main.ts") return code;
-        if (path === "packages/app/src/labels.ts") return `export const label = "ready";`;
+        if (path === "packages/app/src/labels.ts")
+          return `export const label = "ready";`;
         if (path === "packages/app/package.json") {
           return JSON.stringify({ imports: { "#labels": "./src/labels.ts" } });
         }
@@ -297,9 +338,12 @@ describe("source file bundles", () => {
       sourcePath: "packages/app/src/main.ts",
       loadSourceFile: async (path) => {
         if (path === "packages/app/src/main.ts") return code;
-        if (path === "packages/app/src/labels.ts") return `export const label = "ready";`;
+        if (path === "packages/app/src/labels.ts")
+          return `export const label = "ready";`;
         if (path === "packages/app/tsconfig.json") {
-          return JSON.stringify({ compilerOptions: { baseUrl: ".", paths: { "@/*": ["src/*"] } } });
+          return JSON.stringify({
+            compilerOptions: { baseUrl: ".", paths: { "@/*": ["src/*"] } },
+          });
         }
         throw missing(path);
       },
@@ -366,7 +410,11 @@ export default function App() { return label; }`;
       },
       loadImport: async (specifier, ref) => {
         loadCalls.push({ specifier, ref });
-        return { bundle: `module.exports = { label: "ready" };`, format: "cjs" as const };
+        return {
+          bundle: `module.exports = { label: "ready" };`,
+          format: "cjs" as const,
+          requiredModules: [],
+        };
       },
     });
 

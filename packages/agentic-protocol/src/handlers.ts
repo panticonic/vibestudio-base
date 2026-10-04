@@ -13,9 +13,20 @@ import type {
   SandboxSourcePayload,
   UsagePayload,
 } from "./events.js";
+import { readNativeModelStream } from "./native-model-stream.js";
 import type { AgentToolFailure } from "./tool-failure.js";
-import type { ApprovalId, InvocationId, MessageId, TaskId, TurnId } from "./ids.js";
-import type { InvocationOutcome, MessageOutcome, MessageTier } from "./constants.js";
+import type {
+  ApprovalId,
+  InvocationId,
+  MessageId,
+  TaskId,
+  TurnId,
+} from "./ids.js";
+import type {
+  InvocationOutcome,
+  MessageOutcome,
+  MessageTier,
+} from "./constants.js";
 
 export type MessageStatus = "started" | "streaming" | "completed" | "failed";
 export type InvocationStatus =
@@ -41,17 +52,51 @@ export interface MessageNotifyIntent {
 }
 
 /** Read `metadata.notify` off a message payload; absent or malformed ⇒ undefined. */
-export function readMessageNotifyIntent(metadata: unknown): MessageNotifyIntent | undefined {
+export function readMessageNotifyIntent(
+  metadata: unknown,
+): MessageNotifyIntent | undefined {
   if (!metadata || typeof metadata !== "object") return undefined;
   const notify = (metadata as { notify?: unknown }).notify;
   if (!notify || typeof notify !== "object") return undefined;
   const alert = (notify as { alert?: unknown }).alert;
-  if (alert !== "none" && alert !== "inbox" && alert !== "interrupt") return undefined;
+  if (alert !== "none" && alert !== "inbox" && alert !== "interrupt")
+    return undefined;
   const title = (notify as { title?: unknown }).title;
   return { alert, ...(typeof title === "string" && title ? { title } : {}) };
 }
 
+/** Presentation coordinates; execution control still verifies the host-owned task. */
+export interface NativeMessageCoordinates {
+  readonly conversationId: number;
+  readonly taskId: number;
+  readonly entryId: number;
+}
+function readNativeMessageCoordinates(
+  metadata: unknown,
+): NativeMessageCoordinates | undefined {
+  if (!metadata || typeof metadata !== "object" || Array.isArray(metadata))
+    return undefined;
+  const value = metadata as Record<string, unknown>;
+  const conversationId = value["nativeConversationId"],
+    taskId = value["nativeTaskId"],
+    entryId = value["nativeEntryId"];
+  if (
+    typeof conversationId !== "number" ||
+    !Number.isSafeInteger(conversationId) ||
+    conversationId <= 0 ||
+    typeof taskId !== "number" ||
+    !Number.isSafeInteger(taskId) ||
+    taskId <= 0 ||
+    typeof entryId !== "number" ||
+    !Number.isSafeInteger(entryId) ||
+    entryId <= 0
+  )
+    return undefined;
+  return { conversationId, taskId, entryId };
+}
+
 export interface ProjectedMessage {
+  native?: NativeMessageCoordinates;
   messageId: MessageId;
   actor: ActorRef;
   turnId?: TurnId;
@@ -106,6 +151,8 @@ export interface ProjectedMessage {
 }
 
 export interface ProjectedInvocation {
+  nativeSource?: import("@vibestudio/service-schemas/nativeInvocation").NativeInvocationSource;
+  originatingInput?: import("@vibestudio/service-schemas/nativeInvocation").NativeOriginatingInput | null;
   invocationId: InvocationId;
   transportCallId?: string;
   actor: ActorRef;
@@ -211,7 +258,9 @@ export type ApprovalMap = Record<string, ProjectedApproval>;
 export type InlineUiMap = Record<string, ProjectedInlineUi>;
 export type TurnMap = Record<string, ProjectedTurn>;
 
-function isTerminalInvocationStatus(status: InvocationStatus | undefined): boolean {
+function isTerminalInvocationStatus(
+  status: InvocationStatus | undefined,
+): boolean {
   return (
     status === "completed" ||
     status === "failed" ||
@@ -228,20 +277,22 @@ function requireMessageId(event: AgenticEvent): MessageId {
 
 function requireInvocationId(event: AgenticEvent): InvocationId {
   const invocationId = event.causality?.invocationId;
-  if (!invocationId) throw new Error(`${event.kind} requires causality.invocationId`);
+  if (!invocationId)
+    throw new Error(`${event.kind} requires causality.invocationId`);
   return invocationId;
 }
 
 function requireApprovalId(event: AgenticEvent): ApprovalId {
   const approvalId = event.causality?.approvalId;
-  if (!approvalId) throw new Error(`${event.kind} requires causality.approvalId`);
+  if (!approvalId)
+    throw new Error(`${event.kind} requires causality.approvalId`);
   return approvalId;
 }
 
 function diagnosticBlock(
   blockId: string,
   content: string,
-  metadata: DiagnosticBlockMetadata
+  metadata: DiagnosticBlockMetadata,
 ): MessageBlockInput {
   return {
     blockId: blockId as never,
@@ -253,10 +304,11 @@ function diagnosticBlock(
 
 function blocksWithDiagnostic(
   blocks: MessageBlockInput[] | undefined,
-  diagnostic: MessageBlockInput
+  diagnostic: MessageBlockInput,
 ): MessageBlockInput[] {
   const existing = blocks ?? [];
-  if (existing.some((block) => block.blockId === diagnostic.blockId)) return existing;
+  if (existing.some((block) => block.blockId === diagnostic.blockId))
+    return existing;
   return [...existing, diagnostic];
 }
 
@@ -265,7 +317,7 @@ function upsertContentBlock(
   blockId: string,
   type: "text" | "thinking" | "toolcall-progress",
   text: string,
-  replace: boolean | undefined
+  replace: boolean | undefined,
 ): MessageBlockInput[] {
   const existing = blocks ?? [];
   const index = existing.findIndex((block) => block.blockId === blockId);
@@ -275,7 +327,7 @@ function upsertContentBlock(
   return existing.map((block, blockIndex) =>
     blockIndex === index
       ? { ...block, content: replace ? text : `${block.content ?? ""}${text}` }
-      : block
+      : block,
   );
 }
 
@@ -284,7 +336,7 @@ export function applyMessageEvent(
   event: AgenticEvent<Extract<EventKind, `message.${string}`>>,
   /** Envelope seq; drives `lastContentSeq` and the stale-edit guard. Absent for
    *  ephemeral (signal) deltas, which never carry a seq. */
-  seq?: number
+  seq?: number,
 ): MessageMap {
   const messageId = requireMessageId(event);
   const existing = messages[messageId] ?? {
@@ -304,7 +356,10 @@ export function applyMessageEvent(
       ...messages,
       [messageId]: {
         ...existing,
-        receivedBy: { ...(existing.receivedBy ?? {}), [key]: { at: event.createdAt } },
+        receivedBy: {
+          ...(existing.receivedBy ?? {}),
+          [key]: { at: event.createdAt },
+        },
         updatedAt: event.createdAt,
       },
     };
@@ -340,11 +395,14 @@ export function applyMessageEvent(
     const payload = event.payload as MessageEditPayload;
     // Author guard: payload.by must equal event.actor (the private-fold replay
     // carries `by` even though its envelope actor is the agent).
-    if (participantKey(payload.by) !== participantKey(event.actor)) return messages;
+    if (participantKey(payload.by) !== participantKey(event.actor))
+      return messages;
     // Only the original author may edit, and only before any read.
-    if (participantKey(existing.actor) !== participantKey(event.actor)) return messages;
+    if (participantKey(existing.actor) !== participantKey(event.actor))
+      return messages;
     if (existing.retracted) return messages;
-    if (existing.readBy && Object.keys(existing.readBy).length > 0) return messages;
+    if (existing.readBy && Object.keys(existing.readBy).length > 0)
+      return messages;
     // Stale-edit guard: drop an edit that precedes the last content event.
     if (
       seq !== undefined &&
@@ -368,11 +426,14 @@ export function applyMessageEvent(
 
   if (event.kind === "message.retracted") {
     const payload = event.payload as MessageRetractPayload;
-    if (participantKey(payload.by) !== participantKey(event.actor)) return messages;
-    if (participantKey(existing.actor) !== participantKey(event.actor)) return messages;
+    if (participantKey(payload.by) !== participantKey(event.actor))
+      return messages;
+    if (participantKey(existing.actor) !== participantKey(event.actor))
+      return messages;
     if (existing.retracted) return messages; // idempotent
     // Read wins: a message folded into a turn cannot be un-read.
-    if (existing.readBy && Object.keys(existing.readBy).length > 0) return messages;
+    if (existing.readBy && Object.keys(existing.readBy).length > 0)
+      return messages;
     return {
       ...messages,
       [messageId]: {
@@ -386,17 +447,27 @@ export function applyMessageEvent(
 
   if (event.kind === "message.started") {
     const payload = event.payload;
-    const role = ("role" in payload ? payload.role : undefined) ?? existing.role;
+    const role =
+      ("role" in payload ? payload.role : undefined) ?? existing.role;
     const blocks = "blocks" in payload ? payload.blocks : existing.blocks;
-    const mentions = "mentions" in payload ? payload.mentions : existing.mentions;
+    const mentions =
+      "mentions" in payload ? payload.mentions : existing.mentions;
     const replyTo = "replyTo" in payload ? payload.replyTo : existing.replyTo;
     const tier = "tier" in payload ? payload.tier : existing.tier;
     const to = "to" in payload ? payload.to : existing.to;
-    const saliency = "saliency" in payload ? payload.saliency : existing.saliency;
-    const replaces = "replaces" in payload ? payload.replaces : existing.replaces;
+    const saliency =
+      "saliency" in payload ? payload.saliency : existing.saliency;
+    const replaces =
+      "replaces" in payload ? payload.replaces : existing.replaces;
     const notify =
-      ("metadata" in payload ? readMessageNotifyIntent(payload.metadata) : undefined) ??
-      existing.notify;
+      ("metadata" in payload
+        ? readMessageNotifyIntent(payload.metadata)
+        : undefined) ?? existing.notify;
+    const native =
+      existing.native ??
+      ("metadata" in payload
+        ? readNativeMessageCoordinates(payload.metadata)
+        : undefined);
     return {
       ...messages,
       [messageId]: {
@@ -412,6 +483,7 @@ export function applyMessageEvent(
         ...(saliency !== undefined ? { saliency } : {}),
         ...(replaces !== undefined ? { replaces } : {}),
         ...(notify !== undefined ? { notify } : {}),
+        ...(native !== undefined ? { native } : {}),
         status: "started",
         startedAt: event.createdAt,
         updatedAt: event.createdAt,
@@ -432,7 +504,8 @@ export function applyMessageEvent(
     const payload = event.payload;
     const blockId = "blockId" in payload ? String(payload.blockId) : "";
     const type = "type" in payload ? payload.type : "text";
-    const text = "text" in payload && typeof payload.text === "string" ? payload.text : "";
+    const text =
+      "text" in payload && typeof payload.text === "string" ? payload.text : "";
     const replace = "replace" in payload ? payload.replace : undefined;
     return {
       ...messages,
@@ -440,7 +513,13 @@ export function applyMessageEvent(
         ...existing,
         actor: event.actor,
         turnId: existing.turnId ?? event.turnId,
-        blocks: upsertContentBlock(existing.blocks, blockId, type, text, replace),
+        blocks: upsertContentBlock(
+          existing.blocks,
+          blockId,
+          type,
+          text,
+          replace,
+        ),
         status: "streaming",
         // Signals can overtake the durable message.started envelope. Anchor a
         // provisional stream at its first observed delta so transcript order
@@ -454,7 +533,8 @@ export function applyMessageEvent(
 
   if (event.kind === "message.completed") {
     const payload = event.payload;
-    const role = ("role" in payload ? payload.role : undefined) ?? existing.role;
+    const role =
+      ("role" in payload ? payload.role : undefined) ?? existing.role;
     const outcome = "outcome" in payload ? payload.outcome : existing.outcome;
     let blocks = "blocks" in payload ? payload.blocks : existing.blocks;
     if (outcome === "empty") {
@@ -467,20 +547,44 @@ export function applyMessageEvent(
             code: "message_empty",
             severity: "warning",
             reason: "empty",
-          }
-        )
+          },
+        ),
       );
     }
-    const mentions = "mentions" in payload ? payload.mentions : existing.mentions;
+    const failure = "failure" in payload ? payload.failure : undefined;
+    if (failure) {
+      blocks = blocksWithDiagnostic(
+        blocks,
+        diagnosticBlock(`${messageId}:diagnostic:failed`, failure.reason, {
+          code: "message_failed",
+          severity: failure.code === "cancelled" ? "warning" : "error",
+          reason: failure.reason,
+          recoverable: failure.recoverable,
+          failureCode: failure.code,
+          resetAt: failure.resetAt,
+          retryAfterMs: failure.retryAfterMs,
+        }),
+      );
+    }
+    const mentions =
+      "mentions" in payload ? payload.mentions : existing.mentions;
     const replyTo = "replyTo" in payload ? payload.replyTo : existing.replyTo;
     const tier = "tier" in payload ? payload.tier : existing.tier;
     const to = "to" in payload ? payload.to : existing.to;
-    const saliency = "saliency" in payload ? payload.saliency : existing.saliency;
-    const replaces = "replaces" in payload ? payload.replaces : existing.replaces;
+    const saliency =
+      "saliency" in payload ? payload.saliency : existing.saliency;
+    const replaces =
+      "replaces" in payload ? payload.replaces : existing.replaces;
     const model = "model" in payload ? payload.model : existing.model;
     const notify =
-      ("metadata" in payload ? readMessageNotifyIntent(payload.metadata) : undefined) ??
-      existing.notify;
+      ("metadata" in payload
+        ? readMessageNotifyIntent(payload.metadata)
+        : undefined) ?? existing.notify;
+    const native =
+      existing.native ??
+      ("metadata" in payload
+        ? readNativeMessageCoordinates(payload.metadata)
+        : undefined);
     return {
       ...messages,
       [messageId]: {
@@ -496,7 +600,18 @@ export function applyMessageEvent(
         ...(saliency !== undefined ? { saliency } : {}),
         ...(replaces !== undefined ? { replaces } : {}),
         ...(notify !== undefined ? { notify } : {}),
-        status: "completed",
+        ...(native !== undefined ? { native } : {}),
+        status: failure ? "failed" : "completed",
+        ...(failure
+          ? {
+              failedAt: event.createdAt,
+              failureReason: failure.reason,
+              failureCode: failure.code,
+              failureResetAt: failure.resetAt,
+              failureRetryAfterMs: failure.retryAfterMs,
+              failureRecoverable: failure.recoverable,
+            }
+          : {}),
         outcome,
         completedAt: event.createdAt,
         updatedAt: event.createdAt,
@@ -525,22 +640,42 @@ export function applyMessageEvent(
           {
             code: "message_failed",
             severity: "error",
-            reason: "reason" in event.payload ? event.payload.reason : undefined,
-            recoverable: "recoverable" in event.payload ? event.payload.recoverable : undefined,
-            failureCode: "code" in event.payload ? event.payload.code : undefined,
-            resetAt: "resetAt" in event.payload ? event.payload.resetAt : undefined,
-            retryAfterMs: "retryAfterMs" in event.payload ? event.payload.retryAfterMs : undefined,
-          }
-        )
+            reason:
+              "reason" in event.payload ? event.payload.reason : undefined,
+            recoverable:
+              "recoverable" in event.payload
+                ? event.payload.recoverable
+                : undefined,
+            failureCode:
+              "code" in event.payload ? event.payload.code : undefined,
+            resetAt:
+              "resetAt" in event.payload ? event.payload.resetAt : undefined,
+            retryAfterMs:
+              "retryAfterMs" in event.payload
+                ? event.payload.retryAfterMs
+                : undefined,
+          },
+        ),
       ),
       failedAt: event.createdAt,
-      failureReason: "reason" in event.payload ? event.payload.reason : existing.failureReason,
-      failureCode: "code" in event.payload ? event.payload.code : existing.failureCode,
-      failureResetAt: "resetAt" in event.payload ? event.payload.resetAt : existing.failureResetAt,
+      failureReason:
+        "reason" in event.payload
+          ? event.payload.reason
+          : existing.failureReason,
+      failureCode:
+        "code" in event.payload ? event.payload.code : existing.failureCode,
+      failureResetAt:
+        "resetAt" in event.payload
+          ? event.payload.resetAt
+          : existing.failureResetAt,
       failureRetryAfterMs:
-        "retryAfterMs" in event.payload ? event.payload.retryAfterMs : existing.failureRetryAfterMs,
+        "retryAfterMs" in event.payload
+          ? event.payload.retryAfterMs
+          : existing.failureRetryAfterMs,
       failureRecoverable:
-        "recoverable" in event.payload ? event.payload.recoverable : existing.failureRecoverable,
+        "recoverable" in event.payload
+          ? event.payload.recoverable
+          : existing.failureRecoverable,
       updatedAt: event.createdAt,
     },
   };
@@ -548,7 +683,7 @@ export function applyMessageEvent(
 
 export function applyInvocationEvent(
   invocations: InvocationMap,
-  event: AgenticEvent<Extract<EventKind, `invocation.${string}`>>
+  event: AgenticEvent<Extract<EventKind, `invocation.${string}`>>,
 ): InvocationMap {
   const invocationId = requireInvocationId(event);
   const existing = invocations[invocationId] ?? {
@@ -566,14 +701,24 @@ export function applyInvocationEvent(
       ...invocations,
       [invocationId]: {
         ...existing,
-        transportCallId: existing.transportCallId ?? event.causality?.transportCallId,
+        transportCallId:
+          existing.transportCallId ?? event.causality?.transportCallId,
         actor: existing.actor ?? event.actor,
         turnId: existing.turnId ?? event.turnId,
         name: existing.name ?? ("name" in payload ? payload.name : undefined),
-        request: existing.request ?? ("request" in payload ? payload.request : undefined),
+        nativeSource:
+          existing.nativeSource ??
+          ("nativeSource" in payload ? payload.nativeSource : undefined),
+        originatingInput: existing.originatingInput !== undefined ? existing.originatingInput
+          : ("originatingInput" in payload ? payload.originatingInput : undefined),
+        request:
+          existing.request ??
+          ("request" in payload ? payload.request : undefined),
         requiresApproval:
           existing.requiresApproval ??
-          ("requiresApproval" in payload ? payload.requiresApproval : undefined),
+          ("requiresApproval" in payload
+            ? payload.requiresApproval
+            : undefined),
         userVisible:
           existing.userVisible === true
             ? true
@@ -594,13 +739,20 @@ export function applyInvocationEvent(
       ...invocations,
       [invocationId]: {
         ...existing,
-        transportCallId: existing.transportCallId ?? event.causality?.transportCallId,
+        transportCallId:
+          existing.transportCallId ?? event.causality?.transportCallId,
         actor: event.actor,
         turnId: existing.turnId ?? event.turnId,
         status: "running",
         updatedAt: event.createdAt,
         progress: [
-          ...existing.progress,
+          ...(readNativeModelStream(
+            "data" in payload ? payload.data : undefined,
+          )
+            ? existing.progress.filter(
+                (item) => !readNativeModelStream(item.data),
+              )
+            : existing.progress),
           {
             at: event.createdAt,
             message: "message" in payload ? payload.message : undefined,
@@ -619,12 +771,16 @@ export function applyInvocationEvent(
       ...invocations,
       [invocationId]: {
         ...existing,
-        transportCallId: existing.transportCallId ?? event.causality?.transportCallId,
+        transportCallId:
+          existing.transportCallId ?? event.causality?.transportCallId,
         actor: event.actor,
         turnId: existing.turnId ?? event.turnId,
         status: "running",
         updatedAt: event.createdAt,
-        outputs: [...existing.outputs, "output" in payload ? payload.output : payload],
+        outputs: [
+          ...existing.outputs,
+          "output" in payload ? payload.output : payload,
+        ],
       },
     };
   }
@@ -638,16 +794,20 @@ export function applyInvocationEvent(
       ...invocations,
       [invocationId]: {
         ...existing,
-        transportCallId: existing.transportCallId ?? event.causality?.transportCallId,
+        transportCallId:
+          existing.transportCallId ?? event.causality?.transportCallId,
         actor: existing.actor ?? event.actor,
         turnId: existing.turnId ?? event.turnId,
         name: existing.name ?? inferred.name,
         request: existing.request ?? inferred.request,
         status: "completed",
         result,
-        terminalReason: "summary" in payload ? payload.summary : existing.terminalReason,
+        terminalReason:
+          "summary" in payload ? payload.summary : existing.terminalReason,
         terminalOutcome:
-          "terminalOutcome" in payload ? payload.terminalOutcome : existing.terminalOutcome,
+          "terminalOutcome" in payload
+            ? payload.terminalOutcome
+            : existing.terminalOutcome,
         terminalReasonCode:
           "terminalReasonCode" in payload
             ? payload.terminalReasonCode
@@ -666,7 +826,8 @@ export function applyInvocationEvent(
     ...invocations,
     [invocationId]: {
       ...existing,
-      transportCallId: existing.transportCallId ?? event.causality?.transportCallId,
+      transportCallId:
+        existing.transportCallId ?? event.causality?.transportCallId,
       actor: existing.actor ?? event.actor,
       turnId: existing.turnId ?? event.turnId,
       name: existing.name ?? inferred.name,
@@ -677,9 +838,13 @@ export function applyInvocationEvent(
       result,
       terminalReason: "reason" in payload ? payload.reason : undefined,
       terminalOutcome:
-        "terminalOutcome" in payload ? payload.terminalOutcome : existing.terminalOutcome,
+        "terminalOutcome" in payload
+          ? payload.terminalOutcome
+          : existing.terminalOutcome,
       terminalReasonCode:
-        "terminalReasonCode" in payload ? payload.terminalReasonCode : existing.terminalReasonCode,
+        "terminalReasonCode" in payload
+          ? payload.terminalReasonCode
+          : existing.terminalReasonCode,
       failure: "failure" in payload ? payload.failure : existing.failure,
     },
   };
@@ -696,7 +861,7 @@ function isTerminalTaskStatus(status: TaskStatus | undefined): boolean {
 
 export function applyTaskEvent(
   tasks: TaskMap,
-  event: AgenticEvent<Extract<EventKind, `task.${string}`>>
+  event: AgenticEvent<Extract<EventKind, `task.${string}`>>,
 ): TaskMap {
   const taskId = event.causality?.taskId;
   if (!taskId) throw new Error(`${event.kind} requires taskId`);
@@ -747,14 +912,18 @@ export function applyTaskEvent(
       ...existing,
       status: event.kind.replace("task.", "") as TaskStatus,
       terminalReason: "reason" in payload ? payload.reason : undefined,
-      terminalOutcome: "terminalOutcome" in payload ? payload.terminalOutcome : undefined,
+      terminalOutcome:
+        "terminalOutcome" in payload ? payload.terminalOutcome : undefined,
       completedAt: event.createdAt,
       updatedAt: event.createdAt,
     },
   };
 }
 
-function inferInvocationMetadata(value: unknown): { name?: string; request?: unknown } {
+function inferInvocationMetadata(value: unknown): {
+  name?: string;
+  request?: unknown;
+} {
   if (!value || typeof value !== "object" || Array.isArray(value)) return {};
   const record = value as Record<string, unknown>;
   const name =
@@ -767,14 +936,17 @@ function inferInvocationMetadata(value: unknown): { name?: string; request?: unk
   const details = record["details"];
   if (details && typeof details === "object" && !Array.isArray(details)) {
     const detailsRecord = details as Record<string, unknown>;
-    request = detailsRecord["input"] ?? detailsRecord["args"] ?? detailsRecord["arguments"];
+    request =
+      detailsRecord["input"] ??
+      detailsRecord["args"] ??
+      detailsRecord["arguments"];
   }
   return { name, request };
 }
 
 export function applyApprovalEvent(
   approvals: ApprovalMap,
-  event: AgenticEvent<Extract<EventKind, `approval.${string}`>>
+  event: AgenticEvent<Extract<EventKind, `approval.${string}`>>,
 ): ApprovalMap {
   const approvalId = requireApprovalId(event);
   const existing = approvals[approvalId] ?? {
@@ -818,7 +990,7 @@ export function applyApprovalEvent(
 export function applyUiEvent(
   inlineUi: InlineUiMap,
   actionBar: ProjectedActionBar | undefined,
-  event: AgenticEvent<"ui.inline_rendered" | "ui.action_bar.updated">
+  event: AgenticEvent<"ui.inline_rendered" | "ui.action_bar.updated">,
 ): { inlineUi: InlineUiMap; actionBar?: ProjectedActionBar } {
   const payload = event.payload;
   if (event.kind === "ui.inline_rendered" && payload.uiType === "inline") {
@@ -839,7 +1011,10 @@ export function applyUiEvent(
       actionBar,
     };
   }
-  if (event.kind === "ui.action_bar.updated" && payload.uiType === "action_bar") {
+  if (
+    event.kind === "ui.action_bar.updated" &&
+    payload.uiType === "action_bar"
+  ) {
     const nextActionBar: ProjectedActionBar = {
       actor: event.actor,
       updatedAt: event.createdAt,
@@ -848,7 +1023,8 @@ export function applyUiEvent(
     if (payload.source !== undefined) nextActionBar.source = payload.source;
     if (payload.imports !== undefined) nextActionBar.imports = payload.imports;
     if (payload.props !== undefined) nextActionBar.props = payload.props;
-    if (payload.maxHeight !== undefined) nextActionBar.maxHeight = payload.maxHeight;
+    if (payload.maxHeight !== undefined)
+      nextActionBar.maxHeight = payload.maxHeight;
     if (payload.cleared !== undefined) nextActionBar.cleared = payload.cleared;
     if (payload.result !== undefined) nextActionBar.result = payload.result;
     return {
@@ -898,7 +1074,8 @@ export function resolveIntendedRecipients(opts: {
         for (const entry of roster) add(participantKey(entry.participant));
       } else if (selector.kind === "role" && selector.role) {
         for (const entry of roster) {
-          if ((entry.roles ?? []).includes(selector.role)) add(participantKey(entry.participant));
+          if ((entry.roles ?? []).includes(selector.role))
+            add(participantKey(entry.participant));
         }
       } else if (selector.kind === "participant" && selector.participantId) {
         add(selector.participantId);
@@ -914,7 +1091,8 @@ export function resolveIntendedRecipients(opts: {
         const participant = entry.participant;
         if (
           participant.id === handle ||
-          ("participantId" in participant && participant.participantId === handle) ||
+          ("participantId" in participant &&
+            participant.participantId === handle) ||
           participant.displayName === handle
         ) {
           add(participantKey(participant));
@@ -925,7 +1103,8 @@ export function resolveIntendedRecipients(opts: {
   }
 
   for (const entry of roster) {
-    if (entry.participant.kind === "agent") add(participantKey(entry.participant));
+    if (entry.participant.kind === "agent")
+      add(participantKey(entry.participant));
   }
   return [...result];
 }

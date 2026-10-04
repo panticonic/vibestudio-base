@@ -53,6 +53,42 @@ type CdpResponse = {
   error?: { message?: string; data?: string };
 };
 
+// UI readiness is speculative: each completed observation can justify another
+// observation, but never an unlimited search. CDP commands themselves still
+// settle only through their response or authoritative lifecycle events.
+const MAX_READINESS_OBSERVATIONS = 100;
+
+class ReadinessBudget {
+  observations = 0;
+  private readonly deadline: number;
+  constructor(private readonly timeout: number) {
+    this.deadline = timeout === 0 ? Infinity : Date.now() + timeout;
+  }
+  observe(): void {
+    this.observations += 1;
+  }
+  get remaining(): number {
+    return this.deadline - Date.now();
+  }
+  get exhausted(): boolean {
+    return (
+      this.observations >= MAX_READINESS_OBSERVATIONS || this.remaining <= 0
+    );
+  }
+  get description(): string {
+    return this.remaining <= 0
+      ? `Timeout ${this.timeout}ms`
+      : `Readiness budget exhausted after ${this.observations} observations`;
+  }
+  get failureData() {
+    return {
+      observations: this.observations,
+      maxObservations: MAX_READINESS_OBSERVATIONS,
+      ...(Number.isFinite(this.deadline) ? { timeoutMs: this.timeout } : {}),
+    };
+  }
+}
+
 type PendingCommand = {
   sessionId?: string;
   method: string;
@@ -1446,6 +1482,7 @@ export interface CdpFailureData {
     | "cdp_dialog_closed"
     | "cdp_evaluation_timeout"
     | "cdp_evaluation_failed"
+    | "cdp_readiness_exhausted"
     | "cdp_locator_operation_failed"
     | "cdp_locator_not_actionable"
     | "cdp_locator_state_mismatch"
@@ -1463,6 +1500,8 @@ export interface CdpFailureData {
     | "handle-dialog-and-observe";
   locator?: string;
   timeoutMs?: number;
+  observations?: number;
+  maxObservations?: number;
   state?: WaitState;
   expectedLocator?: string;
   matchCount?: number;
@@ -1488,6 +1527,8 @@ export class CdpError extends Error {
       failureKind?: CdpFailureData["failureKind"];
       recovery?: CdpFailureData["recovery"];
       timeoutMs?: number;
+      observations?: number;
+      maxObservations?: number;
       state?: WaitState;
       expectedLocator?: string;
       matchCount?: number;
@@ -1513,6 +1554,12 @@ export class CdpError extends Error {
       ...(options.timeoutMs === undefined
         ? {}
         : { timeoutMs: options.timeoutMs }),
+      ...(options.observations === undefined
+        ? {}
+        : { observations: options.observations }),
+      ...(options.maxObservations === undefined
+        ? {}
+        : { maxObservations: options.maxObservations }),
       ...(options.state ? { state: options.state } : {}),
       ...(options.expectedLocator
         ? { expectedLocator: options.expectedLocator }
@@ -1696,6 +1743,7 @@ class WorkerCdpPage {
     frames?: FrameRegistry,
     private readonly browserOperation?: BrowserOperation,
     network?: NetworkObserver,
+    private readonly onObservation?: (value: unknown) => void,
   ) {
     this.frames = frames ?? new FrameRegistry(connection);
     this.network = network ?? new NetworkObserver(connection);
@@ -1870,6 +1918,7 @@ class WorkerCdpPage {
       this.frames,
       this.browserOperation,
       this.network,
+      this.onObservation,
     );
   }
 
@@ -2182,8 +2231,9 @@ class WorkerCdpPage {
       state: opts.state ?? null,
     };
     try {
-      const deadline = timeout === 0 ? Infinity : Date.now() + timeout;
+      const budget = new ReadinessBudget(timeout);
       for (;;) {
+        budget.observe();
         const expr = `(async function(P){ ${INPAGE}\n return await __nsRun(P); })(${JSON.stringify(
           payload,
         )})`;
@@ -2253,19 +2303,31 @@ class WorkerCdpPage {
             );
             return observed.value;
           }
+          if (
+            [
+              "innerText",
+              "textContent",
+              "allInnerTexts",
+              "allTextContents",
+              "inputValue",
+              "evaluate",
+              "evaluateAll",
+            ].includes(op)
+          )
+            this.onObservation?.(result);
           return result;
         }
         const state =
           (result as { state?: WaitState }).state ?? opts.state ?? "visible";
-        const remaining = deadline - Date.now();
-        if (remaining <= 0) {
+        const remaining = budget.remaining;
+        if (budget.exhausted) {
           throw new CdpError(
-            `Timeout ${timeout}ms waiting for element to be ${state}`,
+            `${budget.description} waiting for element to be ${state}`,
             {
               code: "cdp_locator_state_mismatch",
               operation: op,
               recovery: "reobserve-locator",
-              timeoutMs: timeout,
+              ...budget.failureData,
               state,
             },
           );
@@ -2297,6 +2359,8 @@ class WorkerCdpPage {
           failureKind: err.errorData.failureKind,
           recovery: err.errorData.recovery,
           timeoutMs: err.errorData.timeoutMs,
+          observations: err.errorData.observations,
+          maxObservations: err.errorData.maxObservations,
           state: err.errorData.state,
           expectedLocator: err.errorData.expectedLocator,
           matchCount: err.errorData.matchCount,
@@ -2425,17 +2489,25 @@ class WorkerCdpPage {
       if (typeof value === "function") value = await value(arg);
       return value;
     })(${JSON.stringify(source)}, ${JSON.stringify(isFunction)}, ${JSON.stringify(actualArg)})`;
-    const deadline = timeout === 0 ? Infinity : Date.now() + timeout;
+    const budget = new ReadinessBudget(timeout);
     for (;;) {
-      const budget = deadline - Date.now();
+      budget.observe();
+      const remainingBeforeObservation = budget.remaining;
       const value = await this.evaluate(expression, undefined, {
         operation: "waitForFunction",
-        ...(Number.isFinite(budget) ? { timeout: Math.max(1, budget) } : {}),
+        ...(Number.isFinite(remainingBeforeObservation)
+          ? { timeout: Math.max(1, remainingBeforeObservation) }
+          : {}),
       });
       if (value) return value;
-      const remaining = deadline - Date.now();
-      if (remaining <= 0)
-        throw new Error(`Timeout ${timeout}ms exceeded waiting for function`);
+      const remaining = budget.remaining;
+      if (budget.exhausted)
+        throw new CdpError(`${budget.description} waiting for function`, {
+          code: "cdp_readiness_exhausted",
+          operation: "waitForFunction",
+          recovery: "correct-page-function",
+          ...budget.failureData,
+        });
       await this.pauseObservation(Math.min(polling, remaining));
     }
   }
@@ -2500,10 +2572,11 @@ class WorkerCdpPage {
       reason?: string;
       box?: BoundingBox;
     };
-    const deadline = timeout === 0 ? Infinity : Date.now() + timeout;
+    const budget = new ReadinessBudget(timeout);
     let previousBox: BoundingBox | undefined;
     let probe: ActionabilityProbe = { ok: false, reason: "not found" };
     for (;;) {
+      budget.observe();
       probe = (await this.runLocatorOp(
         "probe",
         descriptor,
@@ -2527,8 +2600,8 @@ class WorkerCdpPage {
         return { x: probe.x, y: probe.y };
       }
       previousBox = probe.ok ? box : undefined;
-      const remaining = deadline - Date.now();
-      if (remaining <= 0) break;
+      const remaining = budget.remaining;
+      if (budget.exhausted) break;
       // Keep Runtime.evaluate one-shot. Renderer input and framework work can
       // run while the worker waits between actionability observations.
       await this.pauseObservation(Math.min(30, remaining));
@@ -2564,13 +2637,13 @@ class WorkerCdpPage {
               .join(", ")}. Use the rendered role and accessible name.`
         : "";
     throw new CdpError(
-      `not actionable (${probe.reason ?? "timeout"}) after ${timeout}ms: ${where}.${candidateHint}`,
+      `${budget.description}: not actionable (${probe.reason ?? "unstable"}): ${where}.${candidateHint}`,
       {
         locator: where,
         code: "cdp_locator_not_actionable",
         operation: "click",
         recovery: "reobserve-locator",
-        timeoutMs: timeout,
+        ...budget.failureData,
         evidence: await this.captureLocatorEvidence(descriptor),
       },
     );
@@ -2668,7 +2741,13 @@ class WorkerCdpPage {
           code: "cdp_interaction_outcome_not_observed",
           operation: action,
           recovery: "reobserve-locator",
-          timeoutMs,
+          ...(Number.isFinite(timeoutMs) ? { timeoutMs } : {}),
+          ...(cause instanceof CdpError
+            ? {
+                observations: cause.errorData.observations,
+                maxObservations: cause.errorData.maxObservations,
+              }
+            : {}),
           state,
           expectedLocator,
           evidence:
@@ -3575,6 +3654,8 @@ export const BrowserImpl = {
       operationSignal?: () => AbortSignal | undefined;
       /** Observe completed input outcomes independently of caller return projections. */
       onInteraction?: (outcome: CdpInteractionOutcome) => void;
+      /** Completed locator reads, independently of guest return projections. */
+      onObservation?: (value: unknown) => void;
       /** Immutable provenance supplied by a generation-fenced panel session. */
       inspectionIdentity?: CdpInspectionIdentity;
       browserOperation?: BrowserOperation;
@@ -3597,6 +3678,8 @@ export const BrowserImpl = {
         : undefined,
       undefined,
       options.browserOperation,
+      undefined,
+      options.onObservation,
     );
     try {
       await page.initialize();

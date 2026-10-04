@@ -1,7 +1,11 @@
 import { AgentWorkerBase } from "@workspace/agentic-do/agent-worker-base";
 import type { AgentToolExecutionContext } from "@workspace/agentic-do";
 import type { ParticipantDescriptor } from "@workspace/harness";
-import type { AgentTool } from "@workspace/pi-core";
+import type { ToolRegistration } from "@panticonic/pi-durable";
+import type { JsonValue } from "@panticonic/pi-chord";
+import type { TSchema } from "@panticonic/pi-ai";
+import type { RpcCallOptions } from "@vibestudio/rpc";
+import { authorNativeTool } from "@workspace/harness";
 import type {
   AgentChannelFeatures,
   AgentResourceBinding,
@@ -31,8 +35,7 @@ function asChatAgentConfig(config: unknown): ChatAgentConfig {
 /**
  * AiChatWorker — The default AI chat Durable Object.
  *
- * Pi-native: embeds `@workspace/pi-core`'s `Agent` in-process via
- * the `PiRunner` harness (see `AgentWorkerBase`). The system prompt is
+ * Runs through the native durable channel owner. The system prompt is
  * loaded from `meta/AGENTS.md` via the workspace.* RPC service;
  * skill metadata is merged in from each skill's SKILL.md.
  *
@@ -91,12 +94,11 @@ export class AiChatWorker extends AgentWorkerBase {
       : super.loadPromptResources(channelId);
   }
 
-  protected override async getLoopTools(
-    channelId: string,
-    execution?: AgentToolExecutionContext
-  ): Promise<AgentTool[]> {
+  protected override async getTools(
+    channelId: string
+  ): Promise<ToolRegistration[]> {
     const configured = this.channelFeatures(channelId)?.tools;
-    if (configured === undefined) return super.getLoopTools(channelId, execution);
+    if (configured === undefined) return super.getTools(channelId);
     if (!Array.isArray(configured)) throw new Error("Agent tools must be an array");
     for (const binding of configured) {
       if (!binding || typeof binding.kind !== "string") {
@@ -104,41 +106,50 @@ export class AiChatWorker extends AgentWorkerBase {
       }
     }
 
-    const toolRpc = execution?.rpc ?? this.rpc;
-    const callMain = <T>(method: string, args: unknown[]) =>
-      toolRpc.call<T>("main", method, args);
-    const panelSlot = (binding: AgentToolBinding) =>
-      this.resource(channelId, binding.resource, "panel-slot").id;
+    const panelTool = <TParameters extends TSchema, TDetails extends JsonValue>(
+      make: (callMain: <T>(method: string, args: unknown[], options?: RpcCallOptions) => Promise<T>, panelId: string) => ToolRegistration<TParameters, TDetails>,
+      binding: AgentToolBinding,
+    ) => {
+      const panelId = this.resource(channelId, binding.resource, "panel-slot").id;
+      return authorNativeTool(
+        (execution: AgentToolExecutionContext | undefined) => make(
+          <T>(method: string, args: unknown[], options?: RpcCallOptions) =>
+            (execution?.rpc ?? this.rpc).call<T>("main", method, args, options),
+          panelId,
+        ),
+        (api, context) => this.bindNativeToolExecution(api, context),
+      );
+    };
     const needsStandardTools = configured.some(
       (binding) =>
         binding?.kind === "standard" || binding?.kind.startsWith("standard.")
     );
     const standardTools = needsStandardTools
-      ? await super.getLoopTools(channelId, execution)
+      ? await super.getTools(channelId)
       : [];
     const standardByName = new Map(standardTools.map((tool) => [tool.name, tool]));
-    const selected: AgentTool[] = [];
+    const selected: ToolRegistration[] = [];
     const selectedNames = new Set<string>();
     for (const binding of configured) {
-      let tools: AgentTool[];
+      let tools: ToolRegistration[];
       switch (binding.kind) {
         case "standard":
           tools = standardTools;
           break;
         case "panel.describe":
-          tools = [createPanelDescribeTool(callMain, panelSlot(binding))];
+          tools = [panelTool(createPanelDescribeTool, binding)];
           break;
         case "panel.screenshot":
-          tools = [createPanelScreenshotTool(callMain, panelSlot(binding))];
+          tools = [panelTool(createPanelScreenshotTool, binding)];
           break;
         case "panel.console":
-          tools = [createPanelConsoleTool(callMain, panelSlot(binding))];
+          tools = [panelTool(createPanelConsoleTool, binding)];
           break;
         case "panel.evaluate":
-          tools = [createPanelEvalTool(callMain, panelSlot(binding))];
+          tools = [panelTool(createPanelEvalTool, binding)];
           break;
         case "panel.cdp":
-          tools = [createPanelCdpEndpointTool(callMain, panelSlot(binding))];
+          tools = [panelTool(createPanelCdpEndpointTool, binding)];
           break;
         default:
           if (binding.kind.startsWith("standard.")) {

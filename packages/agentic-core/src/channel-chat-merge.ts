@@ -43,6 +43,7 @@ import {
   messageDisplayText,
   readDiagnosticMetadata,
   summarizeMessageBlocks,
+  readNativeModelStream,
 } from "@workspace/agentic-protocol";
 import type { InvocationCardPayload } from "./invocation-card-payload.js";
 import type { SubagentRunState, TaskCardPayload } from "./task-card-payload.js";
@@ -65,6 +66,16 @@ export function chatMessagesFromChannelView(state: ChannelViewState): ChatMessag
     )
   );
   const invocations = Object.values(state.invocations).map(projectedInvocationToChatMessage);
+  const answerFrontiers = new Map<string, number>();
+  for (const message of Object.values(state.messages)) {
+    if (!message.native || (message.status !== "completed" && message.status !== "failed"))
+      continue;
+    const key = `${message.native.conversationId}:${message.native.taskId}`;
+    answerFrontiers.set(key, Math.max(answerFrontiers.get(key) ?? 0, message.native.entryId));
+  }
+  const liveModelMessages = Object.values(state.invocations).flatMap((invocation) =>
+    projectedNativeModelStream(invocation, answerFrontiers)
+  );
   const tasks = Object.values(state.tasks).map(projectedTaskToChatMessage);
   const approvals = Object.values(state.approvals).map(projectedApprovalToChatMessage);
   const terminalAssistantMessageTurnIds = new Set(
@@ -171,6 +182,7 @@ export function chatMessagesFromChannelView(state: ChannelViewState): ChatMessag
   return [
     ...messages,
     ...invocations,
+    ...liveModelMessages,
     ...tasks,
     ...approvals,
     ...turns,
@@ -192,7 +204,9 @@ export function chatMessagesFromChannelView(state: ChannelViewState): ChatMessag
         a.id.localeCompare(b.id)
     )
     .map((message) => {
-      const { sortTime: _sortTime, ...rest } = message as ChatMessage & { sortTime?: number };
+      const { sortTime: _sortTime, ...rest } = message as ChatMessage & {
+        sortTime?: number;
+      };
       return rest;
     });
 }
@@ -638,14 +652,17 @@ function projectedMessageToChatMessages(
   const actorMetadata = message.actor.metadata as
     | {
         handle?: unknown;
-        origin?: { channelId?: unknown; participantId?: unknown; envelopeId?: unknown };
+        origin?: {
+          channelId?: unknown;
+          participantId?: unknown;
+          envelopeId?: unknown;
+        };
       }
     | undefined;
   const senderMetadata = {
     name: message.actor.displayName ?? message.actor.id,
     type: message.actor.kind,
-    handle:
-      typeof actorMetadata?.handle === "string" ? actorMetadata.handle : message.actor.id,
+    handle: typeof actorMetadata?.handle === "string" ? actorMetadata.handle : message.actor.id,
   };
   // A guest envelope (messaging plan §4.10.4) is an ORDINARY message here — it
   // is someone talking — and differs only by the origin its metadata earns it.
@@ -752,6 +769,7 @@ function projectedMessageToChatMessages(
       kind: "message",
       complete,
       ...(message.turnId ? { turnId: message.turnId } : {}),
+      ...(message.native ? { native: message.native } : {}),
       replyTo: message.replyTo,
       mentions: message.mentions,
       tier: messageTier(message),
@@ -822,7 +840,7 @@ function diagnosticNoticeFromMessage(message: ProjectedMessage): DiagnosticNotic
   const diagnosticBlocks = blocks.filter((block) => block.type === "diagnostic");
   if (diagnosticBlocks.length === 0) return null;
   const summary = summarizeMessageBlocks(blocks.filter((block) => block.type !== "diagnostic"));
-  if (!summary.isEmpty) return null;
+  if (!summary.isEmpty && message.status !== "failed") return null;
   const block =
     diagnosticBlocks.find((item) => readDiagnosticMetadata(item.metadata).severity === "error") ??
     diagnosticBlocks[0]!;
@@ -916,6 +934,62 @@ function projectedApprovalToChatMessage(approval: ProjectedApproval): ChatMessag
   } as ChatMessage & { sortTime: number };
 }
 
+/** A live response is an observation of its invocation, never an invented answer entry. */
+function projectedNativeModelStream(
+  invocation: ProjectedInvocation,
+  answerFrontiers: ReadonlyMap<string, number>
+): ChatMessage[] {
+  if (invocation.status !== "started" && invocation.status !== "running") return [];
+  let progress: ProjectedInvocation["progress"][number] | undefined;
+  for (let index = invocation.progress.length - 1; index >= 0; index--) {
+    const candidate = invocation.progress[index];
+    if (candidate && readNativeModelStream(candidate.data)) {
+      progress = candidate;
+      break;
+    }
+  }
+  const stream = readNativeModelStream(progress?.data);
+  if (!stream || stream.phase !== "running") return [];
+  // Canonical response placement outranks a late ephemeral observation of that exact native round.
+  if ((answerFrontiers.get(`${stream.conversationId}:${stream.taskId}`) ?? 0) > stream.frontier)
+    return [];
+  const blocks = (stream.message?.content ?? []).flatMap((value, index) => {
+    if (!value || typeof value !== "object" || Array.isArray(value)) return [];
+    const block = value as Record<string, unknown>;
+    if (block["type"] === "text" && typeof block["text"] === "string")
+      return [{ index, type: "text", text: block["text"] }];
+    if (block["type"] === "thinking" && typeof block["thinking"] === "string")
+      return [{ index, type: "thinking", text: block["thinking"] }];
+    return [];
+  });
+  const base = {
+    senderId: invocation.actor.id,
+    kind: "message" as const,
+    complete: false,
+    senderMetadata: {
+      name: invocation.actor.displayName ?? invocation.actor.id,
+      type: invocation.actor.kind,
+      handle: invocation.actor.id,
+    },
+    sortTime: Date.parse(invocation.startedAt ?? progress?.at ?? "") || 0,
+  };
+  if (!blocks.length)
+    return [
+      {
+        ...base,
+        id: `native-stream:${invocation.invocationId}:typing`,
+        content: "",
+        contentType: "typing",
+      },
+    ];
+  return blocks.map((block) => ({
+    ...base,
+    id: `native-stream:${invocation.invocationId}:${block.index}`,
+    content: block["text"],
+    ...(block["type"] === "thinking" ? { contentType: "thinking" } : {}),
+  }));
+}
+
 function projectedInvocationToChatMessage(invocation: ProjectedInvocation): ChatMessage {
   const status = invocationCardStatus(invocation);
   const inferred = inferInvocationDisplay(invocation.result);
@@ -935,6 +1009,10 @@ function projectedInvocationToChatMessage(invocation: ProjectedInvocation): Chat
   const resultImages = extractResultImages(invocation.result ?? invocation.outputs);
   const payload: InvocationCardPayload = {
     id: invocation.invocationId,
+    ...(invocation.nativeSource ? { nativeSource: invocation.nativeSource } : {}),
+    ...(invocation.originatingInput !== undefined
+      ? { originatingInput: invocation.originatingInput }
+      : {}),
     ...(invocation.transportCallId ? { transportCallId: invocation.transportCallId } : {}),
     name,
     arguments: recordOrEmpty(request),
@@ -1018,9 +1096,7 @@ function subagentDetails(value: unknown): SubagentRunState | undefined {
   return {
     runId: record["runId"],
     childParticipantId: record["childParticipantId"],
-    ...(record["mode"] === "fresh" || record["mode"] === "fork"
-      ? { mode: record["mode"] }
-      : {}),
+    ...(record["mode"] === "fresh" || record["mode"] === "fork" ? { mode: record["mode"] } : {}),
     ...(typeof record["taskChannelId"] === "string"
       ? { taskChannelId: record["taskChannelId"] }
       : {}),
@@ -1371,7 +1447,9 @@ function inferInvocationDisplay(value: unknown): {
   if (isStoredValueRef(value)) {
     const parsed = parseStoredJsonPreview(value);
     if (parsed !== undefined) return inferInvocationDisplay(parsed);
-    return { summary: storedValuePreview(value) ?? `${value.encoding} blob ${value.digest}` };
+    return {
+      summary: storedValuePreview(value) ?? `${value.encoding} blob ${value.digest}`,
+    };
   }
   if (!value || typeof value !== "object" || Array.isArray(value)) return {};
   const record = value as Record<string, unknown>;

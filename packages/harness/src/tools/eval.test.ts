@@ -1,28 +1,30 @@
-import { Value } from "@sinclair/typebox/value";
-import { describe, expect, it } from "vitest";
+import { executeTool, nativeToolApi, nativeToolContext } from "../testing/native-tool.js";
+import { Value } from "typebox/value";
+import { describe, expect, it, vi } from "vitest";
 import {
   createEvalTool,
+  normalizeEvalToolSource,
+  type NativeEvalExecution,
   formatEvalResult,
   type EvalRunResult,
 } from "./eval.js";
 
 /** Join the text parts of a formatted tool result. */
-function textOf(out: Awaited<ReturnType<typeof formatEvalResult>>): string {
-  return out.content
+function textOf(out: Pick<Awaited<ReturnType<typeof formatEvalResult>>, "content">): string {
+  return (out.content ?? [])
     .map((c) => (c as { type: string; text?: string }).text ?? "")
     .join("\n");
 }
 
-function terminal(result: EvalRunResult): {
-  runId: string;
-  status: "terminal";
-  snapshot: { status: "done"; result: EvalRunResult };
-} {
-  return {
-    runId: "echo",
-    status: "terminal",
-    snapshot: { status: "done", result },
-  };
+function factory(execution?: NativeEvalExecution) {
+  return createEvalTool({
+    execution: execution ?? {
+      execute: async () => ({
+        content: [{ type: "text", text: "native receipt" }],
+      }),
+      cancel: async () => ({ content: [{ type: "text", text: "cancelled" }] }),
+    },
+  });
 }
 
 describe("formatEvalResult (shared by the eval tool's execute + the agent's deferred onEvalComplete)", () => {
@@ -52,9 +54,7 @@ describe("formatEvalResult (shared by the eval tool's execute + the agent's defe
     expect(textOf(result)).toContain("details.operationJournal");
   });
   it("presents one flat argument object instead of duplicating options across a union", async () => {
-    const tool = createEvalTool(
-      async () => ({ success: true, console: "" }) as never,
-    );
+    const tool = factory();
     const schema = tool.parameters as {
       type?: string;
       anyOf?: unknown;
@@ -69,9 +69,7 @@ describe("formatEvalResult (shared by the eval tool's execute + the agent's defe
   });
 
   it("makes the JavaScript parser boundary explicit in the model-visible schema", async () => {
-    const tool = createEvalTool(
-      async () => ({ success: true, console: "" }) as never,
-    );
+    const tool = factory();
     const schema = JSON.stringify(tool.parameters);
 
     expect(schema).toContain("Omit this for TypeScript/TSX");
@@ -81,9 +79,7 @@ describe("formatEvalResult (shared by the eval tool's execute + the agent's defe
   });
 
   it("directs API discovery through the live self-describing runtime", async () => {
-    const tool = createEvalTool(
-      async () => ({ success: true, console: "" }) as never,
-    );
+    const tool = factory();
     expect(tool.description).toContain("await help()");
     expect(tool.description).toContain('await help("workers")');
     expect(tool.description).toContain(
@@ -97,9 +93,7 @@ describe("formatEvalResult (shared by the eval tool's execute + the agent's defe
   });
 
   it("documents the warm notebook contract and makes a cold restart impossible to miss", async () => {
-    const tool = createEvalTool(
-      async () => ({ success: true, console: "" }) as never,
-    );
+    const tool = factory();
     expect(tool.description).toContain(
       "retained throughout admitted execution and cancellation",
     );
@@ -157,11 +151,13 @@ describe("formatEvalResult (shared by the eval tool's execute + the agent's defe
   });
 
   it("accepts only a positive integer timeout and forwards the explicit deadline", async () => {
-    const calls: unknown[][] = [];
-    const tool = createEvalTool(async (_method, args) => {
-      calls.push(args);
-      return terminal({ success: true, console: "" }) as never;
-    });
+    const execute = vi.fn<NativeEvalExecution["execute"]>(async () => ({
+      content: [],
+    }));
+    const cancel = vi.fn<NativeEvalExecution["cancel"]>(async () => ({
+      content: [],
+    }));
+    const tool = factory({ execute, cancel });
 
     expect(Value.Check(tool.parameters, { code: "return 1" })).toBe(true);
     expect(
@@ -191,103 +187,88 @@ describe("formatEvalResult (shared by the eval tool's execute + the agent's defe
     );
     expect(tool.description).toContain("Bound a specific wait");
 
-    await tool.execute("call-timeout", { code: "return 1", timeoutMs: 250 });
-    expect(calls[0]?.[0]).toMatchObject({
-      source: { kind: "inline", code: "return 1" },
-      timeoutMs: 250,
-    });
+    const args = { code: "return 1", timeoutMs: 250 };
+    const api = nativeToolApi({ callId: "call-timeout" });
+    const context = nativeToolContext();
+    await tool.execute(args, api, context);
+    expect(execute).toHaveBeenCalledWith(args, api, context);
+    await tool.cancel!(args, api, context);
+    expect(cancel).toHaveBeenCalledWith(args, api, context);
   });
 
-  it("treats a transport-materialized empty path as omitted for inline code", async () => {
-    const calls: unknown[][] = [];
-    const tool = createEvalTool(async (_method, args) => {
-      calls.push(args);
-      return terminal({ success: true, console: "" }) as never;
-    });
-    await tool.execute("call-1", { code: "return 1", path: "" } as never);
-    expect(calls[0]?.[0]).toMatchObject({
-      source: { kind: "inline", code: "return 1", pathHint: undefined },
+  it("treats a transport-materialized empty path as omitted for inline code", () => {
+    expect(
+      normalizeEvalToolSource({ code: "return 1", path: "" }),
+    ).toMatchObject({
+      kind: "inline",
+      code: "return 1",
+      pathHint: undefined,
     });
   });
-  it("uses path as a source-base hint when inline code is present", async () => {
-    const calls: unknown[][] = [];
-    const tool = createEvalTool(async (_method, args) => {
-      calls.push(args);
-      return terminal({ success: true, console: "" }) as never;
+  it("uses path as a source-base hint when inline code is present", () => {
+    expect(
+      normalizeEvalToolSource({ code: "return 1", path: "meta" }),
+    ).toMatchObject({
+      kind: "inline",
+      code: "return 1",
+      pathHint: "meta/__inline_eval__.tsx",
     });
-
-    await tool.execute("call-1", { code: "return 1", path: "meta" } as never);
-
-    expect(calls[0]?.[0]).toMatchObject({
-      source: {
-        kind: "inline",
-        code: "return 1",
-        pathHint: "meta/__inline_eval__.tsx",
+  });
+  it("forwards reset as an atomic pre-run lifecycle option to its native owner", async () => {
+    const execute = vi.fn<NativeEvalExecution["execute"]>(async () => ({
+      content: [],
+    }));
+    const tool = factory({ execute, cancel: async () => ({ content: [] }) });
+    const args = { reset: true, code: "return Object.keys(scope)" };
+    const api = nativeToolApi();
+    const context = nativeToolContext();
+    await tool.execute(args, api, context);
+    expect(execute).toHaveBeenCalledWith(args, api, context);
+  });
+  it("loads a non-executable text/data path instead of parsing it as TypeScript", () => {
+    const source = normalizeEvalToolSource({ path: "skills/sandbox/SKILL.md" });
+    expect(source).toMatchObject({
+      kind: "inline",
+      code: 'return await fs.readFile("skills/sandbox/SKILL.md", "utf8");',
+    });
+    expect(source).not.toHaveProperty("path");
+  });
+  it("executes ordinary TypeScript and JavaScript file paths", () => {
+    for (const path of [
+      ".vibestudio/eval/check.ts",
+      ".vibestudio/eval/check.js",
+    ])
+      expect(normalizeEvalToolSource({ path })).toEqual({
+        kind: "context-file",
+        path,
+      });
+  });
+  it("preserves the native owner wait and original failure without another admission path", async () => {
+    const wait = {
+      wait: {
+        kind: "receipt" as const,
+        key: "eval:bound",
+        binding: "eval:binding",
       },
+      continuation: { runId: "native:run" },
+    };
+    const api = nativeToolApi();
+    const context = nativeToolContext();
+    const tool = factory({
+      execute: async () => wait,
+      cancel: async () => wait,
     });
-  });
-  it("forwards reset as an atomic pre-run lifecycle option", async () => {
-    const calls: unknown[][] = [];
-    const tool = createEvalTool(async (_method, args) => {
-      calls.push(args);
-      return terminal({ success: true, console: "", scopeKeys: [] }) as never;
-    });
-
-    await tool.execute("call-reset", {
-      reset: true,
-      code: "return Object.keys(scope)",
-    } as never);
-
-    expect(calls[0]?.[0]).toMatchObject({
-      reset: true,
-      source: { kind: "inline", code: "return Object.keys(scope)" },
-    });
-  });
-  it("loads a non-executable text/data path instead of parsing it as TypeScript", async () => {
-    const calls: unknown[][] = [];
-    const tool = createEvalTool(async (_method, args) => {
-      calls.push(args);
-      return terminal({
-        success: true,
-        console: "",
-        returnValue: "# Sandbox",
-      }) as never;
-    });
-
-    await tool.execute("call-1", { path: "skills/sandbox/SKILL.md" } as never);
-
-    expect(calls[0]?.[0]).toMatchObject({
-      source: {
-        kind: "inline",
-        code: 'return await fs.readFile("skills/sandbox/SKILL.md", "utf8");',
-      },
-    });
-    expect(calls[0]?.[0]).not.toHaveProperty("source.path");
-  });
-  it("executes ordinary TypeScript and JavaScript file paths", async () => {
-    const calls: unknown[][] = [];
-    const tool = createEvalTool(async (_method, args) => {
-      calls.push(args);
-      return terminal({
-        success: true,
-        console: "",
-        returnValue: { ok: true },
-      }) as never;
-    });
-
-    await tool.execute("call-ts", {
-      path: ".vibestudio/eval/check.ts",
-    } as never);
-    await tool.execute("call-js", {
-      path: ".vibestudio/eval/check.js",
-    } as never);
-
-    expect(calls[0]?.[0]).toMatchObject({
-      source: { kind: "context-file", path: ".vibestudio/eval/check.ts" },
-    });
-    expect(calls[1]?.[0]).toMatchObject({
-      source: { kind: "context-file", path: ".vibestudio/eval/check.js" },
-    });
+    expect(await tool.execute({ code: "return 1" }, api, context)).toBe(wait);
+    expect(await tool.cancel!({ code: "return 1" }, api, context)).toBe(wait);
+    const error = new Error("original Eval admission failed");
+    await expect(
+      factory({
+        execute: async () => {
+          throw error;
+        },
+        cancel: async () => ({ content: [] }),
+      }).execute({ code: "return 1" }, api, context),
+    ).rejects.toBe(error);
   });
   it("formats a successful run: console + return value + scope keys, raw result on details", async () => {
     const result: EvalRunResult = {
@@ -303,7 +284,8 @@ describe("formatEvalResult (shared by the eval tool's execute + the agent's defe
     expect(text).toContain('"a": 1');
     expect(text).toContain("[scope] keys: x, y (2 total)");
     // The untruncated result is preserved on `details` for the harness.
-    expect(out.details).toBe(result);
+    expect(out.details).toEqual(result);
+    expect(out.details).not.toBe(result);
     expect(out.isError).toBe(false);
   });
 
@@ -350,7 +332,7 @@ describe("formatEvalResult (shared by the eval tool's execute + the agent's defe
 
     expect(textOf(out)).toContain("attached image/png image (1280×720)");
     expect(textOf(out)).not.toContain(data);
-    expect(out.content[1]).toEqual({
+    expect(out.content?.[1]).toEqual({
       type: "image",
       mimeType: "image/png",
       data,
@@ -367,6 +349,14 @@ describe("formatEvalResult (shared by the eval tool's execute + the agent's defe
     expect(JSON.stringify(out.details)).not.toContain(data);
   });
 
+  it("settles text-decoded binary at the artifact boundary before any model image is delivered", async () => {
+    const artifact = { protocol: "eval-image-artifact.v1", digest: "a".repeat(64), size: 24, mimeType: "image/png" };
+    const result = await formatEvalResult({ success: true, console: "", returnValue: artifact }, async () => "\uFFFDPNG\r\n\u001a\n");
+    expect(result.isError).toBe(true);
+    expect(result.content?.some((block) => block.type === "image")).toBe(false);
+    expect(result.details).toMatchObject({ failureKind: "infrastructure", failureCode: "eval_artifact_unavailable", returnValue: artifact });
+  });
+
   it("attaches nested images and retains checks, deduplicating repeated artifacts", async () => {
     const artifact = {
       protocol: "eval-image-artifact.v1",
@@ -374,7 +364,7 @@ describe("formatEvalResult (shared by the eval tool's execute + the agent's defe
       size: 24,
       mimeType: "image/png",
     };
-    const reader = vi.fn(async () => "image-bytes");
+    const reader = vi.fn(async () => "iVBORw0KGgoAAAANSUhEUgAAAAEAAAAB");
     const out = await formatEvalResult(
       {
         success: true,
@@ -388,7 +378,9 @@ describe("formatEvalResult (shared by the eval tool's execute + the agent's defe
     );
     expect(out.isError).toBe(false);
     expect(reader).toHaveBeenCalledTimes(1);
-    expect(out.content.filter((part) => part.type === "image")).toHaveLength(1);
+    expect(
+      (out.content ?? []).filter((part) => part.type === "image"),
+    ).toHaveLength(1);
     expect(out.details).toMatchObject({
       returnValue: {
         checks: { passed: true },
@@ -399,7 +391,7 @@ describe("formatEvalResult (shared by the eval tool's execute + the agent's defe
       },
     });
     expect(textOf(out)).toContain('"passed": true');
-    expect(JSON.stringify(out.details)).not.toContain("image-bytes");
+    expect(JSON.stringify(out.details)).not.toContain("iVBORw0KGgoAAAANSUhEUgAAAAEAAAAB");
   });
 
   it("fails explicitly if any nested artifact is missing, without partially delivering images", async () => {
@@ -411,10 +403,12 @@ describe("formatEvalResult (shared by the eval tool's execute + the agent's defe
     }));
     const out = await formatEvalResult(
       { success: true, console: "", returnValue: { screenshots } },
-      async (digest) => (digest.startsWith("a") ? "image-bytes" : null),
+      async (digest) => (digest.startsWith("a") ? "iVBORw0KGgoAAAANSUhEUgAAAAEAAAAB" : null),
     );
     expect(out.isError).toBe(true);
-    expect(out.content.every((part) => part.type === "text")).toBe(true);
+    expect((out.content ?? []).every((part) => part.type === "text")).toBe(
+      true,
+    );
     expect(out.details).toMatchObject({
       failureCode: "eval_artifact_unavailable",
       returnValue: { screenshots },
@@ -446,7 +440,9 @@ describe("formatEvalResult (shared by the eval tool's execute + the agent's defe
         failureCode: "eval_artifact_unavailable",
         returnValue: artifact,
       });
-      expect(out.content.every((part) => part.type === "text")).toBe(true);
+      expect((out.content ?? []).every((part) => part.type === "text")).toBe(
+        true,
+      );
     }
   });
 
@@ -482,7 +478,43 @@ describe("formatEvalResult (shared by the eval tool's execute + the agent's defe
       "[eval] Structured failure: candidate_verification_failed",
     );
     expect(text).not.toContain('"committedEventId": "event:committed"');
-    expect(out.details).toBe(result);
+    expect(out.details).toEqual(result);
+    expect(out.details).not.toBe(result);
+  });
+
+  it("returns exhausted browser readiness as an agent tool error with recovery evidence", async () => {
+    const failure: EvalRunResult = {
+      success: false,
+      console: "",
+      error:
+        'Readiness budget exhausted after 100 observations: getByRole("button", { name: "Create new", exact: true })',
+      failureKind: "user-code",
+      failureCode: "cdp_locator_not_actionable",
+      errorData: {
+        observations: 100,
+        maxObservations: 100,
+        locator: 'getByRole("button", { name: "Create new", exact: true })',
+        evidence: {
+          status: "captured",
+          matchCount: 0,
+          snapshot: { text: "＋ Create new", truncated: false },
+        },
+      },
+    };
+    const tool = factory({
+      execute: async () => formatEvalResult(failure),
+      cancel: async () => ({ content: [] }),
+    });
+    const result = await executeTool(tool, {
+      code: "await page.getByRole('button', { name: 'Create new' }).click()",
+    }, { callId: "missing-button" });
+    expect(result.isError).toBe(true);
+    expect(result.details).toEqual(failure);
+    expect(textOf(result)).toContain("cdp_locator_not_actionable");
+    expect(textOf(result)).toContain("100 observations");
+    expect(textOf(result)).toContain("＋ Create new");
+    // Deferred completions use the same formatter as immediate tool returns.
+    expect(await formatEvalResult(failure)).toEqual(result);
   });
 
   it("delivers browser failure observations in model-facing content without losing original errors or receipts", async () => {
@@ -512,7 +544,8 @@ describe("formatEvalResult (shared by the eval tool's execute + the agent's defe
     expect(textOf(out)).toContain('"state": "attached"');
     expect(textOf(out)).toContain("Expected 1 task left, no match");
     expect(out.isError).toBe(true);
-    expect(out.details).toBe(result);
+    expect(out.details).toEqual(result);
+    expect(out.details).not.toBe(result);
     const unavailable = await formatEvalResult({
       ...result,
       errorData: {

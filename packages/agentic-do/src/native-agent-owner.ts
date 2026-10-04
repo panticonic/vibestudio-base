@@ -22,6 +22,8 @@ import {
 import type { DurableObjectSchemaDescriptor } from "@vibestudio/durable/schema";
 import {
   rpc,
+  withRpcContext,
+  type RpcClient,
   type AcquisitionInfo,
   type RpcCaller,
   type RpcCallOptions,
@@ -32,6 +34,7 @@ import { evalGetArgsSchema } from "@vibestudio/service-schemas/eval";
 import { authorityMethods } from "@vibestudio/service-schemas/authority";
 import { nativeInvocationInspectionInputSchema } from "@vibestudio/service-schemas/nativeInvocation";
 import { inspectNativeInvocationSource } from "./native-invocation-source.js";
+import { nativeFailureDiagnostic } from "./native-failure-diagnostic.js";
 import type {
   DurableObjectContext,
   LifecyclePrepareInput,
@@ -104,6 +107,31 @@ export abstract class NativeAgentOwner extends PanelDurableObjectBase {
 
   /** Reconstruct executable product definitions before the durable Session opens. */
   protected async prepareAgentRegistry(): Promise<void> {}
+
+  private settlementSealed = false;
+  private readonly settlementOperations = new Set<Promise<unknown>>();
+
+  /** Domain completion stays serviceable through resource release. The final
+   * connection close seals and joins these admitted receipt consumers too. */
+  private ownSettlement<T>(operation: () => Promise<T>): Promise<T> {
+    if (this.settlementSealed)
+      return Promise.reject(new Error("Pi settlement admission is sealed"));
+    const pending = operation();
+    this.settlementOperations.add(pending);
+    const settled = () => this.settlementOperations.delete(pending);
+    void pending.then(settled, settled);
+    return pending;
+  }
+
+  private executionRpc: RpcClient | undefined;
+
+  /** Native invocation effects own their authority independently of whichever
+   * inbound call caused the scheduler to run. */
+  protected get agentExecutionRpc(): RpcClient {
+    return (this.executionRpc ??= withRpcContext(this.rpc, (operation) =>
+      this.runDetached(operation),
+    ));
+  }
 
   /** Same host transport, independently authorized as this owner. Never hold
    * a request across a human decision; protected ports journal durable waits. */
@@ -275,6 +303,7 @@ export abstract class NativeAgentOwner extends PanelDurableObjectBase {
       "submissions",
       "documents",
       "document_revisions",
+      "payload_chunks",
     ];
   }
 
@@ -407,6 +436,10 @@ export abstract class NativeAgentOwner extends PanelDurableObjectBase {
         this.callAgentHost,
         {
           ...options,
+          onReport: (error) => {
+            console.error("[NativeAgentOwner] native operation failure", JSON.stringify(nativeFailureDiagnostic(error)));
+            options.onReport?.(error);
+          },
           modelRequests: this.ownedModelRequests(options.modelRequests),
         },
         BACKGROUND_CONTEXT,
@@ -427,7 +460,8 @@ export abstract class NativeAgentOwner extends PanelDurableObjectBase {
    * both runnable wakes and authoritative clears; no ambient alarm overwrites it. */
   protected override async nextAlarmAfterRequest(): Promise<undefined> {
     const harness = this.existingAgentSession();
-    if (harness) await harness.flushWake(BACKGROUND_CONTEXT);
+    if (harness && !this.settlementSealed)
+      await this.ownSettlement(() => harness.flushWake(BACKGROUND_CONTEXT));
     return undefined;
   }
 
@@ -484,8 +518,10 @@ export abstract class NativeAgentOwner extends PanelDurableObjectBase {
         "Native invocation inspection requires the verified host server",
       );
     const checked = nativeInvocationInspectionInputSchema.parse(input);
-    const harness = this.existingAgentSession();
-    if (!harness) return null;
+    // Provenance belongs to durable tasks, not to this activation's connection
+    // cache. Restore the same host-bound Session before reading its task; the
+    // bound open rejects a different owner/image and never submits new work.
+    const harness = this.existingAgentSession() ?? (await this.agentSession());
     return inspectNativeInvocationSource(
       harness,
       checked,
@@ -509,24 +545,26 @@ export abstract class NativeAgentOwner extends PanelDurableObjectBase {
   async onAuthorityChanged(
     acquisitionId: string,
   ): Promise<{ accepted: boolean }> {
-    if (this.rpcCallerId !== "main" || this.rpcCallerKind !== "server")
-      throw new Error(
-        "Authority receipt hints require the verified host server",
+    return this.ownSettlement(async () => {
+      if (this.rpcCallerId !== "main" || this.rpcCallerKind !== "server")
+        throw new Error(
+          "Authority receipt hints require the verified host server",
+        );
+      authorityMethods.acquisitionReceipt.args.parse([{ acquisitionId }]);
+      const harness = this.sealed
+        ? (this.harness ??
+          (() => {
+            throw new Error("Pi owner has no admitted Session for settlement");
+          })())
+        : await this.agentSession();
+      return consumeAuthorityReceipt(
+        harness,
+        acquisitionId,
+        this.loadedImage(),
+        this.callAgentHost,
+        BACKGROUND_CONTEXT,
       );
-    authorityMethods.acquisitionReceipt.args.parse([{ acquisitionId }]);
-    const harness = this.sealed
-      ? (this.harness ??
-        (() => {
-          throw new Error("Pi owner has no admitted Session for settlement");
-        })())
-      : await this.agentSession();
-    return consumeAuthorityReceipt(
-      harness,
-      acquisitionId,
-      this.loadedImage(),
-      this.callAgentHost,
-      BACKGROUND_CONTEXT,
-    );
+    });
   }
 
   /**
@@ -547,37 +585,39 @@ export abstract class NativeAgentOwner extends PanelDurableObjectBase {
   async onEvalComplete(payload: {
     runId: string;
   }): Promise<{ accepted: boolean }> {
-    const { runId } = evalGetArgsSchema.parse({ runId: payload?.runId });
-    // Existing-domain settlement remains serviceable while new admission is
-    // sealed and the resource owner awaits its cleanup receipt.
-    const harness = this.sealed
-      ? (this.harness ??
-        (() => {
-          throw new Error("Pi owner has no admitted Session for settlement");
-        })())
-      : await this.agentSession();
-    const route = await retainedEvalRunRoute(
-      harness,
-      runId,
-      BACKGROUND_CONTEXT,
-    );
-    if (
-      route.runId !== runId ||
-      this.rpcCallerId !==
-        evalRuntimeId(this.rpcSelfId, route.scopeKey ?? "default")
-    ) {
-      throw new Error(
-        "Eval completion does not belong to this owner's retained operation",
+    return this.ownSettlement(async () => {
+      const { runId } = evalGetArgsSchema.parse({ runId: payload?.runId });
+      // Existing-domain settlement remains serviceable while new admission is
+      // sealed and the resource owner awaits its cleanup receipt.
+      const harness = this.sealed
+        ? (this.harness ??
+          (() => {
+            throw new Error("Pi owner has no admitted Session for settlement");
+          })())
+        : await this.agentSession();
+      const route = await retainedEvalRunRoute(
+        harness,
+        runId,
+        BACKGROUND_CONTEXT,
       );
-    }
-    return consumeEvalReceipt(
-      harness,
-      harness,
-      runId,
-      this.callAgentHost,
-      this.agentEvalAcknowledgements,
-      BACKGROUND_CONTEXT,
-    );
+      if (
+        route.runId !== runId ||
+        this.rpcCallerId !==
+          evalRuntimeId(this.rpcSelfId, route.scopeKey ?? "default")
+      ) {
+        throw new Error(
+          "Eval completion does not belong to this owner's retained operation",
+        );
+      }
+      return consumeEvalReceipt(
+        harness,
+        harness,
+        runId,
+        this.callAgentHost,
+        this.agentEvalAcknowledgements,
+        BACKGROUND_CONTEXT,
+      );
+    });
   }
 
   override releaseForLifecycle(
@@ -613,6 +653,8 @@ export abstract class NativeAgentOwner extends PanelDurableObjectBase {
           await this.drainEvalAcknowledgements(this.harness);
           await retireBoundAgentSession(this.harness, BACKGROUND_CONTEXT);
         }
+        this.settlementSealed = true;
+        await Promise.all([...this.settlementOperations]);
         try {
           await this.harness.close(BACKGROUND_CONTEXT);
         } catch (error) {

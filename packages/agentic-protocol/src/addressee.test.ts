@@ -11,10 +11,19 @@ import {
 import { isHandleResolutionFailure, resolveHandle } from "./participant-ref.js";
 
 function agent(handle: string, participantId = `do:${handle}`): ParticipantRef {
-  return { kind: "agent", id: participantId, participantId, metadata: { handle } };
+  return {
+    kind: "agent",
+    id: participantId,
+    participantId,
+    metadata: { handle },
+  };
 }
 
-function human(userId: string, handle?: string, displayName?: string): ParticipantRef {
+function human(
+  userId: string,
+  handle?: string,
+  displayName?: string,
+): ParticipantRef {
   return {
     kind: "user",
     id: `user:${userId}`,
@@ -24,16 +33,23 @@ function human(userId: string, handle?: string, displayName?: string): Participa
   };
 }
 
-const ROSTER: ParticipantRef[] = [agent("explorer"), agent("scribe"), human("gabriel", "gabriel")];
+const ROSTER: ParticipantRef[] = [
+  agent("explorer"),
+  agent("scribe"),
+  human("gabriel", "gabriel"),
+];
 
-function ctx(overrides: Partial<ResolveAddresseeContext> = {}): ResolveAddresseeContext {
+function ctx(
+  overrides: Partial<ResolveAddresseeContext> = {},
+): ResolveAddresseeContext {
   return { channelId: "ch-home", roster: ROSTER, ...overrides };
 }
 
 function expectResolved(
-  value: ResolvedAddressee | ReturnType<typeof parseAddressee>
+  value: ResolvedAddressee | ReturnType<typeof parseAddressee>,
 ): ResolvedAddressee {
-  if (isAddresseeError(value)) throw new Error(`expected resolution, got ${value.message}`);
+  if (isAddresseeError(value))
+    throw new Error(`expected resolution, got ${value.message}`);
   return value as ResolvedAddressee;
 }
 
@@ -56,51 +72,78 @@ describe("resolveHandle", () => {
     const roster = [agent("twin", "do:a"), agent("twin", "do:b")];
     const resolved = resolveHandle("twin", roster);
     expect(isHandleResolutionFailure(resolved)).toBe(true);
-    expect(resolved).toMatchObject({ error: "ambiguous", suggestions: ["do:a", "do:b"] });
+    expect(resolved).toMatchObject({
+      error: "ambiguous",
+      suggestions: ["do:a", "do:b"],
+    });
   });
 
   it("honours the kinds filter (ask_user stays human-only)", () => {
-    expect(resolveHandle("explorer", ROSTER, { kinds: ["user"] })).toMatchObject({
+    expect(
+      resolveHandle("explorer", ROSTER, { kinds: ["user"] }),
+    ).toMatchObject({
       error: "unknown",
     });
   });
 
   it("suggests near misses without resolving them", () => {
     const resolved = resolveHandle("explor", ROSTER);
-    expect(resolved).toMatchObject({ error: "unknown", suggestions: ["@explorer"] });
+    expect(resolved).toMatchObject({
+      error: "unknown",
+      suggestions: ["@explorer"],
+    });
   });
 
   it("matches displayName only after handles", () => {
     const roster = [human("a", "ana", "Bo"), human("b", "bo")];
-    expect((resolveHandle("bo", roster) as ParticipantRef).participantId).toBe("user:b");
+    expect((resolveHandle("bo", roster) as ParticipantRef).participantId).toBe(
+      "user:b",
+    );
   });
 });
 
 describe("parseAddressee", () => {
   it("parses each kind of the grammar", () => {
-    expect(parseAddressee("@explorer")).toEqual({ kind: "handle", handle: "explorer" });
-    expect(parseAddressee("explorer")).toEqual({ kind: "handle", handle: "explorer" });
+    expect(parseAddressee("@explorer")).toEqual({
+      kind: "handle",
+      handle: "explorer",
+    });
+    expect(parseAddressee("explorer")).toEqual({
+      kind: "handle",
+      handle: "explorer",
+    });
     expect(parseAddressee("parent")).toEqual({ kind: "parent" });
     expect(parseAddressee("owner")).toEqual({ kind: "owner" });
     expect(parseAddressee("run:abc")).toEqual({ kind: "run", runId: "abc" });
-    expect(parseAddressee("user:gabriel")).toEqual({ kind: "user", userId: "gabriel" });
+    expect(parseAddressee("user:gabriel")).toEqual({
+      kind: "user",
+      userId: "gabriel",
+    });
     expect(parseAddressee("participant:do:x")).toEqual({
       kind: "participant",
       participantId: "do:x",
     });
-    expect(parseAddressee("channel:ch-2")).toEqual({ kind: "channel", channelId: "ch-2" });
+    expect(parseAddressee("channel:ch-2")).toEqual({
+      kind: "channel",
+      channelId: "ch-2",
+    });
     expect(parseAddressee("agent:gmail@ch-9")).toEqual({
       kind: "agent",
       handle: "gmail",
       channelId: "ch-9",
     });
-    expect(parseAddressee("agent:gmail")).toEqual({ kind: "agent", handle: "gmail" });
+    expect(parseAddressee("agent:gmail")).toEqual({
+      kind: "agent",
+      handle: "gmail",
+    });
   });
 
   it("rejects malformed refs with a message that names the grammar", () => {
     const error = parseAddressee("thing:x");
     expect(isAddresseeError(error)).toBe(true);
-    expect((error as { message: string }).message).toContain("agent:<handle>@<channelId>");
+    expect((error as { message: string }).message).toContain(
+      "agent:<handle>@<channelId>",
+    );
     expect(parseAddressee("   ")).toMatchObject({ code: "malformed" });
     expect(parseAddressee("run:")).toMatchObject({ code: "malformed" });
   });
@@ -119,19 +162,36 @@ describe("resolveAddressee", () => {
 
   it("fails closed with suggestions on an unknown handle", () => {
     const error = resolveAddressee("@explore", ctx());
-    expect(error).toMatchObject({ code: "unknown-handle", suggestions: ["@explorer"] });
+    expect(error).toMatchObject({
+      code: "unknown-handle",
+      suggestions: ["@explorer"],
+    });
   });
 
   it("refuses `parent` when the sender is not a subagent", () => {
-    expect(resolveAddressee("parent", ctx())).toMatchObject({ code: "not-a-subagent" });
+    expect(resolveAddressee("parent", ctx())).toMatchObject({
+      code: "not-a-subagent",
+    });
     expect(
-      expectResolved(resolveAddressee("parent", ctx({ parent: { participantId: "do:boss" } })))
+      expectResolved(
+        resolveAddressee(
+          "parent",
+          ctx({ parent: { participantId: "do:boss" } }),
+        ),
+      ),
     ).toMatchObject({ kind: "parent", participantId: "do:boss" });
   });
 
-  it("prefix-matches a run id and targets the child's task channel", () => {
-    const runs = [{ runId: "run-abcdef", taskChannelId: "ch-task", participantId: "do:child" }];
-    const resolved = expectResolved(resolveAddressee("run:run-abc", ctx({ runs })));
+  it("resolves an issued exact reference to the native child task channel", () => {
+    const runs = [
+      {
+        runId: "run-abcdef",
+        runRef: "@s1",
+        taskChannelId: "ch-task",
+        participantId: "do:child",
+      },
+    ];
+    const resolved = expectResolved(resolveAddressee("run:@s1", ctx({ runs })));
     expect(resolved).toMatchObject({
       kind: "run",
       channelId: "ch-task",
@@ -140,12 +200,14 @@ describe("resolveAddressee", () => {
     });
   });
 
-  it("refuses an ambiguous run prefix rather than steering the wrong child", () => {
+  it("rejects run prefixes rather than steering a guessed child", () => {
     const runs = [
-      { runId: "run-a1", taskChannelId: "ch-1" },
-      { runId: "run-a2", taskChannelId: "ch-2" },
+      { runId: "run-a1", runRef: "@s1", taskChannelId: "ch-1" },
+      { runId: "run-a2", runRef: "@s2", taskChannelId: "ch-2" },
     ];
-    expect(resolveAddressee("run:run-a", ctx({ runs }))).toMatchObject({ code: "ambiguous-run" });
+    expect(resolveAddressee("run:run-a", ctx({ runs }))).toMatchObject({
+      code: "unknown-run",
+    });
   });
 
   it("resolves an agent instance and marks a foreign channel", () => {
@@ -157,14 +219,30 @@ describe("resolveAddressee", () => {
         participantId: "do:gmail",
       },
     ];
-    const resolved = expectResolved(resolveAddressee("agent:gmail@ch-mail", ctx({ directory })));
-    expect(resolved).toMatchObject({ kind: "agent", channelId: "ch-mail", foreign: true });
+    const resolved = expectResolved(
+      resolveAddressee("agent:gmail@ch-mail", ctx({ directory })),
+    );
+    expect(resolved).toMatchObject({
+      kind: "agent",
+      channelId: "ch-mail",
+      foreign: true,
+    });
   });
 
   it("refuses a handle-only agent ref when the worker runs in several channels", () => {
     const directory = [
-      { instanceId: "gmail@ch-a", handle: "gmail", channelId: "ch-a", participantId: "do:gmail" },
-      { instanceId: "gmail@ch-b", handle: "gmail", channelId: "ch-b", participantId: "do:gmail" },
+      {
+        instanceId: "gmail@ch-a",
+        handle: "gmail",
+        channelId: "ch-a",
+        participantId: "do:gmail",
+      },
+      {
+        instanceId: "gmail@ch-b",
+        handle: "gmail",
+        channelId: "ch-b",
+        participantId: "do:gmail",
+      },
     ];
     const error = resolveAddressee("agent:gmail", ctx({ directory }));
     expect(error).toMatchObject({ code: "ambiguous-agent" });
@@ -176,12 +254,20 @@ describe("resolveAddressee", () => {
 
   it("resolves an in-roster user to their participant, and an off-roster user to the workspace", () => {
     const inRoster = expectResolved(resolveAddressee("user:gabriel", ctx()));
-    expect(inRoster).toMatchObject({ kind: "user", inRoster: true, participantId: "user:gabriel" });
+    expect(inRoster).toMatchObject({
+      kind: "user",
+      inRoster: true,
+      participantId: "user:gabriel",
+    });
 
     const offRoster = expectResolved(
-      resolveAddressee("user:sam", ctx({ users: [{ userId: "sam" }] }))
+      resolveAddressee("user:sam", ctx({ users: [{ userId: "sam" }] })),
     );
-    expect(offRoster).toMatchObject({ kind: "user", inRoster: false, userId: "sam" });
+    expect(offRoster).toMatchObject({
+      kind: "user",
+      inRoster: false,
+      userId: "sam",
+    });
     // The envelope still belongs to the sender's own channel; escalation is
     // what reaches an off-roster person (plan §4.5).
     expect(offRoster).toMatchObject({ channelId: "ch-home", foreign: false });
@@ -193,30 +279,49 @@ describe("resolveAddressee", () => {
       { userId: "alex", handle: "alex" },
     ];
     const resolved = expectResolved(resolveAddressee("@sam", ctx({ users })));
-    expect(resolved).toMatchObject({ kind: "user", userId: "sam", inRoster: false });
+    expect(resolved).toMatchObject({
+      kind: "user",
+      userId: "sam",
+      inRoster: false,
+    });
     // The fallback is exact-only: a near miss still fails closed with the
     // roster's suggestions rather than picking a member.
     const miss = resolveAddressee("@sa", ctx({ users }));
     expect(isAddresseeError(miss) && miss.code).toBe("unknown-handle");
     // A roster hit always wins over a member with the same handle.
     const onRoster = expectResolved(
-      resolveAddressee("@gabriel", ctx({ users: [{ userId: "gabriel", handle: "gabriel" }] }))
+      resolveAddressee(
+        "@gabriel",
+        ctx({ users: [{ userId: "gabriel", handle: "gabriel" }] }),
+      ),
     );
     expect(onRoster).toMatchObject({ kind: "user", inRoster: true });
   });
 
   it("resolves `owner` through the channel owner", () => {
-    const resolved = expectResolved(resolveAddressee("owner", ctx({ ownerUserId: "gabriel" })));
-    expect(resolved).toMatchObject({ kind: "user", userId: "gabriel", inRoster: true });
-    expect(resolveAddressee("owner", ctx())).toMatchObject({ code: "no-owner" });
+    const resolved = expectResolved(
+      resolveAddressee("owner", ctx({ ownerUserId: "gabriel" })),
+    );
+    expect(resolved).toMatchObject({
+      kind: "user",
+      userId: "gabriel",
+      inRoster: true,
+    });
+    expect(resolveAddressee("owner", ctx())).toMatchObject({
+      code: "no-owner",
+    });
   });
 
   it("treats the bound channel as local even when addressed explicitly", () => {
-    expect(expectResolved(resolveAddressee("channel:ch-home", ctx()))).toMatchObject({
+    expect(
+      expectResolved(resolveAddressee("channel:ch-home", ctx())),
+    ).toMatchObject({
       kind: "channel",
       foreign: false,
     });
-    expect(expectResolved(resolveAddressee("channel:ch-2", ctx()))).toMatchObject({
+    expect(
+      expectResolved(resolveAddressee("channel:ch-2", ctx())),
+    ).toMatchObject({
       kind: "external-channel",
       foreign: true,
     });
@@ -225,7 +330,11 @@ describe("resolveAddressee", () => {
 
 describe("defaultAlertRung", () => {
   it("escalates only when a person is addressed", () => {
-    const channel: ResolvedAddressee = { kind: "channel", channelId: "ch", foreign: false };
+    const channel: ResolvedAddressee = {
+      kind: "channel",
+      channelId: "ch",
+      foreign: false,
+    };
     const user: ResolvedAddressee = {
       kind: "user",
       channelId: "ch",

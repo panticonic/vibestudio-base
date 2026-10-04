@@ -72,6 +72,7 @@ export type ResolvedAddressee =
       channelId: string;
       foreign: true;
       runId: string;
+      runRef: string;
       participantId?: string;
     }
   | {
@@ -96,6 +97,8 @@ export type ResolvedAddressee =
 /** A subagent run as the parent knows it (`subagent-runs` store). */
 export interface AddresseeRunEntry {
   runId: string;
+  /** Issued compact native task selector. */
+  runRef: string;
   taskChannelId: string;
   status?:
     | "starting"
@@ -396,24 +399,24 @@ export function resolveAddressee(
 
     case "run": {
       const runs = ctx.runs ?? [];
-      // Prefix match, as `send_to_subagent` accepted: the display form is
-      // elided, so an agent copying a runId out of its transcript still hits.
-      const exact = runs.find((entry) => entry.runId === parsed.runId);
-      const matches = exact
-        ? [exact]
-        : runs.filter((entry) => entry.runId.startsWith(parsed.runId));
+      const matches = runs.filter(
+        (entry) =>
+          entry.runId === parsed.runId || entry.runRef === parsed.runId,
+      );
       if (matches.length === 0) {
         return {
           code: "unknown-run",
           message: `no subagent run matching "${parsed.runId}"`,
-          suggestions: runs.slice(0, 5).map((entry) => `run:${entry.runId}`),
+          suggestions: runs.slice(0, 5).map((entry) => `run:${entry.runRef}`),
         };
       }
       if (matches.length > 1) {
         return {
           code: "ambiguous-run",
-          message: `"${parsed.runId}" matches ${matches.length} runs; use more of the id`,
-          suggestions: matches.slice(0, 5).map((entry) => `run:${entry.runId}`),
+          message: `"${parsed.runId}" has conflicting retained run identities`,
+          suggestions: matches
+            .slice(0, 5)
+            .map((entry) => `run:${entry.runRef}`),
         };
       }
       const run = matches[0] as AddresseeRunEntry;
@@ -422,6 +425,7 @@ export function resolveAddressee(
         channelId: run.taskChannelId,
         foreign: true,
         runId: run.runId,
+        runRef: run.runRef,
         ...(run.participantId ? { participantId: run.participantId } : {}),
       };
     }

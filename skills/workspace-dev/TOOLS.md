@@ -267,17 +267,18 @@ project or `null`. These are methods on `workspace`, not a nested namespace.
 
 ### Using extensions
 
-Extensions are **declared** in `meta/vibestudio.yml` under `extensions:`. That declaration is the only way to add or remove one. To start using an extension, add it to the `extensions:` list in `meta/vibestudio.yml`; saving that change (a gated meta write) raises one joint approval covering every newly-declared extension. Once approved and running, call it. **From eval**, invoke an extension method via
+Extensions are **declared** in `meta/vibestudio.yml` under `extensions:`. That declaration is the only way to add or remove one. To start using an extension, add it to the `extensions:` list in `meta/vibestudio.yml`; saving that change (a gated meta write) raises one joint approval covering every newly-declared extension. Once declared and approved, call it; an `onInvoke` extension starts on demand. **From eval**, invoke an extension method via
 `services.extensions.invoke(name, "method", [args])` (the underlying RPC); list
-availability with `rpc.call("main", "extensions.list", [])`. **In panel/component code**,
+declared extensions with `services.build.listUnits()` and filter `kind === "extension"`. **In panel/component code**,
 use the typed client `extensions.use(name)` instead (panel-runtime sugar over the
 same RPC). Individual extension methods can still request their own approvals when
 the operation needs one, such as running tests.
 
-`extensions.list()` rows expose `name` (the canonical scoped package name),
-`shortName` (for example `test-runner`), and `source.repo` (for example
-`extensions/test-runner`). Invocation accepts any of those identifiers; prefer
-the canonical name in durable code and docs.
+`build.listUnits()` rows expose `name` (the canonical scoped package name),
+`source` (for example `extensions/test-runner`), `displayName`, and build/approval
+readiness. Invocation accepts the canonical name, source path, or its exact final
+segment; prefer the canonical name in durable code and docs. Display titles and
+guessed abbreviations are not identifiers.
 
 The panel-runtime `extensions.use(name)` is synchronous and returns a method
 proxy; do not `await` it and do not call `.catch(...)` on it. Catch the method
@@ -302,19 +303,21 @@ const shell = extensions.use<ShellApi>("@workspace-extensions/shell", {
 });
 ```
 
-To check whether an extension is available before calling it from eval, list the registry with `rpc.call("main", "extensions.list", [])`:
+To discover extension identities from eval, read the ordinary unit inventory:
 
 ```ts
 eval({
   code: `
-  const name = "@workspace-extensions/image-service";
-  const entry = (await rpc.call("main", "extensions.list", [])).find((e) => e.name === name);
-  if (!entry || entry.status !== "running") {
-    throw new Error(name + " is not available — declare it in meta/vibestudio.yml and approve it.");
-  }
+  return (await services.build.listUnits())
+    .filter((unit) => unit.kind === "extension")
+    .map(({ name, source, displayName, status }) => ({ name, source, displayName, status }));
 `,
 });
 ```
+
+This is build/approval readiness, not a process inventory. A cold `onInvoke`
+extension need not already have a running process: its ordinary invocation
+boundary checks approved source, builds, activates, and awaits the result.
 
 If an extension isn't declared, adding it to `meta/vibestudio.yml` raises a joint approval. If the user denies it, stop and report that the extension is required for the requested operation.
 

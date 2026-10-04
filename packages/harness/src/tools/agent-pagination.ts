@@ -1,4 +1,4 @@
-import { Type } from "@sinclair/typebox";
+import { Type } from "@panticonic/pi-ai";
 import { canonicalJson, sha256HexSyncText } from "@vibestudio/content-addressing";
 
 export const agentReferenceSchema = Type.String({

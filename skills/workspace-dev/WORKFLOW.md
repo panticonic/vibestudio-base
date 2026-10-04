@@ -62,6 +62,13 @@ naming CAS bytes. The semantic workspace verifies those host-observed
 descriptors and derives the snapshot digest. Do not reconstruct an import as a sequence of ordinary
 authored edits or partial repository loops.
 
+When authoring source with regular expressions or other backslash-sensitive
+syntax, prefer the edit tool's literal source text. If code is constructed inside
+an eval JavaScript string, account for that string's escaping separately from
+the emitted source (a `String.raw` template preserves its backslashes). Read the
+written source and test representative valid and invalid inputs; a clean
+TypeScript build cannot establish that a validator accepts valid user data.
+
 ## Verify the requested result
 
 Derive acceptance criteria from the requested behavior and the application's

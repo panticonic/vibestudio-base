@@ -11,10 +11,12 @@
  * that is allowed, exactly as it does for the bound panel.
  */
 
-import { Type, type Static } from "@sinclair/typebox";
-import type { AgentTool, AgentToolResult } from "@workspace/pi-core";
+import { Type, type Static } from "@panticonic/pi-ai";
+import type { ToolRegistration, ToolExecutionResult } from "@panticonic/pi-durable";
+import { copyJson, type JsonRepresentation } from "@panticonic/pi-chord";
+import type { RpcCallOptions } from "@vibestudio/rpc";
 
-export type CallMain = <T>(method: string, args: unknown[]) => Promise<T>;
+export type CallMain = <T>(method: string, args: unknown[], options?: RpcCallOptions) => Promise<T>;
 
 const panelTarget = {
   panelId: Type.Optional(
@@ -51,21 +53,20 @@ interface PanelScreenshotResult {
 export function createPanelScreenshotTool(
   callMain: CallMain,
   boundPanelId: string,
-): AgentTool<typeof screenshotParameters> {
+): ToolRegistration<typeof screenshotParameters, JsonRepresentation<PanelScreenshotResult | null>> {
   return {
     name: "panel_screenshot",
-    label: "screenshot panel",
     description:
       "Capture what the panel currently looks like. This force-paints the view, so it works even when the panel is hidden or scrolled off — use it whenever the question is about appearance, layout, or what the user is actually seeing.",
     parameters: screenshotParameters,
     execute: async (
-      _toolCallId,
-      params: PanelScreenshotParams,
-    ): Promise<AgentToolResult<PanelScreenshotResult | null>> => {
+      params: PanelScreenshotParams, _api, context,
+    ): Promise<ToolExecutionResult<JsonRepresentation<PanelScreenshotResult | null>>> => {
       const panelId = params.panelId ?? boundPanelId;
       const result = await callMain<PanelScreenshotResult>(
         "panelCdp.screenshot",
         [panelId, params.format ? { format: params.format } : {}],
+        context.abortSignal ? { signal: context.abortSignal } : undefined,
       );
       return {
         content: [
@@ -75,7 +76,7 @@ export function createPanelScreenshotTool(
             text: `Screenshot of ${panelId} (${result.width}×${result.height}).`,
           },
         ],
-        details: result,
+        details: copyJson(result, { omitUndefinedProperties: true }) as JsonRepresentation<typeof result>,
       };
     },
   };
@@ -166,17 +167,15 @@ function renderEntries(label: string, entries: ConsoleEntry[]): string {
 export function createPanelConsoleTool(
   callMain: CallMain,
   boundPanelId: string,
-): AgentTool<typeof consoleParameters> {
+): ToolRegistration<typeof consoleParameters, JsonRepresentation<PanelConsoleResult | null>> {
   return {
     name: "panel_console",
-    label: "read panel console",
     description:
       "Search, filter, and page through the panel's recorded console history—the actual log and error bodies, not counts. Results are newest matching entries in chronological order. For older matches, repeat with page.nextBeforeSeq as beforeSeq. This is the first thing to reach for when something is broken and you do not yet know why.",
     parameters: consoleParameters,
     execute: async (
-      _toolCallId,
-      params: PanelConsoleParams,
-    ): Promise<AgentToolResult<PanelConsoleResult | null>> => {
+      params: PanelConsoleParams, _api, context,
+    ): Promise<ToolExecutionResult<JsonRepresentation<PanelConsoleResult | null>>> => {
       const panelId = params.panelId ?? boundPanelId;
       const result = await callMain<PanelConsoleResult>(
         "panelCdp.consoleHistory",
@@ -195,6 +194,7 @@ export function createPanelConsoleTool(
               : {}),
           },
         ],
+        context.abortSignal ? { signal: context.abortSignal } : undefined,
       );
       const dropped =
         result.dropped.entries > 0 || result.dropped.errors > 0
@@ -214,7 +214,7 @@ export function createPanelConsoleTool(
             }${dropped}`,
           },
         ],
-        details: result,
+        details: copyJson(result, { omitUndefinedProperties: true }) as JsonRepresentation<typeof result>,
       };
     },
   };
@@ -233,12 +233,7 @@ const evalParameters = Type.Object(
   { additionalProperties: false },
 );
 
-/**
- * The loop hands tool params through as a partial of the schema (it validates
- * against the schema itself, not this type), so `expression` is checked here
- * rather than assumed.
- */
-export type PanelEvalParams = Partial<Static<typeof evalParameters>>;
+export type PanelEvalParams = Static<typeof evalParameters>;
 
 interface PanelEvaluateResult {
   ok: boolean;
@@ -251,17 +246,15 @@ interface PanelEvaluateResult {
 export function createPanelEvalTool(
   callMain: CallMain,
   boundPanelId: string,
-): AgentTool<typeof evalParameters> {
+): ToolRegistration<typeof evalParameters, JsonRepresentation<PanelEvaluateResult | null>> {
   return {
     name: "panel_eval",
-    label: "evaluate in panel",
     description:
       "Run one plain JavaScript expression inside the panel's page and get the serialized result back — measure an element, read computed style, check a global, call a debug hook. Do not use TypeScript annotations or `as` assertions. It runs under an 8 second bound; an expression that throws comes back as a reported error rather than a failed tool call. This runs real code in the live page, so prefer reading over mutating.",
     parameters: evalParameters,
     execute: async (
-      _toolCallId,
-      params: PanelEvalParams,
-    ): Promise<AgentToolResult<PanelEvaluateResult | null>> => {
+      params: PanelEvalParams, _api, context,
+    ): Promise<ToolExecutionResult<JsonRepresentation<PanelEvaluateResult | null>>> => {
       const panelId = params.panelId ?? boundPanelId;
       const expression = params.expression;
       if (typeof expression !== "string" || expression.length === 0) {
@@ -280,7 +273,7 @@ export function createPanelEvalTool(
         panelId,
         expression,
         {},
-      ]);
+      ], context.abortSignal ? { signal: context.abortSignal } : undefined);
       if (!result.ok) {
         return {
           content: [
@@ -290,7 +283,7 @@ export function createPanelEvalTool(
             },
           ],
           isError: true,
-          details: result,
+          details: copyJson(result, { omitUndefinedProperties: true }) as JsonRepresentation<typeof result>,
         };
       }
       const truncated = result.truncated
@@ -303,7 +296,7 @@ export function createPanelEvalTool(
             text: `${result.type}: ${result.value ?? "(no value)"}${truncated}`,
           },
         ],
-        details: result,
+        details: copyJson(result, { omitUndefinedProperties: true }) as JsonRepresentation<typeof result>,
       };
     },
   };
@@ -326,21 +319,19 @@ interface CdpEndpoint {
 export function createPanelCdpEndpointTool(
   callMain: CallMain,
   boundPanelId: string,
-): AgentTool<typeof cdpEndpointParameters> {
+): ToolRegistration<typeof cdpEndpointParameters, JsonRepresentation<CdpEndpoint | null>> {
   return {
     name: "panel_cdp_endpoint",
-    label: "open panel devtools protocol",
     description:
       "Mint a Chrome DevTools Protocol WebSocket endpoint for the panel — the full firehose, for debugging that genuinely needs to drive the protocol (setting breakpoints, stepping, tracing). For looking, measuring, and poking, panel_screenshot / panel_console / panel_eval are faster and cheaper.",
     parameters: cdpEndpointParameters,
     execute: async (
-      _toolCallId,
-      params: PanelCdpEndpointParams,
-    ): Promise<AgentToolResult<CdpEndpoint | null>> => {
+      params: PanelCdpEndpointParams, _api, context,
+    ): Promise<ToolExecutionResult<JsonRepresentation<CdpEndpoint | null>>> => {
       const panelId = params.panelId ?? boundPanelId;
       const endpoint = await callMain<CdpEndpoint>("panelCdp.getCdpEndpoint", [
         panelId,
-      ]);
+      ], context.abortSignal ? { signal: context.abortSignal } : undefined);
       return {
         content: [
           {
@@ -348,7 +339,7 @@ export function createPanelCdpEndpointTool(
             text: `CDP endpoint for ${panelId}: ${endpoint.wsEndpoint}`,
           },
         ],
-        details: endpoint,
+        details: copyJson(endpoint, { omitUndefinedProperties: true }) as JsonRepresentation<typeof endpoint>,
       };
     },
   };

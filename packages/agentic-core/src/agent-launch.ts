@@ -9,6 +9,7 @@ import {
   type AgentSubscriptionConfig,
   type ChannelSubscriptionConfig,
 } from "./agent-subscription-config.js";
+import type { ImportChannelKnowledgeInput } from "./native-channel-knowledge.js";
 
 /**
  * Runtime-agnostic launch/invite primitives for agent DOs. Browser panels,
@@ -65,14 +66,6 @@ export interface AgentChannelUnsubscriptionInput {
   channelId: string;
 }
 
-export interface AgentTrajectoryForkInput {
-  parentLogId: string;
-  seq: number;
-  taskChannelId: string;
-  contextId: string;
-  config?: AgentSubscriptionConfig | Record<string, unknown>;
-}
-
 export interface LaunchAgentIntoChannelInput extends AgentEntityCreateInput {
   channelId: string;
   replay?: boolean;
@@ -125,7 +118,7 @@ function targetIdFor(handleOrTargetId: AgentEntityHandle | string): string {
 }
 
 function requireAgentSubscriptionResult(
-  operation: "subscribeChannel" | "initFromTrajectoryFork",
+  operation: "subscribeChannel" | "importChannelKnowledge",
   result: unknown,
 ): AgentSubscriptionResult {
   if (
@@ -220,22 +213,19 @@ export async function unsubscribeAgentFromChannel(
   );
 }
 
-export async function initAgentFromTrajectoryFork(
+export async function importAgentChannelKnowledge(
   rpc: AgentLaunchRpc,
   handleOrTargetId: AgentEntityHandle | string,
-  input: AgentTrajectoryForkInput,
+  input: ImportChannelKnowledgeInput,
 ): Promise<AgentSubscriptionResult> {
   return requireAgentSubscriptionResult(
-    "initFromTrajectoryFork",
+    "importChannelKnowledge",
     await rpc.call<unknown>(
       targetIdFor(handleOrTargetId),
-      "initFromTrajectoryFork",
+      "importChannelKnowledge",
       [
         {
-          parentLogId: input.parentLogId,
-          seq: input.seq,
-          taskChannelId: input.taskChannelId,
-          contextId: input.contextId,
+          ...input,
           config: toSubscriptionConfig(input.config),
         },
       ],

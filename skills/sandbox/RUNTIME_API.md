@@ -56,7 +56,7 @@ Generated from `runtimeSurface.panel.ts`. Use `await help()` at runtime for the 
 | `openExternal` | callable |  | Call `await openExternal(url, options?)` from the initialized panel, plain-worker, or eval runtime to open the system browser. A Durable Object uses its own `this.rpc.call("main", "externalOpen.openExternal", [url, options])`. The call owns the approval prompt and resumes after the user decides. |
 | `workers` | namespace | `listSources`, `create`, `createDurableObject`, `list`, `destroy`, `resetStorage`, `listStorageBackups`, `restoreStorageBackup`, `listServices`, `resolveService`, `resolveDurableObject`, `durableObjectService` | Worker discovery, lifecycle, and manifest-declared service resolution. Use create/list/destroy for regular worker instances; listSources() returns every launchable source with its real manifest entry point and Durable Object classes. |
 | `workspaces` | namespace | `create`, `receipt` | Create workspaces from exact inspected template pins and reconcile durable receipts. Available to panels, workers, eval and connected websites under ordinary caller authorization. Creation returns no routing credentials or authority over the new workspace. |
-| `credentials` | namespace | `store`, `connect`, `beginWebsitePublication`, `configureClient`, `requestCredentialInput`, `getClientConfigStatus`, `deleteClientConfig`, `listStoredCredentials`, `summarizeStoredCredentials`, `inspectStoredCredentials`, `revokeCredential`, `resolveCredential`, `deriveCredential`, `fetch`, `publishFetch`, `hookForUrl`, `gitHttp`, `forAudience` | Typed credential lifecycle and credentialed network access. Use store(input) to persist a URL-bound credential, fetch(url, init?, { credentialId? }?) for credentialed HTTP and a standard Response, hookForUrl(url, { credentialId? }?) for a bound fetch function, gitHttp({ credentialId?, gitIntent? }) for smart-HTTP, and forAudience(descriptor) for a credential-bound handle. The underlying RPC transport is internal. |
+| `credentials` | namespace | `store`, `connect`, `beginWebsitePublication`, `configureClient`, `requestCredentialInput`, `getClientConfigStatus`, `deleteClientConfig`, `listStoredCredentials`, `summarizeStoredCredentials`, `inspectStoredCredentials`, `revokeCredential`, `resolveCredential`, `deriveCredential`, `fetch`, `publishFetch`, `hookForUrl`, `gitHttp`, `forAudience` | Typed credential lifecycle and credentialed network access. Use resolveCredential({ url }) for host-owned audience matching; an unbound URL returns null without UI. Inventory summaries do not replace the resolver's binding and use policy. Use store(input) to persist a URL-bound credential, fetch(url, init?, { credentialId? }?) for credentialed HTTP and a standard Response, hookForUrl(url, { credentialId? }?) for a bound fetch function, gitHttp({ credentialId?, gitIntent? }) for smart-HTTP, and forAudience(descriptor) for a credential-bound handle. The underlying RPC transport is internal. |
 | `browserData` | namespace | `getBrowserEnvironment`, `listImportHosts`, `listImportAcquisitionOptions`, `beginImportAcquisition`, `releaseImportSource`, `listImportSources`, `previewImport`, `previewSensitiveImport`, `startImport`, `startSensitiveImport`, `observeSensitiveImport`, `cancelSensitiveImport`, `openBrowserPrivacyManager`, `cancelImport`, `getImportJob`, `listImportJobs`, `listOpenTabs`, `openTabsAsPanels`, `getSitePreferences`, `setSiteZoom`, `getBookmarks`, `addBookmark`, `updateBookmark`, `deleteBookmark`, `moveBookmark`, `searchBookmarks`, `getHistory`, `deleteHistoryEntry`, `deleteHistoryRange`, `clearAllHistory`, `searchHistory`, `searchHistoryForAutocomplete`, `recordHistoryVisit`, `updateHistoryTitle`, `getSearchEngines`, `setDefaultEngine`, `saveSearchEngine`, `getSearchSuggestions`, `listDownloads`, `listDownloadRecords`, `upsertDownloadRecord`, `pauseDownload`, `resumeDownload`, `cancelDownload`, `openDownload`, `revealDownload`, `putPageFavicon`, `getPageFavicon`, `exportBookmarks` | Typed access to the manifest-declared browser-data provider: detection, import, secret-free summaries, approved sensitive reads, mutation, and export. |
 | `git` | namespace | `setSharedRemote`, `removeSharedRemote`, `setUpstream`, `removeUpstream`, `detachUpstream`, `setAutoPush`, `upstreamStatus`, `pushUpstream`, `pullUpstream`, `publishRepo`, `commitMapping`, `importProject` | Typed external Git operations routed through the workspace's configured gitInterop provider. Import and pull create unpublished semantic candidates; only ordinary VCS integration and explicit publication advance protected main. Declarations carry logical credential names resolved by the host, while credential-free remotes are anonymous-first. Pull dry-runs use isolated temporary state and do not mutate managed Git, semantic state, or the remote. |
 | `vcs` | namespace | `edit`, `move`, `copy`, `merge`, `revert`, `commit`, `discard`, `importSnapshot`, `registerExternalDelta`, `supersedeExternalDelta`, `finalizeExternalDelta`, `push`, `mainState`, `status`, `compare`, `inspect`, `neighbors`, `history`, `walk`, `query`, `search`, `blame`, `readMemory`, `resolveRepository`, `readFile`, `listDirectory`, `listFiles` | Simple semantic version control: exact event/application state, expressive edit/move/copy records, incremental local integration, whole-chain commit/discard, directly walkable provenance, and atomic external-snapshot acknowledgements containing the committed event/application/work-unit/repository/snapshot tuple. |
@@ -69,7 +69,7 @@ Generated from `runtimeSurface.panel.ts`. Use `await help()` at runtime for the 
 | `notifications` | namespace | `show`, `dismiss` |  |
 | `services` | value |  | Portable dynamic service namespace. Rich runtime clients are available by name; other services dispatch through the caller-scoped main service boundary. The client contract is shared by panels, workers, Durable Objects, and eval; Durable Objects bind clients to their own instance RPC. |
 | `hosts` | value |  | Portable owner-scoped attached-host access for development sessions. |
-| `runtime` | value |  | Portable typed runtime lifecycle and supervision client for the current workspace context. |
+| `runtime` | namespace | `createEntity`, `reserveEntity`, `activateReservedEntity`, `faultAbortAgentVessel`, `retireEntity`, `releaseResourceBindings`, `replaceResourceBindings`, `recoverExecution`, `listEntities`, `resolveContext`, `listContexts`, `setTitle`, `createContext`, `cloneContext`, `rebindAgentChannel`, `destroyContext`, `forkSemanticContext`, `dropSemanticContext`, `listOwnedContexts`, `recordContextEdge`, `createSubagentContext`, `supervision.list`, `supervision.describe`, `supervision.health`, `supervision.logs`, `supervision.reportReady`, `supervision.reportHealth`, `supervision.appendLog`, `supervision.restart`, `supervision.activate`, `supervision.prepare`, `supervision.retire`, `supervision.versions`, `supervision.rollback` | Portable typed runtime lifecycle and supervision client for the current workspace context. |
 | `isRpcConnectionLost` | value |  | Recognize a retired or disconnected RPC session. |
 | `launchAgentIntoChannel` | value |  | Launch and subscribe an agent through explicit runtime clients and one owned identity. A module-level factory, not a runtime instance member. |
 | `createConversationClient` | value |  | Bind a conversation client to an explicit RPC client. A module-level factory, not a runtime instance member. |
@@ -432,14 +432,14 @@ for (const owner of rootOwnerPage.owners) {
 const workspaceRoots = await panelTree.rootsForOwner(null, { limit: 100 });
 const children = await panelTree.children(created.id, { limit: 100 });
 const existing = (
-  await panelTree.search({ query: "spectrolite", limit: 20 })
-).hits.find(({ entry }) => entry.handle.source === "panels/spectrolite")?.entry
+  await panelTree.search({ query: "New Panel", limit: 20 })
+).hits.find(({ entry }) => entry.handle.source === "about/new")?.entry
   .handle;
 const byKnownSlot = panelTree.get("panel-slot-id");
 const before = await byKnownSlot.observe(); // exact attempt and provenance
 await byKnownSlot.setTitle("Semantic panel title", { explicit: true });
-await byKnownSlot.navigate("panels/spectrolite", { contextId: "ctx-vault" }); // state/files only; code remains the default/current build
-await byKnownSlot.navigate("panels/spectrolite", {
+await byKnownSlot.navigate("about/new", { contextId: "ctx-vault" }); // state/files only; code remains the default/current build
+await byKnownSlot.navigate("about/new", {
   contextId: "ctx-vault",
   ref: "ctx:ctx-vault",
 }); // only when intentionally building code from that context branch
@@ -452,7 +452,7 @@ an internal workspace service:
 ```ts
 const root = await openPanel("about/new", { parentId: null, focus: false });
 try {
-  const handle = await openPanel("panels/spectrolite", {
+  const handle = await openPanel("about/new", {
     parentId: root.id,
     stateArgs: { mode: "fixture" },
     focus: false,

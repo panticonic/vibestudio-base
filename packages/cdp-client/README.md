@@ -184,6 +184,13 @@ in its `CdpError`.
 
 ## Waiting
 
+For workspace panels, acquire a session from the panel handle after its normal
+build/boot readiness lifecycle. That lifecycle propagates failures and target
+loss; polling a selector is not a replacement for panel readiness. For a UI
+transition, observe its semantic postcondition with `expect` or `waitFor`. A
+wrong accessible name remains an error: inspect the returned evidence instead
+of replaying input or extending the retry loop.
+
 ```ts
 await loc.waitFor({ state: "visible" }); // attached | detached | visible | hidden | checked | unchecked
 await page.waitForLoadState("domcontentloaded");
@@ -192,7 +199,7 @@ await page.waitForSelector(".ready");
 ```
 
 An exhausted locator wait is reported as `cdp_locator_state_mismatch`, with the
-locator, requested state, and timeout in `errorData`. It is not collapsed into a
+locator, requested state, observation count, and any explicit timeout in `errorData`. It is not collapsed into a
 generic `cdp_evaluation_failed` error.
 
 ## Screenshots
@@ -208,7 +215,11 @@ list instead of being silently ignored.
 
 ## Timeouts
 
-Auto-waiting defaults to **30 s**. Override globally or per call:
+Readiness checks make at most **100 observations** (the initial observation plus
+99 retries). Exhaustion throws a structured error with the observation count
+and, for locators, the rendered UI evidence. Input is dispatched at most once;
+only readiness observations are retried. There is no default elapsed-time
+deadline. An explicit deadline can shorten the observation budget:
 
 ```ts
 page.setDefaultTimeout(10_000);
@@ -353,9 +364,10 @@ renderer crash/detachment, or a transport/protocol failure. Invalid frames retir
 that connection and reject its pending commands. Connection acquisition accepts
 an optional `signal`; abort cancels and joins the upgrade or socket opening.
 An established browser has its own lifetime and must be closed by its owner.
-Actions, locator waits, function waits and navigation have no default deadline.
-A caller can select a readiness budget with `timeout` or `setDefaultTimeout`;
-zero disables the budget. Function and load checks use one-shot observations,
+Actions, locator waits and function/load predicates share the 100-observation
+readiness budget. Navigation waits on its lifecycle events, without an
+observation limit. A caller can add a time deadline with `timeout` or
+`setDefaultTimeout`; zero disables only that deadline, not the observation limit. Function and load checks use one-shot observations,
 yielding outside the renderer so they cannot strand browser input behind a
 long-lived evaluation. Target loss rejects pending observations and navigation
 waits. Hosted eval cancellation is carried through the active invocation

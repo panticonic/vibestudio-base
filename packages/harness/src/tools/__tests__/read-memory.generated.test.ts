@@ -24,6 +24,7 @@ function episode(
     externalSnapshot: null,
     commit: null,
     arrival: null,
+    cause: null,
     ...overrides,
   };
 }

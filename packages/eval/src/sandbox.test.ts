@@ -65,17 +65,20 @@ describe("executeSandbox", () => {
       },
       bindings: {
         scope: {
-          action: () => currentJournal()?.append({
-            type: "interaction",
-            id: "panel:test",
-            receipt: { oversized: "x".repeat(30_000) },
-          }),
+          action: () =>
+            currentJournal()?.append({
+              type: "interaction",
+              id: "panel:test",
+              receipt: { oversized: "x".repeat(30_000) },
+            }),
         },
       },
     });
     expect(result.success).toBe(true);
     expect(result.operationJournal).toEqual({
-      protocol: "workspace-operations.v1", entries: [], truncated: true,
+      protocol: "workspace-operations.v1",
+      entries: [],
+      truncated: true,
     });
   });
 
@@ -870,6 +873,181 @@ return fs.readFileSync("/tmp/a");`,
     expect(loadImport).not.toHaveBeenCalled();
   });
 
+  it.each(["cjs", "async-cjs"] as const)(
+    "links a %s library's lazy host peers before initializing it",
+    async (format) => {
+      const globals = globalThis as Record<string, unknown>;
+      const moduleMap = globals["__vibestudioModuleMap__"] as Record<
+        string,
+        unknown
+      >;
+      const react = { marker: "the panel's React" };
+      const loadReact = vi.fn(async () => {
+        moduleMap["react"] = react;
+        return react;
+      });
+      (globals["__vibestudioModuleLoaders__"] as Record<string, unknown>)[
+        "react"
+      ] = loadReact;
+      globals["__vibestudioRequireAsync__"] = (id: string) => {
+        if (id !== "react")
+          throw new Error(`Unexpected host dependency: ${id}`);
+        return loadReact();
+      };
+      const loadImport = vi.fn(async () => ({
+        format,
+        requiredModules: ["react"],
+        // esbuild's ESM output routes CommonJS peers through this helper.
+        // Its indirect call cannot be recovered by scanning direct require().
+        bundle:
+          'var __require = (...args) => require(...args); module.exports = { peer: __require("react") };',
+      }));
+      const result = await executeSandbox(
+        'import { peer } from "@workspace/widget"; return peer.marker;',
+        {
+          syntax: "typescript",
+          imports: { "@workspace/widget": "latest" },
+          loadImport,
+        },
+      );
+      expect(result).toMatchObject({
+        success: true,
+        returnValue: "the panel's React",
+      });
+      expect(loadReact).toHaveBeenCalledOnce();
+      expect(loadImport).toHaveBeenCalledOnce();
+      expect((moduleMap["@workspace/widget"] as { peer: unknown }).peer).toBe(
+        react,
+      );
+    },
+  );
+
+  it("keeps a library's dynamic host peers lazy and uses the same module owner", async () => {
+    const globals = globalThis as Record<string, unknown>;
+    const moduleMap = globals["__vibestudioModuleMap__"] as Record<
+      string,
+      unknown
+    >;
+    const react = { marker: "the panel's React" };
+    const loadReact = vi.fn(async () => {
+      moduleMap["react"] = react;
+      return react;
+    });
+    (globals["__vibestudioModuleLoaders__"] as Record<string, unknown>)[
+      "react"
+    ] = loadReact;
+    globals["__vibestudioRequireAsync__"] = loadReact;
+    const loadImport = vi.fn(async () => ({
+      format: "async-cjs" as const,
+      requiredModules: [],
+      bundle: 'module.exports = { load: () => __vibestudioImport("react") };',
+    }));
+    const options = { imports: { "@workspace/widget": "latest" }, loadImport };
+    expect(
+      await executeSandbox(
+        'import "@workspace/widget"; return "ready";',
+        options,
+      ),
+    ).toMatchObject({ success: true, returnValue: "ready" });
+    expect(loadReact).not.toHaveBeenCalled();
+    expect(
+      await executeSandbox(
+        'return (await require("@workspace/widget").load()).marker;',
+        options,
+      ),
+    ).toMatchObject({ success: true, returnValue: "the panel's React" });
+    expect(loadReact).toHaveBeenCalledOnce();
+    expect(loadImport).toHaveBeenCalledOnce();
+  });
+
+  it("preserves a library peer loader failure without building a replacement", async () => {
+    const globals = globalThis as Record<string, unknown>;
+    const failure = new Error("React chunk disconnected");
+    (globals["__vibestudioModuleLoaders__"] as Record<string, unknown>)[
+      "react"
+    ] = async () => {
+      throw failure;
+    };
+    globals["__vibestudioRequireAsync__"] = async () => {
+      throw failure;
+    };
+    const loadImport = vi.fn(async () => ({
+      format: "cjs" as const,
+      requiredModules: ["react"],
+      bundle: 'module.exports = require("react");',
+    }));
+    const result = await executeSandbox('import "@workspace/widget";', {
+      imports: { "@workspace/widget": "latest" },
+      loadImport,
+    });
+    expect(result).toMatchObject({
+      success: false,
+      error: failure.message,
+      failureKind: "infrastructure",
+      failureCode: "package_load_failed",
+    });
+    expect(loadImport).toHaveBeenCalledOnce();
+  });
+
+  it.each([false, null, 0, "", undefined])(
+    "reuses an acquired library exporting %j",
+    async (value) => {
+      const moduleMap: Record<string, unknown> = {};
+      const loadImport = vi.fn(async () => ({
+        format: "cjs" as const,
+        requiredModules: [],
+        bundle: `module.exports = ${value === undefined ? "undefined" : JSON.stringify(value)};`,
+      }));
+      const options = {
+        imports: { "@workspace/widget": "latest" },
+        moduleMap,
+        require: (id: string) => {
+          if (Object.hasOwn(moduleMap, id)) return moduleMap[id];
+          throw new Error(`Module missing: ${id}`);
+        },
+        loadImport,
+      };
+      for (let iteration = 0; iteration < 2; iteration++) {
+        const result = await executeSandbox(
+          'return require("@workspace/widget");',
+          options,
+        );
+        expect(result.success).toBe(true);
+        expect(moduleMap["@workspace/widget"]).toBe(value);
+      }
+      expect(loadImport).toHaveBeenCalledOnce();
+    },
+  );
+
+  it("does not link a private library against the ambient panel's peers", async () => {
+    const globals = globalThis as Record<string, unknown>;
+    const loadReact = vi.fn(async () => ({ marker: "ambient React" }));
+    (globals["__vibestudioModuleLoaders__"] as Record<string, unknown>)[
+      "react"
+    ] = loadReact;
+    globals["__vibestudioRequireAsync__"] = loadReact;
+    const moduleMap: Record<string, unknown> = {};
+    const result = await executeSandbox('import "@workspace/widget";', {
+      moduleMap,
+      require: (id) => {
+        if (id in moduleMap) return moduleMap[id];
+        throw new Error(`Private module missing: ${id}`);
+      },
+      imports: { "@workspace/widget": "latest" },
+      loadImport: async () => ({
+        format: "cjs",
+        requiredModules: ["react"],
+        bundle: 'module.exports = require("react");',
+      }),
+    });
+    expect(result).toMatchObject({
+      success: false,
+      error: "Private module missing: react",
+    });
+    expect(loadReact).not.toHaveBeenCalled();
+    expect(moduleMap).toEqual({});
+  });
+
   it("tracks build-loaded refs independently in each module registry", async () => {
     const firstModuleMap: Record<string, unknown> = {};
     const secondModuleMap: Record<string, unknown> = {};
@@ -877,6 +1055,7 @@ return fs.readFileSync("/tmp/a");`,
       async (_specifier: string, ref: string | undefined) => ({
         bundle: `module.exports = { label: ${JSON.stringify(ref ?? "latest")} };`,
         format: "cjs" as const,
+        requiredModules: [],
       }),
     );
     const runWithRef = (moduleMap: Record<string, unknown>, ref: string) =>
@@ -952,6 +1131,7 @@ return fs.readFileSync("/tmp/a");`,
         imports: { "@workspace/panel-only": "workspace:*" },
         loadImport: async () => ({
           format: "cjs",
+          requiredModules: [],
           bundle:
             'throw new Error("This package requires a panel runtime global that is unavailable here");',
         }),
@@ -998,15 +1178,31 @@ return fs.readFileSync("/tmp/a");`,
   });
 
   it("retains the host-owned operation journal without exposing it through guest journal state", async () => {
-    const guestJournal = { Journal: class {}, with: vi.fn(), current: () => null };
-    const hostJournal = { entries: [{ type: "build.profile", receipt: { stateHash: "state:exact" } }], truncated: false };
+    const guestJournal = {
+      Journal: class {},
+      with: vi.fn(),
+      current: () => null,
+    };
+    const hostJournal = {
+      entries: [
+        { type: "build.profile", receipt: { stateHash: "state:exact" } },
+      ],
+      truncated: false,
+    };
     const result = await executeSandbox("return { measured: true };", {
-      syntax: "typescript", operationJournal: hostJournal,
+      syntax: "typescript",
+      operationJournal: hostJournal,
       require: () => ({ journal: guestJournal }),
     });
-    expect(result).toMatchObject({ success: true, returnValue: { measured: true }, operationJournal: {
-      protocol: "workspace-operations.v1", entries: hostJournal.entries, truncated: false,
-    } });
+    expect(result).toMatchObject({
+      success: true,
+      returnValue: { measured: true },
+      operationJournal: {
+        protocol: "workspace-operations.v1",
+        entries: hostJournal.entries,
+        truncated: false,
+      },
+    });
     expect(guestJournal.with).not.toHaveBeenCalled();
     expect(guestJournal.current()).toBeNull();
   });
@@ -1041,11 +1237,24 @@ return fs.readFileSync("/tmp/a");`,
   });
 
   it("keeps a runtime test-policy rejection distinct from guest code", async () => {
-    const rejectPolicy = () => { throw Object.assign(new Error("Unexpected authority prompt in system test"), {
-      errorKind: "application", code: "EUNEXPECTEDTESTPROMPT",
-    }); };
-    const result = await executeSandbox("rejectPolicy();", { syntax: "typescript", bindings: { rejectPolicy } });
-    expect(result).toMatchObject({ success: false, failureKind: "infrastructure", failureCode: "EUNEXPECTEDTESTPROMPT" });
+    const rejectPolicy = () => {
+      throw Object.assign(
+        new Error("Unexpected authority prompt in system test"),
+        {
+          errorKind: "application",
+          code: "EUNEXPECTEDTESTPROMPT",
+        },
+      );
+    };
+    const result = await executeSandbox("rejectPolicy();", {
+      syntax: "typescript",
+      bindings: { rejectPolicy },
+    });
+    expect(result).toMatchObject({
+      success: false,
+      failureKind: "infrastructure",
+      failureCode: "EUNEXPECTEDTESTPROMPT",
+    });
   });
 
   it("classifies structured Durable Object schema refusals as infrastructure", async () => {
@@ -1133,8 +1342,6 @@ return fs.readFileSync("/tmp/a");`,
     });
   });
 
-
-
   it("exposes a lazy import loader to runtime helpers during eval", async () => {
     const result = await executeSandbox(
       "const loaded = await globalThis.__vibestudioLoadImport__('lazy-package', 'latest'); return loaded.answer;",
@@ -1147,6 +1354,7 @@ return fs.readFileSync("/tmp/a");`,
           return {
             bundle: "module.exports = { answer: 42 };",
             format: "cjs" as const,
+            requiredModules: [],
           };
         },
       },
@@ -1170,6 +1378,7 @@ return fs.readFileSync("/tmp/a");`,
         return {
           bundle: "module.exports = { answer: 42 };",
           format: "cjs" as const,
+          requiredModules: [],
         };
       }),
       { resolveWorkspaceImport },

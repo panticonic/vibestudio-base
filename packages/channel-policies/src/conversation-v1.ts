@@ -32,7 +32,9 @@ export interface ConversationStateV1 {
   agentStreak: number;
 }
 
-function completedMessageFrom(envelope: PolicyEnvelopeView): AgenticEvent | null {
+function completedMessageFrom(
+  envelope: PolicyEnvelopeView,
+): AgenticEvent | null {
   if (envelope.payloadKind !== AGENTIC_EVENT_PAYLOAD_KIND) return null;
   const payload = envelope.payload as AgenticEvent | null;
   if (!payload || typeof payload !== "object") return null;
@@ -40,12 +42,15 @@ function completedMessageFrom(envelope: PolicyEnvelopeView): AgenticEvent | null
   return payload;
 }
 
-function isAgentAuthoredCompleted(draft: PolicyAppendDraft): AgenticEvent | null {
+function isAgentAuthoredCompleted(
+  draft: PolicyAppendDraft,
+): AgenticEvent | null {
   if (draft.payloadKind !== AGENTIC_EVENT_PAYLOAD_KIND) return null;
   const payload = draft.payload as AgenticEvent | null;
   if (!payload || typeof payload !== "object") return null;
   if ((payload as { kind?: string }).kind !== "message.completed") return null;
-  if ((payload as { actor?: { kind?: string } }).actor?.kind !== "agent") return null;
+  if ((payload as { actor?: { kind?: string } }).actor?.kind !== "agent")
+    return null;
   return payload;
 }
 
@@ -56,6 +61,17 @@ function callerAudience(descriptor: Pick<ChannelCallDescriptor, "caller">) {
       participantId: descriptor.caller.participantId ?? descriptor.caller.id,
     },
   ];
+}
+
+function terminalAudience(
+  descriptor: Pick<ChannelCallDescriptor, "caller" | "target">,
+) {
+  const caller = descriptor.caller.participantId ?? descriptor.caller.id;
+  const target = descriptor.target.participantId ?? descriptor.target.id;
+  return [...new Set([caller, target])].map((participantId) => ({
+    kind: "participant" as const,
+    participantId,
+  }));
 }
 
 const callEventPayload: ChannelCallEventBuilders = {
@@ -93,19 +109,26 @@ const callEventPayload: ChannelCallEventBuilders = {
   },
 
   terminal(input: ChannelCallTerminalInput): AgenticEvent {
-    const { descriptor, result, isError, terminalOutcome, terminalReasonCode } = input;
-    const reason = typeof result === "string" && result ? result : "method failed";
-    const to = callerAudience(descriptor);
+    const { descriptor, result, isError, terminalOutcome, terminalReasonCode } =
+      input;
+    const reason =
+      typeof result === "string" && result ? result : "method failed";
+    const to = terminalAudience(descriptor);
     const base = {
       actor: descriptor.caller,
       ...(descriptor.turnId ? { turnId: descriptor.turnId as TurnId } : {}),
       causality: {
         invocationId: descriptor.invocationId as InvocationId,
-        ...(descriptor.transportCallId ? { transportCallId: descriptor.transportCallId } : {}),
+        ...(descriptor.transportCallId
+          ? { transportCallId: descriptor.transportCallId }
+          : {}),
       },
       createdAt: input.createdAt,
     };
-    if (terminalOutcome === "cancelled" || terminalOutcome === "stale_dispatch") {
+    if (
+      terminalOutcome === "cancelled" ||
+      terminalOutcome === "stale_dispatch"
+    ) {
       return {
         kind: "invocation.cancelled",
         ...base,
@@ -128,7 +151,9 @@ const callEventPayload: ChannelCallEventBuilders = {
       } as AgenticEvent;
     }
     const failedOutcome =
-      terminalOutcome === "infrastructure_error" ? "infrastructure_error" : "tool_error";
+      terminalOutcome === "infrastructure_error"
+        ? "infrastructure_error"
+        : "tool_error";
     return {
       kind: isError ? "invocation.failed" : "invocation.completed",
       ...base,
@@ -141,7 +166,10 @@ const callEventPayload: ChannelCallEventBuilders = {
               operation: descriptor.method,
               stage: "remote-call",
               causal: { invocationId: descriptor.invocationId },
-              kind: failedOutcome === "infrastructure_error" ? "infrastructure" : undefined,
+              kind:
+                failedOutcome === "infrastructure_error"
+                  ? "infrastructure"
+                  : undefined,
             }),
           })
         : invocationCompletedPayload({ result, to }),
@@ -156,7 +184,9 @@ const callEventPayload: ChannelCallEventBuilders = {
       ...(descriptor.turnId ? { turnId: descriptor.turnId as TurnId } : {}),
       causality: {
         invocationId: descriptor.invocationId as InvocationId,
-        ...(descriptor.transportCallId ? { transportCallId: descriptor.transportCallId } : {}),
+        ...(descriptor.transportCallId
+          ? { transportCallId: descriptor.transportCallId }
+          : {}),
       },
       payload: {
         protocol: AGENTIC_PROTOCOL_VERSION,
@@ -175,11 +205,13 @@ const callEventPayload: ChannelCallEventBuilders = {
       ...(descriptor.turnId ? { turnId: descriptor.turnId as TurnId } : {}),
       causality: {
         invocationId: descriptor.invocationId as InvocationId,
-        ...(descriptor.transportCallId ? { transportCallId: descriptor.transportCallId } : {}),
+        ...(descriptor.transportCallId
+          ? { transportCallId: descriptor.transportCallId }
+          : {}),
       },
       payload: invocationCancelledPayload("cancelled", input.reason, {
         terminalReasonCode: "cancelled",
-        to: callerAudience(descriptor),
+        to: terminalAudience(descriptor),
       }),
       createdAt: input.createdAt,
     } as AgenticEvent;
@@ -207,9 +239,12 @@ export const conversationV1Policy: ChannelPolicy<ConversationStateV1> = {
     const completed = completedMessageFrom(envelope);
     if (!completed) return state;
     const actorKind = (completed as { actor?: { kind?: string } }).actor?.kind;
-    const causality = ((completed as { causality?: Record<string, unknown> }).causality ??
-      {}) as Record<string, unknown>;
-    const messageId = typeof causality["messageId"] === "string" ? causality["messageId"] : null;
+    const causality = ((completed as { causality?: Record<string, unknown> })
+      .causality ?? {}) as Record<string, unknown>;
+    const messageId =
+      typeof causality["messageId"] === "string"
+        ? causality["messageId"]
+        : null;
     return {
       previousCompletedSender: state.lastCompletedSender,
       previousCompletedMessageId: state.lastCompletedMessageId,
@@ -237,14 +272,17 @@ export const conversationV1Policy: ChannelPolicy<ConversationStateV1> = {
   annotate(state, draft): Record<string, unknown> | null {
     const completed = isAgentAuthoredCompleted(draft);
     if (!completed) return null;
-    const explicit = (completed as { causality?: { agentHops?: number } }).causality?.agentHops;
+    const explicit = (completed as { causality?: { agentHops?: number } })
+      .causality?.agentHops;
     // Caller-computed hop counts win (copied to annotations — the payload is
     // never mutated by the transport). Otherwise mirror the reduce: a continuation of
     // the same author's own turn is NOT a new hop (only an author change is).
     return {
       agentHops:
         explicit ??
-        (draft.senderId === state.lastCompletedSender ? state.agentStreak : state.agentStreak + 1),
+        (draft.senderId === state.lastCompletedSender
+          ? state.agentStreak
+          : state.agentStreak + 1),
     };
   },
 

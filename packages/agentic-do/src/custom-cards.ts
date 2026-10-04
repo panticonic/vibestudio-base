@@ -91,9 +91,7 @@ export interface CardManagerDeps {
 export class CardManager {
   private readonly typeCache = new Map<string, MessageTypeInfo>();
 
-  constructor(private readonly deps: CardManagerDeps) {
-    CardManager.createTables(deps.sql);
-  }
+  constructor(private readonly deps: CardManagerDeps) {}
 
   static createTables(sql: SqlStorage): void {
     sql.exec(`

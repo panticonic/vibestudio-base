@@ -29,8 +29,9 @@
  */
 
 export * from "./types.js";
+export { captureChannelMethodOffers, assertValidChannelMethodSchema } from "./method-offers.js";
 export type { PubSubClient } from "./client.js";
-export { CHANNEL_CLOSE_TIMEOUT_MS, connectViaRpc, resolveRpcChannelTarget } from "./rpc-client.js";
+export { connectViaRpc, resolveRpcChannelTarget } from "./rpc-client.js";
 export type { RpcChannelTargetOptions, RpcConnectOptions } from "./rpc-client.js";
 export { waitForApprovalResolution } from "./review-readiness.js";
 export { draft7MetaSchema } from "./json-schema-draft-07.js";

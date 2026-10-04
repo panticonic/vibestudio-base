@@ -275,6 +275,10 @@ export interface TypedSqlStorage {
   ): {
     toArray(): Row[];
     one(): Row;
+    /** Native workerd cursor accounting; values advance as the cursor is consumed. */
+    readonly columnNames: string[];
+    readonly rowsRead: number;
+    readonly rowsWritten: number;
   };
 }
 
@@ -1215,71 +1219,79 @@ export abstract class DurableObjectBase {
       }
 
       if (method === "__lifecycle/prepare" || method === "__lifecycle/resume") {
-        return this.withVerifiedCaller(verifiedCallerFromBody, async () => {
-          const denial = this.inboundHostControlDenial(
-            method,
-            authorityAcceptedAt,
-          );
-          if (denial) {
-            return new Response(
-              JSON.stringify({
-                error: denial.reason,
-                errorCode: denial.code,
-                errorKind: "access",
-                errorData: { authorityFailure: denial.failure },
-              }),
-              {
-                status: 403,
-                headers: { "Content-Type": "application/json" },
-              },
+        return await this.withVerifiedCaller(
+          verifiedCallerFromBody,
+          async () => {
+            const denial = this.inboundHostControlDenial(
+              method,
+              authorityAcceptedAt,
             );
-          }
-          // Live module replacement may update the class schema while this
-          // activation retains its previous schemaReady cache. Lifecycle is the
-          // generation boundary, so revalidate the one current schema here.
-          await this.ensureSchema();
-          const result =
-            method === "__lifecycle/prepare"
-              ? await (async () => {
-                  await this.drainAlarmRpcs();
-                  return this.releaseForLifecycle(
-                    args[0] as LifecyclePrepareInput,
+            if (denial) {
+              return new Response(
+                JSON.stringify({
+                  error: denial.reason,
+                  errorCode: denial.code,
+                  errorKind: "access",
+                  errorData: { authorityFailure: denial.failure },
+                }),
+                {
+                  status: 403,
+                  headers: { "Content-Type": "application/json" },
+                },
+              );
+            }
+            // Live module replacement may update the class schema while this
+            // activation retains its previous schemaReady cache. Lifecycle is the
+            // generation boundary, so revalidate the one current schema here.
+            await this.ensureSchema();
+            const result =
+              method === "__lifecycle/prepare"
+                ? await (async () => {
+                    await this.drainAlarmRpcs();
+                    return this.releaseForLifecycle(
+                      args[0] as LifecyclePrepareInput,
+                    );
+                  })()
+                : await this.resumeAfterRestart(
+                    args[0] as LifecycleResumeInput,
                   );
-                })()
-              : await this.resumeAfterRestart(args[0] as LifecycleResumeInput);
-          return new Response(JSON.stringify(result ?? null), {
-            headers: this.workReadyHeaders(),
-          });
-        });
+            return new Response(JSON.stringify(result ?? null), {
+              headers: this.workReadyHeaders(),
+            });
+          },
+        );
       }
 
       // Alarm endpoint — server-driven (workerd lacks SQLite/facet alarms).
       // The AlarmDriver fires this on schedule; gate to the server caller.
       if (method === "__alarm") {
-        return this.withVerifiedCaller(verifiedCallerFromBody, async () => {
-          const denial = this.inboundHostControlDenial(
-            method,
-            authorityAcceptedAt,
-          );
-          if (denial) {
-            return new Response(
-              JSON.stringify({
-                error: denial.reason,
-                errorCode: denial.code,
-                errorKind: "access",
-                errorData: { authorityFailure: denial.failure },
-              }),
-              {
-                status: 403,
-                headers: { "Content-Type": "application/json" },
-              },
+        return await this.withVerifiedCaller(
+          verifiedCallerFromBody,
+          async () => {
+            const denial = this.inboundHostControlDenial(
+              method,
+              authorityAcceptedAt,
             );
-          }
-          const nextAlarm = await this.alarm();
-          return new Response(JSON.stringify({ nextAlarm }), {
-            headers: this.workReadyHeaders(),
-          });
-        });
+            if (denial) {
+              return new Response(
+                JSON.stringify({
+                  error: denial.reason,
+                  errorCode: denial.code,
+                  errorKind: "access",
+                  errorData: { authorityFailure: denial.failure },
+                }),
+                {
+                  status: 403,
+                  headers: { "Content-Type": "application/json" },
+                },
+              );
+            }
+            const nextAlarm = await this.alarm();
+            return new Response(JSON.stringify({ nextAlarm }), {
+              headers: this.workReadyHeaders(),
+            });
+          },
+        );
       }
 
       // Method-path dispatch (the server's instance-token channel,
@@ -1789,17 +1801,17 @@ export abstract class DurableObjectBase {
     };
     try {
       const result = await this._invocationContext.run(context, async () => {
-        const result = await (async () => {
-          try {
-            return await callback();
-          } finally {
-            await this._causalRpcOperations.drain(context);
-          }
-        })();
-        const nextAlarm = await this.nextAlarmAfterRequest();
-        if (nextAlarm === null) this.deleteAlarm();
-        else if (nextAlarm !== undefined) this.setAlarmAt(nextAlarm.wakeAt);
-        return result;
+        try {
+          const result = await callback();
+          const nextAlarm = await this.nextAlarmAfterRequest();
+          if (nextAlarm === null) this.deleteAlarm();
+          else if (nextAlarm !== undefined) this.setAlarmAt(nextAlarm.wakeAt);
+          return result;
+        } finally {
+          // Derived wake publication belongs to this invocation too. Join it
+          // before retiring the authority which admitted the request.
+          await this._causalRpcOperations.drain(context);
+        }
       });
       return { result, readyQueues: [...context.readyQueues] };
     } finally {

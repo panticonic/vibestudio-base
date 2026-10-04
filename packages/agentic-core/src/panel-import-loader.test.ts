@@ -3,15 +3,22 @@ import { createPanelImportLoader } from "./panel-import-loader.js";
 
 describe("createPanelImportLoader", () => {
   it("binds automatic workspace imports to the panel's semantic context", async () => {
-    const call = vi.fn(async () => ({ bundle: "panel-bundle", format: "cjs" as const }));
+    const call = vi.fn(async () => ({
+      bundle: "panel-bundle",
+      format: "cjs" as const,
+      requiredModules: [],
+    }));
     const loadImport = createPanelImportLoader(
       { call },
-      { defaultWorkspaceRef: () => "ctx:panel-context" }
+      { defaultWorkspaceRef: () => "ctx:panel-context" },
     );
 
-    await expect(loadImport("@workspace/example", "workspace:*", [])).resolves.toEqual({
+    await expect(
+      loadImport("@workspace/example", "workspace:*", []),
+    ).resolves.toEqual({
       bundle: "panel-bundle",
       format: "cjs",
+      requiredModules: [],
     });
     expect(call).toHaveBeenCalledWith("main", "build.getBuild", [
       "@workspace/example",

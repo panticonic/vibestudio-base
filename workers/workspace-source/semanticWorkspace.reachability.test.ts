@@ -11,6 +11,13 @@ describe("SemanticWorkspace causal provenance reachability", () => {
   it("finds a maximal merge base across deep shared history without recursive JS or pairwise ancestry scans", async () => {
     const sql = await createInMemorySql();
     createSemanticVcsSchema(sql);
+    sql.exec(`
+      CREATE TABLE log_events (
+        log_id TEXT NOT NULL, head TEXT NOT NULL, envelope_id TEXT NOT NULL,
+        actor_json TEXT NOT NULL, payload_ref_json TEXT NOT NULL,
+        PRIMARY KEY (log_id, head, envelope_id)
+      )
+    `);
     const store = new SemanticVcsStore(sql, () => timestamp);
     const initial = store.initializeWorkspace("context:deep", "command:deep-genesis");
     const genesisEventId = initial.committed.ref.eventId;
@@ -88,6 +95,13 @@ describe("SemanticWorkspace causal provenance reachability", () => {
   it("shares protected-main history without exposing unpublished sibling branches", async () => {
     const sql = await createInMemorySql();
     createSemanticVcsSchema(sql);
+    sql.exec(`
+      CREATE TABLE log_events (
+        log_id TEXT NOT NULL, head TEXT NOT NULL, envelope_id TEXT NOT NULL,
+        actor_json TEXT NOT NULL, payload_ref_json TEXT NOT NULL,
+        PRIMARY KEY (log_id, head, envelope_id)
+      )
+    `);
     const store = new SemanticVcsStore(sql, () => timestamp);
     const initial = store.initializeWorkspace("context:own", "command:genesis");
     const genesisEventId = initial.committed.ref.eventId;
@@ -228,6 +242,13 @@ describe("SemanticWorkspace causal provenance reachability", () => {
   it("follows only normalized command-to-invocation, turn, and trigger-message edges", async () => {
     const sql = await createInMemorySql();
     createSemanticVcsSchema(sql);
+    sql.exec(`
+      CREATE TABLE log_events (
+        log_id TEXT NOT NULL, head TEXT NOT NULL, envelope_id TEXT NOT NULL,
+        actor_json TEXT NOT NULL, payload_ref_json TEXT NOT NULL,
+        PRIMARY KEY (log_id, head, envelope_id)
+      )
+    `);
     sql.exec(`
       CREATE TABLE trajectory_invocations (
         log_id TEXT NOT NULL,

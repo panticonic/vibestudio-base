@@ -10,7 +10,11 @@ import type { ChannelSubscriptionConfig } from "@workspace/agentic-core";
 import type { ParticipantDescriptor } from "@workspace/harness";
 import type { ChannelReplayEnvelope } from "@workspace/pubsub";
 import type { DOIdentity } from "./identity.js";
-import type { ChannelClient } from "./channel-client.js";
+import type {
+  ChannelClient,
+  ChannelJoinInput,
+  ChannelJoinResult,
+} from "./channel-client.js";
 import { canonicalJson } from "@vibestudio/content-addressing";
 
 export interface RecoveredChannelSubscription {
@@ -28,11 +32,26 @@ interface StoredSubscription {
   relationshipJson: string;
 }
 
+/** Exact relationship request retained by native bootstrap before remote admission. */
+export interface PreparedChannelSubscription {
+  channelId: string;
+  input: ChannelJoinInput;
+  relationshipJson: string;
+}
+export interface ChannelSubscriptionOptions {
+  channelId: string;
+  contextId: string;
+  config?: unknown;
+  descriptor: ParticipantDescriptor;
+  replay?: boolean;
+  delivery?: "all" | "addressed";
+}
+
 export class SubscriptionManager {
   constructor(
     private sql: SqlStorage,
     private channelFactory: (channelId: string) => ChannelClient,
-    private identity: DOIdentity
+    private identity: DOIdentity,
   ) {}
 
   static createTables(sql: SqlStorage): void {
@@ -58,22 +77,9 @@ export class SubscriptionManager {
     return `do:${ref.source}:${ref.className}:${ref.objectKey}`;
   }
 
-  async subscribe(opts: {
-    channelId: string;
-    contextId: string;
-    config?: unknown;
-    descriptor: ParticipantDescriptor;
-    replay?: boolean;
-    /** Delivery interest for this membership. "all" (default) creates mailbox
-     * work for every committed event; "addressed" only for events whose
-     * audience names this participant — a supervisor's task-channel stance. */
-    delivery?: "all" | "addressed";
-  }): Promise<{
-    ok: boolean;
-    participantId: string;
-    channelConfig?: Record<string, unknown>;
-    envelope?: ChannelReplayEnvelope;
-  }> {
+  async prepareSubscription(
+    opts: ChannelSubscriptionOptions,
+  ): Promise<PreparedChannelSubscription> {
     const participantId = this.buildParticipantId();
     const current = this.getStored(opts.channelId);
     const metadata: Record<string, unknown> = {
@@ -84,9 +90,12 @@ export class SubscriptionManager {
       // must not appear as a selectable responding agent in a task-channel UI,
       // even if descriptor extras carry a general agent type.
       type: opts.delivery === "addressed" ? "observer" : opts.descriptor.type,
-      ...(opts.descriptor.methods?.length ? { methods: opts.descriptor.methods } : {}),
+      ...(opts.descriptor.methods?.length
+        ? { methods: opts.descriptor.methods }
+        : {}),
     };
-    const config = opts.config && typeof opts.config === "object" ? opts.config : null;
+    const config =
+      opts.config && typeof opts.config === "object" ? opts.config : null;
     const relationship = {
       contextId: opts.contextId,
       metadata,
@@ -96,53 +105,94 @@ export class SubscriptionManager {
         entityId: participantId,
         invocation: "direct" as const,
       },
-      applicationConfig: config === null ? null : { version: 1 as const, value: config },
+      applicationConfig:
+        config === null ? null : { version: 1 as const, value: config },
     };
     const relationshipJson = canonicalJson(relationship);
     const channel = this.channelFactory(opts.channelId);
-    const remote = current ? null : await channel.relationshipState(participantId);
-    let revision = current
+    const remote = current
+      ? null
+      : await channel.relationshipState(participantId);
+    const revision = current
       ? current.relationshipJson === relationshipJson
         ? current.revision
         : current.revision + 1
       : (remote?.revision ?? 0) + 1;
-    let result;
-    try {
-      result = await channel.join({
+    return {
+      channelId: opts.channelId,
+      input: {
         participantId,
         revision,
         ...relationship,
         replay: opts.replay !== false,
-      });
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      if (!/relationship revision|already names different relationship data/.test(message)) {
-        throw error;
-      }
-      const authoritative = await channel.relationshipState(participantId);
-      revision = authoritative.revision + 1;
-      result = await channel.join({
-        participantId,
-        revision,
-        ...relationship,
-        replay: opts.replay !== false,
-      });
-    }
-    revision = result.revision;
+      },
+      relationshipJson,
+    };
+  }
 
+  /** An exact lost-response retry cannot silently choose a different revision. */
+  async joinPrepared(
+    prepared: PreparedChannelSubscription,
+  ): Promise<ChannelJoinResult> {
+    if (prepared.input.participantId !== this.buildParticipantId())
+      throw new Error(
+        "Prepared channel relationship belongs to a different entity",
+      );
+    const { replay: _replay, ...relationship } = prepared.input;
+    const {
+      participantId: _participantId,
+      revision: _revision,
+      ...semanticRelationship
+    } = relationship;
+    if (canonicalJson(semanticRelationship) !== prepared.relationshipJson)
+      throw new Error(
+        "Prepared channel relationship changed its retained request",
+      );
+    const result = await this.channelFactory(prepared.channelId).join(
+      prepared.input,
+    );
+    if (result.revision !== prepared.input.revision)
+      throw new Error("Channel join changed its exact relationship revision");
     this.sql.exec(
       `INSERT OR REPLACE INTO subscriptions
          (channel_id, context_id, revision, subscribed_at, config, relationship_json, participant_id)
        VALUES (?, ?, ?, ?, ?, ?, ?)`,
-      opts.channelId,
-      opts.contextId,
-      revision,
+      prepared.channelId,
+      prepared.input.contextId,
+      result.revision,
       Date.now(),
-      config === null ? null : JSON.stringify(config),
-      relationshipJson,
-      participantId
+      prepared.input.applicationConfig === null
+        ? null
+        : JSON.stringify(prepared.input.applicationConfig.value),
+      prepared.relationshipJson,
+      prepared.input.participantId,
     );
     return result;
+  }
+
+  async subscribe(
+    opts: ChannelSubscriptionOptions,
+  ): Promise<ChannelJoinResult> {
+    let prepared = await this.prepareSubscription(opts);
+    try {
+      return await this.joinPrepared(prepared);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (
+        !/relationship revision|already names different relationship data/.test(
+          message,
+        )
+      )
+        throw error;
+      const authoritative = await this.channelFactory(
+        opts.channelId,
+      ).relationshipState(prepared.input.participantId);
+      prepared = {
+        ...prepared,
+        input: { ...prepared.input, revision: authoritative.revision + 1 },
+      };
+      return this.joinPrepared(prepared);
+    }
   }
 
   async unsubscribeFromChannel(channelId: string): Promise<void> {
@@ -154,7 +204,9 @@ export class SubscriptionManager {
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       if (!/relationship revision/.test(message)) throw error;
-      const authoritative = await channel.relationshipState(stored.participantId);
+      const authoritative = await channel.relationshipState(
+        stored.participantId,
+      );
       if (authoritative.active) {
         await channel.leave(stored.participantId, authoritative.revision + 1);
       }
@@ -175,7 +227,9 @@ export class SubscriptionManager {
   getConfig(channelId: string): ChannelSubscriptionConfig | null {
     const stored = this.getStored(channelId);
     const parsed = stored?.config;
-    return parsed && typeof parsed === "object" ? (parsed as ChannelSubscriptionConfig) : null;
+    return parsed && typeof parsed === "object"
+      ? (parsed as ChannelSubscriptionConfig)
+      : null;
   }
 
   /** Addressed-only memberships receive targeted lifecycle traffic but do not
@@ -183,17 +237,24 @@ export class SubscriptionManager {
   ownsReasoningLoop(channelId: string): boolean {
     const stored = this.getStored(channelId);
     if (!stored) return false;
-    const relationship = JSON.parse(stored.relationshipJson) as { delivery?: unknown };
+    const relationship = JSON.parse(stored.relationshipJson) as {
+      delivery?: unknown;
+    };
     return relationship.delivery !== "addressed";
   }
 
   listAll(): Array<{ channelId: string; participantId: string | null }> {
-    return this.listStored().map(({ channelId, participantId }) => ({ channelId, participantId }));
+    return this.listStored().map(({ channelId, participantId }) => ({
+      channelId,
+      participantId,
+    }));
   }
 
   listStored(): StoredSubscription[] {
     return this.sql
-      .exec(`SELECT channel_id, context_id, revision, config, relationship_json, participant_id FROM subscriptions ORDER BY channel_id`)
+      .exec(
+        `SELECT channel_id, context_id, revision, config, relationship_json, participant_id FROM subscriptions ORDER BY channel_id`,
+      )
       .toArray()
       .map((row) => ({
         channelId: String(row["channel_id"]),
@@ -201,7 +262,9 @@ export class SubscriptionManager {
         revision: Number(row["revision"]),
         participantId: String(row["participant_id"]),
         relationshipJson: String(row["relationship_json"]),
-        ...(typeof row["config"] === "string" ? { config: JSON.parse(String(row["config"])) as unknown } : {}),
+        ...(typeof row["config"] === "string"
+          ? { config: JSON.parse(String(row["config"])) as unknown }
+          : {}),
       }));
   }
 
@@ -210,7 +273,9 @@ export class SubscriptionManager {
   }
 
   count(): number {
-    const row = this.sql.exec(`SELECT COUNT(*) AS cnt FROM subscriptions`).toArray()[0];
+    const row = this.sql
+      .exec(`SELECT COUNT(*) AS cnt FROM subscriptions`)
+      .toArray()[0];
     return Number(row?.["cnt"] ?? 0);
   }
 
@@ -218,20 +283,28 @@ export class SubscriptionManager {
     return this.listStored().map(({ channelId }) => channelId);
   }
 
-  rename(oldChannelId: string, newChannelId: string, newContextId: string): void {
-    if (!newContextId) throw new Error("SubscriptionManager.rename requires newContextId");
+  rename(
+    oldChannelId: string,
+    newChannelId: string,
+    newContextId: string,
+  ): void {
+    if (!newContextId)
+      throw new Error("SubscriptionManager.rename requires newContextId");
     this.sql.exec(
       `UPDATE subscriptions SET channel_id = ?, context_id = ?, participant_id = ? WHERE channel_id = ?`,
       newChannelId,
       newContextId,
       this.buildParticipantId(),
-      oldChannelId
+      oldChannelId,
     );
   }
 
   private getStored(channelId: string): StoredSubscription | null {
     const row = this.sql
-      .exec(`SELECT channel_id, context_id, revision, config, relationship_json, participant_id FROM subscriptions WHERE channel_id = ?`, channelId)
+      .exec(
+        `SELECT channel_id, context_id, revision, config, relationship_json, participant_id FROM subscriptions WHERE channel_id = ?`,
+        channelId,
+      )
       .toArray()[0];
     if (!row) return null;
     return {
@@ -240,7 +313,9 @@ export class SubscriptionManager {
       revision: Number(row["revision"]),
       participantId: String(row["participant_id"]),
       relationshipJson: String(row["relationship_json"]),
-      ...(typeof row["config"] === "string" ? { config: JSON.parse(String(row["config"])) as unknown } : {}),
+      ...(typeof row["config"] === "string"
+        ? { config: JSON.parse(String(row["config"])) as unknown }
+        : {}),
     };
   }
 }

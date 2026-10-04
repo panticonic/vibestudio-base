@@ -41,7 +41,6 @@ import { shouldAutoSendInitialPrompt } from "./core/useChatCore";
  */
 
 const FLUSH_RETRY_DELAY_MS = 1_500;
-export const AGENT_LAUNCH_WATCHDOG_MS = 45_000;
 
 /** Build the spawn config from the inline draft, dropping the handle: the
  *  first-agent setup never exposes a handle field, so a draft handle is only a
@@ -163,7 +162,6 @@ export function useDeferredAgent(params: UseDeferredAgentParams): {
   const spawnInFlightRef = useRef(false); // the onAddAgent promise is pending
   const flushingRef = useRef(false);
   const flushTimerRef = useRef(0);
-  const launchWatchdogRef = useRef(0);
   const everHadAgentRef = useRef(false);
   const initialPromptEnqueuedRef = useRef(false);
   const waitingForModelDiscoveryRef = useRef(false);
@@ -277,24 +275,14 @@ export function useDeferredAgent(params: UseDeferredAgentParams): {
   }, []);
 
   // A host can acknowledge the spawn RPC before the worker later reports a
-  // build/start error. Fold that signal into the same retriable queue state,
-  // and bound the otherwise indefinite "launching" wait.
+  // build/start error. That lifecycle event, or the owning RPC's rejection,
+  // establishes failure. A slow launch retains its ownership and queued input.
   useEffect(() => {
-    if (!armed || agentPresent || launchFailed) {
-      window.clearTimeout(launchWatchdogRef.current);
-      return;
-    }
+    if (!armed || agentPresent || launchFailed) return;
     if (Array.from(pendingAgents.values()).some((agent) => agent.status === "error")) {
       setLaunchFailed(true);
       return;
     }
-    window.clearTimeout(launchWatchdogRef.current);
-    launchWatchdogRef.current = window.setTimeout(() => {
-      issuedRef.current = false;
-      spawnInFlightRef.current = false;
-      setLaunchFailed(true);
-    }, AGENT_LAUNCH_WATCHDOG_MS);
-    return () => window.clearTimeout(launchWatchdogRef.current);
   }, [armed, agentPresent, launchFailed, pendingAgents]);
 
   // Stable refs so the wrapped send callback doesn't churn every keystroke.
@@ -568,7 +556,6 @@ export function useDeferredAgent(params: UseDeferredAgentParams): {
   useEffect(
     () => () => {
       window.clearTimeout(flushTimerRef.current);
-      window.clearTimeout(launchWatchdogRef.current);
     },
     []
   );

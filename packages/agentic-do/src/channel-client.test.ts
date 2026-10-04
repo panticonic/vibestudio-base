@@ -1,8 +1,15 @@
+import type { RpcCaller, RpcCallOptions } from "@vibestudio/rpc";
 import { describe, expect, it, vi } from "vitest";
 import { ChannelClient } from "./channel-client.js";
 
 interface Captured {
-  event?: { payload?: { tier?: unknown; role?: unknown; blocks?: Array<Record<string, unknown>> } };
+  event?: {
+    payload?: {
+      tier?: unknown;
+      role?: unknown;
+      blocks?: Array<Record<string, unknown>>;
+    };
+  };
   publishOpts?: { attachments?: Array<Record<string, unknown>> };
 }
 
@@ -46,7 +53,7 @@ describe("ChannelClient.send tier", () => {
       "agent:1",
       "vibestudio.test",
       { ok: true },
-      { idempotencyKey: "receipt:1" }
+      { idempotencyKey: "receipt:1" },
     );
     let settled = false;
     void publish.finally(() => {
@@ -85,10 +92,18 @@ describe("ChannelClient.send attachments", () => {
     // "aGVsbG8=" is base64("hello") — 5 bytes.
     await makeClient(captured).send("agent:1", "m3", "screenshot attached", {
       senderMetadata: { type: "agent" },
-      attachments: [{ data: "aGVsbG8=", mimeType: "image/png", name: "shot.png" }],
+      attachments: [
+        { data: "aGVsbG8=", mimeType: "image/png", name: "shot.png" },
+      ],
     });
     expect(captured.publishOpts?.attachments).toEqual([
-      { id: "att_0", data: "aGVsbG8=", mimeType: "image/png", name: "shot.png", size: 5 },
+      {
+        id: "att_0",
+        data: "aGVsbG8=",
+        mimeType: "image/png",
+        name: "shot.png",
+        size: 5,
+      },
     ]);
     const blocks = captured.event?.payload?.blocks ?? [];
     expect(blocks).toHaveLength(2);
@@ -117,23 +132,28 @@ describe("ChannelClient finite relationships", () => {
           return { kind: "durable-object", targetId: "chan-do" };
         }
         if (method === "join") {
-          return { ok: true, participantId: (args[0] as { participantId: string }).participantId };
+          return {
+            ok: true,
+            participantId: (args[0] as { participantId: string }).participantId,
+          };
         }
         return undefined;
       }),
       stream,
     };
     const client = new ChannelClient(rpc as never, "chan-1");
-    await expect(client.join({
-      participantId: "agent-1",
-      revision: 1,
-      contextId: "ctx-1",
-      metadata: { type: "agent" },
-      delivery: "all",
-      endpoint: { kind: "entity", entityId: "agent-1", invocation: "direct" },
-      applicationConfig: null,
-      replay: true,
-    })).resolves.toMatchObject({ ok: true, participantId: "agent-1" });
+    await expect(
+      client.join({
+        participantId: "agent-1",
+        revision: 1,
+        contextId: "ctx-1",
+        metadata: { type: "agent" },
+        delivery: "all",
+        endpoint: { kind: "entity", entityId: "agent-1", invocation: "direct" },
+        applicationConfig: null,
+        replay: true,
+      }),
+    ).resolves.toMatchObject({ ok: true, participantId: "agent-1" });
     expect(stream).not.toHaveBeenCalled();
   });
 
@@ -166,4 +186,71 @@ describe("ChannelClient finite relationships", () => {
     await leaving;
     expect(settled).toBe(true);
   });
+});
+
+describe("ChannelClient finite observation lifetime", () => {
+  it.each(["workers.resolveService", "sendSignal"])(
+    "forwards exact cancellation through %s and preserves the original rejection",
+    async (stage) => {
+      const controller = new AbortController();
+      const original = new Error(
+        "Original finite channel observation cancelled",
+      );
+      let enter!: () => void;
+      const entered = new Promise<void>((resolve) => {
+        enter = resolve;
+      });
+      const received: {
+        method: string;
+        options: RpcCallOptions | undefined;
+      }[] = [];
+      const caller: RpcCaller = {
+        call: async <T>(
+          _target: string,
+          method: string,
+          _args: unknown[],
+          options?: RpcCallOptions,
+        ): Promise<T> => {
+          received.push({ method, options });
+          if (method === stage) {
+            enter();
+            await new Promise<void>((_resolve, reject) => {
+              if (options?.signal?.aborted) {
+                reject(options.signal.reason);
+                return;
+              }
+              options?.signal?.addEventListener(
+                "abort",
+                () => reject(options.signal!.reason),
+                { once: true },
+              );
+            });
+          }
+          if (method === "workers.resolveService")
+            return { kind: "durable-object", targetId: "actual-channel" } as T;
+          return undefined as T;
+        },
+        stream: async () => new Response(),
+      };
+      const sending = new ChannelClient(
+        caller,
+        "actual-channel-key",
+        undefined,
+        { signal: controller.signal },
+      ).sendSignalEvent("actual-participant", "vibestudio.agentic.v1", {
+        kind: "actual observation",
+      });
+      await entered;
+      controller.abort(original);
+      await expect(sending).rejects.toBe(original);
+      expect(
+        received.every((call) => call.options?.signal === controller.signal),
+      ).toBe(true);
+      expect(received.map((call) => call.method)).toEqual(
+        stage === "sendSignal"
+          ? ["workers.resolveService", "sendSignal"]
+          : ["workers.resolveService"],
+      );
+    },
+  );
 });

@@ -1,10 +1,14 @@
+import { executeTool } from "../../testing/native-tool.js";
 import { describe, expect, it, vi } from "vitest";
-import { Value } from "@sinclair/typebox/value";
+import { Value } from "typebox/value";
 import YAML from "yaml";
 import { createWorkspaceServiceTool } from "../workspace-service.js";
 import { StubVcs } from "./stub-vcs.js";
 
-const authority = { contextId: "context:test", commandId: "command:workspace-service" };
+const authority = {
+  contextId: "context:test",
+  commandId: "command:workspace-service",
+};
 const initial = `systemEpoch: 1
 singletonObjects:
   - source: workers/testkit-driver
@@ -29,7 +33,7 @@ describe("workspace_service tool", () => {
     const tool = createWorkspaceServiceTool(
       new StubVcs({ files: { "meta/vibestudio.yml": initial } }),
       authority,
-      { validateConfig: vi.fn(async () => {}) }
+      { validateConfig: vi.fn(async () => {}) },
     );
 
     expect(
@@ -45,65 +49,81 @@ describe("workspace_service tool", () => {
         principals: ["code"],
         binding: "consent",
         transport: { kind: "durable-object", className: "TodoStore" },
-      })
+      }),
     ).toBe(false);
     expect(
       Value.Check(tool.parameters, {
         operation: "remove",
         name: "todo-store",
-      })
+      }),
     ).toBe(true);
   });
 
-  it.each(["consent", "declared", { declaredFor: ["panels/todos"] }] as const)("preserves explicit binding %j in one validated semantic edit", async (binding) => {
-    const vcs = new StubVcs({ files: { "meta/vibestudio.yml": initial } });
-    const validateConfig = vi.fn(async (content: string) => {
-      expect(YAML.parse(content).services).toHaveLength(2);
-    });
-    const tool = createWorkspaceServiceTool(vcs, authority, { validateConfig });
+  it.each(["consent", "declared", { declaredFor: ["panels/todos"] }] as const)(
+    "preserves explicit binding %j in one validated semantic edit",
+    async (binding) => {
+      const vcs = new StubVcs({ files: { "meta/vibestudio.yml": initial } });
+      const validateConfig = vi.fn(async (content: string) => {
+        expect(YAML.parse(content).services).toHaveLength(2);
+      });
+      const tool = createWorkspaceServiceTool(vcs, authority, {
+        validateConfig,
+      });
 
-    const result = await tool.execute("invocation:service", {
-      operation: "upsert",
-      source: "workers/todo-store",
-      name: "todo-store",
-      title: "Todo store",
-      action: "read and update todos",
-      description: "Keep shared todos for this workspace.",
-      notability: "everyday",
-      presentation: { domain: "automation", verb: "manage" },
-      protocols: ["example.todos.v1"],
-      principals: ["user", "code"],
-      binding: typeof binding === "object" ? { declaredFor: [...binding.declaredFor] } : binding,
-      transport: { kind: "durable-object", className: "TodoStore", objectKey: "main" },
-    });
+      const result = await executeTool(
+        tool,
+        {
+          operation: "upsert",
+          source: "workers/todo-store",
+          name: "todo-store",
+          title: "Todo store",
+          action: "read and update todos",
+          description: "Keep shared todos for this workspace.",
+          notability: "everyday",
+          presentation: { domain: "automation", verb: "manage" },
+          protocols: ["example.todos.v1"],
+          principals: ["user", "code"],
+          binding:
+            typeof binding === "object"
+              ? { declaredFor: [...binding.declaredFor] }
+              : binding,
+          transport: {
+            kind: "durable-object",
+            className: "TodoStore",
+            objectKey: "main",
+          },
+        },
+        { callId: "invocation:service" },
+      );
 
-    const config = YAML.parse(vcs.read("meta/vibestudio.yml")!);
-    expect(config.services).toEqual([
-      expect.objectContaining({
-        name: "testkit-driver",
-        protocols: ["vibestudio.testkit-driver.v1"],
-        durableObject: { className: "TestkitDriverDO" },
-      }),
-      expect.objectContaining({
-        name: "todo-store",
-        notability: "everyday",
-        protocols: ["example.todos.v1"],
-        authority: { principals: ["user", "code"], binding },
-        durableObject: { className: "TodoStore" },
-      }),
-    ]);
-    expect(config.singletonObjects).toContainEqual({
-      source: "workers/todo-store",
-      className: "TodoStore",
-      key: "main",
-    });
-    expect(validateConfig).toHaveBeenCalledOnce();
-    expect(result.details).toMatchObject({
-      changed: true,
-      serviceName: "todo-store",
-      docsId: "workspace:todo-store",
-    });
-  });
+      const config = YAML.parse(vcs.read("meta/vibestudio.yml")!);
+      expect(config.services).toEqual([
+        expect.objectContaining({
+          name: "testkit-driver",
+          protocols: ["vibestudio.testkit-driver.v1"],
+          durableObject: { className: "TestkitDriverDO" },
+        }),
+        expect.objectContaining({
+          name: "todo-store",
+          notability: "everyday",
+          protocols: ["example.todos.v1"],
+          authority: { principals: ["user", "code"], binding },
+          durableObject: { className: "TodoStore" },
+        }),
+      ]);
+      expect(config.singletonObjects).toContainEqual({
+        source: "workers/todo-store",
+        className: "TodoStore",
+        key: "main",
+      });
+      expect(validateConfig).toHaveBeenCalledOnce();
+      expect(result.details).toMatchObject({
+        changed: true,
+        serviceName: "todo-store",
+        docsId: "workspace:todo-store",
+      });
+    },
+  );
 
   it("does not create a working state when complete-config validation fails", async () => {
     const vcs = new StubVcs({ files: { "meta/vibestudio.yml": initial } });
@@ -114,20 +134,28 @@ describe("workspace_service tool", () => {
     });
 
     await expect(
-      tool.execute("invocation:invalid", {
-        operation: "upsert",
-        source: "workers/todo-store",
-        name: "todo-store",
-        title: "Todo store",
-        action: "read todos",
-        description: "Read todos.",
-        notability: "everyday",
-        presentation: { domain: "automation", verb: "see" },
-        protocols: ["example.todos.v1"],
-        principals: ["code"],
-        binding: "consent",
-        transport: { kind: "durable-object", className: "TodoStore", objectKey: "main" },
-      })
+      executeTool(
+        tool,
+        {
+          operation: "upsert",
+          source: "workers/todo-store",
+          name: "todo-store",
+          title: "Todo store",
+          action: "read todos",
+          description: "Read todos.",
+          notability: "everyday",
+          presentation: { domain: "automation", verb: "see" },
+          protocols: ["example.todos.v1"],
+          principals: ["code"],
+          binding: "consent",
+          transport: {
+            kind: "durable-object",
+            className: "TodoStore",
+            objectKey: "main",
+          },
+        },
+        { callId: "invocation:invalid" },
+      ),
     ).rejects.toThrow("candidate is invalid");
     expect(vcs.read("meta/vibestudio.yml")).toBe(initial);
     expect(vcs.lastEditInput).toBeUndefined();

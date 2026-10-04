@@ -4,10 +4,8 @@ import {
 } from "@vibestudio/content-addressing";
 import type { SqlStorage } from "@workspace/runtime/worker";
 import type { ChannelEvent } from "@workspace/pubsub";
-import type {
-  ChannelAgenticContext,
-  ChannelConfig,
-} from "@workspace/pubsub";
+import { captureChannelMethodOffers } from "@workspace/pubsub";
+import type { ChannelAgenticContext, ChannelConfig } from "@workspace/pubsub";
 import type { AgenticEvent } from "@workspace/agentic-protocol";
 import {
   conversationV1Policy,
@@ -16,7 +14,7 @@ import {
 } from "@workspace/channel-policies";
 import type { ChannelRelationshipPayload } from "./types.js";
 
-export const CHANNEL_DELIVERY_PROJECTION_VERSION = 12;
+export const CHANNEL_DELIVERY_PROJECTION_VERSION = 13;
 export const CHANNEL_RELATIONSHIP_EVENT_TYPES = new Set([
   "channel.subscription.opened",
   "channel.subscription.revised",
@@ -96,6 +94,7 @@ export class ChannelDeliveryProjection {
         endpoint_entity_id TEXT,
         invocation_route TEXT CHECK (invocation_route IN ('direct', 'mailbox')),
         metadata_json TEXT NOT NULL,
+        method_offers_json TEXT NOT NULL,
         application_config_json TEXT,
         opened_sequence INTEGER NOT NULL,
         active INTEGER NOT NULL CHECK (active IN (0, 1)),
@@ -461,6 +460,13 @@ export class ChannelDeliveryProjection {
     }
     const endpointEntityId =
       payload.endpoint.kind === "entity" ? payload.endpoint.entityId : null;
+    const methodOffers = captureChannelMethodOffers({
+      methods: payload.methodOffers ?? [],
+    });
+    if (methodOffers.length !== (payload.methodOffers?.length ?? 0))
+      throw new Error(
+        `${event.type} has an incomplete executable method offer`,
+      );
     const invocationRoute =
       payload.endpoint.kind === "entity" ? payload.endpoint.invocation : null;
     const reattaching = current !== null && current.active && !current.attached;
@@ -491,10 +497,10 @@ export class ChannelDeliveryProjection {
       `INSERT OR REPLACE INTO channel_relationships (
          participant_id, revision, delivery, endpoint_kind, endpoint_entity_id,
          invocation_route,
-         metadata_json, application_config_json, opened_sequence, active,
+         metadata_json, method_offers_json, application_config_json, opened_sequence, active,
          attached, detached_at_sequence, reattach_after_sequence,
          reattach_through_sequence
-       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 1, NULL, ?, ?)`,
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 1, NULL, ?, ?)`,
       payload.participantId,
       payload.revision,
       payload.delivery,
@@ -502,6 +508,7 @@ export class ChannelDeliveryProjection {
       endpointEntityId,
       invocationRoute,
       JSON.stringify(payload.metadata),
+      JSON.stringify(methodOffers),
       payload.applicationConfig === undefined
         ? null
         : JSON.stringify(payload.applicationConfig),
@@ -638,9 +645,10 @@ export class ChannelDeliveryProjection {
     deliveryStartedAt?: number,
   ): number {
     const sourceMessageId = this.sourceMessageId(event);
-    const eventKind = event.type === "agentic.trajectory.v1/event"
-      ? (event.payload as { kind?: unknown }).kind
-      : null;
+    const eventKind =
+      event.type === "agentic.trajectory.v1/event"
+        ? (event.payload as { kind?: unknown }).kind
+        : null;
     const now = Date.now();
     const createdAt =
       typeof deliveryStartedAt === "number" &&
@@ -780,7 +788,7 @@ export class ChannelDeliveryProjection {
       version: 1,
       relationships: this.sql
         .exec(
-          `SELECT participant_id, metadata_json, application_config_json
+          `SELECT participant_id, metadata_json, method_offers_json, application_config_json
              FROM channel_relationships
             WHERE active = 1
             ORDER BY participant_id`,
@@ -792,6 +800,7 @@ export class ChannelDeliveryProjection {
             string,
             unknown
           >,
+          methodOffers: JSON.parse(String(row["method_offers_json"])),
           applicationConfig:
             row["application_config_json"] === null
               ? null

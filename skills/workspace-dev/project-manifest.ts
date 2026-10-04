@@ -10,6 +10,8 @@ import {
   type ModuleImportSyntax,
 } from "@vibestudio/module-imports";
 import { parse as parseSvelte } from "svelte/compiler";
+import { workspaceTestSuiteDeclarationSchema } from "@vibestudio/service-schemas/build";
+import type { WorkspaceTestSuiteDeclaration } from "@vibestudio/shared/types";
 import { validateUnitIconDeclaration } from "@vibestudio/shared/unitManifest";
 
 export const PROJECT_TYPES = [
@@ -88,6 +90,8 @@ interface BuildProjectManifestFields {
   exports?: Record<string, string>;
   exposeModules?: string[];
   durableClasses?: string[];
+  /** Suites authored with the source; project kind does not invent test files or a backend. */
+  tests?: WorkspaceTestSuiteDeclaration[];
   website?: {
     entry: string;
     title?: string;
@@ -147,12 +151,13 @@ export function buildProjectManifest(
   validateUnitIconDeclaration(input.icon);
   const executable =
     input.projectType === "panel" || input.projectType === "worker";
-  const testRuntime =
-    input.projectType === "panel"
-      ? "browser"
-      : input.projectType === "worker"
-        ? "workerd"
-        : null;
+  const tests =
+    input.tests?.map((suite) =>
+      workspaceTestSuiteDeclarationSchema.parse(suite),
+    ) ?? [];
+  const workspaceTestRuntime = tests.some(
+    (suite) => suite.runtime !== "native",
+  );
   if (executable && !input.entry) {
     throw new Error(`${input.projectType} manifests require an explicit entry`);
   }
@@ -189,22 +194,24 @@ export function buildProjectManifest(
             },
           }
         : {}),
-      tests: [
-        {
-          name: "unit",
-          runtime: testRuntime,
-          include: ["**/*.test.ts", "**/*.test.tsx"],
-        },
-      ],
+      ...(tests.length ? { tests } : {}),
     };
+  } else if (tests.length) {
+    manifest["vibestudio"] = { tests };
   }
-  if (input.dependencies || testRuntime) {
+  if (
+    input.dependencies ||
+    workspaceTestRuntime ||
+    input.projectType === "panel"
+  ) {
     manifest["dependencies"] = canonicalRecord({
       ...(input.dependencies ?? {}),
-      ...(testRuntime === "browser"
+      ...(input.projectType === "panel"
         ? { "@workspace/runtime": "workspace:*" }
         : {}),
-      ...(testRuntime ? { "@workspace/test-runtime": "workspace:*" } : {}),
+      ...(workspaceTestRuntime
+        ? { "@workspace/test-runtime": "workspace:*" }
+        : {}),
     });
   }
   if (input.devDependencies)

@@ -21,9 +21,7 @@ export class FeedbackIngest {
   constructor(
     private readonly sql: SqlStorage,
     private readonly now: () => number = () => Date.now()
-  ) {
-    FeedbackIngest.createTables(sql);
-  }
+  ) {}
 
   static createTables(sql: SqlStorage): void {
     sql.exec(`

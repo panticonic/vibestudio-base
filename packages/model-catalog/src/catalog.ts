@@ -97,7 +97,7 @@ export type ModelAuthMode = "url-bound" | "loopback";
 /**
  * Serializable pi-ai `Model` literal — journaled with every request so replay
  * never depends on the installed registry (design §6.2). Secret-free: rides
- * catalog snapshots and the journal. Mirrors agent-loop's AgentModelSpec.
+ * catalog snapshots and the native request history.
  */
 export interface PiModelSpec {
   id: string;
@@ -116,7 +116,6 @@ export interface PiModelSpec {
   contextWindow: number;
   maxTokens: number;
   serviceTiers?: Array<"priority">;
-  streamIdleTimeoutMs?: number;
   thinkingLevelMap?: Record<string, unknown>;
   headers?: Record<string, string>;
   compat?: Record<string, unknown>;
@@ -140,9 +139,6 @@ export function piModelToSpec(model: PiModelInput): PiModelSpec {
     contextWindow: model.contextWindow,
     maxTokens: model.maxTokens,
     ...(serviceTiers.length > 0 ? { serviceTiers } : {}),
-    ...(model.streamIdleTimeoutMs !== undefined
-      ? { streamIdleTimeoutMs: model.streamIdleTimeoutMs }
-      : {}),
     ...(model.thinkingLevelMap
       ? { thinkingLevelMap: { ...model.thinkingLevelMap } }
       : {}),
@@ -245,4 +241,30 @@ export interface ModelSettingsSnapshot {
   invalidDefaultModel?: string;
   /** Full default agent config (model + behavior) applied to new agents. */
   defaultAgentConfig: DefaultAgentConfig;
+}
+
+/** Newer numeric model versions first; names break ties within a version. */
+export function compareModelVersions(
+  left: Pick<ModelCatalogEntry, "name">,
+  right: Pick<ModelCatalogEntry, "name">,
+): number {
+  const leftVersion =
+    left.name
+      .match(/\d+(?:\.\d+)*/)?.[0]
+      .split(".")
+      .map(Number) ?? [];
+  const rightVersion =
+    right.name
+      .match(/\d+(?:\.\d+)*/)?.[0]
+      .split(".")
+      .map(Number) ?? [];
+  for (
+    let index = 0;
+    index < Math.max(leftVersion.length, rightVersion.length);
+    index++
+  ) {
+    const difference = (rightVersion[index] ?? 0) - (leftVersion[index] ?? 0);
+    if (difference) return difference;
+  }
+  return left.name.localeCompare(right.name, undefined, { numeric: true });
 }

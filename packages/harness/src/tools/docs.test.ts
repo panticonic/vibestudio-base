@@ -1,19 +1,34 @@
+import { executeTool } from "../testing/native-tool.js";
 import { describe, expect, it } from "vitest";
 import { parseUnitAuthorityManifest } from "@vibestudio/shared/authorityManifest";
-import { createDocsSearchTool, renderEntry, type CatalogEntry } from "./docs.js";
+import { portableExports } from "@vibestudio/service-schemas/runtime/runtimeSurface.portable";
+import {
+  createDocsSearchTool,
+  renderEntry,
+  type CatalogEntry,
+} from "./docs.js";
 
 describe("docs_search", () => {
   it("caps oversized result requests instead of turning discovery into a tool error", async () => {
     const calls: Array<{ method: string; args: unknown[] }> = [];
-    const tool = createDocsSearchTool(async <T>(method: string, args: unknown[]) => {
-      calls.push({ method, args });
-      return [] as T;
-    });
+    const tool = createDocsSearchTool(
+      async <T>(method: string, args: unknown[]) => {
+        calls.push({ method, args });
+        return [] as T;
+      },
+    );
 
-    await tool.execute("call-1", { query: "runtime", limit: 200 });
+    await executeTool(
+      tool,
+      { query: "runtime", limit: 200 },
+      { callId: "call-1" },
+    );
 
     expect(calls).toEqual([
-      { method: "docs.search", args: ["runtime", { surface: undefined, limit: 100 }] },
+      {
+        method: "docs.search",
+        args: ["runtime", { surface: undefined, limit: 100 }],
+      },
     ]);
   });
 
@@ -23,17 +38,50 @@ describe("docs_search", () => {
       async <T>(_method: string, _args: unknown[], signal?: AbortSignal) => {
         observed.push(signal);
         return [] as T;
-      }
+      },
     );
     const controller = new AbortController();
 
-    await tool.execute("call-signal", { query: "runtime" }, controller.signal);
+    await executeTool(
+      tool,
+      { query: "runtime" },
+      { callId: "call-signal", signal: controller.signal },
+    );
 
     expect(observed).toEqual([controller.signal]);
   });
 });
 
 describe("renderEntry (readable docs_open text)", () => {
+  it("renders canonical Git positional overloads as separate callable signatures", () => {
+    const method = portableExports["git"]!.methodCatalog!["upstreamStatus"]!;
+    const text = renderEntry({
+      id: "runtime:workerRuntime.git.upstreamStatus",
+      surface: "runtime",
+      qualifiedName: "git.upstreamStatus",
+      title: "Git",
+      ...method,
+    });
+    expect(text).toContain("git.upstreamStatus() →");
+    expect(text).toContain("git.upstreamStatus(string[]) →");
+    expect(text).toContain("git.upstreamStatus(string[], {");
+    expect(text).toContain("One or more workspace-relative repos");
+    expect(text).not.toContain("git.upstreamStatus([] | ");
+  });
+  it("reports a declared capability and directs argument-dependent resource discovery to preflight", () => {
+    const text = renderEntry({
+      id: "service:permissions.list",
+      surface: "service",
+      qualifiedName: "permissions.list",
+      title: "Permissions",
+      access: { capability: "permissions.read", sensitivity: "read" },
+      argsSchema: { type: "array", items: [] },
+    });
+    expect(text).toContain("Declared capability: permissions.read");
+    expect(text).toContain('service: "permissions", method: "list"');
+    expect(text).toContain("resource keys can depend on arguments");
+    expect(text).not.toContain("Declared capability: service:permissions.list");
+  });
   it("renders a readable signature instead of a raw JSON-schema dump", () => {
     const entry: CatalogEntry = {
       id: "service:blobstore.getText",
@@ -53,13 +101,32 @@ describe("renderEntry (readable docs_open text)", () => {
     };
     const text = renderEntry(entry);
 
-    expect(text).toContain("blobstore.getText(string /^[0-9a-f]{64}$/) → string | null");
+    expect(text).toContain(
+      "blobstore.getText(string /^[0-9a-f]{64}$/) → string | null",
+    );
     expect(text).toContain("Full UTF-8 text of a blob");
     expect(text).toContain("Sensitivity: read");
     expect(text).toContain('blobstore.getText("e3b0c4")'); // readable example call
     // the raw JSON-schema dump is gone
     expect(text).not.toContain("Args schema:");
     expect(text).not.toContain('"type": "array"');
+  });
+
+  it("renders nested numeric validation bounds from the reviewed workspace contract", () => {
+    const text = renderEntry({
+      id: "workspace:missions.overview", surface: "workspace",
+      qualifiedName: "missions.overview", title: "missions.overview",
+      argumentNames: ["options"], argsSchema: { type: "array", minItems: 1,
+        items: [{ type: "object", properties: {
+          limit: { type: "integer", minimum: 1, maximum: 50 },
+          fraction: { type: "number", exclusiveMinimum: 0, exclusiveMaximum: 1 },
+          step: { type: "number", minimum: 0, exclusiveMinimum: true, multipleOf: 2 },
+        } }],
+      },
+    });
+    expect(text).toContain("limit?: integer (>= 1, <= 50)");
+    expect(text).toContain("fraction?: number (> 0, < 1)");
+    expect(text).toContain("step?: number (> 0, multiple of 2)");
   });
 
   it("names parameters in the signature, breakdown, and rpc example when the catalog carries argumentNames", () => {
@@ -82,9 +149,13 @@ describe("renderEntry (readable docs_open text)", () => {
 
     const text = renderEntry(entry);
 
-    expect(text).toContain("docs.search(query: string, options?: { limit?: integer })");
+    expect(text).toContain(
+      "docs.search(query: string, options?: { limit?: integer })",
+    );
     expect(text).toContain("query: string — Keyword query.");
-    expect(text).toContain('await rpc.call("main", "docs.search", ["query", { ... }])');
+    expect(text).toContain(
+      'await rpc.call("main", "docs.search", ["query", { ... }])',
+    );
     expect(text).not.toContain("arg0");
   });
 
@@ -130,8 +201,11 @@ describe("renderEntry (readable docs_open text)", () => {
 
     expect(text).toContain('await rpc.call("main", "workers.listSources", [])');
     expect(text).toContain("services.<name>");
+    expect(text).toContain("not necessarily an importable named export");
     expect(text).toContain("ergonomic runtime client");
-    expect(text).toContain("authority, and session-admission checks still apply");
+    expect(text).toContain(
+      "authority, and session-admission checks still apply",
+    );
     expect(text).not.toContain("always reachable");
   });
 
@@ -187,7 +261,11 @@ describe("renderEntry (readable docs_open text)", () => {
         protocols: ["example.notes.v1"],
         capability: "workspace-service:notes",
         source: "workers/notes",
-        target: { kind: "durable-object", className: "NotesDO", defaultObjectKey: "notes" },
+        target: {
+          kind: "durable-object",
+          className: "NotesDO",
+          defaultObjectKey: "notes",
+        },
       },
     };
 
@@ -198,7 +276,9 @@ describe("renderEntry (readable docs_open text)", () => {
     expect(text).toContain('RPC tier "open" is a separate receiver policy');
     expect(text).toContain('workers.resolveService("example.notes.v1")');
     expect(text).toContain('import { workers, rpc } from "@workspace/runtime"');
-    expect(text).toContain('runtime.workers.resolveService("example.notes.v1")');
+    expect(text).toContain(
+      'runtime.workers.resolveService("example.notes.v1")',
+    );
     expect(text.match(/service\.kind !== "durable-object"/gu)).toHaveLength(3);
     expect(text).toContain("Resolve and call it directly through the runtime");
   });
@@ -228,8 +308,17 @@ describe("renderEntry (readable docs_open text)", () => {
     expect(snippet).toBeDefined();
     const authority = JSON.parse(snippet!).vibestudio.authority;
     expect(parseUnitAuthorityManifest(authority)).toMatchObject({
-      requests: [{ capability: "workspace-service:gad.workspace", resource: { kind: "prefix", prefix: "" }, tier: "gated", evidence: "bounded-dynamic" }],
-      serviceRequests: [{ protocol: "vibestudio.gad.workspace.v1", availability: "required" }],
+      requests: [
+        {
+          capability: "workspace-service:gad.workspace",
+          resource: { kind: "prefix", prefix: "" },
+          tier: "gated",
+          evidence: "bounded-dynamic",
+        },
+      ],
+      serviceRequests: [
+        { protocol: "vibestudio.gad.workspace.v1", availability: "required" },
+      ],
     });
     expect(text).toContain('rpc.call(service.targetId, "exactMethodName"');
     expect(text).toContain("Installed panel code uses its own code identity");
@@ -261,32 +350,47 @@ describe("renderEntry (readable docs_open text)", () => {
     const text = renderEntry(entry);
 
     expect(text).toContain("const objectKey = /* exact provider object key");
-    expect(text).toContain('workers.resolveService("vibestudio.channel.v1", objectKey)');
-    expect(text).not.toContain('workers.resolveService("vibestudio.channel.v1");');
+    expect(text).toContain(
+      'workers.resolveService("vibestudio.channel.v1", objectKey)',
+    );
+    expect(text).not.toContain(
+      'workers.resolveService("vibestudio.channel.v1");',
+    );
   });
 
-  it.each([false, true])("keeps named-consumer binding identity explicit on service and method docs (%s)", (method) => {
-    const text = renderEntry({
-      id: method ? "workspace:notes.get" : "workspace:notes",
-      surface: "workspace",
-      qualifiedName: method ? "notes.get" : "notes",
-      title: "Notes",
-      ...(method ? { parent: "workspace:notes", signature: "get(): string[]" } : { members: ["get"] }),
-      access: {
-        protocols: ["example.notes.v1"],
-        declarationCapability: "workspace-service:notes",
-        binding: "declared-for",
-        declaredFor: ["panels/notes"],
-        source: "workers/notes",
-        target: { kind: "durable-object", className: "NotesDO", defaultObjectKey: "notes" },
-      },
-    });
-    expect(text).toContain('Binding: declared-for ["panels/notes"]');
-    expect(text).toContain("does not adopt a consumer's identity");
-    expect(text).toContain("Verify the minimal call from a named consumer");
-    expect(text).toContain("Other callers still require consent");
-    expect(text).not.toContain("Eval-side service resolution");
-    expect(text).not.toContain("Installed-unit authority:");
-    expect(text).toContain('runtime.workers.resolveService("example.notes.v1")');
-  });
+  it.each([false, true])(
+    "keeps named-consumer binding identity explicit on service and method docs (%s)",
+    (method) => {
+      const text = renderEntry({
+        id: method ? "workspace:notes.get" : "workspace:notes",
+        surface: "workspace",
+        qualifiedName: method ? "notes.get" : "notes",
+        title: "Notes",
+        ...(method
+          ? { parent: "workspace:notes", signature: "get(): string[]" }
+          : { members: ["get"] }),
+        access: {
+          protocols: ["example.notes.v1"],
+          declarationCapability: "workspace-service:notes",
+          binding: "declared-for",
+          declaredFor: ["panels/notes"],
+          source: "workers/notes",
+          target: {
+            kind: "durable-object",
+            className: "NotesDO",
+            defaultObjectKey: "notes",
+          },
+        },
+      });
+      expect(text).toContain('Binding: declared-for ["panels/notes"]');
+      expect(text).toContain("does not adopt a consumer's identity");
+      expect(text).toContain("Verify the minimal call from a named consumer");
+      expect(text).toContain("Other callers still require consent");
+      expect(text).not.toContain("Eval-side service resolution");
+      expect(text).not.toContain("Installed-unit authority:");
+      expect(text).toContain(
+        'runtime.workers.resolveService("example.notes.v1")',
+      );
+    },
+  );
 });

@@ -1,3 +1,4 @@
+import { executeTool } from "../../testing/native-tool.js";
 import { describe, it, expect } from "vitest";
 import { createLsTool } from "../ls.js";
 import { StubFs } from "./stub-fs.js";
@@ -20,7 +21,7 @@ describe("createLsTool", () => {
       },
     });
     const tool = createLsTool(CWD, fs);
-    const result = await tool.execute("call-1", {});
+    const result = await executeTool(tool, {}, { callId: "call-1" });
     const text = (result.content[0] as { text: string }).text;
     const lines = text.split("\n");
     expect(lines[0]).toBe("a.ts");
@@ -36,25 +37,49 @@ describe("createLsTool", () => {
     const fs = new StubFs();
     await fs.mkdir("/work/ctx/empty", { recursive: true });
     const tool = createLsTool(CWD, fs);
-    const result = await tool.execute("call-1", { path: "empty" });
-    expect((result.content[0] as { text: string }).text).toBe("(empty directory)");
+    const result = await executeTool(
+      tool,
+      { path: "empty" },
+      { callId: "call-1" },
+    );
+    expect((result.content[0] as { text: string }).text).toBe(
+      "(empty directory)",
+    );
     expect(result.details).toEqual({ path: `${CWD}/empty`, entries: [] });
   });
 
   it("returns a recoverable diagnostic when path doesn't exist", async () => {
     const fs = new StubFs();
     const tool = createLsTool(CWD, fs);
-    const result = await tool.execute("call-1", { path: "nope" });
-    expect((result.content[0] as { text: string }).text).toMatch(/recoverable lookup miss/i);
-    expect(result.details).toEqual({ diagnostic: "not-found", path: `${CWD}/nope` });
+    const result = await executeTool(
+      tool,
+      { path: "nope" },
+      { callId: "call-1" },
+    );
+    expect((result.content[0] as { text: string }).text).toMatch(
+      /recoverable lookup miss/i,
+    );
+    expect(result.details).toEqual({
+      diagnostic: "not-found",
+      path: `${CWD}/nope`,
+    });
   });
 
   it("returns a recoverable diagnostic when path is a file, not a directory", async () => {
     const fs = new StubFs({ files: { [`${CWD}/a.ts`]: "x" } });
     const tool = createLsTool(CWD, fs);
-    const result = await tool.execute("call-1", { path: "a.ts" });
-    expect((result.content[0] as { text: string }).text).toMatch(/use read for a file/i);
-    expect(result.details).toEqual({ diagnostic: "not-directory", path: `${CWD}/a.ts` });
+    const result = await executeTool(
+      tool,
+      { path: "a.ts" },
+      { callId: "call-1" },
+    );
+    expect((result.content[0] as { text: string }).text).toMatch(
+      /use read for a file/i,
+    );
+    expect(result.details).toEqual({
+      diagnostic: "not-directory",
+      path: `${CWD}/a.ts`,
+    });
   });
 
   it("preserves a structured filesystem failure instead of flattening it to prose", async () => {
@@ -67,7 +92,9 @@ describe("createLsTool", () => {
       });
     };
     const tool = createLsTool(CWD, fs);
-    await expect(tool.execute("call-1", { path: "blocked" })).rejects.toMatchObject({
+    await expect(
+      executeTool(tool, { path: "blocked" }, { callId: "call-1" }),
+    ).rejects.toMatchObject({
       failure: {
         code: "IntegrityFailure",
         kind: "integrity",
@@ -76,5 +103,4 @@ describe("createLsTool", () => {
       },
     });
   });
-
 });

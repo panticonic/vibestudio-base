@@ -458,9 +458,27 @@ export function useChatCore({
     loadingMore: channelLoadingMore,
     hasOpenTurn,
     loadEarlierMessages: channelLoadEarlier,
-    backfillAfterLocalPublish,
+    backfillAfterLocalPublish: replayAfterLocalPublish,
     replaySettled,
   } = useChannelMessages(client);
+
+  // The publication receipt is the mutation outcome. Replay is subsequent
+  // projection work: its failure must be visible without turning an accepted
+  // change into a failed send or returning it to a queue for republication.
+  const backfillAfterLocalPublish = useCallback(
+    async (pubsubId: number | undefined) => {
+      try {
+        await replayAfterLocalPublish(pubsubId);
+      } catch (cause) {
+        setConnectionError({
+          message: "The server accepted the change, but the transcript could not be refreshed.",
+          at: Date.now(),
+          cause,
+        });
+      }
+    },
+    [replayAfterLocalPublish]
+  );
 
   // --- Disconnect system messages (injected from roster changes) ---
   const [disconnectMessages, setDisconnectMessages] = useState<ChatMessage[]>([]);
@@ -691,12 +709,17 @@ export function useChatCore({
   const sendMessage = useCallback(
     async (
       attachments?: AttachmentInput[],
-      options?: { mentions?: string[]; replyTo?: string; metadata?: Record<string, unknown> }
+      options?: {
+        mentions?: string[];
+        replyTo?: string;
+        metadata?: Record<string, unknown>;
+      }
     ): Promise<void> => {
       const currentInput = inputRef.current;
+      const sendingClient = clientRef.current;
       const hasText = currentInput.trim().length > 0;
       const hasAttachments = attachments && attachments.length > 0;
-      if ((!hasText && !hasAttachments) || !clientRef.current) return;
+      if ((!hasText && !hasAttachments) || !sendingClient) return;
       const text = currentInput.trim();
       const previousReplyTo = options?.replyTo ?? null;
       const isAfterTurn = options?.metadata?.["deliverAfterTurn"] === true;
@@ -714,40 +737,15 @@ export function useChatCore({
         settledGhost = true;
         setPendingSendCount((n) => Math.max(0, n - 1));
       };
+      const hadPriorTranscriptMessages = hasTranscriptMessagesRef.current;
+      let receipt: { messageId: string; pubsubId: number | undefined };
       try {
-        const hadPriorTranscriptMessages = hasTranscriptMessagesRef.current;
-        const { messageId, pubsubId } = await clientRef.current.send(text || "", {
+        receipt = await sendingClient.send(text || "", {
           attachments: hasAttachments ? attachments : undefined,
           mentions: options?.mentions && options.mentions.length > 0 ? options.mentions : undefined,
           replyTo: options?.replyTo,
           metadata: options?.metadata,
         });
-        // Tag after-turn sends so the outbox can render the "after this turn" lane.
-        if (messageId) {
-          if (isAfterTurn) {
-            setAfterTurnMessageIds((prev) => {
-              const next = new Set(prev);
-              next.add(messageId);
-              return next;
-            });
-          }
-        }
-        settleGhost();
-        await backfillAfterLocalPublish(pubsubId);
-        const defaultTitle =
-          !defaultTitleSetRef.current && !hadPriorTranscriptMessages
-            ? titleFromFirstUserMessage(text)
-            : null;
-        if (defaultTitle) {
-          defaultTitleSetRef.current = true;
-          document.title = defaultTitle;
-          setChannelTitle(defaultTitle);
-          void clientRef.current
-            .updateChannelConfig({ title: defaultTitle, titleExplicit: false })
-            .catch((err) => {
-              console.warn("[useChatCore] Failed to persist default channel title:", err);
-            });
-        }
       } catch (err) {
         settleGhost();
         // Never clobber a newer draft typed while this request was in flight.
@@ -759,6 +757,33 @@ export function useChatCore({
         if (!currentDraft.trim()) setReplyTo(previousReplyTo);
         console.error("[Chat] Send failed:", err);
         throw err;
+      }
+      const { messageId, pubsubId } = receipt;
+      // Tag after-turn sends so the outbox can render the "after this turn" lane.
+      if (messageId) {
+        if (isAfterTurn) {
+          setAfterTurnMessageIds((prev) => {
+            const next = new Set(prev);
+            next.add(messageId);
+            return next;
+          });
+        }
+      }
+      settleGhost();
+      await backfillAfterLocalPublish(pubsubId);
+      const defaultTitle =
+        !defaultTitleSetRef.current && !hadPriorTranscriptMessages
+          ? titleFromFirstUserMessage(text)
+          : null;
+      if (defaultTitle) {
+        defaultTitleSetRef.current = true;
+        document.title = defaultTitle;
+        setChannelTitle(defaultTitle);
+        void sendingClient
+          .updateChannelConfig({ title: defaultTitle, titleExplicit: false })
+          .catch((err) => {
+            console.warn("[useChatCore] Failed to persist default channel title:", err);
+          });
       }
     },
     [backfillAfterLocalPublish, stopTyping]

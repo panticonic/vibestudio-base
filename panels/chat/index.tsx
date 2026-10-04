@@ -16,7 +16,7 @@ import {
   createDurableObjectServiceClient,
   openPanel,
   notifications,
-  extensions
+  extensions,
 } from "@workspace/runtime";
 import { EventsClient } from "@vibestudio/service-schemas/clients/eventsClient";
 import { SHELL_APPROVAL_PENDING_CHANGED_EVENT } from "@vibestudio/shell-core/approvalState";
@@ -24,7 +24,15 @@ import { recoveryCoordinator } from "@workspace/runtime/internal/diagnostics";
 import { useStateArgs } from "@workspace/react/hooks";
 import { getVibestudioHostPlatform } from "@workspace/react/responsive";
 import { usePanelTheme, usePanelThemeConfig } from "@workspace/react/theme";
-import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  lazy,
+  Suspense,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { Button, Callout, Flex, Spinner, Text, Theme } from "@radix-ui/themes";
 import { ErrorBoundary } from "@workspace/agentic-chat/error-boundary";
 import { FULL_AGENTIC_CHAT_FEATURES } from "@workspace/agentic-chat/features";
@@ -32,7 +40,7 @@ import type {
   ConnectionConfig,
   AgenticChatActions,
   ForkNavHandlers,
-  NewConversationOptions
+  NewConversationOptions,
 } from "@workspace/agentic-chat/types";
 import "@workspace/ui/foundation.css";
 import "@workspace/ui/themes/vibestudio.css";
@@ -42,11 +50,11 @@ import type {
   AvailableAgent,
   ModelCatalog,
   AgentSubscriptionConfig,
-  ModelSetupResult
+  ModelSetupResult,
 } from "@workspace/agentic-core";
 import {
   ProvisionalAgentLifecycle,
-  type ProvisionalAgentIntent
+  type ProvisionalAgentIntent,
 } from "@workspace/agentic-core/provisional-agent-lifecycle";
 import {
   DEFAULT_AGENT_MODEL_REF,
@@ -55,31 +63,41 @@ import {
   MODEL_SETTINGS_SERVICE_PROTOCOL,
   isModelUsable,
   type DefaultAgentConfig,
-  type ModelSettingsSnapshot
+  type ModelSettingsSnapshot,
 } from "@workspace/model-catalog/catalog";
-import { isRpcAborted } from "@vibestudio/rpc";
+import {
+  ownModelSettingsRequest,
+  ownModelSettingsConnection,
+} from "./modelSettingsRequest.js";
 import { isReviewPending } from "@vibestudio/shared/authority/reviewPending";
-import type { LocalModelsCapabilities, ServerKind } from "@workspace/model-catalog/localModels";
+import type {
+  LocalModelsCapabilities,
+  ServerKind,
+} from "@workspace/model-catalog/localModels";
 import type { DurableObjectServiceClient } from "@workspace/runtime";
 import {
   buildAgentSubscriptionConfig,
   requireChatContextId,
-  sanitizeHandle
+  sanitizeHandle,
 } from "./bootstrap.js";
-import { createAndSubscribeAgent, persistInstalledAgent, waitForPanelReview } from "./agentLifecycle.js";
+import {
+  createAndSubscribeAgent,
+  persistInstalledAgent,
+  waitForPanelReview,
+} from "./agentLifecycle.js";
 import { useAgentRecovery } from "./useAgentRecovery.js";
 import {
   ConversationHeader,
   conversationStyle,
   renderConversationEmptyState,
-  type ConversationPresentation
+  type ConversationPresentation,
 } from "./conversationPresentation.js";
 import "./conversationPresentation.css";
 
 const AgenticChat = lazy(() =>
   import("@workspace/agentic-chat/chat").then((module) => ({
-    default: module.AgenticChat
-  }))
+    default: module.AgenticChat,
+  })),
 );
 
 /** Default DO worker source and class for the AI chat agent */
@@ -87,7 +105,6 @@ const DEFAULT_WORKER_SOURCE = "workers/agent-worker";
 const DEFAULT_CLASS_NAME = "AiChatWorker";
 const DEFAULT_HANDLE = "ai-chat";
 const CHANNEL_SERVICE_PROTOCOL = "vibestudio.channel.v1";
-const MODEL_SETTINGS_DISCOVERY_TIMEOUT_MS = 15_000;
 
 /** Response shape from workers.listSources */
 interface WorkerSourceEntry {
@@ -128,16 +145,19 @@ function parseDoTargetId(participantId: string): ChannelDORef | null {
   return {
     source,
     className: rest.slice(0, nextColon),
-    objectKey: rest.slice(nextColon + 1)
+    objectKey: rest.slice(nextColon + 1),
   };
 }
 
-async function getChannelDOParticipants(channelId: string, signal: AbortSignal): Promise<ChannelDORef[]> {
+async function getChannelDOParticipants(
+  channelId: string,
+  signal: AbortSignal,
+): Promise<ChannelDORef[]> {
   const channelService = await rpc.call<{ kind: string; targetId?: string }>(
     "main",
     "workers.resolveService",
     [CHANNEL_SERVICE_PROTOCOL, channelId],
-    { signal }
+    { signal },
   );
   if (channelService.kind !== "durable-object" || !channelService.targetId) {
     throw new Error("Channel service must resolve to a Durable Object service");
@@ -146,7 +166,7 @@ async function getChannelDOParticipants(channelId: string, signal: AbortSignal):
     channelService.targetId,
     "getParticipants",
     [],
-    { signal }
+    { signal },
   );
   return participants
     .map((p) => parseDoTargetId(p.participantId))
@@ -210,13 +230,13 @@ async function unsubscribeDOFromChannel(
   source: string,
   className: string,
   objectKey: string,
-  channelId: string
+  channelId: string,
 ): Promise<void> {
   await unsubscribeAgentFromChannel(rpc, {
     source,
     className,
     key: objectKey,
-    channelId
+    channelId,
   });
 }
 
@@ -226,14 +246,25 @@ export default function ChatPanel() {
   const stateArgs = useStateArgs<ChatStateArgs>();
   const resolvedContextId = requireChatContextId(contextId);
   const initialPromptCaptured = useRef(stateArgs.initialPrompt);
-  const provisionalAgentLifecycleRef = useRef<ProvisionalAgentLifecycle | null>(null);
+  const provisionalAgentLifecycleRef = useRef<ProvisionalAgentLifecycle | null>(
+    null,
+  );
   const provisionalAgentIntentRevisionRef = useRef(0);
-  const modelSettingsServiceRef = useRef<DurableObjectServiceClient | null>(null);
+  const modelSettingsServiceRef = useRef<DurableObjectServiceClient | null>(
+    null,
+  );
   const modelSettingsSnapshotRef = useRef<ModelSettingsSnapshot | null>(null);
-  const modelSettingsRequestRef = useRef<Promise<ModelSettingsSnapshot> | null>(null);
+  const modelSettingsRequestRef = useRef<ReturnType<
+    typeof ownModelSettingsRequest<ModelSettingsSnapshot>
+  > | null>(null);
+  const [modelSettingsError, setModelSettingsError] = useState<string | null>(
+    null,
+  );
   const preparedAgentRuntimeRefs = useRef(new Set<string>());
   const [modelCatalog, setModelCatalog] = useState<ModelCatalog | null>(null);
-  const [workspaceDefaultModelRef, setWorkspaceDefaultModelRef] = useState<string | null>(null);
+  const [workspaceDefaultModelRef, setWorkspaceDefaultModelRef] = useState<
+    string | null
+  >(null);
   const [workspaceDefaultAgentConfig, setWorkspaceDefaultAgentConfig] =
     useState<DefaultAgentConfig | null>(null);
   const catalogRef = useRef<ModelCatalog | null>(null);
@@ -247,7 +278,7 @@ export default function ChatPanel() {
     provisionalAgentLifecycleRef.current ??= new ProvisionalAgentLifecycle(
       rpc,
       undefined,
-      waitForPanelReview
+      waitForPanelReview,
     );
     return provisionalAgentLifecycleRef.current;
   }, []);
@@ -261,12 +292,12 @@ export default function ChatPanel() {
         console.warn("[ChatPanel] Failed to dispose provisional agent:", error);
       });
     },
-    []
+    [],
   );
 
   const getModelSettingsService = useCallback(() => {
     modelSettingsServiceRef.current ??= createDurableObjectServiceClient(
-      MODEL_SETTINGS_SERVICE_PROTOCOL
+      MODEL_SETTINGS_SERVICE_PROTOCOL,
     );
     return modelSettingsServiceRef.current;
   }, []);
@@ -278,7 +309,7 @@ export default function ChatPanel() {
     setWorkspaceDefaultModelRef(settings.defaultModel);
     setWorkspaceDefaultAgentConfig(settings.defaultAgentConfig);
     const defaultEntry = settings.catalog.models.find(
-      (model) => model.ref === settings.defaultModel
+      (model) => model.ref === settings.defaultModel,
     );
     const defaultIsUsable = isModelUsable(defaultEntry);
     // An unusable fallback needs setup. An installed local fallback is still an
@@ -286,68 +317,73 @@ export default function ChatPanel() {
     // configured cloud provider. The inline first-agent preflight owns both.
     setFirstAgentModelPreflight(
       !defaultIsUsable ||
-        (settings.defaultModelSource === "fallback" && defaultEntry?.provider === LOCAL_PROVIDER_ID)
+        (settings.defaultModelSource === "fallback" &&
+          defaultEntry?.provider === LOCAL_PROVIDER_ID)
         ? "selection-required"
-        : "ready"
+        : "ready",
     );
     console.info("[ChatPanel] model settings ready", {
       defaultModel: settings.defaultModel,
       defaultModelSource: settings.defaultModelSource,
-      defaultAvailability: defaultEntry?.availability.state ?? "missing"
+      defaultAvailability: defaultEntry?.availability.state ?? "missing",
     });
   }, []);
 
   const loadModelSettings = useCallback(
     async (refresh = false): Promise<ModelSettingsSnapshot> => {
-      if (!refresh && modelSettingsSnapshotRef.current) {
+      if (modelSettingsRequestRef.current)
+        return modelSettingsRequestRef.current.promise;
+      if (!refresh && modelSettingsSnapshotRef.current)
         return modelSettingsSnapshotRef.current;
-      }
-      if (modelSettingsRequestRef.current) {
-        return modelSettingsRequestRef.current;
-      }
-
-      const controller = new AbortController();
-      const timeout = window.setTimeout(() => {
-        controller.abort(
-          new Error(
-            `Model settings did not become ready within ${MODEL_SETTINGS_DISCOVERY_TIMEOUT_MS}ms`
-          )
-        );
-      }, MODEL_SETTINGS_DISCOVERY_TIMEOUT_MS);
-      const request: Promise<ModelSettingsSnapshot> = getModelSettingsService()
-        .callWithOptions<ModelSettingsSnapshot>("getSettings", [], {
-          signal: controller.signal,
-          timeoutMs: MODEL_SETTINGS_DISCOVERY_TIMEOUT_MS
-        })
-        .then((settings) => {
-          applyModelSettings(settings);
-          return settings;
-        })
-        .finally(() => {
-          window.clearTimeout(timeout);
-          if (modelSettingsRequestRef.current === request) {
-            modelSettingsRequestRef.current = null;
-          }
-        });
+      modelSettingsSnapshotRef.current = null;
+      setFirstAgentModelPreflight("checking");
+      setModelSettingsError(null);
+      const request = ownModelSettingsRequest(async (signal) => {
+        const settings =
+          await getModelSettingsService().callWithOptions<ModelSettingsSnapshot>(
+            "getSettings",
+            [],
+            { signal },
+          );
+        signal.throwIfAborted();
+        applyModelSettings(settings);
+        return settings;
+      });
       modelSettingsRequestRef.current = request;
-      return request;
+      // Every caller shares the exact existing flight, including its original failure.
+      request.promise = request.promise.finally(() => {
+        if (modelSettingsRequestRef.current === request)
+          modelSettingsRequestRef.current = null;
+      });
+      return request.promise;
     },
-    [applyModelSettings, getModelSettingsService]
+    [applyModelSettings, getModelSettingsService],
   );
 
-  const resolveWorkspaceDefaultAgentConfig = useCallback(async (): Promise<DefaultAgentConfig> => {
-    try {
-      const settings = await loadModelSettings();
-      return (
-        settings.defaultAgentConfig ?? {
-          model: settings.defaultModel || DEFAULT_AGENT_MODEL_REF
-        }
+  const resolveWorkspaceDefaultAgentConfig =
+    useCallback(async (): Promise<DefaultAgentConfig> => {
+      return (await loadModelSettings()).defaultAgentConfig;
+    }, [loadModelSettings]);
+
+  useEffect(() => {
+    const close = ownModelSettingsConnection(rpc, {
+      current: () => modelSettingsRequestRef.current,
+      invalidate: () => {
+        modelSettingsSnapshotRef.current = null;
+        setFirstAgentModelPreflight("checking");
+      },
+      reconnect: () => setModelSettingsRetrySignal((value) => value + 1),
+      failure: (error) =>
+        setModelSettingsError(
+          error instanceof Error ? error.message : String(error),
+        ),
+    });
+    return () => {
+      void close().catch((error) =>
+        console.error("[ChatPanel] Model discovery closure failed:", error),
       );
-    } catch (err) {
-      console.warn("[ChatPanel] Failed to load workspace model default:", err);
-      return { model: DEFAULT_AGENT_MODEL_REF };
-    }
-  }, [loadModelSettings]);
+    };
+  }, []);
 
   // Auto-bootstrap: when no channelName, mint one. The chat surface may then
   // activate an uncommitted first-agent lease while the user composes; only the
@@ -355,7 +391,8 @@ export default function ChatPanel() {
   const [bootstrapChannel, setBootstrapChannel] = useState<string | null>(null);
   const [connectionRetrySignal, setConnectionRetrySignal] = useState(0);
   const [modelSettingsRetrySignal, setModelSettingsRetrySignal] = useState(0);
-  const [bootstrapPersistenceRetrySignal, setBootstrapPersistenceRetrySignal] = useState(0);
+  const [bootstrapPersistenceRetrySignal, setBootstrapPersistenceRetrySignal] =
+    useState(0);
   const approvalChangeNeedsConnectionRetryRef = useRef(false);
   const modelSettingsRecoveryRef = useRef(false);
   const approvalEvents = useMemo(() => new EventsClient(rpc), []);
@@ -386,7 +423,8 @@ export default function ChatPanel() {
     // creation review releases workspace-state. Generating a new channel on
     // every retry would split the live subscription from the durable panel
     // state; dropping the rejected promise would leave it provisional forever.
-    const channelName = (bootstrapChannelRef.current ??= `chat-${crypto.randomUUID().slice(0, 8)}`);
+    const channelName =
+      (bootstrapChannelRef.current ??= `chat-${crypto.randomUUID().slice(0, 8)}`);
     setBootstrapChannel(channelName);
     void panel.stateArgs.set({ channelName }).catch((error) => {
       if (disposed) return;
@@ -395,13 +433,14 @@ export default function ChatPanel() {
         // that mounted after the event or briefly lost its event subscription.
         retryTimer = window.setTimeout(() => {
           retryTimer = null;
-          if (!disposed) setBootstrapPersistenceRetrySignal((signal) => signal + 1);
+          if (!disposed)
+            setBootstrapPersistenceRetrySignal((signal) => signal + 1);
         }, 5_000);
         return;
       }
       console.warn(
         "[ChatPanel] Failed to persist the bootstrap channel:",
-        error instanceof Error ? error.message : String(error)
+        error instanceof Error ? error.message : String(error),
       );
     });
 
@@ -409,7 +448,11 @@ export default function ChatPanel() {
       disposed = true;
       if (retryTimer !== null) window.clearTimeout(retryTimer);
     };
-  }, [resolvedContextId, stateArgs.channelName, bootstrapPersistenceRetrySignal]);
+  }, [
+    resolvedContextId,
+    stateArgs.channelName,
+    bootstrapPersistenceRetrySignal,
+  ]);
 
   // Resolve this before constructing action callbacks that include the
   // channel in durable notification ids.
@@ -418,66 +461,71 @@ export default function ChatPanel() {
   // Reconcile persisted agent membership. The effect owns cancellation; an
   // updated channel/config starts a fresh recovery rather than inheriting a
   // cancelled attempt's "already checked" latch.
-  const recoverInstalledAgents = useCallback(async (signal: AbortSignal) => {
-    const channelName = stateArgs.channelName!;
-    const dos = await getChannelDOParticipants(channelName, signal);
-    signal.throwIfAborted();
-    const missingAgents = (stateArgs.installedAgents ?? []).filter((agent) =>
-      !dos.some((participant) =>
-        participant.source === agent.source &&
-        participant.className === agent.className &&
-        participant.objectKey === agent.key
-      )
-    );
-    if (missingAgents.length === 0) return;
-    const defaultAgentConfig = await resolveWorkspaceDefaultAgentConfig();
-    signal.throwIfAborted();
-    for (const agent of missingAgents) {
-      const { subscribeConfig } = buildAgentSubscriptionConfig({
-        handle: agent.handle,
-        workspaceDefaultAgentConfig: defaultAgentConfig,
-        globalConfig: stateArgs.agentConfig,
-        perAgentConfig: agent.config,
-        systemPrompt: stateArgs.systemPrompt,
-        systemPromptMode: stateArgs.systemPromptMode
-      });
-      await createAndSubscribeAgent({
-        source: agent.source,
-        className: agent.className,
-        key: agent.key,
-        channelId: channelName,
-        channelContextId: resolvedContextId,
-        config: subscribeConfig,
-        replay: true
-      });
+  const recoverInstalledAgents = useCallback(
+    async (signal: AbortSignal) => {
+      const channelName = stateArgs.channelName!;
+      const dos = await getChannelDOParticipants(channelName, signal);
       signal.throwIfAborted();
-    }
-  }, [
-    stateArgs.channelName,
-    stateArgs.installedAgents,
-    stateArgs.agentConfig,
-    stateArgs.systemPrompt,
-    stateArgs.systemPromptMode,
-    resolvedContextId,
-    resolveWorkspaceDefaultAgentConfig
-  ]);
+      const missingAgents = (stateArgs.installedAgents ?? []).filter(
+        (agent) =>
+          !dos.some(
+            (participant) =>
+              participant.source === agent.source &&
+              participant.className === agent.className &&
+              participant.objectKey === agent.key,
+          ),
+      );
+      if (missingAgents.length === 0) return;
+      const defaultAgentConfig = await resolveWorkspaceDefaultAgentConfig();
+      signal.throwIfAborted();
+      for (const agent of missingAgents) {
+        const { subscribeConfig } = buildAgentSubscriptionConfig({
+          handle: agent.handle,
+          workspaceDefaultAgentConfig: defaultAgentConfig,
+          globalConfig: stateArgs.agentConfig,
+          perAgentConfig: agent.config,
+          systemPrompt: stateArgs.systemPrompt,
+          systemPromptMode: stateArgs.systemPromptMode,
+        });
+        await createAndSubscribeAgent({
+          source: agent.source,
+          className: agent.className,
+          key: agent.key,
+          channelId: channelName,
+          channelContextId: resolvedContextId,
+          config: subscribeConfig,
+          replay: true,
+        });
+        signal.throwIfAborted();
+      }
+    },
+    [
+      stateArgs.channelName,
+      stateArgs.installedAgents,
+      stateArgs.agentConfig,
+      stateArgs.systemPrompt,
+      stateArgs.systemPromptMode,
+      resolvedContextId,
+      resolveWorkspaceDefaultAgentConfig,
+    ],
+  );
   const reportRecoveryFailure = useCallback((error: Error) => {
     console.warn("[ChatPanel] Agent subscription recovery failed:", error);
     void notifications.show({
       type: "error",
       title: "Couldn't reconnect the chat agent",
-      message: error.message
+      message: error.message,
     });
   }, []);
   const {
     status: rehydrationStatus,
     error: rehydrationError,
-    retry: retryAgentRecovery
+    retry: retryAgentRecovery,
   } = useAgentRecovery(
     stateArgs.channelName && (stateArgs.installedAgents?.length ?? 0) > 0
       ? recoverInstalledAgents
       : null,
-    reportRecoveryFailure
+    reportRecoveryFailure,
   );
 
   // Build ConnectionConfig from runtime
@@ -485,52 +533,67 @@ export default function ChatPanel() {
     () => ({
       clientId: panel.slotId,
       rpc,
-      recoveryCoordinator
+      recoveryCoordinator,
     }),
-    []
+    [],
   );
 
   const effectiveDefaultAgentConfig = useMemo<DefaultAgentConfig | null>(() => {
     const globalConfig = stateArgs.agentConfig ?? {};
-    const model = typeof globalConfig["model"] === "string" ? globalConfig["model"] : undefined;
+    const model =
+      typeof globalConfig["model"] === "string"
+        ? globalConfig["model"]
+        : undefined;
     const thinkingLevel =
       typeof globalConfig["thinkingLevel"] === "string"
         ? (globalConfig["thinkingLevel"] as DefaultAgentConfig["thinkingLevel"])
         : undefined;
     const fastMode =
-      typeof globalConfig["fastMode"] === "boolean" ? globalConfig["fastMode"] : undefined;
+      typeof globalConfig["fastMode"] === "boolean"
+        ? globalConfig["fastMode"]
+        : undefined;
     const approvalLevel =
       globalConfig["approvalLevel"] === 0 ||
       globalConfig["approvalLevel"] === 1 ||
       globalConfig["approvalLevel"] === 2
         ? globalConfig["approvalLevel"]
         : undefined;
-    if (!model && !thinkingLevel && fastMode === undefined && approvalLevel === undefined) {
+    if (
+      !model &&
+      !thinkingLevel &&
+      fastMode === undefined &&
+      approvalLevel === undefined
+    ) {
       return workspaceDefaultAgentConfig;
     }
     return {
       ...(workspaceDefaultAgentConfig ?? {}),
-      model: model ?? workspaceDefaultAgentConfig?.model ?? DEFAULT_AGENT_MODEL_REF,
+      model:
+        model ?? workspaceDefaultAgentConfig?.model ?? DEFAULT_AGENT_MODEL_REF,
       ...(thinkingLevel ? { thinkingLevel } : {}),
       ...(fastMode !== undefined ? { fastMode } : {}),
-      ...(approvalLevel !== undefined ? { approvalLevel } : {})
+      ...(approvalLevel !== undefined ? { approvalLevel } : {}),
     };
   }, [stateArgs.agentConfig, workspaceDefaultAgentConfig]);
 
-  const handleNewConversation = useCallback((options?: NewConversationOptions) => {
-    const nextStateArgs: ChatStateArgs = {};
-    if (options?.initialPrompt) nextStateArgs.initialPrompt = options.initialPrompt;
-    if (options?.forceInitialPrompt !== undefined) {
-      nextStateArgs.forceInitialPrompt = options.forceInitialPrompt;
-    }
-    if (options?.agentConfig) nextStateArgs.agentConfig = options.agentConfig;
-    const hasStateArgs = Object.keys(nextStateArgs).length > 0;
-    const stateArgsForLink: Record<string, unknown> = { ...nextStateArgs };
-    window.location.href = buildPanelLink(
-      "panels/chat",
-      hasStateArgs ? { stateArgs: stateArgsForLink } : undefined
-    );
-  }, []);
+  const handleNewConversation = useCallback(
+    (options?: NewConversationOptions) => {
+      const nextStateArgs: ChatStateArgs = {};
+      if (options?.initialPrompt)
+        nextStateArgs.initialPrompt = options.initialPrompt;
+      if (options?.forceInitialPrompt !== undefined) {
+        nextStateArgs.forceInitialPrompt = options.forceInitialPrompt;
+      }
+      if (options?.agentConfig) nextStateArgs.agentConfig = options.agentConfig;
+      const hasStateArgs = Object.keys(nextStateArgs).length > 0;
+      const stateArgsForLink: Record<string, unknown> = { ...nextStateArgs };
+      window.location.href = buildPanelLink(
+        "panels/chat",
+        hasStateArgs ? { stateArgs: stateArgsForLink } : undefined,
+      );
+    },
+    [],
+  );
 
   const handleFocusPanel = useCallback((panelId: string) => {
     void panel.focusPanel(panelId);
@@ -544,7 +607,8 @@ export default function ChatPanel() {
   // Once the transcript has landed on the requested envelope, drop the request
   // from the panel's own stateArgs so it does not replay on remount.
   const handleFocusMessageConsumed = useCallback((messageId: string) => {
-    if (panel.stateArgs.get<ChatStateArgs>().focusMessageId !== messageId) return;
+    if (panel.stateArgs.get<ChatStateArgs>().focusMessageId !== messageId)
+      return;
     void panel.stateArgs.set({ focusMessageId: null }).catch(() => undefined);
   }, []);
 
@@ -553,7 +617,7 @@ export default function ChatPanel() {
       const { openChannelPanel } = await import("./openChannelPanel");
       await openChannelPanel(targetChannelId, opts);
     },
-    []
+    [],
   );
 
   const openLocalModelsCapability = useCallback(async (server?: ServerKind) => {
@@ -561,18 +625,20 @@ export default function ChatPanel() {
       const capabilities = (await extensions.invoke(
         LOCAL_MODELS_EXTENSION_ID,
         "capabilities",
-        []
+        [],
       )) as LocalModelsCapabilities;
-      const target = server ? capabilities.serverLogs[server] : capabilities.managementPanel;
+      const target = server
+        ? capabilities.serverLogs[server]
+        : capabilities.managementPanel;
       await openPanel(target.source, {
         focus: true,
-        ...(target.stateArgs ? { stateArgs: target.stateArgs } : {})
+        ...(target.stateArgs ? { stateArgs: target.stateArgs } : {}),
       });
     } catch (err) {
       void notifications.show({
         type: "error",
         title: "Local Models unavailable",
-        message: err instanceof Error ? err.message : String(err)
+        message: err instanceof Error ? err.message : String(err),
       });
     }
   }, []);
@@ -580,21 +646,25 @@ export default function ChatPanel() {
     (server: ServerKind) => {
       void openLocalModelsCapability(server);
     },
-    [openLocalModelsCapability]
+    [openLocalModelsCapability],
   );
   const handleOpenLocalModels = useCallback(() => {
     void openLocalModelsCapability();
   }, [openLocalModelsCapability]);
 
   const handleActionBarFileChange = useCallback(
-    (value: { path: string | null; props?: Record<string, unknown>; maxHeight?: number }) => {
+    (value: {
+      path: string | null;
+      props?: Record<string, unknown>;
+      maxHeight?: number;
+    }) => {
       void panel.stateArgs.set({
         actionBarFile: value.path,
         actionBarProps: value.path ? (value.props ?? null) : null,
-        actionBarMaxHeight: value.path ? (value.maxHeight ?? null) : null
+        actionBarMaxHeight: value.path ? (value.maxHeight ?? null) : null,
       });
     },
-    []
+    [],
   );
 
   const prepareInitialAgentRuntime = useCallback(
@@ -614,23 +684,23 @@ export default function ChatPanel() {
       // bytes at speculative priority. No entity is created and no credential
       // is inspected until the ordinary launch path commits this intent.
       try {
-        const report = await rpc.call<{ status: string }>("main", "build.getBuildReport", [
-          source,
-          ref,
-          { priority: "speculative" }
-        ]);
+        const report = await rpc.call<{ status: string }>(
+          "main",
+          "build.getBuildReport",
+          [source, ref, { priority: "speculative" }],
+        );
         if (report.status === "ok") return;
         preparedAgentRuntimeRefs.current.delete(preparationKey);
         console.warn("[ChatPanel] Initial agent runtime preparation failed", {
           source,
-          status: report.status
+          status: report.status,
         });
       } catch (error) {
         preparedAgentRuntimeRefs.current.delete(preparationKey);
         throw error;
       }
     },
-    [resolvedContextId]
+    [resolvedContextId],
   );
 
   // Fetch available worker sources (DO agents) on mount. Only sources that
@@ -666,7 +736,7 @@ export default function ChatPanel() {
                 description: source.agent.description,
                 icon: source.icon,
                 defaultConfig: source.agent.defaultConfig,
-                proposedHandle: source.name.split("-")[0] ?? source.name
+                proposedHandle: source.name.split("-")[0] ?? source.name,
               });
             }
           }
@@ -683,14 +753,17 @@ export default function ChatPanel() {
             retryAttempt = 0;
             console.info("[ChatPanel] agent source catalog ready", {
               sourceCount: sources.length,
-              agentCount: agents.length
+              agentCount: agents.length,
             });
           }
         })
         .catch((err) => {
           if (disposed) return;
           if (!isReviewPending(err)) {
-            console.warn("[ChatPanel] Failed to load worker sources; retrying:", err);
+            console.warn(
+              "[ChatPanel] Failed to load worker sources; retrying:",
+              err,
+            );
           }
           retry();
         });
@@ -713,7 +786,7 @@ export default function ChatPanel() {
       if (!isRpcConnectionLost(error)) {
         console.warn(
           "[ChatPanel] Initial agent runtime preparation failed:",
-          error instanceof Error ? error.message : String(error)
+          error instanceof Error ? error.message : String(error),
         );
       }
     });
@@ -724,9 +797,9 @@ export default function ChatPanel() {
       recoveryCoordinator.registerResubscribeHandler(
         `chat-initial-agent-runtime:${panel.slotId}`,
         () => prepareInitialAgentRuntime(availableAgents),
-        { includeCurrentGeneration: false }
+        { includeCurrentGeneration: false },
       ),
-    [availableAgents, prepareInitialAgentRuntime]
+    [availableAgents, prepareInitialAgentRuntime],
   );
 
   // Availability (connected/startable/needs-setup) now arrives on every
@@ -735,49 +808,27 @@ export default function ChatPanel() {
   // its deliberate scoping boundary are gone with it.
   useEffect(() => {
     let disposed = false;
-    let retryTimer: number | null = null;
-
     void loadModelSettings(modelSettingsRetrySignal > 0)
       .then(() => {
-        if (retryTimer !== null) window.clearTimeout(retryTimer);
         if (
           disposed ||
-          (!modelSettingsRecoveryRef.current && !approvalChangeNeedsConnectionRetryRef.current)
-        ) {
+          (!modelSettingsRecoveryRef.current &&
+            !approvalChangeNeedsConnectionRetryRef.current)
+        )
           return;
-        }
         modelSettingsRecoveryRef.current = false;
         approvalChangeNeedsConnectionRetryRef.current = false;
-        setConnectionRetrySignal((signal) => signal + 1);
+        setConnectionRetrySignal((value) => value + 1);
       })
-      .catch((err) => {
+      .catch((error: unknown) => {
         if (disposed) return;
-        if (isReviewPending(err)) {
-          console.info("[ChatPanel] model settings waiting for workspace review");
-          // The review event is the fast path. This quiet reconciliation retry
-          // covers a panel that mounted after the event or briefly lost its
-          // event watch, without producing a retry/log storm.
-        } else if (isRpcAborted(err)) {
-          // The panel superseded its own request. Nothing failed and the retry
-          // below is ordinary reconciliation, so this is not a warning.
-          console.info("[ChatPanel] model settings request superseded; reloading");
-        } else {
-          console.warn("[ChatPanel] Failed to load model settings; retrying:", err);
-        }
-        // Cold workspace services and the mobile pipe can become available in
-        // either order. A failed discovery is not a terminal empty catalog:
-        // keep one bounded retry timer until the authoritative snapshot either
-        // resolves ready or exposes explicit setup.
         modelSettingsRecoveryRef.current = true;
-        retryTimer = window.setTimeout(() => {
-          retryTimer = null;
-          if (!disposed) setModelSettingsRetrySignal((signal) => signal + 1);
-        }, 5_000);
+        setModelSettingsError(
+          error instanceof Error ? error.message : String(error),
+        );
       });
-
     return () => {
       disposed = true;
-      if (retryTimer !== null) window.clearTimeout(retryTimer);
     };
   }, [loadModelSettings, modelSettingsRetrySignal]);
 
@@ -798,16 +849,24 @@ export default function ChatPanel() {
         void loadModelSettings(true).catch((err) => {
           console.warn(
             "[ChatPanel] Failed to refresh model settings after local model event:",
-            err
+            err,
           );
         });
       }, 500);
     };
 
     const subscriptions = [
-      extensions.on(LOCAL_MODELS_EXTENSION_ID, "models.changed", scheduleRefresh),
+      extensions.on(
+        LOCAL_MODELS_EXTENSION_ID,
+        "models.changed",
+        scheduleRefresh,
+      ),
       extensions.on(LOCAL_MODELS_EXTENSION_ID, "server.state", scheduleRefresh),
-      extensions.on(LOCAL_MODELS_EXTENSION_ID, "download.progress", scheduleRefresh)
+      extensions.on(
+        LOCAL_MODELS_EXTENSION_ID,
+        "download.progress",
+        scheduleRefresh,
+      ),
     ];
 
     return () => {
@@ -824,7 +883,7 @@ export default function ChatPanel() {
     (
       handle: string,
       config: AgentSubscriptionConfig | undefined,
-      defaultAgentConfig: DefaultAgentConfig
+      defaultAgentConfig: DefaultAgentConfig,
     ) => {
       // Launch configuration must be one coherent read. Reactive state is for
       // rendering, while this callback can outlive the render that created it
@@ -836,10 +895,10 @@ export default function ChatPanel() {
         globalConfig: currentState.agentConfig,
         perAgentConfig: config,
         systemPrompt: currentState.systemPrompt,
-        systemPromptMode: currentState.systemPromptMode
+        systemPromptMode: currentState.systemPromptMode,
       });
     },
-    []
+    [],
   );
 
   const resolveProvisionalAgentIntent = useCallback(
@@ -847,31 +906,42 @@ export default function ChatPanel() {
       channelId: string,
       channelContextId: string | undefined,
       agentId: string | undefined,
-      config: AgentSubscriptionConfig | undefined
+      config: AgentSubscriptionConfig | undefined,
     ): Promise<ProvisionalAgentIntent> => {
       const activeContextId = requireChatContextId(contextId, channelContextId);
       const matched = agentId
-        ? availableAgents.find((agent) => agent.id === agentId || agent.className === agentId)
+        ? availableAgents.find(
+            (agent) => agent.id === agentId || agent.className === agentId,
+          )
         : undefined;
       const pinned = panel.stateArgs.get<ChatStateArgs>();
       const source =
-        matched?.id ?? (!agentId ? pinned.agentSource : undefined) ?? DEFAULT_WORKER_SOURCE;
+        matched?.id ??
+        (!agentId ? pinned.agentSource : undefined) ??
+        DEFAULT_WORKER_SOURCE;
       const className =
-        matched?.className ?? (!agentId ? pinned.agentClass : undefined) ?? DEFAULT_CLASS_NAME;
+        matched?.className ??
+        (!agentId ? pinned.agentClass : undefined) ??
+        DEFAULT_CLASS_NAME;
       const handleFromClass =
         className === DEFAULT_CLASS_NAME
           ? DEFAULT_HANDLE
           : className.replace(/([a-z])([A-Z])/g, "$1-$2").toLowerCase();
       const configHandle =
-        typeof config?.["handle"] === "string" ? (config["handle"] as string) : "";
+        typeof config?.["handle"] === "string"
+          ? (config["handle"] as string)
+          : "";
       const requestedHandle =
-        configHandle.trim() || matched?.proposedHandle || handleFromClass || DEFAULT_HANDLE;
+        configHandle.trim() ||
+        matched?.proposedHandle ||
+        handleFromClass ||
+        DEFAULT_HANDLE;
       const handleBase = sanitizeHandle(requestedHandle);
       const defaultAgentConfig = await resolveWorkspaceDefaultAgentConfig();
       const { subscribeConfig, perAgent } = buildSubscribeConfig(
         handleBase,
         config,
-        defaultAgentConfig
+        defaultAgentConfig,
       );
       return {
         source,
@@ -881,23 +951,24 @@ export default function ChatPanel() {
         handleBase,
         config: subscribeConfig,
         persistedConfig: perAgent,
-        replay: true
+        replay: true,
       };
     },
-    [availableAgents, buildSubscribeConfig, resolveWorkspaceDefaultAgentConfig]
+    [availableAgents, buildSubscribeConfig, resolveWorkspaceDefaultAgentConfig],
   );
 
   // The ONLY path that writes the workspace default agent config (model +
   // behavior). Driven by the explicit "Save as defaults" control.
   const saveDefaultAgentConfig = useCallback(
     async (config: DefaultAgentConfig): Promise<void> => {
-      const settings = await getModelSettingsService().call<ModelSettingsSnapshot>(
-        "setDefaultAgentConfig",
-        config
-      );
+      const settings =
+        await getModelSettingsService().call<ModelSettingsSnapshot>(
+          "setDefaultAgentConfig",
+          config,
+        );
       applyModelSettings(settings);
     },
-    [applyModelSettings, getModelSettingsService]
+    [applyModelSettings, getModelSettingsService],
   );
 
   const handlePrepareAgent = useCallback(
@@ -905,14 +976,16 @@ export default function ChatPanel() {
       channelName: string,
       channelContextId: string | undefined,
       agentId: string | undefined,
-      config: AgentSubscriptionConfig | null
+      config: AgentSubscriptionConfig | null,
     ): Promise<void> => {
       const revision = ++provisionalAgentIntentRevisionRef.current;
       if (config === null) {
         await provisionalAgentLifecycleRef.current?.prepare(null);
         return;
       }
-      if ((panel.stateArgs.get<ChatStateArgs>().installedAgents?.length ?? 0) > 0) {
+      if (
+        (panel.stateArgs.get<ChatStateArgs>().installedAgents?.length ?? 0) > 0
+      ) {
         await provisionalAgentLifecycleRef.current?.prepare(null);
         return;
       }
@@ -920,12 +993,12 @@ export default function ChatPanel() {
         channelName,
         channelContextId,
         agentId,
-        config
+        config,
       );
       if (revision !== provisionalAgentIntentRevisionRef.current) return;
       await getProvisionalAgentLifecycle().prepare(intent);
     },
-    [getProvisionalAgentLifecycle, resolveProvisionalAgentIntent]
+    [getProvisionalAgentLifecycle, resolveProvisionalAgentIntent],
   );
 
   const handleAddAgent = useCallback(
@@ -933,17 +1006,18 @@ export default function ChatPanel() {
       channelName: string,
       channelContextId?: string,
       agentId?: string,
-      config?: AgentSubscriptionConfig
+      config?: AgentSubscriptionConfig,
     ) => {
       const intent = await resolveProvisionalAgentIntent(
         channelName,
         channelContextId,
         agentId,
-        config
+        config,
       );
       const lifecycle = getProvisionalAgentLifecycle();
       const isFirstPersistedAgent =
-        (panel.stateArgs.get<ChatStateArgs>().installedAgents?.length ?? 0) === 0;
+        (panel.stateArgs.get<ChatStateArgs>().installedAgents?.length ?? 0) ===
+        0;
       let source = intent.source;
       let className = intent.className;
       let handle: string;
@@ -967,7 +1041,7 @@ export default function ChatPanel() {
           channelId: channelName,
           channelContextId: intent.channelContextId,
           config: { ...intent.config, handle },
-          replay: intent.replay
+          replay: intent.replay,
         });
       }
       // The workspace default model is written ONLY via the explicit "Save as
@@ -982,11 +1056,11 @@ export default function ChatPanel() {
         key: agentKey,
         source,
         className,
-        ...(Object.keys(perAgent).length > 0 ? { config: perAgent } : {})
+        ...(Object.keys(perAgent).length > 0 ? { config: perAgent } : {}),
       });
       return { agentId: source, handle };
     },
-    [getProvisionalAgentLifecycle, resolveProvisionalAgentIntent]
+    [getProvisionalAgentLifecycle, resolveProvisionalAgentIntent],
   );
 
   const handleReplaceAgent = useCallback(
@@ -994,7 +1068,7 @@ export default function ChatPanel() {
       channelName: string,
       participantId: string,
       agentId?: string,
-      config?: AgentSubscriptionConfig
+      config?: AgentSubscriptionConfig,
     ) => {
       const activeContextId = requireChatContextId(contextId);
       const target = parseDoTargetId(participantId);
@@ -1004,20 +1078,25 @@ export default function ChatPanel() {
       // Resolve the new agent type. When agentId is omitted (restart-with-model),
       // reuse the existing DO's source/className.
       const agent = agentId
-        ? availableAgents.find((a) => a.id === agentId || a.className === agentId)
+        ? availableAgents.find(
+            (a) => a.id === agentId || a.className === agentId,
+          )
         : undefined;
       const source = agent?.id ?? target.source;
       const className = agent?.className ?? target.className;
       // Reuse the existing handle for a stable identity across the switch.
       const configHandle =
-        typeof config?.["handle"] === "string" ? (config["handle"] as string) : "";
-      const handle = configHandle.trim() || agent?.proposedHandle || DEFAULT_HANDLE;
+        typeof config?.["handle"] === "string"
+          ? (config["handle"] as string)
+          : "";
+      const handle =
+        configHandle.trim() || agent?.proposedHandle || DEFAULT_HANDLE;
       const agentKey = `${handle}-${crypto.randomUUID().slice(0, 8)}`;
       const defaultAgentConfig = await resolveWorkspaceDefaultAgentConfig();
       const { subscribeConfig, perAgent } = buildSubscribeConfig(
         handle,
         config,
-        defaultAgentConfig
+        defaultAgentConfig,
       );
 
       // Kick the exact DO, then invite the replacement (replay restores history).
@@ -1025,7 +1104,7 @@ export default function ChatPanel() {
         target.source,
         target.className,
         target.objectKey,
-        channelName
+        channelName,
       );
       await createAndSubscribeAgent({
         source,
@@ -1034,7 +1113,7 @@ export default function ChatPanel() {
         channelId: channelName,
         channelContextId: activeContextId,
         config: subscribeConfig,
-        replay: true
+        replay: true,
       });
       // Workspace default is written only via the explicit "Save as default"
       // control — switching an agent never changes it.
@@ -1047,7 +1126,7 @@ export default function ChatPanel() {
         key: agentKey,
         source,
         className,
-        ...(Object.keys(perAgent).length > 0 ? { config: perAgent } : {})
+        ...(Object.keys(perAgent).length > 0 ? { config: perAgent } : {}),
       };
       const existing = currentArgs.installedAgents ?? [];
       const replaced = existing.some((a) => a.key === target.objectKey);
@@ -1057,36 +1136,63 @@ export default function ChatPanel() {
       await panel.stateArgs.set({ installedAgents: nextInstalled });
       return { agentId: source, handle };
     },
-    [availableAgents, buildSubscribeConfig, resolveWorkspaceDefaultAgentConfig]
+    [availableAgents, buildSubscribeConfig, resolveWorkspaceDefaultAgentConfig],
   );
 
-  const handleConnectModelProvider = useCallback(async (modelRef: string, method: string, browser: "internal" | "external", signal: AbortSignal, configuration?: Record<string, string>) => {
-    const model = catalogRef.current?.models.find((entry) => entry.ref === modelRef);
-    if (!model || !model.connectable) throw new Error("This model requires provider configuration before connecting.");
-    const request = toCredentialConnectRequest(model.provider, { method, browser, configuration });
-    if (!request) throw new Error("This sign-in method is unavailable. Choose another method.");
-    await rpc.call("main", "credentials.connect", [request], { signal });
-    await loadModelSettings(true);
-  }, [loadModelSettings]);
+  const handleConnectModelProvider = useCallback(
+    async (
+      modelRef: string,
+      method: string,
+      browser: "internal" | "external",
+      signal: AbortSignal,
+      configuration?: Record<string, string>,
+    ) => {
+      const model = catalogRef.current?.models.find(
+        (entry) => entry.ref === modelRef,
+      );
+      if (!model || !model.connectable)
+        throw new Error(
+          "This model requires provider configuration before connecting.",
+        );
+      const request = toCredentialConnectRequest(model.provider, {
+        method,
+        browser,
+        configuration,
+      });
+      if (!request)
+        throw new Error(
+          "This sign-in method is unavailable. Choose another method.",
+        );
+      await rpc.call("main", "credentials.connect", [request], { signal });
+      await loadModelSettings(true);
+    },
+    [loadModelSettings],
+  );
 
   const handleInstallLocalModel = useCallback(
     async (modelRef: string): Promise<ModelSetupResult> => {
       try {
-        await extensions.invoke(LOCAL_MODELS_EXTENSION_ID, "installModel", [modelRef]);
+        await extensions.invoke(LOCAL_MODELS_EXTENSION_ID, "installModel", [
+          modelRef,
+        ]);
         await loadModelSettings(true);
         return { ok: true };
       } catch (err) {
         return {
           ok: false,
-          error: err instanceof Error ? err.message : String(err)
+          error: err instanceof Error ? err.message : String(err),
         };
       }
     },
-    [loadModelSettings]
+    [loadModelSettings],
   );
 
   const handlePersistAgentModel = useCallback(
-    async (_channelName: string, participantId: string, model: string): Promise<void> => {
+    async (
+      _channelName: string,
+      participantId: string,
+      model: string,
+    ): Promise<void> => {
       const target = parseDoTargetId(participantId);
       if (!target) {
         throw new Error(`Cannot resolve agent participant: ${participantId}`);
@@ -1099,8 +1205,8 @@ export default function ChatPanel() {
           ...agent,
           config: {
             ...(agent.config ?? {}),
-            model
-          }
+            model,
+          },
         };
       });
       if (!existing.some((agent) => agent.key === target.objectKey)) {
@@ -1110,48 +1216,52 @@ export default function ChatPanel() {
       // Per-agent model only — the workspace default is changed solely via the
       // explicit "Save as default" control.
     },
-    []
+    [],
   );
 
-  const handleRemoveAgent = useCallback(async (channelName: string, handle: string) => {
-    try {
-      const currentArgs = panel.stateArgs.get<ChatStateArgs>();
-      const persisted = (currentArgs.installedAgents ?? []).find(
-        (agent) => agent.handle === handle
-      );
-      if (!persisted) throw new Error(`No installed agent record matches @${handle}`);
-      await unsubscribeDOFromChannel(
-        persisted.source,
-        persisted.className,
-        persisted.key,
-        channelName
-      );
-      await panel.stateArgs.set({
-        installedAgents: (currentArgs.installedAgents ?? []).filter(
-          (agent) => agent.key !== persisted.key
-        )
-      });
-    } catch (err) {
-      void notifications.show({
-        type: "error",
-        title: `Couldn't remove @${handle}`,
-        message: err instanceof Error ? err.message : String(err)
-      });
-      throw err;
-    }
-  }, []);
+  const handleRemoveAgent = useCallback(
+    async (channelName: string, handle: string) => {
+      try {
+        const currentArgs = panel.stateArgs.get<ChatStateArgs>();
+        const persisted = (currentArgs.installedAgents ?? []).find(
+          (agent) => agent.handle === handle,
+        );
+        if (!persisted)
+          throw new Error(`No installed agent record matches @${handle}`);
+        await unsubscribeDOFromChannel(
+          persisted.source,
+          persisted.className,
+          persisted.key,
+          channelName,
+        );
+        await panel.stateArgs.set({
+          installedAgents: (currentArgs.installedAgents ?? []).filter(
+            (agent) => agent.key !== persisted.key,
+          ),
+        });
+      } catch (err) {
+        void notifications.show({
+          type: "error",
+          title: `Couldn't remove @${handle}`,
+          message: err instanceof Error ? err.message : String(err),
+        });
+        throw err;
+      }
+    },
+    [],
+  );
 
   const chatActions: AgenticChatActions = useMemo(
     () => ({
       onListTaskRules: () =>
         rpc.call("main", "authority.listTaskRules", [
-          { contextId: resolvedContextId, channelId: channelName }
+          { contextId: resolvedContextId, channelId: channelName },
         ]),
       onResetTaskRules: async () => {
         const result = await rpc.call<{ revokedGrantCount: number }>(
           "main",
           "authority.resetTaskRules",
-          [{ contextId: resolvedContextId, channelId: channelName }]
+          [{ contextId: resolvedContextId, channelId: channelName }],
         );
         return result.revokedGrantCount;
       },
@@ -1169,7 +1279,8 @@ export default function ChatPanel() {
       defaultModelRef: workspaceDefaultModelRef,
       defaultAgentConfig: effectiveDefaultAgentConfig,
       firstAgentModelPreflight,
-      firstAgentChannelIsNew: bootstrapChannel !== null && channelName === bootstrapChannel,
+      firstAgentChannelIsNew:
+        bootstrapChannel !== null && channelName === bootstrapChannel,
       onFocusPanel: handleFocusPanel,
       onReloadPanel: handleReloadPanel,
       onOpenChannel: handleOpenChannel,
@@ -1179,9 +1290,9 @@ export default function ChatPanel() {
         void notifications.show({
           type: "warning",
           title,
-          message
+          message,
         });
-      }
+      },
     }),
     [
       handleNewConversation,
@@ -1205,8 +1316,8 @@ export default function ChatPanel() {
       handleOpenLocalModelsLog,
       handleOpenLocalModels,
       channelName,
-      resolvedContextId
-    ]
+      resolvedContextId,
+    ],
   );
 
   // In-place fork switch: explicitly move the panel runtime to the fork's
@@ -1217,16 +1328,18 @@ export default function ChatPanel() {
         fromChannelId: stateArgs.channelName ?? bootstrapChannel ?? null,
         fromContextId: resolvedContextId,
         forkChannelId,
-        forkContextId
+        forkContextId,
       });
       initialPromptCaptured.current = undefined;
-      const current = panel.stateArgs.get<ChatStateArgs & { contextId?: unknown }>();
+      const current = panel.stateArgs.get<
+        ChatStateArgs & { contextId?: unknown }
+      >();
       const { contextId: _obsoleteContextId, ...panelState } = current;
       await panel.switchContext(forkContextId, {
-        stateArgs: { ...panelState, channelName: forkChannelId }
+        stateArgs: { ...panelState, channelName: forkChannelId },
       });
     },
-    [bootstrapChannel, resolvedContextId, stateArgs.channelName]
+    [bootstrapChannel, resolvedContextId, stateArgs.channelName],
   );
 
   // Side-by-side: open the fork in a fresh chat panel (news-panel shape).
@@ -1236,15 +1349,15 @@ export default function ChatPanel() {
         fromChannelId: stateArgs.channelName ?? bootstrapChannel ?? null,
         fromContextId: resolvedContextId,
         forkChannelId,
-        forkContextId
+        forkContextId,
       });
       await openPanel("panels/chat", {
         focus: true,
         contextId: forkContextId,
-        stateArgs: { channelName: forkChannelId }
+        stateArgs: { channelName: forkChannelId },
       });
     },
-    [bootstrapChannel, resolvedContextId, stateArgs.channelName]
+    [bootstrapChannel, resolvedContextId, stateArgs.channelName],
   );
 
   // Hand external-fork notification policy to the shell, which owns the real
@@ -1267,57 +1380,64 @@ export default function ChatPanel() {
             onClick: () => {
               void (async () => {
                 try {
-                  await handleForkSwitch(fork.forkedChannelId, fork.forkedContextId);
+                  await handleForkSwitch(
+                    fork.forkedChannelId,
+                    fork.forkedContextId,
+                  );
                 } catch (cause) {
-                  const message = cause instanceof Error ? cause.message : String(cause);
+                  const message =
+                    cause instanceof Error ? cause.message : String(cause);
                   try {
                     await notifications.show({
                       type: "error",
                       title: "Couldn't switch conversations",
-                      message
+                      message,
                     });
                   } catch (notificationCause) {
                     console.error(
                       "[ChatPanel] failed to switch from fork notification and show the error",
-                      { cause, notificationCause }
+                      { cause, notificationCause },
                     );
                   }
                 }
               })();
-            }
-          }
-        ]
+            },
+          },
+        ],
       });
     },
-    [handleForkSwitch]
+    [handleForkSwitch],
   );
 
   const readForkCursors = useCallback(
     () => panel.stateArgs.get<ChatStateArgs>().forkCursors ?? {},
-    []
+    [],
   );
 
   const forkCursorWriteRef = useRef<Promise<void>>(Promise.resolve());
-  const markForkRead = useCallback(async (forkChannelId: string, headSeq: number) => {
-    const write = forkCursorWriteRef.current.then(async () => {
-      const current = panel.stateArgs.get<ChatStateArgs>();
-      const prior = current.forkCursors?.[forkChannelId] ?? 0;
-      if (prior >= headSeq) return;
-      await panel.stateArgs.set({
-        forkCursors: {
-          ...(current.forkCursors ?? {}),
-          [forkChannelId]: headSeq
-        }
+  const markForkRead = useCallback(
+    async (forkChannelId: string, headSeq: number) => {
+      const write = forkCursorWriteRef.current.then(async () => {
+        const current = panel.stateArgs.get<ChatStateArgs>();
+        const prior = current.forkCursors?.[forkChannelId] ?? 0;
+        if (prior >= headSeq) return;
+        await panel.stateArgs.set({
+          forkCursors: {
+            ...(current.forkCursors ?? {}),
+            [forkChannelId]: headSeq,
+          },
+        });
       });
-    });
-    // Keep the queue usable after a failed write while returning the original
-    // rejection to the caller so the UI can surface it.
-    forkCursorWriteRef.current = write.then(
-      () => undefined,
-      () => undefined
-    );
-    await write;
-  }, []);
+      // Keep the queue usable after a failed write while returning the original
+      // rejection to the caller so the UI can surface it.
+      forkCursorWriteRef.current = write.then(
+        () => undefined,
+        () => undefined,
+      );
+      await write;
+    },
+    [],
+  );
 
   const forkNav: ForkNavHandlers = useMemo(
     () => ({
@@ -1325,26 +1445,32 @@ export default function ChatPanel() {
       openInNewPanel: handleOpenForkPanel,
       readForkCursors,
       markForkRead,
-      onExternalFork: handleExternalFork
+      onExternalFork: handleExternalFork,
     }),
-    [handleForkSwitch, handleOpenForkPanel, readForkCursors, markForkRead, handleExternalFork]
+    [
+      handleForkSwitch,
+      handleOpenForkPanel,
+      readForkCursors,
+      markForkRead,
+      handleExternalFork,
+    ],
   );
 
   const importLoader = useMemo(
     () =>
       createPanelImportLoader(rpc, {
-        defaultWorkspaceRef: () => `ctx:${resolvedContextId}`
+        defaultWorkspaceRef: () => `ctx:${resolvedContextId}`,
       }),
-    [resolvedContextId]
+    [resolvedContextId],
   );
 
   const panelMetadata = useMemo(
     () => ({
       name: channelName ?? "Channel",
       type: "panel" as const,
-      hostPlatform: getVibestudioHostPlatform()
+      hostPlatform: getVibestudioHostPlatform(),
     }),
-    [channelName]
+    [channelName],
   );
   const installedAgents = stateArgs.installedAgents ?? undefined;
   const presentation = stateArgs.presentation;
@@ -1363,7 +1489,7 @@ export default function ChatPanel() {
               maxWidth: "100%",
               boxSizing: "border-box",
               padding: 16,
-              overflow: "hidden"
+              overflow: "hidden",
             }}
           >
             <Flex align="center" gap="2">
@@ -1379,6 +1505,27 @@ export default function ChatPanel() {
   }
   return (
     <div style={{ height: "100dvh", minWidth: 0, overflow: "hidden" }}>
+      {modelSettingsError ? (
+        <Theme appearance={theme} {...appTheme}>
+          <Callout.Root color="red" size="1" style={{ borderRadius: 0 }}>
+            <Flex align="center" justify="between" gap="3" width="100%">
+              <Callout.Text>
+                Couldn't load models: {modelSettingsError}
+              </Callout.Text>
+              <Button
+                size="1"
+                variant="soft"
+                color="red"
+                onClick={() =>
+                  setModelSettingsRetrySignal((value) => value + 1)
+                }
+              >
+                Retry
+              </Button>
+            </Flex>
+          </Callout.Root>
+        </Theme>
+      ) : null}
       {rehydrationStatus !== "idle" ? (
         <Theme appearance={theme} {...appTheme}>
           <Callout.Root
@@ -1409,7 +1556,11 @@ export default function ChatPanel() {
       <Suspense
         fallback={
           <Theme appearance={theme} {...appTheme}>
-            <Flex align="center" justify="center" style={{ minHeight: "100dvh" }}>
+            <Flex
+              align="center"
+              justify="center"
+              style={{ minHeight: "100dvh" }}
+            >
               <Spinner size="1" />
             </Flex>
           </Theme>
@@ -1450,7 +1601,7 @@ export default function ChatPanel() {
                   renderConversationEmptyState(
                     presentation,
                     defaultContent,
-                    state.phase
+                    state.phase,
                   )
               : undefined
           }

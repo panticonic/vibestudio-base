@@ -1,3 +1,4 @@
+import { executeTool } from "../../testing/native-tool.js";
 import { describe, expect, it, vi } from "vitest";
 import { createAgentFileVisibility } from "../agent-file-visibility.js";
 import { createFindTool } from "../find.js";
@@ -9,7 +10,8 @@ import { StubFs } from "./stub-fs.js";
 const files = {
   "/skills/public/SKILL.md": "---\nname: public\n---\n# Public\n",
   "/skills/public/index.ts": 'export const visible = "needle";\n',
-  "/skills/internal/SKILL.md": "---\nname: internal\nagentVisible: false\n---\n# Internal\n",
+  "/skills/internal/SKILL.md":
+    "---\nname: internal\nagentVisible: false\n---\n# Internal\n",
   "/skills/internal/fixture.ts": 'export const secret = "needle";\n',
 };
 
@@ -18,7 +20,8 @@ const nestedFiles = {
   ...files,
   "/projects/base/skills/internal/SKILL.md":
     "---\nname: internal\nagentVisible: false\n---\n# Internal\n",
-  "/projects/base/skills/internal/tests/fixture.ts": 'export const secret = "needle";\n',
+  "/projects/base/skills/internal/tests/fixture.ts":
+    'export const secret = "needle";\n',
   "/projects/base/skills/public/SKILL.md": "---\nname: public\n---\n# Public\n",
   "/projects/base/skills/public/index.ts": 'export const visible = "needle";\n',
 };
@@ -41,30 +44,54 @@ describe("agent file visibility", () => {
     const fs = new StubFs({ files });
     const visibility = createAgentFileVisibility("/", fs);
 
-    await expect(visibility.isHidden("/skills/internal/fixture.ts")).resolves.toBe(true);
-    await expect(visibility.isHidden("/skills/public/index.ts")).resolves.toBe(false);
+    await expect(
+      visibility.isHidden("/skills/internal/fixture.ts"),
+    ).resolves.toBe(true);
+    await expect(visibility.isHidden("/skills/public/index.ts")).resolves.toBe(
+      false,
+    );
 
-    const listed = await createLsTool("/", fs, visibility).execute("ls", { path: "skills" });
+    const listed = await executeTool(
+      createLsTool("/", fs, visibility),
+      { path: "skills" },
+      { callId: "ls" },
+    );
     expect(listed.content[0]).toMatchObject({ text: "public/" });
 
-    const read = await createReadTool("/", fs, { visibility }).execute("read", {
-      path: "skills/internal/fixture.ts",
-    });
+    const read = await executeTool(
+      createReadTool("/", fs, { visibility }),
+      {
+        path: "skills/internal/fixture.ts",
+      },
+      { callId: "read" },
+    );
     expect(read).toMatchObject({ details: { missing: true } });
 
-    const grep = await createGrepTool("/", fs, { visibility }).execute("grep", {
-      pattern: "needle",
-      path: "skills",
-      includeIgnored: true,
+    const grep = await executeTool(
+      createGrepTool("/", fs, { visibility }),
+      {
+        pattern: "needle",
+        path: "skills",
+        includeIgnored: true,
+      },
+      { callId: "grep" },
+    );
+    expect(grep.content[0]).toMatchObject({
+      text: expect.stringContaining("public/index.ts"),
     });
-    expect(grep.content[0]).toMatchObject({ text: expect.stringContaining("public/index.ts") });
-    expect(grep.content[0]).not.toMatchObject({ text: expect.stringContaining("internal") });
+    expect(grep.content[0]).not.toMatchObject({
+      text: expect.stringContaining("internal"),
+    });
 
-    const found = await createFindTool("/", fs, { visibility }).execute("find", {
-      pattern: "**/*.ts",
-      path: "skills",
-      includeIgnored: true,
-    });
+    const found = await executeTool(
+      createFindTool("/", fs, { visibility }),
+      {
+        pattern: "**/*.ts",
+        path: "skills",
+        includeIgnored: true,
+      },
+      { callId: "find" },
+    );
     expect(found.content[0]).toMatchObject({ text: "public/index.ts" });
   });
 
@@ -75,17 +102,21 @@ describe("agent file visibility", () => {
     // The bypass this contract missed: a scan rooted at `skills/` hid the
     // top-level copy and left the adopted workspace's copy in plain view.
     await expect(
-      visibility.isHidden("/projects/base/skills/internal/tests/fixture.ts")
+      visibility.isHidden("/projects/base/skills/internal/tests/fixture.ts"),
     ).resolves.toBe(true);
-    await expect(visibility.isHidden("/projects/base/skills/public/index.ts")).resolves.toBe(
-      false
-    );
+    await expect(
+      visibility.isHidden("/projects/base/skills/public/index.ts"),
+    ).resolves.toBe(false);
 
-    const grep = await createGrepTool("/", fs, { visibility }).execute("grep", {
-      pattern: "needle",
-      path: "projects",
-      includeIgnored: true,
-    });
+    const grep = await executeTool(
+      createGrepTool("/", fs, { visibility }),
+      {
+        pattern: "needle",
+        path: "projects",
+        includeIgnored: true,
+      },
+      { callId: "grep" },
+    );
     expect(grep.content[0]).toMatchObject({
       text: expect.stringContaining("public/index.ts"),
     });
@@ -98,10 +129,18 @@ describe("agent file visibility", () => {
     const fs = new StubFs({ files: unitFiles });
     const visibility = createAgentFileVisibility("/", fs);
 
-    await expect(visibility.isHidden("/workers/private/index.ts")).resolves.toBe(true);
-    await expect(visibility.isHidden("/workers/open/index.ts")).resolves.toBe(false);
+    await expect(
+      visibility.isHidden("/workers/private/index.ts"),
+    ).resolves.toBe(true);
+    await expect(visibility.isHidden("/workers/open/index.ts")).resolves.toBe(
+      false,
+    );
 
-    const listed = await createLsTool("/", fs, visibility).execute("ls", { path: "workers" });
+    const listed = await executeTool(
+      createLsTool("/", fs, visibility),
+      { path: "workers" },
+      { callId: "ls" },
+    );
     expect(listed.content[0]).toMatchObject({ text: "open/" });
   });
 
@@ -116,15 +155,21 @@ describe("agent file visibility", () => {
     });
     const visibility = createAgentFileVisibility("/", fs);
 
-    await expect(visibility.isHidden("/workers/broken/index.ts")).resolves.toBe(false);
-    await expect(visibility.isHidden("/workers/plain/index.ts")).resolves.toBe(false);
+    await expect(visibility.isHidden("/workers/broken/index.ts")).resolves.toBe(
+      false,
+    );
+    await expect(visibility.isHidden("/workers/plain/index.ts")).resolves.toBe(
+      false,
+    );
   });
 
   it("terminates on a path that escapes the working root", async () => {
     const fs = new StubFs({ files });
     const visibility = createAgentFileVisibility("/workspace", fs);
 
-    await expect(visibility.isHidden("/elsewhere/file.ts")).resolves.toBe(false);
+    await expect(visibility.isHidden("/elsewhere/file.ts")).resolves.toBe(
+      false,
+    );
   });
 
   it("decodes visibility frontmatter without a Node Buffer global", async () => {
@@ -134,13 +179,15 @@ describe("agent file visibility", () => {
       const fs = new StubFs({
         files: {
           "/skills/internal/SKILL.md": new TextEncoder().encode(
-            "---\nname: internal\nagentVisible: false\n---\n# Internal\n"
+            "---\nname: internal\nagentVisible: false\n---\n# Internal\n",
           ),
         },
       });
       const visibility = createAgentFileVisibility("/", fs);
 
-      await expect(visibility.isHidden("/skills/internal/SKILL.md")).resolves.toBe(true);
+      await expect(
+        visibility.isHidden("/skills/internal/SKILL.md"),
+      ).resolves.toBe(true);
     } finally {
       vi.stubGlobal("Buffer", originalBuffer);
     }
@@ -178,16 +225,23 @@ describe("agent file visibility", () => {
       };
     });
 
-    const grep = await createGrepTool("/", fs, { rpc: { call } as never, visibility }).execute(
-      "grep",
-      { pattern: "needle", path: "skills", includeIgnored: true }
+    const grep = await executeTool(
+      createGrepTool("/", fs, { rpc: { call } as never, visibility }),
+      { pattern: "needle", path: "skills", includeIgnored: true },
+      { callId: "grep" },
     );
-    expect(grep.content[0]).toMatchObject({ text: "public/index.ts:1: needle" });
+    expect(grep.content[0]).toMatchObject({
+      text: "public/index.ts:1: needle",
+    });
 
-    const found = await createFindTool("/", fs, {
-      rpc: { call } as never,
-      visibility,
-    }).execute("find", { pattern: "**/*.ts", path: "skills", includeIgnored: true });
+    const found = await executeTool(
+      createFindTool("/", fs, {
+        rpc: { call } as never,
+        visibility,
+      }),
+      { pattern: "**/*.ts", path: "skills", includeIgnored: true },
+      { callId: "find" },
+    );
     expect(found.content[0]).toMatchObject({ text: "public/index.ts" });
   });
 });

@@ -40,20 +40,27 @@ export interface PublicMethodSummary {
   menu?: Record<string, unknown>;
 }
 
-export type PublicParticipantMetadata = Partial<Record<(typeof PUBLIC_METADATA_KEYS)[number], string | number | boolean>> & {
+export type PublicParticipantMetadata = Partial<
+  Record<(typeof PUBLIC_METADATA_KEYS)[number], string | number | boolean>
+> & {
   methods?: PublicMethodSummary[];
 };
 
-export type PrivateParticipantMetadata = PublicParticipantMetadata & Record<string, unknown>;
+export type PrivateParticipantMetadata = PublicParticipantMetadata &
+  Record<string, unknown>;
 
 export function publicParticipantMetadata(
-  metadata?: Record<string, unknown> | null
+  metadata?: Record<string, unknown> | null,
 ): PublicParticipantMetadata | undefined {
   if (!metadata) return undefined;
   const out: PublicParticipantMetadata = {};
   for (const key of PUBLIC_METADATA_KEYS) {
     const value = metadata[key];
-    if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
+    if (
+      typeof value === "string" ||
+      typeof value === "number" ||
+      typeof value === "boolean"
+    ) {
       out[key] = value;
     }
   }
@@ -64,16 +71,17 @@ export function publicParticipantMetadata(
 
 export function participantRefFromMetadata(
   participantId: string,
-  metadata?: Record<string, unknown> | null
+  metadata?: Record<string, unknown> | null,
 ): ParticipantRef {
   const publicMetadata = publicParticipantMetadata(metadata);
   const declaredKind = publicMetadata?.["kind"] ?? publicMetadata?.["type"];
   const kind = participantKindFromMetadata(participantId, declaredKind);
-  const displayName = typeof publicMetadata?.["name"] === "string"
-    ? publicMetadata["name"]
-    : typeof publicMetadata?.["displayName"] === "string"
-      ? publicMetadata["displayName"]
-      : undefined;
+  const displayName =
+    typeof publicMetadata?.["name"] === "string"
+      ? publicMetadata["name"]
+      : typeof publicMetadata?.["displayName"] === "string"
+        ? publicMetadata["displayName"]
+        : undefined;
   return {
     kind,
     id: participantId,
@@ -92,7 +100,9 @@ export function publicActorRef<T extends ActorRef>(actor: T): T {
   } as T;
 }
 
-export function publicParticipantRef(participant: ParticipantRef): ParticipantRef {
+export function publicParticipantRef(
+  participant: ParticipantRef,
+): ParticipantRef {
   return publicActorRef(participant);
 }
 
@@ -122,7 +132,9 @@ export function participantRefFromActor(actor: ActorRef): ParticipantRef {
   };
 }
 
-export function sanitizeAgenticEventParticipantRefs<T extends AgenticEvent>(event: T): T {
+export function sanitizeAgenticEventParticipantRefs<T extends AgenticEvent>(
+  event: T,
+): T {
   return {
     ...event,
     actor: publicActorRef(event.actor),
@@ -133,21 +145,30 @@ export function sanitizeAgenticEventParticipantRefs<T extends AgenticEvent>(even
 function publicMethodSummaries(value: unknown): PublicMethodSummary[] {
   if (!Array.isArray(value)) return [];
   return value.flatMap((method) => {
-    if (!method || typeof method !== "object" || Array.isArray(method)) return [];
+    if (!method || typeof method !== "object" || Array.isArray(method))
+      return [];
     const record = method as Record<string, unknown>;
     if (typeof record["name"] !== "string") return [];
     const summary: PublicMethodSummary = {
       name: record["name"],
     };
-    if (typeof record["streaming"] === "boolean") summary.streaming = record["streaming"];
-    if (record["menu"] && typeof record["menu"] === "object" && !Array.isArray(record["menu"])) {
+    if (typeof record["streaming"] === "boolean")
+      summary.streaming = record["streaming"];
+    if (
+      record["menu"] &&
+      typeof record["menu"] === "object" &&
+      !Array.isArray(record["menu"])
+    ) {
       summary.menu = record["menu"] as Record<string, unknown>;
     }
     return [summary];
   });
 }
 
-function sanitizePayloadParticipantRefs(kind: AgenticEvent["kind"], payload: AgenticEvent["payload"]): AgenticEvent["payload"] {
+function sanitizePayloadParticipantRefs(
+  kind: AgenticEvent["kind"],
+  payload: AgenticEvent["payload"],
+): AgenticEvent["payload"] {
   switch (kind) {
     case "invocation.started":
       return sanitizeInvocationPayload(payload as InvocationPayload);
@@ -155,13 +176,19 @@ function sanitizePayloadParticipantRefs(kind: AgenticEvent["kind"], payload: Age
     case "approval.resolved":
       return sanitizeApprovalPayload(payload as ApprovalPayload);
     case "messageType.registered":
-      return sanitizeMessageTypeRegisteredPayload(payload as MessageTypeRegisteredPayload);
+      return sanitizeMessageTypeRegisteredPayload(
+        payload as MessageTypeRegisteredPayload,
+      );
     case "custom.started":
       return sanitizeCustomStartedPayload(payload as CustomStartedPayload);
     case "external.envelope_observed":
-      return sanitizeExternalEnvelopeObservedPayload(payload as ExternalEnvelopeObservedPayload);
+      return sanitizeExternalEnvelopeObservedPayload(
+        payload as ExternalEnvelopeObservedPayload,
+      );
     case "external.participant_observed":
-      return sanitizeExternalParticipantObservedPayload(payload as ExternalParticipantObservedPayload);
+      return sanitizeExternalParticipantObservedPayload(
+        payload as ExternalParticipantObservedPayload,
+      );
     case "channel.forked":
       return sanitizeChannelForkedPayload(payload as ChannelForkedPayload);
     default:
@@ -169,15 +196,20 @@ function sanitizePayloadParticipantRefs(kind: AgenticEvent["kind"], payload: Age
   }
 }
 
-function sanitizeChannelForkedPayload(payload: ChannelForkedPayload): ChannelForkedPayload {
+function sanitizeChannelForkedPayload(
+  payload: ChannelForkedPayload,
+): ChannelForkedPayload {
   return {
     ...payload,
     actor: publicParticipantRef(payload.actor),
   };
 }
 
-function sanitizeInvocationPayload(payload: InvocationPayload): InvocationPayload {
-  if (!("transport" in payload) || payload.transport?.kind !== "channel") return payload;
+function sanitizeInvocationPayload(
+  payload: InvocationPayload,
+): InvocationPayload {
+  if (!("transport" in payload) || payload.transport?.kind !== "channel")
+    return payload;
   return {
     ...payload,
     transport: {
@@ -191,8 +223,12 @@ function sanitizeApprovalPayload(payload: ApprovalPayload): ApprovalPayload {
   if ("question" in payload) {
     return {
       ...payload,
-      ...(payload.requestedBy ? { requestedBy: publicActorRef(payload.requestedBy) } : {}),
-      ...(isParticipantRef(payload.approver) ? { approver: publicParticipantRef(payload.approver) } : {}),
+      ...(payload.requestedBy
+        ? { requestedBy: publicActorRef(payload.requestedBy) }
+        : {}),
+      ...(isParticipantRef(payload.approver)
+        ? { approver: publicParticipantRef(payload.approver) }
+        : {}),
     };
   }
   return {
@@ -201,14 +237,20 @@ function sanitizeApprovalPayload(payload: ApprovalPayload): ApprovalPayload {
   };
 }
 
-function sanitizeMessageTypeRegisteredPayload(payload: MessageTypeRegisteredPayload): MessageTypeRegisteredPayload {
+function sanitizeMessageTypeRegisteredPayload(
+  payload: MessageTypeRegisteredPayload,
+): MessageTypeRegisteredPayload {
   return {
     ...payload,
-    ...(payload.registeredBy ? { registeredBy: publicActorRef(payload.registeredBy) } : {}),
+    ...(payload.registeredBy
+      ? { registeredBy: publicActorRef(payload.registeredBy) }
+      : {}),
   };
 }
 
-function sanitizeCustomStartedPayload(payload: CustomStartedPayload): CustomStartedPayload {
+function sanitizeCustomStartedPayload(
+  payload: CustomStartedPayload,
+): CustomStartedPayload {
   return {
     ...payload,
     ...(payload.by ? { by: publicActorRef(payload.by) } : {}),
@@ -216,7 +258,7 @@ function sanitizeCustomStartedPayload(payload: CustomStartedPayload): CustomStar
 }
 
 function sanitizeExternalEnvelopeObservedPayload(
-  payload: ExternalEnvelopeObservedPayload
+  payload: ExternalEnvelopeObservedPayload,
 ): ExternalEnvelopeObservedPayload {
   return {
     ...payload,
@@ -225,7 +267,7 @@ function sanitizeExternalEnvelopeObservedPayload(
 }
 
 function sanitizeExternalParticipantObservedPayload(
-  payload: ExternalParticipantObservedPayload
+  payload: ExternalParticipantObservedPayload,
 ): ExternalParticipantObservedPayload {
   return {
     ...payload,
@@ -254,7 +296,7 @@ export interface HandleResolutionFailure {
 export type HandleResolution = ParticipantRef | HandleResolutionFailure;
 
 export function isHandleResolutionFailure(
-  value: HandleResolution
+  value: HandleResolution,
 ): value is HandleResolutionFailure {
   return "error" in value;
 }
@@ -287,18 +329,19 @@ function suggestionFor(ref: ParticipantRef): string {
 export function resolveHandle(
   mention: string,
   roster: Iterable<ParticipantRef>,
-  opts?: { kinds?: readonly ParticipantKind[] }
+  opts?: { kinds?: readonly ParticipantKind[] },
 ): HandleResolution {
   const token = mention.trim().replace(/^@/, "");
   if (token.length === 0) return { error: "unknown", suggestions: [] };
   const asMemberId = userParticipantId(token);
   const needle = token.toLowerCase();
   const kinds = opts?.kinds;
-  const matches: Record<(typeof HANDLE_MATCH_TIERS)[number], ParticipantRef[]> = {
-    id: [],
-    handle: [],
-    displayName: [],
-  };
+  const matches: Record<(typeof HANDLE_MATCH_TIERS)[number], ParticipantRef[]> =
+    {
+      id: [],
+      handle: [],
+      displayName: [],
+    };
   const candidates: ParticipantRef[] = [];
 
   for (const ref of roster) {
@@ -314,7 +357,10 @@ export function resolveHandle(
       matches.handle.push(ref);
       continue;
     }
-    if (typeof ref.displayName === "string" && ref.displayName.toLowerCase() === needle) {
+    if (
+      typeof ref.displayName === "string" &&
+      ref.displayName.toLowerCase() === needle
+    ) {
       matches.displayName.push(ref);
     }
   }
@@ -336,9 +382,13 @@ export function resolveHandle(
     .filter((ref) => {
       const handle = ref.metadata?.["handle"];
       const label = typeof handle === "string" ? handle.toLowerCase() : "";
-      const name = typeof ref.displayName === "string" ? ref.displayName.toLowerCase() : "";
+      const name =
+        typeof ref.displayName === "string"
+          ? ref.displayName.toLowerCase()
+          : "";
       return (
-        (label.length > 0 && (label.includes(needle) || needle.includes(label))) ||
+        (label.length > 0 &&
+          (label.includes(needle) || needle.includes(label))) ||
         (name.length > 0 && (name.includes(needle) || needle.includes(name)))
       );
     })
@@ -360,7 +410,7 @@ export function resolveHandle(
  */
 export function resolveMentionToUser(
   mention: string,
-  roster: Iterable<ParticipantRef>
+  roster: Iterable<ParticipantRef>,
 ): ParticipantRef | null {
   const resolved = resolveHandle(mention, roster, { kinds: ["user"] });
   return isHandleResolutionFailure(resolved) ? null : resolved;
@@ -368,8 +418,12 @@ export function resolveMentionToUser(
 
 function participantKindFromMetadata(
   participantId: string,
-  declaredKind: unknown
+  declaredKind: unknown,
 ): ParticipantKind {
+  // A headless client supplies input from outside the reasoning agent. Its
+  // verified DO identity remains unchanged; it is neither an AI peer nor an
+  // authenticated human. The public metadata retains its precise client type.
+  if (declaredKind === "headless") return "external";
   if (
     declaredKind === "user" ||
     declaredKind === "agent" ||

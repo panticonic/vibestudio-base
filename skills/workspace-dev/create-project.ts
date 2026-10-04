@@ -705,6 +705,13 @@ function ${toPascalCase(name)}Content() {
           icon: manifestIcon,
           entry: "index.ts",
           durableClasses: [className],
+          tests: [
+            {
+              name: "unit",
+              runtime: "native",
+              include: [`${workerFileName}.test.ts`],
+            },
+          ],
           dependencies: {
             "@workspace/runtime": "workspace:*",
             "@workspace/agentic-do": "workspace:*",
@@ -727,10 +734,9 @@ import type { ParticipantDescriptor } from "@workspace/harness";
 /**
  * ${className} — Pi-native agent DO.
  *
- * Pi (\`@earendil-works/pi-agent-core\`) runs in-process. The base class
- * handles channel subscriptions, the channel event pipeline, the per-channel
- * PiRunner lifecycle, and publishes durable agentic trajectory events to the
- * channel transcript. You only need to override the small set of customization
+ * The native durable owner admits channel inputs, model requests and tool
+ * tasks through the published Pi fork. The base class owns subscriptions,
+ * readiness, cancellation and durable transcript publication. You only need to override the small set of customization
  * hooks below.
  *
  * The system prompt is composed from the Vibestudio base prompt,
@@ -758,41 +764,31 @@ export class ${className} extends AgentWorkerBase {
     };
   }
 
-  // The base class's onChannelEvent handles incoming messages by forwarding
-  // them to the per-channel PiRunner. Override only if you need custom routing.
+  // The base class admits incoming channel messages to the native conversation.
+  // Customize domain tools and prompts through the protected hooks.
 }
 `;
 
         files[`${workerFileName}.test.ts`] =
           `import { describe, it, expect } from "vitest";
-import type { ChannelEvent } from "@workspace/harness";
-import { createTestDO } from "@workspace/runtime/worker";
+import { createNativeVesselTestDO } from "@workspace/agentic-do/testing/native-vessel";
 import { ${className} } from "./${workerFileName}.js";
 
-function makeEvent(overrides: Partial<ChannelEvent> = {}): ChannelEvent {
-  return {
-    id: 1,
-    messageId: "msg-1",
-    type: "message",
-    payload: { content: "Hello" },
-    senderId: "user-1",
-    senderMetadata: { type: "panel" },
-    ts: Date.now(),
-    persist: true,
-    ...overrides,
-  };
-}
-
 describe("${className}", () => {
-  it("constructs without errors", async () => {
-    const { instance } = await createTestDO(${className});
-    expect(instance).toBeTruthy();
-  });
-
-  it("filters non-panel events via shouldProcess", async () => {
-    const { instance } = await createTestDO(${className});
-    // Non-panel events are filtered by the base class — onChannelEvent is a no-op
-    await instance.onChannelEvent("ch-1", makeEvent({ senderMetadata: { type: "agent" } }));
+  it("initializes through the product schema boundary", async () => {
+    const { instance, db } = await createNativeVesselTestDO(${className});
+    try {
+      expect(instance).toBeInstanceOf(${className});
+    } finally {
+      try {
+        const released = await instance.releaseForLifecycle({
+          epoch: "test-end", mode: "suspend", reason: "test", deadlineMs: 0,
+        });
+        expect(released.status).toBe("ready");
+      } finally {
+        db.close();
+      }
+    }
   });
 });
 `;
@@ -1359,6 +1355,10 @@ async function readText(path: string): Promise<string> {
 export async function forkProject(
   options: ForkProjectOptions,
 ): Promise<ForkProjectResult> {
+  if (typeof options.from !== "string" || typeof options.to !== "string")
+    throw new Error(
+      "forkProject requires string from and to paths; forkPanel/forkWorker require from and name.",
+    );
   const from = options.from.replace(/^\/+|\/+$/g, "");
   const to = options.to.replace(/^\/+|\/+$/g, "");
   if (!from || !to) throw new Error("forkProject requires from and to paths");

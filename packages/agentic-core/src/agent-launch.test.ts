@@ -4,13 +4,14 @@ import {
   buildAgentEntityCreateSpec,
   buildAgentTaskSeedEvent,
   createSubagentContext,
-  initAgentFromTrajectoryFork,
+  importAgentChannelKnowledge,
   launchAgentIntoChannel,
   publishAgentTaskSeed,
   subscribeAgentToChannel,
   unsubscribeAgentFromChannel,
 } from "./agent-launch.js";
 import type { AgentLaunchRpc } from "./agent-launch.js";
+import type { ConversationId } from "@panticonic/pi-durable";
 
 function makeRpc(
   impl?: (target: string, method: string, args: unknown[]) => Promise<unknown>
@@ -169,14 +170,17 @@ describe("agent launch primitive", () => {
     expect(rpc.call).toHaveBeenCalledTimes(1);
   });
 
-  it("initializes trajectory forks through the same stripped subscription config contract", async () => {
+  it("imports native knowledge through the same stripped subscription config contract", async () => {
     const rpc = makeRpc();
 
-    await initAgentFromTrajectoryFork(rpc, "target-1", {
-      parentLogId: "log-parent",
-      seq: 42,
-      taskChannelId: "task-1",
+    const knowledge = { channelId: "parent", throughSequence: 42,
+      history: { source: { conversationId: 1 as ConversationId, at: null }, agent: {}, entries: [] }, anchors: [] };
+    await importAgentChannelKnowledge(rpc, "target-1", {
+      operationId: "native-fork-1",
+      parentChannelId: "parent",
+      channelId: "task-1",
       contextId: "ctx-child",
+      knowledge,
       config: {
         model: "openai:gpt-5.3",
         handle: "child",
@@ -184,12 +188,13 @@ describe("agent launch primitive", () => {
       },
     });
 
-    expect(rpc.call).toHaveBeenCalledWith("target-1", "initFromTrajectoryFork", [
+    expect(rpc.call).toHaveBeenCalledWith("target-1", "importChannelKnowledge", [
       {
-        parentLogId: "log-parent",
-        seq: 42,
-        taskChannelId: "task-1",
+        operationId: "native-fork-1",
+        parentChannelId: "parent",
+        channelId: "task-1",
         contextId: "ctx-child",
+        knowledge,
         config: { handle: "child", wakePolicy: "explicit" },
       },
     ]);
@@ -209,16 +214,18 @@ describe("agent launch primitive", () => {
         ),
     ],
     [
-      "initFromTrajectoryFork",
+      "importChannelKnowledge",
       () =>
-        initAgentFromTrajectoryFork(
+        importAgentChannelKnowledge(
           makeRpc(async () => ({ ok: true, participantId: "" })),
           "target-1",
           {
-            parentLogId: "log-parent",
-            seq: 42,
-            taskChannelId: "task-1",
+            operationId: "native-fork-invalid",
+            parentChannelId: "parent",
+            channelId: "task-1",
             contextId: "ctx-child",
+            knowledge: { channelId: "parent", throughSequence: 42,
+              history: { source: { conversationId: 1 as ConversationId, at: null }, agent: {}, entries: [] }, anchors: [] },
           }
         ),
     ],

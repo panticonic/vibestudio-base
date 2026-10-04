@@ -1,3 +1,4 @@
+import { DOM_SNAPSHOT_EXPRESSION } from "@vibestudio/shared/panel/domSnapshot";
 import type { RpcClient } from "@vibestudio/rpc";
 import {
   currentJournal,
@@ -1147,16 +1148,29 @@ export function createPanelRuntime(
     method: string,
     args: unknown[],
     waitOptions?: PanelWaitOptions,
+  ) => {
+    await ensurePanelMaterialized(id);
+    return invokeObservedPanelAgent<T>(
+      id,
+      method,
+      args,
+      await observePanel(id),
+      waitOptions,
+    );
+  };
+
+  const invokeObservedPanelAgent = async <T>(
+    id: string,
+    method: string,
+    args: unknown[],
+    initial: PanelObservation,
+    waitOptions?: PanelWaitOptions,
   ): Promise<{
     observation: PanelObservation;
     runtimeEntityId: string;
     result: T;
   }> => {
-    await ensurePanelMaterialized(id);
-    let observation = await waitUntilReady(
-      await observePanel(id),
-      waitOptions?.signal,
-    );
+    let observation = await waitUntilReady(initial, waitOptions?.signal);
     observation = await waitUntilRoutable(observation, waitOptions?.signal);
     if (!observation.runtimeEntityId)
       throw new Error(`Panel ${id} has no runtime entity`);
@@ -1245,15 +1259,49 @@ export function createPanelRuntime(
     id: string,
     waitOptions?: PanelWaitOptions,
   ): Promise<PanelSnapshotObservation> => {
-    const {
-      observation,
-      runtimeEntityId,
-      result: document,
-    } = await invokeReadyPanelAgent<{
-      kind: "synth";
-      text: string;
-      structure: Record<string, unknown>;
-    }>(id, "_agent.snapshot", [], waitOptions);
+    await ensurePanelMaterialized(id);
+    const initial = await observePanel(id);
+    let observation: PanelObservation;
+    let runtimeEntityId: string;
+    let document: PanelSnapshotObservation["document"];
+    if (initial.kind === "browser") {
+      const ready = await waitUntilReady(initial, waitOptions?.signal);
+      if (!ready.runtimeEntityId)
+        throw new Error(`Ready browser panel ${id} has no runtime identity`);
+      const page = await createCdp(
+        metadataFromResult(id, {
+          title: ready.title,
+          source: ready.source,
+          kind: ready.kind,
+          parentId: ready.parentId,
+          contextId: ready.contextId,
+          runtimeEntityId: ready.runtimeEntityId,
+          effectiveVersion: ready.effectiveVersion,
+          buildKey: ready.buildKey,
+          ref: ready.requestedRef,
+        }),
+      ).page();
+      document = await page.evaluate<PanelSnapshotObservation["document"]>(
+        DOM_SNAPSHOT_EXPRESSION,
+      );
+      observation = await observePanel(id);
+      if (
+        observation.attemptId !== ready.attemptId ||
+        observation.runtimeEntityId !== ready.runtimeEntityId ||
+        observation.phase !== "ready"
+      )
+        throw new Error(
+          `Panel ${id} changed runtime generation during snapshot capture`,
+        );
+      runtimeEntityId = ready.runtimeEntityId;
+    } else {
+      const captured = await invokeObservedPanelAgent<
+        PanelSnapshotObservation["document"]
+      >(id, "_agent.snapshot", [], initial, waitOptions);
+      observation = captured.observation;
+      runtimeEntityId = captured.runtimeEntityId;
+      document = captured.result;
+    }
     const snapshot = {
       panelId: id,
       attemptId: observation.attemptId,
@@ -1638,6 +1686,12 @@ export function createPanelRuntime(
     };
     const contextId =
       requestedContextId ?? (external ? generateContextId(id) : undefined);
+    if (external && !requestedContextId) {
+      // A fresh browser context is an owned lifecycle boundary, not merely an
+      // entity coordinate. Establish its durable parentage before attaching
+      // the browser so the creator can retire the complete owned subtree.
+      await options.rpc.call("main", "runtime.createContext", [{ contextId }]);
+    }
     const panelMetadata = external
       ? null
       : await options.rpc.call<{

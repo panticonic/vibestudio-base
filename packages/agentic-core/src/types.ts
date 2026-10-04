@@ -5,7 +5,7 @@
  * The React adapter (@workspace/agentic-chat) re-exports these and adds
  * its own UI-specific types on top.
  *
- * Pi (`@workspace/pi-core`) owns the agent message shape now.
+ * Native Pi (`@panticonic/pi-durable`) owns the agent message shape now.
  * `AgentMessage` is re-exported from `index.ts` for downstream consumers.
  */
 
@@ -302,6 +302,7 @@ export interface ChatSandboxValue {
   channelId: string | null;
   rpc: {
     call: (target: string, method: string, args: unknown[]) => Promise<unknown>;
+    stream?: ConnectionConfig["rpc"]["stream"];
   };
 }
 

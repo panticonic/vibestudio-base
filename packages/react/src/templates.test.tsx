@@ -24,6 +24,42 @@ const inspection = {
   dependencies: [],
 };
 afterEach(cleanup);
+it("keeps a supplied template selected while its inspection is pending", async () => {
+  let finish!: (value: typeof inspection) => void;
+  const client = {
+    inspect: vi.fn(
+      () =>
+        new Promise<typeof inspection>((resolve) => {
+          finish = resolve;
+        }),
+    ),
+  };
+  const onCreate = vi.fn(async () => undefined);
+  const onCreateFresh = vi.fn(async () => undefined);
+  render(
+    <Theme>
+      <TemplateBrowser
+        client={client}
+        initialPin={pin}
+        onCreate={onCreate}
+        onCreateFresh={onCreateFresh}
+      />
+    </Theme>,
+  );
+  expect(client.inspect).toHaveBeenCalledWith({ pin });
+  expect(screen.queryByRole("textbox", { name: "Workspace name" })).toBeNull();
+  expect(screen.queryByRole("button", { name: "Create workspace" })).toBeNull();
+  await act(async () => {
+    finish(inspection);
+  });
+  fireEvent.change(screen.getByRole("textbox", { name: "Workspace name" }), {
+    target: { value: "my-garden" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Create workspace" }));
+  expect(onCreate).toHaveBeenCalledWith("my-garden", pin, "use");
+  expect(onCreateFresh).not.toHaveBeenCalled();
+});
+
 it("captures the reviewed source and name once while creation is pending", async () => {
   let finish!: () => void;
   const onCreate = vi.fn(

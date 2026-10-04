@@ -14,10 +14,11 @@
   },
   "dependencies": {
     "@vibestudio/service-schemas": "workspace:*",
-    "@vibestudio/shared": "workspace:*"
+    "@vibestudio/shared": "workspace:*",
+    "zod": "^3.25.76"
   },
   "devDependencies": {
-    "@earendil-works/pi-ai": "^0.99.1",
-    "vitest": "^3.2.7"
+    "vitest": "^3.2.7",
+    "@panticonic/pi-ai": "0.99.2-vibestudio.11"
   }
 }

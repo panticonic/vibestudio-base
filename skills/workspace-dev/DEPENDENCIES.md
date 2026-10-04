@@ -235,7 +235,8 @@ Within one internal dependency closure, another unit may not directly depend
 on or override the patched package. Two owners may not declare the same exact
 patch selector. These checks make the workspace import name the explicit
 identity of the patched integration instead of silently changing an upstream
-import. See `packages/pi-ai/package.json` for a live direct-patch example.
+import. For maintained changes spanning several packages, publish a coherent
+immutable fork and declare its exact versions instead of carrying local patches.
 
 Use an adapter even when the target is transitive: the owner depends on the
 direct parent named in `roots`, carries the policy, and exposes the stable
@@ -286,8 +287,8 @@ Runtime Build V2 isolates each unit closure and can therefore build independent
 patched and unpatched consumers of the same exact transitive package. The
 checkout-wide TypeScript and Vitest commands still merge userland requirements
 into one validation install, so they cannot represent both identities at once.
-Current `@earendil-works/pi-ai` consumers all enter through the canonical
-`@workspace/pi-ai` adapter and do not create that split.
+The native agent packages use the published `@panticonic/pi-*` fork at exact
+version `0.99.2-vibestudio.9`; that closure has no patched/unpatched Pi split.
 
 Do not address this by preferring root `node_modules`, conditionally aliasing
 one test, or applying the patch checkout-wide. A complete validation design

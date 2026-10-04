@@ -1,6 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
 import { BACKGROUND_CONTEXT } from "@panticonic/pi-chord/context";
-import { copyJson } from "@panticonic/pi-chord";
 import type { Model } from "@panticonic/pi-ai";
 import { stream } from "@panticonic/pi-ai/api/openai-codex-responses";
 import { normalizeContext } from "@panticonic/pi-ai/utils/transcript";
@@ -775,22 +774,16 @@ describe("credentialed model transport ownership", () => {
     socket.emit("error", { error: original });
     socket.emit("error", { error: new Error("Later transport error") });
     let released = false;
-    const closing = connection.close(BACKGROUND_CONTEXT).then(
-      () => {
-        throw new Error("A failed socket cannot close successfully");
-      },
-      (error: unknown) => {
-        released = true;
-        expect(error).toBe(original);
-      },
-    );
+    const closing = connection.close(BACKGROUND_CONTEXT).then(() => {
+      released = true;
+    });
     await Promise.resolve();
     expect(released).toBe(false);
     expect(socket.readyState).toBe(2);
     expect(socket.listeners.get("error")?.size).toBe(1);
     socket.finish();
     await closing;
-    await expect(connection.close(BACKGROUND_CONTEXT)).rejects.toBe(original);
+    await connection.close(BACKGROUND_CONTEXT);
     expect(
       [...socket.listeners.values()].every((listeners) => !listeners.size),
     ).toBe(true);
@@ -976,7 +969,7 @@ describe("credentialed model transport ownership", () => {
   );
 
   it.each(["before-owned-join", "during-owned-join"] as const)(
-    "propagates the installed Codex provider's terminal socket error %s without waiting for CloseEvent",
+    "joins the installed Codex provider's terminal socket retirement %s without waiting for CloseEvent",
     async (completion) => {
       const socket = new Socket();
       socket.onClose = () => {};
@@ -1026,15 +1019,9 @@ describe("credentialed model transport ownership", () => {
       };
       if (completion === "before-owned-join") fail();
       let joined = false;
-      const closing = connection.close(BACKGROUND_CONTEXT).then(
-        () => {
-          throw new Error("A failed socket cannot close successfully");
-        },
-        (error: unknown) => {
-          joined = true;
-          expect(error).toBe(original);
-        },
-      );
+      const closing = connection.close(BACKGROUND_CONTEXT).then(() => {
+        joined = true;
+      });
       if (completion === "during-owned-join") {
         await Promise.resolve();
         expect(joined).toBe(false);
@@ -1044,12 +1031,12 @@ describe("credentialed model transport ownership", () => {
       expect(
         [...socket.listeners.values()].every((listeners) => !listeners.size),
       ).toBe(true);
-      await expect(connection.close(BACKGROUND_CONTEXT)).rejects.toBe(original);
+      await connection.close(BACKGROUND_CONTEXT);
       expect(socket.closeCalls).toBe(1);
     },
   );
 
-  it("retains an ErrorEvent message when the terminal socket exposes no error value", async () => {
+  it("preserves a terminal ErrorEvent for the provider while joining retired resources", async () => {
     const socket = new Socket();
     const connection = createCredentialedModelConnection(
       {
@@ -1060,38 +1047,61 @@ describe("credentialed model transport ownership", () => {
       },
       BACKGROUND_CONTEXT,
     );
-    await connection.options.connectWebSocket(
+    const providerSocket = await connection.options.connectWebSocket(
       `${codex.baseUrl}/codex/responses`,
       { headers: new Headers() },
     );
+    const providerError = vi.fn();
+    providerSocket.addEventListener("error", providerError);
+    const original = { message: "Upstream frame parser failed" };
     socket.readyState = 3;
-    socket.emit("error", { message: "Upstream frame parser failed" });
-    await expect(connection.close(BACKGROUND_CONTEXT)).rejects.toThrow(
-      "Upstream frame parser failed",
-    );
+    socket.emit("error", original);
+    expect(providerError).toHaveBeenCalledWith(original);
+    providerSocket.removeEventListener("error", providerError);
+    await connection.close(BACKGROUND_CONTEXT);
     expect(socket.closeCalls).toBe(0);
     expect(
       [...socket.listeners.values()].every((listeners) => !listeners.size),
     ).toBe(true);
   });
 
+  it("joins a retired socket after the actual Codex provider completes its HTTP fallback", async () => {
+    const socket = new Socket();
+    const original = new Error("Network connection lost.");
+    socket.onSend = () => queueMicrotask(() => {
+      socket.readyState = 3;
+      socket.emit("error", { error: original });
+    });
+    const completed = {
+      type: "response.completed",
+      response: { id: "response-fallback", status: "completed", output: [],
+        usage: { input_tokens: 0, output_tokens: 0, total_tokens: 0 } },
+    };
+    const rpc = rpcFixture(async () => new Response(
+      `data: ${JSON.stringify(completed)}\n\n`,
+      { headers: { "content-type": "text/event-stream" } },
+    ));
+    const connection = createCredentialedModelConnection({ model: codex,
+      credential: credential(), rpc, egressFetch: async () => upgraded(socket) },
+      BACKGROUND_CONTEXT);
+    try {
+      const events = stream(codex, normalizeContext({ messages: [] }), {
+        ...connection.options, transport: "auto",
+      });
+      for await (const _event of events) { /* Join the installed provider. */ }
+      expect((await events.result()).stopReason).toBe("stop");
+      expect(rpc.stream).toHaveBeenCalledOnce();
+      await connection.close(BACKGROUND_CONTEXT);
+      expect([...socket.listeners.values()].every((listeners) => !listeners.size)).toBe(true);
+    } finally {
+      await connection.close(BACKGROUND_CONTEXT);
+    }
+  });
+
   it("runs builtin Codex through Models with host-protected auth and the owned transport", async () => {
     const models = createProtectedNativeModels();
     const selected = models.getModel("openai-codex", "gpt-6.1-sol");
     if (!selected) throw new Error("Builtin Codex model is missing");
-    const samplingParams =
-      selected.samplingParams === undefined
-        ? undefined
-        : copyJson(selected.samplingParams);
-    if (
-      samplingParams !== undefined &&
-      (samplingParams === null ||
-        typeof samplingParams !== "object" ||
-        Array.isArray(samplingParams))
-    )
-      throw new Error(
-        "Selected model sampling parameters must be a JSON record",
-      );
     const socket = new Socket();
     socket.onSend = () =>
       queueMicrotask(() =>
@@ -1111,7 +1121,7 @@ describe("credentialed model transport ownership", () => {
     const rpc = rpcFixture();
     const connection = createCredentialedModelConnection(
       {
-        model: { ...structuredClone(selected), samplingParams },
+        model: selected,
         credential: credential(),
         rpc,
         egressFetch,
@@ -1184,15 +1194,9 @@ describe("content-free model transport lifecycle diagnostics", () => {
       codex,
     );
     let joined = false;
-    const closing = connection.close(BACKGROUND_CONTEXT).then(
-      () => {
-        throw new Error("A failed socket cannot close successfully");
-      },
-      (error: unknown) => {
-        joined = true;
-        expect(error).toBe(original);
-      },
-    );
+    const closing = connection.close(BACKGROUND_CONTEXT).then(() => {
+      joined = true;
+    });
     await Promise.resolve();
     expect(joined).toBe(false);
     expect(events.map((event) => event.milestone)).toEqual([

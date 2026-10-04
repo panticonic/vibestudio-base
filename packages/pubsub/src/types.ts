@@ -5,6 +5,7 @@
 import type { SandboxSource } from "./tracker-types.js";
 import type { ChannelInvite as WorkspaceChannelInvite } from "@vibestudio/shared/channelInvites";
 import type { ParticipantRef } from "@workspace/agentic-protocol";
+import type { MethodAdvertisement } from "./protocol-types.js";
 
 /**
  * Channel configuration persisted with the channel.
@@ -32,6 +33,8 @@ export interface ChannelAgenticContext {
   relationships: Array<{
     participantId: string;
     metadata: Record<string, unknown>;
+    /** Complete method definitions owned by this relationship revision. */
+    methodOffers?: MethodAdvertisement[];
     applicationConfig: { version: number; value: unknown } | null;
   }>;
   channelConfig: ChannelConfig;

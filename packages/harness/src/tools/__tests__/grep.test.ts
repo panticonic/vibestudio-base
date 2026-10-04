@@ -1,3 +1,4 @@
+import { executeTool } from "../../testing/native-tool.js";
 import { describe, it, expect, vi } from "vitest";
 import { createGrepTool, shouldWarnRe2Fallback } from "../grep.js";
 import { StubFs } from "./stub-fs.js";
@@ -16,8 +17,10 @@ class CountingFs extends StubFs {
 describe("createGrepTool", () => {
   it("returns actionable guidance when the pattern is omitted", async () => {
     const tool = createGrepTool(CWD, new StubFs());
-    const result = await tool.execute("call-1", {});
-    expect((result.content[0] as { text: string }).text).toContain("No grep pattern supplied");
+    const result = await executeTool(tool, {}, { callId: "call-1" });
+    expect((result.content[0] as { text: string }).text).toContain(
+      "No grep pattern supplied",
+    );
   });
 
   it("finds a literal pattern across multiple files", async () => {
@@ -28,7 +31,11 @@ describe("createGrepTool", () => {
       },
     });
     const tool = createGrepTool(CWD, fs);
-    const result = await tool.execute("call-1", { pattern: "foo", literal: true });
+    const result = await executeTool(
+      tool,
+      { pattern: "foo", literal: true },
+      { callId: "call-1" },
+    );
     const text = (result.content[0] as { text: string }).text;
     expect(text).toContain("a.ts:1");
     expect(text).toContain("b.ts:2");
@@ -39,7 +46,11 @@ describe("createGrepTool", () => {
       files: { [`${CWD}/a.ts`]: "let x = 10;\nlet y = 20;\nconst z = 30;" },
     });
     const tool = createGrepTool(CWD, fs);
-    const result = await tool.execute("call-1", { pattern: "let \\w+ = \\d+", literal: false });
+    const result = await executeTool(
+      tool,
+      { pattern: "let \\w+ = \\d+", literal: false },
+      { callId: "call-1" },
+    );
     const text = (result.content[0] as { text: string }).text;
     expect(text).toContain("a.ts:1");
     expect(text).toContain("a.ts:2");
@@ -51,7 +62,11 @@ describe("createGrepTool", () => {
       files: { [`${CWD}/a.ts`]: "eval({ path: 'tmp/demo.ts' });" },
     });
     const tool = createGrepTool(CWD, fs);
-    const result = await tool.execute("call-1", { pattern: "eval({ path" });
+    const result = await executeTool(
+      tool,
+      { pattern: "eval({ path" },
+      { callId: "call-1" },
+    );
     const text = (result.content[0] as { text: string }).text;
     expect(text).toContain("a.ts:1");
   });
@@ -59,20 +74,30 @@ describe("createGrepTool", () => {
   it("rejects an invalid explicitly requested regex", async () => {
     const fs = new StubFs({ files: { [`${CWD}/a.ts`]: "open();" } });
     const tool = createGrepTool(CWD, fs);
-    await expect(tool.execute("call-1", { pattern: "open(", literal: false })).rejects.toThrow(
-      /regular expression|unterminated/iu
-    );
+    await expect(
+      executeTool(
+        tool,
+        { pattern: "open(", literal: false },
+        { callId: "call-1" },
+      ),
+    ).rejects.toThrow(/regular expression|unterminated/iu);
   });
 
   it("does not reinterpret unrelated arguments as a missing pattern", async () => {
     const fs = new StubFs({ files: { [`${CWD}/a.ts`]: "readFile(path);" } });
     const tool = createGrepTool(CWD, fs);
-    const result = await tool.execute("call-1", {
-      path: ".",
-      recallKeywords: "readFile bytes base64",
-    } as never);
+    const result = await executeTool(
+      tool,
+      {
+        path: ".",
+        recallKeywords: "readFile bytes base64",
+      } as never,
+      { callId: "call-1" },
+    );
 
-    expect((result.content[0] as { text: string }).text).toContain("No grep pattern supplied");
+    expect((result.content[0] as { text: string }).text).toContain(
+      "No grep pattern supplied",
+    );
   });
 
   it("uses the host fs service before walking files", async () => {
@@ -95,13 +120,23 @@ describe("createGrepTool", () => {
             truncated: false,
           };
         }
-        throw Object.assign(new Error("Extension is not installed"), { code: "ENOEXT" });
+        throw Object.assign(new Error("Extension is not installed"), {
+          code: "ENOEXT",
+        });
       },
     };
-    const tool = createGrepTool(CWD, new StubFs({ files: {} }), { rpc: rpc as never });
-    const result = await tool.execute("call-1", { pattern: "open(" });
+    const tool = createGrepTool(CWD, new StubFs({ files: {} }), {
+      rpc: rpc as never,
+    });
+    const result = await executeTool(
+      tool,
+      { pattern: "open(" },
+      { callId: "call-1" },
+    );
 
-    expect((result.content[0] as { text: string }).text).toContain("src/a.ts:2: open();");
+    expect((result.content[0] as { text: string }).text).toContain(
+      "src/a.ts:2: open();",
+    );
     expect(result.details).toMatchObject({ engine: "fs-service" });
     expect(calls).toContainEqual({ target: "main", method: "fs.grep" });
   });
@@ -128,67 +163,104 @@ describe("createGrepTool", () => {
         return Promise.reject(new Error(`Unexpected method: ${method}`));
       }),
     };
-    const tool = createGrepTool(CWD, new StubFs({ files: {} }), { rpc: rpc as never });
+    const tool = createGrepTool(CWD, new StubFs({ files: {} }), {
+      rpc: rpc as never,
+    });
 
-    const result = await tool.execute("call-1", { pattern: "open(" });
+    const result = await executeTool(
+      tool,
+      { pattern: "open(" },
+      { callId: "call-1" },
+    );
 
-    expect((result.content[0] as { text: string }).text).toContain("src/a.ts:1: open();");
+    expect((result.content[0] as { text: string }).text).toContain(
+      "src/a.ts:1: open();",
+    );
     expect(result.details).toMatchObject({ engine: "fs-service" });
     expect(rpc.call).not.toHaveBeenCalledWith(
       expect.anything(),
       "extensions.invoke",
-      expect.anything()
+      expect.anything(),
     );
   });
 
   it("propagates host failures instead of reporting a false empty search", async () => {
     const rpc = {
-      call: vi.fn().mockRejectedValue(Object.assign(new Error("denied"), { code: "EACCES" })),
+      call: vi
+        .fn()
+        .mockRejectedValue(
+          Object.assign(new Error("denied"), { code: "EACCES" }),
+        ),
     };
-    const tool = createGrepTool(CWD, new StubFs({ files: {} }), { rpc: rpc as never });
+    const tool = createGrepTool(CWD, new StubFs({ files: {} }), {
+      rpc: rpc as never,
+    });
 
-    await expect(tool.execute("call-1", { pattern: "needle" })).rejects.toMatchObject({
+    await expect(
+      executeTool(tool, { pattern: "needle" }, { callId: "call-1" }),
+    ).rejects.toMatchObject({
       code: "EACCES",
     });
   });
 
   it("passes cancellation and useful context ranges to the bounded host search", async () => {
     const rpc = {
-      call: vi.fn().mockResolvedValue({ matches: [], matchCount: 0, truncated: false }),
+      call: vi
+        .fn()
+        .mockResolvedValue({ matches: [], matchCount: 0, truncated: false }),
     };
-    const tool = createGrepTool(CWD, new StubFs({ files: {} }), { rpc: rpc as never });
+    const tool = createGrepTool(CWD, new StubFs({ files: {} }), {
+      rpc: rpc as never,
+    });
     const controller = new AbortController();
 
-    await tool.execute(
-      "call-1",
+    await executeTool(
+      tool,
       { pattern: "needle", limit: 7, context: 20, includeIgnored: true },
-      controller.signal
+      { callId: "call-1", signal: controller.signal },
     );
 
     expect(rpc.call).toHaveBeenCalledWith(
       "main",
       "fs.grep",
-      ["needle", expect.objectContaining({ maxMatches: 7, contextLines: 20, includeIgnored: true })],
-      { signal: controller.signal }
+      [
+        "needle",
+        expect.objectContaining({
+          maxMatches: 7,
+          contextLines: 20,
+          includeIgnored: true,
+        }),
+      ],
+      { signal: controller.signal },
     );
   });
 
   it("returns 'No matches found' when nothing matches", async () => {
     const fs = new StubFs({ files: { [`${CWD}/a.ts`]: "abc" } });
     const tool = createGrepTool(CWD, fs);
-    const result = await tool.execute("call-1", { pattern: "xyz" });
-    expect((result.content[0] as { text: string }).text).toBe("No matches found");
+    const result = await executeTool(
+      tool,
+      { pattern: "xyz" },
+      { callId: "call-1" },
+    );
+    expect((result.content[0] as { text: string }).text).toBe(
+      "No matches found",
+    );
   });
 
   it("returns a diagnostic empty result for a missing exploratory search root", async () => {
     const tool = createGrepTool(CWD, new StubFs({ files: {} }));
-    const result = await tool.execute("call-1", {
-      path: "packages/missing",
-      pattern: "needle",
-    });
+    const result = await executeTool(
+      tool,
+      {
+        path: "packages/missing",
+        pattern: "needle",
+      },
+      { callId: "call-1" },
+    );
 
     expect((result.content[0] as { text: string }).text).toContain(
-      "No matches found (search path does not exist: packages/missing)"
+      "No matches found (search path does not exist: packages/missing)",
     );
     expect(result.details).toMatchObject({
       engine: "runtime-fs",
@@ -204,7 +276,11 @@ describe("createGrepTool", () => {
       },
     });
     const tool = createGrepTool(CWD, fs);
-    const result = await tool.execute("call-1", { pattern: "match", glob: "*.ts" });
+    const result = await executeTool(
+      tool,
+      { pattern: "match", glob: "*.ts" },
+      { callId: "call-1" },
+    );
     const text = (result.content[0] as { text: string }).text;
     expect(text).toContain("a.ts");
     expect(text).not.toContain("b.md");
@@ -218,10 +294,14 @@ describe("createGrepTool", () => {
       },
     });
     const tool = createGrepTool(CWD, fs);
-    await tool.execute("call-1", { pattern: "match", glob: "*.ts" });
-    expect(fs.readPaths.filter((file) => !/\.(?:gitignore|ignore)$/u.test(file))).toEqual([
-      `${CWD}/a.ts`,
-    ]);
+    await executeTool(
+      tool,
+      { pattern: "match", glob: "*.ts" },
+      { callId: "call-1" },
+    );
+    expect(
+      fs.readPaths.filter((file) => !/\.(?:gitignore|ignore)$/u.test(file)),
+    ).toEqual([`${CWD}/a.ts`]);
   });
 
   it("respects ignore files in the RuntimeFs backend", async () => {
@@ -234,11 +314,25 @@ describe("createGrepTool", () => {
     });
     const tool = createGrepTool(CWD, fs);
 
-    const normal = await tool.execute("call-1", { pattern: "needle" });
-    expect((normal.content[0] as { text: string }).text).toContain("visible.ts");
-    expect((normal.content[0] as { text: string }).text).not.toContain("ignored.ts:1");
-    const complete = await tool.execute("call-2", { pattern: "needle", includeIgnored: true });
-    expect((complete.content[0] as { text: string }).text).toContain("ignored.ts:1");
+    const normal = await executeTool(
+      tool,
+      { pattern: "needle" },
+      { callId: "call-1" },
+    );
+    expect((normal.content[0] as { text: string }).text).toContain(
+      "visible.ts",
+    );
+    expect((normal.content[0] as { text: string }).text).not.toContain(
+      "ignored.ts:1",
+    );
+    const complete = await executeTool(
+      tool,
+      { pattern: "needle", includeIgnored: true },
+      { callId: "call-2" },
+    );
+    expect((complete.content[0] as { text: string }).text).toContain(
+      "ignored.ts:1",
+    );
   });
 
   it("emits progress updates during large searches", async () => {
@@ -250,8 +344,10 @@ describe("createGrepTool", () => {
     const tool = createGrepTool(CWD, fs);
     const updates: unknown[] = [];
 
-    await tool.execute("call-1", { pattern: "missing", glob: "**/*.ts" }, undefined, (update) =>
-      updates.push(update.details)
+    await executeTool(
+      tool,
+      { pattern: "missing", glob: "**/*.ts" },
+      { callId: "call-1", onDetails: (update) => { updates.push(update); } },
     );
 
     expect(updates).toContainEqual({
@@ -267,11 +363,15 @@ describe("createGrepTool", () => {
       },
     });
     const tool = createGrepTool(CWD, fs);
-    const result = await tool.execute("call-1", {
-      pattern: "match",
-      context: 1,
-      limit: 1,
-    });
+    const result = await executeTool(
+      tool,
+      {
+        pattern: "match",
+        context: 1,
+        limit: 1,
+      },
+      { callId: "call-1" },
+    );
     const text = (result.content[0] as { text: string }).text;
     expect(text).toContain("a.ts-1- before");
     expect(text).toContain("a.ts:2: match one");
@@ -282,7 +382,11 @@ describe("createGrepTool", () => {
   it("respects ignoreCase", async () => {
     const fs = new StubFs({ files: { [`${CWD}/a.ts`]: "Hello World" } });
     const tool = createGrepTool(CWD, fs);
-    const result = await tool.execute("call-1", { pattern: "hello", ignoreCase: true });
+    const result = await executeTool(
+      tool,
+      { pattern: "hello", ignoreCase: true },
+      { callId: "call-1" },
+    );
     expect((result.content[0] as { text: string }).text).toContain("a.ts:1");
   });
 
@@ -291,7 +395,13 @@ describe("createGrepTool", () => {
     const tool = createGrepTool(CWD, fs);
     const ac = new AbortController();
     ac.abort();
-    await expect(tool.execute("call-1", { pattern: "x" }, ac.signal)).rejects.toThrow(/abort/i);
+    await expect(
+      executeTool(
+        tool,
+        { pattern: "x" },
+        { callId: "call-1", signal: ac.signal },
+      ),
+    ).rejects.toThrow(/abort/i);
   });
 
   it("does not warn about missing native RE2 in workerd-like runtimes", () => {
@@ -299,13 +409,13 @@ describe("createGrepTool", () => {
       shouldWarnRe2Fallback({
         process: { versions: { node: "22.0.0" } },
         navigator: { userAgent: "Cloudflare-Workers" },
-      })
+      }),
     ).toBe(false);
     expect(
       shouldWarnRe2Fallback({
         process: { versions: { node: "22.0.0" } },
         WebSocketPair: function WebSocketPair() {},
-      })
+      }),
     ).toBe(false);
   });
 
@@ -314,7 +424,7 @@ describe("createGrepTool", () => {
       shouldWarnRe2Fallback({
         process: { versions: { node: "22.0.0" } },
         navigator: { userAgent: "Node.js/22" },
-      })
+      }),
     ).toBe(true);
   });
 });

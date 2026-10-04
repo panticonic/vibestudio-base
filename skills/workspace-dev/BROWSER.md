@@ -38,6 +38,12 @@ containing region before acting. Collection operations such as `count()`,
 `all()` and `evaluateAll()` keep their collection semantics. A select's
 associated label excludes its option text.
 
+`first()` and `nth()` select by document order, including hidden matches. A text
+query can match a hidden select option before a visible heading. Before waiting
+on a narrowed locator, use `count()` and `inspect()` to confirm its role, name
+and visibility, then select the observed control or heading by role and scope.
+A heading's accessible name can include a child count; use its observed name.
+
 Drive multi-step flows from the observed view. Open a dialog or editor before
 addressing its fields, and establish the resulting view before issuing dependent
 actions. On `cdp_locator_state_mismatch`, inspect the captured snapshot and match
@@ -91,6 +97,26 @@ not import or install any `playwright*` package, and do not import
 `handle.cdp.evaluate()` does not exist: acquire a session and call
 `session.page.evaluate(...)`. Page evaluation returns the decoded callback
 value directly, so do not append `.result?.value` as if using raw CDP.
+
+A `data:` URL follows normal URL syntax. Encode the complete HTML with
+`encodeURIComponent` before putting it after `data:text/html,`; an unescaped
+`#` begins the URL fragment and truncates the document payload, even inside an
+inline script's selector string. For example:
+
+```ts
+const html = `<button id="go">Go</button><p id="status">Ready</p>
+<script>document.querySelector("#go").onclick = () => {
+  document.querySelector("#status").textContent = "Done";
+};</script>`;
+const handle = await openPanel(`data:text/html,${encodeURIComponent(html)}`);
+```
+
+The page is a native CDP client with the documented methods, rather than the
+entire Playwright API. In particular, it has no `setContent()` method. For a
+small disposable browser fixture, open a browser panel at `about:blank` and
+create the owned document with `page.evaluate()`; acquire its page through the
+normal panel session and close that session in `finally`. Use actual source
+edits and the panel lifecycle for workspace app documents.
 
 Navigation belongs to browser panels. On a workspace app panel, `page.goto()`,
 `page.reload()`, `page.goBack()`, and `page.goForward()` reject instead of
@@ -352,17 +378,37 @@ further application postcondition; it is not silently ignored. Locator
 A successful action establishes native dispatch, not completion of asynchronous
 application work. Await the specific rendered effect with `click({ expect })`
 or the result locator's `waitFor` before reading or starting dependent work.
+For unverified mutations, include the application's rendered failure in the
+terminal condition and inspect whether success or failure occurred. A success-only
+wait remains pending after a displayed failure. `waitForFunction` can observe a
+self-contained success-or-error predicate; propagate the original displayed
+failure instead of continuing with dependent actions. See the
+[rendered-contract debug loop](PANEL_DEBUG_LOOP.md#6-exercise-the-rendered-contract).
 Panel reload readiness establishes the runtime boot handshake; application
 fetches may still be loading. Observe the application's completed state before
 judging saved data. Immediate reads during loading are intermediate evidence,
 not a persistence verdict. Diagnose a failed observation through its structured
 error and the panel's lifecycle/console packet.
 
+Choose roles from the rendered element's semantics, not its label. A plain
+`<input aria-label="Search tasks">` has the `textbox` role; `searchbox` requires
+`type="search"` or an explicit matching role. Use `getByLabel("Search tasks", {
+exact: true })` when the label is the known contract, or inspect the actual
+input type before choosing a role. A label containing "Search" does not change
+an input's role.
+
 Named role locators identify controls: `getByRole('button', { name: 'Active' })`
 matches the whole normalized, case-sensitive accessible name, not `Mark active…`.
 This intentionally differs from Playwright's fuzzy default. Use a regex or
 explicit `exact: false` for a partial-name search. Duplicate exact names still
 produce an ambiguity error; scope to their container instead of guessing.
+`getByLabel("Count")` can match an output labelled "Count" and controls labelled
+"Increase count" or "Reset count". Use `getByLabel("Count", { exact: true })`
+for the exact output, and a button role/name for each control. A postcondition
+must describe the actual action outcome: visibility of a count output that
+already exists does not establish a changed count. Observe the expected new
+value, or await the application's success or error state.
+
 Other string locators use normalized, case-insensitive substring matching by
 default; `{ exact: true }` selects a case-sensitive whole-string match. The `isVisible`,
 `isChecked`, `isEnabled`, `isDisabled`, and `isEditable` methods are immediate

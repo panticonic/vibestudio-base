@@ -2,6 +2,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { sha256Hex } from "@vibestudio/content-addressing";
 import { createInMemorySql } from "@vibestudio/durable/test-utils";
+import { nativeInvocationId, type NativeInvocationSource } from "@vibestudio/service-schemas/nativeInvocation";
 import {
   vcsBlameResultSchema,
   vcsHistoryResultSchema,
@@ -1308,6 +1309,21 @@ describe("SemanticWorkspace repository counteractions", () => {
         },
       },
     });
+    const nativeSource: NativeInvocationSource = {
+      owner: { runtimeId: "agent:native", authoritySessionId: "lifetime:native", contextId: "context:test",
+        incarnation: "storage:native", channelId: "trajectory:test", source: "workers/agent", effectiveVersion: "state:native",
+        className: "Agent", objectKey: "native", executionDigest: "a".repeat(64) },
+      task: { conversationId: 1, taskId: 2, kind: "pi.tool", version: 1 },
+      operation: { kind: "tool", assistantEntryId: 3, callId: "call:native", name: "vcs-tool", argumentsDigest: "b".repeat(64) },
+    };
+    sql.exec(`INSERT INTO trajectory_invocations
+      (log_id, head, invocation_id, turn_id, kind, status, started_event_id, updated_at)
+      VALUES ('trajectory:test', 'main', ?, NULL, 'vcs-tool', 'active', 'event:native-start', ?)`, nativeInvocationId(nativeSource), timestamp);
+    sql.exec(`INSERT INTO log_events (log_id, head, envelope_id, actor_json, payload_ref_json)
+      VALUES ('trajectory:test', 'main', 'event:native-start', ?, ?)`, JSON.stringify({ kind: "agent", id: "agent:native" }),
+      JSON.stringify({ nativeSource, originatingInput: { conversationId: 1, submissionId: 1, entryId: 1,
+        channelRef: { source: "workers/pubsub-channel", className: "PubSubChannel", objectKey: "trajectory:test" },
+        eventSequence: 1, envelopeId: "trajectory-event:prompt", messageId: "message:trigger", receiverParticipantId: "agent:native" } }));
     const invocationNeighbors = await semantic.dispatch("neighbors", {
       ingress,
       input: { root: invocation, limit: 100 },

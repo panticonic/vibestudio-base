@@ -3,13 +3,12 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import {
-  CHANNEL_CLOSE_TIMEOUT_MS,
-  connectViaRpc,
-  resolveRpcChannelTarget,
-} from "./rpc-client.js";
+import { connectViaRpc, resolveRpcChannelTarget } from "./rpc-client.js";
 import type { PubSubClient } from "./client.js";
-import type { IncomingEvent, MethodExecutionContext } from "./protocol-types.js";
+import type {
+  IncomingEvent,
+  MethodExecutionContext,
+} from "./protocol-types.js";
 import {
   AGENTIC_EVENT_PAYLOAD_KIND,
   agentToolFailureFromUnknown,
@@ -37,27 +36,39 @@ function invocation(
   kind: string,
   callId: string,
   payload: Record<string, unknown>,
-  opts?: { transportCallId?: string; turnId?: string }
+  opts?: { transportCallId?: string; turnId?: string },
 ) {
   const terminalPayload =
     kind === "invocation.completed"
       ? invocationCompletedPayload()
       : kind === "invocation.failed"
-        ? invocationFailedPayload("tool_error", String(payload["reason"] ?? "method failed"), {
-            terminalReasonCode: "method_failed",
-            failure: agentToolFailureFromUnknown(payload, {
-              operation: "channel-method",
-              stage: "test",
-            }),
-          })
+        ? invocationFailedPayload(
+            "tool_error",
+            String(payload["reason"] ?? "method failed"),
+            {
+              terminalReasonCode: "method_failed",
+              failure: agentToolFailureFromUnknown(payload, {
+                operation: "channel-method",
+                stage: "test",
+              }),
+            },
+          )
         : kind === "invocation.cancelled"
-          ? invocationCancelledPayload("cancelled", String(payload["reason"] ?? "cancelled"), {
-              terminalReasonCode: "cancelled",
-            })
+          ? invocationCancelledPayload(
+              "cancelled",
+              String(payload["reason"] ?? "cancelled"),
+              {
+                terminalReasonCode: "cancelled",
+              },
+            )
           : kind === "invocation.abandoned"
-            ? invocationAbandonedPayload(String(payload["reason"] ?? "abandoned"), {
-                terminalReasonCode: "runner_restarted_before_invocation_completed",
-              })
+            ? invocationAbandonedPayload(
+                String(payload["reason"] ?? "abandoned"),
+                {
+                  terminalReasonCode:
+                    "runner_restarted_before_invocation_completed",
+                },
+              )
             : { protocol: "agentic.trajectory.v1" };
   return {
     kind,
@@ -65,7 +76,9 @@ function invocation(
     ...(opts?.turnId ? { turnId: opts.turnId } : {}),
     causality: {
       invocationId: callId,
-      ...(opts?.transportCallId ? { transportCallId: opts.transportCallId } : {}),
+      ...(opts?.transportCallId
+        ? { transportCallId: opts.transportCallId }
+        : {}),
     },
     payload: { ...terminalPayload, ...payload },
     createdAt: new Date().toISOString(),
@@ -86,6 +99,19 @@ function messageEvent(id: string, content: string, actorId = "agent-1") {
   };
 }
 
+function committedPublication(args: unknown[], id: number) {
+  return {
+    id,
+    messageId: `event-${id}`,
+    senderId: String(args[0]),
+    type: String(args[1]),
+    payload: args[2],
+    ts: 1000 + id,
+    contentClass: "internal",
+    externalKeys: [],
+  };
+}
+
 interface MockRpc {
   call: ReturnType<typeof vi.fn>;
   stream: ReturnType<typeof vi.fn>;
@@ -98,8 +124,10 @@ interface MockRpc {
  */
 function createMockRpc() {
   const removeListener = vi.fn();
-  let streamController: ReadableStreamDefaultController<Uint8Array> | null = null;
-  let approvalController: ReadableStreamDefaultController<Uint8Array> | null = null;
+  let streamController: ReadableStreamDefaultController<Uint8Array> | null =
+    null;
+  let approvalController: ReadableStreamDefaultController<Uint8Array> | null =
+    null;
   let pendingApprovalIds: string[] = [];
   let approvalSequence = 0;
   const pendingPayloads: unknown[] = [];
@@ -125,7 +153,7 @@ function createMockRpc() {
         target: string,
         method: string,
         args: unknown[],
-        options?: { signal?: AbortSignal }
+        options?: { signal?: AbortSignal },
       ) => {
         if (target === "main" && method === "events.watch") {
           const requested = args[0] as Array<"shell-approval:pending-changed">;
@@ -137,25 +165,28 @@ function createMockRpc() {
                   kind: "watching",
                   events: requested,
                   epoch: "test-approval-epoch",
-                })
+                }),
               );
               controller.enqueue(
                 encodeEventWatchRecord({
                   kind: "snapshot",
                   event: "shell-approval:pending-changed",
                   payload: {
-                    pending: pendingApprovalIds.map((approvalId) => ({ approvalId })),
+                    pending: pendingApprovalIds.map((approvalId) => ({
+                      approvalId,
+                    })),
                   },
                   sequence: approvalSequence,
-                })
+                }),
               );
               options?.signal?.addEventListener(
                 "abort",
                 () => {
-                  if (approvalController === controller) approvalController = null;
+                  if (approvalController === controller)
+                    approvalController = null;
                   controller.close();
                 },
-                { once: true }
+                { once: true },
               );
             },
             cancel() {
@@ -164,18 +195,24 @@ function createMockRpc() {
           });
           return new Response(body);
         }
-        priorSignalStatesAtOpen.push(streamSignals.map((signal) => signal.aborted));
+        priorSignalStatesAtOpen.push(
+          streamSignals.map((signal) => signal.aborted),
+        );
         if (options?.signal) streamSignals.push(options.signal);
         const result = await rpc.call(target, method, args);
         const body = new ReadableStream<Uint8Array>({
           start(controller) {
             streamController = controller;
             controller.enqueue(
-              encoder.encode(`${JSON.stringify({ kind: "subscribed", result })}\n`)
+              encoder.encode(
+                `${JSON.stringify({ kind: "subscribed", result })}\n`,
+              ),
             );
             for (const payload of pendingPayloads.splice(0)) {
               controller.enqueue(
-                encoder.encode(`${JSON.stringify({ kind: "message", payload })}\n`)
+                encoder.encode(
+                  `${JSON.stringify({ kind: "message", payload })}\n`,
+                ),
               );
             }
             options?.signal?.addEventListener(
@@ -187,7 +224,7 @@ function createMockRpc() {
                   controller.close();
                 }
               },
-              { once: true }
+              { once: true },
             );
           },
           cancel() {
@@ -196,7 +233,7 @@ function createMockRpc() {
           },
         });
         return new Response(body);
-      }
+      },
     ),
     selfId: SELF_ID,
   };
@@ -206,7 +243,9 @@ function createMockRpc() {
       pendingPayloads.push(payload);
       return;
     }
-    streamController.enqueue(encoder.encode(`${JSON.stringify({ kind: "message", payload })}\n`));
+    streamController.enqueue(
+      encoder.encode(`${JSON.stringify({ kind: "message", payload })}\n`),
+    );
   }
 
   function emit(msg: Record<string, unknown>) {
@@ -277,7 +316,7 @@ function createMockRpc() {
         event: "shell-approval:pending-changed",
         payload: { pending: approvalIds.map((approvalId) => ({ approvalId })) },
         sequence: approvalSequence,
-      })
+      }),
     );
   }
 
@@ -312,7 +351,7 @@ function createMockRpc() {
 async function emitReplayAndReady(
   emit: (msg: Record<string, unknown>) => void,
   participants: Array<{ id: string; name: string; type: string }>,
-  messages: Array<{ id: number; content: string; senderId: string }> = []
+  messages: Array<{ id: number; content: string; senderId: string }> = [],
 ) {
   // Emit presence join replay events for each participant
   for (const p of participants) {
@@ -390,7 +429,7 @@ describe("connectViaRpc", () => {
           }),
           expect.any(String),
         ],
-        { signal: expect.any(AbortSignal) }
+        { signal: expect.any(AbortSignal) },
       );
 
       await emitReplayAndReady(emit, []);
@@ -406,13 +445,13 @@ describe("connectViaRpc", () => {
       });
 
       await expect(client.ready()).rejects.toThrow(
-        "Resident channel delivery requires the owning Durable Object registrar"
+        "Resident channel delivery requires the owning Durable Object registrar",
       );
       expect(mockRpc.stream).not.toHaveBeenCalledWith(
         DO_TARGET,
         "subscribe",
         expect.anything(),
-        expect.anything()
+        expect.anything(),
       );
       await client.close();
     });
@@ -425,7 +464,8 @@ describe("connectViaRpc", () => {
         releaseHandler = resolve;
       });
       const residentEventHandler = vi.fn(async (event: IncomingEvent) => {
-        if (!("payload" in event)) throw new Error("expected a payload-bearing resident event");
+        if (!("payload" in event))
+          throw new Error("expected a payload-bearing resident event");
         if (residentEventHandler.mock.calls.length === 1) {
           expect(event.payload).toMatchObject({
             payload: { request: { value: "hydrated" } },
@@ -438,49 +478,57 @@ describe("connectViaRpc", () => {
         selfId: SELF_ID,
         stream: vi.fn(),
         registerResidentSession: vi.fn(
-          (_channelId: string, next: (payload: unknown) => void | Promise<void>) => {
+          (
+            _channelId: string,
+            next: (payload: unknown) => void | Promise<void>,
+          ) => {
             receiver = next;
             return {
               transport: {
-                call: <T = unknown>(target: string, method: string, args: unknown[]) =>
-                  rpc.call(target, method, args) as Promise<T>,
+                call: <T = unknown>(
+                  target: string,
+                  method: string,
+                  args: unknown[],
+                ) => rpc.call(target, method, args) as Promise<T>,
               },
               close: unregister,
             };
-          }
+          },
         ),
-        call: vi.fn(async (target: string, method: string, _args?: unknown[]) => {
-          if (target === "main" && method === "workers.resolveService") {
-            return { kind: "durable-object", targetId: DO_TARGET };
-          }
-          if (target === DO_TARGET && method === "relationshipState") {
-            return { revision: joined ? 1 : 0, active: joined };
-          }
-          if (target === DO_TARGET && method === "join") {
-            joined = true;
-            return {
-              ok: true,
-              participantId: SELF_ID,
-              revision: 1,
-              envelope: {
-                mode: "initial",
-                logEvents: [],
-                snapshots: [],
-                ready: {
-                  contextId: "ctx-resident",
-                  totalCount: 0,
-                  envelopeCount: 0,
-                  hasMoreBefore: false,
+        call: vi.fn(
+          async (target: string, method: string, _args?: unknown[]) => {
+            if (target === "main" && method === "workers.resolveService") {
+              return { kind: "durable-object", targetId: DO_TARGET };
+            }
+            if (target === DO_TARGET && method === "relationshipState") {
+              return { revision: joined ? 1 : 0, active: joined };
+            }
+            if (target === DO_TARGET && method === "join") {
+              joined = true;
+              return {
+                ok: true,
+                participantId: SELF_ID,
+                revision: 1,
+                envelope: {
+                  mode: "initial",
+                  logEvents: [],
+                  snapshots: [],
+                  ready: {
+                    contextId: "ctx-resident",
+                    totalCount: 0,
+                    envelopeCount: 0,
+                    hasMoreBefore: false,
+                  },
                 },
-              },
-            };
-          }
-          if (target === DO_TARGET && method === "leave") return { ok: true };
-          if (target === "main" && method === "blobstore.getText") {
-            return JSON.stringify({ value: "hydrated" });
-          }
-          return undefined;
-        }),
+              };
+            }
+            if (target === DO_TARGET && method === "leave") return { ok: true };
+            if (target === "main" && method === "blobstore.getText") {
+              return JSON.stringify({ value: "hydrated" });
+            }
+            return undefined;
+          },
+        ),
       };
 
       const client = connectViaRpc({
@@ -492,11 +540,19 @@ describe("connectViaRpc", () => {
       });
       await client.ready();
 
-      expect(rpc.registerResidentSession).toHaveBeenCalledWith(CHANNEL, expect.any(Function), {
-        targetId: DO_TARGET,
-      });
+      expect(rpc.registerResidentSession).toHaveBeenCalledWith(
+        CHANNEL,
+        expect.any(Function),
+        {
+          targetId: DO_TARGET,
+        },
+      );
       expect(rpc.stream).not.toHaveBeenCalled();
-      expect(rpc.call).not.toHaveBeenCalledWith("main", "workers.resolveService", expect.anything());
+      expect(rpc.call).not.toHaveBeenCalledWith(
+        "main",
+        "workers.resolveService",
+        expect.anything(),
+      );
       expect(receiver).toBeTypeOf("function");
       expect(client.contextId).toBe("ctx-resident");
 
@@ -528,11 +584,13 @@ describe("connectViaRpc", () => {
               ts: Date.now(),
             },
           },
-        })
+        }),
       ).then(() => {
         deliverySettled = true;
       });
-      await vi.waitFor(() => expect(residentEventHandler).toHaveBeenCalledOnce());
+      await vi.waitFor(() =>
+        expect(residentEventHandler).toHaveBeenCalledOnce(),
+      );
       expect(deliverySettled).toBe(false);
       releaseHandler!();
       await delivery;
@@ -555,7 +613,9 @@ describe("connectViaRpc", () => {
           },
         },
       });
-      expect(rpc.call.mock.calls.some(([, method]) => method === "getReplayAfter")).toBe(false);
+      expect(
+        rpc.call.mock.calls.some(([, method]) => method === "getReplayAfter"),
+      ).toBe(false);
 
       await client.close();
       expect(unregister).toHaveBeenCalledOnce();
@@ -577,7 +637,7 @@ describe("connectViaRpc", () => {
       };
       const accessError = Object.assign(
         new Error("[workers.resolveService] Service resolution is not allowed"),
-        { errorCode: "EACCES", errorData }
+        { errorCode: "EACCES", errorData },
       );
       const rpc = {
         selfId: SELF_ID,
@@ -596,7 +656,9 @@ describe("connectViaRpc", () => {
         errorData,
       });
       expect(errors).toEqual(
-        expect.arrayContaining([expect.objectContaining({ errorCode: "EACCES", errorData })])
+        expect.arrayContaining([
+          expect.objectContaining({ errorCode: "EACCES", errorData }),
+        ]),
       );
       await client.close();
     });
@@ -613,19 +675,23 @@ describe("connectViaRpc", () => {
         },
       };
       const pendingReview = Object.assign(
-        new Error("[workers.resolveService] Waiting for you to finish reviewing Welcome"),
-        { errorCode: "EREVIEWPENDING", errorData }
+        new Error(
+          "[workers.resolveService] Waiting for you to finish reviewing Welcome",
+        ),
+        { errorCode: "EREVIEWPENDING", errorData },
       );
       setPendingApprovals(["review-123"]);
       let attempts = 0;
-      mockRpc.call.mockImplementation(async (target: string, method: string) => {
-        if (target === "main" && method === "workers.resolveService") {
-          attempts += 1;
-          if (attempts < 2) throw pendingReview;
-          return { kind: "durable-object", targetId: DO_TARGET };
-        }
-        return undefined;
-      });
+      mockRpc.call.mockImplementation(
+        async (target: string, method: string) => {
+          if (target === "main" && method === "workers.resolveService") {
+            attempts += 1;
+            if (attempts < 2) throw pendingReview;
+            return { kind: "durable-object", targetId: DO_TARGET };
+          }
+          return undefined;
+        },
+      );
       const errors: Error[] = [];
       const client = connectViaRpc({ rpc: mockRpc as any, channel: CHANNEL });
       client.onError((error) => errors.push(error));
@@ -642,8 +708,8 @@ describe("connectViaRpc", () => {
           "main",
           "events.watch",
           [["shell-approval:pending-changed"], expect.any(String)],
-          { signal: expect.any(AbortSignal), bodyIdleTimeoutMs: null }
-        )
+          { signal: expect.any(AbortSignal), bodyIdleTimeoutMs: null },
+        ),
       );
 
       setPendingApprovals([]);
@@ -668,19 +734,23 @@ describe("connectViaRpc", () => {
         },
       };
       const pendingReview = Object.assign(
-        new Error("[workers.resolveService] Waiting for you to finish reviewing Welcome"),
-        { errorCode: "EREVIEWPENDING", errorData }
+        new Error(
+          "[workers.resolveService] Waiting for you to finish reviewing Welcome",
+        ),
+        { errorCode: "EREVIEWPENDING", errorData },
       );
       setPendingApprovals(["review-123"]);
       let attempts = 0;
-      mockRpc.call.mockImplementation(async (target: string, method: string) => {
-        if (target === "main" && method === "workers.resolveService") {
-          attempts += 1;
-          if (attempts === 1) throw pendingReview;
-          return { kind: "durable-object", targetId: DO_TARGET };
-        }
-        return undefined;
-      });
+      mockRpc.call.mockImplementation(
+        async (target: string, method: string) => {
+          if (target === "main" && method === "workers.resolveService") {
+            attempts += 1;
+            if (attempts === 1) throw pendingReview;
+            return { kind: "durable-object", targetId: DO_TARGET };
+          }
+          return undefined;
+        },
+      );
 
       let settled = false;
       const resolution = resolveRpcChannelTarget({
@@ -692,14 +762,15 @@ describe("connectViaRpc", () => {
         settled = true;
       });
       await vi.waitFor(() => expect(attempts).toBe(1));
-      await new Promise(resolve => setTimeout(resolve, 30));
+      await new Promise((resolve) => setTimeout(resolve, 30));
       expect(settled).toBe(false);
 
       setPendingApprovals([]);
       await expect(resolution).resolves.toBe(DO_TARGET);
       expect(attempts).toBe(2);
       for (const call of mockRpc.call.mock.calls.filter(
-        ([target, method]) => target === "main" && method === "workers.resolveService"
+        ([target, method]) =>
+          target === "main" && method === "workers.resolveService",
       )) {
         expect(call[3]).toEqual({ timeoutMs: 10 });
       }
@@ -722,7 +793,9 @@ describe("connectViaRpc", () => {
       await Promise.resolve();
       await Promise.resolve();
 
-      const subscribeCall = mockRpc.stream.mock.calls.find((call) => call[1] === "subscribe");
+      const subscribeCall = mockRpc.stream.mock.calls.find(
+        (call) => call[1] === "subscribe",
+      );
       const metadata = subscribeCall?.[2]?.[1] as
         | {
             methods?: Array<{
@@ -769,26 +842,28 @@ describe("connectViaRpc", () => {
               execute: vi.fn().mockResolvedValue({ success: true }),
             },
           },
-        })
+        }),
       ).toThrow(
-        /Invalid JSON Schema advertised for method "client_eval" parameters:.*exclusiveMinimum.*number/
+        /Invalid JSON Schema advertised for method "client_eval" parameters:.*exclusiveMinimum.*number/,
       );
       expect(mockRpc.stream).not.toHaveBeenCalled();
     });
 
     it("does not settle cooperative close before self-leave is acknowledged", async () => {
       let acknowledgeLeave: (() => void) | undefined;
-      mockRpc.call.mockImplementation(async (target: string, method: string) => {
-        if (target === "main" && method === "workers.resolveService") {
-          return { kind: "durable-object", targetId: DO_TARGET };
-        }
-        if (target === DO_TARGET && method === "unsubscribe") {
-          await new Promise<void>((resolve) => {
-            acknowledgeLeave = resolve;
-          });
-        }
-        return undefined;
-      });
+      mockRpc.call.mockImplementation(
+        async (target: string, method: string) => {
+          if (target === "main" && method === "workers.resolveService") {
+            return { kind: "durable-object", targetId: DO_TARGET };
+          }
+          if (target === DO_TARGET && method === "unsubscribe") {
+            await new Promise<void>((resolve) => {
+              acknowledgeLeave = resolve;
+            });
+          }
+          return undefined;
+        },
+      );
       const client = connectViaRpc({ rpc: mockRpc as any, channel: CHANNEL });
       await emitReplayAndReady(emit, []);
       await client.ready();
@@ -801,7 +876,7 @@ describe("connectViaRpc", () => {
         expect(mockRpc.call).toHaveBeenCalledWith(DO_TARGET, "unsubscribe", [
           SELF_ID,
           expect.any(String),
-        ], { timeoutMs: CHANNEL_CLOSE_TIMEOUT_MS });
+        ]);
       });
       expect(settled).toBe(false);
 
@@ -810,38 +885,36 @@ describe("connectViaRpc", () => {
       expect(settled).toBe(true);
     });
 
-    it("aborts the subscription when cooperative close does not answer", async () => {
+    it("propagates the original cooperative leave failure and retires the subscription", async () => {
       vi.useFakeTimers();
+      const original = new Error(
+        "The channel owner rejected cooperative leave",
+      );
+      let rejectLeave!: (error: Error) => void;
+      const leaving = new Promise<void>((_resolve, reject) => {
+        rejectLeave = reject;
+      });
       mockRpc.call.mockImplementation(
-        async (
-          target: string,
-          method: string,
-          _args: unknown[],
-          options?: { timeoutMs?: number }
-        ) => {
+        async (target: string, method: string) => {
           if (target === "main" && method === "workers.resolveService") {
             return { kind: "durable-object", targetId: DO_TARGET };
           }
-          if (target === DO_TARGET && method === "unsubscribe") {
-            await new Promise<void>((_resolve, reject) => {
-              setTimeout(
-                () => reject(new Error("cooperative close timed out")),
-                options?.timeoutMs
-              );
-            });
-          }
+          if (target === DO_TARGET && method === "unsubscribe") await leaving;
           return undefined;
-        }
+        },
       );
       const client = connectViaRpc({ rpc: mockRpc as any, channel: CHANNEL });
       await emitReplayAndReady(emit, []);
       await client.ready();
-
       const closing = client.close();
-      const rejected = expect(closing).rejects.toThrow("cooperative close timed out");
-      await vi.advanceTimersByTimeAsync(CHANNEL_CLOSE_TIMEOUT_MS);
-
-      await rejected;
+      const rejected = expect(closing).rejects.toBe(original);
+      try {
+        await vi.advanceTimersByTimeAsync(60_000);
+        expect(streamSignals.at(-1)?.aborted).toBe(false);
+      } finally {
+        rejectLeave(original);
+        await rejected;
+      }
       expect(streamSignals.at(-1)?.aborted).toBe(true);
     });
 
@@ -852,7 +925,9 @@ describe("connectViaRpc", () => {
         await emitReplayAndReady(emit, []);
         await client.ready();
         expect(setIntervalSpy).not.toHaveBeenCalled();
-        expect(mockRpc.call.mock.calls.some(([, method]) => method === "touch")).toBe(false);
+        expect(
+          mockRpc.call.mock.calls.some(([, method]) => method === "touch"),
+        ).toBe(false);
       } finally {
         await client.close();
         setIntervalSpy.mockRestore();
@@ -873,9 +948,15 @@ describe("connectViaRpc", () => {
       // Roster should have both participants
       const roster = client.roster;
       expect(roster["agent-1"]).toBeDefined();
-      expect(roster["agent-1"]!.metadata).toEqual({ name: "Claude", type: "agent" });
+      expect(roster["agent-1"]!.metadata).toEqual({
+        name: "Claude",
+        type: "agent",
+      });
       expect(roster["panel:panel-1"]).toBeDefined();
-      expect(roster["panel:panel-1"]!.metadata).toEqual({ name: "User", type: "panel" });
+      expect(roster["panel:panel-1"]!.metadata).toEqual({
+        name: "User",
+        type: "panel",
+      });
 
       expect(client.connected).toBe(true);
       expect(client.contextId).toBe("ctx-123");
@@ -885,46 +966,49 @@ describe("connectViaRpc", () => {
     });
 
     it("adopts the authoritative human participant id for every post-subscribe operation", async () => {
-      mockRpc.call.mockImplementation(async (target: string, method: string) => {
-        if (target === "main" && method === "workers.resolveService") {
-          return { kind: "durable-object", targetId: DO_TARGET };
-        }
-        if (target === DO_TARGET && method === "subscribe") {
-          return {
-            ok: true,
-            participantId: "user:usr_alice",
-            envelope: {
-              mode: "initial",
-              logEvents: [],
-              snapshots: [
-                {
-                  kind: "roster-snapshot",
-                  participants: [
-                    {
-                      id: "user:usr_alice",
-                      ref: {
-                        kind: "user",
+      mockRpc.call.mockImplementation(
+        async (target: string, method: string, args: unknown[]) => {
+          if (target === "main" && method === "workers.resolveService") {
+            return { kind: "durable-object", targetId: DO_TARGET };
+          }
+          if (target === DO_TARGET && method === "subscribe") {
+            return {
+              ok: true,
+              participantId: "user:usr_alice",
+              envelope: {
+                mode: "initial",
+                logEvents: [],
+                snapshots: [
+                  {
+                    kind: "roster-snapshot",
+                    participants: [
+                      {
                         id: "user:usr_alice",
-                        participantId: "user:usr_alice",
+                        ref: {
+                          kind: "user",
+                          id: "user:usr_alice",
+                          participantId: "user:usr_alice",
+                        },
+                        metadata: { kind: "user", type: "user" },
                       },
-                      metadata: { kind: "user", type: "user" },
-                    },
-                  ],
-                  ts: Date.now(),
+                    ],
+                    ts: Date.now(),
+                  },
+                ],
+                ready: {
+                  contextId: "ctx-1",
+                  totalCount: 0,
+                  envelopeCount: 0,
+                  hasMoreBefore: false,
                 },
-              ],
-              ready: {
-                contextId: "ctx-1",
-                totalCount: 0,
-                envelopeCount: 0,
-                hasMoreBefore: false,
               },
-            },
-          };
-        }
-        if (target === DO_TARGET && method === "publish") return { id: 1 };
-        return undefined;
-      });
+            };
+          }
+          if (target === DO_TARGET && method === "publish")
+            return committedPublication(args, 1);
+          return undefined;
+        },
+      );
       const client = connectViaRpc({
         rpc: mockRpc as any,
         channel: CHANNEL,
@@ -947,55 +1031,64 @@ describe("connectViaRpc", () => {
       expect(mockRpc.call).toHaveBeenCalledWith(DO_TARGET, "unsubscribe", [
         "user:usr_alice",
         expect.any(String),
-      ], { timeoutMs: CHANNEL_CLOSE_TIMEOUT_MS });
+      ]);
     });
 
     it("resolves ready() from the subscribe acknowledgment after applying fallback replay", async () => {
-      mockRpc.call.mockImplementation(async (target: string, method: string) => {
-        if (target === "main" && method === "workers.resolveService") {
-          return { kind: "durable-object", targetId: DO_TARGET };
-        }
-        if (method === "subscribe") {
-          return {
-            ok: true,
-            envelope: {
-              mode: "initial",
-              logEvents: [
-                {
-                  id: 101,
-                  messageId: "presence-101",
-                  type: "presence",
-                  payload: {
-                    action: "join",
-                    ref: { kind: "agent", id: "agent-1", participantId: "agent-1" },
-                    metadata: { name: "Claude", type: "agent" },
+      mockRpc.call.mockImplementation(
+        async (target: string, method: string) => {
+          if (target === "main" && method === "workers.resolveService") {
+            return { kind: "durable-object", targetId: DO_TARGET };
+          }
+          if (method === "subscribe") {
+            return {
+              ok: true,
+              envelope: {
+                mode: "initial",
+                logEvents: [
+                  {
+                    id: 101,
+                    messageId: "presence-101",
+                    type: "presence",
+                    payload: {
+                      action: "join",
+                      ref: {
+                        kind: "agent",
+                        id: "agent-1",
+                        participantId: "agent-1",
+                      },
+                      metadata: { name: "Claude", type: "agent" },
+                    },
+                    senderId: "agent-1",
+                    ts: Date.now(),
                   },
-                  senderId: "agent-1",
-                  ts: Date.now(),
+                  {
+                    id: 201,
+                    messageId: "msg-201",
+                    type: AGENTIC_EVENT_PAYLOAD_KIND,
+                    payload: messageEvent(
+                      "00000000-0000-4000-8000-000000000201",
+                      "from replay",
+                    ),
+                    senderId: "agent-1",
+                    contentClass: "internal",
+                    externalKeys: [],
+                    ts: Date.now(),
+                  },
+                ],
+                snapshots: [],
+                ready: {
+                  contextId: "ctx-from-subscribe",
+                  channelConfig: { title: "Ack Channel" },
+                  totalCount: 1,
+                  envelopeCount: 1,
                 },
-                {
-                  id: 201,
-                  messageId: "msg-201",
-                  type: AGENTIC_EVENT_PAYLOAD_KIND,
-                  payload: messageEvent("00000000-0000-4000-8000-000000000201", "from replay"),
-                  senderId: "agent-1",
-                  contentClass: "internal",
-                  externalKeys: [],
-                  ts: Date.now(),
-                },
-              ],
-              snapshots: [],
-              ready: {
-                contextId: "ctx-from-subscribe",
-                channelConfig: { title: "Ack Channel" },
-                totalCount: 1,
-                envelopeCount: 1,
               },
-            },
-          };
-        }
-        return undefined;
-      });
+            };
+          }
+          return undefined;
+        },
+      );
 
       const client = connectViaRpc({ rpc: mockRpc as any, channel: CHANNEL });
       const events = client.events({ includeReplay: true });
@@ -1007,11 +1100,17 @@ describe("connectViaRpc", () => {
       expect(client.connected).toBe(true);
       expect(client.contextId).toBe("ctx-from-subscribe");
       expect(client.channelConfig).toEqual({ title: "Ack Channel" });
-      expect(client.roster["agent-1"]?.metadata).toEqual({ name: "Claude", type: "agent" });
+      expect(client.roster["agent-1"]?.metadata).toEqual({
+        name: "Claude",
+        type: "agent",
+      });
       expect(readyHandler).toHaveBeenCalledTimes(1);
 
       let replayed = await events.next();
-      while (!replayed.done && replayed.value.type !== AGENTIC_EVENT_PAYLOAD_KIND) {
+      while (
+        !replayed.done &&
+        replayed.value.type !== AGENTIC_EVENT_PAYLOAD_KIND
+      ) {
         replayed = await events.next();
       }
       expect(replayed).toMatchObject({
@@ -1052,48 +1151,57 @@ describe("connectViaRpc", () => {
     });
 
     it("does not surface replay events when replayMode is skip", async () => {
-      mockRpc.call.mockImplementation(async (target: string, method: string) => {
-        if (target === "main" && method === "workers.resolveService") {
-          return { kind: "durable-object", targetId: DO_TARGET };
-        }
-        if (method === "subscribe") {
-          return {
-            ok: true,
-            envelope: {
-              mode: "initial",
-              logEvents: [
-                {
-                  id: 201,
-                  messageId: "msg-201",
-                  type: AGENTIC_EVENT_PAYLOAD_KIND,
-                  payload: messageEvent("00000000-0000-4000-8000-000000000201", "from replay"),
-                  senderId: "agent-1",
-                  ts: Date.now(),
+      mockRpc.call.mockImplementation(
+        async (target: string, method: string) => {
+          if (target === "main" && method === "workers.resolveService") {
+            return { kind: "durable-object", targetId: DO_TARGET };
+          }
+          if (method === "subscribe") {
+            return {
+              ok: true,
+              envelope: {
+                mode: "initial",
+                logEvents: [
+                  {
+                    id: 201,
+                    messageId: "msg-201",
+                    type: AGENTIC_EVENT_PAYLOAD_KIND,
+                    payload: messageEvent(
+                      "00000000-0000-4000-8000-000000000201",
+                      "from replay",
+                    ),
+                    senderId: "agent-1",
+                    ts: Date.now(),
+                  },
+                ],
+                snapshots: [
+                  {
+                    kind: "roster-snapshot",
+                    participants: [
+                      {
+                        id: "agent-1",
+                        ref: {
+                          kind: "agent",
+                          id: "agent-1",
+                          participantId: "agent-1",
+                        },
+                        metadata: { name: "Agent", type: "agent" },
+                      },
+                    ],
+                    ts: Date.now(),
+                  },
+                ],
+                ready: {
+                  contextId: "ctx-skip",
+                  totalCount: 1,
+                  envelopeCount: 1,
                 },
-              ],
-              snapshots: [
-                {
-                  kind: "roster-snapshot",
-                  participants: [
-                    {
-                      id: "agent-1",
-                      ref: { kind: "agent", id: "agent-1", participantId: "agent-1" },
-                      metadata: { name: "Agent", type: "agent" },
-                    },
-                  ],
-                  ts: Date.now(),
-                },
-              ],
-              ready: {
-                contextId: "ctx-skip",
-                totalCount: 1,
-                envelopeCount: 1,
               },
-            },
-          };
-        }
-        return undefined;
-      });
+            };
+          }
+          return undefined;
+        },
+      );
 
       const client = connectViaRpc({
         rpc: mockRpc as any,
@@ -1116,7 +1224,10 @@ describe("connectViaRpc", () => {
         phase: "replay",
         id: 201,
         type: AGENTIC_EVENT_PAYLOAD_KIND,
-        payload: messageEvent("00000000-0000-4000-8000-000000000201", "from replay"),
+        payload: messageEvent(
+          "00000000-0000-4000-8000-000000000201",
+          "from replay",
+        ),
         senderId: "agent-1",
         ts: Date.now(),
       });
@@ -1154,7 +1265,10 @@ describe("connectViaRpc", () => {
         phase: "replay",
         id: 201,
         type: AGENTIC_EVENT_PAYLOAD_KIND,
-        payload: messageEvent("00000000-0000-4000-8000-000000000201", "from replay"),
+        payload: messageEvent(
+          "00000000-0000-4000-8000-000000000201",
+          "from replay",
+        ),
         senderId: "agent-1",
         ts: Date.now(),
       });
@@ -1191,7 +1305,10 @@ describe("connectViaRpc", () => {
         phase: "replay",
         id: 201,
         type: AGENTIC_EVENT_PAYLOAD_KIND,
-        payload: messageEvent("00000000-0000-4000-8000-000000000201", "from replay"),
+        payload: messageEvent(
+          "00000000-0000-4000-8000-000000000201",
+          "from replay",
+        ),
         senderId: "agent-1",
         ts: Date.now(),
       });
@@ -1208,7 +1325,10 @@ describe("connectViaRpc", () => {
         phase: "live",
         id: 202,
         type: AGENTIC_EVENT_PAYLOAD_KIND,
-        payload: messageEvent("00000000-0000-4000-8000-000000000202", "from live"),
+        payload: messageEvent(
+          "00000000-0000-4000-8000-000000000202",
+          "from live",
+        ),
         senderId: "agent-1",
         ts: Date.now(),
       });
@@ -1230,7 +1350,8 @@ describe("connectViaRpc", () => {
 
     it("fires onRoster handlers during replay", async () => {
       const client = connectViaRpc({ rpc: mockRpc as any, channel: CHANNEL });
-      const rosterUpdates: Array<{ participantId: string; action: string }> = [];
+      const rosterUpdates: Array<{ participantId: string; action: string }> =
+        [];
       client.onRoster((update) => {
         if (update.change) {
           rosterUpdates.push({
@@ -1240,11 +1361,16 @@ describe("connectViaRpc", () => {
         }
       });
 
-      await emitReplayAndReady(emit, [{ id: "agent-1", name: "Claude", type: "agent" }]);
+      await emitReplayAndReady(emit, [
+        { id: "agent-1", name: "Claude", type: "agent" },
+      ]);
 
       await client.ready();
 
-      expect(rosterUpdates).toContainEqual({ participantId: "agent-1", action: "join" });
+      expect(rosterUpdates).toContainEqual({
+        participantId: "agent-1",
+        action: "join",
+      });
 
       await client.close();
     });
@@ -1261,11 +1387,16 @@ describe("connectViaRpc", () => {
       await client.ready();
       // Clear call history from subscribe
       mockRpc.call.mockClear();
-      mockRpc.call.mockResolvedValue({ id: 42 });
+      mockRpc.call.mockImplementation(async (_target, method, args) =>
+        method === "publish" ? committedPublication(args, 42) : undefined,
+      );
     });
 
     it("publish() calls rpc.call with correct arguments", async () => {
-      const pubsubId = await client.publish("custom.event", { id: "m1", content: "hello" });
+      const pubsubId = await client.publish("custom.event", {
+        id: "m1",
+        content: "hello",
+      });
 
       expect(pubsubId).toBe(42);
       expect(mockRpc.call).toHaveBeenCalledWith(DO_TARGET, "publish", [
@@ -1274,6 +1405,65 @@ describe("connectViaRpc", () => {
         { id: "m1", content: "hello" },
         expect.objectContaining({}),
       ]);
+    });
+
+    it("send() returns the owner-accepted message identity on retries", async () => {
+      const acceptedId = "00000000-0000-4000-8000-000000000099";
+      let accepted: unknown;
+      mockRpc.call.mockImplementation(async (_target, _method, args) => {
+        accepted ??= { ...args[2], causality: { messageId: acceptedId } };
+        return { ...committedPublication(args, 42), payload: accepted };
+      });
+      const first = await client.send("first", { idempotencyKey: "retry-key" });
+      const second = await client.send("retry", {
+        idempotencyKey: "retry-key",
+      });
+      expect(first).toEqual({ pubsubId: 42, messageId: acceptedId });
+      expect(second).toEqual(first);
+    });
+
+    it("keeps accepted publication separate from a failed transcript projection", async () => {
+      const failure = new Error("Transcript blob read refused");
+      const onError = vi.fn();
+      client.onError(onError);
+      const payload = messageEvent(
+        "00000000-0000-4000-8000-000000000099",
+        "accepted",
+      );
+      const stored = {
+        protocol: "vibestudio.blob-ref.v1",
+        digest: "accepted-body",
+        size: 8,
+        encoding: "text",
+        originalBytes: 8,
+      };
+      mockRpc.call.mockImplementation(async (target, method, args) => {
+        if (method === "publish")
+          return {
+            ...committedPublication(args, 42),
+            payload: {
+              ...payload,
+              payload: {
+                ...payload.payload,
+                blocks: [{ type: "text", content: stored }],
+              },
+            },
+          };
+        if (target === "main" && method === "blobstore.getText") throw failure;
+        return undefined;
+      });
+      try {
+        await expect(
+          client.publish(AGENTIC_EVENT_PAYLOAD_KIND, payload),
+        ).resolves.toBe(42);
+        expect(onError).toHaveBeenCalledOnce();
+        expect(onError.mock.calls[0]![0].cause).toBe(failure);
+        expect(
+          mockRpc.call.mock.calls.filter((call) => call[1] === "publish"),
+        ).toHaveLength(1);
+      } finally {
+        await client.close();
+      }
     });
 
     it("send() publishes a typed agentic event envelope payload", async () => {
@@ -1308,6 +1498,46 @@ describe("connectViaRpc", () => {
         mentions: ["agent:one"],
         replyTo: "msg-parent",
       });
+    });
+
+    it("surfaces the committed author acknowledgement without a transport echo", async () => {
+      const iterator = client.events({ includeReplay: true });
+      let observed: unknown;
+      const first = iterator.next().then(({ value }) => {
+        observed = value;
+      });
+      const payload = {
+        kind: "ui.inline_rendered",
+        actor: { kind: "panel", id: SELF_ID },
+        payload: {
+          protocol: "agentic.trajectory.v1",
+          uiType: "inline",
+          id: "card",
+          source: {
+            type: "code",
+            code: "export default function Card(){return null}",
+          },
+        },
+        createdAt: "2026-10-03T00:00:00Z",
+      };
+      await client.publish(AGENTIC_EVENT_PAYLOAD_KIND, payload);
+      await first;
+      expect(observed).toMatchObject({
+        pubsubId: 42,
+        senderId: SELF_ID,
+        payload,
+        phase: "replay",
+      });
+      await iterator.return?.();
+      await client.close();
+    });
+
+    it("propagates a malformed publication acknowledgement instead of inventing an event", async () => {
+      mockRpc.call.mockResolvedValueOnce({ id: 42 });
+      await expect(client.publish("custom.event", {})).rejects.toThrow(
+        "no canonical committed event",
+      );
+      await client.close();
     });
 
     it("received envelopes appear in events() iterator", async () => {
@@ -1359,7 +1589,10 @@ describe("connectViaRpc", () => {
           computeError: {
             parameters: z.object({}),
             execute: async (_args: unknown, context: MethodExecutionContext) =>
-              context.result({ details: { success: false, error: "boom" } }, { isError: true }),
+              context.result(
+                { details: { success: false, error: "boom" } },
+                { isError: true },
+              ),
           },
           computeAttachment: {
             parameters: z.object({}),
@@ -1368,9 +1601,13 @@ describe("connectViaRpc", () => {
                 { ok: true },
                 {
                   attachments: [
-                    { data: new TextEncoder().encode("hello"), mimeType: "text/plain", name: "hello.txt" },
+                    {
+                      data: new TextEncoder().encode("hello"),
+                      mimeType: "text/plain",
+                      name: "hello.txt",
+                    },
                   ],
-                }
+                },
               ),
           },
         },
@@ -1379,14 +1616,15 @@ describe("connectViaRpc", () => {
       await emitReplayAndReady(emit, []);
       await client.ready();
       mockRpc.call.mockClear();
-      mockRpc.call.mockImplementation(async (_target: string, method: string) =>
-        method === "claimMethodCall"
-          ? { claimed: true, generation: 1 }
-          : method === "markMethodCallExecutionStarted"
-            ? { accepted: true }
-            : method === "submitMethodResult"
-              ? { id: 301 }
-              : undefined
+      mockRpc.call.mockImplementation(
+        async (_target: string, method: string) =>
+          method === "claimMethodCall"
+            ? { claimed: true, generation: 1 }
+            : method === "markMethodCallExecutionStarted"
+              ? { accepted: true }
+              : method === "submitMethodResult"
+                ? { id: 301 }
+                : undefined,
       );
 
       // Simulate an invocation start arriving from another participant.
@@ -1408,7 +1646,7 @@ describe("connectViaRpc", () => {
               transportCallId: TRANSPORT_ID_1,
             },
           },
-          { transportCallId: TRANSPORT_ID_1, turnId: "turn-1" }
+          { transportCallId: TRANSPORT_ID_1, turnId: "turn-1" },
         ),
         senderId: "caller-1",
         ts: Date.now(),
@@ -1422,14 +1660,14 @@ describe("connectViaRpc", () => {
       // Wait for the result submit call
       await vi.waitFor(() => {
         const submitCalls = mockRpc.call.mock.calls.filter(
-          (c: unknown[]) => c[1] === "submitMethodResult"
+          (c: unknown[]) => c[1] === "submitMethodResult",
         );
         expect(submitCalls.length).toBeGreaterThanOrEqual(1);
       });
 
       // Find the terminal result submit call.
       const resultCall = mockRpc.call.mock.calls.find(
-        (c: unknown[]) => c[1] === "submitMethodResult"
+        (c: unknown[]) => c[1] === "submitMethodResult",
       );
       expect(resultCall).toBeDefined();
       // Args: doTarget, "submitMethodResult", pid, transportCallId, content, isError, opts
@@ -1462,14 +1700,14 @@ describe("connectViaRpc", () => {
               transportCallId: "transport-error",
             },
           },
-          { transportCallId: "transport-error", turnId: "turn-error" }
+          { transportCallId: "transport-error", turnId: "turn-error" },
         ),
         senderId: "caller-1",
         ts: Date.now(),
       });
       await vi.waitFor(() => {
         const errorCall = mockRpc.call.mock.calls.find(
-          (call: unknown[]) => call[1] === "submitMethodResult"
+          (call: unknown[]) => call[1] === "submitMethodResult",
         );
         expect(errorCall?.[2]).toMatchObject([
           expect.anything(),
@@ -1499,14 +1737,17 @@ describe("connectViaRpc", () => {
               transportCallId: "transport-attachment",
             },
           },
-          { transportCallId: "transport-attachment", turnId: "turn-attachment" }
+          {
+            transportCallId: "transport-attachment",
+            turnId: "turn-attachment",
+          },
         ),
         senderId: "caller-1",
         ts: Date.now(),
       });
       await vi.waitFor(() => {
         const attachmentCall = mockRpc.call.mock.calls.find(
-          (call: unknown[]) => call[1] === "submitMethodResult"
+          (call: unknown[]) => call[1] === "submitMethodResult",
         );
         expect(attachmentCall?.[2]).toMatchObject([
           expect.anything(),
@@ -1515,7 +1756,10 @@ describe("connectViaRpc", () => {
           false,
           expect.objectContaining({
             attachments: [
-              expect.objectContaining({ mimeType: "text/plain", name: "hello.txt" }),
+              expect.objectContaining({
+                mimeType: "text/plain",
+                name: "hello.txt",
+              }),
             ],
           }),
         ]);
@@ -1549,14 +1793,18 @@ describe("connectViaRpc", () => {
       await emitReplayAndReady(emit, []);
       await client.ready();
       mockRpc.call.mockClear();
-      mockRpc.call.mockImplementation(async (_target: string, method: string) => {
-        if (method === "claimMethodCall") return { claimed: true, generation: 1 };
-        if (method === "markMethodCallExecutionStarted") return { accepted: true };
-        if (method === "submitMethodProgress") {
-          await progressSubmitted;
-        }
-        return undefined;
-      });
+      mockRpc.call.mockImplementation(
+        async (_target: string, method: string) => {
+          if (method === "claimMethodCall")
+            return { claimed: true, generation: 1 };
+          if (method === "markMethodCallExecutionStarted")
+            return { accepted: true };
+          if (method === "submitMethodProgress") {
+            await progressSubmitted;
+          }
+          return undefined;
+        },
+      );
 
       emit({
         stream: "log",
@@ -1576,29 +1824,39 @@ describe("connectViaRpc", () => {
               transportCallId: TRANSPORT_ID_1,
             },
           },
-          { transportCallId: TRANSPORT_ID_1, turnId: "turn-1" }
+          { transportCallId: TRANSPORT_ID_1, turnId: "turn-1" },
         ),
         senderId: "caller-1",
         ts: Date.now(),
       });
 
       await vi.waitFor(() => {
-        expect(mockRpc.call.mock.calls.some((call) => call[1] === "submitMethodProgress")).toBe(
-          true
-        );
+        expect(
+          mockRpc.call.mock.calls.some(
+            (call) => call[1] === "submitMethodProgress",
+          ),
+        ).toBe(true);
       });
-      expect(mockRpc.call.mock.calls.some((call) => call[1] === "submitMethodResult")).toBe(false);
+      expect(
+        mockRpc.call.mock.calls.some(
+          (call) => call[1] === "submitMethodResult",
+        ),
+      ).toBe(false);
 
       releaseProgress();
       await vi.waitFor(() => {
-        expect(mockRpc.call.mock.calls.some((call) => call[1] === "submitMethodResult")).toBe(true);
+        expect(
+          mockRpc.call.mock.calls.some(
+            (call) => call[1] === "submitMethodResult",
+          ),
+        ).toBe(true);
       });
 
       const progressIndex = mockRpc.call.mock.calls.findIndex(
-        (call) => call[1] === "submitMethodProgress"
+        (call) => call[1] === "submitMethodProgress",
       );
       const resultIndex = mockRpc.call.mock.calls.findIndex(
-        (call) => call[1] === "submitMethodResult"
+        (call) => call[1] === "submitMethodResult",
       );
       expect(progressIndex).toBeGreaterThanOrEqual(0);
       expect(resultIndex).toBeGreaterThan(progressIndex);
@@ -1612,7 +1870,7 @@ describe("connectViaRpc", () => {
         () =>
           new Promise<{ answer: number }>((resolve) => {
             resolveWork = resolve;
-          })
+          }),
       );
 
       const client = connectViaRpc({
@@ -1630,14 +1888,15 @@ describe("connectViaRpc", () => {
       await emitReplayAndReady(emit, []);
       await client.ready();
       mockRpc.call.mockClear();
-      mockRpc.call.mockImplementation(async (_target: string, method: string) =>
-        method === "claimMethodCall"
-          ? { claimed: true, generation: 1 }
-          : method === "markMethodCallExecutionStarted"
-            ? { accepted: true }
-            : method === "submitMethodResult"
-              ? { id: 302 }
-              : undefined
+      mockRpc.call.mockImplementation(
+        async (_target: string, method: string) =>
+          method === "claimMethodCall"
+            ? { claimed: true, generation: 1 }
+            : method === "markMethodCallExecutionStarted"
+              ? { accepted: true }
+              : method === "submitMethodResult"
+                ? { id: 302 }
+                : undefined,
       );
 
       const emitInvocationStarted = (id: number) => {
@@ -1659,7 +1918,7 @@ describe("connectViaRpc", () => {
                 transportCallId: TRANSPORT_ID_1,
               },
             },
-            { transportCallId: TRANSPORT_ID_1, turnId: "turn-1" }
+            { transportCallId: TRANSPORT_ID_1, turnId: "turn-1" },
           ),
           senderId: "caller-1",
           ts: Date.now(),
@@ -1676,13 +1935,15 @@ describe("connectViaRpc", () => {
       await Promise.resolve();
       expect(executeFn).toHaveBeenCalledTimes(1);
       expect(
-        mockRpc.call.mock.calls.filter((c: unknown[]) => c[1] === "claimMethodCall")
+        mockRpc.call.mock.calls.filter(
+          (c: unknown[]) => c[1] === "claimMethodCall",
+        ),
       ).toHaveLength(1);
 
       resolveWork({ answer: 42 });
       await vi.waitFor(() => {
         const submitCalls = mockRpc.call.mock.calls.filter(
-          (c: unknown[]) => c[1] === "submitMethodResult"
+          (c: unknown[]) => c[1] === "submitMethodResult",
         );
         expect(submitCalls).toHaveLength(1);
       });
@@ -1692,7 +1953,9 @@ describe("connectViaRpc", () => {
       await Promise.resolve();
       expect(executeFn).toHaveBeenCalledTimes(1);
       expect(
-        mockRpc.call.mock.calls.filter((c: unknown[]) => c[1] === "submitMethodResult")
+        mockRpc.call.mock.calls.filter(
+          (c: unknown[]) => c[1] === "submitMethodResult",
+        ),
       ).toHaveLength(1);
 
       await client.close();
@@ -1706,7 +1969,11 @@ describe("connectViaRpc", () => {
         rpc: mockRpc as any,
         channel: CHANNEL,
         methods: {
-          compute: { description: "compute", parameters: z.object({}), execute: executeFn },
+          compute: {
+            description: "compute",
+            parameters: z.object({}),
+            execute: executeFn,
+          },
         },
       });
 
@@ -1729,7 +1996,7 @@ describe("connectViaRpc", () => {
                 transportCallId: TRANSPORT_ID_1,
               },
             },
-            { transportCallId: TRANSPORT_ID_1 }
+            { transportCallId: TRANSPORT_ID_1 },
           ),
           senderId: "caller-1",
           ts: Date.now(),
@@ -1744,7 +2011,9 @@ describe("connectViaRpc", () => {
         await vi.waitFor(() => expect(executeFn).toHaveBeenCalledTimes(1));
 
         const wedgeWarns = () =>
-          warnSpy.mock.calls.filter((c: unknown[]) => String(c[0]).includes("still executing"));
+          warnSpy.mock.calls.filter((c: unknown[]) =>
+            String(c[0]).includes("still executing"),
+          );
 
         // A redelivery racing a freshly in-flight handler is a benign at-least-once race — skipped
         // (deduped) but NOT logged.
@@ -1760,7 +2029,9 @@ describe("connectViaRpc", () => {
         await vi.advanceTimersByTimeAsync(0);
         expect(executeFn).toHaveBeenCalledTimes(1);
         expect(wedgeWarns().length).toBeGreaterThanOrEqual(1);
-        expect(String(wedgeWarns()[0]![0])).toMatch(/still executing after \d+s/);
+        expect(String(wedgeWarns()[0]![0])).toMatch(
+          /still executing after \d+s/,
+        );
       } finally {
         warnSpy.mockRestore();
         await client.close();
@@ -1786,12 +2057,13 @@ describe("connectViaRpc", () => {
       await emitReplayAndReady(emit, []);
       await client.ready();
       mockRpc.call.mockClear();
-      mockRpc.call.mockImplementation(async (_target: string, method: string) =>
-        method === "claimMethodCall"
-          ? { claimed: true, generation: 1 }
-          : method === "markMethodCallExecutionStarted"
-            ? { accepted: true }
-            : undefined
+      mockRpc.call.mockImplementation(
+        async (_target: string, method: string) =>
+          method === "claimMethodCall"
+            ? { claimed: true, generation: 1 }
+            : method === "markMethodCallExecutionStarted"
+              ? { accepted: true }
+              : undefined,
       );
 
       const emitInvocationStarted = (id: number) => {
@@ -1813,7 +2085,7 @@ describe("connectViaRpc", () => {
                 transportCallId: TRANSPORT_ID_1,
               },
             },
-            { transportCallId: TRANSPORT_ID_1, turnId: "turn-1" }
+            { transportCallId: TRANSPORT_ID_1, turnId: "turn-1" },
           ),
           senderId: "caller-1",
           ts: Date.now(),
@@ -1823,7 +2095,9 @@ describe("connectViaRpc", () => {
       emitInvocationStarted(211);
       await vi.waitFor(() => {
         expect(
-          mockRpc.call.mock.calls.filter((c: unknown[]) => c[1] === "submitMethodResult")
+          mockRpc.call.mock.calls.filter(
+            (c: unknown[]) => c[1] === "submitMethodResult",
+          ),
         ).toHaveLength(1);
       });
 
@@ -1831,7 +2105,9 @@ describe("connectViaRpc", () => {
       await vi.waitFor(() => {
         expect(executeFn).toHaveBeenCalledTimes(2);
         expect(
-          mockRpc.call.mock.calls.filter((c: unknown[]) => c[1] === "submitMethodResult")
+          mockRpc.call.mock.calls.filter(
+            (c: unknown[]) => c[1] === "submitMethodResult",
+          ),
         ).toHaveLength(2);
       });
 
@@ -1858,12 +2134,17 @@ describe("connectViaRpc", () => {
       await emitReplayAndReady(emit, []);
       await client.ready();
       mockRpc.call.mockClear();
-      mockRpc.call.mockImplementation(async (target: string, method: string) => {
-        if (method === "claimMethodCall") return { claimed: true, generation: 1 };
-        if (method === "markMethodCallExecutionStarted") return { accepted: true };
-        if (target === "main" && method === "blobstore.getText") return encodedRequest;
-        return undefined;
-      });
+      mockRpc.call.mockImplementation(
+        async (target: string, method: string) => {
+          if (method === "claimMethodCall")
+            return { claimed: true, generation: 1 };
+          if (method === "markMethodCallExecutionStarted")
+            return { accepted: true };
+          if (target === "main" && method === "blobstore.getText")
+            return encodedRequest;
+          return undefined;
+        },
+      );
 
       emit({
         stream: "log",
@@ -1889,7 +2170,7 @@ describe("connectViaRpc", () => {
               transportCallId: TRANSPORT_ID_1,
             },
           },
-          { transportCallId: TRANSPORT_ID_1 }
+          { transportCallId: TRANSPORT_ID_1 },
         ),
         senderId: "caller-1",
         ts: Date.now(),
@@ -1898,7 +2179,7 @@ describe("connectViaRpc", () => {
       await vi.waitFor(() => {
         expect(executeFn).toHaveBeenCalledWith(
           request,
-          expect.objectContaining({ callId: TRANSPORT_ID_1 })
+          expect.objectContaining({ callId: TRANSPORT_ID_1 }),
         );
       });
 
@@ -1930,16 +2211,20 @@ describe("connectViaRpc", () => {
       await emitReplayAndReady(emit, []);
       await client.ready();
       mockRpc.call.mockClear();
-      mockRpc.call.mockImplementation(async (target: string, method: string) => {
-        if (method === "claimMethodCall") return { claimed: true, generation: 1 };
-        if (method === "markMethodCallExecutionStarted") return { accepted: true };
-        if (target === "main" && method === "blobstore.getText") {
-          return await new Promise<string>((resolve) => {
-            releaseRead = resolve;
-          });
-        }
-        return undefined;
-      });
+      mockRpc.call.mockImplementation(
+        async (target: string, method: string) => {
+          if (method === "claimMethodCall")
+            return { claimed: true, generation: 1 };
+          if (method === "markMethodCallExecutionStarted")
+            return { accepted: true };
+          if (target === "main" && method === "blobstore.getText") {
+            return await new Promise<string>((resolve) => {
+              releaseRead = resolve;
+            });
+          }
+          return undefined;
+        },
+      );
 
       const ref = {
         protocol: "vibestudio.blob-ref.v1",
@@ -1966,7 +2251,7 @@ describe("connectViaRpc", () => {
               transportCallId: TRANSPORT_ID_1,
             },
           },
-          { transportCallId: TRANSPORT_ID_1 }
+          { transportCallId: TRANSPORT_ID_1 },
         ),
         senderId: "caller-1",
         ts: Date.now(),
@@ -1975,15 +2260,16 @@ describe("connectViaRpc", () => {
       await vi.waitFor(() => {
         expect(
           mockRpc.call.mock.calls.filter(
-            (call: unknown[]) => call[0] === "main" && call[1] === "blobstore.getText"
-          )
+            (call: unknown[]) =>
+              call[0] === "main" && call[1] === "blobstore.getText",
+          ),
         ).toHaveLength(1);
       });
       releaseRead?.(stored);
       await vi.waitFor(() => {
         expect(executeFn).toHaveBeenCalledWith(
           { left: { x: 7 }, right: { x: 7 } },
-          expect.objectContaining({ callId: TRANSPORT_ID_1 })
+          expect.objectContaining({ callId: TRANSPORT_ID_1 }),
         );
       });
 
@@ -2028,7 +2314,7 @@ describe("connectViaRpc", () => {
                 transportCallId: TRANSPORT_ID_1,
               },
             },
-            { transportCallId: TRANSPORT_ID_1 }
+            { transportCallId: TRANSPORT_ID_1 },
           ),
           senderId: "caller-1",
           ts: Date.now(),
@@ -2042,7 +2328,9 @@ describe("connectViaRpc", () => {
         await Promise.resolve();
 
         expect(
-          mockRpc.call.mock.calls.filter((c: unknown[]) => c[1] === "submitMethodResult")
+          mockRpc.call.mock.calls.filter(
+            (c: unknown[]) => c[1] === "submitMethodResult",
+          ),
         ).toHaveLength(0);
       } finally {
         await client.close();
@@ -2090,7 +2378,7 @@ describe("connectViaRpc", () => {
                 deadlineAt,
               },
             },
-            { transportCallId: TRANSPORT_ID_1 }
+            { transportCallId: TRANSPORT_ID_1 },
           ),
           senderId: "caller-1",
           ts: Date.now(),
@@ -2104,16 +2392,24 @@ describe("connectViaRpc", () => {
 
         await vi.waitFor(() => {
           expect(
-            mockRpc.call.mock.calls.filter((c: unknown[]) => c[1] === "submitMethodResult")
+            mockRpc.call.mock.calls.filter(
+              (c: unknown[]) => c[1] === "submitMethodResult",
+            ),
           ).toHaveLength(1);
         });
-        expect(mockRpc.call).toHaveBeenCalledWith(DO_TARGET, "submitMethodResult", [
-          SELF_ID,
-          TRANSPORT_ID_1,
-          `Method "slowWork" reached its journaled deadline`,
-          true,
-          expect.objectContaining({ terminalReasonCode: "method_execution_timeout" }),
-        ]);
+        expect(mockRpc.call).toHaveBeenCalledWith(
+          DO_TARGET,
+          "submitMethodResult",
+          [
+            SELF_ID,
+            TRANSPORT_ID_1,
+            `Method "slowWork" reached its journaled deadline`,
+            true,
+            expect.objectContaining({
+              terminalReasonCode: "method_execution_timeout",
+            }),
+          ],
+        );
       } finally {
         await client.close();
         vi.useRealTimers();
@@ -2132,10 +2428,13 @@ describe("connectViaRpc", () => {
       await emitReplayAndReady(emit, []);
       await client.ready();
       mockRpc.call.mockClear();
-      mockRpc.call.mockImplementation(async (target: string, method: string) => {
-        if (target === "main" && method === "blobstore.getText") return encodedResult;
-        return undefined;
-      });
+      mockRpc.call.mockImplementation(
+        async (target: string, method: string) => {
+          if (target === "main" && method === "blobstore.getText")
+            return encodedResult;
+          return undefined;
+        },
+      );
 
       const handle = client.callMethod("provider-1", "compute", {});
       await Promise.resolve();
@@ -2157,7 +2456,7 @@ describe("connectViaRpc", () => {
               originalBytes: encodedResult.length,
             },
           },
-          { transportCallId: handle.transportCallId }
+          { transportCallId: handle.transportCallId },
         ),
         senderId: "provider-1",
         ts: Date.now(),
@@ -2181,14 +2480,16 @@ describe("connectViaRpc", () => {
       await emitReplayAndReady(emit, []);
       await client.ready();
       mockRpc.call.mockClear();
-      mockRpc.call.mockImplementation(async (target: string, method: string) => {
-        if (target === "main" && method === "blobstore.getText") {
-          return await new Promise<string>((resolve) => {
-            releaseHydration = resolve;
-          });
-        }
-        return undefined;
-      });
+      mockRpc.call.mockImplementation(
+        async (target: string, method: string) => {
+          if (target === "main" && method === "blobstore.getText") {
+            return await new Promise<string>((resolve) => {
+              releaseHydration = resolve;
+            });
+          }
+          return undefined;
+        },
+      );
 
       const handle = client.callMethod("provider-1", "compute", {});
       const chunks: unknown[] = [];
@@ -2218,7 +2519,7 @@ describe("connectViaRpc", () => {
               originalBytes: encodedProgress.length,
             },
           },
-          { transportCallId: handle.transportCallId }
+          { transportCallId: handle.transportCallId },
         ),
         senderId: "provider-1",
         ts: Date.now(),
@@ -2232,7 +2533,7 @@ describe("connectViaRpc", () => {
           "invocation.completed",
           handle.invocationId,
           { result: { done: true } },
-          { transportCallId: handle.transportCallId }
+          { transportCallId: handle.transportCallId },
         ),
         senderId: "provider-1",
         ts: Date.now(),
@@ -2254,58 +2555,65 @@ describe("connectViaRpc", () => {
 
     it("ledger:channel.reconnect.authority-neutral", async () => {
       let recover!: () => Promise<void>;
-      const registerResubscribeHandler = vi.fn((_id: string, handler: () => Promise<void>) => {
-        recover = handler;
-        return vi.fn();
-      });
+      const registerResubscribeHandler = vi.fn(
+        (_id: string, handler: () => Promise<void>) => {
+          recover = handler;
+          return vi.fn();
+        },
+      );
       const registerColdRecoverHandler = vi.fn(() => vi.fn());
       // The resubscribe replay carries the missed terminal as a durable
       // invocation.completed log event (no getSettledResult read-back).
       let pendingCallId: string | undefined;
-      mockRpc.call.mockImplementation(async (target: string, method: string) => {
-        if (target === "main" && method === "workers.resolveService") {
-          return { kind: "durable-object", targetId: DO_TARGET };
-        }
-        if (method === "subscribe") {
-          return {
-            ok: true,
-            envelope: {
-              mode: "after",
-              logEvents: pendingCallId
-                ? [
-                    {
-                      id: 501,
-                      messageId: "invocation-501",
-                      type: AGENTIC_EVENT_PAYLOAD_KIND,
-                      payload: invocation(
-                        "invocation.completed",
-                        pendingCallId,
-                        { result: { answer: 42 } },
-                        { transportCallId: pendingCallId }
-                      ),
-                      senderId: "provider-1",
-                      contentClass: "internal",
-                      externalKeys: [],
-                      ts: Date.now(),
-                    },
-                  ]
-                : [],
-              snapshots: [],
-              ready: {
-                contextId: "ctx-recovered",
-                totalCount: 0,
-                envelopeCount: 0,
+      mockRpc.call.mockImplementation(
+        async (target: string, method: string) => {
+          if (target === "main" && method === "workers.resolveService") {
+            return { kind: "durable-object", targetId: DO_TARGET };
+          }
+          if (method === "subscribe") {
+            return {
+              ok: true,
+              envelope: {
+                mode: "after",
+                logEvents: pendingCallId
+                  ? [
+                      {
+                        id: 501,
+                        messageId: "invocation-501",
+                        type: AGENTIC_EVENT_PAYLOAD_KIND,
+                        payload: invocation(
+                          "invocation.completed",
+                          pendingCallId,
+                          { result: { answer: 42 } },
+                          { transportCallId: pendingCallId },
+                        ),
+                        senderId: "provider-1",
+                        contentClass: "internal",
+                        externalKeys: [],
+                        ts: Date.now(),
+                      },
+                    ]
+                  : [],
+                snapshots: [],
+                ready: {
+                  contextId: "ctx-recovered",
+                  totalCount: 0,
+                  envelopeCount: 0,
+                },
               },
-            },
-          };
-        }
-        return undefined;
-      });
+            };
+          }
+          return undefined;
+        },
+      );
 
       const client = connectViaRpc({
         rpc: mockRpc as any,
         channel: CHANNEL,
-        recoveryCoordinator: { registerResubscribeHandler, registerColdRecoverHandler },
+        recoveryCoordinator: {
+          registerResubscribeHandler,
+          registerColdRecoverHandler,
+        },
       });
       await client.ready();
       mockRpc.call.mockClear();
@@ -2317,8 +2625,12 @@ describe("connectViaRpc", () => {
       await expect(handle.result).resolves.toEqual({ content: { answer: 42 } });
       expect(mockRpc.stream).toHaveBeenCalledTimes(2);
       expect(removeListener).toHaveBeenCalledTimes(1);
-      expect(mockRpc.call.mock.calls.some((call) => call[1] === "unsubscribe")).toBe(false);
-      expect(mockRpc.call.mock.calls.some((call) => call[1] === "getSettledResult")).toBe(false);
+      expect(
+        mockRpc.call.mock.calls.some((call) => call[1] === "unsubscribe"),
+      ).toBe(false);
+      expect(
+        mockRpc.call.mock.calls.some((call) => call[1] === "getSettledResult"),
+      ).toBe(false);
 
       await client.close();
     });
@@ -2364,6 +2676,86 @@ describe("connectViaRpc", () => {
       await client.close();
     });
 
+    it("keeps failed hydration outside the durable replay cursor", async () => {
+      const coordinator = createRecoveryCoordinator();
+      const mock = createMockRpc();
+      const client = connectViaRpc({
+        rpc: mock.rpc as any,
+        channel: CHANNEL,
+        recoveryCoordinator: coordinator,
+      });
+      try {
+        await emitReplayAndReady(mock.emit, []);
+        await client.ready();
+        const events = client.events({ includeReplay: true });
+        mock.emit({
+          stream: "log",
+          phase: "live",
+          id: 1,
+          type: AGENTIC_EVENT_PAYLOAD_KIND,
+          payload: messageEvent("committed", "before disconnect"),
+          senderId: "agent-1",
+          ts: Date.now(),
+        });
+        await events.next();
+        const originalCall = mock.rpc.call.getMockImplementation()!;
+        const stored = JSON.stringify("restored content");
+        let connected = false;
+        mock.rpc.call.mockImplementation(async (...args: unknown[]) => {
+          if (args[0] === "main" && args[1] === "blobstore.getText") {
+            if (!connected)
+              throw new RpcBoundaryError(
+                "Connection lost while hydrating",
+                "transport",
+                "CONNECTION_LOST",
+              );
+            return stored;
+          }
+          return originalCall(...args);
+        });
+        const errors: Error[] = [];
+        client.onError((error) => errors.push(error));
+        const pendingEvent = {
+          stream: "log",
+          phase: "live",
+          id: 2,
+          type: AGENTIC_EVENT_PAYLOAD_KIND,
+          payload: {
+            ...messageEvent("restored", ""),
+            payload: {
+              ...messageEvent("restored", "").payload,
+              content: {
+                protocol: "vibestudio.blob-ref.v1",
+                digest: "stored-content",
+                size: stored.length,
+                originalBytes: stored.length,
+                encoding: "json",
+              },
+            },
+          },
+          senderId: "agent-1",
+          ts: Date.now(),
+        };
+        mock.emit(pendingEvent);
+        await vi.waitFor(() => expect(errors).toHaveLength(1));
+        connected = true;
+        await coordinator.run("resubscribe");
+        const metadata = mock.rpc.stream.mock.calls[1]?.[2]?.[1] as {
+          sinceId?: number;
+        };
+        expect(metadata.sinceId).toBe(1);
+        mock.emit({ ...pendingEvent, phase: "replay" });
+        await emitReplayAndReady(mock.emit, []);
+        const recovered = await events.next();
+        expect(recovered.value).toMatchObject({
+          pubsubId: 2,
+          payload: { payload: { content: "restored content" } },
+        });
+      } finally {
+        await client.close();
+      }
+    });
+
     it("never regresses the durable replay cursor when an overlapping reader replays an older event", async () => {
       const coordinator = createRecoveryCoordinator();
       const mock = createMockRpc();
@@ -2398,7 +2790,9 @@ describe("connectViaRpc", () => {
       await events.next();
 
       await coordinator.run("resubscribe");
-      const metadata = mock.rpc.stream.mock.calls[1]?.[2]?.[1] as { sinceId?: number };
+      const metadata = mock.rpc.stream.mock.calls[1]?.[2]?.[1] as {
+        sinceId?: number;
+      };
       expect(metadata.sinceId).toBe(200);
       await client.close();
     });
@@ -2550,7 +2944,11 @@ describe("connectViaRpc", () => {
           phase: "replay",
           id,
           type: AGENTIC_EVENT_PAYLOAD_KIND,
-          payload: messageEvent(`msg-${id}`, `recovered message ${id}`, "agent-1"),
+          payload: messageEvent(
+            `msg-${id}`,
+            `recovered message ${id}`,
+            "agent-1",
+          ),
           senderId: "agent-1",
           ts: Date.now(),
         });
@@ -2598,7 +2996,11 @@ describe("connectViaRpc", () => {
       });
       const earlier = await client.getReplayBefore(client.firstEnvelopeSeq!, 2);
       expect(earlier.logEvents.map(({ id }) => id)).toEqual([3]);
-      expect(mock.rpc.call).toHaveBeenLastCalledWith(DO_TARGET, "getReplayBefore", [4, 2]);
+      expect(mock.rpc.call).toHaveBeenLastCalledWith(
+        DO_TARGET,
+        "getReplayBefore",
+        [4, 2],
+      );
 
       await client.close();
     });
@@ -2653,7 +3055,9 @@ describe("connectViaRpc", () => {
     it("keeps ready pending across a transient first-subscription failure and resolves on recovery", async () => {
       const coordinator = createRecoveryCoordinator();
       const mock = createMockRpc();
-      mock.rpc.stream.mockRejectedValueOnce(new Error("first subscription transport failed"));
+      mock.rpc.stream.mockRejectedValueOnce(
+        new Error("first subscription transport failed"),
+      );
       const client = connectViaRpc({
         rpc: mock.rpc as any,
         channel: CHANNEL,
@@ -2678,23 +3082,27 @@ describe("connectViaRpc", () => {
       const mock = createMockRpc();
       const defaultStream = mock.rpc.stream.getMockImplementation()!;
       let streamAttempt = 0;
-      mock.rpc.stream.mockImplementation(async (...args: Parameters<typeof defaultStream>) => {
-        streamAttempt += 1;
-        if (streamAttempt !== 2) return defaultStream(...args);
-        const result = await mock.rpc.call(args[0], args[1], args[2]);
-        const encoder = new TextEncoder();
-        return new Response(
-          new ReadableStream<Uint8Array>({
-            start(controller) {
-              controller.enqueue(
-                encoder.encode(`${JSON.stringify({ kind: "subscribed", result })}\n`)
-              );
-              controller.enqueue(encoder.encode("not-json\n"));
-              controller.close();
-            },
-          })
-        );
-      });
+      mock.rpc.stream.mockImplementation(
+        async (...args: Parameters<typeof defaultStream>) => {
+          streamAttempt += 1;
+          if (streamAttempt !== 2) return defaultStream(...args);
+          const result = await mock.rpc.call(args[0], args[1], args[2]);
+          const encoder = new TextEncoder();
+          return new Response(
+            new ReadableStream<Uint8Array>({
+              start(controller) {
+                controller.enqueue(
+                  encoder.encode(
+                    `${JSON.stringify({ kind: "subscribed", result })}\n`,
+                  ),
+                );
+                controller.enqueue(encoder.encode("not-json\n"));
+                controller.close();
+              },
+            }),
+          );
+        },
+      );
       const client = connectViaRpc({
         rpc: mock.rpc as any,
         channel: CHANNEL,
@@ -2719,17 +3127,27 @@ describe("connectViaRpc", () => {
       });
       mockRpc.call.mockClear();
       mockRpc.call.mockResolvedValue([
-        { participantId: "do:workers/agent:Agent:scribe", metadata: { handle: "scribe" } },
+        {
+          participantId: "do:workers/agent:Agent:scribe",
+          metadata: { handle: "scribe" },
+        },
       ]);
 
       await expect(client.getParticipants()).resolves.toEqual([
-        { participantId: "do:workers/agent:Agent:scribe", metadata: { handle: "scribe" } },
+        {
+          participantId: "do:workers/agent:Agent:scribe",
+          metadata: { handle: "scribe" },
+        },
       ]);
-      expect(mockRpc.call).toHaveBeenCalledWith(DO_TARGET, "getParticipants", []);
+      expect(mockRpc.call).toHaveBeenCalledWith(
+        DO_TARGET,
+        "getParticipants",
+        [],
+      );
       expect(mockRpc.call).not.toHaveBeenCalledWith(
         "main",
         "workers.resolveService",
-        expect.anything()
+        expect.anything(),
       );
 
       await client.close();
@@ -2740,56 +3158,75 @@ describe("connectViaRpc", () => {
       await Promise.resolve();
       await Promise.resolve();
       mockRpc.call.mockClear();
-      mockRpc.call.mockImplementation(async (_target: string, method: string) => {
-        if (method === "addMember") {
-          return {
-            userId: "usr_bob",
-            memberId: "user:usr_bob",
-            handle: "bob",
-            addedBy: "user:usr_alice",
-            addedAt: 1,
-            alreadyMember: false,
-          };
-        }
-        if (method === "removeMember") return { removed: true };
-        if (method === "listMembers") return { members: [] };
-        if (method === "listInvitesForMe") {
-          return {
-            invites: [
-              {
-                channelId: CHANNEL,
-                userId: "usr_bob",
-                memberId: "user:usr_bob",
-                handle: "bob",
-                addedBy: "user:usr_alice",
-                addedAt: 1,
-              },
-            ],
-          };
-        }
-        if (method === "acknowledgeInvite") return { acknowledged: true };
-        if (method === "getChannelPresence") {
-          return { entries: [], generatedAt: 2 };
-        }
-        return undefined;
-      });
+      mockRpc.call.mockImplementation(
+        async (_target: string, method: string) => {
+          if (method === "addMember") {
+            return {
+              userId: "usr_bob",
+              memberId: "user:usr_bob",
+              handle: "bob",
+              addedBy: "user:usr_alice",
+              addedAt: 1,
+              alreadyMember: false,
+            };
+          }
+          if (method === "removeMember") return { removed: true };
+          if (method === "listMembers") return { members: [] };
+          if (method === "listInvitesForMe") {
+            return {
+              invites: [
+                {
+                  channelId: CHANNEL,
+                  userId: "usr_bob",
+                  memberId: "user:usr_bob",
+                  handle: "bob",
+                  addedBy: "user:usr_alice",
+                  addedAt: 1,
+                },
+              ],
+            };
+          }
+          if (method === "acknowledgeInvite") return { acknowledged: true };
+          if (method === "getChannelPresence") {
+            return { entries: [], generatedAt: 2 };
+          }
+          return undefined;
+        },
+      );
 
       await expect(client.addMember("usr_bob")).resolves.toMatchObject({
         memberId: "user:usr_bob",
         alreadyMember: false,
       });
-      await expect(client.removeMember("usr_bob")).resolves.toEqual({ removed: true });
+      await expect(client.removeMember("usr_bob")).resolves.toEqual({
+        removed: true,
+      });
       await expect(client.listMembers()).resolves.toEqual([]);
       await expect(client.listInvitesForMe()).resolves.toMatchObject([
         { channelId: CHANNEL, userId: "usr_bob" },
       ]);
       await expect(client.acknowledgeInvite()).resolves.toBe(true);
-      await expect(client.getChannelPresence()).resolves.toEqual({ entries: [], generatedAt: 2 });
+      await expect(client.getChannelPresence()).resolves.toEqual({
+        entries: [],
+        generatedAt: 2,
+      });
 
-      expect(mockRpc.call).toHaveBeenCalledWith(DO_TARGET, "addMember", [{ userId: "usr_bob" }]);
-      expect(mockRpc.call).toHaveBeenCalledWith(DO_TARGET, "removeMember", [{ userId: "usr_bob" }]);
-      expect(mockRpc.call).toHaveBeenCalledWith(DO_TARGET, "listInvitesForMe", []);
-      expect(mockRpc.call).toHaveBeenCalledWith(DO_TARGET, "acknowledgeInvite", []);
+      expect(mockRpc.call).toHaveBeenCalledWith(DO_TARGET, "addMember", [
+        { userId: "usr_bob" },
+      ]);
+      expect(mockRpc.call).toHaveBeenCalledWith(DO_TARGET, "removeMember", [
+        { userId: "usr_bob" },
+      ]);
+      expect(mockRpc.call).toHaveBeenCalledWith(
+        DO_TARGET,
+        "listInvitesForMe",
+        [],
+      );
+      expect(mockRpc.call).toHaveBeenCalledWith(
+        DO_TARGET,
+        "acknowledgeInvite",
+        [],
+      );
       await client.close();
     });
   });
@@ -2802,12 +3239,13 @@ describe("connectViaRpc", () => {
       await emitReplayAndReady(emit, []);
       await client.ready();
       mockRpc.call.mockClear();
-      mockRpc.call.mockImplementation(async (_target: string, method: string) =>
-        method === "claimMethodCall"
-          ? { claimed: true, generation: 1 }
-          : method === "markMethodCallExecutionStarted"
-            ? { accepted: true }
-            : undefined
+      mockRpc.call.mockImplementation(
+        async (_target: string, method: string) =>
+          method === "claimMethodCall"
+            ? { claimed: true, generation: 1 }
+            : method === "markMethodCallExecutionStarted"
+              ? { accepted: true }
+              : undefined,
       );
 
       const disconnectFn = vi.fn();
@@ -2818,7 +3256,7 @@ describe("connectViaRpc", () => {
       expect(mockRpc.call).toHaveBeenCalledWith(DO_TARGET, "unsubscribe", [
         SELF_ID,
         expect.any(String),
-      ], { timeoutMs: CHANNEL_CLOSE_TIMEOUT_MS });
+      ]);
 
       // Verify disconnect handler fired
       expect(disconnectFn).toHaveBeenCalledTimes(1);
@@ -2843,7 +3281,12 @@ describe("connectViaRpc", () => {
       const controller = new AbortController();
       controller.abort();
 
-      const handle = client.callMethod("provider-1", "slowWork", {}, { signal: controller.signal });
+      const handle = client.callMethod(
+        "provider-1",
+        "slowWork",
+        {},
+        { signal: controller.signal },
+      );
 
       await expect(handle.result).rejects.toMatchObject({ code: "cancelled" });
       expect(mockRpc.call).not.toHaveBeenCalled();
@@ -2856,16 +3299,22 @@ describe("connectViaRpc", () => {
       await emitReplayAndReady(emit, []);
       await client.ready();
       mockRpc.call.mockClear();
-      mockRpc.call.mockImplementation(async (_target: string, method: string) =>
-        method === "claimMethodCall"
-          ? { claimed: true, generation: 1 }
-          : method === "markMethodCallExecutionStarted"
-            ? { accepted: true }
-            : undefined
+      mockRpc.call.mockImplementation(
+        async (_target: string, method: string) =>
+          method === "claimMethodCall"
+            ? { claimed: true, generation: 1 }
+            : method === "markMethodCallExecutionStarted"
+              ? { accepted: true }
+              : undefined,
       );
 
       const controller = new AbortController();
-      const handle = client.callMethod("provider-1", "slowWork", {}, { signal: controller.signal });
+      const handle = client.callMethod(
+        "provider-1",
+        "slowWork",
+        {},
+        { signal: controller.signal },
+      );
       await Promise.resolve();
       await Promise.resolve();
 
@@ -2936,12 +3385,13 @@ describe("connectViaRpc", () => {
       await emitReplayAndReady(emit, []);
       await client.ready();
       mockRpc.call.mockClear();
-      mockRpc.call.mockImplementation(async (_target: string, method: string) =>
-        method === "claimMethodCall"
-          ? { claimed: true, generation: 1 }
-          : method === "markMethodCallExecutionStarted"
-            ? { accepted: true }
-            : undefined
+      mockRpc.call.mockImplementation(
+        async (_target: string, method: string) =>
+          method === "claimMethodCall"
+            ? { claimed: true, generation: 1 }
+            : method === "markMethodCallExecutionStarted"
+              ? { accepted: true }
+              : undefined,
       );
 
       const handle = client.callMethod("agent-1", "pause", {
@@ -2971,13 +3421,15 @@ describe("connectViaRpc", () => {
           "invocation.completed",
           handle.invocationId,
           { result: { paused: true } },
-          { transportCallId: handle.transportCallId }
+          { transportCallId: handle.transportCallId },
         ),
         senderId: "agent-1",
         ts: Date.now(),
       });
 
-      await expect(handle.result).resolves.toEqual({ content: { paused: true } });
+      await expect(handle.result).resolves.toEqual({
+        content: { paused: true },
+      });
       expect(handle.complete).toBe(true);
 
       await client.close();
@@ -2992,16 +3444,20 @@ describe("connectViaRpc", () => {
         mockRpc.call.mockClear();
 
         let attempts = 0;
-        mockRpc.call.mockImplementation(async (_target: string, method: string) => {
-          if (method === "callMethod" && attempts++ < 2) {
-            throw Object.assign(new Error("response lost after dispatch"), {
-              errorKind: "internal",
-            });
-          }
-          return undefined;
-        });
+        mockRpc.call.mockImplementation(
+          async (_target: string, method: string) => {
+            if (method === "callMethod" && attempts++ < 2) {
+              throw Object.assign(new Error("response lost after dispatch"), {
+                errorKind: "internal",
+              });
+            }
+            return undefined;
+          },
+        );
 
-        const handle = client.callMethod("agent-1", "pause", { reason: "test" });
+        const handle = client.callMethod("agent-1", "pause", {
+          reason: "test",
+        });
         await Promise.resolve();
         expect(attempts).toBe(1);
 
@@ -3010,7 +3466,9 @@ describe("connectViaRpc", () => {
         await vi.advanceTimersByTimeAsync(200);
         expect(attempts).toBe(3);
 
-        const starts = mockRpc.call.mock.calls.filter((call) => call[1] === "callMethod");
+        const starts = mockRpc.call.mock.calls.filter(
+          (call) => call[1] === "callMethod",
+        );
         expect(starts).toHaveLength(3);
         expect(starts[1]).toEqual(starts[0]);
         expect(starts[2]).toEqual(starts[0]);
@@ -3025,13 +3483,15 @@ describe("connectViaRpc", () => {
             "invocation.completed",
             handle.invocationId,
             { result: { paused: true } },
-            { transportCallId: handle.transportCallId }
+            { transportCallId: handle.transportCallId },
           ),
           senderId: "agent-1",
           ts: Date.now(),
         });
 
-        await expect(handle.result).resolves.toEqual({ content: { paused: true } });
+        await expect(handle.result).resolves.toEqual({
+          content: { paused: true },
+        });
       } finally {
         await client.close();
         vi.useRealTimers();
@@ -3047,13 +3507,17 @@ describe("connectViaRpc", () => {
         mockRpc.call.mockClear();
 
         let attempts = 0;
-        mockRpc.call.mockImplementation(async (_target: string, method: string) => {
-          if (method === "callMethod") {
-            attempts += 1;
-            throw Object.assign(new Error("acknowledgement lost"), { errorKind: "internal" });
-          }
-          return undefined;
-        });
+        mockRpc.call.mockImplementation(
+          async (_target: string, method: string) => {
+            if (method === "callMethod") {
+              attempts += 1;
+              throw Object.assign(new Error("acknowledgement lost"), {
+                errorKind: "internal",
+              });
+            }
+            return undefined;
+          },
+        );
 
         const handle = client.callMethod("agent-1", "pause", {});
         await Promise.resolve();
@@ -3069,13 +3533,15 @@ describe("connectViaRpc", () => {
             "invocation.completed",
             handle.invocationId,
             { result: { paused: true } },
-            { transportCallId: handle.transportCallId }
+            { transportCallId: handle.transportCallId },
           ),
           senderId: "agent-1",
           ts: Date.now(),
         });
 
-        await expect(handle.result).resolves.toEqual({ content: { paused: true } });
+        await expect(handle.result).resolves.toEqual({
+          content: { paused: true },
+        });
         await vi.advanceTimersByTimeAsync(10_000);
         expect(attempts).toBe(1);
       } finally {
@@ -3100,7 +3566,9 @@ describe("connectViaRpc", () => {
         code: "connection-error",
         cause: refusal,
       });
-      expect(mockRpc.call.mock.calls.filter((call) => call[1] === "callMethod")).toHaveLength(1);
+      expect(
+        mockRpc.call.mock.calls.filter((call) => call[1] === "callMethod"),
+      ).toHaveLength(1);
 
       mockRpc.call.mockResolvedValue(undefined);
       await client.close();
@@ -3135,12 +3603,13 @@ describe("connectViaRpc", () => {
       await emitReplayAndReady(emit, []);
       await client.ready();
       mockRpc.call.mockClear();
-      mockRpc.call.mockImplementation(async (_target: string, method: string) =>
-        method === "claimMethodCall"
-          ? { claimed: true, generation: 1 }
-          : method === "markMethodCallExecutionStarted"
-            ? { accepted: true }
-            : undefined
+      mockRpc.call.mockImplementation(
+        async (_target: string, method: string) =>
+          method === "claimMethodCall"
+            ? { claimed: true, generation: 1 }
+            : method === "markMethodCallExecutionStarted"
+              ? { accepted: true }
+              : undefined,
       );
 
       // Trigger the method call
@@ -3175,7 +3644,9 @@ describe("connectViaRpc", () => {
         phase: "live",
         id: 301,
         type: AGENTIC_EVENT_PAYLOAD_KIND,
-        payload: invocation("invocation.cancelled", CALL_ID_SLOW, { reason: "cancelled" }),
+        payload: invocation("invocation.cancelled", CALL_ID_SLOW, {
+          reason: "cancelled",
+        }),
         senderId: "caller-1",
         ts: Date.now(),
       });
@@ -3186,10 +3657,15 @@ describe("connectViaRpc", () => {
     });
 
     it("never starts a provider method when cancellation wins during claim admission", async () => {
-      let resolveClaim!: (value: { claimed: boolean; generation: number }) => void;
-      const claim = new Promise<{ claimed: boolean; generation: number }>((resolve) => {
-        resolveClaim = resolve;
-      });
+      let resolveClaim!: (value: {
+        claimed: boolean;
+        generation: number;
+      }) => void;
+      const claim = new Promise<{ claimed: boolean; generation: number }>(
+        (resolve) => {
+          resolveClaim = resolve;
+        },
+      );
       const execute = vi.fn(async () => ({ shouldNotRun: true }));
       const client = connectViaRpc({
         rpc: mockRpc as any,
@@ -3206,10 +3682,12 @@ describe("connectViaRpc", () => {
       await emitReplayAndReady(emit, []);
       await client.ready();
       mockRpc.call.mockClear();
-      mockRpc.call.mockImplementation(async (_target: string, method: string) => {
-        if (method === "claimMethodCall") return claim;
-        return undefined;
-      });
+      mockRpc.call.mockImplementation(
+        async (_target: string, method: string) => {
+          if (method === "claimMethodCall") return claim;
+          return undefined;
+        },
+      );
 
       emit({
         stream: "log",
@@ -3229,13 +3707,15 @@ describe("connectViaRpc", () => {
               transportCallId: TRANSPORT_ID_1,
             },
           },
-          { transportCallId: TRANSPORT_ID_1 }
+          { transportCallId: TRANSPORT_ID_1 },
         ),
         senderId: "caller-1",
         ts: Date.now(),
       });
       await vi.waitFor(() =>
-        expect(mockRpc.call.mock.calls.some((call) => call[1] === "claimMethodCall")).toBe(true)
+        expect(
+          mockRpc.call.mock.calls.some((call) => call[1] === "claimMethodCall"),
+        ).toBe(true),
       );
 
       emit({
@@ -3247,7 +3727,7 @@ describe("connectViaRpc", () => {
           "invocation.cancelled",
           CALL_ID_SLOW,
           { reason: "cancelled" },
-          { transportCallId: TRANSPORT_ID_1 }
+          { transportCallId: TRANSPORT_ID_1 },
         ),
         senderId: "caller-1",
         ts: Date.now(),
@@ -3281,11 +3761,15 @@ describe("connectViaRpc", () => {
       await emitReplayAndReady(emit, []);
       await client.ready();
       mockRpc.call.mockClear();
-      mockRpc.call.mockImplementation(async (_target: string, method: string) => {
-        if (method === "claimMethodCall") return { claimed: true, generation: 1 };
-        if (method === "markMethodCallExecutionStarted") return executionStart;
-        return undefined;
-      });
+      mockRpc.call.mockImplementation(
+        async (_target: string, method: string) => {
+          if (method === "claimMethodCall")
+            return { claimed: true, generation: 1 };
+          if (method === "markMethodCallExecutionStarted")
+            return executionStart;
+          return undefined;
+        },
+      );
 
       emit({
         stream: "log",
@@ -3305,15 +3789,17 @@ describe("connectViaRpc", () => {
               transportCallId: TRANSPORT_ID_1,
             },
           },
-          { transportCallId: TRANSPORT_ID_1 }
+          { transportCallId: TRANSPORT_ID_1 },
         ),
         senderId: "caller-1",
         ts: Date.now(),
       });
       await vi.waitFor(() =>
         expect(
-          mockRpc.call.mock.calls.some((call) => call[1] === "markMethodCallExecutionStarted")
-        ).toBe(true)
+          mockRpc.call.mock.calls.some(
+            (call) => call[1] === "markMethodCallExecutionStarted",
+          ),
+        ).toBe(true),
       );
 
       emit({
@@ -3325,7 +3811,7 @@ describe("connectViaRpc", () => {
           "invocation.cancelled",
           CALL_ID_SLOW,
           { reason: "cancelled" },
-          { transportCallId: TRANSPORT_ID_1 }
+          { transportCallId: TRANSPORT_ID_1 },
         ),
         senderId: "caller-1",
         ts: Date.now(),
@@ -3356,16 +3842,20 @@ describe("connectViaRpc", () => {
       await client.ready();
       mockRpc.call.mockClear();
       let markAttempts = 0;
-      mockRpc.call.mockImplementation(async (_target: string, method: string) => {
-        if (method === "claimMethodCall") return { claimed: true, generation: 1 };
-        if (method === "markMethodCallExecutionStarted") {
-          markAttempts += 1;
-          if (markAttempts === 1) throw new Error("execution-start response lost");
-          return { accepted: true };
-        }
-        if (method === "submitMethodResult") return { accepted: true };
-        return undefined;
-      });
+      mockRpc.call.mockImplementation(
+        async (_target: string, method: string) => {
+          if (method === "claimMethodCall")
+            return { claimed: true, generation: 1 };
+          if (method === "markMethodCallExecutionStarted") {
+            markAttempts += 1;
+            if (markAttempts === 1)
+              throw new Error("execution-start response lost");
+            return { accepted: true };
+          }
+          if (method === "submitMethodResult") return { accepted: true };
+          return undefined;
+        },
+      );
 
       const started = (id: number) => ({
         stream: "log" as const,
@@ -3385,7 +3875,7 @@ describe("connectViaRpc", () => {
               transportCallId: TRANSPORT_ID_1,
             },
           },
-          { transportCallId: TRANSPORT_ID_1 }
+          { transportCallId: TRANSPORT_ID_1 },
         ),
         senderId: "caller-1",
         ts: Date.now(),
@@ -3418,16 +3908,20 @@ describe("connectViaRpc", () => {
       const received = client.events();
       mockRpc.call.mockClear();
       let claimAttempts = 0;
-      mockRpc.call.mockImplementation(async (_target: string, method: string) => {
-        if (method === "claimMethodCall") {
-          claimAttempts += 1;
-          if (claimAttempts === 1) throw new Error("claim response unavailable");
-          return { claimed: true, generation: 1 };
-        }
-        if (method === "markMethodCallExecutionStarted") return { accepted: true };
-        if (method === "submitMethodResult") return { id: 1 };
-        return undefined;
-      });
+      mockRpc.call.mockImplementation(
+        async (_target: string, method: string) => {
+          if (method === "claimMethodCall") {
+            claimAttempts += 1;
+            if (claimAttempts === 1)
+              throw new Error("claim response unavailable");
+            return { claimed: true, generation: 1 };
+          }
+          if (method === "markMethodCallExecutionStarted")
+            return { accepted: true };
+          if (method === "submitMethodResult") return { id: 1 };
+          return undefined;
+        },
+      );
 
       emit({
         stream: "log",
@@ -3447,7 +3941,7 @@ describe("connectViaRpc", () => {
               transportCallId: TRANSPORT_ID_1,
             },
           },
-          { transportCallId: TRANSPORT_ID_1 }
+          { transportCallId: TRANSPORT_ID_1 },
         ),
         senderId: "caller-1",
         ts: Date.now(),
@@ -3495,12 +3989,13 @@ describe("connectViaRpc", () => {
       await emitReplayAndReady(emit, []);
       await client.ready();
       mockRpc.call.mockClear();
-      mockRpc.call.mockImplementation(async (_target: string, method: string) =>
-        method === "claimMethodCall"
-          ? { claimed: true, generation: 1 }
-          : method === "markMethodCallExecutionStarted"
-            ? { accepted: true }
-            : undefined
+      mockRpc.call.mockImplementation(
+        async (_target: string, method: string) =>
+          method === "claimMethodCall"
+            ? { claimed: true, generation: 1 }
+            : method === "markMethodCallExecutionStarted"
+              ? { accepted: true }
+              : undefined,
       );
 
       emit({
@@ -3521,7 +4016,7 @@ describe("connectViaRpc", () => {
               transportCallId: TRANSPORT_ID_1,
             },
           },
-          { transportCallId: TRANSPORT_ID_1 }
+          { transportCallId: TRANSPORT_ID_1 },
         ),
         senderId: "caller-1",
         ts: Date.now(),
@@ -3539,15 +4034,17 @@ describe("connectViaRpc", () => {
       expect(capturedSignal!.aborted).toBe(true);
       // The local abort itself issues no cancelMethodCall RPC.
       const cancelCalls = mockRpc.call.mock.calls.filter(
-        (c: unknown[]) => c[1] === "cancelMethodCall"
+        (c: unknown[]) => c[1] === "cancelMethodCall",
       );
       expect(cancelCalls.length).toBe(0);
       await vi.waitFor(() => {
         const submitCall = mockRpc.call.mock.calls.find(
-          (c: unknown[]) => c[1] === "submitMethodResult"
+          (c: unknown[]) => c[1] === "submitMethodResult",
         );
         const args = submitCall?.[2] as unknown[] | undefined;
-        expect(args).toEqual(expect.arrayContaining([TRANSPORT_ID_1, expect.anything(), true]));
+        expect(args).toEqual(
+          expect.arrayContaining([TRANSPORT_ID_1, expect.anything(), true]),
+        );
         expect(args?.[4]).toMatchObject({
           terminalOutcome: "cancelled",
           terminalReasonCode: "cancelled",

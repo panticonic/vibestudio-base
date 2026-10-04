@@ -26,13 +26,14 @@ under `../../workers/agent-worker`.
 
 ## Automation turns
 
-Prompt automations and model-free evals share the agent loop's durable
-after-turn queue. A busy conversation admits the run as `queued`; it starts
-after earlier turns finish, with its own automation metadata and ordinary
-tool permissions. A foreground `suspend_turn` yields to admitted work instead
-of waiting on its own queue. Stop parks queued work until explicit user input resumes it.
-Keep admission, replay, and deduplication in this shared loop rather than
-adding an automation-specific executor or retry queue.
+Prompt automations submit native conversation input with `whenBusy: "followUp"`.
+Model-free evals use the selected protected eval tool in a native direct task.
+The original run ID binds admission, automation metadata, truthful terminal
+outcomes and acknowledgement to MissionsDO. Busy input retains its native queue
+position and ordinary tool permissions. Native tasks retain failed delivery and
+cleanup until the actual owner settles them. Keep these boundaries in
+`src/native-automation-runs.ts`; do not add another execution queue or infer
+completion from a transient channel message.
 
 ## Structured channel observations
 

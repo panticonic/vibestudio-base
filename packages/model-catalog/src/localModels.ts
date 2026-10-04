@@ -1,3 +1,4 @@
+import { z } from "zod";
 /**
  * Serializable protocol exposed by a local-model service implementation.
  *
@@ -8,7 +9,13 @@
  */
 
 export type GpuVendor = "nvidia" | "amd" | "intel" | "apple";
-export type EngineBackend = "cuda-12.4" | "cuda-13.3" | "vulkan" | "rocm" | "metal" | "cpu";
+export type EngineBackend =
+  | "cuda-12.4"
+  | "cuda-13.3"
+  | "vulkan"
+  | "rocm"
+  | "metal"
+  | "cpu";
 
 export interface GpuInfo {
   vendor: GpuVendor;
@@ -19,7 +26,12 @@ export interface GpuInfo {
   deviceSelector?: string;
 }
 
-export type HardwareTier = "gpu-large" | "gpu-mid" | "gpu-small" | "cpu-strong" | "cpu-min";
+export type HardwareTier =
+  | "gpu-large"
+  | "gpu-mid"
+  | "gpu-small"
+  | "cpu-strong"
+  | "cpu-min";
 
 export interface HardwareProfile {
   os: "linux" | "darwin" | "win32";
@@ -75,6 +87,13 @@ export interface ModelBenchmarkResult {
   measuredAt: number;
 }
 
+export interface ModelRuntimeValidationRecipe {
+  buildTag: string;
+  backend: EngineBackend;
+  contextLength: number;
+  gpuLayers: number | null;
+}
+
 export interface ModelRecord {
   slug: string;
   displayName: string;
@@ -92,10 +111,12 @@ export interface ModelRecord {
   importedInPlace: boolean;
   config: ModelRuntimeConfig;
   benchmark?: ModelBenchmarkResult | null;
-  runtimeValidation?: {
+  runtimeValidation: {
     status: "pending" | "ready" | "error";
     error: string | null;
     validatedAt: number | null;
+    /** Present only for successful observation of this exact effective runtime. */
+    recipe?: ModelRuntimeValidationRecipe;
   };
   addedAt: number;
 }
@@ -184,7 +205,13 @@ export interface LocalModelEntry {
   reasoningCapable: boolean;
   fit: FitEstimate;
   measuredTokensPerSec: number | null;
-  state: "ready" | "startable" | "not-installed" | "starting" | "downloading" | "error";
+  state:
+    | "ready"
+    | "startable"
+    | "not-installed"
+    | "starting"
+    | "downloading"
+    | "error";
   download: {
     progress: number;
     phase: DownloadPhase;
@@ -220,3 +247,40 @@ export interface LocalModelsCapabilities {
   managementPanel: LocalModelsPanelTarget;
   serverLogs: Record<ServerKind, LocalModelsPanelTarget>;
 }
+
+/** The one current secret-free local-model inventory wire entry. */
+export const localModelEntrySchema: z.ZodType<LocalModelEntry> = z.object({
+  slug: z.string().min(1),
+  displayName: z.string().min(1),
+  baseUrl: z.string().url(),
+  server: z.enum(["utility", "main"]),
+  contextWindow: z.number().positive(),
+  maxTokens: z.number().positive(),
+  toolsCapable: z.boolean(),
+  reasoningCapable: z.boolean(),
+  fit: z.object({
+    fit: z.enum(["full-gpu", "partial-offload", "cpu-only", "too-big"]),
+    estTokensPerSec: z.number().nullable(),
+    contextLength: z.number(),
+    gpuLayers: z.number(),
+    notes: z.array(z.string()),
+  }),
+  measuredTokensPerSec: z.number().nullable(),
+  state: z.enum([
+    "ready",
+    "startable",
+    "not-installed",
+    "starting",
+    "downloading",
+    "error",
+  ]),
+  download: z
+    .object({
+      progress: z.number(),
+      phase: z.enum(["active", "queued", "paused"]),
+      receivedBytes: z.number(),
+      totalBytes: z.number().nullable(),
+    })
+    .nullable(),
+  errorMessage: z.string().nullable(),
+});

@@ -46,6 +46,13 @@ suggestions rather than being broadcast to everyone; a handle that matches two
 participants comes back asking which. This is deliberate: guessing is how an
 agent tells the wrong person something.
 
+A requested recipient is part of the user's instruction. If that person is
+absent or ambiguous, report that to the caller and show the available addressees.
+A roster entry is evidence that someone is reachable, not permission to send
+the intended recipient's note to them. Do not substitute the caller, another
+participant or the whole channel unless the user explicitly chooses that
+alternative. Keep the original note unsent while asking for that choice.
+
 ## The alert ladder
 
 Three rungs, each a superset of the one below. They are named for what the

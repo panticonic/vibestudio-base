@@ -10,10 +10,18 @@ async function makeManager(channel: Partial<ChannelClient>) {
   const identity = new DOIdentity(sql);
   identity.createTables();
   identity.bootstrap(
-    { source: "workers/test-agent", className: "TestAgentWorker", objectKey: "agent-1" },
-    "session-1"
+    {
+      source: "workers/test-agent",
+      className: "TestAgentWorker",
+      objectKey: "agent-1",
+    },
+    "session-1",
   );
-  const manager = new SubscriptionManager(sql, () => channel as ChannelClient, identity);
+  const manager = new SubscriptionManager(
+    sql,
+    () => channel as ChannelClient,
+    identity,
+  );
   manager.createTables();
   return manager;
 }
@@ -29,9 +37,41 @@ describe("SubscriptionManager finite relationships", () => {
     });
 
     await expect(
-      manager.subscribe({ channelId: "ch-1", contextId: "ctx-1", descriptor })
+      manager.subscribe({ channelId: "ch-1", contextId: "ctx-1", descriptor }),
     ).rejects.toThrow("join rejected");
     expect(manager.listAll()).toEqual([]);
+  });
+
+  it("retains prepared join revision across external acceptance and local materialization loss", async () => {
+    const original = new Error("Join response lost");
+    let lose = true;
+    const join = vi.fn(async (input) => {
+      if (lose) {
+        lose = false;
+        throw original;
+      }
+      return {
+        ok: true,
+        participantId: input.participantId,
+        revision: input.revision,
+      };
+    });
+    const manager = await makeManager({
+      join,
+      relationshipState: vi.fn().mockResolvedValue(null),
+    });
+    const prepared = await manager.prepareSubscription({
+      channelId: "ch-1",
+      contextId: "ctx-1",
+      descriptor,
+    });
+    expect(join).not.toHaveBeenCalled();
+    expect(manager.count()).toBe(0);
+    await expect(manager.joinPrepared(prepared)).rejects.toBe(original);
+    expect(manager.count()).toBe(0);
+    await manager.joinPrepared(JSON.parse(JSON.stringify(prepared)));
+    expect(join.mock.calls.map(([input]) => input.revision)).toEqual([1, 1]);
+    expect(manager.getContextId("ch-1")).toBe("ctx-1");
   });
 
   it("keeps an identical retry at the same relationship revision", async () => {
@@ -64,7 +104,11 @@ describe("SubscriptionManager finite relationships", () => {
       relationshipState: vi.fn().mockResolvedValue(null),
     });
 
-    await manager.subscribe({ channelId: "ch-1", contextId: "ctx-1", descriptor });
+    await manager.subscribe({
+      channelId: "ch-1",
+      contextId: "ctx-1",
+      descriptor,
+    });
     await manager.subscribe({
       channelId: "ch-1",
       contextId: "ctx-2",
@@ -82,10 +126,16 @@ describe("SubscriptionManager finite relationships", () => {
       participantId: "agent-1",
       revision: input.revision,
     }));
-    const relationshipState = vi.fn().mockResolvedValue({ revision: 8, active: false });
+    const relationshipState = vi
+      .fn()
+      .mockResolvedValue({ revision: 8, active: false });
     const manager = await makeManager({ join, relationshipState });
 
-    await manager.subscribe({ channelId: "ch-1", contextId: "ctx-1", descriptor });
+    await manager.subscribe({
+      channelId: "ch-1",
+      contextId: "ctx-1",
+      descriptor,
+    });
 
     expect(join).toHaveBeenCalledWith(expect.objectContaining({ revision: 9 }));
   });
@@ -101,7 +151,11 @@ describe("SubscriptionManager finite relationships", () => {
       leave,
       relationshipState: vi.fn().mockResolvedValue(null),
     });
-    await manager.subscribe({ channelId: "ch-1", contextId: "ctx-1", descriptor });
+    await manager.subscribe({
+      channelId: "ch-1",
+      contextId: "ctx-1",
+      descriptor,
+    });
 
     await manager.unsubscribeFromChannel("ch-1");
 

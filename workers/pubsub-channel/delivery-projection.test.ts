@@ -16,7 +16,7 @@ function event(
   type: string,
   payload: unknown,
   senderId = "panel:user",
-  messageId = `event-${id}`
+  messageId = `event-${id}`,
 ): ChannelEvent {
   return {
     id,
@@ -35,16 +35,19 @@ function relationship(
     | "channel.subscription.opened"
     | "channel.subscription.revised"
     | "channel.subscription.detached"
-    | "channel.subscription.ended" = "channel.subscription.opened"
+    | "channel.subscription.ended" = "channel.subscription.opened",
 ): ChannelEvent {
   return event(
     id,
     type,
-    type === "channel.subscription.ended" || type === "channel.subscription.detached"
+    type === "channel.subscription.ended" ||
+      type === "channel.subscription.detached"
       ? {
           participantId: AGENT_ID,
           revision,
-          ...(type === "channel.subscription.detached" ? { detachAfterSequence: 1 } : {}),
+          ...(type === "channel.subscription.detached"
+            ? { detachAfterSequence: 1 }
+            : {}),
         }
       : {
           participantId: AGENT_ID,
@@ -58,7 +61,7 @@ function relationship(
           metadata: { type: "agent", handle: "agent-a" },
           applicationConfig: { version: 1, value: { respondPolicy: "always" } },
         },
-    AGENT_ID
+    AGENT_ID,
   );
 }
 
@@ -66,7 +69,7 @@ function message(
   id: number,
   senderId = "panel:user",
   messageId = `message-${id}`,
-  replyTo?: string
+  replyTo?: string,
 ): ChannelEvent {
   return event(
     id,
@@ -88,7 +91,7 @@ function message(
       createdAt: new Date(id * 1_000).toISOString(),
     },
     senderId,
-    `envelope-${messageId}`
+    `envelope-${messageId}`,
   );
 }
 
@@ -99,7 +102,7 @@ function invocationTerminal(
     | "invocation.failed"
     | "invocation.cancelled"
     | "invocation.abandoned",
-  senderId = AGENT_ID
+  senderId = AGENT_ID,
 ): ChannelEvent {
   return event(
     id,
@@ -115,7 +118,7 @@ function invocationTerminal(
       createdAt: new Date(id * 1_000).toISOString(),
     },
     senderId,
-    `terminal-${id}`
+    `terminal-${id}`,
   );
 }
 
@@ -135,7 +138,7 @@ function invocationOutput(id: number, senderId = AGENT_ID): ChannelEvent {
       createdAt: new Date(id * 1_000).toISOString(),
     },
     senderId,
-    `output-${id}`
+    `output-${id}`,
   );
 }
 
@@ -146,7 +149,11 @@ describe("ChannelDeliveryProjection", () => {
   beforeEach(async () => {
     sql = (await createInMemorySql()) as unknown as SqlStorage;
     ChannelDeliveryProjection.createTables(sql);
-    projection = new ChannelDeliveryProjection(sql, (callback) => callback(), CHANNEL_ID);
+    projection = new ChannelDeliveryProjection(
+      sql,
+      (callback) => callback(),
+      CHANNEL_ID,
+    );
     projection.initializeChannelConfig({
       conversationPolicy: "directed",
       agentHopLimit: 4,
@@ -157,12 +164,18 @@ describe("ChannelDeliveryProjection", () => {
     projection.fold(relationship(1, 1));
     expect(() => projection.fold(message(3))).toThrow(/expected 2, received 3/);
 
-    const restarted = new ChannelDeliveryProjection(sql, (callback) => callback(), CHANNEL_ID);
+    const restarted = new ChannelDeliveryProjection(
+      sql,
+      (callback) => callback(),
+      CHANNEL_ID,
+    );
     expect(restarted.fold(message(2)).inserted).toBe(1);
     expect(restarted.fold(message(3)).inserted).toBe(1);
     expect(restarted.cursor()).toBe(3);
     expect(
-      sql.exec(`SELECT COUNT(*) AS count FROM channel_delivery_mailbox`).toArray()[0]?.["count"]
+      sql
+        .exec(`SELECT COUNT(*) AS count FROM channel_delivery_mailbox`)
+        .toArray()[0]?.["count"],
     ).toBe(2);
   });
 
@@ -170,9 +183,9 @@ describe("ChannelDeliveryProjection", () => {
     projection.fold(relationship(1, 1));
     projection.fold(message(2), 1_234);
 
-    expect(sql.exec(`SELECT created_at FROM channel_delivery_mailbox`).toArray()).toEqual([
-      { created_at: 1_234 },
-    ]);
+    expect(
+      sql.exec(`SELECT created_at FROM channel_delivery_mailbox`).toArray(),
+    ).toEqual([{ created_at: 1_234 }]);
   });
 
   it("routes at event sequence and terminalizes work when the relationship departs", () => {
@@ -186,7 +199,7 @@ describe("ChannelDeliveryProjection", () => {
     const rows = sql
       .exec(
         `SELECT event_sequence, subscription_revision, state
-           FROM channel_delivery_mailbox ORDER BY event_sequence`
+           FROM channel_delivery_mailbox ORDER BY event_sequence`,
       )
       .toArray();
     expect(rows).toEqual([
@@ -206,7 +219,7 @@ describe("ChannelDeliveryProjection", () => {
       `UPDATE channel_delivery_mailbox
           SET state = 'retrying', attempts = 8, next_attempt_at = ?
         WHERE event_sequence = 2`,
-      Date.now() + 30_000
+      Date.now() + 30_000,
     );
 
     projection.fold(relationship(3, 2, "channel.subscription.revised"));
@@ -216,9 +229,9 @@ describe("ChannelDeliveryProjection", () => {
       sql
         .exec(
           `SELECT event_sequence, subscription_revision, state
-             FROM channel_delivery_mailbox ORDER BY event_sequence`
+             FROM channel_delivery_mailbox ORDER BY event_sequence`,
         )
-        .toArray()
+        .toArray(),
     ).toEqual([
       { event_sequence: 2, subscription_revision: 1, state: "retrying" },
       { event_sequence: 4, subscription_revision: 2, state: "ready" },
@@ -237,20 +250,26 @@ describe("ChannelDeliveryProjection", () => {
     expect(projection.pendingReattachBackfills()).toEqual([
       { participantId: AGENT_ID, afterSequence: 1, throughSequence: 4 },
     ]);
-    expect(() => projection.fold(message(6))).toThrow(/while reattach recovery/);
+    expect(() => projection.fold(message(6))).toThrow(
+      /while reattach recovery/,
+    );
     expect(projection.advanceReattachBackfill(beforeDetach, AGENT_ID)).toBe(1);
 
     // This is the activation-loss checkpoint: a new projection instance reads
     // the durable cursor and continues after the last atomically derived row.
-    projection = new ChannelDeliveryProjection(sql, (callback) => callback(), CHANNEL_ID);
+    projection = new ChannelDeliveryProjection(
+      sql,
+      (callback) => callback(),
+      CHANNEL_ID,
+    );
     expect(projection.pendingReattachBackfills()).toEqual([
       { participantId: AGENT_ID, afterSequence: 2, throughSequence: 4 },
     ]);
     expect(
       projection.advanceReattachBackfill(
         relationship(3, 2, "channel.subscription.detached"),
-        AGENT_ID
-      )
+        AGENT_ID,
+      ),
     ).toBe(0);
     expect(projection.advanceReattachBackfill(whileDetached, AGENT_ID)).toBe(1);
     expect(projection.pendingReattachBackfills()).toEqual([]);
@@ -258,9 +277,9 @@ describe("ChannelDeliveryProjection", () => {
       sql
         .exec(
           `SELECT event_sequence, subscription_revision, state
-             FROM channel_delivery_mailbox ORDER BY event_sequence, subscription_revision`
+             FROM channel_delivery_mailbox ORDER BY event_sequence, subscription_revision`,
         )
-        .toArray()
+        .toArray(),
     ).toEqual([
       {
         event_sequence: 2,
@@ -278,7 +297,7 @@ describe("ChannelDeliveryProjection", () => {
     projection.fold(message(3));
     sql.exec(
       `UPDATE channel_delivery_mailbox SET state = 'terminal-completed'
-        WHERE event_sequence = 2`
+        WHERE event_sequence = 2`,
     );
 
     expect(projection.detachRecoveryBoundary(AGENT_ID)).toBe(2);
@@ -292,22 +311,31 @@ describe("ChannelDeliveryProjection", () => {
     sql.exec(
       `UPDATE channel_delivery_mailbox
           SET state = 'terminal-completed', agentic_context_json = NULL
-        WHERE event_sequence = 2`
+        WHERE event_sequence = 2`,
     );
 
     expect(projection.redeliverEventTo(canonical, AGENT_ID)).toBe(true);
     const row = sql
-      .exec(`SELECT state, event_id, event_sequence FROM channel_delivery_mailbox WHERE event_sequence = 2`)
+      .exec(
+        `SELECT state, event_id, event_sequence FROM channel_delivery_mailbox WHERE event_sequence = 2`,
+      )
       .toArray()[0]!;
     expect(row["state"]).toBe("ready");
-    expect(row).toMatchObject({ event_sequence: 2, event_id: canonical.messageId });
+    expect(row).toMatchObject({
+      event_sequence: 2,
+      event_id: canonical.messageId,
+    });
   });
 
   it("keeps arbitrarily large image payloads in the canonical log rather than mailbox cells", () => {
     projection.fold(relationship(1, 1));
     const exec = sql.exec.bind(sql);
     sql.exec = (query, ...bindings) => {
-      if (bindings.some((value) => typeof value === "string" && value.length > 1_000_000)) {
+      if (
+        bindings.some(
+          (value) => typeof value === "string" && value.length > 1_000_000,
+        )
+      ) {
         throw new Error("SQLITE_TOOBIG");
       }
       return exec(query, ...bindings);
@@ -317,8 +345,15 @@ describe("ChannelDeliveryProjection", () => {
       { type: "image", mimeType: "image/png", data: "A".repeat(3_000_000) },
     ];
     expect(projection.fold(canonical).inserted).toBe(1);
-    const row = sql.exec("SELECT * FROM channel_delivery_mailbox WHERE event_sequence = 2").toArray()[0]!;
-    expect(row).toMatchObject({ event_id: canonical.messageId, event_sequence: 2, source_message_id: "message-2", event_kind: "message.completed" });
+    const row = sql
+      .exec("SELECT * FROM channel_delivery_mailbox WHERE event_sequence = 2")
+      .toArray()[0]!;
+    expect(row).toMatchObject({
+      event_id: canonical.messageId,
+      event_sequence: 2,
+      source_message_id: "message-2",
+      event_kind: "message.completed",
+    });
     expect(JSON.stringify(row).length).toBeLessThan(2_000);
     expect(row).not.toHaveProperty("envelope_json");
   });
@@ -329,7 +364,9 @@ describe("ChannelDeliveryProjection", () => {
     expect(projection.diagnostics(2)).toMatchObject({
       cursor: 2,
       lag: 0,
-      memberships: [{ active: true, endpointKind: "entity", delivery: "all", count: 1 }],
+      memberships: [
+        { active: true, endpointKind: "entity", delivery: "all", count: 1 },
+      ],
       mailbox: [{ state: "ready", count: 1 }],
     });
   });
@@ -337,19 +374,27 @@ describe("ChannelDeliveryProjection", () => {
   it("delivers self-authored invocation responses to their parked caller", () => {
     projection.fold(relationship(1, 1));
 
-    expect(projection.fold(invocationTerminal(2, "invocation.completed")).inserted).toBe(1);
-    expect(projection.fold(invocationTerminal(3, "invocation.failed")).inserted).toBe(1);
-    expect(projection.fold(invocationTerminal(4, "invocation.cancelled")).inserted).toBe(1);
-    expect(projection.fold(invocationTerminal(5, "invocation.abandoned")).inserted).toBe(1);
+    expect(
+      projection.fold(invocationTerminal(2, "invocation.completed")).inserted,
+    ).toBe(1);
+    expect(
+      projection.fold(invocationTerminal(3, "invocation.failed")).inserted,
+    ).toBe(1);
+    expect(
+      projection.fold(invocationTerminal(4, "invocation.cancelled")).inserted,
+    ).toBe(1);
+    expect(
+      projection.fold(invocationTerminal(5, "invocation.abandoned")).inserted,
+    ).toBe(1);
     expect(projection.fold(invocationOutput(6)).inserted).toBe(1);
 
     expect(
       sql
         .exec(
           `SELECT event_sequence, participant_id
-             FROM channel_delivery_mailbox ORDER BY event_sequence`
+             FROM channel_delivery_mailbox ORDER BY event_sequence`,
         )
-        .toArray()
+        .toArray(),
     ).toEqual([
       { event_sequence: 2, participant_id: AGENT_ID },
       { event_sequence: 3, participant_id: AGENT_ID },
@@ -364,7 +409,9 @@ describe("ChannelDeliveryProjection", () => {
 
     expect(projection.fold(message(2, AGENT_ID)).inserted).toBe(0);
     expect(
-      sql.exec(`SELECT COUNT(*) AS count FROM channel_delivery_mailbox`).toArray()[0]?.["count"]
+      sql
+        .exec(`SELECT COUNT(*) AS count FROM channel_delivery_mailbox`)
+        .toArray()[0]?.["count"],
     ).toBe(0);
   });
 
@@ -377,7 +424,7 @@ describe("ChannelDeliveryProjection", () => {
         delivery: "addressed",
         endpoint: { kind: "entity", entityId: AGENT_ID, invocation: "direct" },
         metadata: { type: "agent" },
-      })
+      }),
     );
     projection.fold(
       event(2, "channel.subscription.opened", {
@@ -390,7 +437,7 @@ describe("ChannelDeliveryProjection", () => {
           invocation: "direct",
         },
         metadata: { type: "agent" },
-      })
+      }),
     );
     const broadcast = event(
       3,
@@ -401,13 +448,13 @@ describe("ChannelDeliveryProjection", () => {
         payload: { protocol: "agentic.trajectory.v1", to: [{ kind: "all" }] },
         createdAt: new Date(3_000).toISOString(),
       },
-      AGENT_ID
+      AGENT_ID,
     );
 
     expect(projection.fold(broadcast).inserted).toBe(1);
-    expect(sql.exec(`SELECT participant_id FROM channel_delivery_mailbox`).toArray()).toEqual([
-      { participant_id: otherAgent },
-    ]);
+    expect(
+      sql.exec(`SELECT participant_id FROM channel_delivery_mailbox`).toArray(),
+    ).toEqual([{ participant_id: otherAgent }]);
   });
 
   it("resets disposable state on a projection version change and preserves initial config", () => {
@@ -415,21 +462,25 @@ describe("ChannelDeliveryProjection", () => {
     projection.fold(message(2));
     sql.exec(
       `UPDATE channel_delivery_projection_cursor SET projection_version = ? WHERE singleton = 1`,
-      CHANNEL_DELIVERY_PROJECTION_VERSION - 1
+      CHANNEL_DELIVERY_PROJECTION_VERSION - 1,
     );
 
     expect(projection.cursor()).toBe(0);
     expect(
-      sql.exec(`SELECT COUNT(*) AS count FROM channel_delivery_mailbox`).toArray()[0]?.["count"]
+      sql
+        .exec(`SELECT COUNT(*) AS count FROM channel_delivery_mailbox`)
+        .toArray()[0]?.["count"],
     ).toBe(0);
     projection.fold(relationship(1, 1));
     projection.fold(message(2));
     const context = JSON.parse(
       String(
-        sql.exec(`SELECT agentic_context_json FROM channel_delivery_event_context`).toArray()[0]?.[
-          "agentic_context_json"
-        ]
-      )
+        sql
+          .exec(
+            `SELECT agentic_context_json FROM channel_delivery_event_context`,
+          )
+          .toArray()[0]?.["agentic_context_json"],
+      ),
     ) as ChannelAgenticContext;
     expect(context.channelConfig).toEqual({
       conversationPolicy: "directed",
@@ -442,7 +493,7 @@ describe("ChannelDeliveryProjection", () => {
       sql,
       (callback) => callback(),
       CHANNEL_ID,
-      () => 2
+      () => 2,
     );
     forked.resetForFork(2);
     forked.fold(relationship(1, 1));
@@ -450,23 +501,25 @@ describe("ChannelDeliveryProjection", () => {
     forked.fold(relationship(3, 1));
     sql.exec(
       `UPDATE channel_delivery_projection_cursor SET projection_version = ? WHERE singleton = 1`,
-      CHANNEL_DELIVERY_PROJECTION_VERSION - 1
+      CHANNEL_DELIVERY_PROJECTION_VERSION - 1,
     );
 
     expect(forked.cursor()).toBe(0);
     expect(
       sql
         .exec(
-          `SELECT fork_boundary_sequence FROM channel_delivery_projection_cursor WHERE singleton = 1`
+          `SELECT fork_boundary_sequence FROM channel_delivery_projection_cursor WHERE singleton = 1`,
         )
-        .toArray()[0]?.["fork_boundary_sequence"]
+        .toArray()[0]?.["fork_boundary_sequence"],
     ).toBe(2);
     forked.fold(relationship(1, 1));
     forked.fold(message(2));
     forked.fold(relationship(3, 1));
     expect(forked.relationship(AGENT_ID)?.revision).toBe(1);
     expect(
-      sql.exec(`SELECT COUNT(*) AS count FROM channel_delivery_mailbox`).toArray()[0]?.["count"]
+      sql
+        .exec(`SELECT COUNT(*) AS count FROM channel_delivery_mailbox`)
+        .toArray()[0]?.["count"],
     ).toBe(0);
   });
 
@@ -474,17 +527,24 @@ describe("ChannelDeliveryProjection", () => {
     projection.fold(relationship(1, 1));
     projection.fold(message(2, "panel:author", "origin"));
     projection.fold(
-      event(3, "config-update", { conversationPolicy: "moderated", agentHopLimit: 2 }, "system")
+      event(
+        3,
+        "config-update",
+        { conversationPolicy: "moderated", agentHopLimit: 2 },
+        "system",
+      ),
     );
     projection.fold(message(4, "panel:reply", "reply", "origin"));
 
     const row = sql
       .exec(
         `SELECT agentic_context_json FROM channel_delivery_event_context WHERE event_id = ?`,
-        "envelope-reply"
+        "envelope-reply",
       )
       .toArray()[0]!;
-    const context = JSON.parse(String(row["agentic_context_json"])) as ChannelAgenticContext;
+    const context = JSON.parse(
+      String(row["agentic_context_json"]),
+    ) as ChannelAgenticContext;
     expect(context).toMatchObject({
       version: 1,
       channelConfig: { conversationPolicy: "moderated", agentHopLimit: 2 },
@@ -500,6 +560,41 @@ describe("ChannelDeliveryProjection", () => {
         },
       ],
     });
+  });
+
+  it("retains the executable offer at the delivered event sequence across later revisions", () => {
+    const offer = {
+      name: "inline_ui",
+      description: "Original renderer",
+      parameters: { type: "object", properties: { path: { type: "string" } } },
+    };
+    const opening = relationship(1, 1);
+    (opening.payload as Record<string, unknown>)["methodOffers"] = [offer];
+    projection.fold(opening);
+    projection.fold(message(2, "panel:author", "original"));
+    const revision = relationship(3, 2, "channel.subscription.revised");
+    (revision.payload as Record<string, unknown>)["methodOffers"] = [
+      { ...offer, description: "New renderer" },
+    ];
+    projection.fold(revision);
+    projection.fold(message(4, "panel:author", "later"));
+    const read = (id: string) =>
+      JSON.parse(
+        String(
+          sql
+            .exec(
+              "SELECT agentic_context_json FROM channel_delivery_event_context WHERE event_id = ?",
+              id,
+            )
+            .toArray()[0]!["agentic_context_json"],
+        ),
+      ) as ChannelAgenticContext;
+    expect(read("envelope-original").relationships[0]!.methodOffers).toEqual([
+      offer,
+    ]);
+    expect(read("envelope-later").relationships[0]!.methodOffers).toEqual([
+      { ...offer, description: "New renderer" },
+    ]);
   });
 
   it("stores one event context for every direct recipient instead of copying it per mailbox row", () => {
@@ -522,8 +617,8 @@ describe("ChannelDeliveryProjection", () => {
             metadata: { type: "agent", handle: `agent-${index}` },
             applicationConfig: null,
           },
-          participantId
-        )
+          participantId,
+        ),
       );
     }
 
@@ -533,15 +628,15 @@ describe("ChannelDeliveryProjection", () => {
         .exec(
           `SELECT COUNT(*) AS deliveries,
                   SUM(CASE WHEN agentic_context_json IS NULL THEN 1 ELSE 0 END) AS empty_contexts
-             FROM channel_delivery_mailbox`
+             FROM channel_delivery_mailbox`,
         )
-        .toArray()[0]
+        .toArray()[0],
     ).toEqual({ deliveries: 12, empty_contexts: 12 });
     const contextStorage = sql
       .exec(
         `SELECT COUNT(*) AS contexts,
                 SUM(LENGTH(agentic_context_json)) AS bytes
-           FROM channel_delivery_event_context`
+           FROM channel_delivery_event_context`,
       )
       .toArray()[0]!;
     expect(contextStorage["contexts"]).toBe(1);

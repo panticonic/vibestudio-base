@@ -1,3 +1,4 @@
+import { executeTool, toolResultDetails } from "../../testing/native-tool.js";
 import { describe, expect, it } from "vitest";
 import { createEditTool } from "../edit.js";
 import { createMemoryWorkspaceFileObservationStore } from "../file-observations.js";
@@ -11,12 +12,16 @@ describe("canonical edit tool", () => {
   it("resolves exact file identity and records a guarded semantic change", async () => {
     const vcs = new StubVcs({ files: { "meta/a.ts": "const x = 1;\n" } });
     const tool = createEditTool(CWD, vcs, authority);
-    const result = await tool.execute("invocation:1", {
-      path: "meta/a.ts",
-      oldText: "1",
-      newText: "42",
-      intent: "Align the fixture with the revised protocol version",
-    });
+    const result = await executeTool(
+      tool,
+      {
+        path: "meta/a.ts",
+        oldText: "1",
+        newText: "42",
+        intent: "Align the fixture with the revised protocol version",
+      },
+      { callId: "invocation:1" },
+    );
 
     expect(vcs.read("meta/a.ts")).toBe("const x = 42;\n");
     expect(vcs.lastEditInput).toMatchObject({
@@ -33,18 +38,22 @@ describe("canonical edit tool", () => {
         },
       ],
     });
-    expect(result.details.storage).toBe("vcs");
+    expect(toolResultDetails(result).storage).toBe("vcs");
     expect(tool.description).toContain('vcs({ operation: "revert"');
   });
 
   it("reports ambiguous text without mutating", async () => {
     const vcs = new StubVcs({ files: { "meta/a.ts": "foo\nfoo\n" } });
     const tool = createEditTool(CWD, vcs, authority);
-    const result = await tool.execute("invocation:2", {
-      path: "meta/a.ts",
-      oldText: "foo",
-      newText: "bar",
-    });
+    const result = await executeTool(
+      tool,
+      {
+        path: "meta/a.ts",
+        oldText: "foo",
+        newText: "bar",
+      },
+      { callId: "invocation:2" },
+    );
     expect(result.details).toMatchObject({
       status: "conflict",
       conflicts: [
@@ -62,18 +71,25 @@ describe("canonical edit tool", () => {
   it("uses unchanged replacement context only for matching, not authorship", async () => {
     const vcs = new StubVcs({
       files: {
-        "meta/a.ts": 'export const value = "baseline";\nexport const neighbor = "untouched";\n',
+        "meta/a.ts":
+          'export const value = "baseline";\nexport const neighbor = "untouched";\n',
       },
     });
     const tool = createEditTool(CWD, vcs, authority);
-    await tool.execute("invocation:context", {
-      path: "meta/a.ts",
-      oldText: 'export const value = "baseline";\nexport const neighbor = "untouched";',
-      newText: 'export const value = "edited";\nexport const neighbor = "untouched";',
-    });
+    await executeTool(
+      tool,
+      {
+        path: "meta/a.ts",
+        oldText:
+          'export const value = "baseline";\nexport const neighbor = "untouched";',
+        newText:
+          'export const value = "edited";\nexport const neighbor = "untouched";',
+      },
+      { callId: "invocation:context" },
+    );
 
     expect(vcs.read("meta/a.ts")).toBe(
-      'export const value = "edited";\nexport const neighbor = "untouched";\n'
+      'export const value = "edited";\nexport const neighbor = "untouched";\n',
     );
     expect(vcs.lastEditInput?.changes[0]).toMatchObject({
       kind: "text-edit",
@@ -85,27 +101,37 @@ describe("canonical edit tool", () => {
     const original = "keep — dash  \nsay “hello” world\r\ntail\n";
     const vcs = new StubVcs({ files: { "meta/a.ts": original } });
     const tool = createEditTool(CWD, vcs, authority);
-    await tool.execute("invocation:fuzzy", {
-      path: "meta/a.ts",
-      oldText: '"hello"',
-      newText: "goodbye",
-    });
+    await executeTool(
+      tool,
+      {
+        path: "meta/a.ts",
+        oldText: '"hello"',
+        newText: "goodbye",
+      },
+      { callId: "invocation:fuzzy" },
+    );
 
-    expect(vcs.read("meta/a.ts")).toBe("keep — dash  \nsay goodbye world\r\ntail\n");
+    expect(vcs.read("meta/a.ts")).toBe(
+      "keep — dash  \nsay goodbye world\r\ntail\n",
+    );
     expect(vcs.lastEditInput?.changes[0]).toMatchObject({
       kind: "text-edit",
       edits: [{ start: 18, end: 25, text: "goodbye" }],
     });
-    const result = await createEditTool(
-      CWD,
-      new StubVcs({ files: { "meta/a.ts": "say “hello”\n" } }),
-      authority
-    ).execute("invocation:fuzzy-evidence", {
-      path: "meta/a.ts",
-      oldText: 'say "hello"',
-      newText: "say goodbye",
-    });
-    expect(result.details.operations[0]?.matches).toEqual([
+    const result = await executeTool(
+      createEditTool(
+        CWD,
+        new StubVcs({ files: { "meta/a.ts": "say “hello”\n" } }),
+        authority,
+      ),
+      {
+        path: "meta/a.ts",
+        oldText: 'say "hello"',
+        newText: "say goodbye",
+      },
+      { callId: "invocation:fuzzy-evidence" },
+    );
+    expect(toolResultDetails(result).operations[0]?.matches).toEqual([
       { replacement: 0, mode: "normalized", line: 1 },
     ]);
   });
@@ -114,13 +140,17 @@ describe("canonical edit tool", () => {
     const vcs = new StubVcs();
     const fs = new StubFs({ files: { ".tmp/note.txt": "before" } });
     const tool = createEditTool(CWD, vcs, authority, fs);
-    const result = await tool.execute("invocation:3", {
-      path: ".tmp/note.txt",
-      oldText: "before",
-      newText: "after",
-    });
+    const result = await executeTool(
+      tool,
+      {
+        path: ".tmp/note.txt",
+        oldText: "before",
+        newText: "after",
+      },
+      { callId: "invocation:3" },
+    );
     await expect(fs.readFile(".tmp/note.txt", "utf8")).resolves.toBe("after");
-    expect(result.details.storage).toBe("scratch");
+    expect(toolResultDetails(result).storage).toBe("scratch");
   });
 
   it("rejects a stale trusted observation without exposing hashes", async () => {
@@ -131,11 +161,15 @@ describe("canonical edit tool", () => {
     observations.record("meta/a.ts", "f".repeat(64));
     const tool = createEditTool(CWD, vcs, authority, undefined, observations);
 
-    const result = await tool.execute("invocation:stale-observation", {
-      path: "meta/a.ts",
-      oldText: "currentValue = 1",
-      newText: "currentValue = 3",
-    });
+    const result = await executeTool(
+      tool,
+      {
+        path: "meta/a.ts",
+        oldText: "currentValue = 1",
+        newText: "currentValue = 3",
+      },
+      { callId: "invocation:stale-observation" },
+    );
 
     expect(result.details).toMatchObject({
       status: "conflict",

@@ -1,6 +1,12 @@
 import { AGENTIC_EVENT_PAYLOAD_KIND } from "./constants.js";
 import type { ChannelId, EnvelopeId } from "./ids.js";
-import type { ActorRef, ParticipantRef, ParticipantSelector, StoredAgenticEvent } from "./events.js";
+import type {
+  ActorRef,
+  ParticipantRef,
+  ParticipantSelector,
+  StoredAgenticEvent,
+} from "./events.js";
+import { participantRefFromMetadata } from "./participant-ref.js";
 
 export interface ChannelEnvelope<Payload = unknown> {
   envelopeId: EnvelopeId;
@@ -50,7 +56,7 @@ export function pubsubChannelEventToEnvelope<Payload>(
     ts?: number;
     senderMetadata?: { name?: string; type?: string; handle?: string };
     payload: Payload;
-  }
+  },
 ): ChannelEnvelope<Payload> {
   const participantId = wire.senderId ?? "channel";
   const metadata = wire.senderMetadata;
@@ -58,13 +64,7 @@ export function pubsubChannelEventToEnvelope<Payload>(
     envelopeId: `pubsub:${wire.pubsubId ?? crypto.randomUUID()}` as EnvelopeId,
     channelId: channelId as ChannelId,
     seq: wire.pubsubId ?? 0,
-    from: {
-      kind: participantKindFromWire(metadata?.type),
-      id: participantId,
-      ...(metadata?.name === undefined ? {} : { displayName: metadata.name }),
-      participantId,
-      ...(metadata ? { metadata } : {}),
-    } as ActorRef,
+    from: participantRefFromMetadata(participantId, metadata),
     payload: wire.payload,
     payloadKind,
     contentClass: "external",
@@ -83,11 +83,12 @@ export function pubsubChannelEventToEnvelope<Payload>(
  * empty transcript no matter how healthy its subscription is. That is exactly
  * what the command overlay did.
  *
- * Two hand-rolled copies of this predate the shared one
- * (`agentic-chat/hooks/useChannelMessages.ts`,
- * `agentic-session/src/headless-session.ts`); they should converge here.
+ * HeadlessSession uses this shared conversion. The panel transcript adapter
+ * still owns a separate conversion in `agentic-chat/hooks/useChannelMessages.ts`.
  */
-export function pubsubAgenticEventToEnvelope<Payload extends { actor: { id: string } }>(
+export function pubsubAgenticEventToEnvelope<
+  Payload extends { actor: { id: string } },
+>(
   channelId: string,
   wire: {
     pubsubId?: number;
@@ -97,7 +98,7 @@ export function pubsubAgenticEventToEnvelope<Payload extends { actor: { id: stri
     contentClass?: "internal" | "external";
     externalKeys?: string[];
     payload: Payload;
-  }
+  },
 ): ChannelEnvelope<Payload> {
   const participantId = wire.senderId ?? wire.payload.actor.id;
   const metadata = wire.senderMetadata;
@@ -105,24 +106,11 @@ export function pubsubAgenticEventToEnvelope<Payload extends { actor: { id: stri
     envelopeId: `pubsub:${wire.pubsubId ?? crypto.randomUUID()}` as EnvelopeId,
     channelId: channelId as ChannelId,
     seq: wire.pubsubId ?? 0,
-    from: {
-      kind: participantKindFromWire(metadata?.type),
-      id: participantId,
-      ...(metadata?.name === undefined ? {} : { displayName: metadata.name }),
-      participantId,
-      ...(metadata ? { metadata } : {}),
-    } as ActorRef,
+    from: participantRefFromMetadata(participantId, metadata),
     payload: wire.payload,
     payloadKind: AGENTIC_EVENT_PAYLOAD_KIND,
     contentClass: wire.contentClass ?? "internal",
     externalKeys: [...(wire.externalKeys ?? [])],
     publishedAt: new Date(wire.ts ?? Date.now()).toISOString(),
   };
-}
-
-function participantKindFromWire(type: string | undefined): "user" | "agent" | "panel" | "external" {
-  if (type === "agent" || type === "headless") return "agent";
-  if (type === "panel" || type === "client") return "panel";
-  if (type === "external") return "external";
-  return "user";
 }

@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { createTestDO, createTestDirectAuthority } from "@workspace/runtime/worker/test-utils";
+import {
+  createTestDO,
+  createTestDirectAuthority,
+} from "@workspace/runtime/worker/test-utils";
 import type { DirectAuthorityAttestation } from "@vibestudio/rpc/internal";
 import type { WorkspaceConfig } from "@workspace/runtime/worker";
 import {
@@ -20,7 +23,10 @@ import {
 } from "./index.js";
 import { WORKSPACE_SYSTEM_EPOCH } from "@vibestudio/shared/vcs/systemEpoch";
 
-const BASE_CONFIG = { id: "test", systemEpoch: WORKSPACE_SYSTEM_EPOCH } as const;
+const BASE_CONFIG = {
+  id: "test",
+  systemEpoch: WORKSPACE_SYSTEM_EPOCH,
+} as const;
 
 function localEntry(fields: Partial<LocalModelEntry> = {}): LocalModelEntry {
   return {
@@ -50,7 +56,10 @@ function localEntry(fields: Partial<LocalModelEntry> = {}): LocalModelEntry {
 function storedCredential(
   id: string,
   url: string,
-  lifecycle: StoredCredentialSummary["lifecycle"] = { state: "active", canRefresh: false }
+  lifecycle: StoredCredentialSummary["lifecycle"] = {
+    state: "active",
+    canRefresh: false,
+  },
 ): StoredCredentialSummary {
   return {
     id,
@@ -153,7 +162,10 @@ class TestModelSettingsDO extends ModelSettingsDO {
     return Promise.resolve(TestModelSettingsDO.config);
   }
 
-  protected setWorkspaceConfigField(key: string, value: unknown): Promise<void> {
+  protected setWorkspaceConfigField(
+    key: string,
+    value: unknown,
+  ): Promise<void> {
     TestModelSettingsDO.writes.push({ key, value });
     TestModelSettingsDO.config = {
       ...TestModelSettingsDO.config,
@@ -188,7 +200,11 @@ class ExpiredModelSettingsDO extends TestModelSettingsDO {
 
   protected override storedCredentials(): Promise<StoredCredentialSummary[]> {
     return Promise.resolve([
-      storedCredential("openai", "https://api.openai.com/v1", ExpiredModelSettingsDO.lifecycle),
+      storedCredential(
+        "openai",
+        "https://api.openai.com/v1",
+        ExpiredModelSettingsDO.lifecycle,
+      ),
     ]);
   }
 }
@@ -203,7 +219,10 @@ function websiteCaller(method: string) {
   const subject = "website:site-1" as const;
   const userId = "user:test" as const;
   const binding = { subject, generation: 0, documentId: "document-1" };
-  const baseAuthorization = createTestDirectAuthority({ callerKind: "panel", method });
+  const baseAuthorization = createTestDirectAuthority({
+    callerKind: "panel",
+    method,
+  });
   const authorization: DirectAuthorityAttestation = {
     ...baseAuthorization,
     context: {
@@ -250,25 +269,37 @@ describe("ModelSettingsDO", () => {
     TestModelSettingsDO.config = { ...BASE_CONFIG };
     const { callAs } = await createTestDO(TestModelSettingsDO);
 
-    const catalog = await callAs<ModelCatalog>(websiteCaller("listCatalog"), "listCatalog");
+    const catalog = await callAs<ModelCatalog>(
+      websiteCaller("listCatalog"),
+      "listCatalog",
+    );
     const settings = await callAs(websiteCaller("getSettings"), "getSettings");
-    const defaultModel = await callAs(websiteCaller("getDefaultModel"), "getDefaultModel");
-    const inspected = await callAs(websiteCaller("inspectModels"), "inspectModels", [
-      "openai:gpt-5",
-    ]);
+    const defaultModel = await callAs(
+      websiteCaller("getDefaultModel"),
+      "getDefaultModel",
+    );
+    const inspected = await callAs(
+      websiteCaller("inspectModels"),
+      "inspectModels",
+      ["openai:gpt-5"],
+    );
 
     expect(catalog.models).toHaveLength(2);
     expect(settings).toMatchObject({ catalog: { models: expect.any(Array) } });
-    expect(defaultModel).toMatchObject({ catalog: { models: expect.any(Array) } });
+    expect(defaultModel).toMatchObject({
+      catalog: { models: expect.any(Array) },
+    });
     expect(inspected).toMatchObject({ models: [{ ref: "openai:gpt-5" }] });
-    expect(JSON.stringify({ catalog, settings, defaultModel, inspected })).not.toMatch(
-      /authorization|api[-_]?key|bearer\s|client[-_]?secret|access[-_]?token|refresh[-_]?token/iu
+    expect(
+      JSON.stringify({ catalog, settings, defaultModel, inspected }),
+    ).not.toMatch(
+      /authorization|api[-_]?key|bearer\s|client[-_]?secret|access[-_]?token|refresh[-_]?token/iu,
     );
 
     await expect(
       callAs(websiteCaller("setDefaultAgentConfig"), "setDefaultAgentConfig", {
         model: "openai:gpt-5",
-      })
+      }),
     ).rejects.toThrow(/receiver is closed to websites/);
   });
 
@@ -277,8 +308,8 @@ describe("ModelSettingsDO", () => {
       localEntryToCatalogEntry(
         localEntry({
           state: "not-installed",
-        })
-      ).availability
+        }),
+      ).availability,
     ).toEqual({ state: "needs-setup", detail: "not-installed" });
   });
 
@@ -293,8 +324,8 @@ describe("ModelSettingsDO", () => {
             receivedBytes: 280_000_000,
             totalBytes: 700_000_000,
           },
-        })
-      ).availability
+        }),
+      ).availability,
     ).toEqual({
       state: "downloading",
       progress: 0.4,
@@ -309,8 +340,8 @@ describe("ModelSettingsDO", () => {
       localEntryToCatalogEntry(
         localEntry({
           state: "starting",
-        })
-      ).availability
+        }),
+      ).availability,
     ).toEqual({ state: "starting" });
   });
 
@@ -322,8 +353,8 @@ describe("ModelSettingsDO", () => {
           displayName: "Qwen3.8 27B",
           server: "main",
           reasoningCapable: true,
-        })
-      ).recommended
+        }),
+      ).recommended,
     ).toBe(true);
     expect(localEntryToCatalogEntry(localEntry()).recommended).toBe(false);
     expect(LOCAL_DEFAULT_MODEL_REF).toBe("local:qwen3.8-27b");
@@ -331,7 +362,9 @@ describe("ModelSettingsDO", () => {
   });
 
   it("projects local reasoning capability into the pi model spec", () => {
-    expect(localEntryToCatalogEntry(localEntry({ reasoningCapable: true }))).toMatchObject({
+    expect(
+      localEntryToCatalogEntry(localEntry({ reasoningCapable: true })),
+    ).toMatchObject({
       reasoning: true,
       modelSpec: { reasoning: true },
     });
@@ -339,12 +372,15 @@ describe("ModelSettingsDO", () => {
 
   it("projects the Codex 6.1 Sol registry entry and all enabled effort levels", async () => {
     const catalog = await getModelCatalog();
-    const sol = catalog.models.find((model) => model.ref === DEFAULT_AGENT_MODEL_REF);
+    const sol = catalog.models.find(
+      (model) => model.ref === DEFAULT_AGENT_MODEL_REF,
+    );
 
     expect(DEFAULT_AGENT_MODEL_REF).toBe("openai-codex:gpt-6.1-sol");
-    expect(catalog.providers.find((provider) => provider.id === "openai-codex")?.label).toBe(
-      "ChatGPT"
-    );
+    expect(
+      catalog.providers.find((provider) => provider.id === "openai-codex")
+        ?.label,
+    ).toBe("ChatGPT");
     expect(sol).toMatchObject({
       id: "gpt-6.1-sol",
       provider: "openai-codex",
@@ -411,7 +447,7 @@ describe("ModelSettingsDO", () => {
     const { call } = await createTestDO(CodexModelSettingsDO);
 
     await expect(
-      call("setDefaultAgentConfig", { model: "openai-codex:gpt-6.1-sol" })
+      call("setDefaultAgentConfig", { model: "openai-codex:gpt-6.1-sol" }),
     ).resolves.toMatchObject({
       defaultAgentConfig: {
         model: "openai-codex:gpt-6.1-sol",
@@ -425,7 +461,8 @@ describe("ModelSettingsDO", () => {
 
     TestModelSettingsDO.config = {
       ...BASE_CONFIG,
-      defaultAgentConfig: TestModelSettingsDO.writes.at(-1)?.value as DefaultAgentConfig,
+      defaultAgentConfig: TestModelSettingsDO.writes.at(-1)
+        ?.value as DefaultAgentConfig,
     };
     await expect(call("getSettings")).resolves.toMatchObject({
       defaultAgentConfig: {
@@ -440,7 +477,7 @@ describe("ModelSettingsDO", () => {
     const { call } = await createTestDO(TestModelSettingsDO);
 
     await expect(
-      call("inspectModels", ["openai:gpt-5", "missing:model", "openai:gpt-5"])
+      call("inspectModels", ["openai:gpt-5", "missing:model", "openai:gpt-5"]),
     ).resolves.toEqual({
       defaultModel: "openai:gpt-5",
       models: [
@@ -503,9 +540,9 @@ describe("ModelSettingsDO", () => {
       defaultModelSource: "fallback",
     });
     const catalog = (snapshot as { catalog: ModelCatalog }).catalog;
-    expect(catalog.providers.find((provider) => provider.id === "local")?.label).toBe(
-      "Local inference (experimental)"
-    );
+    expect(
+      catalog.providers.find((provider) => provider.id === "local")?.label,
+    ).toBe("Local inference (experimental)");
     const local = catalog.models.find((m) => m.ref === "local:lfm2.5-2.6b");
     expect(local).toMatchObject({
       auth: "loopback",
@@ -517,7 +554,9 @@ describe("ModelSettingsDO", () => {
     const cloud = catalog.models.find((m) => m.ref === "openai:gpt-5");
     expect(cloud?.availability).toMatchObject({ state: "needs-setup" });
     // The journaled spec is secret-free by construction.
-    expect(JSON.stringify(local?.modelSpec)).not.toMatch(/authorization|api[-_]?key/iu);
+    expect(JSON.stringify(local?.modelSpec)).not.toMatch(
+      /authorization|api[-_]?key/iu,
+    );
   });
 
   it("reports the deterministic inference runtime as usable without a fake credential", async () => {
@@ -532,7 +571,10 @@ describe("ModelSettingsDO", () => {
       defaultModelSource: "fallback",
     });
     const catalog = (snapshot as { catalog: ModelCatalog }).catalog;
-    expect(catalog.models.find((model) => model.ref === "openai:gpt-5")?.availability).toEqual({
+    expect(
+      catalog.models.find((model) => model.ref === "openai:gpt-5")
+        ?.availability,
+    ).toEqual({
       state: "ready",
       detail: "deterministic-test",
     });
@@ -544,7 +586,9 @@ describe("ModelSettingsDO", () => {
     const { call } = await createTestDO(ExpiredModelSettingsDO);
 
     const snapshot = (await call("getSettings")) as { catalog: ModelCatalog };
-    expect(snapshot.catalog.models.find((model) => model.ref === "openai:gpt-5")).toMatchObject({
+    expect(
+      snapshot.catalog.models.find((model) => model.ref === "openai:gpt-5"),
+    ).toMatchObject({
       availability: { state: "needs-setup", detail: "credential-expired" },
     });
   });
@@ -555,7 +599,9 @@ describe("ModelSettingsDO", () => {
     const { call } = await createTestDO(ExpiredModelSettingsDO);
 
     const snapshot = (await call("getSettings")) as { catalog: ModelCatalog };
-    expect(snapshot.catalog.models.find((model) => model.ref === "openai:gpt-5")).toMatchObject({
+    expect(
+      snapshot.catalog.models.find((model) => model.ref === "openai:gpt-5"),
+    ).toMatchObject({
       availability: { state: "ready", detail: "credentialed" },
     });
   });
@@ -571,7 +617,7 @@ describe("ModelSettingsDO", () => {
         thinkingLevel: "high",
         fastMode: true,
         approvalLevel: 2,
-      })
+      }),
     ).resolves.toMatchObject({
       defaultModel: "anthropic:claude-opus-4-1",
       defaultModelSource: "workspace",
@@ -629,7 +675,7 @@ describe("ModelSettingsDO", () => {
         model: "openai:gpt-5",
         thinkingLevel: "bogus",
         approvalLevel: 9,
-      })
+      }),
     ).rejects.toThrow(/thinkingLevel/);
     expect(TestModelSettingsDO.writes).toEqual([]);
   });
@@ -647,21 +693,25 @@ describe("ModelSettingsDO", () => {
     TestModelSettingsDO.config = { ...BASE_CONFIG };
     const { call } = await createTestDO(TestModelSettingsDO);
 
-    await expect(call("setDefaultAgentConfig", { model: "missing:model" })).rejects.toThrow(
-      "Unknown model ref: missing:model"
-    );
+    await expect(
+      call("setDefaultAgentConfig", { model: "missing:model" }),
+    ).rejects.toThrow("Unknown model ref: missing:model");
   });
 });
 
 it("resolves account-specific endpoint templates without exposing secret material", () => {
-  const baseUrl = "https://api.cloudflare.com/client/v4/accounts/{CLOUDFLARE_ACCOUNT_ID}/ai/v1";
-  const expected = "https://api.cloudflare.com/client/v4/accounts/account123/ai/v1";
+  const baseUrl =
+    "https://api.cloudflare.com/client/v4/accounts/{CLOUDFLARE_ACCOUNT_ID}/ai/v1";
+  const expected =
+    "https://api.cloudflare.com/client/v4/accounts/account123/ai/v1";
   const credential = {
     ...storedCredential("cloudflare", expected),
     metadata: {
       modelProviderId: "cloudflare-workers-ai",
       modelAuthMethod: "api-key",
-      modelProviderConfig: JSON.stringify({ CLOUDFLARE_ACCOUNT_ID: "account123" }),
+      modelProviderConfig: JSON.stringify({
+        CLOUDFLARE_ACCOUNT_ID: "account123",
+      }),
     },
   };
   const entry = makeTestCatalogEntry({
@@ -672,7 +722,9 @@ it("resolves account-specific endpoint templates without exposing secret materia
     baseUrl,
     availability: { state: "needs-setup", detail: "no-credential" },
   });
-  expect(applyCloudAvailability(entry, [credential], "provider-credentials")).toMatchObject({
+  expect(
+    applyCloudAvailability(entry, [credential], "provider-credentials"),
+  ).toMatchObject({
     baseUrl: expected,
     modelSpec: { baseUrl: expected },
     availability: { state: "ready" },
@@ -697,13 +749,194 @@ it("shows account model restrictions instead of marking every Copilot model read
     baseUrl,
   });
   expect(
-    applyCloudAvailability(entry, [credential], "provider-credentials").availability
+    applyCloudAvailability(entry, [credential], "provider-credentials")
+      .availability,
   ).toMatchObject({
     state: "error",
-    message: expect.stringContaining("not available with your connected provider account"),
+    message: expect.stringContaining(
+      "not available with your connected provider account",
+    ),
   });
   expect(
-    applyCloudAvailability({ ...entry, id: "gpt-6.1-sol" }, [credential], "provider-credentials")
-      .availability.state
+    applyCloudAvailability(
+      { ...entry, id: "gpt-6.1-sol" },
+      [credential],
+      "provider-credentials",
+    ).availability.state,
   ).toBe("ready");
+});
+
+class DiscoveryModelSettingsDO extends ModelSettingsDO {
+  static config: WorkspaceConfig = BASE_CONFIG;
+  static configReads = 0;
+  protected override getCatalog(): Promise<ModelCatalog> {
+    return Promise.resolve(CATALOG);
+  }
+  protected override getWorkspaceConfig(): Promise<WorkspaceConfig> {
+    DiscoveryModelSettingsDO.configReads += 1;
+    return Promise.resolve(DiscoveryModelSettingsDO.config);
+  }
+}
+
+const localUnit = {
+  name: "@workspace-extensions/local-models",
+  kind: "extension",
+  target: null,
+  capabilities: [],
+  source: "extensions/local-models",
+  displayName: "Local Models",
+  isAgent: false,
+  status: "ready",
+  effectiveVersion: "local-version",
+  activeBuildKey: "local-build",
+  lastError: null,
+  pendingApproval: null,
+  authorityRows: [],
+};
+
+async function discoveryFixture(
+  config: Partial<WorkspaceConfig>,
+  opts: {
+    units?: unknown;
+    entries?: unknown;
+    credentials?: unknown;
+    failureMethod?: string;
+    failure?: Error;
+  } = {},
+) {
+  DiscoveryModelSettingsDO.config = { ...BASE_CONFIG, ...config };
+  DiscoveryModelSettingsDO.configReads = 0;
+  const calls: string[] = [];
+  const fixture = await createTestDO(DiscoveryModelSettingsDO);
+  void (fixture.instance as unknown as { rpc: unknown }).rpc;
+  const connectionless = (
+    fixture.instance as unknown as {
+      _connectionless: {
+        client: { call: (target: string, method: string) => Promise<unknown> };
+      };
+    }
+  )._connectionless;
+  connectionless.client.call = async (_target, method) => {
+    calls.push(method);
+    if (method === opts.failureMethod) throw opts.failure;
+    if (method === "credentials.listStoredCredentials")
+      return opts.credentials ?? [];
+    if (method === "build.listUnits") return opts.units ?? [localUnit];
+    if (method === "extensions.invoke") return opts.entries ?? [];
+    throw new Error(`Unexpected metadata RPC ${method}`);
+  };
+  return { ...fixture, calls };
+}
+
+describe("model discovery evidence and original failures", () => {
+  it("proves optional absence from effective declarations without invoking an undeclared source", async () => {
+    const f = await discoveryFixture({ extensions: [] });
+    await f.call("getSettings");
+    expect(f.calls).toEqual(["credentials.listStoredCredentials"]);
+    expect(DiscoveryModelSettingsDO.configReads).toBe(1);
+  });
+  it("does not treat an unrelated declaration as an installed local provider", async () => {
+    const f = await discoveryFixture({
+      extensions: [{ source: "extensions/other" }],
+    });
+    await f.call("getSettings");
+    expect(f.calls).not.toContain("extensions.invoke");
+  });
+  it("preserves an inherited configured local model from the same effective declaration read", async () => {
+    const entry = localEntry();
+    const f = await discoveryFixture(
+      {
+        extensions: [
+          { source: "extensions/base" },
+          { source: "extensions/local-models" },
+        ],
+        defaultAgentConfig: { model: `local:${entry.slug}` },
+      },
+      { entries: [entry] },
+    );
+    await expect(f.call("getSettings")).resolves.toMatchObject({
+      defaultModel: `local:${entry.slug}`,
+      defaultModelSource: "workspace",
+    });
+    expect(DiscoveryModelSettingsDO.configReads).toBe(1);
+  });
+  it("reports the exact declared source when its valid canonical build unit is absent", async () => {
+    const f = await discoveryFixture(
+      { extensions: [{ source: "extensions/local-models" }] },
+      { units: [] },
+    );
+    await expect(f.call("getSettings")).rejects.toThrow(
+      "Declared local model provider extensions/local-models has no valid extension build unit @workspace-extensions/local-models",
+    );
+    expect(f.calls).not.toContain("extensions.invoke");
+  });
+  it.each(["approval pending", "provider disconnected", "activation failed"])(
+    "propagates original %s instead of substituting cloud inventory",
+    async (message) => {
+      const f = await discoveryFixture(
+        {
+          extensions: [{ source: "extensions/local-models" }],
+          defaultAgentConfig: { model: "local:lfm2.5-2.6b" },
+        },
+        { failureMethod: "extensions.invoke", failure: new Error(message) },
+      );
+      await expect(f.call("getSettings")).rejects.toThrow(message);
+    },
+  );
+  it("propagates the original declaration inventory failure", async () => {
+    const f = await discoveryFixture(
+      { extensions: [{ source: "extensions/local-models" }] },
+      {
+        failureMethod: "build.listUnits",
+        failure: new Error("source discovery failed"),
+      },
+    );
+    await expect(f.call("getSettings")).rejects.toThrow(
+      "source discovery failed",
+    );
+  });
+  it.each([
+    {
+      entries: { bad: "inventory" },
+      reason: "Expected array, received object",
+    },
+    { entries: [{ slug: "missing-metadata" }], reason: "displayName" },
+  ])("rejects malformed local inventory %#", async ({ entries, reason }) => {
+    const f = await discoveryFixture(
+      { extensions: [{ source: "extensions/local-models" }] },
+      { entries },
+    );
+    await expect(f.call("getSettings")).rejects.toThrow(reason);
+    expect(f.calls).toContain("extensions.invoke");
+  });
+  it("propagates credential metadata failure instead of claiming no account", async () => {
+    const f = await discoveryFixture(
+      {},
+      {
+        failureMethod: "credentials.listStoredCredentials",
+        failure: new Error("credential inventory disconnected"),
+      },
+    );
+    await expect(f.call("getSettings")).rejects.toThrow(
+      "credential inventory disconnected",
+    );
+  });
+  it("rejects malformed credential inventory", async () => {
+    const f = await discoveryFixture(
+      {},
+      { credentials: [{ id: "incomplete" }] },
+    );
+    await expect(f.call("getSettings")).rejects.toThrow("injection");
+    expect(f.calls).toContain("credentials.listStoredCredentials");
+  });
+  it("keeps a successful empty local inventory authoritative", async () => {
+    const f = await discoveryFixture(
+      { extensions: [{ source: "extensions/local-models" }] },
+      { entries: [] },
+    );
+    await expect(f.call("getSettings")).resolves.toMatchObject({
+      defaultModelSource: "fallback",
+    });
+    expect(f.calls).toContain("extensions.invoke");
+  });
 });

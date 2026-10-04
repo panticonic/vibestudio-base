@@ -13,17 +13,19 @@ workflow as any other workspace unit.
 
 Read every local skill touched by the change:
 
-| Concern | Owner | Read |
-| --- | --- | --- |
-| Chat product composition, model setup, agent lifecycle | `panels/chat` | [Chat panel](../../panels/chat/SKILL.md) |
-| Reusable React conversation UI | `packages/agentic-chat` | [Agentic chat](../../packages/agentic-chat/SKILL.md) |
-| Default chat-agent product adapter and tool selection | `workers/agent-worker` | [Chat agent worker](../../workers/agent-worker/SKILL.md) |
-| Agent execution, folding, effects, diagnostics, subagents | `packages/agentic-do` | [Agentic DO](../../packages/agentic-do/SKILL.md) |
-| Event vocabulary, schemas, reducers, hashes, stored values | `packages/agentic-protocol` | [Agentic protocol](../../packages/agentic-protocol/SKILL.md) |
-| Durable channel log, roster, replay, delivery, policies | `workers/pubsub-channel` | [PubSub channel](../../workers/pubsub-channel/SKILL.md) |
+| Concern                                                       | Owner                       | Read                                                         |
+| ------------------------------------------------------------- | --------------------------- | ------------------------------------------------------------ |
+| Chat product composition, model setup, agent lifecycle        | `panels/chat`               | [Chat panel](../../panels/chat/SKILL.md)                     |
+| Reusable React conversation UI                                | `packages/agentic-chat`     | [Agentic chat](../../packages/agentic-chat/SKILL.md)         |
+| Default chat-agent product adapter and tool selection         | `workers/agent-worker`      | [Chat agent worker](../../workers/agent-worker/SKILL.md)     |
+| Native Sessions, protected operations, diagnostics, subagents | `packages/agentic-do`       | [Agentic DO](../../packages/agentic-do/SKILL.md)             |
+| Event vocabulary, schemas, reducers, hashes, stored values    | `packages/agentic-protocol` | [Agentic protocol](../../packages/agentic-protocol/SKILL.md) |
+| Durable channel log, roster, replay, delivery, policies       | `workers/pubsub-channel`    | [PubSub channel](../../workers/pubsub-channel/SKILL.md)      |
 
 Pure client coordination belongs in `packages/agentic-core`; reusable channel
-clients belong in `packages/pubsub`; model adapters belong in `packages/pi-*`.
+clients belong in `packages/pubsub`. The immutable `@panticonic/pi-*` fork owns
+the native scheduler and provider library; `packages/agentic-do` binds protected
+product ports and `packages/model-catalog` exposes provider metadata.
 Move a fact to its actual owner instead of adding a second interpretation at a
 convenient consumer.
 
@@ -36,7 +38,7 @@ panels/chat + packages/agentic-chat
                  ⇅
  workers/agent-worker + packages/agentic-do
                  ⇅
-       canonical trajectory / effects
+      native Session tasks / channel receipts
 ```
 
 `packages/agentic-protocol` is the shared vocabulary across these boundaries;

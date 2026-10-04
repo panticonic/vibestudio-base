@@ -13,6 +13,8 @@ then for 30 minutes of inactivity. Every cell renews that idle lease; active
 detached work is not inactivity. The in-DO SQLite `db` and exact serializable scope
 snapshot survive unavoidable kernel restarts.
 
+Imports and local declarations belong to their cell. To use a live object in a later cell, save it explicitly in `scope` (for example, `scope.phone = await phoneSetup()`) and then use `scope.phone`. Reimport module helpers when needed; a retained heap does not promote local bindings into globals.
+
 ## Eval Perspective
 
 Eval runs in a server-side EvalDO, not in the visible chat/editor panel. That
@@ -37,7 +39,7 @@ perspective:
 
   const inherited = await getParent();
   const root = inherited ?? (await openPanel("about/new", { parentId: null }));
-  const child = await openPanel("panels/spectrolite", {
+  const child = await openPanel("about/new", {
     parentId: root.id,
     focus: true,
   });
@@ -214,6 +216,12 @@ same dispatcher used by every host call; it is not a separate eval method
 allowlist. `preauthorize` accepts exact `{service, method, args}` operations and
 uses the canonical host preflight/acquisition path, so approval binds the final
 prepared invocation rather than a capability string.
+Discover the actual service and method in live docs before preparing it; do not
+derive method names from a user's prose. Preauthorization is not an allowlist:
+omit `requests` for ordinary acquisition, or include the exact discovered
+capability/resource pairs when attenuation is requested. `requests: []` denies
+the preauthorized operation too. A preparation-only cell may precede the cell
+that executes the operation; preparation itself never runs that operation.
 
 The service also retains bounded durable lifecycle events. Interactive panels
 subscribe to `eval:run-event` through `events.watch` for live state, console,
@@ -303,11 +311,11 @@ approval posture, respond policy, … shared across every channel the agent is i
 on the next turn.
 
 ```
-// Read your own state (identity, resolved config, channels, tools, turn, effects):
+// Read your own state (identity, resolved config, channels, tools, native execution):
 const me = await agent.describe();
 me.config.model;        // the model you are running
 me.channels;            // every channel you're a member of
-me.turn.status;         // this channel's turn status
+me.execution;           // this channel's native tasks, inputs, and live status
 
 // Reconfigure yourself (each returns the updated config):
 await agent.setModel("openai:gpt-5.3");

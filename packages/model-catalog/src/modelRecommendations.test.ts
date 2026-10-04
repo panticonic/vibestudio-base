@@ -37,7 +37,7 @@ describe("modelRecommendations", () => {
     ["openai-codex", "gpt-6.1-sol"],
     ["openai", "gpt-6.1-sol"],
     ["anthropic", "claude-opus-5-5"],
-    ["github-copilot", "gpt-6-sol"],
+    ["github-copilot", "gpt-6.1-sol"],
     ["kimi-coding", "k3-256k"],
     ["meta", "muse-spark-1.3"],
     ["xai", "grok-4.7"],

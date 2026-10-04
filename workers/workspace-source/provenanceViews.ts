@@ -246,6 +246,9 @@ export const PROV_CATALOG: readonly ProvRelationDescription[] = [
       { column: "turn_id", meaning: "Owning turn." },
       { column: "status", meaning: "Invocation status." },
       { column: "terminal_outcome", meaning: "Terminal outcome, when any." },
+      { column: "input_log_id", meaning: "Actual native originating input's channel log." },
+      { column: "input_head", meaning: "Actual native input's canonical head." },
+      { column: "input_message_id", meaning: "Exact message admitted to the native task." },
     ],
   },
   {
@@ -524,14 +527,30 @@ export function createProvenanceViews(sql: SqlStorage): void {
         FROM vcs_command_journal command
         JOIN prov_vis_commands vis ON vis.command_id = command.command_id;
 
+    CREATE VIEW IF NOT EXISTS trajectory_invocation_inputs AS
+      SELECT invocation.log_id, invocation.head, invocation.invocation_id,
+             json_extract(event.payload_ref_json, '$.originatingInput.channelRef.objectKey') AS input_log_id,
+             'main' AS input_head,
+             json_extract(event.payload_ref_json, '$.originatingInput.messageId') AS input_message_id
+        FROM trajectory_invocations invocation
+        JOIN log_events event
+          ON event.log_id = invocation.log_id AND event.head = invocation.head
+         AND event.envelope_id = invocation.started_event_id
+       WHERE json_type(event.payload_ref_json, '$.nativeSource') = 'object'
+         AND json_type(event.payload_ref_json, '$.originatingInput') = 'object';
+
     CREATE VIEW IF NOT EXISTS prov_invocations AS
       SELECT invocation.log_id AS log_id,
              invocation.head AS head,
              invocation.invocation_id AS invocation_id,
              invocation.turn_id AS turn_id,
              invocation.status AS status,
-             invocation.terminal_outcome AS terminal_outcome
+             invocation.terminal_outcome AS terminal_outcome,
+             input.input_log_id, input.input_head, input.input_message_id
         FROM trajectory_invocations invocation
+        LEFT JOIN trajectory_invocation_inputs input
+          ON input.log_id = invocation.log_id AND input.head = invocation.head
+         AND input.invocation_id = invocation.invocation_id
         WHERE EXISTS (
           SELECT 1 FROM vcs_command_journal command
             JOIN prov_vis_commands vis ON vis.command_id = command.command_id
@@ -588,6 +607,11 @@ export function createProvenanceViews(sql: SqlStorage): void {
            WHERE turn.log_id = message.log_id
              AND turn.head = message.head
              AND turn.turn_id = message.turn_id
+        ) OR EXISTS (
+          SELECT 1 FROM prov_invocations invocation
+           WHERE invocation.input_log_id = message.log_id
+             AND invocation.input_head = message.head
+             AND invocation.input_message_id = message.message_id
         );
 
     CREATE VIEW IF NOT EXISTS prov_files AS

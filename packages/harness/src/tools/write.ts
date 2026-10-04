@@ -1,7 +1,12 @@
+import type { JsonRepresentation } from "@panticonic/pi-chord";
+import { toolDetails } from "./native-tool-json.js";
 /** Ergonomic whole-file authoring facade over the canonical mutation engine. */
 
-import { Type, type Static } from "@sinclair/typebox";
-import type { AgentTool, AgentToolResult } from "@workspace/pi-core";
+import { Type, type Static } from "@panticonic/pi-ai";
+import type {
+  ToolRegistration,
+  ToolExecutionResult,
+} from "@panticonic/pi-durable";
 import {
   mutateFiles,
   mutationResultText,
@@ -18,21 +23,24 @@ const writeSchema = Type.Object(
       description:
         "File to create or replace. Managed source paths must be inside an existing workspace repository; use .tmp/<name> for context-local scratch data.",
     }),
-    content: Type.String({ description: "Complete UTF-8 text content for the resulting file." }),
+    content: Type.String({
+      description: "Complete UTF-8 text content for the resulting file.",
+    }),
     createOnly: Type.Optional(
       Type.Boolean({
-        description: "Require the path to be absent; return a conflict instead of overwriting.",
-      })
+        description:
+          "Require the path to be absent; return a conflict instead of overwriting.",
+      }),
     ),
     intent: Type.Optional(
       Type.String({
         minLength: 1,
         description:
           "Purpose not already evident from the request. Stored as stated semantic VCS intent for managed files.",
-      })
+      }),
     ),
   },
-  { additionalProperties: false }
+  { additionalProperties: false },
 );
 
 export type WriteToolInput = Static<typeof writeSchema>;
@@ -43,16 +51,21 @@ export function createWriteTool(
   vcs: ToolEditingVcs,
   context: ToolMutationContext,
   fs?: Pick<RuntimeFs, "readFile" | "writeFile">,
-  observations?: WorkspaceFileObservationStore
-): AgentTool<typeof writeSchema, WriteToolDetails> {
+  observations?: WorkspaceFileObservationStore,
+): ToolRegistration<typeof writeSchema, JsonRepresentation<WriteToolDetails>> {
   return {
     name: "write",
-    label: "Write file",
+
     description:
       "Create or replace one complete text file. Managed files are authored as a state-checked semantic VCS work unit tied to this invocation and optional stated intent; .tmp files are explicitly reported as scratch. Files read earlier are protected against stale overwrites automatically; createOnly: true requires an absent path. Identical content is an unchanged success. Use edit for a targeted text change and apply_patch for an atomic multi-file transaction or explicit file mode.",
     parameters: writeSchema,
-    cancellationMode: "settle",
-    execute: async (_toolCallId, input, signal): Promise<AgentToolResult<WriteToolDetails>> => {
+
+    execute: async (
+      input,
+      _api,
+      executionContext,
+    ): Promise<ToolExecutionResult<JsonRepresentation<WriteToolDetails>>> => {
+      const signal = executionContext.abortSignal;
       const { path, content } = input;
       if (typeof path !== "string" || typeof content !== "string") {
         throw Object.assign(new Error("write requires path and content"), {
@@ -76,9 +89,12 @@ export function createWriteTool(
         },
         signal,
         fs,
-        observations
+        observations,
       );
-      return { content: [{ type: "text", text: mutationResultText(details) }], details };
+      return {
+        content: [{ type: "text", text: mutationResultText(details) }],
+        details: toolDetails(details),
+      };
     },
   };
 }

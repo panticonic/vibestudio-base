@@ -1,7 +1,12 @@
+import type { JsonRepresentation } from "@panticonic/pi-chord";
+import { toolDetails } from "./native-tool-json.js";
 /** Ergonomic targeted-text facade over the canonical mutation engine. */
 
-import { Type, type Static } from "@sinclair/typebox";
-import type { AgentTool, AgentToolResult } from "@workspace/pi-core";
+import { Type, type Static } from "@panticonic/pi-ai";
+import type {
+  ToolRegistration,
+  ToolExecutionResult,
+} from "@panticonic/pi-durable";
 import {
   mutateFiles,
   mutationResultText,
@@ -29,10 +34,10 @@ const editSchema = Type.Object(
         minLength: 1,
         description:
           "Purpose not already evident from the request. Stored as stated semantic VCS intent for managed files.",
-      })
+      }),
     ),
   },
-  { additionalProperties: false }
+  { additionalProperties: false },
 );
 
 export type EditToolInput = Static<typeof editSchema>;
@@ -43,21 +48,33 @@ export function createEditTool(
   vcs: ToolEditingVcs,
   context: ToolMutationContext,
   fs?: Pick<RuntimeFs, "readFile" | "writeFile">,
-  observations?: WorkspaceFileObservationStore
-): AgentTool<typeof editSchema, EditToolDetails> {
+  observations?: WorkspaceFileObservationStore,
+): ToolRegistration<typeof editSchema, JsonRepresentation<EditToolDetails>> {
   return {
     name: "edit",
-    label: "Edit file",
+
     description:
       'Replace one uniquely identifiable text span. Matching is deterministic and shared with apply_patch: one exact occurrence wins; only when exact bytes are absent may one normalized occurrence match across line endings, trailing whitespace, smart punctuation, Unicode spaces, and BOM-preserving text. Ambiguous, missing, binary, or stale input returns a structured conflict and changes nothing. Managed edits author a semantic VCS work unit tied to this invocation and optional stated intent; .tmp edits are explicitly scratch. Include unchanged surrounding text when a short anchor is ambiguous. Undo a named semantic change with vcs({ operation: "revert", changeIds: [...] }) rather than writing old bytes as unrelated intent.',
     parameters: editSchema,
-    cancellationMode: "settle",
-    execute: async (_toolCallId, input, signal): Promise<AgentToolResult<EditToolDetails>> => {
+
+    execute: async (
+      input,
+      _api,
+      executionContext,
+    ): Promise<ToolExecutionResult<JsonRepresentation<EditToolDetails>>> => {
+      const signal = executionContext.abortSignal;
       const { path, oldText, newText } = input;
-      if (typeof path !== "string" || typeof oldText !== "string" || typeof newText !== "string") {
-        throw Object.assign(new Error("edit requires path, oldText, and newText"), {
-          code: "InvalidFileMutation",
-        });
+      if (
+        typeof path !== "string" ||
+        typeof oldText !== "string" ||
+        typeof newText !== "string"
+      ) {
+        throw Object.assign(
+          new Error("edit requires path, oldText, and newText"),
+          {
+            code: "InvalidFileMutation",
+          },
+        );
       }
       const details = await mutateFiles(
         cwd,
@@ -75,9 +92,12 @@ export function createEditTool(
         },
         signal,
         fs,
-        observations
+        observations,
       );
-      return { content: [{ type: "text", text: mutationResultText(details) }], details };
+      return {
+        content: [{ type: "text", text: mutationResultText(details) }],
+        details: toolDetails(details),
+      };
     },
   };
 }

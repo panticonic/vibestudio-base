@@ -12,7 +12,8 @@
   },
   "dependencies": {
     "@vibestudio/content-addressing": "workspace:*",
-    "zod": "^3.25.76"
+    "zod": "^3.25.76",
+    "@vibestudio/service-schemas": "workspace:*"
   },
   "devDependencies": {
     "typescript": "^7.0.2",

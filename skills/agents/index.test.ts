@@ -10,9 +10,11 @@ vi.mock("@workspace/runtime", () => ({
   rpc: { call: vi.fn() },
 }));
 
-vi.mock("@workspace/agentic-core", () => ({
+vi.mock("@workspace/agentic-core/agent-launch", () => ({
   launchAgentIntoChannel: mocks.launchAgentIntoChannel,
   unsubscribeAgentFromChannel: vi.fn(),
+}));
+vi.mock("@workspace/agentic-core/provisional-agent-lifecycle", () => ({
   withWorkspaceReviewRetry: mocks.withWorkspaceReviewRetry,
 }));
 

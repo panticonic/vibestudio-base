@@ -22,6 +22,13 @@ describe("SemanticWorkspace repository creation", () => {
   it("authors the repository identity and all initial files in one lifecycle work unit", async () => {
     const sql = await createInMemorySql();
     createSemanticVcsSchema(sql);
+    sql.exec(`
+      CREATE TABLE log_events (
+        log_id TEXT NOT NULL, head TEXT NOT NULL, envelope_id TEXT NOT NULL,
+        actor_json TEXT NOT NULL, payload_ref_json TEXT NOT NULL,
+        PRIMARY KEY (log_id, head, envelope_id)
+      )
+    `);
     createTrajectoryMirrorSchema(sql);
     sql.exec(
       `INSERT INTO trajectory_invocations

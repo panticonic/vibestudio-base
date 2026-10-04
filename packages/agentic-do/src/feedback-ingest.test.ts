@@ -15,6 +15,7 @@ const feedback = (occurrenceKey: string): UiFeedbackPayload => ({
 describe("FeedbackIngest", () => {
   it("queues new feedback for the target channel and deduplicates repeats", async () => {
     const sql = (await createInMemorySql()) as unknown as SqlStorage;
+    FeedbackIngest.createTables(sql);
     const ingest = new FeedbackIngest(sql, () => 1_000);
 
     ingest.ingest("channel-a", feedback("render:1"));

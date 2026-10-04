@@ -96,7 +96,8 @@
   "dependencies": {
     "@vibestudio/credential-client": "workspace:*",
     "@workspace/model-catalog": "workspace:*",
-    "@workspace/runtime": "workspace:*"
+    "@workspace/runtime": "workspace:*",
+    "@vibestudio/service-schemas": "workspace:*"
   },
   "devDependencies": {
     "@vibestudio/rpc": "workspace:*",

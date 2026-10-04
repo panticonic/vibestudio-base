@@ -216,6 +216,22 @@ class LifecycleProbeDO extends TestDurableObjectBase {
   }
 }
 
+class AsyncBoundaryFailureDO extends LifecycleProbeDO {
+  private async fail(): Promise<never> {
+    await Promise.resolve();
+    throw new Error("original asynchronous owner failure");
+  }
+  override async alarm(): Promise<never> {
+    return this.fail();
+  }
+  override async releaseForLifecycle(): Promise<never> {
+    return this.fail();
+  }
+  override async resumeAfterRestart(): Promise<never> {
+    return this.fail();
+  }
+}
+
 class WorkReadyProbeDO extends TestDurableObjectBase {
   protected createTables(): void {}
 
@@ -400,6 +416,15 @@ class DerivedAlarmProbeDO extends TestDurableObjectBase {
   override async alarm(): Promise<DoAlarmSchedule | null> {
     await super.alarm();
     return this.wakeAt === null ? null : { wakeAt: this.wakeAt };
+  }
+}
+
+class CausalDerivedAlarmProbeDO extends DerivedAlarmProbeDO {
+  protected override async persistAlarmSchedule(
+    schedule: DoAlarmSchedule | null,
+  ): Promise<void> {
+    await super.persistAlarmSchedule(schedule);
+    await this.rpc.call("main", "probe.after-wake", []);
   }
 }
 
@@ -983,6 +1008,28 @@ describe("DurableObjectBase request parsing", () => {
 });
 
 describe("DurableObjectBase lifecycle routing", () => {
+  it.each(["__alarm", "__lifecycle/prepare", "__lifecycle/resume"])(
+    "propagates original asynchronous %s failures through the structured response",
+    async (method) => {
+      const { instance } = await createTestDO(AsyncBoundaryFailureDO);
+      const response = await instance.fetch(
+        new Request(`http://test/test-key/${method}`, {
+          method: "POST",
+          body: JSON.stringify({
+            args: [{ epoch: "e1", mode: "suspend", reason: "test" }],
+            __instanceToken: "token",
+            __instanceId: "do:test:AsyncBoundaryFailureDO:test-key",
+            __caller: authenticatedTestCaller(method),
+          }),
+        }),
+      );
+      expect(response.status).toBe(500);
+      expect(await response.json()).toMatchObject({
+        error: "original asynchronous owner failure",
+      });
+    },
+  );
+
   it("accepts lifecycle calls only from the verified server envelope caller", async () => {
     const { instance } = await createTestDO(LifecycleProbeDO);
     const fetchable = instance as unknown as {
@@ -1260,8 +1307,12 @@ describe("DurableObjectBase server-driven alarm durability", () => {
     const pending = fixture.call("echo", "read-only");
     let settled = false;
     void pending.then(
-      () => { settled = true; },
-      () => { settled = true; },
+      () => {
+        settled = true;
+      },
+      () => {
+        settled = true;
+      },
     );
     try {
       await publicationObserved;
@@ -1286,7 +1337,9 @@ describe("DurableObjectBase server-driven alarm durability", () => {
       fail(original);
     };
     try {
-      await expect(fixture.call("echo", "read-only")).rejects.toThrow(original.message);
+      await expect(fixture.call("echo", "read-only")).rejects.toThrow(
+        original.message,
+      );
     } finally {
       fixture.db.close();
     }
@@ -1475,11 +1528,13 @@ describe("DurableObjectBase server-driven alarm durability", () => {
 
 describe("DurableObjectBase causal child RPC lifetime", () => {
   it.each([
-    ["successful", false],
-    ["failed", true],
+    ["successful", false, false],
+    ["failed", true, false],
+    ["derived wake", false, true],
   ])(
     "keeps a %s inbound invocation open until an unawaited child RPC settles",
-    async (_label, throwAfterStart) => {
+    async (_label, throwAfterStart, derivedWake) => {
+      const outbound: RpcEnvelope[] = [];
       let observeChild!: (envelope: RpcEnvelope) => void;
       const childObserved = new Promise<RpcEnvelope>((resolve) => {
         observeChild = resolve;
@@ -1494,6 +1549,7 @@ describe("DurableObjectBase causal child RPC lifetime", () => {
         const envelope = JSON.parse(
           Buffer.concat(chunks).toString("utf8"),
         ) as RpcEnvelope;
+        outbound.push(envelope);
         observeChild(envelope);
         await childRelease;
         const message = envelope.message as { requestId?: string };
@@ -1507,7 +1563,7 @@ describe("DurableObjectBase causal child RPC lifetime", () => {
             message: {
               type: "response",
               requestId: message.requestId ?? "",
-              result: true,
+              result: derivedWake ? undefined : true,
             },
           }),
         );
@@ -1522,16 +1578,19 @@ describe("DurableObjectBase causal child RPC lifetime", () => {
       try {
         const authorization = createTestDirectAuthority({
           callerKind: "server",
-          method: "startDetached",
+          method: derivedWake ? "recordWake" : "startDetached",
         });
-        const { callAs } = await createTestDO(DetachedRpcProbeDO, {
-          GATEWAY_URL: `http://127.0.0.1:${address.port}`,
-        });
+        const { callAs } = await createTestDO<TestDurableObjectBase>(
+          derivedWake ? CausalDerivedAlarmProbeDO : DetachedRpcProbeDO,
+          {
+            GATEWAY_URL: `http://127.0.0.1:${address.port}`,
+          },
+        );
         let settled = false;
         const result = callAs(
           { callerId: "main", callerKind: "server", authorization },
-          "startDetached",
-          throwAfterStart,
+          derivedWake ? "recordWake" : "startDetached",
+          derivedWake ? 300 : throwAfterStart,
         ).then((value) => {
           settled = true;
           return value;
@@ -1548,7 +1607,17 @@ describe("DurableObjectBase causal child RPC lifetime", () => {
           await expect(result).rejects.toThrow(
             "parent failed after starting child",
           );
-        else await expect(result).resolves.toBe("started");
+        else
+          await expect(result).resolves.toBe(
+            derivedWake ? "recorded" : "started",
+          );
+        if (derivedWake) {
+          expect(outbound).toHaveLength(2);
+          expect(
+            (outbound[1]!.message as { authorityParentNonce?: string })
+              .authorityParentNonce,
+          ).toBe(authorization.nonce);
+        }
       } finally {
         releaseChild();
         server.closeAllConnections();

@@ -1,3 +1,4 @@
+import { executeTool } from "../../testing/native-tool.js";
 import { describe, it, expect, vi } from "vitest";
 import { createFindTool } from "../find.js";
 import { StubFs } from "./stub-fs.js";
@@ -7,8 +8,10 @@ const CWD = "/work/ctx";
 describe("createFindTool", () => {
   it("returns actionable guidance when the pattern is omitted", async () => {
     const tool = createFindTool(CWD, new StubFs());
-    const result = await tool.execute("call-1", {});
-    expect((result.content[0] as { text: string }).text).toContain("No find pattern supplied");
+    const result = await executeTool(tool, {}, { callId: "call-1" });
+    expect((result.content[0] as { text: string }).text).toContain(
+      "No find pattern supplied",
+    );
   });
 
   it("finds files matching a glob", async () => {
@@ -20,7 +23,11 @@ describe("createFindTool", () => {
       },
     });
     const tool = createFindTool(CWD, fs);
-    const result = await tool.execute("call-1", { pattern: "**/*.ts" });
+    const result = await executeTool(
+      tool,
+      { pattern: "**/*.ts" },
+      { callId: "call-1" },
+    );
     const text = (result.content[0] as { text: string }).text;
     expect(text).toContain("a.ts");
     expect(text).toContain("sub/c.ts");
@@ -30,19 +37,29 @@ describe("createFindTool", () => {
   it("returns 'No files found' when nothing matches", async () => {
     const fs = new StubFs({ files: { [`${CWD}/a.ts`]: "x" } });
     const tool = createFindTool(CWD, fs);
-    const result = await tool.execute("call-1", { pattern: "*.md" });
-    expect((result.content[0] as { text: string }).text).toBe("No files found matching pattern");
+    const result = await executeTool(
+      tool,
+      { pattern: "*.md" },
+      { callId: "call-1" },
+    );
+    expect((result.content[0] as { text: string }).text).toBe(
+      "No files found matching pattern",
+    );
   });
 
   it("returns a diagnostic empty result for a missing exploratory search root", async () => {
     const tool = createFindTool(CWD, new StubFs({ files: {} }));
-    const result = await tool.execute("call-1", {
-      path: "packages/missing",
-      pattern: "*.ts",
-    });
+    const result = await executeTool(
+      tool,
+      {
+        path: "packages/missing",
+        pattern: "*.ts",
+      },
+      { callId: "call-1" },
+    );
 
     expect((result.content[0] as { text: string }).text).toContain(
-      "No files found matching pattern (search path does not exist: packages/missing)"
+      "No files found matching pattern (search path does not exist: packages/missing)",
     );
     expect(result.details).toMatchObject({
       engine: "runtime-fs",
@@ -55,7 +72,11 @@ describe("createFindTool", () => {
       files: { [`${CWD}/.hidden`]: "x", [`${CWD}/visible`]: "x" },
     });
     const tool = createFindTool(CWD, fs);
-    const result = await tool.execute("call-1", { pattern: "*" });
+    const result = await executeTool(
+      tool,
+      { pattern: "*" },
+      { callId: "call-1" },
+    );
     const text = (result.content[0] as { text: string }).text;
     expect(text).toContain(".hidden");
   });
@@ -72,14 +93,22 @@ describe("createFindTool", () => {
     });
     const tool = createFindTool(CWD, fs);
 
-    const normal = await tool.execute("call-1", { pattern: "**/*.ts" });
+    const normal = await executeTool(
+      tool,
+      { pattern: "**/*.ts" },
+      { callId: "call-1" },
+    );
     expect((normal.content[0] as { text: string }).text).toBe("visible.ts");
-    const complete = await tool.execute("call-2", {
-      pattern: "**/*.ts",
-      includeIgnored: true,
-    });
+    const complete = await executeTool(
+      tool,
+      {
+        pattern: "**/*.ts",
+        includeIgnored: true,
+      },
+      { callId: "call-2" },
+    );
     expect((complete.content[0] as { text: string }).text).toBe(
-      "ignored.ts\nnested/local.ts\nvisible.ts"
+      "ignored.ts\nnested/local.ts\nvisible.ts",
     );
   });
 
@@ -95,14 +124,18 @@ describe("createFindTool", () => {
     };
     const tool = createFindTool(CWD, fs, { rpc });
 
-    const result = await tool.execute("call-1", { pattern: "**/*.ts", path: ".", limit: 10 });
+    const result = await executeTool(
+      tool,
+      { pattern: "**/*.ts", path: ".", limit: 10 },
+      { callId: "call-1" },
+    );
 
     expect((result.content[0] as { text: string }).text).toBe("src/a.ts");
     expect(rpc.call).toHaveBeenCalledWith(
       "main",
       "fs.glob",
       ["**/*.ts", { path: CWD, limit: 10 }],
-      undefined
+      undefined,
     );
     expect(stat).not.toHaveBeenCalled();
   });
@@ -118,11 +151,17 @@ describe("createFindTool", () => {
     };
     const tool = createFindTool(CWD, fs, { rpc: rpc as never });
 
-    const result = await tool.execute("call-1", { pattern: "**/*.ts", limit: 2 });
+    const result = await executeTool(
+      tool,
+      { pattern: "**/*.ts", limit: 2 },
+      { callId: "call-1" },
+    );
 
     expect((result.content[0] as { text: string }).text).toContain("src/a.ts");
     expect((result.content[0] as { text: string }).text).toContain("src/b.ts");
-    expect((result.content[0] as { text: string }).text).not.toContain("src/c.ts");
+    expect((result.content[0] as { text: string }).text).not.toContain(
+      "src/c.ts",
+    );
     expect(result.details).toMatchObject({
       engine: "fs-service",
       resultLimitReached: 2,
@@ -135,18 +174,26 @@ describe("createFindTool", () => {
     const rpc = {
       call: vi
         .fn()
-        .mockRejectedValue(Object.assign(new Error("not a directory"), { code: "ENOTDIR" })),
+        .mockRejectedValue(
+          Object.assign(new Error("not a directory"), { code: "ENOTDIR" }),
+        ),
     };
-    const tool = createFindTool(CWD, new StubFs({ files: {} }), { rpc: rpc as never });
-
-    const result = await tool.execute("call-1", {
-      pattern: "handle.close",
-      path: "packages/runtime/src/shared/rpcFs.test.ts",
-      limit: 20,
+    const tool = createFindTool(CWD, new StubFs({ files: {} }), {
+      rpc: rpc as never,
     });
 
+    const result = await executeTool(
+      tool,
+      {
+        pattern: "handle.close",
+        path: "packages/runtime/src/shared/rpcFs.test.ts",
+        limit: 20,
+      },
+      { callId: "call-1" },
+    );
+
     expect((result.content[0] as { text: string }).text).toContain(
-      "search path is not a directory: packages/runtime/src/shared/rpcFs.test.ts"
+      "search path is not a directory: packages/runtime/src/shared/rpcFs.test.ts",
     );
     expect(result.details).toMatchObject({
       engine: "fs-service",
@@ -156,11 +203,19 @@ describe("createFindTool", () => {
 
   it("propagates host authorization and infrastructure failures", async () => {
     const rpc = {
-      call: vi.fn().mockRejectedValue(Object.assign(new Error("denied"), { code: "EACCES" })),
+      call: vi
+        .fn()
+        .mockRejectedValue(
+          Object.assign(new Error("denied"), { code: "EACCES" }),
+        ),
     };
-    const tool = createFindTool(CWD, new StubFs({ files: {} }), { rpc: rpc as never });
+    const tool = createFindTool(CWD, new StubFs({ files: {} }), {
+      rpc: rpc as never,
+    });
 
-    await expect(tool.execute("call-1", { pattern: "*.ts" })).rejects.toMatchObject({
+    await expect(
+      executeTool(tool, { pattern: "*.ts" }, { callId: "call-1" }),
+    ).rejects.toMatchObject({
       code: "EACCES",
     });
   });

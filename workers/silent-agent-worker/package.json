@@ -150,14 +150,13 @@
   "dependencies": {
     "@workspace/runtime": "workspace:*",
     "@workspace/agentic-do": "workspace:*",
-    "@workspace/pi-core": "workspace:*",
     "@workspace/pubsub": "workspace:*",
     "@workspace-workers/agent-worker": "workspace:*",
     "@workspace/harness": "workspace:*",
-    "zod": "^3.25.76"
+    "zod": "^3.25.76",
+    "@panticonic/pi-durable": "0.99.2-vibestudio.11"
   },
   "devDependencies": {
-    "@workspace/agent-loop": "workspace:*",
     "vitest": "^3.2.7"
   }
 }

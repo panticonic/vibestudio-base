@@ -85,6 +85,13 @@ describe("InlineUiMessage", () => {
       expect(view.getByText("renderer recovered")).toBeTruthy(),
     );
     expect(view.queryAllByText(/broken renderer/)).toHaveLength(0);
+    const card = view
+      .getByText("renderer recovered")
+      .closest("[data-inline-ui-id]");
+    expect(card?.getAttribute("data-inline-ui-id")).toBe("stable-card");
+    expect(card?.getAttribute("data-message-id")).toBe(
+      "inline-ui:agent:stable-card",
+    );
   });
 
   it("shows bounded, copyable console output scoped to the exact inline UI message", async () => {

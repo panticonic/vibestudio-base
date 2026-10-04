@@ -72,6 +72,10 @@ import {
 import { assertSemanticVcsPathAdmissible } from "@vibestudio/shared/vcs/pathAdmission";
 import { splitRepoPath } from "@vibestudio/shared/runtime/entitySpec";
 import {
+  nativeInvocationIdentity, nativeInvocationSourceSchema, nativeOriginatingInputSchema,
+} from "@vibestudio/service-schemas/nativeInvocation";
+import { channelTrajectoryFor } from "@vibestudio/trajectory-identity";
+import {
   SemanticVcsError,
   appliedChangeIdentity,
   applicationIdentity,
@@ -1262,7 +1266,15 @@ export class SemanticWorkspace {
       const commands = this.deps.sql
         .exec(
           `SELECT command_id FROM vcs_command_journal
-            WHERE cause_log_id = ? AND cause_head = ?`,
+            WHERE cause_log_id = ? AND cause_head = ?
+            UNION
+            SELECT command.command_id FROM vcs_command_journal command
+            JOIN trajectory_invocation_inputs input
+              ON input.log_id = command.cause_log_id AND input.head = command.cause_head
+             AND input.invocation_id = command.cause_invocation_id
+            WHERE input.input_log_id = ? AND input.input_head = ?`,
+          node["logId"],
+          node["head"],
           node["logId"],
           node["head"],
         )
@@ -1343,10 +1355,17 @@ export class SemanticWorkspace {
                ON message.log_id = turn.log_id
               AND message.head = turn.head
               AND message.message_id = turn.trigger_message_id
-            WHERE message.log_id = ? AND message.head = ? AND message.message_id = ?`,
+            WHERE message.log_id = ? AND message.head = ? AND message.message_id = ?
+            UNION
+            SELECT command.command_id FROM vcs_command_journal command
+            JOIN trajectory_invocation_inputs input
+              ON input.log_id = command.cause_log_id AND input.head = command.cause_head
+             AND input.invocation_id = command.cause_invocation_id
+            WHERE input.input_log_id = ? AND input.input_head = ? AND input.input_message_id = ?`,
           node["logId"],
           node["head"],
           node["messageId"],
+          node["logId"], node["head"], node["messageId"],
         )
         .toArray() as Row[];
       return commands.some((row) =>
@@ -6493,17 +6512,15 @@ export class SemanticWorkspace {
         .join("\n");
       const human =
         senderKind === "user" || (senderKind === null && role === "user");
-      const statementText = human ? boundedMemoryText(text, 2_000) : null;
+      const statementText = boundedMemoryText(text, 2_000);
       entries.push({
         node: message,
         label: `message · ${role}${senderKind ? ` from ${senderKind}` : ""}`,
         depth,
-        ...(!human && boundedMemoryText(text, 600)
-          ? { detail: boundedMemoryText(text, 600)! }
-          : {}),
-        // The originating statement is the answer this walk exists to deliver,
-        // not an incidental mention, so it travels as a statement rather than
-        // as a compacted detail.
+        // Causal message prose is evidence regardless of sender kind. An
+        // external client can carry the originating request without proving
+        // that the sender is human; preserve its text and the actual boundary
+        // independently.
         ...(statementText
           ? {
               statement: {
@@ -6665,7 +6682,22 @@ export class SemanticWorkspace {
                   AND command.cause_head = sibling.head
                   AND command.cause_invocation_id = sibling.invocation_id
                  JOIN gad_work_units work ON work.command_id = command.command_id
-                WHERE origin.command_id = ?`,
+                WHERE origin.command_id = ?
+                UNION
+                SELECT work.work_unit_id
+                  FROM vcs_command_journal origin
+                  JOIN trajectory_invocation_inputs original
+                    ON original.log_id=origin.cause_log_id AND original.head=origin.cause_head
+                   AND original.invocation_id=origin.cause_invocation_id
+                  JOIN trajectory_invocation_inputs sibling
+                    ON sibling.input_log_id=original.input_log_id AND sibling.input_head=original.input_head
+                   AND sibling.input_message_id=original.input_message_id
+                  JOIN vcs_command_journal command
+                    ON command.cause_log_id=sibling.log_id AND command.cause_head=sibling.head
+                   AND command.cause_invocation_id=sibling.invocation_id
+                  JOIN gad_work_units work ON work.command_id=command.command_id
+                 WHERE origin.command_id = ?`,
+              commandId,
               commandId,
             )
             .toArray() as Row[];
@@ -6673,7 +6705,7 @@ export class SemanticWorkspace {
           if (workUnitIds.length === 0) {
             workUnitIds = [origin.workUnitId];
             notes.push(
-              "This work has no recorded turn; the cohort fell back to its work unit.",
+              "No shared originating input was recorded; the cohort contains this work unit.",
             );
           }
         }
@@ -7540,6 +7572,7 @@ export class SemanticWorkspace {
           }
         : null,
       arrival,
+      cause: this.readMemoryCause(String(commandRef["commandId"])),
     };
   }
 
@@ -7650,7 +7683,8 @@ export class SemanticWorkspace {
         `SELECT command.cause_log_id, command.cause_head, command.cause_invocation_id,
                 invocation.turn_id, invocation.kind AS tool_name,
                 invocation.terminal_outcome, invocation.request_ref_json,
-                turn.summary AS turn_summary, turn.trigger_message_id
+                turn.summary AS turn_summary, turn.trigger_message_id,
+                started.payload_ref_json AS started_payload_json
            FROM vcs_command_journal command
            LEFT JOIN trajectory_invocations invocation
              ON invocation.log_id = command.cause_log_id
@@ -7660,6 +7694,10 @@ export class SemanticWorkspace {
              ON turn.log_id = invocation.log_id
             AND turn.head = invocation.head
             AND turn.turn_id = invocation.turn_id
+           LEFT JOIN log_events started
+             ON started.log_id = invocation.log_id
+            AND started.head = invocation.head
+            AND started.envelope_id = invocation.started_event_id
           WHERE command.command_id = ?
           LIMIT 1`,
         commandId,
@@ -7672,7 +7710,15 @@ export class SemanticWorkspace {
     const head = String(row["cause_head"]);
     const invocationId = String(row["cause_invocation_id"]);
     const turnId = row["turn_id"] == null ? null : String(row["turn_id"]);
-    const messageId =
+    const startedPayload = row["started_payload_json"] == null ? null
+      : JSON.parse(String(row["started_payload_json"])) as Row;
+    const nativeSource = startedPayload?.["nativeSource"] === undefined ? null
+      : nativeInvocationSourceSchema.parse(startedPayload["nativeSource"]);
+    const originatingInput = nativeSource === null ? null
+      : nativeOriginatingInputSchema.nullable().parse(startedPayload!["originatingInput"]);
+    const messageLogId = originatingInput?.channelRef.objectKey ?? logId;
+    const messageHead = originatingInput ? channelTrajectoryFor(messageLogId).head : head;
+    const messageId = nativeSource !== null ? originatingInput?.messageId ?? null :
       row["trigger_message_id"] == null
         ? null
         : String(row["trigger_message_id"]);
@@ -7681,8 +7727,8 @@ export class SemanticWorkspace {
     if (messageId) {
       const message = this.inspectNode({
         kind: "trajectory-message",
-        logId,
-        head,
+        logId: messageLogId,
+        head: messageHead,
         messageId,
       })["value"] as Row;
       const blocks = Array.isArray(message["textBlocks"])
@@ -7696,9 +7742,11 @@ export class SemanticWorkspace {
     }
     return {
       invocation: { kind: "trajectory-invocation", logId, head, invocationId },
+      nativeInvocation: nativeSource === null ? null : nativeInvocationIdentity(nativeSource),
+      originatingInput,
       turn: turnId ? { kind: "trajectory-turn", logId, head, turnId } : null,
       message: messageId
-        ? { kind: "trajectory-message", logId, head, messageId }
+        ? { kind: "trajectory-message", logId: messageLogId, head: messageHead, messageId }
         : null,
       toolName: row["tool_name"] == null ? null : String(row["tool_name"]),
       terminalOutcome:
@@ -12033,12 +12081,20 @@ export class SemanticWorkspace {
             "InvalidReference",
             "Unknown trajectory invocation",
           );
+        const started = row["started_event_id"] == null ? null : this.deps.sql.exec(
+          "SELECT payload_ref_json FROM log_events WHERE log_id=? AND head=? AND envelope_id=? LIMIT 1",
+          String(node["logId"]), String(node["head"]), String(row["started_event_id"]),
+        ).toArray()[0];
+        const payload = started == null ? null : JSON.parse(String(started["payload_ref_json"])) as Row;
+        const nativeSource = payload?.["nativeSource"] === undefined ? null : nativeInvocationSourceSchema.parse(payload["nativeSource"]);
         return {
           kind: "trajectory-invocation",
           value: {
             logId: String(node["logId"]),
             head: String(node["head"]),
             invocationId: String(node["invocationId"]),
+            nativeInvocation: nativeSource === null ? null : nativeInvocationIdentity(nativeSource),
+            originatingInput: nativeSource === null ? null : nativeOriginatingInputSchema.nullable().parse(payload!["originatingInput"]),
             turnId: row["turn_id"] == null ? null : String(row["turn_id"]),
             name: row["kind"] == null ? null : String(row["kind"]),
             status: String(row["status"]),
@@ -13077,19 +13133,23 @@ export class SemanticWorkspace {
       }
       const rows = this.deps.sql
         .exec(
-          `SELECT edge_group, sort_key, edge_kind, target_id FROM (
+          `SELECT edge_group, sort_key, edge_kind, target_id, input_log_id, input_head FROM (
              SELECT 0 AS edge_group, '' AS sort_key, 'part-of-trajectory' AS edge_kind,
-                    invocation_id AS target_id
+                    invocation_id AS target_id, NULL AS input_log_id, NULL AS input_head
                FROM trajectory_invocations
               WHERE log_id = ? AND head = ? AND invocation_id = ?
              UNION ALL
-             SELECT 1, turn_id, 'part-of-turn', turn_id
+             SELECT 1, turn_id, 'part-of-turn', turn_id, NULL, NULL
                FROM trajectory_invocations
               WHERE log_id = ? AND head = ? AND invocation_id = ? AND turn_id IS NOT NULL
              UNION ALL
-             SELECT 2, command_id, 'caused-by', command_id
+             SELECT 2, command_id, 'caused-by', command_id, NULL, NULL
                FROM vcs_command_journal
               WHERE cause_log_id = ? AND cause_head = ? AND cause_invocation_id = ?
+             UNION ALL
+             SELECT 3, input_message_id, 'triggered-by', input_message_id, input_log_id, input_head
+               FROM trajectory_invocation_inputs
+              WHERE log_id = ? AND head = ? AND invocation_id = ?
            ) adjacency
            WHERE edge_group > ?
               OR (edge_group = ? AND (? IS NULL OR sort_key > ?))
@@ -13103,6 +13163,7 @@ export class SemanticWorkspace {
           String(node["logId"]),
           String(node["head"]),
           String(node["invocationId"]),
+          String(node["logId"]), String(node["head"]), String(node["invocationId"]),
           after.phase,
           after.phase,
           after.key,
@@ -13140,7 +13201,10 @@ export class SemanticWorkspace {
                       turnId: targetId,
                     },
                   }
-                : {
+                : edgeKind === "triggered-by"
+                  ? { kind: edgeKind, from: invocation, to: { kind: "trajectory-message",
+                      logId: String(row["input_log_id"]), head: String(row["input_head"]), messageId: targetId } }
+                  : {
                     kind: edgeKind,
                     from: { kind: "command", commandId: targetId },
                     to: invocation,
@@ -13284,18 +13348,23 @@ export class SemanticWorkspace {
       }
       const rows = this.deps.sql
         .exec(
-          `SELECT edge_group, sort_key, edge_kind, target_id FROM (
+          `SELECT edge_group, sort_key, edge_kind, target_id, target_kind, target_log_id, target_head FROM (
              SELECT 0 AS edge_group, '' AS sort_key, 'part-of-trajectory' AS edge_kind,
-                    message_id AS target_id
+                    message_id AS target_id, 'trajectory' AS target_kind, NULL AS target_log_id, NULL AS target_head
                FROM trajectory_messages WHERE log_id = ? AND head = ? AND message_id = ?
              UNION ALL
-             SELECT 1, turn_id, 'part-of-turn', turn_id
+             SELECT 1, turn_id, 'part-of-turn', turn_id, 'turn', NULL, NULL
                FROM trajectory_messages
               WHERE log_id = ? AND head = ? AND message_id = ? AND turn_id IS NOT NULL
              UNION ALL
-             SELECT 2, turn_id, 'triggered-by', turn_id
+             SELECT 2, turn_id, 'triggered-by', turn_id, 'turn', NULL, NULL
                FROM trajectory_turns
               WHERE log_id = ? AND head = ? AND trigger_message_id = ?
+             UNION ALL
+             SELECT 3, json_array(log_id, head, invocation_id), 'triggered-by', invocation_id,
+                    'invocation', log_id, head
+               FROM trajectory_invocation_inputs
+              WHERE input_log_id = ? AND input_head = ? AND input_message_id = ?
            ) adjacency
            WHERE edge_group > ?
               OR (edge_group = ? AND (? IS NULL OR sort_key > ?))
@@ -13309,6 +13378,7 @@ export class SemanticWorkspace {
           String(node["logId"]),
           String(node["head"]),
           String(node["messageId"]),
+          String(node["logId"]), String(node["head"]), String(node["messageId"]),
           after.phase,
           after.phase,
           after.key,
@@ -13346,7 +13416,10 @@ export class SemanticWorkspace {
                       turnId: targetId,
                     },
                   }
-                : {
+                : row["target_kind"] === "invocation"
+                  ? { kind: edgeKind, from: { kind: "trajectory-invocation", logId: String(row["target_log_id"]),
+                      head: String(row["target_head"]), invocationId: targetId }, to: message }
+                  : {
                     kind: edgeKind,
                     from: {
                       kind: "trajectory-turn",

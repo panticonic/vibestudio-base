@@ -1,8 +1,16 @@
+import type { JsonRepresentation } from "@panticonic/pi-chord";
+import { toolDetails } from "./native-tool-json.js";
 /** Stable-identity file move/copy tools over the canonical VCS commands. */
 
-import { Type, type Static } from "@sinclair/typebox";
-import type { AgentTool, AgentToolResult } from "@workspace/pi-core";
-import type { VcsSemanticNodeRef, VcsStateNodeRef } from "@vibestudio/service-schemas/vcs";
+import { Type, type Static } from "@panticonic/pi-ai";
+import type {
+  ToolRegistration,
+  ToolExecutionResult,
+} from "@panticonic/pi-durable";
+import type {
+  VcsSemanticNodeRef,
+  VcsStateNodeRef,
+} from "@vibestudio/service-schemas/vcs";
 import {
   canonicalizeWorkspaceFilePath,
   splitRepoPath,
@@ -25,7 +33,8 @@ import type { RuntimeFs } from "./runtime-fs.js";
 const fileTransferSchema = Type.Object(
   {
     source: Type.String({
-      description: "Current path of a managed workspace file or context-local .tmp file.",
+      description:
+        "Current path of a managed workspace file or context-local .tmp file.",
     }),
     destination: Type.String({
       description:
@@ -36,10 +45,10 @@ const fileTransferSchema = Type.Object(
         minLength: 1,
         description:
           "Optional purpose when it is not already clear from the request; preserved as stated provenance.",
-      })
+      }),
     ),
   },
-  { additionalProperties: false }
+  { additionalProperties: false },
 );
 
 export type FileTransferToolInput = Static<typeof fileTransferSchema>;
@@ -66,8 +75,13 @@ export interface FileTransferToolDetails {
   diagnostic?: "cross-storage-transfer";
 }
 
-function missingSource(operation: "move_file" | "copy_file", path: string): NodeJS.ErrnoException {
-  const error = new Error(`${operation}: source file not found: ${path}`) as NodeJS.ErrnoException;
+function missingSource(
+  operation: "move_file" | "copy_file",
+  path: string,
+): NodeJS.ErrnoException {
+  const error = new Error(
+    `${operation}: source file not found: ${path}`,
+  ) as NodeJS.ErrnoException;
   error.code = "ENOENT";
   error.path = path;
   error.syscall = operation;
@@ -77,7 +91,7 @@ function missingSource(operation: "move_file" | "copy_file", path: string): Node
 function transferIntegrityFailure(
   operation: "move_file" | "copy_file",
   source: ToolFileResolution,
-  destination: ToolFileResolution
+  destination: ToolFileResolution,
 ): Error {
   const message =
     operation === "move_file"
@@ -119,29 +133,42 @@ function createFileTransferTool(
   cwd: string,
   vcs: ToolFileTransferVcs,
   context: ToolMutationContext,
-  fs?: Pick<RuntimeFs, "copyFile" | "rename">
-): AgentTool<typeof fileTransferSchema, FileTransferToolDetails> {
+  fs?: Pick<RuntimeFs, "copyFile" | "rename">,
+): ToolRegistration<
+  typeof fileTransferSchema,
+  JsonRepresentation<FileTransferToolDetails>
+> {
   const operation = kind === "move" ? "move_file" : "copy_file";
   return {
     name: operation,
-    label: operation,
+
     description:
       kind === "move"
         ? "Move a file atomically. Managed workspace files preserve stable identity and history; .tmp files move within context-local scratch storage. Never emulate a managed move with write/delete."
         : "Copy a file atomically. Managed workspace files mint distinct identity with explicit copy provenance; .tmp files copy within context-local scratch storage. Never emulate a managed copy with read/write.",
     parameters: fileTransferSchema,
-    cancellationMode: "settle",
+
     execute: async (
-      _toolCallId,
       input,
-      signal
-    ): Promise<AgentToolResult<FileTransferToolDetails>> => {
+      _api,
+      executionContext,
+    ): Promise<
+      ToolExecutionResult<JsonRepresentation<FileTransferToolDetails>>
+    > => {
+      const signal = executionContext.abortSignal;
       if (signal?.aborted) throw new Error("Operation aborted");
-      if (typeof input.source !== "string" || typeof input.destination !== "string") {
+      if (
+        typeof input.source !== "string" ||
+        typeof input.destination !== "string"
+      ) {
         throw new Error(`${operation} requires source and destination paths`);
       }
-      const sourcePath = canonicalizeWorkspaceFilePath(toVcsPath(input.source, cwd));
-      const destinationPath = canonicalizeWorkspaceFilePath(toVcsPath(input.destination, cwd));
+      const sourcePath = canonicalizeWorkspaceFilePath(
+        toVcsPath(input.source, cwd),
+      );
+      const destinationPath = canonicalizeWorkspaceFilePath(
+        toVcsPath(input.destination, cwd),
+      );
       const sourceRoute = splitRepoPath(sourcePath);
       const destinationRoute = splitRepoPath(destinationPath);
 
@@ -155,12 +182,12 @@ function createFileTransferTool(
               text: `${kind === "move" ? "Moved" : "Copied"} scratch file ${sourcePath} to ${destinationPath}.`,
             },
           ],
-          details: {
+          details: toolDetails({
             operation: kind === "move" ? "moved" : "copied",
             storage: "scratch",
             source: { path: sourcePath },
             destination: { path: destinationPath },
-          },
+          }),
         };
       }
 
@@ -172,13 +199,13 @@ function createFileTransferTool(
               text: "No file transferred: source and destination must both be managed workspace files or both be context-local scratch paths.",
             },
           ],
-          details: {
+          details: toolDetails({
             operation: kind === "move" ? "moved" : "copied",
             storage: "none",
             source: { path: sourcePath },
             destination: { path: destinationPath },
             diagnostic: "cross-storage-transfer",
-          },
+          }),
         };
       }
 
@@ -229,8 +256,13 @@ function createFileTransferTool(
                 },
               ],
             });
-      const produced = await resolveToolFile(vcs, result.workingHead, destinationPath);
-      if (!produced) throw new Error(`${operation} did not produce ${destinationPath}`);
+      const produced = await resolveToolFile(
+        vcs,
+        result.workingHead,
+        destinationPath,
+      );
+      if (!produced)
+        throw new Error(`${operation} did not produce ${destinationPath}`);
       if (
         (kind === "move" && produced.fileId !== source.fileId) ||
         (kind === "copy" && produced.fileId === source.fileId)
@@ -238,7 +270,8 @@ function createFileTransferTool(
         throw transferIntegrityFailure(operation, source, produced);
       }
       const changeId = result.changeIds[0];
-      if (!changeId) throw new Error(`${operation} returned no semantic change`);
+      if (!changeId)
+        throw new Error(`${operation} returned no semantic change`);
       const sourceDetails = details(source);
       const destinationDetails = details(produced);
 
@@ -253,7 +286,7 @@ function createFileTransferTool(
               `provenance({ target: ${JSON.stringify(destinationPath)} }).`,
           },
         ],
-        details: {
+        details: toolDetails({
           operation: kind === "move" ? "moved" : "copied",
           storage: "vcs",
           source: sourceDetails,
@@ -262,7 +295,7 @@ function createFileTransferTool(
           workUnitId: result.workUnitId,
           applicationId: result.applicationId,
           changeId,
-        },
+        }),
       };
     },
   };
@@ -272,7 +305,7 @@ export function createMoveFileTool(
   cwd: string,
   vcs: ToolFileTransferVcs,
   context: ToolMutationContext,
-  fs?: Pick<RuntimeFs, "copyFile" | "rename">
+  fs?: Pick<RuntimeFs, "copyFile" | "rename">,
 ) {
   return createFileTransferTool("move", cwd, vcs, context, fs);
 }
@@ -281,7 +314,7 @@ export function createCopyFileTool(
   cwd: string,
   vcs: ToolFileTransferVcs,
   context: ToolMutationContext,
-  fs?: Pick<RuntimeFs, "copyFile" | "rename">
+  fs?: Pick<RuntimeFs, "copyFile" | "rename">,
 ) {
   return createFileTransferTool("copy", cwd, vcs, context, fs);
 }

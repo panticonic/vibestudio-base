@@ -24,6 +24,7 @@ import { createLazyTypedServiceClient } from "@vibestudio/shared/lazyTypedServic
 import type { blobstoreMethods } from "@vibestudio/service-schemas/blobstore";
 import { BLOBSTORE_METHOD_NAMES } from "@vibestudio/service-schemas/clients/generated/runtimeClientMethods";
 import type { RuntimeFs } from "../types.js";
+import { currentJournal, type OperationJournalEntry } from "./journal.js";
 
 export const BLOBSTORE_MEMBERS = [
   ...BLOBSTORE_METHOD_NAMES,
@@ -43,10 +44,13 @@ type GetBytes = (digest: string) => Promise<Uint8Array | null>;
 type MaterializeTree = (
   treeRef: string,
   outDir: string,
-  opts?: { link?: boolean }
+  opts?: { link?: boolean },
 ) => Promise<{ written: number; unchanged: number }>;
 
-export type BlobstoreClient = Omit<BlobstoreServiceClient, "materializeTree"> & {
+export type BlobstoreClient = Omit<
+  BlobstoreServiceClient,
+  "materializeTree"
+> & {
   /** Runtime-only byte convenience; the wire service remains base64-only. */
   putBytes(bytes: BlobstoreBytes): Promise<PutBlobResult>;
   /** Runtime-only byte convenience; decodes the wire service's base64 representation. */
@@ -57,25 +61,33 @@ export type BlobstoreClient = Omit<BlobstoreServiceClient, "materializeTree"> & 
   materializeTree: MaterializeTree;
 };
 
-export function createBlobstoreClient(rpc: RpcCaller, fs?: RuntimeFs): BlobstoreClient {
+export function createBlobstoreClient(
+  rpc: RpcCaller,
+  fs?: RuntimeFs,
+  recordOperation: (entry: OperationJournalEntry) => void = (entry) =>
+    currentJournal()?.append(entry),
+): BlobstoreClient {
   const serviceClient = createLazyTypedServiceClient(
     "blobstore",
     BLOBSTORE_METHOD_NAMES,
-    async () => (await import("@vibestudio/service-schemas/blobstore")).blobstoreMethods,
-    (svc, method, args) => rpc.call("main", `${svc}.${method}`, args)
+    async () =>
+      (await import("@vibestudio/service-schemas/blobstore")).blobstoreMethods,
+    (svc, method, args) => rpc.call("main", `${svc}.${method}`, args),
   );
 
   const putBytes = async (...args: unknown[]): Promise<PutBlobResult> => {
     if (args.length !== 1) {
       throw new TypeError(
         `blobstore.putBytes accepts exactly one Uint8Array or ArrayBuffer argument; ` +
-          `MIME metadata is not stored, so return it alongside the digest instead (received ${args.length} arguments).`
+          `MIME metadata is not stored, so return it alongside the digest instead (received ${args.length} arguments).`,
       );
     }
 
     const input = args[0];
     if (!(input instanceof Uint8Array) && !(input instanceof ArrayBuffer)) {
-      throw new TypeError("blobstore.putBytes expects a Uint8Array or ArrayBuffer argument.");
+      throw new TypeError(
+        "blobstore.putBytes expects a Uint8Array or ArrayBuffer argument.",
+      );
     }
 
     const bytes = input instanceof ArrayBuffer ? new Uint8Array(input) : input;
@@ -91,15 +103,17 @@ export function createBlobstoreClient(rpc: RpcCaller, fs?: RuntimeFs): Blobstore
   const materializeTree: MaterializeTree = async (treeRef, outDir, opts) => {
     if (!fs) {
       throw new Error(
-        "blobstore.materializeTree requires a hosted runtime filesystem; use getTree/listTree from a transport-only client."
+        "blobstore.materializeTree requires a hosted runtime filesystem; use getTree/listTree from a transport-only client.",
       );
     }
     if (!outDir || outDir.includes("\0")) {
-      throw new TypeError("blobstore.materializeTree requires a non-empty output directory.");
+      throw new TypeError(
+        "blobstore.materializeTree requires a non-empty output directory.",
+      );
     }
     if (opts?.link) {
       throw new Error(
-        "blobstore.materializeTree link mode is not supported by the context-scoped runtime filesystem; omit link to copy the tree safely."
+        "blobstore.materializeTree link mode is not supported by the context-scoped runtime filesystem; omit link to copy the tree safely.",
       );
     }
 
@@ -123,7 +137,7 @@ export function createBlobstoreClient(rpc: RpcCaller, fs?: RuntimeFs): Blobstore
         expectedBasis = page.basis;
         if (page.basis.ref !== treeRef || page.basis.prefix !== "") {
           throw new Error(
-            "blobstore.listTree returned a basis different from materializeTree's request"
+            "blobstore.listTree returned a basis different from materializeTree's request",
           );
         }
       } else if (
@@ -132,7 +146,9 @@ export function createBlobstoreClient(rpc: RpcCaller, fs?: RuntimeFs): Blobstore
         page.basis.prefix !== expectedBasis.prefix ||
         page.basis.order !== expectedBasis.order
       ) {
-        throw new Error("blobstore.listTree changed basis while materializing a tree");
+        throw new Error(
+          "blobstore.listTree changed basis while materializing a tree",
+        );
       }
 
       for (const entry of page.entries) {
@@ -144,7 +160,9 @@ export function createBlobstoreClient(rpc: RpcCaller, fs?: RuntimeFs): Blobstore
 
         const bytesBase64 = await serviceClient.getBase64(entry.contentHash);
         if (bytesBase64 === null) {
-          throw new Error(`Tree blob missing: ${entry.contentHash} (${entry.path})`);
+          throw new Error(
+            `Tree blob missing: ${entry.contentHash} (${entry.path})`,
+          );
         }
         const bytes = base64ToBytes(bytesBase64);
         await fs.mkdir(parentPath(path), { recursive: true });
@@ -173,6 +191,16 @@ export function createBlobstoreClient(rpc: RpcCaller, fs?: RuntimeFs): Blobstore
       cursor = page.nextCursor;
     }
 
+    recordOperation({
+      type: "blob-tree.observation",
+      receipt: {
+        protocol: "blob-tree-observation.v1",
+        method: "materializeTree",
+        ref: treeRef,
+        written,
+        unchanged,
+      },
+    });
     return { written, unchanged };
   };
 
@@ -197,7 +225,9 @@ function safeMaterializedPath(root: string, relativePath: string): string {
   if (
     relativePath.startsWith("/") ||
     relativePath.includes("\0") ||
-    segments.some((segment) => segment === "" || segment === "." || segment === "..")
+    segments.some(
+      (segment) => segment === "" || segment === "." || segment === "..",
+    )
   ) {
     throw new Error(`Unsafe tree path: ${JSON.stringify(relativePath)}`);
   }

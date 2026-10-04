@@ -66,6 +66,7 @@ import type { GatewayConfig } from "./globals.js";
 import type { GatewayFetch } from "./gatewayFetch.js";
 import type { PanelRuntimeApi, PanelRuntimeTree } from "./panelRuntime.js";
 import type { RuntimeFs } from "../types.js";
+import type { OperationJournalEntry } from "./journal.js";
 import type { PanelHandle } from "../core/index.js";
 import type { runtimeMethods } from "@vibestudio/service-schemas/runtime";
 import { RUNTIME_METHOD_NAMES } from "@vibestudio/service-schemas/clients/generated/runtimeClientMethods";
@@ -94,6 +95,8 @@ export interface PanelRuntimePorts {
  * real everywhere.
  */
 export interface RuntimeHost {
+  /** Record completed composite operations in the invoking execution's journal. */
+  recordOperation?: (entry: OperationJournalEntry) => void;
   id: string;
   contextId: string;
   rpc: RpcClient;
@@ -349,7 +352,7 @@ export function createHostedRuntime(host: RuntimeHost): WorkspaceRuntime {
   const gad = helpfulNamespace("gad", createGadClient(rpc));
   const blobstore = helpfulNamespace(
     "blobstore",
-    createBlobstoreClient(rpc, host.fs),
+    createBlobstoreClient(rpc, host.fs, host.recordOperation),
   );
   const workspace = helpfulNamespace("workspace", createWorkspaceClient(rpc));
   const workspaces = helpfulNamespace(

@@ -1,3 +1,5 @@
+import type { JsonRepresentation } from "@panticonic/pi-chord";
+import { toolDetails } from "./native-tool-json.js";
 /**
  * Find tool — workerd-native rewrite of pi-coding-agent's
  * `dist/core/tools/find.js`.
@@ -9,14 +11,19 @@
  * `RuntimeFs` walker.
  */
 
-import { Type, type Static } from "@sinclair/typebox";
-import type { AgentTool } from "@workspace/pi-core";
-import type { TextContent, ImageContent } from "@workspace/pi-ai";
+import { Type, type Static } from "@panticonic/pi-ai";
+import type { ToolRegistration } from "@panticonic/pi-durable";
+import type { TextContent, ImageContent } from "@panticonic/pi-ai";
 import type { RpcCaller } from "@vibestudio/rpc";
 import path from "node:path";
 import type { RuntimeFs } from "./runtime-fs.js";
 import { resolveToCwd } from "./path-utils.js";
-import { DEFAULT_MAX_BYTES, formatSize, truncateHead, type TruncationResult } from "./truncate.js";
+import {
+  DEFAULT_MAX_BYTES,
+  formatSize,
+  truncateHead,
+  type TruncationResult,
+} from "./truncate.js";
 import { globToRegex } from "./grep.js";
 import { walkSearchFiles } from "./search-walk.js";
 import type { AgentFileVisibility } from "./agent-file-visibility.js";
@@ -24,26 +31,33 @@ import type { AgentFileVisibility } from "./agent-file-visibility.js";
 const findSchema = Type.Object({
   pattern: Type.Optional(
     Type.String({
-      description: "Glob pattern to match files, e.g. '*.ts', '**/*.json', or 'src/**/*.spec.ts'",
-    })
+      description:
+        "Glob pattern to match files, e.g. '*.ts', '**/*.json', or 'src/**/*.spec.ts'",
+    }),
   ),
   path: Type.Optional(
-    Type.String({ description: "Directory to search in (default: current directory)" })
+    Type.String({
+      description: "Directory to search in (default: current directory)",
+    }),
   ),
   limit: Type.Optional(
     Type.Integer({
       minimum: 1,
       maximum: 10_000,
       description: "Maximum number of results (default: 1000; maximum: 10000)",
-    })
+    }),
   ),
   cursor: Type.Optional(
     Type.String({
-      description: "Resume strictly after this exact relative path from a previous bounded result",
-    })
+      description:
+        "Resume strictly after this exact relative path from a previous bounded result",
+    }),
   ),
   includeIgnored: Type.Optional(
-    Type.Boolean({ description: "Include files excluded by .gitignore/.ignore (default: false)" })
+    Type.Boolean({
+      description:
+        "Include files excluded by .gitignore/.ignore (default: false)",
+    }),
   ),
 });
 
@@ -71,15 +85,16 @@ const DEFAULT_LIMIT = 1000;
 export function createFindTool(
   cwd: string,
   fs: RuntimeFs,
-  deps?: FindToolDeps
-): AgentTool<typeof findSchema, FindToolDetails | undefined> {
+  deps?: FindToolDeps,
+): ToolRegistration<typeof findSchema, JsonRepresentation<FindToolDetails>> {
   return {
     name: "find",
-    label: "find",
+
     executionMode: "parallel",
     description: `Search for files by glob pattern. Returns matching file paths relative to the search directory. Output is truncated to ${DEFAULT_LIMIT} results or ${DEFAULT_MAX_BYTES / 1024}KB (whichever is hit first).`,
     parameters: findSchema,
-    execute: async (_toolCallId, input, signal, _onUpdate) => {
+    execute: async (input, _api, executionContext) => {
+      const signal = executionContext.abortSignal;
       const { pattern, path: searchDir, limit, cursor, includeIgnored } = input;
       if (typeof pattern !== "string") {
         return {
@@ -99,7 +114,12 @@ export function createFindTool(
       const searchPath = resolveToCwd(searchDir || ".", cwd);
       const effectiveLimit = limit ?? DEFAULT_LIMIT;
       if (deps?.visibility && (await deps.visibility.isHidden(searchPath))) {
-        return renderMatches([], effectiveLimit, false, deps.rpc ? "fs-service" : "runtime-fs");
+        return renderMatches(
+          [],
+          effectiveLimit,
+          false,
+          deps.rpc ? "fs-service" : "runtime-fs",
+        );
       }
 
       if (deps?.rpc) {
@@ -121,7 +141,7 @@ export function createFindTool(
                 ...(includeIgnored ? { includeIgnored: true } : {}),
               },
             ],
-            signal ? { signal } : undefined
+            signal ? { signal } : undefined,
           );
         } catch (error) {
           const code = (error as NodeJS.ErrnoException | null)?.code;
@@ -137,20 +157,27 @@ export function createFindTool(
                   : `No files found matching pattern (search path does not exist: ${displayPath})`,
               },
             ],
-            details: nonDirectory
-              ? { engine: "fs-service", nonDirectorySearchPath: displayPath }
-              : { engine: "fs-service", missingSearchPath: displayPath },
+            details: toolDetails(
+              nonDirectory
+                ? { engine: "fs-service", nonDirectorySearchPath: displayPath }
+                : { engine: "fs-service", missingSearchPath: displayPath },
+            ),
           };
         }
         const visibleFiles = deps.visibility
           ? await deps.visibility.filterVisible(page.files, (file) =>
-              path.isAbsolute(file) ? file : path.resolve(searchPath, file)
+              path.isAbsolute(file) ? file : path.resolve(searchPath, file),
             )
           : page.files;
         const matches = visibleFiles.map((file) =>
-          path.relative(searchPath, file).replace(/\\/g, "/")
+          path.relative(searchPath, file).replace(/\\/g, "/"),
         );
-        return renderMatches(matches, effectiveLimit, page.truncated, "fs-service");
+        return renderMatches(
+          matches,
+          effectiveLimit,
+          page.truncated,
+          "fs-service",
+        );
       }
 
       // The in-memory fallback needs an explicit root probe; the host glob
@@ -158,7 +185,8 @@ export function createFindTool(
       try {
         await fs.stat(searchPath);
       } catch (error) {
-        if ((error as NodeJS.ErrnoException | null)?.code !== "ENOENT") throw error;
+        if ((error as NodeJS.ErrnoException | null)?.code !== "ENOENT")
+          throw error;
         const displayPath = searchDir || ".";
         return {
           content: [
@@ -167,7 +195,10 @@ export function createFindTool(
               text: `No files found matching pattern (search path does not exist: ${displayPath})`,
             },
           ],
-          details: { engine: "runtime-fs", missingSearchPath: displayPath },
+          details: toolDetails({
+            engine: "runtime-fs",
+            missingSearchPath: displayPath,
+          }),
         };
       }
 
@@ -208,7 +239,7 @@ export function createFindTool(
         matches.slice(0, effectiveLimit),
         effectiveLimit,
         resultLimitReached,
-        "runtime-fs"
+        "runtime-fs",
       );
     },
   };
@@ -218,7 +249,7 @@ function renderMatches(
   matches: string[],
   effectiveLimit: number,
   resultLimitReached: boolean,
-  engine: "fs-service" | "runtime-fs"
+  engine: "fs-service" | "runtime-fs",
 ): {
   content: (TextContent | ImageContent)[];
   details: FindToolDetails | undefined;
@@ -231,7 +262,9 @@ function renderMatches(
   }
 
   const rawOutput = matches.join("\n");
-  const truncation = truncateHead(rawOutput, { maxLines: Number.MAX_SAFE_INTEGER });
+  const truncation = truncateHead(rawOutput, {
+    maxLines: Number.MAX_SAFE_INTEGER,
+  });
   let resultOutput = truncation.content;
   const details: FindToolDetails = { engine };
   const notices: string[] = [];
@@ -245,7 +278,7 @@ function renderMatches(
   } else if (resultLimitReached) {
     details.nextCursor = matches.at(-1);
     notices.push(
-      `${effectiveLimit} results limit reached. Continue with cursor=${JSON.stringify(details.nextCursor)}, or refine the pattern`
+      `${effectiveLimit} results limit reached. Continue with cursor=${JSON.stringify(details.nextCursor)}, or refine the pattern`,
     );
   }
   if (notices.length > 0) {
@@ -254,6 +287,6 @@ function renderMatches(
 
   return {
     content: [{ type: "text", text: resultOutput }],
-    details,
+    details: toolDetails(details),
   };
 }

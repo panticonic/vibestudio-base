@@ -192,7 +192,7 @@ describe("AutomationActivity", () => {
       finalMessage: undefined,
       effectFailures: [
         {
-          invocationId: "notify-call",
+          source: {kind: "native-tool", invocationId: "notify-call", nativeTaskId: 7, nativeEntryId: 19},
           name: "notify",
           outcome: "tool_error",
           code: "ENOTIFY",

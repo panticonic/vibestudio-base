@@ -14,6 +14,43 @@ debugging that app, but do not use them as disposable web pages.
 > shape; the `eval` snippets show the same page API. (`browserData` from
 > `@workspace/runtime` is shell-only and not reachable from server-side eval.)
 
+## Author a disposable page
+
+The native CDP page has no `setContent()` method. For a small authored page,
+encode the complete HTML document before constructing its data URL. An unescaped
+`#` starts the URL fragment and truncates the delivered document, including
+scripts and CSS selectors. Encode the document once, rather than interpolating
+raw HTML into `data:text/html,...`.
+
+```ts
+import { openPanel } from "@workspace/runtime";
+const html = `<main><p id="status">Ready</p><button>Run check</button></main>
+<script>document.querySelector('button').onclick = () => {
+  document.querySelector('#status').textContent = 'Succeeded: click handled';
+};</script>`;
+const handle = await openPanel(
+  `data:text/html;charset=utf-8,${encodeURIComponent(html)}`,
+);
+const session = await handle.cdp.session();
+try {
+  const page = session.page;
+  await page.getByRole("button", { name: "Run check", exact: true }).click();
+  const status = await page.locator("#status").textContent();
+  if (status !== "Succeeded: click handled")
+    throw new Error(`Unexpected rendered status: ${status}`);
+  return { status, screenshot: await handle.cdp.screenshot({ format: "png" }) };
+} finally {
+  await session.close();
+  await handle.archive();
+}
+```
+
+`locator.inspect()` inspects an element; `handle.observe()` inspects panel
+lifecycle. There is no `page.inspect` or `handle.browser.inspect` surface.
+After an input, check the state the page actually changes. A predicate that
+can only become true on success will remain pending if the authored handler
+never ran; a completed DOM read lets you report that original mismatch directly.
+
 ## Open Once, Reuse Across an Operation Sequence
 
 The primary pattern: open a browser panel once, hold one generation-fenced
@@ -82,10 +119,10 @@ own UI. For arbitrary URLs, login flows, scraping, or browser navigation, use
 import { panelTree } from "@workspace/runtime";
 
 // panelTree is top-level; workspace.panelTree is not available.
-const result = await panelTree.search({ query: "spectrolite", limit: 20 });
+const result = await panelTree.search({ query: "New Panel", limit: 20 });
 const target = result.hits
   .map(({ entry }) => entry.handle)
-  .find((handle) => handle.source === "panels/spectrolite");
+  .find((handle) => handle.source === "about/new");
 if (!target) throw new Error("target panel not found");
 
 const page = await target.cdp.page();

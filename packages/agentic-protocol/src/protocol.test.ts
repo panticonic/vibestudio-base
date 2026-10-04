@@ -47,7 +47,11 @@ const user = { kind: "user" as const, id: "user-1" };
 const agentParticipant = { ...agent, participantId: "participant-agent-1" };
 const userParticipant = { ...user, participantId: "participant-user-1" };
 
-function textCompletedPayload(messageId: string, role: "user" | "assistant", content: string) {
+function textCompletedPayload(
+  messageId: string,
+  role: "user" | "assistant",
+  content: string,
+) {
   return {
     protocol: AGENTIC_PROTOCOL_VERSION,
     role,
@@ -63,7 +67,7 @@ function textCompletedPayload(messageId: string, role: "user" | "assistant", con
 }
 
 function messageEvent(
-  overrides: Partial<AgenticEvent<"message.completed">> = {}
+  overrides: Partial<AgenticEvent<"message.completed">> = {},
 ): AgenticEvent<"message.completed"> {
   return {
     kind: "message.completed",
@@ -88,7 +92,7 @@ function messageEvent(
 
 async function trajectoryEvent(
   event: AgenticEvent,
-  overrides: Partial<TrajectoryEvent> = {}
+  overrides: Partial<TrajectoryEvent> = {},
 ): Promise<TrajectoryEvent> {
   const base = {
     ...event,
@@ -112,7 +116,10 @@ async function trajectoryEvent(
   };
 }
 
-function envelope(payload: AgenticEvent, seq = 1): ChannelEnvelope<AgenticEvent> {
+function envelope(
+  payload: AgenticEvent,
+  seq = 1,
+): ChannelEnvelope<AgenticEvent> {
   return {
     envelopeId: brandId<EnvelopeId>(`env-${seq}`),
     channelId: brandId<ChannelId>("channel-1"),
@@ -127,6 +134,80 @@ function envelope(payload: AgenticEvent, seq = 1): ChannelEnvelope<AgenticEvent>
 }
 
 describe("@workspace/agentic-protocol schemas", () => {
+  it("retains typed native attribution across request blob encoding and channel reduction", async () => {
+    const nativeSource = {
+      owner: {
+        runtimeId: "agent-1",
+        authoritySessionId: "lifetime:one",
+        contextId: "context:one",
+        incarnation: "storage:one",
+        channelId: "channel:one",
+        source: "workers/agent",
+        effectiveVersion: "state:one",
+        className: "Agent",
+        objectKey: "one",
+        executionDigest: "a".repeat(64),
+      },
+      task: { conversationId: 0, taskId: 12, kind: "pi.tool", version: 1 },
+      operation: {
+        kind: "tool" as const,
+        assistantEntryId: 9,
+        callId: "call:one",
+        name: "eval",
+        argumentsDigest: "b".repeat(64),
+      },
+    };
+    const started: AgenticEvent<"invocation.started"> = {
+      kind: "invocation.started",
+      actor: agent,
+      causality: { invocationId: brandId<InvocationId>("native:one") },
+      payload: {
+        protocol: AGENTIC_PROTOCOL_VERSION,
+        name: "eval",
+        nativeSource,
+        request: { code: "1 + 1" },
+      },
+      createdAt: "2026-10-02T12:00:00.000Z",
+    };
+    const blobs = new Map<string, string>();
+    const encoded = await encodeAgenticEventStoredValues(started, {
+      putText: async (value) => {
+        const digest = "c".repeat(64);
+        blobs.set(digest, value);
+        return { digest, size: value.length };
+      },
+    });
+    const payload = storedAgenticEventSchema.parse(encoded.event)
+      .payload as Record<string, unknown>;
+    expect(isStoredValueRef(payload["request"])).toBe(true);
+    expect(blobs.size).toBe(1);
+    expect(payload["nativeSource"]).toEqual(nativeSource);
+    // Schema validation establishes the wire event; protocol ID brands are
+    // compile-time attribution and are not part of its serialized JSON.
+    const hydrated = agenticEventSchema.parse(
+      await hydrateStoredValueRefs(encoded.event, {
+        getText: async (digest) => blobs.get(digest) ?? null,
+      }),
+    ) as AgenticEvent;
+    const view = reduceChannelView(
+      createInitialChannelViewState(),
+      envelope(hydrated),
+    );
+    expect(view.invocations["native:one"]?.nativeSource).toEqual(nativeSource);
+    const malformed = {
+      ...started,
+      payload: {
+        ...started.payload,
+        nativeSource: {
+          ...nativeSource,
+          task: { ...nativeSource.task, taskId: 0 },
+        },
+      },
+    };
+    expect(agenticEventSchema.safeParse(malformed).success).toBe(false);
+    expect(storedAgenticEventSchema.safeParse(malformed).success).toBe(false);
+  });
+
   it("validates a first-class automation institution with a friendly schedule snapshot", () => {
     const event: AgenticEvent<"automation.instituted"> = {
       kind: "automation.instituted",
@@ -153,7 +234,10 @@ describe("@workspace/agentic-protocol schemas", () => {
     };
 
     expect(agenticEventSchema.safeParse(event).success).toBe(true);
-    const state = reduceChannelView(createInitialChannelViewState(), envelope(event));
+    const state = reduceChannelView(
+      createInitialChannelViewState(),
+      envelope(event),
+    );
     expect(state.automationInstitutions["mission-weekly"]).toMatchObject({
       definition: event.payload.definition,
       actor: agent,
@@ -181,7 +265,7 @@ describe("@workspace/agentic-protocol schemas", () => {
           ...terminal.payload,
           subagent: { integration: "merged" },
         },
-      }).success
+      }).success,
     ).toBe(false);
   });
 
@@ -198,7 +282,7 @@ describe("@workspace/agentic-protocol schemas", () => {
         ...base,
         kind: "invocation.output",
         payload: { protocol: AGENTIC_PROTOCOL_VERSION, output: "line", to },
-      }).success
+      }).success,
     ).toBe(true);
     expect(
       agenticEventSchema.safeParse({
@@ -209,7 +293,7 @@ describe("@workspace/agentic-protocol schemas", () => {
           terminalOutcome: "success",
           to,
         },
-      }).success
+      }).success,
     ).toBe(true);
     expect(
       agenticEventSchema.safeParse({
@@ -221,15 +305,23 @@ describe("@workspace/agentic-protocol schemas", () => {
           reason: "cancelled",
           to,
         },
-      }).success
+      }).success,
     ).toBe(true);
   });
 
   it("separates participant refs from runtime principal actor refs", () => {
-    expect(actorRefSchema.parse({ kind: "do", id: "do:agent" }).kind).toBe("do");
-    expect(principalRefSchema.parse({ kind: "do", id: "do:agent" }).kind).toBe("do");
-    expect(participantRefSchema.safeParse({ kind: "do", id: "do:agent" }).success).toBe(false);
-    expect(participantRefSchema.parse({ kind: "panel", id: "panel:user" }).kind).toBe("panel");
+    expect(actorRefSchema.parse({ kind: "do", id: "do:agent" }).kind).toBe(
+      "do",
+    );
+    expect(principalRefSchema.parse({ kind: "do", id: "do:agent" }).kind).toBe(
+      "do",
+    );
+    expect(
+      participantRefSchema.safeParse({ kind: "do", id: "do:agent" }).success,
+    ).toBe(false);
+    expect(
+      participantRefSchema.parse({ kind: "panel", id: "panel:user" }).kind,
+    ).toBe("panel");
   });
 
   it("keeps actor extensions inside metadata instead of accepting undeclared wire fields", () => {
@@ -238,14 +330,14 @@ describe("@workspace/agentic-protocol schemas", () => {
         kind: "agent",
         id: "agent-1",
         privateAccountId: "hidden",
-      }).success
+      }).success,
     ).toBe(false);
     expect(
       actorRefSchema.safeParse({
         kind: "agent",
         id: "agent-1",
         metadata: { accountId: "public-account" },
-      }).success
+      }).success,
     ).toBe(true);
   });
 
@@ -271,9 +363,13 @@ describe("@workspace/agentic-protocol schemas", () => {
   });
 
   it("rejects message events without a messageId", () => {
-    const result = agenticEventSchema.safeParse(messageEvent({ causality: undefined }));
+    const result = agenticEventSchema.safeParse(
+      messageEvent({ causality: undefined }),
+    );
     expect(result.success).toBe(false);
-    expect(result.success ? "" : result.error.issues[0]?.message).toContain("messageId");
+    expect(result.success ? "" : result.error.issues[0]?.message).toContain(
+      "messageId",
+    );
   });
 
   it("requires terminalOutcome on invocation terminal events", () => {
@@ -308,7 +404,7 @@ describe("@workspace/agentic-protocol schemas", () => {
 
     expect(result.success).toBe(false);
     expect(result.success ? "" : result.error.issues[0]?.message).toContain(
-      "Expected 'tool_error' | 'infrastructure_error'"
+      "Expected 'tool_error' | 'infrastructure_error'",
     );
   });
 
@@ -333,7 +429,7 @@ describe("@workspace/agentic-protocol schemas", () => {
           reason: "message failed",
         },
         createdAt: "2026-05-20T12:00:00.000Z",
-      }).kind
+      }).kind,
     ).toBe("message.failed");
   });
 
@@ -352,7 +448,7 @@ describe("@workspace/agentic-protocol schemas", () => {
           retryAfterMs: 12000,
         },
         createdAt: "2026-05-20T12:00:00.000Z",
-      }).payload
+      }).payload,
     ).toMatchObject({
       code: "usage_limit_terminal",
       resetAt: "2026-06-15T18:35:01.000Z",
@@ -380,8 +476,8 @@ describe("@workspace/agentic-protocol schemas", () => {
           blockId: brandId<BlockId>("b0"),
           type: "invocation",
           invocationId: brandId<InvocationId>("call-1"),
-        })
-      ).success
+        }),
+      ).success,
     ).toBe(true);
     expect(
       agenticEventSchema.safeParse(
@@ -389,12 +485,14 @@ describe("@workspace/agentic-protocol schemas", () => {
           blockId: brandId<BlockId>("b0"),
           type: "text",
           content: "hi",
-        })
-      ).success
+        }),
+      ).success,
     ).toBe(true);
 
     // An invocation block without an invocationId is rejected.
-    expect(agenticEventSchema.safeParse(completed({ type: "invocation" })).success).toBe(false);
+    expect(
+      agenticEventSchema.safeParse(completed({ type: "invocation" })).success,
+    ).toBe(false);
     // A text block carrying an invocationId is rejected (strict: field belongs only to invocation).
     expect(
       agenticEventSchema.safeParse(
@@ -402,11 +500,13 @@ describe("@workspace/agentic-protocol schemas", () => {
           type: "text",
           content: "hi",
           invocationId: brandId<InvocationId>("call-1"),
-        })
-      ).success
+        }),
+      ).success,
     ).toBe(false);
     // A text block without content is rejected.
-    expect(agenticEventSchema.safeParse(completed({ type: "text" })).success).toBe(false);
+    expect(
+      agenticEventSchema.safeParse(completed({ type: "text" })).success,
+    ).toBe(false);
   });
 
   it("requires terminalOutcome on stored invocation terminal events", () => {
@@ -423,7 +523,9 @@ describe("@workspace/agentic-protocol schemas", () => {
     });
 
     expect(result.success).toBe(false);
-    expect(result.success ? "" : result.error.issues[0]?.message).toContain("terminalOutcome");
+    expect(result.success ? "" : result.error.issues[0]?.message).toContain(
+      "terminalOutcome",
+    );
   });
 
   it("rejects mismatched terminalOutcome on stored invocation terminal events", () => {
@@ -441,7 +543,9 @@ describe("@workspace/agentic-protocol schemas", () => {
     });
 
     expect(result.success).toBe(false);
-    expect(result.success ? "" : result.error.issues[0]?.message).toContain("inconsistent");
+    expect(result.success ? "" : result.error.issues[0]?.message).toContain(
+      "inconsistent",
+    );
   });
 
   it("rejects malformed invocation terminal events inside agentic envelopes", () => {
@@ -473,11 +577,13 @@ describe("@workspace/agentic-protocol schemas", () => {
       messageEvent({
         actor: agent,
         payload: textCompletedPayload("msg-1", "assistant", "done"),
-      })
+      }),
     );
     const result = trajectoryEventSchema.safeParse(event);
     expect(result.success).toBe(false);
-    expect(result.success ? "" : result.error.issues[0]?.message).toContain("turnId");
+    expect(result.success ? "" : result.error.issues[0]?.message).toContain(
+      "turnId",
+    );
   });
 
   it("accepts an inbound user message copied into an agent-owned trajectory before turn assignment", async () => {
@@ -488,7 +594,7 @@ describe("@workspace/agentic-protocol schemas", () => {
           ...textCompletedPayload("msg-1", "user", "hello"),
           senderRef: user,
         } as never,
-      })
+      }),
     );
 
     expect(trajectoryEventSchema.parse(event).payload).toMatchObject({
@@ -502,7 +608,7 @@ describe("@workspace/agentic-protocol schemas", () => {
       messageEvent({
         actor: agent,
         turnId: brandId<TurnId>("turn-1"),
-      })
+      }),
     );
     expect(trajectoryEventSchema.parse(event)["turnId"]).toBe("turn-1");
   });
@@ -526,7 +632,7 @@ describe("@workspace/agentic-protocol schemas", () => {
         actor: agent,
         payload: null,
         createdAt: "2026-05-20T12:00:00.000Z",
-      }).success
+      }).success,
     ).toBe(false);
 
     expect(
@@ -541,7 +647,7 @@ describe("@workspace/agentic-protocol schemas", () => {
           originalBytes: 64,
         },
         createdAt: "2026-05-20T12:00:00.000Z",
-      }).payload
+      }).payload,
     ).toMatchObject({ digest: "payload-digest" });
   });
 
@@ -558,7 +664,9 @@ describe("@workspace/agentic-protocol schemas", () => {
     });
 
     expect(result.success).toBe(false);
-    expect(result.success ? "" : result.error.issues[0]?.message).toContain("payload.name");
+    expect(result.success ? "" : result.error.issues[0]?.message).toContain(
+      "payload.name",
+    );
   });
 
   it("keeps bounded block content inline (storage classes — no threshold spill)", async () => {
@@ -594,7 +702,8 @@ describe("@workspace/agentic-protocol schemas", () => {
     // envelope (the fold/step read block structure), and NOTHING spills by
     // size — fold-readability is a static property of the path.
     expect(encoded.eventBytes).toBeLessThan(MAX_INLINE_TRAJECTORY_EVENT_BYTES);
-    const blocks = storedAgenticEventSchema.parse(encoded.event).payload as Record<string, unknown>;
+    const blocks = storedAgenticEventSchema.parse(encoded.event)
+      .payload as Record<string, unknown>;
     expect(JSON.stringify(blocks)).toContain(bounded);
     expect(blobs.size).toBe(0);
   });
@@ -656,7 +765,7 @@ describe("@workspace/agentic-protocol schemas", () => {
     await expect(
       hydrateStoredValueRefs(outerRef, {
         getText: async (digest) => blobs.get(digest) ?? null,
-      })
+      }),
     ).resolves.toEqual({ blocks: [{ text: "hydrated" }] });
   });
 
@@ -713,10 +822,15 @@ describe("@workspace/agentic-protocol schemas", () => {
       handle: "panel",
       methods: [{ name: "eval" }],
     });
-    expect("transport" in sanitized.payload ? sanitized.payload.transport?.kind : undefined).toBe(
-      "channel"
-    );
-    if ("transport" in sanitized.payload && sanitized.payload.transport?.kind === "channel") {
+    expect(
+      "transport" in sanitized.payload
+        ? sanitized.payload.transport?.kind
+        : undefined,
+    ).toBe("channel");
+    if (
+      "transport" in sanitized.payload &&
+      sanitized.payload.transport?.kind === "channel"
+    ) {
       expect(sanitized.payload.transport.target.metadata).toEqual({
         type: "panel",
         name: "Panel",
@@ -745,19 +859,23 @@ describe("@workspace/agentic-protocol stored values", () => {
       hydrateStoredValueRefs(
         stored,
         { getText: async () => JSON.stringify({ ok: true }) },
-        { strict: true, context: "test payload" }
-      )
+        { strict: true, context: "test payload" },
+      ),
     ).resolves.toEqual({ outer: { value: { ok: true } } });
 
     await expect(
       hydrateStoredValueRefs(
         stored,
         { getText: async () => null },
-        { strict: true, context: "test payload" }
-      )
-    ).rejects.toThrow("test payload stored value missing at $.outer.value: json-digest");
+        { strict: true, context: "test payload" },
+      ),
+    ).rejects.toThrow(
+      "test payload stored value missing at $.outer.value: json-digest",
+    );
 
-    await expect(hydrateStoredValueRefs(stored, { getText: async () => null })).resolves.toEqual({
+    await expect(
+      hydrateStoredValueRefs(stored, { getText: async () => null }),
+    ).resolves.toEqual({
       outer: { value: null },
     });
   });
@@ -779,10 +897,10 @@ describe("@workspace/agentic-protocol stored values", () => {
             },
           ],
         },
-        "toolResult admission"
-      )
+        "toolResult admission",
+      ),
     ).toThrow(
-      "toolResult admission contains unresolved stored value refs: $.content[0].text -> digest-1"
+      "toolResult admission contains unresolved stored value refs: $.content[0].text -> digest-1",
     );
   });
 
@@ -828,7 +946,9 @@ describe("@workspace/agentic-protocol stored values", () => {
       });
       const payload = encoded.payload as Record<string, unknown>;
       expect(isStoredValueRef(payload[field]), field).toBe(true);
-      expect((payload[field] as { digest: string }).digest).toBe(`digest-${field}`);
+      expect((payload[field] as { digest: string }).digest).toBe(
+        `digest-${field}`,
+      );
     }
 
     expect(writes).toHaveLength(unboundedFields.length);
@@ -855,11 +975,25 @@ describe("@workspace/agentic-protocol stored values", () => {
 
     // Progress chunks are fold-opaque, arbitrary client data — class
     // REFERENCE, so they can never trigger an inline-bound error remotely.
-    const small = await encodeAgenticEventStoredValues(make("streamed line"), writer);
-    expect(isStoredValueRef((small.event.payload as Record<string, unknown>)["output"])).toBe(true);
+    const small = await encodeAgenticEventStoredValues(
+      make("streamed line"),
+      writer,
+    );
+    expect(
+      isStoredValueRef(
+        (small.event.payload as Record<string, unknown>)["output"],
+      ),
+    ).toBe(true);
 
-    const large = await encodeAgenticEventStoredValues(make("x".repeat(140 * 1024)), writer);
-    expect(isStoredValueRef((large.event.payload as Record<string, unknown>)["output"])).toBe(true);
+    const large = await encodeAgenticEventStoredValues(
+      make("x".repeat(140 * 1024)),
+      writer,
+    );
+    expect(
+      isStoredValueRef(
+        (large.event.payload as Record<string, unknown>)["output"],
+      ),
+    ).toBe(true);
     expect(writes).toHaveLength(2);
   });
 
@@ -891,9 +1025,11 @@ describe("@workspace/agentic-protocol stored values", () => {
             outcome: "completed",
           },
         }),
-        writer
-      )
-    ).rejects.toThrow(/inline value at \$\.payload\.blocks\[0\]\.content .* no implicit spill/u);
+        writer,
+      ),
+    ).rejects.toThrow(
+      /inline value at \$\.payload\.blocks\[0\]\.content .* no implicit spill/u,
+    );
   });
 });
 
@@ -926,10 +1062,11 @@ describe("@workspace/agentic-protocol reducers", () => {
       createdAt: "2026-05-20T12:00:01.000Z",
     };
 
-    const state = [envelope(opened, 1), envelope(closed, 5), envelope(staleWaiting, 3)].reduce(
-      reduceChannelView,
-      createInitialChannelViewState()
-    );
+    const state = [
+      envelope(opened, 1),
+      envelope(closed, 5),
+      envelope(staleWaiting, 3),
+    ].reduce(reduceChannelView, createInitialChannelViewState());
 
     expect(state.turns[turnId]?.status).toBe("closed");
   });
@@ -972,7 +1109,9 @@ describe("@workspace/agentic-protocol reducers", () => {
       .map((event, index) => envelope(event, index + 1))
       .reduce(reduceChannelView, createInitialChannelViewState());
 
-    expect(messageDisplayText(state.messages["msg-replace"]?.blocks)).toBe("hello world");
+    expect(messageDisplayText(state.messages["msg-replace"]?.blocks)).toBe(
+      "hello world",
+    );
   });
 
   it("anchors a stream that is first observed through a delta", () => {
@@ -990,7 +1129,10 @@ describe("@workspace/agentic-protocol reducers", () => {
       createdAt: "2026-05-20T12:00:01.000Z",
     };
 
-    const state = reduceChannelView(createInitialChannelViewState(), envelope(delta, 1));
+    const state = reduceChannelView(
+      createInitialChannelViewState(),
+      envelope(delta, 1),
+    );
 
     expect(state.messages["msg-early-delta"]?.startedAt).toBe(delta.createdAt);
   });
@@ -1053,7 +1195,7 @@ describe("@workspace/agentic-protocol reducers", () => {
     const delta = (
       blockId: string,
       type: "text" | "thinking",
-      text: string
+      text: string,
     ): AgenticEvent<"message.delta"> => ({
       kind: "message.delta",
       actor: agent,
@@ -1088,7 +1230,9 @@ describe("@workspace/agentic-protocol reducers", () => {
       },
       { blockId: "msg-stream:block:1", type: "text", content: "Hello" },
     ]);
-    expect(messageDisplayText(state.messages["msg-stream"]?.blocks)).toBe("Hello");
+    expect(messageDisplayText(state.messages["msg-stream"]?.blocks)).toBe(
+      "Hello",
+    );
   });
 
   it("records malformed agentic envelope errors without stopping transcript reduction", () => {
@@ -1110,10 +1254,13 @@ describe("@workspace/agentic-protocol reducers", () => {
         payload: textCompletedPayload("msg-good", "user", "kept"),
         createdAt: "2026-05-20T12:00:01.000Z",
       }),
-      2
+      2,
     );
 
-    const state = [malformed, valid].reduce(reduceChannelView, createInitialChannelViewState());
+    const state = [malformed, valid].reduce(
+      reduceChannelView,
+      createInitialChannelViewState(),
+    );
 
     expect(state.ignoredEnvelopeIds).toEqual(["env-bad"]);
     expect(state.ignoredEnvelopeErrors["env-bad"]).toContain("payload.actor");
@@ -1129,7 +1276,7 @@ describe("@workspace/agentic-protocol reducers", () => {
         payload: { protocol: AGENTIC_PROTOCOL_VERSION },
         createdAt: "2026-05-20T12:00:00.000Z",
       },
-      { eventId: brandId<EventId>("evt-turn"), seq: 0 }
+      { eventId: brandId<EventId>("evt-turn"), seq: 0 },
     );
     const started = await trajectoryEvent(
       {
@@ -1148,7 +1295,7 @@ describe("@workspace/agentic-protocol reducers", () => {
         eventId: brandId<EventId>("evt-start"),
         seq: 1,
         prevEventHash: turnOpened.eventHash,
-      }
+      },
     );
     const completed = await trajectoryEvent(
       {
@@ -1163,18 +1310,20 @@ describe("@workspace/agentic-protocol reducers", () => {
         eventId: brandId<EventId>("evt-complete"),
         seq: 2,
         prevEventHash: started.eventHash,
-      }
+      },
     );
 
     const trajectory = [turnOpened, started, completed].reduce(
       reduceTrajectory,
-      createInitialTrajectoryState()
+      createInitialTrajectoryState(),
     );
     const channel = [started, completed]
       .map((event, index) => envelope(agenticSlice(event), index + 1))
       .reduce(reduceChannelView, createInitialChannelViewState());
 
-    expect(channel.messages).toEqual(userVisibleTrajectoryProjection(trajectory).messages);
+    expect(channel.messages).toEqual(
+      userVisibleTrajectoryProjection(trajectory).messages,
+    );
   });
 
   it("keeps turns open but marked waiting when external input is required", async () => {
@@ -1189,7 +1338,7 @@ describe("@workspace/agentic-protocol reducers", () => {
         },
         createdAt: "2026-05-20T12:00:00.000Z",
       },
-      { eventId: brandId<EventId>("evt-turn"), seq: 0 }
+      { eventId: brandId<EventId>("evt-turn"), seq: 0 },
     );
     const waiting = await trajectoryEvent(
       {
@@ -1207,12 +1356,12 @@ describe("@workspace/agentic-protocol reducers", () => {
         eventId: brandId<EventId>("evt-waiting"),
         seq: 1,
         prevEventHash: turnOpened.eventHash,
-      }
+      },
     );
 
     const trajectory = [turnOpened, waiting].reduce(
       reduceTrajectory,
-      createInitialTrajectoryState()
+      createInitialTrajectoryState(),
     );
     const channel = [turnOpened, waiting]
       .map((event, index) => envelope(agenticSlice(event), index + 1))
@@ -1257,7 +1406,7 @@ describe("@workspace/agentic-protocol reducers", () => {
 
     const state = [envelope(started, 1), envelope(completed, 2)].reduce(
       reduceChannelView,
-      createInitialChannelViewState()
+      createInitialChannelViewState(),
     );
 
     expect(state.invocations["inv-1"]?.status).toBe("completed");
@@ -1339,7 +1488,7 @@ describe("@workspace/agentic-protocol reducers", () => {
     };
     const state = [providerEnvelope, envelope(completed, 2)].reduce(
       reduceChannelView,
-      createInitialChannelViewState()
+      createInitialChannelViewState(),
     );
 
     expect(Object.keys(state.invocations)).toEqual(["inv-cross"]);
@@ -1362,7 +1511,7 @@ describe("@workspace/agentic-protocol reducers", () => {
 
     const state = [duplicatedEnvelope, duplicatedEnvelope].reduce(
       reduceChannelView,
-      createInitialChannelViewState()
+      createInitialChannelViewState(),
     );
 
     expect(state.timeline).toHaveLength(1);
@@ -1400,7 +1549,7 @@ describe("@workspace/agentic-protocol reducers", () => {
 
     const state = [envelope(inline, 1), envelope(actionBar, 2)].reduce(
       reduceChannelView,
-      createInitialChannelViewState()
+      createInitialChannelViewState(),
     );
 
     expect(state.inlineUi["participant-agent-1"]?.["inline-1"]?.props).toEqual({
@@ -1526,7 +1675,9 @@ describe("@workspace/agentic-protocol reducers", () => {
 
     expect(state.messageTypes["weather"]?.updatedAtSeq).toBe(10);
     expect(state.messageTypes["weather"]?.clearedAtSeq).toBe(20);
-    expect(state.messageTypes["weather"]?.source).toEqual(currentRegister.payload.source);
+    expect(state.messageTypes["weather"]?.source).toEqual(
+      currentRegister.payload.source,
+    );
   });
 
   it("does not let older custom.started envelopes clobber an existing start", () => {
@@ -1555,10 +1706,10 @@ describe("@workspace/agentic-protocol reducers", () => {
       createdAt: "2026-05-20T12:00:05.000Z",
     };
 
-    const state = [envelope(newerStarted, 10), envelope(olderStarted, 5)].reduce(
-      reduceChannelView,
-      createInitialChannelViewState()
-    );
+    const state = [
+      envelope(newerStarted, 10),
+      envelope(olderStarted, 5),
+    ].reduce(reduceChannelView, createInitialChannelViewState());
 
     expect(state.customMessages["custom-start-order"]).toMatchObject({
       typeId: "weather.v2",
@@ -1585,7 +1736,7 @@ describe("@workspace/agentic-protocol hash helpers", () => {
         eventId: brandId<EventId>("evt-2"),
         seq: 1,
         prevEventHash: first.eventHash,
-      }
+      },
     );
 
     await expect(checkTrajectoryIntegrity([first, second])).resolves.toEqual({
@@ -1608,7 +1759,7 @@ describe("@workspace/agentic-protocol message delivery events", () => {
   const receipt = (
     kind: "message.received" | "message.read",
     actor = agentParticipant,
-    extra: Record<string, unknown> = {}
+    extra: Record<string, unknown> = {},
   ): AgenticEvent =>
     ({
       kind,
@@ -1624,7 +1775,7 @@ describe("@workspace/agentic-protocol message delivery events", () => {
   };
   const edited = (
     by: AnyParticipant = userParticipant,
-    actor: AnyParticipant = userParticipant
+    actor: AnyParticipant = userParticipant,
   ): AgenticEvent =>
     ({
       kind: "message.edited",
@@ -1639,7 +1790,7 @@ describe("@workspace/agentic-protocol message delivery events", () => {
     }) as AgenticEvent;
   const retracted = (
     by: AnyParticipant = userParticipant,
-    actor: AnyParticipant = userParticipant
+    actor: AnyParticipant = userParticipant,
   ): AgenticEvent =>
     ({
       kind: "message.retracted",
@@ -1659,12 +1810,18 @@ describe("@workspace/agentic-protocol message delivery events", () => {
     });
 
   it("accepts received/read/edited/retracted events", () => {
-    expect(agenticEventSchema.parse(receipt("message.received")).kind).toBe("message.received");
+    expect(agenticEventSchema.parse(receipt("message.received")).kind).toBe(
+      "message.received",
+    );
     expect(
-      agenticEventSchema.parse(receipt("message.read", agentParticipant, { turnId: "t-1" })).kind
+      agenticEventSchema.parse(
+        receipt("message.read", agentParticipant, { turnId: "t-1" }),
+      ).kind,
     ).toBe("message.read");
     expect(agenticEventSchema.parse(edited()).kind).toBe("message.edited");
-    expect(agenticEventSchema.parse(retracted()).kind).toBe("message.retracted");
+    expect(agenticEventSchema.parse(retracted()).kind).toBe(
+      "message.retracted",
+    );
   });
 
   it("rejects message delivery events without a messageId", () => {
@@ -1672,7 +1829,7 @@ describe("@workspace/agentic-protocol message delivery events", () => {
       agenticEventSchema.safeParse({
         ...receipt("message.read"),
         causality: undefined,
-      }).success
+      }).success,
     ).toBe(false);
   });
 
@@ -1698,7 +1855,7 @@ describe("@workspace/agentic-protocol message delivery events", () => {
           metadata: { deliverAfterTurn: true },
         },
         createdAt: "2026-05-20T12:00:00.000Z",
-      }).kind
+      }).kind,
     ).toBe("message.completed");
   });
 
@@ -1730,14 +1887,18 @@ describe("@workspace/agentic-protocol message delivery events", () => {
     expect(state.messages[target]?.to).toEqual([
       { kind: "participant", participantId: "participant-agent-1" },
     ]);
-    expect(state.intendedRecipientsByMessage[target]).toContain("participant-agent-1");
+    expect(state.intendedRecipientsByMessage[target]).toContain(
+      "participant-agent-1",
+    );
   });
 
   it("applies an edit before read and increments revision", () => {
     const state = [sent(), edited()]
       .map((event, index) => envelope(event, index + 1))
       .reduce(reduceChannelView, createInitialChannelViewState());
-    expect(messageDisplayText(state.messages[target]?.blocks)).toBe("edited body");
+    expect(messageDisplayText(state.messages[target]?.blocks)).toBe(
+      "edited body",
+    );
     expect(state.messages[target]?.revision).toBe(1);
     expect(state.messages[target]?.editedAt).toBeDefined();
   });

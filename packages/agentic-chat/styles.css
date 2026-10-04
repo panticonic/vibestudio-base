@@ -321,6 +321,8 @@
   border-bottom-right-radius: var(--composer-bottom-right-radius);
   --composer-min-h: 3.5rem; /* the default two-line composer height */
   --send-dock-gap: 0.75rem; /* right gap, matched to the centered bottom gap */
+  --composer-dock-reserve: 5.5rem;
+  --dictation-control-size: 2.5rem;
 }
 
 .chat-input-send-dock {
@@ -340,6 +342,15 @@
   padding-inline-end: 5.5rem;
 }
 
+.chat-input-card .chat-input-with-dictation textarea {
+  padding-inline-end: calc(var(--composer-dock-reserve) + var(--dictation-control-size) + 0.5rem);
+}
+
+.dictation-button {
+  min-inline-size: var(--dictation-control-size);
+  min-block-size: var(--dictation-control-size);
+}
+
 /* The editor is an inset surface of the composer; its curve follows the
    composer's radius after accounting for the shared edge gap. */
 .chat-input-card .rt-TextAreaRoot {
@@ -357,6 +368,8 @@
   .chat-input-card {
     --card-padding: var(--space-2);
     --composer-min-h: 4rem;
+    --composer-dock-reserve: 6.75rem;
+    --dictation-control-size: 2.75rem;
   }
   .chat-input-card textarea {
     font-size: 16px;

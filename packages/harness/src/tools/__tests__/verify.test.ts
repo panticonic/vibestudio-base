@@ -1,3 +1,4 @@
+import { executeTool } from "../../testing/native-tool.js";
 import { describe, expect, it, vi } from "vitest";
 import type { UnitBuildReportWire } from "@vibestudio/service-schemas/build";
 import { createVerifyTool } from "../verify.js";
@@ -37,10 +38,10 @@ describe("context-exact verify tool", () => {
     const controller = new AbortController();
     const tool = createVerifyTool(callMain, () => "context-7");
 
-    const result = await tool.execute(
-      "call-build",
+    const result = await executeTool(
+      tool,
       { operation: "build", target: "packages/parser" },
-      controller.signal,
+      { callId: "call-build", signal: controller.signal },
     );
 
     expect(calls).toHaveBeenCalledWith(
@@ -95,22 +96,16 @@ describe("context-exact verify tool", () => {
     });
     const callMain = async <T>(): Promise<T> => (await pending) as T;
     const updates: unknown[] = [];
-    const execution = createVerifyTool(callMain, () => "context-7").execute(
-      "call-progress",
+    const output: Array<string | Uint8Array> = [];
+    const execution = executeTool(
+      createVerifyTool(callMain, () => "context-7"),
       { operation: "build", target: "packages/example" },
-      undefined,
-      (update) => updates.push(update),
+      { callId: "call-progress", onDetails: (update) => { updates.push(update); }, onOutput: (chunk) => { output.push(chunk); } },
     );
 
+    expect(output).toEqual(["Building packages/example…"]);
     expect(updates).toEqual([
-      {
-        content: [{ type: "text", text: "Building packages/example…" }],
-        details: {
-          operation: "build",
-          target: "packages/example",
-          status: "running",
-        },
-      },
+      { operation: "build", target: "packages/example", status: "running" },
     ]);
 
     release({
@@ -142,12 +137,13 @@ describe("context-exact verify tool", () => {
       ],
       builds: [{ target: "runtime" as const, diagnosticIndexes: [0] }],
     });
-    const result = await createVerifyTool(callMain, () => "context-7").execute(
-      "call-build",
+    const result = await executeTool(
+      createVerifyTool(callMain, () => "context-7"),
       {
         operation: "build",
         target: "panels/editor",
       },
+      { callId: "call-build" },
     );
 
     expect(result.isError).toBe(true);
@@ -158,9 +154,15 @@ describe("context-exact verify tool", () => {
     expect((result.content[0] as { text: string }).text).toContain(
       "Cannot find name",
     );
-    const modelEvidence = JSON.parse((result.content[0] as { text: string }).text.split("\n").at(-1)!);
-    expect(modelEvidence.diagnostics).toEqual((result.details as { report: UnitBuildReportWire }).report.diagnostics);
-    expect(modelEvidence.receipt).toEqual((result.details as { receipt: unknown }).receipt);
+    const modelEvidence = JSON.parse(
+      (result.content[0] as { text: string }).text.split("\n").at(-1)!,
+    );
+    expect(modelEvidence.diagnostics).toEqual(
+      (result.details as { report: UnitBuildReportWire }).report.diagnostics,
+    );
+    expect(modelEvidence.receipt).toEqual(
+      (result.details as { receipt: unknown }).receipt,
+    );
     expect((result.content[0] as { text: string }).text).toContain(
       "Do not rerun this unchanged build.",
     );
@@ -204,10 +206,14 @@ describe("context-exact verify tool", () => {
       builds: [{ target: "runtime" as const, diagnosticIndexes: [0] }],
     });
 
-    const result = await createVerifyTool(callMain, () => "context-7").execute("call-build", {
-      operation: "build",
-      target: "panels/editor",
-    });
+    const result = await executeTool(
+      createVerifyTool(callMain, () => "context-7"),
+      {
+        operation: "build",
+        target: "panels/editor",
+      },
+      { callId: "call-build" },
+    );
 
     expect(result.isError).toBe(true);
     expect(result.details).not.toHaveProperty("failureKind");
@@ -245,19 +251,22 @@ describe("context-exact verify tool", () => {
       ],
       builds: [{ target: "runtime" as const, diagnosticIndexes: [0] }],
     });
-    const result = await createVerifyTool(callMain, () => "context-7").execute(
-      "call-build",
+    const result = await executeTool(
+      createVerifyTool(callMain, () => "context-7"),
       {
         operation: "build",
         target: "panels/editor",
       },
+      { callId: "call-build" },
     );
 
     const report = (
       result.details as { report: { diagnostics: Array<{ repair?: unknown }> } }
     ).report;
     expect(report.diagnostics[0]!.repair).toEqual(repair);
-    const modelEvidence = JSON.parse((result.content[0] as { text: string }).text.split("\n").at(-1)!);
+    const modelEvidence = JSON.parse(
+      (result.content[0] as { text: string }).text.split("\n").at(-1)!,
+    );
     expect(modelEvidence.diagnostics[0].repair).toEqual(repair);
   });
 
@@ -271,12 +280,13 @@ describe("context-exact verify tool", () => {
       builds: [],
     });
 
-    const result = await createVerifyTool(callMain, () => "context-7").execute(
-      "call-build",
+    const result = await executeTool(
+      createVerifyTool(callMain, () => "context-7"),
       {
         operation: "build",
         target: "packages/docs",
       },
+      { callId: "call-build" },
     );
 
     expect(result.isError).toBe(true);
@@ -315,12 +325,13 @@ describe("context-exact verify tool", () => {
       ],
     });
 
-    const result = await createVerifyTool(callMain, () => "context-7").execute(
-      "call-build",
+    const result = await executeTool(
+      createVerifyTool(callMain, () => "context-7"),
       {
         operation: "build",
         target: "panels/editor",
       },
+      { callId: "call-build" },
     );
 
     expect(result.details).toMatchObject({
@@ -369,6 +380,7 @@ describe("context-exact verify tool", () => {
         selectedFiles: ["parser.test.ts"],
         bundle: "",
         format: "async-cjs",
+        requiredModules: [],
         execution: { executionDigest: "c".repeat(64) },
       } as T;
     };
@@ -384,16 +396,16 @@ describe("context-exact verify tool", () => {
       durationMs: 2,
       files: [{ file: "parser.test.ts", status: "pass" as const }],
     }));
-    const result = await createVerifyTool(
-      callMain,
-      () => "context-7",
-      executeSandboxTest,
-    ).execute("call-test", {
-      operation: "test",
-      target: "packages/parser",
-      file: "parser.test.ts",
-      testName: "parses empty input",
-    });
+    const result = await executeTool(
+      createVerifyTool(callMain, () => "context-7", executeSandboxTest),
+      {
+        operation: "test",
+        target: "packages/parser",
+        file: "parser.test.ts",
+        testName: "parses empty input",
+      },
+      { callId: "call-test" },
+    );
 
     expect(calls).toHaveBeenCalledWith("build.resolveTestSuite", [
       "packages/parser",
@@ -414,7 +426,9 @@ describe("context-exact verify tool", () => {
       operation: "test",
       status: "passed",
     });
-    const modelEvidence = JSON.parse((result.content[0] as { text: string }).text.split("\n").at(-1)!);
+    const modelEvidence = JSON.parse(
+      (result.content[0] as { text: string }).text.split("\n").at(-1)!,
+    );
     expect(modelEvidence).toEqual({
       report: (result.details as { report: unknown }).report,
       receipt: (result.details as { receipt: unknown }).receipt,
@@ -424,27 +438,62 @@ describe("context-exact verify tool", () => {
   it.each(["failed", "cancelled", "infrastructure-error"] as const)(
     "preserves %s execution even when partial counts contain passed tests",
     async (status) => {
-      const callMain = async <T>(method: string) => (method === "build.resolveTestSuite" ? {
-        protocol: "workspace-test-plan.v1", target: "packages/parser", suite: "unit",
-        runtime: "workerd", stateHash: `state:${"a".repeat(64)}`,
-      } : {
-        protocol: "workspace-test-artifact.v1", artifactKey: "b".repeat(64),
-        target: "packages/parser", suite: "unit", runtime: "workerd",
-        selectedFiles: ["parser.test.ts"], execution: { executionDigest: "c".repeat(64) },
-      }) as T;
-      const result = await createVerifyTool(callMain, () => "context-7", async () => ({
-        protocol: "workspace-test-execution-result.v1", artifactKey: "b".repeat(64),
-        executionDigest: "c".repeat(64), runtime: "workerd", status,
-        passed: 1, failed: status === "failed" ? 1 : 0, skipped: 0, durationMs: 1,
-        files: [{ file: "parser.test.ts", status: "pass" }],
-      })).execute("call-test", { operation: "test", target: "packages/parser" });
+      const callMain = async <T>(method: string) =>
+        (method === "build.resolveTestSuite"
+          ? {
+              protocol: "workspace-test-plan.v1",
+              target: "packages/parser",
+              suite: "unit",
+              runtime: "workerd",
+              stateHash: `state:${"a".repeat(64)}`,
+            }
+          : {
+              protocol: "workspace-test-artifact.v1",
+              artifactKey: "b".repeat(64),
+              target: "packages/parser",
+              suite: "unit",
+              runtime: "workerd",
+              selectedFiles: ["parser.test.ts"],
+              execution: { executionDigest: "c".repeat(64) },
+            }) as T;
+      const result = await executeTool(
+        createVerifyTool(
+          callMain,
+          () => "context-7",
+          async () => ({
+            protocol: "workspace-test-execution-result.v1",
+            artifactKey: "b".repeat(64),
+            executionDigest: "c".repeat(64),
+            runtime: "workerd",
+            status,
+            passed: 1,
+            failed: status === "failed" ? 1 : 0,
+            skipped: 0,
+            durationMs: 1,
+            files: [{ file: "parser.test.ts", status: "pass" }],
+          }),
+        ),
+        { operation: "test", target: "packages/parser" },
+        { callId: "call-test" },
+      );
       expect(result.isError).toBe(true);
-      expect(result.details).toMatchObject({ status, report: { status }, receipt: { status } });
+      expect(result.details).toMatchObject({
+        status,
+        report: { status },
+        receipt: { status },
+      });
       if (status === "failed") {
-        expect(result.details).toMatchObject({ failureKind: "user-code", failure: { kind: "domain" } });
+        expect(result.details).toMatchObject({
+          failureKind: "user-code",
+          failure: { kind: "domain" },
+        });
       } else {
         expect(result.details).not.toHaveProperty("failureKind");
-        expect(result.details).toMatchObject({ failure: { kind: status === "cancelled" ? "cancelled" : "infrastructure" } });
+        expect(result.details).toMatchObject({
+          failure: {
+            kind: status === "cancelled" ? "cancelled" : "infrastructure",
+          },
+        });
       }
     },
   );
@@ -468,24 +517,29 @@ describe("context-exact verify tool", () => {
             selectedFiles: ["parser.test.ts"],
             bundle: "",
             format: "async-cjs",
+            requiredModules: [],
             execution: { executionDigest: "c".repeat(64) },
           }) as T;
-    const result = await createVerifyTool(
-      callMain,
-      () => "context-7",
-      async () => ({
-        protocol: "workspace-test-execution-result.v1",
-        artifactKey: "b".repeat(64),
-        executionDigest: "c".repeat(64),
-        runtime: "workerd",
-        status: "no-tests",
-        passed: 0,
-        failed: 0,
-        skipped: 0,
-        durationMs: 1,
-        files: [],
-      }),
-    ).execute("call-test", { operation: "test", target: "packages/parser" });
+    const result = await executeTool(
+      createVerifyTool(
+        callMain,
+        () => "context-7",
+        async () => ({
+          protocol: "workspace-test-execution-result.v1",
+          artifactKey: "b".repeat(64),
+          executionDigest: "c".repeat(64),
+          runtime: "workerd",
+          status: "no-tests",
+          passed: 0,
+          failed: 0,
+          skipped: 0,
+          durationMs: 1,
+          files: [],
+        }),
+      ),
+      { operation: "test", target: "packages/parser" },
+      { callId: "call-test" },
+    );
 
     expect(result.isError).toBe(true);
     expect(result.details).toMatchObject({

@@ -1,11 +1,19 @@
+import { executeTool, toolResultDetails } from "../../testing/native-tool.js";
 import { describe, expect, it } from "vitest";
-import { createWorkspaceVcsTool, type ToolWorkflowVcs } from "../workspace-vcs.js";
+import {
+  createWorkspaceVcsTool,
+  type ToolWorkflowVcs,
+} from "../workspace-vcs.js";
 import { StubVcs } from "./stub-vcs.js";
 
 const authority = { contextId: "context:test", commandId: "command:commit" };
 
 function commitTool(vcs: StubVcs) {
-  return createWorkspaceVcsTool("/", vcs as unknown as ToolWorkflowVcs, authority);
+  return createWorkspaceVcsTool(
+    "/",
+    vcs as unknown as ToolWorkflowVcs,
+    authority,
+  );
 }
 
 describe("workspace VCS commit operation", () => {
@@ -25,18 +33,25 @@ describe("workspace VCS commit operation", () => {
       ],
     });
     const tool = commitTool(vcs);
-    const result = await tool.execute("invocation:1", {
-      operation: "commit",
-      message: "Unify authorization",
-    });
+    const result = await executeTool(
+      tool,
+      {
+        operation: "commit",
+        message: "Unify authorization",
+      },
+      { callId: "invocation:1" },
+    );
 
     expect(vcs.lastCommitInput).toMatchObject({
       contextId: "context:test",
       commandId: "command:commit",
-      expectedWorkingHead: { kind: "application", applicationId: "application:1" },
+      expectedWorkingHead: {
+        kind: "application",
+        applicationId: "application:1",
+      },
       message: "Unify authorization",
     });
-    const committed = result.details.result as {
+    const committed = toolResultDetails(result).result as {
       event: { kind: "event"; eventId: string };
       committedApplicationIds: string[];
     };
@@ -45,7 +60,7 @@ describe("workspace VCS commit operation", () => {
       eventId: expect.stringMatching(/^event:/),
     });
     expect(committed.committedApplicationIds).toEqual(["application:1"]);
-    expect(result.details.status).toMatchObject({
+    expect(toolResultDetails(result).status).toMatchObject({
       clean: true,
       committed: committed.event,
       workingHead: committed.event,
@@ -62,24 +77,34 @@ describe("workspace VCS commit operation", () => {
     const vcs = new StubVcs();
     const tool = commitTool(vcs);
     expect(JSON.stringify(tool.parameters)).not.toContain("workUnitIds");
-    await tool.execute("invocation:2", { operation: "commit", message: "Commit the chain" });
+    await executeTool(
+      tool,
+      { operation: "commit", message: "Commit the chain" },
+      { callId: "invocation:2" },
+    );
     expect(vcs.lastCommitInput).not.toHaveProperty("selection");
   });
 
   it("derives integration parents without exposing a second commit channel", async () => {
     const vcs = new StubVcs();
     const tool = commitTool(vcs);
-    await tool.execute("invocation:integration", {
-      operation: "commit",
-      message: "Close the incremental integration",
-    });
+    await executeTool(
+      tool,
+      {
+        operation: "commit",
+        message: "Close the incremental integration",
+      },
+      { callId: "invocation:integration" },
+    );
     expect(vcs.lastCommitInput).toMatchObject({ commandId: "command:commit" });
     expect(vcs.lastCommitInput).not.toHaveProperty("integratesEventIds");
   });
 
   it("does not expose integration parents in the commit input", () => {
     const tool = commitTool(new StubVcs());
-    const variants = (tool.parameters as unknown as { anyOf: Record<string, unknown>[] }).anyOf;
+    const variants = (
+      tool.parameters as unknown as { anyOf: Record<string, unknown>[] }
+    ).anyOf;
     const commit = variants.find((variant) => {
       const properties = variant["properties"] as
         | Record<string, Record<string, unknown>>

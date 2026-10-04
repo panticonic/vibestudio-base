@@ -196,6 +196,15 @@ observe its rendered completion condition before another dependent action.
 Use `click({ expect: { locator, state } })` or `press("Enter", { expect: { locator, state } })`
 when the expected condition follows that action, or the expected locator's
 `waitFor({ state })` before reading it.
+For an unverified asynchronous mutation, observe the application's terminal
+success **or** its rendered failure, then inspect which occurred. A success-only
+wait can strand debugging after the application has already displayed an error.
+Use `page.waitForFunction` with a self-contained predicate for the actual result
+and visible error UI, or an `expect` locator that covers those terminal states.
+Propagate the displayed error before another dependent action; a terminal-state
+interaction receipt proves observation, not successful application behavior.
+Do not replace a missing terminal condition with elapsed sleeps or a timeout.
+
 Prefer the action's explicit `expect` when reporting an observed interaction:
 the native eval journal retains its target identity and semantic outcome even
 when you return only a compact summary. Rich target inspection remains on the
@@ -230,3 +239,10 @@ After publication, `scope.panel.rebuild()` may be used to verify protected main
 only after its requested ref has deliberately been changed to main. Report the
 requested changes, visual review, exact build status, interaction
 evidence, console errors, and publication receipt.
+
+
+Choose live UI postconditions from the observed accessibility contract. Before
+waiting on a narrowed locator, inspect its matched element; `first()` selects
+document order and can choose a hidden option whose text also appears in a
+visible heading. Use the observed role/name and container. See
+[BROWSER.md](BROWSER.md) for locator and wait semantics.

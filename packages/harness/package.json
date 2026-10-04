@@ -13,6 +13,7 @@
     "./system-prompt": "./src/system-prompt.ts",
     "./tools/eval": "./src/tools/eval.ts",
     "./types": "./src/types.ts",
+    "./testing/native-tool": "./src/testing/native-tool.ts",
     "./web": "./src/web/index.ts",
     "./web-extract": "./src/web-extract.ts",
     "./image-generation": "./src/image-generation.ts"
@@ -25,9 +26,6 @@
     "@vibestudio/rpc": "workspace:*",
     "@vibestudio/service-schemas": "workspace:*",
     "@vibestudio/shared": "workspace:*",
-    "@sinclair/typebox": "^0.27.12",
-    "@workspace/pi-core": "workspace:*",
-    "@workspace/pi-ai": "workspace:*",
     "@workspace/agentic-protocol": "workspace:*",
     "@workspace/pubsub": "workspace:*",
     "diff": "^8.0.4",
@@ -35,13 +33,17 @@
     "ignore": "^7.0.5",
     "unpdf": "^1.8.0",
     "yaml": "^2.8.0",
-    "@workspace/runtime": "workspace:*"
+    "@workspace/runtime": "workspace:*",
+    "@panticonic/pi-ai": "0.99.2-vibestudio.11",
+    "@panticonic/pi-chord": "0.99.2-vibestudio.11",
+    "@panticonic/pi-durable": "0.99.2-vibestudio.11"
   },
   "optionalDependencies": {
     "re2": "^1.24.1"
   },
   "//": "re2 1.24.1 contains the Node >=22 compatibility fix previously carried as a host-root pnpm patch.",
   "devDependencies": {
-    "typescript": "^7.0.2"
+    "typescript": "^7.0.2",
+    "typebox": "^1.3.27"
   }
 }

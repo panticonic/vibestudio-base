@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { createInMemorySql } from "@workspace/runtime/worker/test-utils";
 import type { SqlStorage } from "@workspace/runtime/worker";
-import { SubagentRunStore } from "./subagent-runs.js";
+import { SubagentRunStore, subagentRunReference } from "./subagent-runs.js";
 
 describe("SubagentRunStore schema", () => {
   it("retains terminal results without consuming a live execution slot", async () => {
@@ -10,6 +10,7 @@ describe("SubagentRunStore schema", () => {
     store.createTables();
     store.insert({
       runId: "run-1",
+      nativeTaskId: 1,
       taskChannelId: "task-1",
       parentContextId: "parent-1",
       childContextId: "child-1",
@@ -33,8 +34,48 @@ describe("SubagentRunStore schema", () => {
     expect(store.countLive()).toBe(0);
     expect(store.resolveReference("run-1")).toMatchObject({
       kind: "exact",
-      run: { status: "completed", semanticIntegrationSnapshot: { state: "complete" } },
+      run: {
+        status: "completed",
+        semanticIntegrationSnapshot: { state: "complete" },
+      },
     });
+    const retained = store.get("run-1")!;
+    const runRef = subagentRunReference(retained);
+    // Unrelated launches do not evict the retained collaborator's coordinate.
+    for (let taskId = 2; taskId <= 300; taskId++) {
+      store.insert({
+        ...retained,
+        runId: `run-${taskId}`,
+        nativeTaskId: taskId,
+      });
+    }
+    const cold = new SubagentRunStore(sql);
+    cold.createTables();
+    expect(runRef).toBe("@s1");
+    expect(cold.resolveReference(runRef, "channel-1")?.run).toEqual(retained);
+    expect(cold.resolveReference(runRef, "other-channel")).toBeNull();
+    expect(cold.resolveReference(retained.runId, "other-channel")).toBeNull();
+    for (const invalid of [
+      "@s01",
+      "@s0",
+      "@S1",
+      "@s1...",
+      "run-",
+      "run-1…",
+      "@s99999999999999999999",
+    ])
+      expect(cold.resolveReference(invalid)).toBeNull();
+    expect(() => cold.insert({ ...retained, runId: "another-owner" })).toThrow(
+      /UNIQUE constraint failed/
+    );
+    expect(() => cold.insert({ ...retained, nativeTaskId: 301 })).toThrow(
+      "changed its native task owner"
+    );
+    expect(() => cold.insert({ ...retained, runId: "invalid-task", nativeTaskId: 1.5 })).toThrow(
+      "positive native task identity"
+    );
+    cold.insert({ ...retained, status: "running" });
+    expect(cold.get(retained.runId)?.status).toBe("completed");
   });
 
   it("rejects the obsolete merge_status shape instead of migrating it", async () => {
@@ -101,6 +142,7 @@ describe("SubagentRunStore schema", () => {
     store.createTables();
     store.insert({
       runId: "run-1",
+      nativeTaskId: 1,
       taskChannelId: "task-1",
       parentContextId: "parent-1",
       childContextId: "child-1",
@@ -137,14 +179,13 @@ describe("SubagentRunStore schema", () => {
     );
   });
 
-  it.each([
-    ["mode", "sideways"],
-  ])("rejects an invalid persisted %s", async (column, value) => {
+  it.each([["mode", "sideways"]])("rejects an invalid persisted %s", async (column, value) => {
     const sql = (await createInMemorySql()) as unknown as SqlStorage;
     const store = new SubagentRunStore(sql);
     store.createTables();
     store.insert({
       runId: "run-1",
+      nativeTaskId: 1,
       taskChannelId: "task-1",
       parentContextId: "parent-1",
       childContextId: "child-1",

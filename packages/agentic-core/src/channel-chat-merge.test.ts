@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
+  nativeInvocationId,
+  type NativeInvocationSource,
+} from "@vibestudio/service-schemas/nativeInvocation";
+import {
   AGENTIC_EVENT_PAYLOAD_KIND,
   AGENTIC_PROTOCOL_VERSION,
   CREDENTIAL_CONNECT_PAYLOAD_KIND,
@@ -101,6 +105,78 @@ describe("chatMessagesFromChannelView", () => {
         clearedAtSeq: 2,
       }),
     ]);
+  });
+
+  it("retains native attribution in both structured and serialized invocation cards", () => {
+    const nativeSource: NativeInvocationSource = {
+      owner: {
+        runtimeId: "agent-1",
+        authoritySessionId: "lifetime:author",
+        contextId: "context:author",
+        incarnation: "storage:author",
+        channelId: "channel-1",
+        source: "workers/agent",
+        effectiveVersion: "state:author",
+        className: "Agent",
+        objectKey: "author",
+        executionDigest: "a".repeat(64),
+      },
+      task: { conversationId: 1, taskId: 3, kind: "pi.tool", version: 1 },
+      operation: {
+        kind: "tool",
+        assistantEntryId: 4,
+        callId: "write:author",
+        name: "write",
+        argumentsDigest: "b".repeat(64),
+      },
+    };
+    const originatingInput = {
+      conversationId: 1,
+      submissionId: 2,
+      entryId: 2,
+      channelRef: {
+        source: "workers/pubsub-channel",
+        className: "PubSubChannel",
+        objectKey: "input-channel",
+      },
+      eventSequence: 1,
+      envelopeId: "input-envelope",
+      messageId: "input-message",
+      receiverParticipantId: "agent-1",
+    };
+    const invocationId = brandId<InvocationId>(nativeInvocationId(nativeSource));
+    const started: AgenticEvent<"invocation.started"> = {
+      kind: "invocation.started",
+      actor: agent,
+      causality: { invocationId },
+      payload: {
+        protocol: AGENTIC_PROTOCOL_VERSION,
+        name: "write",
+        request: { path: "retry.ts" },
+        nativeSource,
+        originatingInput,
+      },
+      createdAt: "2026-05-20T12:00:01.000Z",
+    };
+    const completed: AgenticEvent<"invocation.completed"> = {
+      kind: "invocation.completed",
+      actor: agent,
+      causality: { invocationId },
+      payload: {
+        protocol: AGENTIC_PROTOCOL_VERSION,
+        result: "written",
+        terminalOutcome: "success",
+      },
+      createdAt: "2026-05-20T12:00:02.000Z",
+    };
+    const state = [envelope(started, 1), envelope(completed, 2)].reduce(
+      reduceChannelView,
+      createInitialChannelViewState()
+    );
+    const card = chatMessagesFromChannelView(state)[0]!;
+    expect(card.invocation).toMatchObject({ nativeSource, originatingInput });
+    expect(JSON.parse(card.content)).toMatchObject({ nativeSource, originatingInput });
+    expect(card.invocation?.execution.status).toBe("complete");
   });
 
   it("projects typed channel events into transcript chat messages", () => {
@@ -861,6 +937,58 @@ describe("chatMessagesFromChannelView", () => {
         complete: true,
       }),
     ]);
+  });
+
+  it("projects single native completed-message failure facts even when the failed attempt contains partial text", () => {
+    const event: AgenticEvent<"message.completed"> = {
+      kind: "message.completed",
+      actor: agent,
+      causality: { messageId: brandId<MessageId>("native:1:2:0") },
+      createdAt: "2026-05-20T12:00:01.000Z",
+      payload: {
+        protocol: AGENTIC_PROTOCOL_VERSION,
+        role: "assistant",
+        outcome: "interrupted",
+        blocks: [
+          {
+            type: "text",
+            blockId: brandId<BlockId>("partial"),
+            content: "Partial answer",
+          },
+        ],
+        failure: {
+          reason: "Original quota failure",
+          code: "usage_limit_terminal",
+          recoverable: false,
+          resetAt: "2026-06-15T18:35:01.000Z",
+        },
+        metadata: {
+          nativeConversationId: 1,
+          nativeEntryId: 2,
+          nativeTaskId: 3,
+        },
+      },
+    };
+    const state = reduceChannelView(createInitialChannelViewState(), envelope(event, 1));
+    expect(state.messages["native:1:2:0"]).toMatchObject({
+      status: "failed",
+      outcome: "interrupted",
+      failureCode: "usage_limit_terminal",
+      failureResetAt: "2026-06-15T18:35:01.000Z",
+      native: { conversationId: 1, entryId: 2, taskId: 3 },
+    });
+    expect(chatMessagesFromChannelView(state)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          contentType: "diagnostic",
+          diagnostic: expect.objectContaining({
+            messageId: "native:1:2:0",
+            failureCode: "usage_limit_terminal",
+            resetAt: "2026-06-15T18:35:01.000Z",
+          }),
+        }),
+      ])
+    );
   });
 
   it("projects reset-aware model failures with scheduling metadata", () => {
@@ -2124,11 +2252,11 @@ describe("chatMessagesFromChannelView", () => {
 
       const state = [envelope(started, 1)].reduce(
         reduceChannelView,
-        createInitialChannelViewState(),
+        createInitialChannelViewState()
       );
 
       expect(chatMessagesFromChannelView(state)[0]?.task?.subagent).toBeUndefined();
-    },
+    }
   );
 
   it("uses the actor display name for a terminal-only task", () => {
@@ -2140,7 +2268,9 @@ describe("chatMessagesFromChannelView", () => {
         protocol: AGENTIC_PROTOCOL_VERSION,
         terminalOutcome: "success",
         summary: "Finished the assigned work.",
-        result: { protocolContent: [{ type: "text", text: "Finished the assigned work." }] },
+        result: {
+          protocolContent: [{ type: "text", text: "Finished the assigned work." }],
+        },
       },
       createdAt: "2026-05-20T12:00:01.000Z",
     };

@@ -1,7 +1,7 @@
 // =============================================================================
 // @workspace/agentic-core — Headless agentic session helpers
 //
-// Pi (`@workspace/pi-core`) owns live agent session execution.
+// Native Pi (`@panticonic/pi-durable`) owns live agent session execution.
 // Durable transcript state is projected from channel trajectory events. This
 // package provides:
 // - Pi message/event type re-exports (single import surface for consumers)
@@ -53,7 +53,7 @@ export {
   buildAgentTaskSeedEvent,
   createAgentEntity,
   createSubagentContext,
-  initAgentFromTrajectoryFork,
+  importAgentChannelKnowledge,
   launchAgentIntoChannel,
   publishAgentTaskSeed,
   retireAgentEntity,
@@ -78,7 +78,6 @@ export type {
   AgentSubscriptionResult,
   AgentTaskSeedChannel,
   AgentTaskSeedInput,
-  AgentTrajectoryForkInput,
   CreateSubagentContextInput,
   LaunchAgentIntoChannelInput,
   LaunchAgentIntoChannelResult,

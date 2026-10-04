@@ -3,13 +3,18 @@
  * runtime operations, and capability lookup.
  *
  * Each tool is exposed as a `createXxxTool(cwd, fs[, deps])` factory that
- * returns an `AgentTool` ready to be added to an `AgentSession`'s tool list.
+ * returns a native `ToolRegistration` for the agent's immutable phase registry.
  * Pure logic helpers (`path-utils`, `truncate`, `edit-diff`) are re-exported
  * for tests and for the chat-UI preview path.
  */
 
 export { createReadTool, createReadBinaryTool } from "./read.js";
-export type { ReadToolInput, ReadBinaryToolInput, ReadToolDetails, ReadToolDeps } from "./read.js";
+export type {
+  ReadToolInput,
+  ReadBinaryToolInput,
+  ReadToolDetails,
+  ReadToolDeps,
+} from "./read.js";
 export {
   createWorkspaceFileObservationStore,
   createMemoryWorkspaceFileObservationStore,
@@ -43,7 +48,10 @@ export { createWriteTool } from "./write.js";
 export type { WriteToolInput, WriteToolDetails } from "./write.js";
 
 export { createMoveFileTool, createCopyFileTool } from "./file-transfer.js";
-export type { FileTransferToolInput, FileTransferToolDetails } from "./file-transfer.js";
+export type {
+  FileTransferToolInput,
+  FileTransferToolDetails,
+} from "./file-transfer.js";
 
 export { createWorkspaceVcsTool } from "./workspace-vcs.js";
 export type {
@@ -72,8 +80,15 @@ export type { LsToolInput, LsToolDetails } from "./ls.js";
 export { createAgentFileVisibility } from "./agent-file-visibility.js";
 export type { AgentFileVisibility } from "./agent-file-visibility.js";
 
-export { createSuspendTurnTool } from "./suspend-turn.js";
-export type { SuspendTurnInput, SuspendTurnDetails } from "./suspend-turn.js";
+export {
+  createSuspendTurnTool,
+  suspendTurnParameters,
+} from "./suspend-turn.js";
+export type {
+  SuspendTurnInput,
+  NativeSuspendTurnExecution,
+  SuspendTurnToolOptions,
+} from "./suspend-turn.js";
 
 export {
   createEvalTool,
@@ -83,10 +98,19 @@ export {
   type EvalRunResult,
   type NormalizedEvalToolSource,
 } from "./eval.js";
-export type { EvalToolInput } from "./eval.js";
+export type {
+  EvalToolInput,
+  NativeEvalExecution,
+  EvalToolOptions,
+} from "./eval.js";
 
 export { createDocsSearchTool, createDocsOpenTool } from "./docs.js";
-export type { DocsSearchInput, DocsOpenInput, CatalogHit, CatalogEntry } from "./docs.js";
+export type {
+  DocsSearchInput,
+  DocsOpenInput,
+  CatalogHit,
+  CatalogEntry,
+} from "./docs.js";
 
 export { createWorkspaceServiceTool } from "./workspace-service.js";
 export type {
@@ -96,7 +120,11 @@ export type {
 } from "./workspace-service.js";
 
 export { createVerifyTool, verifySchema } from "./verify.js";
-export type { VerifyToolInput, VerifyToolDetails, UnitVerificationReceiptV1 } from "./verify.js";
+export type {
+  VerifyToolInput,
+  VerifyToolDetails,
+  UnitVerificationReceiptV1,
+} from "./verify.js";
 
 // Pure helpers
 export { resolveToCwd, expandPath } from "./path-utils.js";

@@ -47,7 +47,13 @@ export interface ChannelCallDescriptor {
 export interface ChannelCallTerminalInput {
   descriptor: Pick<
     ChannelCallDescriptor,
-    "channelId" | "caller" | "invocationId" | "transportCallId" | "turnId" | "method"
+    | "channelId"
+    | "caller"
+    | "target"
+    | "invocationId"
+    | "transportCallId"
+    | "turnId"
+    | "method"
   >;
   result: unknown;
   isError: boolean;
@@ -91,9 +97,10 @@ export interface ChannelPolicy<S = unknown> {
 export { conversationV1Policy } from "./conversation-v1.js";
 export type { ConversationStateV1 } from "./conversation-v1.js";
 
-export const CHANNEL_POLICIES: ReadonlyMap<string, ChannelPolicy> = new Map<string, ChannelPolicy>([
-  [conversationV1Policy.name, conversationV1Policy as ChannelPolicy],
-]);
+export const CHANNEL_POLICIES: ReadonlyMap<string, ChannelPolicy> = new Map<
+  string,
+  ChannelPolicy
+>([[conversationV1Policy.name, conversationV1Policy as ChannelPolicy]]);
 
 export function getChannelPolicy(name: string): ChannelPolicy {
   const policy = CHANNEL_POLICIES.get(name);
@@ -101,7 +108,9 @@ export function getChannelPolicy(name: string): ChannelPolicy {
   return policy;
 }
 
-export const DEFAULT_CHANNEL_POLICIES: readonly string[] = ["agentic.conversation.v1"];
+export const DEFAULT_CHANNEL_POLICIES: readonly string[] = [
+  "agentic.conversation.v1",
+];
 
 export type EventAudiencePolicy = "broadcast" | "conditional" | "explicit";
 
@@ -169,28 +178,36 @@ export function assertDeclaredAgenticEventAudience(event: AgenticEvent): void {
     (Array.isArray(payload.mentions) && payload.mentions.length > 0);
   if (policy === "explicit") {
     if (!hasExplicitAudience) {
-      throw new Error(`${event.kind} requires an explicit participant audience`);
+      throw new Error(
+        `${event.kind} requires an explicit participant audience`,
+      );
     }
     return;
   }
   // Local invocation facts are transcript broadcasts. Channel-transport
   // starts are execution-addressed and must name their provider explicitly.
-  if (event.kind !== "invocation.started" || payload.transport?.kind !== "channel") return;
+  if (
+    event.kind !== "invocation.started" ||
+    payload.transport?.kind !== "channel"
+  )
+    return;
   if (!hasExplicitAudience) {
     throw new Error(`${event.kind} requires an explicit participant audience`);
   }
 }
 
-export function resolveChannelPolicies(names: readonly string[] | undefined): ChannelPolicy[] {
-  const resolved = (names && names.length > 0 ? names : DEFAULT_CHANNEL_POLICIES).map(
-    getChannelPolicy
-  );
+export function resolveChannelPolicies(
+  names: readonly string[] | undefined,
+): ChannelPolicy[] {
+  const resolved = (
+    names && names.length > 0 ? names : DEFAULT_CHANNEL_POLICIES
+  ).map(getChannelPolicy);
   const owners = resolved.filter((policy) => policy.callEventPayload);
   if (owners.length > 1) {
     throw new Error(
       `Channel policy conflict: more than one policy owns callEventPayload (${owners
         .map((policy) => policy.name)
-        .join(", ")})`
+        .join(", ")})`,
     );
   }
   return resolved;

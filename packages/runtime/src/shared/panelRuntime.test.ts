@@ -59,6 +59,7 @@ function runtimeHarness(
     onCreateSlotTiming?: NonNullable<
       Parameters<typeof createPanelRuntime>[0]["onCreateSlotTiming"]
     >;
+    createCdp?: Parameters<typeof createPanelRuntime>[0]["createCdp"];
     recordOperation?: Parameters<
       typeof createPanelRuntime
     >[0]["recordOperation"];
@@ -120,6 +121,8 @@ function runtimeHarness(
           ] as T;
         case "workspace-state.panelTree.search":
           return { results: [], nextCursor: null } as T;
+        case "runtime.createContext":
+          return args[0] as T;
         case "runtime.reserveEntity":
           return {
             id: currentEntityId,
@@ -415,7 +418,7 @@ function runtimeHarness(
     runtime: createPanelRuntime({
       rpc: { call, emit: vi.fn(), on: vi.fn() } as never,
       defaultOpenParentId: null,
-      createCdp: () => ({}) as never,
+      createCdp: options.createCdp ?? (() => ({}) as never),
       onCreateSlotTiming: options.onCreateSlotTiming,
       recordOperation: options.recordOperation,
     }),
@@ -450,6 +453,39 @@ describe("panel runtime topology composition", () => {
       id: "panel:tree/new",
     });
   });
+  it("captures a browser document through its native page instead of a workspace RPC target", async () => {
+    const recordOperation = vi.fn();
+    const document = {
+      kind: "synth",
+      text: "Northern harbour",
+      structure: {
+        tag: "BODY",
+        children: [{ tag: "H1", text: "Northern harbour" }],
+      },
+    };
+    const evaluate = vi.fn(async () => document);
+    const { runtime, call } = runtimeHarness({
+      browserReady: true,
+      recordOperation,
+      createCdp: () => ({ page: async () => ({ evaluate }) }) as never,
+    });
+    const result = await runtime.getPanelHandle("panel:tree/new").snapshot();
+    expect(result.document).toEqual(document);
+    expect(evaluate).toHaveBeenCalledOnce();
+    expect(
+      call.mock.calls.some((entry) => entry[1] === "_agent.snapshot"),
+    ).toBe(false);
+    expect(recordOperation).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "snapshot",
+        receipt: expect.objectContaining({
+          documentKind: "synth",
+          attemptId: result.attemptId,
+        }),
+      }),
+    );
+  });
+
   it("records a completed snapshot with its exact native panel generation", async () => {
     const recordOperation = vi.fn();
     const { runtime } = runtimeHarness({ recordOperation });
@@ -1091,6 +1127,29 @@ describe("panel runtime topology composition", () => {
     ]);
     expect(call.mock.calls.map((entry) => entry[1])).not.toContain(
       "workers.resolveService",
+    );
+  });
+
+  it("establishes browser lifecycle ownership without claiming an explicitly selected context", async () => {
+    const { runtime, call } = runtimeHarness();
+    await runtime.createPanelSlot("about:blank");
+    const createdContext = call.mock.calls.find(
+      (entry) => entry[1] === "runtime.createContext",
+    )!;
+    const browserCreation = call.mock.calls.find(
+      (entry) => entry[1] === "runtime.createEntity",
+    )!;
+    expect(createdContext[2]).toEqual([
+      { contextId: (browserCreation[2][0] as { contextId: string }).contextId },
+    ]);
+    expect(call.mock.calls.indexOf(createdContext)).toBeLessThan(
+      call.mock.calls.indexOf(browserCreation),
+    );
+
+    call.mockClear();
+    await runtime.createPanelSlot("about:blank", { contextId: "ctx:existing" });
+    expect(call.mock.calls.map((entry) => entry[1])).not.toContain(
+      "runtime.createContext",
     );
   });
 

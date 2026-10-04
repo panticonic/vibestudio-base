@@ -6,6 +6,8 @@ import {
   vcsQueryResultSchema,
   vcsSearchResultSchema,
   vcsWalkResultSchema,
+  vcsReadMemoryResultSchema,
+  vcsNeighborsResultSchema,
   type VcsQueryResult,
   type VcsSearchResult,
   type VcsWalkResult,
@@ -14,6 +16,7 @@ import {
   createSemanticVcsSchema,
   createTrajectoryMirrorSchema,
 } from "./semanticVcsSchema.js";
+import { nativeInvocationId, nativeInvocationIdentity, type NativeInvocationSource } from "@vibestudio/service-schemas/nativeInvocation";
 import { PROV_CATALOG } from "./provenanceViews.js";
 import {
   SemanticWorkspace,
@@ -46,7 +49,18 @@ function complete<T>(result: SemanticDispatchResult): T {
  * One fixture with the shape every canonical question needs: a stated human
  * request, work under it, a commit, and a rejection of that work.
  */
-async function fixture() {
+async function fixture(nativeInput = false) {
+  const nativeSource: NativeInvocationSource = {
+    owner: { runtimeId: "agent:test", authoritySessionId: "lifetime:test", contextId: "context:test",
+      incarnation: "storage:test", channelId: "trajectory:test", source: "workers/agent", effectiveVersion: "state:test",
+      className: "Agent", objectKey: "test", executionDigest: "a".repeat(64) },
+    task: { taskId: 8, conversationId: 2, kind: "pi.tool", version: 1 },
+    operation: { kind: "tool", assistantEntryId: 7, callId: "call:test", name: "edit", argumentsDigest: "b".repeat(64) },
+  };
+  const originatingInput = { conversationId: 2, submissionId: 3, entryId: 4,
+    channelRef: { source: "workers/pubsub-channel", className: "PubSubChannel", objectKey: "input-channel" },
+    eventSequence: 5, envelopeId: "trajectory-event:prompt", messageId: "message:trigger", receiverParticipantId: "agent:test" };
+  const taskIngress = nativeInput ? { causalParent: { ...ingress.causalParent!, invocationId: nativeInvocationId(nativeSource) } } : ingress;
   const sql = await createInMemorySql();
   createSemanticVcsSchema(sql);
   createTrajectoryMirrorSchema(sql);
@@ -96,6 +110,16 @@ async function fixture() {
              NULL, NULL, NULL, NULL, ?)`,
     timestamp
   );
+  if (nativeInput) {
+    sql.exec("DELETE FROM trajectory_turns");
+    sql.exec("UPDATE trajectory_messages SET log_id='input-channel', turn_id=NULL WHERE message_id='message:trigger'");
+    sql.exec("UPDATE log_events SET log_id='input-channel', actor_json=?, payload_ref_json=? WHERE envelope_id='trajectory-event:prompt'",
+      JSON.stringify({ kind: "user", id: "user:alice", participantId: "user:alice" }),
+      JSON.stringify({ role: "user", blocks: [{ type: "text", content: "Cap the retry backoff at 30 seconds" }] }));
+    sql.exec("UPDATE trajectory_invocations SET invocation_id=?, turn_id=NULL, started_event_id='native-start'", nativeInvocationId(nativeSource));
+    sql.exec("INSERT INTO log_events (log_id, head, envelope_id, actor_json, payload_ref_json) VALUES ('trajectory:test','main','native-start',?,?)",
+      JSON.stringify({ kind: "agent", id: "agent:test" }), JSON.stringify({ nativeSource, originatingInput }));
+  }
   const store = new SemanticVcsStore(sql, () => timestamp);
   let ordinal = 0;
   const semantic = new SemanticWorkspace({
@@ -152,7 +176,7 @@ async function fixture() {
 
   const initial = store.initializeWorkspace("context:test", "command:genesis");
   const createDispatch = await semantic.dispatch("edit", {
-    ingress,
+    ingress: taskIngress,
     input: {
       contextId: "context:test",
       commandId: "command:create",
@@ -178,7 +202,7 @@ async function fixture() {
   }>(createDispatch);
   acknowledge(createDispatch);
   const commitDispatch = await semantic.dispatch("commit", {
-    ingress,
+    ingress: taskIngress,
     input: {
       contextId: "context:test",
       commandId: "command:commit",
@@ -195,7 +219,7 @@ async function fixture() {
   const file = store.facts.fileAtPath(root, repositoryId, "retry.ts")!;
 
   const capDispatch = await semantic.dispatch("edit", {
-    ingress,
+    ingress: taskIngress,
     input: {
       contextId: "context:test",
       commandId: "command:cap",
@@ -231,7 +255,7 @@ async function fixture() {
   }>(observedCapDispatch);
   acknowledge(observedCapDispatch);
   const capCommitDispatch = await semantic.dispatch("commit", {
-    ingress,
+    ingress: taskIngress,
     input: {
       contextId: "context:test",
       commandId: "command:cap-commit",
@@ -243,7 +267,7 @@ async function fixture() {
   acknowledge(capCommitDispatch);
 
   const revertDispatch = await semantic.dispatch("revert", {
-    ingress,
+    ingress: taskIngress,
     input: {
       contextId: "context:test",
       commandId: "command:revert-cap",
@@ -260,6 +284,8 @@ async function fixture() {
 
   return {
     sql,
+    nativeSource,
+    originatingInput,
     store,
     semantic,
     repositoryId,
@@ -294,6 +320,58 @@ const column = (result: VcsQueryResult, name: string): Array<string | number | b
 };
 
 describe("provenance walks", () => {
+  it("joins native work to the exact cross-channel input without a former turn projection", async () => {
+    const f = await fixture(true);
+    const result = await walk(f.semantic, { contextId: "context:test", walk: "cause",
+      subject: { kind: "file", state: f.workingHead, repositoryId: f.repositoryId, fileId: f.fileId },
+      visibilityContextIds: ["context:test"] });
+    expect(result.entries.some((entry) => entry.node.kind === "trajectory-turn")).toBe(false);
+    expect(result.entries.at(-1)).toMatchObject({
+      node: { kind: "trajectory-message", logId: "input-channel", messageId: "message:trigger" },
+      boundary: "human-statement", statement: { text: "Cap the retry backoff at 30 seconds", sender: "user" },
+    });
+    const text = "export const backoffMs = 5_000;\n";
+    const memory = vcsReadMemoryResultSchema.parse(complete(await f.semantic.dispatch("readMemory", {
+      ingress, input: { contextId: "context:test", path: "packages/fixture/retry.ts",
+        expectedContentHash: sha256Hex(new TextEncoder().encode(text)), range: { start: 0, end: text.length } },
+    })));
+    expect(memory.status).toBe("attached");
+    if (memory.status !== "attached") throw new Error("Native memory was not attached");
+    expect(memory.episodes.length).toBeGreaterThan(0);
+    expect(memory.episodes[0]?.cause).toMatchObject({
+      nativeInvocation: nativeInvocationIdentity(f.nativeSource), originatingInput: f.originatingInput, turn: null,
+      triggerText: "Cap the retry backoff at 30 seconds", sender: { kind: "user", id: "user:alice" },
+    });
+    const source = { kind: "trajectory-invocation", logId: "trajectory:test", head: "main", invocationId: nativeInvocationId(f.nativeSource) };
+    const target = { kind: "trajectory-message", logId: "input-channel", head: "main", messageId: "message:trigger" };
+    for (const root of [source, target]) {
+      const page = vcsNeighborsResultSchema.parse(complete(await f.semantic.dispatch("neighbors", { ingress, input: { root, limit: 20 } })));
+      expect(page.edges).toContainEqual({ kind: "triggered-by", from: source, to: target });
+    }
+    const visible = await query(f.semantic, { contextId: "context:test", query: "SELECT log_id, message_id FROM prov_messages", visibilityContextIds: ["context:test"] });
+    expect(visible.refusal).toBeNull();
+    expect(column(visible, "log_id")).toContain("input-channel");
+    expect(column(visible, "message_id")).toContain("message:trigger");
+    const hidden = await query(f.semantic, { contextId: "context:test", query: "SELECT log_id, message_id FROM prov_messages", visibilityContextIds: ["context:hidden"] });
+    expect(hidden.rows).toHaveLength(0);
+    const cohort = await walk(f.semantic, { contextId: "context:test", walk: "cohort", scope: "turn", subject: { kind: "work-unit", workUnitId: f.capped.workUnitId }, visibilityContextIds: ["context:test"] });
+    expect(cohort.entries.filter((entry) => entry.node.kind === "work-unit").length).toBeGreaterThan(1);
+  });
+  it("preserves an external client's originating request without inventing a human boundary", async () => {
+    const f = await fixture(true);
+    const text = "Create the export constant. Keep its batch size at 64 because the relay caps frames at 512 KiB.";
+    f.sql.exec("UPDATE log_events SET actor_json=?, payload_ref_json=? WHERE log_id='input-channel' AND envelope_id='trajectory-event:prompt'",
+      JSON.stringify({ kind: "external", id: "external:test", participantId: "external:test" }),
+      JSON.stringify({ role: "user", blocks: [{ type: "text", content: text }] }));
+    const result = await walk(f.semantic, { contextId: "context:test", walk: "cause",
+      subject: { kind: "file", state: f.workingHead, repositoryId: f.repositoryId, fileId: f.fileId },
+      visibilityContextIds: ["context:test"] });
+    const terminal = result.entries.at(-1)!;
+    expect(terminal.statement).toEqual({ text, sender: "external" });
+    expect(terminal.boundary).not.toBe("human-statement");
+    expect(result.notes).toContain("The chain ends at a message with no recorded source.");
+  });
+
   it("answers Q2 with one causal spine from an artifact to the human statement", async () => {
     const { semantic, fileId, repositoryId, workingHead } = await fixture();
     const result = await walk(semantic, {

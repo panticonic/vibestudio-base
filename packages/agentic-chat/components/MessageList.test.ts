@@ -44,11 +44,24 @@ vi.mock("../hooks/useStickToBottom.js", () => ({
   }),
 }));
 
-import type { ChatMessage, TaskCardPayload } from "@workspace/agentic-core";
+import {
+  chatMessagesFromChannelView,
+  type ChatMessage,
+  type TaskCardPayload,
+} from "@workspace/agentic-core";
+import {
+  createInitialChannelViewState,
+  reduceChannelView,
+  AGENTIC_PROTOCOL_VERSION,
+  AGENTIC_EVENT_PAYLOAD_KIND,
+} from "@workspace/agentic-protocol";
 import { LOCAL_FALLBACK_MODEL_REF } from "@workspace/model-catalog/catalog";
 import { ChatMessageActionsContext } from "../context/ChatContext.js";
 import { MessageList } from "./MessageList.js";
-import { latestSubagentActivities, SubagentRunCard } from "./SubagentRunCard.js";
+import {
+  latestSubagentActivities,
+  SubagentRunCard,
+} from "./SubagentRunCard.js";
 import { SubagentTranscriptContent } from "./SubagentTranscript.js";
 
 function makeMessage(overrides: Record<string, unknown>) {
@@ -84,7 +97,7 @@ describe("MessageList typing indicators (roster-based)", () => {
         participants: makeParticipant("agent-1", { typing: true }),
         selfId: "user-1",
         allParticipants: {},
-      } as never)
+      } as never),
     );
 
     expect(screen.getByText("AI Chat typing")).toBeTruthy();
@@ -97,7 +110,7 @@ describe("MessageList typing indicators (roster-based)", () => {
         participants: makeParticipant("agent-1", { typing: false }),
         selfId: "user-1",
         allParticipants: {},
-      } as never)
+      } as never),
     );
 
     expect(screen.queryByText("AI Chat typing")).toBeNull();
@@ -114,7 +127,7 @@ describe("MessageList typing indicators (roster-based)", () => {
         }),
         selfId: "user-1",
         allParticipants: {},
-      } as never)
+      } as never),
     );
 
     expect(screen.queryByText("User typing")).toBeNull();
@@ -138,15 +151,19 @@ describe("MessageList typing indicators (roster-based)", () => {
         participants: {},
         selfId: null,
         allParticipants: {},
-      } as never)
+      } as never),
     );
 
-    const secondary = document.body.querySelector('[data-message-tier="secondary"]');
+    const secondary = document.body.querySelector(
+      '[data-message-tier="secondary"]',
+    );
     expect(secondary).toBeTruthy();
     expect(secondary?.querySelector(".message-card-tier2")).toBeTruthy();
     expect(secondary?.textContent).toContain("intermediate step");
 
-    const primary = document.body.querySelector('[data-message-tier="primary"]');
+    const primary = document.body.querySelector(
+      '[data-message-tier="primary"]',
+    );
     expect(primary).toBeTruthy();
     expect(primary?.querySelector(".message-card-tier2")).toBeNull();
   });
@@ -186,7 +203,7 @@ describe("MessageList typing indicators (roster-based)", () => {
         participants: {},
         selfId: "user-1",
         allParticipants: {},
-      } as never)
+      } as never),
     );
 
     expect(screen.getByText("Read src/app.ts")).toBeTruthy();
@@ -207,13 +224,17 @@ describe("MessageList typing indicators (roster-based)", () => {
         participants: {},
         selfId: "user-1",
         allParticipants: {},
-      } as never)
+      } as never),
     );
 
-    fireEvent.click(screen.getByLabelText("Thinking: **Check:** - read files - run tests"));
+    fireEvent.click(
+      screen.getByLabelText("Thinking: **Check:** - read files - run tests"),
+    );
 
     expect(document.body.textContent).toContain("Check:");
-    await waitFor(() => expect(document.body.querySelectorAll("li")).toHaveLength(2));
+    await waitFor(() =>
+      expect(document.body.querySelectorAll("li")).toHaveLength(2),
+    );
   });
 
   it("renders compact thinking previews as markdown", async () => {
@@ -230,11 +251,13 @@ describe("MessageList typing indicators (roster-based)", () => {
         participants: {},
         selfId: "user-1",
         allParticipants: {},
-      } as never)
+      } as never),
     );
 
     await waitFor(() =>
-      expect(document.body.querySelector(".rt-r-weight-bold")?.textContent).toBe("repo")
+      expect(
+        document.body.querySelector(".rt-r-weight-bold")?.textContent,
+      ).toBe("repo"),
     );
   });
 
@@ -261,58 +284,75 @@ describe("MessageList typing indicators (roster-based)", () => {
         participants: {},
         selfId: "user-1",
         allParticipants: makeParticipant("agent-1", { handle: "ai-chat" }),
-      } as never)
+      } as never),
     );
 
     expect(screen.getByText("Interrupted")).toBeTruthy();
     expect(screen.getByText("Restart interrupted the response")).toBeTruthy();
     expect(
       screen.getByText(
-        "The partial response was discarded because replay is not enabled for this agent."
-      )
+        "The partial response was discarded because replay is not enabled for this agent.",
+      ),
     ).toBeTruthy();
     expect(document.body.querySelector(".message-card-lifecycle")).toBeTruthy();
   });
 
   it("offers scheduling for reset-aware model failures", async () => {
     const callMethod = vi.fn().mockResolvedValue({ scheduled: true });
+    const state = reduceChannelView(createInitialChannelViewState(), {
+      envelopeId: "ik:native:1:2:0:completed",
+      channelId: "channel-1",
+      seq: 1,
+      from: { kind: "agent", id: "agent-1", participantId: "agent-1" },
+      payloadKind: AGENTIC_EVENT_PAYLOAD_KIND,
+      contentClass: "internal",
+      externalKeys: [],
+      publishedAt: "2026-05-20T12:00:01.000Z",
+      payload: {
+        kind: "message.completed",
+        actor: { kind: "agent", id: "agent-1" },
+        causality: { messageId: "native:1:2:0" },
+        createdAt: "2026-05-20T12:00:01.000Z",
+        payload: {
+          protocol: AGENTIC_PROTOCOL_VERSION,
+          role: "assistant",
+          blocks: [],
+          outcome: "interrupted",
+          failure: {
+            reason: "The original model usage limit has been reached.",
+            code: "usage_limit_terminal",
+            recoverable: false,
+            resetAt: "2026-06-15T18:35:01.000Z",
+          },
+          metadata: {
+            nativeConversationId: 1,
+            nativeEntryId: 2,
+            nativeTaskId: 3,
+          },
+        },
+      },
+    } as never);
     render(
       React.createElement(MessageList, {
-        messages: [
-          makeMessage({
-            id: "diagnostic:msg-usage-limit",
-            senderId: "agent-1",
-            contentType: "diagnostic",
-            kind: "system",
-            content:
-              "The usage limit has been reached for GPT-5.6-Luna. Try again after Jun 15, 2026 at 6:35 PM UTC.",
-            complete: true,
-            diagnostic: {
-              messageId: "msg-usage-limit",
-              code: "message_failed",
-              failureCode: "usage_limit_terminal",
-              severity: "error",
-              title: "Model usage limit reached",
-              detail:
-                "The usage limit has been reached for GPT-5.6-Luna. Try again after Jun 15, 2026 at 6:35 PM UTC.",
-              resetAt: "2026-06-15T18:35:01.000Z",
-            },
-          }),
-        ],
+        messages: chatMessagesFromChannelView(state),
         participants: {},
         selfId: "user-1",
         allParticipants: makeParticipant("agent-1", { handle: "ai-chat" }),
         chat: { callMethod },
-      } as never)
+      } as never),
     );
 
     fireEvent.click(screen.getByRole("button", { name: /resume at reset/i }));
 
     await waitFor(() => {
-      expect(callMethod).toHaveBeenCalledWith("agent-1", "scheduleResumeAtReset", {
-        messageId: "msg-usage-limit",
-        resetAt: "2026-06-15T18:35:01.000Z",
-      });
+      expect(callMethod).toHaveBeenCalledWith(
+        "agent-1",
+        "scheduleResumeAtReset",
+        {
+          messageId: "native:1:2:0",
+          resetAt: "2026-06-15T18:35:01.000Z",
+        },
+      );
     });
     expect(await screen.findByText("Scheduled")).toBeTruthy();
   });
@@ -323,11 +363,14 @@ describe("MessageList typing indicators (roster-based)", () => {
       method: string;
       args: unknown;
     }> = [];
-    const callMethod = vi.fn(async (participantId: string, method: string, args: unknown) => {
-      calls.push({ participantId, method, args });
-      if (method === "getAgentSettings") return { model: "openai-codex:gpt-5.3" };
-      return { ok: true };
-    });
+    const callMethod = vi.fn(
+      async (participantId: string, method: string, args: unknown) => {
+        calls.push({ participantId, method, args });
+        if (method === "getAgentSettings")
+          return { model: "openai-codex:gpt-5.3" };
+        return { ok: true };
+      },
+    );
     const send = vi.fn(async () => undefined);
     render(
       React.createElement(MessageList, {
@@ -353,7 +396,7 @@ describe("MessageList typing indicators (roster-based)", () => {
         selfId: "user-1",
         allParticipants: makeParticipant("agent-1", { handle: "ai-chat" }),
         chat: { callMethod, send },
-      } as never)
+      } as never),
     );
 
     const retryButton = await screen.findByRole("button", {
@@ -363,7 +406,9 @@ describe("MessageList typing indicators (roster-based)", () => {
 
     fireEvent.click(retryButton);
 
-    await waitFor(() => expect(send).toHaveBeenCalledWith("retry", { tier: "primary" }));
+    await waitFor(() =>
+      expect(send).toHaveBeenCalledWith("retry", { tier: "primary" }),
+    );
     expect(calls.map((call) => [call.participantId, call.method])).toEqual([
       ["agent-1", "getAgentSettings"],
       ["agent-1", "setModel"],
@@ -405,15 +450,19 @@ describe("MessageList typing indicators (roster-based)", () => {
           selfId: "user-1",
           allParticipants: makeParticipant("agent-1", { handle: "ai-chat" }),
           chat: { callMethod, send },
-        } as never)
+        } as never),
       );
 
       fireEvent.click(await screen.findByRole("button", { name: /^retry$/i }));
 
-      await waitFor(() => expect(send).toHaveBeenCalledWith("retry", { tier: "primary" }));
+      await waitFor(() =>
+        expect(send).toHaveBeenCalledWith("retry", { tier: "primary" }),
+      );
       expect(callMethod).not.toHaveBeenCalled();
-      expect(screen.queryByRole("button", { name: /retry with local model/i })).toBeNull();
-    }
+      expect(
+        screen.queryByRole("button", { name: /retry with local model/i }),
+      ).toBeNull();
+    },
   );
 
   it("does not mark local retry ready or send retry when live model switching fails", async () => {
@@ -423,12 +472,15 @@ describe("MessageList typing indicators (roster-based)", () => {
       args: unknown;
     }> = [];
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-    const callMethod = vi.fn(async (participantId: string, method: string, args: unknown) => {
-      calls.push({ participantId, method, args });
-      if (method === "getAgentSettings") return { model: "openai-codex:gpt-5.3" };
-      if (method === "setModel") throw new Error("switch failed");
-      return { ok: true };
-    });
+    const callMethod = vi.fn(
+      async (participantId: string, method: string, args: unknown) => {
+        calls.push({ participantId, method, args });
+        if (method === "getAgentSettings")
+          return { model: "openai-codex:gpt-5.3" };
+        if (method === "setModel") throw new Error("switch failed");
+        return { ok: true };
+      },
+    );
     const send = vi.fn(async () => undefined);
     render(
       React.createElement(MessageList, {
@@ -454,7 +506,7 @@ describe("MessageList typing indicators (roster-based)", () => {
         selfId: "user-1",
         allParticipants: makeParticipant("agent-1", { handle: "ai-chat" }),
         chat: { callMethod, send },
-      } as never)
+      } as never),
     );
 
     const retryButton = await screen.findByRole("button", {
@@ -464,9 +516,13 @@ describe("MessageList typing indicators (roster-based)", () => {
 
     fireEvent.click(retryButton);
 
-    expect(await screen.findByRole("button", { name: /retry local failed/i })).toBeTruthy();
+    expect(
+      await screen.findByRole("button", { name: /retry local failed/i }),
+    ).toBeTruthy();
     expect(send).not.toHaveBeenCalled();
-    expect(calls.some((call) => call.method === "persist_agent_model")).toBe(false);
+    expect(calls.some((call) => call.method === "persist_agent_model")).toBe(
+      false,
+    );
     expect(screen.queryByText("Retry ready")).toBeNull();
     warn.mockRestore();
   });
@@ -515,8 +571,8 @@ describe("MessageList typing indicators (roster-based)", () => {
           selfId: "user-1",
           allParticipants: makeParticipant("agent-1", { handle: "ai-chat" }),
           chat: { callMethod },
-        } as never)
-      )
+        } as never),
+      ),
     );
 
     const startButton = await screen.findByRole("button", {
@@ -561,10 +617,12 @@ describe("MessageList typing indicators (roster-based)", () => {
         selfId: "user-1",
         allParticipants: makeParticipant("agent-1", { handle: "ai-chat" }),
         onCancelInvocation,
-      } as never)
+      } as never),
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "Cancel pending tool call" }));
+    fireEvent.click(
+      screen.getByRole("button", { name: "Cancel pending tool call" }),
+    );
 
     // The whole invocation + its sender (the owning agent) are passed so the
     // handler can route an eval cancel to the agent vs. abort a panel/channel call.
@@ -596,10 +654,12 @@ describe("MessageList typing indicators (roster-based)", () => {
         selfId: "user-1",
         allParticipants: makeParticipant("agent-1", { handle: "ai-chat" }),
         onCancelInvocation,
-      } as never)
+      } as never),
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "Cancel pending tool call" }));
+    fireEvent.click(
+      screen.getByRole("button", { name: "Cancel pending tool call" }),
+    );
 
     expect(onCancelInvocation).toHaveBeenCalledWith(invocation, "agent-1");
   });
@@ -628,7 +688,7 @@ describe("MessageList typing indicators (roster-based)", () => {
         participants: {},
         selfId: "user-1",
         allParticipants: {},
-      } as never)
+      } as never),
     );
 
     const pill = screen.getByTestId("invocation-pill");
@@ -668,14 +728,18 @@ describe("MessageList typing indicators (roster-based)", () => {
         selfId: "user-1",
         allParticipants: {},
         chat: { rpc: { call: rpcCall } },
-      } as never)
+      } as never),
     );
 
     fireEvent.click(screen.getByTestId("invocation-pill"));
 
     expect(document.body.textContent).toContain(longCode);
-    expect(screen.getAllByRole("button", { name: "Copy" }).length).toBeGreaterThan(0);
-    expect(document.body.textContent).toContain("Stored value reached transcript UI");
+    expect(
+      screen.getAllByRole("button", { name: "Copy" }).length,
+    ).toBeGreaterThan(0);
+    expect(document.body.textContent).toContain(
+      "Stored value reached transcript UI",
+    );
     expect(rpcCall).not.toHaveBeenCalled();
   });
 
@@ -723,21 +787,27 @@ describe("MessageList typing indicators (roster-based)", () => {
         participants: {},
         selfId: "user-1",
         allParticipants: {},
-      } as never)
+      } as never),
     );
 
     fireEvent.click(screen.getByTestId("invocation-pill"));
 
     expect(document.body.textContent).toContain("packages workers panels");
     expect(document.body.textContent).toContain("not a space-separated list");
-    expect(screen.getAllByRole("button", { name: "Copy" }).length).toBeGreaterThan(0);
+    expect(
+      screen.getAllByRole("button", { name: "Copy" }).length,
+    ).toBeGreaterThan(0);
 
-    fireEvent.click(screen.getByRole("button", { name: "Copy invocation details" }));
+    fireEvent.click(
+      screen.getByRole("button", { name: "Copy invocation details" }),
+    );
     await waitFor(() => {
       expect(writeText).toHaveBeenCalledWith(
-        expect.stringContaining('"path": "packages workers panels"')
+        expect.stringContaining('"path": "packages workers panels"'),
       );
-      expect(writeText).toHaveBeenCalledWith(expect.stringContaining("not a space-separated list"));
+      expect(writeText).toHaveBeenCalledWith(
+        expect.stringContaining("not a space-separated list"),
+      );
     });
   });
 
@@ -775,15 +845,14 @@ describe("MessageList typing indicators (roster-based)", () => {
           React.createElement(
             "div",
             { "data-testid": "inline-group" },
-            items.map((item) => item.type).join(",")
+            items.map((item) => item.type).join(","),
           ),
-      } as never)
+      } as never),
     );
 
-    expect(screen.getAllByTestId("inline-group").map((node) => node.textContent)).toEqual([
-      "invocation",
-      "typing",
-    ]);
+    expect(
+      screen.getAllByTestId("inline-group").map((node) => node.textContent),
+    ).toEqual(["invocation", "typing"]);
   });
 
   it("lets group and message overrides delegate to their complete stock renderers", () => {
@@ -811,18 +880,41 @@ describe("MessageList typing indicators (roster-based)", () => {
         participants: {},
         selfId: "user-1",
         allParticipants: {},
-        renderMessage: (_message: ChatMessage, _sender: unknown, defaultContent: React.ReactNode) =>
-          React.createElement("section", { "data-testid": "message-wrapper" }, defaultContent),
-        renderInlineGroup: (_items: InlineItem[], defaultContent: React.ReactNode) =>
-          React.createElement("section", { "data-testid": "group-wrapper" }, defaultContent),
+        renderMessage: (
+          _message: ChatMessage,
+          _sender: unknown,
+          defaultContent: React.ReactNode,
+        ) =>
+          React.createElement(
+            "section",
+            { "data-testid": "message-wrapper" },
+            defaultContent,
+          ),
+        renderInlineGroup: (
+          _items: InlineItem[],
+          defaultContent: React.ReactNode,
+        ) =>
+          React.createElement(
+            "section",
+            { "data-testid": "group-wrapper" },
+            defaultContent,
+          ),
         renderInvocation: () =>
-          React.createElement("span", { "data-testid": "custom-invocation" }, "BRIDGE ORDER"),
-      } as never)
+          React.createElement(
+            "span",
+            { "data-testid": "custom-invocation" },
+            "BRIDGE ORDER",
+          ),
+      } as never),
     );
 
-    expect(screen.getByTestId("message-wrapper").textContent).toContain("Captain's log");
+    expect(screen.getByTestId("message-wrapper").textContent).toContain(
+      "Captain's log",
+    );
     expect(
-      screen.getByTestId("group-wrapper").contains(screen.getByTestId("custom-invocation"))
+      screen
+        .getByTestId("group-wrapper")
+        .contains(screen.getByTestId("custom-invocation")),
     ).toBe(true);
   });
 
@@ -840,12 +932,14 @@ describe("MessageList typing indicators (roster-based)", () => {
         participants: {},
         selfId: "user-1",
         allParticipants: {},
-      } as never)
+      } as never),
     );
 
     expect(screen.queryByText("Invocation")).toBeNull();
     expect(screen.queryByText("Tool")).toBeNull();
-    expect(document.body.querySelector('[data-testid="invocation-pill"]')).toBeNull();
+    expect(
+      document.body.querySelector('[data-testid="invocation-pill"]'),
+    ).toBeNull();
   });
 
   it("renders durable approval cards", () => {
@@ -868,7 +962,7 @@ describe("MessageList typing indicators (roster-based)", () => {
         participants: {},
         selfId: "user-1",
         allParticipants: {},
-      } as never)
+      } as never),
     );
 
     expect(screen.getByText("Approval requested")).toBeTruthy();
@@ -883,7 +977,8 @@ describe("MessageList typing indicators (roster-based)", () => {
         messages: [
           makeMessage({
             id: "mdx-1",
-            content: '<ActionButton message="Refresh the data">Refresh</ActionButton>',
+            content:
+              '<ActionButton message="Refresh the data">Refresh</ActionButton>',
             complete: true,
           }),
         ],
@@ -891,10 +986,12 @@ describe("MessageList typing indicators (roster-based)", () => {
         selfId: "user-1",
         allParticipants: {},
         mdxActions: { publishMessage },
-      } as never)
+      } as never),
     );
 
-    const button = await waitFor(() => screen.getByRole("button", { name: "Refresh" }));
+    const button = await waitFor(() =>
+      screen.getByRole("button", { name: "Refresh" }),
+    );
     fireEvent.click(button);
 
     expect(publishMessage).toHaveBeenCalledWith("Refresh the data");
@@ -906,17 +1003,20 @@ describe("MessageList typing indicators (roster-based)", () => {
         messages: [
           makeMessage({
             id: "feedback-title-1",
-            content: "<FeedbackFormTitle>System test feedback</FeedbackFormTitle>",
+            content:
+              "<FeedbackFormTitle>System test feedback</FeedbackFormTitle>",
             complete: true,
           }),
         ],
         participants: {},
         selfId: "user-1",
         allParticipants: {},
-      } as never)
+      } as never),
     );
 
-    expect(await screen.findByRole("heading", { name: "System test feedback" })).toBeTruthy();
+    expect(
+      await screen.findByRole("heading", { name: "System test feedback" }),
+    ).toBeTruthy();
   });
 
   it("renders the documented OpenInNewWindow MDX icon", async () => {
@@ -932,7 +1032,7 @@ describe("MessageList typing indicators (roster-based)", () => {
         participants: {},
         selfId: "user-1",
         allParticipants: {},
-      } as never)
+      } as never),
     );
 
     await waitFor(() => {
@@ -950,24 +1050,27 @@ describe("MessageList typing indicators (roster-based)", () => {
           messages: [
             makeMessage({
               id: "missing-mdx-1",
-              content: "<MissingTranscriptWidget>Fallback copy</MissingTranscriptWidget>",
+              content:
+                "<MissingTranscriptWidget>Fallback copy</MissingTranscriptWidget>",
               complete: true,
             }),
           ],
           participants: {},
           selfId: "user-1",
           allParticipants: {},
-        } as never)
+        } as never),
       );
 
       await waitFor(() => {
         expect(
-          debugSpy.mock.calls.some(([message]) => String(message).includes("MDX render failed"))
+          debugSpy.mock.calls.some(([message]) =>
+            String(message).includes("MDX render failed"),
+          ),
         ).toBe(true);
       });
 
       expect(document.body.textContent).toContain(
-        "<MissingTranscriptWidget>Fallback copy</MissingTranscriptWidget>"
+        "<MissingTranscriptWidget>Fallback copy</MissingTranscriptWidget>",
       );
     } finally {
       debugSpy.mockRestore();
@@ -1007,20 +1110,22 @@ describe("SubagentRunCard", () => {
           id: "run-description",
           execution: {
             status: "complete",
-            description: "**Final report** uses `inline code` and [a link](https://example.com).",
+            description:
+              "**Final report** uses `inline code` and [a link](https://example.com).",
           },
           subagent: {
             runId: "run-description",
             mode: "fresh",
             taskChannelId: "task-run-description",
             contextId: "ctx-run-description",
-            childEntityId: "do:workers/agent-worker:AiChatWorker:subagent-run-description",
+            childEntityId:
+              "do:workers/agent-worker:AiChatWorker:subagent-run-description",
             childParticipantId: "participant-run-description",
             label: "Report renderer",
           },
           complete: true,
         }),
-      })
+      }),
     );
 
     const preview = document.body.querySelector(".subagent-update-preview");
@@ -1043,13 +1148,14 @@ describe("SubagentRunCard", () => {
             mode: "fresh",
             taskChannelId: "task-run-2",
             contextId: "ctx-run-2",
-            childEntityId: "do:workers/agent-worker:AiChatWorker:subagent-run-2",
+            childEntityId:
+              "do:workers/agent-worker:AiChatWorker:subagent-run-2",
             childParticipantId: "participant-run-2",
             label: "Drive helper fix",
           },
           complete: false,
         }),
-      })
+      }),
     );
 
     expect(screen.getByText("Open the subagent conversation")).toBeTruthy();
@@ -1128,8 +1234,8 @@ describe("SubagentRunCard", () => {
             complete: true,
           }) as ChatMessage,
         ],
-        "child-participant"
-      )
+        "child-participant",
+      ),
     ).toEqual([
       {
         prefix: "Update",
@@ -1149,7 +1255,9 @@ describe("ordinary task presentation", () => {
         status: "complete",
         description: "Committed the Flowboard UX upgrade.",
         result: {
-          protocolContent: [{ type: "text", text: "Committed the Flowboard UX upgrade." }],
+          protocolContent: [
+            { type: "text", text: "Committed the Flowboard UX upgrade." },
+          ],
           details: { sourceEventId: "workspace-event:abc123" },
         },
         isError: false,
@@ -1171,13 +1279,15 @@ describe("ordinary task presentation", () => {
         participants: {},
         selfId: "user-1",
         allParticipants: {},
-      } as never)
+      } as never),
     );
 
     expect(screen.getByTestId("task-run-card")).toBeTruthy();
     expect(screen.getByText("Subagent")).toBeTruthy();
     expect(screen.getByText("Complete")).toBeTruthy();
-    expect(screen.getByText("Committed the Flowboard UX upgrade.")).toBeTruthy();
+    expect(
+      screen.getByText("Committed the Flowboard UX upgrade."),
+    ).toBeTruthy();
     expect(document.body.textContent).not.toContain(serialized);
 
     fireEvent.click(screen.getByText("Result details"));
@@ -1210,11 +1320,13 @@ describe("SubagentTranscriptContent", () => {
           loadEarlierMessages,
           retry: vi.fn(),
         },
-      })
+      }),
     );
 
     loadEarlierMessages.mockClear();
-    fireEvent.click(screen.getByRole("button", { name: "Load earlier messages" }));
+    fireEvent.click(
+      screen.getByRole("button", { name: "Load earlier messages" }),
+    );
     expect(loadEarlierMessages).toHaveBeenCalledOnce();
   });
 
@@ -1239,10 +1351,12 @@ describe("SubagentTranscriptContent", () => {
           loadEarlierMessages: vi.fn(),
           retry,
         },
-      })
+      }),
     );
 
-    expect(screen.getByText("Loaded child history remains readable.")).toBeTruthy();
+    expect(
+      screen.getByText("Loaded child history remains readable."),
+    ).toBeTruthy();
     expect(screen.getByText(/loaded history is preserved/i)).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Retry refresh" }));
     expect(retry).toHaveBeenCalledOnce();
@@ -1263,7 +1377,7 @@ describe("SubagentTranscriptContent", () => {
           loadEarlierMessages: vi.fn(),
           retry,
         },
-      })
+      }),
     );
 
     expect(screen.queryByText(/Loading the child/)).toBeNull();

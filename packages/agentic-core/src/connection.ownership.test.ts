@@ -44,7 +44,7 @@ const options = { channelId: "chat", methods: {} };
 beforeEach(() => vi.resetAllMocks());
 
 describe("connection attempt ownership", () => {
-  it("does not disconnect a newer connection when an old resolver rejects late", async () => {
+  it("joins the replaced resolver before connecting its successor", async () => {
     const old = deferred<string>();
     vi.mocked(resolveRpcChannelTarget)
       .mockReturnValueOnce(old.promise)
@@ -59,9 +59,12 @@ describe("connection attempt ownership", () => {
     );
     const oldSignal = vi.mocked(resolveRpcChannelTarget).mock.calls[0]![0]
       .signal;
-    await value.connect(options);
+    const replacement = value.connect(options);
+    expect(oldSignal?.aborted).toBe(true);
+    expect(connectViaRpc).not.toHaveBeenCalled();
     old.reject(new Error("old resolution failed"));
     await rejected;
+    await replacement;
     expect(oldSignal?.aborted).toBe(true);
     expect(value.client).toBe(next);
     expect(value.connected).toBe(true);
@@ -70,11 +73,13 @@ describe("connection attempt ownership", () => {
     await value.disconnect();
   });
 
-  it("closes only the abandoned client when replay finishes after replacement", async () => {
+  it("joins the abandoned replay and its close before connecting its successor", async () => {
     vi.mocked(resolveRpcChannelTarget).mockResolvedValue("channel");
     const replay = deferred<void>();
     const old = client("old");
     old.ready.mockReturnValue(replay.promise);
+    const leave = deferred<void>();
+    old.close.mockReturnValue(leave.promise);
     const next = client("next");
     vi.mocked(connectViaRpc)
       .mockReturnValueOnce(old as never)
@@ -83,9 +88,15 @@ describe("connection attempt ownership", () => {
     const abandoned = value.connect(options);
     const rejected = expect(abandoned).rejects.toThrow("superseded");
     await vi.waitFor(() => expect(old.ready).toHaveBeenCalled());
-    await value.connect(options);
+    const replacement = value.connect(options);
+    expect(connectViaRpc).toHaveBeenCalledTimes(1);
     replay.resolve();
+    await vi.waitFor(() => expect(old.close).toHaveBeenCalledTimes(1));
+    expect(connectViaRpc).toHaveBeenCalledTimes(1);
+    expect(value.connected).toBe(false);
+    leave.resolve();
     await rejected;
+    await replacement;
     expect(old.close).toHaveBeenCalledTimes(1);
     expect(next.close).not.toHaveBeenCalled();
     expect(value.client).toBe(next);

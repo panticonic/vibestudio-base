@@ -5,10 +5,17 @@
  * this card payload for the React transcript; it is not a channel protocol.
  */
 import type { InvocationOutcome } from "@workspace/agentic-protocol";
+import type {
+  NativeInvocationSource,
+  NativeOriginatingInput,
+} from "@vibestudio/service-schemas/nativeInvocation";
 
 export interface InvocationCardPayload {
   id: string;
   transportCallId?: string;
+  /** Immutable attribution retained by the canonical channel projection. */
+  nativeSource?: NativeInvocationSource;
+  originatingInput?: NativeOriginatingInput | null;
   name: string;
   arguments: Record<string, unknown>;
   execution: ToolExecutionState;

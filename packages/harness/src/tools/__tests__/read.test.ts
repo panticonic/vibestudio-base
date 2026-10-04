@@ -1,5 +1,6 @@
+import { executeTool, toolResultDetails } from "../../testing/native-tool.js";
 import { describe, it, expect, vi } from "vitest";
-import { Value } from "@sinclair/typebox/value";
+import { Value } from "typebox/value";
 import { createReadBinaryTool, createReadTool } from "../read.js";
 import { createMemoryWorkspaceFileObservationStore } from "../file-observations.js";
 import { StubFs } from "./stub-fs.js";
@@ -13,7 +14,8 @@ function boundedText(text: string, offset = 1, limit = 2_000) {
   const prefix = lines.slice(0, startIndex).join("\n");
   const start = startIndex === 0 ? 0 : prefix.length + 1;
   const value = selected.join("\n");
-  const endLine = selected.length > 0 ? offset + selected.length - 1 : offset - 1;
+  const endLine =
+    selected.length > 0 ? offset + selected.length - 1 : offset - 1;
   const truncated = startIndex + selected.length < lines.length;
   return {
     text: value,
@@ -27,7 +29,9 @@ function boundedText(text: string, offset = 1, limit = 2_000) {
     start,
     end: start + value.length,
     truncated,
-    ...(truncated ? { truncatedBy: "lines" as const, nextOffset: endLine + 1 } : {}),
+    ...(truncated
+      ? { truncatedBy: "lines" as const, nextOffset: endLine + 1 }
+      : {}),
     firstLineExceedsLimit: false,
   };
 }
@@ -38,12 +42,16 @@ describe("createReadTool", () => {
     const readFile = vi.spyOn(fs, "readFile");
     const observations = createMemoryWorkspaceFileObservationStore();
     const tool = createReadTool(CWD, fs, { observations });
-    const result = await tool.execute("call-1", { path: "hello.txt" });
+    const result = await executeTool(
+      tool,
+      { path: "hello.txt" },
+      { callId: "call-1" },
+    );
     expect(result.content[0]).toMatchObject({
       type: "text",
       text: "hello\nworld",
     });
-    expect(result.details.path).toBe("hello.txt");
+    expect(toolResultDetails(result).path).toBe("hello.txt");
     expect(result.content).toHaveLength(1);
     expect(JSON.stringify(result)).not.toContain("contentHash");
     expect(JSON.stringify(result)).not.toContain("workspace-read-receipt");
@@ -94,6 +102,7 @@ describe("createReadTool", () => {
             createdAt: "2026-07-01T10:01:00.000Z",
           },
           arrival: null,
+          cause: null,
         },
       ],
       history: [],
@@ -101,7 +110,8 @@ describe("createReadTool", () => {
     }));
     const rpc = {
       call: vi.fn(async (_target: string, method: string) => {
-        if (method !== "fs.readText") throw new Error(`Unexpected RPC ${method}`);
+        if (method !== "fs.readText")
+          throw new Error(`Unexpected RPC ${method}`);
         return {
           ...boundedText("first\nsecond\nthird", 2, 1),
           contentHash: "b".repeat(64),
@@ -116,11 +126,15 @@ describe("createReadTool", () => {
       },
     });
 
-    const result = await tool.execute("call-memory", {
-      path: "packages/example/src/value.ts",
-      offset: 2,
-      limit: 1,
-    });
+    const result = await executeTool(
+      tool,
+      {
+        path: "packages/example/src/value.ts",
+        offset: 2,
+        limit: 1,
+      },
+      { callId: "call-memory" },
+    );
 
     expect(readMemory).toHaveBeenCalledWith({
       contextId: "context:test",
@@ -137,16 +151,20 @@ describe("createReadTool", () => {
     expect(result.content[1]).toMatchObject({
       type: "text",
       text: expect.stringContaining(
-        "workspace memory · why packages/example/src/value.ts lines 2-2 exist"
+        "workspace memory · why packages/example/src/value.ts lines 2-2 exist",
       ),
     });
     expect((result.content[1] as { text: string }).text).toContain(
-      'stated: "Keep the retry budget owned by the caller"'
+      'stated: "Keep the retry budget owned by the caller"',
     );
     // Without a reference store the renderer names the kind and nothing else:
     // a content-addressed identity is never rendered to the model.
-    expect((result.content[1] as { text: string }).text).toContain("change change");
-    expect((result.content[1] as { text: string }).text).not.toContain("change:value");
+    expect((result.content[1] as { text: string }).text).toContain(
+      "change change",
+    );
+    expect((result.content[1] as { text: string }).text).not.toContain(
+      "change:value",
+    );
     expect(result.details).toMatchObject({
       displayedRange: {
         coordinateKind: "utf16",
@@ -175,16 +193,20 @@ describe("createReadTool", () => {
       },
     });
 
-    const result = await tool.execute("call-memory-failure", {
-      path: "packages/example/src/value.ts",
-    });
+    const result = await executeTool(
+      tool,
+      {
+        path: "packages/example/src/value.ts",
+      },
+      { callId: "call-memory-failure" },
+    );
 
     expect(result.content[0]).toMatchObject({
       type: "text",
       text: "export const value = 1;",
     });
     expect(result.content).toHaveLength(1);
-    expect(result.details.provenance).toEqual({
+    expect(toolResultDetails(result).provenance).toEqual({
       status: "unavailable",
       path: "packages/example/src/value.ts",
       reason: "semantic projection unavailable",
@@ -198,13 +220,15 @@ describe("createReadTool", () => {
       .spyOn(fs, "readFile")
       .mockRejectedValueOnce(
         new Error(
-          "DO dispatch fetch failed: fetch failed (cause: SocketError: other side closed code=UND_ERR_SOCKET)"
-        )
+          "DO dispatch fetch failed: fetch failed (cause: SocketError: other side closed code=UND_ERR_SOCKET)",
+        ),
       )
       .mockImplementation(originalReadFile);
     const tool = createReadTool(CWD, fs);
 
-    await expect(tool.execute("call-1", { path: "hello.txt" })).resolves.toMatchObject({
+    await expect(
+      executeTool(tool, { path: "hello.txt" }, { callId: "call-1" }),
+    ).resolves.toMatchObject({
       content: [{ type: "text", text: "hello" }],
     });
     expect(readFile).toHaveBeenCalledTimes(2);
@@ -220,14 +244,20 @@ describe("createReadTool", () => {
     const stat = vi.spyOn(fs, "stat");
     const tool = createReadTool(CWD, fs);
 
-    const result = await tool.execute("call-1", { path: "skills" });
+    const result = await executeTool(
+      tool,
+      { path: "skills" },
+      { callId: "call-1" },
+    );
 
     expect(result.details).toMatchObject({
       path: "skills",
       engine: "runtime-fs",
       directory: true,
     });
-    expect((result.content[0] as { text: string }).text).toBe("README.md\ngit/");
+    expect((result.content[0] as { text: string }).text).toBe(
+      "README.md\ngit/",
+    );
     expect(stat).not.toHaveBeenCalled();
   });
 
@@ -240,16 +270,22 @@ describe("createReadTool", () => {
     });
     const tool = createReadTool(CWD, fs);
 
-    const result = await tool.execute("call-1", {
-      path: "panel/index.html",
-    });
+    const result = await executeTool(
+      tool,
+      {
+        path: "panel/index.html",
+      },
+      { callId: "call-1" },
+    );
 
     expect(result.details).toMatchObject({
       path: "panel/index.html",
       missing: true,
       suggestions: expect.arrayContaining(["index.ts", "package.json"]),
     });
-    expect((result.content[0] as { text: string }).text).toContain("Use ls/find");
+    expect((result.content[0] as { text: string }).text).toContain(
+      "Use ls/find",
+    );
   });
 
   it("resolves a unique workspace skill name when its guessed skills/ path is absent", async () => {
@@ -257,14 +293,18 @@ describe("createReadTool", () => {
     const rpc = {
       call: vi.fn(async (_target: string, method: string) => {
         if (method === "extensions.invoke") {
-          const error = new Error("ENOENT: guessed skill path is absent") as Error & {
+          const error = new Error(
+            "ENOENT: guessed skill path is absent",
+          ) as Error & {
             code: string;
           };
           error.code = "ENOENT";
           throw error;
         }
         if (method === "fs.readText") {
-          const error = new Error("ENOENT: guessed skill path is absent") as Error & {
+          const error = new Error(
+            "ENOENT: guessed skill path is absent",
+          ) as Error & {
             code: string;
           };
           error.code = "ENOENT";
@@ -286,9 +326,13 @@ describe("createReadTool", () => {
     };
     const tool = createReadTool(CWD, fs, { rpc: rpc as never });
 
-    const result = await tool.execute("call-1", {
-      path: "skills/git-bridge/SKILL.md",
-    });
+    const result = await executeTool(
+      tool,
+      {
+        path: "skills/git-bridge/SKILL.md",
+      },
+      { callId: "call-1" },
+    );
 
     expect(result.content[0]).toMatchObject({
       type: "text",
@@ -306,7 +350,7 @@ describe("createReadTool", () => {
     const input = { path: "hello.txt" };
 
     expect(Value.Check(tool.parameters, input)).toBe(true);
-    const result = await tool.execute("call-1", input);
+    const result = await executeTool(tool, input, { callId: "call-1" });
     expect(result.content[0]).toMatchObject({
       type: "text",
       text: "hello\nworld",
@@ -315,7 +359,7 @@ describe("createReadTool", () => {
 
   it("advertises all read locations through one provider-friendly object schema", () => {
     const tool = createReadTool(CWD, new StubFs({ files: {} }));
-    const parameters = tool.parameters as Record<string, unknown>;
+    const parameters = tool.parameters as unknown as Record<string, unknown>;
     const digest = "a".repeat(64);
 
     expect(parameters["type"]).toBe("object");
@@ -328,9 +372,11 @@ describe("createReadTool", () => {
         encoding: "base64",
         offset: 0,
         limit: 512,
-      })
+      }),
     ).toBe(false);
-    expect(Value.Check(tool.parameters, { target: "file:README.md", kind: "file" })).toBe(true);
+    expect(
+      Value.Check(tool.parameters, { target: "file:README.md", kind: "file" }),
+    ).toBe(true);
     expect(
       Value.Check(tool.parameters, {
         resource: {
@@ -342,7 +388,7 @@ describe("createReadTool", () => {
           encoding: "json",
           description: "Tool result",
         },
-      })
+      }),
     ).toBe(true);
   });
 
@@ -352,12 +398,12 @@ describe("createReadTool", () => {
     const input = { target: "file:hello.txt", kind: "file" as const };
 
     expect(Value.Check(tool.parameters, input)).toBe(true);
-    const result = await tool.execute("call-1", input);
+    const result = await executeTool(tool, input, { callId: "call-1" });
     expect(result.content[0]).toMatchObject({
       type: "text",
       text: "hello\nworld",
     });
-    expect(result.details.path).toBe("hello.txt");
+    expect(toolResultDetails(result).path).toBe("hello.txt");
   });
 
   it("reads a typed tool artifact resource without translating it into a path", async () => {
@@ -382,7 +428,11 @@ describe("createReadTool", () => {
       rpc: rpc as never,
     });
 
-    const result = await tool.execute("call-artifact", { resource });
+    const result = await executeTool(
+      tool,
+      { resource },
+      { callId: "call-artifact" },
+    );
 
     expect(result.content[0]).toMatchObject({
       type: "text",
@@ -392,14 +442,20 @@ describe("createReadTool", () => {
   });
 
   it("respects offset and limit", async () => {
-    const lines = Array.from({ length: 10 }, (_, i) => `line ${i + 1}`).join("\n");
+    const lines = Array.from({ length: 10 }, (_, i) => `line ${i + 1}`).join(
+      "\n",
+    );
     const fs = new StubFs({ files: { [`${CWD}/big.txt`]: lines } });
     const tool = createReadTool(CWD, fs);
-    const result = await tool.execute("call-1", {
-      path: "big.txt",
-      offset: 3,
-      limit: 2,
-    });
+    const result = await executeTool(
+      tool,
+      {
+        path: "big.txt",
+        offset: 3,
+        limit: 2,
+      },
+      { callId: "call-1" },
+    );
     const text = (result.content[0] as { text: string }).text;
     // Selected slice "line 3\nline 4" plus a continuation hint.
     expect(text).toContain("line 3");
@@ -411,13 +467,17 @@ describe("createReadTool", () => {
     const fs = new StubFs({ files: { [`${CWD}/small.txt`]: "one\ntwo" } });
     const tool = createReadTool(CWD, fs);
 
-    const result = await tool.execute("call-1", {
-      path: "small.txt",
-      offset: 615,
-    });
+    const result = await executeTool(
+      tool,
+      {
+        path: "small.txt",
+        offset: 615,
+      },
+      { callId: "call-1" },
+    );
 
     expect((result.content[0] as { text: string }).text).toContain(
-      "Offset 615 is beyond end of file (2 lines total)"
+      "Offset 615 is beyond end of file (2 lines total)",
     );
     expect(result.details).toMatchObject({
       path: "small.txt",
@@ -435,18 +495,24 @@ describe("createReadTool", () => {
     const rpc = {
       call: vi.fn().mockImplementation((_target, method) => {
         if (method === "fs.readText")
-          return Promise.resolve(boundedText("line 1\nline 2\nline 3\nline 4", 3, 2));
+          return Promise.resolve(
+            boundedText("line 1\nline 2\nline 3\nline 4", 3, 2),
+          );
         return Promise.resolve([]);
       }),
       stream: vi.fn(async () => new Response()),
     };
     const tool = createReadTool(CWD, fs, { rpc });
 
-    const result = await tool.execute("call-1", {
-      path: "big.txt",
-      offset: 3,
-      limit: 2,
-    });
+    const result = await executeTool(
+      tool,
+      {
+        path: "big.txt",
+        offset: 3,
+        limit: 2,
+      },
+      { callId: "call-1" },
+    );
 
     expect((result.content[0] as { text: string }).text).toBe("line 3\nline 4");
     expect(result.details).toMatchObject({
@@ -459,13 +525,13 @@ describe("createReadTool", () => {
     expect(rpc.call).not.toHaveBeenCalledWith(
       "main",
       "extensions.invoke",
-      expect.arrayContaining(["@workspace-extensions/file-tools"])
+      expect.arrayContaining(["@workspace-extensions/file-tools"]),
     );
     expect(rpc.call).toHaveBeenCalledWith(
       "main",
       "fs.readText",
       [`${CWD}/big.txt`, { offset: 3, limit: 2, maxBytes: 50 * 1024 }],
-      undefined
+      undefined,
     );
   });
 
@@ -475,7 +541,8 @@ describe("createReadTool", () => {
     const readFile = vi.spyOn(fs, "readFile");
     const rpc = {
       call: vi.fn().mockImplementation((_target, method) => {
-        if (method !== "fs.readBytes") throw new Error(`Unexpected RPC ${method}`);
+        if (method !== "fs.readBytes")
+          throw new Error(`Unexpected RPC ${method}`);
         return Promise.resolve({
           base64: bytes.subarray(1, 4).toString("base64"),
           contentHash: "c".repeat(64),
@@ -497,7 +564,7 @@ describe("createReadTool", () => {
       limit: 3,
     };
     expect(Value.Check(tool.parameters, input)).toBe(true);
-    const result = await tool.execute("call-bytes", input);
+    const result = await executeTool(tool, input, { callId: "call-bytes" });
 
     expect(JSON.parse((result.content[0] as { text: string }).text)).toEqual({
       path: "value.bin",
@@ -515,7 +582,7 @@ describe("createReadTool", () => {
       "main",
       "fs.readBytes",
       [`${CWD}/value.bin`, { offset: 1, limit: 3 }],
-      undefined
+      undefined,
     );
     expect(readFile).not.toHaveBeenCalled();
   });
@@ -530,14 +597,14 @@ describe("createReadTool", () => {
         path: "value.bin",
         encoding: "base64",
         limit: 3,
-      })
+      }),
     ).toBe(false);
     expect(
       Value.Check(binary.parameters, {
         path: "value.bin",
         offset: 1,
         limit: 3,
-      })
+      }),
     ).toBe(true);
     expect(read.description).toContain("extensionless screenshots");
     expect(read.description).toContain("model-visible image content");
@@ -550,66 +617,85 @@ describe("createReadTool", () => {
       code: "ENOEXT",
     });
     const rpc = {
-      call: vi.fn().mockImplementation((_target: string, method: string, args: unknown[]) => {
-        if (method === "fs.readText") return Promise.resolve(boundedText("approval guide"));
-        if (
-          method === "extensions.invoke" &&
-          (args as unknown[])[0] === "@workspace-extensions/file-tools"
-        ) {
-          return Promise.reject(unavailable);
-        }
-        if (
-          method === "extensions.invoke" &&
-          (args as unknown[])[0] === "@workspace-extensions/image-service"
-        ) {
-          return Promise.reject(unavailable);
-        }
-        return Promise.resolve([]);
-      }),
+      call: vi
+        .fn()
+        .mockImplementation(
+          (_target: string, method: string, args: unknown[]) => {
+            if (method === "fs.readText")
+              return Promise.resolve(boundedText("approval guide"));
+            if (
+              method === "extensions.invoke" &&
+              (args as unknown[])[0] === "@workspace-extensions/file-tools"
+            ) {
+              return Promise.reject(unavailable);
+            }
+            if (
+              method === "extensions.invoke" &&
+              (args as unknown[])[0] === "@workspace-extensions/image-service"
+            ) {
+              return Promise.reject(unavailable);
+            }
+            return Promise.resolve([]);
+          },
+        ),
       stream: vi.fn(async () => new Response()),
     };
     const tool = createReadTool(CWD, fs, { rpc });
 
-    await expect(tool.execute("call-1", { path: "guide.md" })).resolves.toMatchObject({
+    await expect(
+      executeTool(tool, { path: "guide.md" }, { callId: "call-1" }),
+    ).resolves.toMatchObject({
       content: [{ type: "text", text: "approval guide" }],
       details: { path: "guide.md", engine: "runtime-fs" },
     });
     expect(rpc.call).not.toHaveBeenCalledWith(
       "main",
       "extensions.invoke",
-      expect.arrayContaining(["@workspace-extensions/image-service"])
+      expect.arrayContaining(["@workspace-extensions/image-service"]),
     );
   });
 
   it("keeps image reads on the image-service path", async () => {
-    const pngBytes = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+    const pngBytes = new Uint8Array([
+      0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
+    ]);
     const fs = new StubFs({ files: { [`${CWD}/pic.png`]: pngBytes } });
     const readFile = vi.spyOn(fs, "readFile");
     const rpc = {
-      call: vi.fn().mockImplementation((_target: string, method: string, args: unknown[]) => {
-        if (method === "extensions.streamingMethods") return Promise.resolve([]);
-        const [extensionName, extensionMethod] = args;
-        expect(method).toBe("extensions.invoke");
-        expect(extensionName).toBe("@workspace-extensions/image-service");
-        if (extensionMethod === "detectMimeType") return Promise.resolve("image/png");
-        if (extensionMethod === "resize") {
-          return Promise.resolve({
-            data: Buffer.from(pngBytes).toString("base64"),
-            mimeType: "image/png",
-            width: 8,
-            height: 8,
-            originalWidth: 8,
-            originalHeight: 8,
-            wasResized: false,
-          });
-        }
-        return Promise.resolve(null);
-      }),
+      call: vi
+        .fn()
+        .mockImplementation(
+          (_target: string, method: string, args: unknown[]) => {
+            if (method === "extensions.streamingMethods")
+              return Promise.resolve([]);
+            const [extensionName, extensionMethod] = args;
+            expect(method).toBe("extensions.invoke");
+            expect(extensionName).toBe("@workspace-extensions/image-service");
+            if (extensionMethod === "detectMimeType")
+              return Promise.resolve("image/png");
+            if (extensionMethod === "resize") {
+              return Promise.resolve({
+                data: Buffer.from(pngBytes).toString("base64"),
+                mimeType: "image/png",
+                width: 8,
+                height: 8,
+                originalWidth: 8,
+                originalHeight: 8,
+                wasResized: false,
+              });
+            }
+            return Promise.resolve(null);
+          },
+        ),
       stream: vi.fn(async () => new Response()),
     };
     const tool = createReadTool(CWD, fs, { rpc });
 
-    const result = await tool.execute("call-1", { path: "pic.png" });
+    const result = await executeTool(
+      tool,
+      { path: "pic.png" },
+      { callId: "call-1" },
+    );
 
     const last = result.content[result.content.length - 1] as {
       type: string;
@@ -621,45 +707,59 @@ describe("createReadTool", () => {
     expect(rpc.call).not.toHaveBeenCalledWith(
       "main",
       "extensions.invoke",
-      expect.arrayContaining(["@workspace-extensions/file-tools", "read"])
+      expect.arrayContaining(["@workspace-extensions/file-tools", "read"]),
     );
   });
 
   it("magic-sniffs extensionless runtime screenshots as image content", async () => {
-    const pngBytes = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+    const pngBytes = new Uint8Array([
+      0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
+    ]);
     const screenshotPath = `${CWD}/.tmp/panel-capture-123`;
     const fs = new StubFs({ files: { [screenshotPath]: pngBytes } });
     const readFile = vi.spyOn(fs, "readFile");
     const rpc = {
-      call: vi.fn().mockImplementation((_target: string, method: string, args: unknown[]) => {
-        if (method === "extensions.streamingMethods") return Promise.resolve([]);
-        const [, extensionMethod, extensionArgs] = args;
-        expect(Array.isArray(extensionArgs) ? extensionArgs[0] : undefined).toEqual({
-          __bin: true,
-          data: Buffer.from(pngBytes).toString("base64"),
-        });
-        if (extensionMethod === "detectMimeType") return Promise.resolve("image/png");
-        if (extensionMethod === "resize") {
-          return Promise.resolve({
-            data: Buffer.from(pngBytes).toString("base64"),
-            mimeType: "image/png",
-            width: 8,
-            height: 8,
-            originalWidth: 8,
-            originalHeight: 8,
-            wasResized: false,
-          });
-        }
-        return Promise.resolve(null);
-      }),
+      call: vi
+        .fn()
+        .mockImplementation(
+          (_target: string, method: string, args: unknown[]) => {
+            if (method === "extensions.streamingMethods")
+              return Promise.resolve([]);
+            const [, extensionMethod, extensionArgs] = args;
+            expect(
+              Array.isArray(extensionArgs) ? extensionArgs[0] : undefined,
+            ).toEqual({
+              __bin: true,
+              data: Buffer.from(pngBytes).toString("base64"),
+            });
+            if (extensionMethod === "detectMimeType")
+              return Promise.resolve("image/png");
+            if (extensionMethod === "resize") {
+              return Promise.resolve({
+                data: Buffer.from(pngBytes).toString("base64"),
+                mimeType: "image/png",
+                width: 8,
+                height: 8,
+                originalWidth: 8,
+                originalHeight: 8,
+                wasResized: false,
+              });
+            }
+            return Promise.resolve(null);
+          },
+        ),
       stream: vi.fn(async () => new Response()),
     };
     const tool = createReadTool(CWD, fs, { rpc });
 
-    const result = await tool.execute("call-opaque-image", {
-      target: "file:/.tmp/panel-capture-123",
-      kind: "file",
-    });
+    const result = await executeTool(
+      tool,
+      {
+        target: "file:/.tmp/panel-capture-123",
+        kind: "file",
+      },
+      { callId: "call-opaque-image" },
+    );
 
     expect(result.content).toEqual([
       expect.objectContaining({ type: "image", mimeType: "image/png" }),
@@ -675,38 +775,52 @@ describe("createReadTool", () => {
   it("returns a non-poisoning discovery result when a file is missing", async () => {
     const fs = new StubFs();
     const tool = createReadTool(CWD, fs);
-    await expect(tool.execute("call-1", { path: "missing.txt" })).resolves.toMatchObject({
+    await expect(
+      executeTool(tool, { path: "missing.txt" }, { callId: "call-1" }),
+    ).resolves.toMatchObject({
       details: { missing: true, path: "missing.txt" },
     });
   });
 
   it("returns ImageContent when the image service extension detects an image type", async () => {
-    const pngBytes = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+    const pngBytes = new Uint8Array([
+      0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
+    ]);
     const fs = new StubFs({ files: { [`${CWD}/pic.png`]: pngBytes } });
     const rpc = {
-      call: vi.fn().mockImplementation((_target: string, method: string, args: unknown[]) => {
-        if (method === "extensions.streamingMethods") return Promise.resolve([]);
-        const [extensionName, extensionMethod] = args;
-        expect(method).toBe("extensions.invoke");
-        expect(extensionName).toBe("@workspace-extensions/image-service");
-        if (extensionMethod === "detectMimeType") return Promise.resolve("image/png");
-        if (extensionMethod === "resize") {
-          return Promise.resolve({
-            data: Buffer.from(pngBytes).toString("base64"),
-            mimeType: "image/png",
-            width: 8,
-            height: 8,
-            originalWidth: 8,
-            originalHeight: 8,
-            wasResized: false,
-          });
-        }
-        return Promise.resolve(null);
-      }),
+      call: vi
+        .fn()
+        .mockImplementation(
+          (_target: string, method: string, args: unknown[]) => {
+            if (method === "extensions.streamingMethods")
+              return Promise.resolve([]);
+            const [extensionName, extensionMethod] = args;
+            expect(method).toBe("extensions.invoke");
+            expect(extensionName).toBe("@workspace-extensions/image-service");
+            if (extensionMethod === "detectMimeType")
+              return Promise.resolve("image/png");
+            if (extensionMethod === "resize") {
+              return Promise.resolve({
+                data: Buffer.from(pngBytes).toString("base64"),
+                mimeType: "image/png",
+                width: 8,
+                height: 8,
+                originalWidth: 8,
+                originalHeight: 8,
+                wasResized: false,
+              });
+            }
+            return Promise.resolve(null);
+          },
+        ),
       stream: vi.fn(async () => new Response()),
     };
     const tool = createReadTool(CWD, fs, { rpc });
-    const result = await tool.execute("call-1", { path: "pic.png" });
+    const result = await executeTool(
+      tool,
+      { path: "pic.png" },
+      { callId: "call-1" },
+    );
     const last = result.content[result.content.length - 1] as {
       type: string;
       mimeType: string;
@@ -720,6 +834,12 @@ describe("createReadTool", () => {
     const tool = createReadTool(CWD, fs);
     const ac = new AbortController();
     ac.abort();
-    await expect(tool.execute("call-1", { path: "foo.txt" }, ac.signal)).rejects.toThrow(/abort/i);
+    await expect(
+      executeTool(
+        tool,
+        { path: "foo.txt" },
+        { callId: "call-1", signal: ac.signal },
+      ),
+    ).rejects.toThrow(/abort/i);
   });
 });

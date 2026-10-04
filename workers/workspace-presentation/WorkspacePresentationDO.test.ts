@@ -1,25 +1,27 @@
 import { describe, expect, it } from "vitest";
 import { DatabaseSync } from "node:sqlite";
-import {
-  DURABLE_OBJECT_FRAMEWORK_RPC_METHODS,
-  type DurableObjectContext,
-  type SqlResult,
-} from "@vibestudio/durable";
+import { DURABLE_OBJECT_FRAMEWORK_RPC_METHODS } from "@vibestudio/durable";
+import type {
+  DurableObjectContext,
+  SqlResult,
+} from "@workspace/runtime/worker";
 import { rpcExposedMethodNames } from "@vibestudio/rpc";
 import { workspacePresentationMethods } from "@vibestudio/service-schemas/workspacePresentation";
 import type { MethodSchema } from "@vibestudio/shared/typedServiceClient";
 import { WorkspacePresentationDO } from "./WorkspacePresentationDO.js";
 
-const createPresentation = () => {
+const createPresentation = async () => {
   const db = new DatabaseSync(":memory:");
   const instance = new WorkspacePresentationDO(sqliteContext(db), {});
-  (instance as unknown as { ensureReady(): void }).ensureReady();
+  await (
+    instance as unknown as { initializeSchema(): Promise<void> }
+  ).initializeSchema();
   return { instance, db };
 };
 
-describe("WorkspacePresentationDO", () => {
+describe("WorkspacePresentationDO", async () => {
   it("exposes exactly the Base-owned presentation contract", async () => {
-    const { instance, db } = createPresentation();
+    const { instance, db } = await createPresentation();
     const productMethods = [...rpcExposedMethodNames(instance)].filter(
       (method) => !DURABLE_OBJECT_FRAMEWORK_RPC_METHODS.has(method),
     );
@@ -29,8 +31,8 @@ describe("WorkspacePresentationDO", () => {
     db.close();
   });
 
-  it("resolves every open presentation method without a fictitious source capability", () => {
-    const { instance, db } = createPresentation();
+  it("resolves every open presentation method without a fictitious source capability", async () => {
+    const { instance, db } = await createPresentation();
     const authority = instance as unknown as {
       rpcAuthorityDeclaration(method: string, schema: MethodSchema): unknown;
     };
@@ -45,7 +47,7 @@ describe("WorkspacePresentationDO", () => {
   });
 
   it("owns entity titles and follows the current slot binding", async () => {
-    const { instance, db } = createPresentation();
+    const { instance, db } = await createPresentation();
     instance.bindSlot("slot-1", "entity-1", "panels/chat");
     instance.updatePanelTitle("slot-1", "entity-1", "Support inbox");
     expect(instance.titlesForSlots(["slot-1"])).toEqual({
@@ -64,8 +66,8 @@ describe("WorkspacePresentationDO", () => {
     db.close();
   });
 
-  it("clears a panel and entity title together", () => {
-    const { instance, db } = createPresentation();
+  it("clears a panel and entity title together", async () => {
+    const { instance, db } = await createPresentation();
     instance.bindSlot("slot-1", "entity-1", "panels/chat");
     instance.updatePanelTitle("slot-1", "entity-1", "Support inbox", {
       explicit: true,
@@ -80,8 +82,8 @@ describe("WorkspacePresentationDO", () => {
     db.close();
   });
 
-  it("names a slot from the title the binder knew, without ever presenting a slot id", () => {
-    const { instance, db } = createPresentation();
+  it("names a slot from the title the binder knew, without ever presenting a slot id", async () => {
+    const { instance, db } = await createPresentation();
     // A panel is bound the moment it is created, long before its document has
     // loaded and reported a title of its own.
     instance.bindSlot("slot-1", "entity-1", "about/adblock", "Ad Blocking");
@@ -114,7 +116,7 @@ describe("WorkspacePresentationDO", () => {
   });
 
   it("keeps durable search facts and rebuilds only the derived FTS projection", async () => {
-    const { instance, db } = createPresentation();
+    const { instance, db } = await createPresentation();
     instance.indexPanel(
       {
         id: "slot-1",
@@ -144,8 +146,8 @@ describe("WorkspacePresentationDO", () => {
     db.close();
   });
 
-  it("treats punctuation in copied titles as separators rather than required FTS terms", () => {
-    const { instance, db } = createPresentation();
+  it("treats punctuation in copied titles as separators rather than required FTS terms", async () => {
+    const { instance, db } = await createPresentation();
     instance.indexPanel(
       {
         id: "trello-slot",
@@ -169,8 +171,8 @@ describe("WorkspacePresentationDO", () => {
     db.close();
   });
 
-  it("owns explicit-title precedence without a host-side hook", () => {
-    const { instance, db } = createPresentation();
+  it("owns explicit-title precedence without a host-side hook", async () => {
+    const { instance, db } = await createPresentation();
     instance.bindSlot("slot-1", "entity-1", "panels/chat");
     instance.updatePanelTitle("slot-1", "entity-1", "Pinned", {
       explicit: true,
@@ -182,8 +184,8 @@ describe("WorkspacePresentationDO", () => {
     db.close();
   });
 
-  it("preserves a newer runtime title when observation repairs the slot index", () => {
-    const { instance, db } = createPresentation();
+  it("preserves a newer runtime title when observation repairs the slot index", async () => {
+    const { instance, db } = await createPresentation();
     instance.setEntityTitle("entity-1", "Current conversation");
     instance.indexPanel(
       {
@@ -241,11 +243,23 @@ function sqliteContext(db: DatabaseSync): DurableObjectContext {
     },
     storage: {
       sql,
+      async sync() {},
       setAlarm() {},
       async getAlarm() {
         return null;
       },
       deleteAlarm() {},
+      async transaction<T>(callback: () => Promise<T>): Promise<T> {
+        db.exec("BEGIN IMMEDIATE");
+        try {
+          const result = await callback();
+          db.exec("COMMIT");
+          return result;
+        } catch (error) {
+          db.exec("ROLLBACK");
+          throw error;
+        }
+      },
       transactionSync<T>(callback: () => T): T {
         db.exec("BEGIN IMMEDIATE");
         try {

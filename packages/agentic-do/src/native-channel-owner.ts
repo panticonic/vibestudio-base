@@ -164,11 +164,13 @@ export abstract class NativeChannelOwner<
     this.nativeModelRegistry.setProvider(hostProtectedModelProvider(provider));
   }
 
-  /** Settlement may read an existing conversation after new admission seals. */
+  /** Read retained conversation state through the validated native owner. A fresh
+   * activation opens its Session without admitting input or scheduling a turn;
+   * settlement may continue using an existing Session after admission seals. */
   protected async admittedNativeChannelConversation(
     channelId: string,
   ): Promise<Conversation | null> {
-    const harness = this.admittedAgentSession();
+    const harness = this.existingAgentSession() ?? (await this.agentSession());
     const owner = await retainedAgentExecutionOwner(
       harness,
       BACKGROUND_CONTEXT,
@@ -421,7 +423,7 @@ export abstract class NativeChannelOwner<
       harness,
       image: this.loadedImage(),
       callHost: this.callAgentHost,
-      rpc: this.rpc,
+      rpc: this.agentExecutionRpc,
       publishStart: async (channelId, event, idempotencyKey) =>
         this.runDetached(() =>
           this.nativeChannelClient(channelId).publishAgenticEvent(

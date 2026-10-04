@@ -530,13 +530,11 @@ describe("worker CDP client", () => {
       onInteraction: (value) => receipts.push(value),
     });
     const page = browser.contexts()[0]!.pages()[0]!;
-    await page
-      .locator("#upload")
-      .setInputFiles({
-        name: "note.txt",
-        mimeType: "text/plain",
-        buffer: new Uint8Array([0, 255, 65]),
-      });
+    await page.locator("#upload").setInputFiles({
+      name: "note.txt",
+      mimeType: "text/plain",
+      buffer: new Uint8Array([0, 255, 65]),
+    });
     const expression = FakeWebSocket.sent
       .filter((e) => e.method === "Runtime.evaluate")
       .map((e) => String(e.params?.["expression"]))
@@ -964,43 +962,154 @@ describe("worker CDP client", () => {
     expect(vi.getTimerCount()).toBe(0);
   });
 
-  it("keeps default locator waits pending until target loss", async () => {
+  it("exhausts locator observations with evidence and preserves the usable connection", async () => {
     installFakeWebSocket();
     const browser = await BrowserImpl.connect("ws://cdp");
     const page = browser.contexts()[0]!.pages()[0]!;
     vi.useFakeTimers();
-    let settled = false;
     const observation = page
       .getByTestId("missing")
       .waitFor()
-      .catch((error) => error)
-      .finally(() => {
-        settled = true;
-      });
-    await vi.advanceTimersByTimeAsync(31_000);
-    expect(settled).toBe(false);
-    FakeWebSocket.instances[0]!.remoteClose();
-    expect(await observation).toMatchObject({ code: "cdp_target_closed" });
+      .catch((error) => error);
+    await vi.advanceTimersByTimeAsync(10_000);
+    const error = await observation;
+    expect(error).toMatchObject({
+      code: "cdp_locator_state_mismatch",
+      errorData: {
+        observations: 100,
+        maxObservations: 100,
+        locator: 'getByTestId("missing")',
+        state: "visible",
+        evidence: { status: "captured", matchCount: 0 },
+      },
+    });
+    expect(error.errorData).not.toHaveProperty("timeoutMs");
+    expect(
+      FakeWebSocket.sent.filter((command) =>
+        String(command.params?.["expression"]).includes('"op":"waitFor"'),
+      ),
+    ).toHaveLength(100);
+    expect(page.isClosed()).toBe(false);
     expect(vi.getTimerCount()).toBe(0);
+    await browser.close();
   });
 
-  it("observes function readiness outside the renderer without an implicit deadline", async () => {
+  it("bounds predicate observations without imposing a default CDP deadline", async () => {
     installFakeWebSocket();
     const browser = await BrowserImpl.connect("ws://cdp");
     const page = browser.contexts()[0]!.pages()[0]!;
     vi.useFakeTimers();
-    let settled = false;
     const observation = page
       .waitForFunction(() => false)
-      .catch((error) => error)
-      .finally(() => {
-        settled = true;
-      });
-    await vi.advanceTimersByTimeAsync(31_000);
-    expect(settled).toBe(false);
+      .catch((error) => error);
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(await observation).toMatchObject({
+      code: "cdp_readiness_exhausted",
+      errorData: {
+        operation: "waitForFunction",
+        observations: 100,
+        maxObservations: 100,
+      },
+    });
     const command = FakeWebSocket.sent.at(-1)!;
     expect(command.params).not.toHaveProperty("timeout");
     expect(command.params!["expression"]).not.toContain("setTimeout");
+    expect(vi.getTimerCount()).toBe(0);
+    await browser.close();
+  });
+
+  it("bounds missing click targets without dispatching or replaying input", async () => {
+    installFakeWebSocket();
+    const browser = await BrowserImpl.connect("ws://cdp");
+    const page = browser.contexts()[0]!.pages()[0]!;
+    vi.useFakeTimers();
+    // An explicit zero disables only the time deadline, never the attempt budget.
+    const observation = page
+      .getByTestId("missing")
+      .click({ timeout: 0 })
+      .catch((error) => error);
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(await observation).toMatchObject({
+      code: "cdp_locator_not_actionable",
+      errorData: {
+        observations: 100,
+        maxObservations: 100,
+        evidence: { status: "captured" },
+      },
+    });
+    expect(
+      FakeWebSocket.sent.filter((command) =>
+        String(command.params?.["expression"]).includes('"op":"probe"'),
+      ),
+    ).toHaveLength(100);
+    expect(
+      FakeWebSocket.sent.some((command) => command.method.startsWith("Input.")),
+    ).toBe(false);
+    expect(vi.getTimerCount()).toBe(0);
+    await browser.close();
+  });
+
+  it("exhausts a click postcondition while retaining delivery and never replaying input", async () => {
+    installFakeWebSocket();
+    const browser = await BrowserImpl.connect("ws://cdp");
+    const page = browser.contexts()[0]!.pages()[0]!;
+    vi.useFakeTimers();
+    const observation = page
+      .getByRole("button")
+      .click({
+        expect: { locator: page.getByTestId("missing"), state: "visible" },
+      })
+      .catch((error) => error);
+    await vi.advanceTimersByTimeAsync(10_000);
+    const error = await observation;
+    expect(error).toMatchObject({
+      code: "cdp_interaction_outcome_not_observed",
+      errorData: {
+        observations: 100,
+        maxObservations: 100,
+        evidence: { status: "captured" },
+      },
+      cause: { code: "cdp_locator_state_mismatch" },
+    });
+    expect(error.errorData).not.toHaveProperty("timeoutMs");
+    expect(
+      FakeWebSocket.sent.filter(
+        (command) =>
+          command.method === "Input.dispatchMouseEvent" &&
+          command.params?.["type"] === "mouseReleased",
+      ),
+    ).toHaveLength(1);
+    expect(vi.getTimerCount()).toBe(0);
+    await browser.close();
+  });
+
+  it("accepts readiness on the final observation", async () => {
+    installFakeWebSocket();
+    const browser = await BrowserImpl.connect("ws://cdp");
+    const page = browser.contexts()[0]!.pages()[0]!;
+    vi.useFakeTimers();
+    let observations = 0;
+    vi.spyOn(page, "evaluate").mockImplementation(
+      async () => ++observations === 100,
+    );
+    const observation = page.waitForFunction(() => false);
+    await vi.advanceTimersByTimeAsync(10_000);
+    await expect(observation).resolves.toBe(true);
+    expect(observations).toBe(100);
+    expect(vi.getTimerCount()).toBe(0);
+    await browser.close();
+  });
+
+  it("lets target loss terminate an observation before the budget is exhausted", async () => {
+    installFakeWebSocket();
+    const browser = await BrowserImpl.connect("ws://cdp");
+    const page = browser.contexts()[0]!.pages()[0]!;
+    vi.useFakeTimers();
+    const observation = page
+      .getByTestId("missing")
+      .waitFor()
+      .catch((error) => error);
+    await vi.advanceTimersByTimeAsync(100);
     FakeWebSocket.instances[0]!.remoteClose();
     expect(await observation).toMatchObject({ code: "cdp_target_closed" });
     expect(vi.getTimerCount()).toBe(0);
@@ -1690,6 +1799,30 @@ describe("worker CDP client", () => {
     expect(
       probes.every((expression) => !expression.includes("await nsSleep(30)")),
     ).toBe(true);
+  });
+
+  it("reports completed locator reads independently of caller projections", async () => {
+    installFakeWebSocket();
+    const onObservation = vi.fn();
+    const browser = await BrowserImpl.connect("ws://cdp", { onObservation });
+    const page = browser.contexts()[0]!.pages()[0]!;
+    const locator = page.locator("body");
+    const text = await locator.textContent();
+    expect(onObservation).toHaveBeenCalledExactlyOnceWith(text);
+    onObservation.mockClear();
+    const visible = await locator.innerText();
+    expect(onObservation).toHaveBeenCalledExactlyOnceWith(visible);
+    onObservation.mockClear();
+    await locator.count();
+    expect(onObservation).not.toHaveBeenCalled();
+    FakeWebSocket.evaluationException = {
+      text: "read failed",
+      exception: { description: "original locator read failure" },
+    };
+    await expect(locator.textContent()).rejects.toThrow(
+      "original locator read failure",
+    );
+    expect(onObservation).not.toHaveBeenCalled();
   });
 
   it("returns an observed semantic postcondition from a click", async () => {

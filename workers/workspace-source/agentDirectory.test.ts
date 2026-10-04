@@ -17,7 +17,11 @@ import { AGENTIC_PROTOCOL_VERSION } from "@workspace/agentic-protocol";
 import { GadWorkspaceDO } from "./index.js";
 
 const createTestDO: typeof createBaseTestDO = (DOClass, env, opts) =>
-  createBaseTestDO(DOClass, { RPC_FETCH: successfulTestRpcFetch, ...env }, opts);
+  createBaseTestDO(
+    DOClass,
+    { RPC_FETCH: successfulTestRpcFetch, ...env },
+    opts,
+  );
 
 type Call = <R>(method: string, ...args: unknown[]) => Promise<R>;
 
@@ -30,12 +34,17 @@ async function join(
     envelopeId?: string;
     at?: string;
     action?: "join" | "leave";
-  }
+  },
 ): Promise<void> {
   await call("appendChannelEnvelope", {
     channelId: input.channelId,
-    envelopeId: input.envelopeId ?? `env-${input.channelId}-${input.participantId}`,
-    from: { kind: "agent", id: input.participantId, participantId: input.participantId },
+    envelopeId:
+      input.envelopeId ?? `env-${input.channelId}-${input.participantId}`,
+    from: {
+      kind: "agent",
+      id: input.participantId,
+      participantId: input.participantId,
+    },
     payloadKind: "presence",
     payload: { action: input.action ?? "join", metadata: input.metadata },
     publishedAt: input.at ?? "2026-05-20T12:00:00.000Z",
@@ -47,18 +56,31 @@ async function appendTrajectory(
   input: {
     channelId: string;
     participantId: string;
-    events: Array<{ envelopeId: string; kind: string; payload: unknown; causality?: unknown }>;
+    events: Array<{
+      envelopeId: string;
+      kind: string;
+      payload: unknown;
+      causality?: unknown;
+    }>;
     expectedHeadHash?: string | null;
-  }
+  },
 ): Promise<void> {
   await call("appendLogEvent", {
     logId: logIdForChannel(input.channelId),
     head: "main",
-    logKind: "trajectory",
-    owner: { kind: "agent", id: input.participantId, participantId: input.participantId },
+    logKind: "channel",
+    owner: {
+      kind: "agent",
+      id: input.participantId,
+      participantId: input.participantId,
+    },
     events: input.events.map((entry) => ({
       envelopeId: entry.envelopeId,
-      actor: { kind: "agent", id: input.participantId, participantId: input.participantId },
+      actor: {
+        kind: "agent",
+        id: input.participantId,
+        participantId: input.participantId,
+      },
       payloadKind: entry.kind,
       payload: entry.payload,
       ...(entry.causality ? { causality: entry.causality } : {}),
@@ -102,19 +124,29 @@ describe("agent directory", () => {
 
   it("gives one worker in two channels two rows sharing a worker id", async () => {
     const { call } = await createTestDO(GadWorkspaceDO);
-    await join(call, { channelId: "ch-a", participantId: "do:gmail", metadata: AGENT_METADATA });
-    await join(call, { channelId: "ch-b", participantId: "do:gmail", metadata: AGENT_METADATA });
+    await join(call, {
+      channelId: "ch-a",
+      participantId: "do:gmail",
+      metadata: AGENT_METADATA,
+    });
+    await join(call, {
+      channelId: "ch-b",
+      participantId: "do:gmail",
+      metadata: AGENT_METADATA,
+    });
 
-    const listing = await call<any>("listAgentDirectory", { workerId: "do:gmail" });
+    const listing = await call<any>("listAgentDirectory", {
+      workerId: "do:gmail",
+    });
     // "Message the gmail agent" is meaningless without saying where, so the
     // two instances stay distinct rather than collapsing into one row.
     expect(listing.entries.map((entry: any) => entry.ref).sort()).toEqual([
       "agent:gmail@ch-a",
       "agent:gmail@ch-b",
     ]);
-    expect(new Set(listing.entries.map((entry: any) => entry.workerId))).toEqual(
-      new Set(["do:gmail"])
-    );
+    expect(
+      new Set(listing.entries.map((entry: any) => entry.workerId)),
+    ).toEqual(new Set(["do:gmail"]));
   });
 
   it("does not list humans or panels as agent instances", async () => {
@@ -122,9 +154,16 @@ describe("agent directory", () => {
     await call("appendChannelEnvelope", {
       channelId: "ch-home",
       envelopeId: "env-user-join",
-      from: { kind: "panel", id: "user:gabriel", participantId: "user:gabriel" },
+      from: {
+        kind: "panel",
+        id: "user:gabriel",
+        participantId: "user:gabriel",
+      },
       payloadKind: "presence",
-      payload: { action: "join", metadata: { name: "Gabriel", type: "user", handle: "gabriel" } },
+      payload: {
+        action: "join",
+        metadata: { name: "Gabriel", type: "user", handle: "gabriel" },
+      },
       publishedAt: "2026-05-20T12:00:00.000Z",
     });
 
@@ -134,7 +173,11 @@ describe("agent directory", () => {
 
   it("flips status on lifecycle events and never on a clock", async () => {
     const { call } = await createTestDO(GadWorkspaceDO);
-    await join(call, { channelId: "ch-mail", participantId: "do:gmail", metadata: AGENT_METADATA });
+    await join(call, {
+      channelId: "ch-mail",
+      participantId: "do:gmail",
+      metadata: AGENT_METADATA,
+    });
 
     await appendTrajectory(call, {
       channelId: "ch-mail",
@@ -168,12 +211,19 @@ describe("agent directory", () => {
       ],
     });
     listing = await call<any>("listAgentDirectory", {});
-    expect(listing.entries[0]).toMatchObject({ status: "idle", statusEventId: "ev-turn-closed" });
+    expect(listing.entries[0]).toMatchObject({
+      status: "idle",
+      statusEventId: "ev-turn-closed",
+    });
   });
 
   it("keeps a departed instance listed only when terminal rows are requested", async () => {
     const { call } = await createTestDO(GadWorkspaceDO);
-    await join(call, { channelId: "ch-mail", participantId: "do:gmail", metadata: AGENT_METADATA });
+    await join(call, {
+      channelId: "ch-mail",
+      participantId: "do:gmail",
+      metadata: AGENT_METADATA,
+    });
     await join(call, {
       channelId: "ch-mail",
       participantId: "do:gmail",
@@ -186,7 +236,9 @@ describe("agent directory", () => {
     expect((await call<any>("listAgentDirectory", {})).entries).toEqual([]);
     // A terminal instance whose channel is durable is exactly the catalog of
     // agents that can be woken again (plan §4.4).
-    const withTerminal = await call<any>("listAgentDirectory", { includeTerminal: true });
+    const withTerminal = await call<any>("listAgentDirectory", {
+      includeTerminal: true,
+    });
     expect(withTerminal.entries[0]).toMatchObject({
       ref: "agent:gmail@ch-mail",
       status: "terminal",
@@ -195,17 +247,26 @@ describe("agent directory", () => {
 
   it("searches by purpose over description and the latest deliberate utterance", async () => {
     const { call } = await createTestDO(GadWorkspaceDO);
-    await join(call, { channelId: "ch-mail", participantId: "do:gmail", metadata: AGENT_METADATA });
+    await join(call, {
+      channelId: "ch-mail",
+      participantId: "do:gmail",
+      metadata: AGENT_METADATA,
+    });
     await join(call, {
       channelId: "ch-build",
       participantId: "do:builder",
-      metadata: { name: "Builder", type: "agent", handle: "builder", description: "Runs CI." },
+      metadata: {
+        name: "Builder",
+        type: "agent",
+        handle: "builder",
+        description: "Runs CI.",
+      },
     });
 
     expect(
-      (await call<any>("searchAgentDirectory", { query: "inbox triage" })).entries.map(
-        (entry: any) => entry.ref
-      )
+      (
+        await call<any>("searchAgentDirectory", { query: "inbox triage" })
+      ).entries.map((entry: any) => entry.ref),
     ).toEqual(["agent:gmail@ch-mail"]);
 
     // A deliberate notify (wire saliency "say") is the instance's own account of
@@ -223,7 +284,11 @@ describe("agent directory", () => {
             outcome: "completed",
             saliency: "say",
             blocks: [
-              { blockId: "b1", type: "text", content: "Watching the nightly deployment pipeline." },
+              {
+                blockId: "b1",
+                type: "text",
+                content: "Watching the nightly deployment pipeline.",
+              },
             ],
           },
           causality: { messageId: "msg-1" },
@@ -231,14 +296,22 @@ describe("agent directory", () => {
       ],
     });
 
-    const hits = await call<any>("searchAgentDirectory", { query: "deployment" });
-    expect(hits.entries.map((entry: any) => entry.ref)).toEqual(["agent:builder@ch-build"]);
+    const hits = await call<any>("searchAgentDirectory", {
+      query: "deployment",
+    });
+    expect(hits.entries.map((entry: any) => entry.ref)).toEqual([
+      "agent:builder@ch-build",
+    ]);
     expect(hits.entries[0].summary).toContain("nightly deployment");
   });
 
   it("describes channels with their directory participants and envelope stats", async () => {
     const { call } = await createTestDO(GadWorkspaceDO);
-    await join(call, { channelId: "ch-mail", participantId: "do:gmail", metadata: AGENT_METADATA });
+    await join(call, {
+      channelId: "ch-mail",
+      participantId: "do:gmail",
+      metadata: AGENT_METADATA,
+    });
     await appendTrajectory(call, {
       channelId: "ch-mail",
       participantId: "do:gmail",
@@ -252,12 +325,19 @@ describe("agent directory", () => {
       ],
     });
 
-    const [described] = await call<any>("describeChannels", { channelIds: ["ch-mail"] });
-    // One channel envelope: the presence join. The agent's turn lives on its
-    // own trajectory log and is deliberately not counted as channel traffic.
-    expect(described).toMatchObject({ channelId: "ch-mail", envelopeCount: 1 });
+    const [described] = await call<any>("describeChannels", {
+      channelIds: ["ch-mail"],
+    });
+    // Presence and the agent's lifecycle are both envelopes on the same
+    // canonical channel log; no separate trajectory traffic is omitted.
+    expect(described).toMatchObject({ channelId: "ch-mail", envelopeCount: 2 });
     expect(described.participants).toEqual([
-      { participantId: "do:gmail", handle: "gmail", kind: "worker-agent", status: "running" },
+      {
+        participantId: "do:gmail",
+        handle: "gmail",
+        kind: "worker-agent",
+        status: "running",
+      },
     ]);
   });
 
@@ -270,12 +350,17 @@ describe("agent directory", () => {
       envelopeId: string,
       payloadKind: string,
       payload: Record<string, unknown>,
-      metadata: Record<string, unknown>
+      metadata: Record<string, unknown>,
     ) =>
       call("appendChannelEnvelope", {
         channelId: "ch-sub",
         envelopeId,
-        from: { kind: "agent", id: "do:gmail", participantId: "do:gmail", metadata },
+        from: {
+          kind: "agent",
+          id: "do:gmail",
+          participantId: "do:gmail",
+          metadata,
+        },
         payloadKind,
         payload,
         publishedAt: "2026-05-20T12:00:00.000Z",
@@ -284,27 +369,47 @@ describe("agent directory", () => {
       "sub-1",
       "channel.subscription.opened",
       { participantId: "do:gmail", revision: 1, metadata: AGENT_METADATA },
-      AGENT_METADATA
+      AGENT_METADATA,
     );
-    let listing = await call<{ entries: Array<Record<string, unknown>> }>("listAgentDirectory", {});
+    let listing = await call<{ entries: Array<Record<string, unknown>> }>(
+      "listAgentDirectory",
+      {},
+    );
     expect(listing.entries).toEqual([
-      expect.objectContaining({ instanceId: "gmail@ch-sub", status: "idle", handle: "gmail" }),
+      expect.objectContaining({
+        instanceId: "gmail@ch-sub",
+        status: "idle",
+        handle: "gmail",
+      }),
     ]);
 
-    const revised = { ...AGENT_METADATA, description: "Triaging today's newsletters." };
+    const revised = {
+      ...AGENT_METADATA,
+      description: "Triaging today's newsletters.",
+    };
     await append(
       "sub-2",
       "channel.subscription.revised",
       { participantId: "do:gmail", revision: 2, metadata: revised },
-      revised
+      revised,
     );
     listing = await call("listAgentDirectory", {});
-    expect(listing.entries[0]).toMatchObject({ description: "Triaging today's newsletters." });
+    expect(listing.entries[0]).toMatchObject({
+      description: "Triaging today's newsletters.",
+    });
 
-    await append("sub-3", "channel.subscription.ended", { participantId: "do:gmail", revision: 3 }, revised);
+    await append(
+      "sub-3",
+      "channel.subscription.ended",
+      { participantId: "do:gmail", revision: 3 },
+      revised,
+    );
     listing = await call("listAgentDirectory", {});
     expect(listing.entries).toEqual([]);
     listing = await call("listAgentDirectory", { includeTerminal: true });
-    expect(listing.entries[0]).toMatchObject({ instanceId: "gmail@ch-sub", status: "terminal" });
+    expect(listing.entries[0]).toMatchObject({
+      instanceId: "gmail@ch-sub",
+      status: "terminal",
+    });
   });
 });

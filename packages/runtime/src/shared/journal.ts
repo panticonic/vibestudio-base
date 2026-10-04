@@ -1,3 +1,4 @@
+import type { NativeBlobTreeObservation } from "@vibestudio/service-schemas/blobstore";
 import {
   EVAL_OPERATION_JOURNAL_MAX_ENTRIES,
   EVAL_RESULT_RETURN_PREVIEW_CHARS,
@@ -48,11 +49,48 @@ export function cdpInteractionReceipt(
   };
 }
 
+/** Retain measured aggregates, not request URLs, labels, or coverage source data. */
+export function cdpProfileReceipt(
+  report: import("@workspace/cdp-client").CdpProfileReport,
+) {
+  return {
+    protocol: "cdp-profile-outcome.v1" as const,
+    capturedAt: Date.now(),
+    elapsedMs: report.elapsedMs,
+    runtime: { ...report.runtime },
+    page: {
+      ...report.page,
+      ...(report.page.navigation
+        ? { navigation: { ...report.page.navigation } }
+        : {}),
+      longTasks: { ...report.page.longTasks },
+    },
+    network: {
+      requestCount: report.network.requestCount,
+      failedCount: report.network.failedCount,
+      transferBytes: report.network.transferBytes,
+    },
+  };
+}
+
 export type OperationJournalEntry =
+  | {
+      type: "blob-tree.observation";
+      receipt: Extract<
+        NativeBlobTreeObservation,
+        { method: "materializeTree" }
+      >;
+    }
   | { type: "open"; source: string; id: string; kind: "workspace" | "browser" }
   | { type: "reload"; id: string }
   | { type: "close"; id: string }
   | { type: "interaction"; id: string; receipt: unknown }
+  | { type: "profile.start"; id: string }
+  | {
+      type: "profile";
+      id: string;
+      receipt: ReturnType<typeof cdpProfileReceipt>;
+    }
   | {
       type: "cdp.session";
       id: string;

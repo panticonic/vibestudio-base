@@ -34,6 +34,7 @@ import type {
   MissionCharter,
   MissionRecord,
   MissionRunRecord,
+  MissionRunEffectFailure,
 } from "@vibestudio/automation/mission";
 import {
   canonicalCronExpression,
@@ -68,6 +69,13 @@ export interface AutomationInspection {
 
 export interface AutomationUiRpc {
   call(target: string, method: string, args: unknown[]): Promise<unknown>;
+}
+
+function effectFailureKey(effect: MissionRunEffectFailure): string {
+  const source = effect.source;
+  return source.kind === 'native-tool'
+    ? `tool:${source.nativeTaskId}:${source.nativeEntryId}:${source.invocationId}`
+    : `provider:${source.nativeTaskId}:${source.assistantEntryId}:${source.nativeEntryId}:${source.callId}`;
 }
 
 const resolvedTargetByRpc = new WeakMap<AutomationUiRpc, Promise<string>>();
@@ -1146,7 +1154,7 @@ function Inspector({
                         ) : null}
                         {recent.effectFailures?.map((effect) => (
                           <Text
-                            key={effect.invocationId}
+                            key={effectFailureKey(effect)}
                             as="div"
                             size="2"
                             color="red"
@@ -1246,7 +1254,7 @@ function Inspector({
                 </Text>
                 {run.effectFailures.map((effect) => (
                   <Text
-                    key={effect.invocationId}
+                    key={effectFailureKey(effect)}
                     as="span"
                     style={{ display: "block" }}
                   >

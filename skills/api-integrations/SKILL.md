@@ -12,6 +12,15 @@ Use `docs_search`/`docs_open` for current `credentials` schemas. The public
 workspace client lives under `packages/runtime/src`; host-side wire schemas are
 in the service-schema package.
 
+## Existing credential selection
+
+Use `credentials.resolveCredential({ url })` for the host's exact audience and
+intended-use matching. An unbound URL returns `null` without opening UI. Inventory
+summaries describe lifecycle state; reconstructing audience matching from them
+can miss binding, transport, label and selection rules. A matched credential can
+require use authorization, so preserve a caller's quiet or pregranted-only policy
+and report that boundary rather than starting account setup.
+
 ## Missing credentials
 
 Treat missing credentials as normal setup state. Ask only for non-secret facts

@@ -90,6 +90,9 @@ function getSqlJs(): Promise<SqlJsStatic> {
 function createSqlProxy(db: Database) {
   return {
     exec(query: string, ...bindings: unknown[]): SqlResult {
+      const parameters = bindings.map((value) =>
+        value instanceof ArrayBuffer ? new Uint8Array(value) : value
+      ) as BindParams;
       const trimmed = query.trim().toUpperCase();
       const isQuery =
         trimmed.startsWith("SELECT") ||
@@ -99,7 +102,7 @@ function createSqlProxy(db: Database) {
 
       if (isQuery) {
         const stmt = db.prepare(query);
-        if (bindings.length > 0) stmt.bind(bindings as BindParams);
+        if (bindings.length > 0) stmt.bind(parameters);
         const rows: Record<string, unknown>[] = [];
         while (stmt.step()) rows.push(stmt.getAsObject() as Record<string, unknown>);
         stmt.free();
@@ -116,7 +119,7 @@ function createSqlProxy(db: Database) {
         if (bindings.length === 0) {
           db.run(query);
         } else {
-          db.run(query, bindings as BindParams);
+          db.run(query, parameters);
         }
         return {
           toArray() {
@@ -310,6 +313,9 @@ export async function createTestDO<T>(
     id: { toString: () => objectKey, name: objectKey },
     storage: {
       sql: sqlProxy,
+      // Unit storage is already synchronous/in-memory. Native workerd tests
+      // separately prove the real confirmation and uncertain-failure contract.
+      async sync(): Promise<void> {},
       setAlarm(scheduledTime: number | Date) {
         const ts = typeof scheduledTime === "number" ? scheduledTime : scheduledTime.getTime();
         alarms.push(ts);
@@ -319,6 +325,19 @@ export async function createTestDO<T>(
       },
       deleteAlarm() {
         alarms.length = 0;
+      },
+      async transaction<T>(callback: () => Promise<T>): Promise<T> {
+        const savepoint = "_async_" + crypto.randomUUID().replaceAll("-", "");
+        sqlProxy.exec(`SAVEPOINT ${savepoint}`);
+        try {
+          const result = await callback();
+          sqlProxy.exec(`RELEASE ${savepoint}`);
+          return result;
+        } catch (error) {
+          sqlProxy.exec(`ROLLBACK TO ${savepoint}`);
+          sqlProxy.exec(`RELEASE ${savepoint}`);
+          throw error;
+        }
       },
       transactionSync<T>(callback: () => T): T {
         // sql.js doesn't enforce workerd's "no raw BEGIN/COMMIT" rule, but we
@@ -360,7 +379,7 @@ export async function createTestDO<T>(
   const mergedEnv = { ...AGENTIC_ENV_DEFAULTS, ...env };
   const instance = new DOClass(ctx, mergedEnv);
   if (opts?.initialize !== false) {
-    (instance as unknown as { ensureReady?: () => void }).ensureReady?.();
+    await (instance as unknown as { initializeSchema?: () => Promise<void> }).initializeSchema?.();
   }
 
   // call() dispatches through fetch(), matching the production DO invocation path:

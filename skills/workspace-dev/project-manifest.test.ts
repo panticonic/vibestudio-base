@@ -68,6 +68,45 @@ describe("project dependency preflight", () => {
     ).toMatchObject({ vibestudio: { authority } });
   });
 
+  it("declares only authored suites and preserves their actual execution backend", () => {
+    const input = {
+      projectType: "worker" as const,
+      authority: { requests: [], provides: [] },
+      name: "actual-tests",
+      title: "Actual tests",
+      entry: "index.ts",
+    };
+    expect(buildProjectManifest(input)).toMatchObject({
+      vibestudio: { entry: "index.ts" },
+    });
+    expect(
+      (buildProjectManifest(input)["vibestudio"] as Record<string, unknown>)["tests"],
+    ).toBeUndefined();
+    const tests = [
+      { name: "unit", runtime: "native" as const, include: ["worker.test.ts"] },
+    ];
+    const native = buildProjectManifest({
+      ...input,
+      tests,
+      devDependencies: { vitest: "^3.2.4" },
+    });
+    expect(native).toMatchObject({
+      vibestudio: { tests },
+      devDependencies: { vitest: "^3.2.4" },
+    });
+    expect(native["dependencies"]).toBeUndefined();
+    expect(
+      buildProjectManifest({
+        ...input,
+        tests: [
+          { name: "unit", runtime: "workerd", include: ["worker.test.ts"] },
+        ],
+      }),
+    ).toMatchObject({
+      dependencies: { "@workspace/test-runtime": "workspace:*" },
+    });
+  });
+
   it("keeps website requirements advisory inside the panel manifest", () => {
     const manifest = buildProjectManifest({
       projectType: "panel",

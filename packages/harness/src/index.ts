@@ -2,11 +2,15 @@
 // @workspace/harness — In-process Pi runtime for the agent worker DO
 // =============================================================================
 
-// The in-process Pi runtime (PiRunner / AgentHarness) was replaced by the
-// event-sourced @workspace/agent-loop + the AgentLoopDriver in
-// @workspace/agentic-do (unified-log Stage B cut). The harness package keeps
-// the local tools, prompt composition, and shared types.
-export type ThinkingLevel = "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
+// Native Pi execution lives in the durable agent owner. This package authors
+// product tools, prompt resources, and portable domain algorithms.
+export type ThinkingLevel =
+  | "minimal"
+  | "low"
+  | "medium"
+  | "high"
+  | "xhigh"
+  | "max";
 
 export {
   driveMerge,
@@ -14,23 +18,49 @@ export {
   renderMergeReview,
   MergeDriverError,
 } from "./merge-driver.js";
-export type { DriveMergeInput, DriveMergeResult, MergeReview } from "./merge-driver.js";
-export { resolveToolFile, resolveToolRepository } from "./semantic-file-resolution.js";
-export type { PresentToolRepository, ToolFileResolution } from "./semantic-file-resolution.js";
+export type {
+  DriveMergeInput,
+  DriveMergeResult,
+  MergeReview,
+} from "./merge-driver.js";
+export {
+  resolveToolFile,
+  resolveToolRepository,
+} from "./semantic-file-resolution.js";
+export type {
+  PresentToolRepository,
+  ToolFileResolution,
+} from "./semantic-file-resolution.js";
 
 // Stable runner-level error codes (Phase 7).
 export { AgentWorkerError } from "./errors.js";
 export type { AgentWorkerErrorCode } from "./errors.js";
 
-export { VIBESTUDIO_BASE_SYSTEM_PROMPT, composeSystemPrompt } from "./system-prompt.js";
-export type { ComposeSystemPromptOptions, SystemPromptMode } from "./system-prompt.js";
-export { loadVibestudioResources, formatSkillIndex } from "./resource-loader.js";
-export type { VibestudioResources, ResourceLoaderDeps, SkillEntry } from "./resource-loader.js";
+export {
+  VIBESTUDIO_BASE_SYSTEM_PROMPT,
+  composeSystemPrompt,
+} from "./system-prompt.js";
+export type {
+  ComposeSystemPromptOptions,
+  SystemPromptMode,
+} from "./system-prompt.js";
+export {
+  loadVibestudioResources,
+  formatSkillIndex,
+} from "./resource-loader.js";
+export type {
+  VibestudioResources,
+  ResourceLoaderDeps,
+  SkillEntry,
+} from "./resource-loader.js";
 
-// The Pi extension layer (approval gate, channel tools, ask-user, web tools,
-// extension runtime/UI bridge) was replaced by pure step policies in
-// @workspace/agent-loop (unified-log Stage B). Tools remain below.
-export type { AgentTool } from "@workspace/pi-core";
+export type {
+  ToolRegistration,
+  ToolExecutionApi,
+  ToolExecutionResult,
+  ToolExecutionWait,
+} from "@panticonic/pi-durable";
+export { authorNativeTool } from "./native-tool-authoring.js";
 
 // Channel boundary types (still used by agentic-do)
 export type {
@@ -61,12 +91,17 @@ export {
   createFindTool,
   createLsTool,
   createSuspendTurnTool,
+  suspendTurnParameters,
   createEvalTool,
   evalToolParameters,
   formatEvalResult,
   normalizeEvalToolSource,
   type EvalRunResult,
   type NormalizedEvalToolSource,
+  type NativeEvalExecution,
+  type EvalToolOptions,
+  type NativeSuspendTurnExecution,
+  type SuspendTurnToolOptions,
   createDocsSearchTool,
   createDocsOpenTool,
   createWorkspaceServiceTool,

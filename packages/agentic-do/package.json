@@ -6,7 +6,13 @@
   "private": true,
   "exports": {
     ".": "./src/index.ts",
-    "./agent-worker-base": "./src/agent-worker-base.ts"
+    "./agent-worker-base": "./src/agent-worker-base.ts",
+    "./native-agent-owner": "./src/native-agent-owner.ts",
+    "./native-model-transport": "./src/native-model-transport.ts",
+    "./native-model-provider": "./src/native-model-provider.ts",
+    "./testing/native-vessel": "./src/testing/native-vessel.ts",
+    "./native-agent-session": "./src/native-agent-session.ts",
+    "./testing/native-channel-provider": "./src/testing/native-channel-provider.ts"
   },
   "dependencies": {
     "@vibestudio/automation": "workspace:*",
@@ -20,15 +26,19 @@
     "@workspace/agentic-protocol": "workspace:*",
     "@workspace/harness": "workspace:*",
     "@workspace/model-catalog": "workspace:*",
-    "@workspace/pi-core": "workspace:*",
-    "@workspace/pi-ai": "workspace:*",
     "@workspace/pubsub": "workspace:*",
     "@vibestudio/service-schemas": "workspace:*",
     "@vibestudio/shared": "workspace:*",
-    "@workspace/agent-loop": "workspace:*",
-    "@vibestudio/workspace-contracts": "workspace:*"
+    "@vibestudio/workspace-contracts": "workspace:*",
+    "@panticonic/pi-ai": "0.99.2-vibestudio.11",
+    "@panticonic/pi-chord": "0.99.2-vibestudio.11",
+    "@panticonic/pi-durable": "0.99.2-vibestudio.11"
   },
   "devDependencies": {
-    "@panticonic/builtin": "workspace:*"
+    "@workspace/channel-policies": "workspace:*",
+    "@panticonic/builtin": "workspace:*",
+    "@vibestudio/durable": "workspace:*",
+    "@workspace-workers/pubsub-channel": "workspace:*",
+    "@workspace-workers/workspace-source": "workspace:*"
   }
 }

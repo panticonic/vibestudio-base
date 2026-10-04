@@ -1,3 +1,4 @@
+import { executeTool } from "../../testing/native-tool.js";
 import { Buffer } from "node:buffer";
 import { describe, expect, it } from "vitest";
 import { createApplyPatchTool } from "../apply-patch.js";
@@ -15,7 +16,9 @@ describe("apply_patch", () => {
     expect(tool.description).toContain("workspace-root files");
     expect(tool.description).toContain("one normalized occurrence");
     expect(tool.description).toContain("structured conflict");
-    expect(tool.description).toContain("protected against stale mutations automatically");
+    expect(tool.description).toContain(
+      "protected against stale mutations automatically",
+    );
     expect(JSON.stringify(tool.parameters)).not.toContain("receipt");
     expect(JSON.stringify(tool.parameters)).not.toContain("contentHash");
   });
@@ -29,23 +32,27 @@ describe("apply_patch", () => {
       },
     });
     const tool = createApplyPatchTool("/", vcs, authority);
-    const result = await tool.execute("invocation:patch", {
-      operations: [
-        {
-          kind: "replace",
-          path: "meta/a.ts",
-          mode: 0o600,
-          replacements: [
-            { oldText: "a = 1", newText: "a = 10" },
-            { oldText: "b = 2", newText: "b = 20" },
-          ],
-        },
-        { kind: "write", path: "meta/new.ts", content: "export {};\n" },
-        { kind: "delete", path: "meta/delete.ts" },
-        { kind: "chmod", path: "meta/script.sh", mode: 0o755 },
-      ],
-      intent: "Update the complete fixture atomically",
-    } as never);
+    const result = await executeTool(
+      tool,
+      {
+        operations: [
+          {
+            kind: "replace",
+            path: "meta/a.ts",
+            mode: 0o600,
+            replacements: [
+              { oldText: "a = 1", newText: "a = 10" },
+              { oldText: "b = 2", newText: "b = 20" },
+            ],
+          },
+          { kind: "write", path: "meta/new.ts", content: "export {};\n" },
+          { kind: "delete", path: "meta/delete.ts" },
+          { kind: "chmod", path: "meta/script.sh", mode: 0o755 },
+        ],
+        intent: "Update the complete fixture atomically",
+      } as never,
+      { callId: "invocation:patch" },
+    );
 
     expect(result.details).toMatchObject({
       status: "applied",
@@ -78,9 +85,15 @@ describe("apply_patch", () => {
     const vcs = new StubVcs();
     const tool = createApplyPatchTool("/", vcs, authority);
     const base64 = Buffer.from([0, 255, 1, 254]).toString("base64");
-    await tool.execute("invocation:binary", {
-      operations: [{ kind: "write_binary", path: "meta/asset.bin", base64, mode: 0o600 }],
-    } as never);
+    await executeTool(
+      tool,
+      {
+        operations: [
+          { kind: "write_binary", path: "meta/asset.bin", base64, mode: 0o600 },
+        ],
+      } as never,
+      { callId: "invocation:binary" },
+    );
 
     expect(vcs.readBinary("meta/asset.bin")).toBe(base64);
     expect(vcs.modes.get("meta/asset.bin")).toBe(0o600);
@@ -93,16 +106,20 @@ describe("apply_patch", () => {
     const observations = createMemoryWorkspaceFileObservationStore();
     observations.record("meta/b.ts", "f".repeat(64));
     const tool = createApplyPatchTool("/", vcs, authority, observations);
-    const result = await tool.execute("invocation:stale", {
-      operations: [
-        { kind: "write", path: "meta/a.ts", content: "new" },
-        {
-          kind: "write",
-          path: "meta/b.ts",
-          content: "new",
-        },
-      ],
-    } as never);
+    const result = await executeTool(
+      tool,
+      {
+        operations: [
+          { kind: "write", path: "meta/a.ts", content: "new" },
+          {
+            kind: "write",
+            path: "meta/b.ts",
+            content: "new",
+          },
+        ],
+      } as never,
+      { callId: "invocation:stale" },
+    );
     expect(result.details).toMatchObject({
       status: "conflict",
       conflicts: [{ reason: "content-changed", path: "meta/b.ts" }],
@@ -114,18 +131,24 @@ describe("apply_patch", () => {
   it("rejects ambiguous replacements instead of choosing a site", async () => {
     const vcs = new StubVcs({ files: { "meta/a.ts": "same\nsame\n" } });
     const tool = createApplyPatchTool("/", vcs, authority);
-    const result = await tool.execute("invocation:ambiguous", {
-      operations: [
-        {
-          kind: "replace",
-          path: "meta/a.ts",
-          replacements: [{ oldText: "same", newText: "changed" }],
-        },
-      ],
-    } as never);
+    const result = await executeTool(
+      tool,
+      {
+        operations: [
+          {
+            kind: "replace",
+            path: "meta/a.ts",
+            replacements: [{ oldText: "same", newText: "changed" }],
+          },
+        ],
+      } as never,
+      { callId: "invocation:ambiguous" },
+    );
     expect(result.details).toMatchObject({
       status: "conflict",
-      conflicts: [{ reason: "ambiguous", matchCount: 2, candidateLines: [1, 2] }],
+      conflicts: [
+        { reason: "ambiguous", matchCount: 2, candidateLines: [1, 2] },
+      ],
     });
     expect(vcs.lastEditInput).toBeUndefined();
   });
@@ -133,20 +156,30 @@ describe("apply_patch", () => {
   it("returns bounded current context when an exact replacement is stale", async () => {
     const vcs = new StubVcs({
       files: {
-        "meta/a.ts": ["export function save() {", "  return submitCurrentValue();", "}"].join("\n"),
+        "meta/a.ts": [
+          "export function save() {",
+          "  return submitCurrentValue();",
+          "}",
+        ].join("\n"),
       },
     });
     const tool = createApplyPatchTool("/", vcs, authority);
 
-    const result = await tool.execute("invocation:not-found", {
-      operations: [
-        {
-          kind: "replace",
-          path: "meta/a.ts",
-          replacements: [{ oldText: "return submitOldValue();", newText: "return done;" }],
-        },
-      ],
-    } as never);
+    const result = await executeTool(
+      tool,
+      {
+        operations: [
+          {
+            kind: "replace",
+            path: "meta/a.ts",
+            replacements: [
+              { oldText: "return submitOldValue();", newText: "return done;" },
+            ],
+          },
+        ],
+      } as never,
+      { callId: "invocation:not-found" },
+    );
 
     expect(result.details).toMatchObject({
       status: "conflict",
@@ -177,16 +210,22 @@ describe("apply_patch", () => {
     observations.record("meta/a.ts", "f".repeat(64));
     const tool = createApplyPatchTool("/", vcs, authority, observations);
 
-    const result = await tool.execute("invocation:receipt-conflict", {
-      operations: [
-        { kind: "write", path: "meta/b.ts", content: "would mutate\n" },
-        {
-          kind: "replace",
-          path: "meta/a.ts",
-          replacements: [{ oldText: "currentValue = 1", newText: "currentValue = 3" }],
-        },
-      ],
-    } as never);
+    const result = await executeTool(
+      tool,
+      {
+        operations: [
+          { kind: "write", path: "meta/b.ts", content: "would mutate\n" },
+          {
+            kind: "replace",
+            path: "meta/a.ts",
+            replacements: [
+              { oldText: "currentValue = 1", newText: "currentValue = 3" },
+            ],
+          },
+        ],
+      } as never,
+      { callId: "invocation:receipt-conflict" },
+    );
 
     expect(result.details).toMatchObject({
       status: "conflict",
@@ -215,8 +254,8 @@ describe("apply_patch", () => {
         "meta/b.ts": "before\n",
       },
     });
-    const result = await createApplyPatchTool("/", vcs, authority).execute(
-      "invocation:normalized",
+    const result = await executeTool(
+      createApplyPatchTool("/", vcs, authority),
       {
         operations: [
           {
@@ -231,7 +270,8 @@ describe("apply_patch", () => {
           },
           { kind: "write", path: "meta/b.ts", content: "after\n" },
         ],
-      } as never
+      } as never,
+      { callId: "invocation:normalized" },
     );
 
     expect(result.details).toMatchObject({
@@ -252,14 +292,15 @@ describe("apply_patch", () => {
       files: { "meta/a.txt": oldText, "meta/b.txt": oldText },
     });
 
-    const result = await createApplyPatchTool("/", vcs, authority).execute(
-      "invocation:bounded-diff",
+    const result = await executeTool(
+      createApplyPatchTool("/", vcs, authority),
       {
         operations: [
           { kind: "write", path: "meta/a.txt", content: newText },
           { kind: "write", path: "meta/b.txt", content: newText },
         ],
-      } as never
+      } as never,
+      { callId: "invocation:bounded-diff" },
     );
 
     const details = result.details as {
@@ -270,13 +311,19 @@ describe("apply_patch", () => {
       }>;
     };
     expect(
-      details.operations.reduce((length, operation) => length + (operation.diff?.length ?? 0), 0)
+      details.operations.reduce(
+        (length, operation) => length + (operation.diff?.length ?? 0),
+        0,
+      ),
     ).toBeLessThanOrEqual(24_000);
-    expect(details.operations.some((operation) => operation.diffTruncated)).toBe(true);
+    expect(
+      details.operations.some((operation) => operation.diffTruncated),
+    ).toBe(true);
     expect(
       details.operations.some(
-        (operation) => (operation.diffOriginalChars ?? 0) > (operation.diff?.length ?? 0)
-      )
+        (operation) =>
+          (operation.diffOriginalChars ?? 0) > (operation.diff?.length ?? 0),
+      ),
     ).toBe(true);
   });
 });

@@ -1,22 +1,20 @@
 /**
- * Model materialization (design docs/local-models-extension-design.md §6.2).
- *
- * The vessel — the impure edge — resolves an agent's "provider:modelId" ref
- * into a journaled `AgentModelSpec` + auth mode here. pi-ai's generated
- * registry is ONE INPUT to materialization (cloud refs); the local-models
- * extension's entries are the other (local refs). The executor never touches
- * a registry: the journaled spec is the only resolution path.
- *
- * Specs are journaled and ride catalog snapshots — they MUST stay secret-free
- * (the loopback api-key is injected executor-side at call time, §6.3).
+ * Secret-free model materialization for native requests and catalog snapshots.
+ * Cloud refs resolve through the installed native Pi registry; local refs use
+ * the local-models extension descriptors. Each admitted request retains its
+ * model descriptor, so recovery does not resolve it again against a changed
+ * registry. Credentials are bound separately to the original invocation.
  */
 
 import {
   getBuiltinModel as getModel,
   getBuiltinModels as getModels,
   getBuiltinProviders as getProviders,
-} from "@workspace/pi-ai/providers/all";
-import type { AgentModelSpec, ModelAuthMode } from "@workspace/agent-loop";
+} from "@panticonic/pi-ai/providers/all";
+import type {
+  PiModelSpec,
+  ModelAuthMode,
+} from "@workspace/model-catalog/catalog";
 import {
   LOCAL_FALLBACK_MODEL,
   LOCAL_FALLBACK_MODEL_REF as CATALOG_LOCAL_FALLBACK_MODEL_REF,
@@ -27,7 +25,6 @@ import {
 export const LOCAL_PROVIDER_ID = "local";
 export const LOCAL_MODELS_EXTENSION_ID = "@workspace-extensions/local-models";
 export const LOCAL_FALLBACK_MODEL_REF = CATALOG_LOCAL_FALLBACK_MODEL_REF;
-const LOCAL_MODEL_STREAM_IDLE_TIMEOUT_MS = 60_000;
 
 /** llama-server quirks profile (design §6.4). Locked against the pinned
  *  build by the e2e tool-round-trip test; revisit on every pin bump. */
@@ -36,7 +33,7 @@ export const LLAMA_SERVER_COMPAT: Record<string, unknown> = {
 };
 
 export interface MaterializedModel {
-  spec: AgentModelSpec;
+  spec: PiModelSpec;
   auth: ModelAuthMode;
   /** Gates tool schemas at config time (design §6.4) — the vessel omits
    *  toolSchemasHash for tool-incapable models. */
@@ -57,7 +54,7 @@ export interface LocalModelDescriptor {
 
 type PiModelLike = PiModelInput;
 
-export function localEntryToSpec(entry: LocalModelDescriptor): AgentModelSpec {
+export function localEntryToSpec(entry: LocalModelDescriptor): PiModelSpec {
   return {
     id: entry.slug,
     name: entry.displayName,
@@ -69,13 +66,18 @@ export function localEntryToSpec(entry: LocalModelDescriptor): AgentModelSpec {
     cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
     contextWindow: entry.contextWindow,
     maxTokens: entry.maxTokens,
-    streamIdleTimeoutMs: LOCAL_MODEL_STREAM_IDLE_TIMEOUT_MS,
     compat: { ...LLAMA_SERVER_COMPAT },
   };
 }
 
-export function materializeLocalModel(entry: LocalModelDescriptor): MaterializedModel {
-  return { spec: localEntryToSpec(entry), auth: "loopback", toolsCapable: entry.toolsCapable };
+export function materializeLocalModel(
+  entry: LocalModelDescriptor,
+): MaterializedModel {
+  return {
+    spec: localEntryToSpec(entry),
+    auth: "loopback",
+    toolsCapable: entry.toolsCapable,
+  };
 }
 
 /**
@@ -97,9 +99,11 @@ export function bundledLocalFallbackModel(): MaterializedModel {
 
 export function materializeCloudModel(
   providerId: string,
-  modelId: string
+  modelId: string,
 ): MaterializedModel | null {
-  const model = getModel(providerId as never, modelId as never) as PiModelLike | undefined;
+  const model = getModel(providerId as never, modelId as never) as
+    | PiModelLike
+    | undefined;
   if (!model) return null;
   return { spec: piModelToSpec(model), auth: "url-bound", toolsCapable: true };
 }
@@ -107,20 +111,27 @@ export function materializeCloudModel(
 export function materializeModel(
   providerId: string,
   modelId: string,
-  localEntry: LocalModelDescriptor | null
+  localEntry: LocalModelDescriptor | null,
 ): MaterializedModel | null {
   if (providerId === LOCAL_PROVIDER_ID) {
     if (localEntry) return materializeLocalModel(localEntry);
-    return modelId === LOCAL_FALLBACK_MODEL.id ? bundledLocalFallbackModel() : null;
+    return modelId === LOCAL_FALLBACK_MODEL.id
+      ? bundledLocalFallbackModel()
+      : null;
   }
   return materializeCloudModel(providerId, modelId);
 }
 
 /** Enumerate the pi-ai registry as materialization inputs (catalog build). */
-export function allCloudModels(): Array<{ providerId: string; model: PiModelLike }> {
+export function allCloudModels(): Array<{
+  providerId: string;
+  model: PiModelLike;
+}> {
   const out: Array<{ providerId: string; model: PiModelLike }> = [];
   for (const providerId of getProviders()) {
-    for (const model of getModels(providerId as never) as unknown as PiModelLike[]) {
+    for (const model of getModels(
+      providerId as never,
+    ) as unknown as PiModelLike[]) {
       out.push({ providerId, model });
     }
   }

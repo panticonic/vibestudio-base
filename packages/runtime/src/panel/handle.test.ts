@@ -1012,17 +1012,14 @@ describe("PanelHandle", () => {
     }));
     const loadCdpClient = vi.fn(() => ({ BrowserImpl: { connect } }));
     vi.doMock("@workspace/cdp-client", loadCdpClient);
-    const rpcCall = vi.fn(async () => ({
-      wsEndpoint: "ws://server/cdp/panel-1",
-      token: "token-1",
-    }));
+    const rpcCall = createRpcCall();
     const { createPanelHandleApi } = await import("./handle.js");
     const { getPanelHandle } = createPanelHandleApi({
       call: rpcCall,
       on: vi.fn(),
     } as never);
 
-    const connectedPage = await getPanelHandle("panel-1", "browser").cdp.page();
+    const connectedPage = await getPanelHandle("panel:tree/browser-1").cdp.page();
     expect((connectedPage as unknown as { marker: string }).marker).toBe(
       page.marker,
     );
@@ -1043,7 +1040,7 @@ describe("PanelHandle", () => {
     } as never);
 
     await expect(
-      getPanelHandle("panel-1", "browser").cdp.page(),
+      getPanelHandle("panel:tree/browser-1").cdp.page(),
     ).rejects.toThrow(/module does not expose BrowserImpl\.connect/);
   });
 

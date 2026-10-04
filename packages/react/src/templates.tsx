@@ -416,8 +416,9 @@ function WorkspaceSourceSession({
   useEffect(() => {
     void loadRegistry();
   }, [client]);
+  const selectedSource = initialPin ?? initialInspection?.pin;
   const [sourceKind, setSourceKind] = useState(
-    initialSourceUrl
+    initialSourceUrl || selectedSource
       ? "git"
       : client.registry
         ? "templates"
@@ -431,7 +432,9 @@ function WorkspaceSourceSession({
   const freshPending = useRef(false);
   const [error, setError] = useState<unknown>(null);
   const lastLocator = useRef<TemplateLocator | null>(null);
-  const [url, setUrl] = useState(initialSourceUrl ?? "");
+  const [url, setUrl] = useState(
+    initialSourceUrl ?? (selectedSource ? sourceAddress(selectedSource) : ""),
+  );
   const [credential, setCredential] = useState("");
   const [currentInspection, setInspection] =
     useState<TemplateInspection | null>(initialInspection ?? null);

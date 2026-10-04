@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 
 const sourceSpecifier =
   process.env["PI_AI_CATALOG_MODULE"]?.trim() ||
-  "@earendil-works/pi-ai/providers/all";
+  "@panticonic/pi-ai/providers/all";
 const { getBuiltinModels, getBuiltinProviders } = await import(sourceSpecifier);
 const sourceUrl = import.meta.resolve(sourceSpecifier);
 const sourcePackageUrl = new URL("../../package.json", sourceUrl);
@@ -32,7 +32,7 @@ const providers = Object.fromEntries(
 );
 
 const output = {
-  generatedFrom: `@earendil-works/pi-ai@${sourcePackage.version}`,
+  generatedFrom: `${sourcePackage.name}@${sourcePackage.version}`,
   providers,
 };
 const outputUrl = new URL(

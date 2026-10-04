@@ -42,6 +42,15 @@ for authority inside provider code, probe with a broader call, or retry through
 another caller. Use preflight only when knowing the structured outcome before
 the effect is useful.
 
+When the user allows **only** specific access, use eval's `authority.requests`
+as the exact ceiling. Call `authority.preflight` for the documented service,
+method and arguments; each non-open leaf supplies `capability` and `resourceKey`.
+Use those as `{capability, resource: {kind: "exact", key: resourceKey}}` requests.
+Set `effects: "read-only"` when that restriction is requested. `preauthorize`
+prepares the declared service calls but does not limit the rest of the run's
+authority. An empty `requests` list denies protected calls even if a grant
+already exists or the call is also listed for preauthorization.
+
 Opaque preparation handles identify provider-owned state but don't authorize it.
 Produce them with the declared handle mechanism and bind consumers to the
 matching capability and argument. Never accept or invent a raw selector as a

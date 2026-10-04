@@ -32,6 +32,9 @@ import {
 } from "@workspace/pubsub";
 import {
   encodeChannelPayloadStoredValues,
+  isAgenticLogEventKind,
+  agenticEventFromLogEnvelope,
+  AGENTIC_EVENT_PAYLOAD_KIND,
   hydrateStoredValueRefs,
   participantRefFromMetadata,
   publicParticipantMetadata,
@@ -71,7 +74,11 @@ export interface ChannelReplayContext {
 }
 
 interface RpcCallerLike {
-  call<T = unknown>(targetId: string, method: string, args: unknown[]): Promise<T>;
+  call<T = unknown>(
+    targetId: string,
+    method: string,
+    args: unknown[],
+  ): Promise<T>;
 }
 
 type GadReplayPage = ChannelEnvelopePage<GadChannelEnvelopeView>;
@@ -118,7 +125,7 @@ interface AppendLogEventResultLike {
 
 /** annotations minus the metadata/attachments carriers. */
 function policyAnnotations(
-  annotations: Record<string, unknown> | undefined
+  annotations: Record<string, unknown> | undefined,
 ): Record<string, unknown> | undefined {
   if (!annotations) return undefined;
   const {
@@ -131,7 +138,9 @@ function policyAnnotations(
   return Object.keys(rest).length > 0 ? rest : undefined;
 }
 
-function contentIntegrityFromAnnotations(annotations: Record<string, unknown>): {
+function contentIntegrityFromAnnotations(
+  annotations: Record<string, unknown>,
+): {
   contentClass: "internal" | "external";
   externalKeys: string[];
 } {
@@ -143,7 +152,9 @@ function contentIntegrityFromAnnotations(annotations: Record<string, unknown>): 
     !externalKeys.every((key) => typeof key === "string") ||
     (contentClass === "internal" && externalKeys.length > 0)
   ) {
-    throw new Error("Durable channel envelope is missing valid content-integrity provenance");
+    throw new Error(
+      "Durable channel envelope is missing valid content-integrity provenance",
+    );
   }
   return { contentClass, externalKeys: [...externalKeys] };
 }
@@ -152,7 +163,7 @@ export class ChannelLog {
   private readonly gad: DurableObjectServiceClient;
   constructor(
     private readonly rpc: RpcCallerLike,
-    private readonly channelId: string
+    private readonly channelId: string,
   ) {
     this.gad = createGadServiceClient(rpc);
   }
@@ -164,32 +175,42 @@ export class ChannelLog {
     };
     const publicMetadata = publicParticipantMetadata(input.senderMetadata);
     if (publicMetadata !== undefined) annotations["metadata"] = publicMetadata;
-    if (input.attachments !== undefined) annotations["attachments"] = input.attachments;
+    if (input.attachments !== undefined)
+      annotations["attachments"] = input.attachments;
     annotations["contentClass"] = input.contentClass;
     annotations["externalKeys"] = [...input.externalKeys];
     // Idempotency intent is the STORE's contract now (no error-string
     // matching here): "idempotent-by-id" callers get the journaled original
     // back as a replayed envelope; everyone else gets hard typed errors.
-    const result = await this.gad.call<AppendLogEventResultLike>("appendLogEvent", {
-      logId: this.channelId,
-      head: CHANNEL_LOG_HEAD,
-      logKind: "channel",
-      ...(input.idempotency ? { idempotency: input.idempotency } : {}),
-      events: [
-        {
-          envelopeId: input.messageId ?? null,
-          actor: participantRefFromMetadata(input.senderId, input.senderMetadata),
-          payloadKind: input.type,
-          payload,
-          ...(Object.keys(annotations).length > 0 ? { annotations } : {}),
-        },
-      ],
-    });
+    const result = await this.gad.call<AppendLogEventResultLike>(
+      "appendLogEvent",
+      {
+        logId: this.channelId,
+        head: CHANNEL_LOG_HEAD,
+        logKind: "channel",
+        ...(input.idempotency ? { idempotency: input.idempotency } : {}),
+        events: [
+          {
+            envelopeId: input.messageId ?? null,
+            actor: participantRefFromMetadata(
+              input.senderId,
+              input.senderMetadata,
+            ),
+            payloadKind: input.type,
+            payload,
+            ...(Object.keys(annotations).length > 0 ? { annotations } : {}),
+          },
+        ],
+      },
+    );
     const envelope = result.envelopes[result.envelopes.length - 1]!;
     return this.eventFromLogEnvelope(await this.hydrate(envelope));
   }
 
-  async forkFrom(parentChannelId: string, throughSeq: number | null): Promise<void> {
+  async forkFrom(
+    parentChannelId: string,
+    throughSeq: number | null,
+  ): Promise<void> {
     await this.gad.call("forkLog", {
       fromLogId: parentChannelId,
       fromHead: CHANNEL_LOG_HEAD,
@@ -212,7 +233,9 @@ export class ChannelLog {
       channelId: this.channelId,
     });
     return Promise.all(
-      rows.map(async (row) => MessageTypeDefinitionSchema.parse(await this.hydrate(row)))
+      rows.map(async (row) =>
+        MessageTypeDefinitionSchema.parse(await this.hydrate(row)),
+      ),
     );
   }
 
@@ -221,7 +244,9 @@ export class ChannelLog {
       channelId: this.channelId,
       typeId,
     });
-    return row ? MessageTypeDefinitionSchema.parse(await this.hydrate(row)) : null;
+    return row
+      ? MessageTypeDefinitionSchema.parse(await this.hydrate(row))
+      : null;
   }
 
   async hasEnvelope(envelopeId: string): Promise<boolean> {
@@ -235,7 +260,9 @@ export class ChannelLog {
 
   async hasEnvelopes(envelopeIds: string[]): Promise<Set<string>> {
     const uniqueIds = Array.from(
-      new Set(envelopeIds.filter((id) => typeof id === "string" && id.length > 0))
+      new Set(
+        envelopeIds.filter((id) => typeof id === "string" && id.length > 0),
+      ),
     );
     if (uniqueIds.length === 0) return new Set();
     const present = await this.gad.call<string[]>("hasLogEvents", {
@@ -276,42 +303,59 @@ export class ChannelLog {
   }
 
   /** Hydrated ascending events for deterministic local projection folds. */
-  async readEvents(opts: { afterSeq: number; limit?: number }): Promise<ChannelEvent[]> {
+  async readEvents(opts: {
+    afterSeq: number;
+    limit?: number;
+  }): Promise<ChannelEvent[]> {
     const rows = await this.read({
       afterSeq: opts.afterSeq,
       limit: opts.limit ?? 500,
     });
-    return Promise.all(rows.map(async (row) => this.eventFromLogEnvelope(await this.hydrate(row))));
+    return Promise.all(
+      rows.map(async (row) =>
+        this.eventFromLogEnvelope(await this.hydrate(row)),
+      ),
+    );
   }
 
   async replayAfter(
     request: ChannelReplayAfterRequest,
-    context: ChannelReplayContext
+    context: ChannelReplayContext,
   ): Promise<ChannelReplayEnvelope> {
     const after = request.after;
     const limit = request.limit ?? DEFAULT_CHANNEL_REPLAY_PAGE_LIMIT;
     if (!Number.isInteger(after) || after < 0) {
-      throw new RangeError("channel replay after must be a non-negative integer");
-    }
-    if (!Number.isInteger(limit) || limit < 1 || limit > MAX_CHANNEL_REPLAY_PAGE_LIMIT) {
       throw new RangeError(
-        `channel replay limit must be an integer between 1 and ${MAX_CHANNEL_REPLAY_PAGE_LIMIT}`
+        "channel replay after must be a non-negative integer",
+      );
+    }
+    if (
+      !Number.isInteger(limit) ||
+      limit < 1 ||
+      limit > MAX_CHANNEL_REPLAY_PAGE_LIMIT
+    ) {
+      throw new RangeError(
+        `channel replay limit must be an integer between 1 and ${MAX_CHANNEL_REPLAY_PAGE_LIMIT}`,
       );
     }
     if (
       request.throughSeq !== undefined &&
       (!Number.isInteger(request.throughSeq) || request.throughSeq < after)
     ) {
-      throw new RangeError("channel replay throughSeq must be an integer not less than after");
+      throw new RangeError(
+        "channel replay throughSeq must be an integer not less than after",
+      );
     }
     const window = await this.readReplayWindow(
       {
         kind: "after",
         seq: after,
-        ...(request.throughSeq !== undefined ? { throughSeq: request.throughSeq } : {}),
+        ...(request.throughSeq !== undefined
+          ? { throughSeq: request.throughSeq }
+          : {}),
       },
       limit,
-      true
+      true,
     );
     return this.replayFromWindow("after", window, context);
   }
@@ -319,16 +363,20 @@ export class ChannelLog {
   async replayBefore(
     beforeSeq: number,
     limit: number,
-    context: ChannelReplayContext
+    context: ChannelReplayContext,
   ): Promise<ChannelReplayEnvelope> {
     this.assertReplayLimit(limit);
-    const window = await this.readReplayWindow({ kind: "before", seq: beforeSeq }, limit, true);
+    const window = await this.readReplayWindow(
+      { kind: "before", seq: beforeSeq },
+      limit,
+      true,
+    );
     return this.replayFromWindow("before", window, context);
   }
 
   async replayInitial(
     limit: number,
-    context: ChannelReplayContext
+    context: ChannelReplayContext,
   ): Promise<ChannelReplayEnvelope> {
     this.assertReplayLimit(limit, true);
     const window = await this.readReplayWindow({ kind: "tail" }, limit, true);
@@ -337,9 +385,13 @@ export class ChannelLog {
 
   private assertReplayLimit(limit: number, allowZero = false): void {
     const minimum = allowZero ? 0 : 1;
-    if (!Number.isInteger(limit) || limit < minimum || limit > MAX_CHANNEL_REPLAY_PAGE_LIMIT) {
+    if (
+      !Number.isInteger(limit) ||
+      limit < minimum ||
+      limit > MAX_CHANNEL_REPLAY_PAGE_LIMIT
+    ) {
       throw new RangeError(
-        `channel replay limit must be an integer between ${minimum} and ${MAX_CHANNEL_REPLAY_PAGE_LIMIT}`
+        `channel replay limit must be an integer between ${minimum} and ${MAX_CHANNEL_REPLAY_PAGE_LIMIT}`,
       );
     }
   }
@@ -356,44 +408,62 @@ export class ChannelLog {
           ? { kind: "after", seq: opts.afterId }
           : { kind: "tail" },
       opts.limit ?? 50,
-      false
+      false,
     );
     return window.items.map((envelope) => this.inspectionRow(envelope));
   }
 
-  async inspectEnvelope(envelopeId: string): Promise<Record<string, unknown>[]> {
+  async inspectEnvelope(
+    envelopeId: string,
+  ): Promise<Record<string, unknown>[]> {
     const envelope = await this.gad.call<LogEnvelope | null>("getLogEvent", {
       logId: this.channelId,
       head: CHANNEL_LOG_HEAD,
       envelopeId,
     });
     if (!envelope) return [];
-    const contentIntegrity = contentIntegrityFromAnnotations(envelope.annotations ?? {});
+    const contentIntegrity = contentIntegrityFromAnnotations(
+      envelope.annotations ?? {},
+    );
     return [
       this.inspectionRow({
         envelopeId: String(envelope.envelopeId),
         channelId: this.channelId,
         seq: envelope.seq,
         from: envelope.actor as GadChannelEnvelopeView["from"],
-        payload: envelope.payload,
-        payloadKind: envelope.payloadKind,
-        metadata: envelope.annotations?.["metadata"] as Record<string, unknown> | undefined,
-        attachments: envelope.annotations?.["attachments"] as unknown[] | undefined,
+        payload: isAgenticLogEventKind(envelope.payloadKind)
+          ? agenticEventFromLogEnvelope(envelope)
+          : envelope.payload,
+        payloadKind: isAgenticLogEventKind(envelope.payloadKind)
+          ? AGENTIC_EVENT_PAYLOAD_KIND
+          : envelope.payloadKind,
+        metadata: envelope.annotations?.["metadata"] as
+          | Record<string, unknown>
+          | undefined,
+        attachments: envelope.annotations?.["attachments"] as
+          | unknown[]
+          | undefined,
         ...contentIntegrity,
         publishedAt: envelope.appendedAt,
       }),
     ];
   }
 
-  private inspectionRow(envelope: GadChannelEnvelopeView): Record<string, unknown> {
+  private inspectionRow(
+    envelope: GadChannelEnvelopeView,
+  ): Record<string, unknown> {
     return {
       seq: envelope.seq,
       envelope_id: envelope.envelopeId,
       payload_kind: envelope.payloadKind,
       payload: JSON.stringify(envelope.payload),
       from_id: envelope.from.participantId ?? envelope.from.id,
-      from_json: JSON.stringify(envelope.metadata ?? envelope.from.metadata ?? {}),
-      attachments: envelope.attachments ? JSON.stringify(envelope.attachments) : null,
+      from_json: JSON.stringify(
+        envelope.metadata ?? envelope.from.metadata ?? {},
+      ),
+      attachments: envelope.attachments
+        ? JSON.stringify(envelope.attachments)
+        : null,
       published_at: Date.parse(envelope.publishedAt),
     };
   }
@@ -401,12 +471,12 @@ export class ChannelLog {
   private replayFromWindow(
     mode: ChannelReplayEnvelope["mode"],
     window: GadReplayWindow,
-    context: ChannelReplayContext
+    context: ChannelReplayContext,
   ): ChannelReplayEnvelope {
     return {
       mode,
       logEvents: window.items.map(
-        (envelope): ServerLogEvent => this.eventFromChannelView(envelope)
+        (envelope): ServerLogEvent => this.eventFromChannelView(envelope),
       ),
       snapshots: context.snapshots ?? [],
       ready: {
@@ -434,11 +504,13 @@ export class ChannelLog {
       envelope.metadata ?? envelope.from.metadata,
       Date.parse(envelope.publishedAt),
       envelope.attachments as StoredAttachment[] | undefined,
-      policyAnnotations((envelope as { annotations?: Record<string, unknown> }).annotations),
+      policyAnnotations(
+        (envelope as { annotations?: Record<string, unknown> }).annotations,
+      ),
       {
         contentClass: envelope.contentClass,
         externalKeys: envelope.externalKeys,
-      }
+      },
     );
   }
 
@@ -447,44 +519,62 @@ export class ChannelLog {
     return buildChannelEvent(
       envelope.seq,
       String(envelope.envelopeId),
-      envelope.payloadKind,
-      JSON.stringify(envelope.payload),
-      (envelope.actor as { participantId?: string }).participantId ?? envelope.actor.id,
+      isAgenticLogEventKind(envelope.payloadKind)
+        ? AGENTIC_EVENT_PAYLOAD_KIND
+        : envelope.payloadKind,
+      JSON.stringify(
+        isAgenticLogEventKind(envelope.payloadKind)
+          ? agenticEventFromLogEnvelope(envelope)
+          : envelope.payload,
+      ),
+      (envelope.actor as { participantId?: string }).participantId ??
+        envelope.actor.id,
       (annotations["metadata"] as Record<string, unknown> | undefined) ??
         (envelope.actor as { metadata?: Record<string, unknown> }).metadata,
       Date.parse(envelope.appendedAt),
       annotations["attachments"] as StoredAttachment[] | undefined,
       policyAnnotations(envelope.annotations),
-      contentIntegrityFromAnnotations(annotations)
+      contentIntegrityFromAnnotations(annotations),
     );
   }
 
   private async encodePayload(payload: unknown): Promise<unknown> {
     return encodeChannelPayloadStoredValues(payload, {
       putText: (value) =>
-        this.rpc.call<{ digest: string; size: number }>("main", "blobstore.putText", [value]),
+        this.rpc.call<{ digest: string; size: number }>(
+          "main",
+          "blobstore.putText",
+          [value],
+        ),
     });
   }
 
-  private async hydrateReplayPage(window: GadReplayPage): Promise<GadReplayPage> {
+  private async hydrateReplayPage(
+    window: GadReplayPage,
+  ): Promise<GadReplayPage> {
     return {
       ...window,
-      items: await Promise.all(window.items.map((envelope) => this.hydrate(envelope))),
+      items: await Promise.all(
+        window.items.map((envelope) => this.hydrate(envelope)),
+      ),
     };
   }
 
   private async readReplayWindow(
     window: ChannelEnvelopeWindow,
     maximumItems: number | "all",
-    hydrate: boolean
+    hydrate: boolean,
   ): Promise<GadReplayWindow> {
     const pages = await collectChannelEnvelopePages(
       { channelId: this.channelId, window },
       { maximumItems },
       async (request) => {
-        const page = await this.gad.call<GadReplayPage>("readChannelEnvelopes", request);
+        const page = await this.gad.call<GadReplayPage>(
+          "readChannelEnvelopes",
+          request,
+        );
         return hydrate ? this.hydrateReplayPage(page) : page;
-      }
+      },
     );
     const firstPage = pages[0]!;
     const lastPage = pages[pages.length - 1]!;
@@ -502,7 +592,9 @@ export class ChannelLog {
         ...(firstPage.pageInfo.snapshotLastSeq !== undefined
           ? { snapshotLastSeq: firstPage.pageInfo.snapshotLastSeq }
           : {}),
-        ...(items[0]?.seq !== undefined ? { returnedFromSeq: items[0].seq } : {}),
+        ...(items[0]?.seq !== undefined
+          ? { returnedFromSeq: items[0].seq }
+          : {}),
         ...(items[items.length - 1]?.seq !== undefined
           ? { returnedToSeq: items[items.length - 1]!.seq }
           : {}),
@@ -514,7 +606,8 @@ export class ChannelLog {
 
   private async hydrate<T>(value: T): Promise<T> {
     return hydrateStoredValueRefs(value, {
-      getText: (digest) => this.rpc.call<string | null>("main", "blobstore.getText", [digest]),
+      getText: (digest) =>
+        this.rpc.call<string | null>("main", "blobstore.getText", [digest]),
     }) as Promise<T>;
   }
 }

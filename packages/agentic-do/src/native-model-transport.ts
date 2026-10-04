@@ -64,6 +64,12 @@ interface OwnedResource {
   close(reason: unknown): Promise<void>;
 }
 
+/** Transport consumes routing identity; model metadata and its persistence belong to Pi. */
+type ModelTransportTarget = Pick<
+  ModelRequestTarget["model"],
+  "provider" | "api" | "baseUrl"
+>;
+
 export type CredentialedModelConnection = ModelRequestConnection & {
   readonly options: ModelRequestCapabilities &
     Required<
@@ -96,7 +102,7 @@ const ROUTING_HEADERS = [
  */
 export function createCredentialedModelConnection(
   input: {
-    readonly model: ModelRequestTarget["model"];
+    readonly model: ModelTransportTarget;
     readonly credential: StoredCredentialSummary;
     readonly rpc: RpcCaller;
     readonly egressFetch: typeof fetch;
@@ -110,7 +116,7 @@ export function createCredentialedModelConnection(
 /** The extension owns its model server; this request owns only attributed HTTP/socket resources. */
 export function createLoopbackModelConnection(
   input: {
-    readonly model: ModelRequestTarget["model"];
+    readonly model: ModelTransportTarget;
     readonly apiKey: string;
     readonly origins: readonly string[];
     readonly egressFetch: typeof fetch;
@@ -122,7 +128,7 @@ export function createLoopbackModelConnection(
 }
 
 type ModelTransportInput = {
-  readonly model: ModelRequestTarget["model"];
+  readonly model: ModelTransportTarget;
   readonly egressFetch: typeof fetch;
   readonly onDiagnostic?: (event: NativeModelTransportDiagnostic) => void;
 } & (
@@ -338,29 +344,15 @@ function createModelConnection(
     let sends = 0;
     let messages = 0;
     let errors = 0;
-    let socketFailure: { reason: unknown } | undefined;
     const metadata = () => ({ socketId, sends, messages, errors });
     const onMessage = () => {
       messages += 1;
       if (messages === 1)
         report({ milestone: "message_observed", ...metadata() });
     };
-    const onError = (event: unknown) => {
+    const onError = () => {
       errors += 1;
       if (errors === 1) report({ milestone: "socket_error", ...metadata() });
-      const errorEvent =
-        typeof event === "object" && event !== null
-          ? (event as { error?: unknown; message?: unknown })
-          : undefined;
-      socketFailure ??= {
-        reason:
-          errorEvent?.error ??
-          new Error(
-            typeof errorEvent?.message === "string"
-              ? errorEvent.message
-              : "Model socket failed",
-          ),
-      };
       // Workers reports a terminal network failure with ErrorEvent and CLOSED,
       // without a subsequent CloseEvent. A nonterminal error retains ownership.
       if (socket.readyState === 3) finish();
@@ -384,10 +376,11 @@ function createModelConnection(
       socket.removeEventListener("error", onError);
       signal.removeEventListener("abort", onAbort);
       resources.delete(resource);
-      if (socketFailure) {
-        cleanupFailures.add(socketFailure.reason);
-        closedReject(socketFailure.reason);
-      } else closedResolve();
+      // CLOSED is authoritative resource retirement, including a terminal
+      // network error. Provider listeners still receive that original error;
+      // it is not a failure to release an already retired socket. Explicit
+      // close/cancellation failures remain retained separately.
+      closedResolve();
     };
     const requestClose = (
       code = 1000,

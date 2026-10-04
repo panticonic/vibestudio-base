@@ -14,6 +14,7 @@ import type {
   AutomationDefinitionSnapshot,
   LifecycleMessageReasonCode,
   MessageModelPayload,
+  NativeMessageCoordinates,
   MessageTier,
   TurnReasonCode,
 } from "@workspace/agentic-protocol";
@@ -269,6 +270,8 @@ export interface AutomationDefinitionPayload {
  * from channel envelopes and local UI events.
  */
 export interface ChatMessage {
+  /** Actual native response entry/task coordinates from its canonical publication. */
+  native?:NativeMessageCoordinates;
   id: string;
   pubsubId?: number;
   senderId: string;

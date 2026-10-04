@@ -705,3 +705,6 @@ export interface AgenticClient<T extends AgenticParticipantMetadata = AgenticPar
  * Status of an execution pause.
  */
 export type PauseStatus = "paused" | "resumed" | "cancelled";
+
+/** The committed channel fact, including the original identity and payload on retries. */
+export type PublishReceipt = import("./types.js").ServerLogEvent;

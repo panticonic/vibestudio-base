@@ -1,3 +1,4 @@
+import { executeTool } from "../../packages/harness/src/testing/native-tool.js";
 import { describe, expect, it, vi } from "vitest";
 import {
   createPanelCdpEndpointTool,
@@ -28,10 +29,15 @@ describe("panel_screenshot", () => {
     });
     const tool = createPanelScreenshotTool(callMain, BOUND);
 
-    const result = await tool.execute("t1", { format: "jpeg" });
+    const result = await executeTool(
+      tool,
+      { format: "jpeg" },
+      { callId: "t1" },
+    );
     expect(callMain.mock.calls[0]).toEqual([
       "panelCdp.screenshot",
       ["slot-a", { format: "jpeg" }],
+      undefined,
     ]);
     expect(result.content[0]).toMatchObject({ type: "image", data: "aGk=" });
     expect(result.content[1]).toMatchObject({
@@ -47,9 +53,13 @@ describe("panel_screenshot", () => {
       width: 1,
       height: 1,
     });
-    await createPanelScreenshotTool(callMain, BOUND).execute("t1", {
-      panelId: "slot-other",
-    });
+    await executeTool(
+      createPanelScreenshotTool(callMain, BOUND),
+      {
+        panelId: "slot-other",
+      },
+      { callId: "t1" },
+    );
     expect(callMain.mock.calls[0]?.[1]?.[0]).toBe("slot-other");
   });
 });
@@ -82,9 +92,10 @@ describe("panel_console", () => {
 
   it("renders bodies, not counts, and says when history was dropped", async () => {
     const callMain = calls(history);
-    const result = await createPanelConsoleTool(callMain, BOUND).execute(
-      "t1",
+    const result = await executeTool(
+      createPanelConsoleTool(callMain, BOUND),
       {},
+      { callId: "t1" },
     );
     const text = result.content
       .map((part) => ("text" in part ? part.text : ""))
@@ -98,13 +109,17 @@ describe("panel_console", () => {
 
   it("passes search, filters, and the stable paging cursor to the host", async () => {
     const callMain = calls(history);
-    await createPanelConsoleTool(callMain, BOUND).execute("t1", {
-      levels: ["warning", "error"],
-      sources: ["console"],
-      contains: "render failed",
-      beforeSeq: 42,
-      limit: 5,
-    });
+    await executeTool(
+      createPanelConsoleTool(callMain, BOUND),
+      {
+        levels: ["warning", "error"],
+        sources: ["console"],
+        contains: "render failed",
+        beforeSeq: 42,
+        limit: 5,
+      },
+      { callId: "t1" },
+    );
     expect(callMain.mock.calls[0]).toEqual([
       "panelCdp.consoleHistory",
       [
@@ -118,6 +133,7 @@ describe("panel_console", () => {
           beforeSeq: 42,
         },
       ],
+      undefined,
     ]);
   });
 
@@ -129,9 +145,10 @@ describe("panel_console", () => {
       dropped: { entries: 0, errors: 0 },
       capacity: { entries: 1000, errors: 500 },
     });
-    const result = await createPanelConsoleTool(callMain, BOUND).execute(
-      "t1",
+    const result = await executeTool(
+      createPanelConsoleTool(callMain, BOUND),
       {},
+      { callId: "t1" },
     );
     const text = result.content
       .map((part) => ("text" in part ? part.text : ""))
@@ -157,12 +174,17 @@ describe("panel_eval", () => {
       error: null,
       truncated: false,
     });
-    const result = await createPanelEvalTool(callMain, BOUND).execute("t1", {
-      expression: "innerWidth",
-    });
+    const result = await executeTool(
+      createPanelEvalTool(callMain, BOUND),
+      {
+        expression: "innerWidth",
+      },
+      { callId: "t1" },
+    );
     expect(callMain.mock.calls[0]).toEqual([
       "panelCdp.evaluate",
       ["slot-a", "innerWidth", {}],
+      undefined,
     ]);
     expect(result.isError).toBeUndefined();
     expect(result.content[0]).toMatchObject({ text: "number: 720" });
@@ -176,9 +198,13 @@ describe("panel_eval", () => {
       error: "TypeError: x is not a function",
       truncated: false,
     });
-    const result = await createPanelEvalTool(callMain, BOUND).execute("t1", {
-      expression: "x()",
-    });
+    const result = await executeTool(
+      createPanelEvalTool(callMain, BOUND),
+      {
+        expression: "x()",
+      },
+      { callId: "t1" },
+    );
     expect(result.isError).toBe(true);
     expect(result.content[0]).toMatchObject({
       text: expect.stringContaining("not a function"),
@@ -193,9 +219,13 @@ describe("panel_eval", () => {
       error: null,
       truncated: true,
     });
-    const result = await createPanelEvalTool(callMain, BOUND).execute("t1", {
-      expression: "big",
-    });
+    const result = await executeTool(
+      createPanelEvalTool(callMain, BOUND),
+      {
+        expression: "big",
+      },
+      { callId: "t1" },
+    );
     expect(result.content[0]).toMatchObject({
       text: expect.stringContaining("truncated"),
     });
@@ -203,7 +233,11 @@ describe("panel_eval", () => {
 
   it("refuses an empty expression without calling the host", async () => {
     const callMain = calls(null);
-    const result = await createPanelEvalTool(callMain, BOUND).execute("t1", {});
+    const result = await executeTool(
+      createPanelEvalTool(callMain, BOUND),
+      { expression: "" },
+      { callId: "t1" },
+    );
     expect(result.isError).toBe(true);
     expect(callMain.mock.calls).toHaveLength(0);
   });
@@ -216,10 +250,11 @@ describe("panel_cdp_endpoint", () => {
       token: "t",
     });
     const tool = createPanelCdpEndpointTool(callMain, BOUND);
-    const result = await tool.execute("t1", {});
+    const result = await executeTool(tool, {}, { callId: "t1" });
     expect(callMain.mock.calls[0]).toEqual([
       "panelCdp.getCdpEndpoint",
       ["slot-a"],
+      undefined,
     ]);
     expect(result.content[0]).toMatchObject({
       text: expect.stringContaining("ws://server/cdp/slot-a"),

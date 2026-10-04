@@ -4,6 +4,8 @@
  * NOTE: Sucrase (~460KB) is lazy-loaded on first transform to reduce initial bundle size.
  */
 
+import { analyzeModuleImports } from "@vibestudio/module-imports";
+
 export interface TransformOptions {
   /** Source syntax: JavaScript, TypeScript, JSX, or TSX. */
   syntax: "javascript" | "typescript" | "jsx" | "tsx";
@@ -73,14 +75,12 @@ export async function transformCode(source: string, options: TransformOptions): 
  * Extract module specifiers from require() calls.
  * Used to validate all dependencies are available before execution.
  */
-function extractRequires(code: string): string[] {
-  const matches = Array.from(code.matchAll(/require\(["']([^"']+)["']\)/g));
-  const specifiers: string[] = [];
-  for (const match of matches) {
-    const specifier = match[1];
-    if (specifier !== undefined) {
-      specifiers.push(specifier);
-    }
-  }
-  return Array.from(new Set(specifiers));
+export function extractRequires(code: string): string[] {
+  return [
+    ...new Set(
+      analyzeModuleImports(code)
+        .filter((reference) => reference.syntax === "require")
+        .map((reference) => reference.specifier)
+    ),
+  ];
 }

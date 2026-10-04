@@ -122,7 +122,26 @@ Use `prepareProjects(projects)` for standalone units or custom wiring. It
 returns an array of unit receipts and never connects its repositories implicitly.
 Every panel or worker requires explicit `authority` and `authorityReason`;
 a `durable-service` worker additionally requires `methods` with both complete
-receiver policies. A content repository needs no executable authority:
+receiver policies. Here `authority` is the unit manifest itself, not the
+connected application's `{ panel, worker, service, methods, rationale }` envelope.
+Keep the explanation in the separate `authorityReason` field. For example, a
+standalone panel with no downstream effects can deliberately request nothing:
+
+```ts
+scope.prepared = await prepareProjects([
+  {
+    projectType: "panel",
+    name: "daily-notes",
+    title: "Daily Notes",
+    authority: { requests: [], provides: [] },
+    authorityReason: "Panel-local notes with no downstream host or service effects.",
+  },
+]);
+```
+
+Choose actual requests from the implementation's effects rather than copying an
+empty manifest into a panel that calls workspace services.
+A content repository needs no executable authority:
 
 ```ts
 import { prepareProjects } from "@workspace-skills/workspace-dev";
@@ -207,8 +226,35 @@ they never commit or push. Executable forks require explicit `authority` and
 source manifest rather than inheriting its permissions silently. Inspect copied
 receiver contracts, resource identities, and configuration references separately.
 
+`forkPanel` and `forkWorker` take `from` (the existing repository path) and
+`name` (the new repository basename). `forkProject` takes explicit `from` and
+`to` paths. For example:
+
+```ts
+scope.forkRequest = {
+  from: "panels/daily-notes",
+  name: "daily-notes-copy",
+  title: "Daily Notes Copy",
+  authority: { requests: [], provides: [] },
+  authorityReason: "Panel-local notes with no downstream host or service effects.",
+};
+const { forkPanel } = await import("@workspace-skills/workspace-dev");
+return await forkPanel({ ...scope.forkRequest, dryRun: true });
+```
+
 Inspect a dry-run result first; `preparation` is null and no edit has occurred.
 Run the same request without `dryRun: true` to prepare it, retain the returned
 exact working-head receipt, then use the same review/verification/publication
 workflow. Worker `classMap` handles deliberate class renaming. Source ancestry
 does not confer authority or install a live upstream.
+
+
+## Test declarations
+
+A generated starter declares a suite only when it supplies test source. The
+agentic worker starter supplies a native Vitest initialization test; minimal
+panel and stateless/service-worker starters begin without test suites. To add
+coverage, author the tests and declare their exact unit-local include patterns
+and execution backend in `vibestudio.tests`, with the dependencies those tests
+import. Run a declared suite through `verify`; use a build check while a unit
+has no authored tests.

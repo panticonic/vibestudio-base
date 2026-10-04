@@ -1,3 +1,5 @@
+import type { JsonRepresentation } from "@panticonic/pi-chord";
+import { toolDetails } from "./native-tool-json.js";
 /**
  * Typed mutation surface for context-local workspace services.
  *
@@ -6,11 +8,18 @@
  * before it can become the context's working state.
  */
 
-import { Type } from "@sinclair/typebox";
-import type { AgentTool, AgentToolResult } from "@workspace/pi-core";
+import { Type } from "@panticonic/pi-ai";
+import type {
+  ToolRegistration,
+  ToolExecutionResult,
+} from "@panticonic/pi-durable";
 import type { VcsWorkingMutationResult } from "@vibestudio/service-schemas/vcs";
 import YAML from "yaml";
-import { planServiceMutation, type ServiceRegistration, type ServiceMutation } from "@vibestudio/workspace-contracts/serviceMutation";
+import {
+  planServiceMutation,
+  type ServiceRegistration,
+  type ServiceMutation,
+} from "@vibestudio/workspace-contracts/serviceMutation";
 import { generateDiffString } from "./edit-diff.js";
 import { resolveToolFile } from "../semantic-file-resolution.js";
 import {
@@ -29,20 +38,34 @@ const principalSchema = Type.Union([
   Type.Literal("mission"),
 ]);
 
-const bindingSchema = Type.Union([
-  Type.Literal("consent"),
-  Type.Literal("declared"),
-  Type.Object({ declaredFor: Type.Array(Type.String({ minLength: 1 }), { minItems: 1, uniqueItems: true }) }, { additionalProperties: false }),
-], {
-  description: "Service wiring policy: consent asks each caller to approve access; declared admits the listed principals through this reviewed workspace declaration; declaredFor admits only named consumer repository paths without an extra binding prompt. Receiver method authority still applies independently.",
-});
+const bindingSchema = Type.Union(
+  [
+    Type.Literal("consent"),
+    Type.Literal("declared"),
+    Type.Object(
+      {
+        declaredFor: Type.Array(Type.String({ minLength: 1 }), {
+          minItems: 1,
+          uniqueItems: true,
+        }),
+      },
+      { additionalProperties: false },
+    ),
+  ],
+  {
+    description:
+      "Service wiring policy: consent asks each caller to approve access; declared admits the listed principals through this reviewed workspace declaration; declaredFor admits only named consumer repository paths without an extra binding prompt. Receiver method authority still applies independently.",
+  },
+);
 
 const workspaceServiceSchema = Type.Union(
   [
     Type.Object(
       {
         operation: Type.Literal("upsert"),
-        name: Type.String({ description: "Stable service name to add or update." }),
+        name: Type.String({
+          description: "Stable service name to add or update.",
+        }),
         source: Type.String({
           description: "Provider worker source, e.g. workers/todo-store.",
         }),
@@ -50,11 +73,16 @@ const workspaceServiceSchema = Type.Union(
         action: Type.String({
           description: 'User-facing verb phrase completing "Allow … to …".',
         }),
-        description: Type.String({ description: "Plain-language purpose of the service." }),
-        notability: Type.Union([Type.Literal("headline"), Type.Literal("everyday")], {
-          description:
-            "Use headline when a non-technical person would want to know before adding a caller; everyday for ordinary workspace machinery.",
+        description: Type.String({
+          description: "Plain-language purpose of the service.",
         }),
+        notability: Type.Union(
+          [Type.Literal("headline"), Type.Literal("everyday")],
+          {
+            description:
+              "Use headline when a non-technical person would want to know before adding a caller; everyday for ordinary workspace machinery.",
+          },
+        ),
         presentation: Type.Object(
           {
             domain: Type.Union([
@@ -66,21 +94,25 @@ const workspaceServiceSchema = Type.Union(
               Type.Literal("people"),
               Type.Literal("computer"),
             ]),
-            verb: Type.Union([Type.Literal("see"), Type.Literal("act"), Type.Literal("manage")]),
+            verb: Type.Union([
+              Type.Literal("see"),
+              Type.Literal("act"),
+              Type.Literal("manage"),
+            ]),
             substanceKind: Type.Optional(
               Type.Union([
                 Type.Literal("change-set"),
                 Type.Literal("send"),
                 Type.Literal("deletion"),
                 Type.Literal("custom"),
-              ])
+              ]),
             ),
           },
           {
             additionalProperties: false,
             description:
               "How authority prompts describe the service. Sharing requires substanceKind.",
-          }
+          },
         ),
         protocols: Type.Array(Type.String(), {
           minItems: 1,
@@ -90,7 +122,8 @@ const workspaceServiceSchema = Type.Union(
         principals: Type.Array(principalSchema, {
           minItems: 1,
           uniqueItems: true,
-          description: "Authenticated principal kinds allowed by the service declaration.",
+          description:
+            "Authenticated principal kinds allowed by the service declaration.",
         }),
         binding: bindingSchema,
         transport: Type.Union([
@@ -102,17 +135,17 @@ const workspaceServiceSchema = Type.Union(
                 Type.String({
                   description:
                     "When present, atomically declares this default singleton object key too.",
-                })
+                }),
               ),
             },
-            { additionalProperties: false }
+            { additionalProperties: false },
           ),
           Type.Object(
             {
               kind: Type.Literal("worker"),
               routePath: Type.String(),
             },
-            { additionalProperties: false }
+            { additionalProperties: false },
           ),
         ]),
       },
@@ -120,7 +153,7 @@ const workspaceServiceSchema = Type.Union(
         additionalProperties: false,
         description:
           "Add or replace one complete context-local service declaration. All declaration metadata is required.",
-      }
+      },
     ),
     Type.Object(
       {
@@ -130,16 +163,16 @@ const workspaceServiceSchema = Type.Union(
           Type.Boolean({
             description:
               "Also remove the matching singleton when no remaining service uses its provider class.",
-          })
+          }),
         ),
       },
-      { additionalProperties: false }
+      { additionalProperties: false },
     ),
   ],
   {
     description:
       "Use operation=upsert with the complete declaration, or operation=remove with its stable name.",
-  }
+  },
 );
 
 export type WorkspaceServiceToolInput =
@@ -166,21 +199,27 @@ export function createWorkspaceServiceTool(
   vcs: ToolEditingVcs,
   context: ToolMutationContext,
   deps: WorkspaceServiceToolDeps,
-): AgentTool<typeof workspaceServiceSchema, WorkspaceServiceToolDetails> {
+): ToolRegistration<
+  typeof workspaceServiceSchema,
+  JsonRepresentation<WorkspaceServiceToolDetails>
+> {
   return {
     name: "workspace_service",
-    label: "workspace_service",
+
     description:
       "Atomically add, update, or remove a live context-local service declaration in meta/vibestudio.yml. For Durable Objects, transport.objectKey declares the matching singleton in the same validated edit. Use this instead of splicing the services or singletonObjects YAML lists by hand; then confirm the live contract with docs_search/docs_open before eval.",
     parameters: workspaceServiceSchema,
-    cancellationMode: "settle",
+
     execute: async (
-      _toolCallId,
       input,
-      signal,
-    ): Promise<AgentToolResult<WorkspaceServiceToolDetails>> => {
+      _api,
+      executionContext,
+    ): Promise<
+      ToolExecutionResult<JsonRepresentation<WorkspaceServiceToolDetails>>
+    > => {
+      const signal = executionContext.abortSignal;
       if (signal?.aborted) throw new Error("Operation aborted");
-      // AgentTool invokes execute only after validating the discriminated
+      // ToolRegistration invokes execute only after validating the discriminated
       // TypeBox union. Keep the implementation on that exact public shape.
       const command = input as WorkspaceServiceToolInput;
       const operation = command.operation;
@@ -217,13 +256,13 @@ export function createWorkspaceServiceTool(
                   : "No changes made: another service still uses the singleton.",
             },
           ],
-          details: {
+          details: toolDetails({
             changed: false,
             operation: "remove",
             serviceName,
             diff: "",
             diagnostic: plan.diagnostic,
-          },
+          }),
         };
       }
       document.set("services", plan.services);
@@ -258,14 +297,14 @@ export function createWorkspaceServiceTool(
                 : `Removed ${serviceName} and validated the complete workspace config.`,
           },
         ],
-        details: {
+        details: toolDetails({
           changed: true,
           operation,
           serviceName,
           ...(docsId ? { docsId } : {}),
           diff,
           vcsResult,
-        },
+        }),
       };
     },
   };

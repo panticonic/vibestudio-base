@@ -266,9 +266,9 @@
     "@workspace/pubsub": "workspace:*",
     "@workspace/harness": "workspace:*",
     "zod": "^3.25.76",
-    "@panticonic/pi-ai": "0.99.2-vibestudio.9",
-    "@panticonic/pi-chord": "0.99.2-vibestudio.9",
-    "@panticonic/pi-durable": "0.99.2-vibestudio.9"
+    "@panticonic/pi-ai": "0.99.2-vibestudio.11",
+    "@panticonic/pi-chord": "0.99.2-vibestudio.11",
+    "@panticonic/pi-durable": "0.99.2-vibestudio.11"
   },
   "devDependencies": {
     "@vibestudio/service-schemas": "workspace:*",

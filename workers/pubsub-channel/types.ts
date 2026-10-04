@@ -7,6 +7,7 @@ import type {
   ChannelEvent,
   ChannelReplayEnvelope,
   SendMessageOptions,
+  MethodAdvertisement,
 } from "@workspace/pubsub";
 import { MAX_CHANNEL_REPLAY_PAGE_LIMIT } from "@workspace/pubsub";
 
@@ -96,6 +97,7 @@ export interface ChannelRelationshipPayload {
   delivery?: "all" | "addressed" | "none";
   endpoint?: DeliveryEndpoint;
   metadata?: Record<string, unknown>;
+  methodOffers?: MethodAdvertisement[];
   applicationConfig?: VersionedApplicationConfig | null;
   detachAfterSequence?: number;
 }

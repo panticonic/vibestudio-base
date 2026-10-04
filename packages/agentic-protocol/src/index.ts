@@ -33,7 +33,10 @@ export type {
   TurnReasonCode,
 } from "./constants.js";
 
-export { messageDisplayText, summarizeMessageBlocks } from "./message-content.js";
+export {
+  messageDisplayText,
+  summarizeMessageBlocks,
+} from "./message-content.js";
 export type { MessageContentSummary } from "./message-content.js";
 
 export {
@@ -82,6 +85,7 @@ export type {
   ActorKind,
   ActorRef,
   AgenticEvent,
+  ChannelMethodOriginalRequest,
   ApprovalPayload,
   AutomationDefinitionSnapshot,
   AutomationInstitutedPayload,
@@ -221,7 +225,10 @@ export {
   isStoredValueRef,
 } from "./stored-values.js";
 
-export { pubsubAgenticEventToEnvelope, pubsubChannelEventToEnvelope } from "./envelopes.js";
+export {
+  pubsubAgenticEventToEnvelope,
+  pubsubChannelEventToEnvelope,
+} from "./envelopes.js";
 export type {
   ChannelEnvelope,
   ChannelRosterEntry,
@@ -258,6 +265,7 @@ export type {
   ProjectedApproval,
   ProjectedInvocation,
   ProjectedMessage,
+  NativeMessageCoordinates,
   MessageNotifyIntent,
   ProjectedTask,
   TaskMap,
@@ -274,7 +282,10 @@ export {
   readMessageNotifyIntent,
 } from "./handlers.js";
 
-export type { BranchProjection, TrajectoryState } from "./reducer-trajectory.js";
+export type {
+  BranchProjection,
+  TrajectoryState,
+} from "./reducer-trajectory.js";
 export {
   createInitialTrajectoryState,
   reduceTrajectory,
@@ -316,9 +327,22 @@ export type {
   ShouldRespondDecision,
 } from "./addressing.js";
 
-export { jsonSchemaToZod, jsonSchemaToZodRawShape, isRecord } from "./json-schema-to-zod.js";
+export {
+  jsonSchemaToZod,
+  jsonSchemaToZodRawShape,
+  isRecord,
+} from "./json-schema-to-zod.js";
 
-export { checkTrajectoryIntegrity, computeEventHash, verifyEventHash } from "./hash.js";
+export {
+  checkTrajectoryIntegrity,
+  computeEventHash,
+  verifyEventHash,
+} from "./hash.js";
 
 export * from "./log-envelope.js";
 export * from "./append-errors.js";
+
+export {
+  readNativeModelStream,
+  type NativeModelStream,
+} from "./native-model-stream.js";

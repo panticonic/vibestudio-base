@@ -4,17 +4,19 @@
  * All operations go through the RPC bridge, which routes to the
  * channel service DO via the server's workspace service resolver.
  */
-import type { RpcCaller } from "@vibestudio/rpc";
+import type { RpcCaller, RpcCallOptions } from "@vibestudio/rpc";
 import {
   iterateChannelReplayAfterPages,
   type ChannelReplayAfterRequest,
   type ChannelReplayEnvelope,
+  type ChannelEvent,
 } from "@workspace/pubsub";
 import {
   AGENTIC_EVENT_PAYLOAD_KIND,
   AGENTIC_PROTOCOL_VERSION,
   type AgenticEvent,
   type MessageTier,
+  type ChannelMethodOriginalRequest,
 } from "@workspace/agentic-protocol";
 /** Binary payload riding on a message — base64 for the DO wire, stored by the
  *  channel DO alongside the envelope and rendered by the chat panel. */
@@ -109,13 +111,16 @@ export class ChannelClient {
     private rpc: RpcCaller,
     private channelId: string,
     private protocol: string = DEFAULT_CHANNEL_SERVICE_PROTOCOL,
+    private readonly callOptions?: RpcCallOptions,
   ) {}
   async resolveTarget(): Promise<string> {
     this.targetPromise ??= this.rpc
-      .call<ResolvedService>("main", "workers.resolveService", [
-        this.protocol,
-        this.channelId,
-      ])
+      .call<ResolvedService>(
+        "main",
+        "workers.resolveService",
+        [this.protocol, this.channelId],
+        this.callOptions,
+      )
       .then((service) => {
         if (service.kind !== "durable-object" || !service.targetId) {
           throw new Error(
@@ -130,7 +135,12 @@ export class ChannelClient {
     method: string,
     ...args: unknown[]
   ): Promise<T> {
-    return this.rpc.call<T>(await this.resolveTarget(), method, [...args]);
+    return this.rpc.call<T>(
+      await this.resolveTarget(),
+      method,
+      [...args],
+      this.callOptions,
+    );
   }
   async send(
     participantId: string,
@@ -244,10 +254,16 @@ export class ChannelClient {
     participantId: string,
     messageId: string,
     turnId?: string,
-  ): Promise<void> {
-    await this.call("recordReceipt", participantId, messageId, "read", {
-      ...(turnId ? { turnId } : {}),
-    });
+  ): Promise<{ recorded: true }> {
+    return this.call<{ recorded: true }>(
+      "recordReceipt",
+      participantId,
+      messageId,
+      "read",
+      {
+        ...(turnId ? { turnId } : {}),
+      },
+    );
   }
   async update(
     participantId: string,
@@ -384,8 +400,24 @@ export class ChannelClient {
       opts,
     );
   }
-  async cancelCall(participantId: string, callId: string): Promise<void> {
-    await this.call("cancelMethodCall", participantId, callId);
+  async cancelCall(
+    participantId: string,
+    callId: string,
+    original?: ChannelMethodOriginalRequest,
+  ): Promise<void> {
+    await this.call("cancelMethodCall", participantId, callId, original);
+  }
+  async markMethodCallExecutionStarted(
+    participantId: string,
+    callId: string,
+    generation: number,
+  ): Promise<{ accepted: boolean }> {
+    return this.call(
+      "markMethodCallExecutionStarted",
+      participantId,
+      callId,
+      generation,
+    );
   }
   async getReplayAfter(
     request: ChannelReplayAfterRequest,
@@ -406,8 +438,8 @@ export class ChannelClient {
     );
   }
   /** Look up one durable channel envelope by its stable id. */
-  async getEnvelope(envelopeId: string): Promise<unknown | null> {
-    return this.call("getEnvelope", envelopeId) as Promise<unknown | null>;
+  async getEnvelope(envelopeId: string): Promise<ChannelEvent | null> {
+    return this.call<ChannelEvent | null>("getEnvelope", envelopeId);
   }
   async getMessageType(
     typeId: string,

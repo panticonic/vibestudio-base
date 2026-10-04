@@ -1,6 +1,7 @@
 import { Buffer } from "buffer";
 import { describe, expect, it, vi } from "vitest";
 import { createBlobstoreClient } from "./blobstore.js";
+import { Journal } from "./journal.js";
 
 describe("createBlobstoreClient", () => {
   it("provides a portable readText alias over the canonical text read", async () => {
@@ -20,7 +21,9 @@ describe("createBlobstoreClient", () => {
   it("materializes through caller-scoped fs without invoking the admin host materializer", async () => {
     const firstDigest = "a".repeat(64);
     const secondDigest = "b".repeat(64);
-    const files = new Map<string, Buffer>([["/checkout/same.txt", Buffer.from("same")]]);
+    const files = new Map<string, Buffer>([
+      ["/checkout/same.txt", Buffer.from("same")],
+    ]);
     const rpc = {
       call: vi.fn(async (_target: string, method: string, args: unknown[]) => {
         if (method === "blobstore.listTree") {
@@ -47,15 +50,26 @@ describe("createBlobstoreClient", () => {
             : {
                 basis,
                 entries: [
-                  { path: "nested", kind: "dir", treeHash: `manifest:${"c".repeat(64)}` },
-                  { path: "same.txt", kind: "file", contentHash: firstDigest, mode: 33188 },
+                  {
+                    path: "nested",
+                    kind: "dir",
+                    treeHash: `manifest:${"c".repeat(64)}`,
+                  },
+                  {
+                    path: "same.txt",
+                    kind: "file",
+                    contentHash: firstDigest,
+                    mode: 33188,
+                  },
                 ],
                 completeness: "continuation",
                 nextCursor: "page-2",
               };
         }
         if (method === "blobstore.getBase64") {
-          return Buffer.from(args[0] === firstDigest ? "same" : "#!/bin/sh\n").toString("base64");
+          return Buffer.from(
+            args[0] === firstDigest ? "same" : "#!/bin/sh\n",
+          ).toString("base64");
         }
         throw new Error(`Unexpected RPC method ${method}`);
       }),
@@ -70,11 +84,28 @@ describe("createBlobstoreClient", () => {
       chmod: vi.fn(async () => undefined),
     };
 
-    const client = createBlobstoreClient(rpc as never, fs as never);
+    const journal = new Journal();
+    const client = createBlobstoreClient(rpc as never, fs as never, (entry) =>
+      journal.append(entry),
+    );
     await expect(
-      client.materializeTree(`manifest:${"d".repeat(64)}`, "/checkout")
+      client.materializeTree(`manifest:${"d".repeat(64)}`, "/checkout"),
     ).resolves.toEqual({ written: 1, unchanged: 1 });
-    expect(files.get("/checkout/nested/run.sh")?.toString()).toBe("#!/bin/sh\n");
+    expect(files.get("/checkout/nested/run.sh")?.toString()).toBe(
+      "#!/bin/sh\n",
+    );
+    expect(journal.entries).toEqual([
+      {
+        type: "blob-tree.observation",
+        receipt: {
+          protocol: "blob-tree-observation.v1",
+          method: "materializeTree",
+          ref: `manifest:${"d".repeat(64)}`,
+          written: 1,
+          unchanged: 1,
+        },
+      },
+    ]);
     expect(fs.chmod).toHaveBeenCalledWith("/checkout/same.txt", 33188);
     expect(fs.chmod).toHaveBeenCalledWith("/checkout/nested/run.sh", 33261);
     expect(rpc.call).toHaveBeenCalledWith("main", "blobstore.listTree", [
@@ -84,8 +115,73 @@ describe("createBlobstoreClient", () => {
     expect(rpc.call).not.toHaveBeenCalledWith(
       "main",
       "blobstore.materializeTree",
-      expect.anything()
+      expect.anything(),
     );
+  });
+
+  it("publishes completion only after owned filesystem work settles and preserves its failure", async () => {
+    const ref = `manifest:${"d".repeat(64)}`;
+    let release!: () => void;
+    let started!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const entered = new Promise<void>((resolve) => {
+      started = resolve;
+    });
+    const original = new Error("filesystem write failed");
+    const rpc = {
+      call: vi.fn(async (_target: string, method: string) =>
+        method === "blobstore.listTree"
+          ? {
+              basis: {
+                ref,
+                rootTreeHash: ref,
+                prefix: "",
+                order: "tree-preorder-v1",
+              },
+              entries: [
+                {
+                  path: "note.txt",
+                  kind: "file",
+                  contentHash: "a".repeat(64),
+                  mode: 33188,
+                },
+              ],
+              completeness: "complete",
+            }
+          : Buffer.from("note").toString("base64"),
+      ),
+    };
+    const fs = {
+      mkdir: vi.fn(async () => undefined),
+      exists: vi.fn(async () => false),
+      writeFile: vi.fn(async () => {
+        started();
+        await gate;
+        throw original;
+      }),
+      chmod: vi.fn(),
+    };
+    const recorded = vi.fn();
+    const pending = createBlobstoreClient(
+      rpc as never,
+      fs as never,
+      recorded,
+    ).materializeTree(ref, "/checkout");
+    const settled = pending.then(
+      () => null,
+      (error: unknown) => error,
+    );
+    try {
+      await entered;
+      expect(recorded).not.toHaveBeenCalled();
+    } finally {
+      release();
+    }
+    expect(await settled).toBe(original);
+    expect(recorded).not.toHaveBeenCalled();
+    expect(fs.chmod).not.toHaveBeenCalled();
   });
 
   it("rejects hardlink materialization because the scoped runtime fs cannot honor it", async () => {
@@ -94,7 +190,9 @@ describe("createBlobstoreClient", () => {
     const client = createBlobstoreClient(rpc as never, fs as never);
 
     await expect(
-      client.materializeTree(`manifest:${"d".repeat(64)}`, "/checkout", { link: true })
+      client.materializeTree(`manifest:${"d".repeat(64)}`, "/checkout", {
+        link: true,
+      }),
     ).rejects.toThrow(/link.*not supported.*runtime filesystem/i);
     expect(rpc.call).not.toHaveBeenCalled();
   });
@@ -111,18 +209,25 @@ describe("createBlobstoreClient", () => {
                 order: "tree-preorder-v1",
               },
               entries: [
-                { path: "../escape", kind: "file", contentHash: "a".repeat(64), mode: 33188 },
+                {
+                  path: "../escape",
+                  kind: "file",
+                  contentHash: "a".repeat(64),
+                  mode: 33188,
+                },
               ],
               completeness: "complete",
             }
-          : Buffer.from("bad").toString("base64")
+          : Buffer.from("bad").toString("base64"),
       ),
     };
     const fs = { mkdir: vi.fn(async () => undefined) };
     const client = createBlobstoreClient(rpc as never, fs as never);
 
-    await expect(client.materializeTree(`manifest:${"d".repeat(64)}`, "/checkout")).rejects.toThrow(
-      'Service "blobstore" method "listTree" return value failed schema validation.'
+    await expect(
+      client.materializeTree(`manifest:${"d".repeat(64)}`, "/checkout"),
+    ).rejects.toThrow(
+      'Service "blobstore" method "listTree" return value failed schema validation.',
     );
   });
 
@@ -143,7 +248,8 @@ describe("createBlobstoreClient", () => {
 
     const repeatedRpc = {
       call: vi.fn(async (_target: string, method: string) => {
-        if (method !== "blobstore.listTree") throw new Error(`Unexpected ${method}`);
+        if (method !== "blobstore.listTree")
+          throw new Error(`Unexpected ${method}`);
         return {
           basis,
           entries: [],
@@ -153,16 +259,25 @@ describe("createBlobstoreClient", () => {
       }),
     };
     await expect(
-      createBlobstoreClient(repeatedRpc as never, fs as never).materializeTree(ref, "/checkout")
+      createBlobstoreClient(repeatedRpc as never, fs as never).materializeTree(
+        ref,
+        "/checkout",
+      ),
     ).rejects.toThrow(/repeated.*cursor/);
 
     let calls = 0;
     const changingRpc = {
       call: vi.fn(async (_target: string, method: string) => {
-        if (method !== "blobstore.listTree") throw new Error(`Unexpected ${method}`);
+        if (method !== "blobstore.listTree")
+          throw new Error(`Unexpected ${method}`);
         calls += 1;
         return calls === 1
-          ? { basis, entries: [], completeness: "continuation", nextCursor: "next" }
+          ? {
+              basis,
+              entries: [],
+              completeness: "continuation",
+              nextCursor: "next",
+            }
           : {
               basis: { ...basis, rootTreeHash: `manifest:${"e".repeat(64)}` },
               entries: [],
@@ -171,7 +286,10 @@ describe("createBlobstoreClient", () => {
       }),
     };
     await expect(
-      createBlobstoreClient(changingRpc as never, fs as never).materializeTree(ref, "/checkout")
+      createBlobstoreClient(changingRpc as never, fs as never).materializeTree(
+        ref,
+        "/checkout",
+      ),
     ).rejects.toThrow(/changed basis/);
   });
 });

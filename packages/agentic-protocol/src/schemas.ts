@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { nativeInvocationSourceSchema, nativeOriginatingInputSchema } from "@vibestudio/service-schemas/nativeInvocation";
 import { agentToolFailureSchema } from "./tool-failure.js";
 import {
   AGENTIC_EVENT_PAYLOAD_KIND,
@@ -10,7 +11,12 @@ import {
   TURN_SCOPED_OWNER_KINDS,
   validateInvocationTerminalOutcomeForKind,
 } from "./constants.js";
-import { ACTOR_KINDS, PARTICIPANT_KINDS, PRINCIPAL_KINDS, type TrajectoryEvent } from "./events.js";
+import {
+  ACTOR_KINDS,
+  PARTICIPANT_KINDS,
+  PRINCIPAL_KINDS,
+  type TrajectoryEvent,
+} from "./events.js";
 
 const protocolSchema = z.literal(AGENTIC_PROTOCOL_VERSION);
 
@@ -94,7 +100,9 @@ const blockBaseShape = {
   metadata: z.record(z.unknown()).optional(),
 };
 const messageBlockInputSchema = z.discriminatedUnion("type", [
-  z.object({ ...blockBaseShape, type: z.literal("text"), content: z.string() }).strict(),
+  z
+    .object({ ...blockBaseShape, type: z.literal("text"), content: z.string() })
+    .strict(),
   z
     .object({
       ...blockBaseShape,
@@ -176,6 +184,16 @@ const messageCompletedPayloadSchema = z
     role: z.enum(["user", "assistant", "system", "tool", "panel"]).optional(),
     blocks: z.array(messageBlockInputSchema).optional(),
     outcome: z.enum(MESSAGE_OUTCOMES),
+    failure: z
+      .object({
+        reason: z.string().min(1),
+        recoverable: z.boolean(),
+        code: z.string().min(1),
+        resetAt: isoDateSchema.optional(),
+        retryAfterMs: z.number().nonnegative().optional(),
+      })
+      .strict()
+      .optional(),
     usage: usagePayloadSchema.optional(),
     model: messageModelPayloadSchema.optional(),
     mentions: z.array(idSchema).optional(),
@@ -241,6 +259,29 @@ const invocationFailurePayloadSchema = invocationTerminalFailurePayloadSchema
   })
   .strict();
 
+const invocationCancelledPayloadSchema = invocationTerminalFailurePayloadSchema
+  .extend({
+    admission: z
+      .object({
+        kind: z.literal("not-admitted"),
+        request: z
+          .object({
+            channelId: idSchema,
+            callerId: idSchema,
+            targetId: idSchema,
+            invocationId: idSchema,
+            transportCallId: idSchema,
+            method: z.string().min(1),
+            args: z.unknown().optional(),
+            turnId: idSchema.optional(),
+          })
+          .strict(),
+      })
+      .strict()
+      .optional(),
+  })
+  .strict();
+
 const invocationTransportSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("local"), awaiterId: z.string().min(1) }).strict(),
   z
@@ -265,7 +306,11 @@ const invocationStartedPayloadSchema = z
   .object({
     protocol: protocolSchema,
     name: z.string().min(1),
-    invocationType: z.enum(["tool", "panel", "agent", "user", "http", "system"]).optional(),
+    invocationType: z
+      .enum(["tool", "panel", "agent", "user", "http", "system"])
+      .optional(),
+    nativeSource: nativeInvocationSourceSchema.optional(),
+    originatingInput: nativeOriginatingInputSchema.nullable().optional(),
     request: z.unknown().optional(),
     transport: invocationTransportSchema.optional(),
     executionMode: z.enum(["sequential", "parallel"]).optional(),
@@ -373,7 +418,9 @@ const approvalRequestedPayloadSchema = z
     protocol: protocolSchema,
     question: z.string().min(1),
     requestedBy: actorRefSchema.optional(),
-    approver: z.union([participantRefSchema, participantSelectorSchema]).optional(),
+    approver: z
+      .union([participantRefSchema, participantSelectorSchema])
+      .optional(),
     details: z.unknown().optional(),
   })
   .strict();
@@ -520,7 +567,7 @@ const externalEnvelopePublishedPayloadSchema = z
             eventId: idSchema.optional(),
             summary: z.string().optional(),
           })
-          .strict()
+          .strict(),
       )
       .min(1),
   })
@@ -686,7 +733,10 @@ const automationInstitutedPayloadSchema = z
   })
   .strict();
 
-function eventSchema<K extends string, P extends z.ZodTypeAny>(kind: K, payload: P) {
+function eventSchema<K extends string, P extends z.ZodTypeAny>(
+  kind: K,
+  payload: P,
+) {
   return z
     .object({
       kind: z.literal(kind),
@@ -700,70 +750,133 @@ function eventSchema<K extends string, P extends z.ZodTypeAny>(kind: K, payload:
 }
 
 export const eventKindSchemas = {
-  "message.started": eventSchema("message.started", messageStartedPayloadSchema),
+  "message.started": eventSchema(
+    "message.started",
+    messageStartedPayloadSchema,
+  ),
   "message.delta": eventSchema("message.delta", messageDeltaPayloadSchema),
-  "message.completed": eventSchema("message.completed", messageCompletedPayloadSchema),
+  "message.completed": eventSchema(
+    "message.completed",
+    messageCompletedPayloadSchema,
+  ),
   "message.failed": eventSchema("message.failed", failurePayloadSchema),
-  "message.received": eventSchema("message.received", messageReceiptPayloadSchema),
+  "message.received": eventSchema(
+    "message.received",
+    messageReceiptPayloadSchema,
+  ),
   "message.read": eventSchema("message.read", messageReceiptPayloadSchema),
   "message.edited": eventSchema("message.edited", messageEditPayloadSchema),
-  "message.retracted": eventSchema("message.retracted", messageRetractPayloadSchema),
-  "invocation.started": eventSchema("invocation.started", invocationStartedPayloadSchema),
-  "invocation.progress": eventSchema("invocation.progress", invocationProgressPayloadSchema),
-  "invocation.output": eventSchema("invocation.output", invocationOutputPayloadSchema),
-  "invocation.completed": eventSchema("invocation.completed", invocationCompletedPayloadSchema),
-  "invocation.failed": eventSchema("invocation.failed", invocationFailurePayloadSchema),
+  "message.retracted": eventSchema(
+    "message.retracted",
+    messageRetractPayloadSchema,
+  ),
+  "invocation.started": eventSchema(
+    "invocation.started",
+    invocationStartedPayloadSchema,
+  ),
+  "invocation.progress": eventSchema(
+    "invocation.progress",
+    invocationProgressPayloadSchema,
+  ),
+  "invocation.output": eventSchema(
+    "invocation.output",
+    invocationOutputPayloadSchema,
+  ),
+  "invocation.completed": eventSchema(
+    "invocation.completed",
+    invocationCompletedPayloadSchema,
+  ),
+  "invocation.failed": eventSchema(
+    "invocation.failed",
+    invocationFailurePayloadSchema,
+  ),
   "invocation.cancelled": eventSchema(
     "invocation.cancelled",
-    invocationTerminalFailurePayloadSchema
+    invocationCancelledPayloadSchema,
   ),
   "invocation.abandoned": eventSchema(
     "invocation.abandoned",
-    invocationTerminalFailurePayloadSchema
+    invocationTerminalFailurePayloadSchema,
   ),
   "task.started": eventSchema("task.started", taskStartedPayloadSchema),
   "task.completed": eventSchema("task.completed", taskCompletedPayloadSchema),
   "task.failed": eventSchema("task.failed", taskFailedPayloadSchema),
   "task.cancelled": eventSchema("task.cancelled", taskCancelledPayloadSchema),
   "task.abandoned": eventSchema("task.abandoned", taskAbandonedPayloadSchema),
-  "approval.requested": eventSchema("approval.requested", approvalRequestedPayloadSchema),
-  "approval.resolved": eventSchema("approval.resolved", approvalResolvedPayloadSchema),
-  "ui.inline_rendered": eventSchema("ui.inline_rendered", uiInlineRenderedPayloadSchema),
-  "ui.action_bar.updated": eventSchema("ui.action_bar.updated", uiActionBarUpdatedPayloadSchema),
+  "approval.requested": eventSchema(
+    "approval.requested",
+    approvalRequestedPayloadSchema,
+  ),
+  "approval.resolved": eventSchema(
+    "approval.resolved",
+    approvalResolvedPayloadSchema,
+  ),
+  "ui.inline_rendered": eventSchema(
+    "ui.inline_rendered",
+    uiInlineRenderedPayloadSchema,
+  ),
+  "ui.action_bar.updated": eventSchema(
+    "ui.action_bar.updated",
+    uiActionBarUpdatedPayloadSchema,
+  ),
   "ui.feedback": eventSchema("ui.feedback", uiFeedbackPayloadSchema),
   "messageType.registered": eventSchema(
     "messageType.registered",
-    messageTypeRegisteredPayloadSchema
+    messageTypeRegisteredPayloadSchema,
   ),
-  "messageType.cleared": eventSchema("messageType.cleared", messageTypeClearedPayloadSchema),
+  "messageType.cleared": eventSchema(
+    "messageType.cleared",
+    messageTypeClearedPayloadSchema,
+  ),
   "custom.started": eventSchema("custom.started", customStartedPayloadSchema),
   "custom.updated": eventSchema("custom.updated", customUpdatedPayloadSchema),
-  "automation.instituted": eventSchema("automation.instituted", automationInstitutedPayloadSchema),
-  "memory.recalled": eventSchema("memory.recalled", memoryRecalledPayloadSchema),
-  "build.completed": eventSchema("build.completed", buildCompletedPayloadSchema),
+  "automation.instituted": eventSchema(
+    "automation.instituted",
+    automationInstitutedPayloadSchema,
+  ),
+  "memory.recalled": eventSchema(
+    "memory.recalled",
+    memoryRecalledPayloadSchema,
+  ),
+  "build.completed": eventSchema(
+    "build.completed",
+    buildCompletedPayloadSchema,
+  ),
   "external.envelope_published": eventSchema(
     "external.envelope_published",
-    externalEnvelopePublishedPayloadSchema
+    externalEnvelopePublishedPayloadSchema,
   ),
   "external.envelope_observed": eventSchema(
     "external.envelope_observed",
-    externalEnvelopeObservedPayloadSchema
+    externalEnvelopeObservedPayloadSchema,
   ),
   "external.participant_observed": eventSchema(
     "external.participant_observed",
-    externalParticipantObservedPayloadSchema
+    externalParticipantObservedPayloadSchema,
   ),
   "branch.created": eventSchema("branch.created", branchPayloadSchema),
   "branch.forked": eventSchema("branch.forked", branchPayloadSchema),
-  "branch.head_changed": eventSchema("branch.head_changed", branchPayloadSchema),
+  "branch.head_changed": eventSchema(
+    "branch.head_changed",
+    branchPayloadSchema,
+  ),
   "channel.forked": eventSchema("channel.forked", channelForkedPayloadSchema),
-  "channel.fork_renamed": eventSchema("channel.fork_renamed", channelForkRenamedPayloadSchema),
-  "channel.fork_archived": eventSchema("channel.fork_archived", channelForkArchivedPayloadSchema),
+  "channel.fork_renamed": eventSchema(
+    "channel.fork_renamed",
+    channelForkRenamedPayloadSchema,
+  ),
+  "channel.fork_archived": eventSchema(
+    "channel.fork_archived",
+    channelForkArchivedPayloadSchema,
+  ),
   "turn.opened": eventSchema("turn.opened", turnPayloadSchema),
   "turn.waiting": eventSchema("turn.waiting", turnPayloadSchema),
   "turn.closed": eventSchema("turn.closed", turnPayloadSchema),
   "system.event": eventSchema("system.event", systemPayloadSchema),
-  "system.compaction_recorded": eventSchema("system.compaction_recorded", compactionPayloadSchema),
+  "system.compaction_recorded": eventSchema(
+    "system.compaction_recorded",
+    compactionPayloadSchema,
+  ),
 } as const;
 
 export const agenticEventSchema = z
@@ -773,7 +886,7 @@ export const agenticEventSchema = z
       (typeof eventKindSchemas)["message.started"],
       (typeof eventKindSchemas)["message.delta"],
       ...Array<(typeof eventKindSchemas)[keyof typeof eventKindSchemas]>,
-    ]
+    ],
   )
   .superRefine((event, ctx) => {
     const causality = event.causality;
@@ -806,7 +919,7 @@ export const agenticEventSchema = z
     ) {
       const result = validateInvocationTerminalOutcomeForKind(
         event.kind,
-        (event.payload as { terminalOutcome?: unknown }).terminalOutcome
+        (event.payload as { terminalOutcome?: unknown }).terminalOutcome,
       );
       if (!result.valid) {
         ctx.addIssue({
@@ -840,7 +953,7 @@ const storedEventKindSchema = z.enum(
   Object.keys(eventKindSchemas) as [
     keyof typeof eventKindSchemas,
     ...(keyof typeof eventKindSchemas)[],
-  ]
+  ],
 );
 
 const storedPayloadObjectSchema = z
@@ -849,7 +962,10 @@ const storedPayloadObjectSchema = z
   })
   .passthrough();
 
-const storedEventPayloadSchema = z.union([blobRefSchema, storedPayloadObjectSchema]);
+const storedEventPayloadSchema = z.union([
+  blobRefSchema,
+  storedPayloadObjectSchema,
+]);
 
 function storedPayloadRecord(payload: unknown): Record<string, unknown> | null {
   return payload &&
@@ -865,7 +981,7 @@ function requireStoredPayloadField(
   ctx: z.RefinementCtx,
   field: string,
   check: (value: unknown) => boolean,
-  message: string
+  message: string,
 ): void {
   if (!payload) return;
   if (check(payload[field])) return;
@@ -896,6 +1012,22 @@ export const storedAgenticEventSchema = z
         message: "message events require causality.messageId",
       });
     }
+    if (
+      event.kind === "invocation.started" &&
+      payload?.["nativeSource"] !== undefined
+    ) {
+      const source = nativeInvocationSourceSchema.safeParse(
+        payload["nativeSource"],
+      );
+      if (!source.success) {
+        for (const issue of source.error.issues) {
+          ctx.addIssue({
+            ...issue,
+            path: ["payload", "nativeSource", ...issue.path],
+          });
+        }
+      }
+    }
     if (event.kind.startsWith("invocation.") && !causality?.invocationId) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
@@ -911,7 +1043,7 @@ export const storedAgenticEventSchema = z
     ) {
       const result = validateInvocationTerminalOutcomeForKind(
         event.kind,
-        payload?.["terminalOutcome"]
+        payload?.["terminalOutcome"],
       );
       if (!result.valid) {
         ctx.addIssue({
@@ -939,7 +1071,7 @@ export const storedAgenticEventSchema = z
           value === "system" ||
           value === "tool" ||
           value === "panel",
-        "message.started requires payload.role"
+        "message.started requires payload.role",
       );
     } else if (event.kind === "message.delta") {
       requireStoredPayloadField(
@@ -947,21 +1079,22 @@ export const storedAgenticEventSchema = z
         ctx,
         "blockId",
         (value) => typeof value === "string",
-        "message.delta requires payload.blockId"
+        "message.delta requires payload.blockId",
       );
       requireStoredPayloadField(
         payload,
         ctx,
         "type",
         (value) => value === "text" || value === "thinking",
-        "message.delta requires payload.type of 'text' or 'thinking'"
+        "message.delta requires payload.type of 'text' or 'thinking'",
       );
       requireStoredPayloadField(
         payload,
         ctx,
         "text",
-        (value) => typeof value === "string" || blobRefSchema.safeParse(value).success,
-        "message.delta requires payload.text"
+        (value) =>
+          typeof value === "string" || blobRefSchema.safeParse(value).success,
+        "message.delta requires payload.text",
       );
     } else if (event.kind === "message.completed") {
       requireStoredPayloadField(
@@ -969,7 +1102,7 @@ export const storedAgenticEventSchema = z
         ctx,
         "outcome",
         (value) => MESSAGE_OUTCOMES.includes(value as never),
-        "message.completed requires payload.outcome"
+        "message.completed requires payload.outcome",
       );
     } else if (event.kind === "message.edited") {
       requireStoredPayloadField(
@@ -977,14 +1110,14 @@ export const storedAgenticEventSchema = z
         ctx,
         "blocks",
         (value) => Array.isArray(value),
-        "message.edited requires payload.blocks"
+        "message.edited requires payload.blocks",
       );
       requireStoredPayloadField(
         payload,
         ctx,
         "by",
         (value) => participantRefSchema.safeParse(value).success,
-        "message.edited requires payload.by"
+        "message.edited requires payload.by",
       );
     } else if (event.kind === "message.retracted") {
       requireStoredPayloadField(
@@ -992,7 +1125,7 @@ export const storedAgenticEventSchema = z
         ctx,
         "by",
         (value) => participantRefSchema.safeParse(value).success,
-        "message.retracted requires payload.by"
+        "message.retracted requires payload.by",
       );
     } else if (event.kind === "invocation.started") {
       requireStoredPayloadField(
@@ -1000,7 +1133,7 @@ export const storedAgenticEventSchema = z
         ctx,
         "name",
         (value) => typeof value === "string" && value.length > 0,
-        "invocation.started requires payload.name"
+        "invocation.started requires payload.name",
       );
     } else if (event.kind === "approval.requested") {
       requireStoredPayloadField(
@@ -1008,7 +1141,7 @@ export const storedAgenticEventSchema = z
         ctx,
         "question",
         (value) => typeof value === "string" && value.length > 0,
-        "approval.requested requires payload.question"
+        "approval.requested requires payload.question",
       );
     } else if (event.kind === "approval.resolved") {
       requireStoredPayloadField(
@@ -1016,14 +1149,14 @@ export const storedAgenticEventSchema = z
         ctx,
         "granted",
         (value) => typeof value === "boolean",
-        "approval.resolved requires payload.granted"
+        "approval.resolved requires payload.granted",
       );
       requireStoredPayloadField(
         payload,
         ctx,
         "resolvedBy",
         (value) => actorRefSchema.safeParse(value).success,
-        "approval.resolved requires payload.resolvedBy"
+        "approval.resolved requires payload.resolvedBy",
       );
     } else if (event.kind === "ui.inline_rendered") {
       requireStoredPayloadField(
@@ -1031,21 +1164,21 @@ export const storedAgenticEventSchema = z
         ctx,
         "uiType",
         (value) => value === "inline",
-        "ui.inline_rendered requires payload.uiType"
+        "ui.inline_rendered requires payload.uiType",
       );
       requireStoredPayloadField(
         payload,
         ctx,
         "id",
         (value) => typeof value === "string" && value.length > 0,
-        "ui.inline_rendered requires payload.id"
+        "ui.inline_rendered requires payload.id",
       );
       requireStoredPayloadField(
         payload,
         ctx,
         "source",
         (value) => sandboxSourceSchema.safeParse(value).success,
-        "ui.inline_rendered requires payload.source"
+        "ui.inline_rendered requires payload.source",
       );
     } else if (event.kind === "ui.feedback") {
       requireStoredPayloadField(
@@ -1053,22 +1186,25 @@ export const storedAgenticEventSchema = z
         ctx,
         "target",
         (value) => participantRefSchema.safeParse(value).success,
-        "ui.feedback requires payload.target"
+        "ui.feedback requires payload.target",
       );
       requireStoredPayloadField(
         payload,
         ctx,
         "occurrenceKey",
         (value) => typeof value === "string" && value.length > 0,
-        "ui.feedback requires payload.occurrenceKey"
+        "ui.feedback requires payload.occurrenceKey",
       );
-    } else if (event.kind === "custom.started" || event.kind === "custom.updated") {
+    } else if (
+      event.kind === "custom.started" ||
+      event.kind === "custom.updated"
+    ) {
       requireStoredPayloadField(
         payload,
         ctx,
         "messageId",
         (value) => typeof value === "string" && value.length > 0,
-        `${event.kind} requires payload.messageId`
+        `${event.kind} requires payload.messageId`,
       );
     } else if (event.kind === "external.envelope_published") {
       requireStoredPayloadField(
@@ -1076,7 +1212,7 @@ export const storedAgenticEventSchema = z
         ctx,
         "publications",
         (value) => Array.isArray(value) && value.length > 0,
-        "external.envelope_published requires payload.publications"
+        "external.envelope_published requires payload.publications",
       );
     } else if (event.kind === "system.compaction_recorded") {
       requireStoredPayloadField(
@@ -1084,7 +1220,7 @@ export const storedAgenticEventSchema = z
         ctx,
         "summary",
         (value) => typeof value === "string" && value.length > 0,
-        "system.compaction_recorded requires payload.summary"
+        "system.compaction_recorded requires payload.summary",
       );
     }
   });
@@ -1122,13 +1258,15 @@ export const trajectoryEventSchema = z
   .custom<TrajectoryEvent>(
     (value): value is TrajectoryEvent =>
       !!value && typeof value === "object" && !Array.isArray(value),
-    "trajectory event must be an object"
+    "trajectory event must be an object",
   )
   .superRefine((value, ctx) => {
     const storageResult = trajectoryStorageSchema.safeParse(value);
     if (!storageResult.success) addIssues(ctx, storageResult.error.issues);
 
-    const eventResult = storedAgenticEventSchema.safeParse(stripTrajectoryStorage(value));
+    const eventResult = storedAgenticEventSchema.safeParse(
+      stripTrajectoryStorage(value),
+    );
     if (!eventResult.success) {
       addIssues(ctx, eventResult.error.issues);
       return;
@@ -1151,7 +1289,9 @@ export const trajectoryEventSchema = z
     if (
       event.actor.kind === "agent" &&
       !isInboundMessageCopy &&
-      TURN_SCOPED_OWNER_KINDS.includes(event.kind as (typeof TURN_SCOPED_OWNER_KINDS)[number]) &&
+      TURN_SCOPED_OWNER_KINDS.includes(
+        event.kind as (typeof TURN_SCOPED_OWNER_KINDS)[number],
+      ) &&
       !event.turnId
     ) {
       ctx.addIssue({
@@ -1168,7 +1308,9 @@ export const channelEnvelopeSchema = z
     channelId: idSchema,
     seq: z.number().int().nonnegative(),
     from: actorRefSchema,
-    to: z.union([z.array(participantRefSchema), participantSelectorSchema]).optional(),
+    to: z
+      .union([z.array(participantRefSchema), participantSelectorSchema])
+      .optional(),
     payload: z.unknown(),
     payloadKind: z.string().optional(),
     metadata: z.record(z.unknown()).optional(),

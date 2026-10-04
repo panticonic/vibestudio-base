@@ -1,4 +1,9 @@
-import { modelProviderLabel, resolveProviderModelBaseUrl } from "@workspace/model-catalog/providerConnect";
+import { buildUnitCatalogEntrySchema } from "@vibestudio/service-schemas/build";
+import { credentialsMethods } from "@vibestudio/service-schemas/credentials";
+import {
+  modelProviderLabel,
+  resolveProviderModelBaseUrl,
+} from "@workspace/model-catalog/providerConnect";
 /**
  * Model settings service — the single authority on what a model IS
  * (journaled `modelSpec`) and whether it is USABLE right now (`availability`).
@@ -36,7 +41,10 @@ import {
   providerIsConnectable,
 } from "@workspace/model-catalog/providerConnect";
 import { pickRecommendedModelId } from "@workspace/model-catalog/modelRecommendations";
-import type { LocalModelEntry } from "@workspace/model-catalog/localModels";
+import {
+  localModelEntrySchema,
+  type LocalModelEntry,
+} from "@workspace/model-catalog/localModels";
 import {
   getBuiltinModels,
   getBuiltinProviders,
@@ -168,7 +176,8 @@ export function localEntryToCatalogEntry(
     // Local models are never "connectable" — no credential flow exists for
     // them; availability comes from live server state (design §6.3/§7.1).
     connectable: false,
-    recommended: `${LOCAL_PROVIDER_ID}:${entry.slug}` === LOCAL_DEFAULT_MODEL_REF,
+    recommended:
+      `${LOCAL_PROVIDER_ID}:${entry.slug}` === LOCAL_DEFAULT_MODEL_REF,
     auth: "loopback",
     availability: localAvailability(entry),
     modelSpec: {
@@ -226,17 +235,43 @@ export function applyCloudAvailability(
       availability: { state: "ready", detail: "deterministic-test" },
     };
   }
-  const configured = credentials.find((credential) => credential.metadata?.["modelProviderId"] === entry.provider &&
-    (credential.metadata?.["modelBaseUrl"] || credential.metadata?.["modelProviderConfig"]));
+  const configured = credentials.find(
+    (credential) =>
+      credential.metadata?.["modelProviderId"] === entry.provider &&
+      (credential.metadata?.["modelBaseUrl"] ||
+        credential.metadata?.["modelProviderConfig"]),
+  );
   if (configured) {
     try {
-      const baseUrl = resolveProviderModelBaseUrl(entry.provider, entry.baseUrl, configured.metadata);
+      const baseUrl = resolveProviderModelBaseUrl(
+        entry.provider,
+        entry.baseUrl,
+        configured.metadata,
+      );
       const configuration = configured.metadata?.["modelProviderConfig"];
-      entry = { ...entry, baseUrl, templatedBaseUrl: isTemplatedBaseUrl(baseUrl),
-        connection: { method: configured.metadata?.["modelAuthMethod"], ...(configuration ? { configuration: JSON.parse(configuration) } : {}) },
-        ...(entry.modelSpec ? { modelSpec: { ...entry.modelSpec, baseUrl } } : {}) };
+      entry = {
+        ...entry,
+        baseUrl,
+        templatedBaseUrl: isTemplatedBaseUrl(baseUrl),
+        connection: {
+          method: configured.metadata?.["modelAuthMethod"],
+          ...(configuration
+            ? { configuration: JSON.parse(configuration) }
+            : {}),
+        },
+        ...(entry.modelSpec
+          ? { modelSpec: { ...entry.modelSpec, baseUrl } }
+          : {}),
+      };
     } catch {
-      return { ...entry, availability: { state: "error", message: "Provider settings are invalid. Reconnect this provider to update them." } };
+      return {
+        ...entry,
+        availability: {
+          state: "error",
+          message:
+            "Provider settings are invalid. Reconnect this provider to update them.",
+        },
+      };
     }
   }
   // The credential owner projects expiry and refresh capability into each
@@ -252,11 +287,26 @@ export function applyCloudAvailability(
     }
   });
   const availableAccounts = matching.filter(isStoredCredentialUsable);
-  if (availableAccounts.length && availableAccounts.every((credential) => {
-    const allowed = credential.metadata?.["modelAvailableIds"];
-    if (!allowed) return false;
-    try { return !JSON.parse(allowed).includes(entry.id); } catch { return false; }
-  })) return { ...entry, availability: { state: "error", message: "This model is not available with your connected provider account. Choose another model or update your plan." } };
+  if (
+    availableAccounts.length &&
+    availableAccounts.every((credential) => {
+      const allowed = credential.metadata?.["modelAvailableIds"];
+      if (!allowed) return false;
+      try {
+        return !JSON.parse(allowed).includes(entry.id);
+      } catch {
+        return false;
+      }
+    })
+  )
+    return {
+      ...entry,
+      availability: {
+        state: "error",
+        message:
+          "This model is not available with your connected provider account. Choose another model or update your plan.",
+      },
+    };
   const matchedUsable = matching.some(isStoredCredentialUsable);
   const matchedExpired = matching.some(
     (credential) =>
@@ -329,9 +379,10 @@ export class ModelSettingsDO extends DurableObjectBase {
     sensitivity: "read",
   })
   async getSettings(): Promise<ModelSettingsSnapshot> {
+    const configRequest = this.getWorkspaceConfig();
     const [catalog, config] = await Promise.all([
-      this.assembleCatalog(),
-      this.getWorkspaceConfig(),
+      this.assembleCatalog(configRequest),
+      configRequest,
     ]);
     return this.resolveSettings(catalog, config);
   }
@@ -433,11 +484,13 @@ export class ModelSettingsDO extends DurableObjectBase {
   }
 
   /** Static pi catalog + live availability overlay + live local entries. */
-  protected async assembleCatalog(): Promise<ModelCatalog> {
+  protected async assembleCatalog(
+    config = this.getWorkspaceConfig(),
+  ): Promise<ModelCatalog> {
     const [base, credentials, localEntries] = await Promise.all([
       this.getCatalog(),
       this.storedCredentials(),
-      this.fetchLocalModels(),
+      config.then((workspaceConfig) => this.fetchLocalModels(workspaceConfig)),
     ]);
     const executionMode =
       this.env["VIBESTUDIO_TEST_MODE"] === "1"
@@ -450,11 +503,13 @@ export class ModelSettingsDO extends DurableObjectBase {
       ...localEntries.map(localEntryToCatalogEntry),
     ];
     const recommendedLocalModelRef = localEntries.some(
-      (entry) => `${LOCAL_PROVIDER_ID}:${entry.slug}` === LOCAL_DEFAULT_MODEL_REF
+      (entry) =>
+        `${LOCAL_PROVIDER_ID}:${entry.slug}` === LOCAL_DEFAULT_MODEL_REF,
     )
       ? LOCAL_DEFAULT_MODEL_REF
       : localEntries.some(
-            (entry) => `${LOCAL_PROVIDER_ID}:${entry.slug}` === LOCAL_FALLBACK_MODEL_REF
+            (entry) =>
+              `${LOCAL_PROVIDER_ID}:${entry.slug}` === LOCAL_FALLBACK_MODEL_REF,
           )
         ? LOCAL_FALLBACK_MODEL_REF
         : null;
@@ -464,7 +519,9 @@ export class ModelSettingsDO extends DurableObjectBase {
           {
             id: LOCAL_PROVIDER_ID,
             label: "Local inference (experimental)",
-            baseUrls: Array.from(new Set(localEntries.map((entry) => entry.baseUrl))),
+            baseUrls: Array.from(
+              new Set(localEntries.map((entry) => entry.baseUrl)),
+            ),
             recommendedModelRef: recommendedLocalModelRef,
             connectable: false,
           },
@@ -473,34 +530,46 @@ export class ModelSettingsDO extends DurableObjectBase {
     return { providers, models };
   }
 
-  /** Secret-free stored-credential lifecycle summaries (design §7.1).
-   *  Failure degrades to "nothing credentialed", never an error snapshot. */
+  /** Successful empty inventories are authoritative; failed discovery is not absence. */
   protected async storedCredentials(): Promise<StoredCredentialSummary[]> {
-    try {
-      const credentials = await this.rpc.call<StoredCredentialSummary[]>(
-        "main",
-        "credentials.listStoredCredentials",
-        [],
-      );
-      return Array.isArray(credentials) ? credentials : [];
-    } catch (err) {
-      console.warn("[model-settings] credential status lookup failed:", err);
-      return [];
-    }
+    const credentials = await this.rpc.call<unknown>(
+      "main",
+      "credentials.listStoredCredentials",
+      [],
+    );
+    return credentialsMethods.listStoredCredentials.returns.parse(credentials);
   }
 
-  /** Live local-models extension entries. Absent extension ⇒ no local models. */
-  protected async fetchLocalModels(): Promise<LocalModelEntry[]> {
-    try {
-      const entries = await this.rpc.call<LocalModelEntry[]>(
-        "main",
-        "extensions.invoke",
-        [LOCAL_MODELS_EXTENSION_ID, "listModels", []],
+  /** Use the effective layered main declaration and its matching main build graph. */
+  protected async fetchLocalModels(
+    config: WorkspaceConfig,
+  ): Promise<LocalModelEntry[]> {
+    const declarations = config.extensions ?? [];
+    if (declarations.length === 0) return [];
+    const units = buildUnitCatalogEntrySchema
+      .array()
+      .parse(await this.rpc.call<unknown>("main", "build.listUnits", []));
+    const local = units.find(
+      (unit) =>
+        unit.kind === "extension" && unit.name === LOCAL_MODELS_EXTENSION_ID,
+    );
+    const declaration = declarations.find(
+      (declared) =>
+        declared.source === LOCAL_MODELS_EXTENSION_ID ||
+        declared.source === "extensions/local-models" ||
+        declared.source === local?.source,
+    );
+    if (!declaration) return [];
+    if (!local)
+      throw new Error(
+        `Declared local model provider ${declaration.source} has no valid extension build unit ${LOCAL_MODELS_EXTENSION_ID}; repair its package manifest/source declaration.`,
       );
-      return Array.isArray(entries) ? entries : [];
-    } catch {
-      return [];
-    }
+    const entries = await this.rpc.call<unknown>("main", "extensions.invoke", [
+      LOCAL_MODELS_EXTENSION_ID,
+      "listModels",
+      [],
+    ]);
+    return localModelEntrySchema.array().parse(entries);
   }
 
   protected getWorkspaceConfig(): Promise<WorkspaceConfig> {

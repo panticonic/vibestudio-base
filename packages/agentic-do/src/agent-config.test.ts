@@ -3,8 +3,9 @@
  * settings), respondFrom handle→id resolution, and multi-channel invalidation
  * when config changes (config is per-AGENT, so a change applies to every channel).
  */
-import { describe, expect, it, vi } from "vitest";
-import { createTestDO } from "@workspace/runtime/worker/test-utils";
+import { afterEach, describe, expect, it } from "vitest";
+import { createNativeVesselTestDO as createTestDO } from "./testing/native-vessel.js";
+import type { ChannelClient } from "./channel-client.js";
 import type { ParticipantDescriptor } from "@workspace/harness";
 import {
   AgentVesselBase,
@@ -29,21 +30,52 @@ class TestAgentVessel extends AgentVesselBase {
   promptForTest(channelId = "ch-1"): Promise<string> {
     return this.composePrompt(channelId);
   }
-  driverForTest(): { dropLoop: (channelId: string) => void } {
-    return this.driver as unknown as { dropLoop: (channelId: string) => void };
+  readonly refreshedChannels: string[] = [];
+  protected override async refreshNativeChannelConfiguration(
+    channelId: string,
+  ): Promise<void> {
+    this.refreshedChannels.push(channelId);
   }
-  subscriptionsForTest(): { listChannelIds: () => string[] } {
-    return this.subscriptions as unknown as { listChannelIds: () => string[] };
+  protected override createChannelClient(): ChannelClient {
+    return {
+      relationshipState: async () => ({ revision: 0, active: false }),
+      join: async (input: { participantId: string; revision: number }) => ({
+        ok: true,
+        participantId: input.participantId,
+        revision: input.revision,
+        channelConfig: {},
+        envelope: { logEvents: [], ready: { totalCount: 0, envelopeCount: 0 } },
+      }),
+    } as unknown as ChannelClient;
+  }
+  async subscribeForTest(
+    channelId: string,
+    delivery: "all" | "addressed" = "all",
+  ) {
+    this.ensureIdentity();
+    await this.subscriptions.subscribe({
+      channelId,
+      contextId: "ctx-one",
+      descriptor: this.getParticipantInfo(),
+      delivery,
+      replay: false,
+    });
   }
 }
+
+const databases: Array<{ close(): void }> = [];
+afterEach(() => {
+  for (const database of databases.splice(0)) database.close();
+});
 
 async function makeVessel(
   env?: Record<string, unknown>,
 ): Promise<TestAgentVessel> {
-  const { instance } = await createTestDO(TestAgentVessel, {
+  const { instance, db } = await createTestDO(TestAgentVessel, {
     __objectKey: "agent-key",
     ...env,
   });
+  databases.push(db);
   return instance;
 }
 
@@ -241,8 +273,6 @@ describe("subagent prompt contract", () => {
       }),
     ).toBe("Inspect one package.");
   });
-
-
 });
 
 describe("per-agent settings seeding from STATE_ARGS.agentConfig", () => {
@@ -305,23 +335,29 @@ describe("per-agent settings seeding from STATE_ARGS.agentConfig", () => {
 });
 
 describe("per-agent config invalidation spans all the agent's channels", () => {
-  it("dropping config drops the cached loop for EVERY subscribed channel", async () => {
+  it("awaits native configuration refresh for every subscribed channel", async () => {
     const vessel = await makeVessel();
-    vi.spyOn(vessel.subscriptionsForTest(), "listChannelIds").mockReturnValue([
+    await vessel.subscribeForTest("ch-a");
+    await vessel.subscribeForTest("ch-b");
+    await vessel.subscribeForTest("observed-child-task", "addressed");
+
+    await vessel.configureAgent({ model: "anthropic:claude-sonnet-4-6" });
+    await vessel.configureAgent({ thinkingLevel: "xhigh" });
+    expect(vessel.getAgentSettings().thinkingLevel).toBe("xhigh");
+    await vessel.configureAgent({ thinkingLevel: "max" });
+    expect(vessel.getAgentSettings().thinkingLevel).toBe("max");
+    await vessel.configureAgent({ fastMode: true });
+    expect(vessel.getAgentSettings().fastMode).toBe(true);
+
+    expect(vessel.refreshedChannels).toEqual([
+      "ch-a",
+      "ch-b",
+      "ch-a",
+      "ch-b",
+      "ch-a",
+      "ch-b",
       "ch-a",
       "ch-b",
     ]);
-    const dropLoop = vi.spyOn(vessel.driverForTest(), "dropLoop");
-
-    vessel.configureAgent({ model: "anthropic:claude-sonnet-4-6" });
-    vessel.configureAgent({ thinkingLevel: "xhigh" });
-    expect(vessel.getAgentSettings().thinkingLevel).toBe("xhigh");
-    vessel.configureAgent({ thinkingLevel: "max" });
-    expect(vessel.getAgentSettings().thinkingLevel).toBe("max");
-    vessel.configureAgent({ fastMode: true });
-    expect(vessel.getAgentSettings().fastMode).toBe(true);
-
-    expect(dropLoop).toHaveBeenCalledWith("ch-a");
-    expect(dropLoop).toHaveBeenCalledWith("ch-b");
   });
 });

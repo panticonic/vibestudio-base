@@ -15,7 +15,12 @@ import {
   type PolicyAppendDraft,
   type PolicyEnvelopeView,
 } from "@workspace/channel-policies";
-import type { LogEnvelope } from "@workspace/agentic-protocol";
+import {
+  AGENTIC_EVENT_PAYLOAD_KIND,
+  agenticEventFromLogEnvelope,
+  isAgenticLogEventKind,
+  type LogEnvelope,
+} from "@workspace/agentic-protocol";
 import type { ChannelLog } from "./log-store.js";
 
 export interface PolicyHostDeps {
@@ -33,13 +38,20 @@ interface PolicyStateCache {
   policyVersion: number;
 }
 
-export function policyViewFromLogEnvelope(envelope: LogEnvelope): PolicyEnvelopeView {
-  const actor = envelope.actor as { id: string; kind?: string; participantId?: string };
+export function policyViewFromLogEnvelope(
+  envelope: LogEnvelope,
+): PolicyEnvelopeView {
+  const actor = envelope.actor as {
+    id: string;
+    kind?: string;
+    participantId?: string;
+  };
+  const agentic = isAgenticLogEventKind(envelope.payloadKind);
   return {
     envelopeId: String(envelope.envelopeId),
     seq: envelope.seq,
-    payloadKind: envelope.payloadKind,
-    payload: envelope.payload,
+    payloadKind: agentic ? AGENTIC_EVENT_PAYLOAD_KIND : envelope.payloadKind,
+    payload: agentic ? agenticEventFromLogEnvelope(envelope) : envelope.payload,
     senderId: actor.participantId ?? actor.id,
     senderKind: actor.kind ?? "unknown",
     ...(envelope.annotations ? { annotations: envelope.annotations } : {}),
@@ -68,19 +80,28 @@ export class PolicyHost {
     return `policy_state:${name}`;
   }
 
-  private loadCache(policy: ChannelPolicy): { state: unknown; foldedThroughSeq: number } | null {
+  private loadCache(
+    policy: ChannelPolicy,
+  ): { state: unknown; foldedThroughSeq: number } | null {
     const raw = this.deps.getStateValue(this.cacheKey(policy.name));
     if (!raw) return null;
     try {
       const cache = JSON.parse(raw) as PolicyStateCache;
       if (cache.policyVersion !== policy.version) return null;
-      return { state: JSON.parse(cache.stateJson), foldedThroughSeq: cache.foldedThroughSeq };
+      return {
+        state: JSON.parse(cache.stateJson),
+        foldedThroughSeq: cache.foldedThroughSeq,
+      };
     } catch {
       return null;
     }
   }
 
-  private persist(policy: ChannelPolicy, state: unknown, foldedThroughSeq: number): void {
+  private persist(
+    policy: ChannelPolicy,
+    state: unknown,
+    foldedThroughSeq: number,
+  ): void {
     const cache: PolicyStateCache = {
       stateJson: JSON.stringify(state ?? null),
       foldedThroughSeq,
@@ -97,7 +118,8 @@ export class PolicyHost {
     state: unknown;
   }> {
     const policy =
-      this.policies().find((candidate) => candidate.name === name) ?? getChannelPolicy(name);
+      this.policies().find((candidate) => candidate.name === name) ??
+      getChannelPolicy(name);
     const cached = this.loadCache(policy);
     let state = cached?.state ?? policy.init();
     let foldedThroughSeq = cached?.foldedThroughSeq ?? 0;
@@ -116,11 +138,18 @@ export class PolicyHost {
       if (page.length < FOLD_PAGE_LIMIT) break;
     }
     if (advanced || !cached) this.persist(policy, state, foldedThroughSeq);
-    return { policy: policy.name, version: policy.version, foldedThroughSeq, state };
+    return {
+      policy: policy.name,
+      version: policy.version,
+      foldedThroughSeq,
+      state,
+    };
   }
 
   /** Pure annotate pass over all configured policies; merged result. */
-  async annotate(draft: PolicyAppendDraft): Promise<Record<string, unknown> | null> {
+  async annotate(
+    draft: PolicyAppendDraft,
+  ): Promise<Record<string, unknown> | null> {
     let merged: Record<string, unknown> | null = null;
     for (const policy of this.policies()) {
       const { state } = await this.getState(policy.name);

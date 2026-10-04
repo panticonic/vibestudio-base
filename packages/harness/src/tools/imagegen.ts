@@ -1,9 +1,10 @@
+import { toolDetails } from "./native-tool-json.js";
 /** Workspace-native image generation using the pi-imagegen Codex protocol.
  * Protocol reference: https://github.com/Jon-Vii/pi-imagegen (MIT).
  * Credentials stay in the host; files use the canonical semantic mutation engine.
  */
-import { Type } from "@sinclair/typebox";
-import type { AgentTool } from "@workspace/pi-core";
+import { Type } from "@panticonic/pi-ai";
+import type { ToolRegistration } from "@panticonic/pi-durable";
 import type { RpcCaller } from "@vibestudio/rpc";
 import {
   createImagesClient,
@@ -11,7 +12,12 @@ import {
   type ImageAsset,
 } from "@workspace/runtime/images";
 import { mutateFiles, mutationResultText } from "./file-mutation.js";
-import type { ToolEditingVcs, ToolMutationContext } from "./tool-vcs.js";
+import {
+  toolCommandId,
+  toolContextId,
+  type ToolEditingVcs,
+  type ToolMutationContext,
+} from "./tool-vcs.js";
 import type { RuntimeFs } from "./runtime-fs.js";
 import type { AgentFileVisibility } from "./agent-file-visibility.js";
 import type { WorkspaceFileObservationStore } from "./file-observations.js";
@@ -22,23 +28,27 @@ const schema = Type.Object(
   {
     prompt: Type.String({
       minLength: 1,
-      description: "Describe the image to generate or the changes to make to reference images.",
+      description:
+        "Describe the image to generate or the changes to make to reference images.",
     }),
     outputPath: Type.Optional(
       Type.String({
         minLength: 1,
         description:
           "Destination in an existing workspace repository, or .tmp/<name> for scratch. Match the extension to outputFormat. Omit to generate a reusable image asset without saving a source file.",
-      })
+      }),
     ),
     referenceAssetIds: Type.Optional(
-      Type.Array(Type.String({ minLength: 1 }), { maxItems: IMAGE_REFERENCE_LIMIT })
+      Type.Array(Type.String({ minLength: 1 }), {
+        maxItems: IMAGE_REFERENCE_LIMIT,
+      }),
     ),
     referencePaths: Type.Optional(
       Type.Array(Type.String({ minLength: 1 }), {
         maxItems: IMAGE_REFERENCE_LIMIT,
-        description: "Workspace image paths used as visual references for generation or editing.",
-      })
+        description:
+          "Workspace image paths used as visual references for generation or editing.",
+      }),
     ),
     size: Type.Optional(
       Type.Union([
@@ -46,7 +56,7 @@ const schema = Type.Object(
         Type.Literal("1024x1024"),
         Type.Literal("1536x1024"),
         Type.Literal("1024x1536"),
-      ])
+      ]),
     ),
     quality: Type.Optional(
       Type.Union([
@@ -54,22 +64,30 @@ const schema = Type.Object(
         Type.Literal("low"),
         Type.Literal("medium"),
         Type.Literal("high"),
-      ])
+      ]),
     ),
     background: Type.Optional(
-      Type.Union([Type.Literal("auto"), Type.Literal("opaque"), Type.Literal("transparent")])
+      Type.Union([
+        Type.Literal("auto"),
+        Type.Literal("opaque"),
+        Type.Literal("transparent"),
+      ]),
     ),
     outputFormat: Type.Optional(
-      Type.Union([Type.Literal("png"), Type.Literal("jpeg"), Type.Literal("webp")])
+      Type.Union([
+        Type.Literal("png"),
+        Type.Literal("jpeg"),
+        Type.Literal("webp"),
+      ]),
     ),
     createOnly: Type.Optional(
       Type.Boolean({
         description:
           "Defaults to true. Set false to replace an existing image; previously read files are protected against stale overwrites.",
-      })
+      }),
     ),
   },
-  { additionalProperties: false }
+  { additionalProperties: false },
 );
 
 export function createImagegenTool(deps: {
@@ -80,15 +98,16 @@ export function createImagegenTool(deps: {
   context: ToolMutationContext;
   visibility: AgentFileVisibility;
   observations: WorkspaceFileObservationStore;
-}): AgentTool<typeof schema> {
+}): ToolRegistration<typeof schema> {
   return {
     name: "imagegen",
-    label: "Generate image",
+
     description:
       "Generate or edit an image with the connected OpenAI Codex subscription (gpt-image-2). Returns a durable image asset and visible preview. Optional outputPath saves the original through semantic VCS. Supply referenceAssetIds or referencePaths for edits. Running panels use images.generate and GeneratedImage with the same service. Requires a connected openai-codex provider, regardless of the conversation model. Use read to inspect images and notify to share them with the user.",
     parameters: schema,
-    cancellationMode: "settle",
-    execute: async (_toolCallId, input, signal) => {
+
+    execute: async (input, _api, executionContext) => {
+      const signal = executionContext.abortSignal;
       signal?.throwIfAborted();
       if (typeof input.prompt !== "string" || !input.prompt.trim())
         throw new Error("imagegen requires prompt");
@@ -98,22 +117,31 @@ export function createImagegenTool(deps: {
         input.outputPath !== undefined &&
         !(extension === format || (format === "jpeg" && extension === "jpg"))
       ) {
-        throw new Error(`outputPath must have a ${format} extension matching outputFormat`);
+        throw new Error(
+          `outputPath must have a ${format} extension matching outputFormat`,
+        );
       }
       const images = createImagesClient(deps.rpc);
       const references: ImageAsset[] = [];
       const imported: ImageAsset[] = [];
-      const importOwner = `tool:${_toolCallId}`;
+      const commandId = toolCommandId(deps.context);
+      const importOwner = `tool:${commandId}`;
       try {
-        for (const id of input.referenceAssetIds ?? []) references.push(await images.getAsset(id));
+        for (const id of input.referenceAssetIds ?? [])
+          references.push(await images.getAsset(id));
         for (const path of input.referencePaths ?? []) {
           signal?.throwIfAborted();
           const absolute = resolveToCwd(path, deps.cwd);
-          if (await deps.visibility.isHidden(absolute)) throw new Error(`Path not found: ${path}`);
+          if (await deps.visibility.isHidden(absolute))
+            throw new Error(`Path not found: ${path}`);
           const bytes = await deps.fs.readFile(absolute);
-          if (!(bytes instanceof Uint8Array)) throw new Error(`Not an image: ${path}`);
+          if (!(bytes instanceof Uint8Array))
+            throw new Error(`Not an image: ${path}`);
           const base64 = bytesToBase64(bytes);
-          const reference = await images.importAsset({ base64, owner: importOwner });
+          const reference = await images.importAsset({
+            base64,
+            owner: importOwner,
+          });
           imported.push(reference);
           references.push(reference);
         }
@@ -122,11 +150,11 @@ export function createImagegenTool(deps: {
         ];
         if (uniqueReferences.length > IMAGE_REFERENCE_LIMIT) {
           throw new Error(
-            `Image generation accepts at most ${IMAGE_REFERENCE_LIMIT} distinct reference images`
+            `Image generation accepts at most ${IMAGE_REFERENCE_LIMIT} distinct reference images`,
           );
         }
         const job = await images.generate({
-          requestId: `${deps.context.contextId}:${deps.context.commandId}:${_toolCallId}`,
+          requestId: `${toolContextId(deps.context)}:${commandId}`,
           prompt: input.prompt,
           references: uniqueReferences,
           size: input.size,
@@ -152,7 +180,9 @@ export function createImagegenTool(deps: {
           if (cancellation) await cancellation;
         }
         if (finished.status !== "succeeded" || !finished.asset)
-          throw new Error(finished.error ?? `Image generation ${finished.status}`);
+          throw new Error(
+            finished.error ?? `Image generation ${finished.status}`,
+          );
         const asset = finished.asset;
         const { base64 } = await images.readAsset(asset.id);
         signal?.throwIfAborted();
@@ -174,7 +204,7 @@ export function createImagegenTool(deps: {
               },
               signal,
               deps.fs,
-              deps.observations
+              deps.observations,
             )
           : undefined;
         return {
@@ -187,17 +217,19 @@ export function createImagegenTool(deps: {
             },
             { type: "image", data: base64, mimeType: asset.mimeType },
           ],
-          details: {
+          details: toolDetails({
             ...asset.provenance,
             asset,
             jobId: job.id,
             outputPath: input.outputPath,
             mutation,
-          },
+          }),
         };
       } finally {
         await Promise.all(
-          imported.map((asset) => images.release({ assetId: asset.id, owner: importOwner }))
+          imported.map((asset) =>
+            images.release({ assetId: asset.id, owner: importOwner }),
+          ),
         );
       }
     },

@@ -13,6 +13,8 @@ export type SubagentRunStatus =
 
 export interface SubagentRunRow {
   runId: string;
+  /** Native launch task in this vessel's Pi session; retained with the collaborator. */
+  nativeTaskId: number;
   taskChannelId: string;
   parentContextId: string | null;
   childContextId: string;
@@ -30,12 +32,11 @@ export interface SubagentRunRow {
   launchConfig: Record<string, unknown> | null;
 }
 
-export type SubagentRunReferenceResolution =
-  | { kind: "exact" | "abbreviated"; run: SubagentRunRow }
-  | { kind: "ambiguous" }
-  | null;
+export type SubagentRunReferenceResolution = {
+  kind: "exact";
+  run: SubagentRunRow;
+} | null;
 
-const MIN_ABBREVIATED_RUN_ID_LENGTH = 16;
 const SUBAGENT_RUN_STATUSES = [
   "starting",
   "running",
@@ -47,6 +48,7 @@ const SUBAGENT_RUN_STATUSES = [
 
 interface SubagentRunSqlRow {
   run_id: string;
+  native_task_id: number;
   task_channel_id: string;
   parent_context_id?: string | null;
   child_context_id: string;
@@ -87,6 +89,7 @@ function parseRecord(field: string, value: string | null): Record<string, unknow
 function toRow(row: SubagentRunSqlRow): SubagentRunRow {
   return {
     runId: row.run_id,
+    nativeTaskId: Number(row.native_task_id),
     taskChannelId: row.task_channel_id,
     parentContextId: row.parent_context_id ?? null,
     childContextId: row.child_context_id,
@@ -108,46 +111,11 @@ function toRow(row: SubagentRunSqlRow): SubagentRunRow {
   };
 }
 
-function normalizeAbbreviatedReference(reference: string): string {
-  const trimmed = reference.trim();
-  if (trimmed.endsWith("...")) return trimmed.slice(0, -3).trimEnd();
-  if (trimmed.endsWith("…")) return trimmed.slice(0, -1).trimEnd();
-  return trimmed;
-}
-
-function boundedEditDistance(left: string, right: string, limit: number): number | null {
-  if (Math.abs(left.length - right.length) > limit) return null;
-  let previous = Array.from({ length: right.length + 1 }, (_, index) => index);
-  for (let leftIndex = 1; leftIndex <= left.length; leftIndex += 1) {
-    const current = [leftIndex];
-    let rowMinimum = leftIndex;
-    for (let rightIndex = 1; rightIndex <= right.length; rightIndex += 1) {
-      const substitutionCost = left[leftIndex - 1] === right[rightIndex - 1] ? 0 : 1;
-      const distance = Math.min(
-        current[rightIndex - 1]! + 1,
-        previous[rightIndex]! + 1,
-        previous[rightIndex - 1]! + substitutionCost
-      );
-      current.push(distance);
-      rowMinimum = Math.min(rowMinimum, distance);
-    }
-    if (rowMinimum > limit) return null;
-    previous = current;
-  }
-  const distance = previous[right.length]!;
-  return distance <= limit ? distance : null;
-}
-
-function abbreviatedReferenceScore(reference: string, runId: string): number | null {
-  const maxDistance = reference.length >= MIN_ABBREVIATED_RUN_ID_LENGTH ? 2 : 1;
-  let best: number | null = null;
-  const shortest = Math.max(1, reference.length - maxDistance);
-  const longest = Math.min(runId.length, reference.length + maxDistance);
-  for (let length = shortest; length <= longest; length += 1) {
-    const distance = boundedEditDistance(reference, runId.slice(0, length), maxDistance);
-    if (distance !== null && (best === null || distance < best)) best = distance;
-  }
-  return best;
+/** A compact spelling of the native launch coordinate, never a cached alias. */
+export function subagentRunReference(run: Pick<SubagentRunRow, "nativeTaskId">): string {
+  if (!Number.isSafeInteger(run.nativeTaskId) || run.nativeTaskId <= 0)
+    throw new Error("Subagent launch requires a positive native task identity");
+  return `@s${run.nativeTaskId.toString(36)}`;
 }
 
 export class SubagentRunStore {
@@ -157,6 +125,7 @@ export class SubagentRunStore {
     sql.exec(`
       CREATE TABLE IF NOT EXISTS subagent_runs (
         run_id TEXT PRIMARY KEY,
+        native_task_id INTEGER NOT NULL UNIQUE CHECK (native_task_id > 0),
         task_channel_id TEXT NOT NULL,
         parent_context_id TEXT,
         child_context_id TEXT NOT NULL,
@@ -180,6 +149,7 @@ export class SubagentRunStore {
       table: "subagent_runs",
       columns: [
         ["run_id", "TEXT", false],
+        ["native_task_id", "INTEGER", true],
         ["task_channel_id", "TEXT", true],
         ["parent_context_id", "TEXT", false],
         ["child_context_id", "TEXT", true],
@@ -205,14 +175,20 @@ export class SubagentRunStore {
   }
 
   insert(row: SubagentRunRow): void {
+    subagentRunReference(row);
+    const existing = this.get(row.runId);
+    if (existing && existing.nativeTaskId !== row.nativeTaskId)
+      throw new Error("Child launch record changed its native task owner");
     this.sql.exec(
-      `INSERT OR IGNORE INTO subagent_runs
-         (run_id, task_channel_id, parent_context_id, child_context_id, child_entity_id,
+      `INSERT INTO subagent_runs
+         (run_id, native_task_id, task_channel_id, parent_context_id, child_context_id, child_entity_id,
           child_participant_id, parent_channel_id, mode, label, depth, status,
           source_event_id, semantic_integration_json, started_at,
           last_activity_at, launch_config_json)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(run_id) DO NOTHING`,
       row.runId,
+      row.nativeTaskId,
       row.taskChannelId,
       row.parentContextId,
       row.childContextId,
@@ -227,7 +203,7 @@ export class SubagentRunStore {
       row.semanticIntegrationSnapshot ? JSON.stringify(row.semanticIntegrationSnapshot) : null,
       row.startedAt,
       row.lastActivityAt,
-      row.launchConfig ? JSON.stringify(row.launchConfig) : null,
+      row.launchConfig ? JSON.stringify(row.launchConfig) : null
     );
   }
 
@@ -258,9 +234,9 @@ export class SubagentRunStore {
   }
 
   listAll(): SubagentRunRow[] {
-    return (this.sql.exec(`SELECT * FROM subagent_runs`).toArray() as unknown as SubagentRunSqlRow[]).map(
-      toRow
-    );
+    return (
+      this.sql.exec(`SELECT * FROM subagent_runs`).toArray() as unknown as SubagentRunSqlRow[]
+    ).map(toRow);
   }
 
   listByStatus(status: SubagentRunStatus): SubagentRunRow[] {
@@ -287,20 +263,20 @@ export class SubagentRunStore {
   }
 
   resolveReference(reference: string, parentChannelId?: string): SubagentRunReferenceResolution {
-    const exact = this.get(reference);
-    if (exact) return { kind: "exact", run: exact };
-    const abbreviated = normalizeAbbreviatedReference(reference);
-    if (abbreviated.length < MIN_ABBREVIATED_RUN_ID_LENGTH) return null;
-    const candidates = this.listAll()
-      .filter((run) => !parentChannelId || run.parentChannelId === parentChannelId)
-      .map((run) => ({ run, score: abbreviatedReferenceScore(abbreviated, run.runId) }))
-      .filter(
-        (candidate): candidate is { run: SubagentRunRow; score: number } => candidate.score !== null
-      );
-    if (candidates.length === 0) return null;
-    const bestScore = Math.min(...candidates.map(({ score }) => score));
-    const best = candidates.filter(({ score }) => score === bestScore);
-    return best.length === 1 ? { kind: "abbreviated", run: best[0]!.run } : { kind: "ambiguous" };
+    let run: SubagentRunRow | null;
+    if (/^@s[1-9a-z][0-9a-z]*$/u.test(reference)) {
+      const taskId = Number.parseInt(reference.slice(2), 36);
+      if (!Number.isSafeInteger(taskId) || taskId.toString(36) !== reference.slice(2)) return null;
+      const row = this.sql
+        .exec(`SELECT * FROM subagent_runs WHERE native_task_id = ?`, taskId)
+        .toArray()[0];
+      run = row ? toRow(row as unknown as SubagentRunSqlRow) : null;
+    } else {
+      run = this.get(reference);
+    }
+    return run && (!parentChannelId || run.parentChannelId === parentChannelId)
+      ? { kind: "exact", run }
+      : null;
   }
 
   setStatus(runId: string, status: SubagentRunStatus): void {
@@ -315,12 +291,16 @@ export class SubagentRunStore {
     this.sql.exec(
       `UPDATE subagent_runs SET status = 'completed'
        WHERE run_id = ? AND status IN ('starting', 'running')`,
-      runId,
+      runId
     );
   }
 
   setSourceEventId(runId: string, sourceEventId: string): void {
-    this.sql.exec(`UPDATE subagent_runs SET source_event_id = ? WHERE run_id = ?`, sourceEventId, runId);
+    this.sql.exec(
+      `UPDATE subagent_runs SET source_event_id = ? WHERE run_id = ?`,
+      sourceEventId,
+      runId
+    );
   }
 
   setSemanticIntegrationSnapshot(runId: string, value: Record<string, unknown>): void {
@@ -332,7 +312,11 @@ export class SubagentRunStore {
   }
 
   setChildParticipantId(runId: string, participantId: string | null): void {
-    this.sql.exec(`UPDATE subagent_runs SET child_participant_id = ? WHERE run_id = ?`, participantId, runId);
+    this.sql.exec(
+      `UPDATE subagent_runs SET child_participant_id = ? WHERE run_id = ?`,
+      participantId,
+      runId
+    );
   }
 
   setLaunchConfig(runId: string, launchConfig: Record<string, unknown> | null): void {
@@ -344,11 +328,19 @@ export class SubagentRunStore {
   }
 
   setChildEntityId(runId: string, childEntityId: string): void {
-    this.sql.exec(`UPDATE subagent_runs SET child_entity_id = ? WHERE run_id = ?`, childEntityId, runId);
+    this.sql.exec(
+      `UPDATE subagent_runs SET child_entity_id = ? WHERE run_id = ?`,
+      childEntityId,
+      runId
+    );
   }
 
   setParentContextId(runId: string, contextId: string): void {
-    this.sql.exec(`UPDATE subagent_runs SET parent_context_id = ? WHERE run_id = ?`, contextId, runId);
+    this.sql.exec(
+      `UPDATE subagent_runs SET parent_context_id = ? WHERE run_id = ?`,
+      contextId,
+      runId
+    );
   }
 
   touch(runId: string, at: number): void {

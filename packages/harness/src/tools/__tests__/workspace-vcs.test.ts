@@ -1,10 +1,17 @@
+import { executeTool } from "../../testing/native-tool.js";
 import { describe, expect, it, vi } from "vitest";
 import { createMemoryAgentReferenceStore } from "../agent-pagination.js";
 import { putProvenanceReference } from "../provenance-reference.js";
-import { createWorkspaceVcsTool, type ToolWorkflowVcs } from "../workspace-vcs.js";
+import {
+  createWorkspaceVcsTool,
+  type ToolWorkflowVcs,
+} from "../workspace-vcs.js";
 
 function fixture() {
-  const working = { kind: "application" as const, applicationId: "application:working" };
+  const working = {
+    kind: "application" as const,
+    applicationId: "application:working",
+  };
   const status = vi.fn<ToolWorkflowVcs["status"]>(async () => ({
     contextId: "context:test",
     committed: { kind: "event" as const, eventId: "event:committed" },
@@ -15,99 +22,139 @@ function fixture() {
     workingCounts: { applications: 2, workUnits: 2, changes: 3 },
     integrating: [],
   }));
-  const compare = vi.fn(async (input: Parameters<ToolWorkflowVcs["compare"]>[0]) => ({
-    target: input.target,
-    source: input.source,
-    base: { kind: "event" as const, eventId: "event:base" },
-    resolution: { complete: false, remainingCoordinateCount: 1, concluded: false },
-    counts: { adopt: 1, convergent: 0, composed: 0, conflict: 0, resolved: 0 },
-    intentCounts: { merged: 0, settled: 0, split: 0, contested: 0, pending: 1 },
-    coordinates: [
-      {
-        coordinate: { kind: "file" as const, id: "file:source" },
-        paths: {
-          base: "packages/demo/a.ts",
-          ours: "packages/demo/a.ts",
-          theirs: "packages/demo/a.ts",
-        },
-        status: "adopt" as const,
-        aspects: [
-          {
-            aspect: "content" as const,
-            base: { hash: "blob:base" },
-            ours: { hash: "blob:base" },
-            theirs: { hash: "blob:source" },
-            status: "adopt" as const,
+  const compare = vi.fn(
+    async (input: Parameters<ToolWorkflowVcs["compare"]>[0]) => ({
+      target: input.target,
+      source: input.source,
+      base: { kind: "event" as const, eventId: "event:base" },
+      resolution: {
+        complete: false,
+        remainingCoordinateCount: 1,
+        concluded: false,
+      },
+      counts: {
+        adopt: 1,
+        convergent: 0,
+        composed: 0,
+        conflict: 0,
+        resolved: 0,
+      },
+      intentCounts: {
+        merged: 0,
+        settled: 0,
+        split: 0,
+        contested: 0,
+        pending: 1,
+      },
+      coordinates: [
+        {
+          coordinate: { kind: "file" as const, id: "file:source" },
+          paths: {
+            base: "packages/demo/a.ts",
+            ours: "packages/demo/a.ts",
+            theirs: "packages/demo/a.ts",
           },
-        ],
-        attribution: {
-          ours: [],
-          theirs: [{ changeId: "change:source", workUnitId: "work:source" }],
+          status: "adopt" as const,
+          aspects: [
+            {
+              aspect: "content" as const,
+              base: { hash: "blob:base" },
+              ours: { hash: "blob:base" },
+              theirs: { hash: "blob:source" },
+              status: "adopt" as const,
+            },
+          ],
+          attribution: {
+            ours: [],
+            theirs: [{ changeId: "change:source", workUnitId: "work:source" }],
+          },
+          resolutions: ["theirs" as const, "ours" as const, "current" as const],
+          summary: "adopt file packages/demo/a.ts",
         },
-        resolutions: ["theirs" as const, "ours" as const, "current" as const],
-        summary: "adopt file packages/demo/a.ts",
+      ],
+      intents: [
+        {
+          workUnitId: "work:source",
+          side: "theirs" as const,
+          intent: { text: "Update the source", tier: "stated" as const },
+          coordinates: [{ kind: "file" as const, id: "file:source" }],
+          state: "pending" as const,
+        },
+      ],
+      intentsTruncated: false,
+      nextCursor: null as string | null,
+    }),
+  );
+  const merge = vi.fn(
+    async (input: Parameters<ToolWorkflowVcs["merge"]>[0]) => ({
+      status: "working" as const,
+      commandId: input.commandId,
+      contextId: input.contextId,
+      workUnitId: "work:merge",
+      applicationId: "application:merge",
+      changeCount: 0,
+      changeIds: [],
+      incorporatedChangeCount: 1,
+      incorporatedChangeIds: ["change:source"],
+      decisionIds: ["decision:merge"],
+      workingHead: {
+        kind: "application" as const,
+        applicationId: "application:merge",
       },
-    ],
-    intents: [
-      {
-        workUnitId: "work:source",
-        side: "theirs" as const,
-        intent: { text: "Update the source", tier: "stated" as const },
-        coordinates: [{ kind: "file" as const, id: "file:source" }],
-        state: "pending" as const,
+      decisionId: "decision:merge",
+      outcomes: [],
+      resolution: {
+        complete: true,
+        remainingCoordinateCount: 0,
+        concluded: true,
       },
-    ],
-    intentsTruncated: false,
-    nextCursor: null as string | null,
-  }));
-  const merge = vi.fn(async (input: Parameters<ToolWorkflowVcs["merge"]>[0]) => ({
-    status: "working" as const,
-    commandId: input.commandId,
-    contextId: input.contextId,
-    workUnitId: "work:merge",
-    applicationId: "application:merge",
-    changeCount: 0,
-    changeIds: [],
-    incorporatedChangeCount: 1,
-    incorporatedChangeIds: ["change:source"],
-    decisionIds: ["decision:merge"],
-    workingHead: { kind: "application" as const, applicationId: "application:merge" },
-    decisionId: "decision:merge",
-    outcomes: [],
-    resolution: { complete: true, remainingCoordinateCount: 0, concluded: true },
-    intents: [
-      {
-        workUnitId: "work:source",
-        side: "theirs" as const,
-        state: "merged" as const,
-        intent: { text: "Update the source", tier: "stated" as const },
-        coordinates: [{ kind: "file" as const, id: "file:source" }],
+      intents: [
+        {
+          workUnitId: "work:source",
+          side: "theirs" as const,
+          state: "merged" as const,
+          intent: { text: "Update the source", tier: "stated" as const },
+          coordinates: [{ kind: "file" as const, id: "file:source" }],
+        },
+      ],
+      intentsTruncated: false,
+      counts: {
+        adopt: 0,
+        convergent: 0,
+        composed: 0,
+        conflict: 0,
+        resolved: 1,
       },
-    ],
-    intentsTruncated: false,
-    counts: { adopt: 0, convergent: 0, composed: 0, conflict: 0, resolved: 1 },
-    conflicts: [],
-    nextConflictCursor: null as string | null,
-    composed: [
-      {
-        coordinate: { kind: "file" as const, id: "file:source" },
-        ours: { text: "Preserve the local validation", tier: "stated" as const },
-        theirs: { text: "Update the source", tier: "stated" as const },
-      },
-    ],
-  }));
+      conflicts: [],
+      nextConflictCursor: null as string | null,
+      composed: [
+        {
+          coordinate: { kind: "file" as const, id: "file:source" },
+          ours: {
+            text: "Preserve the local validation",
+            tier: "stated" as const,
+          },
+          theirs: { text: "Update the source", tier: "stated" as const },
+        },
+      ],
+    }),
+  );
   const revert = vi.fn();
-  const commit = vi.fn(async (input: Parameters<ToolWorkflowVcs["commit"]>[0]) => ({
-    contextId: input.contextId,
-    event: { kind: "event" as const, eventId: "event:integrated" },
-    committedApplicationIds: ["application:working"],
-    integrationSourceEventIds: ["event:source"],
-  }));
-  const discard = vi.fn(async (input: Parameters<ToolWorkflowVcs["discard"]>[0]) => ({
-    contextId: input.contextId,
-    workingHead: { kind: "event" as const, eventId: "event:committed" },
-    discardedApplicationIds: ["application:first", "application:working"],
-  }));
+  const commit = vi.fn(
+    async (input: Parameters<ToolWorkflowVcs["commit"]>[0]) => ({
+      contextId: input.contextId,
+      event: { kind: "event" as const, eventId: "event:integrated" },
+      committedApplicationIds: ["application:working"],
+      integrationSourceEventIds: ["event:source"],
+    }),
+  );
+  const discard = vi.fn(
+    async (input: Parameters<ToolWorkflowVcs["discard"]>[0]) => ({
+      contextId: input.contextId,
+      workingHead: { kind: "event" as const, eventId: "event:committed" },
+      discardedApplicationIds: ["application:first", "application:working"],
+    }),
+  );
   const blame = vi.fn<ToolWorkflowVcs["blame"]>(async (input) => ({
     state: input.state,
     fileId: input.fileId,
@@ -184,21 +231,29 @@ describe("workspace VCS agent tool", () => {
       commandId: "command:orient",
     });
 
-    const status = await tool.execute("call:status", { operation: "status" });
+    const status = await executeTool(
+      tool,
+      { operation: "status" },
+      { callId: "call:status" },
+    );
     expect(status.content[0]).toMatchObject({
       type: "text",
       text: expect.stringContaining("dirty"),
     });
 
-    const compared = await tool.execute("call:compare", {
-      operation: "compare",
-      source: "event:source",
-    });
+    const compared = await executeTool(
+      tool,
+      {
+        operation: "compare",
+        source: "event:source",
+      },
+      { callId: "call:compare" },
+    );
     expect(f.compare).toHaveBeenCalledWith(
       expect.objectContaining({
         target: f.working,
         source: { kind: "event", eventId: "event:source" },
-      })
+      }),
     );
     expect(compared.content[0]).toMatchObject({
       type: "text",
@@ -213,20 +268,26 @@ describe("workspace VCS agent tool", () => {
       commandId: "command:local-compare",
     });
 
-    const compared = await tool.execute("call:local-compare", {
-      operation: "compare",
-      view: "local",
-    });
+    const compared = await executeTool(
+      tool,
+      {
+        operation: "compare",
+        view: "local",
+      },
+      { callId: "call:local-compare" },
+    );
 
     expect(f.compare).toHaveBeenCalledWith(
       expect.objectContaining({
         target: { kind: "event", eventId: "event:main" },
         source: f.working,
-      })
+      }),
     );
     expect(compared.content[0]).toMatchObject({
       type: "text",
-      text: expect.stringContaining("Local working state relative to protected main"),
+      text: expect.stringContaining(
+        "Local working state relative to protected main",
+      ),
     });
   });
 
@@ -237,20 +298,26 @@ describe("workspace VCS agent tool", () => {
       "/",
       f.vcs,
       { contextId: "context:test", commandId: "command:ref-source" },
-      references
+      references,
     );
 
-    await tool.execute("call:ref-source", {
-      operation: "compare",
-      source: putProvenanceReference(
-        references,
-        { kind: "event", eventId: "event:source" },
-        5
-      ),
-    });
+    await executeTool(
+      tool,
+      {
+        operation: "compare",
+        source: putProvenanceReference(
+          references,
+          { kind: "event", eventId: "event:source" },
+          5,
+        ),
+      },
+      { callId: "call:ref-source" },
+    );
 
     expect(f.compare).toHaveBeenCalledWith(
-      expect.objectContaining({ source: { kind: "event", eventId: "event:source" } })
+      expect.objectContaining({
+        source: { kind: "event", eventId: "event:source" },
+      }),
     );
   });
 
@@ -268,7 +335,7 @@ describe("workspace VCS agent tool", () => {
         contextId: "context:test",
         commandId: "command:compare-page",
       },
-      references
+      references,
     );
     const ref = references.put("vcs-compare", {
       basis: { target: f.working, source, limit: 5 },
@@ -276,10 +343,14 @@ describe("workspace VCS agent tool", () => {
       cursor: "cursor:compare",
     });
 
-    const result = await tool.execute("call:compare-page", {
-      operation: "compare",
-      ref,
-    });
+    const result = await executeTool(
+      tool,
+      {
+        operation: "compare",
+        ref,
+      },
+      { callId: "call:compare-page" },
+    );
 
     expect(f.compare).toHaveBeenCalledOnce();
     expect(f.compare).toHaveBeenLastCalledWith({
@@ -305,8 +376,10 @@ describe("workspace VCS agent tool", () => {
       commandId: "command:compare-schema",
     });
     const compareBranches = (
-      tool.parameters as { anyOf: Array<Record<string, unknown>> }
-    ).anyOf.filter((branch) => JSON.stringify(branch).includes('"const":"compare"'));
+      tool.parameters as unknown as { anyOf: Array<Record<string, unknown>> }
+    ).anyOf.filter((branch) =>
+      JSON.stringify(branch).includes('"const":"compare"'),
+    );
 
     expect(compareBranches).toHaveLength(1);
     expect(JSON.stringify(compareBranches[0])).toContain('"source"');
@@ -323,11 +396,15 @@ describe("workspace VCS agent tool", () => {
       commandId: "command:ambiguous-compare",
     });
 
-    const result = await tool.execute("call:ambiguous-compare", {
-      operation: "compare",
-      view: "local",
-      source: "event:source",
-    });
+    const result = await executeTool(
+      tool,
+      {
+        operation: "compare",
+        view: "local",
+        source: "event:source",
+      },
+      { callId: "call:ambiguous-compare" },
+    );
     expect(result.details).toMatchObject({
       operation: "compare",
       result: { status: "invalid-request" },
@@ -348,13 +425,15 @@ describe("workspace VCS agent tool", () => {
     });
 
     expect(contract).toContain(
-      "Browse and edit ordinary paths with the dedicated filesystem tools"
+      "Browse and edit ordinary paths with the dedicated filesystem tools",
     );
     expect(contract).not.toContain('"const":"listDirectory"');
     expect(contract).not.toContain('"const":"listFiles"');
     expect(contract).not.toContain('"const":"inspect"');
     expect(contract).not.toContain('"const":"neighbors"');
-    expect(contract).toContain("Use provenance for semantic roots and graph adjacency");
+    expect(contract).toContain(
+      "Use provenance for semantic roots and graph adjacency",
+    );
   });
 
   it("records one exact coordinate merge decision", async () => {
@@ -363,12 +442,16 @@ describe("workspace VCS agent tool", () => {
       contextId: "context:test",
       commandId: "command:merge",
     });
-    const result = await tool.execute("call:merge", {
-      operation: "merge",
-      source: "event:source",
-      coordinates: [{ kind: "file", id: "file:source" }],
-      intent: "Merge the source behavior after coordinate review",
-    });
+    const result = await executeTool(
+      tool,
+      {
+        operation: "merge",
+        source: "event:source",
+        coordinates: [{ kind: "file", id: "file:source" }],
+        intent: "Merge the source behavior after coordinate review",
+      },
+      { callId: "call:merge" },
+    );
     expect(f.merge).toHaveBeenCalledWith(
       expect.objectContaining({
         contextId: "context:test",
@@ -376,12 +459,12 @@ describe("workspace VCS agent tool", () => {
         source: { kind: "event", eventId: "event:source" },
         coordinates: [{ kind: "file", id: "file:source" }],
         intentSummary: "Merge the source behavior after coordinate review",
-      })
+      }),
     );
     expect(result.content[0]).toMatchObject({
       type: "text",
       text: expect.stringMatching(
-        /Resolution: complete=true; concluded=true; remaining=0[\s\S]*Intent: theirs\/merged[\s\S]*Composed: file:file:source/
+        /Resolution: complete=true; concluded=true; remaining=0[\s\S]*Intent: theirs\/merged[\s\S]*Composed: file:file:source/,
       ),
     });
   });
@@ -397,8 +480,18 @@ describe("workspace VCS agent tool", () => {
     f.merge.mockClear();
     f.merge.mockResolvedValueOnce({
       ...base,
-      resolution: { complete: false, remainingCoordinateCount: 1, concluded: false },
-      counts: { adopt: 0, convergent: 0, composed: 0, conflict: 1, resolved: 0 },
+      resolution: {
+        complete: false,
+        remainingCoordinateCount: 1,
+        concluded: false,
+      },
+      counts: {
+        adopt: 0,
+        convergent: 0,
+        composed: 0,
+        conflict: 1,
+        resolved: 0,
+      },
       nextConflictCursor: "cursor:conflicts",
     });
     const tool = createWorkspaceVcsTool("/", f.vcs, {
@@ -406,17 +499,21 @@ describe("workspace VCS agent tool", () => {
       commandId: "command:merge-conflicts",
     });
 
-    const result = await tool.execute("call:merge-conflicts", {
-      operation: "merge",
-      source: "event:source",
-      coordinates: [{ kind: "file", id: "file:source" }],
-    });
+    const result = await executeTool(
+      tool,
+      {
+        operation: "merge",
+        source: "event:source",
+        coordinates: [{ kind: "file", id: "file:source" }],
+      },
+      { callId: "call:merge-conflicts" },
+    );
 
     expect(JSON.stringify(result)).not.toContain("cursor:conflicts");
     expect(result.content[0]).toMatchObject({
       type: "text",
       text: expect.stringMatching(
-        /More conflicts: vcs\(\{"operation":"compare","ref":"@r[0-9a-z]+-[0-9a-f]{4}"\}\)/u
+        /More conflicts: vcs\(\{"operation":"compare","ref":"@r[0-9a-z]+-[0-9a-f]{4}"\}\)/u,
       ),
     });
     expect(result.details).toMatchObject({
@@ -439,20 +536,26 @@ describe("workspace VCS agent tool", () => {
       commandId: "command:template-review",
     });
 
-    await tool.execute("call:template-review", {
-      operation: "merge",
-      contextId: "context:template-operation",
-      source: "external-delta:examples",
-      intent: "Integrate the reviewed Examples contribution",
-    });
+    await executeTool(
+      tool,
+      {
+        operation: "merge",
+        contextId: "context:template-operation",
+        source: "external-delta:examples",
+        intent: "Integrate the reviewed Examples contribution",
+      },
+      { callId: "call:template-review" },
+    );
 
-    expect(f.status).toHaveBeenCalledWith({ contextId: "context:template-operation" });
+    expect(f.status).toHaveBeenCalledWith({
+      contextId: "context:template-operation",
+    });
     expect(f.merge).toHaveBeenCalledWith(
       expect.objectContaining({
         contextId: "context:template-operation",
         source: { kind: "external-delta", deltaId: "external-delta:examples" },
         intentSummary: "Integrate the reviewed Examples contribution",
-      })
+      }),
     );
   });
 
@@ -463,10 +566,14 @@ describe("workspace VCS agent tool", () => {
       commandId: "command:ambiguous-merge",
     });
 
-    const result = await tool.execute("call:ambiguous-merge", {
-      operation: "merge",
-      source: "not-a-semantic-source",
-    });
+    const result = await executeTool(
+      tool,
+      {
+        operation: "merge",
+        source: "not-a-semantic-source",
+      },
+      { callId: "call:ambiguous-merge" },
+    );
     expect(result.details).toMatchObject({
       result: { status: "invalid-source", source: "not-a-semantic-source" },
     });
@@ -480,17 +587,21 @@ describe("workspace VCS agent tool", () => {
       commandId: "command:reconcile",
     });
 
-    await tool.execute("call:resolve", {
-      operation: "merge",
-      source: "event:source",
-      resolutions: [
-        {
-          coordinate: { kind: "file", id: "file:source" },
-          resolution: "current",
-          rationale: "The authored file preserves both intended behaviors.",
-        },
-      ],
-    });
+    await executeTool(
+      tool,
+      {
+        operation: "merge",
+        source: "event:source",
+        resolutions: [
+          {
+            coordinate: { kind: "file", id: "file:source" },
+            resolution: "current",
+            rationale: "The authored file preserves both intended behaviors.",
+          },
+        ],
+      },
+      { callId: "call:resolve" },
+    );
 
     expect(f.merge).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -504,7 +615,7 @@ describe("workspace VCS agent tool", () => {
             rationale: "The authored file preserves both intended behaviors.",
           },
         ],
-      })
+      }),
     );
   });
 
@@ -515,20 +626,29 @@ describe("workspace VCS agent tool", () => {
       commandId: "command:decline",
     });
 
-    await tool.execute("call:decline", {
-      operation: "merge",
-      source: "event:source",
-      resolutions: [
-        {
-          coordinate: { kind: "file", id: "file:source" },
-          resolution: "ours",
-        },
-      ],
-    });
+    await executeTool(
+      tool,
+      {
+        operation: "merge",
+        source: "event:source",
+        resolutions: [
+          {
+            coordinate: { kind: "file", id: "file:source" },
+            resolution: "ours",
+          },
+        ],
+      },
+      { callId: "call:decline" },
+    );
     expect(f.merge).toHaveBeenCalledWith(
       expect.objectContaining({
-        resolutions: [{ coordinate: { kind: "file", id: "file:source" }, resolution: "ours" }],
-      })
+        resolutions: [
+          {
+            coordinate: { kind: "file", id: "file:source" },
+            resolution: "ours",
+          },
+        ],
+      }),
     );
     expect(f.vcs.readFile).not.toHaveBeenCalled();
   });
@@ -539,25 +659,31 @@ describe("workspace VCS agent tool", () => {
       contextId: "context:test",
       commandId: "command:blame",
     });
-    expect(JSON.stringify(tool.parameters)).toContain("This is not a line number");
-    const result = await tool.execute("call:blame", {
-      operation: "blame",
-      path: "packages/demo/a.ts",
-      start: 1,
-      end: 4,
-    });
+    expect(JSON.stringify(tool.parameters)).toContain(
+      "This is not a line number",
+    );
+    const result = await executeTool(
+      tool,
+      {
+        operation: "blame",
+        path: "packages/demo/a.ts",
+        start: 1,
+        end: 4,
+      },
+      { callId: "call:blame" },
+    );
     expect(f.blame).toHaveBeenCalledWith(
       expect.objectContaining({
         state: f.working,
         repositoryId: "repository:packages/demo",
         fileId: "file:demo",
         range: { start: 1, end: 4 },
-      })
+      }),
     );
     expect(result.content[0]).toMatchObject({
       type: "text",
       text: expect.stringMatching(
-        /1\.\.4 · authored · [a-z]+ · change @r[0-9a-z]+-[0-9a-f]{4} · applied @r[0-9a-z]+-[0-9a-f]{4} · work @r[0-9a-z]+-[0-9a-f]{4} · command @r[0-9a-z]+-[0-9a-f]{4}/u
+        /1\.\.4 · authored · [a-z]+ · change @r[0-9a-z]+-[0-9a-f]{4} · applied @r[0-9a-z]+-[0-9a-f]{4} · work @r[0-9a-z]+-[0-9a-f]{4} · command @r[0-9a-z]+-[0-9a-f]{4}/u,
       ),
     });
   });
@@ -569,17 +695,25 @@ describe("workspace VCS agent tool", () => {
       commandId: "command:invalid-blame",
     });
 
-    const missing = await tool.execute("call:missing-blame-path", { operation: "blame" });
+    const missing = await executeTool(
+      tool,
+      { operation: "blame" },
+      { callId: "call:missing-blame-path" },
+    );
     expect(missing.details).toMatchObject({
       result: { status: "invalid-request", recovery: { field: "path" } },
     });
 
-    const invalidRange = await tool.execute("call:invalid-blame-range", {
-      operation: "blame",
-      path: "packages/demo/a.ts",
-      start: 5,
-      end: 2,
-    });
+    const invalidRange = await executeTool(
+      tool,
+      {
+        operation: "blame",
+        path: "packages/demo/a.ts",
+        start: 5,
+        end: 2,
+      },
+      { callId: "call:invalid-blame-range" },
+    );
     expect(invalidRange.details).toMatchObject({
       result: {
         status: "invalid-request",
@@ -596,7 +730,11 @@ describe("workspace VCS agent tool", () => {
       commandId: "command:discard",
     });
 
-    const result = await tool.execute("call:discard", { operation: "discard" });
+    const result = await executeTool(
+      tool,
+      { operation: "discard" },
+      { callId: "call:discard" },
+    );
 
     expect(f.discard).toHaveBeenCalledWith({
       contextId: "context:test",
@@ -636,10 +774,14 @@ describe("workspace VCS agent tool", () => {
       onIntegrationSourcesCommitted,
     });
 
-    await tool.execute("call:commit", { operation: "commit", message: "Integrate source" });
+    await executeTool(
+      tool,
+      { operation: "commit", message: "Integrate source" },
+      { callId: "call:commit" },
+    );
 
     expect(onIntegrationSourcesCommitted).toHaveBeenCalledWith(
-      expect.objectContaining({ integrationSourceEventIds: ["event:source"] })
+      expect.objectContaining({ integrationSourceEventIds: ["event:source"] }),
     );
   });
 
@@ -651,7 +793,7 @@ describe("workspace VCS agent tool", () => {
           code: "IntegrationIncomplete",
           source: { kind: "event", eventId: "event:source" },
         },
-      })
+      }),
     );
     const tool = createWorkspaceVcsTool("/", f.vcs, {
       contextId: "context:test",
@@ -661,7 +803,11 @@ describe("workspace VCS agent tool", () => {
     });
 
     await expect(
-      tool.execute("call:commit", { operation: "commit", message: "Integrate source" })
+      executeTool(
+        tool,
+        { operation: "commit", message: "Integrate source" },
+        { callId: "call:commit" },
+      ),
     ).rejects.toMatchObject({
       code: "IntegrationIncomplete",
       message: expect.stringContaining('merge_subagent({runId:"run:child"'),
@@ -699,15 +845,19 @@ describe("workspace VCS agent tool", () => {
       commandId: "command:blame-import",
     });
 
-    const result = await tool.execute("call:blame-import", {
-      operation: "blame",
-      path: "packages/demo/a.ts",
-    });
+    const result = await executeTool(
+      tool,
+      {
+        operation: "blame",
+        path: "packages/demo/a.ts",
+      },
+      { callId: "call:blame-import" },
+    );
 
     expect(result.content[0]).toMatchObject({
       type: "text",
       text: expect.stringMatching(
-        /change @r[0-9a-z]+-[0-9a-f]{4} · applied @r[0-9a-z]+-[0-9a-f]{4} · work @r[0-9a-z]+-[0-9a-f]{4} · command @r[0-9a-z]+-[0-9a-f]{4} · import boundary: the owning import work carries the external snapshot/u
+        /change @r[0-9a-z]+-[0-9a-f]{4} · applied @r[0-9a-z]+-[0-9a-f]{4} · work @r[0-9a-z]+-[0-9a-f]{4} · command @r[0-9a-z]+-[0-9a-f]{4} · import boundary: the owning import work carries the external snapshot/u,
       ),
     });
     expect(result.details).toMatchObject({
@@ -726,7 +876,7 @@ describe("workspace VCS agent tool", () => {
       contextId: "context:test",
       commandId: "command:push",
     });
-    await tool.execute("call:push", { operation: "push" });
+    await executeTool(tool, { operation: "push" }, { callId: "call:push" });
     expect(f.push).toHaveBeenCalledWith({
       commandId: "command:push",
       contextId: "context:test",

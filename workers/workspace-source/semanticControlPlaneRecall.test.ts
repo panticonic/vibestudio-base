@@ -1,7 +1,10 @@
 /** Builtin recall deduplication across copied trajectory and channel projections. */
 import { describe, expect, it, beforeEach } from "vitest";
 import { createTestDO } from "@vibestudio/durable/test-utils";
-import { logIdForChannel } from "@vibestudio/trajectory-identity";
+import {
+  headForChannel,
+  logIdForChannel,
+} from "@vibestudio/trajectory-identity";
 import { GadWorkspaceDO } from "./index.js";
 
 type TestGad = Awaited<ReturnType<typeof createTestDO<GadWorkspaceDO>>>;
@@ -17,14 +20,17 @@ type PrivateReach = {
     anchor?: Record<string, unknown> | null;
   }): void;
 };
-const reach = (doi: GadWorkspaceDO): PrivateReach => doi as unknown as PrivateReach;
+const reach = (doi: GadWorkspaceDO): PrivateReach =>
+  doi as unknown as PrivateReach;
 
 describe("GadWorkspaceDO — recall deduplication", () => {
   let gad: TestGad;
   let doi: GadWorkspaceDO;
 
   beforeEach(async () => {
-    gad = await createTestDO(GadWorkspaceDO, { __objectKey: "gad-recall-soft" });
+    gad = await createTestDO(GadWorkspaceDO, {
+      __objectKey: "gad-recall-soft",
+    });
     doi = gad.instance;
   });
 
@@ -61,7 +67,7 @@ describe("GadWorkspaceDO — recall deduplication", () => {
     gad.sql.exec(
       `INSERT INTO log_heads (log_id, head, log_kind, owner_json, created_at)
        VALUES ('traj:X', 'main', 'trajectory', '{}', '2026-01-01T00:00:00.000Z'),
-              ('chan:Y', 'main', 'channel', '{}', '2026-01-01T00:00:00.000Z')`
+              ('chan:Y', 'main', 'channel', '{}', '2026-01-01T00:00:00.000Z')`,
     );
     // Insert the channel copy FIRST so the swap branch (adopt the trajectory
     // copy over an already-kept non-trajectory one) is exercised.
@@ -85,7 +91,17 @@ describe("GadWorkspaceDO — recall deduplication", () => {
     expect(results[0]!.logId).toBe("traj:X");
   });
 
-  it("widens an empty multi-term query so a scope hint cannot mask distinctive memory", () => {
+  it("retrieves older evidence even when the current question matches every query term", () => {
+    reach(doi).indexMemoryRow({ text: "rollout codename retired why recorded evidence", kind: "message",
+      eventId: "current-question", anchor: { kind: "message", messageId: "current-question" } });
+    reach(doi).indexMemoryRow({ text: "Retired the Harbor Lantern rollout codename because production routing required a distinct name.", kind: "commit",
+      eventId: "historical-commit", anchor: { kind: "commit", eventId: "historical-commit" } });
+    const results = doi.recallMemory({ query: "rollout codename retired why recorded evidence", limit: 10 }).results;
+    expect(results.some((entry) => entry.eventId === "historical-commit")).toBe(true);
+    expect(results.some((entry) => entry.eventId === "current-question")).toBe(true);
+  });
+
+  it("ranks multi-term recall so a scope hint cannot mask distinctive memory", () => {
     reach(doi).indexMemoryRow({
       text: "Retire Harbor Lantern after launch; use Retention Service in support records",
       kind: "commit",
@@ -125,7 +141,7 @@ describe("GadWorkspaceDO — recall deduplication", () => {
        VALUES ('application:retention-launch', 'work:retention-launch', 'event',
                'event:parent', 'root:retention-launch', 'semantic-v1');
        INSERT INTO gad_workspace_event_applications (event_id, ordinal, application_id)
-       VALUES ('event:retention-launch', 0, 'application:retention-launch')`
+       VALUES ('event:retention-launch', 0, 'application:retention-launch')`,
     );
     reach(doi).indexMemoryRow({
       text: "Finish the post-launch documentation pass",
@@ -189,7 +205,7 @@ describe("GadWorkspaceDO — recall visibility", () => {
         text: `the Northstar ingress cuts streams in ${channelId}`,
         kind: "message",
         logId: logIdForChannel(channelId),
-        head: logIdForChannel(channelId),
+        head: headForChannel(channelId),
         eventId: `e-${channelId}`,
         anchor: { messageId: `m-${channelId}`, turnId: null },
       });

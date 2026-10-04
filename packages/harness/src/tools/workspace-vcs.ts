@@ -1,9 +1,17 @@
+import type { JsonRepresentation } from "@panticonic/pi-chord";
+import { toolDetails } from "./native-tool-json.js";
 /** Compact agent workflow over the canonical semantic VCS methods. */
 
-import { Type } from "@sinclair/typebox";
-import { canonicalJson, sha256HexSyncText } from "@vibestudio/content-addressing";
+import { Type } from "@panticonic/pi-ai";
+import {
+  canonicalJson,
+  sha256HexSyncText,
+} from "@vibestudio/content-addressing";
 import { vcsSemanticNodeRefSchema } from "@vibestudio/service-schemas/vcs";
-import type { AgentTool, AgentToolResult } from "@workspace/pi-core";
+import type {
+  ToolRegistration,
+  ToolExecutionResult,
+} from "@panticonic/pi-durable";
 import type {
   VcsBlameInput,
   VcsCommitResult,
@@ -14,7 +22,11 @@ import type {
   VcsStatusResult,
   VcsWorkingMutationResult,
 } from "@vibestudio/service-schemas/vcs";
-import { driveMerge, renderCompareReview, renderMergeReview } from "../merge-driver.js";
+import {
+  driveMerge,
+  renderCompareReview,
+  renderMergeReview,
+} from "../merge-driver.js";
 import { resolveToolFile } from "../semantic-file-resolution.js";
 import { base64ToBytes } from "./portable-bytes.js";
 import {
@@ -42,16 +54,19 @@ import {
 const coordinateSchema = Type.Union([
   Type.Object(
     { kind: Type.Literal("file"), id: Type.String({ minLength: 1 }) },
-    { additionalProperties: false }
+    { additionalProperties: false },
   ),
   Type.Object(
     { kind: Type.Literal("repository"), id: Type.String({ minLength: 1 }) },
-    { additionalProperties: false }
+    { additionalProperties: false },
   ),
 ]);
 
 const workspaceVcsSchema = Type.Union([
-  Type.Object({ operation: Type.Literal("status") }, { additionalProperties: false }),
+  Type.Object(
+    { operation: Type.Literal("status") },
+    { additionalProperties: false },
+  ),
   Type.Object(
     {
       operation: Type.Literal("compare"),
@@ -60,26 +75,26 @@ const workspaceVcsSchema = Type.Union([
           minLength: 1,
           description:
             "Exact retained workspace context returned by another operation; omit to use the current task context.",
-        })
+        }),
       ),
       source: Type.Optional(
         Type.String({
           minLength: 1,
           description:
             "Incoming committed event, external delta, or compact semantic @ref; omit when view is local.",
-        })
+        }),
       ),
       view: Type.Optional(
         Type.Literal("local", {
           description:
             "Compare the complete current working state, including uncommitted applications, against protected main; omit when source is present.",
-        })
+        }),
       ),
       status: Type.Optional(Type.Literal("conflict")),
       ref: Type.Optional(agentReferenceSchema),
       limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 500 })),
     },
-    { additionalProperties: false }
+    { additionalProperties: false },
   ),
   Type.Object(
     {
@@ -89,13 +104,16 @@ const workspaceVcsSchema = Type.Union([
           minLength: 1,
           description:
             "Exact retained workspace context returned by another operation; omit to use the current task context.",
-        })
+        }),
       ),
       source: Type.String({
         minLength: 1,
-        description: "Incoming committed event, external delta, or compact semantic @ref.",
+        description:
+          "Incoming committed event, external delta, or compact semantic @ref.",
       }),
-      coordinates: Type.Optional(Type.Array(coordinateSchema, { maxItems: 500 })),
+      coordinates: Type.Optional(
+        Type.Array(coordinateSchema, { maxItems: 500 }),
+      ),
       resolutions: Type.Optional(
         Type.Union([
           Type.Array(
@@ -108,79 +126,100 @@ const workspaceVcsSchema = Type.Union([
                   Type.Literal("ours"),
                   Type.Literal("current"),
                 ]),
-                rationale: Type.Optional(Type.String({ minLength: 1, maxLength: 2000 })),
+                rationale: Type.Optional(
+                  Type.String({ minLength: 1, maxLength: 2000 }),
+                ),
               },
-              { additionalProperties: false }
+              { additionalProperties: false },
             ),
-            { maxItems: 500 }
+            { maxItems: 500 },
           ),
           Type.Object(
             {
               allRemaining: Type.Object(
                 {
-                  resolution: Type.Union([Type.Literal("ours"), Type.Literal("current")]),
-                  rationale: Type.Optional(Type.String({ minLength: 1, maxLength: 2000 })),
+                  resolution: Type.Union([
+                    Type.Literal("ours"),
+                    Type.Literal("current"),
+                  ]),
+                  rationale: Type.Optional(
+                    Type.String({ minLength: 1, maxLength: 2000 }),
+                  ),
                 },
-                { additionalProperties: false }
+                { additionalProperties: false },
               ),
             },
-            { additionalProperties: false }
+            { additionalProperties: false },
           ),
-        ])
+        ]),
       ),
       intent: Type.Optional(Type.String({ minLength: 1 })),
     },
-    { additionalProperties: false }
+    { additionalProperties: false },
   ),
   Type.Object(
     {
       operation: Type.Literal("revert"),
-      changeIds: Type.Array(Type.String({ minLength: 1 }), { minItems: 1, maxItems: 200 }),
+      changeIds: Type.Array(Type.String({
+        minLength: 1,
+        description: "An exact semantic change identity or a change @ref issued by provenance. Reuse that selector verbatim. Commit/event, application and work-unit identities name different subjects; never turn one into a change identity by replacing its prefix.",
+      }), {
+        minItems: 1,
+        maxItems: 200,
+      }),
       intent: Type.Optional(Type.String({ minLength: 1 })),
     },
-    { additionalProperties: false }
+    { additionalProperties: false },
   ),
   Type.Object(
     {
       operation: Type.Literal("commit"),
       message: Type.String({
         minLength: 1,
-        description: "Durable intent summary for the one atomic workspace event.",
+        description:
+          "Durable intent summary for the one atomic workspace event.",
       }),
       intent: Type.Optional(Type.String({ minLength: 1 })),
     },
-    { additionalProperties: false }
+    { additionalProperties: false },
   ),
-  Type.Object({ operation: Type.Literal("discard") }, { additionalProperties: false }),
+  Type.Object(
+    { operation: Type.Literal("discard") },
+    { additionalProperties: false },
+  ),
   Type.Object(
     {
       operation: Type.Literal("blame"),
       path: Type.Optional(
         Type.String({
           minLength: 1,
-          description: "Managed file path. Required to start blame; omit when ref is present.",
-        })
+          description:
+            "Managed file path. Required to start blame; omit when ref is present.",
+        }),
       ),
       start: Type.Optional(
         Type.Integer({
           minimum: 0,
           description:
             "Zero-based UTF-16 content offset (byte offset for binary); omit start and end to blame the full file. This is not a line number.",
-        })
+        }),
       ),
       end: Type.Optional(
         Type.Integer({
           minimum: 0,
           description:
             "Exclusive zero-based UTF-16 content offset (byte offset for binary); omit start and end to blame the full file. This is not a line number.",
-        })
+        }),
       ),
       ref: Type.Optional(agentReferenceSchema),
       limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 500 })),
     },
-    { additionalProperties: false }
+    { additionalProperties: false },
   ),
-  Type.Object({ operation: Type.Literal("push") }, { additionalProperties: false }),
+  Type.Object(
+    { operation: Type.Literal("push") },
+    { additionalProperties: false },
+  ),
 ]);
 
 export type WorkspaceVcsToolInput =
@@ -205,7 +244,12 @@ export type WorkspaceVcsToolInput =
             resolution: "composed" | "theirs" | "ours" | "current";
             rationale?: string;
           }>
-        | { allRemaining: { resolution: "ours" | "current"; rationale?: string } };
+        | {
+            allRemaining: {
+              resolution: "ours" | "current";
+              rationale?: string;
+            };
+          };
       intent?: string;
     }
   | { operation: "revert"; changeIds: string[]; intent?: string }
@@ -250,18 +294,22 @@ export type ToolWorkflowVcs = Pick<
 function mutationText(
   verb: string,
   result: VcsWorkingMutationResult,
-  references: AgentReferenceStore
+  references: AgentReferenceStore,
 ): string {
   const changeRefs = (ids: readonly string[]): string =>
     ids
       .slice(0, 10)
-      .map((changeId) => putProvenanceReference(references, { kind: "change", changeId }, 5))
+      .map((changeId) =>
+        putProvenanceReference(references, { kind: "change", changeId }, 5),
+      )
       .join(" ");
   return (
     `${verb} · work unit ${putProvenanceReference(references, { kind: "work-unit", workUnitId: result.workUnitId }, 5)} · ` +
     `${result.changeCount} authored and ${result.incorporatedChangeCount} incorporated changes ` +
     `(${result.changeIds.length} authored and ${result.incorporatedChangeIds.length} incorporated in preview).` +
-    (result.changeIds.length > 0 ? ` Authored: ${changeRefs(result.changeIds)}.` : "") +
+    (result.changeIds.length > 0
+      ? ` Authored: ${changeRefs(result.changeIds)}.`
+      : "") +
     (result.incorporatedChangeIds.length > 0
       ? ` Incorporated: ${changeRefs(result.incorporatedChangeIds)}.`
       : "") +
@@ -270,7 +318,10 @@ function mutationText(
 }
 
 /** A change selector is either a compact ref or an exact identity. */
-function resolveChangeSelector(selector: string, references: AgentReferenceStore): string {
+function resolveChangeSelector(
+  selector: string,
+  references: AgentReferenceStore,
+): string {
   if (!isAgentReference(selector)) return selector;
   const root = loadProvenanceReference(references, selector).root;
   if (root.kind !== "change") {
@@ -294,7 +345,7 @@ interface VcsBlameReference {
 function publicCompareResult(
   result: Awaited<ReturnType<ToolWorkflowVcs["compare"]>>,
   page: number,
-  continuationRef: string | null
+  continuationRef: string | null,
 ) {
   return {
     page,
@@ -312,35 +363,38 @@ function publicCompareResult(
 function publicBlameResult(
   result: Awaited<ReturnType<ToolWorkflowVcs["blame"]>>,
   page: number,
-  continuationRef: string | null
+  continuationRef: string | null,
 ) {
   return {
     page,
     coordinateKind: result.coordinateKind,
     spanCount: result.spans.length,
-    continuation: continuationRef ? { operation: "blame" as const, ref: continuationRef } : null,
+    continuation: continuationRef
+      ? { operation: "blame" as const, ref: continuationRef }
+      : null,
   };
 }
 
 function unavailableReferenceResult(
   operation: "compare" | "blame",
-  ref: string
-): AgentToolResult<WorkspaceVcsToolDetails> {
+  ref: string,
+): ToolExecutionResult<JsonRepresentation<WorkspaceVcsToolDetails>> {
   return resultOf(
     operation,
     `${operation} reference ${ref} is unavailable, expired, or belongs to another operation. Start again with the ordinary ${operation} selectors.`,
-    { status: "reference-unavailable", ref }
+    { status: "reference-unavailable", ref },
   );
 }
 
 function sourceFromSelector(
   references: AgentReferenceStore,
-  selector: string
+  selector: string,
 ): VcsMergeSource | null {
   if (isAgentReference(selector)) {
     try {
       const root = loadProvenanceReference(references, selector).root;
-      if (root.kind === "event") return { kind: "event", eventId: root.eventId };
+      if (root.kind === "event")
+        return { kind: "event", eventId: root.eventId };
       if (root.kind === "external-delta") {
         return { kind: "external-delta", deltaId: root.deltaId };
       }
@@ -350,7 +404,10 @@ function sourceFromSelector(
       throw error;
     }
   }
-  if (selector.startsWith("event:") || selector.startsWith("workspace-event:")) {
+  if (
+    selector.startsWith("event:") ||
+    selector.startsWith("workspace-event:")
+  ) {
     return { kind: "event", eventId: selector };
   }
   if (selector.startsWith("external-delta:")) {
@@ -363,14 +420,14 @@ function invalidSourceResult(operation: "compare" | "merge", source: string) {
   return resultOf(
     operation,
     `Source ${source} is not an available event or external delta. Pass an exact returned identity or compact semantic @ref unchanged.`,
-    { status: "invalid-source", source }
+    { status: "invalid-source", source },
   );
 }
 
 function invalidRequestResult(
   operation: "compare" | "blame" | "commit",
   message: string,
-  recovery: Record<string, unknown>
+  recovery: Record<string, unknown>,
 ) {
   return resultOf(operation, message, { status: "invalid-request", recovery });
 }
@@ -379,23 +436,29 @@ export function createWorkspaceVcsTool(
   cwd: string,
   vcs: ToolWorkflowVcs,
   context: ToolMutationContext,
-  references: AgentReferenceStore = createMemoryAgentReferenceStore()
-): AgentTool<typeof workspaceVcsSchema, WorkspaceVcsToolDetails> {
+  references: AgentReferenceStore = createMemoryAgentReferenceStore(),
+): ToolRegistration<
+  typeof workspaceVcsSchema,
+  JsonRepresentation<WorkspaceVcsToolDetails>
+> {
   return {
     name: "vcs",
-    label: "vcs",
+
     description:
       "Review and change semantic workspace state: status, compare intent and coordinate net effects (use compare view:'local' for working state relative to protected main), merge, revert, commit, discard, blame, or push. Use provenance for semantic roots and graph adjacency. Start compare and blame with ordinary selectors; continue by copying the complete advertised call containing only operation and ref. Exact selectors, page geometry, and opaque VCS cursors stay internal. Browse and edit ordinary paths with the dedicated filesystem tools.",
     parameters: workspaceVcsSchema,
-    cancellationMode: "settle",
+
     execute: async (
-      _toolCallId,
       input,
-      signal
-    ): Promise<AgentToolResult<WorkspaceVcsToolDetails>> => {
+      _api,
+      executionContext,
+    ): Promise<
+      ToolExecutionResult<JsonRepresentation<WorkspaceVcsToolDetails>>
+    > => {
+      const signal = executionContext.abortSignal;
       if (signal?.aborted) throw new Error("Operation aborted");
       const contextId = toolContextId(context);
-      // AgentTool invokes execute only after validating the TypeBox union.
+      // ToolRegistration invokes execute only after validating the TypeBox union.
       const command = input as WorkspaceVcsToolInput;
 
       if (command.operation === "status") {
@@ -403,7 +466,9 @@ export function createWorkspaceVcsTool(
         const integrationText = result.integrating
           .map((entry) => {
             const source =
-              entry.source.kind === "event" ? entry.source.eventId : entry.source.deltaId;
+              entry.source.kind === "event"
+                ? entry.source.eventId
+                : entry.source.deltaId;
             const state =
               entry.remainingCoordinateCount === 0 && entry.concluded
                 ? "complete"
@@ -425,18 +490,22 @@ export function createWorkspaceVcsTool(
             `working ${stateLabel(result.workingHead)} (${result.workingCounts.applications} applications, ` +
             `${result.workingCounts.changes} changes).` +
             (integrationText ? `\n${integrationText}` : ""),
-          result
+          result,
         );
       }
 
       if (command.operation === "compare") {
         const suppliedSelectorCount =
-          Number(command.view === "local") + Number(command.source !== undefined);
+          Number(command.view === "local") +
+          Number(command.source !== undefined);
         if (command.ref && suppliedSelectorCount > 0) {
           return resultOf(
             command.operation,
             "Compare continuation accepts the advertised ref alone; do not repeat source selectors.",
-            { status: "invalid-request", recovery: { operation: "compare", ref: command.ref } }
+            {
+              status: "invalid-request",
+              recovery: { operation: "compare", ref: command.ref },
+            },
           );
         }
         let basis: Omit<VcsCompareInput, "cursor">;
@@ -451,14 +520,17 @@ export function createWorkspaceVcsTool(
             return resultOf(
               command.operation,
               "Compare continuation accepts the advertised ref alone; do not repeat context, filters, or limits.",
-              { status: "invalid-request", recovery: { operation: "compare", ref: command.ref } }
+              {
+                status: "invalid-request",
+                recovery: { operation: "compare", ref: command.ref },
+              },
             );
           }
           try {
             const retained = loadAgentReference<VcsCompareReference>(
               references,
               "vcs-compare",
-              command.ref
+              command.ref,
             );
             basis = retained.basis;
             page = retained.page;
@@ -474,19 +546,24 @@ export function createWorkspaceVcsTool(
             return invalidRequestResult(
               command.operation,
               "Compare requires exactly one starting selector: view:'local' or source. Continue only with the advertised ref.",
-              { operation: "compare", selectors: ["view", "source", "ref"] }
+              { operation: "compare", selectors: ["view", "source", "ref"] },
             );
           }
           const selectedContextId = command.contextId ?? contextId;
           const localView = command.view === "local";
-          const status = localView ? await vcs.status({ contextId: selectedContextId }) : null;
+          const status = localView
+            ? await vcs.status({ contextId: selectedContextId })
+            : null;
           const target = localView
             ? ({ kind: "event", eventId: status!.mainEventId } as const)
-            : await resolveToolWorkingState(vcs, { contextId: selectedContextId });
+            : await resolveToolWorkingState(vcs, {
+                contextId: selectedContextId,
+              });
           const source = command.source
             ? sourceFromSelector(references, command.source)
             : status!.workingHead;
-          if (!source) return invalidSourceResult(command.operation, command.source!);
+          if (!source)
+            return invalidSourceResult(command.operation, command.source!);
           basis = {
             target,
             source,
@@ -513,7 +590,7 @@ export function createWorkspaceVcsTool(
           return resultOf(
             command.operation,
             `${command.view === "local" ? "Local working state relative to protected main.\n" : ""}${review}${continuation}`,
-            publicCompareResult(result, page, continuationRef)
+            publicCompareResult(result, page, continuationRef),
           );
         }
       }
@@ -521,7 +598,8 @@ export function createWorkspaceVcsTool(
       if (command.operation === "merge") {
         const selectedContextId = command.contextId ?? contextId;
         const source = sourceFromSelector(references, command.source);
-        if (!source) return invalidSourceResult(command.operation, command.source);
+        if (!source)
+          return invalidSourceResult(command.operation, command.source);
         const expectedWorkingHead = await resolveToolWorkingState(vcs, {
           contextId: selectedContextId,
         });
@@ -554,16 +632,22 @@ export function createWorkspaceVcsTool(
         const continuation = compareRef
           ? `\nMore conflicts: vcs({"operation":"compare","ref":"${compareRef}"}).`
           : "";
-        return resultOf(command.operation, `${renderMergeReview(publicReview)}${continuation}`, {
-          status: driven.status,
-          resolution: publicReview.resolution,
-          counts: publicReview.counts,
-          intentCount: publicReview.intents.length,
-          intentsTruncated: publicReview.intentsTruncated,
-          composedCount: publicReview.composed.length,
-          conflictCount: publicReview.conflicts.length,
-          continuation: compareRef ? { operation: "compare", ref: compareRef } : null,
-        });
+        return resultOf(
+          command.operation,
+          `${renderMergeReview(publicReview)}${continuation}`,
+          {
+            status: driven.status,
+            resolution: publicReview.resolution,
+            counts: publicReview.counts,
+            intentCount: publicReview.intents.length,
+            intentsTruncated: publicReview.intentsTruncated,
+            composedCount: publicReview.composed.length,
+            conflictCount: publicReview.conflicts.length,
+            continuation: compareRef
+              ? { operation: "compare", ref: compareRef }
+              : null,
+          },
+        );
       }
 
       if (command.operation === "revert") {
@@ -573,14 +657,14 @@ export function createWorkspaceVcsTool(
           expectedWorkingHead,
           commandId: toolCommandId(context),
           changeIds: command.changeIds.map((selector) =>
-            resolveChangeSelector(selector, references)
+            resolveChangeSelector(selector, references),
           ),
           ...(command.intent ? { intentSummary: command.intent } : {}),
         });
         return resultOf(
           command.operation,
           mutationText("Reverted semantic changes", result, references),
-          result
+          result,
         );
       }
 
@@ -590,7 +674,7 @@ export function createWorkspaceVcsTool(
           return invalidRequestResult(
             command.operation,
             "Commit requires a non-empty durable intent summary.",
-            { operation: "commit", field: "message" }
+            { operation: "commit", field: "message" },
           );
         }
         const expectedWorkingHead = await resolveToolWorkingState(vcs, context);
@@ -606,7 +690,10 @@ export function createWorkspaceVcsTool(
         } catch (error) {
           const failure = error as {
             code?: unknown;
-            errorData?: { code?: unknown; source?: { kind?: unknown; eventId?: unknown } };
+            errorData?: {
+              code?: unknown;
+              source?: { kind?: unknown; eventId?: unknown };
+            };
           };
           const source = failure.errorData?.source;
           if (
@@ -634,7 +721,8 @@ export function createWorkspaceVcsTool(
           }
           throw error;
         }
-        if (result.event.kind !== "event") throw new Error("vcs commit returned a non-event state");
+        if (result.event.kind !== "event")
+          throw new Error("vcs commit returned a non-event state");
         const status = await vcs.status({ contextId });
         if (
           !status.clean ||
@@ -643,7 +731,9 @@ export function createWorkspaceVcsTool(
           status.workingHead.kind !== "event" ||
           status.workingHead.eventId !== result.event.eventId
         ) {
-          throw new Error("vcs commit did not leave the context clean at the committed event");
+          throw new Error(
+            "vcs commit did not leave the context clean at the committed event",
+          );
         }
         context.onIntegrationSourcesCommitted?.(result);
         return {
@@ -656,7 +746,11 @@ export function createWorkspaceVcsTool(
                 "the context is clean at that event. Protected main was not changed; publication is a separate vcs push operation.",
             },
           ],
-          details: { operation: command.operation, result, status },
+          details: toolDetails({
+            operation: command.operation,
+            result,
+            status,
+          }),
         };
       }
 
@@ -670,7 +764,7 @@ export function createWorkspaceVcsTool(
         return resultOf(
           command.operation,
           `Discarded ${result.discardedApplicationIds.length} local application${result.discardedApplicationIds.length === 1 ? "" : "s"}; working state is now ${stateLabel(result.workingHead)}.`,
-          result
+          result,
         );
       }
 
@@ -685,7 +779,10 @@ export function createWorkspaceVcsTool(
           return resultOf(
             command.operation,
             "Blame continuation accepts the advertised ref alone; do not repeat the path, range, or limit.",
-            { status: "invalid-request", recovery: { operation: "blame", ref: command.ref } }
+            {
+              status: "invalid-request",
+              recovery: { operation: "blame", ref: command.ref },
+            },
           );
         }
         let basis: VcsBlameInput;
@@ -696,7 +793,7 @@ export function createWorkspaceVcsTool(
             const retained = loadAgentReference<VcsBlameReference>(
               references,
               "vcs-blame",
-              command.ref
+              command.ref,
             );
             basis = retained.basis;
             page = retained.page;
@@ -712,7 +809,7 @@ export function createWorkspaceVcsTool(
             return invalidRequestResult(
               command.operation,
               "Blame requires a managed path to start, or the complete ref advertised by an earlier blame page.",
-              { operation: "blame", field: "path" }
+              { operation: "blame", field: "path" },
             );
           }
           const state = await resolveToolWorkingState(vcs, context);
@@ -722,7 +819,7 @@ export function createWorkspaceVcsTool(
             return invalidRequestResult(
               command.operation,
               `No managed file exists at ${command.path}.`,
-              { operation: "blame", field: "path", path: command.path }
+              { operation: "blame", field: "path", path: command.path },
             );
           }
           const contentLength =
@@ -735,7 +832,7 @@ export function createWorkspaceVcsTool(
             return invalidRequestResult(
               command.operation,
               `Blame range ${start}..${end} is outside 0..${contentLength}.`,
-              { operation: "blame", range: { start: 0, end: contentLength } }
+              { operation: "blame", range: { start: 0, end: contentLength } },
             );
           }
           basis = {
@@ -747,12 +844,31 @@ export function createWorkspaceVcsTool(
           };
         }
         {
-          const result = await vcs.blame({ ...basis, ...(cursor ? { cursor } : {}) });
+          const result = await vcs.blame({
+            ...basis,
+            ...(cursor ? { cursor } : {}),
+          });
           const lines = result.spans.map((span) => {
-            const changeRef = putProvenanceReference(references, span.change, 5);
-            const appliedChangeRef = putProvenanceReference(references, span.appliedChange, 5);
-            const workRef = putProvenanceReference(references, span.workUnit, 5);
-            const commandRef = putProvenanceReference(references, span.command, 5);
+            const changeRef = putProvenanceReference(
+              references,
+              span.change,
+              5,
+            );
+            const appliedChangeRef = putProvenanceReference(
+              references,
+              span.appliedChange,
+              5,
+            );
+            const workRef = putProvenanceReference(
+              references,
+              span.workUnit,
+              5,
+            );
+            const commandRef = putProvenanceReference(
+              references,
+              span.command,
+              5,
+            );
             return (
               `${span.start}..${span.end} · ${span.stop} · ${span.tier} · ` +
               `change ${changeRef} · applied ${appliedChangeRef} · ` +
@@ -774,7 +890,7 @@ export function createWorkspaceVcsTool(
           return resultOf(
             command.operation,
             lines.join("\n") || "No blame spans for the requested range",
-            publicBlameResult(result, page, continuationRef)
+            publicBlameResult(result, page, continuationRef),
           );
         }
       }
@@ -783,7 +899,8 @@ export function createWorkspaceVcsTool(
         throw new Error("Unsupported vcs operation");
       }
       const status = await vcs.status({ contextId });
-      if (status.committed.kind !== "event") throw new Error("Committed state is not an event");
+      if (status.committed.kind !== "event")
+        throw new Error("Committed state is not an event");
       const result = await vcs.push({
         commandId: toolCommandId(context),
         contextId,
@@ -793,7 +910,7 @@ export function createWorkspaceVcsTool(
       return resultOf(
         command.operation,
         `Published ${result.eventId} as protected main ${result.mainEventId}.`,
-        result
+        result,
       );
     },
   };
@@ -810,7 +927,10 @@ async function compareWithDiagnostics(
     if (!(error instanceof Error)) throw error;
     const failure = error as Error & { errorData?: Record<string, unknown> };
     const data = failure.errorData;
-    if (data?.["code"] !== "IntegrityFailure" || !Array.isArray(data["subjects"]))
+    if (
+      data?.["code"] !== "IntegrityFailure" ||
+      !Array.isArray(data["subjects"])
+    )
       throw error;
     const targets = data["subjects"].flatMap((subject) => {
       const parsed = vcsSemanticNodeRefSchema.safeParse(subject);
@@ -831,7 +951,9 @@ async function compareWithDiagnostics(
 }
 
 function stateLabel(
-  state: { kind: "event"; eventId: string } | { kind: "application"; applicationId: string }
+  state:
+    | { kind: "event"; eventId: string }
+    | { kind: "application"; applicationId: string },
 ) {
   return state.kind === "event" ? state.eventId : state.applicationId;
 }
@@ -839,10 +961,10 @@ function stateLabel(
 function resultOf(
   operation: WorkspaceVcsToolInput["operation"],
   text: string,
-  result: unknown
-): AgentToolResult<WorkspaceVcsToolDetails> {
+  result: unknown,
+): ToolExecutionResult<JsonRepresentation<WorkspaceVcsToolDetails>> {
   return {
     content: [{ type: "text", text }],
-    details: { operation, result },
+    details: toolDetails({ operation, result }),
   };
 }

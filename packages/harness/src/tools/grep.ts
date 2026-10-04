@@ -1,3 +1,5 @@
+import type { JsonRepresentation } from "@panticonic/pi-chord";
+import { toolDetails } from "./native-tool-json.js";
 /**
  * Grep tool — workerd-native rewrite of pi-coding-agent's
  * `dist/core/tools/grep.js`.
@@ -12,11 +14,11 @@
  *
  * Upstream reference: `@mariozechner/pi-coding-agent@0.67.x`
  * `dist/core/tools/grep.js`; prebuilt tool exports were removed in Pi 0.68,
- * and current `@workspace/pi-core` does not ship this file tool.
+ * and current `@panticonic/pi-durable` does not ship this file tool.
  */
 
-import { Type, type Static } from "@sinclair/typebox";
-import type { AgentTool } from "@workspace/pi-core";
+import { Type, type Static } from "@panticonic/pi-ai";
+import type { ToolRegistration } from "@panticonic/pi-durable";
 import path from "node:path";
 import type { RpcCaller } from "@vibestudio/rpc";
 import type { RuntimeFs } from "./runtime-fs.js";
@@ -71,7 +73,9 @@ type Re2FallbackRuntime = {
   WebSocketPair?: unknown;
 };
 
-export function shouldWarnRe2Fallback(runtime: Re2FallbackRuntime = globalThis): boolean {
+export function shouldWarnRe2Fallback(
+  runtime: Re2FallbackRuntime = globalThis,
+): boolean {
   const hasNodeVersion = typeof runtime.process?.versions?.node === "string";
   if (!hasNodeVersion) return false;
 
@@ -95,7 +99,7 @@ function warnFallbackOnce(): void {
     "[harness/grep] `re2` native binding not available — falling back to V8 RegExp. " +
       "Pattern length is capped and structural ReDoS shapes are rejected, but matching is " +
       "no longer guaranteed linear-time. Native RE2 acceleration must be provisioned by " +
-      "the active runtime dependency environment."
+      "the active runtime dependency environment.",
   );
 }
 
@@ -129,7 +133,7 @@ export function compileUserRegex(source: string, flags: string): RegexLike {
       // failure as a regular pattern error rather than crashing the tool.
       throw new Error(
         `RE2 could not compile pattern (likely uses unsupported features such as lookbehind or backreferences). ` +
-          `Rewrite the pattern using basic constructs.`
+          `Rewrite the pattern using basic constructs.`,
       );
     }
   }
@@ -142,42 +146,49 @@ const grepSchema = Type.Object({
     Type.String({
       description:
         "Text to search for. Treated as a literal string by default; do not escape punctuation or set literal=false for code snippets like openPanel( unless you intentionally want a valid regex.",
-    })
+    }),
   ),
   path: Type.Optional(
     Type.String({
       description:
         "Single directory or file to search (default: current directory). Do not pass a space-separated list; run separate grep calls for multiple roots.",
-    })
+    }),
   ),
   glob: Type.Optional(
-    Type.String({ description: "Filter files by glob pattern, e.g. '*.ts' or '**/*.spec.ts'" })
+    Type.String({
+      description:
+        "Filter files by glob pattern, e.g. '*.ts' or '**/*.spec.ts'",
+    }),
   ),
   ignoreCase: Type.Optional(
-    Type.Boolean({ description: "Case-insensitive search (default: false)" })
+    Type.Boolean({ description: "Case-insensitive search (default: false)" }),
   ),
   literal: Type.Optional(
     Type.Boolean({
       description:
         "Treat pattern as literal string instead of regex. Default: true. Leave unset/true for code, identifiers, function calls, paths, and punctuation. Set false only when pattern is a deliberate valid regex.",
-    })
+    }),
   ),
   context: Type.Optional(
     Type.Integer({
       minimum: 0,
       description:
         "Requested number of lines to show before and after each match (default: 0). Total output remains bounded.",
-    })
+    }),
   ),
   limit: Type.Optional(
     Type.Integer({
       minimum: 1,
       maximum: 1000,
-      description: "Maximum number of matches to return (default: 100; maximum: 1000)",
-    })
+      description:
+        "Maximum number of matches to return (default: 100; maximum: 1000)",
+    }),
   ),
   includeIgnored: Type.Optional(
-    Type.Boolean({ description: "Include files excluded by .gitignore/.ignore (default: false)" })
+    Type.Boolean({
+      description:
+        "Include files excluded by .gitignore/.ignore (default: false)",
+    }),
   ),
 });
 
@@ -208,15 +219,16 @@ const PROGRESS_EVERY_FILES = 250;
 export function createGrepTool(
   cwd: string,
   fs: RuntimeFs,
-  deps?: GrepToolDeps
-): AgentTool<typeof grepSchema, GrepToolDetails | undefined> {
+  deps?: GrepToolDeps,
+): ToolRegistration<typeof grepSchema, JsonRepresentation<GrepToolDetails>> {
   return {
     name: "grep",
-    label: "grep",
+
     executionMode: "parallel",
     description: `Search file contents. Literal search is the default and should be used for code snippets, identifiers, paths, and punctuation; set literal=false only for intentional valid regex. Returns matching lines with file paths and line numbers. Output is truncated to ${DEFAULT_LIMIT} matches or ${DEFAULT_MAX_BYTES / 1024}KB (whichever is hit first). Long lines are truncated to ${GREP_MAX_LINE_LENGTH} chars.`,
     parameters: grepSchema,
-    execute: async (_toolCallId, input, signal, onUpdate) => {
+    execute: async (input, api, executionContext) => {
+      const signal = executionContext.abortSignal;
       const {
         pattern,
         path: searchDir,
@@ -252,7 +264,10 @@ export function createGrepTool(
         }
         const searchPath = resolveToCwd(searchDir || ".", cwd);
         if (deps.visibility && (await deps.visibility.isHidden(searchPath))) {
-          return { content: [{ type: "text", text: "No matches found" }], details: undefined };
+          return {
+            content: [{ type: "text", text: "No matches found" }],
+            details: undefined,
+          };
         }
         const servicePattern = literalSearch ? escapeRegex(pattern) : pattern;
         const result = await deps.rpc.call<{
@@ -279,11 +294,13 @@ export function createGrepTool(
               ...(includeIgnored ? { includeIgnored: true } : {}),
             },
           ],
-          signal ? { signal } : undefined
+          signal ? { signal } : undefined,
         );
         const visibleMatches = deps.visibility
           ? await deps.visibility.filterVisible(result.matches, (match) =>
-              path.isAbsolute(match.file) ? match.file : path.resolve(searchPath, match.file)
+              path.isAbsolute(match.file)
+                ? match.file
+                : path.resolve(searchPath, match.file),
             )
           : result.matches;
         let linesTruncated = false;
@@ -304,25 +321,34 @@ export function createGrepTool(
           const displayPath = formatServicePath(match.file);
           const beforeStart = match.lineNumber - match.before.length;
           match.before.forEach((line, index) =>
-            lines.push(`${displayPath}-${beforeStart + index}- ${truncateServiceLine(line)}`)
+            lines.push(
+              `${displayPath}-${beforeStart + index}- ${truncateServiceLine(line)}`,
+            ),
           );
-          lines.push(`${displayPath}:${match.lineNumber}: ${truncateServiceLine(match.line)}`);
+          lines.push(
+            `${displayPath}:${match.lineNumber}: ${truncateServiceLine(match.line)}`,
+          );
           match.after.forEach((line, index) =>
             lines.push(
-              `${displayPath}-${match.lineNumber + index + 1}- ${truncateServiceLine(line)}`
-            )
+              `${displayPath}-${match.lineNumber + index + 1}- ${truncateServiceLine(line)}`,
+            ),
           );
         }
         if (lines.length === 0) {
-          return { content: [{ type: "text", text: "No matches found" }], details: undefined };
+          return {
+            content: [{ type: "text", text: "No matches found" }],
+            details: undefined,
+          };
         }
-        const truncation = truncateHead(lines.join("\n"), { maxLines: Number.MAX_SAFE_INTEGER });
+        const truncation = truncateHead(lines.join("\n"), {
+          maxLines: Number.MAX_SAFE_INTEGER,
+        });
         let text = truncation.content;
         const details: GrepToolDetails = { engine: "fs-service" };
         const notices: string[] = [];
         if (result.truncated) {
           notices.push(
-            `${limit ?? DEFAULT_LIMIT} matches limit reached. Refine the pattern or path`
+            `${limit ?? DEFAULT_LIMIT} matches limit reached. Refine the pattern or path`,
           );
           details.matchLimitReached = limit ?? DEFAULT_LIMIT;
         }
@@ -332,23 +358,32 @@ export function createGrepTool(
         }
         if (linesTruncated) {
           notices.push(
-            `Some lines truncated to ${GREP_MAX_LINE_LENGTH} chars; use read for full lines`
+            `Some lines truncated to ${GREP_MAX_LINE_LENGTH} chars; use read for full lines`,
           );
           details.linesTruncated = true;
         }
         if (notices.length > 0) text += `\n\n[${notices.join(". ")}]`;
-        return { content: [{ type: "text", text }], details };
+        return {
+          content: [{ type: "text", text }],
+          details: toolDetails(details),
+        };
       }
 
       const searchPath = resolveToCwd(searchDir || ".", cwd);
       if (deps?.visibility && (await deps.visibility.isHidden(searchPath))) {
-        return { content: [{ type: "text", text: "No matches found" }], details: undefined };
+        return {
+          content: [{ type: "text", text: "No matches found" }],
+          details: undefined,
+        };
       }
       const requestedContext = context && context > 0 ? context : 0;
-      const contextValue = Math.min(requestedContext, Math.floor((MAX_RESULT_LINES - 1) / 2));
+      const contextValue = Math.min(
+        requestedContext,
+        Math.floor((MAX_RESULT_LINES - 1) / 2),
+      );
       const effectiveLimit = Math.min(
         Math.max(1, limit ?? DEFAULT_LIMIT),
-        Math.max(1, Math.floor(MAX_RESULT_LINES / (2 * contextValue + 1)))
+        Math.max(1, Math.floor(MAX_RESULT_LINES / (2 * contextValue + 1))),
       );
 
       // Stat the entry point so we know whether to walk a tree or open a file.
@@ -357,7 +392,8 @@ export function createGrepTool(
         const stat = await fs.stat(searchPath);
         isDirectory = stat.isDirectory();
       } catch (error) {
-        if ((error as NodeJS.ErrnoException | null)?.code !== "ENOENT") throw error;
+        if ((error as NodeJS.ErrnoException | null)?.code !== "ENOENT")
+          throw error;
         const hint = /\s/.test((searchDir || "").trim())
           ? " The `path` argument accepts one directory or file, not a space-separated list. Run separate grep calls for multiple roots, or search from `.` with a narrower `glob`."
           : "";
@@ -369,14 +405,17 @@ export function createGrepTool(
               text: `No matches found (search path does not exist: ${displayPath}).${hint}`,
             },
           ],
-          details: {
+          details: toolDetails({
             engine: "runtime-fs",
             missingSearchPath: displayPath,
-          },
+          }),
         };
       }
 
-      const regex = buildRegex(pattern, { literal: literalSearch, ignoreCase: !!ignoreCase });
+      const regex = buildRegex(pattern, {
+        literal: literalSearch,
+        ignoreCase: !!ignoreCase,
+      });
       const globRegex = glob ? globToRegex(glob) : null;
 
       const formatPath = (filePath: string): string => {
@@ -391,7 +430,9 @@ export function createGrepTool(
 
       const shouldSearchFile = (filePath: string): boolean => {
         if (!globRegex) return true;
-        const rel = isDirectory ? path.relative(searchPath, filePath) : path.basename(filePath);
+        const rel = isDirectory
+          ? path.relative(searchPath, filePath)
+          : path.basename(filePath);
         return globRegex.test(rel.replace(/\\/g, "/"));
       };
 
@@ -426,22 +467,26 @@ export function createGrepTool(
         try {
           raw = await fs.readFile(filePath);
         } catch (error) {
-          if ((error as NodeJS.ErrnoException | null)?.code === "ENOENT") return [];
+          if ((error as NodeJS.ErrnoException | null)?.code === "ENOENT")
+            return [];
           throw error;
         }
         filesScanned++;
-        if (onUpdate && filesScanned >= nextProgressAt) {
-          onUpdate({
-            content: [],
-            details: {
+        if (filesScanned >= nextProgressAt) {
+          await api.details(
+            toolDetails({
               type: "console",
               content: `grep scanned ${filesScanned}/${files.length} candidate files...`,
-            },
-          });
+            }),
+            executionContext,
+          );
           nextProgressAt += PROGRESS_EVERY_FILES;
         }
         const text = typeof raw === "string" ? raw : decodeUtf8(raw);
-        const lines = text.replace(/\r\n/g, "\n").replace(/\r/g, "\n").split("\n");
+        const lines = text
+          .replace(/\r\n/g, "\n")
+          .replace(/\r/g, "\n")
+          .split("\n");
         const relativePath = formatPath(filePath);
         const matches: string[][] = [];
         for (let i = 0; i < lines.length; i++) {
@@ -452,13 +497,19 @@ export function createGrepTool(
           }
           if (regex.test(lines[i]!)) {
             const lineNumber = i + 1;
-            const start = contextValue > 0 ? Math.max(1, lineNumber - contextValue) : lineNumber;
+            const start =
+              contextValue > 0
+                ? Math.max(1, lineNumber - contextValue)
+                : lineNumber;
             const end =
-              contextValue > 0 ? Math.min(lines.length, lineNumber + contextValue) : lineNumber;
+              contextValue > 0
+                ? Math.min(lines.length, lineNumber + contextValue)
+                : lineNumber;
             const matchLines: string[] = [];
             for (let cur = start; cur <= end; cur++) {
               const lineText = (lines[cur - 1] ?? "").replace(/\r/g, "");
-              const { text: truncatedText, wasTruncated } = truncateLine(lineText);
+              const { text: truncatedText, wasTruncated } =
+                truncateLine(lineText);
               if (wasTruncated) linesTruncated = true;
               if (cur === lineNumber) {
                 matchLines.push(`${relativePath}:${cur}: ${truncatedText}`);
@@ -472,12 +523,18 @@ export function createGrepTool(
         return matches;
       };
 
-      for (let i = 0; i < files.length && !matchLimitReached; i += READ_CONCURRENCY) {
+      for (
+        let i = 0;
+        i < files.length && !matchLimitReached;
+        i += READ_CONCURRENCY
+      ) {
         if (signal?.aborted) {
           throw new Error("Operation aborted");
         }
         const batch = files.slice(i, i + READ_CONCURRENCY);
-        const batchResults = await Promise.all(batch.map((filePath) => scanFile(filePath)));
+        const batchResults = await Promise.all(
+          batch.map((filePath) => scanFile(filePath)),
+        );
         for (const matchesForFile of batchResults) {
           for (const matchLines of matchesForFile) {
             if (matchCount >= effectiveLimit) {
@@ -499,14 +556,16 @@ export function createGrepTool(
       }
 
       const rawOutput = outputLines.join("\n");
-      const truncation = truncateHead(rawOutput, { maxLines: Number.MAX_SAFE_INTEGER });
+      const truncation = truncateHead(rawOutput, {
+        maxLines: Number.MAX_SAFE_INTEGER,
+      });
       let output = truncation.content;
       const details: GrepToolDetails = { engine: "runtime-fs" };
       const notices: string[] = [];
 
       if (matchLimitReached) {
         notices.push(
-          `${effectiveLimit} matches limit reached. Use limit=${effectiveLimit * 2} for more, or refine pattern`
+          `${effectiveLimit} matches limit reached. Use limit=${effectiveLimit * 2} for more, or refine pattern`,
         );
         details.matchLimitReached = effectiveLimit;
       }
@@ -516,7 +575,7 @@ export function createGrepTool(
       }
       if (linesTruncated) {
         notices.push(
-          `Some lines truncated to ${GREP_MAX_LINE_LENGTH} chars. Use read tool to see full lines`
+          `Some lines truncated to ${GREP_MAX_LINE_LENGTH} chars. Use read tool to see full lines`,
         );
         details.linesTruncated = true;
       }
@@ -527,7 +586,7 @@ export function createGrepTool(
 
       return {
         content: [{ type: "text", text: output }],
-        details: Object.keys(details).length > 0 ? details : undefined,
+        details: Object.keys(details).length > 0 ? toolDetails(details) : undefined,
       };
     },
   };
@@ -563,7 +622,7 @@ function rejectRedosShape(source: string): void {
     if (shape.test(source)) {
       throw new Error(
         `Refusing potentially catastrophic regex (matches structural shape ${shape.source}). ` +
-          `Rewrite the pattern or split it across multiple grep calls.`
+          `Rewrite the pattern or split it across multiple grep calls.`,
       );
     }
   }
@@ -572,12 +631,12 @@ function rejectRedosShape(source: string): void {
 /** Build a regex matcher from the user's pattern, honouring `literal` / `ignoreCase`. */
 function buildRegex(
   pattern: string,
-  { literal, ignoreCase }: { literal: boolean; ignoreCase: boolean }
+  { literal, ignoreCase }: { literal: boolean; ignoreCase: boolean },
 ): RegexLike {
   if (pattern.length > MAX_PATTERN_LENGTH) {
     throw new Error(
       `Pattern too long (${pattern.length} chars; max ${MAX_PATTERN_LENGTH}). ` +
-        `Long regexes are almost always pathological.`
+        `Long regexes are almost always pathological.`,
     );
   }
   const source = literal ? escapeRegex(pattern) : pattern;

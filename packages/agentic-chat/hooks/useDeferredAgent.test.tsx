@@ -5,7 +5,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { Participant } from "@workspace/pubsub";
 import type { AvailableAgent, ModelCatalog } from "@workspace/agentic-core";
 import { makeTestCatalogEntry } from "@workspace/model-catalog/testing";
-import { AGENT_LAUNCH_WATCHDOG_MS, useDeferredAgent } from "./useDeferredAgent";
+import { useDeferredAgent } from "./useDeferredAgent";
 import type { ChatParticipantMetadata } from "../types";
 
 const WORKSPACE_MODEL = "openai-codex:gpt-6.1-sol";
@@ -190,16 +190,52 @@ describe("useDeferredAgent", () => {
     expect(result.current.deferredAgent?.queued.length).toBe(2);
   });
 
-  it("turns an acknowledged-but-stuck launch into a retriable failure", async () => {
+  it.each([false, true])("retains ownership of a slow launch (acknowledged: %s)", async (acknowledged) => {
     vi.useFakeTimers();
+    let acknowledge!: () => void;
+    const pending = new Promise<void>((resolve) => { acknowledge = resolve; });
     const m = freshMocks();
-    const { result } = renderHook((p: Params) => useDeferredAgent(p), {
+    m.onAddAgent = vi.fn(() => acknowledged ? Promise.resolve() : pending);
+    const { result, rerender, unmount } = renderHook((p: Params) => useDeferredAgent(p), {
+      initialProps: makeParams(m, { input: "hello" }),
+    });
+    try {
+      await act(async () => result.current.sendMessage());
+      await act(async () => vi.advanceTimersByTimeAsync(120_000));
+      expect(result.current.deferredAgent?.launchFailed).toBe(false);
+      expect(result.current.deferredAgent?.launching).toBe(true);
+      expect(result.current.deferredAgent?.queued.map((item) => item.text)).toEqual(["hello"]);
+      await act(async () => result.current.sendMessage());
+      expect(m.onAddAgent).toHaveBeenCalledOnce();
+      await act(async () => { acknowledge(); });
+      rerender(makeParams(m, { participants: agentRoster }));
+      await act(async () => {});
+      expect(m.onAddAgent).toHaveBeenCalledOnce();
+      expect(m.publishText).toHaveBeenCalledTimes(2);
+    } finally {
+      acknowledge();
+      unmount();
+      vi.useRealTimers();
+    }
+  });
+
+  it("settles an acknowledged launch on the worker's actual failure event", async () => {
+    const m = freshMocks();
+    const { result, rerender } = renderHook((p: Params) => useDeferredAgent(p), {
       initialProps: makeParams(m, { input: "hello" }),
     });
     await act(async () => result.current.sendMessage());
-    await act(async () => vi.advanceTimersByTimeAsync(AGENT_LAUNCH_WATCHDOG_MS));
+    rerender(makeParams(m, {
+      pendingAgents: new Map([["ai-chat", {
+        agentId: AGENT.id,
+        status: "error",
+        error: { message: "Agent build failed" },
+      }]]),
+    }));
     expect(result.current.deferredAgent?.launchFailed).toBe(true);
-    vi.useRealTimers();
+    expect(result.current.deferredAgent?.queued.map((item) => item.text)).toEqual(["hello"]);
+    expect(m.onAddAgent).toHaveBeenCalledOnce();
+    expect(m.publishText).not.toHaveBeenCalled();
   });
 
   it("flushes the queue live when an agent joins, then stands down", async () => {

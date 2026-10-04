@@ -1,11 +1,17 @@
+import { executeTool, toolResultDetails } from "../../testing/native-tool.js";
 import { describe, expect, it, vi } from "vitest";
 import { createCopyFileTool, createMoveFileTool } from "../file-transfer.js";
 import type { ToolFileTransferVcs } from "../tool-vcs.js";
 
 const working = { kind: "event" as const, eventId: "event:working" };
-const next = { kind: "application" as const, applicationId: "application:next" };
+const next = {
+  kind: "application" as const,
+  applicationId: "application:next",
+};
 
-function fixture(options: { missing?: boolean; failure?: Error; producedFileId?: string } = {}) {
+function fixture(
+  options: { missing?: boolean; failure?: Error; producedFileId?: string } = {},
+) {
   const status = vi.fn(async () => ({
     contextId: "context:1",
     committed: working,
@@ -21,31 +27,35 @@ function fixture(options: { missing?: boolean; failure?: Error; producedFileId?:
       state: input.state,
       repositoryId: `repository:${input.repoPath}`,
       repoPath: input.repoPath,
-    })
+    }),
   );
-  const readFile = vi.fn(async (input: Parameters<ToolFileTransferVcs["readFile"]>[0]) => {
-    if (options.failure) throw options.failure;
-    if (input.file.kind !== "path") return null;
-    if (options.missing && input.file.path === "src/a.ts") return null;
-    const repoPath = input.repositoryId.slice("repository:".length);
-    const destinationDefault = input.file.path.endsWith("moved.ts") ? "file:stable" : "file:copy";
-    return {
-      repositoryId: input.repositoryId,
-      fileId:
-        input.file.path === "src/a.ts"
-          ? "file:stable"
-          : (options.producedFileId ?? destinationDefault),
-      repoPath,
-      path: input.file.path,
-      contentHash: "blob:1",
-      authoredChangeId: "change:1",
-      authoredByWorkUnitId: "work:1",
-      contentClass: "internal" as const,
-      externalKeys: [],
-      mode: 0o644,
-      content: { kind: "text" as const, text: "content" },
-    };
-  });
+  const readFile = vi.fn(
+    async (input: Parameters<ToolFileTransferVcs["readFile"]>[0]) => {
+      if (options.failure) throw options.failure;
+      if (input.file.kind !== "path") return null;
+      if (options.missing && input.file.path === "src/a.ts") return null;
+      const repoPath = input.repositoryId.slice("repository:".length);
+      const destinationDefault = input.file.path.endsWith("moved.ts")
+        ? "file:stable"
+        : "file:copy";
+      return {
+        repositoryId: input.repositoryId,
+        fileId:
+          input.file.path === "src/a.ts"
+            ? "file:stable"
+            : (options.producedFileId ?? destinationDefault),
+        repoPath,
+        path: input.file.path,
+        contentHash: "blob:1",
+        authoredChangeId: "change:1",
+        authoredByWorkUnitId: "work:1",
+        contentClass: "internal" as const,
+        externalKeys: [],
+        mode: 0o644,
+        content: { kind: "text" as const, text: "content" },
+      };
+    },
+  );
   const mutationResult = (commandId: string) => ({
     contextId: "context:1",
     commandId,
@@ -58,13 +68,21 @@ function fixture(options: { missing?: boolean; failure?: Error; producedFileId?:
     decisionIds: [],
     workingHead: next,
   });
-  const move = vi.fn(async (input: Parameters<ToolFileTransferVcs["move"]>[0]) =>
-    mutationResult(input.commandId)
+  const move = vi.fn(
+    async (input: Parameters<ToolFileTransferVcs["move"]>[0]) =>
+      mutationResult(input.commandId),
   );
-  const copy = vi.fn(async (input: Parameters<ToolFileTransferVcs["copy"]>[0]) =>
-    mutationResult(input.commandId)
+  const copy = vi.fn(
+    async (input: Parameters<ToolFileTransferVcs["copy"]>[0]) =>
+      mutationResult(input.commandId),
   );
-  const vcs = { status, resolveRepository, readFile, move, copy } satisfies ToolFileTransferVcs;
+  const vcs = {
+    status,
+    resolveRepository,
+    readFile,
+    move,
+    copy,
+  } satisfies ToolFileTransferVcs;
   return { vcs, move, copy, readFile };
 }
 
@@ -75,10 +93,14 @@ describe("stable-identity file transfer tools", () => {
       contextId: "context:1",
       commandId: "command:move",
     });
-    const result = await tool.execute("call:1", {
-      source: "packages/source/src/a.ts",
-      destination: "panels/target/src/moved.ts",
-    });
+    const result = await executeTool(
+      tool,
+      {
+        source: "packages/source/src/a.ts",
+        destination: "panels/target/src/moved.ts",
+      },
+      { callId: "call:1" },
+    );
 
     expect(move).toHaveBeenCalledWith({
       contextId: "context:1",
@@ -109,7 +131,9 @@ describe("stable-identity file transfer tools", () => {
     });
     expect(result.content[0]).toMatchObject({
       type: "text",
-      text: expect.stringContaining('provenance({ target: "panels/target/src/moved.ts" })'),
+      text: expect.stringContaining(
+        'provenance({ target: "panels/target/src/moved.ts" })',
+      ),
     });
     expect(move.mock.calls[0]?.[0]).not.toHaveProperty("intentSummary");
   });
@@ -120,16 +144,22 @@ describe("stable-identity file transfer tools", () => {
       contextId: "context:1",
       commandId: "command:copy",
     });
-    const result = await tool.execute("call:2", {
-      source: "packages/source/src/a.ts",
-      destination: "panels/target/src/copied.ts",
-      intent: "Preserve the source adapter while creating the panel-specific variant",
-    });
+    const result = await executeTool(
+      tool,
+      {
+        source: "packages/source/src/a.ts",
+        destination: "panels/target/src/copied.ts",
+        intent:
+          "Preserve the source adapter while creating the panel-specific variant",
+      },
+      { callId: "call:2" },
+    );
 
     expect(copy).toHaveBeenCalledWith(
       expect.objectContaining({
         expectedWorkingHead: working,
-        intentSummary: "Preserve the source adapter while creating the panel-specific variant",
+        intentSummary:
+          "Preserve the source adapter while creating the panel-specific variant",
         copies: [
           {
             source: {
@@ -143,11 +173,11 @@ describe("stable-identity file transfer tools", () => {
             },
           },
         ],
-      })
+      }),
     );
-    expect(result.details.operation).toBe("copied");
-    expect(result.details.storage).toBe("vcs");
-    expect(result.details.destination).toMatchObject({
+    expect(toolResultDetails(result).operation).toBe("copied");
+    expect(toolResultDetails(result).storage).toBe("vcs");
+    expect(toolResultDetails(result).destination).toMatchObject({
       workspacePath: "panels/target/src/copied.ts",
       root: {
         kind: "file",
@@ -168,16 +198,27 @@ describe("stable-identity file transfer tools", () => {
       commandId: "command:scratch",
     };
 
-    const copied = await createCopyFileTool("/", vcs, context, fs).execute("call:scratch-copy", {
-      source: ".tmp/source.txt",
-      destination: ".tmp/copied.txt",
-    });
-    const moved = await createMoveFileTool("/", vcs, context, fs).execute("call:scratch-move", {
-      source: ".tmp/copied.txt",
-      destination: ".tmp/moved.txt",
-    });
+    const copied = await executeTool(
+      createCopyFileTool("/", vcs, context, fs),
+      {
+        source: ".tmp/source.txt",
+        destination: ".tmp/copied.txt",
+      },
+      { callId: "call:scratch-copy" },
+    );
+    const moved = await executeTool(
+      createMoveFileTool("/", vcs, context, fs),
+      {
+        source: ".tmp/copied.txt",
+        destination: ".tmp/moved.txt",
+      },
+      { callId: "call:scratch-move" },
+    );
 
-    expect(fs.copyFile).toHaveBeenCalledWith(".tmp/source.txt", ".tmp/copied.txt");
+    expect(fs.copyFile).toHaveBeenCalledWith(
+      ".tmp/source.txt",
+      ".tmp/copied.txt",
+    );
     expect(fs.rename).toHaveBeenCalledWith(".tmp/copied.txt", ".tmp/moved.txt");
     expect(copied.details).toMatchObject({
       operation: "copied",
@@ -185,7 +226,10 @@ describe("stable-identity file transfer tools", () => {
       source: { path: ".tmp/source.txt" },
       destination: { path: ".tmp/copied.txt" },
     });
-    expect(moved.details).toMatchObject({ operation: "moved", storage: "scratch" });
+    expect(moved.details).toMatchObject({
+      operation: "moved",
+      storage: "scratch",
+    });
     expect(copy).not.toHaveBeenCalled();
     expect(move).not.toHaveBeenCalled();
   });
@@ -200,13 +244,17 @@ describe("stable-identity file transfer tools", () => {
       "/",
       vcs,
       { contextId: "context:1", commandId: "command:cross-storage" },
-      fs
+      fs,
     );
 
-    const result = await tool.execute("call:cross-storage", {
-      source: ".tmp/source.txt",
-      destination: "packages/target/source.txt",
-    });
+    const result = await executeTool(
+      tool,
+      {
+        source: ".tmp/source.txt",
+        destination: "packages/target/source.txt",
+      },
+      { callId: "call:cross-storage" },
+    );
 
     expect(result.details).toMatchObject({
       storage: "none",
@@ -223,10 +271,14 @@ describe("stable-identity file transfer tools", () => {
       commandId: "command:missing",
     });
     await expect(
-      tool.execute("call:3", {
-        source: "packages/source/src/a.ts",
-        destination: "panels/target/src/moved.ts",
-      })
+      executeTool(
+        tool,
+        {
+          source: "packages/source/src/a.ts",
+          destination: "panels/target/src/moved.ts",
+        },
+        { callId: "call:3" },
+      ),
     ).rejects.toMatchObject({ code: "ENOENT", syscall: "move_file" });
     expect(move).not.toHaveBeenCalled();
   });
@@ -239,10 +291,14 @@ describe("stable-identity file transfer tools", () => {
     });
 
     await expect(
-      tool.execute("call:identity-violation", {
-        source: "packages/source/src/a.ts",
-        destination: "panels/target/src/moved.ts",
-      })
+      executeTool(
+        tool,
+        {
+          source: "packages/source/src/a.ts",
+          destination: "panels/target/src/moved.ts",
+        },
+        { callId: "call:identity-violation" },
+      ),
     ).rejects.toMatchObject({
       code: "IntegrityFailure",
       errorData: {
@@ -263,10 +319,14 @@ describe("stable-identity file transfer tools", () => {
       commandId: "command:failure",
     });
     await expect(
-      tool.execute("call:4", {
-        source: "packages/source/src/a.ts",
-        destination: "panels/target/src/copied.ts",
-      })
+      executeTool(
+        tool,
+        {
+          source: "packages/source/src/a.ts",
+          destination: "panels/target/src/copied.ts",
+        },
+        { callId: "call:4" },
+      ),
     ).rejects.toBe(failure);
     expect(copy).not.toHaveBeenCalled();
   });

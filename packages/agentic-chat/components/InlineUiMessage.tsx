@@ -486,6 +486,8 @@ export function InlineUiMessage({
     <InlineUiSurface>
       <Box
         className="inline-ui-content"
+        data-inline-ui-id={data.id}
+        data-message-id={messageId}
         onClickCapture={onInteraction}
         onInputCapture={onInteraction}
         onChangeCapture={onInteraction}

@@ -987,12 +987,14 @@ describe("appendLogEvent core (§3.2)", () => {
       head: "main",
       seq: 1,
       envelopeId: "pub:evt-2:chan-core",
-      payloadKind: AGENTIC_EVENT_PAYLOAD_KIND,
-      payload: {
-        kind: "message.completed",
-        turnId: "turn-1",
-      },
+      payloadKind: "message.completed",
+      payload: textMessagePayload(
+        "msg-1",
+        "assistant",
+        "hello from the unified log",
+      ),
       causality: {
+        turnId: "turn-1",
         originLogId: "traj-core",
         originHead: "main",
         originEnvelopeId: "evt-2",
@@ -1802,62 +1804,66 @@ describe("trajectory projection invariants", () => {
 
   it("inspects turn and invocation state without hydrating full payloads", async () => {
     const { call } = await createTestDO(GadWorkspaceDO);
-    await appendTrajectoryEvents(call, {
-      trajectoryId: "traj-1",
-      branchId: "main",
-      owner,
-      events: [
-        {
-          eventId: "turn-opened-1",
-          event: event("turn.opened", {
-            turnId: "turn-1" as never,
-            payload: { protocol: AGENTIC_PROTOCOL_VERSION, summary: "started" },
-          }),
-        },
-        {
-          eventId: "message-started-1",
-          event: event("message.started", {
-            turnId: "turn-1" as never,
-            causality: { messageId: "msg-1" as never },
-            payload: { protocol: AGENTIC_PROTOCOL_VERSION, role: "assistant" },
-          }),
-        },
-        {
-          eventId: "invocation-started-1",
-          event: event("invocation.started", {
-            turnId: "turn-1" as never,
-            causality: {
-              invocationId: "tool-1" as never,
-              transportCallId: "transport-1",
-            },
-            payload: {
-              protocol: AGENTIC_PROTOCOL_VERSION,
-              name: "eval",
-              request: blobRef("request-1", '{"code":"large"}'),
-            },
-          }),
-        },
-        {
-          eventId: "turn-opened-2",
-          event: event("turn.opened", {
-            turnId: "turn-2" as never,
-            createdAt: "2026-05-20T12:01:00.000Z",
-            payload: { protocol: AGENTIC_PROTOCOL_VERSION, summary: "second" },
-          }),
-        },
-        {
-          eventId: "message-completed-2",
-          event: event("message.completed", {
-            turnId: "turn-2" as never,
-            causality: { messageId: "msg-2" as never },
-            payload: textMessagePayload("msg-2", "assistant", "done"),
-          }),
-        },
-      ],
-    });
+    const channelEvents: TrajectoryEventFixture[] = [
+      {
+        eventId: "turn-opened-1",
+        event: event("turn.opened", {
+          turnId: "turn-1" as never,
+          payload: { protocol: AGENTIC_PROTOCOL_VERSION, summary: "started" },
+        }),
+      },
+      {
+        eventId: "message-started-1",
+        event: event("message.started", {
+          turnId: "turn-1" as never,
+          causality: { messageId: "msg-1" as never },
+          payload: { protocol: AGENTIC_PROTOCOL_VERSION, role: "assistant" },
+        }),
+      },
+      {
+        eventId: "invocation-started-1",
+        event: event("invocation.started", {
+          turnId: "turn-1" as never,
+          causality: {
+            invocationId: "tool-1" as never,
+            transportCallId: "transport-1",
+          },
+          payload: {
+            protocol: AGENTIC_PROTOCOL_VERSION,
+            name: "eval",
+            request: blobRef("request-1", '{"code":"large"}'),
+          },
+        }),
+      },
+      {
+        eventId: "turn-opened-2",
+        event: event("turn.opened", {
+          turnId: "turn-2" as never,
+          createdAt: "2026-05-20T12:01:00.000Z",
+          payload: { protocol: AGENTIC_PROTOCOL_VERSION, summary: "second" },
+        }),
+      },
+      {
+        eventId: "message-completed-2",
+        event: event("message.completed", {
+          turnId: "turn-2" as never,
+          causality: { messageId: "msg-2" as never },
+          payload: textMessagePayload("msg-2", "assistant", "done"),
+        }),
+      },
+    ];
+    for (const item of channelEvents) {
+      await call("appendChannelEnvelope", {
+        channelId: "channel-1",
+        envelopeId: item.eventId,
+        from: item.event.actor,
+        payloadKind: AGENTIC_EVENT_PAYLOAD_KIND,
+        payload: item.event,
+      });
+    }
 
     const turns = await call<any>("inspectTurnState", {
-      trajectoryId: "traj-1",
+      trajectoryId: "channel-1",
       branchId: "main",
     });
     expect(turns.summary).toMatchObject({
@@ -1892,6 +1898,24 @@ describe("trajectory projection invariants", () => {
       status: "started",
     });
 
+    // Another log with the same head must not leak into this channel's health.
+    await appendTrajectoryEvents(call, {
+      trajectoryId: "channel-foreign",
+      branchId: "main",
+      owner,
+      events: [
+        {
+          eventId: "foreign-started",
+          event: event("invocation.started", {
+            causality: { invocationId: "foreign-tool" as never },
+            payload: {
+              protocol: AGENTIC_PROTOCOL_VERSION,
+              name: "foreign.eval",
+            },
+          }),
+        },
+      ],
+    });
     const health = await call<any>("inspectAgentHealth", {
       channelId: "channel-1",
       branchId: "main",
@@ -1913,6 +1937,57 @@ describe("trajectory projection invariants", () => {
     ]);
     expect(health.turnState.rows).toHaveLength(2);
     expect(AgentHealthInspectionSchema.safeParse(health).success).toBe(true);
+  });
+
+  it("reports canonical invocations as in flight without requiring a turn row", async () => {
+    const { call, db } = await createTestDO(GadWorkspaceDO);
+    try {
+      const append = (id: string, value: AgenticEvent) =>
+        call("appendChannelEnvelope", {
+          channelId: "native-channel",
+          envelopeId: id,
+          from: owner,
+          payloadKind: AGENTIC_EVENT_PAYLOAD_KIND,
+          payload: value,
+        });
+      await append(
+        "native-start",
+        event("invocation.started", {
+          causality: { invocationId: "native-tool" as never },
+          payload: { protocol: AGENTIC_PROTOCOL_VERSION, name: "suspend_turn" },
+        }),
+      );
+      expect(
+        (await call<any>("inspectAgentHealth", { channelId: "native-channel" }))
+          .summary,
+      ).toMatchObject({
+        activity: "in-flight",
+        inFlightOnly: true,
+        nonterminalInvocations: 1,
+        openTurns: 0,
+      });
+      await append(
+        "native-end",
+        event("invocation.completed", {
+          causality: { invocationId: "native-tool" as never },
+          payload: {
+            protocol: AGENTIC_PROTOCOL_VERSION,
+            terminalOutcome: "success",
+            result: blobRef("native-result"),
+          },
+        }),
+      );
+      expect(
+        (await call<any>("inspectAgentHealth", { channelId: "native-channel" }))
+          .summary,
+      ).toMatchObject({
+        activity: "idle",
+        ok: true,
+        nonterminalInvocations: 0,
+      });
+    } finally {
+      db.close();
+    }
   });
 
   it("does not count failed terminal messages as streaming", async () => {
@@ -4026,5 +4101,160 @@ describe("trajectory projection details", () => {
       expect.objectContaining({ turn_id: "turn-1", ordinal: 0 }),
       expect.objectContaining({ turn_id: "turn-2", ordinal: 1 }),
     ]);
+  });
+});
+
+describe("canonical channel invocation journal", () => {
+  it("commits invocation causality and its channel view in the same canonical log", async () => {
+    const { call, db } = await createTestDO(GadWorkspaceDO);
+    try {
+      const channelId = "native-channel-canonical";
+      const invocationId = "invocation:native:canonical";
+      const started = event("invocation.started", {
+        causality: { invocationId: invocationId as never },
+        payload: {
+          protocol: AGENTIC_PROTOCOL_VERSION,
+          name: "model.generation",
+          invocationType: "system",
+          nativeSource: {
+            owner: {
+              runtimeId: "agent:canonical",
+              authoritySessionId: "lifetime:canonical",
+              contextId: "context:canonical",
+              incarnation: "storage:canonical",
+              channelId,
+              source: "workers/agent",
+              effectiveVersion: "state:canonical",
+              className: "Agent",
+              objectKey: "canonical",
+              executionDigest: "a".repeat(64),
+            },
+            task: {
+              taskId: 31,
+              conversationId: 4,
+              kind: "pi.model",
+              version: 1,
+            },
+            operation: {
+              kind: "model",
+              purpose: "generation",
+              attempt: 0,
+              cutoff: 7,
+              requestDigest: "b".repeat(64),
+            },
+          },
+        },
+      });
+      const accepted = await call<any>("appendChannelEnvelope", {
+        channelId,
+        envelopeId: "native-started",
+        from: owner,
+        payloadKind: AGENTIC_EVENT_PAYLOAD_KIND,
+        payload: started,
+      });
+      expect(accepted.payloadKind).toBe(AGENTIC_EVENT_PAYLOAD_KIND);
+      expect(accepted.payload).toEqual(started);
+      const canonical = await call<any>("getLogEvent", {
+        logId: channelId,
+        head: "main",
+        envelopeId: "native-started",
+      });
+      expect(canonical).toMatchObject({
+        logId: channelId,
+        head: "main",
+        payloadKind: "invocation.started",
+        causality: { invocationId },
+        payload: started.payload,
+        appendedAt: started.createdAt,
+      });
+      const current = await call<any>("inspectInvocationState", {
+        trajectoryId: channelId,
+        branchId: "main",
+        invocationId,
+      });
+      expect(current.rows).toHaveLength(1);
+      expect(current.rows[0]).toMatchObject({
+        log_id: channelId,
+        head: "main",
+        invocation_id: invocationId,
+        started_event_id: "native-started",
+        started_events: 1,
+        terminal_events: 0,
+      });
+      const replay = await call<any>("getChannelEnvelope", {
+        channelId,
+        envelopeId: "native-started",
+      });
+      expect(replay).toEqual(accepted);
+      expect(
+        await call<any>("getLogHead", {
+          logId: `branch:channel:${channelId}`,
+          head: `branch:channel:${channelId}`,
+        }),
+      ).toBeNull();
+      await call("appendChannelEnvelope", {
+        channelId,
+        envelopeId: "opaque-between",
+        from: owner,
+        payloadKind: "opaque",
+        payload: { note: "unrelated" },
+      });
+      const terminal = event("invocation.completed", {
+        causality: { invocationId: invocationId as never },
+        payload: {
+          protocol: AGENTIC_PROTOCOL_VERSION,
+          terminalOutcome: "success",
+        },
+      });
+      await call("appendChannelEnvelope", {
+        channelId,
+        envelopeId: "native-completed",
+        from: owner,
+        payloadKind: AGENTIC_EVENT_PAYLOAD_KIND,
+        payload: terminal,
+      });
+      for (const window of [{ kind: "after", seq: 1 }, { kind: "tail" }]) {
+        const page = await call<any>("readChannelEnvelopes", {
+          channelId,
+          payloadKind: AGENTIC_EVENT_PAYLOAD_KIND,
+          window,
+          limit: 1,
+        });
+        expect(page.items.map((item: any) => item.envelopeId)).toEqual([
+          "native-completed",
+        ]);
+        expect(page.pageInfo).toMatchObject({
+          totalCount: 2,
+          firstSeq: 1,
+          lastSeq: 3,
+          hasMoreBefore: true,
+          hasMoreAfter: false,
+        });
+      }
+      const before = await call<any>("readChannelEnvelopes", {
+        channelId,
+        payloadKind: AGENTIC_EVENT_PAYLOAD_KIND,
+        window: { kind: "before", seq: 3 },
+        limit: 1,
+      });
+      expect(before.items.map((item: any) => item.envelopeId)).toEqual([
+        "native-started",
+      ]);
+      const completed = await call<any>("inspectInvocationState", {
+        trajectoryId: channelId,
+        branchId: "main",
+        invocationId,
+      });
+      expect(completed.rows[0]).toMatchObject({
+        started_events: 1,
+        terminal_events: 1,
+        terminal_outcome: "success",
+      });
+      expect(
+        await call("checkLogIntegrity", { logId: channelId, head: "main" }),
+      ).toMatchObject({ ok: true });
+    } finally {
+      db.close();
+    }
   });
 });

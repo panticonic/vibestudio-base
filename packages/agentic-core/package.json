@@ -10,7 +10,11 @@
     "./provisional-agent-lifecycle": "./src/provisional-agent-lifecycle.ts",
     "./panel-import-loader": "./src/panel-import-loader.ts",
     "./subagent-prompt": "./src/subagent-prompt.ts",
-    "./result-images": "./src/result-images.ts"
+    "./result-images": "./src/result-images.ts",
+    "./native-channel-knowledge": "./src/native-channel-knowledge.ts",
+    "./agent-product-metadata": "./src/agent-product-metadata.ts",
+    "./model-failures": "./src/model-failures.ts",
+    "./agent-channel-roster": "./src/agent-channel-roster.ts"
   },
   "dependencies": {
     "@vibestudio/module-imports": "workspace:*",
@@ -20,7 +24,9 @@
     "@workspace/agentic-protocol": "workspace:*",
     "@workspace/eval": "workspace:*",
     "@workspace/model-catalog": "workspace:*",
-    "@workspace/pubsub": "workspace:*"
+    "@workspace/pubsub": "workspace:*",
+    "@panticonic/pi-durable": "0.99.2-vibestudio.11",
+    "@panticonic/pi-chord": "0.99.2-vibestudio.11"
   },
   "//peerDependencies": "React appears here for one reason: component *types* cross this boundary (custom-message-types.ts names ComponentType). Nothing in this package renders, so it is optional -- a worker that only runs sessions needs the declarations to typecheck, never an instance to bundle. Any React 19 renderer is sufficient.",
   "peerDependencies": {

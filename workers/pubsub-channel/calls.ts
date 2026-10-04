@@ -14,17 +14,22 @@
 
 import {
   AGENTIC_EVENT_PAYLOAD_KIND,
+  agenticEventFromLogEnvelope,
+  isAgenticLogEventKind,
+  eventKindSchemas,
   type AgenticEvent,
   type AppendIdempotency,
   type InvocationOutcome,
   type LogEnvelope,
   type ParticipantRef,
+  type ChannelMethodOriginalRequest,
 } from "@workspace/agentic-protocol";
 import type { ChannelEvent } from "@workspace/pubsub";
 import type { SqlStorage } from "@workspace/runtime/worker";
 import type { ChannelCallEventBuilders } from "@workspace/channel-policies";
 import type { StoredAttachment } from "./types.js";
 import type { ChannelLog } from "./log-store.js";
+import { canonicalJson } from "@vibestudio/content-addressing";
 
 /** A promise plus its resolver, used as a start-journaling barrier. */
 function deferred(): { promise: Promise<void>; resolve: () => void } {
@@ -64,16 +69,13 @@ const TERMINAL_KINDS = new Set([
 export function derivePendingCalls(envelopes: LogEnvelope[]): PendingCallRow[] {
   const pending = new Map<string, PendingCallRow>();
   for (const envelope of envelopes) {
-    if (envelope.payloadKind !== AGENTIC_EVENT_PAYLOAD_KIND) continue;
-    const event = envelope.payload as AgenticEvent | null;
-    if (!event || typeof event !== "object") continue;
+    if (!isAgenticLogEventKind(envelope.payloadKind)) continue;
+    const event = agenticEventFromLogEnvelope(envelope);
     const kind = (event as { kind?: string }).kind ?? "";
-    const causality = ((event as { causality?: Record<string, unknown> }).causality ??
+    const causality = ((event as { causality?: Record<string, unknown> })
+      .causality ?? {}) as Record<string, unknown>;
+    const payload = ((event as { payload?: Record<string, unknown> }).payload ??
       {}) as Record<string, unknown>;
-    const payload = ((event as { payload?: Record<string, unknown> }).payload ?? {}) as Record<
-      string,
-      unknown
-    >;
     const transport = (payload["transport"] ?? {}) as Record<string, unknown>;
     const transportCallId =
       typeof causality["transportCallId"] === "string"
@@ -84,7 +86,9 @@ export function derivePendingCalls(envelopes: LogEnvelope[]): PendingCallRow[] {
     if (!transportCallId) continue;
     if (kind === "invocation.started") {
       if (transport["kind"] !== "channel") continue;
-      const actor = (event as { actor?: { id?: string; participantId?: string } }).actor ?? {};
+      const actor =
+        (event as { actor?: { id?: string; participantId?: string } }).actor ??
+        {};
       const target = (transport["target"] ?? {}) as {
         id?: string;
         participantId?: string;
@@ -101,8 +105,13 @@ export function derivePendingCalls(envelopes: LogEnvelope[]): PendingCallRow[] {
           : {}),
         callerId: actor.participantId ?? actor.id ?? "unknown",
         targetId: target.participantId ?? target.id ?? "unknown",
-        method: typeof payload["name"] === "string" ? (payload["name"] as string) : "unknown",
-        ...(payload["request"] !== undefined ? { args: payload["request"] } : {}),
+        method:
+          typeof payload["name"] === "string"
+            ? (payload["name"] as string)
+            : "unknown",
+        ...(payload["request"] !== undefined
+          ? { args: payload["request"] }
+          : {}),
         createdAt: Date.parse(envelope.appendedAt),
         ...(typeof transport["deadlineAt"] === "number"
           ? { deadlineAt: transport["deadlineAt"] as number }
@@ -135,14 +144,17 @@ export interface CallTransportDeps {
     event: ChannelEvent,
     senderId: string,
     ref?: number,
-    structuredPublisherId?: string
+    structuredPublisherId?: string,
   ): void;
   emitSignal(participantId: string, event: ChannelEvent): void;
-  redeliverDurableEvent(participantId: string, eventId: string): Promise<boolean>;
+  redeliverDurableEvent(
+    participantId: string,
+    eventId: string,
+  ): Promise<boolean>;
   participantRef(participantId: string): ParticipantRef;
   getSenderMetadata(participantId: string): Record<string, unknown> | undefined;
   participantTransport(
-    participantId: string
+    participantId: string,
   ): "external-session" | "entity" | "resident-session" | null;
   rpcCall(targetId: string, method: string, args: unknown[]): Promise<unknown>;
   waitUntil(promise: Promise<unknown>): void;
@@ -153,7 +165,7 @@ export interface CallTransportDeps {
       | "publish-to-recipient-execution"
       | "call-to-provider-execution"
       | "result-to-caller-settlement",
-    durationMs: number
+    durationMs: number,
   ): void;
 }
 
@@ -179,12 +191,32 @@ export class CallTransport {
    * `publishDedupInFlight` in channel-do.ts. Cleared in a `finally`, so an
    * append failure never wedges later submits.
    */
-  private readonly startInFlight = new Map<string, Promise<void>>();
+  private readonly journalInFlight = new Map<string, Promise<void>>();
+  private readonly providerDeliveries = new Map<string, Set<Promise<void>>>();
+
+  /** Serialize only the canonical admission/cancellation mutation. Provider
+   * execution stays outside this boundary so cancellation can join it. */
+  private async mutateCallJournal<T>(
+    callId: string,
+    change: () => Promise<T>,
+  ): Promise<T> {
+    const prior = this.journalInFlight.get(callId);
+    const done = deferred();
+    this.journalInFlight.set(callId, done.promise);
+    try {
+      if (prior) await prior;
+      return await change();
+    } finally {
+      done.resolve();
+      if (this.journalInFlight.get(callId) === done.promise)
+        this.journalInFlight.delete(callId);
+    }
+  }
 
   /** Await (and forget) any in-flight start for this call so a concurrent
    *  settle/submit observes the canonical started after it commits. */
   private async awaitInFlightStart(transportCallId: string): Promise<void> {
-    const inFlight = this.startInFlight.get(transportCallId);
+    const inFlight = this.journalInFlight.get(transportCallId);
     if (inFlight) await inFlight.catch(() => {});
   }
 
@@ -209,13 +241,16 @@ export class CallTransport {
       row.method,
       row.args !== undefined ? JSON.stringify(row.args) : null,
       row.createdAt,
-      row.deadlineAt ?? null
+      row.deadlineAt ?? null,
     );
   }
 
   peek(transportCallId: string): PendingCallRow | null {
     const rows = this.deps.sql
-      .exec(`SELECT * FROM pending_calls WHERE transport_call_id = ?`, transportCallId)
+      .exec(
+        `SELECT * FROM pending_calls WHERE transport_call_id = ?`,
+        transportCallId,
+      )
       .toArray();
     if (rows.length === 0) return null;
     return this.rowFrom(rows[0] as Record<string, unknown>);
@@ -252,27 +287,36 @@ export class CallTransport {
       method: String(row["method"]),
       ...(args !== undefined ? { args } : {}),
       createdAt: Number(row["created_at"] ?? 0),
-      ...(row["deadline_at"] != null ? { deadlineAt: Number(row["deadline_at"]) } : {}),
+      ...(row["deadline_at"] != null
+        ? { deadlineAt: Number(row["deadline_at"]) }
+        : {}),
     };
   }
 
   private deleteRow(transportCallId: string): void {
-    this.deps.sql.exec(`DELETE FROM pending_calls WHERE transport_call_id = ?`, transportCallId);
+    this.deps.sql.exec(
+      `DELETE FROM pending_calls WHERE transport_call_id = ?`,
+      transportCallId,
+    );
     this.deps.sql.exec(
       `DELETE FROM provider_call_claims WHERE transport_call_id = ?`,
-      transportCallId
+      transportCallId,
     );
   }
 
   claimProviderCall(
     participantId: string,
     transportCallId: string,
-    providerGenerationId: string
+    providerGenerationId: string,
   ): { claimed: boolean; generation?: number } {
     const pending = this.peek(transportCallId);
-    if (!pending || pending.targetId !== participantId) return { claimed: false };
+    if (!pending || pending.targetId !== participantId)
+      return { claimed: false };
     const existing = this.deps.sql
-      .exec(`SELECT * FROM provider_call_claims WHERE transport_call_id = ?`, transportCallId)
+      .exec(
+        `SELECT * FROM provider_call_claims WHERE transport_call_id = ?`,
+        transportCallId,
+      )
       .toArray()[0];
     if (
       existing &&
@@ -294,7 +338,7 @@ export class CallTransport {
       participantId,
       providerGenerationId,
       generation,
-      claimedAt
+      claimedAt,
     );
     return { claimed: true, generation };
   }
@@ -302,7 +346,7 @@ export class CallTransport {
   markProviderCallExecutionStarted(
     participantId: string,
     transportCallId: string,
-    generation: number
+    generation: number,
   ): boolean {
     const pending = this.peek(transportCallId);
     if (!pending || pending.targetId !== participantId) return false;
@@ -317,13 +361,13 @@ export class CallTransport {
         startedAt,
         transportCallId,
         participantId,
-        generation
+        generation,
       )
       .toArray();
     if (updated.length > 0) {
       this.deps.recordLatency(
         "call-to-provider-execution",
-        Math.max(0, startedAt - pending.createdAt)
+        Math.max(0, startedAt - pending.createdAt),
       );
       return true;
     }
@@ -332,13 +376,17 @@ export class CallTransport {
     // returning false here would acknowledge the durable mailbox copy while
     // preventing either copy from ever entering the handler. A superseded
     // generation still fails this exact-current-claim check.
-    return this.isCurrentProviderClaim(transportCallId, participantId, generation);
+    return this.isCurrentProviderClaim(
+      transportCallId,
+      participantId,
+      generation,
+    );
   }
 
   isCurrentProviderClaim(
     transportCallId: string,
     participantId: string,
-    generation: number | undefined
+    generation: number | undefined,
   ): boolean {
     if (!Number.isSafeInteger(generation) || generation! < 1) return false;
     return (
@@ -348,7 +396,7 @@ export class CallTransport {
             WHERE transport_call_id = ? AND provider_id = ? AND claim_generation = ?`,
           transportCallId,
           participantId,
-          generation
+          generation,
         )
         .toArray().length > 0
     );
@@ -357,30 +405,150 @@ export class CallTransport {
   async abortProviderCall(pending: PendingCallRow): Promise<void> {
     const transport = this.deps.participantTransport(pending.targetId);
     if (transport !== "resident-session" && transport !== "entity") return;
-    try {
-      await this.deps.rpcCall(
-        pending.targetId,
-        transport === "entity" ? "cancelDirectMethodCall" : "cancelChannelInvocation",
-        transport === "entity"
-          ? [this.deps.objectKey, pending.transportCallId]
-          : [
-              {
-                channelId: this.deps.objectKey,
-                transportCallId: pending.transportCallId,
-              },
-            ]
-      );
-    } catch (error) {
-      console.warn(
-        `[Channel] provider cancellation delivery failed for ${pending.transportCallId}:`,
-        error
-      );
-    }
+    await this.deps.rpcCall(
+      pending.targetId,
+      transport === "entity"
+        ? "cancelDirectMethodCall"
+        : "cancelChannelInvocation",
+      transport === "entity"
+        ? [this.deps.objectKey, pending.transportCallId]
+        : [
+            {
+              channelId: this.deps.objectKey,
+              transportCallId: pending.transportCallId,
+            },
+          ],
+    );
+    await Promise.all([
+      ...(this.providerDeliveries.get(pending.transportCallId) ?? []),
+    ]);
   }
 
-  private pendingFromStartedEvent(event: ChannelEvent, fallback: PendingCallRow): PendingCallRow {
+  /** A cancelled terminal settles the caller; the original start still owns
+   * the provider cleanup route when its acknowledgement was lost or failed. */
+  private async cancelledCall(
+    terminal: ChannelEvent,
+    callId: string,
+    expectedCallerId?: string,
+    originalRequest?: ChannelMethodOriginalRequest,
+  ): Promise<PendingCallRow | null> {
+    if (
+      terminal.type !== AGENTIC_EVENT_PAYLOAD_KIND ||
+      (terminal.payload as { kind?: string } | null)?.kind !==
+        "invocation.cancelled"
+    )
+      return null;
+    const cancelled = eventKindSchemas["invocation.cancelled"].parse(
+      terminal.payload,
+    );
+    if (cancelled.payload.admission?.kind === "not-admitted") {
+      const original = cancelled.payload.admission.request;
+      this.assertOriginalCancellation(original, callId, expectedCallerId);
+      if (
+        originalRequest &&
+        canonicalJson(original) !== canonicalJson(originalRequest)
+      )
+        throw new Error("Cancellation conflicts with its original request");
+      if (
+        (cancelled.actor.participantId ?? cancelled.actor.id) !==
+        original.callerId
+      )
+        throw new Error(
+          "Not-admitted cancellation conflicts with its authenticated caller",
+        );
+      return null;
+    }
+    const invocationId = cancelled.causality?.invocationId;
+    if (!invocationId || cancelled.causality?.transportCallId !== callId)
+      throw new Error("Cancelled method call has no exact original invocation");
+    const envelope = await this.deps.log.getEventByEnvelopeId(invocationId);
+    if (!envelope || envelope.type !== AGENTIC_EVENT_PAYLOAD_KIND)
+      throw new Error("Cancelled method call lost its original start");
+    const started = eventKindSchemas["invocation.started"].parse(
+      envelope.payload,
+    );
+    const transport = started.payload.transport;
+    const callerId = started.actor.participantId ?? started.actor.id;
+    if (
+      started.causality?.invocationId !== invocationId ||
+      started.causality?.transportCallId !== callId ||
+      transport?.kind !== "channel" ||
+      transport.channelId !== this.deps.objectKey ||
+      transport.transportCallId !== callId
+    )
+      throw new Error(
+        "Cancelled method call conflicts with its original route",
+      );
+    if (expectedCallerId !== undefined && callerId !== expectedCallerId)
+      throw new Error(
+        `cancelMethodCall rejected: participant ${expectedCallerId} did not initiate method call ${callId}`,
+      );
+    const pending: PendingCallRow = {
+      transportCallId: callId,
+      invocationId,
+      callerId,
+      targetId: transport.target.participantId ?? transport.target.id,
+      method: started.payload.name,
+      ...(started.payload.request === undefined
+        ? {}
+        : { args: started.payload.request }),
+      ...(started.turnId === undefined ? {} : { turnId: started.turnId }),
+      createdAt: Date.parse(started.createdAt),
+      ...(transport.deadlineAt === undefined
+        ? {}
+        : { deadlineAt: transport.deadlineAt }),
+    };
+    if (originalRequest) this.assertOriginalPending(originalRequest, pending);
+    return pending;
+  }
+
+  private assertOriginalCancellation(
+    original: ChannelMethodOriginalRequest,
+    callId: string,
+    callerId?: string,
+  ): void {
+    if (
+      original.channelId !== this.deps.objectKey ||
+      original.transportCallId !== callId ||
+      !original.invocationId ||
+      !original.targetId ||
+      !original.method ||
+      !callerId ||
+      original.callerId !== callerId
+    )
+      throw new Error(
+        "Cancellation does not identify the authenticated original channel call",
+      );
+  }
+
+  private assertOriginalPending(
+    original: ChannelMethodOriginalRequest,
+    pending: PendingCallRow,
+  ): void {
+    const accepted: ChannelMethodOriginalRequest = {
+      channelId: this.deps.objectKey,
+      callerId: pending.callerId,
+      targetId: pending.targetId,
+      invocationId: pending.invocationId,
+      transportCallId: pending.transportCallId,
+      method: pending.method,
+      ...(pending.args === undefined ? {} : { args: pending.args }),
+      ...(pending.turnId === undefined ? {} : { turnId: pending.turnId }),
+    };
+    if (canonicalJson(original) !== canonicalJson(accepted))
+      throw new Error("Cancellation conflicts with its original request");
+  }
+
+  private pendingFromStartedEvent(
+    event: ChannelEvent,
+    fallback: PendingCallRow,
+  ): PendingCallRow {
     const agentic = event.payload as AgenticEvent | null;
-    if (!agentic || typeof agentic !== "object" || agentic.kind !== "invocation.started") {
+    if (
+      !agentic ||
+      typeof agentic !== "object" ||
+      agentic.kind !== "invocation.started"
+    ) {
       return fallback;
     }
     const causality = (agentic.causality ?? {}) as Record<string, unknown>;
@@ -395,7 +563,9 @@ export class CallTransport {
       participantId?: string;
     };
     const createdAt =
-      typeof agentic.createdAt === "string" ? Date.parse(agentic.createdAt) : Number.NaN;
+      typeof agentic.createdAt === "string"
+        ? Date.parse(agentic.createdAt)
+        : Number.NaN;
 
     return {
       transportCallId:
@@ -409,7 +579,10 @@ export class CallTransport {
       ...(typeof agentic.turnId === "string" ? { turnId: agentic.turnId } : {}),
       callerId: actor.participantId ?? actor.id ?? fallback.callerId,
       targetId: target.participantId ?? target.id ?? fallback.targetId,
-      method: typeof payload["name"] === "string" ? (payload["name"] as string) : fallback.method,
+      method:
+        typeof payload["name"] === "string"
+          ? (payload["name"] as string)
+          : fallback.method,
       ...(payload["request"] !== undefined ? { args: payload["request"] } : {}),
       createdAt: Number.isFinite(createdAt) ? createdAt : fallback.createdAt,
       ...(typeof transport["deadlineAt"] === "number"
@@ -433,28 +606,13 @@ export class CallTransport {
       transportCallId?: string;
       turnId?: string;
       timeoutMs?: number;
-    }
+    },
   ): Promise<void> {
     const transportCallId = opts?.transportCallId ?? callId;
 
-    // Publish the in-flight barrier BEFORE the first await so any concurrent
-    // submitMethodResult for this call observes it and waits for the canonical
-    // started to commit (durable + cached) instead of treating the call as a
-    // lost record and synthesizing a recovery started/terminal. A redrive that
-    // races the target's reply is the realistic trigger. Cleared in `finally`
-    // — an append failure resolves the barrier so later submits aren't wedged.
-    const startBarrier = deferred();
-    this.startInFlight.set(transportCallId, startBarrier.promise);
-    const dispatch = await (async () => {
-      try {
-        return await this.journalCallStart(callerPid, targetPid, callId, method, args, opts);
-      } finally {
-        startBarrier.resolve();
-        if (this.startInFlight.get(transportCallId) === startBarrier.promise) {
-          this.startInFlight.delete(transportCallId);
-        }
-      }
-    })();
+    const dispatch = await this.mutateCallJournal(transportCallId, () =>
+      this.journalCallStart(callerPid, targetPid, callId, method, args, opts),
+    );
     if (dispatch) await dispatch();
   }
 
@@ -472,13 +630,15 @@ export class CallTransport {
       transportCallId?: string;
       turnId?: string;
       timeoutMs?: number;
-    }
+    },
   ): Promise<(() => Promise<void>) | null> {
     const transportCallId = opts?.transportCallId ?? callId;
     const invocationId = opts?.invocationId ?? callId;
     const turnId = opts?.turnId;
     const deadlineAt =
-      opts?.timeoutMs && opts.timeoutMs > 0 ? Date.now() + opts.timeoutMs : undefined;
+      opts?.timeoutMs && opts.timeoutMs > 0
+        ? Date.now() + opts.timeoutMs
+        : undefined;
     const createdAt = new Date().toISOString();
 
     // Idempotent re-call: when the caller redrives a call whose terminal is
@@ -487,21 +647,38 @@ export class CallTransport {
     // redeliveries; reconcile skips because the head didn't move). Re-deliver
     // the journaled terminal instead so the caller can settle.
     const existingTerminal = await this.deps.log.getEventByEnvelopeId(
-      `terminal:${transportCallId}`
+      `terminal:${transportCallId}`,
     );
     if (existingTerminal) {
+      const cancelled =
+        (existingTerminal.payload as { kind?: unknown })?.kind ===
+        "invocation.cancelled";
+      if (cancelled)
+        await this.cancelledCall(existingTerminal, transportCallId, callerPid, {
+          channelId: this.deps.objectKey,
+          callerId: callerPid,
+          targetId: targetPid,
+          invocationId,
+          transportCallId,
+          method,
+          ...(args === undefined ? {} : { args }),
+          ...(turnId === undefined ? {} : { turnId }),
+        });
       this.deleteRow(transportCallId);
       console.log(
         `[Channel] callMethod re-drive for settled call ${transportCallId}: ` +
-          `re-broadcasting durable terminal (seq ${existingTerminal.id})`
+          `re-broadcasting durable terminal (seq ${existingTerminal.id})`,
       );
       this.deps.broadcastLive(
         existingTerminal,
         existingTerminal.senderId ?? callerPid,
         undefined,
-        targetPid
+        targetPid,
       );
-      await this.deps.redeliverDurableEvent(callerPid, existingTerminal.messageId);
+      await this.deps.redeliverDurableEvent(
+        callerPid,
+        existingTerminal.messageId,
+      );
       return null;
     }
 
@@ -542,7 +719,7 @@ export class CallTransport {
     const pendingRow = this.pendingFromStartedEvent(callEvent, fallbackRow);
 
     const terminalAfterStart = await this.deps.log.getEventByEnvelopeId(
-      `terminal:${pendingRow.transportCallId}`
+      `terminal:${pendingRow.transportCallId}`,
     );
     if (terminalAfterStart) {
       this.deleteRow(pendingRow.transportCallId);
@@ -550,9 +727,12 @@ export class CallTransport {
         terminalAfterStart,
         terminalAfterStart.senderId ?? callerPid,
         undefined,
-        pendingRow.targetId
+        pendingRow.targetId,
       );
-      await this.deps.redeliverDurableEvent(callerPid, terminalAfterStart.messageId);
+      await this.deps.redeliverDurableEvent(
+        callerPid,
+        terminalAfterStart.messageId,
+      );
       return null;
     }
 
@@ -571,19 +751,33 @@ export class CallTransport {
       const message =
         `Target ${pendingRow.targetId} is not joined to channel ${this.deps.objectKey}; ` +
         "chat.callMethod is channel-scoped and only routes to live participants in this channel";
-      await this.settleCall(pendingRow.transportCallId, { error: message }, true);
+      await this.settleCall(
+        pendingRow.transportCallId,
+        { error: message },
+        true,
+      );
       return;
     }
     if (transport === "entity") {
+      const delivery = this.deliverDoMethodCall({
+        targetPid: pendingRow.targetId,
+        transportCallId: pendingRow.transportCallId,
+        invocationId: pendingRow.invocationId,
+        turnId: pendingRow.turnId,
+        method: pendingRow.method,
+        args: pendingRow.args,
+      });
+      const deliveries =
+        this.providerDeliveries.get(pendingRow.transportCallId) ??
+        new Set<Promise<void>>();
+      deliveries.add(delivery);
+      this.providerDeliveries.set(pendingRow.transportCallId, deliveries);
       this.deps.waitUntil(
-        this.deliverDoMethodCall({
-          targetPid: pendingRow.targetId,
-          transportCallId: pendingRow.transportCallId,
-          invocationId: pendingRow.invocationId,
-          turnId: pendingRow.turnId,
-          method: pendingRow.method,
-          args: pendingRow.args,
-        })
+        delivery.finally(() => {
+          deliveries.delete(delivery);
+          if (!deliveries.size)
+            this.providerDeliveries.delete(pendingRow.transportCallId);
+        }),
       );
     } else if (transport === "resident-session") {
       // Claim fencing inside the provider makes this direct attempt and the
@@ -595,9 +789,13 @@ export class CallTransport {
     // broadcast and reply via submitMethodResult.
   }
 
-  private async deliverResidentFastPath(pendingRow: PendingCallRow): Promise<void> {
+  private async deliverResidentFastPath(
+    pendingRow: PendingCallRow,
+  ): Promise<void> {
     try {
-      const event = await this.deps.log.getEventByEnvelopeId(pendingRow.invocationId);
+      const event = await this.deps.log.getEventByEnvelopeId(
+        pendingRow.invocationId,
+      );
       if (!event) return;
       await this.deps.rpcCall(pendingRow.targetId, "acceptChannelInvocation", [
         {
@@ -622,35 +820,46 @@ export class CallTransport {
     const claim = this.claimProviderCall(
       input.targetPid,
       input.transportCallId,
-      `${this.providerDispatchId}:${++this.providerDispatchSequence}`
+      `${this.providerDispatchId}:${++this.providerDispatchSequence}`,
     );
     if (!claim.claimed || !claim.generation) return;
     try {
-      this.markProviderCallExecutionStarted(
-        input.targetPid,
-        input.transportCallId,
-        claim.generation
-      );
       const result = await this.deps.rpcCall(input.targetPid, "onMethodCall", [
         this.deps.objectKey,
         input.transportCallId,
         input.method,
         input.args,
-        { invocationId: input.invocationId, turnId: input.turnId },
+        {
+          invocationId: input.invocationId,
+          turnId: input.turnId,
+          providerClaimGeneration: claim.generation,
+        },
       ]);
       const res = result as { result: unknown; isError?: boolean };
-      if (!this.isCurrentProviderClaim(input.transportCallId, input.targetPid, claim.generation)) {
+      if (
+        !this.isCurrentProviderClaim(
+          input.transportCallId,
+          input.targetPid,
+          claim.generation,
+        )
+      ) {
         return;
       }
       await this.settleCall(input.transportCallId, res.result, !!res.isError);
     } catch (err) {
-      if (!this.isCurrentProviderClaim(input.transportCallId, input.targetPid, claim.generation)) {
+      if (
+        !this.isCurrentProviderClaim(
+          input.transportCallId,
+          input.targetPid,
+          claim.generation,
+        )
+      ) {
         return;
       }
       await this.settleCall(
         input.transportCallId,
         err instanceof Error ? err.message : String(err),
-        true
+        true,
       );
     }
   }
@@ -669,7 +878,7 @@ export class CallTransport {
        *  builder with actor system). */
       eventOverride?: AgenticEvent;
       senderId?: string;
-    }
+    },
   ): Promise<number | undefined> {
     const deliveryStartedAt = Date.now();
     // 0. If a callMethod start for this call is still journaling, wait for it
@@ -684,7 +893,7 @@ export class CallTransport {
     let pending = this.peek(transportCallId);
     if (!pending) {
       const existingTerminal = await this.deps.log.getEventByEnvelopeId(
-        `terminal:${transportCallId}`
+        `terminal:${transportCallId}`,
       );
       if (existingTerminal) return existingTerminal.id;
       await this.reconcilePendingCalls(true);
@@ -692,16 +901,41 @@ export class CallTransport {
     }
     if (!pending) {
       const existingTerminal = await this.deps.log.getEventByEnvelopeId(
-        `terminal:${transportCallId}`
+        `terminal:${transportCallId}`,
       );
       if (existingTerminal) return existingTerminal.id;
       console.log(
         `[Channel] method result without a live pending call (already terminal or unknown): ` +
-          `channel=${this.deps.objectKey} transportCallId=${transportCallId} isError=${isError}`
+          `channel=${this.deps.objectKey} transportCallId=${transportCallId} isError=${isError}`,
       );
       return undefined;
     }
 
+    return this.settlePendingCall(
+      pending,
+      result,
+      isError,
+      terminalOutcome,
+      terminalReasonCode,
+      opts,
+      deliveryStartedAt,
+    );
+  }
+
+  private async settlePendingCall(
+    pending: PendingCallRow,
+    result: unknown,
+    isError: boolean,
+    terminalOutcome?: InvocationOutcome,
+    terminalReasonCode?: string,
+    opts?: {
+      attachments?: StoredAttachment[];
+      eventOverride?: AgenticEvent;
+      senderId?: string;
+    },
+    deliveryStartedAt = Date.now(),
+  ): Promise<number | undefined> {
+    const transportCallId = pending.transportCallId;
     // 2. Root the terminal (synthetic started if the canonical one is absent).
     await this.ensureMethodRoot(pending);
 
@@ -717,6 +951,7 @@ export class CallTransport {
           descriptor: {
             channelId: this.deps.objectKey,
             caller: this.deps.participantRef(pending.callerId),
+            target: this.deps.participantRef(pending.targetId),
             invocationId: pending.invocationId,
             transportCallId: pending.transportCallId,
             method: pending.method,
@@ -744,7 +979,8 @@ export class CallTransport {
     this.recordObservedHead(event.id);
     const sender = opts?.senderId ?? pending.callerId;
     const callerPresent =
-      opts?.senderId != null || this.deps.participantTransport(pending.callerId) !== null;
+      opts?.senderId != null ||
+      this.deps.participantTransport(pending.callerId) !== null;
     if (callerPresent) {
       this.deps.broadcastLive(event, sender, undefined, pending.targetId);
     }
@@ -784,7 +1020,7 @@ export class CallTransport {
       terminalOutcome?: InvocationOutcome;
       terminalReasonCode?: string;
       attachments?: StoredAttachment[];
-    }
+    },
   ): Promise<number | undefined> {
     const deliveryStartedAt = Date.now();
     // The terminal must carry the invocationId the caller parked on. The
@@ -813,6 +1049,7 @@ export class CallTransport {
         descriptor: {
           channelId: this.deps.objectKey,
           caller: this.deps.participantRef(synthetic.callerId),
+          target: this.deps.participantRef(synthetic.targetId),
           invocationId: synthetic.invocationId,
           transportCallId: synthetic.transportCallId,
           method: synthetic.method,
@@ -820,8 +1057,12 @@ export class CallTransport {
         },
         result,
         isError,
-        ...(opts?.terminalOutcome ? { terminalOutcome: opts.terminalOutcome } : {}),
-        ...(opts?.terminalReasonCode ? { terminalReasonCode: opts.terminalReasonCode } : {}),
+        ...(opts?.terminalOutcome
+          ? { terminalOutcome: opts.terminalOutcome }
+          : {}),
+        ...(opts?.terminalReasonCode
+          ? { terminalReasonCode: opts.terminalReasonCode }
+          : {}),
         createdAt: new Date().toISOString(),
       });
       event = await this.deps.appendDurable({
@@ -838,7 +1079,12 @@ export class CallTransport {
     // 3. There is no cache row to consume. Record head, schedule, and FORCE the
     //    broadcast — the caller is a subscriber matching by invocationId.
     this.recordObservedHead(event.id);
-    this.deps.broadcastLive(event, synthetic.callerId, undefined, synthetic.targetId);
+    this.deps.broadcastLive(
+      event,
+      synthetic.callerId,
+      undefined,
+      synthetic.targetId,
+    );
     await this.deps.redeliverDurableEvent(synthetic.callerId, event.messageId);
     return event.id;
   }
@@ -873,7 +1119,7 @@ export class CallTransport {
   async resolveSubmitterForCall(
     participantId: string,
     transportCallId: string,
-    operation: "submitMethodResult" | "submitMethodProgress"
+    operation: "submitMethodResult" | "submitMethodProgress",
   ): Promise<SubmitterCallResolution> {
     // Wait out any concurrent callMethod start-journaling for this call: the
     // result must not be classified `missing` (→ lost-call recovery) while the
@@ -885,9 +1131,10 @@ export class CallTransport {
     let pending = this.peek(transportCallId);
     if (!pending) {
       const existingTerminal = await this.deps.log.getEventByEnvelopeId(
-        `terminal:${transportCallId}`
+        `terminal:${transportCallId}`,
       );
-      if (existingTerminal) return { kind: "terminal", eventId: existingTerminal.id };
+      if (existingTerminal)
+        return { kind: "terminal", eventId: existingTerminal.id };
 
       await this.reconcilePendingCalls(true);
       pending = this.peek(transportCallId);
@@ -895,16 +1142,17 @@ export class CallTransport {
 
     if (!pending) {
       const existingTerminal = await this.deps.log.getEventByEnvelopeId(
-        `terminal:${transportCallId}`
+        `terminal:${transportCallId}`,
       );
-      if (existingTerminal) return { kind: "terminal", eventId: existingTerminal.id };
+      if (existingTerminal)
+        return { kind: "terminal", eventId: existingTerminal.id };
       return { kind: "missing" };
     }
 
     if (pending.targetId !== participantId) {
       throw new Error(
         `${operation} rejected: participant ${participantId} is not target ${pending.targetId} ` +
-          `for method call ${transportCallId}`
+          `for method call ${transportCallId}`,
       );
     }
     return { kind: "pending", pending };
@@ -913,7 +1161,7 @@ export class CallTransport {
   async submitMethodProgress(
     transportCallId: string,
     content: unknown,
-    opts?: { attachments?: StoredAttachment[] }
+    opts?: { attachments?: StoredAttachment[] },
   ): Promise<void> {
     const pending = this.peek(transportCallId);
     if (!pending) return;
@@ -922,6 +1170,7 @@ export class CallTransport {
       descriptor: {
         channelId: this.deps.objectKey,
         caller: this.deps.participantRef(pending.callerId),
+        target: this.deps.participantRef(pending.targetId),
         invocationId: pending.invocationId,
         transportCallId: pending.transportCallId,
         method: pending.method,
@@ -937,7 +1186,12 @@ export class CallTransport {
       ...(opts?.attachments ? { attachments: opts.attachments } : {}),
     });
     this.recordObservedHead(event.id);
-    this.deps.broadcastLive(event, pending.callerId, undefined, pending.targetId);
+    this.deps.broadcastLive(
+      event,
+      pending.callerId,
+      undefined,
+      pending.targetId,
+    );
   }
 
   // ── cancel / timeout / abandon ────────────────────────────────────────────
@@ -945,36 +1199,101 @@ export class CallTransport {
   async cancelMethodCall(
     callId: string,
     reason = "cancelled",
-    expectedCallerId?: string
+    expectedCallerId?: string,
+    original?: ChannelMethodOriginalRequest,
   ): Promise<PendingCallRow | null> {
-    // Settle against the committed start, never a half-written one (a cancel
-    // racing a redrive's start would otherwise no-op or recover spuriously).
-    await this.awaitInFlightStart(callId);
+    return this.mutateCallJournal(callId, () =>
+      this.cancelJournaledMethodCall(
+        callId,
+        reason,
+        expectedCallerId,
+        original,
+      ),
+    );
+  }
+
+  private async cancelJournaledMethodCall(
+    callId: string,
+    reason: string,
+    expectedCallerId?: string,
+    original?: ChannelMethodOriginalRequest,
+  ): Promise<PendingCallRow | null> {
+    if (original)
+      this.assertOriginalCancellation(original, callId, expectedCallerId);
     let pending = this.peek(callId);
     if (!pending) {
       // Cache-cold: the row may live in the durable log but not yet in the
       // SQLite cache (post-eviction / reload). Reconcile then peek again before
       // concluding the call is gone — otherwise a legitimate cancel/timeout
       // silently no-ops and the call hangs (mirrors settleCall / resolveSubmitter).
-      const existingTerminal = await this.deps.log.getEventByEnvelopeId(`terminal:${callId}`);
+      const existingTerminal = await this.deps.log.getEventByEnvelopeId(
+        `terminal:${callId}`,
+      );
       if (existingTerminal) {
-        return null;
+        return this.cancelledCall(
+          existingTerminal,
+          callId,
+          expectedCallerId,
+          original,
+        );
       }
       await this.reconcilePendingCalls(true);
       pending = this.peek(callId);
     }
     if (!pending) {
+      if (original) {
+        const event = this.deps.builders().cancelled({
+          descriptor: {
+            channelId: original.channelId,
+            caller: this.deps.participantRef(original.callerId),
+            target: this.deps.participantRef(original.targetId),
+            invocationId: original.invocationId,
+            transportCallId: callId,
+            method: original.method,
+            ...(original.turnId ? { turnId: original.turnId } : {}),
+          },
+          actor: this.deps.participantRef(original.callerId),
+          reason,
+          createdAt: new Date().toISOString(),
+        });
+        const cancelled = eventKindSchemas["invocation.cancelled"].parse({
+          ...event,
+          payload: {
+            ...event.payload,
+            admission: { kind: "not-admitted", request: original },
+          },
+        });
+        const fact = await this.deps.appendDurable({
+          type: AGENTIC_EVENT_PAYLOAD_KIND,
+          payload: cancelled,
+          senderId: original.callerId,
+          messageId: `terminal:${callId}`,
+          idempotency: "idempotent-by-id",
+        });
+        this.recordObservedHead(fact.id);
+        this.deps.broadcastLive(
+          fact,
+          original.callerId,
+          undefined,
+          original.targetId,
+        );
+      }
       return null;
     }
-    if (expectedCallerId !== undefined && pending.callerId !== expectedCallerId) {
+    if (original) this.assertOriginalPending(original, pending);
+    if (
+      expectedCallerId !== undefined &&
+      pending.callerId !== expectedCallerId
+    ) {
       throw new Error(
-        `cancelMethodCall rejected: participant ${expectedCallerId} did not initiate method call ${callId}`
+        `cancelMethodCall rejected: participant ${expectedCallerId} did not initiate method call ${callId}`,
       );
     }
     const event = this.deps.builders().cancelled({
       descriptor: {
         channelId: this.deps.objectKey,
         caller: this.deps.participantRef(pending.callerId),
+        target: this.deps.participantRef(pending.targetId),
         invocationId: pending.invocationId,
         transportCallId: pending.transportCallId,
         method: pending.method,
@@ -984,10 +1303,17 @@ export class CallTransport {
       reason,
       createdAt: new Date().toISOString(),
     });
-    await this.settleCall(callId, reason, true, "cancelled", "cancelled", {
-      eventOverride: event,
-      senderId: "system",
-    });
+    await this.settlePendingCall(
+      pending,
+      reason,
+      true,
+      "cancelled",
+      "cancelled",
+      {
+        eventOverride: event,
+        senderId: "system",
+      },
+    );
     return pending;
   }
 
@@ -1000,7 +1326,7 @@ export class CallTransport {
    *  rather than left hanging until the deadline. */
   async failPendingCallsTargeting(
     targetId: string,
-    reason: "graceful" | "disconnect" | "replaced" | "aborted-by-fork"
+    reason: "graceful" | "disconnect" | "replaced" | "aborted-by-fork",
   ): Promise<number> {
     const rows = this.pendingFor(targetId);
     if (rows.length === 0) return 0;
@@ -1019,19 +1345,44 @@ export class CallTransport {
           { error: errorMessage },
           true,
           "abandoned",
-          reason
+          reason,
         );
         await this.abortProviderCall(row);
       } catch (err) {
         console.warn(
           `[Channel] failPendingCallsTargeting: settle failed for ${row.transportCallId}:`,
-          err
+          err,
         );
       }
     }
     console.log(
-      `[Channel] Cancelled ${rows.length} pending call(s) targeting ${targetId} (${reason})`
+      `[Channel] Cancelled ${rows.length} pending call(s) targeting ${targetId} (${reason})`,
     );
+    return rows.length;
+  }
+
+  /** A history fork never acquires its source's running invocation. Settle only
+   * the child's inherited canonical routes, without dispatch or source cleanup. */
+  async abandonInheritedCalls(): Promise<number> {
+    await this.reconcilePendingCalls(true);
+    const rows = (
+      this.deps.sql.exec(`SELECT * FROM pending_calls`).toArray() as Record<
+        string,
+        unknown
+      >[]
+    ).map((row) => this.rowFrom(row));
+    for (const row of rows) {
+      await this.settleCall(
+        row.transportCallId,
+        {
+          error:
+            "This history fork does not own the source channel's running invocation",
+        },
+        true,
+        "abandoned",
+        "aborted-by-fork",
+      );
+    }
     return rows.length;
   }
 
@@ -1041,7 +1392,7 @@ export class CallTransport {
     const rows = this.pendingFor(participantId);
     if (rows.length === 0) return 0;
     const terminalEnvelopeIds = await this.deps.log.hasEnvelopes(
-      rows.map((row) => `terminal:${row.transportCallId}`)
+      rows.map((row) => `terminal:${row.transportCallId}`),
     );
     let redelivered = 0;
     let pruned = 0;
@@ -1087,27 +1438,27 @@ export class CallTransport {
     if (redelivered > 0 || pruned > 0) {
       console.log(
         `[Channel] Redelivered ${redelivered} pending call(s) to ${participantId}` +
-          (pruned > 0 ? ` (${pruned} stale row(s) pruned)` : "")
+          (pruned > 0 ? ` (${pruned} stale row(s) pruned)` : ""),
       );
     }
     return redelivered;
   }
 
   async timeoutExpiredPendingCalls(
-    onTimeout: (pending: PendingCallRow, reason: string) => Promise<void>
+    onTimeout: (pending: PendingCallRow, reason: string) => Promise<void>,
   ): Promise<void> {
     const rows = this.deps.sql
       .exec(
         `SELECT transport_call_id FROM pending_calls
           WHERE deadline_at IS NOT NULL AND deadline_at <= ?`,
-        Date.now()
+        Date.now(),
       )
       .toArray();
     for (const row of rows) {
       const transportCallId = String(row["transport_call_id"]);
       const pending = await this.cancelMethodCall(
         transportCallId,
-        "Channel method deadline expired"
+        "Channel method deadline expired",
       );
       if (pending) await onTimeout(pending, "method call deadline expired");
     }
@@ -1115,7 +1466,9 @@ export class CallTransport {
 
   nextCallDeadlineAt(): number | null {
     const deadline = this.deps.sql
-      .exec(`SELECT MIN(deadline_at) AS deadline FROM pending_calls WHERE deadline_at IS NOT NULL`)
+      .exec(
+        `SELECT MIN(deadline_at) AS deadline FROM pending_calls WHERE deadline_at IS NOT NULL`,
+      )
       .toArray()[0]?.["deadline"];
     return typeof deadline === "number" ? deadline : null;
   }
@@ -1123,14 +1476,21 @@ export class CallTransport {
   // ── reconcile — the convergence sweep (WS2 §5.4) ─────────────────────────
 
   private recordObservedHead(seq: number): void {
-    const current = Number(this.deps.getStateValue("calls_reconciled_through") ?? 0);
-    if (seq > current) this.deps.setStateValue("calls_reconciled_through", String(seq));
+    const current = Number(
+      this.deps.getStateValue("calls_reconciled_through") ?? 0,
+    );
+    if (seq > current)
+      this.deps.setStateValue("calls_reconciled_through", String(seq));
   }
 
-  async reconcilePendingCalls(force = false): Promise<{ inserted: number; deleted: number }> {
+  async reconcilePendingCalls(
+    force = false,
+  ): Promise<{ inserted: number; deleted: number }> {
     const headSeq = await this.deps.log.headSeq();
     if (!force) {
-      const through = Number(this.deps.getStateValue("calls_reconciled_through") ?? -1);
+      const through = Number(
+        this.deps.getStateValue("calls_reconciled_through") ?? -1,
+      );
       if (through === headSeq) return { inserted: 0, deleted: 0 };
     }
     const envelopes: LogEnvelope[] = [];
@@ -1139,7 +1499,6 @@ export class CallTransport {
       const page = await this.deps.log.read({
         afterSeq,
         limit: 500,
-        payloadKind: AGENTIC_EVENT_PAYLOAD_KIND,
       });
       if (page.length === 0) break;
       envelopes.push(...page);
@@ -1147,9 +1506,14 @@ export class CallTransport {
       if (page.length < 500) break;
     }
     const derived = derivePendingCalls(envelopes);
-    const derivedByKey = new Map(derived.map((row) => [row.transportCallId, row]));
+    const derivedByKey = new Map(
+      derived.map((row) => [row.transportCallId, row]),
+    );
     const existing = (
-      this.deps.sql.exec(`SELECT * FROM pending_calls`).toArray() as Record<string, unknown>[]
+      this.deps.sql.exec(`SELECT * FROM pending_calls`).toArray() as Record<
+        string,
+        unknown
+      >[]
     ).map((row) => this.rowFrom(row));
     let inserted = 0;
     let deleted = 0;
@@ -1172,7 +1536,7 @@ export class CallTransport {
       if (!this.peek(transportCallId)) {
         this.deps.sql.exec(
           `DELETE FROM provider_call_claims WHERE transport_call_id = ?`,
-          transportCallId
+          transportCallId,
         );
       }
     }

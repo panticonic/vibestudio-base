@@ -2,7 +2,7 @@
  * Resource loader — fetches the system prompt and skill index from the
  * Vibestudio workspace via RPC.
  *
- * PiRunner uses this at session startup to inject `AGENTS.md` content and
+ * Native channel preparation uses this to inject `AGENTS.md` content and
  * a formatted skill index into the agent's system prompt. The skill index
  * is markdown that the LLM can read; actual skill files are read on demand
  * by the read tool from the per-context folder.
@@ -40,7 +40,7 @@ export interface ResourceLoaderDeps {
 }
 /**
  * Fetches the workspace system prompt and skill list in parallel and
- * returns a `VibestudioResources` bundle for PiRunner to consume.
+ * returns a `VibestudioResources` bundle for native channel prompt preparation.
  */
 export async function loadVibestudioResources(deps: ResourceLoaderDeps): Promise<VibestudioResources> {
   throwIfAborted(deps.signal);

@@ -16,6 +16,7 @@ import type { CdpInteractionOutcome } from "@workspace/cdp-client";
 import {
   consoleHistoryReceipt,
   cdpEvaluationReceipt,
+  cdpProfileReceipt,
   cdpInteractionReceipt,
   type OperationJournalEntry,
 } from "../shared/journal.js";
@@ -120,6 +121,7 @@ export function createCdpAutomation(
 
   const connectPage = async (
     generation?: PanelCdpGeneration,
+    kind = options.kind,
   ): Promise<CdpPage> => {
     const { BrowserImpl } = await loadCdpClient(options.loadModule);
     const endpoint = await getCdpEndpoint();
@@ -129,6 +131,7 @@ export function createCdpAutomation(
       operationSignal?: () => AbortSignal | undefined;
       transportOptions?: { authToken: string };
       onInteraction: (outcome: CdpInteractionOutcome) => void;
+      onObservation: (value: unknown) => void;
       inspectionIdentity?: PanelCdpGeneration;
       browserOperation: (
         request: import("@vibestudio/shared/panel/browserAutomation").BrowserAutomationRequest,
@@ -150,6 +153,12 @@ export function createCdpAutomation(
               : (signal ?? owner),
         });
       },
+      onObservation: (value) =>
+        options.recordOperation?.({
+          type: "evaluation",
+          id,
+          receipt: cdpEvaluationReceipt(value),
+        }),
       onInteraction: (receipt) =>
         options.recordOperation?.({
           type: "interaction",
@@ -192,6 +201,18 @@ export function createCdpAutomation(
             return value;
           };
         }
+        if (property === "profile") {
+          return async (...args: Parameters<CdpPage["profile"]>) => {
+            options.recordOperation?.({ type: "profile.start", id });
+            const report = await resolvedPage.profile(...args);
+            options.recordOperation?.({
+              type: "profile",
+              id,
+              receipt: cdpProfileReceipt(report),
+            });
+            return report;
+          };
+        }
         if (property === "screenshot") {
           return async (
             screenshotOptions?: Parameters<CdpPage["screenshot"]>[0],
@@ -213,7 +234,7 @@ export function createCdpAutomation(
           };
         }
         const lifecycleMethod = navigationMethods.get(property);
-        if (options.kind === "workspace" && lifecycleMethod) {
+        if (kind === "workspace" && lifecycleMethod) {
           return async () => {
             throw workspaceNavigationError(
               `page.${String(property)}()`,
@@ -284,8 +305,12 @@ export function createCdpAutomation(
     for (let attempt = 0; attempt < 3; attempt += 1) {
       // A session is active inspection demand. Ensure residency/readiness here
       // without coupling automation to desktop focus.
-      const before = generationOf(await ensureReady());
-      const page = await connectPage(before);
+      const observation = await ensureReady();
+      const before = generationOf(observation);
+      // A handle obtained synchronously by slot id can still carry an initial
+      // workspace hint. Navigation policy belongs to the observed generation,
+      // not that hint; the same slot can also change source kind over time.
+      const page = await connectPage(before, observation.kind);
       const after = generationOf(await ensureReady());
       if (!sameGeneration(before, after)) {
         await page.close();
@@ -396,7 +421,13 @@ export function createCdpAutomation(
   };
 
   return {
-    page: connectPage,
+    page: async () => {
+      if (options.observe || options.ensureReady) {
+        const observation = await ensureReady();
+        return connectPage(generationOf(observation), observation.kind);
+      }
+      return connectPage();
+    },
     session: acquireSession,
     consoleHistory: async (historyOptions?: PanelConsoleHistoryOptions) => {
       const history = await rpc.call<PanelConsoleHistoryResult>(

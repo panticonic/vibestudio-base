@@ -37,6 +37,15 @@
       ],
       "requests": [
         {
+          "capability": "microphone",
+          "resource": {
+            "kind": "prefix",
+            "prefix": ""
+          },
+          "tier": "gated",
+          "evidence": "intentional-broad"
+        },
+        {
           "capability": "account-providers.configure",
           "resource": {
             "kind": "exact",

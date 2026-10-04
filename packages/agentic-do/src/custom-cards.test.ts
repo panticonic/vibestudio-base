@@ -23,6 +23,7 @@ async function makeManager(opts?: {
   types?: Record<string, Record<string, unknown> | null>;
 }) {
   const sql = (await createInMemorySql()) as unknown as SqlStorage;
+  CardManager.createTables(sql);
   const published: Array<{ event: Record<string, unknown>; idempotencyKey?: string }> = [];
   const channel = {
     getMessageType: vi.fn(async (typeId: string) => opts?.types?.[typeId] ?? null),

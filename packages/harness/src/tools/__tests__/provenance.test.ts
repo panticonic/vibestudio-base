@@ -1,7 +1,13 @@
+import type { JsonRepresentation } from "@panticonic/pi-chord";
+import type { ToolExecutionResult } from "@panticonic/pi-durable";
+import { executeTool } from "../../testing/native-tool.js";
 import { describe, expect, it, vi } from "vitest";
-import { Value } from "@sinclair/typebox/value";
+import { Value } from "typebox/value";
 import { createMemoryAgentReferenceStore } from "../agent-pagination.js";
-import { loadProvenanceReference, putProvenanceReference } from "../provenance-reference.js";
+import {
+  loadProvenanceReference,
+  putProvenanceReference,
+} from "../provenance-reference.js";
 import {
   createProvenanceTool,
   type ProvenanceToolDeps,
@@ -11,11 +17,17 @@ import {
 
 const working = { kind: "event" as const, eventId: "event:working" };
 
-function detailsOf(result: {
-  details: ProvenanceToolDetails | ProvenanceToolDiagnostic;
-}): ProvenanceToolDetails {
+function detailsOf(
+  result: ToolExecutionResult<
+    JsonRepresentation<ProvenanceToolDetails | ProvenanceToolDiagnostic>
+  >,
+): JsonRepresentation<ProvenanceToolDetails> {
+  if (result.details === undefined)
+    throw new Error("Expected native provenance details");
   if ("diagnostic" in result.details) {
-    throw new Error(`Expected provenance details, received ${result.details.diagnostic}`);
+    throw new Error(
+      `Expected provenance details, received ${result.details.diagnostic}`,
+    );
   }
   return result.details;
 }
@@ -31,53 +43,134 @@ function fixture() {
     workingCounts: { applications: 0, workUnits: 0, changes: 0 },
     integrating: [],
   }));
-  const neighbors = vi.fn(async (input: Parameters<ProvenanceToolDeps["vcs"]["neighbors"]>[0]) => {
-    if (input.root.kind === "event") {
-      return {
-        root: input.root,
-        edges: [
-          {
-            kind: "contains-repository" as const,
-            from: input.root,
-            to: {
-              kind: "repository" as const,
-              state: input.root,
-              repositoryId: "repository:packages/foo",
+  const neighbors = vi.fn(
+    async (input: Parameters<ProvenanceToolDeps["vcs"]["neighbors"]>[0]) => {
+      if (input.root.kind === "event") {
+        return {
+          root: input.root,
+          edges: [
+            {
+              kind: "contains-repository" as const,
+              from: input.root,
+              to: {
+                kind: "repository" as const,
+                state: input.root,
+                repositoryId: "repository:packages/foo",
+              },
             },
-          },
-        ],
-        nextCursor: null,
-      };
-    }
-    if (input.root.kind === "work-unit") {
-      return {
-        root: input.root,
-        edges: [
-          {
-            kind: "authored-change" as const,
-            from: input.root,
-            to: { kind: "change" as const, changeId: "change:1" },
-          },
-        ],
-        nextCursor: "cursor:next",
-      };
-    }
-    if (input.root.kind === "applied-change") {
-      return {
-        root: input.root,
-        edges: [
-          {
-            kind: "realizes-change" as const,
-            from: input.root,
-            to: { kind: "change" as const, changeId: "change:1" },
-          },
-        ],
-        nextCursor: null,
-      };
-    }
-    if (input.root.kind === "command") {
-      if (input.root.commandId === "command:direct") {
-        return { root: input.root, edges: [], nextCursor: null };
+          ],
+          nextCursor: null,
+        };
+      }
+      if (input.root.kind === "work-unit") {
+        return {
+          root: input.root,
+          edges: [
+            {
+              kind: "authored-change" as const,
+              from: input.root,
+              to: { kind: "change" as const, changeId: "change:1" },
+            },
+          ],
+          nextCursor: "cursor:next",
+        };
+      }
+      if (input.root.kind === "applied-change") {
+        return {
+          root: input.root,
+          edges: [
+            {
+              kind: "realizes-change" as const,
+              from: input.root,
+              to: { kind: "change" as const, changeId: "change:1" },
+            },
+          ],
+          nextCursor: null,
+        };
+      }
+      if (input.root.kind === "command") {
+        if (input.root.commandId === "command:direct") {
+          return { root: input.root, edges: [], nextCursor: null };
+        }
+        return {
+          root: input.root,
+          edges: [
+            {
+              kind: "caused-by" as const,
+              from: input.root,
+              to: {
+                kind: "trajectory-invocation" as const,
+                logId: "log:1",
+                head: "head:1",
+                invocationId: "invocation:1",
+              },
+            },
+          ],
+          nextCursor: null,
+        };
+      }
+      if (input.root.kind === "trajectory-invocation") {
+        return {
+          root: input.root,
+          edges: [
+            {
+              kind: "part-of-turn" as const,
+              from: input.root,
+              to: {
+                kind: "trajectory-turn" as const,
+                logId: input.root.logId,
+                head: input.root.head,
+                turnId: "turn:1",
+              },
+            },
+            {
+              kind: "part-of-trajectory" as const,
+              from: input.root,
+              to: {
+                kind: "trajectory" as const,
+                logId: input.root.logId,
+                head: input.root.head,
+              },
+            },
+          ],
+          nextCursor: null,
+        };
+      }
+      if (input.root.kind === "trajectory-turn") {
+        return {
+          root: input.root,
+          edges: [
+            {
+              kind: "triggered-by" as const,
+              from: input.root,
+              to: {
+                kind: "trajectory-message" as const,
+                logId: input.root.logId,
+                head: input.root.head,
+                messageId: "message:prompt",
+              },
+            },
+          ],
+          nextCursor: null,
+        };
+      }
+      if (input.root.kind === "trajectory-message") {
+        return {
+          root: input.root,
+          edges: [
+            {
+              kind: "triggered-by" as const,
+              from: {
+                kind: "trajectory-turn" as const,
+                logId: input.root.logId,
+                head: input.root.head,
+                turnId: "turn:1",
+              },
+              to: input.root,
+            },
+          ],
+          nextCursor: null,
+        };
       }
       return {
         root: input.root,
@@ -85,91 +178,16 @@ function fixture() {
           {
             kind: "caused-by" as const,
             from: input.root,
-            to: {
-              kind: "trajectory-invocation" as const,
-              logId: "log:1",
-              head: "head:1",
-              invocationId: "invocation:1",
-            },
+            to: { kind: "command" as const, commandId: "command:1" },
           },
         ],
-        nextCursor: null,
+        nextCursor: "cursor:next",
       };
-    }
-    if (input.root.kind === "trajectory-invocation") {
-      return {
-        root: input.root,
-        edges: [
-          {
-            kind: "part-of-turn" as const,
-            from: input.root,
-            to: {
-              kind: "trajectory-turn" as const,
-              logId: input.root.logId,
-              head: input.root.head,
-              turnId: "turn:1",
-            },
-          },
-          {
-            kind: "part-of-trajectory" as const,
-            from: input.root,
-            to: { kind: "trajectory" as const, logId: input.root.logId, head: input.root.head },
-          },
-        ],
-        nextCursor: null,
-      };
-    }
-    if (input.root.kind === "trajectory-turn") {
-      return {
-        root: input.root,
-        edges: [
-          {
-            kind: "triggered-by" as const,
-            from: input.root,
-            to: {
-              kind: "trajectory-message" as const,
-              logId: input.root.logId,
-              head: input.root.head,
-              messageId: "message:prompt",
-            },
-          },
-        ],
-        nextCursor: null,
-      };
-    }
-    if (input.root.kind === "trajectory-message") {
-      return {
-        root: input.root,
-        edges: [
-          {
-            kind: "triggered-by" as const,
-            from: {
-              kind: "trajectory-turn" as const,
-              logId: input.root.logId,
-              head: input.root.head,
-              turnId: "turn:1",
-            },
-            to: input.root,
-          },
-        ],
-        nextCursor: null,
-      };
-    }
-    return {
-      root: input.root,
-      edges: [
-        {
-          kind: "caused-by" as const,
-          from: input.root,
-          to: { kind: "command" as const, commandId: "command:1" },
-        },
-      ],
-      nextCursor: "cursor:next",
-    };
-  });
+    },
+  );
   const inspect = vi.fn(
     async (
-      input: Parameters<ProvenanceToolDeps["vcs"]["inspect"]>[0]
+      input: Parameters<ProvenanceToolDeps["vcs"]["inspect"]>[0],
     ): ReturnType<ProvenanceToolDeps["vcs"]["inspect"]> => {
       const common = { root: input.node, edges: [], hasMoreEdges: false };
       switch (input.node.kind) {
@@ -225,7 +243,10 @@ function fixture() {
             },
           };
         case "trajectory":
-          return { ...common, node: { kind: "trajectory" as const, value: input.node } };
+          return {
+            ...common,
+            node: { kind: "trajectory" as const, value: input.node },
+          };
         case "work-unit":
           return {
             ...common,
@@ -241,7 +262,10 @@ function fixture() {
                 incorporatedChangeIds: [],
                 decisionCount: 0,
                 decisionIds: [],
-                intent: { text: "Rename the public entry point", tier: "stated" as const },
+                intent: {
+                  text: "Rename the public entry point",
+                  tier: "stated" as const,
+                },
                 intentSummary: "Rename the public entry point",
                 authorContextId: "context:1",
                 triggerEvidence: null,
@@ -264,7 +288,10 @@ function fixture() {
                 contextId: "context:1",
                 method: "vcs.edit",
                 status: "complete" as const,
-                result: { kind: "work-unit" as const, workUnitId: "work-unit:1" },
+                result: {
+                  kind: "work-unit" as const,
+                  workUnitId: "work-unit:1",
+                },
                 createdAt: "2026-07-15T10:00:00.000Z",
                 completedAt: "2026-07-15T10:00:01.000Z",
               },
@@ -279,13 +306,16 @@ function fixture() {
                 logId: input.node.logId,
                 head: input.node.head,
                 invocationId: input.node.invocationId,
+                nativeInvocation: null,
+                originatingInput: null,
                 turnId: "turn:1",
                 name: "provenance",
                 status: "complete",
                 terminalOutcome: "success",
                 requestRef: {
                   protocol: "vibestudio.blob-ref.v1",
-                  digest: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                  digest:
+                    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
                   size: 48,
                   encoding: "json",
                   originalBytes: 48,
@@ -327,8 +357,14 @@ function fixture() {
                 startedEventId: null,
                 completedEventId: "trajectory-event:prompt",
                 sourceMessageId: "channel-message:prompt",
-                senderRef: { kind: "user", id: "user:alice", participantId: "user:alice" },
-                textBlocks: [{ blockId: "block:prompt", content: "Move the parser" }],
+                senderRef: {
+                  kind: "user",
+                  id: "user:alice",
+                  participantId: "user:alice",
+                },
+                textBlocks: [
+                  { blockId: "block:prompt", content: "Move the parser" },
+                ],
               },
             },
           };
@@ -385,7 +421,10 @@ function fixture() {
               kind: "decision" as const,
               value: {
                 decisionId: input.node.decisionId,
-                intent: { text: "Keep the current implementation", tier: "stated" as const },
+                intent: {
+                  text: "Keep the current implementation",
+                  tier: "stated" as const,
+                },
                 sourceIntents: [],
                 sourceState: working,
                 targetBasis: working,
@@ -404,7 +443,7 @@ function fixture() {
         case "application":
           throw new Error(`unused ${input.node.kind} inspection fixture`);
       }
-    }
+    },
   );
   const readFile = vi.fn(async () => ({
     repositoryId: "repository:packages/foo",
@@ -420,15 +459,17 @@ function fixture() {
     content: { kind: "text" as const, text: "content" },
   }));
   const resolveRepository = vi.fn(
-    async (input: Parameters<ProvenanceToolDeps["vcs"]["resolveRepository"]>[0]) => ({
+    async (
+      input: Parameters<ProvenanceToolDeps["vcs"]["resolveRepository"]>[0],
+    ) => ({
       state: input.state,
       repositoryId: "repository:packages/foo",
       repoPath: "packages/foo",
-    })
+    }),
   );
   const history = vi.fn(
     async (
-      input: Parameters<ProvenanceToolDeps["vcs"]["history"]>[0]
+      input: Parameters<ProvenanceToolDeps["vcs"]["history"]>[0],
     ): ReturnType<ProvenanceToolDeps["vcs"]["history"]> => ({
       root: input.root,
       entries: [
@@ -439,11 +480,11 @@ function fixture() {
         },
       ],
       nextCursor: "cursor:history",
-    })
+    }),
   );
   const walk = vi.fn(
     async (
-      input: Parameters<ProvenanceToolDeps["vcs"]["walk"]>[0]
+      input: Parameters<ProvenanceToolDeps["vcs"]["walk"]>[0],
     ): ReturnType<ProvenanceToolDeps["vcs"]["walk"]> => ({
       walk: input.walk,
       scope: input.walk === "cohort" ? (input.scope ?? "command") : null,
@@ -453,10 +494,18 @@ function fixture() {
           node: { kind: "work-unit", workUnitId: "work-unit:1" },
           label: "work unit · edit",
           depth: 0,
-          intent: { tier: "stated", text: "Cap the retry backoff at 30 seconds" },
+          intent: {
+            tier: "stated",
+            text: "Cap the retry backoff at 30 seconds",
+          },
         },
         {
-          node: { kind: "trajectory-message", logId: "log:1", head: "head:1", messageId: "m:1" },
+          node: {
+            kind: "trajectory-message",
+            logId: "log:1",
+            head: "head:1",
+            messageId: "m:1",
+          },
           label: "message · user from user",
           depth: 3,
           detail: "Cap the retry backoff at 30 seconds",
@@ -466,11 +515,11 @@ function fixture() {
       omitted: [{ label: "sibling applications", count: 3 }],
       notes: [],
       nextCursor: "cursor:walk",
-    })
+    }),
   );
   const query = vi.fn(
     async (
-      _input: Parameters<ProvenanceToolDeps["vcs"]["query"]>[0]
+      _input: Parameters<ProvenanceToolDeps["vcs"]["query"]>[0],
     ): ReturnType<ProvenanceToolDeps["vcs"]["query"]> => ({
       schemaVersion: 1,
       state: { kind: "event", eventId: "event:query" },
@@ -479,11 +528,11 @@ function fixture() {
       rowsRead: 1,
       truncated: false,
       refusal: null,
-    })
+    }),
   );
   const search = vi.fn(
     async (
-      input: Parameters<ProvenanceToolDeps["vcs"]["search"]>[0]
+      input: Parameters<ProvenanceToolDeps["vcs"]["search"]>[0],
     ): ReturnType<ProvenanceToolDeps["vcs"]["search"]> => ({
       text: input.text,
       indexMode: "fts",
@@ -493,14 +542,27 @@ function fixture() {
           subjectKind: "work-unit",
           label: "work unit",
           excerpt: "cap the retry backoff",
-          intent: { tier: "stated", text: "Cap the retry backoff at 30 seconds" },
+          intent: {
+            tier: "stated",
+            text: "Cap the retry backoff at 30 seconds",
+          },
         },
       ],
       truncated: false,
-    })
+    }),
   );
   const value: ProvenanceToolDeps = {
-    vcs: { status, resolveRepository, neighbors, inspect, readFile, history, walk, query, search },
+    vcs: {
+      status,
+      resolveRepository,
+      neighbors,
+      inspect,
+      readFile,
+      history,
+      walk,
+      query,
+      search,
+    },
     contextId: "context:1",
     session: { logId: "log:1", head: "head:1" },
   };
@@ -532,13 +594,19 @@ describe("createProvenanceTool", () => {
       Value.Check(tool.parameters, {
         target: "packages/foo/bar.ts",
         limit: 3,
-      })
+      }),
     ).toBe(true);
     expect(Value.Check(tool.parameters, { target: "@r1-abcd" })).toBe(true);
-    expect(Value.Check(tool.parameters, { target: "@r1-abcd", historyPage: 2 })).toBe(false);
+    expect(
+      Value.Check(tool.parameters, { target: "@r1-abcd", historyPage: 2 }),
+    ).toBe(false);
     expect(Value.Check(tool.parameters, { root, historyPage: 2 })).toBe(false);
-    expect(Value.Check(tool.parameters, { target: root, historyPage: 2 })).toBe(false);
-    expect(Value.Check(tool.parameters, { root: { ...root, historyPage: 2 } })).toBe(false);
+    expect(Value.Check(tool.parameters, { target: root, historyPage: 2 })).toBe(
+      false,
+    );
+    expect(
+      Value.Check(tool.parameters, { root: { ...root, historyPage: 2 } }),
+    ).toBe(false);
   });
 
   it("accepts an ordinary subject ref as an idempotent first-page read", async () => {
@@ -547,18 +615,29 @@ describe("createProvenanceTool", () => {
     const tool = createProvenanceTool("/", f.value, references);
     const root = { kind: "change" as const, changeId: "change:1" };
 
-    const result = await tool.execute("call:first-page", {
-      target: putProvenanceReference(references, root, 5),
-    });
+    const result = await executeTool(
+      tool,
+      {
+        target: putProvenanceReference(references, root, 5),
+      },
+      { callId: "call:first-page" },
+    );
 
     expect(f.neighbors).toHaveBeenCalledWith({ root, limit: 5 });
-    expect(result.details).toMatchObject({ subjectKind: "change", adjacencyCount: 1 });
+    expect(result.details).toMatchObject({
+      subjectKind: "change",
+      adjacencyCount: 1,
+    });
   });
 
   it("resolves a friendly repository path to its typed repository node", async () => {
     const f = fixture();
     const tool = createProvenanceTool("/", f.value);
-    const result = await tool.execute("call:repository", { target: "packages/foo" });
+    const result = await executeTool(
+      tool,
+      { target: "packages/foo" },
+      { callId: "call:repository" },
+    );
 
     expect(f.resolveRepository).toHaveBeenCalledWith({
       state: working,
@@ -591,7 +670,11 @@ describe("createProvenanceTool", () => {
   it("resolves a friendly file path to a typed file node and pages neighbors", async () => {
     const f = fixture();
     const tool = createProvenanceTool("/", f.value);
-    const result = await tool.execute("call:1", { target: "packages/foo/bar.ts" });
+    const result = await executeTool(
+      tool,
+      { target: "packages/foo/bar.ts" },
+      { callId: "call:1" },
+    );
 
     expect(f.neighbors).toHaveBeenLastCalledWith({
       root: {
@@ -626,13 +709,12 @@ describe("createProvenanceTool", () => {
       direction: "past",
       limit: 5,
     });
-    const text = result.content[0]?.type === "text" ? result.content[0].text : "";
+    const text =
+      result.content[0]?.type === "text" ? result.content[0].text : "";
     expect(text).toMatch(
-      /past · "Explain the public entry point" · change @r[0-9a-z]+-[0-9a-f]{4}/u
+      /past · "Explain the public entry point" · change @r[0-9a-z]+-[0-9a-f]{4}/u,
     );
-    expect(text).toMatch(
-      /more file history → @r[0-9a-z]+-[0-9a-f]{4}/u
-    );
+    expect(text).toMatch(/more file history → @r[0-9a-z]+-[0-9a-f]{4}/u);
     expect(text).not.toContain("cursor:history");
     expect(text).not.toContain("cursor:next");
     expect(result.details).toMatchObject({
@@ -660,9 +742,13 @@ describe("createProvenanceTool", () => {
       page: 2,
       cursor: "cursor:history",
     });
-    const result = await tool.execute("call:history-page", {
-      target: ref,
-    });
+    const result = await executeTool(
+      tool,
+      {
+        target: ref,
+      },
+      { callId: "call:history-page" },
+    );
 
     expect(f.neighbors).not.toHaveBeenCalled();
     expect(f.inspect).not.toHaveBeenCalled();
@@ -673,17 +759,20 @@ describe("createProvenanceTool", () => {
       cursor: "cursor:history",
       limit: 2,
     });
-    const text = result.content[0]?.type === "text" ? result.content[0].text : "";
+    const text =
+      result.content[0]?.type === "text" ? result.content[0].text : "";
     expect(text).toContain("file history page 2");
-    expect(text).toMatch(
-      /more file history → @r[0-9a-z]+-[0-9a-f]{4}/u
+    expect(text).toMatch(/more file history → @r[0-9a-z]+-[0-9a-f]{4}/u);
+    expect(text.indexOf("more file history")).toBeLessThan(
+      text.indexOf("past ·"),
     );
-    expect(text.indexOf("more file history")).toBeLessThan(text.indexOf("past ·"));
     expect(text).not.toContain("node ·");
     expect(text).not.toContain("—caused-by→");
     expect(result.details).toMatchObject({
       historyCount: 1,
-      continuations: [{ target: expect.stringMatching(/^@r/u), kind: "file-history" }],
+      continuations: [
+        { target: expect.stringMatching(/^@r/u), kind: "file-history" },
+      ],
     });
     expect(result.details).not.toHaveProperty("adjacencyCount");
   });
@@ -699,13 +788,17 @@ describe("createProvenanceTool", () => {
       fileId: "file:bar",
     };
 
-    await tool.execute("call:adjacency-page", {
-      target: putProvenanceReference(references, target, 3, {
-        stream: "adjacency",
-        page: 2,
-        cursor: "cursor:next",
-      }),
-    });
+    await executeTool(
+      tool,
+      {
+        target: putProvenanceReference(references, target, 3, {
+          stream: "adjacency",
+          page: 2,
+          cursor: "cursor:next",
+        }),
+      },
+      { callId: "call:adjacency-page" },
+    );
 
     expect(f.neighbors).toHaveBeenCalledWith({
       root: target,
@@ -727,14 +820,18 @@ describe("createProvenanceTool", () => {
       fileId: "file:bar",
     };
 
-    await tool.execute("call:clamped-limit", {
-      target: putProvenanceReference(references, target, 5, {
-        stream: "file-history",
-        page: 2,
-        cursor: "cursor:history",
-      }),
-      limit: 50,
-    });
+    await executeTool(
+      tool,
+      {
+        target: putProvenanceReference(references, target, 5, {
+          stream: "file-history",
+          page: 2,
+          cursor: "cursor:history",
+        }),
+        limit: 50,
+      },
+      { callId: "call:clamped-limit" },
+    );
 
     expect(f.history).toHaveBeenNthCalledWith(1, {
       root: target,
@@ -765,13 +862,17 @@ describe("createProvenanceTool", () => {
       fileId: "file:bar",
     };
 
-    const result = await tool.execute("call:history-unavailable", {
-      target: putProvenanceReference(references, target, 5, {
-        stream: "file-history",
-        page: 2,
-        cursor: "cursor:history",
-      }),
-    });
+    const result = await executeTool(
+      tool,
+      {
+        target: putProvenanceReference(references, target, 5, {
+          stream: "file-history",
+          page: 2,
+          cursor: "cursor:history",
+        }),
+      },
+      { callId: "call:history-unavailable" },
+    );
 
     expect(result.details).toMatchObject({
       target: expect.stringMatching(/^@r/u),
@@ -786,10 +887,14 @@ describe("createProvenanceTool", () => {
     f.value.vcs.resolveRepository = vi.fn(async () => null);
     const tool = createProvenanceTool("/", f.value);
 
-    const result = await tool.execute("call:missing-repository", {
-      target: "projects/missing-history",
-      limit: 1,
-    });
+    const result = await executeTool(
+      tool,
+      {
+        target: "projects/missing-history",
+        limit: 1,
+      },
+      { callId: "call:missing-repository" },
+    );
 
     expect(result.details).toMatchObject({
       diagnostic: "invalid-target",
@@ -804,7 +909,11 @@ describe("createProvenanceTool", () => {
   it("resolves a repository-root path without pretending it is a file", async () => {
     const f = fixture();
     const tool = createProvenanceTool("/", f.value);
-    const result = await tool.execute("call:repo", { target: "packages/foo" });
+    const result = await executeTool(
+      tool,
+      { target: "packages/foo" },
+      { callId: "call:repo" },
+    );
 
     const root = {
       kind: "repository" as const,
@@ -828,7 +937,7 @@ describe("createProvenanceTool", () => {
   it("walks the exact session trajectory node", async () => {
     const f = fixture();
     const tool = createProvenanceTool("/", f.value);
-    await tool.execute("call:2", { target: "session" });
+    await executeTool(tool, { target: "session" }, { callId: "call:2" });
     expect(f.neighbors).toHaveBeenCalledWith({
       root: { kind: "trajectory", logId: "log:1", head: "head:1" },
       limit: 5,
@@ -840,9 +949,13 @@ describe("createProvenanceTool", () => {
     const tool = createProvenanceTool("/", f.value);
 
     await expect(
-      tool.execute("call:workspace-event", {
-        target: "workspace-event:abc123",
-      })
+      executeTool(
+        tool,
+        {
+          target: "workspace-event:abc123",
+        },
+        { callId: "call:workspace-event" },
+      ),
     ).rejects.toThrow("unused event inspection fixture");
 
     expect(f.value.vcs.inspect).toHaveBeenCalledWith({
@@ -854,12 +967,16 @@ describe("createProvenanceTool", () => {
   it("converts a supported semantic shorthand", async () => {
     const f = fixture();
     const tool = createProvenanceTool("/", f.value);
-    await tool.execute("call:3", { target: "change:42" });
+    await executeTool(tool, { target: "change:42" }, { callId: "call:3" });
     expect(f.neighbors).toHaveBeenCalledWith({
       root: { kind: "change", changeId: "change:42" },
       limit: 5,
     });
-    await tool.execute("call:applied", { target: "applied-change:42" });
+    await executeTool(
+      tool,
+      { target: "applied-change:42" },
+      { callId: "call:applied" },
+    );
     expect(f.neighbors).toHaveBeenCalledWith({
       root: { kind: "applied-change", appliedChangeId: "applied-change:42" },
       limit: 5,
@@ -871,13 +988,17 @@ describe("createProvenanceTool", () => {
     const references = createMemoryAgentReferenceStore();
     const tool = createProvenanceTool("/", f.value, references);
     const root = { kind: "decision" as const, decisionId: "decision:1" };
-    await tool.execute("call:4", {
-      target: putProvenanceReference(references, root, 5, {
-        stream: "adjacency",
-        page: 2,
-        cursor: "cursor:next",
-      }),
-    });
+    await executeTool(
+      tool,
+      {
+        target: putProvenanceReference(references, root, 5, {
+          stream: "adjacency",
+          page: 2,
+          cursor: "cursor:next",
+        }),
+      },
+      { callId: "call:4" },
+    );
     expect(f.neighbors).toHaveBeenCalledOnce();
     expect(f.neighbors).toHaveBeenLastCalledWith({
       root,
@@ -889,60 +1010,88 @@ describe("createProvenanceTool", () => {
   it("renders work-unit intent before exact adjacency and retains its endpoints", async () => {
     const f = fixture();
     const tool = createProvenanceTool("/", f.value);
-    const result = await tool.execute("call:work", { target: "work-unit:1" });
-    const text = result.content[0]?.type === "text" ? result.content[0].text : "";
+    const result = await executeTool(
+      tool,
+      { target: "work-unit:1" },
+      { callId: "call:work" },
+    );
+    const text =
+      result.content[0]?.type === "text" ? result.content[0].text : "";
 
     expect(text).toContain(
-      'node · work-unit · edit · stated: "Rename the public entry point" · command @r'
+      'node · work-unit · edit · stated: "Rename the public entry point" · command @r',
     );
     expect(text).toMatch(
-      /work-unit @r[0-9a-z]+-[0-9a-f]{4} —authored-change→ change @r[0-9a-z]+-[0-9a-f]{4}/u
+      /work-unit @r[0-9a-z]+-[0-9a-f]{4} —authored-change→ change @r[0-9a-z]+-[0-9a-f]{4}/u,
     );
-    expect(text.indexOf("node ·")).toBeLessThan(text.indexOf("—authored-change→"));
-    expect(detailsOf(result)).toMatchObject({ subjectKind: "work-unit", adjacencyCount: 1 });
+    expect(text.indexOf("node ·")).toBeLessThan(
+      text.indexOf("—authored-change→"),
+    );
+    expect(detailsOf(result)).toMatchObject({
+      subjectKind: "work-unit",
+      adjacencyCount: 1,
+    });
   });
 
   it("renders command state and trajectory-invocation metadata", async () => {
     const f = fixture();
     const references = createMemoryAgentReferenceStore();
     const tool = createProvenanceTool("/", f.value, references);
-    const command = await tool.execute("call:command", { target: "command:1" });
+    const command = await executeTool(
+      tool,
+      { target: "command:1" },
+      { callId: "call:command" },
+    );
     const invocationRoot = {
       kind: "trajectory-invocation" as const,
       logId: "log:1",
       head: "head:1",
       invocationId: "invocation:1",
     };
-    const invocation = await tool.execute("call:invocation", {
-      target: putProvenanceReference(references, invocationRoot, 5),
-    });
-    const commandText = command.content[0]?.type === "text" ? command.content[0].text : "";
-    const invocationText = invocation.content[0]?.type === "text" ? invocation.content[0].text : "";
+    const invocation = await executeTool(
+      tool,
+      {
+        target: putProvenanceReference(references, invocationRoot, 5),
+      },
+      { callId: "call:invocation" },
+    );
+    const commandText =
+      command.content[0]?.type === "text" ? command.content[0].text : "";
+    const invocationText =
+      invocation.content[0]?.type === "text" ? invocation.content[0].text : "";
 
     expect(commandText).toContain("node · command · vcs.edit · complete");
     expect(invocationText).toContain(
-      'node · trajectory-invocation · name "provenance" · status complete · outcome success'
+      'node · trajectory-invocation · name "provenance" · status complete · outcome success',
     );
     expect(invocationText).toContain(
-      'request aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa · json · 48 bytes · read services.blobstore.getText("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")'
+      'request aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa · json · 48 bytes · read services.blobstore.getText("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")',
     );
     expect(invocationText).toMatch(
-      /trajectory-invocation @r[0-9a-z]+-[0-9a-f]{4} —part-of-trajectory→ trajectory @r[0-9a-z]+-[0-9a-f]{4}/u
+      /trajectory-invocation @r[0-9a-z]+-[0-9a-f]{4} —part-of-trajectory→ trajectory @r[0-9a-z]+-[0-9a-f]{4}/u,
     );
     expect(invocationText.indexOf("node ·")).toBeLessThan(
-      invocationText.indexOf("—part-of-trajectory→")
+      invocationText.indexOf("—part-of-trajectory→"),
     );
   });
 
   it("renders a direct command as an honest causal endpoint", async () => {
     const f = fixture();
     const tool = createProvenanceTool("/", f.value);
-    const result = await tool.execute("call:direct", { target: "command:direct" });
+    const result = await executeTool(
+      tool,
+      { target: "command:direct" },
+      { callId: "call:direct" },
+    );
     const details = detailsOf(result);
-    const rendered = result.content[0]?.type === "text" ? result.content[0].text : "";
+    const rendered =
+      result.content[0]?.type === "text" ? result.content[0].text : "";
 
     expect(rendered).toContain("node · command · vcs.edit · complete");
-    expect(details).toMatchObject({ subjectKind: "command", adjacencyCount: 0 });
+    expect(details).toMatchObject({
+      subjectKind: "command",
+      adjacencyCount: 0,
+    });
     expect(rendered).not.toContain("trajectory-invocation");
   });
 
@@ -962,35 +1111,50 @@ describe("createProvenanceTool", () => {
       head: "head:1",
       messageId: "message:prompt",
     };
-    const turn = await tool.execute("call:turn", {
-      target: putProvenanceReference(references, turnRoot, 5),
-    });
-    const message = await tool.execute("call:message", {
-      target: putProvenanceReference(references, messageRoot, 5),
-    });
+    const turn = await executeTool(
+      tool,
+      {
+        target: putProvenanceReference(references, turnRoot, 5),
+      },
+      { callId: "call:turn" },
+    );
+    const message = await executeTool(
+      tool,
+      {
+        target: putProvenanceReference(references, messageRoot, 5),
+      },
+      { callId: "call:message" },
+    );
     const turnDetails = detailsOf(turn);
-    const turnText = turn.content[0]?.type === "text" ? turn.content[0].text : "";
-    const messageText = message.content[0]?.type === "text" ? message.content[0].text : "";
+    const turnText =
+      turn.content[0]?.type === "text" ? turn.content[0].text : "";
+    const messageText =
+      message.content[0]?.type === "text" ? message.content[0].text : "";
 
-    expect(turnText).toContain(
-      "node · trajectory-turn · ordinal 1 · summary"
-    );
+    expect(turnText).toContain("node · trajectory-turn · ordinal 1 · summary");
     expect(messageText).toContain(
-      'node · trajectory-message · role user · status completed · sender user · text "Move the parser"'
+      'node · trajectory-message · role user · status completed · sender user · text "Move the parser"',
     );
-    expect(turnDetails).toMatchObject({ subjectKind: "trajectory-turn", adjacencyCount: 1 });
+    expect(turnDetails).toMatchObject({
+      subjectKind: "trajectory-turn",
+      adjacencyCount: 1,
+    });
   });
 
   it("returns a corrective diagnostic for non-target vocabulary", async () => {
     const f = fixture();
     const tool = createProvenanceTool("/", f.value);
-    await expect(tool.execute("call:5", { target: "outcome:42" })).resolves.toMatchObject({
+    await expect(
+      executeTool(tool, { target: "outcome:42" }, { callId: "call:5" }),
+    ).resolves.toMatchObject({
       details: {
         diagnostic: "invalid-target",
         target: "outcome:42",
       },
     });
-    await expect(tool.execute("call:service", { target: "vcs" })).resolves.toMatchObject({
+    await expect(
+      executeTool(tool, { target: "vcs" }, { callId: "call:service" }),
+    ).resolves.toMatchObject({
       details: {
         diagnostic: "invalid-target",
         target: "vcs",
@@ -1001,31 +1165,42 @@ describe("createProvenanceTool", () => {
   it("guides ambiguous trajectory labels toward returned compact refs", async () => {
     const f = fixture();
     const tool = createProvenanceTool("/", f.value);
-    const result = await tool.execute("call:trajectory-label", {
-      target: "trajectory-message:message:prompt",
-    });
+    const result = await executeTool(
+      tool,
+      {
+        target: "trajectory-message:message:prompt",
+      },
+      { callId: "call:trajectory-label" },
+    );
     expect(result).toMatchObject({
       details: {
         diagnostic: "invalid-target",
         target: "trajectory-message:message:prompt",
       },
     });
-    const text = result.content[0]?.type === "text" ? result.content[0].text : "";
+    const text =
+      result.content[0]?.type === "text" ? result.content[0].text : "";
     expect(text).toContain("Trajectory subnodes require the compact ref");
   });
 });
 
 describe("question-shaped provenance surfaces", () => {
-  const textOf = (result: { content: Array<{ type: string; text?: string }> }): string =>
+  const textOf = (result: {
+    content: Array<{ type: string; text?: string }>;
+  }): string =>
     result.content[0]?.type === "text" ? (result.content[0].text ?? "") : "";
 
   it("renders a cause walk as a spine with intents leading and refs, not identities", async () => {
     const f = fixture();
     const tool = createProvenanceTool("/", f.value);
-    const result = await tool.execute("call:cause", {
-      target: "work-unit:1",
-      walk: "cause",
-    });
+    const result = await executeTool(
+      tool,
+      {
+        target: "work-unit:1",
+        walk: "cause",
+      },
+      { callId: "call:cause" },
+    );
     const text = textOf(result);
 
     expect(f.walk).toHaveBeenCalledWith(
@@ -1033,10 +1208,14 @@ describe("question-shaped provenance surfaces", () => {
         contextId: "context:1",
         walk: "cause",
         subject: { kind: "work-unit", workUnitId: "work-unit:1" },
-      })
+      }),
     );
-    expect(text).toContain("prov cause · work-unit:1 · what was being attempted");
-    expect(text).toContain('stated: "Cap the retry backoff at 30 seconds" · work unit · edit');
+    expect(text).toContain(
+      "prov cause · work-unit:1 · what was being attempted",
+    );
+    expect(text).toContain(
+      'stated: "Cap the retry backoff at 30 seconds" · work unit · edit',
+    );
     expect(text).toContain("← the originating human statement");
     expect(text).toContain("… and 3 sibling applications");
     expect(text).toContain("continue: pass any @ref back as target");
@@ -1052,16 +1231,30 @@ describe("question-shaped provenance surfaces", () => {
     const f = fixture();
     const references = createMemoryAgentReferenceStore();
     const tool = createProvenanceTool("/", f.value, references);
-    const first = await tool.execute("call:cohort", {
-      target: "work-unit:1",
-      walk: "cohort",
-      scope: "turn",
-    });
-    const continuation = /more → (@r[0-9a-z]+-[0-9a-f]{4})/u.exec(textOf(first))?.[1];
+    const first = await executeTool(
+      tool,
+      {
+        target: "work-unit:1",
+        walk: "cohort",
+        scope: "turn",
+      },
+      { callId: "call:cohort" },
+    );
+    const continuation = /more → (@r[0-9a-z]+-[0-9a-f]{4})/u.exec(
+      textOf(first),
+    )?.[1];
     expect(continuation).toBeTruthy();
-    await tool.execute("call:cohort-next", { target: continuation! });
+    await executeTool(
+      tool,
+      { target: continuation! },
+      { callId: "call:cohort-next" },
+    );
     expect(f.walk).toHaveBeenLastCalledWith(
-      expect.objectContaining({ walk: "cohort", scope: "turn", cursor: "cursor:walk" })
+      expect.objectContaining({
+        walk: "cohort",
+        scope: "turn",
+        cursor: "cursor:walk",
+      }),
     );
   });
 
@@ -1070,24 +1263,36 @@ describe("question-shaped provenance surfaces", () => {
     { targets: ["@r1-abcd"] },
     { walk: "cause" as const },
     { scope: "turn" as const },
-  ])("rejects selectors that would silently be ignored by a query: %j", async (selector) => {
-    const f = fixture();
-    const tool = createProvenanceTool("/", f.value);
-    const result = await tool.execute("ambiguous-query", {
-      query: "SELECT work_unit_id FROM prov_work_units", ...selector,
-    });
-    expect(result.details).toMatchObject({ diagnostic: "invalid-input" });
-    expect(textOf(result)).toContain("Queries cover the visible context");
-    expect(f.query).not.toHaveBeenCalled();
-    expect(f.neighbors).not.toHaveBeenCalled();
-  });
+  ])(
+    "rejects selectors that would silently be ignored by a query: %j",
+    async (selector) => {
+      const f = fixture();
+      const tool = createProvenanceTool("/", f.value);
+      const result = await executeTool(
+        tool,
+        {
+          query: "SELECT work_unit_id FROM prov_work_units",
+          ...selector,
+        },
+        { callId: "ambiguous-query" },
+      );
+      expect(result.details).toMatchObject({ diagnostic: "invalid-input" });
+      expect(textOf(result)).toContain("Queries cover the visible context");
+      expect(f.query).not.toHaveBeenCalled();
+      expect(f.neighbors).not.toHaveBeenCalled();
+    },
+  );
 
   it("renders query results as a table with refs in the identity columns", async () => {
     const f = fixture();
     const tool = createProvenanceTool("/", f.value);
-    const result = await tool.execute("call:query", {
-      query: "SELECT work_unit_id, intent_tier FROM prov_work_units",
-    });
+    const result = await executeTool(
+      tool,
+      {
+        query: "SELECT work_unit_id, intent_tier FROM prov_work_units",
+      },
+      { callId: "call:query" },
+    );
     const text = textOf(result);
 
     expect(text).toContain("| work_unit_id | intent_tier |");
@@ -1109,40 +1314,71 @@ describe("question-shaped provenance surfaces", () => {
       refusal: null,
     });
     const tool = createProvenanceTool("/", f.value);
-    const result = await tool.execute("call:polymorphic-query", {
-      query: "SELECT subject_kind, subject_id, text FROM prov_search",
-    });
+    const result = await executeTool(
+      tool,
+      {
+        query: "SELECT subject_kind, subject_id, text FROM prov_search",
+      },
+      { callId: "call:polymorphic-query" },
+    );
     const text = textOf(result);
 
     expect(text).toContain("| subject_id | text |");
-    expect(text).toMatch(/\| @r[0-9a-z]+-[0-9a-f]{4} \| Create the fixture \|/u);
+    expect(text).toMatch(
+      /\| @r[0-9a-z]+-[0-9a-f]{4} \| Create the fixture \|/u,
+    );
     expect(text).not.toContain(workUnitId);
   });
 
-  it.each(["repository_id", "repo"])("pins a query repository ref to its returned state through %s", async (column) => {
-    const f = fixture();
-    const repositoryId = `repository:${"b".repeat(64)}`;
-    const state = { kind: "application" as const, applicationId: "application:query" };
-    f.query.mockResolvedValueOnce({
-      schemaVersion: 1,
-      state,
-      columns: [column, "file_count"],
-      rows: [[repositoryId, 4]],
-      rowsRead: 1,
-      truncated: false,
-      refusal: null,
-    });
-    const references = createMemoryAgentReferenceStore();
-    const tool = createProvenanceTool("/", f.value, references);
-    const result = await tool.execute("query", { query: "SELECT repository_id, COUNT(*) FROM prov_files GROUP BY repository_id" });
-    const text = textOf(result);
-    const ref = text.match(/@r[0-9a-z]+-[0-9a-f]{4}/u)?.[0];
-    expect(ref).toBeTruthy();
-    expect(text).not.toContain(repositoryId);
-    expect(loadProvenanceReference(references, ref!).root).toEqual({ kind: "repository", repositoryId, state });
-    await tool.execute("bound-query", { query: `SELECT path FROM prov_files WHERE repository_id = '${ref}'` });
-    expect(f.query).toHaveBeenLastCalledWith(expect.objectContaining({ query: `SELECT path FROM prov_files WHERE repository_id = '${repositoryId}'` }));
-  });
+  it.each(["repository_id", "repo"])(
+    "pins a query repository ref to its returned state through %s",
+    async (column) => {
+      const f = fixture();
+      const repositoryId = `repository:${"b".repeat(64)}`;
+      const state = {
+        kind: "application" as const,
+        applicationId: "application:query",
+      };
+      f.query.mockResolvedValueOnce({
+        schemaVersion: 1,
+        state,
+        columns: [column, "file_count"],
+        rows: [[repositoryId, 4]],
+        rowsRead: 1,
+        truncated: false,
+        refusal: null,
+      });
+      const references = createMemoryAgentReferenceStore();
+      const tool = createProvenanceTool("/", f.value, references);
+      const result = await executeTool(
+        tool,
+        {
+          query:
+            "SELECT repository_id, COUNT(*) FROM prov_files GROUP BY repository_id",
+        },
+        { callId: "query" },
+      );
+      const text = textOf(result);
+      const ref = text.match(/@r[0-9a-z]+-[0-9a-f]{4}/u)?.[0];
+      expect(ref).toBeTruthy();
+      expect(text).not.toContain(repositoryId);
+      expect(loadProvenanceReference(references, ref!).root).toEqual({
+        kind: "repository",
+        repositoryId,
+        state,
+      });
+      await executeTool(
+        tool,
+        { query: `SELECT path FROM prov_files WHERE repository_id = '${ref}'` },
+        { callId: "bound-query" },
+      );
+      expect(f.query).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          query: `SELECT path FROM prov_files WHERE repository_id = '${repositoryId}'`,
+        }),
+      );
+    },
+  );
 
   it("binds a returned ref inside query text to its exact identity", async () => {
     const f = fixture();
@@ -1151,15 +1387,20 @@ describe("question-shaped provenance surfaces", () => {
     const ref = putProvenanceReference(
       references,
       { kind: "work-unit", workUnitId: "work-unit:1" },
-      5
+      5,
     );
-    await tool.execute("call:bound-query", {
-      query: `SELECT change_id FROM prov_changes WHERE work_unit_id = '${ref}'`,
-    });
+    await executeTool(
+      tool,
+      {
+        query: `SELECT change_id FROM prov_changes WHERE work_unit_id = '${ref}'`,
+      },
+      { callId: "call:bound-query" },
+    );
     expect(f.query).toHaveBeenCalledWith(
       expect.objectContaining({
-        query: "SELECT change_id FROM prov_changes WHERE work_unit_id = 'work-unit:1'",
-      })
+        query:
+          "SELECT change_id FROM prov_changes WHERE work_unit_id = 'work-unit:1'",
+      }),
     );
   });
 
@@ -1175,13 +1416,18 @@ describe("question-shaped provenance surfaces", () => {
       refusal: {
         stage: "plan",
         code: "full-scan",
-        message: "The plan scans every row of a relation backing `gad_changes` (500000 rows).",
+        message:
+          "The plan scans every row of a relation backing `gad_changes` (500000 rows).",
         term: "gad_changes",
       },
     });
     const tool = createProvenanceTool("/", f.value);
     const text = textOf(
-      await tool.execute("call:refused", { query: "SELECT change_id FROM prov_changes" })
+      await executeTool(
+        tool,
+        { query: "SELECT change_id FROM prov_changes" },
+        { callId: "call:refused" },
+      ),
     );
     expect(text).toContain("prov query · refused at plan · gad_changes");
   });
@@ -1189,14 +1435,23 @@ describe("question-shaped provenance surfaces", () => {
   it("enters by content when the subject cannot be named", async () => {
     const f = fixture();
     const tool = createProvenanceTool("/", f.value);
-    const text = textOf(await tool.execute("call:search", { target: "search: retries backoff" }));
+    const text = textOf(
+      await executeTool(
+        tool,
+        { target: "search: retries backoff" },
+        { callId: "call:search" },
+      ),
+    );
 
     expect(f.search).toHaveBeenCalledWith(
-      expect.objectContaining({ contextId: "context:1", text: "retries backoff" })
+      expect.objectContaining({
+        contextId: "context:1",
+        text: "retries backoff",
+      }),
     );
     expect(text).toContain("prov search");
     expect(text).toMatch(
-      /work-unit · stated: "Cap the retry backoff at 30 seconds" · @r[0-9a-z]+-[0-9a-f]{4}/u
+      /work-unit · stated: "Cap the retry backoff at 30 seconds" · @r[0-9a-z]+-[0-9a-f]{4}/u,
     );
   });
 
@@ -1205,10 +1460,22 @@ describe("question-shaped provenance surfaces", () => {
     const references = createMemoryAgentReferenceStore();
     const tool = createProvenanceTool("/", f.value, references);
     const refs = [
-      putProvenanceReference(references, { kind: "work-unit", workUnitId: "work-unit:1" }, 5),
-      putProvenanceReference(references, { kind: "change", changeId: "change:1" }, 5),
+      putProvenanceReference(
+        references,
+        { kind: "work-unit", workUnitId: "work-unit:1" },
+        5,
+      ),
+      putProvenanceReference(
+        references,
+        { kind: "change", changeId: "change:1" },
+        5,
+      ),
     ];
-    const result = await tool.execute("call:batch", { targets: refs });
+    const result = await executeTool(
+      tool,
+      { targets: refs },
+      { callId: "call:batch" },
+    );
     const text = textOf(result);
 
     expect(f.inspect).toHaveBeenCalledTimes(2);
@@ -1219,12 +1486,21 @@ describe("question-shaped provenance surfaces", () => {
 
   it("accepts the new question-shaped parameters and still refuses invented ones", () => {
     const tool = createProvenanceTool("/", fixture().value);
-    expect(Value.Check(tool.parameters, { target: "packages/foo/bar.ts", walk: "cause" })).toBe(
-      true
-    );
-    expect(Value.Check(tool.parameters, { walk: "cohort", scope: "turn" })).toBe(true);
-    expect(Value.Check(tool.parameters, { query: "SELECT 1 FROM prov_events" })).toBe(true);
-    expect(Value.Check(tool.parameters, { targets: ["@r1-abcd", "@r2-abcd"] })).toBe(true);
+    expect(
+      Value.Check(tool.parameters, {
+        target: "packages/foo/bar.ts",
+        walk: "cause",
+      }),
+    ).toBe(true);
+    expect(
+      Value.Check(tool.parameters, { walk: "cohort", scope: "turn" }),
+    ).toBe(true);
+    expect(
+      Value.Check(tool.parameters, { query: "SELECT 1 FROM prov_events" }),
+    ).toBe(true);
+    expect(
+      Value.Check(tool.parameters, { targets: ["@r1-abcd", "@r2-abcd"] }),
+    ).toBe(true);
     expect(Value.Check(tool.parameters, { walk: "drift" })).toBe(false);
     expect(Value.Check(tool.parameters, { sql: "SELECT 1" })).toBe(false);
   });

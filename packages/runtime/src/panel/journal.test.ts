@@ -31,15 +31,15 @@ describe("panel operation journal", () => {
     releaseSecond();
     await firstRun;
 
-    expect(first.entries.map((entry) => entry.id)).toEqual([
-      "first-before",
-      "second",
-      "overlap",
-      "first-after",
+    expect(first.entries).toEqual([
+      { type: "reload", id: "first-before" },
+      { type: "reload", id: "second" },
+      { type: "reload", id: "overlap" },
+      { type: "reload", id: "first-after" },
     ]);
-    expect(second.entries.map((entry) => entry.id)).toEqual([
-      "second",
-      "overlap",
+    expect(second.entries).toEqual([
+      { type: "reload", id: "second" },
+      { type: "reload", id: "overlap" },
     ]);
     expect(currentJournal()).toBeNull();
   });

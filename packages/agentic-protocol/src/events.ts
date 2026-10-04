@@ -1,3 +1,4 @@
+import type { NativeInvocationSource, NativeOriginatingInput } from "@vibestudio/service-schemas/nativeInvocation";
 import { AGENTIC_PROTOCOL_VERSION } from "./constants.js";
 import type {
   InvocationOutcome,
@@ -20,7 +21,12 @@ import type {
 } from "./ids.js";
 import type { AgentToolFailure } from "./tool-failure.js";
 
-export const SEMANTIC_PARTICIPANT_KINDS = ["user", "agent", "system", "external"] as const;
+export const SEMANTIC_PARTICIPANT_KINDS = [
+  "user",
+  "agent",
+  "system",
+  "external",
+] as const;
 export const PRINCIPAL_KINDS = [
   "panel",
   "app",
@@ -36,10 +42,14 @@ export const PARTICIPANT_KINDS = [
   // existing transcript history. Use PrincipalKind for execution attribution.
   "panel",
 ] as const;
-export const ACTOR_KINDS = [...SEMANTIC_PARTICIPANT_KINDS, ...PRINCIPAL_KINDS] as const;
+export const ACTOR_KINDS = [
+  ...SEMANTIC_PARTICIPANT_KINDS,
+  ...PRINCIPAL_KINDS,
+] as const;
 
 /** Semantic role of a participant in a conversation. */
-export type SemanticParticipantKind = (typeof SEMANTIC_PARTICIPANT_KINDS)[number];
+export type SemanticParticipantKind =
+  (typeof SEMANTIC_PARTICIPANT_KINDS)[number];
 
 /** Runtime principal kind used for execution/provenance attribution. */
 export type PrincipalKind = (typeof PRINCIPAL_KINDS)[number];
@@ -153,6 +163,15 @@ export type StoredAgenticEvent = Omit<AgenticEvent, "payload"> & {
   payload: unknown;
 };
 
+/** Original terminal failure facts carried by the same completed message. */
+export interface MessageFailure {
+  reason: string;
+  recoverable: boolean;
+  code: string;
+  resetAt?: string;
+  retryAfterMs?: number;
+}
+
 export type MessagePayload =
   | {
       protocol: "agentic.trajectory.v1";
@@ -164,7 +183,7 @@ export type MessagePayload =
       /** Salience tier; absent ⇒ "primary". See MessageTier. */
       tier?: MessageTier;
       /** Marks an explicit `say` — a supervisor's deliberately-published line
-       *  under a `say-only`/`turn-final` publish policy (see AgentLoopConfig). */
+       *  under a `notify-only`/`turn-final` publish policy. */
       saliency?: "say";
       /** Set on a fork-seed append: the parent message this message supersedes
        *  in the forked channel (edit-fork). `seq` is the parent envelope seq. */
@@ -196,6 +215,7 @@ export type MessagePayload =
       role?: MessageRole;
       blocks?: MessageBlockInput[];
       outcome: MessageOutcome;
+      failure?: MessageFailure;
       usage?: UsagePayload;
       model?: MessageModelPayload;
       mentions?: string[];
@@ -204,7 +224,7 @@ export type MessagePayload =
       /** Salience tier; absent ⇒ "primary". See MessageTier. */
       tier?: MessageTier;
       /** Marks an explicit `say` — a supervisor's deliberately-published line
-       *  under a `say-only`/`turn-final` publish policy (see AgentLoopConfig). */
+       *  under a `notify-only`/`turn-final` publish policy. */
       saliency?: "say";
       /** Set on a fork-seed append: the parent message this message supersedes
        *  in the forked channel (edit-fork). `seq` is the parent envelope seq. */
@@ -307,7 +327,7 @@ export interface DiagnosticBlockMetadata {
 }
 
 export function readDiagnosticMetadata(
-  metadata: Record<string, unknown> | undefined
+  metadata: Record<string, unknown> | undefined,
 ): DiagnosticBlockMetadata {
   const record = metadata && typeof metadata === "object" ? metadata : {};
   const severity = record["severity"];
@@ -319,13 +339,24 @@ export function readDiagnosticMetadata(
   return {
     code: typeof code === "string" ? code : "diagnostic",
     severity:
-      severity === "error" || severity === "info" || severity === "warning" ? severity : "warning",
+      severity === "error" || severity === "info" || severity === "warning"
+        ? severity
+        : "warning",
     reason: typeof reason === "string" && reason.trim() ? reason : undefined,
-    recoverable: typeof record["recoverable"] === "boolean" ? record["recoverable"] : undefined,
-    failureCode: typeof failureCode === "string" && failureCode.trim() ? failureCode : undefined,
-    resetAt: typeof resetAt === "string" && resetAt.trim() ? resetAt : undefined,
+    recoverable:
+      typeof record["recoverable"] === "boolean"
+        ? record["recoverable"]
+        : undefined,
+    failureCode:
+      typeof failureCode === "string" && failureCode.trim()
+        ? failureCode
+        : undefined,
+    resetAt:
+      typeof resetAt === "string" && resetAt.trim() ? resetAt : undefined,
     retryAfterMs:
-      typeof retryAfterMs === "number" && Number.isFinite(retryAfterMs) ? retryAfterMs : undefined,
+      typeof retryAfterMs === "number" && Number.isFinite(retryAfterMs)
+        ? retryAfterMs
+        : undefined,
   };
 }
 
@@ -380,9 +411,14 @@ export type InvocationCompletedPayload = {
       };
 };
 
-export type InvocationTerminalFailureOutcome = Exclude<InvocationOutcome, "success">;
+export type InvocationTerminalFailureOutcome = Exclude<
+  InvocationOutcome,
+  "success"
+>;
 
-type InvocationFailurePayloadBase<Outcome extends InvocationTerminalFailureOutcome> = {
+type InvocationFailurePayloadBase<
+  Outcome extends InvocationTerminalFailureOutcome,
+> = {
   protocol: "agentic.trajectory.v1";
   reason: string;
   error?: unknown;
@@ -400,24 +436,46 @@ export type InvocationFailedPayload = InvocationFailurePayloadBase<
   Extract<InvocationOutcome, "tool_error" | "infrastructure_error">
 > & { failure: AgentToolFailure };
 
+/** Original caller-owned request cancelled before the channel admitted a start.
+ * This is a cancellation fact, not evidence that provider execution occurred. */
+export interface ChannelMethodOriginalRequest {
+  channelId: string;
+  callerId: string;
+  targetId: string;
+  invocationId: string;
+  transportCallId: string;
+  method: string;
+  args?: unknown;
+  turnId?: string;
+}
+
 export type InvocationCancelledPayload = InvocationFailurePayloadBase<
   Extract<InvocationOutcome, "cancelled" | "stale_dispatch">
->;
+> & {
+  admission?: { kind: "not-admitted"; request: ChannelMethodOriginalRequest };
+};
 
-export type InvocationAbandonedPayload = InvocationFailurePayloadBase<"abandoned">;
+export type InvocationAbandonedPayload =
+  InvocationFailurePayloadBase<"abandoned">;
 
 export type InvocationFailurePayload =
   | InvocationFailedPayload
   | InvocationCancelledPayload
   | InvocationAbandonedPayload;
 
-export type InvocationTerminalPayload = InvocationCompletedPayload | InvocationFailurePayload;
+export type InvocationTerminalPayload =
+  | InvocationCompletedPayload
+  | InvocationFailurePayload;
 
 export type InvocationPayload =
   | {
       protocol: "agentic.trajectory.v1";
       name: string;
       invocationType?: "tool" | "panel" | "agent" | "user" | "http" | "system";
+      /** Immutable native attribution; independently readable from request blobs. */
+      nativeSource?: NativeInvocationSource;
+      /** Actual admitted input coordinates; absence of an input is explicit. */
+      originatingInput?: NativeOriginatingInput | null;
       request?: unknown;
       transport?: InvocationTransport;
       /** Durable execution ordering selected from the invoked tool's metadata. */
@@ -460,13 +518,14 @@ export interface TaskCompletedPayload {
   to?: ParticipantSelector[];
 }
 
-type TaskFailurePayloadBase<Outcome extends InvocationTerminalFailureOutcome> = {
-  protocol: "agentic.trajectory.v1";
-  reason: string;
-  terminalOutcome: Outcome;
-  details?: unknown;
-  to?: ParticipantSelector[];
-};
+type TaskFailurePayloadBase<Outcome extends InvocationTerminalFailureOutcome> =
+  {
+    protocol: "agentic.trajectory.v1";
+    reason: string;
+    terminalOutcome: Outcome;
+    details?: unknown;
+    to?: ParticipantSelector[];
+  };
 
 export type TaskFailedPayload = TaskFailurePayloadBase<
   Extract<InvocationOutcome, "tool_error" | "infrastructure_error">
@@ -484,7 +543,7 @@ export type TaskPayload =
   | TaskAbandonedPayload;
 
 export function invocationCompletedPayload(
-  opts: Omit<InvocationCompletedPayload, "protocol" | "terminalOutcome"> = {}
+  opts: Omit<InvocationCompletedPayload, "protocol" | "terminalOutcome"> = {},
 ): InvocationCompletedPayload {
   return {
     protocol: AGENTIC_PROTOCOL_VERSION,
@@ -493,10 +552,15 @@ export function invocationCompletedPayload(
   };
 }
 
-function invocationFailurePayload<Outcome extends InvocationTerminalFailureOutcome>(
+function invocationFailurePayload<
+  Outcome extends InvocationTerminalFailureOutcome,
+>(
   outcome: Outcome,
   reason: string,
-  opts: Omit<InvocationFailurePayloadBase<Outcome>, "protocol" | "terminalOutcome" | "reason"> = {}
+  opts: Omit<
+    InvocationFailurePayloadBase<Outcome>,
+    "protocol" | "terminalOutcome" | "reason"
+  > = {},
 ): InvocationFailurePayloadBase<Outcome> {
   return {
     protocol: AGENTIC_PROTOCOL_VERSION,
@@ -509,7 +573,10 @@ function invocationFailurePayload<Outcome extends InvocationTerminalFailureOutco
 export function invocationFailedPayload(
   outcome: Extract<InvocationOutcome, "tool_error" | "infrastructure_error">,
   reason: string,
-  opts: Omit<InvocationFailedPayload, "protocol" | "terminalOutcome" | "reason">
+  opts: Omit<
+    InvocationFailedPayload,
+    "protocol" | "terminalOutcome" | "reason"
+  >,
 ): InvocationFailedPayload {
   return {
     protocol: AGENTIC_PROTOCOL_VERSION,
@@ -522,14 +589,20 @@ export function invocationFailedPayload(
 export function invocationCancelledPayload(
   outcome: Extract<InvocationOutcome, "cancelled" | "stale_dispatch">,
   reason: string,
-  opts: Omit<InvocationCancelledPayload, "protocol" | "terminalOutcome" | "reason"> = {}
+  opts: Omit<
+    InvocationCancelledPayload,
+    "protocol" | "terminalOutcome" | "reason"
+  > = {},
 ): InvocationCancelledPayload {
   return invocationFailurePayload(outcome, reason, opts);
 }
 
 export function invocationAbandonedPayload(
   reason: string,
-  opts: Omit<InvocationAbandonedPayload, "protocol" | "terminalOutcome" | "reason"> = {}
+  opts: Omit<
+    InvocationAbandonedPayload,
+    "protocol" | "terminalOutcome" | "reason"
+  > = {},
 ): InvocationAbandonedPayload {
   return invocationFailurePayload("abandoned", reason, opts);
 }
@@ -816,17 +889,20 @@ export interface BuildCompletedPayload {
   metadata?: Record<string, unknown>;
 }
 
-export type InvocationPayloadFor<K extends EventKind> = K extends "invocation.completed"
-  ? InvocationCompletedPayload
-  : K extends "invocation.failed"
-    ? InvocationFailedPayload
-    : K extends "invocation.cancelled"
-      ? InvocationCancelledPayload
-      : K extends "invocation.abandoned"
-        ? InvocationAbandonedPayload
-        : InvocationPayload;
+export type InvocationPayloadFor<K extends EventKind> =
+  K extends "invocation.completed"
+    ? InvocationCompletedPayload
+    : K extends "invocation.failed"
+      ? InvocationFailedPayload
+      : K extends "invocation.cancelled"
+        ? InvocationCancelledPayload
+        : K extends "invocation.abandoned"
+          ? InvocationAbandonedPayload
+          : InvocationPayload;
 
-export type PayloadFor<K extends EventKind> = K extends "message.received" | "message.read"
+export type PayloadFor<K extends EventKind> = K extends
+  | "message.received"
+  | "message.read"
   ? MessageReceiptPayload
   : K extends "message.edited"
     ? MessageEditPayload
@@ -889,7 +965,9 @@ export interface AgenticEvent<K extends EventKind = EventKind> {
   createdAt: string;
 }
 
-export interface TrajectoryEvent<K extends EventKind = EventKind> extends AgenticEvent<K> {
+export interface TrajectoryEvent<
+  K extends EventKind = EventKind,
+> extends AgenticEvent<K> {
   eventId: EventId;
   trajectoryId: TrajectoryId;
   branchId: BranchId;
@@ -898,7 +976,9 @@ export interface TrajectoryEvent<K extends EventKind = EventKind> extends Agenti
   eventHash: string;
 }
 
-export function agenticSlice<K extends EventKind>(event: TrajectoryEvent<K>): AgenticEvent<K> {
+export function agenticSlice<K extends EventKind>(
+  event: TrajectoryEvent<K>,
+): AgenticEvent<K> {
   return {
     kind: event.kind,
     actor: event.actor,

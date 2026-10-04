@@ -10,8 +10,10 @@
  * tool" asks for the tool; an agent told "0 errors" stops looking.
  */
 
-import { Type, type Static } from "@sinclair/typebox";
-import type { AgentTool, AgentToolResult } from "@workspace/pi-core";
+import { Type, type Static } from "@panticonic/pi-ai";
+import type { ToolRegistration, ToolExecutionResult } from "@panticonic/pi-durable";
+import { copyJson, type JsonRepresentation } from "@panticonic/pi-chord";
+import type { RpcCallOptions } from "@vibestudio/rpc";
 import type { PanelContextSnapshot } from "@vibestudio/service-schemas/panelContext";
 
 const panelDescribeParameters = Type.Object(
@@ -70,27 +72,26 @@ export function formatPanelContext(snapshot: PanelContextSnapshot): string {
   return `<panel-context>\n${lines.join("\n")}\n</panel-context>`;
 }
 export function createPanelDescribeTool(
-  callMain: <T>(method: string, args: unknown[]) => Promise<T>,
+  callMain: <T>(method: string, args: unknown[], options?: RpcCallOptions) => Promise<T>,
   boundPanelId: string,
-): AgentTool<typeof panelDescribeParameters> {
+): ToolRegistration<typeof panelDescribeParameters, JsonRepresentation<PanelContextSnapshot | null>> {
   return {
     name: "panel_describe",
-    label: "describe panel",
     description:
       "Re-read the panel you are attached to (or another open panel by slot id): its title, tree position and open siblings, the code identity currently occupying it, and its presentation lease. Facts this host cannot see — console counts, favicon, editable address, back/forward state — are reported as explicitly unavailable rather than guessed; use the dedicated tool named in the reply to read those.",
     parameters: panelDescribeParameters,
     execute: async (
-      _toolCallId,
-      params: PanelDescribeParams,
-    ): Promise<AgentToolResult<PanelContextSnapshot | null>> => {
+      params: PanelDescribeParams, _api, context,
+    ): Promise<ToolExecutionResult<JsonRepresentation<PanelContextSnapshot | null>>> => {
       const panelId = params.panelId ?? boundPanelId;
       const snapshot = await callMain<PanelContextSnapshot>(
         "panelContext.describe",
         [panelId],
+        context.abortSignal ? { signal: context.abortSignal } : undefined,
       );
       return {
         content: [{ type: "text", text: formatPanelContext(snapshot) }],
-        details: snapshot,
+        details: copyJson(snapshot, { omitUndefinedProperties: true }) as JsonRepresentation<typeof snapshot>,
       };
     },
   };

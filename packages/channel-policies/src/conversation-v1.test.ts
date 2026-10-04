@@ -19,7 +19,7 @@ function completedEnvelope(
   senderId: string,
   actorKind: "agent" | "user" | "panel",
   appendedAt = `2026-05-20T12:00:0${seq}.000Z`,
-  extraCausality: Record<string, unknown> = {}
+  extraCausality: Record<string, unknown> = {},
 ): PolicyEnvelopeView {
   return {
     envelopeId: `env-${seq}`,
@@ -29,7 +29,11 @@ function completedEnvelope(
       kind: "message.completed",
       actor: { kind: actorKind, id: senderId },
       causality: { messageId: `msg-${seq}`, ...extraCausality },
-      payload: { protocol: AGENTIC_PROTOCOL_VERSION, role: "assistant", outcome: "completed" },
+      payload: {
+        protocol: AGENTIC_PROTOCOL_VERSION,
+        role: "assistant",
+        outcome: "completed",
+      },
       createdAt: appendedAt,
     },
     senderId,
@@ -53,7 +57,7 @@ function opaqueEnvelope(seq: number): PolicyEnvelopeView {
 describe("agentic.conversation.v1", () => {
   it("declares an audience policy for every protocol event kind", () => {
     expect(Object.keys(AGENTIC_EVENT_AUDIENCE_POLICY).sort()).toEqual(
-      Object.keys(eventKindSchemas).sort()
+      Object.keys(eventKindSchemas).sort(),
     );
     expect(() =>
       assertDeclaredAgenticEventAudience({
@@ -73,7 +77,7 @@ describe("agentic.conversation.v1", () => {
           userVisible: false,
         },
         createdAt: "2026-05-20T12:00:00.000Z",
-      } as never)
+      } as never),
     ).toThrow(/requires an explicit participant audience/u);
     expect(() =>
       assertDeclaredAgenticEventAudience({
@@ -86,7 +90,7 @@ describe("agentic.conversation.v1", () => {
           error: { message: "failed" },
         },
         createdAt: "2026-05-20T12:00:00.000Z",
-      } as never)
+      } as never),
     ).toThrow(/requires an explicit participant audience/u);
   });
   it("folds completed messages into conversation state with previous-slot shifting", () => {
@@ -149,12 +153,18 @@ describe("agentic.conversation.v1", () => {
       opaqueEnvelope(4),
       completedEnvelope(5, "agent:b", "agent"),
     ];
-    const oneShot = script.reduce((state, env) => policy.reduce(state, env), policy.init());
+    const oneShot = script.reduce(
+      (state, env) => policy.reduce(state, env),
+      policy.init(),
+    );
     let incremental = policy.init();
     for (const env of script) incremental = policy.reduce(incremental, env);
     expect(incremental).toEqual(oneShot);
     // determinism: same inputs, same output, independent of wall clock
-    const again = script.reduce((state, env) => policy.reduce(state, env), policy.init());
+    const again = script.reduce(
+      (state, env) => policy.reduce(state, env),
+      policy.init(),
+    );
     expect(again).toEqual(oneShot);
   });
 
@@ -163,7 +173,10 @@ describe("agentic.conversation.v1", () => {
     let state = policy.init();
     state = policy.reduce(state, completedEnvelope(2, "agent:a", "agent"));
 
-    const payload = completedEnvelope(3, "agent:a", "agent").payload as Record<string, unknown>;
+    const payload = completedEnvelope(3, "agent:a", "agent").payload as Record<
+      string,
+      unknown
+    >;
     const draft = {
       payloadKind: AGENTIC_EVENT_PAYLOAD_KIND,
       payload,
@@ -185,16 +198,19 @@ describe("agentic.conversation.v1", () => {
     expect(policy.annotate(state, draftB)).toEqual({ agentHops: 2 });
 
     // explicit caller-computed hops win
-    const explicit = completedEnvelope(3, "agent:a", "agent", undefined, { agentHops: 7 })
-      .payload as Record<string, unknown>;
-    expect(policy.annotate(state, { ...draft, payload: explicit })).toEqual({ agentHops: 7 });
+    const explicit = completedEnvelope(3, "agent:a", "agent", undefined, {
+      agentHops: 7,
+    }).payload as Record<string, unknown>;
+    expect(policy.annotate(state, { ...draft, payload: explicit })).toEqual({
+      agentHops: 7,
+    });
 
     // user-authored drafts are not annotated
     expect(
       policy.annotate(state, {
         ...draft,
         payload: completedEnvelope(3, "user:1", "user").payload,
-      })
+      }),
     ).toBeNull();
     // opaque drafts are not annotated
     expect(
@@ -203,14 +219,23 @@ describe("agentic.conversation.v1", () => {
         payload: { value: 1 },
         senderId: "agent:a",
         senderKind: "agent",
-      })
+      }),
     ).toBeNull();
   });
 
   it("builds call-transport events purely from injected timestamps", () => {
     const builders = conversationV1Policy.callEventPayload!;
-    expect(Object.keys(builders).sort()).toEqual(["cancelled", "output", "started", "terminal"]);
-    const caller = { kind: "panel" as const, id: "panel:caller", participantId: "panel:caller" };
+    expect(Object.keys(builders).sort()).toEqual([
+      "cancelled",
+      "output",
+      "started",
+      "terminal",
+    ]);
+    const caller = {
+      kind: "panel" as const,
+      id: "panel:caller",
+      participantId: "panel:caller",
+    };
     const target = {
       kind: "panel" as const,
       id: "panel:provider",
@@ -256,17 +281,23 @@ describe("agentic.conversation.v1", () => {
     const descriptor = {
       channelId: "channel-1",
       caller,
+      target,
       invocationId: "inv-1",
       transportCallId: "transport-1",
       turnId: "turn-1",
       method: "eval",
     };
-    expect(builders.terminal({ descriptor, result: 2, isError: false, createdAt })).toMatchObject({
+    expect(
+      builders.terminal({ descriptor, result: 2, isError: false, createdAt }),
+    ).toMatchObject({
       kind: "invocation.completed",
       payload: {
         result: 2,
         terminalOutcome: "success",
-        to: [{ kind: "participant", participantId: caller.participantId }],
+        to: [
+          { kind: "participant", participantId: caller.participantId },
+          { kind: "participant", participantId: target.participantId },
+        ],
       },
       createdAt,
     });
@@ -277,13 +308,16 @@ describe("agentic.conversation.v1", () => {
         isError: true,
         terminalOutcome: "infrastructure_error",
         createdAt,
-      })
+      }),
     ).toMatchObject({
       kind: "invocation.failed",
       payload: {
         terminalOutcome: "infrastructure_error",
         terminalReasonCode: "method_failed",
-        to: [{ kind: "participant", participantId: caller.participantId }],
+        to: [
+          { kind: "participant", participantId: caller.participantId },
+          { kind: "participant", participantId: target.participantId },
+        ],
       },
     });
     expect(
@@ -293,13 +327,16 @@ describe("agentic.conversation.v1", () => {
         isError: true,
         terminalOutcome: "stale_dispatch",
         createdAt,
-      })
+      }),
     ).toMatchObject({
       kind: "invocation.cancelled",
       payload: {
         terminalOutcome: "stale_dispatch",
         reason: "superseded",
-        to: [{ kind: "participant", participantId: caller.participantId }],
+        to: [
+          { kind: "participant", participantId: caller.participantId },
+          { kind: "participant", participantId: target.participantId },
+        ],
       },
     });
     expect(
@@ -309,16 +346,21 @@ describe("agentic.conversation.v1", () => {
         isError: true,
         terminalOutcome: "abandoned",
         createdAt,
-      })
+      }),
     ).toMatchObject({
       kind: "invocation.abandoned",
       payload: {
         terminalOutcome: "abandoned",
         reason: "target left",
-        to: [{ kind: "participant", participantId: caller.participantId }],
+        to: [
+          { kind: "participant", participantId: caller.participantId },
+          { kind: "participant", participantId: target.participantId },
+        ],
       },
     });
-    expect(builders.output({ descriptor, output: { pct: 50 }, createdAt })).toMatchObject({
+    expect(
+      builders.output({ descriptor, output: { pct: 50 }, createdAt }),
+    ).toMatchObject({
       kind: "invocation.output",
       payload: {
         output: { pct: 50 },
@@ -331,14 +373,17 @@ describe("agentic.conversation.v1", () => {
         actor: { kind: "system", id: "system" },
         reason: "timed out",
         createdAt,
-      })
+      }),
     ).toMatchObject({
       kind: "invocation.cancelled",
       actor: { kind: "system", id: "system" },
       payload: {
         terminalOutcome: "cancelled",
         reason: "timed out",
-        to: [{ kind: "participant", participantId: caller.participantId }],
+        to: [
+          { kind: "participant", participantId: caller.participantId },
+          { kind: "participant", participantId: target.participantId },
+        ],
       },
     });
   });
@@ -347,7 +392,9 @@ describe("agentic.conversation.v1", () => {
     expect(getChannelPolicy("agentic.conversation.v1").version).toBe(1);
     expect(() => getChannelPolicy("nope")).toThrow(/Unknown channel policy/u);
     const resolved = resolveChannelPolicies(undefined);
-    expect(resolved.map((policy) => policy.name)).toEqual([...DEFAULT_CHANNEL_POLICIES]);
+    expect(resolved.map((policy) => policy.name)).toEqual([
+      ...DEFAULT_CHANNEL_POLICIES,
+    ]);
   });
 });
 
@@ -374,7 +421,8 @@ describe("agentic.conversation.v1 hop depth across channels", () => {
         senderId,
         senderKind: "agent" as const,
       };
-      annotated = (policy.annotate(state, draft) as { agentHops: number }).agentHops;
+      annotated = (policy.annotate(state, draft) as { agentHops: number })
+        .agentHops;
       state = policy.reduce(state, completedEnvelope(step, senderId, "agent"));
     }
     return annotated;
@@ -393,13 +441,16 @@ describe("agentic.conversation.v1 hop depth across channels", () => {
       const stamped = inbound + 1;
       const draft = {
         payloadKind: AGENTIC_EVENT_PAYLOAD_KIND,
-        payload: completedEnvelope(step, senderId, "agent", undefined, { agentHops: stamped })
-          .payload,
+        payload: completedEnvelope(step, senderId, "agent", undefined, {
+          agentHops: stamped,
+        }).payload,
         senderId,
         senderKind: "agent" as const,
       };
       // A channel the chain has never touched: its fold starts from nothing.
-      annotated = (policy.annotate(policy.init(), draft) as { agentHops: number }).agentHops;
+      annotated = (
+        policy.annotate(policy.init(), draft) as { agentHops: number }
+      ).agentHops;
       inbound = annotated;
     }
     return annotated;
@@ -412,7 +463,7 @@ describe("agentic.conversation.v1 hop depth across channels", () => {
       expect(
         crossed,
         `a ${steps}-step chain reached depth ${crossed} across channels but ${local} within one; ` +
-          `the hop cap is only as tight as the smaller number`
+          `the hop cap is only as tight as the smaller number`,
       ).toBe(local);
     }
   });

@@ -1,9 +1,28 @@
-import { describe, expect, it } from "vitest";
-import { createTestDO } from "@workspace/runtime/worker/test-utils";
-import type { AgentTool, ParticipantDescriptor } from "@workspace/harness";
+import { afterEach, describe, expect, it } from "vitest";
+import { createNativeVesselTestDO } from "@workspace/agentic-do/testing/native-vessel";
+import type {
+  ToolRegistration,
+  ParticipantDescriptor,
+} from "@workspace/harness";
 import type { PanelContextSnapshot } from "@vibestudio/service-schemas/panelContext";
 import { AiChatWorker } from "./ai-chat-worker.js";
 import { formatPanelContext } from "./panel-describe-tool.js";
+import type { AgentToolExecutionContext } from "@workspace/agentic-do";
+import type { Context } from "@panticonic/pi-chord";
+import type { ToolExecutionApi } from "@panticonic/pi-durable";
+import type { RpcClient, RpcCallOptions } from "@vibestudio/rpc";
+import { executeTool } from "@workspace/harness/testing/native-tool";
+
+const databases = new Set<{ close(): void }>();
+afterEach(() => {
+  for (const database of databases) database.close();
+  databases.clear();
+});
+async function configuredAgent() {
+  const fixture = await createNativeVesselTestDO(TestConfiguredAgent);
+  databases.add(fixture.db);
+  return fixture;
+}
 
 const SNAPSHOT: PanelContextSnapshot = {
   panelId: "slot-a",
@@ -57,6 +76,34 @@ const FOCUSED_PROMPT =
   "You are a quick inspector. Use panel_screenshot and panel_console.";
 
 class TestConfiguredAgent extends AiChatWorker {
+  readonly boundCalls: Array<{
+    method: string;
+    args: unknown[];
+    signal?: AbortSignal;
+  }> = [];
+
+  protected override async bindNativeToolExecution(
+    api: ToolExecutionApi,
+    context: Context,
+  ): Promise<AgentToolExecutionContext> {
+    const rpc = {
+      call: async <T>(
+        _target: string,
+        method: string,
+        args: unknown[],
+        options?: RpcCallOptions,
+      ) => {
+        this.boundCalls.push({ method, args, signal: options?.signal });
+        return SNAPSHOT as T;
+      },
+    } as RpcClient;
+    context.abortSignal?.throwIfAborted();
+    return {
+      invocationId: `native:${api.callId}`,
+      commandId: `command:${api.callId}`,
+      rpc,
+    };
+  }
   protected override get rpcCallerKind(): string | null {
     return "server";
   }
@@ -69,8 +116,8 @@ class TestConfiguredAgent extends AiChatWorker {
     });
   }
 
-  async tools(): Promise<AgentTool[]> {
-    return this.getLoopTools("channel-1");
+  async tools(): Promise<ToolRegistration[]> {
+    return this.getTools("channel-1");
   }
 
   prompt(): string | undefined {
@@ -100,11 +147,59 @@ class TestConfiguredAgent extends AiChatWorker {
     );
   }
 
+  offerClientTools(): void {
+    this.setStateValue(
+      "agent:roster:channel-1",
+      JSON.stringify([
+        {
+          participantId: "user:one",
+          ref: { kind: "user", id: "user:one" },
+          methods: [
+            {
+              name: "inline_ui",
+              description: "Render inline",
+              parameters: {
+                type: "object",
+                properties: { path: { type: "string" } },
+                required: ["path"],
+              },
+            },
+          ],
+        },
+      ]),
+    );
+  }
 }
 
 describe("AiChatWorker channel features", () => {
+  it("includes offered client tools in the ordinary standard surface", async () => {
+    const { instance } = await configuredAgent();
+    instance.offerClientTools();
+    instance.configure({ tools: [{ kind: "standard" }] });
+    expect(
+      (await instance.tools()).find((tool) => tool.name === "inline_ui"),
+    ).toMatchObject({
+      parameters: { required: ["path"] },
+      executionData: {
+        channelId: "channel-1",
+        targetIds: ["user:one"],
+        method: "inline_ui",
+      },
+    });
+  });
+
+  it("honors exact product selection instead of adding ambient peer tools", async () => {
+    const { instance } = await configuredAgent();
+    instance.offerClientTools();
+    instance.configure({ tools: [{ kind: "standard.eval" }] });
+    expect((await instance.tools()).map((tool) => tool.name)).toEqual(["eval"]);
+    instance.configure({ tools: [{ kind: "standard.inline_ui" }] });
+    expect((await instance.tools()).map((tool) => tool.name)).toEqual([
+      "inline_ui",
+    ]);
+  });
   it("uses ordinary subscription prompt and participant configuration", async () => {
-    const { instance } = await createTestDO(TestConfiguredAgent);
+    const { instance } = await configuredAgent();
     instance.configure();
     const participant = instance.participant();
     expect(participant).toMatchObject({
@@ -121,7 +216,7 @@ describe("AiChatWorker channel features", () => {
   });
 
   it("composes the ordinary agent registry with resource-bound panel tools", async () => {
-    const { instance } = await createTestDO(TestConfiguredAgent);
+    const { instance } = await configuredAgent();
     instance.configure();
     const names = new Set((await instance.tools()).map((tool) => tool.name));
     for (const expected of [
@@ -144,20 +239,52 @@ describe("AiChatWorker channel features", () => {
   });
 
   it("can select one ordinary tool by its public model-tool name", async () => {
-    const { instance } = await createTestDO(TestConfiguredAgent);
+    const { instance } = await configuredAgent();
     instance.configure({ tools: [{ kind: "standard.eval" }] });
     expect((await instance.tools()).map((tool) => tool.name)).toEqual(["eval"]);
   });
 
+  it("keeps an offered panel resource fixed when later channel configuration changes", async () => {
+    const { instance } = await configuredAgent();
+    instance.configure({
+      resources: FOCUSED_FEATURES.resources,
+      tools: [{ kind: "panel.describe", resource: "subject" }],
+    });
+    const [offered] = await instance.tools();
+    instance.configure({
+      resources: { subject: { kind: "panel-slot", id: "slot-later" } },
+      tools: [],
+    });
+    const cancellation = new AbortController();
+    await executeTool(
+      offered!,
+      {},
+      { callId: "phase:first", signal: cancellation.signal },
+    );
+    expect(instance.boundCalls).toEqual([
+      {
+        method: "panelContext.describe",
+        args: ["slot-a"],
+        signal: cancellation.signal,
+      },
+    ]);
+    expect(await instance.tools()).toEqual([]);
+  });
+
   it("presents parent-model inheritance as the default subagent contract", async () => {
-    const { instance } = await createTestDO(TestConfiguredAgent);
+    const { instance } = await configuredAgent();
     instance.configure();
-    const spawn = (await instance.tools()).find((tool) => tool.name === "spawn_subagent");
+    const spawn = (await instance.tools()).find(
+      (tool) => tool.name === "spawn_subagent",
+    );
     expect(spawn).toBeDefined();
     const parameters = spawn?.parameters as {
       required?: string[];
       properties?: {
-        config?: { description?: string; properties?: { model?: { description?: string } } };
+        config?: {
+          description?: string;
+          properties?: { model?: { description?: string } };
+        };
       };
     };
     expect(parameters.required).toEqual(["mode", "task"]);
@@ -167,16 +294,15 @@ describe("AiChatWorker channel features", () => {
     expect(parameters.properties?.config?.description).toContain(
       "Do not restate or guess the parent's model",
     );
-    expect(parameters.properties?.config?.properties?.model?.description).toContain(
-      "Normally omit this",
-    );
+    expect(
+      parameters.properties?.config?.properties?.model?.description,
+    ).toContain("Normally omit this");
   });
 
   it("falls back to ordinary chat without configured channel features", async () => {
-    const { instance } = await createTestDO(TestConfiguredAgent);
+    const { instance } = await configuredAgent();
     expect(instance.prompt()).toBeUndefined();
   });
-
 });
 describe("formatPanelContext", () => {
   it("names the tool for facts this host cannot see instead of reporting zero", () => {

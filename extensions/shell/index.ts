@@ -176,7 +176,7 @@ export async function activate(ctx: ExtensionContext) {
   // Resolve the cwd-confinement root for a request: the context's materialized
   // working folder when contextId is set (§4.1), else the workspace root.
   const confinementRoot = async (contextId?: string): Promise<string> => {
-    if (!contextId) return ctx.storage.root;
+    if (!contextId) return (await ctx.workspace.getInfo()).path;
     const { scratch } = await ctx.workspace.ensureContextFolder(contextId);
     return scratch;
   };
@@ -361,13 +361,14 @@ export async function activate(ctx: ExtensionContext) {
     async exec(raw: unknown) {
       const parsed = execRequestSchema.parse(raw);
       const owner = currentOwner(ctx);
+      const contextId = parsed.contextId ?? currentInvocationContextId(ctx);
       await requireContextAttachApproval(
         "exec",
-        parsed.contextId,
+        contextId,
         parsed.contextAttachToken,
         owner,
       );
-      const root = await confinementRoot(parsed.contextId);
+      const root = await confinementRoot(contextId);
       const cwd = resolveWithin(root, parsed.cwd);
       const environment = cleanEnv(parsed.env);
       const {
@@ -390,13 +391,14 @@ export async function activate(ctx: ExtensionContext) {
     async open(raw: unknown) {
       const parsed = openRequestSchema.parse(raw);
       const owner = currentOwner(ctx);
+      const contextId = parsed.contextId ?? currentInvocationContextId(ctx);
       await requireContextAttachApproval(
         "open",
-        parsed.contextId,
+        contextId,
         parsed.contextAttachToken,
         owner,
       );
-      const root = await confinementRoot(parsed.contextId);
+      const root = await confinementRoot(contextId);
       const cwd = resolveWithin(root, parsed.cwd);
       const command = parsed.command ?? process.env["SHELL"] ?? "/bin/bash";
       const args = parsed.args;
@@ -431,7 +433,7 @@ export async function activate(ctx: ExtensionContext) {
               (parsed.command ? [command, ...args].join(" ") : "Shell"),
             cwd,
             env: launch.env,
-            ...(parsed.contextId ? { contextId: parsed.contextId } : {}),
+            ...(contextId ? { contextId } : {}),
           },
           owner,
         );

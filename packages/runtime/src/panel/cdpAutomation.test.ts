@@ -4,6 +4,56 @@ import { createCdpAutomation } from "./cdpAutomation.js";
 import { Journal, withJournal, currentJournal } from "../shared/journal.js";
 
 describe("createCdpAutomation screenshot", () => {
+  it.each(["page", "session"] as const)(
+    "%s derives browser navigation policy from the ready generation, not a lazy handle hint",
+    async (acquire) => {
+      const page = {
+        goto: vi.fn(async () => undefined),
+        close: vi.fn(),
+        isClosed: () => false,
+      };
+      const ready = {
+        panelId: "panel:lazy",
+        kind: "browser",
+        source: "browser:data:text/html,<h1>Owned page</h1>",
+        phase: "ready",
+        attemptId: "attempt:browser",
+        runtimeEntityId: "panel:browser-runtime",
+        buildKey: null,
+      } as const;
+      const cdp = createCdpAutomation(
+        {
+          call: vi.fn(async () => ({
+            wsEndpoint: "ws://panel",
+            token: "grant",
+          })),
+        } as never,
+        ready.panelId,
+        {
+          kind: "workspace",
+          observe: async () => ready as never,
+          ensureReady: async () => ready as never,
+          loadModule: async () => ({
+            BrowserImpl: {
+              connect: async () => ({
+                contexts: () => [{ pages: () => [page] }],
+              }),
+            },
+          }),
+        },
+      );
+      const acquired = await cdp[acquire]();
+      const connected =
+        acquire === "session"
+          ? (acquired as Awaited<ReturnType<typeof cdp.session>>).page
+          : (acquired as Awaited<ReturnType<typeof cdp.page>>);
+      await connected.goto("data:text/html,<h1>Destination</h1>");
+      expect(page.goto).toHaveBeenCalledWith(
+        "data:text/html,<h1>Destination</h1>",
+      );
+      await connected.close();
+    },
+  );
   it("records native interaction receipts in the journal active when the action completes", async () => {
     let onInteraction: ((receipt: unknown) => void) | undefined;
     const page = { isClosed: () => false };
@@ -75,6 +125,68 @@ describe("createCdpAutomation screenshot", () => {
     // A resident session must not retain a previous cell's journal.
     onInteraction!(receipt);
     expect(journal.entries).toHaveLength(1);
+  });
+
+  it("journals only completed bounded native profiles and preserves original failures", async () => {
+    const report = {
+      elapsedMs: 18,
+      runtime: { taskDurationMs: 5 },
+      page: { longTasks: { count: 0 }, navigation: { ttfbMs: 1 } },
+      network: {
+        requestCount: 0,
+        failedCount: 0,
+        transferBytes: 0,
+        slowest: [{ url: "private request detail" }],
+      },
+    };
+    const failure = new Error("native profile failed");
+    const profile = vi.fn(async (action: () => Promise<void>) => {
+      await action();
+      return report;
+    });
+    const journal = new Journal();
+    const cdp = createCdpAutomation(
+      { call: vi.fn(async () => ({ wsEndpoint: "ws://panel" })) } as never,
+      "panel:profile",
+      {
+        recordOperation: (entry) => currentJournal()?.append(entry),
+        loadModule: async () => ({
+          BrowserImpl: {
+            connect: async () => ({
+              contexts: () => [{ pages: () => [{ profile }] }],
+            }),
+          },
+        }),
+      },
+    );
+    const page = await cdp.page();
+    await withJournal(journal, async () => {
+      expect(await page.profile(async () => undefined)).toBe(report);
+    });
+    expect(journal.entries.map((entry) => entry.type)).toEqual([
+      "profile.start",
+      "profile",
+    ]);
+    expect(JSON.stringify(journal.entries)).not.toContain(
+      "private request detail",
+    );
+    report.runtime.taskDurationMs = 999;
+    report.page.navigation.ttfbMs = 999;
+    expect(journal.entries[1]).toMatchObject({
+      receipt: {
+        runtime: { taskDurationMs: 5 },
+        page: { navigation: { ttfbMs: 1 } },
+      },
+    });
+    profile.mockRejectedValueOnce(failure);
+    await expect(
+      withJournal(journal, () => page.profile(async () => undefined)),
+    ).rejects.toBe(failure);
+    expect(journal.entries.map((entry) => entry.type)).toEqual([
+      "profile.start",
+      "profile",
+      "profile.start",
+    ]);
   });
 
   it("journals native evaluation values without retaining mutable or oversized projections", async () => {
@@ -558,7 +670,16 @@ describe("createCdpAutomation screenshot", () => {
       { call: vi.fn(async () => ({ wsEndpoint: "ws://panel" })) } as never,
       "panel:workspace",
       {
-        kind: "workspace",
+        kind: "browser",
+        observe: async () =>
+          ({
+            panelId: "panel:workspace",
+            kind: "workspace",
+            phase: "ready",
+            attemptId: "attempt:workspace",
+            runtimeEntityId: "panel:workspace-runtime",
+            buildKey: "build:workspace",
+          }) as never,
         loadModule: async () => ({
           BrowserImpl: {
             connect: vi.fn(async () => ({
