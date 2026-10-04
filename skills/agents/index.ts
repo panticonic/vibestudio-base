@@ -13,9 +13,11 @@ import { contextId as runtimeContextId, rpc } from "@workspace/runtime";
 import {
   launchAgentIntoChannel,
   unsubscribeAgentFromChannel,
+} from "@workspace/agentic-core/agent-launch";
+import {
   withWorkspaceReviewRetry,
   type WorkspaceReviewWaiter,
-} from "@workspace/agentic-core";
+} from "@workspace/agentic-core/provisional-agent-lifecycle";
 
 export interface AddAgentToChannelArgs {
   /** Worker source, e.g. "workers/explorer-agent". */
@@ -60,7 +62,7 @@ export function agentObjectKey(handle: string, channelId: string): string {
  * per-agent `setup<Agent>Agent` helpers.
  */
 export async function addAgentToChannel(
-  args: AddAgentToChannelArgs
+  args: AddAgentToChannelArgs,
 ): Promise<AddAgentToChannelResult> {
   const channelId = args.channelId?.trim();
   const handle = args.handle?.trim();
