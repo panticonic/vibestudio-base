@@ -37,15 +37,7 @@ providers:
   gitInterop:
     extension: extensions/git-bridge
 services:
-  - name: mission-control
-    title: Mission Control
-    description: Projects, tasks, saved views and links to agent execution.
-    action: organize projects and agentic work
-    source: workers/mission-control-store
-    protocols:
-      - mission-control.v1
-    durableObject:
-      className: MissionControlStore
+  - action: organize projects and agentic work
     authority:
       binding:
         declaredFor:
@@ -57,10 +49,18 @@ services:
         - code
         - session
         - mission
+    description: Projects, tasks, saved views and links to agent execution.
+    durableObject:
+      className: MissionControlStore
+    name: mission-control
     notability: everyday
     presentation:
       domain: automation
       verb: manage
+    protocols:
+      - mission-control.v1
+    source: workers/mission-control-store
+    title: Mission Control
   - action: manage your workspace files, history, and setup
     authority:
       binding: declared
@@ -230,7 +230,7 @@ singletonObjects:
     source: workers/missions
 systemEpoch: 0
 template:
-  description: A self-contained foundation for an agentic workspace.
+  description: Shared native agent, workspace and tooling foundations.
   name: Base
   repositories:
     - about/help
@@ -257,8 +257,8 @@ template:
     - packages/eval
     - packages/harness
     - packages/integrations
-    - packages/model-catalog
     - packages/mission-control
+    - packages/model-catalog
     - packages/omnibox-core
     - packages/pubsub
     - packages/quickfire-core
@@ -295,9 +295,9 @@ template:
     - skills/workspace-dev
     - templates/default
     - workers/agent-worker
-    - workers/missions
-    - workers/mission-control-store
     - workers/mission-agent
+    - workers/mission-control-store
+    - workers/missions
     - workers/model-settings
     - workers/pubsub-channel
     - workers/quickfire-service
