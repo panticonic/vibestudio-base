@@ -686,8 +686,7 @@
                       "maxLength": 256
                     },
                     "ref": {
-                      "type": "string",
-                      "minLength": 1
+                      "type": "string"
                     },
                     "commit": {
                       "type": "string",
@@ -750,8 +749,7 @@
                       "maxLength": 256
                     },
                     "ref": {
-                      "type": "string",
-                      "minLength": 1
+                      "type": "string"
                     },
                     "commit": {
                       "type": "string",
@@ -790,8 +788,7 @@
                       "maxLength": 256
                     },
                     "ref": {
-                      "type": "string",
-                      "minLength": 1
+                      "type": "string"
                     },
                     "commit": {
                       "type": "string",
@@ -865,8 +862,7 @@
                       "maxLength": 256
                     },
                     "ref": {
-                      "type": "string",
-                      "minLength": 1
+                      "type": "string"
                     },
                     "commit": {
                       "type": "string",
@@ -905,8 +901,7 @@
                       "maxLength": 256
                     },
                     "ref": {
-                      "type": "string",
-                      "minLength": 1
+                      "type": "string"
                     },
                     "commit": {
                       "type": "string",
@@ -1020,8 +1015,7 @@
                   "maxLength": 256
                 },
                 "ref": {
-                  "type": "string",
-                  "minLength": 1
+                  "type": "string"
                 },
                 "commit": {
                   "type": "string",
@@ -1102,8 +1096,7 @@
                 "maxLength": 256
               },
               "ref": {
-                "type": "string",
-                "minLength": 1
+                "type": "string"
               },
               "commit": {
                 "type": "string",
@@ -1173,8 +1166,7 @@
                         "maxLength": 256
                       },
                       "ref": {
-                        "type": "string",
-                        "minLength": 1
+                        "type": "string"
                       },
                       "commit": {
                         "type": "string",
@@ -1303,8 +1295,7 @@
                     "maxLength": 256
                   },
                   "ref": {
-                    "type": "string",
-                    "minLength": 1
+                    "type": "string"
                   },
                   "commit": {
                     "type": "string",
@@ -1353,8 +1344,7 @@
                 "maxLength": 256
               },
               "ref": {
-                "type": "string",
-                "minLength": 1
+                "type": "string"
               },
               "commit": {
                 "type": "string",
@@ -1746,8 +1736,7 @@
                 "maxLength": 256
               },
               "ref": {
-                "type": "string",
-                "minLength": 1
+                "type": "string"
               },
               "commit": {
                 "type": "string",
@@ -2235,8 +2224,7 @@
                 "maxLength": 256
               },
               "ref": {
-                "type": "string",
-                "minLength": 1
+                "type": "string"
               },
               "commit": {
                 "type": "string",
@@ -2628,8 +2616,7 @@
                 "maxLength": 256
               },
               "ref": {
-                "type": "string",
-                "minLength": 1
+                "type": "string"
               },
               "commit": {
                 "type": "string",
@@ -3110,8 +3097,7 @@
             "maxLength": 256
           },
           "ref": {
-            "type": "string",
-            "minLength": 1
+            "type": "string"
           },
           "commit": {
             "type": "string",
@@ -3153,8 +3139,7 @@
                         "maxLength": 256
                       },
                       "ref": {
-                        "type": "string",
-                        "minLength": 1
+                        "type": "string"
                       },
                       "commit": {
                         "type": "string",
@@ -3259,8 +3244,7 @@
                 "maxLength": 256
               },
               "ref": {
-                "type": "string",
-                "minLength": 1
+                "type": "string"
               },
               "commit": {
                 "type": "string",
@@ -3518,8 +3502,7 @@
                     "maxLength": 256
                   },
                   "ref": {
-                    "type": "string",
-                    "minLength": 1
+                    "type": "string"
                   },
                   "commit": {
                     "type": "string",
@@ -3684,8 +3667,7 @@
                 "maxLength": 256
               },
               "ref": {
-                "type": "string",
-                "minLength": 1
+                "type": "string"
               },
               "commit": {
                 "type": "string",
