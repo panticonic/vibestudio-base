@@ -47,6 +47,30 @@ export type NativeModelTransportDiagnostic = {
   readonly messages?: number;
   readonly errors?: number;
   readonly providerEvents?: number;
+  readonly providerText?: {
+    readonly deltas: number;
+    readonly deltaCharacters: number;
+    readonly items: number;
+    readonly characters: number;
+    readonly commentaryItems: number;
+    readonly finalAnswerItems: number;
+  };
+  readonly providerReasoning?: {
+    readonly deltas: number;
+    readonly deltaCharacters: number;
+    readonly items: number;
+    readonly summaryCharacters: number;
+    readonly contentCharacters: number;
+    readonly encryptedItems: number;
+  };
+  readonly providerOutput?: {
+    readonly messages: number;
+    readonly textCharacters: number;
+    readonly reasoning: number;
+    readonly summaryCharacters: number;
+    readonly toolCalls: number;
+    readonly other: number;
+  };
   readonly providerEvent?:
     | "response.created"
     | "response.output_item.added"
@@ -218,6 +242,22 @@ function createModelConnection(
   };
   let nextSocketId = 0;
   let providerEvents = 0;
+  const providerText = {
+    deltas: 0,
+    deltaCharacters: 0,
+    items: 0,
+    characters: 0,
+    commentaryItems: 0,
+    finalAnswerItems: 0,
+  };
+  const providerReasoning = {
+    deltas: 0,
+    deltaCharacters: 0,
+    items: 0,
+    summaryCharacters: 0,
+    contentCharacters: 0,
+    encryptedItems: 0,
+  };
   const controller = new AbortController();
   const resources = new Set<OwnedResource>();
   const pending = new Set<Promise<unknown>>();
@@ -540,6 +580,60 @@ function createModelConnection(
           typeof data === "object" && data !== null
             ? Reflect.get(data, "type")
             : undefined;
+        // Count provider text before Pi parses it. Retain lengths and phase
+        // counts only; conversation content stays in its ordinary transcript.
+        if (type === "response.output_text.delta") {
+          providerText.deltas += 1;
+          const delta = Reflect.get(data as object, "delta");
+          if (typeof delta === "string")
+            providerText.deltaCharacters += delta.length;
+        }
+        if (
+          type === "response.reasoning_summary_text.delta" ||
+          type === "response.reasoning_text.delta"
+        ) {
+          providerReasoning.deltas += 1;
+          const delta = Reflect.get(data as object, "delta");
+          if (typeof delta === "string")
+            providerReasoning.deltaCharacters += delta.length;
+        }
+        if (type === "response.output_item.done") {
+          const item = Reflect.get(data as object, "item");
+          if (item && typeof item === "object" && item.type === "message") {
+            providerText.items += 1;
+            if (item.phase === "commentary") providerText.commentaryItems += 1;
+            if (item.phase === "final_answer")
+              providerText.finalAnswerItems += 1;
+            if (Array.isArray(item.content)) {
+              for (const part of item.content) {
+                if (
+                  part &&
+                  part.type === "output_text" &&
+                  typeof part.text === "string"
+                )
+                  providerText.characters += part.text.length;
+              }
+            }
+          }
+          if (item && typeof item === "object" && item.type === "reasoning") {
+            providerReasoning.items += 1;
+            if (
+              typeof item.encrypted_content === "string" &&
+              item.encrypted_content.length
+            )
+              providerReasoning.encryptedItems += 1;
+            for (const [parts, field] of [
+              [item.summary, "summaryCharacters"],
+              [item.content, "contentCharacters"],
+            ] as const) {
+              if (!Array.isArray(parts)) continue;
+              for (const part of parts) {
+                if (part && typeof part.text === "string")
+                  providerReasoning[field] += part.text.length;
+              }
+            }
+          }
+        }
         const terminal =
           type === "response.completed" ||
           type === "response.done" ||
@@ -569,6 +663,9 @@ function createModelConnection(
             milestone: "provider_terminal",
             providerEvent,
             providerEvents,
+            providerText: { ...providerText },
+            providerReasoning: { ...providerReasoning },
+            providerOutput: summarizeProviderOutput(data),
           });
       },
       connectWebSocket: (rawUrl, options) =>
@@ -663,6 +760,60 @@ function createModelConnection(
       return closing;
     },
   };
+}
+
+/** Independently count the terminal response, including output the parser may not support. */
+function summarizeProviderOutput(
+  data: unknown,
+): NativeModelTransportDiagnostic["providerOutput"] {
+  const counts = {
+    messages: 0,
+    textCharacters: 0,
+    reasoning: 0,
+    summaryCharacters: 0,
+    toolCalls: 0,
+    other: 0,
+  };
+  const response =
+    data && typeof data === "object"
+      ? Reflect.get(data, "response")
+      : undefined;
+  const output =
+    response && typeof response === "object"
+      ? Reflect.get(response, "output")
+      : undefined;
+  if (!Array.isArray(output)) return counts;
+  for (const item of output) {
+    if (!item || typeof item !== "object") {
+      counts.other += 1;
+      continue;
+    }
+    if (item.type === "message") {
+      counts.messages += 1;
+      if (Array.isArray(item.content))
+        for (const part of item.content) {
+          if (
+            part &&
+            part.type === "output_text" &&
+            typeof part.text === "string"
+          )
+            counts.textCharacters += part.text.length;
+        }
+    } else if (item.type === "reasoning") {
+      counts.reasoning += 1;
+      if (Array.isArray(item.summary))
+        for (const part of item.summary) {
+          if (part && typeof part.text === "string")
+            counts.summaryCharacters += part.text.length;
+        }
+    } else if (
+      item.type === "function_call" ||
+      item.type === "custom_tool_call"
+    )
+      counts.toolCalls += 1;
+    else counts.other += 1;
+  }
+  return counts;
 }
 
 /**

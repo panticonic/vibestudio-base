@@ -832,6 +832,49 @@ describe("chatMessagesFromChannelView", () => {
     expect(standalone).toMatchObject({ tier: "primary" });
   });
 
+  it.each(["", "I’ll read the onboarding guide."])(
+    "renders only the display text of a native tool round: %j",
+    (content) => {
+      const message: AgenticEvent<"message.completed"> = {
+        kind: "message.completed",
+        actor: agent,
+        causality: { messageId: brandId<MessageId>("native:4:59:0") },
+        payload: {
+          protocol: AGENTIC_PROTOCOL_VERSION,
+          role: "assistant",
+          tier: "secondary",
+          outcome: content ? "completed" : "tool_calls_only",
+          blocks: [
+            ...(content ? [{ type: "text" as const, content }] : []),
+            {
+              type: "data",
+              metadata: {
+                pi: {
+                  type: "toolCall",
+                  id: "call-read",
+                  name: "read",
+                  arguments: { path: "SKILL.md" },
+                },
+              },
+            },
+          ],
+        },
+        createdAt: "2026-10-05T08:40:00.000Z",
+      };
+      const state = reduceChannelView(
+        createInitialChannelViewState(),
+        envelope(message, 1),
+      );
+      const rows = chatMessagesFromChannelView(state);
+      expect(rows).toHaveLength(content ? 1 : 0);
+      if (content)
+        expect(rows[0]).toMatchObject({ content, tier: "secondary" });
+      expect(state.messages["native:4:59:0"]?.blocks).toEqual(
+        "blocks" in message.payload ? message.payload.blocks : undefined,
+      );
+    },
+  );
+
   it("uses the invocation card instead of a blank assistant card for known invocation-only messages", () => {
     const message: AgenticEvent<"message.completed"> = {
       kind: "message.completed",

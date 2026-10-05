@@ -1098,6 +1098,197 @@ describe("credentialed model transport ownership", () => {
     }
   });
 
+  it.each(["sse", "websocket"] as const)(
+    "preserves interleaved commentary, reasoning summaries and final text through builtin Codex over %s",
+    async (transport) => {
+      const models = createProtectedNativeModels();
+      const selected = models.getModel("openai-codex", "gpt-6.1-sol");
+      if (!selected) throw new Error("Builtin Codex model is missing");
+      const reasoning = {
+        type: "reasoning",
+        id: "rs-summary",
+        summary: [{ type: "summary_text", text: "Checking setup." }],
+        encrypted_content: "opaque replay",
+      };
+      const commentary = {
+        type: "message",
+        id: "msg-commentary",
+        phase: "commentary",
+        role: "assistant",
+        content: [
+          { type: "output_text", text: "I’ll check.", annotations: [] },
+        ],
+      };
+      const final = {
+        type: "message",
+        id: "msg-final",
+        phase: "final_answer",
+        role: "assistant",
+        content: [{ type: "output_text", text: "Ready.", annotations: [] }],
+      };
+      const frames = [
+        { type: "response.created", response: { id: "response-interleaved" } },
+        {
+          type: "response.output_item.added",
+          output_index: 0,
+          item: { ...reasoning, summary: [] },
+        },
+        {
+          type: "response.output_item.added",
+          output_index: 1,
+          item: { ...commentary, content: [] },
+        },
+        {
+          type: "response.output_text.delta",
+          output_index: 1,
+          content_index: 0,
+          delta: "I’ll check.",
+        },
+        {
+          type: "response.reasoning_summary_text.delta",
+          output_index: 0,
+          summary_index: 0,
+          delta: "Checking setup.",
+        },
+        {
+          type: "response.output_text.done",
+          output_index: 1,
+          content_index: 0,
+          text: "I’ll check.",
+        },
+        {
+          type: "response.reasoning_summary_text.done",
+          output_index: 0,
+          summary_index: 0,
+          text: "Checking setup.",
+        },
+        {
+          type: "response.output_item.done",
+          output_index: 1,
+          item: commentary,
+        },
+        { type: "response.output_item.done", output_index: 0, item: reasoning },
+        {
+          type: "response.output_item.added",
+          output_index: 2,
+          item: { ...final, content: [] },
+        },
+        {
+          type: "response.output_text.delta",
+          output_index: 2,
+          content_index: 0,
+          delta: "Ready.",
+        },
+        { type: "response.output_item.done", output_index: 2, item: final },
+        {
+          type: "response.completed",
+          response: {
+            id: "response-interleaved",
+            status: "completed",
+            output: [reasoning, commentary, final],
+            usage: {
+              input_tokens: 5,
+              output_tokens: 8,
+              total_tokens: 13,
+              output_tokens_details: { reasoning_tokens: 3 },
+            },
+          },
+        },
+      ];
+      const socket = new Socket();
+      socket.onSend = () =>
+        queueMicrotask(() => {
+          for (const frame of frames)
+            socket.emit("message", { data: JSON.stringify(frame) });
+        });
+      const diagnostics: import("./native-model-transport.js").NativeModelTransportDiagnostic[] =
+        [];
+      const connection = createCredentialedModelConnection(
+        {
+          model: selected,
+          credential: credential(),
+          rpc: rpcFixture(
+            async () =>
+              new Response(
+                frames
+                  .map((frame) => `data: ${JSON.stringify(frame)}\n\n`)
+                  .join(""),
+                { headers: { "content-type": "text/event-stream" } },
+              ),
+          ),
+          egressFetch: async () => upgraded(socket),
+          onDiagnostic: (event) => diagnostics.push(event),
+        },
+        BACKGROUND_CONTEXT,
+      );
+      try {
+        const events = models.streamSimple(
+          selected,
+          normalizeContext({ messages: [] }),
+          { ...connection.options, transport, reasoning: "medium" },
+        );
+        const observed: string[] = [];
+        for await (const event of events) observed.push(event.type);
+        const answer = await events.result();
+        expect(answer.stopReason).toBe("stop");
+        expect(answer.content).toMatchObject([
+          {
+            type: "thinking",
+            thinking: "Checking setup.",
+            thinkingSignature: JSON.stringify(reasoning),
+          },
+          {
+            type: "text",
+            text: "I’ll check.",
+            textSignature: expect.stringContaining("commentary"),
+          },
+          {
+            type: "text",
+            text: "Ready.",
+            textSignature: expect.stringContaining("final_answer"),
+          },
+        ]);
+        expect(answer.usage.reasoning).toBe(3);
+        expect(observed).toEqual(
+          expect.arrayContaining([
+            "thinking_delta",
+            "thinking_end",
+            "text_delta",
+            "text_end",
+          ]),
+        );
+        if (transport === "websocket")
+          expect(JSON.parse(socket.sent[0]!)).toMatchObject({
+            reasoning: { effort: "medium", summary: "auto" },
+          });
+        expect(
+          diagnostics.find((event) => event.milestone === "provider_terminal"),
+        ).toMatchObject({
+          providerEvents: frames.length,
+          providerText: {
+            deltas: 2,
+            deltaCharacters: 17,
+            items: 2,
+            characters: 17,
+            commentaryItems: 1,
+            finalAnswerItems: 1,
+          },
+          providerReasoning: {
+            deltas: 1,
+            deltaCharacters: 15,
+            items: 1,
+            summaryCharacters: 15,
+            contentCharacters: 0,
+            encryptedItems: 1,
+          },
+          providerOutput: { messages: 2, textCharacters: 17, reasoning: 1, summaryCharacters: 15, toolCalls: 0, other: 0 },
+        });
+      } finally {
+        await connection.close(BACKGROUND_CONTEXT);
+      }
+    },
+  );
+
   it("runs builtin Codex through Models with host-protected auth and the owned transport", async () => {
     const models = createProtectedNativeModels();
     const selected = models.getModel("openai-codex", "gpt-6.1-sol");
@@ -1334,7 +1525,7 @@ describe("protected upgrade ownership transfer", () => {
       codex,
     );
     await connection.options.onProviderStreamEvent?.(
-      { type: "response.completed", response: { secret: "not metadata" } },
+      { type: "response.completed", response: { secret: "not metadata", output: [{ type: "unsupported-private-output", secret: "must not be logged" }] } },
       codex,
     );
     expect(events).toEqual([
@@ -1347,6 +1538,23 @@ describe("protected upgrade ownership transfer", () => {
         milestone: "provider_terminal",
         providerEvent: "response.completed",
         providerEvents: 2,
+        providerText: {
+          deltas: 0,
+          deltaCharacters: 0,
+          items: 0,
+          characters: 0,
+          commentaryItems: 0,
+          finalAnswerItems: 0,
+        },
+        providerReasoning: {
+          deltas: 0,
+          deltaCharacters: 0,
+          items: 0,
+          summaryCharacters: 0,
+          contentCharacters: 0,
+          encryptedItems: 0,
+        },
+        providerOutput: { messages: 0, textCharacters: 0, reasoning: 0, summaryCharacters: 0, toolCalls: 0, other: 1 },
       },
     ]);
     await connection.close(BACKGROUND_CONTEXT);

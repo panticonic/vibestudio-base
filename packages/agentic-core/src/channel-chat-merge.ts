@@ -807,14 +807,12 @@ function projectedMessageToChatMessages(
   ];
 }
 
-// A standalone row renders the message's display text (and inline attachments).
-// Thinking, invocations, and diagnostics each own their render path, so row
-// existence is purely content-driven; `outcome` only decorates the row (e.g. the
-// "Interrupted" marker / failure error). Empty and failed-without-content messages
-// are handled earlier by `diagnosticNoticeFromMessage`.
+// A standalone row renders display text. Structural blocks retain evidence,
+// but do not supply a body to this renderer. Thinking, invocations, and
+// diagnostics each own their render path. Test the same content the row renders
+// so metadata-only blocks cannot create an empty bubble.
 function messageShouldRenderStandalone(message: ProjectedMessage): boolean {
-  const summary = summarizeMessageBlocks(message.blocks);
-  return summary.hasText || summary.hasAttachmentOrData;
+  return Boolean(messageDisplayText(message.blocks));
 }
 
 function isCredentialSuspensionReason(reason: string | undefined): boolean {
