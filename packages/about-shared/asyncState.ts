@@ -16,10 +16,12 @@ export function useAsyncResource<T>(
   const refresh = useCallback(async () => {
     const current = ++generation.current;
     setLoading(true);
-    setError(null);
     try {
       const result = await read();
-      if (generation.current === current) setData(result);
+      if (generation.current === current) {
+        setData(result);
+        setError(null);
+      }
     } catch (cause) {
       if (generation.current === current) setError(errorMessage(cause));
     } finally {
@@ -41,7 +43,15 @@ export function useAsyncResource<T>(
       generation.current++;
     };
   }, [refresh, refreshIntervalMs]);
-  return { data, loading, error, refresh };
+  // A completed result (including an empty collection) remains usable while
+  // refreshing. Initial loading must not replace it on every background read.
+  return {
+    data,
+    loading: loading && data === undefined,
+    refreshing: loading && data !== undefined,
+    error,
+    refresh,
+  };
 }
 
 /** Serialize each record's actions while leaving other records usable. */
