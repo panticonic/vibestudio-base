@@ -1,21 +1,25 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { SPEECH_MAX_PCM_BYTES } from "@vibestudio/service-schemas/speech";
+import {
+  SPEECH_MAX_PCM_BYTES,
+  type SpeechEvent,
+} from "@vibestudio/service-schemas/speech";
 
 export interface SpeechRpc {
+  call(target: string, method: string, args: unknown[]): Promise<unknown>;
   stream(
     target: string,
     method: string,
     args: unknown[],
-    options?: { signal?: AbortSignal }
+    options?: { signal?: AbortSignal },
   ): Promise<Response>;
 }
 
 export async function transcribeRecording(
   blob: Blob,
   context: AudioContext,
-  rpc: SpeechRpc,
+  rpc: Pick<SpeechRpc, "stream">,
   signal: AbortSignal,
-  progress: (message: string) => void
+  progress: (message: string) => void,
 ): Promise<string> {
   const decoded = await context.decodeAudioData(await blob.arrayBuffer());
   signal.throwIfAborted();
@@ -43,39 +47,59 @@ export async function transcribeRecording(
     "main",
     "speech.transcribe",
     [{ format: "pcm_f32le", sampleRate: 16000, audio: btoa(binary) }],
-    { signal }
+    { signal },
   );
-  if (!response.ok || !response.body) throw new Error(`Dictation failed (${response.status}).`);
+  const transcript: { text?: string } = {};
+  await readSpeechEvents(response, signal, (event) => {
+    if (event.type === "progress" && typeof event.message === "string")
+      progress(event.message);
+    else if (event.type === "result" && typeof event.text === "string")
+      transcript.text = event.text;
+    else throw new Error("Invalid dictation response");
+  });
+  if (transcript.text === undefined)
+    throw new Error("Dictation ended without a complete transcript.");
+  const text = transcript.text;
+  if (!text.trim())
+    throw new Error(
+      "No speech detected. Try speaking closer to the microphone.",
+    );
+  return text;
+}
+
+async function readSpeechEvents(
+  response: Response,
+  signal: AbortSignal,
+  consume: (event: SpeechEvent) => void,
+) {
+  if (!response.ok || !response.body)
+    throw new Error(`Voice input failed (${response.status}).`);
   const reader = response.body.getReader();
+  const abort = () => {
+    void reader.cancel(signal.reason).catch(() => {});
+  };
+  signal.addEventListener("abort", abort, { once: true });
+  if (signal.aborted) abort();
   const decoder = new TextDecoder();
   let buffer = "";
-  let transcript: string | null = null;
   try {
     for (;;) {
       const { done, value } = await reader.read();
       if (done) break;
+      signal.throwIfAborted();
       buffer += decoder.decode(value, { stream: true });
       for (;;) {
         const end = buffer.indexOf("\n");
         if (end < 0) break;
-        const event = JSON.parse(buffer.slice(0, end)) as {
-          type: string;
-          message?: string;
-          text?: string;
-        };
+        consume(JSON.parse(buffer.slice(0, end)) as SpeechEvent);
         buffer = buffer.slice(end + 1);
-        if (event.type === "progress" && event.message) progress(event.message);
-        else if (event.type === "result" && typeof event.text === "string") transcript = event.text;
-        else throw new Error("Invalid dictation response");
       }
     }
     signal.throwIfAborted();
-    if (transcript === null || buffer.trim())
-      throw new Error("Dictation ended without a complete transcript.");
-    if (!transcript.trim())
-      throw new Error("No speech detected. Try speaking closer to the microphone.");
-    return transcript;
+    if (buffer.trim())
+      throw new Error("Voice input ended with an incomplete response.");
   } finally {
+    signal.removeEventListener("abort", abort);
     await reader.cancel().catch(() => {});
     reader.releaseLock();
   }
@@ -92,22 +116,55 @@ export function useDictation(
   rpc: SpeechRpc | undefined,
   scope: unknown,
   enabled: boolean,
-  onTranscript: (text: string) => void
+  onTranscript: (text: string) => void,
 ) {
   const [phase, setPhase] = useState<
-    "idle" | "permission" | "recording" | "transcribing" | "error"
+    | "idle"
+    | "checking"
+    | "offer"
+    | "loading"
+    | "ready"
+    | "permission"
+    | "recording"
+    | "transcribing"
+    | "error"
   >("idle");
   const [message, setMessage] = useState("");
   const current = useRef<Capture | null>(null);
+  const preparation = useRef<AbortController | null>(null);
+  const [loadProgress, setLoadProgress] = useState<number | undefined>();
+  const [microphone, setMicrophone] = useState(false);
   const callback = useRef(onTranscript);
   callback.current = onTranscript;
-  const supported =
+  const capable =
     typeof navigator !== "undefined" &&
     !!navigator.mediaDevices?.getUserMedia &&
     typeof MediaRecorder !== "undefined" &&
     typeof AudioContext !== "undefined" &&
     typeof OfflineAudioContext !== "undefined" &&
     !!rpc;
+  useEffect(() => {
+    if (!capable) return;
+    let live = true;
+    const devices = navigator.mediaDevices;
+    const update = async () => {
+      try {
+        const available = (await devices.enumerateDevices()).some(
+          (device) => device.kind === "audioinput",
+        );
+        if (live) setMicrophone(available);
+      } catch {
+        if (live) setMicrophone(false);
+      }
+    };
+    void update();
+    devices.addEventListener?.("devicechange", update);
+    return () => {
+      live = false;
+      devices.removeEventListener?.("devicechange", update);
+    };
+  }, [capable]);
+  const supported = capable && microphone;
   const release = useCallback((capture: Capture) => {
     if (capture.recorder) {
       capture.recorder.onstop = null;
@@ -121,6 +178,9 @@ export function useDictation(
     void capture.context.close().catch(() => {});
   }, []);
   const cancel = useCallback(() => {
+    preparation.current?.abort();
+    preparation.current = null;
+    setLoadProgress(undefined);
     const capture = current.current;
     current.current = null;
     if (capture) {
@@ -134,9 +194,10 @@ export function useDictation(
   useEffect(() => {
     if (!enabled) cancel();
   }, [enabled, cancel]);
-  const busy = phase === "permission" || phase === "recording" || phase === "transcribing";
+  const busy =
+    phase === "permission" || phase === "recording" || phase === "transcribing";
   useEffect(() => {
-    if (!busy) return;
+    if (phase === "idle") return;
     const escape = (event: KeyboardEvent) => {
       if (event.key !== "Escape") return;
       event.preventDefault();
@@ -145,16 +206,25 @@ export function useDictation(
     };
     window.addEventListener("keydown", escape, true);
     return () => window.removeEventListener("keydown", escape, true);
-  }, [busy, cancel]);
+  }, [phase, cancel]);
   const fail = (capture: Capture, error: unknown) => {
     if (current.current !== capture) return;
+    if (error instanceof Error && error.name === "NotFoundError") {
+      setMicrophone(false);
+      cancel();
+      return;
+    }
+    if (!capture.blob) {
+      current.current = null;
+      release(capture);
+    }
     setPhase("error");
     setMessage(
       error instanceof Error && error.name === "NotAllowedError"
         ? "Microphone access was denied. Allow access and try again."
         : error instanceof Error
           ? error.message
-          : String(error)
+          : String(error),
     );
     if (capture.recorder) capture.recorder.onstop = null;
     capture.stream?.getTracks().forEach((track) => {
@@ -174,7 +244,7 @@ export function useDictation(
         capture.abort.signal,
         (value) => {
           if (current.current === capture) setMessage(value);
-        }
+        },
       );
       if (current.current !== capture) return;
       callback.current(text);
@@ -183,7 +253,7 @@ export function useDictation(
       if (!capture.abort.signal.aborted) fail(capture, error);
     }
   };
-  const start = async () => {
+  const record = async () => {
     if (!enabled || !supported || current.current) return;
     const capture: Capture = {
       abort: new AbortController(),
@@ -215,7 +285,7 @@ export function useDictation(
         fail(
           capture,
           (event as Event & { error?: Error }).error ??
-            new Error("The microphone could not record audio.")
+            new Error("The microphone could not record audio."),
         );
       };
       stream.getAudioTracks().forEach((track) => {
@@ -240,8 +310,83 @@ export function useDictation(
       fail(capture, error);
     }
   };
+  const start = async () => {
+    if (!enabled || !supported || current.current || preparation.current)
+      return;
+    const operation = new AbortController();
+    preparation.current = operation;
+    setPhase("checking");
+    setMessage("Checking voice input…");
+    try {
+      const status = (await rpc!.call("main", "speech.status", [])) as {
+        ready: boolean;
+      };
+      if (preparation.current !== operation) return;
+      preparation.current = null;
+      if (status.ready) await record();
+      else {
+        setPhase("offer");
+        setMessage(
+          "Load voice input to get ready to speak. The model runs locally and stays ready for your next recording.",
+        );
+      }
+    } catch (error) {
+      if (preparation.current !== operation) return;
+      preparation.current = null;
+      setPhase("error");
+      setMessage(error instanceof Error ? error.message : String(error));
+    }
+  };
+  const prepare = async () => {
+    if (!rpc || !enabled || preparation.current) return;
+    const operation = new AbortController();
+    preparation.current = operation;
+    setPhase("loading");
+    setMessage("Preparing voice input…");
+    setLoadProgress(undefined);
+    try {
+      const response = await rpc.stream("main", "speech.prepare", [], {
+        signal: operation.signal,
+      });
+      let ready = false;
+      await readSpeechEvents(response, operation.signal, (event) => {
+        if (preparation.current !== operation) return;
+        if (event.type === "ready") ready = true;
+        else if (event.type === "progress") {
+          setMessage(event.message);
+          setLoadProgress(
+            event.total && event.completed !== undefined
+              ? (event.completed / event.total) * 100
+              : undefined,
+          );
+        } else throw new Error("Invalid voice preparation response");
+      });
+      if (preparation.current !== operation) return;
+      if (!ready)
+        throw new Error(
+          "Voice input preparation ended before the model was ready.",
+        );
+      preparation.current = null;
+      setPhase("ready");
+      setMessage("Voice input is ready");
+    } catch (error) {
+      if (preparation.current !== operation) return;
+      preparation.current = null;
+      setPhase("error");
+      setMessage(error instanceof Error ? error.message : String(error));
+    }
+  };
+  // This dismisses only a completed preparation notice, never active loading.
+  // The ready model stays resident, and the microphone button remains available.
+  useEffect(() => {
+    if (phase !== "ready") return;
+    const dismiss = setTimeout(cancel, 8000);
+    return () => clearTimeout(dismiss);
+  }, [phase, cancel]);
   return {
     supported,
+    loadProgress,
+    prepare,
     phase,
     message,
     busy,

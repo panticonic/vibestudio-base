@@ -142,7 +142,7 @@ export function ChatInput({ placeholder, defaultMentions, disabled = false }: Ch
   }, [isTouch]);
 
   const textAreaRef = useRef<HTMLTextAreaElement>(null);
-  const speechRpc = chat?.rpc?.stream ? { stream: chat.rpc.stream.bind(chat.rpc) } : undefined;
+  const speechRpc = chat?.rpc?.stream ? { stream: chat.rpc.stream.bind(chat.rpc), call: chat.rpc.call.bind(chat.rpc) } : undefined;
   const dictation = useDictation(
     speechRpc,
     `${chat?.contextId}:${chat?.channelId}`,
@@ -615,6 +615,7 @@ export function ChatInput({ placeholder, defaultMentions, disabled = false }: Ch
             the field, not beside it). It stays put as the textarea grows; the
             textarea reserves right-padding so text never runs under it. */}
         <Box style={{ position: "relative" }}>
+          <DictationStatus dictation={dictation} />
           {mentions.open && !dictation.busy && (
             <MentionAutocomplete
               candidates={mentions.candidates}
@@ -673,7 +674,6 @@ export function ChatInput({ placeholder, defaultMentions, disabled = false }: Ch
             />
           </Box>
         </Box>
-        <DictationStatus dictation={dictation} />
         {/* Transient "Sending…" ghost — the only sub-row, shown only in flight. */}
         {pendingSendCount > 0 && (
           <Flex

@@ -1,4 +1,11 @@
-import { Button, Flex, IconButton, Spinner, Text } from "@radix-ui/themes";
+import {
+  Button,
+  Flex,
+  IconButton,
+  Progress,
+  Spinner,
+  Text,
+} from "@radix-ui/themes";
 import type { useDictation } from "../hooks/useDictation";
 
 export function DictationButton({
@@ -12,9 +19,12 @@ export function DictationButton({
 }) {
   if (!dictation.supported) return null;
   const recording = dictation.phase === "recording";
+  const preparing =
+    dictation.phase === "loading" || dictation.phase === "checking";
+  const active = dictation.busy || preparing;
   const label = recording
     ? "Stop dictation"
-    : dictation.busy
+    : active
       ? "Cancel dictation"
       : "Dictate in English";
   return (
@@ -29,13 +39,13 @@ export function DictationButton({
       title={`${label} · Offline model in your workspace`}
       onClick={() => {
         if (recording) dictation.stop();
-        else if (dictation.busy) dictation.cancel();
+        else if (active) dictation.cancel();
         else void dictation.start();
       }}
     >
       {recording ? (
         <span aria-hidden="true">■</span>
-      ) : dictation.busy ? (
+      ) : active ? (
         <Spinner />
       ) : (
         <svg
@@ -54,32 +64,72 @@ export function DictationButton({
     </IconButton>
   );
 }
-export function DictationStatus({ dictation }: { dictation: ReturnType<typeof useDictation> }) {
+export function DictationStatus({
+  dictation,
+}: {
+  dictation: ReturnType<typeof useDictation>;
+}) {
   if (!dictation.message) return null;
+  const phase = dictation.phase;
+  const loading = phase === "loading" || phase === "checking";
   return (
     <Flex
+      className="dictation-status"
+      direction="column"
       gap="2"
-      align="center"
-      mt="1"
-      wrap="wrap"
-      role={dictation.phase === "error" ? "alert" : "status"}
+      role={phase === "error" ? "alert" : "status"}
+      style={{
+        position: "absolute",
+        bottom: "calc(100% + 8px)",
+        right: 0,
+        maxWidth: "min(420px, 100%)",
+        padding: "12px 14px",
+        zIndex: 20,
+        borderRadius: "var(--radius-3)",
+        border: "1px solid var(--gray-6)",
+        background: "var(--color-panel-solid)",
+        boxShadow: "var(--shadow-4)",
+      }}
     >
-      <Text size="1" color={dictation.phase === "error" ? "red" : "gray"}>
-        {dictation.message}
-      </Text>
-      {dictation.phase === "recording" && (
-        <Button size="1" variant="soft" onClick={dictation.stop}>
-          Stop
-        </Button>
+      <Flex gap="2" align="center">
+        {loading && <Spinner size="1" />}
+        <Text size="2" color={phase === "error" ? "red" : undefined}>
+          {dictation.message}
+        </Text>
+      </Flex>
+      {phase === "loading" && (
+        <Progress
+          value={dictation.loadProgress ?? null}
+          aria-label="Loading voice model"
+        />
       )}
-      {dictation.phase === "error" && dictation.retry && (
-        <Button size="1" variant="soft" onClick={dictation.retry}>
-          Retry
+      <Flex gap="2" align="center" wrap="wrap">
+        {phase === "offer" && (
+          <Button size="1" onClick={() => void dictation.prepare()}>
+            Load voice input
+          </Button>
+        )}
+        {phase === "ready" && (
+          <Button size="1" onClick={() => void dictation.start()}>
+            Start speaking
+          </Button>
+        )}
+        {phase === "recording" && (
+          <Button size="1" variant="soft" onClick={dictation.stop}>
+            Stop
+          </Button>
+        )}
+        {phase === "error" && dictation.retry && (
+          <Button size="1" variant="soft" onClick={dictation.retry}>
+            Retry
+          </Button>
+        )}
+        <Button size="1" variant="ghost" onClick={dictation.cancel}>
+          {phase === "error" || phase === "ready" || phase === "offer"
+            ? "Dismiss"
+            : "Cancel"}
         </Button>
-      )}
-      <Button size="1" variant="ghost" onClick={dictation.cancel}>
-        {dictation.phase === "error" ? "Dismiss" : "Cancel"}
-      </Button>
+      </Flex>
     </Flex>
   );
 }
