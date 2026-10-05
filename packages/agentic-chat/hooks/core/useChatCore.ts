@@ -913,7 +913,7 @@ export function useChatCore({
         if (byHandle) targetId = Object.keys(roster).find((k) => roster[k] === byHandle) ?? agentId;
       }
       try {
-        await c.callMethod(targetId, "pause", { reason: "User interrupted execution" });
+        await c.callMethod(targetId, "pause", { reason: "User interrupted execution" }).result;
       } catch (err) {
         console.warn("[Chat] Interrupt failed:", err);
         setConnectionError({
@@ -938,19 +938,25 @@ export function useChatCore({
       .filter(([, p]) => isAgentParticipantType(p.metadata.type))
       .map(([id]) => id);
     let paused = 0;
-    await Promise.all(
+    const outcomes = await Promise.allSettled(
       agentIds.map(async (id) => {
         try {
           await c.callMethod(id, "pause", {
             reason: flushDeferred ? "User requested send now" : "User interrupted execution",
             ...(flushDeferred ? { flushDeferred: true } : {}),
-          });
+          }).result;
           paused += 1;
         } catch (err) {
           console.warn("[Chat] Pause agent failed:", err);
+          setConnectionError({
+            message: err instanceof Error ? `Couldn't interrupt the agent: ${err.message}` : "Couldn't interrupt the agent. Try again.",
+            at: Date.now(), cause: err,
+          });
+          throw err;
         }
       })
     );
+    for (const outcome of outcomes) if (outcome.status === "rejected") throw outcome.reason;
     return paused;
   }, []);
 
@@ -1064,7 +1070,9 @@ export function useChatCore({
         !m.retracted &&
         (m.receipts?.aggregate ?? "pending") === "pending"
     ).length;
-    const paused = await pauseBusyAgents(true);
+    let paused: number;
+    try { paused = await pauseBusyAgents(true); }
+    catch { return; } // The original RPC failure is already visible in connectionError.
     // The loop decides steers-vs-deferred; the client narrates from what it can
     // see locally. One flush advances the pipeline by one step.
     const remaining = Math.max(0, outboxCount - 1);

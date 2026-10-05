@@ -1735,6 +1735,7 @@ describe("chatMessagesFromChannelView", () => {
 
     expect(chatMessagesFromChannelView(state).map((message) => message.id)).toEqual([
       "turn:turn-credential-suspended:waiting",
+      "turn:turn-credential-suspended",
     ]);
   });
 
@@ -1771,6 +1772,7 @@ describe("chatMessagesFromChannelView", () => {
       .reduce(reduceChannelView, createInitialChannelViewState());
     expect(chatMessagesFromChannelView(waitingState).map((message) => message.id)).toEqual([
       "turn:turn-resumed-same-credential:waiting",
+      "turn:turn-resumed-same-credential",
     ]);
 
     const resumedState = [opened, waiting, resumed]
@@ -2560,6 +2562,8 @@ describe("chatMessagesFromChannelView", () => {
       .map((event, index) => envelope(event, index + 1))
       .reduce(reduceChannelView, createInitialChannelViewState());
 
+    expect(chatMessagesFromChannelView(state).some((message) => message.error)).toBe(false);
+
     expect(chatMessagesFromChannelView(state)).toContainEqual(
       expect.objectContaining({
         id: "automation:run-42",
@@ -2573,6 +2577,25 @@ describe("chatMessagesFromChannelView", () => {
         },
       })
     );
+  });
+
+  it("keeps one Stop control per agent while automation and its model run overlap", () => {
+    const first: AgenticEvent<"turn.opened"> = {
+      kind: "turn.opened", actor: agent, turnId: brandId<TurnId>("automation-owner"),
+      payload: { protocol: AGENTIC_PROTOCOL_VERSION }, createdAt: "2026-05-20T12:00:00.000Z",
+    };
+    const second: AgenticEvent<"turn.opened"> = { ...first, turnId: brandId<TurnId>("model-owner") };
+    const closed: AgenticEvent<"turn.closed"> = {
+      kind: "turn.closed", actor: agent, turnId: second.turnId,
+      payload: { protocol: AGENTIC_PROTOCOL_VERSION }, createdAt: "2026-05-20T12:00:01.000Z",
+    };
+    let state = [first, second].map((event, index) => envelope(event, index + 1))
+      .reduce(reduceChannelView, createInitialChannelViewState());
+    expect(chatMessagesFromChannelView(state).filter((message) => message.contentType === "typing")).toHaveLength(1);
+    state = reduceChannelView(state, envelope(closed, 3));
+    expect(chatMessagesFromChannelView(state).filter((message) => message.contentType === "typing")).toHaveLength(1);
+    state = reduceChannelView(state, envelope({ ...closed, turnId: first.turnId }, 4));
+    expect(chatMessagesFromChannelView(state).filter((message) => message.contentType === "typing")).toHaveLength(0);
   });
 
   it("projects a running automation at institution time before any run exists", () => {

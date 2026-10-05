@@ -21,6 +21,85 @@ vi.mock("../useChannelMessages.js", () => ({
 }));
 afterEach(() => vi.clearAllMocks());
 
+it.each(["interrupt", "flush"] as const)(
+  "joins the %s RPC result and shows its original failure without claiming success",
+  async (operation) => {
+    const harness = await createTranscriptHarness(`joined-${operation}`);
+    const agent = harness.connectParticipant({
+      id: "agent:worker",
+      name: "Worker",
+      type: "agent",
+      handle: "worker",
+      contextId: "ctx-send",
+    });
+    await agent.ready();
+    let latest!: ChatCoreState;
+    const view = render(
+      <Probe
+        harness={harness}
+        onValue={(core) => {
+          latest = core;
+        }}
+      />,
+    );
+    try {
+      await waitFor(() =>
+        expect(latest.participants["agent:worker"]).toBeDefined(),
+      );
+      let reject!: (error: Error) => void;
+      const result = new Promise<{ content: unknown }>((_resolve, fail) => {
+        reject = fail;
+      });
+      const call = vi
+        .spyOn(latest.clientRef.current!, "callMethod")
+        .mockReturnValue({
+          callId: "call",
+          invocationId: "invocation",
+          transportCallId: "transport",
+          result,
+          stream: { async *[Symbol.asyncIterator]() {} },
+          cancel: async () => {},
+          complete: false,
+          isError: false,
+        });
+      let done = false;
+      let action!: Promise<void>;
+      act(() => {
+        action =
+          operation === "flush"
+            ? latest.flushOutboxAndInterrupt()
+            : latest.handleInterruptAgent("agent:worker");
+        void action.then(() => {
+          done = true;
+        });
+      });
+      await act(async () => {
+        await Promise.resolve();
+      });
+      expect(done).toBe(false);
+      expect(call).toHaveBeenCalledWith(
+        "agent:worker",
+        "pause",
+        expect.objectContaining(
+          operation === "flush"
+            ? { flushDeferred: true }
+            : { reason: "User interrupted execution" },
+        ),
+      );
+      const failure = new Error("Original interruption failed");
+      await act(async () => {
+        reject(failure);
+        await action;
+      });
+      expect(latest.connectionError).toMatchObject({ cause: failure });
+      expect(latest.flushNarration).toBeUndefined();
+    } finally {
+      view.unmount();
+    await agent.close();
+    }
+  },
+);
+
 function Probe({
   harness,
   onValue,
@@ -64,7 +143,7 @@ it("keeps an accepted send out of the composer and surfaces the original project
       onValue={(core) => {
         latest = core;
       }}
-    />
+    />,
   );
   try {
     await waitFor(() => expect(latest.clientRef.current).not.toBeNull());
@@ -81,7 +160,9 @@ it("keeps an accepted send out of the composer and surfaces the original project
     expect(latest.input).toBe("");
     expect(latest.pendingSendCount).toBe(0);
     expect(latest.connectionError).toMatchObject({ cause: failure });
-    expect(latest.connectionError?.message).toContain("server accepted the change");
+    expect(latest.connectionError?.message).toContain(
+      "server accepted the change",
+    );
     await act(async () => {
       await latest.sendMessage();
     });
@@ -100,7 +181,7 @@ it("retains a newer draft when submission itself fails", async () => {
       onValue={(core) => {
         latest = core;
       }}
-    />
+    />,
   );
   try {
     await waitFor(() => expect(latest.clientRef.current).not.toBeNull());
@@ -108,7 +189,7 @@ it("retains a newer draft when submission itself fails", async () => {
     vi.spyOn(latest.clientRef.current!, "send").mockReturnValue(
       new Promise((_resolve, fail) => {
         reject = fail;
-      })
+      }),
     );
     act(() => latest.handleInputChange("Original draft"));
     let sending!: Promise<void>;

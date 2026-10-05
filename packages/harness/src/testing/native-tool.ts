@@ -37,6 +37,7 @@ export function nativeToolApi<TDetails extends JsonValue>(
     executionData: undefined,
     registry: createRegistry().snapshot(),
     env: undefined,
+    outputWindow: undefined,
     agent: unavailable,
     output: options.onOutput ?? (() => undefined),
     diagnostic: () => undefined,

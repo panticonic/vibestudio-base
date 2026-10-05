@@ -2,6 +2,7 @@ import type { Context } from "@panticonic/pi-chord";
 import { InboxDoc } from "@panticonic/pi-durable";
 import type { NativeSuspendTurnExecution } from "@workspace/harness";
 import { NATIVE_CHANNEL_INPUT_ADMITTED_KIND } from "./native-channel-session.js";
+import { recordNativeWaitPresentation } from "./native-wait-presentation.js";
 
 export interface NativeSuspendHost {
   bindExecution: (
@@ -80,13 +81,18 @@ export function createNativeSuspendExecution(
           throw new Error(
             "Native suspension has no owned conversation frontier",
           );
+        const wait = {
+          kind: "input",
+          conversationId: api.conversationId,
+          after: latest.items[0].id,
+          kinds: [NATIVE_CHANNEL_INPUT_ADMITTED_KIND],
+        } as const;
+        await recordNativeWaitPresentation(tx, api.taskId, wait, {
+          reason: "waiting_for_background",
+          summary: "Waiting for background work",
+        });
         return {
-          wait: {
-            kind: "input",
-            conversationId: api.conversationId,
-            after: latest.items[0].id,
-            kinds: [NATIVE_CHANNEL_INPUT_ADMITTED_KIND],
-          },
+          wait,
           continuation: {
             kind: "vibestudio.suspend",
             channelId,

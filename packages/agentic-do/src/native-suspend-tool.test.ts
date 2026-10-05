@@ -22,6 +22,11 @@ import {
   NATIVE_CHANNEL_INPUT_ADMITTED_KIND,
 } from "./native-channel-session.js";
 import { createNativeSuspendExecution } from "./native-suspend-tool.js";
+import { createNativeChannelPublication } from "./native-channel-publication.js";
+import {
+  agenticEventSchema,
+  type AgenticEvent,
+} from "@workspace/agentic-protocol";
 
 const context = BACKGROUND_CONTEXT;
 const sessions: Harness[] = [];
@@ -30,11 +35,27 @@ afterEach(async () => {
     sessions.splice(0).map((harness) => harness.close(context)),
   );
 });
-async function fixture(options: { live?: boolean; earlyInput?: boolean } = {}) {
+async function fixture(
+  options: {
+    live?: boolean;
+    earlyInput?: boolean;
+    repeatedWait?: boolean;
+  } = {},
+) {
   const faux = fauxProvider();
   const models = createModels();
   models.setProvider(faux.provider);
   const registry = createRegistry();
+  const events: AgenticEvent[] = [];
+  const publication = createNativeChannelPublication({
+    publish: async (_channel, _participant, event) => {
+      agenticEventSchema.parse(event);
+      events.push(event);
+      return event.kind === "message.read"
+        ? { recorded: true as const }
+        : { id: events.length };
+    },
+  });
   let harness!: Harness;
   let taskId!: TaskId;
   let early = !!options.earlyInput;
@@ -54,7 +75,13 @@ async function fixture(options: { live?: boolean; earlyInput?: boolean } = {}) {
     }),
   });
   const tool = createSuspendTurnTool({ execution });
-  registry.install(defineExtension({ name: "suspension", tools: [tool] }));
+  registry.install(
+    defineExtension({
+      name: "suspension",
+      tools: [tool],
+      tasks: [publication.task],
+    }),
+  );
   harness = await openBoundAgentSession(
     new MemoryStorage(),
     {
@@ -63,7 +90,12 @@ async function fixture(options: { live?: boolean; earlyInput?: boolean } = {}) {
       contextId: "context:one",
       incarnation: "storage:one",
     },
-    { models, registry, publishWake: async () => {} },
+    {
+      models,
+      registry,
+      publishWake: async () => {},
+      prepareCommit: publication.prepareCommit,
+    },
     context,
   );
   sessions.push(harness);
@@ -75,6 +107,13 @@ async function fixture(options: { live?: boolean; earlyInput?: boolean } = {}) {
       tools: [tool],
     },
     context,
+    (tx, conversationId) =>
+      publication.bind(tx, conversationId, {
+        channelId: "channel:one",
+        participantId: "do:workers/test:Agent:one",
+        actor: { kind: "agent", id: "do:workers/test:Agent:one" },
+        policy: "all",
+      }),
   );
   async function submit(content: string) {
     return conversation.submit(
@@ -100,13 +139,67 @@ async function fixture(options: { live?: boolean; earlyInput?: boolean } = {}) {
       ],
       { stopReason: "toolUse" },
     ),
+    ...(options.repeatedWait
+      ? [
+          fauxAssistantMessage(
+            [
+              fauxToolCall(
+                "suspend_turn",
+                { reason: "waiting_for_background" },
+                { id: "suspend:two" },
+              ),
+            ],
+            { stopReason: "toolUse" },
+          ),
+        ]
+      : []),
     fauxAssistantMessage("carried on"),
   ]);
   const initial = await submit("go");
   await harness.runPass(context);
-  return { harness, conversation, initial, submit, taskId: () => taskId };
+  return {
+    harness,
+    conversation,
+    initial,
+    submit,
+    events,
+    taskId: () => taskId,
+  };
 }
 describe("native suspension ownership", () => {
+  it("publishes each real background wait and resume on the original turn without losing Stop", async () => {
+    const f = await fixture({ repeatedWait: true });
+    const lifecycle = () =>
+      f.events.filter((event) => event.kind.startsWith("turn."));
+    expect(lifecycle().map((event) => event.kind)).toEqual([
+      "turn.opened",
+      "turn.waiting",
+    ]);
+    expect(lifecycle()[1]?.payload).toMatchObject({
+      reason: "waiting_for_background",
+      summary: "Waiting for background work",
+    });
+    await f.submit("first report");
+    await f.harness.runPass(context);
+    expect(lifecycle().map((event) => event.kind)).toEqual([
+      "turn.opened",
+      "turn.waiting",
+      "turn.opened",
+      "turn.waiting",
+    ]);
+    await f.submit("second report");
+    await f.initial.wait(context);
+    await f.harness.runPass(context);
+    expect(lifecycle().map((event) => event.kind)).toEqual([
+      "turn.opened",
+      "turn.waiting",
+      "turn.opened",
+      "turn.waiting",
+      "turn.opened",
+      "turn.closed",
+    ]);
+    expect(new Set(lifecycle().map((event) => event.turnId)).size).toBe(1);
+  });
   it("waits on admitted report then answers the original request at the post-tools boundary", async () => {
     const f = await fixture();
     expect((await f.harness.getTask(f.taskId(), context))?.state).toMatchObject(

@@ -30,6 +30,7 @@ import {
 } from "./native-model-transport.js";
 
 import { isModelCredentialSentinel } from "./model-credential.js";
+import { recordNativeWaitPresentation } from "./native-wait-presentation.js";
 
 /** Resolve only the opaque credential supplied by the already admitted native model port. */
 export function createProtectedModelAuth(): ApiKeyAuth {
@@ -224,7 +225,7 @@ export function createProtectedModelProvider(
       if ("status" in resolution) return resolution;
       if (resolution.credential === null) {
         await host.notifyCredentialMissing?.(request, api, context);
-        return {
+        const wait: ModelRequestWait = {
           status: "waiting",
           condition: {
             kind: "input",
@@ -233,6 +234,15 @@ export function createProtectedModelProvider(
             kinds: [credentialChangeKind(request.model.provider)],
           },
         };
+        await api.commit(
+          (tx) =>
+            recordNativeWaitPresentation(tx, request.taskId, wait.condition, {
+              reason: "model_credential_required",
+              summary: "Waiting for model connection",
+            }),
+          context,
+        );
+        return wait;
       }
     }
     const credential = resolution.credential;

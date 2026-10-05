@@ -103,7 +103,8 @@ export function chatMessagesFromChannelView(state: ChannelViewState): ChatMessag
   // The open-turn typing pill stays visible for the WHOLE open turn — including while an assistant
   // message streams — so the "agent is working" signal is stable instead of flickering off every time
   // the agent emits a message bubble. Active typing items sort below transcript activity.
-  const turns = Object.values(state.turns).flatMap(projectedTurnToTypingMessage);
+  const turns = [...new Map(Object.values(state.turns).flatMap(projectedTurnToTypingMessage)
+    .map((message) => [message.senderId, message])).values()];
   const waitingTurns = Object.values(state.turns).flatMap(projectedWaitingTurnMessage);
   const automationTurns = Object.values(state.turns).flatMap(projectedAutomationTurnMessage);
   const automationInstitutions = Object.values(state.automationInstitutions ?? {}).map(
@@ -326,7 +327,7 @@ export function actionBarPayloadFromChannelView(state: ChannelViewState): Action
 }
 
 function projectedTurnToTypingMessage(turn: ProjectedTurn): ChatMessage[] {
-  if (turn.status !== "open") return [];
+  if (turn.status !== "open" && turn.status !== "waiting") return [];
   return [
     {
       id: `turn:${turn.turnId}`,
@@ -386,6 +387,7 @@ function automationSnapshot(value: unknown): AutomationActivitySnapshot | null {
     typeof candidate.revision !== "number" ||
     (candidate.action !== "prompt" &&
       candidate.action !== "eval" &&
+      candidate.action !== "watch" &&
       candidate.action !== "method") ||
     (candidate.trigger !== "manual" && candidate.trigger !== "scheduled") ||
     typeof candidate.startedAt !== "number" ||
@@ -452,6 +454,8 @@ function projectedClosedTurnWithoutResponseMessage(
   opts: { hasAssistantMessage: boolean; hasInvocation: boolean }
 ): ChatMessage[] {
   if (turn.status !== "closed") return [];
+  // Automation lifecycle rows already carry the actual result, including runs without a model answer.
+  if (automationSnapshot(turn.metadata?.["automation"])) return [];
   if (turn.actor.kind !== "agent") return [];
   if (opts.hasAssistantMessage) return [];
   if (isExpectedNoAssistantClose(turn)) return [];

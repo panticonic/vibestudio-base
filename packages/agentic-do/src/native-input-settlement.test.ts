@@ -163,6 +163,7 @@ describe("native input settlement notification ownership", () => {
           entries: [],
           tasks: [],
           submissions: [submission],
+          task: async () => { throw new Error("Input settlement must not read task candidates"); },
         }),
       context,
     );

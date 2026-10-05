@@ -161,8 +161,8 @@ describe("ModelCredentialRequiredCard", () => {
         <ModelCredentialRequiredCard
           onConnect={onConnect}
           props={{
-            providerId: "azure-openai-responses",
-            modelRef: "azure-openai-responses:gpt-6-sol",
+            providerId: "azure",
+            modelRef: "azure:gpt-6-sol",
           }}
         />
       </Theme>
@@ -173,7 +173,7 @@ describe("ModelCredentialRequiredCard", () => {
     fireEvent.click(screen.getByRole("button", { name: /Enter API Key/i }));
     await waitFor(() =>
       expect(onConnect).toHaveBeenCalledWith(
-        "azure-openai-responses:gpt-6-sol",
+        "azure:gpt-6-sol",
         "api-key",
         "internal",
         expect.any(AbortSignal),

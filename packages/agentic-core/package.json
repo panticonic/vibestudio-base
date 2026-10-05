@@ -25,8 +25,8 @@
     "@workspace/eval": "workspace:*",
     "@workspace/model-catalog": "workspace:*",
     "@workspace/pubsub": "workspace:*",
-    "@panticonic/pi-durable": "0.99.2-vibestudio.11",
-    "@panticonic/pi-chord": "0.99.2-vibestudio.11"
+    "@panticonic/pi-durable": "0.99.2-vibestudio.12",
+    "@panticonic/pi-chord": "0.99.2-vibestudio.12"
   },
   "//peerDependencies": "React appears here for one reason: component *types* cross this boundary (custom-message-types.ts names ComponentType). Nothing in this package renders, so it is optional -- a worker that only runs sessions needs the declarations to typecheck, never an instance to bundle. Any React 19 renderer is sufficient.",
   "peerDependencies": {

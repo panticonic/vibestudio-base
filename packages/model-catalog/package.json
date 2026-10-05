@@ -19,6 +19,6 @@
   },
   "devDependencies": {
     "vitest": "^3.2.7",
-    "@panticonic/pi-ai": "0.99.2-vibestudio.11"
+    "@panticonic/pi-ai": "0.99.2-vibestudio.12"
   }
 }

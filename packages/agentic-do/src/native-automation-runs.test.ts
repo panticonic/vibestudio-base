@@ -29,6 +29,11 @@ import { prepareNativeProductContexts } from "./native-product-context.js";
 import { openBoundAgentSession } from "./native-agent-session.js";
 import { openNativeChannelConversation } from "./native-channel-session.js";
 import { afterEach, describe, expect, it } from "vitest";
+import { createNativeChannelPublication } from "./native-channel-publication.js";
+import {
+  agenticEventSchema,
+  type AgenticEvent,
+} from "@workspace/agentic-protocol";
 
 const context = BACKGROUND_CONTEXT;
 const sessions: Harness[] = [];
@@ -69,6 +74,16 @@ async function fixture(
   const models = createModels();
   models.setProvider(faux.provider);
   const registry = createRegistry();
+  const events: AgenticEvent[] = [];
+  const publication = createNativeChannelPublication({
+    publish: async (_channel, _participant, event) => {
+      agenticEventSchema.parse(event);
+      events.push(event);
+      return event.kind === "message.read"
+        ? { recorded: true as const }
+        : { id: events.length };
+    },
+  });
   let harness!: Harness;
   let conversation!: Conversation;
   let pendingStorage: Storage | null = null;
@@ -106,7 +121,7 @@ async function fixture(
   registry.install(
     defineExtension({
       name: "automation",
-      tasks: runs.tasks,
+      tasks: [...runs.tasks, publication.task],
       tools: [evalTool],
     }),
   );
@@ -128,6 +143,7 @@ async function fixture(
     prepareCommit: async (tx, staged) => {
       await prepareNativeProductContexts(tx, staged);
       await runs.prepare(tx, staged);
+      await publication.prepareCommit(tx, staged);
     },
   };
   async function open(next: Storage) {
@@ -151,6 +167,13 @@ async function fixture(
         tools: [evalTool],
       },
       context,
+      (tx, id) =>
+        publication.bind(tx, id, {
+          channelId: "channel:one",
+          participantId: "do:workers/agent:Agent:one",
+          actor: { kind: "agent", id: "do:workers/agent:Agent:one" },
+          policy: "all",
+        }),
     );
   }
   await open(storage);
@@ -159,8 +182,11 @@ async function fixture(
     faux,
     evalTool,
     finishes,
+    events,
     open,
-    activateOnAdmission: (next: Storage) => { pendingStorage = next; },
+    activateOnAdmission: (next: Storage) => {
+      pendingStorage = next;
+    },
     harness: () => harness,
     conversation: () => conversation,
     calls: () => calls,
@@ -177,46 +203,143 @@ async function fixture(
 }
 
 describe("native automation ownership", () => {
-  it.each(["prompt", "watch"] as const)("opens the retained Session before %s admission and preserves deduplication across another cold activation", async (kind) => {
-    const directory = await mkdtemp(join(tmpdir(), "native-automation-cold-"));
-    directories.push(directory);
-    const path = join(directory, "state.sqlite");
-    const f = await fixture({ protocol: "automation-signal.v1", prompt: null }, await openNodeSqliteStorage(path));
-    f.faux.setResponses([fauxAssistantMessage("The tick completed.")]);
-    await f.harness().close(context);
-    f.activateOnAdmission(await openNodeSqliteStorage(path));
-    const original = automation(kind, "run:cold");
-    delete original.authoritySessionNonce;
-    const admit = () => kind === "prompt"
-      ? f.runs.admitPrompt("channel:one", "Complete this tick.", original, context)
-      : f.runs.admitEval("channel:one", { code: "actual check" }, bindTool(f.evalTool, "sequential"), original, context);
-    await admit();
-    await f.harness().runPass(context);
-    expect(await f.runs.describe("channel:one", original.runId, context)).toMatchObject({ state: "terminal", outcome: "succeeded" });
-    const calls = f.calls();
-    const modelCalls = f.faux.state.callCount;
-    await f.harness().close(context);
-    f.activateOnAdmission(await openNodeSqliteStorage(path));
-    await admit();
-    await f.harness().runPass(context);
-    expect(f.calls()).toBe(calls);
-    expect(f.faux.state.callCount).toBe(modelCalls);
-  });
+  it.each(["prompt", "eval", "watch"] as const)(
+    "publishes one %s run with public provenance and its actual terminal summary",
+    async (action) => {
+      const f = await fixture({
+        protocol: "automation-signal.v1",
+        prompt: null,
+      });
+      f.faux.setResponses([fauxAssistantMessage("The tick completed.")]);
+      const original = automation(action);
+      if (action === "prompt")
+        await f.runs.admitPrompt(
+          "channel:one",
+          "Complete this tick",
+          original,
+          context,
+        );
+      else
+        await f.runs.admitEval(
+          "channel:one",
+          { code: "actual check" },
+          bindTool(f.evalTool, "sequential"),
+          original,
+          context,
+        );
+      await f.harness().runPass(context);
+      const opened = f.events.filter(
+        (event) =>
+          event.kind === "turn.opened" &&
+          "metadata" in event.payload &&
+          event.payload.metadata?.["automation"],
+      );
+      expect(opened).toHaveLength(1);
+      const {
+        ownerUserId: _owner,
+        authoritySessionNonce: _nonce,
+        ...publicSnapshot
+      } = original;
+      expect(opened[0]?.payload).toMatchObject({
+        metadata: { automation: publicSnapshot },
+      });
+      expect(JSON.stringify(opened[0])).not.toContain("authoritySessionNonce");
+      expect(JSON.stringify(opened[0])).not.toContain("ownerUserId");
+      const closed = f.events.filter(
+        (event) =>
+          event.kind === "turn.closed" && event.turnId === opened[0]?.turnId,
+      );
+      expect(closed).toHaveLength(1);
+      expect(closed[0]?.payload).toMatchObject({
+        ...(action === "prompt" ? { summary: "The tick completed." } : {}),
+      });
+      expect(closed[0]?.payload).not.toHaveProperty("reason");
+    },
+  );
+  it.each(["prompt", "watch"] as const)(
+    "opens the retained Session before %s admission and preserves deduplication across another cold activation",
+    async (kind) => {
+      const directory = await mkdtemp(
+        join(tmpdir(), "native-automation-cold-"),
+      );
+      directories.push(directory);
+      const path = join(directory, "state.sqlite");
+      const f = await fixture(
+        { protocol: "automation-signal.v1", prompt: null },
+        await openNodeSqliteStorage(path),
+      );
+      f.faux.setResponses([fauxAssistantMessage("The tick completed.")]);
+      await f.harness().close(context);
+      f.activateOnAdmission(await openNodeSqliteStorage(path));
+      const original = automation(kind, "run:cold");
+      delete original.authoritySessionNonce;
+      const admit = () =>
+        kind === "prompt"
+          ? f.runs.admitPrompt(
+              "channel:one",
+              "Complete this tick.",
+              original,
+              context,
+            )
+          : f.runs.admitEval(
+              "channel:one",
+              { code: "actual check" },
+              bindTool(f.evalTool, "sequential"),
+              original,
+              context,
+            );
+      await admit();
+      await f.harness().runPass(context);
+      expect(
+        await f.runs.describe("channel:one", original.runId, context),
+      ).toMatchObject({ state: "terminal", outcome: "succeeded" });
+      const calls = f.calls();
+      const modelCalls = f.faux.state.callCount;
+      await f.harness().close(context);
+      f.activateOnAdmission(await openNodeSqliteStorage(path));
+      await admit();
+      await f.harness().runPass(context);
+      expect(f.calls()).toBe(calls);
+      expect(f.faux.state.callCount).toBe(modelCalls);
+    },
+  );
   it("retains a continuing run without replacing its task authority with a separate executor admission", async () => {
     const f = await fixture({ protocol: "automation-signal.v1", prompt: null });
     const original = automation("watch", "run:continuing");
     delete original.authoritySessionNonce;
     const binding = bindTool(f.evalTool, "sequential");
-    await f.runs.admitEval("channel:one", { code: "actual check" }, binding, original, context);
+    await f.runs.admitEval(
+      "channel:one",
+      { code: "actual check" },
+      binding,
+      original,
+      context,
+    );
     await f.harness().runPass(context);
-    expect(await f.runs.describe("channel:one", original.runId, context)).toMatchObject({
-      state: "terminal", outcome: "succeeded",
+    expect(
+      await f.runs.describe("channel:one", original.runId, context),
+    ).toMatchObject({
+      state: "terminal",
+      outcome: "succeeded",
     });
-    await f.runs.admitEval("channel:one", { code: "actual check" }, binding, original, context);
+    await f.runs.admitEval(
+      "channel:one",
+      { code: "actual check" },
+      binding,
+      original,
+      context,
+    );
     expect(f.calls()).toBe(1);
     expect(f.faux.state.callCount).toBe(0);
-    await expect(f.runs.admitEval("channel:one", { code: "actual check" }, binding,
-      { ...original, ownerUserId: "different-owner" }, context)).rejects.toThrow("conflicts");
+    await expect(
+      f.runs.admitEval(
+        "channel:one",
+        { code: "actual check" },
+        binding,
+        { ...original, ownerUserId: "different-owner" },
+        context,
+      ),
+    ).rejects.toThrow("conflicts");
   });
   it("finishes a quiet watch with one genuine direct task and no model call, preserving exact admission dedupe", async () => {
     const f = await fixture({ protocol: "automation-signal.v1", prompt: null });
@@ -394,9 +517,10 @@ describe("native automation ownership", () => {
     const f = await fixture(null);
     f.failEval(new Error("Original effect failed"));
     f.faux.setResponses([
-      fauxAssistantMessage([
-        fauxToolCall("eval", { code: "actual effect" }, { id: "effect:one" }),
-      ], {stopReason:"toolUse"}),
+      fauxAssistantMessage(
+        [fauxToolCall("eval", { code: "actual effect" }, { id: "effect:one" })],
+        { stopReason: "toolUse" },
+      ),
       fauxAssistantMessage("Recovered answer."),
     ]);
     await f.runs.admitPrompt(
@@ -435,7 +559,10 @@ describe("native automation ownership", () => {
   it("records a rejected provider call under its genuine model task and assistant entry without creating a tool invocation", async () => {
     const f = await fixture(null);
     f.faux.setResponses([
-      fauxAssistantMessage([fauxToolCall("unoffered", {}, { id: "bad:call" })], {stopReason:"toolUse"}),
+      fauxAssistantMessage(
+        [fauxToolCall("unoffered", {}, { id: "bad:call" })],
+        { stopReason: "toolUse" },
+      ),
       fauxAssistantMessage("Recovered rejection."),
     ]);
     await f.runs.admitPrompt(

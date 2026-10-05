@@ -4296,13 +4296,15 @@ export abstract class AgentVesselBase extends NativeChannelOwner<NativeProductCh
    * then reconcile retained host authority receipts. */
   private async interruptChannelAndCancelDeferredEvals(
     channelId: string,
-    _flushDeferred: boolean,
+    flushDeferred: boolean,
   ): Promise<void> {
     await this.agentSession(BACKGROUND_CONTEXT);
     const conversation =
       await this.admittedNativeChannelConversation(channelId);
-    if (conversation)
-      await conversation.abort(BACKGROUND_CONTEXT, { background: true });
+    if (conversation) {
+      if (flushDeferred) await conversation.flush(BACKGROUND_CONTEXT);
+      else await conversation.abort(BACKGROUND_CONTEXT, { background: true });
+    }
     await this.reconcileAgentAuthority();
   }
 

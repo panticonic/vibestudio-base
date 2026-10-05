@@ -10,6 +10,7 @@ import {
 import { BACKGROUND_CONTEXT } from "@panticonic/pi-chord/context";
 import {
   createRegistry,
+  defineExtension,
   Harness,
   LiveDoc,
   MemoryStorage,
@@ -31,6 +32,11 @@ import {
   type NativeModelProviderHost,
 } from "./native-model-provider.js";
 import { isModelCredentialSentinel } from "./model-credential.js";
+import { createNativeChannelPublication } from "./native-channel-publication.js";
+import {
+  agenticEventSchema,
+  type AgenticEvent,
+} from "@workspace/agentic-protocol";
 
 const owner = {
   runtimeId: "do:workers/agent:Agent:one",
@@ -84,6 +90,17 @@ function setup(provider = "faux", baseUrl = "https://provider.test/v1") {
   const models = createModels();
   models.setProvider(faux.provider);
   const registry = createRegistry();
+  const events: AgenticEvent[] = [];
+  const publication = createNativeChannelPublication({
+    publish: async (_channel, _participant, event) => {
+      agenticEventSchema.parse(event);
+      events.push(event);
+      return { id: events.length };
+    },
+  });
+  registry.install(
+    defineExtension({ name: "publication", tasks: [publication.task] }),
+  );
   const reports: unknown[] = [];
   const rpc = {
     call: vi.fn<(...args: Parameters<RpcCaller["call"]>) => Promise<unknown>>(),
@@ -120,6 +137,7 @@ function setup(provider = "faux", baseUrl = "https://provider.test/v1") {
         registry,
         modelRequests: port,
         publishWake: async () => {},
+        prepareCommit: publication.prepareCommit,
         onReport: (error) => {
           reports.push(error);
         },
@@ -130,6 +148,16 @@ function setup(provider = "faux", baseUrl = "https://provider.test/v1") {
     const root = await harness.root(context, {
       agent: { model: { provider, modelId: faux.getModel().id } },
     });
+    await root.commit(
+      (tx) =>
+        publication.bind(tx, root.id, {
+          channelId: "channel:one",
+          participantId: owner.runtimeId,
+          actor: { kind: "agent", id: owner.runtimeId },
+          policy: "all",
+        }),
+      context,
+    );
     return { harness, root };
   }
   return {
@@ -142,6 +170,7 @@ function setup(provider = "faux", baseUrl = "https://provider.test/v1") {
     port,
     open,
     reports,
+    events,
   };
 }
 
@@ -156,6 +185,38 @@ async function waiting(
 }
 
 describe("native protected model provider", () => {
+  it("publishes actual credential wait and same-turn resume without carrying the stale wait reason", async () => {
+    const state = setup();
+    state.rpc.call.mockResolvedValue(null);
+    state.faux.setResponses([fauxAssistantMessage("Connected")]);
+    const { harness, root } = await state.open();
+    const input = await root.submit({ type: "input", content: "go" }, context);
+    await harness.runPass(context);
+    const lifecycle = () =>
+      state.events.filter((event) => event.kind.startsWith("turn."));
+    expect(lifecycle().map((event) => event.kind)).toEqual([
+      "turn.opened",
+      "turn.waiting",
+    ]);
+    expect(lifecycle()[1]?.payload).toMatchObject({
+      reason: "model_credential_required",
+      summary: "Waiting for model connection",
+    });
+    state.rpc.call.mockResolvedValue(summary());
+    await notifyModelCredentialChange(harness, owner, root.id, "faux", context);
+    await input.wait(context);
+    await harness.runPass(context);
+    expect(lifecycle().map((event) => event.kind)).toEqual([
+      "turn.opened",
+      "turn.waiting",
+      "turn.opened",
+      "turn.closed",
+    ]);
+    expect(new Set(lifecycle().map((event) => event.turnId)).size).toBe(1);
+    expect(lifecycle()[2]?.payload).toEqual({
+      protocol: "agentic.trajectory.v1",
+    });
+  });
   it("commits a credential-owned endpoint while preserving the selected model and catalog metadata", async () => {
     const state = setup("faux", "https://{tenant}.provider.test/v1");
     state.rpc.call.mockImplementation(async () =>

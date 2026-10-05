@@ -531,8 +531,8 @@ export function reduceChannelView(
     const staleTurnEvent = existingTurn?.lastSeq !== undefined && parsed.seq < existingTurn.lastSeq;
     if (turnId && !staleTurnEvent) {
       const existing = existingTurn;
-      const summary = "summary" in event.payload ? event.payload.summary : existing?.summary;
-      const reason = "reason" in event.payload ? event.payload.reason : existing?.reason;
+      const summary = "summary" in event.payload ? event.payload.summary : event.kind === "turn.opened" ? undefined : existing?.summary;
+      const reason = "reason" in event.payload ? event.payload.reason : event.kind === "turn.opened" ? undefined : existing?.reason;
       const metadata =
         "metadata" in event.payload &&
         event.payload.metadata &&

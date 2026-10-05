@@ -2,6 +2,7 @@ import {
   copyJson,
   type Context,
   type JsonRepresentation,
+  type JsonValue,
 } from "@panticonic/pi-chord";
 import {
   acceptReceipt,
@@ -20,6 +21,7 @@ import {
   type JsonObject,
   type SubmissionId,
   type TaskId,
+  type TaskRecord,
   type ToolExecutionApi,
   type ToolTaskResult,
   ToolResultEntry,
@@ -36,6 +38,7 @@ import { nativeInvocationId } from "@vibestudio/service-schemas/nativeInvocation
 import { retainedAgentExecutionOwnerInTransaction } from "./native-agent-session.js";
 import { canonicalJson } from "@vibestudio/shared/canonicalJson";
 import type { AgentProductMetadata } from "@workspace/agentic-core/agent-product-metadata";
+import type { AutomationActivitySnapshot } from "@workspace/agentic-core";
 import { recordNativeChannelInputAdmission } from "./native-channel-session.js";
 import {
   nativeProductTask,
@@ -135,6 +138,54 @@ function terminal(input: Input, taskId: TaskId, failed?: string): Terminal {
         }
       : {}),
   };
+}
+
+/** Public presentation derived from the original native lifecycle and its admitted provenance. */
+export async function nativeAutomationPresentation(
+  tx: Tx,
+  task: TaskRecord<JsonValue, JsonValue, JsonValue>,
+) {
+  if (task.kind !== "vibestudio.automation-run") return null;
+  const product = await nativeProductTask(tx, task.id);
+  const original = product.metadata?.automation;
+  if (!original || !product.channelId)
+    throw new Error("Automation presentation lost its original provenance");
+  const run = await tx.doc(Runs, original.runId, null);
+  if (
+    run.taskId !== task.id ||
+    run.channelId !== product.channelId ||
+    run.conversationId !== task.conversationId
+  )
+    throw new Error(
+      "Automation presentation changed its actual lifecycle owner",
+    );
+  const {
+    missionId,
+    runId,
+    name,
+    revision,
+    action,
+    trigger,
+    startedAt,
+    createdAt,
+    activatedAt,
+    runNumber,
+    schedule,
+  } = original;
+  const snapshot: AutomationActivitySnapshot = {
+    missionId,
+    runId,
+    name,
+    revision,
+    action,
+    trigger,
+    startedAt,
+    createdAt,
+    ...(activatedAt === undefined ? {} : { activatedAt }),
+    ...(runNumber === undefined ? {} : { runNumber }),
+    schedule: schedule === null ? null : { ...schedule },
+  };
+  return { snapshot, terminal: run.terminal };
 }
 export interface NativeAutomationHost {
   harness(): Harness;

@@ -49,6 +49,11 @@ export interface NativeChannelProjection {
   readonly reportTo?: string;
 }
 import { prepareNativeChannelReadReceipts } from "./native-channel-session.js";
+import {
+  nativeRunWaitPresentation,
+  type NativeWaitNotice,
+} from "./native-wait-presentation.js";
+import { nativeAutomationPresentation } from "./native-automation-runs.js";
 
 interface PublicationInput {
   channelId: string;
@@ -74,16 +79,45 @@ const Projection = defineDoc<{ binding: JsonValue; tail: TaskId | null }>({
 });
 // Publication cursor only. pi.live.run remains the sole owner of execution.
 // The first admitted input identifies a run across generation/tool handoffs.
-const RunPublication = defineDoc<{ input: SubmissionId | null }>({
+const RunPublication = defineDoc<{
+  input: SubmissionId | null;
+  wait: NativeWaitNotice | null;
+  revision: number;
+}>({
   kind: "vibestudio.native-run-publication",
+  version: 2,
+  scope: "conversation",
+  history: "latest",
+  fork: "initial",
+  initial: () => ({ input: null, wait: null, revision: 0 }),
+  migrate: (value, fromVersion) => {
+    if (fromVersion !== 1)
+      throw new Error("Unsupported native run publication version");
+    return {
+      input: value["input"] as SubmissionId | null,
+      wait: null,
+      revision: 0,
+    };
+  },
+  checkpointWhen: () => true,
+});
+const AutomationPublication = defineDocFamily<
+  { opened: boolean; closed: boolean },
+  null
+>({
+  kind: "vibestudio.native-automation-publication",
   version: 1,
   scope: "conversation",
   history: "latest",
   fork: "initial",
-  initial: () => ({ input: null }),
+  family: true,
+  initial: () => ({ opened: false, closed: false }),
   checkpointWhen: () => true,
 });
-function nativeTurnId(conversationId: ConversationId, input: SubmissionId): TurnId {
+function nativeTurnId(
+  conversationId: ConversationId,
+  input: SubmissionId,
+): TurnId {
   return `native-run:${conversationId}:${input}` as TurnId;
 }
 // An immutable index of existing publication debt, not another delivery queue.
@@ -559,18 +593,108 @@ export function createNativeChannelPublication(options: {
           const run = await tx.doc(RunPublication, entry.conversationId);
           const taskId = await enqueue(tx, entry.conversationId, binding, [
             {
-              event: detached(
-                {
-                  ...assistantEvent(binding, entry, message, messageId, secondary),
-                  ...(run.input === null ? {} : {
-                    turnId: nativeTurnId(entry.conversationId, run.input),
-                  }),
-                },
-              ) as unknown as JsonValue,
+              event: detached({
+                ...assistantEvent(
+                  binding,
+                  entry,
+                  message,
+                  messageId,
+                  secondary,
+                ),
+                ...(run.input === null
+                  ? {}
+                  : {
+                      turnId: nativeTurnId(entry.conversationId, run.input),
+                    }),
+              }) as unknown as JsonValue,
               key: `${messageId}:completed`,
             },
           ]);
           debt.tasks.push({ taskId, index, messageId });
+        }
+      }
+      // Automation lifecycle tasks own prompt, direct Eval and watch ticks alike.
+      // Their retained terminal includes completion and effect failures beyond a model answer.
+      for (const task of staged.tasks) {
+        if (
+          task.kind !== "vibestudio.automation-run" ||
+          task.state.status === "pending"
+        )
+          continue;
+        const binding = projection(
+          (await tx.doc(Projection, task.conversationId)).binding,
+        );
+        if (!binding || suppressed(binding)) continue;
+        const activity = await nativeAutomationPresentation(tx, task);
+        if (!activity) continue;
+        const cursor = await tx.doc(
+          AutomationPublication,
+          task.conversationId,
+          String(task.id),
+          null,
+        );
+        const turnId =
+          `native-automation:${task.conversationId}:${task.id}` as TurnId;
+        if (!cursor.opened) {
+          const event: AgenticEvent<"turn.opened"> = {
+            kind: "turn.opened",
+            actor: detached(binding.actor),
+            turnId,
+            payload: {
+              protocol: AGENTIC_PROTOCOL_VERSION,
+              metadata: { automation: detached(activity.snapshot) },
+            },
+            createdAt: new Date().toISOString(),
+          };
+          await enqueue(tx, task.conversationId, binding, [
+            {
+              event: detached(event) as unknown as JsonValue,
+              key: `${turnId}:opened`,
+            },
+          ]);
+          cursor.opened = true;
+        }
+        if (task.state.status === "terminal" && !cursor.closed) {
+          const result = activity.terminal;
+          if (!result)
+            throw new Error(
+              "Automation lifecycle closed without its original terminal",
+            );
+          const failed = result.outcome !== "succeeded";
+          const event: AgenticEvent<"turn.closed"> = {
+            kind: "turn.closed",
+            actor: detached(binding.actor),
+            turnId,
+            payload: {
+              protocol: AGENTIC_PROTOCOL_VERSION,
+              ...(failed
+                ? {
+                    reason:
+                      result.outcome === "cancelled"
+                        ? "user_interrupted"
+                        : "work_failed",
+                  }
+                : {}),
+              ...(result.failure?.message ||
+              result.finalMessage ||
+              result.completionResponse
+                ? {
+                    summary:
+                      result.failure?.message ??
+                      result.finalMessage ??
+                      result.completionResponse,
+                  }
+                : {}),
+            },
+            createdAt: new Date().toISOString(),
+          };
+          await enqueue(tx, task.conversationId, binding, [
+            {
+              event: detached(event) as unknown as JsonValue,
+              key: `${turnId}:closed`,
+            },
+          ]);
+          cursor.closed = true;
         }
       }
       // Reconcile after answers so closure follows the original terminal answer
@@ -582,16 +706,25 @@ export function createNativeChannelPublication(options: {
         ...staged.entries.map((entry) => entry.conversationId),
       ]);
       for (const conversationId of conversations) {
-        const binding = projection((await tx.doc(Projection, conversationId)).binding);
+        const binding = projection(
+          (await tx.doc(Projection, conversationId)).binding,
+        );
         if (!binding || suppressed(binding)) continue;
         const live = await tx.doc(LiveDoc, conversationId);
         const nextInput = live.run?.inputs[0] ?? null;
         if (live.run && nextInput === null)
           throw new Error("Native channel run has no admitted input");
         const cursor = await tx.doc(RunPublication, conversationId);
-        if (cursor.input === nextInput) continue;
-        if (cursor.input !== null) {
-          const input = staged.submissions.find((input) => input.id === cursor.input);
+        const wait = live.run
+          ? await nativeRunWaitPresentation(tx, staged, live.run.taskId)
+          : null;
+        const changedRun = cursor.input !== nextInput;
+        if (!changedRun && canonicalJson(cursor.wait) === canonicalJson(wait))
+          continue;
+        if (changedRun && cursor.input !== null) {
+          const input = staged.submissions.find(
+            (input) => input.id === cursor.input,
+          );
           const turnId = nativeTurnId(conversationId, cursor.input);
           const event: AgenticEvent<"turn.closed"> = {
             kind: "turn.closed",
@@ -599,18 +732,25 @@ export function createNativeChannelPublication(options: {
             turnId,
             payload: {
               protocol: AGENTIC_PROTOCOL_VERSION,
-              ...(input?.status === "unanswered" ? {
-                reason: input.reason === "aborted" ? "user_interrupted" : "work_failed",
-              } : {}),
+              ...(input?.status === "unanswered"
+                ? {
+                    reason:
+                      input.reason === "aborted"
+                        ? "user_interrupted"
+                        : "work_failed",
+                  }
+                : {}),
             },
             createdAt: new Date().toISOString(),
           };
-          await enqueue(tx, conversationId, binding, [{
-            event: detached(event) as unknown as JsonValue,
-            key: `${turnId}:closed`,
-          }]);
+          await enqueue(tx, conversationId, binding, [
+            {
+              event: detached(event) as unknown as JsonValue,
+              key: `${turnId}:closed`,
+            },
+          ]);
         }
-        if (nextInput !== null) {
+        if (nextInput !== null && (changedRun || !wait)) {
           const turnId = nativeTurnId(conversationId, nextInput);
           const event: AgenticEvent<"turn.opened"> = {
             kind: "turn.opened",
@@ -619,12 +759,34 @@ export function createNativeChannelPublication(options: {
             payload: { protocol: AGENTIC_PROTOCOL_VERSION },
             createdAt: new Date().toISOString(),
           };
-          await enqueue(tx, conversationId, binding, [{
-            event: detached(event) as unknown as JsonValue,
-            key: `${turnId}:opened`,
-          }]);
+          await enqueue(tx, conversationId, binding, [
+            {
+              event: detached(event) as unknown as JsonValue,
+              key: changedRun
+                ? `${turnId}:opened`
+                : `${turnId}:resumed:${cursor.revision + 1}`,
+            },
+          ]);
+        }
+        if (nextInput !== null && wait) {
+          const turnId = nativeTurnId(conversationId, nextInput);
+          const event: AgenticEvent<"turn.waiting"> = {
+            kind: "turn.waiting",
+            actor: detached(binding.actor),
+            turnId,
+            payload: { protocol: AGENTIC_PROTOCOL_VERSION, ...wait },
+            createdAt: new Date().toISOString(),
+          };
+          await enqueue(tx, conversationId, binding, [
+            {
+              event: detached(event) as unknown as JsonValue,
+              key: `${turnId}:waiting:${cursor.revision + 1}`,
+            },
+          ]);
         }
         cursor.input = nextInput;
+        cursor.wait = wait;
+        cursor.revision = changedRun ? 0 : cursor.revision + 1;
       }
     }) satisfies NonNullable<HarnessOptions["prepareCommit"]>,
   };
@@ -838,7 +1000,9 @@ function terminalEvent(
       ...base,
       kind: "invocation.failed",
       payload: invocationFailedPayload(
-        failure.kind === "infrastructure" ? "infrastructure_error" : "tool_error",
+        failure.kind === "infrastructure"
+          ? "infrastructure_error"
+          : "tool_error",
         failure.message,
         { failure, error: detached(error) },
       ),
