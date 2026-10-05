@@ -13,6 +13,7 @@ import {
   type InvocationId,
   type MessageId,
   type BlockId,
+  type TurnId,
 } from "@workspace/agentic-protocol";
 import { chatMessagesFromChannelView } from "./channel-chat-merge.js";
 const actor = {
@@ -68,10 +69,43 @@ function live(events: AgenticEvent[]) {
   );
 }
 describe("native model response presentation", () => {
-  it("projects genuine readiness typing and bounded full replacement text/thinking without an answer ID", () => {
-    expect(live([progress(null)])).toMatchObject([
-      { contentType: "typing", complete: false },
-    ]);
+  it("keeps one turn stop control below model streams and tools without duplicating readiness typing", () => {
+    const opened: AgenticEvent<"turn.opened"> = {
+      kind: "turn.opened", actor,
+      turnId: brandId<TurnId>("native-run:3:1"),
+      payload: { protocol: AGENTIC_PROTOCOL_VERSION },
+      createdAt: "2026-10-02T11:59:59.000Z",
+    };
+    const tool: AgenticEvent<"invocation.started"> = {
+      kind: "invocation.started", actor,
+      causality: { invocationId: brandId<InvocationId>("running-tool") },
+      payload: { protocol: AGENTIC_PROTOCOL_VERSION, name: "eval", request: {} },
+      createdAt: "2026-10-02T12:00:02.000Z",
+    };
+    for (const phase of [
+      [progress(null)],
+      [progress({ content: [
+        { type: "thinking", thinking: "Actual reasoning" },
+        { type: "text", text: "Actual commentary" },
+      ] })],
+      [progress(null, "cleared"), tool],
+    ]) {
+      const messages = chatMessagesFromChannelView(project([opened, ...phase]));
+      expect(messages.filter((message) => message.contentType === "typing")).toMatchObject([
+        { id: "turn:native-run:3:1", senderId: actor.id, complete: false },
+      ]);
+      expect(messages.at(-1)?.contentType).toBe("typing");
+    }
+    const closed: AgenticEvent<"turn.closed"> = {
+      ...opened, kind: "turn.closed",
+      payload: { protocol: AGENTIC_PROTOCOL_VERSION, reason: "user_interrupted" },
+      createdAt: "2026-10-02T12:00:03.000Z",
+    };
+    expect(chatMessagesFromChannelView(project([opened, tool, closed]))
+      .some((message) => message.contentType === "typing")).toBe(false);
+  });
+  it("projects bounded full replacement text/thinking without an answer ID or a separate typing lifetime", () => {
+    expect(live([progress(null)])).toEqual([]);
     const generic: AgenticEvent<"invocation.progress"> = {
       ...progress(null),
       payload: {

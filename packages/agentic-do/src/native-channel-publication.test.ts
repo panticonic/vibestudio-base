@@ -105,6 +105,7 @@ async function fixture(
     policy?: NativeChannelProjection["policy"];
     reportTo?: string;
     publish?: Parameters<typeof createNativeChannelPublication>[0]["publish"];
+    tools?: NonNullable<Parameters<typeof defineExtension>[0]["tools"]>;
   } = {},
 ) {
   const attempts: { key: string; event: AgenticEvent }[] = [];
@@ -120,9 +121,10 @@ async function fixture(
   const faux = fauxProvider();
   models.setProvider(faux.provider);
   const registry = createRegistry();
-  registry.install(
-    defineExtension({ name: "publication", tasks: [publication.task] }),
-  );
+  const extension = defineExtension({
+    name: "publication", tasks: [publication.task], tools: options.tools ?? [],
+  });
+  registry.install(extension);
   const harnessOptions = {
     models,
     registry,
@@ -136,7 +138,10 @@ async function fixture(
   );
   sessions.push(harness);
   const conversation = await harness.root(context, {
-    agent: { model: { provider: "faux", modelId: faux.getModel().id } },
+    agent: {
+      model: { provider: "faux", modelId: faux.getModel().id },
+      extensions: [extension], tools: options.tools ?? [],
+    },
   });
   await conversation.commit(
     (tx) =>
@@ -181,6 +186,153 @@ async function publicationTasks(harness: Harness) {
     await harness.commit((tx) => tx.scanTasks({}, 100), context)
   ).items.filter((task) => task.kind === "vibestudio.channel-publication");
 }
+
+describe("native run activity publication", () => {
+  it("opens before the provider produces text and remains interruptible until provider cancellation joins", async () => {
+    const entered = gate(), opened = gate(), cancelled = gate(), release = gate();
+    const events: AgenticEvent[] = [];
+    const f = await fixture({
+      publish: async (_channel, _participant, event) => {
+        events.push(event);
+        if (event.kind === "turn.opened") opened.resolve();
+        return { id: events.length };
+      },
+    });
+    f.faux.setResponses([async (_context, options) => {
+      options?.signal?.addEventListener("abort", cancelled.resolve, { once: true });
+      entered.resolve();
+      await release.promise;
+      return fauxAssistantMessage("", { stopReason: "aborted" });
+    }]);
+    const input = await f.conversation.submit({ type: "input", content: "Start" }, context);
+    const running = f.harness.runPass(context);
+    let stopping: Promise<void> | undefined;
+    try {
+      await entered.promise;
+      await opened.promise;
+      expect(events.map((event) => event.kind)).toEqual(["turn.opened"]);
+      stopping = f.conversation.abort(context, { background: true });
+      await cancelled.promise;
+      expect(events.map((event) => event.kind)).toEqual(["turn.opened"]);
+      release.resolve();
+      await stopping;
+      await running;
+      await f.harness.runPass(context);
+      expect(events.filter((event) => event.kind.startsWith("turn.")).map((event) => event.kind))
+        .toEqual(["turn.opened", "turn.closed"]);
+      expect(await input.wait(context)).toMatchObject({ status: "unanswered", reason: "aborted" });
+    } finally {
+      release.resolve();
+      await stopping;
+      await running;
+    }
+  });
+
+  it("recovers lifecycle publication after a lost acceptance reply without opening a second turn", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "native-run-publication-"));
+    directories.push(directory);
+    const path = join(directory, "session.sqlite");
+    const accepted = new Map<string, AgenticEvent>();
+    const attempts: { key: string; event: AgenticEvent }[] = [];
+    let lose = true;
+    const f = await fixture({
+      storage: await openNodeSqliteStorage(path),
+      publish: async (_channel, _participant, event, key) => {
+        attempts.push({ key, event });
+        expect(accepted.get(key) ?? event).toEqual(event);
+        accepted.set(key, event);
+        if (lose) {
+          lose = false;
+          throw new Error("Run opening acceptance reply lost");
+        }
+        return { id: accepted.size };
+      },
+    });
+    f.faux.setResponses([fauxAssistantMessage("Finished")]);
+    await f.conversation.submit({ type: "input", content: "Start" }, context);
+    await f.harness.runPass(context);
+    const failed = (await publicationTasks(f.harness))[0]!;
+    if (failed.state.status !== "waiting" || failed.state.condition.kind !== "failure")
+      throw new Error("Missing retained opening publication failure");
+    const incident = failed.state.condition.incident;
+    await f.harness.close(context);
+    const reopened = await Harness.open(await openNodeSqliteStorage(path), f.harnessOptions, context);
+    sessions.push(reopened);
+    expect(await reopened.retryTask(failed.id, incident, context)).toBe("queued");
+    await reopened.runPass(context);
+    expect(attempts[0]).toEqual(attempts[1]);
+    expect([...accepted.values()].map((event) => event.kind)).toEqual([
+      "turn.opened", "message.completed", "turn.closed",
+    ]);
+    expect((await publicationTasks(reopened)).every((task) => task.state.status === "terminal")).toBe(true);
+  });
+
+  for (const cancel of [false, true]) {
+    it(`keeps one interruptible turn across tool execution and ${cancel ? "joins cancellation" : "closes after the final answer"}`, async () => {
+      const entered = gate();
+      const release = gate();
+      const cancelled = gate();
+      const tool = defineTool({
+        name: "held_work",
+        description: "Work with explicit completion and cancellation gates",
+        parameters: Type.Object({}),
+        execute: async (_args, _api, ctx) => {
+          ctx.abortSignal?.addEventListener("abort", cancelled.resolve, { once: true });
+          entered.resolve();
+          await release.promise;
+          return { content: [{ type: "text", text: "Work joined" }] };
+        },
+      });
+      const f = await fixture({ tools: [tool] });
+      f.faux.setResponses([
+        fauxAssistantMessage([
+          { type: "toolCall", id: "held-call", name: tool.name, arguments: {} },
+        ], { stopReason: "toolUse" }),
+        fauxAssistantMessage("Finished"),
+      ]);
+      const input = await f.conversation.submit({ type: "input", content: "Work" }, context);
+      const running = f.harness.runPass(context);
+      let stopping: Promise<void> | undefined;
+      try {
+        await entered.promise;
+        // Join the round's canonical publication while its tool remains running.
+        const entries = await f.conversation.entries({}, 100, undefined, context);
+        const round = entries.items.find((entry) => entry.kind === "pi.assistant")!;
+        await waitForNativeAnswerPublication(f.harness, f.conversation.id, round.id, context);
+        const lifecycle = () => f.attempts.filter(({ event }) => event.kind.startsWith("turn."));
+        expect(lifecycle().map(({ event }) => event.kind)).toEqual(["turn.opened"]);
+        const opened = lifecycle()[0]!.event;
+        expect(opened.actor.id).toBe(binding.actor.id);
+        expect(opened.turnId).toBe(`native-run:${f.conversation.id}:${input.id}`);
+        if (cancel) {
+          stopping = f.conversation.abort(context, { background: true });
+          await cancelled.promise;
+          expect(lifecycle().map(({ event }) => event.kind)).toEqual(["turn.opened"]);
+        }
+        release.resolve();
+        await stopping;
+        await running;
+        await f.harness.runPass(context);
+        expect(lifecycle().map(({ event }) => event.kind)).toEqual(["turn.opened", "turn.closed"]);
+        expect(lifecycle()[1]!.event.turnId).toBe(opened.turnId);
+        expect(await input.wait(context)).toMatchObject({ status: cancel ? "unanswered" : "done" });
+        const final = f.attempts.findIndex(({ event }) =>
+          event.kind === "message.completed" && "tier" in event.payload && event.payload.tier === "primary");
+        if (!cancel) {
+          expect(final).toBeGreaterThan(0);
+          expect(f.attempts[final]!.event.turnId).toBe(opened.turnId);
+          expect(f.attempts.findIndex(({ event }) => event.kind === "turn.closed")).toBeGreaterThan(final);
+        } else {
+          expect(lifecycle()[1]!.event.payload).toMatchObject({ reason: "user_interrupted" });
+        }
+      } finally {
+        release.resolve();
+        await stopping;
+        await running;
+      }
+    });
+  }
+});
 
 describe("native assistant terminal failure presentation", () => {
   it("publishes one original-time classified failure with genuine native answer and envelope coordinates", async () => {
@@ -358,7 +510,9 @@ describe("exact native answer publication observation", () => {
     expect(answer.messages).toMatchObject([
       { text: "", outcome: "empty", published: true },
     ]);
-    expect(f.attempts).toHaveLength(1);
+    expect(f.attempts.map(({ event }) => event.kind)).toEqual([
+      "turn.opened", "message.completed", "turn.closed",
+    ]);
   });
   it("reports captured suppression truthfully and rejects another conversation's answer", async () => {
     const f = await fixture({ policy: "notify-only" });
@@ -467,8 +621,10 @@ describe("native channel publication ownership", () => {
     ]);
     await f.conversation.submit({ type: "input", content: "hello" }, context);
     await f.harness.runPass(context);
-    expect(f.attempts).toHaveLength(1);
-    const event = f.attempts[0]!.event;
+    expect(f.attempts.map(({ event }) => event.kind)).toEqual([
+      "turn.opened", "message.completed", "turn.closed",
+    ]);
+    const event = f.attempts[1]!.event;
     expect(agenticEventSchema.safeParse(event).success).toBe(true);
     expect(event).toMatchObject({
       kind: "message.completed",
@@ -1073,7 +1229,8 @@ describe("native channel publication ownership", () => {
         }
         if (!accepted.has(key)) accepted.set(key, accepted.size + 1);
         expect(agenticEventSchema.safeParse(event).success).toBe(true);
-        if (loseStart && calls.length === 1)
+        if (loseStart && event.kind === "invocation.started" &&
+          calls.filter((call) => call.event.kind === "invocation.started").length === 1)
           throw new Error("Native start acceptance reply lost");
         return { id: accepted.get(key)! };
       };

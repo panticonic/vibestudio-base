@@ -102,7 +102,7 @@ export function chatMessagesFromChannelView(state: ChannelViewState): ChatMessag
   );
   // The open-turn typing pill stays visible for the WHOLE open turn — including while an assistant
   // message streams — so the "agent is working" signal is stable instead of flickering off every time
-  // the agent emits a message bubble. It sorts to the bottom (by turn.updatedAt), beneath the stream.
+  // the agent emits a message bubble. Active typing items sort below transcript activity.
   const turns = Object.values(state.turns).flatMap(projectedTurnToTypingMessage);
   const waitingTurns = Object.values(state.turns).flatMap(projectedWaitingTurnMessage);
   const automationTurns = Object.values(state.turns).flatMap(projectedAutomationTurnMessage);
@@ -199,6 +199,7 @@ export function chatMessagesFromChannelView(state: ChannelViewState): ChatMessag
   ]
     .sort(
       (a, b) =>
+        Number(a.contentType === "typing") - Number(b.contentType === "typing") ||
         Number((a as ChatMessage & { sortTime?: number }).sortTime ?? 0) -
           Number((b as ChatMessage & { sortTime?: number }).sortTime ?? 0) ||
         a.id.localeCompare(b.id)
@@ -971,15 +972,8 @@ function projectedNativeModelStream(
     },
     sortTime: Date.parse(invocation.startedAt ?? progress?.at ?? "") || 0,
   };
-  if (!blocks.length)
-    return [
-      {
-        ...base,
-        id: `native-stream:${invocation.invocationId}:typing`,
-        content: "",
-        contentType: "typing",
-      },
-    ];
+  // Run lifecycle supplies typing/stop controls; a model observation supplies
+  // only the content it actually produced, never a second activity lifetime.
   return blocks.map((block) => ({
     ...base,
     id: `native-stream:${invocation.invocationId}:${block.index}`,

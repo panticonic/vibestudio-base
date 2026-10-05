@@ -4,6 +4,7 @@ import {
   AssistantEntry,
   DirectToolResultEntry,
   ToolResultEntry,
+  LiveDoc,
   defineDoc,
   defineDocFamily,
   defineTask,
@@ -15,6 +16,7 @@ import {
   type RunningTask,
   type TaskId,
   type TaskRuntime,
+  type SubmissionId,
   type Tx,
   type ToolExecutionResult,
 } from "@panticonic/pi-durable";
@@ -31,6 +33,7 @@ import {
   type ActorRef,
   type AgenticEvent,
   type MessageBlockInput,
+  type TurnId,
 } from "@workspace/agentic-protocol";
 import {
   prepareNativeInvocationTerminals,
@@ -69,6 +72,20 @@ const Projection = defineDoc<{ binding: JsonValue; tail: TaskId | null }>({
   initial: () => ({ binding: null, tail: null }),
   checkpointWhen: () => true,
 });
+// Publication cursor only. pi.live.run remains the sole owner of execution.
+// The first admitted input identifies a run across generation/tool handoffs.
+const RunPublication = defineDoc<{ input: SubmissionId | null }>({
+  kind: "vibestudio.native-run-publication",
+  version: 1,
+  scope: "conversation",
+  history: "latest",
+  fork: "initial",
+  initial: () => ({ input: null }),
+  checkpointWhen: () => true,
+});
+function nativeTurnId(conversationId: ConversationId, input: SubmissionId): TurnId {
+  return `native-run:${conversationId}:${input}` as TurnId;
+}
 // An immutable index of existing publication debt, not another delivery queue.
 const AnswerPublication = defineDocFamily<
   {
@@ -539,16 +556,75 @@ export function createNativeChannelPublication(options: {
           const secondary = message.stopReason === "toolUse";
           if (binding.policy === "turn-final" && secondary) continue;
           const messageId = `native:${entry.conversationId}:${entry.id}:${index}`;
+          const run = await tx.doc(RunPublication, entry.conversationId);
           const taskId = await enqueue(tx, entry.conversationId, binding, [
             {
               event: detached(
-                assistantEvent(binding, entry, message, messageId, secondary),
+                {
+                  ...assistantEvent(binding, entry, message, messageId, secondary),
+                  ...(run.input === null ? {} : {
+                    turnId: nativeTurnId(entry.conversationId, run.input),
+                  }),
+                },
               ) as unknown as JsonValue,
               key: `${messageId}:completed`,
             },
           ]);
           debt.tasks.push({ taskId, index, messageId });
         }
+      }
+      // Reconcile after answers so closure follows the original terminal answer
+      // in the same recoverable delivery chain. Every run transition creates or
+      // settles a task/submission; partial-output-only commits cannot change it.
+      const conversations = new Set([
+        ...staged.tasks.map((task) => task.conversationId),
+        ...staged.submissions.map((input) => input.conversationId),
+        ...staged.entries.map((entry) => entry.conversationId),
+      ]);
+      for (const conversationId of conversations) {
+        const binding = projection((await tx.doc(Projection, conversationId)).binding);
+        if (!binding || suppressed(binding)) continue;
+        const live = await tx.doc(LiveDoc, conversationId);
+        const nextInput = live.run?.inputs[0] ?? null;
+        if (live.run && nextInput === null)
+          throw new Error("Native channel run has no admitted input");
+        const cursor = await tx.doc(RunPublication, conversationId);
+        if (cursor.input === nextInput) continue;
+        if (cursor.input !== null) {
+          const input = staged.submissions.find((input) => input.id === cursor.input);
+          const turnId = nativeTurnId(conversationId, cursor.input);
+          const event: AgenticEvent<"turn.closed"> = {
+            kind: "turn.closed",
+            actor: detached(binding.actor),
+            turnId,
+            payload: {
+              protocol: AGENTIC_PROTOCOL_VERSION,
+              ...(input?.status === "unanswered" ? {
+                reason: input.reason === "aborted" ? "user_interrupted" : "work_failed",
+              } : {}),
+            },
+            createdAt: new Date().toISOString(),
+          };
+          await enqueue(tx, conversationId, binding, [{
+            event: detached(event) as unknown as JsonValue,
+            key: `${turnId}:closed`,
+          }]);
+        }
+        if (nextInput !== null) {
+          const turnId = nativeTurnId(conversationId, nextInput);
+          const event: AgenticEvent<"turn.opened"> = {
+            kind: "turn.opened",
+            actor: detached(binding.actor),
+            turnId,
+            payload: { protocol: AGENTIC_PROTOCOL_VERSION },
+            createdAt: new Date().toISOString(),
+          };
+          await enqueue(tx, conversationId, binding, [{
+            event: detached(event) as unknown as JsonValue,
+            key: `${turnId}:opened`,
+          }]);
+        }
+        cursor.input = nextInput;
       }
     }) satisfies NonNullable<HarnessOptions["prepareCommit"]>,
   };
