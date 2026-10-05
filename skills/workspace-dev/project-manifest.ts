@@ -84,6 +84,7 @@ export class ProjectPreflightError extends Error {
 interface BuildProjectManifestFields {
   name: string;
   title: string;
+  /** Stored declaration: one emoji or unit-relative image path. Resolve catalog IDs with prepareUnitIcon first. */
   icon?: string;
   entry?: string;
   template?: string;

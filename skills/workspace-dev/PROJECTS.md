@@ -5,6 +5,16 @@ review, verify, commit, and publish that exact candidate through ordinary VCS.
 Preparation never commits, pushes, activates code, or grants authority.
 There is no one-shot creation/publication API or publication-recovery helper.
 
+## Unit icons
+
+The `icon` argument to `prepareProjects` and `prepareApplication` accepts a
+catalog ID, one emoji, or a unit-relative image path. Catalog IDs are converted
+into `assets/icon.svg`; the persisted `vibestudio.icon` is its `./` path.
+Never store a catalog ID directly in a manifest. Use `searchProjectCatalog`
+for discovery, `setUnitIcon` to change an existing executable unit, and
+`prepareUnitIcon` to prepare artwork for manually authored units. See the
+[shared icon guide](references/icons.md) for examples and receipt semantics.
+
 ## Connected application and explicit authority
 
 Use `prepareApplication({ name, title?, icon?, authority })` for a React panel

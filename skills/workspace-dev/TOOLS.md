@@ -112,6 +112,24 @@ pushes, activates a runtime, or grants authority. Stage two is deliberate
 review, exact-context verification, and ordinary VCS commit/push. Read
 [PROJECTS.md](PROJECTS.md) for the complete policy example and receipt contract.
 
+### Icon authoring
+
+Import these from `@workspace-skills/workspace-dev`:
+
+- `searchProjectCatalog({ resource: "icon", query?, families?, limit? })`
+  discovers exact catalog IDs. `listProjectIcons()` lists all installed IDs.
+- `prepareUnitIcon(icon)` returns `{ icon, files }` without mutation. It turns
+  a catalog ID into local SVG artwork and a stored `./` declaration; use it
+  when preparing complete app/extension files manually.
+- `setUnitIcon({ repoPath, icon })` prepares an existing executable unit's
+  manifest and artwork in one working-head-checked semantic VCS edit. Supports
+  `about/`, `panels/`, `workers/`, `apps/`, and `extensions/`. Retain its receipt
+  in `scope`; review, verify, commit, and publish separately.
+
+`prepareProjects` and `prepareApplication` use the same icon resolver. Stored
+manifests accept one emoji or a safe unit-relative image path, never a catalog
+ID, label, URL, or data URL. See [icon authoring](references/icons.md).
+
 ### Preparation API
 
 - `prepareApplication({ name, title?, icon?, authority })` prepares a React

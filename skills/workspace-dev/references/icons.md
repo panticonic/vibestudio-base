@@ -32,8 +32,20 @@ Every user-visible or executable unit declares exactly one
 3. A single semantic emoji only when it is more expressive than a drawn icon.
 4. Original repo-local artwork for a product identity.
 
-For new panels and workers, pass a Lucide name directly, such as
-`icon: "lucide:columns-3"` or `icon: "lucide:layout-dashboard"`. The offline
+### Authoring inputs and stored declarations
+
+`vibestudio.icon` stores **one semantic emoji** or a **unit-relative image
+path**, such as `"./assets/icon.svg"`. Image paths must stay inside the unit,
+use canonical path segments, and end in SVG, PNG, JPEG, WebP, AVIF, GIF, or ICO.
+Assets must exist and be at most 1 MiB. URLs, data URLs, labels, and catalog IDs
+are invalid manifest declarations; build and installation validation reject them.
+
+Catalog IDs such as `"lucide:columns-3"` and `"brand:git"` are **authoring
+inputs**, accepted by `prepareProjects`, `prepareApplication`, `prepareUnitIcon`,
+and `setUnitIcon`. Never copy a catalog ID into `package.json`.
+
+For new panels and workers, pass the catalog ID as the scaffolder's `icon`
+argument. For existing units of any executable kind, use `setUnitIcon`. The offline
 catalog includes every SVG shipped by Lucide Static 1.27.0, including its
 aliases. Use `searchProjectCatalog` when you need to discover a name:
 
@@ -73,10 +85,50 @@ Invalid ids fail before mutation with suggestions in the message and bounded
 catalog evidence in structured error data. Brand icons remain the selected
 Simple Icons marks listed below.
 
-For apps and extensions, copy the chosen catalog SVG into the unit as
-`assets/icon.svg`, replace Lucide's `currentColor` with a visible fixed color,
-and declare the relative path. Keep artwork square, simple, transparent, and
-legible at 16–20 px. Image assets must remain inside the unit and below 1 MiB.
+### Change an existing unit
+
+Use the same catalog for panels, workers, apps, extensions, and About pages:
+
+```ts
+import { setUnitIcon } from "@workspace-skills/workspace-dev";
+
+scope.iconChange = await setUnitIcon({
+  repoPath: "panels/inbox",
+  icon: "lucide:messages-square",
+});
+```
+
+This resolves the unit at the current working head and prepares its manifest
+and selected artwork together in one semantic VCS edit. It preserves the rest
+of the manifest, replaces `assets/icon.svg` when present, and returns a
+`preparation` receipt with the new working head. A concurrent edit is a visible
+conflict; inspect the current state before making another deliberate request.
+Review, verify, commit, and publish the candidate through the ordinary workflow.
+It does not publish or rebuild a live unit.
+
+For an emoji, pass it directly. For custom artwork already in the unit, pass
+its `./` path; the operation checks that file at the same working state and
+its size before editing. It leaves previous artwork in place when switching
+to an emoji or another path; remove unused source only when it is no longer
+referenced elsewhere.
+
+### Author a complete unit manually
+
+Apps and extensions use their normal authoring workflows. To include a catalog
+icon when preparing their files, call the same resolver:
+
+```ts
+import { prepareUnitIcon } from "@workspace-skills/workspace-dev";
+
+const identity = await prepareUnitIcon("brand:git");
+// Add identity.files to the unit's files and use identity.icon in its manifest.
+// Write the complete candidate, including artwork, in one semantic VCS edit.
+```
+
+`prepareUnitIcon` returns `{ icon, files }` without mutation. Scaffolding and
+`setUnitIcon` use this exact resolver; coloring, licenses, and catalog errors
+are consistent across unit kinds. Custom paths and emoji pass through after
+validation. Keep artwork square, simple, transparent, and legible at 16–20 px.
 
 Do not use generated initials, hash colors, remote favicons, or remote SVG URLs.
 Browser panels use the page's authentic captured favicon instead of a unit icon.

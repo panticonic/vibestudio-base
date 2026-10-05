@@ -3,6 +3,8 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { composedWorkspaceRoot } from "./composedWorkspace.js";
+import { validateUnitIconDeclaration } from "@vibestudio/shared/unitManifest";
+import { MAX_UNIT_ICON_BYTES } from "@vibestudio/shared/panel/icon";
 
 // Every unit the composed workspace carries, whichever template supplied it.
 const REPO_ROOT = composedWorkspaceRoot(
@@ -71,12 +73,18 @@ describe("built-in workspace unit icons", () => {
         if (manifest.vibestudio?.agent?.icon !== undefined) {
           invalid.push(`${label}: duplicates vibestudio.icon inside vibestudio.agent`);
         }
+        try {
+          validateUnitIconDeclaration(icon);
+        } catch (error) {
+          invalid.push(`${label}: ${error instanceof Error ? error.message : String(error)}`);
+          continue;
+        }
         if (icon.startsWith("./")) {
           const iconPath = path.resolve(path.dirname(manifestPath), icon);
           const unitDir = `${path.dirname(manifestPath)}${path.sep}`;
           if (!iconPath.startsWith(unitDir) || !fs.existsSync(iconPath)) {
             invalid.push(`${label}: image icon does not resolve inside the unit`);
-          } else if (fs.statSync(iconPath).size > 1024 * 1024) {
+          } else if (fs.statSync(iconPath).size > MAX_UNIT_ICON_BYTES) {
             invalid.push(`${label}: image icon exceeds 1 MiB`);
           }
         }

@@ -1,12 +1,9 @@
 export {
   prepareApplication,
   prepareProjects,
-  listProjectIcons,
-  searchProjectCatalog,
   forkProject,
   forkPanel,
   forkWorker,
-  ProjectIconError,
 } from "./create-project.js";
 export type {
   PrepareApplicationParams,
@@ -18,11 +15,6 @@ export type {
   ProjectPreparation,
   ApplicationAuthorityPolicy,
   RecordStoreMethodPolicies,
-  ProjectIconCatalog,
-  ProjectIconFailureData,
-  ProjectCatalogQuery,
-  ProjectCatalogEntry,
-  ProjectCatalogResult,
 } from "./create-project.js";
 export {
   buildProjectManifest,
@@ -35,3 +27,20 @@ export type {
   ProjectPreflightReport,
   ProjectType,
 } from "./project-manifest.js";
+
+export {
+  listProjectIcons,
+  searchProjectCatalog,
+  prepareUnitIcon,
+  ProjectIconError,
+} from "./unit-icons.js";
+export type {
+  PreparedUnitIcon,
+  ProjectIconCatalog,
+  ProjectIconFailureData,
+  ProjectCatalogQuery,
+  ProjectCatalogEntry,
+  ProjectCatalogResult,
+} from "./unit-icons.js";
+export { setUnitIcon } from "./set-unit-icon.js";
+export type { SetUnitIconParams, SetUnitIconResult } from "./set-unit-icon.js";

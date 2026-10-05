@@ -147,8 +147,11 @@ purpose, workflow, ownership, invariants, and diagnostics.
   and diagnostics.
   After an eval-kernel restart, reacquire a lost handle from its retained stable
   ID.
-- Give every panel and worker a semantic manifest icon from the [shared
-  guide](references/icons.md). Use `@workspace/ui/icons` for controls.
+- Give every executable unit one manifest icon: a single emoji or unit-relative
+  image path. Catalog IDs are authoring inputs only; pass them to scaffolding
+  or `setUnitIcon`, never write them into the manifest. Use `prepareUnitIcon`
+  when preparing a complete unit manually. Follow the [shared guide](references/icons.md)
+  and use `@workspace/ui/icons` for controls.
 - Inspect accessible roles and names before automation — repeated item controls
   need item-specific accessible names, not ordinal guesswork.
 - Respect the host's live light/dark choice. Automatically mounted React panels

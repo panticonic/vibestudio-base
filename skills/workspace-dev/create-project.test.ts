@@ -247,7 +247,7 @@ describe("prepareProjects", () => {
   it("requires deliberate authority decisions before any edit", async () => {
     resetRuntimeMocks();
     const { prepareApplication, prepareProjects } =
-      await import("./create-project.js");
+      await import("./index.js");
     await expect(
       prepareProjects([
         { projectType: "panel", name: "missing-policy" } as never,
@@ -272,7 +272,7 @@ describe("prepareProjects", () => {
 
   it("does not fill in missing requests or change chosen binding policy", async () => {
     resetRuntimeMocks();
-    const { prepareApplication } = await import("./create-project.js");
+    const { prepareApplication } = await import("./index.js");
     const policy = applicationPolicy("manual");
     policy.panel = noEffects;
     policy.service = {
@@ -298,7 +298,7 @@ describe("prepareProjects", () => {
 
   it("propagates a preparation failure without attempting commit or push", async () => {
     resetRuntimeMocks();
-    const { prepareProjects } = await import("./create-project.js");
+    const { prepareProjects } = await import("./index.js");
     mocks.edit.mockRejectedValueOnce(new Error("Working head changed"));
     await expect(
       prepareProjects([{ projectType: "project", name: "race" }]),
@@ -308,7 +308,7 @@ describe("prepareProjects", () => {
   });
   it("prepares a connected application in one validated edit without publishing", async () => {
     resetRuntimeMocks();
-    const { prepareApplication } = await import("./create-project.js");
+    const { prepareApplication } = await import("./index.js");
     const result = await prepareApplication({
       authority: applicationPolicy("notes"),
       name: "notes",
@@ -371,7 +371,7 @@ describe("prepareProjects", () => {
 
   it("refuses collisions and invalid complete config before any edit", async () => {
     resetRuntimeMocks();
-    const { prepareApplication } = await import("./create-project.js");
+    const { prepareApplication } = await import("./index.js");
     addFile(
       "meta/vibestudio.yml",
       "services:\n  - source: workers/existing\n    name: notes-store\n",
@@ -398,7 +398,7 @@ describe("prepareProjects", () => {
   afterEach(() => vi.restoreAllMocks());
 
   it("scaffolds a plain project as a content repo under projects/", async () => {
-    const { prepareProjects } = await import("./create-project.js");
+    const { prepareProjects } = await import("./index.js");
 
     const [result] = await prepareProjects([
       {
@@ -450,7 +450,7 @@ describe("prepareProjects", () => {
   });
 
   it("rejects removed agent scaffolding", async () => {
-    const { prepareProjects } = await import("./create-project.js");
+    const { prepareProjects } = await import("./index.js");
 
     await expect(
       prepareProjects([{ projectType: "agent", name: "helper" } as never]),
@@ -459,7 +459,7 @@ describe("prepareProjects", () => {
   });
 
   it("declares the generated panel entry explicitly", async () => {
-    const { prepareProjects } = await import("./create-project.js");
+    const { prepareProjects } = await import("./index.js");
 
     await prepareProjects([
       {
@@ -491,7 +491,7 @@ describe("prepareProjects", () => {
       "skills/workspace-dev/assets/icons/lucide/messages-square.svg",
       '<svg stroke="currentColor"><path d="M1 1" /></svg>',
     );
-    const { prepareProjects } = await import("./create-project.js");
+    const { prepareProjects } = await import("./index.js");
 
     await prepareProjects([
       {
@@ -534,7 +534,7 @@ describe("prepareProjects", () => {
       const { fs } = await import("@workspace/runtime");
       const read = vi.spyOn(fs, "readFile");
       const list = vi.spyOn(fs, "readdir");
-      const { prepareProjects } = await import("./create-project.js");
+      const { prepareProjects } = await import("./index.js");
       await prepareProjects([
         {
           authority: noEffects,
@@ -586,7 +586,7 @@ describe("prepareProjects", () => {
       );
     }
     const { listProjectIcons, searchProjectCatalog } =
-      await import("./create-project.js");
+      await import("./index.js");
     expect(await listProjectIcons()).toHaveLength(528);
     const catalog = await searchProjectCatalog({ resource: "icon" });
     expect(catalog).toMatchObject({ total: 528, truncated: 516 });
@@ -607,7 +607,7 @@ describe("prepareProjects", () => {
       );
     }
     const { searchProjectCatalog, prepareProjects, ProjectIconError } =
-      await import("./create-project.js");
+      await import("./index.js");
     for (const query of [
       "layout dashboard",
       "lucide:layout-dashboard",
@@ -662,7 +662,7 @@ describe("prepareProjects", () => {
       );
     }
     const { listProjectIcons, searchProjectCatalog } =
-      await import("./create-project.js");
+      await import("./index.js");
 
     await expect(listProjectIcons()).resolves.toEqual([
       "brand:claude",
@@ -697,7 +697,7 @@ describe("prepareProjects", () => {
   it("returns a structured catalog repair plan before creating an unknown icon", async () => {
     addFile("skills/workspace-dev/assets/icons/lucide/database.svg", "<svg />");
     const { prepareProjects, ProjectIconError } =
-      await import("./create-project.js");
+      await import("./index.js");
 
     const failure = await prepareProjects([
       {
@@ -753,7 +753,7 @@ describe("prepareProjects", () => {
       "templates/default/template.json",
       JSON.stringify({ framework: "svelte" }),
     );
-    const { prepareProjects } = await import("./create-project.js");
+    const { prepareProjects } = await import("./index.js");
 
     await prepareProjects([
       {
@@ -774,7 +774,7 @@ describe("prepareProjects", () => {
       "templates/svelte/template.json",
       JSON.stringify({ framework: "svelte" }),
     );
-    const { prepareProjects } = await import("./create-project.js");
+    const { prepareProjects } = await import("./index.js");
 
     await prepareProjects([
       {
@@ -862,7 +862,7 @@ describe("prepareProjects", () => {
   });
 
   it("preserves the chosen empty panel ceiling without adding runtime authority", async () => {
-    const { prepareProjects } = await import("./create-project.js");
+    const { prepareProjects } = await import("./index.js");
 
     await prepareProjects([
       {
@@ -893,7 +893,7 @@ describe("prepareProjects", () => {
   });
 
   it("rejects names and titles that would produce invalid generated source", async () => {
-    const { prepareProjects } = await import("./create-project.js");
+    const { prepareProjects } = await import("./index.js");
 
     await expect(
       prepareProjects([
@@ -941,7 +941,7 @@ describe("prepareProjects", () => {
   });
 
   it("returns the exact invalid project name and a valid generated-name recipe", async () => {
-    const { prepareProjects } = await import("./create-project.js");
+    const { prepareProjects } = await import("./index.js");
 
     await expect(
       prepareProjects([
@@ -964,7 +964,7 @@ describe("forkProject", () => {
 
   it("rejects missing source paths before reading or preparing a fork", async () => {
     const before = new Map(mocks.files);
-    const { forkPanel } = await import("./create-project.js");
+    const { forkPanel } = await import("./index.js");
     await expect(
       forkPanel({
         name: "copy",
@@ -1004,7 +1004,7 @@ describe("forkProject", () => {
     );
     addFile("workers/source/icon.png", new Uint8Array([1, 2, 3]));
 
-    const { forkProject } = await import("./create-project.js");
+    const { forkProject } = await import("./index.js");
     const result = await forkProject({
       authority: noEffects,
       authorityReason: "Fork fixture retains no host effects",
@@ -1071,7 +1071,7 @@ describe("forkProject", () => {
       'export class SourceWorker { readonly source = "workers/source"; }\n',
     );
 
-    const { forkProject } = await import("./create-project.js");
+    const { forkProject } = await import("./index.js");
     await forkProject({
       authority: noEffects,
       authorityReason: "Fork fixture retains no host effects",
@@ -1112,7 +1112,7 @@ describe("forkProject", () => {
       }),
     );
     addFile("packages/source/index.ts", "export {};\n");
-    const { forkProject } = await import("./create-project.js");
+    const { forkProject } = await import("./index.js");
 
     await expect(
       forkProject({
@@ -1142,7 +1142,7 @@ describe("scaffold runtime contract", () => {
       "templates/svelte/template.json",
       JSON.stringify({ framework: "svelte" }),
     );
-    const { prepareProjects } = await import("./create-project.js");
+    const { prepareProjects } = await import("./index.js");
     await prepareProjects([
       {
         authority: noEffects,

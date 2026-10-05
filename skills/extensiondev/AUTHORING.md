@@ -68,7 +68,7 @@ changing an override or patch creates a fresh environment.
 | Field                                 | Default      | Notes                                                                                                                                  |
 | ------------------------------------- | ------------ | -------------------------------------------------------------------------------------------------------------------------------------- |
 | `vibestudio.displayName`              | package name | Human-readable name shown in the units panel.                                                                                          |
-| `vibestudio.icon`                     | kind icon    | Identity chosen with the shared [icon guide](../workspace-dev/references/icons.md): curated Lucide concept, truthful brand mark, emoji, or repo-local image (maximum 1 MiB). |
+| `vibestudio.icon`                     | kind icon    | One emoji or safe unit-relative image path (maximum 1 MiB). Use `prepareUnitIcon` when preparing files or `setUnitIcon` for an existing unit; catalog IDs are inputs to those APIs, never manifest values. See the [icon guide](../workspace-dev/references/icons.md). |
 | `vibestudio.extension.dependencyMode` | `"auto"`     | `"auto"` bundles plain JS deps, externalizes native/WASM ones. `"bundle"` forces bundling. `"external"` forces runtime install + load. |
 
 Use `activationEvents: ["onInvoke"]` for extensions whose API is only needed on

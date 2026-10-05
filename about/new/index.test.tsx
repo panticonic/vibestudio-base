@@ -80,6 +80,20 @@ let storageValues: Map<string, string>;
 let panelFocusCallback: () => void;
 
 describe("new panel launcher", () => {
+  it.each(["lucide:orbit", "orbit", "./../icon.svg"])(
+    "does not render invalid unit metadata as icon text: %s", async (icon) => {
+      mocks.sourceTree.mockResolvedValue({ children: [{
+        name: "panels", path: "panels", isUnit: false, children: [{
+          name: "mission-control", path: "panels/mission-control", isUnit: true, children: [],
+          launchable: { type: "app", title: "Mission Control", icon },
+        }],
+      }] });
+      const { container } = render(<AboutPanelRoot />);
+      await findRow("Mission Control");
+      expect(container.querySelector(".launcher-semantic-icon")?.textContent).toBe("🧩");
+      expect(container.textContent).not.toContain(icon);
+    }
+  );
   beforeEach(() => {
     storageValues = new Map<string, string>();
     Object.defineProperty(window, "localStorage", {

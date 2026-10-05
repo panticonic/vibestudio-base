@@ -38,6 +38,7 @@ import {
 } from "@vibestudio/shared/panelChrome";
 import { isReviewPending } from "@vibestudio/shared/authority/reviewPending";
 import { unitIconTarget } from "@vibestudio/shared/panel/assetPathPolicy";
+import { isSemanticEmoji, isUnitIconAssetPath } from "@vibestudio/shared/panel/icon";
 import type { PanelSourceUsage } from "@vibestudio/shared/panelSearchTypes";
 import { useIsMobile } from "@workspace/react/responsive";
 import { AboutPage, AboutThemeRoot } from "../../packages/about-shared/ui";
@@ -304,7 +305,7 @@ function SuggestionIcon({
   const [imageFailed, setImageFailed] = useState(false);
   useEffect(() => setImageFailed(false), [panelIcon]);
   if (suggestion.kind === "panel") {
-    if (panelIcon?.startsWith("./") && !imageFailed && gatewayConfig) {
+    if (isUnitIconAssetPath(panelIcon) && !imageFailed && gatewayConfig) {
       return (
         <img
           className="launcher-icon launcher-image-icon"
@@ -321,7 +322,7 @@ function SuggestionIcon({
     }
     return (
       <span className="launcher-icon launcher-semantic-icon" aria-hidden="true">
-        {panelIcon?.startsWith("./") ? "🧩" : (panelIcon ?? "🧩")}
+        {isSemanticEmoji(panelIcon) ? panelIcon : "🧩"}
       </span>
     );
   }

@@ -1,8 +1,9 @@
 # Worker Runtime API
 
-Every worker manifest declares one semantic icon in `vibestudio.icon`. Follow
-[the shared icon guide](references/icons.md): prefer a curated Lucide object or
-truthful brand mark, then a meaningful emoji or original unit-relative artwork.
+Every worker manifest declares one icon in `vibestudio.icon`: a single emoji
+or a safe unit-relative image path. Follow [the shared icon guide](references/icons.md)
+for catalog selection. Pass catalog IDs only to scaffolding or `setUnitIcon`;
+these materialize the artwork. Never store `lucide:` or `brand:` IDs in a manifest.
 Image icons such as `"./assets/icon.svg"` are copied into the immutable build
 and may be SVG, PNG, JPEG, WebP, AVIF, GIF, or ICO (up to 1 MiB). It is the
 worker's recognizable identity in install and capability approval prompts, so
