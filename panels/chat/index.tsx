@@ -1504,7 +1504,15 @@ export default function ChatPanel() {
     );
   }
   return (
-    <div style={{ height: "100dvh", minWidth: 0, overflow: "hidden" }}>
+    <div
+      style={{
+        height: "100dvh",
+        display: "flex",
+        flexDirection: "column",
+        minWidth: 0,
+        overflow: "hidden",
+      }}
+    >
       {modelSettingsError ? (
         <Theme appearance={theme} {...appTheme}>
           <Callout.Root color="red" size="1" style={{ borderRadius: 0 }}>
@@ -1553,66 +1561,67 @@ export default function ChatPanel() {
           </Callout.Root>
         </Theme>
       ) : null}
-      <Suspense
-        fallback={
-          <Theme appearance={theme} {...appTheme}>
-            <Flex
-              align="center"
-              justify="center"
-              style={{ minHeight: "100dvh" }}
-            >
-              <Spinner size="1" />
-            </Flex>
-          </Theme>
-        }
-      >
-        <AgenticChat
-          className={presentation ? "immersive-conversation" : undefined}
-          style={conversationStyle(presentation)}
-          config={config}
-          channelName={channelName}
-          channelConfig={stateArgs.channelConfig}
-          contextId={resolvedContextId}
-          metadata={panelMetadata}
-          actions={chatActions}
-          theme={theme}
-          installedAgents={installedAgents}
-          initialPrompt={initialPromptCaptured.current}
-          forceInitialPrompt={stateArgs.forceInitialPrompt}
-          initialPromptIdempotencyKey={stateArgs.initialPromptIdempotencyKey}
-          forkNav={forkNav}
-          features={FULL_AGENTIC_CHAT_FEATURES}
-          importLoader={importLoader}
-          initialActionBarFile={stateArgs.actionBarFile ?? undefined}
-          initialActionBarProps={stateArgs.actionBarProps ?? undefined}
-          initialActionBarMaxHeight={stateArgs.actionBarMaxHeight ?? undefined}
-          onActionBarFileChange={handleActionBarFileChange}
-          connectionRetrySignal={connectionRetrySignal}
-          focusMessageId={stateArgs.focusMessageId}
-          onFocusMessageConsumed={handleFocusMessageConsumed}
-          renderHeader={
-            presentation
-              ? () => <ConversationHeader presentation={presentation} />
-              : undefined
+      <div style={{ flex: "1 1 0", minHeight: 0, overflow: "hidden" }}>
+        <Suspense
+          fallback={
+            <Theme appearance={theme} {...appTheme}>
+              <Flex align="center" justify="center" style={{ height: "100%" }}>
+                <Spinner size="1" />
+              </Flex>
+            </Theme>
           }
-          renderEmptyState={
-            presentation
-              ? (defaultContent, state) =>
-                  renderConversationEmptyState(
-                    presentation,
-                    defaultContent,
-                    state.phase,
-                  )
-              : undefined
-          }
-          composerPlaceholder={presentation?.composerPlaceholder}
-          composerDefaultMentions={stateArgs.defaultRecipients}
-          composerDisabled={
-            Boolean(stateArgs.defaultRecipients?.length) &&
-            rehydrationStatus !== "idle"
-          }
-        />
-      </Suspense>
+        >
+          <AgenticChat
+            heightMode="container"
+            className={presentation ? "immersive-conversation" : undefined}
+            style={conversationStyle(presentation)}
+            config={config}
+            channelName={channelName}
+            channelConfig={stateArgs.channelConfig}
+            contextId={resolvedContextId}
+            metadata={panelMetadata}
+            actions={chatActions}
+            theme={theme}
+            installedAgents={installedAgents}
+            initialPrompt={initialPromptCaptured.current}
+            forceInitialPrompt={stateArgs.forceInitialPrompt}
+            initialPromptIdempotencyKey={stateArgs.initialPromptIdempotencyKey}
+            forkNav={forkNav}
+            features={FULL_AGENTIC_CHAT_FEATURES}
+            importLoader={importLoader}
+            initialActionBarFile={stateArgs.actionBarFile ?? undefined}
+            initialActionBarProps={stateArgs.actionBarProps ?? undefined}
+            initialActionBarMaxHeight={
+              stateArgs.actionBarMaxHeight ?? undefined
+            }
+            onActionBarFileChange={handleActionBarFileChange}
+            connectionRetrySignal={connectionRetrySignal}
+            focusMessageId={stateArgs.focusMessageId}
+            onFocusMessageConsumed={handleFocusMessageConsumed}
+            renderHeader={
+              presentation
+                ? () => <ConversationHeader presentation={presentation} />
+                : undefined
+            }
+            renderEmptyState={
+              presentation
+                ? (defaultContent, state) =>
+                    renderConversationEmptyState(
+                      presentation,
+                      defaultContent,
+                      state.phase,
+                    )
+                : undefined
+            }
+            composerPlaceholder={presentation?.composerPlaceholder}
+            composerDefaultMentions={stateArgs.defaultRecipients}
+            composerDisabled={
+              Boolean(stateArgs.defaultRecipients?.length) &&
+              rehydrationStatus !== "idle"
+            }
+          />
+        </Suspense>
+      </div>
     </div>
   );
 }

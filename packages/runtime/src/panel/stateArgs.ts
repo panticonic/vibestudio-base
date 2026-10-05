@@ -11,6 +11,42 @@ declare global {
   }
 }
 
+/** Wire snapshots are JSON values; retain identity for unchanged subtrees. */
+function shareSnapshot(previous: unknown, next: unknown): unknown {
+  if (Object.is(previous, next)) return previous;
+  if (Array.isArray(previous) && Array.isArray(next)) {
+    const shared = next.map((value, index) =>
+      shareSnapshot(previous[index], value),
+    );
+    return previous.length === shared.length &&
+      shared.every((value, index) => Object.is(value, previous[index]))
+      ? previous
+      : shared;
+  }
+  if (
+    previous &&
+    next &&
+    typeof previous === "object" &&
+    typeof next === "object" &&
+    Object.getPrototypeOf(previous) === Object.prototype &&
+    Object.getPrototypeOf(next) === Object.prototype
+  ) {
+    const old = previous as Record<string, unknown>;
+    const entries = Object.entries(next);
+    let unchanged = Object.keys(old).length === entries.length;
+    const shared = Object.fromEntries(
+      entries.map(([key, value]) => {
+        const result = shareSnapshot(old[key], value);
+        unchanged =
+          unchanged && Object.hasOwn(old, key) && Object.is(result, old[key]);
+        return [key, result];
+      }),
+    );
+    return unchanged ? previous : shared;
+  }
+  return next;
+}
+
 export function createStateArgsRuntime(input: {
   slotId: PanelSlotId;
   call: <T>(service: string, method: string, args: unknown[]) => Promise<T>;
@@ -19,8 +55,10 @@ export function createStateArgsRuntime(input: {
 }) {
   let snapshot = input.initial ?? {};
   const apply = (next: Record<string, unknown>) => {
-    snapshot = next;
-    input.changed?.(next);
+    const shared = shareSnapshot(snapshot, next) as Record<string, unknown>;
+    if (shared === snapshot) return;
+    snapshot = shared;
+    input.changed?.(snapshot);
   };
   const setForPanel = async <T = Record<string, unknown>>(
     panelId: string,
@@ -31,7 +69,10 @@ export function createStateArgsRuntime(input: {
       panelId,
       updates,
     );
-    if (panelId === input.slotId) apply(next);
+    if (panelId === input.slotId) {
+      apply(next);
+      return snapshot as T;
+    }
     return next as T;
   };
   return {
