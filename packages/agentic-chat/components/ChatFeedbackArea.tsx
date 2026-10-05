@@ -22,7 +22,12 @@ export function ChatFeedbackArea() {
   if (activeFeedbacks.size === 0) return null;
 
   return (
-    <Flex direction="column" gap="2" flexShrink="0">
+    <Flex
+      direction="column"
+      gap="2"
+      data-part="chat-feedback"
+      style={{ minHeight: 0, maxHeight: "50cqh", overflowY: "auto" }}
+    >
       {Array.from(activeFeedbacks.values()).map((feedback) => {
         // Render schema-based feedbacks using FeedbackFormRenderer
         if (feedback.type === "schema") {

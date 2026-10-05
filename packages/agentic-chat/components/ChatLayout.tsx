@@ -113,16 +113,22 @@ export const ChatLayout = React.memo(function ChatLayout({
         <ChatConnectionErrorBanner />
         <ChatDirtyRepoWarnings />
         {features.actionBar ? <LazyChatActionBar /> : null}
-        <ChatMessageArea
-          renderMessage={renderMessage}
-          renderInlineGroup={renderInlineGroup}
-          renderInvocation={renderInvocation}
-          renderEmptyState={renderEmptyState}
-          features={features}
-          focusMessageId={focusMessageId}
-          onFocusMessageConsumed={onFocusMessageConsumed}
-        />
-        {features.feedback ? <LazyChatFeedbackArea /> : null}
+        <Flex
+          direction="column"
+          data-part="chat-content"
+          style={{ flex: "1 1 0", minHeight: 0, gap: "var(--agentic-root-gap)" }}
+        >
+          <ChatMessageArea
+            renderMessage={renderMessage}
+            renderInlineGroup={renderInlineGroup}
+            renderInvocation={renderInvocation}
+            renderEmptyState={renderEmptyState}
+            features={features}
+            focusMessageId={focusMessageId}
+            onFocusMessageConsumed={onFocusMessageConsumed}
+          />
+          {features.feedback ? <LazyChatFeedbackArea /> : null}
+        </Flex>
         {renderDeliveryStatus ? renderDeliveryStatus(defaultDeliveryStatus) : defaultDeliveryStatus}
         {renderComposer ? renderComposer(defaultComposer) : defaultComposer}
       </Flex>
