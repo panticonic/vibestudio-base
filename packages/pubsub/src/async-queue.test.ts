@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { AsyncQueue } from "./async-queue.js";
+import { AsyncQueue, createFanout } from "./async-queue.js";
 
 describe("AsyncQueue", () => {
   it("preserves a large buffered burst in FIFO order", async () => {
@@ -39,5 +39,27 @@ describe("AsyncQueue", () => {
 
     await expect(first).resolves.toEqual({ value: undefined, done: true });
     await expect(second).resolves.toEqual({ value: undefined, done: true });
+  });
+});
+
+
+describe("fanout consumer retirement", () => {
+  it("settles late subscribers after the producer has terminated", async () => {
+    const fanout = createFanout<string>();
+    fanout.close();
+    await expect(fanout.subscribe().next()).resolves.toMatchObject({ done: true });
+    const failed = createFanout<string>();
+    const original = new Error("producer failure");
+    failed.close(original);
+    await expect(failed.subscribe().next()).rejects.toBe(original);
+  });
+
+  it("releases an unread backlog when the subscriber returns", async () => {
+    const fanout = createFanout<{ payload: string }>();
+    const subscriber = fanout.subscribe();
+    fanout.emit({ payload: "an unclaimed payload" });
+    await subscriber.return?.();
+    expect(fanout.subscriberCount).toBe(0);
+    await expect(subscriber.next()).resolves.toMatchObject({ done: true });
   });
 });

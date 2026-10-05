@@ -71,42 +71,19 @@ export function useChannelMessages<T extends ParticipantMetadata = ParticipantMe
   const [replaySettled, setReplaySettled] = useState(false);
 
   // Refs for internal state shared between the event consumer and pagination.
-  const byIdRef = useRef(new Map<string, ChatMessage>());
-  const orderRef = useRef<string[]>([]);
   const cancelledRef = useRef(false);
   // Track the lowest pubsubId we've seen (for pagination anchor).
   const oldestRootIdRef = useRef<number | null>(null);
   const clientRef = useRef(client);
+  const subscriptionRef = useRef<AbortController | null>(null);
   const channelStateRef = useRef<ChannelViewState>(createInitialChannelViewState());
-  const agenticMessageIdsRef = useRef(new Set<string>());
   const attachmentsByMessageIdRef = useRef(new Map<string, Attachment[]>());
   const messageTypesSignatureRef = useRef("[]");
   const newestSeqRef = useRef<number | null>(null);
-  clientRef.current = client;
 
-  /**
-   * Sync React state from internal order/byId.
-   * @param trimTail When true, trim from the END (used after prepending older
-   *   history so the newly loaded messages survive). Default: trim from the
-   *   FRONT (used for live messages appended at the end).
-   */
-  const flush = useCallback((trimTail = false) => {
+  /** Sync controls from their authoritative active-work state. */
+  const flush = useCallback(() => {
     if (cancelledRef.current) return;
-    const byId = byIdRef.current;
-    const order = orderRef.current;
-    if (order.length > MAX_VISIBLE) {
-      if (trimTail) {
-        // Prepend path: keep the first MAX_VISIBLE (older messages stay).
-        const trimmed = order.splice(MAX_VISIBLE);
-        for (const id of trimmed) byId.delete(id);
-      } else {
-        // Append path: keep the last MAX_VISIBLE (newest messages stay).
-        const trimmed = order.splice(0, order.length - MAX_VISIBLE);
-        for (const id of trimmed) byId.delete(id);
-      }
-      setHasMoreHistory(true);
-    }
-    setMessages(order.map((id) => byId.get(id)!));
     // "Busy" includes WAITING turns, not just open ones: a turn parked on a
     // credential approval / wait is still blocked work, so interrupt/flush UX
     // (Esc-flush, the "Steer" send intent) must stay enabled. Counting only
@@ -129,41 +106,23 @@ export function useChannelMessages<T extends ParticipantMetadata = ParticipantMe
 
   const rebuildFromChannelState = useCallback(
     (trimTail = false) => {
-      const byId = byIdRef.current;
-      const order = orderRef.current;
-      const previousById = new Map(byId);
-      const projected = chatMessagesFromChannelView(channelStateRef.current).map((message) => {
-        const attachments = attachmentsByMessageIdRef.current.get(message.id);
-        return attachments && attachments.length > 0 ? { ...message, attachments } : message;
+      if (cancelledRef.current) return;
+      const projected = chatMessagesFromChannelView(channelStateRef.current);
+      if (projected.length > MAX_VISIBLE) setHasMoreHistory(true);
+      const visible = trimTail ? projected.slice(0, MAX_VISIBLE) : projected.slice(-MAX_VISIBLE);
+      // Only the rendered window owns ChatMessage objects and attachment copies.
+      // Compare against the preceding window without retaining a second ordering
+      // index or an ever-growing set of projected message IDs.
+      setMessages((previous) => {
+        const previousById = new Map(previous.map((message) => [message.id, message]));
+        return visible.map((message) => {
+          const attachments = attachmentsByMessageIdRef.current.get(message.id);
+          const next = attachments?.length ? { ...message, attachments } : message;
+          const existing = previousById.get(message.id);
+          return existing && sameChatMessage(existing, next) ? existing : next;
+        });
       });
-      const projectedIds = new Set(projected.map((message) => message.id));
-      for (const id of [...agenticMessageIdsRef.current]) {
-        if (projectedIds.has(id)) continue;
-        byId.delete(id);
-        const index = order.indexOf(id);
-        if (index >= 0) order.splice(index, 1);
-        agenticMessageIdsRef.current.delete(id);
-      }
-
-      let prependIndex = 0;
-      for (const msg of projected) {
-        if (!byId.has(msg.id)) {
-          if (trimTail) {
-            order.splice(prependIndex, 0, msg.id);
-            prependIndex += 1;
-          } else {
-            order.push(msg.id);
-          }
-        }
-        const existing = previousById.get(msg.id);
-        byId.set(msg.id, existing && sameChatMessage(existing, msg) ? existing : msg);
-        agenticMessageIdsRef.current.add(msg.id);
-      }
-      // The shared projection is the ordering authority. In particular, a
-      // stable-ID inline UI update receives a fresh renderedAt and moves to the
-      // transcript tail without creating a second message.
-      order.splice(0, order.length, ...projected.map((message) => message.id));
-      flush(trimTail);
+      flush();
     },
     [flush]
   );
@@ -183,20 +142,28 @@ export function useChannelMessages<T extends ParticipantMetadata = ParticipantMe
   }, [rebuildFromChannelState]);
 
   useEffect(() => {
-    if (!client) return;
-    cancelledRef.current = false;
-    const byId = new Map<string, ChatMessage>();
-    const order: string[] = [];
-    byIdRef.current = byId;
-    orderRef.current = order;
+    clientRef.current = client;
+    cancelledRef.current = !client;
+    setMessages([]);
+    setActionBar(null);
+    setHasOpenTurn(false);
+    hasOpenTurnRef.current = false;
+    setLoadingMore(false);
     oldestRootIdRef.current = null;
     newestSeqRef.current = null;
     channelStateRef.current = createInitialChannelViewState();
-    agenticMessageIdsRef.current = new Set();
     attachmentsByMessageIdRef.current = new Map();
     messageTypesSignatureRef.current = "[]";
     setMessageTypes([]);
-    setHasMoreHistory(Boolean(client.hasMoreBefore));
+    setHasMoreHistory(Boolean(client?.hasMoreBefore));
+    if (!client) return;
+    const lifetime = new AbortController();
+    subscriptionRef.current = lifetime;
+    const stream = client.events({
+      includeReplay: true,
+      includeSignals: true,
+      signal: lifetime.signal,
+    });
 
     const consume = async () => {
       try {
@@ -213,11 +180,8 @@ export function useChannelMessages<T extends ParticipantMetadata = ParticipantMe
             if (!cancelledRef.current) flushReplayDirty();
           }, 0);
         };
-        for await (const event of client.events({
-          includeReplay: true,
-          includeSignals: true,
-        })) {
-          if (cancelledRef.current) break;
+        for await (const event of stream) {
+          if (lifetime.signal.aborted || clientRef.current !== client) break;
 
           const wire = event as unknown as {
             type?: string;
@@ -315,7 +279,7 @@ export function useChannelMessages<T extends ParticipantMetadata = ParticipantMe
             }
           }
         }
-        if (!cancelledRef.current && replayDirty) {
+        if (!lifetime.signal.aborted && clientRef.current === client && replayDirty) {
           if (replayRebuildTimerRef.current !== null) {
             clearTimeout(replayRebuildTimerRef.current);
             replayRebuildTimerRef.current = null;
@@ -323,12 +287,17 @@ export function useChannelMessages<T extends ParticipantMetadata = ParticipantMe
           flushReplayDirty();
         }
       } catch (err) {
-        if (!cancelledRef.current) console.error("[useChannelMessages]", err);
+        if (!lifetime.signal.aborted) console.error("[useChannelMessages]", err);
       }
     };
     void consume();
     return () => {
       cancelledRef.current = true;
+      lifetime.abort(new Error("Channel view detached"));
+      if (subscriptionRef.current === lifetime) subscriptionRef.current = null;
+      void stream.return?.().catch((error) => console.error("[useChannelMessages] retirement", error));
+      channelStateRef.current = createInitialChannelViewState();
+      attachmentsByMessageIdRef.current.clear();
       if (deltaRebuildTimerRef.current !== null) {
         clearTimeout(deltaRebuildTimerRef.current);
         deltaRebuildTimerRef.current = null;
@@ -377,7 +346,8 @@ export function useChannelMessages<T extends ParticipantMetadata = ParticipantMe
   // --- Pagination: load earlier messages ---
   const loadEarlierMessages = useCallback(async () => {
     const c = clientRef.current;
-    if (!c || loadingMore) return;
+    const owner = subscriptionRef.current;
+    if (!c || !owner || owner.signal.aborted || loadingMore) return;
     const anchor = oldestRootIdRef.current;
     // Ready metadata can arrive before the async replay consumer establishes
     // its cursor. An early scroll-to-top request must not erase the server's
@@ -391,6 +361,7 @@ export function useChannelMessages<T extends ParticipantMetadata = ParticipantMe
     setLoadingMore(true);
     try {
       const result = await c.getReplayBefore(anchor, PAGE_SIZE);
+      if (owner.signal.aborted) return;
 
       setHasMoreHistory(Boolean(result.ready.hasMoreBefore));
 
@@ -443,20 +414,22 @@ export function useChannelMessages<T extends ParticipantMetadata = ParticipantMe
     } catch (err) {
       console.error("[useChannelMessages] loadEarlierMessages failed:", err);
     } finally {
-      setLoadingMore(false);
+      if (subscriptionRef.current === owner) setLoadingMore(false);
     }
   }, [loadingMore, rebuildFromChannelState]);
 
   const backfillAfterLocalPublish = useCallback(
     async (pubsubId: number | undefined) => {
       const c = clientRef.current;
-      if (!c || pubsubId === undefined) return;
+      const owner = subscriptionRef.current;
+      if (!c || !owner || owner.signal.aborted || pubsubId === undefined) return;
       const cursor = newestSeqRef.current ?? 0;
       if (cursor >= pubsubId) return;
       for await (const result of iterateChannelReplayAfterPages(
         (request) => c.getReplayAfter(request),
         { after: cursor, throughSeq: pubsubId }
       )) {
+        if (owner.signal.aborted) return;
         for (const raw of result.logEvents) {
           const payload = raw.payload as Record<string, unknown> | undefined;
           if (raw.type === CREDENTIAL_CONNECT_PAYLOAD_KIND && payload) {

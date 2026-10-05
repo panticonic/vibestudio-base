@@ -575,6 +575,8 @@ export interface SendResult {
 }
 
 export interface EventStreamOptions extends EventFilterOptions {
+  /** Cancel this subscription without closing its shared channel client. */
+  signal?: AbortSignal;
   includeReplay?: boolean;
   includeSignals?: boolean;
 }

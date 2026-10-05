@@ -134,6 +134,19 @@ function envelope(
 }
 
 describe("@workspace/agentic-protocol schemas", () => {
+  it("keeps the live frontier when older history pages are folded", () => {
+    let state = reduceChannelView(createInitialChannelViewState(), envelope(messageEvent(), 100));
+    const older = envelope(messageEvent({ causality: { messageId: brandId<MessageId>("older") } }), 1);
+    state = reduceChannelView(state, older);
+    expect(state.cursor).toBe(100);
+    expect(state.messages["older"]).toBeDefined();
+    expect(reduceChannelView(state, older)).toBe(state);
+    state = reduceChannelView(state, { ...envelope(messageEvent(), 2), payloadKind: "unsupported" });
+    expect(state.cursor).toBe(100);
+    state = reduceChannelView(state, { ...envelope(messageEvent(), 3), payload: {} });
+    expect(state.cursor).toBe(100);
+  });
+
   it("retains typed native attribution across request blob encoding and channel reduction", async () => {
     const nativeSource = {
       owner: {

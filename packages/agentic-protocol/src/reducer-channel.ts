@@ -250,7 +250,7 @@ export function reduceChannelView(
     const base = {
       ...state,
       channelId: envelope.channelId,
-      cursor: envelope.seq,
+      cursor: Math.max(state.cursor ?? 0, envelope.seq),
       seenEnvelopeIds: { ...state.seenEnvelopeIds, [envelope.envelopeId]: true as const },
     };
     if (!credKey) return base;
@@ -281,7 +281,7 @@ export function reduceChannelView(
     return {
       ...state,
       channelId: envelope.channelId,
-      cursor: envelope.seq,
+      cursor: Math.max(state.cursor ?? 0, envelope.seq),
       seenEnvelopeIds: { ...state.seenEnvelopeIds, [envelope.envelopeId]: true },
       ignoredEnvelopeIds: [...state.ignoredEnvelopeIds, envelope.envelopeId],
       ignoredEnvelopeErrors: {
@@ -299,7 +299,7 @@ export function reduceChannelView(
     return {
       ...state,
       channelId: envelope.channelId,
-      cursor: envelope.seq,
+      cursor: Math.max(state.cursor ?? 0, envelope.seq),
       seenEnvelopeIds: { ...state.seenEnvelopeIds, [envelope.envelopeId]: true },
       ignoredEnvelopeIds: [...state.ignoredEnvelopeIds, envelope.envelopeId],
       ignoredEnvelopeErrors: {
@@ -315,7 +315,7 @@ export function reduceChannelView(
   let next: ChannelViewState = {
     ...state,
     channelId: parsed.channelId,
-    cursor: parsed.seq,
+    cursor: Math.max(state.cursor ?? 0, parsed.seq),
     seenEnvelopeIds: { ...state.seenEnvelopeIds, [parsed.envelopeId]: true },
     timeline: [
       ...state.timeline,

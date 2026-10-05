@@ -227,7 +227,7 @@ function Probe({
   client,
   onValue,
 }: {
-  client: PubSubClient;
+  client: PubSubClient | null;
   onValue: (value: UseChannelMessagesResult) => void;
 }) {
   const value = useChannelMessages(client);
@@ -236,6 +236,45 @@ function Probe({
 }
 
 describe("useChannelMessages", () => {
+  it("does not apply a history page after its view has detached", async () => {
+    let latest!: UseChannelMessagesResult;
+    type Replay = Awaited<ReturnType<PubSubClient["getReplayBefore"]>>;
+    let finish!: (value: Replay) => void;
+    const client = createClient([pubsubAgenticEvent(10, messageCompleted("recent", "Recent"))], {
+      getReplayBefore: vi.fn(() => new Promise<Replay>((resolve) => { finish = resolve; })),
+    });
+    const onValue = (value: UseChannelMessagesResult) => { latest = value; };
+    const view = render(<Probe client={client} onValue={onValue} />);
+    await waitFor(() => expect(latest.messages).toHaveLength(1));
+    let loading!: Promise<void>;
+    await act(async () => { loading = latest.loadEarlierMessages(); });
+    view.rerender(<Probe client={null} onValue={onValue} />);
+    await act(async () => {
+      finish({ mode: "before", snapshots: [], logEvents: [rawReplayEvent(1, messageCompleted("old", "Old"))], ready: { totalCount: 2, envelopeCount: 2, hasMoreBefore: false } });
+      await loading;
+    });
+    expect(latest.messages).toEqual([]);
+    expect(latest.loadingMore).toBe(false);
+  });
+
+  it("releases the transcript and cancels its subscription when detached", async () => {
+    let latest!: UseChannelMessagesResult;
+    const client = createClient([{
+      type: AGENTIC_EVENT_PAYLOAD_KIND, delivery: "log", phase: "replay", pubsubId: 1,
+      payload: messageCompleted("one", "A retained transcript"),
+    }]);
+    const events = vi.spyOn(client, "events");
+    const onValue = (value: UseChannelMessagesResult) => { latest = value; };
+    const view = render(<Probe client={client} onValue={onValue} />);
+    await waitFor(() => expect(latest.messages).toHaveLength(1));
+    const signal = events.mock.calls[0]![0]!.signal!;
+    view.rerender(<Probe client={null} onValue={onValue} />);
+    await waitFor(() => expect(latest.messages).toEqual([]));
+    expect(signal.aborted).toBe(true);
+    expect(latest.actionBar).toBeNull();
+    expect(latest.hasOpenTurn).toBe(false);
+  });
+
   it("can page past a replay window containing only non-message events", async () => {
     let latest: UseChannelMessagesResult | undefined;
     const getReplayBefore = vi.fn(async () => ({
@@ -399,6 +438,7 @@ describe("useChannelMessages", () => {
     expect(client.events).toHaveBeenCalledWith({
       includeReplay: true,
       includeSignals: true,
+      signal: expect.any(AbortSignal),
     });
   });
 

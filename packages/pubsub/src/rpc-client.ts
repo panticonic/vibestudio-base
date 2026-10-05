@@ -2826,34 +2826,82 @@ export function connectViaRpc<
     return true;
   }
 
-  function events(
-    evtOptions?: EventStreamOptions,
-  ): AsyncIterableIterator<EventStreamItem> {
+  function events(evtOptions?: EventStreamOptions): AsyncIterableIterator<EventStreamItem> {
     const source = eventsFanout.subscribe();
+    const lifetime = new AbortController();
+    const signal = lifetime.signal;
     const includeReplay = evtOptions?.includeReplay ?? false;
     const includeSignals = evtOptions?.includeSignals ?? false;
+    const cancelSource = () => {
+      void source.return?.();
+    };
+    const cancelCaller = () => {
+      evtOptions?.signal?.removeEventListener("abort", cancelCaller);
+      lifetime.abort(evtOptions?.signal?.reason);
+    };
+    const cleanup = async () => {
+      signal.removeEventListener("abort", cancelSource);
+      evtOptions?.signal?.removeEventListener("abort", cancelCaller);
+      await source.return?.();
+    };
+    signal.addEventListener("abort", cancelSource, { once: true });
+    evtOptions?.signal?.addEventListener("abort", cancelCaller, { once: true });
+    if (evtOptions?.signal?.aborted) cancelCaller();
 
-    return (async function* () {
-      if (includeReplay && replayMode !== "skip") {
-        if (!replayComplete) {
-          try {
-            await readyPromise;
-          } catch {
-            // ready() failures are surfaced through close/error handling below.
+    const generator = (async function* () {
+      try {
+        signal.throwIfAborted();
+        if (includeReplay && replayMode !== "skip") {
+          if (!replayComplete) {
+            try {
+              await ready(signal);
+            } catch {
+              signal.throwIfAborted();
+            }
+          }
+          for (const item of replayEvents) {
+            signal.throwIfAborted();
+            if (!includeSignals && item.delivery === "signal") continue;
+            yield item;
           }
         }
-        for (const item of replayEvents) {
-          if (!includeSignals && item.delivery === "signal") continue;
-          yield item;
+        for await (const event of source) {
+          signal.throwIfAborted();
+          if (!includeSignals && event.delivery === "signal") continue;
+          if (!includeReplay && event.phase === "replay") continue;
+          yield event;
         }
-      }
-
-      for await (const event of source) {
-        if (!includeSignals && event.delivery === "signal") continue;
-        if (!includeReplay && event.phase === "replay") continue;
-        yield event;
+        signal.throwIfAborted();
+      } finally {
+        await cleanup();
       }
     })();
+    // AsyncGenerator.return alone queues behind an outstanding next(). Cancel
+    // the owned source/readiness wait first, then join the generator's return.
+    return {
+      [Symbol.asyncIterator]() {
+        return this;
+      },
+      next: () => generator.next(),
+      async return(value) {
+        lifetime.abort(new Error("Channel event subscription returned"));
+        await source.return?.();
+        try {
+          return await generator.return(value);
+        } finally {
+          await cleanup();
+        }
+      },
+      async throw(error) {
+        lifetime.abort(error);
+        await source.return?.();
+        try {
+          return await generator.throw(error);
+        } finally {
+          await cleanup();
+        }
+      },
+    };
   }
 
   let closePromise: Promise<void> | null = null;

@@ -93,6 +93,13 @@ export class AsyncQueue<T> implements AsyncIterable<T> {
     this.resolverHead = 0;
   }
 
+  /** Consumer cancellation releases queued payloads; producer close still drains them. */
+  cancel(error?: Error): void {
+    this.values = [];
+    this.valueHead = 0;
+    this.close(error);
+  }
+
   /**
    * Check if the queue has been closed.
    */
@@ -161,6 +168,8 @@ export class AsyncQueue<T> implements AsyncIterable<T> {
  */
 export function createFanout<T>() {
   const subscribers = new Set<AsyncQueue<T>>();
+  let closed = false;
+  let closeError: Error | undefined;
 
   return {
     /**
@@ -174,6 +183,9 @@ export function createFanout<T>() {
      * Close all subscribers, optionally with an error.
      */
     close(error?: Error): void {
+      if (closed) return;
+      closed = true;
+      closeError = error;
       for (const q of subscribers) q.close(error);
       subscribers.clear();
     },
@@ -193,11 +205,12 @@ export function createFanout<T>() {
     subscribe(): AsyncIterableIterator<T> {
       const q = new AsyncQueue<T>();
       // Register the subscription IMMEDIATELY, not when iteration starts
-      subscribers.add(q);
+      if (closed) q.close(closeError);
+      else subscribers.add(q);
 
       const cleanup = () => {
         subscribers.delete(q);
-        q.close();
+        q.cancel();
       };
 
       // Get a single iterator from the queue to use for all next() calls

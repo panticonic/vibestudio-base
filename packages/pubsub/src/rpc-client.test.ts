@@ -1217,6 +1217,33 @@ describe("connectViaRpc", () => {
       await client.close();
     });
 
+    it("joins a returned event subscription while its first read awaits readiness", async () => {
+      const client = connectViaRpc({ rpc: mockRpc as any, channel: CHANNEL });
+      const iterator = client.events({ includeReplay: true });
+      const pending = iterator.next();
+      const observed = pending.catch((error) => error);
+      try {
+        await expect(iterator.return!()).resolves.toMatchObject({ done: true });
+        expect(await observed).toMatchObject({ message: "Channel event subscription returned" });
+      } finally { await client.close(); }
+    });
+
+    it("propagates event cancellation without closing the shared channel client", async () => {
+      const client = connectViaRpc({ rpc: mockRpc as any, channel: CHANNEL });
+      const caller = new AbortController();
+      const iterator = client.events({ includeReplay: true, signal: caller.signal });
+      const pending = iterator.next();
+      const failure = new Error("view detached");
+      const rejected = expect(pending).rejects.toBe(failure);
+      try {
+        caller.abort(failure);
+        await rejected;
+        emit({ kind: "ready", contextId: "ctx", totalCount: 0, envelopeCount: 0 });
+        await client.ready();
+        expect(client.connected).toBe(true);
+      } finally { await iterator.return?.(); await client.close(); }
+    });
+
     it("seeds late event subscribers with streamed replay after ready", async () => {
       const client = connectViaRpc({ rpc: mockRpc as any, channel: CHANNEL });
       emit({

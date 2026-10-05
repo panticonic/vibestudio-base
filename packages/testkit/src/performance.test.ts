@@ -18,6 +18,7 @@ function snapshot(overrides: {
 }): HostPerformanceSnapshot {
   return {
     version: 1,
+    workers: [],
     sampledAt: 200,
     startedAt: 1,
     process: {
