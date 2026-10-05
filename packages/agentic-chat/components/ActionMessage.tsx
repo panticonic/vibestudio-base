@@ -77,6 +77,9 @@ export function toolPresentation(payload: InvocationCardPayload): {
   preview: string;
   color?: "red" | "amber" | "green";
 } {
+  if (payload.name === "model.generation") {
+    return { displayName: "Gen", preview: "" };
+  }
   const args = payload.arguments;
   const details = resultDetails(payload);
   const fileMutation = extractFileMutationDetails(payload.execution.result);
