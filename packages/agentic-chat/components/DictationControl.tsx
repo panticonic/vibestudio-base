@@ -1,11 +1,4 @@
-import {
-  Button,
-  Flex,
-  IconButton,
-  Progress,
-  Spinner,
-  Text,
-} from "@radix-ui/themes";
+import { Button, Flex, Progress, Spinner, Text } from "@radix-ui/themes";
 import type { useDictation } from "../hooks/useDictation";
 
 export function DictationButton({
@@ -28,7 +21,7 @@ export function DictationButton({
       ? "Cancel dictation"
       : "Dictate in English";
   return (
-    <IconButton
+    <Button
       className="dictation-button"
       type="button"
       size={size}
@@ -43,25 +36,35 @@ export function DictationButton({
         else void dictation.start();
       }}
     >
-      {recording ? (
-        <span aria-hidden="true">■</span>
-      ) : active ? (
-        <Spinner />
-      ) : (
-        <svg
-          aria-hidden="true"
-          width="18"
-          height="18"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="1.7"
-        >
-          <rect x="9" y="2" width="6" height="12" rx="3" />
-          <path d="M5 10v2a7 7 0 0 0 14 0v-2M12 19v3M8 22h8" />
-        </svg>
-      )}
-    </IconButton>
+      <span
+        style={{
+          display: "inline-flex",
+          width: 15,
+          height: 15,
+          alignItems: "center",
+          justifyContent: "center",
+        }}
+      >
+        {recording ? (
+          <span aria-hidden="true">■</span>
+        ) : active ? (
+          <Spinner />
+        ) : (
+          <svg
+            aria-hidden="true"
+            width="15"
+            height="15"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.7"
+          >
+            <rect x="9" y="2" width="6" height="12" rx="3" />
+            <path d="M5 10v2a7 7 0 0 0 14 0v-2M12 19v3M8 22h8" />
+          </svg>
+        )}
+      </span>
+    </Button>
   );
 }
 export function DictationStatus({

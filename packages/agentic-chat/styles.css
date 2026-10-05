@@ -346,11 +346,6 @@
   padding-inline-end: calc(var(--composer-dock-reserve) + var(--dictation-control-size) + 0.5rem);
 }
 
-.dictation-button {
-  min-inline-size: var(--dictation-control-size);
-  min-block-size: var(--dictation-control-size);
-}
-
 /* The editor is an inset surface of the composer; its curve follows the
    composer's radius after accounting for the shared edge gap. */
 .chat-input-card .rt-TextAreaRoot {
