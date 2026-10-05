@@ -1,6 +1,16 @@
 import type { JsonValue } from "@panticonic/pi-chord";
 import type { ConversationHistory, EntryId } from "@panticonic/pi-durable";
-import type { AgentSubscriptionConfig } from "./agent-subscription-config.js";
+import {
+  requireAgentSubscriptionResult,
+  targetIdFor,
+  type AgentEntityHandle,
+  type AgentLaunchRpc,
+  type AgentSubscriptionResult,
+} from "./agent-launch.js";
+import {
+  toSubscriptionConfig,
+  type AgentSubscriptionConfig,
+} from "./agent-subscription-config.js";
 
 /** Transcript provenance only. Receiving IDs are allocated by native import. */
 export interface NativeChannelKnowledgeAnchor {
@@ -33,4 +43,24 @@ export interface ImportChannelKnowledgeInput {
   readonly contextId: string;
   readonly knowledge: NativeChannelKnowledge;
   readonly config?: AgentSubscriptionConfig | Record<string, unknown>;
+}
+
+export async function importAgentChannelKnowledge(
+  rpc: AgentLaunchRpc,
+  handleOrTargetId: AgentEntityHandle | string,
+  input: ImportChannelKnowledgeInput,
+): Promise<AgentSubscriptionResult> {
+  return requireAgentSubscriptionResult(
+    "importChannelKnowledge",
+    await rpc.call<unknown>(
+      targetIdFor(handleOrTargetId),
+      "importChannelKnowledge",
+      [
+        {
+          ...input,
+          config: toSubscriptionConfig(input.config),
+        },
+      ],
+    ),
+  );
 }

@@ -53,13 +53,13 @@ export {
   buildAgentTaskSeedEvent,
   createAgentEntity,
   createSubagentContext,
-  importAgentChannelKnowledge,
   launchAgentIntoChannel,
   publishAgentTaskSeed,
   retireAgentEntity,
   subscribeAgentToChannel,
   unsubscribeAgentFromChannel,
 } from "./agent-launch.js";
+export { importAgentChannelKnowledge } from "./native-channel-knowledge.js";
 export {
   ProvisionalAgentLifecycle,
   withWorkspaceReviewRetry,

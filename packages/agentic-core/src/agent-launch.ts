@@ -9,7 +9,6 @@ import {
   type AgentSubscriptionConfig,
   type ChannelSubscriptionConfig,
 } from "./agent-subscription-config.js";
-import type { ImportChannelKnowledgeInput } from "./native-channel-knowledge.js";
 
 /**
  * Runtime-agnostic launch/invite primitives for agent DOs. Browser panels,
@@ -111,13 +110,13 @@ export interface AgentTaskSeedChannel {
   ): Promise<{ id?: number }>;
 }
 
-function targetIdFor(handleOrTargetId: AgentEntityHandle | string): string {
+export function targetIdFor(handleOrTargetId: AgentEntityHandle | string): string {
   return typeof handleOrTargetId === "string"
     ? handleOrTargetId
     : handleOrTargetId.targetId;
 }
 
-function requireAgentSubscriptionResult(
+export function requireAgentSubscriptionResult(
   operation: "subscribeChannel" | "importChannelKnowledge",
   result: unknown,
 ): AgentSubscriptionResult {
@@ -210,26 +209,6 @@ export async function unsubscribeAgentFromChannel(
     }),
     "unsubscribeChannel",
     [input.channelId],
-  );
-}
-
-export async function importAgentChannelKnowledge(
-  rpc: AgentLaunchRpc,
-  handleOrTargetId: AgentEntityHandle | string,
-  input: ImportChannelKnowledgeInput,
-): Promise<AgentSubscriptionResult> {
-  return requireAgentSubscriptionResult(
-    "importChannelKnowledge",
-    await rpc.call<unknown>(
-      targetIdFor(handleOrTargetId),
-      "importChannelKnowledge",
-      [
-        {
-          ...input,
-          config: toSubscriptionConfig(input.config),
-        },
-      ],
-    ),
   );
 }
 

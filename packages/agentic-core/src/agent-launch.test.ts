@@ -4,13 +4,13 @@ import {
   buildAgentEntityCreateSpec,
   buildAgentTaskSeedEvent,
   createSubagentContext,
-  importAgentChannelKnowledge,
   launchAgentIntoChannel,
   publishAgentTaskSeed,
   subscribeAgentToChannel,
   unsubscribeAgentFromChannel,
 } from "./agent-launch.js";
 import type { AgentLaunchRpc } from "./agent-launch.js";
+import { importAgentChannelKnowledge } from "./native-channel-knowledge.js";
 import type { ConversationId } from "@panticonic/pi-durable";
 
 function makeRpc(

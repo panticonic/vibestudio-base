@@ -29,10 +29,11 @@ import {
   type NativeChannelConfiguration,
 } from "./native-channel-owner.js";
 import { parseDoTargetId } from "@vibestudio/shared/workspaceServiceRpc";
-import type {
-  ExportChannelKnowledgeInput,
-  ImportChannelKnowledgeInput,
-  NativeChannelKnowledge,
+import {
+  importAgentChannelKnowledge,
+  type ExportChannelKnowledgeInput,
+  type ImportChannelKnowledgeInput,
+  type NativeChannelKnowledge,
 } from "@workspace/agentic-core/native-channel-knowledge";
 import {
   retainedNativeChannelKnowledgeConfiguration,
@@ -177,7 +178,6 @@ import { createTypedServiceClient } from "@vibestudio/shared/typedServiceClient"
 import {
   createAgentEntity,
   createSubagentContext,
-  importAgentChannelKnowledge,
   publishAgentTaskSeed,
   subscribeAgentToChannel,
 } from "@workspace/agentic-core/agent-launch";
