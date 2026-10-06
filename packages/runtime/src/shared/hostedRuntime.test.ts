@@ -72,9 +72,16 @@ function recordingHost() {
           integrating: [],
         };
       }
-      if (method === "hubControl.createWorkspace" || method === "hubControl.workspaceCreationReceipt") {
-        return { operationId: (args[0] as { operationId: string }).operationId,
-          state: "registered", workspaceId: "ws_created", name: "Example" };
+      if (
+        method === "hubControl.createWorkspace" ||
+        method === "hubControl.workspaceCreationReceipt"
+      ) {
+        return {
+          operationId: (args[0] as { operationId: string }).operationId,
+          state: "registered",
+          workspaceId: "ws_created",
+          name: "Example",
+        };
       }
       if (method === "extensions.invokeProvider") return [];
       return undefined;
@@ -287,13 +294,20 @@ describe("createHostedRuntime ⟷ portable surface parity", () => {
       if (entry.kind !== "namespace" || hostPortNamespaces.has(name)) continue;
       const live = rt[name];
       expect(live, `${name} should be a bound object`).toBeTypeOf("object");
-      const liveKeys = new Set(Object.keys(live as object));
       for (const member of entry.members ?? []) {
         // A declared member MUST exist on the real client — otherwise `help()`
         // and the manifest advertise a method that isn't there (the member-level
         // analogue of the old `services.blobstore === undefined` gap).
+        const segments = member.split(".");
+        let bound: unknown = live;
+        for (const segment of segments) {
+          bound =
+            bound && typeof bound === "object"
+              ? Object.getOwnPropertyDescriptor(bound, segment)?.value
+              : undefined;
+        }
         expect(
-          liveKeys.has(member),
+          bound !== undefined,
           `${name}.${member} is declared in runtimeSurface.portable.ts but not bound on the live client`,
         ).toBe(true);
       }

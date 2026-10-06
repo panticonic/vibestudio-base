@@ -1,4 +1,4 @@
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { openNodeSqliteStorage } from "@panticonic/pi-durable/storage/sqlite/node";
 import { afterEach, describe, expect, it } from "vitest";
@@ -293,12 +293,12 @@ describe("native model stream observation", () => {
     ).toBe("aborted");
   });
   it("reacquires from the same retained native request after close and does not revive its old observation", async () => {
-    const directory = await mkdtemp(
-      join(
-        process.env["VIBESTUDIO_HOST_ROOT"]!,
-        "experiments/durable-pi/.native-stream-",
-      ),
+    const scratch = join(
+      process.env["VIBESTUDIO_HOST_ROOT"]!,
+      ".cache/native-stream-tests",
     );
+    await mkdir(scratch, { recursive: true });
+    const directory = await mkdtemp(join(scratch, "session-"));
     directories.push(directory);
     const filename = join(directory, "session.sqlite");
     const first = await fixture({

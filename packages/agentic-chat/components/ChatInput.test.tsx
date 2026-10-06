@@ -1,6 +1,12 @@
 // @vitest-environment jsdom
 
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { beforeAll, describe, expect, it, vi } from "vitest";
 import { Theme } from "@radix-ui/themes";
 import { Blob as NodeBlob } from "node:buffer";
@@ -28,7 +34,7 @@ beforeAll(() => {
         addListener: () => {},
         removeListener: () => {},
         dispatchEvent: () => false,
-      }) as unknown as MediaQueryList
+      }) as unknown as MediaQueryList,
   );
 });
 
@@ -52,7 +58,7 @@ function renderInput(
     disabled?: boolean;
     context?: Partial<ChatContextValue>;
     inputContext?: Partial<ChatInputContextValue>;
-  } = {}
+  } = {},
 ): Harness {
   const onSendMessage = vi.fn(async () => {});
   const onInputChange = vi.fn();
@@ -92,18 +98,28 @@ function renderInput(
   render(
     <Theme>
       <ChatProvider value={ctx} inputValue={inputCtx}>
-        <ChatInput defaultMentions={opts.defaultMentions} disabled={opts.disabled} />
+        <ChatInput
+          defaultMentions={opts.defaultMentions}
+          disabled={opts.disabled}
+        />
       </ChatProvider>
-    </Theme>
+    </Theme>,
   );
-  return { onSendMessage, onInputChange, flushOutboxAndInterrupt, undoLastAction };
+  return {
+    onSendMessage,
+    onInputChange,
+    flushOutboxAndInterrupt,
+    undoLastAction,
+  };
 }
 
 function textarea(): HTMLTextAreaElement {
   return screen.getByPlaceholderText(/Type a message/i) as HTMLTextAreaElement;
 }
 
-async function keyDown(init: KeyboardEventInit & { key: string }): Promise<void> {
+async function keyDown(
+  init: KeyboardEventInit & { key: string },
+): Promise<void> {
   await act(async () => {
     fireEvent.keyDown(textarea(), init);
   });
@@ -116,7 +132,10 @@ it("dictates into the draft selection without sending and releases the microphon
     OfflineAudioContext: globalThis.OfflineAudioContext,
     Blob: globalThis.Blob,
   };
-  const mediaDescriptor = Object.getOwnPropertyDescriptor(navigator, "mediaDevices");
+  const mediaDescriptor = Object.getOwnPropertyDescriptor(
+    navigator,
+    "mediaDevices",
+  );
   const stop = vi.fn();
   const track = { stop, onended: null };
   const stream = { getTracks: () => [track], getAudioTracks: () => [track] };
@@ -158,12 +177,17 @@ it("dictates into the draft selection without sending and releases the microphon
   });
   Object.defineProperty(navigator, "mediaDevices", {
     configurable: true,
-    value: { getUserMedia: async () => stream },
+    value: {
+      getUserMedia: async () => stream,
+      enumerateDevices: async () => [{ kind: "audioinput" }],
+    },
   });
   try {
     const rpc = {
-      call: vi.fn(async () => ({})),
-      stream: vi.fn(async () => new Response('{"type":"result","text":"Hello."}\n')),
+      call: vi.fn(async () => ({ ready: true })),
+      stream: vi.fn(
+        async () => new Response('{"type":"result","text":"Hello."}\n'),
+      ),
     };
     const harness = renderInput({
       input: "Before selected after",
@@ -176,21 +200,27 @@ it("dictates into the draft selection without sending and releases the microphon
       },
     });
     textarea().setSelectionRange(7, 15);
-    await act(async () =>
-      fireEvent.click(screen.getByRole("button", { name: "Dictate in English" }))
-    );
+    const dictate = await screen.findByRole("button", {
+      name: "Dictate in English",
+    });
+    await act(async () => fireEvent.click(dictate));
     expect(textarea().readOnly).toBe(true);
     await keyDown({ key: "Enter" });
     expect(harness.onSendMessage).not.toHaveBeenCalled();
-    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Stop dictation" })));
-    await waitFor(() => expect(harness.onInputChange).toHaveBeenCalledWith("Before Hello. after"));
+    await act(async () =>
+      fireEvent.click(screen.getByRole("button", { name: "Stop dictation" })),
+    );
+    await waitFor(() =>
+      expect(harness.onInputChange).toHaveBeenCalledWith("Before Hello. after"),
+    );
     expect(harness.onSendMessage).not.toHaveBeenCalled();
     expect(stop).toHaveBeenCalled();
     expect(close).toHaveBeenCalled();
     expect(textarea().readOnly).toBe(false);
   } finally {
     Object.assign(globalThis, original);
-    if (mediaDescriptor) Object.defineProperty(navigator, "mediaDevices", mediaDescriptor);
+    if (mediaDescriptor)
+      Object.defineProperty(navigator, "mediaDevices", mediaDescriptor);
     else Reflect.deleteProperty(navigator, "mediaDevices");
   }
 });
@@ -207,13 +237,20 @@ describe("ChatInput keyboard shortcuts", () => {
   it("routes unaddressed text to product-supplied default recipients", async () => {
     const { onSendMessage } = renderInput({
       input: "Bridge-wide directive",
-      defaultMentions: ["agent-engineering", "agent-navigation", "agent-engineering"],
+      defaultMentions: [
+        "agent-engineering",
+        "agent-navigation",
+        "agent-engineering",
+      ],
     });
 
     await keyDown({ key: "Enter" });
 
     const [, options] = onSendMessage.mock.calls[0]!;
-    expect(options?.mentions).toEqual(["agent-engineering", "agent-navigation"]);
+    expect(options?.mentions).toEqual([
+      "agent-engineering",
+      "agent-navigation",
+    ]);
   });
 
   it("uses explicit mentions instead of product-supplied defaults", async () => {
@@ -251,7 +288,9 @@ describe("ChatInput keyboard shortcuts", () => {
   // "Send & interrupt" was removed: interrupting is now the separate flush-queue
   // control. Cmd/Ctrl+Enter just sends (default mode), never flushing.
   it("Ctrl+Enter sends (default mode, no interrupt/flush)", async () => {
-    const { onSendMessage, flushOutboxAndInterrupt } = renderInput({ agentBusy: true });
+    const { onSendMessage, flushOutboxAndInterrupt } = renderInput({
+      agentBusy: true,
+    });
     await keyDown({ key: "Enter", ctrlKey: true });
     expect(onSendMessage).toHaveBeenCalledTimes(1);
     const [, options] = onSendMessage.mock.calls[0]!;
@@ -260,14 +299,19 @@ describe("ChatInput keyboard shortcuts", () => {
   });
 
   it("Cmd+Enter (metaKey) also sends (default mode, no flush)", async () => {
-    const { onSendMessage, flushOutboxAndInterrupt } = renderInput({ agentBusy: true });
+    const { onSendMessage, flushOutboxAndInterrupt } = renderInput({
+      agentBusy: true,
+    });
     await keyDown({ key: "Enter", metaKey: true });
     expect(onSendMessage).toHaveBeenCalledTimes(1);
     expect(flushOutboxAndInterrupt).not.toHaveBeenCalled();
   });
 
   it("Ctrl+Shift+Enter sends after the turn (deliverAfterTurn metadata)", async () => {
-    const { onSendMessage } = renderInput({ agentBusy: true, hasOpenTurn: true });
+    const { onSendMessage } = renderInput({
+      agentBusy: true,
+      hasOpenTurn: true,
+    });
     await keyDown({ key: "Enter", ctrlKey: true, shiftKey: true });
     expect(onSendMessage).toHaveBeenCalledTimes(1);
     const [, options] = onSendMessage.mock.calls[0]!;
@@ -275,7 +319,10 @@ describe("ChatInput keyboard shortcuts", () => {
   });
 
   it("Ctrl+Shift+Enter falls back to default send when no turn is open", async () => {
-    const { onSendMessage } = renderInput({ agentBusy: true, hasOpenTurn: false });
+    const { onSendMessage } = renderInput({
+      agentBusy: true,
+      hasOpenTurn: false,
+    });
     await keyDown({ key: "Enter", ctrlKey: true, shiftKey: true });
     expect(onSendMessage).toHaveBeenCalledTimes(1);
     const [, options] = onSendMessage.mock.calls[0]!;
@@ -283,13 +330,19 @@ describe("ChatInput keyboard shortcuts", () => {
   });
 
   it("Escape flushes (advance pipeline) only when composer empty and agent busy", async () => {
-    const { flushOutboxAndInterrupt } = renderInput({ input: "", agentBusy: true });
+    const { flushOutboxAndInterrupt } = renderInput({
+      input: "",
+      agentBusy: true,
+    });
     await keyDown({ key: "Escape" });
     expect(flushOutboxAndInterrupt).toHaveBeenCalledTimes(1);
   });
 
   it("Escape does NOT flush when the composer has text", async () => {
-    const { flushOutboxAndInterrupt } = renderInput({ input: "draft", agentBusy: true });
+    const { flushOutboxAndInterrupt } = renderInput({
+      input: "draft",
+      agentBusy: true,
+    });
     await keyDown({ key: "Escape" });
     expect(flushOutboxAndInterrupt).not.toHaveBeenCalled();
   });
@@ -340,7 +393,11 @@ describe("ChatInput /model command", () => {
     await keyDown({ key: "Enter" });
 
     await waitFor(() => expect(onReplaceAgent).toHaveBeenCalledTimes(1));
-    expect(onCallMethodResult).toHaveBeenCalledWith("agent-1", "getAgentSettings", {});
+    expect(onCallMethodResult).toHaveBeenCalledWith(
+      "agent-1",
+      "getAgentSettings",
+      {},
+    );
     expect(onReplaceAgent).toHaveBeenCalledWith("agent-1", undefined, {
       model: "local:lfm2.5-2.6b",
       handle: "ai-chat",
@@ -375,14 +432,17 @@ describe("ChatInput send-button intent", () => {
   });
 
   it("honors a product-owned readiness gate even while the channel is connected", async () => {
-    const { onSendMessage } = renderInput({ disabled: true, input: "premature order" });
+    const { onSendMessage } = renderInput({
+      disabled: true,
+      input: "premature order",
+    });
 
     expect(textarea().hasAttribute("disabled")).toBe(true);
     expect(
       screen
         .getByLabelText(/^Send \(/)
         .closest("button")
-        ?.hasAttribute("disabled")
+        ?.hasAttribute("disabled"),
     ).toBe(true);
     await keyDown({ key: "Enter" });
     expect(onSendMessage).not.toHaveBeenCalled();
@@ -391,7 +451,9 @@ describe("ChatInput send-button intent", () => {
 
 describe("ChatInput narration / undo / ghost", () => {
   it("renders the flush narration pill with an aria-live region", () => {
-    renderInput({ flushNarration: { text: "Delivered 2 steers", remaining: 0 } });
+    renderInput({
+      flushNarration: { text: "Delivered 2 steers", remaining: 0 },
+    });
     const pill = screen.getByText("Delivered 2 steers");
     expect(pill).toBeTruthy();
     expect(pill.closest('[aria-live="polite"]')).toBeTruthy();
@@ -399,7 +461,11 @@ describe("ChatInput narration / undo / ghost", () => {
 
   it("renders the undo snackbar and fires undoLastAction", () => {
     const { undoLastAction } = renderInput({
-      undoableAction: { kind: "cancel", messageIds: ["m1"], expiresAt: Date.now() + 5000 },
+      undoableAction: {
+        kind: "cancel",
+        messageIds: ["m1"],
+        expiresAt: Date.now() + 5000,
+      },
     });
     fireEvent.click(screen.getByText("Undo"));
     expect(undoLastAction).toHaveBeenCalledTimes(1);
