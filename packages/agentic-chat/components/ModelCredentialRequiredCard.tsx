@@ -200,7 +200,7 @@ export default function ModelCredentialRequiredCard({
           : "Enter API Key";
 
   return (
-    <Card variant="surface" size="2">
+    <Card variant="surface" size="2" role="region" aria-label="Connect a model provider">
       <Flex direction="column" gap="3">
         <Box>
           <Text as="div" size="2" weight="medium">

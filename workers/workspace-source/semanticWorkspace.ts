@@ -201,7 +201,7 @@ const trajectoryRequestRef = (value: unknown) => {
 };
 
 export interface SemanticDispatchRequest {
-  input: unknown;
+  input?: unknown;
   /** Exact trajectory edge, when this command came from an agent tool call. */
   ingress: {
     causalParent: {
