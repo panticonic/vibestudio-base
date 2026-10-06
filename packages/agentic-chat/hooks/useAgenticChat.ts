@@ -184,12 +184,6 @@ export interface UseAgenticChatOptions {
   actions?: AgenticChatActions;
   theme?: "light" | "dark";
   installedAgentInfos?: InstalledAgentInfo[];
-  /** If set, automatically sent as the first user message once connected */
-  initialPrompt?: string;
-  /** Send initialPrompt even if the channel already has history (idempotent). */
-  forceInitialPrompt?: boolean;
-  /** Override the durable deduplication key for an explicitly triggered prompt. */
-  initialPromptIdempotencyKey?: string;
   /** Panel-supplied fork navigation + review overlay handlers (enables the fork
    *  switcher, inline fork rows, and subagent review). Absent ⇒ no fork UI. */
   forkNav?: ForkNavHandlers;
@@ -236,9 +230,6 @@ export function useAgenticChat({
   // / centralized appearance (resolved in useChatCore via resolveSystemTheme).
   theme,
   installedAgentInfos,
-  initialPrompt,
-  forceInitialPrompt,
-  initialPromptIdempotencyKey,
   forkNav,
   importLoader,
   initialActionBarFile,
@@ -246,7 +237,7 @@ export function useAgenticChat({
   initialActionBarMaxHeight,
   onActionBarFileChange,
   connectionRetrySignal,
-  features: requestedFeatures
+  features: requestedFeatures,
 }: UseAgenticChatOptions): UseAgenticChatResult {
   const [features] = useState(() => resolveAgenticChatFeatures(requestedFeatures));
   const metadata = useMemo<ClientParticipantMetadata>(
@@ -254,10 +245,6 @@ export function useAgenticChat({
     [channelName, metadataOption]
   );
   // --- Core (durable channel trajectory events -> transcript view model) ---
-  // Agent-managing hosts route initialPrompt through the deferred pre-send queue
-  // below so it waits for the first agent. Hosts without onAddAgent keep the
-  // historical core auto-send path; there is no agent for the deferred queue to
-  // spawn, so holding the prompt would strand it.
   const core = useChatCore({
     config,
     channelName,
@@ -265,11 +252,6 @@ export function useAgenticChat({
     contextId,
     metadata,
     theme,
-    initialPrompt: actions?.onAddAgent ? undefined : initialPrompt,
-    forceInitialPrompt: actions?.onAddAgent ? undefined : forceInitialPrompt,
-    initialPromptIdempotencyKey: actions?.onAddAgent
-      ? undefined
-      : initialPromptIdempotencyKey
   });
   const [connectionAttempt, setConnectionAttempt] = useState(0);
   const retryConnection = useCallback(() => {
@@ -1523,7 +1505,6 @@ Use package imports available to inline_ui plus relative imports for local helpe
   const defaultModelRef = actions?.defaultModelRef;
   const defaultAgentConfig = actions?.defaultAgentConfig;
   const firstAgentModelPreflight = actions?.firstAgentModelPreflight;
-  const firstAgentChannelIsNew = actions?.firstAgentChannelIsNew;
   const onSaveDefaults = actions?.onSaveDefaults;
   const onRemoveAgent = actions?.onRemoveAgent ? handleRemoveAgent : undefined;
   const onFocusPanel = actions?.onFocusPanel;
@@ -1540,6 +1521,14 @@ Use package imports available to inline_ui plus relative imports for local helpe
     core.handleInputChange("");
     core.setPendingImages([]);
   }, [core.handleInputChange, core.setPendingImages]);
+  const resolveOpeningRequest = useCallback(
+    async (outcome: "deliver" | "cancel") => {
+      const client = core.clientRef.current;
+      if (!client) throw new Error("Conversation is not connected");
+      await client.resolveOpeningRequest(outcome);
+    },
+    [core.clientRef],
+  );
   const { deferredAgent, sendMessage: deferredSendMessage } = useDeferredAgent({
     participants: core.participants,
     pendingAgents: core.pendingAgents,
@@ -1555,13 +1544,11 @@ Use package imports available to inline_ui plus relative imports for local helpe
     defaultModelRef,
     defaultAgentConfig,
     firstAgentModelPreflight,
-    firstAgentChannelIsNew,
-    initialPrompt,
-    forceInitialPrompt,
-    initialPromptIdempotencyKey,
+    firstAgentPending: core.initialization?.firstAgentPending ?? false,
+    openingRequest: core.initialization?.openingRequest,
+    resolveOpeningRequest,
     channelName,
-    messages: core.messages,
-    replaySettled: core.replaySettled
+    replaySettled: core.replaySettled,
   });
   // Pre-send queue intercept: the composer's send becomes the deferred wrapper,
   // which holds the first message(s) until the agent it spawns joins the roster.

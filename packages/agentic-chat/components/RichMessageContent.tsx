@@ -1,4 +1,4 @@
-import React, { type ComponentType, type ReactNode, useEffect, useState } from "react";
+import React, { type ComponentType, type ReactNode, useEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { Text } from "@radix-ui/themes";
@@ -79,7 +79,7 @@ function getRehypeHighlight(): Promise<RehypeHighlightPlugin> {
 async function compileMdx(
   content: string,
   rehypeHighlight: RehypeHighlightPlugin | null,
-  mdxActions?: MdxActionHandlers
+  getMdxActions: () => MdxActionHandlers | undefined
 ): Promise<ComponentType | null> {
   const rehypePlugins = rehypeHighlight
     ? ([[rehypeHighlight, { ignoreMissing: true }]] as [
@@ -91,7 +91,7 @@ async function compileMdx(
   const { default: Component } = await evaluate(content, {
     ...runtime,
     development: false,
-    useMDXComponents: (() => createMdxComponents(mdxActions)) as never,
+    useMDXComponents: (() => createMdxComponents(getMdxActions())) as never,
     remarkPlugins,
     rehypePlugins,
   });
@@ -105,6 +105,10 @@ export const RichMessageContent = React.memo(function RichMessageContent({
   isStreaming,
   mdxActions,
 }: RichMessageContentProps) {
+  // Action callbacks can change without changing the authored content. Read
+  // them when rendering so a callback revision never tears down media playback.
+  const mdxActionsRef = useRef(mdxActions);
+  mdxActionsRef.current = mdxActions;
   const [MdxComponent, setMdxComponent] = useState<ComponentType | null>(null);
   const [highlightLoaded, setHighlightLoaded] = useState<RehypeHighlightPlugin | null>(
     rehypeHighlightPlugin
@@ -125,7 +129,7 @@ export const RichMessageContent = React.memo(function RichMessageContent({
     if (needsHighlight && !highlightLoaded) return;
 
     let cancelled = false;
-    compileMdx(content, highlightLoaded, mdxActions)
+    compileMdx(content, highlightLoaded, () => mdxActionsRef.current)
       .then((Component) => {
         if (!cancelled) setMdxComponent(() => Component);
       })
@@ -138,7 +142,7 @@ export const RichMessageContent = React.memo(function RichMessageContent({
     return () => {
       cancelled = true;
     };
-  }, [content, hasJsx, highlightLoaded, isStreaming, mdxActions, needsHighlight]);
+  }, [content, hasJsx, highlightLoaded, isStreaming, needsHighlight]);
 
   if (MdxComponent) {
     return (

@@ -17,7 +17,8 @@
       "@workspace/model-catalog/providerConnect",
       "@workspace/react/responsive",
       "@workspace/ui",
-      "@workspace/ui/feedback"
+      "@workspace/ui/feedback",
+      "@workspace/react"
     ],
     "authority": {
       "provides": [],
@@ -33,6 +34,10 @@
         {
           "protocol": "vibestudio.models.v1",
           "availability": "required"
+        },
+        {
+          "protocol": "vibestudio.images.v1",
+          "availability": "optional"
         }
       ],
       "requests": [
@@ -230,6 +235,15 @@
           "resource": {
             "kind": "exact",
             "key": "workspace.templates:extension:@workspace-extensions/templates"
+          },
+          "tier": "gated",
+          "evidence": "bounded-dynamic"
+        },
+        {
+          "capability": "workspace-service:images",
+          "resource": {
+            "kind": "prefix",
+            "prefix": ""
           },
           "tier": "gated",
           "evidence": "bounded-dynamic"

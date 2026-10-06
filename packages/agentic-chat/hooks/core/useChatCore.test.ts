@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { pruneAfterTurnIds, shouldAutoSendInitialPrompt, titleFromFirstUserMessage } from "./useChatCore";
+import { pruneAfterTurnIds, titleFromFirstUserMessage } from "./useChatCore";
 import type { ChatMessage } from "../../types";
 
 const SELF = "panel:user";
@@ -55,37 +55,5 @@ describe("pruneAfterTurnIds", () => {
   it("is a no-op on an empty set", () => {
     const empty = new Set<string>();
     expect(pruneAfterTurnIds(empty, [], SELF)).toBe(empty);
-  });
-});
-
-describe("shouldAutoSendInitialPrompt", () => {
-  it("allows a prompt that arrives after the initial render", () => {
-    expect(shouldAutoSendInitialPrompt({
-      prompt: undefined,
-      connected: true,
-      alreadySent: false,
-      hasPriorMessages: false,
-    })).toBe(false);
-    expect(shouldAutoSendInitialPrompt({
-      prompt: "Read the docs first",
-      connected: true,
-      alreadySent: false,
-      hasPriorMessages: false,
-    })).toBe(true);
-  });
-
-  it("does not resend after the channel has history or the prompt was sent", () => {
-    expect(shouldAutoSendInitialPrompt({
-      prompt: "Read the docs first",
-      connected: true,
-      alreadySent: false,
-      hasPriorMessages: true,
-    })).toBe(false);
-    expect(shouldAutoSendInitialPrompt({
-      prompt: "Read the docs first",
-      connected: true,
-      alreadySent: true,
-      hasPriorMessages: false,
-    })).toBe(false);
   });
 });

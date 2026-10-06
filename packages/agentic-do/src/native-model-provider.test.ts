@@ -209,7 +209,7 @@ describe("native protected model provider", () => {
     expect(lifecycle().map((event) => event.kind)).toEqual([
       "turn.opened",
       "turn.waiting",
-      "turn.opened",
+      "turn.resumed",
       "turn.closed",
     ]);
     expect(new Set(lifecycle().map((event) => event.turnId)).size).toBe(1);

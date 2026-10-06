@@ -520,6 +520,7 @@ export function reduceChannelView(
     }
   } else if (
     event.kind === "turn.opened" ||
+    event.kind === "turn.resumed" ||
     event.kind === "turn.waiting" ||
     event.kind === "turn.closed"
   ) {
@@ -528,11 +529,12 @@ export function reduceChannelView(
     // (lower seq than already applied) so a replayed turn.opened or a late
     // turn.waiting can never resurrect a closed turn.
     const existingTurn = turnId ? next.turns[turnId] : undefined;
+    if (event.kind === "turn.resumed" && (!existingTurn || existingTurn.status === "closed")) return next;
     const staleTurnEvent = existingTurn?.lastSeq !== undefined && parsed.seq < existingTurn.lastSeq;
     if (turnId && !staleTurnEvent) {
       const existing = existingTurn;
-      const summary = "summary" in event.payload ? event.payload.summary : event.kind === "turn.opened" ? undefined : existing?.summary;
-      const reason = "reason" in event.payload ? event.payload.reason : event.kind === "turn.opened" ? undefined : existing?.reason;
+      const summary = "summary" in event.payload ? event.payload.summary : (event.kind === "turn.opened" || event.kind === "turn.resumed") ? undefined : existing?.summary;
+      const reason = "reason" in event.payload ? event.payload.reason : (event.kind === "turn.opened" || event.kind === "turn.resumed") ? undefined : existing?.reason;
       const metadata =
         "metadata" in event.payload &&
         event.payload.metadata &&

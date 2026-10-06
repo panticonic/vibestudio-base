@@ -51,12 +51,6 @@ export interface AgenticChatProps {
   heightMode?: "viewport" | "container";
   /** Agents installed for this channel; shown as pending until they join the roster */
   installedAgents?: Array<{ agentId: string; handle: string }>;
-  /** If set, automatically sent as the first user message once connected */
-  initialPrompt?: string;
-  /** Send initialPrompt even if the channel already has history (idempotent). */
-  forceInitialPrompt?: boolean;
-  /** Override the durable deduplication key for an explicitly triggered prompt. */
-  initialPromptIdempotencyKey?: string;
   /** Panel-supplied fork navigation + review overlay handlers (fork switcher,
    *  inline fork rows, subagent review). Omit to disable the fork UI. */
   forkNav?: ForkNavHandlers;
@@ -131,10 +125,7 @@ export const AgenticChat = forwardRef<AgenticChatHandle, AgenticChatProps>(funct
     theme,
     heightMode = "viewport",
     installedAgents: installedAgentInfos,
-    initialPrompt,
-    forceInitialPrompt,
-    initialPromptIdempotencyKey,
-    forkNav,
+      forkNav,
     importLoader,
     initialActionBarFile,
     initialActionBarProps,
@@ -155,8 +146,8 @@ export const AgenticChat = forwardRef<AgenticChatHandle, AgenticChatProps>(funct
     focusMessageId,
     onFocusMessageConsumed,
   },
-  ref
-) {
+  ref,
+  ) {
   const { contextValue, inputContextValue, features } = useAgenticChat({
     config,
     channelName,
@@ -167,9 +158,6 @@ export const AgenticChat = forwardRef<AgenticChatHandle, AgenticChatProps>(funct
     actions,
     theme,
     installedAgentInfos,
-    initialPrompt,
-    forceInitialPrompt,
-    initialPromptIdempotencyKey,
     forkNav,
     importLoader,
     initialActionBarFile,
@@ -194,7 +182,7 @@ export const AgenticChat = forwardRef<AgenticChatHandle, AgenticChatProps>(funct
 
   return (
     <ErrorBoundary surfaceName="chat panel">
-      {/* Theme is applied here (above ChatProvider) rather than in ChatLayout
+        {/* Theme is applied here (above ChatProvider) rather than in ChatLayout
           so that ChatLayout does NOT read from context. This prevents
           keystroke-driven context updates from re-rendering ChatLayout and
           causing layout shifts that break autoscroll.
@@ -202,7 +190,7 @@ export const AgenticChat = forwardRef<AgenticChatHandle, AgenticChatProps>(funct
           Appearance flows from the explicitly-passed `theme` prop OR, when
           absent, the system / centralized appearance (resolved in useChatCore
           via resolveSystemTheme) — NEVER a hardcoded "dark" literal. */}
-      <Theme
+        <Theme
         appearance={contextValue.theme}
         style={{
           minWidth: 0,
@@ -210,9 +198,9 @@ export const AgenticChat = forwardRef<AgenticChatHandle, AgenticChatProps>(funct
           height: heightMode === "container" ? "100%" : "100dvh",
         }}
       >
-        <ChatProvider value={contextValue} inputValue={inputContextValue}>
-          <ChatHostCommands />
-          <ChatLayout
+          <ChatProvider value={contextValue} inputValue={inputContextValue}>
+            <ChatHostCommands />
+            <ChatLayout
             className={className}
             style={style}
             features={features}
@@ -229,8 +217,9 @@ export const AgenticChat = forwardRef<AgenticChatHandle, AgenticChatProps>(funct
             focusMessageId={focusMessageId}
             onFocusMessageConsumed={onFocusMessageConsumed}
           />
-        </ChatProvider>
-      </Theme>
-    </ErrorBoundary>
+          </ChatProvider>
+        </Theme>
+      </ErrorBoundary>
   );
-});
+},
+);

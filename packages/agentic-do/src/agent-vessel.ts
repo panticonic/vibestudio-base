@@ -7524,7 +7524,25 @@ export abstract class AgentVesselBase extends NativeChannelOwner<NativeProductCh
       throw new Error(
         "Child settlement acknowledgement changed its actual source",
       );
-    if (!source.active) this.subagentRuns.markExecutionIdle(run.runId);
+    if (!source.active) {
+      if (source.submission.status === "unanswered" && run.status === "running") {
+        const detail = source.submission.detail;
+        const message = typeof detail === "string" ? detail
+          : detail && typeof detail === "object" && !Array.isArray(detail) && typeof detail["message"] === "string"
+            ? detail["message"] : source.submission.reason;
+        await this.settleSubagentTerminal(
+          run,
+          source.submission.reason === "aborted" ? "cancelled" : "failed",
+          message,
+          undefined,
+          { ...BACKGROUND_CONTEXT, abortSignal: this.rpcAbortSignal ?? undefined },
+          this.rpc,
+          `native-input:${source.submission.id}`,
+        );
+      } else {
+        this.subagentRuns.markExecutionIdle(run.runId);
+      }
+    }
     return { recorded: true };
   }
 

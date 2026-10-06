@@ -14,7 +14,7 @@ const INITIAL_PROMPT = "Testkit initial prompt for the chat transcript suite";
 const AGENT_REPLY = "Deterministic agent reply from the test worker.";
 
 const CHAT_STATE_ARGS = {
-  initialPrompt: INITIAL_PROMPT,
+  seed: { openingRequest: INITIAL_PROMPT },
   agentSource: "workers/test-agent",
   agentClass: "TestAgentWorker",
   agentConfig: {

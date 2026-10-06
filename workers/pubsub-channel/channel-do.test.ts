@@ -6950,3 +6950,278 @@ describe("PubSubChannel appendSeed fork plumbing", () => {
     }
   });
 });
+
+describe("conversation creation seed", () => {
+  it("uses the same creation seed for locked channels without exposing membership initialization to ordinary callers", async () => {
+    const { instance, gad } = await createGadBackedChannel();
+    const config = { membershipPolicy: { kind: "locked" as const, participants: ["panel:user"] },
+      seed: { messages: [{ author: "Introduction", content: "Welcome" }] } };
+    await expect(instance.initializeConversation("ctx-locked", config)).rejects.toThrow("initializeLockedChannel");
+    await instance.initializeLockedChannel("ctx-locked", config);
+    await instance.initializeLockedChannel("ctx-locked", config);
+    expect(canonicalAgenticEvents(gad).filter((event) => event.kind === "message.completed")).toHaveLength(1);
+    expect((await instance.getConfig())?.seed).toBeUndefined();
+    await expect(instance.initializeLockedChannel("ctx-locked", { ...config, seed: { openingRequest: "Changed" } })).rejects.toThrow("does not match");
+  });
+
+  const seed = {
+    messages: [
+      {
+        author: "Product introduction",
+        content: '<Video url="https://youtu.be/Pb6C4ORBOOI" title="Welcome" />',
+      },
+    ],
+    openingRequest: "Help me get started",
+  };
+  it("shows authored media before an agent exists and preserves one seed across reconnect and eviction", async () => {
+    const channel = await createGadBackedChannel();
+    setRpcCaller(channel.instance, "panel:user", "panel");
+    await channel.instance.subscribe("panel:user", {
+      contextId: "ctx-1",
+      type: "panel",
+      channelConfig: { seed },
+    });
+    expect(
+      canonicalAgenticEvents(channel.gad).filter(
+        (event) => event.kind === "message.completed",
+      ),
+    ).toHaveLength(1);
+    expect(await channel.instance.getConfig()).toMatchObject({
+      initialization: {
+        firstAgentPending: true,
+        openingRequest: seed.openingRequest,
+      },
+    });
+    expect(
+      await channel.instance.updateConfig({ title: "Introduction" }),
+    ).toMatchObject({
+      title: "Introduction",
+      initialization: {
+        firstAgentPending: true,
+        openingRequest: seed.openingRequest,
+      },
+    });
+    await channel.instance.subscribe("panel:user", {
+      contextId: "ctx-1",
+      type: "panel",
+      channelConfig: {
+        seed: {
+          messages: [{ author: "Changed", content: "Do not install again" }],
+        },
+      },
+    });
+    const remount = await createGadBackedChannel({
+      db: channel.db,
+      gad: channel.gad,
+    });
+    setRpcCaller(remount.instance, "panel:user", "panel");
+    await remount.instance.subscribe("panel:user", {
+      contextId: "ctx-1",
+      type: "panel",
+    });
+    const messages = canonicalAgenticEvents(channel.gad).filter(
+      (event) => event.kind === "message.completed",
+    );
+    expect(messages).toHaveLength(1);
+    expect(messages[0]!.actor).toMatchObject({
+      kind: "system",
+      displayName: "Product introduction",
+    });
+    await expect(
+      remount.instance.resolveOpeningRequest("panel:user", "deliver"),
+    ).rejects.toThrow("subscribed agent");
+  });
+  it("delivers the opening request once after an agent subscribes, including concurrent retries", async () => {
+    const { instance, gad } = await createGadBackedChannel();
+    setRpcCaller(instance, "panel:user", "panel");
+    await instance.subscribe("panel:user", {
+      contextId: "ctx-1",
+      type: "panel",
+      channelConfig: { seed },
+    });
+    const agentId = "do:workers/agent-worker:AiChatWorker:seed-agent";
+    await joinEntity(instance, agentId, {
+      type: "agent",
+      handle: "seed-agent",
+    });
+    setRpcCaller(instance, "panel:user", "panel");
+    await Promise.all([
+      instance.resolveOpeningRequest("panel:user", "deliver"),
+      instance.resolveOpeningRequest("panel:user", "deliver"),
+    ]);
+    await instance.resolveOpeningRequest("panel:user", "deliver");
+    const messages = canonicalAgenticEvents(gad).filter(
+      (event) => event.kind === "message.completed",
+    );
+    expect(messages).toHaveLength(2);
+    expect(messages[1]!.actor).toMatchObject({ id: "panel:user" });
+    expect(messages[1]!.payload).toMatchObject({
+      role: "user",
+      blocks: [{ type: "text", content: seed.openingRequest }],
+    });
+    expect(await instance.getConfig()).toMatchObject({
+      initialization: { firstAgentPending: false },
+    });
+    expect(
+      (await instance.getConfig())?.initialization?.openingRequest,
+    ).toBeUndefined();
+  });
+  it.each(["deliver", "cancel"] as const)("keeps a failed %s resolution retryable through its durable config notification", async (outcome) => {
+    let failConfig = false;
+    const channel = await createGadBackedChannel({ rpcCall: (_target, method, args) => {
+      const input = args[0] as { events?: Array<{ payloadKind?: string }> };
+      if (failConfig && method === "appendLogEvent" && input.events?.some((event) => event.payloadKind === "config-update")) {
+        failConfig = false;
+        throw new Error("Config publication failed");
+      }
+    }});
+    setRpcCaller(channel.instance, "panel:user", "panel");
+    await channel.instance.subscribe("panel:user", { contextId: "ctx-1", type: "panel", channelConfig: { seed } });
+    const agentId = "do:workers/agent-worker:AiChatWorker:resolution";
+    await joinEntity(channel.instance, agentId, { type: "agent", handle: "resolution" });
+    setRpcCaller(channel.instance, "panel:user", "panel");
+    failConfig = true;
+    await expect(channel.instance.resolveOpeningRequest("panel:user", outcome)).rejects.toThrow("Config publication failed");
+    expect((await channel.instance.getConfig())?.initialization?.openingRequest).toBe(seed.openingRequest);
+    // Finishing an accepted publication must not require its original receiver
+    // to still be present. The opposite requested outcome cannot rewrite it.
+    setRpcCaller(channel.instance, agentId, "do");
+    await channel.instance.leave({ participantId: agentId, revision: 2 });
+    const restored = await createGadBackedChannel({ db: channel.db, gad: channel.gad });
+    setRpcCaller(restored.instance, "panel:user", "panel");
+    await restored.instance.resolveOpeningRequest("panel:user", outcome === "deliver" ? "cancel" : "deliver");
+    expect((await restored.instance.getConfig())?.initialization?.openingRequest).toBeUndefined();
+    const log = channel.gad.instance.readLog({ logId: "channel-1", head: "main" });
+    expect(log.filter((event) => event.payloadKind === "config-update")).toHaveLength(1);
+    expect(canonicalAgenticEvents(channel.gad).filter((event) => event.kind === "message.completed")).toHaveLength(outcome === "deliver" ? 2 : 1);
+  });
+
+  it.each(["opening", "resolution"])("recovers a lost %s append reply without redelivery or a new author", async (phase) => {
+    const gad = await createTestDO(GadWorkspaceDO, { __objectKey: "workspace", RPC_FETCH: successfulTestRpcFetch });
+    let loseReply = false;
+    const channel = await createGadBackedChannel({ gad, rpcCall: async (_target, method, args) => {
+      const input = args[0] as { events?: Array<{ envelopeId?: string }> };
+      if (loseReply && method === "appendLogEvent" && input.events?.some((event) => event.envelopeId === `conversation-seed:${phase}`)) {
+        loseReply = false;
+        await gad.callAs({ callerId: "do:workers/pubsub-channel:PubSubChannel:channel-1", callerKind: "do" }, method, ...args);
+        throw new Error("Accepted append reply lost");
+      }
+    }});
+    setRpcCaller(channel.instance, "panel:user", "panel");
+    await channel.instance.subscribe("panel:user", { contextId: "ctx-1", type: "panel", channelConfig: { seed } });
+    const agentId = "do:workers/agent-worker:AiChatWorker:lost-reply";
+    await joinEntity(channel.instance, agentId, { type: "agent", handle: "lost-reply" });
+    setRpcCaller(channel.instance, "panel:user", "panel");
+    loseReply = true;
+    await expect(channel.instance.resolveOpeningRequest("panel:user", "deliver")).rejects.toThrow("Accepted append reply lost");
+    const reopened = await createGadBackedChannel({ db: channel.db, gad });
+    expect((await reopened.instance.getConfig())?.initialization?.openingRequest).toBe(phase === "resolution" ? undefined : seed.openingRequest);
+    setRpcCaller(channel.instance, agentId, "do");
+    await channel.instance.leave({ participantId: agentId, revision: 2 });
+    const restored = await createGadBackedChannel({ db: channel.db, gad });
+    setRpcCaller(restored.instance, "panel:another", "panel");
+    await restored.instance.subscribe("panel:another", { contextId: "ctx-1", type: "panel" });
+    await restored.instance.resolveOpeningRequest("panel:another", "cancel");
+    expect((await restored.instance.getConfig())?.initialization?.openingRequest).toBeUndefined();
+    const messages = canonicalAgenticEvents(gad).filter((event) => event.kind === "message.completed");
+    expect(messages).toHaveLength(2);
+    expect(messages[1]!.actor.id).toBe("panel:user");
+    expect(gad.instance.readLog({ logId: "channel-1", head: "main" }).filter((event) => event.payloadKind === "config-update")).toHaveLength(1);
+  });
+
+  it("keeps the first-agent lifecycle after role changes and projection reconstruction", async () => {
+    const channel = await createGadBackedChannel();
+    const id = "do:workers/agent-worker:AiChatWorker:lifecycle";
+    await joinEntity(channel.instance, id);
+    await channel.instance.join({ participantId: id, revision: 2, contextId: "ctx-1",
+      metadata: { type: "headless" }, delivery: "all",
+      endpoint: { kind: "entity", entityId: id, invocation: "direct" },
+      applicationConfig: null, replay: false });
+    expect((await channel.instance.getConfig())?.initialization?.firstAgentPending).toBe(false);
+    channel.sql.exec("UPDATE channel_delivery_projection_cursor SET projection_version = 0");
+    const restored = await createGadBackedChannel({ db: channel.db, gad: channel.gad });
+    expect((await restored.instance.getConfig())?.initialization?.firstAgentPending).toBe(false);
+  });
+  it("persists explicit cancellation and rejects mutable seed configuration", async () => {
+    const { instance, gad } = await createGadBackedChannel();
+    setRpcCaller(instance, "panel:user", "panel");
+    await instance.subscribe("panel:user", {
+      contextId: "ctx-1",
+      type: "panel",
+      channelConfig: { seed },
+    });
+    await instance.resolveOpeningRequest("panel:user", "cancel");
+    await instance.resolveOpeningRequest("panel:user", "deliver");
+    expect(
+      canonicalAgenticEvents(gad).filter(
+        (event) => event.kind === "message.completed",
+      ),
+    ).toHaveLength(1);
+    expect(
+      (await instance.getConfig())?.initialization?.openingRequest,
+    ).toBeUndefined();
+    await expect(instance.updateConfig({ seed })).rejects.toThrow(
+      "creation-owned",
+    );
+  });
+});
+
+describe("conversation image ownership", () => {
+  it("retains generated originals before accepting their reference and rejects missing assets", async () => {
+    const retained: unknown[] = [];
+    const { instance, gad } = await createGadBackedChannel({
+      rpcCall: async (target, method, args) => {
+        if (
+          target === "main" &&
+          method === "workers.resolveService" &&
+          args[0] === "vibestudio.images.v1"
+        )
+          return {
+            kind: "durable-object",
+            targetId: "do:workers/images:ImagesDO:workspace",
+          };
+        if (target === "do:workers/images:ImagesDO:workspace") {
+          if (method === "getAsset") {
+            if (args[0] !== "image-one") throw new Error("Unknown image asset");
+            return { id: "image-one" };
+          }
+          if (method === "retain") {
+            retained.push(args[0]);
+            return null;
+          }
+        }
+        return undefined;
+      },
+    });
+    setRpcCaller(instance, "panel:user", "panel");
+    await instance.subscribe("panel:user", {
+      contextId: "ctx-images",
+      type: "panel",
+    });
+    const base = agenticEvent();
+    const event = {
+      ...base,
+      payload: {
+        ...base.payload,
+        metadata: { imageAssetIds: ["image-one", "image-one"] },
+      },
+    };
+    await instance.publish("panel:user", AGENTIC_EVENT_PAYLOAD_KIND, event);
+    expect(retained).toEqual([
+      { assetId: "image-one", owner: "conversation:ctx-images:channel-1" },
+    ]);
+    const accepted = canonicalAgenticEvents(gad).filter(
+      (item) => item.kind === "message.completed",
+    );
+    expect(accepted).toHaveLength(1);
+    event.payload.metadata = { imageAssetIds: ["missing"] };
+    await expect(
+      instance.publish("panel:user", AGENTIC_EVENT_PAYLOAD_KIND, event),
+    ).rejects.toThrow("Unknown image asset");
+    expect(
+      canonicalAgenticEvents(gad).filter(
+        (item) => item.kind === "message.completed",
+      ),
+    ).toHaveLength(1);
+  });
+});

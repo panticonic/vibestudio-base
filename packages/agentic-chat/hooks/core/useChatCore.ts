@@ -74,24 +74,6 @@ export function titleFromFirstUserMessage(message: string): string | null {
   return `${normalized.slice(0, DEFAULT_CHAT_TITLE_MAX_LENGTH - 3).trimEnd()}...`;
 }
 
-export function shouldAutoSendInitialPrompt({
-  prompt,
-  connected,
-  alreadySent,
-  hasPriorMessages,
-  force,
-}: {
-  prompt: string | undefined;
-  connected: boolean;
-  alreadySent: boolean;
-  hasPriorMessages: boolean;
-  /** Seed the prompt even when the channel already has transcript history
-   *  (e.g. a fork). Still idempotent via the channel idempotency key. */
-  force?: boolean;
-}): boolean {
-  return Boolean(prompt && connected && !alreadySent && (force || !hasPriorMessages));
-}
-
 /**
  * Reconcile the after-turn id set against the live transcript: drop an id once
  * its message is PRESENT but no longer a pending-unread self message (read /
@@ -141,16 +123,11 @@ export interface UseChatCoreOptions {
    *  identity (`user:<userId>` + account handle) from the verified subject. */
   metadata?: ClientParticipantMetadata;
   theme?: "light" | "dark";
-  /** If set, automatically sent as the first user message once connected */
-  initialPrompt?: string;
-  /** Send initialPrompt even if the channel already has history (idempotent). */
-  forceInitialPrompt?: boolean;
-  /** Override the durable deduplication key for an explicitly triggered prompt. */
-  initialPromptIdempotencyKey?: string;
 }
 
 export interface ChatCoreState {
   messages: ChatMessage[];
+  initialization?: import("@workspace/pubsub").ConversationInitialization;
 
   // Connection
   connected: boolean;
@@ -264,9 +241,6 @@ export function useChatCore({
   contextId: _contextId,
   metadata: metadataOption,
   theme: themeProp,
-  initialPrompt,
-  forceInitialPrompt = false,
-  initialPromptIdempotencyKey,
 }: UseChatCoreOptions): ChatCoreState {
   const metadata = useMemo<ClientParticipantMetadata>(
     () => metadataOption ?? { name: channelName, type: "panel" },
@@ -399,6 +373,8 @@ export function useChatCore({
   // --- React state ---
   const [client, setClient] = useState<PubSubClient<ChatParticipantMetadata> | null>(null);
   const [connected, setConnected] = useState(false);
+  const [initialization, setInitialization] =
+    useState<import("@workspace/pubsub").ConversationInitialization>();
   const [status, setStatus] = useState("Connecting...");
   const [connectionError, setConnectionError] = useState<{
     message: string;
@@ -531,21 +507,19 @@ export function useChatCore({
       setSelfId(resolvedSelfId);
       hasConnectedRef.current = true;
 
-      // Channel title from config
-      const initialTitle = newClient.channelConfig?.title;
-      if (initialTitle) {
-        defaultTitleSetRef.current = true;
-        document.title = initialTitle;
-        setChannelTitle(initialTitle);
-      }
-      if (newClient.channelConfig) mirrorExplicitTitleToAttachedPanel(newClient.channelConfig);
-      newClient.onConfigChange((cfg: ChannelConfig) => {
+      const applyChannelConfig = (cfg: ChannelConfig) => {
+        setInitialization(cfg.initialization);
         if (cfg.title) {
           defaultTitleSetRef.current = true;
           document.title = cfg.title;
           setChannelTitle(cfg.title);
         }
         mirrorExplicitTitleToAttachedPanel(cfg);
+      };
+      if (newClient.channelConfig) applyChannelConfig(newClient.channelConfig);
+      newClient.onConfigChange(applyChannelConfig);
+      newClient.onReady(() => {
+        if (newClient.channelConfig) applyChannelConfig(newClient.channelConfig);
       });
 
       // Roster subscription
@@ -554,6 +528,16 @@ export function useChatCore({
         const next = { ...update.participants };
         participantsRef.current = next;
         setParticipants(next);
+        // A joined agent is an authoritative initialization lifecycle event.
+        // Retain that fact when it later leaves; transcript content is irrelevant.
+        if (
+          Object.values(next).some(
+            (participant) => participant.metadata?.type === "agent",
+          )
+        )
+          setInitialization((current) =>
+            current ? { ...current, firstAgentPending: false } : current,
+          );
 
         // Unsuppress disconnect detection once we see ourselves in the roster
         if (suppressDisconnectRef.current && config.clientId in next) {
@@ -662,7 +646,7 @@ export function useChatCore({
 
       return newClient;
     },
-    [connection, config.clientId, mirrorExplicitTitleToAttachedPanel]
+    [connection, config.clientId, mirrorExplicitTitleToAttachedPanel],
   );
 
   // --- Dispose connection on unmount ---
@@ -806,7 +790,7 @@ export function useChatCore({
       }
     ): Promise<void> => {
       const c = clientRef.current;
-      if (!c) return;
+      if (!c) throw new Error("Agentic chat is not connected");
       const hasAttachments = !!opts?.attachments?.length;
       if (!text.trim() && !hasAttachments) return;
       const { pubsubId } = await c.send(text, {
@@ -837,58 +821,6 @@ export function useChatCore({
       console.warn("[useChatCore] Failed to persist default channel title:", err);
     });
   }, []);
-
-  // --- Auto-send initial prompt once connected ---
-  const initialPromptSentRef = useRef(false);
-  useEffect(() => {
-    if (!client) return;
-    const hasPriorMessages = hasTranscriptMessagesRef.current;
-    const prompt = initialPrompt;
-    if (
-      !prompt ||
-      !shouldAutoSendInitialPrompt({
-        prompt,
-        connected,
-        alreadySent: initialPromptSentRef.current,
-        hasPriorMessages,
-        force: forceInitialPrompt,
-      })
-    ) {
-      return;
-    }
-    initialPromptSentRef.current = true;
-
-    const defaultTitle = !defaultTitleSetRef.current ? titleFromFirstUserMessage(prompt) : null;
-    if (defaultTitle) {
-      defaultTitleSetRef.current = true;
-      document.title = defaultTitle;
-      setChannelTitle(defaultTitle);
-      void client
-        .updateChannelConfig({ title: defaultTitle, titleExplicit: false })
-        .catch((err) => {
-          console.warn("[useChatCore] Failed to persist initial prompt channel title:", err);
-        });
-    }
-
-    client
-      .send(prompt, {
-        idempotencyKey:
-          initialPromptIdempotencyKey ?? `initial-prompt:${channelName}`,
-        // Injected prompt: rendered as if from the user, but system-originated —
-        // supporting context, not the human's own typed input.
-        tier: "secondary",
-      })
-      .then(({ pubsubId }) => backfillAfterLocalPublish(pubsubId))
-      .catch((err) => console.warn("[Chat] Failed to send initial prompt:", err));
-  }, [
-    backfillAfterLocalPublish,
-    connected,
-    client,
-    channelName,
-    initialPrompt,
-    forceInitialPrompt,
-    initialPromptIdempotencyKey,
-  ]);
 
   // --- Load earlier messages (delegates to useChannelMessages pagination) ---
   const loadEarlierMessages = channelLoadEarlier;
@@ -1239,6 +1171,7 @@ export function useChatCore({
 
   return {
     messages,
+    initialization,
     connected,
     replaySettled,
     status,

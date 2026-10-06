@@ -130,6 +130,7 @@ export type EventKind =
   | "channel.fork_renamed"
   | "channel.fork_archived"
   | "turn.opened"
+  | "turn.resumed"
   | "turn.waiting"
   | "turn.closed"
   | "system.event"

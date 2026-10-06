@@ -7,6 +7,18 @@ import type { ChannelInvite as WorkspaceChannelInvite } from "@vibestudio/shared
 import type { ParticipantRef } from "@workspace/agentic-protocol";
 import type { MethodAdvertisement } from "./protocol-types.js";
 
+/** Authored initial content, installed only when the channel is created. */
+export interface ConversationSeed {
+  messages?: Array<{ content: string; author: string }>;
+  /** Held durably until a subscribed agent can receive it. */
+  openingRequest?: string;
+}
+export interface ConversationInitialization {
+  /** Derived from retained channel relationships, independent of message history. */
+  firstAgentPending: boolean;
+  openingRequest?: string;
+}
+
 /**
  * Channel configuration persisted with the channel.
  * Set when the channel is created, readable by all participants.
@@ -15,6 +27,9 @@ import type { MethodAdvertisement } from "./protocol-types.js";
  * as a separate top-level field in the ready message. Access it via client.contextId.
  */
 export interface ChannelConfig {
+  seed?: ConversationSeed;
+  /** Read-only lifecycle projection supplied by the channel. */
+  initialization?: ConversationInitialization;
   title?: string;
   /** True when the title came from an explicit title command. */
   titleExplicit?: boolean;

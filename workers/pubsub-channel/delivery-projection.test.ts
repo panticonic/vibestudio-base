@@ -485,6 +485,7 @@ describe("ChannelDeliveryProjection", () => {
     expect(context.channelConfig).toEqual({
       conversationPolicy: "directed",
       agentHopLimit: 4,
+      initialization: { firstAgentPending: false },
     });
   });
 

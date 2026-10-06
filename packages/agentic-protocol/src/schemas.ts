@@ -870,6 +870,7 @@ export const eventKindSchemas = {
     channelForkArchivedPayloadSchema,
   ),
   "turn.opened": eventSchema("turn.opened", turnPayloadSchema),
+  "turn.resumed": eventSchema("turn.resumed", turnPayloadSchema),
   "turn.waiting": eventSchema("turn.waiting", turnPayloadSchema),
   "turn.closed": eventSchema("turn.closed", turnPayloadSchema),
   "system.event": eventSchema("system.event", systemPayloadSchema),

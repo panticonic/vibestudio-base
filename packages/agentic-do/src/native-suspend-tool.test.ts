@@ -50,6 +50,8 @@ async function fixture(
   const publication = createNativeChannelPublication({
     publish: async (_channel, _participant, event) => {
       agenticEventSchema.parse(event);
+      if (event.kind === "turn.opened" && events.some((prior) => prior.kind === "turn.opened" && prior.turnId === event.turnId))
+        throw new Error(`duplicate turn.opened for turn ${event.turnId}`);
       events.push(event);
       return event.kind === "message.read"
         ? { recorded: true as const }
@@ -184,7 +186,7 @@ describe("native suspension ownership", () => {
     expect(lifecycle().map((event) => event.kind)).toEqual([
       "turn.opened",
       "turn.waiting",
-      "turn.opened",
+      "turn.resumed",
       "turn.waiting",
     ]);
     await f.submit("second report");
@@ -193,9 +195,9 @@ describe("native suspension ownership", () => {
     expect(lifecycle().map((event) => event.kind)).toEqual([
       "turn.opened",
       "turn.waiting",
-      "turn.opened",
+      "turn.resumed",
       "turn.waiting",
-      "turn.opened",
+      "turn.resumed",
       "turn.closed",
     ]);
     expect(new Set(lifecycle().map((event) => event.turnId)).size).toBe(1);

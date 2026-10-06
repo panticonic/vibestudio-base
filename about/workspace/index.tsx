@@ -133,7 +133,9 @@ export default function WorkspacePage() {
                     onReviewWithAgent={(initialPrompt) =>
                       window.location.assign(
                         buildPanelLink("panels/chat", {
-                          stateArgs: { initialPrompt },
+                          stateArgs: {
+                            seed: { openingRequest: initialPrompt },
+                          },
                         }),
                       )
                     }
@@ -154,8 +156,10 @@ export default function WorkspacePage() {
                   onConnectGitHub={async () => {
                     await openPanel("panels/chat", {
                       stateArgs: {
-                        initialPrompt:
+                        seed: {
+                          openingRequest:
                           "Help me connect or repair my GitHub account for publishing this workspace. Use the GitHub setup skill. For an existing repository I need contents write access; ask whether I need to create a new repository before requesting administration access. Do not publish anything.",
+                        },
                       },
                     });
                   }}

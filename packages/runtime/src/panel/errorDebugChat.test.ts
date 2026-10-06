@@ -235,9 +235,11 @@ describe("panel error diagnostic chat launcher", () => {
         execution: { surface: "code", source: "panels/chat" },
         contextId: "ctx-vault",
         stateArgs: expect.objectContaining({
-          initialPrompt: expect.stringContaining(
+          seed: {
+            openingRequest: expect.stringContaining(
             "Maximum update depth exceeded",
           ),
+          },
         }),
       }),
     ]);

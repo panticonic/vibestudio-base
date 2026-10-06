@@ -1339,6 +1339,34 @@ describe("@workspace/agentic-protocol reducers", () => {
     );
   });
 
+  it("resumes the original turn and never resurrects a closed turn", async () => {
+    const turnId = brandId<TurnId>("turn-resume");
+    const kinds = ["turn.opened", "turn.waiting", "turn.resumed", "turn.waiting", "turn.resumed", "turn.closed", "turn.resumed"] as const;
+    let channel = createInitialChannelViewState();
+    let trajectory = createInitialTrajectoryState();
+    let previousHash = GENESIS_EVENT_HASH;
+    for (const [index, kind] of kinds.entries()) {
+      const event = { kind, actor: agent, turnId, payload: {
+        protocol: AGENTIC_PROTOCOL_VERSION,
+        ...(kind === "turn.waiting" ? { reason: "waiting_for_background", summary: "Waiting for child" } : {}),
+      }, createdAt: `2026-05-20T12:00:0${index}.000Z` } as AgenticEvent;
+      agenticEventSchema.parse(event);
+      const retained = await trajectoryEvent(event, { eventId: brandId<EventId>(`resume-${index}`), seq: index, prevEventHash: previousHash });
+      previousHash = retained.eventHash;
+      trajectory = reduceTrajectory(trajectory, retained);
+      channel = reduceChannelView(channel, envelope(event, index + 1));
+      const expected = index >= 5 ? "closed" : kind === "turn.waiting" ? "waiting" : "open";
+      expect(channel.turns[turnId]?.status).toBe(expected);
+      expect(trajectory.turns[turnId]?.status).toBe(expected);
+      expect(channel.turns[turnId]?.openedAt).toBe("2026-05-20T12:00:00.000Z");
+      expect(trajectory.turns[turnId]?.openedAt).toBe("2026-05-20T12:00:00.000Z");
+      if (kind === "turn.resumed" && index < 5) {
+        expect(channel.turns[turnId]?.reason).toBeUndefined();
+        expect(trajectory.turns[turnId]?.reason).toBeUndefined();
+      }
+    }
+  });
+
   it("keeps turns open but marked waiting when external input is required", async () => {
     const turnOpened = await trajectoryEvent(
       {

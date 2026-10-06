@@ -985,7 +985,7 @@ function NewPanelPage() {
           {
             source: "panels/chat",
             href: buildPanelLink("panels/chat", {
-              stateArgs: { initialPrompt: suggestion.prompt },
+              stateArgs: { seed: { openingRequest: suggestion.prompt } },
             }),
           },
           suggestion.id,

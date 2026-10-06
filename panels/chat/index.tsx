@@ -191,20 +191,15 @@ interface InstalledAgent {
 /** Type for chat panel state args */
 interface ChatStateArgs {
   channelName?: string;
+  seed?: import("@workspace/pubsub").ConversationSeed;
   channelConfig?: Record<string, unknown>;
   installedAgents?: InstalledAgent[];
   agentSource?: string;
   agentClass?: string;
-  /** If set, automatically sent as the first user message once connected */
-  initialPrompt?: string;
   /** Envelope to scroll to and highlight once it is in the transcript — set by
    *  notification surfaces and other channels' open links (messaging plan §4.5,
    *  §4.10). Consumed (cleared) once honoured. */
   focusMessageId?: string;
-  /** Send initialPrompt even if the channel already has history (e.g. a fork). */
-  forceInitialPrompt?: boolean;
-  /** Durable deduplication key for a caller-triggered initial prompt. */
-  initialPromptIdempotencyKey?: string;
   /** System prompt for the agent harness */
   systemPrompt?: string;
   /** How systemPrompt interacts with Vibestudio base, workspace prompt, and skills */
@@ -245,7 +240,6 @@ export default function ChatPanel() {
   const appTheme = usePanelThemeConfig();
   const stateArgs = useStateArgs<ChatStateArgs>();
   const resolvedContextId = requireChatContextId(contextId);
-  const initialPromptCaptured = useRef(stateArgs.initialPrompt);
   const provisionalAgentLifecycleRef = useRef<ProvisionalAgentLifecycle | null>(
     null,
   );
@@ -457,6 +451,10 @@ export default function ChatPanel() {
   // Resolve this before constructing action callbacks that include the
   // channel in durable notification ids.
   const channelName = stateArgs.channelName ?? bootstrapChannel;
+  const creationChannelConfig = useMemo(
+    () => ({ ...stateArgs.channelConfig, seed: stateArgs.seed }),
+    [stateArgs.channelConfig, stateArgs.seed],
+  );
 
   // Reconcile persisted agent membership. The effect owns cancellation; an
   // updated channel/config starts a fresh recovery rather than inheriting a
@@ -579,11 +577,8 @@ export default function ChatPanel() {
   const handleNewConversation = useCallback(
     (options?: NewConversationOptions) => {
       const nextStateArgs: ChatStateArgs = {};
-      if (options?.initialPrompt)
-        nextStateArgs.initialPrompt = options.initialPrompt;
-      if (options?.forceInitialPrompt !== undefined) {
-        nextStateArgs.forceInitialPrompt = options.forceInitialPrompt;
-      }
+      if (options?.seed)
+        nextStateArgs.seed = options.seed;
       if (options?.agentConfig) nextStateArgs.agentConfig = options.agentConfig;
       const hasStateArgs = Object.keys(nextStateArgs).length > 0;
       const stateArgsForLink: Record<string, unknown> = { ...nextStateArgs };
@@ -1279,8 +1274,7 @@ export default function ChatPanel() {
       defaultModelRef: workspaceDefaultModelRef,
       defaultAgentConfig: effectiveDefaultAgentConfig,
       firstAgentModelPreflight,
-      firstAgentChannelIsNew:
-        bootstrapChannel !== null && channelName === bootstrapChannel,
+
       onFocusPanel: handleFocusPanel,
       onReloadPanel: handleReloadPanel,
       onOpenChannel: handleOpenChannel,
@@ -1330,7 +1324,6 @@ export default function ChatPanel() {
         forkChannelId,
         forkContextId,
       });
-      initialPromptCaptured.current = undefined;
       const current = panel.stateArgs.get<
         ChatStateArgs & { contextId?: unknown }
       >();
@@ -1577,15 +1570,12 @@ export default function ChatPanel() {
             style={conversationStyle(presentation)}
             config={config}
             channelName={channelName}
-            channelConfig={stateArgs.channelConfig}
+            channelConfig={creationChannelConfig}
             contextId={resolvedContextId}
             metadata={panelMetadata}
             actions={chatActions}
             theme={theme}
             installedAgents={installedAgents}
-            initialPrompt={initialPromptCaptured.current}
-            forceInitialPrompt={stateArgs.forceInitialPrompt}
-            initialPromptIdempotencyKey={stateArgs.initialPromptIdempotencyKey}
             forkNav={forkNav}
             features={FULL_AGENTIC_CHAT_FEATURES}
             importLoader={importLoader}

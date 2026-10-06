@@ -1,5 +1,6 @@
 import { Children, isValidElement, type ReactNode } from "react";
 import type { Components } from "react-markdown";
+import { Image, Video } from "@workspace/react";
 import { Diagram, MermaidDiagram } from "@workspace/ui/diagram";
 import {
   Badge,
@@ -249,6 +250,7 @@ function createCodeComponents({ diagrams }: { diagrams: boolean }): Pick<Compone
 }
 
 const baseMarkdownComponents: Components = {
+  img: ({ src, alt }) => <Image src={src} alt={alt ?? ""} />,
   h1: ({ children }) => (
     <Heading size="6" mb="2">
       {children}
@@ -287,9 +289,7 @@ const baseMarkdownComponents: Components = {
     </ol>
   ),
   li: ({ children }) => (
-    <li style={{ fontSize: "var(--font-size-2)" }}>
-      {children}
-    </li>
+    <li style={{ fontSize: "var(--font-size-2)" }}>{children}</li>
   ),
   // GFM tables — remark-gfm generates table/thead/tbody/tr/th/td elements.
   // Style them to match the Radix theme instead of relying on unstyled browser defaults.
@@ -308,7 +308,9 @@ const baseMarkdownComponents: Components = {
     </Box>
   ),
   thead: ({ children }) => (
-    <thead style={{ borderBottom: "2px solid var(--gray-6)" }}>{children}</thead>
+    <thead style={{ borderBottom: "2px solid var(--gray-6)" }}>
+      {children}
+    </thead>
   ),
   th: ({ children, style }) => (
     <th
@@ -365,6 +367,8 @@ export const mdxComponents: Record<string, unknown> = {
   Text,
   Icons,
   FeedbackFormTitle,
+  Image,
+  Video,
   Diagram,
   Mermaid: Diagram,
 };

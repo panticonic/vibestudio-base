@@ -15,6 +15,7 @@ import {
   LightningBoltIcon,
   ReloadIcon,
 } from "@radix-ui/react-icons";
+import { isAgentParticipantType } from "@workspace/pubsub";
 import { isModelAgentLaunchable } from "@workspace/model-catalog/catalog";
 import { useChatContext } from "../context/ChatContext";
 
@@ -27,20 +28,24 @@ import { useChatContext } from "../context/ChatContext";
  * the slot the post-join Outbox uses (the two are never both non-empty).
  */
 export function PendingDeliveryQueue() {
-  const { deferredAgent, modelCatalog } = useChatContext();
+  const { deferredAgent, modelCatalog, participants } = useChatContext();
   if (!deferredAgent || deferredAgent.queued.length === 0) return null;
   const {
     queued,
     launching,
     launchFailed,
+    deliveryError,
+    deliveringId,
+    retryDelivery,
     modelSelectionRequired,
     modelDiscoveryPending,
     retryLaunch,
     cancelQueued,
     draft,
   } = deferredAgent;
+  const agentPresent = Object.values(participants).some((participant) => isAgentParticipantType(participant.metadata.type));
   const awaitingModelChoice =
-    modelSelectionRequired && !launching && !launchFailed;
+    !agentPresent && modelSelectionRequired && !launching && !launchFailed;
   const selectedModel = modelCatalog?.models.find(
     (model) => model.ref === draft.model,
   );
@@ -62,6 +67,16 @@ export function PendingDeliveryQueue() {
       className="pending-delivery-root"
       data-testid="pending-delivery-queue"
     >
+      {deliveryError ? (
+        <Flex align="center" gap="2">
+          <Text role="alert" size="2" color="red">
+            {deliveryError}
+          </Text>
+          <Button size="1" onClick={retryDelivery}>
+            Retry delivery
+          </Button>
+        </Flex>
+      ) : null}
       <Card
         className={`chat-surface-card pending-delivery-card${launchFailed ? " pending-delivery-card-failed" : ""}`}
         size="1"
@@ -80,7 +95,11 @@ export function PendingDeliveryQueue() {
             role="status"
             aria-live="polite"
           >
-            {launchFailed ? (
+            {deliveryError ? (
+              <Text size="1" color="red" weight="medium" truncate>
+                Delivery paused — retry when you’re ready.
+              </Text>
+            ) : launchFailed ? (
               <>
                 <ExclamationTriangleIcon
                   style={{ color: "var(--red-9)", flexShrink: 0 }}
@@ -89,7 +108,7 @@ export function PendingDeliveryQueue() {
                   Couldn't start your agent — these send once it's running.
                 </Text>
               </>
-            ) : modelDiscoveryPending ? (
+            ) : !agentPresent && modelDiscoveryPending ? (
               <>
                 <Spinner size="1" />
                 <Text size="1" color="gray" weight="medium" truncate>
@@ -109,7 +128,7 @@ export function PendingDeliveryQueue() {
               <>
                 <Spinner size="1" />
                 <Text size="1" color="gray" weight="medium" truncate>
-                  {launching
+                  {agentPresent ? "Sending queued messages" : launching
                     ? "Your first message will send when the agent is ready"
                     : "Your first message is waiting for an agent"}
                 </Text>
@@ -177,7 +196,8 @@ export function PendingDeliveryQueue() {
                   color="gray"
                   className="app-touch-target"
                   aria-label="Remove queued message"
-                  title="Remove before it sends"
+                  title={deliveringId === m.id ? "Sending this message" : "Remove before it sends"}
+                  disabled={deliveringId === m.id}
                   onClick={() => cancelQueued(m.id)}
                 >
                   <Cross2Icon />

@@ -935,6 +935,7 @@ export abstract class AgentWorkerBase extends AgentVesselBase {
       addressees: ResolvedAddressee[];
       replyTo?: string;
       attachments?: ChannelAttachment[];
+      imageAssetIds?: string[];
       /** The envelope on the sender's own channel that authored this, if one
        *  exists (the bound-channel copy of the same `notify`); it is what the
        *  recipient's "from #channel ▸" link focuses (§4.10.4). */
@@ -1006,6 +1007,9 @@ export abstract class AgentWorkerBase extends AgentVesselBase {
         ...(to.length > 0 ? { to } : {}),
         ...(input.attachments && input.attachments.length > 0
           ? { attachments: input.attachments }
+          : {}),
+        ...(input.imageAssetIds?.length
+          ? { metadata: { imageAssetIds: input.imageAssetIds } }
           : {}),
         agentHops,
       });
@@ -1282,6 +1286,7 @@ export abstract class AgentWorkerBase extends AgentVesselBase {
       description:
         "Send a concise, deliberate message. This is the one way to surface text to anyone: the channel by default, or exactly whom `to` names. " +
         "Addressing someone does not compel a reply; it makes one possible. " +
+        "To share generated images, supply images: [{assetId, alt, caption?}]; conversation history retains the original. " +
         `To show an image (e.g. a screenshot you captured), save it as a file and list its path in attachments; supported types: ${SUPPORTED_IMAGE_TYPES.join(", ")}.`,
       parameters: Type.Unsafe<Record<string, JsonValue>>({
         type: "object",
@@ -1328,6 +1333,21 @@ export abstract class AgentWorkerBase extends AgentVesselBase {
             items: { type: "string" },
             description: "Optional participant IDs to mention.",
           },
+          images: {
+            type: "array",
+            items: {
+              type: "object",
+              properties: {
+                assetId: { type: "string" },
+                alt: { type: "string" },
+                caption: { type: "string" },
+              },
+              required: ["assetId", "alt"],
+              additionalProperties: false,
+            },
+            description:
+              "Durable image assets to display and retain in conversation history; use IDs returned by imagegen. No workspace file is required.",
+          },
           attachments: {
             type: "array",
             items: { type: "string" },
@@ -1349,8 +1369,9 @@ export abstract class AgentWorkerBase extends AgentVesselBase {
           replyTo?: unknown;
           mentions?: unknown;
           attachments?: unknown;
+          images?: Array<{ assetId: string; alt: string; caption?: string }>;
         };
-        const content = input.content;
+        let content = input.content;
         if (typeof content !== "string" || content.trim().length === 0) {
           throw new Error("notify requires non-empty content");
         }
@@ -1358,6 +1379,33 @@ export abstract class AgentWorkerBase extends AgentVesselBase {
           throw new Error(
             `notify alert must be one of ${ALERT_RUNGS.join(", ")}`,
           );
+        }
+        const imageAssetIds: string[] = [];
+        if (input.images !== undefined) {
+          if (
+            !Array.isArray(input.images) ||
+            input.images.some(
+              (image) =>
+                !image ||
+                typeof image.assetId !== "string" ||
+                !image.assetId ||
+                typeof image.alt !== "string" ||
+                (image.caption !== undefined &&
+                  typeof image.caption !== "string"),
+            )
+          )
+            throw new Error("notify images require assetId and alt strings");
+          imageAssetIds.push(
+            ...new Set(input.images.map((image) => image.assetId)),
+          );
+          content +=
+            "\n\n" +
+            input.images
+              .map(
+                (image) =>
+                  `<Image assetId={${JSON.stringify(image.assetId)}} alt={${JSON.stringify(image.alt)}}${image.caption === undefined ? "" : ` caption={${JSON.stringify(image.caption)}}`} />`,
+              )
+              .join("\n\n");
         }
         const participantId = this.subscriptions.getParticipantId(channelId);
         if (!participantId)
@@ -1507,6 +1555,7 @@ export abstract class AgentWorkerBase extends AgentVesselBase {
                 : { to: selectors }),
               attachments: attachments.length > 0 ? attachments : undefined,
               metadata: {
+                ...(imageAssetIds.length ? { imageAssetIds } : {}),
                 notify: {
                   alert,
                   ...(typeof input.title === "string" && input.title.trim()
@@ -1620,6 +1669,7 @@ export abstract class AgentWorkerBase extends AgentVesselBase {
               replyTo:
                 typeof input.replyTo === "string" ? input.replyTo : undefined,
               ...(attachments.length > 0 ? { attachments } : {}),
+              imageAssetIds,
               ...(channelMessageId
                 ? { sourceEnvelopeId: channelMessageId }
                 : {}),

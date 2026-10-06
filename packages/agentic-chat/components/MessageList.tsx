@@ -222,6 +222,7 @@ export interface SenderInfo {
 }
 
 export interface MessageListProps {
+  footer?: React.ReactNode;
   messages: ChatMessage[];
   /** Current active roster — typing indicators are derived from participant metadata */
   participants: Record<string, Participant<ChatParticipantMetadata>>;
@@ -324,6 +325,7 @@ export const MessageList = React.memo(function MessageList({
   emptyState,
   focusMessageId,
   onFocusMessageConsumed,
+  footer,
 }: MessageListProps) {
   // --- Scroll state ---
   const [showNewContent, setShowNewContent] = useState(false);
@@ -843,11 +845,12 @@ export const MessageList = React.memo(function MessageList({
             </Flex>
           )}
           {groupedItems.length === 0 && activeTypingItems.length === 0 ? (
-            (emptyState ?? (
+            footer ? null : (
+              (emptyState ?? (
               <Text color="gray" size="2">
-                Send a message to start chatting
-              </Text>
-            ))
+                  Send a message to start chatting
+                </Text>
+              )))
           ) : (
             <Flex className="message-list-stack" direction="column">
               {visibleGroupedItems.map((item, index) => (
@@ -889,6 +892,7 @@ export const MessageList = React.memo(function MessageList({
               )}
             </Flex>
           )}
+          {footer}
         </div>
       </ScrollArea>
       {showNewContent && <NewContentIndicator onClick={handleScrollToNewContent} />}

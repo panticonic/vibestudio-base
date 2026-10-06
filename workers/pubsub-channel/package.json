@@ -75,6 +75,10 @@
         {
           "protocol": "vibestudio.gad.workspace.v1",
           "availability": "required"
+        },
+        {
+          "protocol": "vibestudio.images.v1",
+          "availability": "optional"
         }
       ],
       "requests": [
@@ -149,6 +153,15 @@
           },
           "tier": "gated",
           "evidence": "intentional-broad"
+        },
+        {
+          "capability": "workspace-service:images",
+          "resource": {
+            "kind": "prefix",
+            "prefix": ""
+          },
+          "tier": "gated",
+          "evidence": "bounded-dynamic"
         }
       ]
     }

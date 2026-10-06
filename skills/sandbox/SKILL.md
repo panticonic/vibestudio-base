@@ -17,7 +17,7 @@ bars, and feedback components render in a connected chat panel.
 | Persistent chat components | [INLINE_UI.md](INLINE_UI.md) |
 | Pinned panel controls | [ACTION_BAR.md](ACTION_BAR.md) |
 | Typed custom transcript messages | [CUSTOM_MESSAGES.md](CUSTOM_MESSAGES.md) |
-| Ordinary rich chat content | [MDX.md](MDX.md) |
+| Rich chat content, images, videos, and generated image sharing | [MDX.md](MDX.md) |
 | Blocking user feedback | [FEEDBACK.md](FEEDBACK.md) |
 | Chat and channel operations | [CHAT_API.md](CHAT_API.md) |
 | Panel/browser CDP automation | [BROWSER_AUTOMATION.md](BROWSER_AUTOMATION.md) |

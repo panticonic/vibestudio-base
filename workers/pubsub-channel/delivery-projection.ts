@@ -14,7 +14,7 @@ import {
 } from "@workspace/channel-policies";
 import type { ChannelRelationshipPayload } from "./types.js";
 
-export const CHANNEL_DELIVERY_PROJECTION_VERSION = 13;
+export const CHANNEL_DELIVERY_PROJECTION_VERSION = 14;
 export const CHANNEL_RELATIONSHIP_EVENT_TYPES = new Set([
   "channel.subscription.opened",
   "channel.subscription.revised",
@@ -237,6 +237,14 @@ export class ChannelDeliveryProjection {
         this.durableForkBoundary(),
       );
     });
+  }
+
+  /** Pure lifecycle projection of accepted, child-local agent relationships. */
+  hasHadAgent(): boolean {
+    this.ensureProjectionVersion();
+    return this.sql.exec(`SELECT 1 FROM channel_delivery_context
+      WHERE singleton = 1 AND json_extract(current_config_json, '$.initialization.firstAgentPending') = 0`)
+      .toArray().length > 0;
   }
 
   relationship(participantId: string): RelationshipRow | null {
@@ -516,6 +524,11 @@ export class ChannelDeliveryProjection {
       reattachAfterSequence,
       reattachThroughSequence,
     );
+    if (payload.metadata["type"] === "agent") {
+      this.sql.exec(`UPDATE channel_delivery_context
+        SET current_config_json = json_set(current_config_json, '$.initialization.firstAgentPending', json('false'))
+        WHERE singleton = 1`);
+    }
   }
 
   pendingReattachBackfills(): Array<{
@@ -849,12 +862,14 @@ export class ChannelDeliveryProjection {
     const currentConversation = JSON.parse(
       String(row["conversation_state_json"]),
     ) as ConversationStateV1;
-    const nextConfig =
-      event.type === "config-update" &&
-      event.payload &&
-      typeof event.payload === "object"
-        ? (event.payload as ChannelConfig)
-        : currentConfig;
+    const suppliedConfig = event.type === "config-update" && event.payload &&
+      typeof event.payload === "object" ? event.payload as ChannelConfig : currentConfig;
+    // Configuration events carry a presentation snapshot, not authority to
+    // rewrite initialization. A fork prefix also never imports parent joins.
+    const { initialization: _suppliedInitialization, ...mutableConfig } = suppliedConfig;
+    const nextConfig = { ...mutableConfig,
+      ...(currentConfig.initialization ? { initialization: currentConfig.initialization } : {}),
+    };
     const actorKind = ((event.payload as { actor?: { kind?: string } } | null)
       ?.actor?.kind ?? "unknown") as string;
     const view: PolicyEnvelopeView = {

@@ -60,3 +60,80 @@ The panel slot id and handle survive a rebuild. Its `attemptId`, runtime entity,
 build key, and CDP page may not. Refresh a retained CDP session after rebuild;
 never keep using its old page. Rebuilding the chat panel reconnects the UI to
 the durable channel but does not replace the separately running agent worker.
+
+## Conversation creation and seeding
+
+Use `stateArgs.seed` when opening a new `panels/chat` conversation:
+
+```ts
+await openPanel("panels/chat", {
+  stateArgs: {
+    seed: {
+      messages: [
+        {
+          author: "Product introduction",
+          content:
+            'Welcome.\n\n<Video url="https://youtu.be/Pb6C4ORBOOI" title="Introduction" />',
+        },
+      ],
+      openingRequest: "Help me get started.",
+    },
+  },
+});
+```
+
+Creation retains the definition before exposing the conversation. Authored
+messages are durable assistant-style messages attributed to a system author,
+not a fabricated agent identity. The opening request waits durably for a
+subscribed agent and can be explicitly cancelled. Model/provider setup and
+seeded history coexist in the scrolling transcript. Readiness never depends on
+transcript emptiness. Connecting credentials does not override an explicit
+first-run model choice or its Start control.
+
+The channel's read-only `initialization` projects whether a first agent has ever
+joined and the unresolved opening request. Reopen the same `channelName` to read
+its state; supplied creation seeds do not modify existing conversations.
+Reload, reconnect, remount, and creation retries never reinstall the seed.
+Forks inherit their selected history and retire the source creation operation;
+they do not seed again. Use an ordinary deliberate message for a new request in
+an existing conversation, or create a new conversation with a new seed.
+
+The reusable chat component accepts `channelConfig.seed` as creation input;
+PubSub installs it on the first context-bound subscription, before replay.
+`client.resolveOpeningRequest("deliver")` requires a subscribed agent;
+`"cancel"` explicitly retires the request. The chosen resolution is retained
+across retries. Neither `seed` nor `initialization` is mutable channel config.
+The former `initialPrompt`, force flag, and auto-send-on-mount API are removed.
+
+If a resident agent launches before its panel connects, declare creation first:
+
+```ts
+import { initializeConversation } from "@workspace/pubsub";
+await initializeConversation({ rpc, channel: channelName, contextId,
+  config: { seed: { openingRequest: "Help organize this collection" } } });
+// Now launch the resident agent into the same channel and context.
+```
+
+This uses the same channel-owned initialization operation as panel subscription.
+It does not require model credentials or an agent. Opening-request delivery is
+attributed to the authenticated participant who releases it; a retry preserves
+that accepted author. Delivery failures remain visible and support explicit
+retry without silently spinning or discarding the retained request.
+
+A failed resolution stays pending until its durable notification is accepted.
+An already delivered request can finish that operation after its receiving agent
+leaves; retries preserve its original author and do not send it again. New user
+input stays behind queued deliveries when a delivery fails, until retry or
+explicit cancellation resolves the older items.
+
+Removal is available before publication begins. Once an item is being sent, its
+remove control is disabled until the owned publication completes or fails; a
+failed item's removal releases later queued input without retrying that item.
+
+If the final resolution append succeeds but its reply is lost, channel replay or
+reopening recovers the completed operation from its canonical envelope. It does
+not require another send or the original agent to remain attached.
+
+A turn opens once. Background suspension publishes `turn.waiting`; resuming the same retained turn publishes `turn.resumed`, preserving its original identity and opening time while clearing its waiting reason. Repeated `turn.opened` events are rejected by the canonical log and must never be used to resume work.
+
+If a child input settles unanswered and its execution has stopped, the supervisor publishes the original failure through the retained subagent terminal path. It must not merely mark the child idle: a supervisor suspended for background work needs an actionable failure report. This uses the settled native input as authority, preserves prior domain terminals, and retains the same publication identity across explicit retry.

@@ -79,6 +79,7 @@ export interface PubSubClient<T extends ParticipantMetadata = ParticipantMetadat
 
   /** Update the channel config (merges with existing config). */
   updateChannelConfig(config: Partial<ChannelConfig>): Promise<ChannelConfig>;
+  resolveOpeningRequest(outcome: "deliver" | "cancel"): Promise<ChannelConfig>;
 
   /** Add/remove/list durable human membership for this channel. */
   addMember(userId: string): Promise<ChannelMember & { alreadyMember: boolean }>;

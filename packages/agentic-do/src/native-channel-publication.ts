@@ -752,8 +752,8 @@ export function createNativeChannelPublication(options: {
         }
         if (nextInput !== null && (changedRun || !wait)) {
           const turnId = nativeTurnId(conversationId, nextInput);
-          const event: AgenticEvent<"turn.opened"> = {
-            kind: "turn.opened",
+          const event: AgenticEvent<"turn.opened" | "turn.resumed"> = {
+            kind: changedRun ? "turn.opened" : "turn.resumed",
             actor: detached(binding.actor),
             turnId,
             payload: { protocol: AGENTIC_PROTOCOL_VERSION },

@@ -11,6 +11,18 @@ import type {
 } from "@workspace/pubsub";
 import { MAX_CHANNEL_REPLAY_PAGE_LIMIT } from "@workspace/pubsub";
 
+export const conversationSeedSchema = z
+  .object({
+    messages: z.array(
+        z
+  .object({ content: z.string().min(1), author: z.string().min(1) })
+          .strict(),
+      )
+      .optional(),
+    openingRequest: z.string().min(1).optional(),
+  })
+  .strict();
+
 const METHOD_NAME_PATTERN = /^[a-zA-Z][a-zA-Z0-9_-]{0,63}$/;
 const RESERVED_METHOD_NAMES = new Set([
   "read",
@@ -122,6 +134,8 @@ export interface LockedChannelMembershipPolicy {
 
 /** Channel config (mirrors PubSub client ChannelConfig). */
 export interface ChannelConfig {
+  seed?: import("@workspace/pubsub").ConversationSeed;
+  initialization?: import("@workspace/pubsub").ConversationInitialization;
   title?: string;
   /** True when the title came from an explicit title command. */
   titleExplicit?: boolean;

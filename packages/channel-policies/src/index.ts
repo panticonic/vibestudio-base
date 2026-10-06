@@ -159,6 +159,7 @@ export const AGENTIC_EVENT_AUDIENCE_POLICY = {
   "channel.fork_renamed": "broadcast",
   "channel.fork_archived": "broadcast",
   "turn.opened": "broadcast",
+  "turn.resumed": "broadcast",
   "turn.waiting": "broadcast",
   "turn.closed": "broadcast",
   "system.event": "broadcast",

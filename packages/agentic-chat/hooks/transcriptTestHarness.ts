@@ -29,7 +29,8 @@ function setRpcCaller(
     callerKind;
 }
 
-export async function createTranscriptHarness(channelId = TRANSCRIPT_TEST_CHANNEL_ID) {
+export async function createTranscriptHarness(channelId = TRANSCRIPT_TEST_CHANNEL_ID,
+) {
   const channelTarget = `do:workers/pubsub-channel:PubSubChannel:${channelId}`;
   const gad = await createTestDO(GadWorkspaceDO, {
     __objectKey: "workspace",
@@ -60,6 +61,12 @@ export async function createTranscriptHarness(channelId = TRANSCRIPT_TEST_CHANNE
           objectKey: "workspace",
           targetId: TRANSCRIPT_TEST_GAD_TARGET,
         };
+      }
+      if (
+        target === "main" &&
+        method === "workspace-state.entity.resolveActive"
+      ) {
+        return { id: args[0], kind: "do" };
       }
       if (target === "main" && method === "blobstore.putText") {
         const value = String(args[0] ?? "");
@@ -120,8 +127,10 @@ export async function createTranscriptHarness(channelId = TRANSCRIPT_TEST_CHANNE
         return { kind: "durable-object", targetId: channelTarget };
       }
       if (target === channelTarget) {
-        const participantId = typeof args[0] === "string" ? args[0] : null;
-        const participantKind = participantId?.startsWith("panel:")
+        const participantId = opts.id;
+        const participantKind = participantId?.startsWith("do:")
+            ? "durable-object"
+            : participantId?.startsWith("panel:")
           ? "panel"
           : participantId?.startsWith("agent:")
             ? "agent"
@@ -134,7 +143,8 @@ export async function createTranscriptHarness(channelId = TRANSCRIPT_TEST_CHANNE
         return await callable[method]!(...args);
       }
       throw new Error(`unexpected client rpc call ${target}.${method}`);
-    });
+    },
+    );
 
     return {
       selfId: opts.id,

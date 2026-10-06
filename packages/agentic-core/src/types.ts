@@ -102,10 +102,8 @@ export interface ModelSetupResult {
 }
 
 export interface NewConversationOptions {
-  /** Optional first user message for the new conversation. */
-  initialPrompt?: string;
-  /** Send initialPrompt even if the opened channel later rehydrates history. */
-  forceInitialPrompt?: boolean;
+  /** Authored content and optional agent request for a new conversation. */
+  seed?: import("@workspace/pubsub").ConversationSeed;
   /** Seed the first spawned agent without changing workspace defaults. */
   agentConfig?: AgentSubscriptionConfig;
 }
@@ -143,14 +141,6 @@ export interface AgenticChatActions {
     agentId: string | undefined,
     config: AgentSubscriptionConfig | null
   ) => Promise<void>;
-  /**
-   * The host minted this channel for the current panel mount, so an empty
-   * transcript is already authoritative, the opening prompt belongs to this
-   * mount, and provisional activation need not wait for replay to settle.
-   * False on rematerialization: durable opening-prompt state must not be
-   * interpreted as a new delivery or a request for another first agent.
-   */
-  firstAgentChannelIsNew?: boolean;
   /**
    * Replace an existing agent (resolved by its participant id) with a fresh DO,
    * reusing the same handle. Used for "switch agent" and "restart with new model"

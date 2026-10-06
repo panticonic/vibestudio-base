@@ -37,4 +37,13 @@ export {
   type VibestudioHostPlatform,
 } from "./responsive.js";
 
+export {
+  Image,
+  Video,
+  mediaUrl,
+  youtubeSource,
+  type ImageProps,
+  type VideoProps,
+} from "./media.js";
+
 export { GeneratedImage, useGeneratedImage, type GeneratedImageProps } from "./GeneratedImage.js";

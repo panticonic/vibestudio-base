@@ -161,22 +161,11 @@ export function ChatMessageArea({
     ? renderEmptyState(defaultEmptyState, { phase: emptyPhase })
     : defaultEmptyState;
 
-  // Before the first agent exists, the message canvas hosts the inline setup
-  // (armed config) instead of an empty transcript.
-  if (deferredAgent?.setupActive) {
-    return (
-      <Flex direction="column" gap="1" style={{ minHeight: 0, flex: "1 1 0" }}>
-        <SignalPills client={clientRef.current} />
-        <AgentSetupInline />
-      </Flex>
-    );
-  }
-
   return (
     <Flex direction="column" gap="1" style={{ minHeight: 0, flex: "1 1 0" }}>
       <SignalPills client={clientRef.current} />
       <MessageList
-        emptyState={emptyState}
+        emptyState={deferredAgent?.setupActive ? null : emptyState}
         messages={transcriptMessages}
         participants={participants}
         selfId={selfId}
@@ -199,6 +188,7 @@ export function ChatMessageArea({
         renderInvocation={renderInvocation}
         focusMessageId={focusMessageId}
         onFocusMessageConsumed={onFocusMessageConsumed}
+        footer={deferredAgent?.setupActive ? <AgentSetupInline /> : undefined}
       />
     </Flex>
   );

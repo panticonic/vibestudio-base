@@ -14,22 +14,21 @@ import type { AttachmentInput, Participant } from "@workspace/pubsub";
 import type { MessageTier } from "@workspace/agentic-protocol";
 import type {
   ChatInputContextValue,
-  ChatMessage,
   ChatParticipantMetadata,
   DeferredAgentState,
   PendingAgent,
   PendingDelivery,
 } from "../types";
 import type { AgentConfigDraft } from "../components/AgentConfigForm";
-import { draftForAgent as seedDraftForAgent, draftToConfig } from "../components/agentConfigDraft";
-import { shouldAutoSendInitialPrompt } from "./core/useChatCore";
+import { draftForAgent as seedDraftForAgent, draftToConfig,
+} from "../components/agentConfigDraft";
 
 /**
  * Deferred first-agent flow.
  *
  * On a brand-new chat the host may activate an uncommitted provisional agent
  * for the inline config while the user types. The first send (or an injected
- * initialPrompt) parks the message in a client-side queue and ARMS a claim;
+ * retained opening request) parks the message in a client-side queue and ARMS a claim;
  * a spawn-driver effect issues `onAddAgent` with that exact config, and when
  * the claimed agent joins the roster the queue is flushed LIVE (per item) — so
  * the first message lands as a normal turn to a present agent rather than
@@ -37,16 +36,16 @@ import { shouldAutoSendInitialPrompt } from "./core/useChatCore";
  *
  * The whole flow is scoped to OUR spawn (`armed`), so reconnection / rehydration
  * windows (pending agents we did NOT spawn) keep their normal send-immediately
- * path. It is also inert on hosts that can't create agents (no `onAddAgent`).
+ * path. Hosts without `onAddAgent` can still release a retained opening request
+ * once their externally managed agent joins; they do not create an agent here.
  */
-
-const FLUSH_RETRY_DELAY_MS = 1_500;
 
 /** Build the spawn config from the inline draft, dropping the handle: the
  *  first-agent setup never exposes a handle field, so a draft handle is only a
  *  seeded default and must not leak onto the spawned agent — the host derives a
  *  valid handle for the resolved agent type. */
-function spawnConfigFromDraft(draft: AgentConfigDraft): AgentSubscriptionConfig {
+function spawnConfigFromDraft(draft: AgentConfigDraft,
+): AgentSubscriptionConfig {
   const config = draftToConfig(draft);
   delete (config as Record<string, unknown>)["handle"];
   return config;
@@ -89,19 +88,11 @@ interface UseDeferredAgentParams {
   defaultAgentConfig?: DefaultAgentConfig | null;
   /** Host-owned model readiness for the first agent. */
   firstAgentModelPreflight?: "checking" | "ready" | "selection-required";
-  /** True only when the host minted this channel for the current mount. */
-  firstAgentChannelIsNew?: boolean;
-  /** Injected first message — routed through the SAME pre-send queue (held until
-   *  the agent joins, then flushed live) instead of an auto-send-on-connect. */
-  initialPrompt?: string;
-  forceInitialPrompt?: boolean;
-  /** Override the durable deduplication key for an explicitly triggered prompt. */
-  initialPromptIdempotencyKey?: string;
+  firstAgentPending: boolean;
+  openingRequest?: string;
+  resolveOpeningRequest: (outcome: "deliver" | "cancel") => Promise<void>;
   channelName: string;
-  /** Live transcript — distinguishes a brand-new chat from a fork/reopen w/ history. */
-  messages: ChatMessage[];
-  /** True once the initial replay has settled, so `messages` reliably reflects
-   *  prior history (NOT mere socket connect). */
+  /** True once the initial channel snapshot and replay have settled. */
   replaySettled: boolean;
 }
 
@@ -124,12 +115,10 @@ export function useDeferredAgent(params: UseDeferredAgentParams): {
     defaultModelRef,
     defaultAgentConfig,
     firstAgentModelPreflight = "ready",
-    firstAgentChannelIsNew = false,
-    initialPrompt,
-    forceInitialPrompt,
-    initialPromptIdempotencyKey,
+    firstAgentPending,
+    openingRequest,
+    resolveOpeningRequest,
     channelName,
-    messages,
     replaySettled,
   } = params;
 
@@ -141,6 +130,13 @@ export function useDeferredAgent(params: UseDeferredAgentParams): {
   const [armed, setArmed] = useState(false);
   const [launchFailed, setLaunchFailed] = useState(false);
   const [flushTick, setFlushTick] = useState(0);
+  const [failedDelivery, setFailedDelivery] = useState<{ id: string; message: string }>();
+  const deliveryError = failedDelivery && queued.some((item) => item.id === failedDelivery.id)
+    ? failedDelivery.message || "Delivery failed" : undefined;
+  const retryDelivery = useCallback(() => {
+    setFailedDelivery(undefined);
+    setFlushTick((tick) => tick + 1);
+  }, []);
   // Entering first-run model setup is an explicit-choice boundary. Provider
   // setup can make the selected model usable, but that availability change
   // must not dismiss the setup surface before the user starts the queued turn.
@@ -160,10 +156,9 @@ export function useDeferredAgent(params: UseDeferredAgentParams): {
   } | null>(null);
   const issuedRef = useRef(false); // onAddAgent has been called for this spawn
   const spawnInFlightRef = useRef(false); // the onAddAgent promise is pending
-  const flushingRef = useRef(false);
-  const flushTimerRef = useRef(0);
+  const flushingRef = useRef<{ itemId?: string } | null>(null);
   const everHadAgentRef = useRef(false);
-  const initialPromptEnqueuedRef = useRef(false);
+  const openingRequestEnqueuedRef = useRef(false);
   const waitingForModelDiscoveryRef = useRef(false);
   const preparedIntentFingerprintRef = useRef("none");
   const prepareAgentRef = useRef(onPrepareAgent);
@@ -185,21 +180,18 @@ export function useDeferredAgent(params: UseDeferredAgentParams): {
   const modelSelectionRequired =
     firstAgentModelPreflight === "selection-required" || explicitModelChoiceActive;
   const modelDiscoveryPending = firstAgentModelPreflight === "checking";
-  // Show the inline config card only for a genuinely brand-new chat: no agent
-  // present or coming, no history, and none ever seen. An injected initial
-  // prompt normally drives the first message itself, except when the host says
-  // model selection is required — then the setup card is the preflight that
-  // deliberately holds that prompt.
+  // Channel creation owns first-agent readiness. Authored history and setup
+  // coexist; an unresolved opening request waits for explicit model selection
+  // when required, otherwise it can launch the configured first agent.
   const setupActive =
     !agentPresent &&
     !agentComing &&
     canDefer &&
-    (!initialPrompt || modelSelectionRequired) &&
-    // Only once replay has settled is `messages.length === 0` a trustworthy
-    // "brand-new chat" signal — this avoids flashing the setup card over an
-    // agentless channel that still has history mid-replay.
+    (!openingRequest || modelSelectionRequired) &&
+    // Wait for the channel's initialization snapshot, rather than inspecting
+    // transcript content to decide whether setup belongs here.
     replaySettled &&
-    messages.length === 0 &&
+    firstAgentPending &&
     !everHadAgentRef.current;
   const launching = !agentPresent && armed;
   const active = setupActive || launching;
@@ -266,8 +258,19 @@ export function useDeferredAgent(params: UseDeferredAgentParams): {
   );
 
   const cancelQueued = useCallback((id: string) => {
-    setQueued((q) => q.filter((m) => m.id !== id));
-  }, []);
+    // Publication has begun; removal can no longer promise an unsent message.
+    if (flushingRef.current?.itemId === id) return;
+    if (queuedRef.current.find((item) => item.id === id)?.kind === "opening-request") {
+      void resolveOpeningRequest("cancel")
+        .then(() => setQueued((items) => items.filter((item) => item.id !== id)))
+        .catch((error) => setFailedDelivery({
+          id,
+          message: error instanceof Error ? error.message : String(error),
+        }));
+    } else {
+      setQueued((items) => items.filter((item) => item.id !== id));
+    }
+  }, [resolveOpeningRequest]);
 
   const retryLaunch = useCallback(() => {
     issuedRef.current = false;
@@ -289,8 +292,6 @@ export function useDeferredAgent(params: UseDeferredAgentParams): {
   const stateRef = useRef({ agentPresent, active, armed, input, agentId, draft });
   stateRef.current = { agentPresent, active, armed, input, agentId, draft };
   // Snapshot of the transcript, read at flush time without churning effect deps.
-  const messagesRef = useRef(messages);
-  messagesRef.current = messages;
   const queuedRef = useRef(queued);
   queuedRef.current = queued;
 
@@ -317,7 +318,8 @@ export function useDeferredAgent(params: UseDeferredAgentParams): {
     const shouldPrepare =
       !agentPresent &&
       pendingAgents.size === 0 &&
-      (firstAgentChannelIsNew || (replaySettled && messages.length === 0)) &&
+      replaySettled &&
+      firstAgentPending &&
       !everHadAgentRef.current &&
       availableAgents.length > 0 &&
       modelChoiceAllowsPrewarm &&
@@ -337,7 +339,6 @@ export function useDeferredAgent(params: UseDeferredAgentParams): {
     agentPresent,
     pendingAgents,
     replaySettled,
-    messages.length,
     availableAgents,
     agentId,
     draft,
@@ -345,7 +346,7 @@ export function useDeferredAgent(params: UseDeferredAgentParams): {
     defaultModelRef,
     defaultAgentConfig,
     firstAgentModelPreflight,
-    firstAgentChannelIsNew,
+    firstAgentPending,
     channelName,
   ]);
 
@@ -380,19 +381,22 @@ export function useDeferredAgent(params: UseDeferredAgentParams): {
       // Agent present and no flush in progress → straight to the normal send.
       // (During an in-flight flush we queue even live sends, so a fresh message
       // can't leapfrog still-queued first messages.)
-      if (s.agentPresent && !flushingRef.current) {
+      if (s.agentPresent && queuedRef.current.length === 0 && !flushingRef.current) {
         return coreSendMessage(attachments, options);
       }
       // No agent and not our deferred flow (e.g. host can't create agents) →
       // normal send so the message still goes out.
-      if (!s.agentPresent && !s.active) {
+      if (!s.agentPresent && !s.active && queuedRef.current.length === 0) {
         return coreSendMessage(attachments, options);
       }
       const text = s.input.trim();
       const hasAttachments = !!attachments?.length;
       if (!text && !hasAttachments) return;
+      const deliveryId = crypto.randomUUID();
       const item: PendingDelivery = {
-        id: crypto.randomUUID(),
+        kind: "message",
+        id: deliveryId,
+        idempotencyKey: deliveryId,
         text,
         ...(hasAttachments ? { attachments } : {}),
         ...(options?.mentions && options.mentions.length > 0 ? { mentions: options.mentions } : {}),
@@ -404,17 +408,17 @@ export function useDeferredAgent(params: UseDeferredAgentParams): {
       // Commit to spawning our first agent (the driver issues onAddAgent). Only
       // when there's no agent — an in-flight-flush enqueue needs no new agent.
       // Snapshot the type + config now so this message's spawn is locked in.
-      if (!s.agentPresent && !s.armed && firstAgentModelPreflight === "ready") {
+      if (canDefer && firstAgentPending && !s.agentPresent && !s.armed && firstAgentModelPreflight === "ready") {
         spawnIntentRef.current = {
           agentId: agentTypeTouchedRef.current ? s.agentId : undefined,
           config: spawnConfigFromDraft(s.draft),
         };
         setArmed(true);
-      } else if (!s.agentPresent && firstAgentModelPreflight === "checking") {
+      } else if (canDefer && firstAgentPending && !s.agentPresent && firstAgentModelPreflight === "checking") {
         waitingForModelDiscoveryRef.current = true;
       }
     },
-    [coreSendMessage, clearComposer, firstAgentModelPreflight]
+    [coreSendMessage, clearComposer, firstAgentModelPreflight, canDefer, firstAgentPending],
   );
 
   // A first message may arrive while model settings are still loading. Arm only
@@ -512,15 +516,18 @@ export function useDeferredAgent(params: UseDeferredAgentParams): {
   // Flush the queue LIVE the moment an agent joins — per item, so a delivered
   // message leaves the queue immediately (no double-display with the transcript/
   // Outbox) and a partial failure neither strands delivered items nor re-sends
-  // them. A failure backs off before retrying so it can't hot-loop.
+  // them. A failure remains visible until the user explicitly retries.
   useEffect(() => {
-    if (!agentPresent || queued.length === 0 || flushingRef.current) return;
-    flushingRef.current = true;
+    if (!agentPresent || queued.length === 0 || flushingRef.current ||
+      deliveryError
+    ) return;
+    flushingRef.current = {};
     const batch = [...queued];
     // Title from the first successfully-delivered queued message — only for a
     // brand-new chat (no prior transcript), mirroring sendMessage's normal path.
-    const shouldTitleFromBatch = messagesRef.current.length === 0;
+
     void (async () => {
+      let deliveryId: string | undefined;
       try {
         let titled = false;
         for (const item of batch) {
@@ -528,109 +535,65 @@ export function useDeferredAgent(params: UseDeferredAgentParams): {
           // flushing. Re-check before publishing so cancel still means "do not
           // send" until delivery of that specific item begins.
           if (!queuedRef.current.some((m) => m.id === item.id)) continue;
-          await publishText(item.text, {
-            attachments: item.attachments,
-            mentions: item.mentions,
-            replyTo: item.replyTo,
-            metadata: item.metadata,
-            tier: item.tier,
-            idempotencyKey: item.idempotencyKey,
-          });
-          if (shouldTitleFromBatch && !titled && item.text) {
+          deliveryId = item.id;
+          flushingRef.current!.itemId = item.id;
+          setFlushTick((tick) => tick + 1);
+          if (item.kind === "opening-request")
+            await resolveOpeningRequest("deliver");
+          else
+            await publishText(item.text, {
+              attachments: item.attachments,
+              mentions: item.mentions,
+              replyTo: item.replyTo,
+              metadata: item.metadata,
+              tier: item.tier,
+              idempotencyKey: item.idempotencyKey,
+            });
+          if (!titled && item.text) {
             maybeSetDefaultTitle(item.text);
             titled = true;
           }
           setQueued((q) => q.filter((m) => m.id !== item.id));
         }
-        flushingRef.current = false;
       } catch (err) {
-        console.warn("[useDeferredAgent] Failed to flush pre-send queue:", err);
-        flushTimerRef.current = window.setTimeout(() => {
-          flushingRef.current = false;
-          setFlushTick((t) => t + 1);
-        }, FLUSH_RETRY_DELAY_MS);
+        if (deliveryId) setFailedDelivery({
+          id: deliveryId,
+          message: err instanceof Error ? err.message : String(err),
+        });
+      } finally {
+        flushingRef.current = null;
+        // Completion of the owned batch makes later input eligible. This also
+        // covers a failure whose queue entry was explicitly removed in flight.
+        setFlushTick((tick) => tick + 1);
       }
     })();
-  }, [agentPresent, queued, publishText, maybeSetDefaultTitle, flushTick]);
-
-  useEffect(
-    () => () => {
-      window.clearTimeout(flushTimerRef.current);
-    },
-    []
-  );
-
-  // Route an injected initialPrompt through the SAME queue only when this host
-  // can spawn an agent. Otherwise useAgenticChat leaves the prompt on
-  // useChatCore's historical auto-send path; this hook must not create a queue
-  // that can never flush.
-  useEffect(() => {
-    if (!canDefer) return;
-    if (initialPromptEnqueuedRef.current || !replaySettled) return;
-    // An opening prompt belongs to the creation of a channel, not to the
-    // lifetime of this React surface. Panel state is durable across unloads,
-    // while this hook's refs are not: treating a remount as another opening
-    // used to queue the prompt again and arm a second first-agent launch during
-    // the roster/rehydration window. The host's channel-creation fact is the
-    // authoritative one-shot boundary. `forceInitialPrompt` remains the
-    // explicit path for adding a prompt to an already-existing channel (for
-    // example a fork), but it waits for that channel's agent and never turns
-    // the remount into a first-agent launch.
-    if (!firstAgentChannelIsNew && !forceInitialPrompt) {
-      initialPromptEnqueuedRef.current = true;
-      return;
-    }
-    if (
-      !shouldAutoSendInitialPrompt({
-        prompt: initialPrompt,
-        // Gate on replay-settled (not socket connect) so prior-history detection
-        // is accurate; `shouldAutoSendInitialPrompt` only uses this as readiness.
-        connected: replaySettled,
-        alreadySent: false,
-        hasPriorMessages: messages.length > 0,
-        force: forceInitialPrompt,
-      })
-    ) {
-      return;
-    }
-    initialPromptEnqueuedRef.current = true;
-    setQueued((q) => [
-      ...q,
-      {
-        id: crypto.randomUUID(),
-        text: initialPrompt as string,
-        tier: "secondary",
-        idempotencyKey:
-          initialPromptIdempotencyKey ?? `initial-prompt:${channelName}`,
-      },
-    ]);
-    // Arm a spawn only for the mount that created the channel. A forced prompt
-    // on an existing channel may queue for its rehydrating agent, but must not
-    // reinterpret a transiently empty roster as a request for a new one.
-    if (
-      firstAgentChannelIsNew &&
-      !stateRef.current.agentPresent &&
-      firstAgentModelPreflight === "ready"
-    ) {
-      setArmed(true);
-    } else if (
-      firstAgentChannelIsNew &&
-      !stateRef.current.agentPresent &&
-      firstAgentModelPreflight === "checking"
-    ) {
-      waitingForModelDiscoveryRef.current = true;
-    }
-  }, [
-    canDefer,
-    replaySettled,
-    messages,
-    initialPrompt,
-    forceInitialPrompt,
-    initialPromptIdempotencyKey,
-    channelName,
-    firstAgentModelPreflight,
-    firstAgentChannelIsNew,
+  }, [agentPresent, queued, publishText, maybeSetDefaultTitle, flushTick,
+    resolveOpeningRequest,
+    deliveryError,
   ]);
+
+  // The channel owns this operation. Its terminal projection retires the local
+  // queue entry even when another client resolved it while we were disconnected.
+  useEffect(() => {
+    if (!replaySettled || openingRequest) return;
+    openingRequestEnqueuedRef.current = false;
+    setQueued((items) => items.some((item) => item.kind === "opening-request")
+      ? items.filter((item) => item.kind !== "opening-request") : items);
+  }, [replaySettled, openingRequest]);
+
+  // Every host uses the same pending-delivery queue. Agent creation is optional;
+  // an externally managed agent's join drains its retained opening request too.
+  useEffect(() => {
+    if (!replaySettled || !openingRequest || openingRequestEnqueuedRef.current) return;
+    openingRequestEnqueuedRef.current = true;
+    setQueued((items) => [...items, {
+      kind: "opening-request", id: "conversation-opening",
+      text: openingRequest, tier: "secondary",
+    }]);
+    if (canDefer && firstAgentPending && firstAgentModelPreflight === "ready") setArmed(true);
+    else if (canDefer && firstAgentPending && firstAgentModelPreflight === "checking")
+      waitingForModelDiscoveryRef.current = true;
+  }, [replaySettled, openingRequest, canDefer, firstAgentPending, firstAgentModelPreflight]);
 
   const deferredAgent = useMemo<DeferredAgentState | undefined>(() => {
     if (!active && queued.length === 0) return undefined;
@@ -639,6 +602,9 @@ export function useDeferredAgent(params: UseDeferredAgentParams): {
       setupActive,
       launching,
       launchFailed,
+      deliveryError,
+      deliveringId: flushingRef.current?.itemId,
+      retryDelivery,
       modelSelectionRequired,
       modelDiscoveryPending,
       startQueued,
@@ -656,6 +622,9 @@ export function useDeferredAgent(params: UseDeferredAgentParams): {
     setupActive,
     launching,
     launchFailed,
+    deliveryError,
+    flushTick,
+    retryDelivery,
     modelSelectionRequired,
     modelDiscoveryPending,
     startQueued,

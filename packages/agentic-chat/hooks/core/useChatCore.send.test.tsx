@@ -209,3 +209,19 @@ it("retains a newer draft when submission itself fails", async () => {
     view.unmount();
   }
 });
+
+it("rejects queued publication when there is no connected client instead of claiming delivery", async () => {
+  const harness = await createTranscriptHarness("queued-disconnected");
+  let latest!: ChatCoreState;
+  const view = render(<Probe harness={harness} onValue={(core) => { latest = core; }} />);
+  let client: ChatCoreState["clientRef"]["current"] = null;
+  try {
+    await waitFor(() => expect(latest.clientRef.current).not.toBeNull());
+    client = latest.clientRef.current;
+    latest.clientRef.current = null;
+    await expect(latest.publishText("Keep this queued")).rejects.toThrow("not connected");
+  } finally {
+    latest.clientRef.current = client;
+    view.unmount();
+  }
+});

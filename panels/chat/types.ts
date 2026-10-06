@@ -17,9 +17,7 @@ export interface ChatStateArgs {
   agentSource?: string;
   agentClass?: string;
   agentConfig?: Record<string, unknown>;
-  initialPrompt?: string;
-  /** Send initialPrompt even if the channel already has history (e.g. a fork). */
-  forceInitialPrompt?: boolean;
+  seed?: import("@workspace/pubsub").ConversationSeed;
   systemPrompt?: string;
   systemPromptMode?: "append" | "replace-vibestudio" | "replace";
   actionBarFile?: string | null;

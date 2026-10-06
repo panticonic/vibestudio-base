@@ -59,7 +59,7 @@ export function installPanelErrorDiagnosticLauncher(options: DiagnosticLauncherO
 
 export async function openPanelErrorDiagnosticChat(
   request: PanelRenderErrorDiagnosticRequest,
-  options: DiagnosticLauncherOptions
+  options: DiagnosticLauncherOptions,
 ): Promise<PanelErrorDiagnosticChatResult> {
   const { openPanel, panelTree } = options.panelRuntime;
   const self = panelTree.self();
@@ -92,7 +92,7 @@ export async function openPanelErrorDiagnosticChat(
     focus: true,
     title: "Panel error debug",
     ...(panelContextId ? { contextId: panelContextId } : {}),
-    stateArgs: { initialPrompt: prompt },
+    stateArgs: { seed: { openingRequest: prompt } },
   });
 
   return {

@@ -24,6 +24,7 @@ import {
   type DurableObjectContext,
   type DurableObjectServiceClient,
 } from "@workspace/runtime/worker/kernel";
+import { createImagesClient } from "@workspace/runtime/images";
 import { canonicalJson } from "@vibestudio/content-addressing";
 import type { ChannelEvent, PublishReceipt } from "@workspace/pubsub";
 import type { NativeChannelKnowledge } from "@workspace/agentic-core/native-channel-knowledge";
@@ -78,6 +79,7 @@ import {
 } from "@workspace/agentic-protocol";
 import {
   participantMetadataSchema,
+  conversationSeedSchema,
   type SubscribeResult,
   type ChannelJoinInput,
   type ChannelRelationshipPayload,
@@ -1661,6 +1663,17 @@ export class PubSubChannel extends DurableObjectBase {
     appended?: ChannelEvent,
     deliveryStartedAt?: number,
   ): Promise<number> {
+    // The canonical resolution envelope is the completion receipt. A lost
+    // append reply must not make a resolved request pending after activation
+    // loss, even if the disposable delivery cursor already passed that event.
+    const resolution = this.getStateValue("openingRequestResolution");
+    if (resolution && !this.getStateValue("openingRequestOutcome")) {
+      const accepted = appended?.type === "config-update" &&
+        appended.messageId === "conversation-seed:resolution"
+        ? appended
+        : await this.channelLog.getEventByEnvelopeId("conversation-seed:resolution");
+      if (accepted) this.setStateValue("openingRequestOutcome", resolution);
+    }
     // A later relationship fold can legitimately replace the relationship
     // row that owns recovery. Drain that durable debt before the projection
     // cursor is allowed to advance to any newer canonical event.
@@ -1967,6 +1980,33 @@ export class PubSubChannel extends DurableObjectBase {
       senderId: input.senderId,
       senderKind,
     });
+    const assetIds =
+      input.type === AGENTIC_EVENT_PAYLOAD_KIND &&
+      (input.payload as AgenticEvent).kind === "message.completed"
+        ? (
+            input.payload as {
+              payload: { metadata?: { imageAssetIds?: unknown } };
+            }
+          ).payload.metadata?.imageAssetIds
+        : undefined;
+    if (assetIds !== undefined) {
+      if (
+        !Array.isArray(assetIds) ||
+        assetIds.some((id) => typeof id !== "string" || !id)
+      )
+        throw new Error("Message imageAssetIds must be non-empty asset IDs");
+      const images = createImagesClient(this.rpc);
+      // Conversation history owns originals independently of generation jobs.
+      // An interrupted append retains ownership so exact publication retries
+      // cannot lose their source asset between attempts.
+      for (const assetId of new Set(assetIds as string[])) {
+        await images.getAsset(assetId);
+        await images.retain({
+          assetId,
+          owner: `conversation:${this.getStateValue("contextId")}:${this.objectKey}`,
+        });
+      }
+    }
     const event = await this.channelLog.append({
       type: input.type,
       payload: input.payload,
@@ -2090,12 +2130,212 @@ export class PubSubChannel extends DurableObjectBase {
       }
       return;
     }
-    this.setStateValue("contextId", contextId);
-    this.setStateValue("createdAt", String(Date.now()));
-    if (channelConfig)
-      this.setStateValue("config", JSON.stringify(channelConfig));
-    this.deliveryProjection.initializeChannelConfig(channelConfig ?? {});
+    const {
+      seed,
+      initialization: _initialization,
+      ...config
+    } = channelConfig ?? {};
+    const parsedSeed = conversationSeedSchema.parse(seed ?? {});
+    this.ctx.storage.transactionSync(() => {
+      this.setStateValue("contextId", contextId);
+      this.setStateValue("createdAt", String(Date.now()));
+      this.setStateValue("config", JSON.stringify(config));
+      this.setStateValue("conversationSeed", JSON.stringify(parsedSeed));
+    });
+    this.deliveryProjection.initializeChannelConfig(config);
     void this.refreshOwnTitle();
+  }
+
+  @rpc({
+    principals: ["host", "user", "code"],
+    effect: { kind: "open" },
+    tier: "open",
+    sensitivity: "write",
+    website: {
+      kind: "closed",
+      reason: "Workspace conversation creation is owned by workspace clients.",
+    },
+  })
+  async initializeConversation(
+    contextId: string,
+    config: ChannelConfig = {},
+  ): Promise<ChannelConfig> {
+    if (!contextId) throw new Error("Conversation context is required");
+    if (config.membershipPolicy)
+      throw new Error("Locked membership requires initializeLockedChannel");
+    this.initChannel(contextId, config);
+    await this.installConversationSeed();
+    await this.deriveDeliveries();
+    return this.getChannelConfig() ?? {};
+  }
+
+  private seedMessage(
+    index: string,
+    content: string,
+    author: string,
+    role: "assistant" | "user",
+  ): AgenticEvent<"message.completed"> {
+    const messageId = `conversation-seed:${index}`;
+    return {
+      kind: "message.completed",
+      actor: { kind: "system", id: "conversation-seed", displayName: author },
+      causality: { messageId: messageId as never },
+      payload: {
+        protocol: AGENTIC_PROTOCOL_VERSION,
+        role,
+        blocks: [
+          { blockId: `${messageId}:text` as never, type: "text", content },
+        ],
+        outcome: "completed",
+        tier: "secondary",
+        // Authored assistant content is installed before any agent joins.
+        ...(role === "assistant" ? { to: [] } : {}),
+      },
+      createdAt: new Date(
+        Number(this.getStateValue("createdAt")),
+      ).toISOString(),
+    };
+  }
+
+  private seedInstallation: Promise<void> | null = null;
+  private installConversationSeed(): Promise<void> {
+    if (!this.getStateValue("contextId")) return Promise.resolve();
+    if (this.getStateValue("conversationSeedInstalled"))
+      return Promise.resolve();
+    if (this.seedInstallation) return this.seedInstallation;
+    this.seedInstallation = (async () => {
+      const seed = conversationSeedSchema.parse(
+        JSON.parse(this.getStateValue("conversationSeed") ?? "{}"),
+      );
+      for (const [index, message] of (seed.messages ?? []).entries()) {
+        const event = await this.appendDurable({
+          type: AGENTIC_EVENT_PAYLOAD_KIND,
+          payload: this.seedMessage(
+            String(index),
+            message.content,
+            message.author,
+            "assistant",
+          ),
+          senderId: "conversation-seed",
+          senderMetadata: { type: "system", name: message.author },
+          messageId: `conversation-seed:${index}`,
+          idempotency: "idempotent-by-id",
+        });
+        broadcast(this.broadcastDeps, event, { kind: "log", phase: "live" }, "conversation-seed");
+      }
+      this.setStateValue("conversationSeedInstalled", "true");
+    })().finally(() => {
+      this.seedInstallation = null;
+    });
+    return this.seedInstallation;
+  }
+
+  private openingResolution: Promise<ChannelConfig> | null = null;
+
+  /** Resolve the retained opening request on explicit cancellation or agent readiness. */
+  @rpc({
+    principals: ["user", "code"],
+    effect: { kind: "open" },
+    tier: "open",
+    sensitivity: "write",
+    website: {
+      kind: "closed",
+      reason: "Conversation initialization is owned by workspace clients.",
+    },
+  })
+  async resolveOpeningRequest(
+    participantId: string,
+    outcome: "deliver" | "cancel",
+  ): Promise<ChannelConfig> {
+    this.assertParticipantCaller(participantId, "resolveOpeningRequest");
+    if (outcome !== "deliver" && outcome !== "cancel")
+      throw new Error("Invalid opening request outcome");
+    if (this.openingResolution) return this.openingResolution;
+    this.openingResolution = this.finishOpeningRequest(
+      participantId,
+      outcome,
+    ).finally(() => {
+      this.openingResolution = null;
+    });
+    return this.openingResolution;
+  }
+
+  private async finishOpeningRequest(
+    participantId: string,
+    requestedOutcome: "deliver" | "cancel",
+  ): Promise<ChannelConfig> {
+    const seed = conversationSeedSchema.parse(
+      JSON.parse(this.getStateValue("conversationSeed") ?? "{}"),
+    );
+    if (!seed.openingRequest || this.getStateValue("openingRequestOutcome"))
+      return this.getChannelConfig() ?? {};
+    const outcome =
+      this.getStateValue("openingRequestResolution") ?? requestedOutcome;
+    if (outcome === "deliver") {
+      const accepted = await this.channelLog.getEventByEnvelopeId("conversation-seed:opening");
+      if (
+        !accepted && !this.sql
+          .exec(
+            `SELECT 1 FROM channel_relationships WHERE active = 1 AND attached = 1 AND json_extract(metadata_json, '$.type') = 'agent' LIMIT 1`,
+          )
+          .toArray().length
+      )
+        throw new Error("Opening request requires a subscribed agent");
+      // Releasing a configured request is an authenticated participant action.
+      // Retain its actual author with the chosen outcome before publication so
+      // reconnects and another caller's retry cannot change the accepted author.
+      this.ctx.storage.transactionSync(() => {
+        this.setStateValue("openingRequestResolution", outcome);
+        if (!this.getStateValue("openingRequestAuthor"))
+          this.setStateValue(
+            "openingRequestAuthor",
+            JSON.stringify(this.participantRef(participantId)),
+          );
+      });
+      const author = JSON.parse(
+        this.getStateValue("openingRequestAuthor")!,
+      ) as ParticipantRef;
+      const message = this.seedMessage(
+        "opening",
+        seed.openingRequest,
+        "Conversation opening request",
+        "user",
+      );
+      message.actor = author;
+      const event = accepted ?? await this.appendDurable({
+        type: AGENTIC_EVENT_PAYLOAD_KIND,
+        payload: message,
+        senderId: author.id,
+        senderMetadata: author.metadata,
+        messageId: "conversation-seed:opening",
+        idempotency: "idempotent-by-id",
+      });
+      broadcast(
+        this.broadcastDeps,
+        event,
+        { kind: "log", phase: "live" },
+        author.id,
+      );
+    }
+    this.setStateValue("openingRequestResolution", outcome);
+    const config = this.getChannelConfig() ?? {};
+    const { openingRequest: _openingRequest, ...initialization } = config.initialization ?? {};
+    // The durable notification completes the operation. Until it is accepted,
+    // the retained request remains retryable, including after an eviction.
+    const event = await this.appendDurable({
+      type: "config-update",
+      payload: { ...config, initialization },
+      senderId: "system",
+      messageId: "conversation-seed:resolution",
+      idempotency: "idempotent-by-id",
+    });
+    broadcast(
+      this.broadcastDeps,
+      event,
+      { kind: "log", phase: "live" },
+      "system",
+    );
+    return this.getChannelConfig() ?? {};
   }
 
   /** Push this channel's display title to the server-side registry. */
@@ -2116,12 +2356,21 @@ export class PubSubChannel extends DurableObjectBase {
 
   private getChannelConfig(): ChannelConfig | null {
     const raw = this.getStateValue("config");
-    if (!raw) return null;
-    try {
-      return JSON.parse(raw);
-    } catch {
-      return null;
-    }
+    if (!raw && !this.getStateValue("contextId")) return null;
+    const config = JSON.parse(raw ?? "{}");
+    const seed = conversationSeedSchema.parse(
+      JSON.parse(this.getStateValue("conversationSeed") ?? "{}"),
+    );
+    const firstAgentPending = !this.deliveryProjection.hasHadAgent();
+    return {
+      ...config,
+      initialization: {
+        firstAgentPending,
+        ...(seed.openingRequest && !this.getStateValue("openingRequestOutcome")
+          ? { openingRequest: seed.openingRequest }
+          : {}),
+      },
+    };
   }
 
   private normalizeLockedMembershipPolicy(
@@ -2600,6 +2849,7 @@ export class PubSubChannel extends DurableObjectBase {
       );
     }
     if (input.contextId) this.initChannel(input.contextId);
+    await this.installConversationSeed();
     await this.deriveDeliveries();
 
     const existing = this.sql
@@ -2892,6 +3142,9 @@ export class PubSubChannel extends DurableObjectBase {
     if (contextId) {
       this.initChannel(contextId, channelConfigRaw);
     }
+
+    await this.installConversationSeed();
+    await this.deriveDeliveries();
 
     // Handle uniqueness: a friendly pre-check complements the partial unique
     // index that provides race-proof enforcement. Human
@@ -4329,6 +4582,7 @@ export class PubSubChannel extends DurableObjectBase {
     sensitivity: "read",
   })
   async getConfig(): Promise<ChannelConfig | null> {
+    await this.deriveDeliveries();
     return this.getChannelConfig();
   }
 
@@ -4354,40 +4608,28 @@ export class PubSubChannel extends DurableObjectBase {
   ): Promise<ChannelConfig> {
     if (!contextId)
       throw new Error("initializeLockedChannel: contextId is required");
+    const { seed, initialization: _initialization, ...creationConfig } = config;
+    const parsedSeed = conversationSeedSchema.parse(seed ?? {});
     const normalizedConfig: ChannelConfig = {
-      ...config,
-      membershipPolicy: this.normalizeLockedMembershipPolicy(
-        config.membershipPolicy,
-      ),
+      ...creationConfig,
+      membershipPolicy: this.normalizeLockedMembershipPolicy(config.membershipPolicy),
     };
     const existingContextId = this.getStateValue("contextId");
     const existingConfig = this.getChannelConfig();
     if (existingContextId) {
-      if (
-        existingContextId !== contextId ||
-        !existingConfig ||
-        canonicalJson(existingConfig) !== canonicalJson(normalizedConfig)
-      ) {
-        throw new Error(
-          "initializeLockedChannel: existing channel definition does not match",
-        );
-      }
-      return existingConfig;
+      const { initialization: _currentInitialization, ...storedConfig } = existingConfig ?? {};
+      const storedSeed = conversationSeedSchema.parse(JSON.parse(this.getStateValue("conversationSeed") ?? "{}"));
+      if (existingContextId !== contextId || !existingConfig ||
+          canonicalJson(storedConfig) !== canonicalJson(normalizedConfig) ||
+          canonicalJson(storedSeed) !== canonicalJson(parsedSeed))
+        throw new Error("initializeLockedChannel: existing channel definition does not match");
+    } else {
+      this.initChannel(contextId, { ...normalizedConfig, seed: parsedSeed });
+      this.policyHost.invalidatePolicySelection();
     }
-    this.ctx.storage.transactionSync(() => {
-      if (this.getStateValue("contextId")) {
-        throw new Error(
-          "initializeLockedChannel: channel was initialized concurrently",
-        );
-      }
-      this.setStateValue("contextId", contextId);
-      this.setStateValue("createdAt", String(Date.now()));
-      this.setStateValue("config", JSON.stringify(normalizedConfig));
-    });
-    this.deliveryProjection.initializeChannelConfig(normalizedConfig);
-    this.policyHost.invalidatePolicySelection();
-    void this.refreshOwnTitle();
-    return normalizedConfig;
+    await this.installConversationSeed();
+    await this.deriveDeliveries();
+    return this.getChannelConfig()!;
   }
 
   @rpc({
@@ -4402,13 +4644,20 @@ export class PubSubChannel extends DurableObjectBase {
     sensitivity: "write",
   })
   async updateConfig(config: Partial<ChannelConfig>): Promise<ChannelConfig> {
+    if ("seed" in config || "initialization" in config)
+      throw new Error(
+        "Conversation seed and initialization are creation-owned",
+      );
     if ("membershipPolicy" in config) {
       throw new Error(
         "updateConfig: locked membership is immutable; initialize a different channel instead",
       );
     }
-    const newConfig = { ...this.getChannelConfig(), ...config };
-    this.setStateValue("config", JSON.stringify(newConfig));
+    const { initialization: _initialization, ...storedConfig } =
+      this.getChannelConfig() ?? {};
+    const storedUpdate = { ...storedConfig, ...config };
+    this.setStateValue("config", JSON.stringify(storedUpdate));
+    const newConfig = this.getChannelConfig()!;
     this.policyHost.invalidatePolicySelection();
     const event = await this.appendDurable({
       type: "config-update",
@@ -6372,6 +6621,9 @@ export class PubSubChannel extends DurableObjectBase {
         );
       }
     }
+    this.setStateValue("conversationSeed", "{}");
+    this.setStateValue("conversationSeedInstalled", "true");
+    this.setStateValue("openingRequestOutcome", "cancel");
     await this.channelLog.forkFrom(parentChannelId, forkPointId);
     this.deliveryProjection.resetForFork(forkPointId);
     // The child must NOT inherit the parent's fork journal or direct-child

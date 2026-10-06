@@ -124,3 +124,14 @@ The Images service owns provider access; an app does not request or store the
 provider credential itself. Apps persisting panel navigation via `panel.stateArgs`
 also declare `workspace.runtime-state.manage` and a `vibestudio.stateArgs` schema;
 worker-owned campaign state uses the app's ordinary durable storage service.
+
+## Conversation presentation
+
+Use `notify({ content, images: [{ assetId, alt, caption? }] })` to share generated
+assets directly. The accepted channel publication retains the original for
+conversation history independently of the generation job. Authored renderers
+can use `Image` from `@workspace/react` with `assetId`; it reads through the same
+image service, displays a preview, and offers enlarge/download. Its Blob URL is
+local presentation state and is released when the component is retired.
+For app-owned JSX, retain the asset through the app's existing owner before
+forgetting its generation job. See `skills/sandbox/MDX.md` for the media contract.

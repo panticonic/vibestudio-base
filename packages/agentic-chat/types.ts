@@ -196,6 +196,7 @@ export interface UndoableAction {
  *  (unsent) and flushed live once the first agent joins the roster, so the very
  *  first message lands as a normal live turn rather than backlog replay. */
 export interface PendingDelivery {
+  kind: "message" | "opening-request";
   id: string;
   text: string;
   attachments?: AttachmentInput[];
@@ -203,13 +204,13 @@ export interface PendingDelivery {
   replyTo?: string;
   metadata?: Record<string, unknown>;
   tier?: MessageTier;
-  /** Stable key for idempotent (re)delivery — e.g. an injected initialPrompt. */
+  /** Stable key for idempotent (re)delivery — for a queued message. */
   idempotencyKey?: string;
 }
 
 /** State for the first-agent flow: the inline armed config plus the queue of
  *  messages waiting for that agent to come online. Present only on surfaces that
- *  can create agents (host supplies `onAddAgent`). */
+ *  can create agents, or have a retained opening request. */
 export interface DeferredAgentState {
   /** No agent present and one can or will be created — hides the header
    *  "Add agent" launcher (the inline setup owns adding the first agent). */
@@ -222,6 +223,10 @@ export interface DeferredAgentState {
   launching: boolean;
   /** The spawn failed (onAddAgent rejected) — drives the queue's error + retry UI. */
   launchFailed: boolean;
+  deliveryError?: string;
+  /** The currently owned publication cannot be removed as an unsent message. */
+  deliveringId?: string;
+  retryDelivery: () => void;
   /** The host found no configured model for the first agent. Its queued first
    *  message must wait for an explicit model/provider choice. */
   modelSelectionRequired: boolean;

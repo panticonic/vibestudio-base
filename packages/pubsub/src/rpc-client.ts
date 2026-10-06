@@ -3183,6 +3183,16 @@ export function connectViaRpc<
       return () => rosterHandlers.delete(handler);
     },
     updateChannelConfig,
+    async resolveOpeningRequest(outcome: "deliver" | "cancel") {
+      const cfg = await callChannel<ChannelConfig>(
+        "resolveOpeningRequest",
+        pid,
+        outcome,
+      );
+      serverChannelConfig = cfg;
+      configChangeHandlers.forEach((handler) => handler(cfg));
+      return cfg;
+    },
     addMember,
     removeMember,
     listMembers,
@@ -3221,4 +3231,25 @@ export function connectViaRpc<
       return callChannel<ChannelReplayEnvelope>("getReplayAfter", request);
     },
   };
+}
+
+/** Retain initial content before launching agents or attaching UI. Existing conversations are read, never reseeded. */
+export async function initializeConversation(options: {
+  rpc: RpcChannelTargetOptions["rpc"] & RpcChannelTargetOptions["reviewRpc"];
+  channel: string;
+  contextId: string;
+  config?: ChannelConfig;
+  signal?: AbortSignal;
+}): Promise<ChannelConfig> {
+  const target = await resolveRpcChannelTarget({
+    ...options,
+    reviewRpc: options.rpc,
+  });
+  options.signal?.throwIfAborted();
+  return options.rpc.call<ChannelConfig>(
+    target,
+    "initializeConversation",
+    [options.contextId, options.config ?? {}],
+    { signal: options.signal },
+  );
 }
