@@ -31,17 +31,19 @@ describe("shared conversation media", () => {
       mediaUrl("data:text/html,<script>alert(1)</script>"),
     ).toThrow();
   });
-  it("loads YouTube only on request, preserves a watch link, and retires playback on source change", () => {
+  it("embeds YouTube immediately without autoplay, preserves a watch link, and retires playback on source change", () => {
     const { container, rerender } = render(
       <Video url="https://youtu.be/Pb6C4ORBOOI" title="Introduction" />,
     );
-    expect(container.querySelector("iframe")).toBeNull();
+    const initialPlayer = container.querySelector("iframe")!;
+    expect(initialPlayer).toBeTruthy();
+    expect(new URL(initialPlayer.src).searchParams.get("autoplay")).not.toBe("1");
     expect(
       screen
         .getByRole("link", { name: "Watch on YouTube" })
         .getAttribute("href"),
     ).toContain("Pb6C4ORBOOI");
-    fireEvent.click(screen.getByRole("button", { name: /Load video/ }));
+    expect(screen.queryByRole("button", { name: /Load video/ })).toBeNull();
     expect(container.querySelector("iframe")?.getAttribute("src")).toContain(
       "youtube-nocookie.com/embed/",
     );
@@ -51,7 +53,8 @@ describe("shared conversation media", () => {
     rerender(
       <Video url="https://youtu.be/M7lc1UVf-VE" title="Another video" />,
     );
-    expect(container.querySelector("iframe")).toBeNull();
+    expect(container.querySelector("iframe")).not.toBe(initialPlayer);
+    expect(container.querySelector("iframe")?.getAttribute("src")).toContain("M7lc1UVf-VE");
   });
   it("offers native playback and surfaces actual playback failure", () => {
     const { container } = render(

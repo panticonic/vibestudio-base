@@ -93,7 +93,6 @@ function VideoSource({
   captionsUrl,
   captionsLanguage = "en",
 }: VideoProps) {
-  const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState<string>();
   const captionsRef = useRef<HTMLTrackElement>(null);
   useEffect(() => {
@@ -122,34 +121,7 @@ function VideoSource({
     : url;
   return (
     <figure style={{ margin: "12px 0", maxWidth: "100%" }}>
-      {youtube && !loaded ? (
-        <button
-          type="button"
-          onClick={() => setLoaded(true)}
-          style={{
-            width: "100%",
-            minHeight: 200,
-            aspectRatio: "16 / 9",
-            cursor: "pointer",
-            background: "var(--gray-3)",
-            color: "inherit",
-            border: "1px solid var(--gray-6)",
-            borderRadius: 8,
-          }}
-        >
-          {poster ? (
-            <img
-              src={poster}
-              alt=""
-              style={{ maxWidth: "100%", maxHeight: 240 }}
-            />
-          ) : null}
-          <span style={{ display: "block", padding: 12 }}>
-            Load video: {title}
-          </span>
-          <small>Loads the YouTube player</small>
-        </button>
-      ) : youtube ? (
+      {youtube ? (
         <iframe
           title={title}
           src={`https://www.youtube-nocookie.com/embed/${youtube.id}?start=${youtube.start}`}

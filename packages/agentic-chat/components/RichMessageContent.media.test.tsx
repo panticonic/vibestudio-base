@@ -15,7 +15,7 @@ it("preserves a loaded media player while action handlers change, and calls the 
       mdxActions={{ publishMessage: previous }}
     />,
   );
-  fireEvent.click(await screen.findByRole("button", { name: /Load video/ }));
+  await waitFor(() => expect(container.querySelector("iframe")).toBeTruthy());
   const player = container.querySelector("iframe");
   expect(player).toBeTruthy();
   rerender(

@@ -100,7 +100,7 @@ render when a message completes; never depend on partially streamed JSX.
 ```
 
 `Video` accepts YouTube watch, short, shorts, live, and embed URLs, including
-start times. It loads the privacy-enhanced player only on a click, never
+start times. It embeds the privacy-enhanced player immediately, never
 starts playback automatically, and always offers a watch link. Ordinary HTTPS
 or panel-relative video URLs use native controls. Optional `poster`,
 `caption`, `captionsUrl` (WebVTT), and `captionsLanguage` describe owned videos.
