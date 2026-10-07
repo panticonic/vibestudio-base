@@ -9,6 +9,7 @@ import {
 import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import AboutPanelRoot from "./index";
+import { RemoteRpcError } from "@vibestudio/rpc";
 
 const mocks = vi.hoisted(() => ({
   getHistory: vi.fn(),
@@ -248,6 +249,41 @@ describe("new panel launcher", () => {
         .closest("a");
       expect(link?.getAttribute("href")).toBe("/panels/terminal/");
       expect(link?.getAttribute("aria-disabled")).not.toBe("true");
+    } finally {
+      warning.mockRestore();
+    }
+  });
+
+  it("keeps discovery loss quiet and refreshes browser data when focused again", async () => {
+    const warning = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      mocks.listServices.mockRejectedValueOnce(
+        new RemoteRpcError("Iroh pipe closed", "transport", "CONNECTION_LOST"),
+      );
+      render(<AboutPanelRoot />);
+      expect(await findRow("Terminal")).toBeTruthy();
+      await waitFor(() => expect(mocks.listServices).toHaveBeenCalledTimes(1));
+      expect(warning).not.toHaveBeenCalled();
+      mocks.listServices.mockResolvedValue([{ name: "browser.data" }]);
+      await act(async () => panelFocusCallback());
+      expect(await screen.findByText("Example Docs")).toBeTruthy();
+    } finally {
+      warning.mockRestore();
+    }
+  });
+
+  it("keeps history connection loss quiet and recovers on focus", async () => {
+    const warning = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      mocks.getHistory.mockRejectedValueOnce(
+        new RemoteRpcError("Iroh pipe closed", "transport", "CONNECTION_LOST"),
+      );
+      render(<AboutPanelRoot />);
+      expect(await findRow("Terminal")).toBeTruthy();
+      await waitFor(() => expect(mocks.getHistory).toHaveBeenCalledTimes(1));
+      expect(warning).not.toHaveBeenCalled();
+      await act(async () => panelFocusCallback());
+      expect(await screen.findByText("Example Docs")).toBeTruthy();
     } finally {
       warning.mockRestore();
     }

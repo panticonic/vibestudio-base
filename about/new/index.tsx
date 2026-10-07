@@ -29,6 +29,7 @@ import {
   workspace,
 } from "@workspace/runtime";
 import type { PanelHandle } from "@workspace/runtime";
+import { isRpcConnectionLost } from "@vibestudio/rpc";
 import {
   canonicalizeUrlForAddress,
   getSharedBrowserAddressOptions,
@@ -595,14 +596,6 @@ function NewPanelPage() {
   );
 
   const refreshCatalog = useCallback((force = false): Promise<void> => {
-    if (catalogFetchRef.current) return catalogFetchRef.current;
-    if (
-      !force &&
-      Date.now() - lastCatalogFetchRef.current < CATALOG_REVALIDATE_INTERVAL_MS
-    ) {
-      return Promise.resolve();
-    }
-    lastCatalogFetchRef.current = Date.now();
     // Service availability enhances history, but neither its latency nor its
     // failure determines whether the workspace's panel catalog is usable.
     if (!serviceDiscoveryRef.current) {
@@ -615,7 +608,9 @@ function NewPanelPage() {
         })
         .catch((cause: unknown) => {
           setHistoryError(true);
-          console.warn("[new-panel] Browser service discovery failed", cause);
+          if (!isRpcConnectionLost(cause)) {
+            console.warn("[new-panel] Browser service discovery failed", cause);
+          }
         })
         .finally(() => {
           if (serviceDiscoveryRef.current === discovery)
@@ -623,6 +618,14 @@ function NewPanelPage() {
         });
       serviceDiscoveryRef.current = discovery;
     }
+    if (catalogFetchRef.current) return catalogFetchRef.current;
+    if (
+      !force &&
+      Date.now() - lastCatalogFetchRef.current < CATALOG_REVALIDATE_INTERVAL_MS
+    ) {
+      return Promise.resolve();
+    }
+    lastCatalogFetchRef.current = Date.now();
     const request = workspace
       .sourceTree()
       .then((tree) => {
@@ -740,7 +743,7 @@ function NewPanelPage() {
             const reviewPending = isReviewPending(error);
             setHistoryReviewPending(reviewPending);
             setHistoryError(!reviewPending);
-            if (!reviewPending) {
+            if (!reviewPending && !isRpcConnectionLost(error)) {
               console.warn(
                 "[new-panel] Canonical browser history query failed",
                 error,
