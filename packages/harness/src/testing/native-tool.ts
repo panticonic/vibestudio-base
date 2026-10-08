@@ -11,7 +11,7 @@ import {
   type ToolExecutionResult,
   type ToolRegistration,
 } from "@panticonic/pi-durable";
-import type { Static, TSchema } from "@panticonic/pi-ai";
+import { createModels, type Static, type TSchema } from "@panticonic/pi-ai";
 
 export interface NativeToolTestOptions<TDetails extends JsonValue> {
   callId?: string;
@@ -36,6 +36,7 @@ export function nativeToolApi<TDetails extends JsonValue>(
     continuation: undefined,
     executionData: undefined,
     registry: createRegistry().snapshot(),
+    models: createModels(),
     env: undefined,
     outputWindow: undefined,
     agent: unavailable,

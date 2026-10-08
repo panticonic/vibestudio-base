@@ -34,9 +34,9 @@
     "unpdf": "^1.8.0",
     "yaml": "^2.8.0",
     "@workspace/runtime": "workspace:*",
-    "@panticonic/pi-ai": "0.99.2-vibestudio.12",
-    "@panticonic/pi-chord": "0.99.2-vibestudio.12",
-    "@panticonic/pi-durable": "0.99.2-vibestudio.12"
+    "@panticonic/pi-ai": "1.1.0-vibestudio.1",
+    "@panticonic/pi-chord": "1.1.0-vibestudio.1",
+    "@panticonic/pi-durable": "1.1.0-vibestudio.1"
   },
   "optionalDependencies": {
     "re2": "^1.24.1"

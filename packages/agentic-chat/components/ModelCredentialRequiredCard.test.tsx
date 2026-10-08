@@ -27,8 +27,12 @@ describe("ModelCredentialRequiredCard", () => {
       </Theme>,
     );
 
-    expect(screen.getByRole("button", { name: /Use workspace browser/i })).toBeTruthy();
-    expect(screen.getByRole("button", { name: /Use system browser/i })).toBeTruthy();
+    expect(
+      screen.getByRole("button", { name: /Use workspace browser/i }),
+    ).toBeTruthy();
+    expect(
+      screen.getByRole("button", { name: /Use system browser/i }),
+    ).toBeTruthy();
     const help = screen.getByText("Sign-in help");
     expect(help.closest("details")?.open).toBe(false);
     fireEvent.click(help);
@@ -50,14 +54,19 @@ describe("ModelCredentialRequiredCard", () => {
             modelBaseUrl: "https://chatgpt.com/backend-api",
             agentParticipantId: "do:agent",
             flow: { type: "oauth2-auth-code-pkce" },
-            reason: "Provided authentication token is expired. Please try signing in again.",
+            reason:
+              "Provided authentication token is expired. Please try signing in again.",
           }}
         />
       </Theme>,
     );
 
-    expect(screen.getByRole("button", { name: /Refresh in workspace browser/i })).toBeTruthy();
-    expect(screen.getByRole("button", { name: /Refresh in system browser/i })).toBeTruthy();
+    expect(
+      screen.getByRole("button", { name: /Refresh in workspace browser/i }),
+    ).toBeTruthy();
+    expect(
+      screen.getByRole("button", { name: /Refresh in system browser/i }),
+    ).toBeTruthy();
   });
 
   it("only offers the native system browser on mobile hosts", () => {
@@ -77,10 +86,15 @@ describe("ModelCredentialRequiredCard", () => {
         </Theme>,
       );
 
-      expect(screen.getByRole("button", { name: /Use system browser/i })).toBeTruthy();
-      expect(screen.queryByRole("button", { name: /Use workspace browser/i })).toBeNull();
+      expect(
+        screen.getByRole("button", { name: /Use system browser/i }),
+      ).toBeTruthy();
+      expect(
+        screen.queryByRole("button", { name: /Use workspace browser/i }),
+      ).toBeNull();
     } finally {
-      delete (globalThis as { __vibestudioHostPlatform?: unknown }).__vibestudioHostPlatform;
+      delete (globalThis as { __vibestudioHostPlatform?: unknown })
+        .__vibestudioHostPlatform;
     }
   });
 
@@ -100,9 +114,13 @@ describe("ModelCredentialRequiredCard", () => {
         />
       </Theme>,
     );
-    expect(screen.getByRole("button", { name: "Claude Pro / Max" })).toBeTruthy();
+    expect(
+      screen.getByRole("button", { name: "Claude Pro / Max" }),
+    ).toBeTruthy();
     expect(screen.getByRole("button", { name: "API key" })).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: /Use system browser/i }));
+    fireEvent.click(
+      screen.getByRole("button", { name: /Use system browser/i }),
+    );
     await waitFor(() =>
       expect(chat.callMethod).toHaveBeenCalledWith(
         "do:agent",
@@ -116,7 +134,14 @@ describe("ModelCredentialRequiredCard", () => {
     );
   });
 
-  it.each(["openai-codex", "anthropic", "github-copilot", "kimi-coding", "meta", "xai"])(
+  it.each([
+    "openai-codex",
+    "anthropic",
+    "github-copilot",
+    "kimi-coding",
+    "meta",
+    "xai",
+  ])(
     "connects %s directly from chat settings without an agent",
     async (providerId) => {
       const onConnect = vi.fn(async (_modelRef: string) => {});
@@ -128,7 +153,9 @@ describe("ModelCredentialRequiredCard", () => {
           />
         </Theme>,
       );
-      fireEvent.click(screen.getByRole("button", { name: /Use system browser/i }));
+      fireEvent.click(
+        screen.getByRole("button", { name: /Use system browser/i }),
+      );
       await waitFor(() =>
         expect(onConnect).toHaveBeenCalledWith(
           `${providerId}:model`,
@@ -138,7 +165,9 @@ describe("ModelCredentialRequiredCard", () => {
           {},
         ),
       );
-      expect(screen.getByText("Provider connected. You can start chatting.")).toBeTruthy();
+      expect(
+        screen.getByText("Provider connected. You can start chatting."),
+      ).toBeTruthy();
     },
   );
 
@@ -149,19 +178,22 @@ describe("ModelCredentialRequiredCard", () => {
         <ModelCredentialRequiredCard
           onConnect={onConnect}
           props={{
-            providerId: "azure-openai-responses",
-            modelRef: "azure-openai-responses:gpt-4",
+            providerId: "azure",
+            modelRef: "azure:gpt-4",
           }}
         />
       </Theme>,
     );
-    fireEvent.change(screen.getByRole("textbox", { name: "Azure OpenAI endpoint" }), {
-      target: { value: "https://resource.openai.azure.com/openai/v1" },
-    });
+    fireEvent.change(
+      screen.getByRole("textbox", { name: "Azure OpenAI endpoint" }),
+      {
+        target: { value: "https://resource.openai.azure.com/openai/v1" },
+      },
+    );
     fireEvent.click(screen.getByRole("button", { name: /Enter API Key/i }));
     await waitFor(() =>
       expect(onConnect).toHaveBeenCalledWith(
-        "azure-openai-responses:gpt-4",
+        "azure:gpt-4",
         "api-key",
         "internal",
         expect.any(AbortSignal),
@@ -173,10 +205,17 @@ describe("ModelCredentialRequiredCard", () => {
   it("cancels pending login and lets the user retry", async () => {
     let signal: AbortSignal | undefined;
     const onConnect = vi.fn(
-      async (_model: string, _method: string, _browser: string, next: AbortSignal) => {
+      async (
+        _model: string,
+        _method: string,
+        _browser: string,
+        next: AbortSignal,
+      ) => {
         signal = next;
         await new Promise<void>((_resolve, reject) =>
-          next.addEventListener("abort", () => reject(new Error("cancelled")), { once: true }),
+          next.addEventListener("abort", () => reject(new Error("cancelled")), {
+            once: true,
+          }),
         );
       },
     );
@@ -184,16 +223,23 @@ describe("ModelCredentialRequiredCard", () => {
       <Theme>
         <ModelCredentialRequiredCard
           onConnect={onConnect}
-          props={{ providerId: "anthropic", modelRef: "anthropic:claude-opus-5-5" }}
+          props={{
+            providerId: "anthropic",
+            modelRef: "anthropic:claude-opus-5-5",
+          }}
         />
       </Theme>,
     );
-    fireEvent.click(screen.getByRole("button", { name: /Use system browser/i }));
+    fireEvent.click(
+      screen.getByRole("button", { name: /Use system browser/i }),
+    );
     fireEvent.click(screen.getByRole("button", { name: "Cancel sign-in" }));
     expect(signal?.aborted).toBe(true);
     await waitFor(() => expect(screen.queryByText("cancelled")).toBeNull());
     expect(
-      screen.getByRole("button", { name: /Use system browser/i }).hasAttribute("disabled"),
+      screen
+        .getByRole("button", { name: /Use system browser/i })
+        .hasAttribute("disabled"),
     ).toBe(false);
   });
 
@@ -222,10 +268,14 @@ describe("ModelCredentialRequiredCard", () => {
         />
       </Theme>,
     );
-    fireEvent.click(screen.getByRole("button", { name: /Use system browser/i }));
+    fireEvent.click(
+      screen.getByRole("button", { name: /Use system browser/i }),
+    );
     await screen.findByText("Provider connected. You can start chatting.");
     fireEvent.click(screen.getByRole("button", { name: /GitHub Copilot/ }));
-    expect(screen.queryByText("Provider connected. You can start chatting.")).toBeNull();
+    expect(
+      screen.queryByText("Provider connected. You can start chatting."),
+    ).toBeNull();
     const connect = screen.getByRole("button", { name: /Use system browser/i });
     expect(connect.hasAttribute("disabled")).toBe(false);
     fireEvent.click(connect);
@@ -235,7 +285,10 @@ describe("ModelCredentialRequiredCard", () => {
 
   it("keeps a failed agent reconnect retryable", async () => {
     const chat = {
-      callMethod: vi.fn(async () => ({ isError: true, result: { error: "Sign-in was declined" } })),
+      callMethod: vi.fn(async () => ({
+        isError: true,
+        result: { error: "Sign-in was declined" },
+      })),
     };
     render(
       <Theme>
@@ -249,40 +302,63 @@ describe("ModelCredentialRequiredCard", () => {
         />
       </Theme>,
     );
-    fireEvent.click(screen.getByRole("button", { name: /Use system browser/i }));
-    await waitFor(() => expect(screen.getByText("Sign-in was declined")).toBeTruthy());
+    fireEvent.click(
+      screen.getByRole("button", { name: /Use system browser/i }),
+    );
+    await waitFor(() =>
+      expect(screen.getByText("Sign-in was declined")).toBeTruthy(),
+    );
     expect(screen.queryByText(/Provider connected/)).toBeNull();
   });
 
-  it("explains desktop-only subscription redirects on mobile and retains API-key setup", () => {
+  it("offers native Claude copy-code sign-in on mobile and retains API-key setup", () => {
     Object.assign(globalThis, { __vibestudioHostPlatform: "mobile" });
     try {
       render(
         <Theme>
           <ModelCredentialRequiredCard
             onConnect={vi.fn()}
-            props={{ providerId: "anthropic", modelRef: "anthropic:claude-opus-5-5" }}
+            props={{
+              providerId: "anthropic",
+              modelRef: "anthropic:claude-opus-5-5",
+            }}
           />
         </Theme>,
       );
-      expect(screen.getByText(/This subscription sign-in requires a desktop browser/)).toBeTruthy();
-      expect(screen.queryByRole("button", { name: /Use system browser/i })).toBeNull();
+      expect(
+        screen.queryByText(
+          /This subscription sign-in requires a desktop browser/,
+        ),
+      ).toBeNull();
+      expect(
+        screen.getByRole("button", { name: /Use system browser/i }),
+      ).toBeTruthy();
       fireEvent.click(screen.getByRole("button", { name: "API key" }));
-      expect(screen.getByRole("button", { name: /Enter API Key/i })).toBeTruthy();
+      expect(
+        screen.getByRole("button", { name: /Enter API Key/i }),
+      ).toBeTruthy();
     } finally {
-      delete (globalThis as { __vibestudioHostPlatform?: unknown }).__vibestudioHostPlatform;
+      delete (globalThis as { __vibestudioHostPlatform?: unknown })
+        .__vibestudioHostPlatform;
     }
   });
 
   it("switches the selected model before connecting credentials and persists best-effort", async () => {
-    const calls: Array<{ participantId: string; method: string; args: unknown }> = [];
+    const calls: Array<{
+      participantId: string;
+      method: string;
+      args: unknown;
+    }> = [];
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     const chat = {
-      callMethod: vi.fn(async (participantId: string, method: string, args: unknown) => {
-        calls.push({ participantId, method, args });
-        if (method === "persist_agent_model") throw new Error("approval denied");
-        return { ok: true };
-      }),
+      callMethod: vi.fn(
+        async (participantId: string, method: string, args: unknown) => {
+          calls.push({ participantId, method, args });
+          if (method === "persist_agent_model")
+            throw new Error("approval denied");
+          return { ok: true };
+        },
+      ),
     };
 
     render(
@@ -321,7 +397,9 @@ describe("ModelCredentialRequiredCard", () => {
     );
 
     fireEvent.click(screen.getByText("Anthropic"));
-    expect(screen.getByRole("button", { name: /Use system browser/i })).toBeTruthy();
+    expect(
+      screen.getByRole("button", { name: /Use system browser/i }),
+    ).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "API key" }));
     fireEvent.click(screen.getByRole("button", { name: /Enter API Key/i }));
 
