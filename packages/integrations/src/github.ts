@@ -194,12 +194,6 @@ export interface GitHubPublishOperationResolution {
       ];
 }
 
-function isClassicGitHubCredential(
-  credential: StoredCredentialSummary,
-): boolean {
-  return credential.metadata?.["providerKind"] === "classic-pat";
-}
-
 function targetNameForCredential(
   credential: StoredCredentialSummary,
 ): string | undefined {
@@ -264,7 +258,7 @@ export function validateGitHubPublishCredential(
         `it is missing ${missingBindings.join(" and ")} access. Reconnect with "${accessLabel}" access.`,
     );
   }
-  if (!isClassicGitHubCredential(credential)) {
+  if (!credential.scopes.includes("repo")) {
     const scopes = new Set(credential.scopes);
     const missingScopes = [
       "contents:write",

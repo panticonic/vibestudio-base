@@ -116,6 +116,25 @@ function jsonResponse(body: unknown, init: ResponseInit = {}): Response {
 }
 
 describe("createGitHubClient", () => {
+  it("accepts repository-scoped OAuth credentials after live account verification", async () => {
+    const { credentials, credential, stats } = makeMockEnv(() => jsonResponse({ login: "acme" }));
+    credential.scopes = ["gist", "read:org", "repo"];
+    credential.metadata = { providerId: "github", providerKind: "oauth" };
+    await expect(resolveGitHubPublishOperation(credentials, { owner: "acme", publication: "existing-repository" })).resolves.toMatchObject({ login: "acme", requiredCapabilities: ["github-api", "github-git-push"] });
+    expect(stats.fetchCalls).toHaveLength(1);
+    credential.scopes = ["read:org"];
+    await expect(resolveGitHubPublishOperation(credentials, { publication: "existing-repository" })).rejects.toThrow("contents:write");
+    expect(stats.fetchCalls).toHaveLength(1);
+  });
+
+  it("requires actual repository permissions even for classic PAT metadata", async () => {
+    const { credentials, credential, stats } = makeMockEnv(() => jsonResponse({ login: "acme" }));
+    credential.scopes = ["read:org"];
+    credential.metadata = { providerId: "github", providerKind: "classic-pat" };
+    await expect(resolveGitHubPublishOperation(credentials, { publication: "existing-repository" })).rejects.toThrow("contents:write");
+    expect(stats.fetchCalls).toHaveLength(0);
+  });
+
   it("accepts contents-write for an existing repository but requires administration for creation", async () => {
     const { credentials, credential, stats } = makeMockEnv(() => jsonResponse({ login: "acme" }));
     credential.scopes = ["metadata:read", "contents:write"];
