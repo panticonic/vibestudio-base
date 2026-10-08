@@ -101,5 +101,19 @@ protected main by themselves.
 For an external Git project, import the credential-free remote through the
 managed Git bridge, inspect its unpublished candidate, and publish only when
 authorized. Personal provides the optional `skills/onboarding` workflow; open
-that workspace for its guided account setup. For webhook receivers, use live capability docs and the owning unit's authority contract;
-credential storage is not a substitute for request verification.
+that workspace for its guided account setup.
+
+## Incoming webhooks
+
+Use the [runtime webhook lifecycle guide](../sandbox/RUNTIME_API.md#webhook-subscriptions)
+alongside live `webhooks` method docs and the owning unit's authority contract.
+The guide covers target discovery, request verification, secret rotation, and
+cleanup. Credential storage is not a substitute for request verification.
+
+Creating a subscription registers a receiver; it does not call that receiver.
+Delivery invokes the selected method only after an incoming request passes the
+configured verifier. For a temporary registration/rotation check, the guide
+uses a documented read-only method on the agent's own source and revokes the
+subscription in `finally`. A real integration needs its own delivery handler;
+do not substitute an arbitrary method or another source. Keep verifier and
+rotated secrets out of tool results and conversation messages.
