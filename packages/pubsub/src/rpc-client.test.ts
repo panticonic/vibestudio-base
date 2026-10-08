@@ -1224,24 +1224,80 @@ describe("connectViaRpc", () => {
       const observed = pending.catch((error) => error);
       try {
         await expect(iterator.return!()).resolves.toMatchObject({ done: true });
-        expect(await observed).toMatchObject({ message: "Channel event subscription returned" });
-      } finally { await client.close(); }
+        expect(await observed).toMatchObject({
+          message: "Channel event subscription returned",
+        });
+      } finally {
+        await client.close();
+      }
+    });
+
+    it("joins cancellation with a native AbortController without modern reason APIs", async () => {
+      const OriginalAbortController = globalThis.AbortController;
+      // Model the older native surface, including a signal without the modern methods.
+      const LegacyController = class {
+        private controller = new OriginalAbortController();
+        signal = {
+          get aborted() {
+            return false;
+          },
+          addEventListener: this.controller.signal.addEventListener.bind(
+            this.controller.signal,
+          ),
+          removeEventListener: this.controller.signal.removeEventListener.bind(
+            this.controller.signal,
+          ),
+        };
+        constructor() {
+          Object.defineProperty(this.signal, "aborted", {
+            get: () => this.controller.signal.aborted,
+          });
+        }
+        abort() {
+          this.controller.abort();
+        }
+      };
+      const client = connectViaRpc({ rpc: mockRpc as any, channel: CHANNEL });
+      vi.stubGlobal("AbortController", LegacyController);
+      const iterator = client.events({ includeReplay: true });
+      const pending = iterator.next();
+      const observed = pending.catch((error) => error);
+      try {
+        await expect(iterator.return!()).resolves.toMatchObject({ done: true });
+        expect(await observed).toMatchObject({
+          message: "Channel event subscription returned",
+        });
+      } finally {
+        vi.stubGlobal("AbortController", OriginalAbortController);
+        await client.close();
+      }
     });
 
     it("propagates event cancellation without closing the shared channel client", async () => {
       const client = connectViaRpc({ rpc: mockRpc as any, channel: CHANNEL });
       const caller = new AbortController();
-      const iterator = client.events({ includeReplay: true, signal: caller.signal });
+      const iterator = client.events({
+        includeReplay: true,
+        signal: caller.signal,
+      });
       const pending = iterator.next();
       const failure = new Error("view detached");
       const rejected = expect(pending).rejects.toBe(failure);
       try {
         caller.abort(failure);
         await rejected;
-        emit({ kind: "ready", contextId: "ctx", totalCount: 0, envelopeCount: 0 });
+        emit({
+          kind: "ready",
+          contextId: "ctx",
+          totalCount: 0,
+          envelopeCount: 0,
+        });
         await client.ready();
         expect(client.connected).toBe(true);
-      } finally { await iterator.return?.(); await client.close(); }
+      } finally {
+        await iterator.return?.();
+        await client.close();
+      }
     });
 
     it("seeds late event subscribers with streamed replay after ready", async () => {

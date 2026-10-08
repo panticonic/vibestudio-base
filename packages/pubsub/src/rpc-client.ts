@@ -2826,10 +2826,23 @@ export function connectViaRpc<
     return true;
   }
 
-  function events(evtOptions?: EventStreamOptions): AsyncIterableIterator<EventStreamItem> {
+  function events(
+    evtOptions?: EventStreamOptions,
+  ): AsyncIterableIterator<EventStreamItem> {
     const source = eventsFanout.subscribe();
     const lifetime = new AbortController();
     const signal = lifetime.signal;
+    // The subscription owns its terminal failure. AbortSignal only cancels the
+    // readiness wait; native clients do not all expose abort reasons.
+    let cancellation: { error: unknown } | undefined;
+    const assertActive = () => {
+      if (cancellation) throw cancellation.error;
+    };
+    const cancel = (error: unknown) => {
+      if (cancellation) return;
+      cancellation = { error };
+      lifetime.abort();
+    };
     const includeReplay = evtOptions?.includeReplay ?? false;
     const includeSignals = evtOptions?.includeSignals ?? false;
     const cancelSource = () => {
@@ -2837,7 +2850,12 @@ export function connectViaRpc<
     };
     const cancelCaller = () => {
       evtOptions?.signal?.removeEventListener("abort", cancelCaller);
-      lifetime.abort(evtOptions?.signal?.reason);
+      const caller = evtOptions?.signal;
+      cancel(
+        caller && "reason" in caller
+          ? caller.reason
+          : new PubSubError("event subscription aborted", "connection"),
+      );
     };
     const cleanup = async () => {
       signal.removeEventListener("abort", cancelSource);
@@ -2850,28 +2868,28 @@ export function connectViaRpc<
 
     const generator = (async function* () {
       try {
-        signal.throwIfAborted();
+        assertActive();
         if (includeReplay && replayMode !== "skip") {
           if (!replayComplete) {
             try {
               await ready(signal);
             } catch {
-              signal.throwIfAborted();
+              assertActive();
             }
           }
           for (const item of replayEvents) {
-            signal.throwIfAborted();
+            assertActive();
             if (!includeSignals && item.delivery === "signal") continue;
             yield item;
           }
         }
         for await (const event of source) {
-          signal.throwIfAborted();
+          assertActive();
           if (!includeSignals && event.delivery === "signal") continue;
           if (!includeReplay && event.phase === "replay") continue;
           yield event;
         }
-        signal.throwIfAborted();
+        assertActive();
       } finally {
         await cleanup();
       }
@@ -2884,7 +2902,7 @@ export function connectViaRpc<
       },
       next: () => generator.next(),
       async return(value) {
-        lifetime.abort(new Error("Channel event subscription returned"));
+        cancel(new Error("Channel event subscription returned"));
         await source.return?.();
         try {
           return await generator.return(value);
@@ -2893,7 +2911,7 @@ export function connectViaRpc<
         }
       },
       async throw(error) {
-        lifetime.abort(error);
+        cancel(error);
         await source.return?.();
         try {
           return await generator.throw(error);
@@ -3245,7 +3263,11 @@ export async function initializeConversation(options: {
     ...options,
     reviewRpc: options.rpc,
   });
-  options.signal?.throwIfAborted();
+  if (options.signal?.aborted) {
+    throw "reason" in options.signal
+      ? options.signal.reason
+      : new PubSubError("conversation initialization aborted", "connection");
+  }
   return options.rpc.call<ChannelConfig>(
     target,
     "initializeConversation",
