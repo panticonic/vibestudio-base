@@ -69,6 +69,28 @@ describe("runtimeSurface manifests", () => {
     );
   });
 
+  it("supports await and JSON serialization without weakening ordinary typo diagnostics", async () => {
+    const wrapped = helpfulNamespace("workspace", { list: async () => [] });
+    expect(await Promise.resolve(wrapped)).toBe(wrapped);
+    expect(JSON.stringify(wrapped)).toBe("{}");
+    expect(() => (wrapped as Record<string, unknown>)["listSources"]).toThrow(
+      "workspace.listSources is not available",
+    );
+  });
+
+  it("preserves declared then and toJSON members", async () => {
+    const wrapped = helpfulNamespace("runtime", {
+      then(resolve: (value: string) => void) {
+        resolve("declared then");
+      },
+      toJSON() {
+        return { serialized: true };
+      },
+    });
+    await expect(Promise.resolve(wrapped)).resolves.toBe("declared then");
+    expect(JSON.stringify(wrapped)).toBe('{"serialized":true}');
+  });
+
   it("createHostedRuntime produces exactly the eval-importable surface (panel ≡ worker ≡ eval core)", () => {
     const rt = createHostedRuntime(fakeHost());
     expect(new Set(Object.keys(rt))).toEqual(
