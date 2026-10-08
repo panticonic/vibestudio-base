@@ -1,10 +1,7 @@
 import { useState } from "react";
 import { Box, Button, Callout, Card, Flex, Heading, Text } from "@radix-ui/themes";
 import { ArrowDownIcon, ExclamationTriangleIcon, LightningBoltIcon } from "@radix-ui/react-icons";
-import {
-  isModelAgentLaunchable,
-  LOCAL_FALLBACK_MODEL_REF,
-} from "@workspace/model-catalog/catalog";
+import { isModelAgentLaunchable, LOCAL_FALLBACK_MODEL_REF } from "@workspace/model-catalog/catalog";
 import { useChatContext } from "../context/ChatContext";
 import { AgentConfigForm } from "./AgentConfigForm";
 import { ModelSetupStatus } from "./ModelSetupStatus";
@@ -36,13 +33,7 @@ export function AgentSetupInline() {
     modelCatalog?.providers.find((provider) => provider.id === selectedModel?.provider)?.label ??
     selectedModel?.provider ??
     "";
-  const needsInstall =
-    selectedModel?.provider === "local" &&
-    selectedModel.availability.state === "needs-setup" &&
-    selectedModel.availability.detail === "not-installed" &&
-    !!onInstallLocalModel;
   const canStart = isModelAgentLaunchable(selectedModel);
-  const hasInjectedPrompt = queued.some((message) => message.tier === "secondary");
   const showStart = modelSelectionRequired && queued.length > 0;
 
   const installSelectedLocalModel = async () => {
@@ -77,29 +68,22 @@ export function AgentSetupInline() {
         justifyContent: "safe flex-end",
       }}
     >
-      <Flex direction="column" gap="2" align="center" style={{ width: "min(540px, 100%)", flexShrink: 0 }}>
+      <Flex direction="column" gap="2" align="center" style={{ width: "100%", flexShrink: 0 }}>
         <Card
           className="chat-surface-card agent-setup-card"
           size="3"
           variant="surface"
           style={{ width: "100%" }}
         >
-          <Flex direction="column" gap="4">
-            <Flex align="start" gap="3">
+          <Flex direction="column" gap="3">
+            <Flex align="center" gap="2">
               <Box className="agent-setup-heading-icon">
                 <LightningBoltIcon width="17" height="17" />
               </Box>
               <Flex direction="column" gap="1">
-                <Heading size="4">
-                  {modelSelectionRequired ? "Choose how to run your agent" : "Agent settings"}
+                <Heading size="3">
+                  {modelSelectionRequired ? "Choose your agent" : "Agent settings"}
                 </Heading>
-                <Text size="2" color="gray">
-                  {modelSelectionRequired
-                    ? hasInjectedPrompt
-                      ? "Your opening prompt is queued. Choose a model and finish setup before onboarding begins."
-                      : "Your message is queued. Choose a model and finish setup before your agent begins."
-                    : "Choose the model and autonomy for your first agent."}
-                </Text>
               </Flex>
             </Flex>
             {setupError ? (
@@ -125,7 +109,16 @@ export function AgentSetupInline() {
               onOpenServerLog={onOpenLocalModelsLog}
               onConnectModelProvider={onConnectModelProvider}
             />
-            {modelSelectionRequired && selectedModel ? (
+            {modelSelectionRequired &&
+            selectedModel &&
+            selectedModel.availability.state !== "ready" &&
+            selectedModel.availability.state !== "startable" &&
+            !(
+              selectedModel.provider !== "local" &&
+              selectedModel.connectable &&
+              onConnectModelProvider &&
+              ["needs-setup", "error"].includes(selectedModel.availability.state)
+            ) ? (
               <ModelSetupStatus
                 model={selectedModel}
                 providerLabel={selectedProvider}
@@ -140,7 +133,7 @@ export function AgentSetupInline() {
                   onOpenLocalModelsLog && selectedModel.provider === "local"
                     ? () =>
                         onOpenLocalModelsLog(
-                          selectedModel.ref === LOCAL_FALLBACK_MODEL_REF ? "utility" : "main"
+                          selectedModel.ref === LOCAL_FALLBACK_MODEL_REF ? "utility" : "main",
                         )
                     : undefined
                 }
@@ -151,23 +144,14 @@ export function AgentSetupInline() {
                 {selectedModel?.provider === "local" ? "Start with local model" : "Start agent"}
               </Button>
             )}
-            {showStart && selectedModel && !canStart && !needsInstall && (
-              <Text size="1" color={selectedModel.availability.state === "error" ? "red" : "gray"}>
-                {selectedModel.availability.state === "downloading"
-                  ? "Start unlocks automatically when the download and installation finish."
-                  : selectedModel.availability.state === "starting"
-                    ? "Start unlocks when the model reports ready."
-                    : selectedModel.availability.state === "needs-setup"
-                      ? `Complete ${selectedProvider} setup above, or choose another model.`
-                      : "Resolve the model error above, or choose another model."}
-              </Text>
-            )}
           </Flex>
         </Card>
         {!modelSelectionRequired && (
           <Flex align="center" gap="1">
             <Text size="2" color="gray">
-              {canStart ? "Type a message below to start" : "Connect your provider above, then send a message to start"}
+              {canStart
+                ? "Type a message below to start"
+                : "Connect your provider above, then send a message to start"}
             </Text>
             <ArrowDownIcon width="14" height="14" style={{ color: "var(--gray-10)" }} />
           </Flex>

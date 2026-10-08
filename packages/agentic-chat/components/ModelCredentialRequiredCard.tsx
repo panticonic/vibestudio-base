@@ -53,7 +53,7 @@ export default function ModelCredentialRequiredCard({
     method: string,
     browser: "internal" | "external",
     signal: AbortSignal,
-    configuration?: Record<string, string>
+    configuration?: Record<string, string>,
   ) => Promise<void>;
 }) {
   const providerId = props.providerId ?? "";
@@ -71,7 +71,7 @@ export default function ModelCredentialRequiredCard({
       ? props.providerOptions
       : [fallbackOption];
   const [selectedModelRef, setSelectedModelRef] = useState(
-    providerOptions[0]?.modelRef || currentModelRef || providerId
+    providerOptions[0]?.modelRef || currentModelRef || providerId,
   );
   const selectedOption =
     providerOptions.find((option) => option.modelRef === selectedModelRef) ??
@@ -82,7 +82,7 @@ export default function ModelCredentialRequiredCard({
   const definition = getProviderConnectPreset(selectedProviderId);
   const methods = definition?.methods ?? [];
   const [configuration, setConfiguration] = useState<Record<string, string>>(
-    props.configuration ?? {}
+    props.configuration ?? {},
   );
   const [selectedMethodId, setSelectedMethodId] = useState<string | undefined>(props.method);
   const selectedMethod = methods.find((method) => method.id === selectedMethodId) ?? methods[0];
@@ -115,7 +115,7 @@ export default function ModelCredentialRequiredCard({
           selectedMethod!.id,
           openMode,
           controller.signal,
-          configuration
+          configuration,
         );
         if (!controller.signal.aborted && operation.current === controller) setStatus("done");
         return;
@@ -157,7 +157,7 @@ export default function ModelCredentialRequiredCard({
         };
         if (response.isError || response.error || response.result?.error)
           throw new Error(
-            response.error ?? response.result?.error ?? "Provider connection failed. Try again."
+            response.error ?? response.result?.error ?? "Provider connection failed. Try again.",
           );
       }
       if (operation.current === controller) setStatus("done");
@@ -183,9 +183,6 @@ export default function ModelCredentialRequiredCard({
     !workspaceBrowserAvailable && selectedMethod?.redirectPolicy === "loopback-required";
   const unsupported = !selectedFlow;
   const apiKeyFlow = selectedFlow?.type === "api-key";
-  const browserChoicePrompt = reconnectReason
-    ? "Choose the browser that is signed in to the account you want to reconnect. If neither is signed in, pick the one you want to use."
-    : "Choose the browser that is already signed in to the account you want to connect. If neither is signed in, pick the one you want to use.";
   const internalBrowserLabel = reconnectReason
     ? "Refresh in workspace browser"
     : "Use workspace browser";
@@ -200,16 +197,18 @@ export default function ModelCredentialRequiredCard({
           : "Enter API Key";
 
   return (
-    <Card variant="surface" size="2" role="region" aria-label="Connect a model provider">
-      <Flex direction="column" gap="3">
+    <Card
+      className="agent-provider-connect"
+      variant="surface"
+      size="1"
+      role="region"
+      aria-label="Connect a model provider"
+    >
+      <Flex direction="column" gap="2">
         <Box>
           <Text as="div" size="2" weight="medium">
             {reconnectReason ? "Reconnect " : "Connect "}
             {modelProviderLabel(selectedProviderId)}
-          </Text>
-          <Text as="div" size="1" color="gray" mt="1">
-            Connect once to use this provider’s models. Your credentials stay in the secure
-            credential store.
           </Text>
         </Box>
         {providerOptions.length > 1 ? (
@@ -256,7 +255,10 @@ export default function ModelCredentialRequiredCard({
               value={configuration[field.name] ?? ""}
               disabled={busy}
               onChange={(event) =>
-                setConfiguration({ ...configuration, [field.name]: event.target.value })
+                setConfiguration({
+                  ...configuration,
+                  [field.name]: event.target.value,
+                })
               }
             />
           </label>
@@ -356,63 +358,35 @@ export default function ModelCredentialRequiredCard({
             </Button>
           </Flex>
         ) : (
-          <Flex direction="column" gap="2">
-            <Text as="div" size="1" color="gray">
-              {browserChoicePrompt}
-            </Text>
-            <Flex direction="column" gap="2">
-              {workspaceBrowserAvailable ? (
-                <Button
-                  size="1"
-                  onClick={() => void startCredential("internal")}
-                  disabled={busy || unsupported || status === "done"}
-                  style={{
-                    alignItems: "flex-start",
-                    height: "auto",
-                    justifyContent: "flex-start",
-                    paddingBottom: 8,
-                    paddingTop: 8,
-                    textAlign: "left",
-                    whiteSpace: "normal",
-                  }}
-                >
-                  {busy && activeOpenMode === "internal" ? <Spinner size="1" /> : null}
-                  <Flex direction="column" gap="1" align="start">
-                    <Text as="span" size="1" weight="medium">
-                      {internalBrowserLabel}
-                    </Text>
-                    <Text as="span" size="1">
-                      Choose this when the account is signed in inside this workspace.
-                    </Text>
-                  </Flex>
-                </Button>
-              ) : null}
+          <Flex gap="2" wrap="wrap" align="center">
+            {workspaceBrowserAvailable ? (
               <Button
                 size="1"
-                variant="soft"
-                onClick={() => void startCredential("external")}
+                title="Sign in using the browser inside this workspace."
+                onClick={() => void startCredential("internal")}
                 disabled={busy || unsupported || status === "done"}
-                style={{
-                  alignItems: "flex-start",
-                  height: "auto",
-                  justifyContent: "flex-start",
-                  paddingBottom: 8,
-                  paddingTop: 8,
-                  textAlign: "left",
-                  whiteSpace: "normal",
-                }}
               >
-                {busy && activeOpenMode === "external" ? <Spinner size="1" /> : null}
-                <Flex direction="column" gap="1" align="start">
-                  <Text as="span" size="1" weight="medium">
-                    {externalBrowserLabel}
-                  </Text>
-                  <Text as="span" size="1" color="gray">
-                    Choose this when your regular browser already has the right account.
-                  </Text>
-                </Flex>
+                {busy && activeOpenMode === "internal" ? <Spinner size="1" /> : null}
+                {internalBrowserLabel}
               </Button>
-            </Flex>
+            ) : null}
+            <Button
+              size="1"
+              variant="soft"
+              title="Sign in using your regular browser."
+              onClick={() => void startCredential("external")}
+              disabled={busy || unsupported || status === "done"}
+            >
+              {busy && activeOpenMode === "external" ? <Spinner size="1" /> : null}
+              {externalBrowserLabel}
+            </Button>
+            <details className="agent-config-details">
+              <summary>Sign-in help</summary>
+              <Text as="p" size="1" color="gray">
+                Choose the browser with the account you want to use, or sign in to either. Your
+                credentials stay in the secure credential store.
+              </Text>
+            </details>
           </Flex>
         )}
       </Flex>

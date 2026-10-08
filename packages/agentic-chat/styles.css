@@ -1814,7 +1814,7 @@
    exists. The accent glyph signals "this is going to do something on send". */
 .agent-setup-card {
   border: 1px solid var(--agentic-border);
-  --card-padding: var(--space-4);
+  --card-padding: var(--space-3);
 }
 .agent-setup-heading-icon {
   align-items: center;
@@ -1823,9 +1823,9 @@
   color: var(--accent-11);
   display: inline-flex;
   flex: 0 0 auto;
-  height: 36px;
+  height: 28px;
   justify-content: center;
-  width: 36px;
+  width: 28px;
 }
 .first-agent-setup-status-icon {
   align-items: center;
@@ -1942,9 +1942,40 @@
 .agent-config-form {
   min-inline-size: 0;
 }
-.agent-effort-labels {
+.agent-model-selectors {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr));
+  gap: var(--space-3);
+}
+.agent-model-selectors > * {
+  min-width: 0;
+}
+.agent-config-tuning:empty {
+  display: none;
+}
+.agent-config-check-row {
+  min-height: var(--space-6);
+}
+.agent-config-details {
+  color: var(--gray-11);
+  font-size: var(--font-size-1);
+}
+.agent-config-details summary {
+  cursor: pointer;
+}
+.agent-config-details[open] > :not(summary) {
+  margin-top: var(--space-2);
+}
+.agent-provider-connect > div {
+  display: flex;
+  flex-direction: row;
   flex-wrap: wrap;
-  gap: var(--space-1);
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+}
+.agent-provider-connect [role="alert"],
+.agent-provider-connect [role="status"] {
+  flex-basis: 100%;
 }
 @media (pointer: coarse) {
   .agent-config-form input[type="range"],

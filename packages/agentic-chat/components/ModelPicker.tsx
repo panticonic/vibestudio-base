@@ -1,4 +1,3 @@
-import { getProviderConnectPreset } from "@workspace/model-catalog/providerConnect";
 /**
  * Two-step provider/model selection for agent setup.
  *
@@ -13,7 +12,6 @@ import {
   Badge,
   Box,
   Flex,
-  Progress,
   Select,
   Spinner,
   Text,
@@ -317,94 +315,65 @@ export function ModelPicker({
       : undefined;
 
   return (
-    <Flex direction="column" gap="3">
-      <Flex direction="column" gap="1">
-        <PickerLabel>Provider</PickerLabel>
-        <Select.Root
-          value={selectedProvider?.id ?? ""}
-          onValueChange={handleProviderChange}
-        >
-          <Select.Trigger aria-label="Provider" style={{ width: "100%" }} />
-          <Select.Content position="popper">
-            {providers.map((provider) => (
-              <Select.Item key={provider.id} value={provider.id}>
-                {provider.label}
-                {provider.id === recommendedProviderId ? " — Recommended" : ""}
-                {provider.id === LOCAL_PROVIDER_ID ? " — Experimental" : models.some((model) => model.provider === provider.id && model.availability.state === "ready") ? " — Connected" : " — Not connected"}
-              </Select.Item>
-            ))}
-          </Select.Content>
-        </Select.Root>
-        <Text size="1" color="gray">
-          {selectedProvider?.id === recommendedProviderId
-            ? "Recommended for this workspace"
-            : selectedProvider?.id === LOCAL_PROVIDER_ID
-              ? "Runs on this device; local inference is experimental"
-              : getProviderConnectPreset(selectedProvider?.id ?? "")?.methods.map((method) => method.label).join(" · ") || "Choose where model requests are handled"}
-        </Text>
-      </Flex>
+    <Flex direction="column" gap="2">
+      <div className="agent-model-selectors">
+        <Flex direction="column" gap="1">
+          <PickerLabel>Provider</PickerLabel>
+          <Select.Root value={selectedProvider?.id ?? ""} onValueChange={handleProviderChange}>
+            <Select.Trigger aria-label="Provider" style={{ width: "100%" }}>
+              {selectedProvider?.label}
+            </Select.Trigger>
+            <Select.Content position="popper">
+              {providers.map((provider) => (
+                <Select.Item key={provider.id} value={provider.id}>
+                  {provider.label}
+                  {provider.id === recommendedProviderId ? " — Recommended" : ""}
+                  {provider.id === LOCAL_PROVIDER_ID
+                    ? " — Experimental"
+                    : models.some(
+                          (model) =>
+                            model.provider === provider.id && model.availability.state === "ready",
+                        )
+                      ? " — Connected"
+                      : " — Not connected"}
+                </Select.Item>
+              ))}
+            </Select.Content>
+          </Select.Root>
+        </Flex>
 
-      <Flex direction="column" gap="1">
-        <PickerLabel>Model</PickerLabel>
-        <Select.Root value={selectedModel?.ref ?? ""} onValueChange={onChange}>
-          <Select.Trigger aria-label="Model" style={{ width: "100%" }} />
-          <Select.Content position="popper">
-            {providerModels.map((model) => (
-              <Select.Item key={model.ref} value={model.ref}>
-                {model.name}
-                {model.ref === providerRecommendation ? " — Recommended" : ""}
-                {!isModelUsable(model)
-                  ? ` — ${statusLabel(availabilityOf(model))}`
-                  : ""}
-              </Select.Item>
-            ))}
-          </Select.Content>
-        </Select.Root>
-      </Flex>
+        <Flex direction="column" gap="1">
+          <PickerLabel>Model</PickerLabel>
+          <Select.Root value={selectedModel?.ref ?? ""} onValueChange={onChange}>
+            <Select.Trigger aria-label="Model" style={{ width: "100%" }}>
+              {selectedModel?.name}
+            </Select.Trigger>
+            <Select.Content position="popper">
+              {providerModels.map((model) => (
+                <Select.Item key={model.ref} value={model.ref}>
+                  {model.name}
+                  {model.ref === providerRecommendation ? " — Recommended" : ""}
+                  {!isModelUsable(model) ? ` — ${statusLabel(availabilityOf(model))}` : ""}
+                </Select.Item>
+              ))}
+            </Select.Content>
+          </Select.Root>
+        </Flex>
+      </div>
 
       {selectedModel && selectedAvailability ? (
-        <Box
-          p="3"
-          style={{
-            borderRadius: "var(--radius-3)",
-            background: "var(--gray-a2)",
-            border: "1px solid var(--gray-a4)",
-          }}
-        >
-          <Flex direction="column" gap="2">
-            <Flex align="center" justify="between" gap="3">
-              <Flex align="center" gap="2" style={{ minWidth: 0 }}>
-                <StatusDot
-                  availability={selectedAvailability}
-                  onOpenLog={selectedOpenLog}
-                />
-                <Text size="2" weight="medium" truncate>
-                  {selectedModel.name}
-                </Text>
-              </Flex>
-              <Badge
-                size="1"
-                variant="soft"
-                color={
-                  selectedAvailability.state === "ready"
-                    ? "green"
-                    : selectedAvailability.state === "error"
-                      ? "red"
-                      : "amber"
-                }
-              >
-                {selectedStatus}
-              </Badge>
-            </Flex>
-            <ModelChips model={selectedModel} />
-            {selectedAvailability.state === "downloading" ? (
-              <Progress
-                value={Math.round(selectedAvailability.progress * 100)}
-                size="1"
-              />
-            ) : null}
+        <Flex gap="3" align="center" wrap="wrap">
+          <Flex gap="2" align="center">
+            <StatusDot availability={selectedAvailability} onOpenLog={selectedOpenLog} />
+            <Text size="1" color={selectedAvailability.state === "error" ? "red" : "gray"}>
+              {selectedStatus}
+            </Text>
           </Flex>
-        </Box>
+          <details className="agent-config-details">
+            <summary>Model details</summary>
+            <ModelChips model={selectedModel} />
+          </details>
+        </Flex>
       ) : null}
     </Flex>
   );

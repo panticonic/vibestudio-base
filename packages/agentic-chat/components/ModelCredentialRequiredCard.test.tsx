@@ -7,7 +7,7 @@ import { describe, expect, it, vi } from "vitest";
 import ModelCredentialRequiredCard from "./ModelCredentialRequiredCard";
 
 describe("ModelCredentialRequiredCard", () => {
-  it("explains workspace and system browser choices for initial OAuth credential setup", () => {
+  it("offers browser choices with optional sign-in help", () => {
     const chat = {
       callMethod: vi.fn(async () => ({ ok: true })),
     };
@@ -24,22 +24,15 @@ describe("ModelCredentialRequiredCard", () => {
             flow: { type: "oauth2-auth-code-pkce" },
           }}
         />
-      </Theme>
+      </Theme>,
     );
 
-    expect(
-      screen.getByText(
-        "Choose the browser that is already signed in to the account you want to connect. If neither is signed in, pick the one you want to use."
-      )
-    ).toBeTruthy();
     expect(screen.getByRole("button", { name: /Use workspace browser/i })).toBeTruthy();
-    expect(
-      screen.getByText("Choose this when the account is signed in inside this workspace.")
-    ).toBeTruthy();
     expect(screen.getByRole("button", { name: /Use system browser/i })).toBeTruthy();
-    expect(
-      screen.getByText("Choose this when your regular browser already has the right account.")
-    ).toBeTruthy();
+    const help = screen.getByText("Sign-in help");
+    expect(help.closest("details")?.open).toBe(false);
+    fireEvent.click(help);
+    expect(help.closest("details")?.open).toBe(true);
   });
 
   it("uses refresh-specific browser labels when reconnecting credentials", () => {
@@ -60,14 +53,9 @@ describe("ModelCredentialRequiredCard", () => {
             reason: "Provided authentication token is expired. Please try signing in again.",
           }}
         />
-      </Theme>
+      </Theme>,
     );
 
-    expect(
-      screen.getByText(
-        "Choose the browser that is signed in to the account you want to reconnect. If neither is signed in, pick the one you want to use."
-      )
-    ).toBeTruthy();
     expect(screen.getByRole("button", { name: /Refresh in workspace browser/i })).toBeTruthy();
     expect(screen.getByRole("button", { name: /Refresh in system browser/i })).toBeTruthy();
   });
@@ -86,7 +74,7 @@ describe("ModelCredentialRequiredCard", () => {
               flow: { type: "model-provider-oauth" },
             }}
           />
-        </Theme>
+        </Theme>,
       );
 
       expect(screen.getByRole("button", { name: /Use system browser/i })).toBeTruthy();
@@ -110,7 +98,7 @@ describe("ModelCredentialRequiredCard", () => {
             flow: { type: "oauth2-auth-code-pkce" },
           }}
         />
-      </Theme>
+      </Theme>,
     );
     expect(screen.getByRole("button", { name: "Claude Pro / Max" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "API key" })).toBeTruthy();
@@ -123,8 +111,8 @@ describe("ModelCredentialRequiredCard", () => {
           providerId: "anthropic",
           modelRef: "anthropic:claude-opus-5-5",
           browserOpenMode: "external",
-        })
-      )
+        }),
+      ),
     );
   });
 
@@ -138,7 +126,7 @@ describe("ModelCredentialRequiredCard", () => {
             onConnect={onConnect}
             props={{ providerId, modelRef: `${providerId}:model` }}
           />
-        </Theme>
+        </Theme>,
       );
       fireEvent.click(screen.getByRole("button", { name: /Use system browser/i }));
       await waitFor(() =>
@@ -147,11 +135,11 @@ describe("ModelCredentialRequiredCard", () => {
           "subscription",
           "external",
           expect.any(AbortSignal),
-          {}
-        )
+          {},
+        ),
       );
       expect(screen.getByText("Provider connected. You can start chatting.")).toBeTruthy();
-    }
+    },
   );
 
   it("passes account configuration to secure API-key setup", async () => {
@@ -165,7 +153,7 @@ describe("ModelCredentialRequiredCard", () => {
             modelRef: "azure-openai-responses:gpt-4",
           }}
         />
-      </Theme>
+      </Theme>,
     );
     fireEvent.change(screen.getByRole("textbox", { name: "Azure OpenAI endpoint" }), {
       target: { value: "https://resource.openai.azure.com/openai/v1" },
@@ -177,8 +165,8 @@ describe("ModelCredentialRequiredCard", () => {
         "api-key",
         "internal",
         expect.any(AbortSignal),
-        { ENDPOINT: "https://resource.openai.azure.com/openai/v1" }
-      )
+        { ENDPOINT: "https://resource.openai.azure.com/openai/v1" },
+      ),
     );
   });
 
@@ -188,9 +176,9 @@ describe("ModelCredentialRequiredCard", () => {
       async (_model: string, _method: string, _browser: string, next: AbortSignal) => {
         signal = next;
         await new Promise<void>((_resolve, reject) =>
-          next.addEventListener("abort", () => reject(new Error("cancelled")), { once: true })
+          next.addEventListener("abort", () => reject(new Error("cancelled")), { once: true }),
         );
-      }
+      },
     );
     render(
       <Theme>
@@ -198,14 +186,14 @@ describe("ModelCredentialRequiredCard", () => {
           onConnect={onConnect}
           props={{ providerId: "anthropic", modelRef: "anthropic:claude-opus-5-5" }}
         />
-      </Theme>
+      </Theme>,
     );
     fireEvent.click(screen.getByRole("button", { name: /Use system browser/i }));
     fireEvent.click(screen.getByRole("button", { name: "Cancel sign-in" }));
     expect(signal?.aborted).toBe(true);
     await waitFor(() => expect(screen.queryByText("cancelled")).toBeNull());
     expect(
-      screen.getByRole("button", { name: /Use system browser/i }).hasAttribute("disabled")
+      screen.getByRole("button", { name: /Use system browser/i }).hasAttribute("disabled"),
     ).toBe(false);
   });
 
@@ -219,12 +207,20 @@ describe("ModelCredentialRequiredCard", () => {
             providerId: "anthropic",
             modelRef: "anthropic:claude-opus-5-5",
             providerOptions: [
-              { providerId: "anthropic", providerLabel: "Claude", modelRef: "anthropic:claude-opus-5-5" },
-              { providerId: "github-copilot", providerLabel: "GitHub Copilot", modelRef: "github-copilot:gpt-6-sol" },
+              {
+                providerId: "anthropic",
+                providerLabel: "Claude",
+                modelRef: "anthropic:claude-opus-5-5",
+              },
+              {
+                providerId: "github-copilot",
+                providerLabel: "GitHub Copilot",
+                modelRef: "github-copilot:gpt-6-sol",
+              },
             ],
           }}
         />
-      </Theme>
+      </Theme>,
     );
     fireEvent.click(screen.getByRole("button", { name: /Use system browser/i }));
     await screen.findByText("Provider connected. You can start chatting.");
@@ -251,7 +247,7 @@ describe("ModelCredentialRequiredCard", () => {
             agentParticipantId: "agent",
           }}
         />
-      </Theme>
+      </Theme>,
     );
     fireEvent.click(screen.getByRole("button", { name: /Use system browser/i }));
     await waitFor(() => expect(screen.getByText("Sign-in was declined")).toBeTruthy());
@@ -267,7 +263,7 @@ describe("ModelCredentialRequiredCard", () => {
             onConnect={vi.fn()}
             props={{ providerId: "anthropic", modelRef: "anthropic:claude-opus-5-5" }}
           />
-        </Theme>
+        </Theme>,
       );
       expect(screen.getByText(/This subscription sign-in requires a desktop browser/)).toBeTruthy();
       expect(screen.queryByRole("button", { name: /Use system browser/i })).toBeNull();
@@ -321,7 +317,7 @@ describe("ModelCredentialRequiredCard", () => {
             ],
           }}
         />
-      </Theme>
+      </Theme>,
     );
 
     fireEvent.click(screen.getByText("Anthropic"));

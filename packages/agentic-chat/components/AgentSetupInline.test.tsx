@@ -52,14 +52,14 @@ describe("AgentSetupInline", () => {
     render(
       <Theme>
         <AgentSetupInline />
-      </Theme>
+      </Theme>,
     );
 
-    expect(screen.getByRole("heading", { name: "Choose how to run your agent" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Choose your agent" })).toBeTruthy();
     expect(screen.getAllByText("GPT-5.6 Sol").length).toBeGreaterThan(0);
     expect(screen.getByRole("combobox", { name: "Provider" })).toBeTruthy();
     expect(screen.getByRole("combobox", { name: "Model" })).toBeTruthy();
-    expect(screen.getByText("Recommended for this workspace")).toBeTruthy();
+    expect(screen.queryByText("Recommended for this workspace")).toBeNull();
     expect(screen.queryByText(/show|hide/i)).toBeNull();
     expect(screen.queryByText(/connect gpt codex/i)).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: /Use system browser/i }));

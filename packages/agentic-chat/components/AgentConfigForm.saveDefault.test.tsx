@@ -2,14 +2,24 @@
 
 import React from "react";
 import { act, render, screen, fireEvent } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { beforeAll, afterAll, describe, expect, it, vi } from "vitest";
 import { Theme } from "@radix-ui/themes";
-import {
-  AgentConfigForm,
-  configForSelectedModel,
-  type AgentConfigDraft,
-} from "./AgentConfigForm";
+import { AgentConfigForm, configForSelectedModel, type AgentConfigDraft } from "./AgentConfigForm";
 import type { ModelCatalog } from "@workspace/agentic-core";
+
+// jsdom does not implement the browser scrolling API used by Radix Select.
+const scrollIntoView = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "scrollIntoView");
+beforeAll(() =>
+  Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
+    configurable: true,
+    value: vi.fn(),
+  }),
+);
+afterAll(() => {
+  if (scrollIntoView)
+    Object.defineProperty(HTMLElement.prototype, "scrollIntoView", scrollIntoView);
+  else delete (HTMLElement.prototype as Partial<HTMLElement>).scrollIntoView;
+});
 
 const catalog = {
   models: [
@@ -72,7 +82,7 @@ function renderForm(props: Partial<React.ComponentProps<typeof AgentConfigForm>>
   const utils = render(
     <Theme>
       <AgentConfigForm catalog={catalog} value={value} onChange={onChange} {...props} />
-    </Theme>
+    </Theme>,
   );
   return { ...utils, onChange };
 }
@@ -80,18 +90,18 @@ function renderForm(props: Partial<React.ComponentProps<typeof AgentConfigForm>>
 describe("AgentConfigForm — save as defaults", () => {
   it("hides the control entirely when the host provides no onSaveAsDefault", () => {
     renderForm({ defaultAgentConfig: { model: "prov:model-a", approvalLevel: 2 } });
-    expect(screen.queryByText(/save as workspace defaults/i)).toBeNull();
-    expect(screen.queryByText(/these are your workspace defaults/i)).toBeNull();
+    expect(screen.queryByText(/save defaults/i)).toBeNull();
+    expect(screen.queryByText(/workspace defaults/i)).toBeNull();
   });
 
-  it("offers 'Save as workspace defaults' when the config differs, and persists the full config", async () => {
+  it("offers 'Save defaults' when the config differs, and persists the full config", async () => {
     const onSaveAsDefault = vi.fn();
     // draft = model-a / approval 2; saved defaults use model-b → they differ.
     renderForm({
       onSaveAsDefault,
       defaultAgentConfig: { model: "prov:model-b", approvalLevel: 2 },
     });
-    const btn = screen.getByRole("button", { name: /save as workspace defaults/i });
+    const btn = screen.getByRole("button", { name: /save defaults/i });
     await act(async () => {
       fireEvent.click(btn);
     });
@@ -104,12 +114,12 @@ describe("AgentConfigForm — save as defaults", () => {
       onSaveAsDefault,
       defaultAgentConfig: { model: "prov:model-a", approvalLevel: 2 },
     });
-    expect(screen.getByText(/these are your workspace defaults/i)).toBeTruthy();
-    expect(screen.queryByRole("button", { name: /save as workspace defaults/i })).toBeNull();
+    expect(screen.getByText(/workspace defaults/i)).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /save defaults/i })).toBeNull();
     expect(onSaveAsDefault).not.toHaveBeenCalled();
   });
 
-  it("renders and selects extended effort levels with a discrete slider", () => {
+  it("renders and selects extended effort levels with a dropdown", () => {
     const { onChange } = renderForm({
       catalog: extendedThinkingCatalog,
       value: {
@@ -119,14 +129,10 @@ describe("AgentConfigForm — save as defaults", () => {
       },
     });
 
-    const slider = screen.getByRole("slider", { name: "Effort" });
-    expect(slider.getAttribute("min")).toBe("0");
-    expect(slider.getAttribute("max")).toBe("5");
-    expect((slider as HTMLInputElement).value).toBe("4");
-    expect(slider.getAttribute("aria-valuetext")).toBe("Extra high");
-    expect(screen.getByText("Max")).toBeTruthy();
-
-    fireEvent.change(slider, { target: { value: "5" } });
+    const effort = screen.getByRole("combobox", { name: "Effort" });
+    expect(effort.textContent).toContain("Extra high");
+    fireEvent.click(effort);
+    fireEvent.click(screen.getByRole("option", { name: "Max" }));
     expect(onChange).toHaveBeenCalledWith({
       model: "prov:model-thinking",
       thinkingLevel: "max",
@@ -149,9 +155,10 @@ describe("AgentConfigForm — save as defaults", () => {
   });
 
   it("defaults newly selected models to standard mode", () => {
-    expect(
-      configForSelectedModel("openai-codex:gpt-5.6-sol"),
-    ).toEqual({ model: "openai-codex:gpt-5.6-sol", fastMode: false });
+    expect(configForSelectedModel("openai-codex:gpt-5.6-sol")).toEqual({
+      model: "openai-codex:gpt-5.6-sol",
+      fastMode: false,
+    });
     expect(configForSelectedModel("prov:model-b")).toEqual({
       model: "prov:model-b",
       fastMode: false,

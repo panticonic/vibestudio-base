@@ -1,6 +1,6 @@
 import ModelCredentialRequiredCard from "./ModelCredentialRequiredCard";
 import type { ChatContextValue } from "../types";
-import { useCallback, useId, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useMemo, useState, type ReactNode } from "react";
 import {
   Badge,
   Box,
@@ -74,9 +74,7 @@ const APPROVAL_LABELS: Record<string, string> = {
 /** Selecting a model starts from that model's product defaults. Existing
  * agents are edited elsewhere with a locked model, so this never overwrites a
  * persisted per-agent choice. */
-export function configForSelectedModel(
-  ref: string
-): Pick<AgentConfigDraft, "model" | "fastMode"> {
+export function configForSelectedModel(ref: string): Pick<AgentConfigDraft, "model" | "fastMode"> {
   return { model: ref, fastMode: false };
 }
 
@@ -111,7 +109,6 @@ export function AgentConfigForm({
 }: AgentConfigFormProps) {
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [savingDefault, setSavingDefault] = useState(false);
-  const effortStepsId = useId();
   const set = (patch: Partial<AgentConfigDraft>) => onChange({ ...value, ...patch });
 
   const handleSaveAsDefault = useCallback(async () => {
@@ -134,7 +131,7 @@ export function AgentConfigForm({
 
   const selectedModel = useMemo(
     () => catalog?.models.find((m) => m.ref === value.model) ?? null,
-    [catalog, value.model]
+    [catalog, value.model],
   );
   const thinkingLevels = selectedModel?.thinkingLevels ?? [];
   const showEffort = !!selectedModel?.reasoning && thinkingLevels.length > 0;
@@ -158,7 +155,7 @@ export function AgentConfigForm({
     (value.approvalLevel ?? 2) === (defaultAgentConfig.approvalLevel ?? 2);
 
   return (
-    <Flex className="agent-config-form" direction="column" gap="4">
+    <Flex className="agent-config-form" direction="column" gap="3">
       {/* Provider + model */}
       {modelEditable ? (
         <ModelPicker
@@ -198,73 +195,13 @@ export function AgentConfigForm({
               : {}),
             ...(selectedModel.availability.state === "needs-setup" &&
             selectedModel.availability.detail === "credential-expired"
-              ? { reason: "Your connection has expired. Sign in again to continue." }
+              ? {
+                  reason: "Your connection has expired. Sign in again to continue.",
+                }
               : {}),
           }}
         />
       ) : null}
-
-      {/* Effort — only for reasoning models */}
-      {showEffort && (
-        <Field label="Effort" hint="How much the model thinks before answering.">
-          <Flex direction="column" gap="1">
-            <input
-              type="range"
-              aria-label="Effort"
-              aria-valuetext={THINKING_LABELS[effort]}
-              list={effortStepsId}
-              value={thinkingLevels.indexOf(effort)}
-              min={0}
-              max={thinkingLevels.length - 1}
-              step={1}
-              style={{ width: "100%", accentColor: "var(--accent-9)" }}
-              onChange={(event) => {
-                const thinkingLevel = thinkingLevels[event.currentTarget.valueAsNumber];
-                if (thinkingLevel) set({ thinkingLevel });
-              }}
-            />
-            <datalist id={effortStepsId}>
-              {thinkingLevels.map((lvl, index) => (
-                <option key={lvl} value={index} label={THINKING_LABELS[lvl]} />
-              ))}
-            </datalist>
-            <Flex className="agent-effort-labels" justify="between" style={{ paddingInline: 2 }}>
-              {thinkingLevels.map((lvl) => {
-                const selected = lvl === effort;
-                return (
-                  <Text
-                    key={lvl}
-                    size="1"
-                    color={selected ? undefined : "gray"}
-                    weight={selected ? "medium" : undefined}
-                    style={{ whiteSpace: "nowrap" }}
-                  >
-                    {THINKING_LABELS[lvl]}
-                  </Text>
-                );
-              })}
-            </Flex>
-          </Flex>
-        </Field>
-      )}
-
-      {showFastMode && (
-        <Field
-          label="Speed"
-          hint="Runs about 1.5× faster and consumes Codex credits at a higher rate."
-        >
-          <Text as="label" size="2">
-            <Flex align="center" gap="2" className="agent-config-check-row">
-              <Checkbox
-                aria-label="Fast mode"
-                checked={value.fastMode ?? false}
-                onCheckedChange={(checked) => set({ fastMode: checked === true })}
-              />
-              <span>Fast mode</span>
-            </Flex>
-          </Text>
-        </Field>
-      )}
 
       {/* Reactiveness — only with >1 agent */}
       {showReactiveness && (
@@ -322,70 +259,106 @@ export function AgentConfigForm({
         </Field>
       )}
 
-      {/* Advanced */}
-      <Box>
-        <Button
-          type="button"
-          variant="soft"
-          color="gray"
-          aria-expanded={showAdvanced}
-          onClick={() => setShowAdvanced((s) => !s)}
-        >
-          {showAdvanced ? "▾ Advanced" : "▸ Advanced"}
-        </Button>
-        {showAdvanced && (
-          <Flex direction="column" gap="3" mt="2">
-            <Field
-              label="Autonomy"
-              hint="Manual asks before each tool call; Full-auto runs everything."
-            >
-              <SegmentedControl.Root
-                value={String(value.approvalLevel ?? 2)}
-                style={{ width: "100%" }}
-                onValueChange={(v) => set({ approvalLevel: Number(v) as AgentApprovalLevel })}
+      <Flex gap="3" justify="between" align="end" wrap="wrap">
+        <Flex className="agent-config-tuning" gap="3" align="end" wrap="wrap">
+          {showEffort && (
+            <Field label="Effort">
+              <Select.Root
+                value={effort}
+                onValueChange={(thinkingLevel) =>
+                  set({ thinkingLevel: thinkingLevel as AgentThinkingLevel })
+                }
               >
-                <SegmentedControl.Item value="0">{APPROVAL_LABELS["0"]}</SegmentedControl.Item>
-                <SegmentedControl.Item value="1">{APPROVAL_LABELS["1"]}</SegmentedControl.Item>
-                <SegmentedControl.Item value="2">{APPROVAL_LABELS["2"]}</SegmentedControl.Item>
-              </SegmentedControl.Root>
+                <Select.Trigger aria-label="Effort" />
+                <Select.Content>
+                  {thinkingLevels.map((level) => (
+                    <Select.Item key={level} value={level}>
+                      {THINKING_LABELS[level]}
+                    </Select.Item>
+                  ))}
+                </Select.Content>
+              </Select.Root>
             </Field>
-            <Field label="System prompt (optional)" hint="Appended to the workspace system prompt.">
-              <TextArea
-                value={value.systemPrompt ?? ""}
-                onChange={(e) => set({ systemPrompt: e.target.value })}
-                placeholder="Extra instructions for this agent…"
-                rows={4}
-              />
-            </Field>
-          </Flex>
-        )}
-      </Box>
+          )}
+          {showFastMode && (
+            <Text as="label" size="2" title="Faster responses at a higher credit rate.">
+              <Flex align="center" gap="2" className="agent-config-check-row">
+                <Checkbox
+                  aria-label="Fast mode"
+                  checked={value.fastMode ?? false}
+                  onCheckedChange={(checked) => set({ fastMode: checked === true })}
+                />
+                <span>Fast mode</span>
+              </Flex>
+            </Text>
+          )}
+        </Flex>
 
-      {/* Save-as-defaults — the ONLY path that writes the workspace default agent
+        {/* Advanced */}
+        <Flex className="agent-config-actions" gap="2" align="center" wrap="wrap">
+          <Button
+            type="button"
+            variant="soft"
+            color="gray"
+            aria-expanded={showAdvanced}
+            onClick={() => setShowAdvanced((s) => !s)}
+          >
+            {showAdvanced ? "▾ Advanced" : "▸ Advanced"}
+          </Button>
+
+          {/* Save-as-defaults — the ONLY path that writes the workspace default agent
           config (model + behavior). The button appears only when the draft
           differs from the saved defaults; when it matches, a quiet indicator
           shows instead. Hidden entirely when the host doesn't support it. */}
-      {modelEditable && onSaveAsDefault && value.model && defaultAgentConfig && (
-        <Box pt="1">
-          {savedDefaultsMatch ? (
-            <Flex align="center" gap="1">
-              <CheckIcon style={{ color: "var(--green-9)" }} />
-              <Text size="1" color="gray">
-                These are your workspace defaults
-              </Text>
-            </Flex>
-          ) : (
-            <Button
-              size="1"
-              variant="soft"
-              color="gray"
-              loading={savingDefault}
-              onClick={() => void handleSaveAsDefault()}
-            >
-              Save as workspace defaults
-            </Button>
+          {modelEditable && onSaveAsDefault && value.model && defaultAgentConfig && (
+            <Box>
+              {savedDefaultsMatch ? (
+                <Flex align="center" gap="1">
+                  <CheckIcon style={{ color: "var(--green-9)" }} />
+                  <Text size="1" color="gray">
+                    Workspace defaults
+                  </Text>
+                </Flex>
+              ) : (
+                <Button
+                  size="1"
+                  variant="soft"
+                  color="gray"
+                  loading={savingDefault}
+                  onClick={() => void handleSaveAsDefault()}
+                >
+                  Save defaults
+                </Button>
+              )}
+            </Box>
           )}
-        </Box>
+        </Flex>
+      </Flex>
+      {showAdvanced && (
+        <Flex direction="column" gap="3" mt="2">
+          <Field
+            label="Autonomy"
+            hint="Manual asks before each tool call; Full-auto runs everything."
+          >
+            <SegmentedControl.Root
+              value={String(value.approvalLevel ?? 2)}
+              style={{ width: "100%" }}
+              onValueChange={(v) => set({ approvalLevel: Number(v) as AgentApprovalLevel })}
+            >
+              <SegmentedControl.Item value="0">{APPROVAL_LABELS["0"]}</SegmentedControl.Item>
+              <SegmentedControl.Item value="1">{APPROVAL_LABELS["1"]}</SegmentedControl.Item>
+              <SegmentedControl.Item value="2">{APPROVAL_LABELS["2"]}</SegmentedControl.Item>
+            </SegmentedControl.Root>
+          </Field>
+          <Field label="System prompt (optional)" hint="Appended to the workspace system prompt.">
+            <TextArea
+              value={value.systemPrompt ?? ""}
+              onChange={(e) => set({ systemPrompt: e.target.value })}
+              placeholder="Extra instructions for this agent…"
+              rows={4}
+            />
+          </Field>
+        </Flex>
       )}
     </Flex>
   );
