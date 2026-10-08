@@ -4,6 +4,17 @@ import { useChatContext } from "../context/ChatContext";
 import { pendingReviewNotice } from "@vibestudio/shared/authority/reviewPending";
 
 /**
+ * Exposes the channel connection status on the rendered chat as a hidden
+ * marker. "connected" means the subscription — including this participant's
+ * advertised methods — is established, so an observer driving the rendered
+ * panel (a system test) can wait for membership without the presence stream.
+ */
+export function ChatConnectionStateMarker() {
+  const { connected } = useChatContext();
+  return <span hidden data-chat-connection={connected ? "connected" : "disconnected"} />;
+}
+
+/**
  * Renders a dismissible banner at the top of the chat whenever the
  * `ConnectionManager` has surfaced an error (subscribe failure or event-stream
  * rejection). Kept simple — one line per error — so the user immediately sees

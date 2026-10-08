@@ -13,6 +13,7 @@ import type { Attachment } from "@workspace/pubsub";
 import type {
   AutomationDefinitionSnapshot,
   LifecycleMessageReasonCode,
+  MessageInteraction,
   MessageModelPayload,
   NativeMessageCoordinates,
   MessageTier,
@@ -40,6 +41,8 @@ export interface ActionBarPayload {
   maxHeight?: number;
   cleared?: boolean;
   result?: { ok: boolean; error?: string };
+  /** Author of the bar (`requestedBy ?? actor` of the producing event); receives failure feedback. */
+  author?: { kind: string; id: string; participantId?: string };
 }
 
 export type CustomMessageDisplayMode = "inline" | "row";
@@ -289,6 +292,8 @@ export interface ChatMessage {
   /** Explicit supervisor `say` (from `ProjectedMessage.saliency`) — used to
    *  filter the SubagentRunCard's live say feed. */
   saliency?: "say";
+  /** The UI selection this message carries (e.g. a `Choices` answer), from its `metadata.interaction`. */
+  interaction?: MessageInteraction;
   /** Edit-fork provenance: the parent message this seed supersedes in the
    *  child channel. Rendered as a "substituted this turn" annotation. */
   replaces?: { messageId: string; seq: number };

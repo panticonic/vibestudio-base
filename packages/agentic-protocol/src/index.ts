@@ -266,6 +266,7 @@ export type {
   ProjectedInvocation,
   ProjectedMessage,
   NativeMessageCoordinates,
+  MessageInteraction,
   MessageNotifyIntent,
   ProjectedTask,
   TaskMap,
@@ -279,6 +280,7 @@ export {
   applyMessageEvent,
   applyTaskEvent,
   participantKey,
+  readMessageInteraction,
   readMessageNotifyIntent,
 } from "./handlers.js";
 

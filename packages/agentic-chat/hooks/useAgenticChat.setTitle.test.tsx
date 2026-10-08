@@ -304,6 +304,64 @@ describe("useAgenticChat set_title", () => {
     unmount();
   });
 
+  it("records the method caller as requestedBy on published inline UI and action bar events", async () => {
+    const client = createClient();
+    const publish = vi.fn(async () => 1);
+    Object.assign(client, {
+      publish,
+      roster: { "do:author": { metadata: { name: "Author", type: "agent", handle: "author" } } },
+    });
+    let methods: Record<string, MethodDefinition> | undefined;
+    pubsubMock.connectViaRpc.mockImplementation(
+      (options: { methods: Record<string, MethodDefinition> }) => {
+        methods = options.methods;
+        return client;
+      },
+    );
+    const config: ConnectionConfig = {
+      clientId: "panel:chat",
+      rpc: {
+        selfId: "panel:chat",
+        call: createRpcCall(),
+        stream: vi.fn(async () => new Response()),
+        on: vi.fn(() => () => undefined),
+      },
+    };
+    const { unmount } = render(<Probe config={config} />);
+    await waitFor(() => expect(methods).toBeDefined());
+    // Wait until the hook has adopted the connected client.
+    await waitFor(async () => {
+      const ctx = { callerId: "do:author", result: vi.fn() } as never;
+      await methods!["inline_ui"]!.execute(
+        { id: "card-1", code: "export default () => null" },
+        ctx,
+      );
+      expect(publish).toHaveBeenCalled();
+    });
+    await methods!["load_action_bar"]!.execute(
+      { clear: true },
+      { callerId: "do:author", result: vi.fn() } as never,
+    );
+    const requestedBy = {
+      kind: "agent",
+      id: "do:author",
+      participantId: "do:author",
+      displayName: "Author",
+    };
+    const events = publish.mock.calls.map((call) => (call as unknown[])[1] as {
+      kind: string;
+      actor: { id: string };
+      payload: { requestedBy?: unknown };
+    });
+    const inline = events.find((e) => e.kind === "ui.inline_rendered");
+    const bar = events.find((e) => e.kind === "ui.action_bar.updated");
+    expect(inline?.actor.id).toBe("panel:chat");
+    expect(inline?.payload.requestedBy).toMatchObject(requestedBy);
+    expect(bar?.payload.requestedBy).toMatchObject(requestedBy);
+
+    unmount();
+  });
+
   it("advertises the explicit full feature surface", async () => {
     const client = createClient();
     let methods: Record<string, MethodDefinition> | undefined;
@@ -330,8 +388,6 @@ describe("useAgenticChat set_title", () => {
       expect.arrayContaining([
         "feedback_form",
         "feedback_custom",
-        "confirm",
-        "ui_prompt",
         "inline_ui",
         "load_action_bar",
         "client_eval",
@@ -368,8 +424,6 @@ describe("useAgenticChat set_title", () => {
     for (const name of [
       "feedback_form",
       "feedback_custom",
-      "confirm",
-      "ui_prompt",
       "inline_ui",
       "load_action_bar",
       "client_eval",

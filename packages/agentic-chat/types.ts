@@ -96,6 +96,15 @@ export interface ActionBarData {
   props?: Record<string, unknown>;
   /** Optional preferred maximum height in pixels. Clamped by the renderer. */
   maxHeight?: number;
+  /** Participant that authored this bar; receives failure feedback. */
+  author?: ActionBarAuthor;
+}
+
+/** Who authored an action bar (the target of its `ui.feedback`). */
+export interface ActionBarAuthor {
+  kind: string;
+  id: string;
+  participantId?: string;
 }
 
 export interface ActionBarState {
@@ -490,6 +499,8 @@ export interface ChatContextValue {
     agentId?: string,
     config?: AgentSubscriptionConfig
   ) => Promise<void> | void;
+  /** Persist an agent's model choice for panel reload/recovery. */
+  onPersistAgentModel?: (participantId: string, model: string) => Promise<void>;
   /** Start installing a local model; live progress arrives through modelCatalog. */
   onInstallLocalModel?: (modelRef: string) => Promise<ModelSetupResult>;
   /** Connect directly from the model picker, before an agent exists. */

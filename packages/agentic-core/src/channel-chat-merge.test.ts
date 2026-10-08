@@ -266,6 +266,22 @@ describe("chatMessagesFromChannelView", () => {
     });
   });
 
+  it("projects a message's UI interaction, including selected values, onto the chat message", () => {
+    const interaction = { source: "choices", kind: "choice", action: "submit", targetId: "pick", values: ["Red", "Blue"] };
+    const message: AgenticEvent<"message.completed"> = {
+      kind: "message.completed",
+      actor: agent,
+      causality: { messageId: brandId<MessageId>("msg-choice") },
+      payload: { ...textPayload("msg-choice", "user", "Pick? → Red, Blue"), metadata: { interaction } },
+      createdAt: "2026-05-20T12:00:00.000Z",
+    };
+    const state = [envelope(message, 1)].reduce(reduceChannelView, createInitialChannelViewState());
+    expect(chatMessagesFromChannelView(state)[0]).toMatchObject({ id: "msg-choice", interaction });
+    const malformed = { ...message, payload: { ...message.payload, metadata: { interaction: { source: "choices" } } } };
+    const bad = [envelope(malformed, 1)].reduce(reduceChannelView, createInitialChannelViewState());
+    expect(chatMessagesFromChannelView(bad)[0]?.interaction).toBeUndefined();
+  });
+
   it("projects assistant model provenance onto chat messages", () => {
     const message: AgenticEvent<"message.completed"> = {
       kind: "message.completed",
@@ -631,23 +647,10 @@ describe("chatMessagesFromChannelView", () => {
       },
       createdAt: "2026-05-20T12:00:03.000Z",
     };
-    const promptStarted: AgenticEvent<"invocation.started"> = {
-      kind: "invocation.started",
-      actor: agent,
-      causality: { invocationId: brandId<InvocationId>("inv-prompt") },
-      payload: {
-        protocol: AGENTIC_PROTOCOL_VERSION,
-        name: "ui_prompt",
-        request: { kind: "confirm", title: "Allow extension action?" },
-      },
-      createdAt: "2026-05-20T12:00:04.000Z",
-    };
-
     const state = [
       envelope(inlineStarted, 1),
       envelope(inlineCompleted, 2),
       envelope(feedbackStarted, 3),
-      envelope(promptStarted, 4),
     ].reduce(reduceChannelView, createInitialChannelViewState());
 
     const descriptions = Object.fromEntries(
@@ -660,7 +663,6 @@ describe("chatMessagesFromChannelView", () => {
     expect(descriptions).toMatchObject({
       "inv-inline": "Rendered inline UI (ui-1)",
       "inv-feedback": "Waiting for custom feedback: Choose deployment target",
-      "inv-prompt": "Waiting for confirm prompt: Allow extension action?",
     });
   });
 
@@ -2878,6 +2880,47 @@ describe("chatMessagesFromChannelView", () => {
     });
   });
 
+  it("attributes requested inline UI and action bars to the requester, not the publisher", () => {
+    const requestedBy = { kind: "agent" as const, id: "agent:caller", displayName: "Caller" };
+    const rendered: AgenticEvent<"ui.inline_rendered"> = {
+      kind: "ui.inline_rendered",
+      actor: agent,
+      payload: {
+        protocol: AGENTIC_PROTOCOL_VERSION,
+        uiType: "inline",
+        requestedBy,
+        id: "ui-req",
+        source: { type: "file", path: "skills/setup/Panel.tsx" },
+      },
+      createdAt: "2026-05-20T12:00:03.000Z",
+    };
+    const bar: AgenticEvent<"ui.action_bar.updated"> = {
+      kind: "ui.action_bar.updated",
+      actor: agent,
+      payload: {
+        protocol: AGENTIC_PROTOCOL_VERSION,
+        uiType: "action_bar",
+        requestedBy,
+        id: "bar-req",
+        source: { type: "file", path: "skills/test/ActionBar.tsx" },
+        result: { ok: true },
+      },
+      createdAt: "2026-05-20T12:00:04.000Z",
+    };
+    const state = [envelope(rendered, 1), envelope(bar, 2)].reduce(
+      reduceChannelView,
+      createInitialChannelViewState()
+    );
+    expect(chatMessagesFromChannelView(state)[0]).toMatchObject({
+      senderId: "agent:caller",
+      senderMetadata: { name: "Caller", type: "agent", handle: "agent:caller" },
+    });
+    expect(actionBarPayloadFromChannelView(state)?.author).toEqual({
+      kind: "agent",
+      id: "agent:caller",
+    });
+  });
+
   it("projects latest typed action bar event into the action bar view model", () => {
     const loaded: AgenticEvent<"ui.action_bar.updated"> = {
       kind: "ui.action_bar.updated",
@@ -2902,6 +2945,7 @@ describe("chatMessagesFromChannelView", () => {
       props: { compact: true },
       maxHeight: 180,
       result: { ok: true },
+      author: { kind: agent.kind, id: agent.id },
     });
   });
 

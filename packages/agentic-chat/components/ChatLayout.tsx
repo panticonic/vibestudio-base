@@ -1,7 +1,10 @@
 import React from "react";
 import { Flex } from "@radix-ui/themes";
 import { ChatHeader } from "./ChatHeader";
-import { ChatConnectionErrorBanner } from "./ChatConnectionErrorBanner";
+import {
+  ChatConnectionErrorBanner,
+  ChatConnectionStateMarker,
+} from "./ChatConnectionErrorBanner";
 import { ChatDirtyRepoWarnings } from "./ChatDirtyRepoWarnings";
 import { LazyChatActionBar } from "./LazyChatActionBar";
 import { ChatMessageArea } from "./ChatMessageArea";
@@ -110,6 +113,7 @@ export const ChatLayout = React.memo(function ChatLayout({
         }}
       >
         {renderHeader ? renderHeader(defaultHeader) : defaultHeader}
+        <ChatConnectionStateMarker />
         <ChatConnectionErrorBanner />
         <ChatDirtyRepoWarnings />
         {features.actionBar ? <LazyChatActionBar /> : null}

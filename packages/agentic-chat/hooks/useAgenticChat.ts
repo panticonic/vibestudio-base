@@ -23,11 +23,12 @@ import type {
   SandboxResult,
   ScopeBlobBackend
 } from "@workspace/eval";
-import type { ActiveFeedbackSchema, FeedbackResult } from "@workspace/tool-ui";
 import {
   AGENTIC_EVENT_PAYLOAD_KIND,
   AGENTIC_PROTOCOL_VERSION,
-  type ActorKind,
+  type ParticipantKind,
+  participantRefFromMetadata,
+  type ParticipantRef,
   type AgenticEvent
 } from "@workspace/agentic-protocol";
 import { useChatCore } from "./core/useChatCore";
@@ -92,7 +93,7 @@ function actionBarLoadKey(
   return `${path}\n${propsKey}\n${maxHeight ?? ""}`;
 }
 
-function actorKindFromMetadata(type: string | undefined, participantId?: string): ActorKind {
+function actorKindFromMetadata(type: string | undefined, participantId?: string): ParticipantKind {
   // A `user:<userId>` participant id is the channel-stamped human identity
   // (WP6 §4) — it always resolves to the semantic `user` role, regardless of
   // the client-supplied metadata type.
@@ -602,6 +603,7 @@ export function useAgenticChat({
       id: canonical.id ?? "canonical-action-bar",
       source: canonical.source
     };
+    if (canonical.author) next.author = canonical.author;
     if (canonical.imports !== undefined) next.imports = canonical.imports;
     if (canonical.props !== undefined) next.props = canonical.props;
     if (canonical.maxHeight !== undefined) next.maxHeight = canonical.maxHeight;
@@ -626,6 +628,7 @@ export function useAgenticChat({
         ok: boolean;
         error?: string;
         idempotencyKey?: string;
+        requestedBy?: ParticipantRef;
       }
     ) => {
       const client = core.clientRef.current;
@@ -633,6 +636,7 @@ export function useAgenticChat({
       const eventPayload: AgenticEvent<"ui.action_bar.updated">["payload"] = {
         protocol: AGENTIC_PROTOCOL_VERSION,
         uiType: "action_bar",
+        ...(payload.requestedBy ? { requestedBy: payload.requestedBy } : {}),
         cleared: action === "cleared",
         result: payload.ok ? { ok: true } : { ok: false, error: payload.error }
       };
@@ -662,7 +666,8 @@ export function useAgenticChat({
       maxHeight,
       imports,
       persistStateArgs = true,
-      idempotencyKey
+      idempotencyKey,
+      requestedBy
     }: {
       path: string;
       props?: Record<string, unknown>;
@@ -670,6 +675,8 @@ export function useAgenticChat({
       imports?: Record<string, string>;
       persistStateArgs?: boolean;
       idempotencyKey?: string;
+      /** The participant that asked for this bar (the `load_action_bar` caller). */
+      requestedBy?: ParticipantRef;
     }): Promise<
       | {
           ok: true;
@@ -707,7 +714,8 @@ export function useAgenticChat({
           props,
           maxHeight,
           ok: true,
-          idempotencyKey
+          idempotencyKey,
+          requestedBy
         });
         return { ok: true, id };
       } catch (err) {
@@ -719,7 +727,8 @@ export function useAgenticChat({
           maxHeight,
           ok: false,
           error,
-          idempotencyKey
+          idempotencyKey,
+          requestedBy
         });
         return { ok: false, error };
       }
@@ -729,17 +738,19 @@ export function useAgenticChat({
   const clearActionBar = useCallback(
     async ({
       persistStateArgs = true,
-      idempotencyKey
+      idempotencyKey,
+      requestedBy
     }: {
       persistStateArgs?: boolean;
       idempotencyKey?: string;
+      requestedBy?: ParticipantRef;
     } = {}) => {
       setActionBarData(null);
       lastLoadedActionBarKeyRef.current = null;
       if (persistStateArgs) {
         await onActionBarFileChange?.({ path: null });
       }
-      await publishActionBarContext("cleared", { ok: true, idempotencyKey });
+      await publishActionBarContext("cleared", { ok: true, idempotencyKey, requestedBy });
     },
     [onActionBarFileChange, publishActionBarContext]
   );
@@ -849,94 +860,7 @@ export function useAgenticChat({
           const toolMethods = chatToolsRef.current.buildToolMethods();
           const methods = composeAgenticChatMethods(
             toolMethods,
-            features.feedback
-              ? {
-                  ...feedbackRef.current.buildFeedbackMethods(),
-                  confirm: {
-                    description: "Ask the user to approve or deny a requested agent action.",
-                    parameters: z
-                      .object({
-                        question: z.string(),
-                        details: z.unknown().optional()
-                      })
-                      .passthrough(),
-                    execute: async (args: unknown, ctx: MethodExecutionContext) => {
-                      const input = args as {
-                        question?: unknown;
-                        details?: unknown;
-                      };
-                      const question =
-                        typeof input.question === "string" && input.question.trim()
-                          ? input.question
-                          : "Allow this action?";
-                      if (typeof document === "undefined" || !document.hasFocus()) {
-                        actionsRef.current?.onAttentionRequired?.(
-                          "Chat needs your approval",
-                          question
-                        );
-                      }
-                      const fb = feedbackRef.current;
-                      return new Promise<{
-                        granted: boolean;
-                        details?: unknown;
-                      }>((resolve) => {
-                        let settled = false;
-                        const finish = (granted: boolean) => {
-                          if (settled) return;
-                          settled = true;
-                          fb.removeFeedback(ctx.callId);
-                          resolve({ granted, details: input.details });
-                        };
-                        fb.addFeedback({
-                          type: "schema",
-                          callId: ctx.callId,
-                          title: question,
-                          fields: [
-                            ...(input.details
-                              ? ([
-                                  {
-                                    key: "__details",
-                                    type: "readonly",
-                                    label: "Details",
-                                    default:
-                                      typeof input.details === "string"
-                                        ? input.details
-                                        : JSON.stringify(input.details, null, 2)
-                                  }
-                                ] as ActiveFeedbackSchema["fields"])
-                              : []),
-                            {
-                              key: "approval",
-                              type: "buttonGroup",
-                              submitOnSelect: true,
-                              buttons: [
-                                { value: "deny", label: "Deny", color: "gray" },
-                                {
-                                  value: "allow",
-                                  label: "Allow",
-                                  color: "green"
-                                }
-                              ]
-                            }
-                          ],
-                          values: {},
-                          hideSubmit: true,
-                          dismissible: false,
-                          createdAt: Date.now(),
-                          complete: (result: FeedbackResult) => {
-                            if (result.type === "submit") {
-                              const values = (result.value ?? {}) as Record<string, unknown>;
-                              finish(values["approval"] === "allow");
-                            } else {
-                              finish(false);
-                            }
-                          }
-                        });
-                      });
-                    }
-                  }
-                }
-              : undefined,
+            features.feedback ? feedbackRef.current.buildFeedbackMethods() : undefined,
             {
               inspect_card: {
                 description:
@@ -973,117 +897,49 @@ export function useAgenticChat({
                     )
                   };
                 }
-              },
-              persist_agent_model: {
-                description: "Persist an agent model choice for panel reload/recovery",
-                parameters: z.object({
-                  participantId: z.string().describe("Agent participant id"),
-                  model: z.string().describe("Model in provider:model format")
-                }),
-                execute: async (args: unknown, ctx: MethodExecutionContext) => {
-                  const { participantId, model } = args as {
-                    participantId?: unknown;
-                    model?: unknown;
-                  };
-                  if (typeof participantId !== "string" || participantId.length === 0) {
-                    return ctx.result(
-                      { ok: false, error: "Missing participantId" },
-                      { isError: true }
-                    );
-                  }
-                  if (typeof model !== "string" || model.length === 0) {
-                    return ctx.result({ ok: false, error: "Missing model" }, { isError: true });
-                  }
-                  const persist = actionsRef.current?.onPersistAgentModel;
-                  if (!persist)
-                    return ctx.result({
-                      ok: false,
-                      error: "Persist agent model is not available"
-                    }, { isError: true });
-                  await persist(channelName, participantId, model);
-                  return { ok: true };
-                }
               }
             },
             features.inlineUi
               ? {
                   inline_ui: {
-                    description: `Render a persistent interactive UI component inline in the chat.
+                    description: `Render an interactive UI component inline in the chat transcript. Non-blocking: it returns immediately and the user interacts whenever they choose.
+
+**When to use:** whenever a visual or interactive answer serves the user better than prose — the user does not need to ask for UI. Reach for it for plans and itineraries, comparisons, data the user will explore, calculators and what-if tools, checklists and multi-step setup, dashboards, and anything the user may come back to. For presentation that needs no state or code, write MDX components directly in your message instead (the same response components are available there).
 
 **Contrast with other tools:**
-- \`eval\`: Agent-triggered side-effects. Runs code immediately, returns result.
-- \`inline_ui\`: User-triggered side-effects + rich data presentation. Renders controls/visualizations. Users interact when they choose. Non-blocking.
-- \`feedback_form\`/\`feedback_custom\`: Blocks until user responds. Returns data to agent.
+- \`eval\`: agent-triggered side effects; runs immediately and returns a result.
+- \`inline_ui\`: rich presentation plus user-triggered side effects; persists in the transcript.
+- \`ask_user\` / \`feedback_form\` / \`feedback_custom\`: block until the user answers and return the answer to you.
+
+**Fastest path — response components** from \`@workspace/react\`: \`Chart\`, \`Stats\`, \`Compare\`, \`Timeline\`, \`Checklist\`, \`PlaceMap\`, \`Choices\`, \`Calculator\`, \`ActionButton\`, \`Image\`, \`Video\`. Fill them with props; compose them with Radix layout. Read \`skills/visualize/COMPONENTS.md\` for their props.
 
 **The component receives { props, chat, scope, scopes, inlineUi }:**
 - props: data you pass via the props parameter
-- inlineUi: stable component identity \`{ id, renderedAt }\`; \`renderedAt\` changes
-  whenever the same ID is rendered again and can trigger a data-refresh effect
-- chat: full chat API for interacting with the conversation:
-  - chat.send(content, options?) — send a visible message to the conversation.
-    Example: chat.send("User clicked Deploy")
+- inlineUi: stable identity \`{ id, renderedAt }\`; \`renderedAt\` changes whenever the same ID is rendered again and can trigger a data-refresh effect
+- chat:
+  - chat.send(content, { metadata: { interaction: { source, kind, action, targetId } } }) — send a user message that starts a new agent turn; the structured \`interaction\` tells you exactly which control was used. Response components such as \`Choices\` and \`ActionButton\` do this for you.
+  - chat.rpc.call(target, method, args) — call a runtime service; \`args\` is the complete positional argument array. Example: chat.rpc.call("main", "fs.readFile", ["/src/config.ts"])
   - chat.publish(type, payload, options?) — publish a typed non-message event.
-  - chat.rpc.call(target, method, ...args) — call runtime services directly.
-    Example: chat.rpc.call("main", "fs.readFile", "/src/config.ts")
   - chat.contextId, chat.channelId — current identifiers
-- scope: panel-local durable UI state shared by inline_ui, feedback_custom, and the action bar in this panel instance. Serializable values persist in localStorage across panel reloads; functions, class instances, DOM objects, and other nonserializable values are live-only and are dropped on restore.
-- scopes: scope API for this panel-local UI scope:
-  - scopes.save() — force-persist now
-  - scopes.push() — archive current scope and start a new snapshot
-  - scopes.list() / scopes.get(id) — inspect snapshots
+- scope: panel-local durable UI state shared by inline_ui, feedback_custom, and the action bar in this panel instance. Serializable values persist in localStorage across panel reloads; nonserializable values are live-only and dropped on restore.
+- scopes: scopes.save(), scopes.push(), scopes.list(), scopes.get(id)
 
-**Side effects users can trigger from inline UI:**
-- Send messages back to chat (triggers new agent turns)
-- Read/write files, query databases, manage workers via chat.rpc
-- Copy to clipboard, open links, any browser API
+**Lifecycle:** The card starts expanded and auto-collapses above 400px; users can expand or collapse it. Pass a stable \`id\` for one evolving surface: a later render by the same participant with that ID replaces the card and moves it to the newest position. Omit \`id\` for a new independent card. If the component fails to compile or render, you automatically receive a ui-feedback note naming the inline UI id and the error on your next turn; fix the source and render again with the same id.
 
-**Lifecycle:** Component starts expanded. Auto-collapses if taller than 400px.
-Users can expand/collapse at any time. Persists in chat history.
-Pass a stable \`id\` to update an existing inline UI. A later render by the same
-participant with that ID replaces the card and moves it to the newest transcript
-position. Omit \`id\` for a new independent card.
-
-**Available imports:** react, @radix-ui/themes, @radix-ui/react-icons
-You may provide either \`code\` or \`path\`. \`path\` reads a context-relative TSX file, supports static relative imports, and infers bare package imports from the nearest package.json when possible. Use \`imports\` for explicit package versions.
-**Must use** \`export default\`
+**Imports:** react, @radix-ui/themes, @radix-ui/react-icons, @workspace/react, @workspace/runtime. Provide either \`code\` or \`path\`; \`path\` reads a context-relative TSX file, supports static relative imports, and infers bare package imports from the nearest package.json. Use \`imports\` for explicit package versions.
+**Must use** \`export default\`. Root with an unframed layout that stays usable at a 320px card width.
 
 **Example:**
 \`\`\`tsx
-import { useState } from "react";
-import { Button, Flex, Text, Table } from "@radix-ui/themes";
-import { CopyIcon, CheckIcon } from "@radix-ui/react-icons";
+import { Flex } from "@radix-ui/themes";
+import { Chart, Choices, Stats } from "@workspace/react";
 
-export default function App({ props, chat, scope }) {
-  const [copied, setCopied] = useState(false);
-  const handleCopy = () => {
-    navigator.clipboard.writeText(JSON.stringify(props.data, null, 2));
-    scope.lastCopiedAt = new Date();
-    setCopied(true);
-  };
+export default function Spending({ props }) {
   return (
-    <Flex direction="column" gap="2">
-      <Table.Root size="1">
-        <Table.Header>
-          <Table.Row>
-            {props.columns.map(c => <Table.ColumnHeaderCell key={c}>{c}</Table.ColumnHeaderCell>)}
-          </Table.Row>
-        </Table.Header>
-        <Table.Body>
-          {props.data.map((row, i) => (
-            <Table.Row key={i}>
-              {props.columns.map(c => <Table.Cell key={c}>{row[c]}</Table.Cell>)}
-            </Table.Row>
-          ))}
-        </Table.Body>
-      </Table.Root>
-      <Flex gap="2">
-        <Button size="1" variant="soft" onClick={handleCopy}>
-          {copied ? <><CheckIcon /> Copied</> : <><CopyIcon /> Copy as JSON</>}
-        </Button>
-        <Button size="1" variant="soft" onClick={() => chat.send("User requested data refresh")}>
-          Refresh
-        </Button>
-      </Flex>
+    <Flex direction="column" gap="3" p="2" style={{ width: "100%", minWidth: 0 }}>
+      <Stats items={[{ label: "Total", value: props.total }, { label: "vs. last month", value: props.delta, tone: "negative" }]} />
+      <Chart type="bar" data={props.months} x="month" y={["groceries", "dining"]} valueFormat="currency" stacked />
+      <Choices id="spending-next" question="What should we look at next?" options={[{ label: "Cut dining costs" }, { label: "Set a monthly budget" }]} />
     </Flex>
   );
 }
@@ -1163,6 +1019,7 @@ export default function App({ props, chat, scope }) {
                       const eventPayload: AgenticEvent<"ui.inline_rendered">["payload"] = {
                         protocol: AGENTIC_PROTOCOL_VERSION,
                         uiType: "inline",
+                        requestedBy: participantRefFromMetadata(ctx.callerId, client.roster?.[ctx.callerId]?.metadata),
                         id,
                         source
                       };
@@ -1237,8 +1094,15 @@ Use package imports available to inline_ui plus relative imports for local helpe
                         maxHeight?: number;
                         clear?: boolean;
                       };
+                      const client = core.clientRef.current;
+                      if (!client)
+                        return ctx.result(
+                          { ok: false, error: "Not connected" },
+                          { isError: true }
+                        );
+                      const requestedBy = participantRefFromMetadata(ctx.callerId, client.roster?.[ctx.callerId]?.metadata);
                       if (clear) {
-                        await methodRuntime.clearActionBar();
+                        await methodRuntime.clearActionBar({ requestedBy });
                         return { ok: true, cleared: true };
                       }
                       if (!path)
@@ -1250,153 +1114,10 @@ Use package imports available to inline_ui plus relative imports for local helpe
                         path,
                         imports,
                         props,
-                        maxHeight
+                        maxHeight,
+                        requestedBy
                       });
                       return result.ok ? result : ctx.result(result, { isError: true });
-                    }
-                  }
-                }
-              : undefined,
-            features.feedback
-              ? {
-                  // ui_prompt — serves VibestudioExtensionUIContext (select/confirm/input/editor)
-                  // from workspace/packages/harness. The agent worker forwards extension UI calls
-                  // via ui_prompt { kind, ...params }; we render them through the
-                  // existing feedback_form (ActiveFeedbackSchema) machinery and return
-                  // primitive results (string | boolean | undefined) directly.
-                  ui_prompt: {
-                    description:
-                      "Prompt the panel user for a select/confirm/input/editor response (used by Vibestudio extension UI bridge).",
-                    parameters: z
-                      .object({
-                        kind: z.enum(["select", "confirm", "input", "editor"]),
-                        title: z.string(),
-                        message: z.string().optional(),
-                        options: z.array(z.string()).optional(),
-                        placeholder: z.string().optional(),
-                        prefill: z.string().optional()
-                      })
-                      .passthrough(),
-                    execute: async (args: unknown, ctx: MethodExecutionContext) => {
-                      const { kind, title, message, options, placeholder, prefill } = args as {
-                        kind: "select" | "confirm" | "input" | "editor";
-                        title: string;
-                        message?: string;
-                        options?: string[];
-                        placeholder?: string;
-                        prefill?: string;
-                      };
-                      if (typeof document === "undefined" || !document.hasFocus()) {
-                        actionsRef.current?.onAttentionRequired?.("Chat is waiting for you", title);
-                      }
-                      // Build FieldDefinition[] and an initial values map based on kind.
-                      let fields: ActiveFeedbackSchema["fields"];
-                      let initialValues: ActiveFeedbackSchema["values"] = {};
-                      let resolveKey: "choice" | "answer" | "value";
-                      let hideSubmit = false;
-                      if (kind === "select") {
-                        const opts = options ?? [];
-                        resolveKey = "choice";
-                        fields = [
-                          {
-                            key: "choice",
-                            type: "select",
-                            label: title,
-                            required: true,
-                            options: opts.map((o) => ({ value: o, label: o })),
-                            submitOnSelect: true
-                          }
-                        ];
-                        hideSubmit = true;
-                      } else if (kind === "confirm") {
-                        resolveKey = "answer";
-                        fields = [
-                          ...(message
-                            ? ([
-                                {
-                                  key: "__msg",
-                                  type: "readonly",
-                                  label: "",
-                                  default: message
-                                }
-                              ] as ActiveFeedbackSchema["fields"])
-                            : []),
-                          {
-                            key: "answer",
-                            type: "buttonGroup",
-                            submitOnSelect: true,
-                            buttons: [
-                              { value: "no", label: "No", color: "gray" },
-                              { value: "yes", label: "Yes", color: "green" }
-                            ]
-                          }
-                        ];
-                        hideSubmit = true;
-                      } else if (kind === "input") {
-                        resolveKey = "value";
-                        fields = [
-                          {
-                            key: "value",
-                            type: "string",
-                            label: title,
-                            placeholder: placeholder ?? ""
-                          }
-                        ];
-                      } else {
-                        resolveKey = "value";
-                        fields = [
-                          {
-                            key: "value",
-                            type: "textarea",
-                            label: title,
-                            default: prefill ?? "",
-                            maxHeight: 320
-                          }
-                        ];
-                      }
-                      void ctx;
-                      const fb = feedbackRef.current;
-                      return new Promise<string | boolean | undefined>((resolve) => {
-                        let settled = false;
-                        const finish = (
-                          value: string | boolean | undefined,
-                          historyResult: unknown
-                        ) => {
-                          if (settled) return;
-                          settled = true;
-                          fb.removeFeedback(ctx.callId);
-                          void historyResult;
-                          resolve(value);
-                        };
-                        const entry: ActiveFeedbackSchema = {
-                          type: "schema",
-                          callId: ctx.callId,
-                          title,
-                          fields,
-                          values: initialValues,
-                          hideSubmit,
-                          createdAt: Date.now(),
-                          complete: (result: FeedbackResult) => {
-                            if (result.type === "submit") {
-                              const values = (result.value ?? {}) as Record<string, unknown>;
-                              const raw = values[resolveKey];
-                              if (kind === "confirm") {
-                                finish(raw === "yes" || raw === true, raw);
-                              } else if (kind === "select") {
-                                finish(typeof raw === "string" ? raw : undefined, raw);
-                              } else {
-                                // input or editor
-                                finish(typeof raw === "string" ? raw : undefined, raw);
-                              }
-                            } else if (result.type === "cancel") {
-                              finish(kind === "confirm" ? false : undefined, null);
-                            } else {
-                              finish(kind === "confirm" ? false : undefined, null);
-                            }
-                          }
-                        };
-                        fb.addFeedback(entry);
-                      });
                     }
                   }
                 }
@@ -1487,6 +1208,13 @@ Use package imports available to inline_ui plus relative imports for local helpe
     },
     [channelName, actions]
   );
+  const handlePersistAgentModel = useCallback(
+    async (participantId: string, model: string) => {
+      if (!actions?.onPersistAgentModel) return;
+      await actions.onPersistAgentModel(channelName, participantId, model);
+    },
+    [channelName, actions]
+  );
   const handleRemoveAgent = useCallback(
     async (handle: string) => {
       if (!actions?.onRemoveAgent) return;
@@ -1498,6 +1226,7 @@ Use package imports available to inline_ui plus relative imports for local helpe
   const onAddAgent = actions?.onAddAgent ? handleAddAgent : undefined;
   const onPrepareAgent = actions?.onPrepareAgent ? handlePrepareAgent : undefined;
   const onReplaceAgent = actions?.onReplaceAgent ? handleReplaceAgent : undefined;
+  const onPersistAgentModel = actions?.onPersistAgentModel ? handlePersistAgentModel : undefined;
   const onInstallLocalModel = actions?.onInstallLocalModel;
   const onConnectModelProvider = actions?.onConnectModelProvider;
   const availableAgents = actions?.availableAgents;
@@ -1646,6 +1375,7 @@ Use package imports available to inline_ui plus relative imports for local helpe
       onDismissDirtyWarning: core.onDismissDirtyWarning,
       onAddAgent,
       onReplaceAgent,
+      onPersistAgentModel,
       onInstallLocalModel,
       onConnectModelProvider,
       availableAgents,
@@ -1726,6 +1456,7 @@ Use package imports available to inline_ui plus relative imports for local helpe
       core.onDismissDirtyWarning,
       onAddAgent,
       onReplaceAgent,
+      onPersistAgentModel,
       onInstallLocalModel,
       onConnectModelProvider,
       availableAgents,

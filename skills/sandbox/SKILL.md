@@ -1,6 +1,6 @@
 ---
 name: sandbox
-description: Run server-side eval or build chat-panel interactions with inline UI, action bars, custom messages, feedback, browser automation, and runtime APIs.
+description: Run server-side eval, build interactive chat UI (inline UI, action bars, custom messages, feedback), automate browser panels, and call runtime APIs. For visual and interactive answers, also read the visualize skill.
 ---
 
 # Sandbox execution
@@ -23,6 +23,7 @@ bars, and feedback components render in a connected chat panel.
 | Panel/browser CDP automation | [BROWSER_AUTOMATION.md](BROWSER_AUTOMATION.md) |
 | Common recipes | [PATTERNS.md](PATTERNS.md) |
 | Choosing an interaction surface | [INTERACTION_PATTERNS.md](INTERACTION_PATTERNS.md) |
+| Visual answers and response components | [visualize](../visualize/SKILL.md) |
 
 Use `help()` inside eval for the injected/importable runtime surface,
 `help("<binding>")` for its methods. Use `docs_search`/`docs_open` as agent
@@ -86,9 +87,11 @@ Use stable inline IDs when rerendering one workflow. Send user-authored
 follow-up prompts with `chat.send(...)`; publish custom visual state only
 through typed custom-message APIs. Never construct raw transcript rows.
 
-Use inline UI for side effects with meaningful choices, progress, retry, or
-failure state. Keep simple status in ordinary chat; use feedback only when the
-agent truly needs the returned decision.
+Show rather than tell: answer with response components in MDX or an inline UI
+whenever a visual or interactive answer serves the user better than prose (see
+[visualize](../visualize/SKILL.md)). Use inline UI when the UI needs its own
+state, logic, or runtime calls. Use feedback only when you cannot continue
+without the returned decision; otherwise offer non-blocking `Choices`.
 
 ## Paths and source
 

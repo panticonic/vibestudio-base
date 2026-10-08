@@ -1,6 +1,17 @@
 # Interaction Patterns
 
-Choose the smallest interaction that gives the user real control.
+Choose the interaction that gives the user the most direct control over the
+outcome with the least effort. A visual or interactive answer is often that
+interaction; the user does not need to ask for it.
+
+## Use MDX response components
+
+Use response components in your message (`Chart`, `Compare`, `PlaceMap`,
+`Timeline`, `Checklist`, `Calculator`, `Stats`, `Choices`, `ActionButton`)
+whenever data, options, places, steps, or what-if math are clearer shown than
+told. End with `Choices` or `ActionButton`s when the next step is one of a few
+directions; the selection returns as a message with a structured
+`interaction`. See [visualize](../visualize/SKILL.md).
 
 ## Use `eval`
 
@@ -11,13 +22,17 @@ Use `eval` for deterministic runtime work where no user choice is needed:
 - Create a project after the user has already approved the shape.
 - Verify a credential or API response.
 
-## Use `feedback_form`
+## Use `ask_user` and `feedback_form`
 
-Use `feedback_form` for one isolated, easily understood input:
+Block only when you cannot continue without the answer. Use `ask_user` for one
+question, and `feedback_form` for several related inputs in one form:
 
-- Pick one option from a list.
-- Confirm a safe command.
+- Pick one option from a list you must act on.
+- Supply a few settings needed before work can start.
 - Enter a short label or numeric setting.
+
+When the conversation can proceed without the answer, offer `Choices`
+instead.
 
 Do not chain several feedback forms to implement one setup flow. If the next
 question is already known, it belongs in the same surface. Do not expose

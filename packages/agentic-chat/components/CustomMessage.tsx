@@ -31,12 +31,14 @@ import {
   validateCustomState,
 } from "@workspace/agentic-core";
 import {
-  AGENTIC_EVENT_PAYLOAD_KIND,
-  AGENTIC_PROTOCOL_VERSION,
-  type AgenticEvent,
-  type UiFeedbackCategory,
-} from "@workspace/agentic-protocol";
+  UiFeedbackReporter,
+  type FeedbackDeliveryState,
+} from "./UiFeedbackReporter";
 import type { MessageTypeComponentEntry } from "../types";
+
+function cardRefs(payload: CustomMessageCardPayload) {
+  return { messageId: payload.messageId as never, typeId: payload.typeId };
+}
 
 interface CustomRenderProps {
   payload: CustomMessageCardPayload;
@@ -258,7 +260,8 @@ function CustomRenderer({
         {expanded && (
           <UiFeedbackReporter
             chat={chat}
-            payload={payload}
+            author={payload.by}
+            refs={cardRefs(payload)}
             category="state_invalid"
             errorMessage={validationErrors.join("; ")}
             occurrenceKey={`state_invalid:${payload.messageId}:${payload.lastSeq}`}
@@ -668,7 +671,8 @@ function CustomDiagnosticCard({
       {stalled && chat && (
         <UiFeedbackReporter
           chat={chat}
-          payload={payload}
+          author={payload.by}
+          refs={cardRefs(payload)}
           category="load_stalled"
           errorMessage={`Renderer for ${payload.typeId} stuck in stage "${stage}" for ${elapsed}s`}
           occurrenceKey={`load_stalled:${payload.typeId}:${stage}`}
@@ -847,96 +851,6 @@ function MetaRow({ label, value }: { label: string; value: string }) {
   );
 }
 
-type FeedbackDeliveryState = "sending" | "sent" | "failed";
-
-/**
- * Publishes a `ui.feedback` event targeted at the card owner when mounted.
- * Mounting happens exactly when the failure is shown, so the agent hears about
- * every failure the user sees — deduplicated by occurrenceKey on the harness
- * side and by idempotencyKey on the channel side.
- */
-function UiFeedbackReporter({
-  chat,
-  payload,
-  category,
-  errorMessage,
-  errorName,
-  stack,
-  componentStack,
-  occurrenceKey,
-  onDelivery,
-}: {
-  chat: Record<string, unknown>;
-  payload: CustomMessageCardPayload;
-  category: UiFeedbackCategory;
-  errorMessage: string;
-  errorName?: string;
-  stack?: string;
-  componentStack?: string;
-  occurrenceKey: string;
-  onDelivery?: (state: FeedbackDeliveryState) => void;
-}) {
-  useEffect(() => {
-    let cancelled = false;
-    const publish = chat["publish"];
-    if (typeof publish !== "function" || !payload.by) {
-      onDelivery?.("failed");
-      return;
-    }
-    const event: AgenticEvent<"ui.feedback"> = {
-      kind: "ui.feedback",
-      actor: { kind: "panel", id: "chat" },
-      payload: {
-        protocol: AGENTIC_PROTOCOL_VERSION,
-        target: {
-          kind: payload.by.kind as never,
-          id: payload.by.id,
-          participantId: payload.by.participantId ?? payload.by.id,
-        },
-        to: [
-          {
-            kind: "participant",
-            participantId: payload.by.participantId ?? payload.by.id,
-          },
-        ],
-        category,
-        refs: { messageId: payload.messageId as never, typeId: payload.typeId },
-        error: {
-          message: errorMessage,
-          ...(errorName ? { name: errorName } : {}),
-          ...(stack ? { stack } : {}),
-          ...(componentStack ? { componentStack } : {}),
-        },
-        occurrenceKey,
-      },
-      createdAt: new Date().toISOString(),
-    };
-    void (async () => {
-      try {
-        await (
-          publish as (
-            kind: string,
-            payload: unknown,
-            options?: { idempotencyKey?: string },
-          ) => Promise<unknown>
-        )(AGENTIC_EVENT_PAYLOAD_KIND, event, {
-          idempotencyKey: `ui-feedback:${occurrenceKey}`,
-        });
-        if (!cancelled) onDelivery?.("sent");
-      } catch (publishError) {
-        console.warn("Failed to publish ui.feedback diagnostic", publishError);
-        if (!cancelled) onDelivery?.("failed");
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-    // Publish once per occurrence — occurrenceKey is the identity.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [occurrenceKey]);
-  return null;
-}
-
 function CustomMessageErrorFallback({
   error,
   payload,
@@ -952,7 +866,8 @@ function CustomMessageErrorFallback({
   const reporter = (
     <UiFeedbackReporter
       chat={chat}
-      payload={payload}
+      author={payload.by}
+      refs={cardRefs(payload)}
       category="render_failed"
       errorMessage={error.message || "Unknown error"}
       errorName={error.name || "Error"}

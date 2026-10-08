@@ -447,6 +447,7 @@ const uiInlineRenderedPayloadSchema = z
   .object({
     protocol: protocolSchema,
     uiType: z.literal("inline"),
+    requestedBy: participantRefSchema.optional(),
     id: z.string().min(1),
     source: sandboxSourceSchema,
     imports: z.record(z.string()).optional(),
@@ -458,6 +459,7 @@ const uiActionBarUpdatedPayloadSchema = z
   .object({
     protocol: protocolSchema,
     uiType: z.literal("action_bar"),
+    requestedBy: participantRefSchema.optional(),
     id: z.string().min(1).optional(),
     source: sandboxSourceSchema.optional(),
     imports: z.record(z.string()).optional(),
@@ -532,11 +534,16 @@ const uiFeedbackPayloadSchema = z
       "method_call_failed",
       "suspension_timeout",
       "load_stalled",
+      "compile_failed",
+      "props_invalid",
     ]),
     refs: z
       .object({
         messageId: idSchema.optional(),
         typeId: z.string().optional(),
+        inlineUiId: z.string().optional(),
+        actionBarId: z.string().optional(),
+        component: z.string().optional(),
         callId: z.string().optional(),
         turnId: idSchema.optional(),
       })

@@ -1,11 +1,12 @@
 import React, { Suspense, lazy, type ReactNode } from "react";
 import { Text } from "@radix-ui/themes";
-import type { MdxActionHandlers } from "./markdownComponents";
+import type { MessageFeedbackTarget } from "./RichMessageContent";
 
 interface MessageContentProps {
   content: string;
   isStreaming: boolean;
-  mdxActions?: MdxActionHandlers;
+  /** Set for agent-authored messages so MDX failures reach their author. */
+  feedback?: MessageFeedbackTarget;
 }
 
 // Markdown parsing, GFM, MDX, and syntax highlighting are progressive
@@ -26,9 +27,16 @@ const MARKDOWN_SYNTAX_RE =
 const GFM_AUTOLINK_LITERAL_RE =
   /(?:https?:\/\/|www\.)[^\s<]+|[a-z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)+/iu;
 
-function PlainTextMessageContent({ content }: { content: string }) {
+function PlainTextMessageContent({
+  content,
+  pending,
+}: {
+  content: string;
+  /** The rich renderer is still loading; this text is a placeholder for it. */
+  pending?: boolean;
+}) {
   return (
-    <div className="message-prose">
+    <div className="message-prose" data-ui-render={pending ? "pending" : undefined}>
       <Text as="div" size="2" style={{ whiteSpace: "pre-wrap" }}>
         {content}
       </Text>
@@ -61,10 +69,25 @@ class RichRenderErrorBoundary extends React.Component<
   }
 }
 
-export const MessageContent = React.memo(function MessageContent({
+function feedbackEqual(
+  a: MessageFeedbackTarget | undefined,
+  b: MessageFeedbackTarget | undefined,
+): boolean {
+  if (a === b) return true;
+  if (!a || !b) return false;
+  return (
+    a.chat === b.chat &&
+    a.messageId === b.messageId &&
+    a.author.kind === b.author.kind &&
+    a.author.id === b.author.id
+  );
+}
+
+export const MessageContent = React.memo(
+  function MessageContent({
   content,
   isStreaming,
-  mdxActions,
+  feedback,
 }: MessageContentProps) {
   const needsRichRenderer =
     /<[A-Z]/.test(content) ||
@@ -77,9 +100,18 @@ export const MessageContent = React.memo(function MessageContent({
   const fallback = <PlainTextMessageContent content={content} />;
   return (
     <RichRenderErrorBoundary fallback={fallback} resetKey={content}>
-      <Suspense fallback={fallback}>
-        <RichMessageContent content={content} isStreaming={isStreaming} mdxActions={mdxActions} />
+      <Suspense fallback={<PlainTextMessageContent content={content} pending />}>
+        <RichMessageContent
+          content={content}
+          isStreaming={isStreaming}
+          feedback={feedback}
+        />
       </Suspense>
     </RichRenderErrorBoundary>
   );
-});
+},
+  (previous, next) =>
+    previous.content === next.content &&
+    previous.isStreaming === next.isStreaming &&
+    feedbackEqual(previous.feedback, next.feedback),
+);

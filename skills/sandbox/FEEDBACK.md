@@ -6,7 +6,10 @@ Block the agent until the user responds. Two variants: schema-based (simple form
 
 For standard forms with typed fields. No code needed.
 
-Use this for one self-contained decision or a genuinely simple set of fields.
+Use this when you cannot continue without the answer: one decision or a set of
+related inputs. For one quick question, `ask_user` is simpler; when the
+conversation can continue without the answer, offer non-blocking `Choices`
+(see [visualize](../visualize/SKILL.md)).
 Never serialize a known multi-step setup into several one-question forms.
 Provider setup, permission selection, deep links, progress, retry, and
 explanatory choices belong in a persistent `inline_ui` surface that calls its
@@ -36,6 +39,12 @@ trusted helpers directly.
 | `slider`      | `min`, `max`                  | Range slider                                                |
 | `segmented`   | `options: { value, label }[]` | Segmented control                                           |
 | `multiSelect` | `options: { value, label }[]` | Multiple checkboxes with Select all / Deselect all controls |
+| `textarea`    | —                             | Multi-line text input                                       |
+| `toggle`      | —                             | Switch                                                      |
+| `buttonGroup` | `buttons: { value, label, color?, description? }[]`, `submitOnSelect` | Row of answer buttons; with `submitOnSelect` one click answers |
+| `readonly`    | —                             | Display-only text                                           |
+| `code`        | `language`, `maxHeight`       | Highlighted code or JSON (display)                          |
+| `diff`        | `language`, `maxHeight`       | Diff view (display)                                         |
 
 Choice fields (`select`, `segmented`, and `multiSelect`) show an automatic
 free-text "Other" choice in feedback forms unless `allowFreeText: false` is set

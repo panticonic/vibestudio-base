@@ -1,16 +1,22 @@
 # MDX Messages
 
-Use MDX for normal assistant messages when a compact rich response is clearer
-than plain Markdown. MDX is for presentation and simple declarative follow-up
-actions. Use `inline_ui`, `load_action_bar`, or `feedback_custom` for app-like
-UI, custom logic, or workflow controls that need component state.
+Use MDX in assistant messages whenever a visual or interactive answer is
+clearer than plain Markdown: charts, comparisons, maps, timelines, checklists,
+calculators, and follow-up choices. MDX props accept JavaScript expressions, so
+response components can take data arrays and compute functions. Use
+`inline_ui`, `load_action_bar`, or `feedback_custom` when the UI needs its own
+state across turns, runtime calls, or workflow logic.
 
 ## Available Components
 
 Normal chat messages support standard Markdown plus these components:
 
-- `Badge`, `Blockquote`, `Box`, `Button`, `Callout`, `Card`, `Code`, `Flex`,
-  `Heading`, `Link`, `Table`, `Text`
+- Response components: `Chart`, `Stats`, `Compare`, `Timeline`, `Checklist`,
+  `PlaceMap`, `Choices`, `Calculator`, `ActionButton` — see
+  [COMPONENTS.md](../visualize/COMPONENTS.md)
+- `Avatar`, `Badge`, `Blockquote`, `Box`, `Button`, `Callout`, `Card`, `Code`,
+  `DataList`, `Flex`, `Grid`, `Heading`, `Inset`, `Link`, `Progress`,
+  `Separator`, `Table`, `Tabs`, `Text`, `Tooltip`
 - `Icons` from Radix icons, such as `Icons.CheckIcon`,
   `Icons.InfoCircledIcon`, `Icons.OpenInNewWindowIcon`
 - `ActionButton` for simple follow-up actions
@@ -68,10 +74,15 @@ Markdown links are clickable in Vibestudio panels.
 
 Good MDX uses:
 
-- Short summaries with badges or callouts
-- Tables comparing options
-- Small next-step action groups with `ActionButton`
-- Checklists that do not need custom state
+- Charts, key figures, comparisons, maps, and timelines
+- Calculators for splits, budgets, loans, and other what-if math
+- Checklists and step-by-step tasks
+- Follow-up `Choices` and next-step `ActionButton`s
+- Summaries with badges, callouts, tabs, and tables
+
+If the message's MDX fails to compile or render, it falls back to plain text
+and you receive a ui-feedback note on your next turn. Repair it in your next
+message.
 
 Use `inline_ui`, `load_action_bar`, or `feedback_custom` instead for:
 

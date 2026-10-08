@@ -1602,6 +1602,47 @@ describe("@workspace/agentic-protocol reducers", () => {
     });
   });
 
+  it("attributes UI published on behalf of a requester to the requester", () => {
+    const requester = {
+      kind: "agent" as const,
+      id: "agent:caller",
+      participantId: "agent:caller",
+    };
+    const inline: AgenticEvent<"ui.inline_rendered"> = {
+      kind: "ui.inline_rendered",
+      actor: agent,
+      payload: {
+        protocol: AGENTIC_PROTOCOL_VERSION,
+        uiType: "inline",
+        requestedBy: requester,
+        id: "inline-1",
+        source: { type: "code", code: "export default () => null" },
+      },
+      createdAt: "2026-05-20T12:00:00.000Z",
+    };
+    const cleared: AgenticEvent<"ui.action_bar.updated"> = {
+      kind: "ui.action_bar.updated",
+      actor: agent,
+      payload: {
+        protocol: AGENTIC_PROTOCOL_VERSION,
+        uiType: "action_bar",
+        requestedBy: requester,
+        cleared: true,
+        result: { ok: true },
+      },
+      createdAt: "2026-05-20T12:00:01.000Z",
+    };
+    expect(agenticEventSchema.safeParse(inline).success).toBe(true);
+    expect(agenticEventSchema.safeParse(cleared).success).toBe(true);
+    const state = [envelope(inline, 1), envelope(cleared, 2)].reduce(
+      reduceChannelView,
+      createInitialChannelViewState(),
+    );
+    expect(state.inlineUi["participant-agent-1"]?.["inline-1"]?.author).toEqual(requester);
+    expect(state.inlineUi["participant-agent-1"]?.["inline-1"]?.actor).toMatchObject({ id: agent.id });
+    expect(state.actionBars["participant-agent-1"]?.author).toEqual(requester);
+  });
+
   it("merges custom message updates before starts and keeps updates sorted by seq", () => {
     const update2: AgenticEvent<"custom.updated"> = {
       kind: "custom.updated",
@@ -1971,5 +2012,44 @@ describe("@workspace/agentic-protocol message delivery events", () => {
       .reduce(reduceChannelView, createInitialChannelViewState());
     expect(state.messages[target]?.retracted).toBe(true);
     expect(state.messages[target]?.readBy).toBeUndefined();
+  });
+
+  it("accepts compile_failed ui.feedback that references an inline UI", () => {
+    const event = {
+      kind: "ui.feedback",
+      actor: { kind: "panel", id: "chat" },
+      payload: {
+        protocol: AGENTIC_PROTOCOL_VERSION,
+        target: { kind: "agent", id: "agent:a", participantId: "agent:a" },
+        category: "compile_failed",
+        refs: { inlineUiId: "card-1" },
+        error: { message: "Unexpected token" },
+        occurrenceKey: "inline_ui:compile:card-1::Unexpected token",
+      },
+      createdAt: new Date().toISOString(),
+    };
+    expect(agenticEventSchema.safeParse(event).success).toBe(true);
+    const unknown = {
+      ...event,
+      payload: { ...event.payload, refs: { bogus: "x" } },
+    };
+    expect(agenticEventSchema.safeParse(unknown).success).toBe(false);
+  });
+
+  it("accepts props_invalid and action bar refs on ui.feedback", () => {
+    const event = {
+      kind: "ui.feedback",
+      actor: { kind: "panel", id: "chat" },
+      payload: {
+        protocol: AGENTIC_PROTOCOL_VERSION,
+        target: { kind: "agent", id: "agent:a", participantId: "agent:a" },
+        category: "props_invalid",
+        refs: { actionBarId: "bar-1", component: "Chart" },
+        error: { message: "Chart needs a data array." },
+        occurrenceKey: "props_invalid:bar-1:Chart:x",
+      },
+      createdAt: new Date().toISOString(),
+    };
+    expect(agenticEventSchema.safeParse(event).success).toBe(true);
   });
 });

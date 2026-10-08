@@ -2430,6 +2430,37 @@ describe("AgentVesselBase native intake decisions", () => {
     ).rejects.toThrow("UI interaction requires");
   });
 
+  it("renders structured selected values in the admitted model input", async () => {
+    const vessel = await makePromptProbe();
+    const interaction = {
+      source: "choices",
+      kind: "choice",
+      action: "submit",
+      targetId: "next-step",
+      values: ["Ship it", "Write tests"],
+    };
+    const selected = await vessel.selectForTest(CHANNEL, {
+      ...customChannelEvent(AGENTIC_EVENT_PAYLOAD_KIND),
+      payload: {
+        kind: "message.completed",
+        actor: { kind: "user", id: "user" },
+        causality: { messageId: "selected-choices" },
+        payload: {
+          blocks: [{ type: "text", content: "Next? → Ship it, Write tests" }],
+          metadata: { interaction },
+        },
+      },
+    });
+    if (
+      selected.intake.kind !== "input" ||
+      typeof selected.intake.content !== "string"
+    )
+      throw new Error("The UI choice was not admitted as native input");
+    expect(
+      JSON.parse(selected.intake.content.split("\n\n")[1]!.split("\n")[1]!),
+    ).toEqual(interaction);
+  });
+
   it("keeps an unconfigured custom payload as a passive observation", async () => {
     const vessel = await makePromptProbe();
     expect(

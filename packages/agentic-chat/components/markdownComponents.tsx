@@ -2,7 +2,9 @@ import { Children, isValidElement, type ReactNode } from "react";
 import type { Components } from "react-markdown";
 import { Image, Video } from "@workspace/react";
 import { Diagram, MermaidDiagram } from "@workspace/ui/diagram";
+import { responseComponents } from "@workspace/ui/response";
 import {
+  Avatar,
   Badge,
   Blockquote,
   Box,
@@ -10,11 +12,18 @@ import {
   Callout as RadixCallout,
   Card,
   Code,
+  DataList,
   Flex,
+  Grid,
   Heading,
+  Inset,
   Link,
+  Progress,
+  Separator,
   Table,
+  Tabs,
   Text,
+  Tooltip,
 } from "@radix-ui/themes";
 // Curated icon subset for MDX components (~saves 400KB vs wildcard import)
 // These are the icons commonly used by agents in MDX content
@@ -65,10 +74,6 @@ import {
   PauseIcon,
   StopIcon,
 } from "@radix-ui/react-icons";
-
-export interface MdxActionHandlers {
-  publishMessage?: (content: string) => void | Promise<void>;
-}
 
 // Re-export as Icons namespace for MDX components: <Icons.CheckIcon />
 const Icons = {
@@ -147,35 +152,6 @@ function FeedbackFormTitle({
       {content}
     </Heading>
   );
-}
-
-function createActionButton(actions?: MdxActionHandlers) {
-  return function ActionButton({
-    children,
-    message,
-    variant = "soft",
-    size = "1",
-  }: {
-    children?: ReactNode;
-    message?: string;
-    variant?: "classic" | "solid" | "soft" | "surface" | "outline" | "ghost";
-    size?: "1" | "2" | "3" | "4";
-  }) {
-    const disabled = !message || !actions?.publishMessage;
-    return (
-      <Button
-        size={size}
-        variant={variant}
-        disabled={disabled}
-        onClick={() => {
-          if (!message) return;
-          void actions?.publishMessage?.(message);
-        }}
-      >
-        {children ?? message}
-      </Button>
-    );
-  };
 }
 
 const MERMAID_LANGUAGE_RE = /\blanguage-mermaid\b/;
@@ -351,8 +327,11 @@ export const streamingMarkdownComponents: Components = {
   ...createCodeComponents({ diagrams: false }),
 };
 
+// Everything an MDX message may name as a tag. Interactive catalog controls
+// (ActionButton, Choices) send through the host's ResponseActionsProvider.
 export const mdxComponents: Record<string, unknown> = {
   ...markdownComponents,
+  Avatar,
   Badge,
   Blockquote,
   Box,
@@ -360,22 +339,23 @@ export const mdxComponents: Record<string, unknown> = {
   Callout,
   Card,
   Code,
+  DataList,
   Flex,
+  Grid,
   Heading,
+  Inset,
   Link,
+  Progress,
+  Separator,
   Table,
+  Tabs,
   Text,
+  Tooltip,
   Icons,
   FeedbackFormTitle,
   Image,
   Video,
   Diagram,
   Mermaid: Diagram,
+  ...responseComponents,
 };
-
-export function createMdxComponents(actions?: MdxActionHandlers): Record<string, unknown> {
-  return {
-    ...mdxComponents,
-    ActionButton: createActionButton(actions),
-  };
-}

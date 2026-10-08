@@ -1,4 +1,5 @@
 import type { Context, JsonValue } from "@panticonic/pi-chord";
+import { formatFeedbackNote } from "./feedback-ingest.js";
 import {
   configure,
   defineDoc,
@@ -1258,7 +1259,7 @@ export async function submitNativeChannelDelivery(
                   );
                   feedback.pending.push({
                     occurrenceKey: prepared.payload.occurrenceKey,
-                    note: formatNativeFeedbackNote(prepared.payload),
+                    note: formatFeedbackNote(prepared.payload),
                     frontier: {
                       channelRef: { ...incoming.channelRef },
                       sequence: incoming.eventSequence,
@@ -1329,32 +1330,4 @@ function withDiagnostics(content: UserInput, diagnostic: string): UserInput {
   return typeof content === "string"
     ? [diagnostic, content].filter(Boolean).join("\n\n")
     : [{ type: "text", text: diagnostic }, ...content];
-}
-
-export function formatNativeFeedbackNote(payload: UiFeedbackPayload): string {
-  const refs = payload.refs ?? {};
-  const where = [
-    refs.typeId ? `type ${refs.typeId}` : null,
-    refs.messageId ? `card ${refs.messageId}` : null,
-    refs.callId ? `call ${refs.callId}` : null,
-  ]
-    .filter(Boolean)
-    .join(", ");
-  const category =
-    payload.category === "render_failed"
-      ? "A UI component you published failed to render"
-      : payload.category === "state_invalid"
-        ? "A card you published has state that fails its registered schema"
-        : payload.category === "type_not_registered"
-          ? "A card you published references an unregistered message type"
-          : payload.category === "method_call_failed"
-            ? "A method call you were handling failed or expired"
-            : payload.category === "load_stalled"
-              ? "A card you published is stuck loading in the panel (its renderer never compiled)"
-              : "A suspended wait timed out";
-  return [
-    `[ui-feedback] ${category}${where ? ` (${where})` : ""}.`,
-    `Error: ${payload.error.message}`,
-    "Fix the underlying problem or tell the user what went wrong; do not ignore this.",
-  ].join("\n");
 }

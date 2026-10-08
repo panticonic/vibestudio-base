@@ -8,7 +8,10 @@ import { ChatLayout } from "./ChatLayout";
 vi.mock("./ChatHeader", () => ({
   ChatHeader: () => <div data-testid="stock-header">Stock header</div>,
 }));
-vi.mock("./ChatConnectionErrorBanner", () => ({ ChatConnectionErrorBanner: () => null }));
+vi.mock("./ChatConnectionErrorBanner", () => ({
+  ChatConnectionErrorBanner: () => null,
+  ChatConnectionStateMarker: () => null,
+}));
 vi.mock("./ChatDirtyRepoWarnings", () => ({ ChatDirtyRepoWarnings: () => null }));
 vi.mock("./LazyChatActionBar", () => ({
   LazyChatActionBar: () => <div data-testid="action-bar" />,

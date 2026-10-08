@@ -317,6 +317,13 @@ export function actionBarPayloadFromChannelView(state: ChannelViewState): Action
     return null;
   const payload: ActionBarPayload = {
     source: latestItem.source,
+    author: {
+      kind: latestItem.author.kind,
+      id: latestItem.author.id,
+      ...(latestItem.author.participantId
+        ? { participantId: latestItem.author.participantId }
+        : {}),
+    },
   };
   if (latestItem.id !== undefined) payload.id = latestItem.id;
   if (latestItem.imports !== undefined) payload.imports = latestItem.imports;
@@ -781,6 +788,7 @@ function projectedMessageToChatMessages(
       ...(message.role === "assistant" && message.model ? { model: message.model } : {}),
       ...(message.seq !== undefined ? { seq: message.seq } : {}),
       ...(message.saliency ? { saliency: message.saliency } : {}),
+      ...(message.interaction ? { interaction: message.interaction } : {}),
       ...(message.replaces ? { replaces: message.replaces } : {}),
       ...(message.notify
         ? {
@@ -1173,8 +1181,6 @@ function uiInvocationDescription(invocation: ProjectedInvocation): string | unde
       return feedbackInvocationDescription(invocation, "feedback");
     case "feedback_custom":
       return feedbackInvocationDescription(invocation, "custom feedback");
-    case "ui_prompt":
-      return uiPromptInvocationDescription(invocation);
     case "inspect_card":
       return inspectCardInvocationDescription(invocation);
     default:
@@ -1222,16 +1228,6 @@ function feedbackInvocationDescription(
   return completedFeedbackDescription(result, title);
 }
 
-function uiPromptInvocationDescription(invocation: ProjectedInvocation): string {
-  const request = recordOrEmpty(invocation.request);
-  const title = stringValue(request["title"]) ?? "prompt";
-  const kind = stringValue(request["kind"]);
-  if (invocation.status !== "completed") {
-    return `Waiting for ${kind ? `${kind} ` : ""}prompt: ${title}`;
-  }
-  return `Prompt answered: ${title}`;
-}
-
 function inspectCardInvocationDescription(invocation: ProjectedInvocation): string {
   const request = recordOrEmpty(invocation.request);
   const result = recordOrEmpty(invocation.result);
@@ -1273,7 +1269,7 @@ function projectedInlineUiToChatMessage(
   participantId: string,
   inlineUi: {
     id: string;
-    actor: { id: string; kind: string; displayName?: string };
+    author: { id: string; kind: string; displayName?: string };
     turnId?: string;
     source: InlineUiCardPayload["source"];
     imports?: Record<string, string>;
@@ -1290,16 +1286,16 @@ function projectedInlineUiToChatMessage(
   if (inlineUi.props !== undefined) payload.props = inlineUi.props;
   return {
     id: `inline-ui:${participantId}:${inlineUi.id}`,
-    senderId: inlineUi.actor.id,
+    senderId: inlineUi.author.id,
     content: JSON.stringify(payload),
     contentType: "inline_ui",
     kind: "message",
     complete: true,
     inlineUi: payload,
     senderMetadata: {
-      name: inlineUi.actor.displayName ?? inlineUi.actor.id,
-      type: inlineUi.actor.kind,
-      handle: inlineUi.actor.id,
+      name: inlineUi.author.displayName ?? inlineUi.author.id,
+      type: inlineUi.author.kind,
+      handle: inlineUi.author.id,
     },
     sortTime: Date.parse(inlineUi.renderedAt) || 0,
   } as ChatMessage & { sortTime: number };

@@ -58,6 +58,7 @@ import {
 import { LOCAL_FALLBACK_MODEL_REF } from "@workspace/model-catalog/catalog";
 import { ChatMessageActionsContext } from "../context/ChatContext.js";
 import { MessageList } from "./MessageList.js";
+import { ResponseActionsProvider } from "@workspace/ui/response";
 import {
   latestSubagentActivities,
   SubagentRunCard,
@@ -372,8 +373,12 @@ describe("MessageList typing indicators (roster-based)", () => {
       },
     );
     const send = vi.fn(async () => undefined);
+    const onPersistAgentModel = vi.fn(async () => undefined);
     render(
-      React.createElement(MessageList, {
+      React.createElement(
+        ChatMessageActionsContext.Provider,
+        { value: { onPersistAgentModel } as never },
+        React.createElement(MessageList, {
         messages: [
           makeMessage({
             id: "diagnostic:msg-provider-failed",
@@ -397,6 +402,7 @@ describe("MessageList typing indicators (roster-based)", () => {
         allParticipants: makeParticipant("agent-1", { handle: "ai-chat" }),
         chat: { callMethod, send },
       } as never),
+      ),
     );
 
     const retryButton = await screen.findByRole("button", {
@@ -412,13 +418,12 @@ describe("MessageList typing indicators (roster-based)", () => {
     expect(calls.map((call) => [call.participantId, call.method])).toEqual([
       ["agent-1", "getAgentSettings"],
       ["agent-1", "setModel"],
-      ["user-1", "persist_agent_model"],
     ]);
     expect(calls[1]?.args).toEqual({ model: LOCAL_FALLBACK_MODEL_REF });
-    expect(calls[2]?.args).toEqual({
-      participantId: "agent-1",
-      model: LOCAL_FALLBACK_MODEL_REF,
-    });
+    expect(onPersistAgentModel).toHaveBeenCalledWith(
+      "agent-1",
+      LOCAL_FALLBACK_MODEL_REF,
+    );
   });
 
   it.each(["model_stream_stalled_retryable", "unknown_retryable"])(
@@ -482,8 +487,12 @@ describe("MessageList typing indicators (roster-based)", () => {
       },
     );
     const send = vi.fn(async () => undefined);
+    const onPersistAgentModel = vi.fn(async () => undefined);
     render(
-      React.createElement(MessageList, {
+      React.createElement(
+        ChatMessageActionsContext.Provider,
+        { value: { onPersistAgentModel } as never },
+        React.createElement(MessageList, {
         messages: [
           makeMessage({
             id: "diagnostic:msg-provider-failed-setmodel",
@@ -507,6 +516,7 @@ describe("MessageList typing indicators (roster-based)", () => {
         allParticipants: makeParticipant("agent-1", { handle: "ai-chat" }),
         chat: { callMethod, send },
       } as never),
+      ),
     );
 
     const retryButton = await screen.findByRole("button", {
@@ -520,9 +530,7 @@ describe("MessageList typing indicators (roster-based)", () => {
       await screen.findByRole("button", { name: /retry local failed/i }),
     ).toBeTruthy();
     expect(send).not.toHaveBeenCalled();
-    expect(calls.some((call) => call.method === "persist_agent_model")).toBe(
-      false,
-    );
+    expect(onPersistAgentModel).not.toHaveBeenCalled();
     expect(screen.queryByText("Retry ready")).toBeNull();
     warn.mockRestore();
   });
@@ -970,23 +978,26 @@ describe("MessageList typing indicators (roster-based)", () => {
     expect(screen.queryByText("call-1")).toBeNull();
   });
 
-  it("wires MDX ActionButton to publish a follow-up message", async () => {
-    const publishMessage = vi.fn();
+  it("wires MDX ActionButton to the conversation's response actions", async () => {
+    const send = vi.fn();
     render(
-      React.createElement(MessageList, {
-        messages: [
-          makeMessage({
-            id: "mdx-1",
-            content:
-              '<ActionButton message="Refresh the data">Refresh</ActionButton>',
-            complete: true,
-          }),
-        ],
-        participants: {},
-        selfId: "user-1",
-        allParticipants: {},
-        mdxActions: { publishMessage },
-      } as never),
+      React.createElement(
+        ResponseActionsProvider,
+        { send },
+        React.createElement(MessageList, {
+          messages: [
+            makeMessage({
+              id: "mdx-1",
+              content:
+                '<ActionButton message="Refresh the data" id="refresh">Refresh</ActionButton>',
+              complete: true,
+            }),
+          ],
+          participants: {},
+          selfId: "user-1",
+          allParticipants: {},
+        } as never),
+      ),
     );
 
     const button = await waitFor(() =>
@@ -994,7 +1005,14 @@ describe("MessageList typing indicators (roster-based)", () => {
     );
     fireEvent.click(button);
 
-    expect(publishMessage).toHaveBeenCalledWith("Refresh the data");
+    expect(send).toHaveBeenCalledWith("Refresh the data", {
+      interaction: {
+        source: "action-button",
+        kind: "action",
+        action: "press",
+        targetId: "refresh",
+      },
+    });
   });
 
   it("renders feedback-form title MDX from transcript messages", async () => {

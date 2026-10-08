@@ -4,7 +4,8 @@ import { Box, Spinner } from "@radix-ui/themes";
 import { EventErrorBoundary } from "@workspace/tool-ui/components/EventErrorBoundary";
 import { useChatContext } from "../context/ChatContext";
 import { wrapChatForErrorReporting, wrapScopesForErrorReporting } from "../utils/wrapSandboxApis";
-import { InlineUiErrorCallout } from "./InlineUiMessage";
+import { InlineUiErrorCallout, type InlineUiFailureReport } from "./InlineUiMessage";
+import { ResponseProblemFeedback } from "./UiFeedbackReporter";
 import type { ActionBarState } from "../types";
 
 const DEFAULT_MAX_HEIGHT = 180;
@@ -55,6 +56,10 @@ function ChatActionBarContent({ actionBar }: { actionBar: ActionBarState }) {
   useEffect(() => scopeManager.onChange(forceUpdate), [scopeManager]);
 
   const resetKey = `${data.id}:${JSON.stringify(data.props ?? {})}`;
+  const reportFor = (phase: "compile" | "render" | "interaction", message: string): InlineUiFailureReport | undefined =>
+    data.author
+      ? { author: data.author, occurrenceKey: ["action_bar", phase, data.id, message].join(":") }
+      : undefined;
   useEffect(() => { setAsyncError(null); }, [resetKey]);
 
   const maxHeight = clampMaxHeight(data.maxHeight);
@@ -128,13 +133,18 @@ function ChatActionBarContent({ actionBar }: { actionBar: ActionBarState }) {
             componentId={data.id}
             source={data.source.type === "file" ? data.source.path : "inline code"}
             chat={chat}
+            surface="action_bar"
+            report={reportFor("interaction", asyncError.message)}
           />
         ) : component?.error ? (
           <InlineUiErrorCallout
             error={new Error(component.error)}
+            phase="compile"
             componentId={data.id}
             source={data.source.type === "file" ? data.source.path : "inline code"}
             chat={chat}
+            surface="action_bar"
+            report={reportFor("compile", component.error)}
           />
         ) : !CompiledComponent ? (
           <Spinner size="1" />
@@ -145,19 +155,29 @@ function ChatActionBarContent({ actionBar }: { actionBar: ActionBarState }) {
             renderFallback={(error) => (
               <InlineUiErrorCallout
                 error={error}
+                phase="render"
                 componentId={data.id}
                 source={data.source.type === "file" ? data.source.path : "inline code"}
                 chat={chat}
+                surface="action_bar"
+                report={reportFor("render", error.message)}
               />
             )}
           >
             <Suspense fallback={<Spinner size="1" />}>
-              <CompiledComponent
-                props={componentProps}
-                chat={wrappedChat as unknown as Record<string, unknown>}
-                scope={scope}
-                scopes={wrappedScopes as unknown as Record<string, unknown>}
-              />
+              <ResponseProblemFeedback
+                chat={chat as unknown as Record<string, unknown>}
+                author={data.author}
+                refs={{ actionBarId: data.id }}
+                scope={`action_bar:${data.id}:${JSON.stringify(data.props ?? {})}`}
+              >
+                <CompiledComponent
+                  props={componentProps}
+                  chat={wrappedChat as unknown as Record<string, unknown>}
+                  scope={scope}
+                  scopes={wrappedScopes as unknown as Record<string, unknown>}
+                />
+              </ResponseProblemFeedback>
             </Suspense>
           </EventErrorBoundary>
         )}

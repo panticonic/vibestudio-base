@@ -261,6 +261,7 @@ template:
     - skills/templates
     - skills/terminal
     - skills/vibestudio-vcs
+    - skills/visualize
     - skills/web-research
     - skills/website-publishing
     - skills/workspace-dev

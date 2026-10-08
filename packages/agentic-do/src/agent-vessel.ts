@@ -2563,6 +2563,10 @@ export abstract class AgentVesselBase extends NativeChannelOwner<NativeProductCh
       kind: interaction.kind,
       action: interaction.action,
       targetId: interaction.targetId,
+      ...(Array.isArray(interaction.values) &&
+      interaction.values.every((value) => typeof value === "string")
+        ? { values: interaction.values }
+        : {}),
     };
     return [content, `Selected UI interaction:\n${canonicalJson(selection)}`]
       .filter(Boolean)

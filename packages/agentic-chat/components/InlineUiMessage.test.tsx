@@ -33,6 +33,7 @@ vi.mock("../context/ChatContext", () => ({
   useChatContext: () => chatContext,
 }));
 
+import { Stats } from "@workspace/ui/response";
 import { InlineUiMessage } from "./InlineUiMessage";
 
 afterEach(() => {
@@ -249,5 +250,122 @@ describe("InlineUiMessage", () => {
     expect(
       view.getByText(/Message: inline-ui:setup-agent:interactive-card/),
     ).toBeTruthy();
+  });
+
+  describe("automatic ui.feedback", () => {
+    const author = { kind: "agent", id: "agent:author" };
+    const data = {
+      id: "fb-card",
+      source: { type: "file" as const, path: "cards/Fb.tsx" },
+      renderedAt: "rev-1",
+    };
+
+    it("publishes props_invalid when a catalog component rejects the author's props", async () => {
+      chatContext.chat.publish.mockClear();
+      function Card() {
+        return <Stats items={"nope" as never} />;
+      }
+      const view = render(
+        <InlineUiMessage
+          data={data}
+          messageId="inline-ui:agent:author:fb-card"
+          author={author}
+          compiledComponent={Card as never}
+        />,
+      );
+      await waitFor(() =>
+        expect(chatContext.chat.publish).toHaveBeenCalledTimes(1),
+      );
+      const [, event] = chatContext.chat.publish.mock.calls[0] as unknown as [
+        string,
+        { payload: Record<string, unknown> },
+      ];
+      expect(event.payload).toMatchObject({
+        category: "props_invalid",
+        refs: { inlineUiId: "fb-card", component: "Stats" },
+      });
+      expect(view.container.querySelector(".vs-r-problem")).toBeTruthy();
+    });
+
+    it("publishes compile_failed to the author once and shows delivery", async () => {
+      chatContext.chat.publish.mockClear();
+      const view = render(
+        <InlineUiMessage
+          data={data}
+          messageId="inline-ui:agent:author:fb-card"
+          author={author}
+          compilationError="Unexpected token"
+        />,
+      );
+      await waitFor(() =>
+        expect(chatContext.chat.publish).toHaveBeenCalledTimes(1),
+      );
+      const [, event, options] = chatContext.chat.publish.mock
+        .calls[0] as unknown as [
+        string,
+        { payload: Record<string, unknown> },
+        { idempotencyKey: string },
+      ];
+      expect(event.payload).toMatchObject({
+        category: "compile_failed",
+        target: { kind: "agent", id: "agent:author" },
+        refs: { inlineUiId: "fb-card" },
+        error: { message: "Unexpected token" },
+      });
+      expect(options.idempotencyKey).toBe(
+        `ui-feedback:${event.payload["occurrenceKey"]}`,
+      );
+      await waitFor(() =>
+        expect(view.getByText("Reported to the authoring agent.")).toBeTruthy(),
+      );
+      expect(view.queryByText("Report to Agent")).toBeNull();
+      view.rerender(
+        <InlineUiMessage
+          data={data}
+          messageId="inline-ui:agent:author:fb-card"
+          author={author}
+          compilationError="Unexpected token"
+        />,
+      );
+      expect(chatContext.chat.publish).toHaveBeenCalledTimes(1);
+    });
+
+    it("publishes render_failed with the component stack when the component throws", async () => {
+      vi.spyOn(console, "error").mockImplementation(() => undefined);
+      chatContext.chat.publish.mockClear();
+      const Broken = () => {
+        throw new Error("boom in render");
+      };
+      render(
+        <InlineUiMessage
+          data={data}
+          messageId="inline-ui:agent:author:fb-card"
+          author={author}
+          compiledComponent={Broken}
+        />,
+      );
+      await waitFor(() =>
+        expect(chatContext.chat.publish).toHaveBeenCalled(),
+      );
+      const keys = new Set(
+        chatContext.chat.publish.mock.calls.map(
+          (call) =>
+            (call as unknown as [string, { payload: { occurrenceKey: string } }])[1]
+              .payload.occurrenceKey,
+        ),
+      );
+      expect(keys.size).toBe(1);
+      const payload = (
+        chatContext.chat.publish.mock.calls[0] as unknown as [
+          string,
+          { payload: Record<string, unknown> },
+        ]
+      )[1].payload;
+      expect(payload).toMatchObject({
+        category: "render_failed",
+        refs: { inlineUiId: "fb-card" },
+        error: { message: "boom in render" },
+      });
+    });
   });
 });

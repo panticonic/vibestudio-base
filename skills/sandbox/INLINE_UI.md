@@ -5,13 +5,31 @@ self-contained workflows whose controls can call trusted helpers directly.
 
 ## When To Use It
 
-Use a UI instead of plain text when the task has:
+Use a UI instead of plain text whenever it serves the user better; they do not
+need to ask. Inline UI is the right surface when the UI needs its own state,
+logic, live data, or runtime calls, or is something the user will return to:
 
+- Tools the user operates: calculators backed by workspace data, explorers,
+  filters, and editors.
+- Dashboards and live status.
 - Multiple steps the user can complete independently.
 - Links or resources the user may open inside Vibestudio or externally.
 - Progress, status, or retry states.
-- Choices where a card, table, segmented control, or checklist is clearer than
-  prose.
+- Tables with row actions and choices that trigger operations.
+
+For presentation that needs no state or code — charts, comparisons, maps,
+timelines, simple calculators, and follow-up choices — write the same response
+components as MDX in your message instead. See
+[visualize](../visualize/SKILL.md).
+
+Build with the response components from `@workspace/react` (`Chart`, `Stats`,
+`Compare`, `Timeline`, `Checklist`, `PlaceMap`, `Choices`, `Calculator`,
+`ActionButton`, `Image`, `Video`) before hand-writing layouts; see
+[COMPONENTS.md](../visualize/COMPONENTS.md).
+
+If a component fails to compile or render, you receive a ui-feedback note on
+your next turn naming the inline UI id and the error. Fix the source and render
+again with the same `id`.
 
 For provider setup, OAuth, imports, and similar workflows, prefer `inline_ui`
 when the component can perform the operation. Keep browser actions, trusted
@@ -57,8 +75,8 @@ state all see the same canonical event.
 - Root with unframed layout such as `<Flex direction="column" gap="3" p="2">`.
 - Do not wrap the entire component in a top-level card; the host already frames
   feedback components.
-- Use Radix primitives from `@radix-ui/themes` and icons from
-  `@radix-ui/react-icons`.
+- Use response components from `@workspace/react`, Radix primitives from
+  `@radix-ui/themes`, and icons from `@radix-ui/react-icons`.
 - Your component runs inside the hosting panel's realm and uses that realm's
   React and Radix Theme. When it lives in a skill or package that declares
   manifest dependencies, declare `react` and `@radix-ui/themes` under

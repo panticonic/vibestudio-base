@@ -29,7 +29,8 @@ interface ModelCredentialRequiredCardProps {
   agentParticipantId?: string;
   browserHandoffCallerId?: string;
   browserHandoffCallerKind?: string;
-  modelPersistenceParticipantId?: string;
+  /** Panel-owned persistence of the chosen agent model; absent when unavailable. */
+  persistAgentModel?: (participantId: string, model: string) => Promise<void>;
   reason?: string;
   configuration?: Record<string, string>;
   method?: string;
@@ -127,12 +128,9 @@ export default function ModelCredentialRequiredCard({
         await chat.callMethod(props.agentParticipantId, "setModel", {
           model: selectedOption.modelRef,
         });
-        if (props.modelPersistenceParticipantId) {
-          void chat
-            .callMethod(props.modelPersistenceParticipantId, "persist_agent_model", {
-              participantId: props.agentParticipantId,
-              model: selectedOption.modelRef,
-            })
+        if (props.persistAgentModel) {
+          void props
+            .persistAgentModel(props.agentParticipantId, selectedOption.modelRef)
             .catch((err: unknown) => {
               console.warn("[ModelCredentialRequiredCard] model persistence failed:", err);
             });

@@ -57,7 +57,6 @@ import type {
   MessageTypeComponentEntry,
 } from "../types";
 import type { SenderInfo } from "./MessageList";
-import type { MdxActionHandlers } from "./markdownComponents";
 
 interface MessageCardProps {
   msg: ChatMessage;
@@ -82,7 +81,6 @@ interface MessageCardProps {
   onReply?: (msgId: string) => void;
   onFocusPanel?: (panelId: string) => void;
   onReloadPanel?: (panelId: string) => void;
-  mdxActions?: MdxActionHandlers;
 }
 
 function classNames(
@@ -215,7 +213,6 @@ export const MessageCard = React.memo(function MessageCard({
   onReply,
   onFocusPanel,
   onReloadPanel,
-  mdxActions,
 }: MessageCardProps) {
   const key = msg.id || `fallback-msg-${index}`;
 
@@ -377,14 +374,11 @@ export const MessageCard = React.memo(function MessageCard({
           model: LOCAL_FALLBACK_MODEL_REF,
         });
         setCurrentAgentModelRef(LOCAL_FALLBACK_MODEL_REF);
-        if (selfId) {
-          void callMethod(selfId, "persist_agent_model", {
-            participantId: msg.senderId,
-            model: LOCAL_FALLBACK_MODEL_REF,
-          }).catch((err: unknown) => {
+        void messageActions
+          ?.onPersistAgentModel?.(msg.senderId, LOCAL_FALLBACK_MODEL_REF)
+          .catch((err: unknown) => {
             console.warn("[MessageCard] local model persistence failed:", err);
           });
-        }
       }
       if (sendFromChat) {
         await sendFromChat("retry", { tier: "primary" });
@@ -401,8 +395,8 @@ export const MessageCard = React.memo(function MessageCard({
     callMethod,
     currentAgentModelRef,
     inputActions,
+    messageActions,
     msg.senderId,
-    selfId,
     sendFromChat,
   ]);
 
@@ -531,6 +525,7 @@ export const MessageCard = React.memo(function MessageCard({
           <InlineUiMessage
             data={data}
             messageId={msg.id}
+            author={{ kind: senderType, id: msg.senderId }}
             compiledComponent={compiled?.Component}
             compilationError={compiled?.error}
             compilationErrorStack={compiled?.errorStack}
@@ -559,7 +554,9 @@ export const MessageCard = React.memo(function MessageCard({
               ? { failureCode: request.failureCode }
               : {}),
             agentParticipantId: request.agentParticipantId,
-            ...(selfId ? { modelPersistenceParticipantId: selfId } : {}),
+            ...(messageActions?.onPersistAgentModel
+              ? { persistAgentModel: messageActions.onPersistAgentModel }
+              : {}),
             ...(browserHandoffCaller
               ? {
                   browserHandoffCallerId: browserHandoffCaller.id,
@@ -1120,6 +1117,7 @@ export const MessageCard = React.memo(function MessageCard({
             <>
               <Box
                 className="message-content"
+                data-message-id={msg.id}
                 style={
                   !isStreaming &&
                   msg.content.length > 6_000 &&
@@ -1136,7 +1134,15 @@ export const MessageCard = React.memo(function MessageCard({
                 <MessageContent
                   content={msg.content}
                   isStreaming={isStreaming}
-                  mdxActions={mdxActions}
+                  feedback={
+                    senderType === "agent" && chat
+                      ? {
+                          chat,
+                          author: { kind: senderType, id: msg.senderId },
+                          messageId: msg.id,
+                        }
+                      : undefined
+                  }
                 />
               </Box>
               {!isStreaming && msg.content.length > 6_000 ? (

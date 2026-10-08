@@ -70,5 +70,7 @@ export interface AgentProductMetadata {
     kind: string;
     action: string;
     targetId: string;
+    /** Selected option values, for controls that choose among options. */
+    values?: string[];
   };
 }

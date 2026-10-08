@@ -65,6 +65,45 @@ export function readMessageNotifyIntent(
   return { alert, ...(typeof title === "string" && title ? { title } : {}) };
 }
 
+/** A machine-stable UI selection carried on a message payload (`metadata.interaction`). */
+export interface MessageInteraction {
+  source: string;
+  kind: string;
+  action: string;
+  targetId: string;
+  /** The selected option values, for controls that choose among options. */
+  values?: string[];
+}
+
+/** Read `metadata.interaction` off a message payload; absent or malformed ⇒ undefined. */
+export function readMessageInteraction(
+  metadata: unknown,
+): MessageInteraction | undefined {
+  if (!metadata || typeof metadata !== "object") return undefined;
+  const raw = (metadata as { interaction?: unknown }).interaction;
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return undefined;
+  const { source, kind, action, targetId, values } = raw as Record<
+    string,
+    unknown
+  >;
+  if (
+    typeof source !== "string" ||
+    typeof kind !== "string" ||
+    typeof action !== "string" ||
+    typeof targetId !== "string"
+  )
+    return undefined;
+  return {
+    source,
+    kind,
+    action,
+    targetId,
+    ...(Array.isArray(values) && values.every((v) => typeof v === "string")
+      ? { values: values as string[] }
+      : {}),
+  };
+}
+
 /** Presentation coordinates; execution control still verifies the host-owned task. */
 export interface NativeMessageCoordinates {
   readonly conversationId: number;
@@ -118,6 +157,8 @@ export interface ProjectedMessage {
    *  sender asked addressed people to experience. Projected from the message
    *  payload's `metadata.notify` so the envelope stays the one record. */
   notify?: MessageNotifyIntent;
+  /** The UI selection this message carries, projected from `metadata.interaction`. */
+  interaction?: MessageInteraction;
   /** Edit-fork provenance: the parent message this supersedes. */
   replaces?: { messageId: string; seq: number };
   startedAt?: string;
@@ -218,6 +259,8 @@ export interface ProjectedInlineUi {
   id: string;
   turnId?: TurnId;
   actor: ActorRef;
+  /** Who the UI is attributed to: `requestedBy ?? actor`. */
+  author: ActorRef | ParticipantRef;
   source: SandboxSourcePayload;
   imports?: Record<string, string>;
   props?: Record<string, unknown>;
@@ -227,6 +270,8 @@ export interface ProjectedInlineUi {
 export interface ProjectedActionBar {
   id?: string;
   actor: ActorRef;
+  /** Who the bar is attributed to: `requestedBy ?? actor`. */
+  author: ActorRef | ParticipantRef;
   source?: SandboxSourcePayload;
   imports?: Record<string, string>;
   props?: Record<string, unknown>;
@@ -463,6 +508,10 @@ export function applyMessageEvent(
       ("metadata" in payload
         ? readMessageNotifyIntent(payload.metadata)
         : undefined) ?? existing.notify;
+    const interaction =
+      ("metadata" in payload
+        ? readMessageInteraction(payload.metadata)
+        : undefined) ?? existing.interaction;
     const native =
       existing.native ??
       ("metadata" in payload
@@ -483,6 +532,7 @@ export function applyMessageEvent(
         ...(saliency !== undefined ? { saliency } : {}),
         ...(replaces !== undefined ? { replaces } : {}),
         ...(notify !== undefined ? { notify } : {}),
+        ...(interaction !== undefined ? { interaction } : {}),
         ...(native !== undefined ? { native } : {}),
         status: "started",
         startedAt: event.createdAt,
@@ -580,6 +630,10 @@ export function applyMessageEvent(
       ("metadata" in payload
         ? readMessageNotifyIntent(payload.metadata)
         : undefined) ?? existing.notify;
+    const interaction =
+      ("metadata" in payload
+        ? readMessageInteraction(payload.metadata)
+        : undefined) ?? existing.interaction;
     const native =
       existing.native ??
       ("metadata" in payload
@@ -600,6 +654,7 @@ export function applyMessageEvent(
         ...(saliency !== undefined ? { saliency } : {}),
         ...(replaces !== undefined ? { replaces } : {}),
         ...(notify !== undefined ? { notify } : {}),
+        ...(interaction !== undefined ? { interaction } : {}),
         ...(native !== undefined ? { native } : {}),
         status: failure ? "failed" : "completed",
         ...(failure
@@ -998,6 +1053,7 @@ export function applyUiEvent(
       id: payload.id,
       turnId: event.turnId,
       actor: event.actor,
+      author: payload.requestedBy ?? event.actor,
       source: payload.source,
       renderedAt: event.createdAt,
     };
@@ -1017,6 +1073,7 @@ export function applyUiEvent(
   ) {
     const nextActionBar: ProjectedActionBar = {
       actor: event.actor,
+      author: payload.requestedBy ?? event.actor,
       updatedAt: event.createdAt,
     };
     if (payload.id !== undefined) nextActionBar.id = payload.id;

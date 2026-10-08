@@ -80,15 +80,6 @@ export function ChatMessageArea({
   } = useChatContext();
   const { setReplyTo } = useChatInputActions();
 
-  const mdxActions = useMemo(
-    () => ({
-      publishMessage: async (content: string) => {
-        await chat.send(content);
-      },
-    }),
-    [chat],
-  );
-
   // Hide exactly the active-outbox set (messages live in the queue OR the
   // transcript, never both — so a fresh send doesn't flash here and then bounce
   // to the queue). deriveActiveOutbox already keeps the right things visible:
@@ -182,7 +173,6 @@ export function ChatMessageArea({
         onFocusPanel={onFocusPanel}
         onReloadPanel={onReloadPanel}
         onReply={setReplyTo}
-        mdxActions={mdxActions}
         renderMessage={renderMessage}
         renderInlineGroup={renderInlineGroup}
         renderInvocation={renderInvocation}

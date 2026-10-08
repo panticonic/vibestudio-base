@@ -683,7 +683,11 @@ export type UiFeedbackCategory =
   | "method_call_failed"
   | "suspension_timeout"
   /** A registered type's renderer never became ready (fetch/load/compile stalled). */
-  | "load_stalled";
+  | "load_stalled"
+  /** Agent-authored UI source (inline UI or MDX message) failed to compile. */
+  | "compile_failed"
+  /** A response-catalog component (Chart, Stats, ...) rejected the props the agent authored. */
+  | "props_invalid";
 
 /**
  * UI-to-agent feedback: the panel (or channel infrastructure) telling the
@@ -700,6 +704,12 @@ export interface UiFeedbackPayload {
   refs?: {
     messageId?: MessageId;
     typeId?: string;
+    /** Stable id of the `inline_ui` component the failure is about. */
+    inlineUiId?: string;
+    /** Id of the `load_action_bar` component the failure is about. */
+    actionBarId?: string;
+    /** Catalog component (Chart, Stats, ...) the `props_invalid` report is about. */
+    component?: string;
     callId?: string;
     turnId?: TurnId;
   };
@@ -717,6 +727,8 @@ export type UiPayload =
   | {
       protocol: "agentic.trajectory.v1";
       uiType: "inline";
+      /** Participant on whose behalf `actor` published this UI (the method caller). The UI's author is `requestedBy ?? actor`. */
+      requestedBy?: ParticipantRef;
       id: string;
       source: SandboxSourcePayload;
       imports?: Record<string, string>;
@@ -725,6 +737,8 @@ export type UiPayload =
   | {
       protocol: "agentic.trajectory.v1";
       uiType: "action_bar";
+      /** Participant on whose behalf `actor` published this UI (the method caller). The UI's author is `requestedBy ?? actor`. */
+      requestedBy?: ParticipantRef;
       id?: string;
       source?: SandboxSourcePayload;
       imports?: Record<string, string>;

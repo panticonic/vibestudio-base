@@ -17,7 +17,6 @@ import type {
   InlineUiComponentEntry,
   MessageTypeComponentEntry,
 } from "../types";
-import type { MdxActionHandlers } from "./markdownComponents";
 import { useAccountProfiles, type AccountRpc } from "../hooks/useAccountProfiles";
 
 // Grouped item types produced by the grouping logic
@@ -241,7 +240,6 @@ export interface MessageListProps {
   onFocusPanel?: (panelId: string) => void;
   onReloadPanel?: (panelId: string) => void;
   onReply?: (messageId: string) => void;
-  mdxActions?: MdxActionHandlers;
   /** Replace, wrap, or elide a message using its complete stock renderer. */
   renderMessage?: (
     msg: ChatMessage,
@@ -318,7 +316,6 @@ export const MessageList = React.memo(function MessageList({
   onFocusPanel,
   onReloadPanel,
   onReply,
-  mdxActions,
   renderMessage: customRenderMessage,
   renderInlineGroup: customRenderInlineGroup,
   renderInvocation,
@@ -758,7 +755,6 @@ export const MessageList = React.memo(function MessageList({
           onReply={onReply}
           onFocusPanel={onFocusPanel}
           onReloadPanel={onReloadPanel}
-          mdxActions={mdxActions}
         />
       );
 
@@ -776,7 +772,6 @@ export const MessageList = React.memo(function MessageList({
       messageTypeComponents,
       chat,
       browserHandoffCaller,
-      mdxActions,
       allParticipants,
       onReply,
       handleInterruptMessage,

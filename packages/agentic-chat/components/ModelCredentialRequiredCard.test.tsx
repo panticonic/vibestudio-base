@@ -350,12 +350,13 @@ describe("ModelCredentialRequiredCard", () => {
       args: unknown;
     }> = [];
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const persistAgentModel = vi.fn(async () => {
+      throw new Error("approval denied");
+    });
     const chat = {
       callMethod: vi.fn(
         async (participantId: string, method: string, args: unknown) => {
           calls.push({ participantId, method, args });
-          if (method === "persist_agent_model")
-            throw new Error("approval denied");
           return { ok: true };
         },
       ),
@@ -372,7 +373,7 @@ describe("ModelCredentialRequiredCard", () => {
             agentParticipantId: "do:agent",
             browserHandoffCallerId: "panel:runtime-1",
             browserHandoffCallerKind: "panel",
-            modelPersistenceParticipantId: "panel:chat-participant",
+            persistAgentModel,
             providerOptions: [
               {
                 providerId: "openai-codex",
@@ -403,17 +404,16 @@ describe("ModelCredentialRequiredCard", () => {
     fireEvent.click(screen.getByRole("button", { name: "API key" }));
     fireEvent.click(screen.getByRole("button", { name: /Enter API Key/i }));
 
-    await waitFor(() => expect(chat.callMethod).toHaveBeenCalledTimes(3));
+    await waitFor(() => expect(chat.callMethod).toHaveBeenCalledTimes(2));
     expect(calls.map((call) => [call.participantId, call.method])).toEqual([
       ["do:agent", "setModel"],
-      ["panel:chat-participant", "persist_agent_model"],
       ["do:agent", "connectModelCredential"],
     ]);
-    expect(calls[1]?.args).toEqual({
-      participantId: "do:agent",
-      model: "anthropic:claude-3-5-sonnet-20241022",
-    });
-    expect(calls[2]?.args).toMatchObject({
+    expect(persistAgentModel).toHaveBeenCalledWith(
+      "do:agent",
+      "anthropic:claude-3-5-sonnet-20241022",
+    );
+    expect(calls[1]?.args).toMatchObject({
       providerId: "anthropic",
       method: "api-key",
       modelBaseUrl: "https://api.anthropic.com",

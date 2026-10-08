@@ -21,6 +21,7 @@ export type {
   FlushNarration,
   UndoableAction,
   InlineUiComponentEntry,
+  ActionBarAuthor,
   ActionBarData,
   ActionBarState,
   ForkNavHandlers,

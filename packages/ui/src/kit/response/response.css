@@ -1,0 +1,512 @@
+/*
+ * Response catalog styles. Intrinsic layouts only (grid auto-fit / flex wrap,
+ * no viewport media queries) so every component works from a 320px chat card
+ * up to a wide panel. Colors come from Radix Themes tokens, so light and dark
+ * follow the surrounding theme.
+ */
+
+.vs-r-visually-hidden {
+  position: absolute !important;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.vs-r-frame {
+  box-sizing: border-box;
+  min-width: 0;
+  max-width: 100%;
+  margin-block: var(--space-2);
+  padding: var(--space-3);
+  border: 1px solid var(--gray-a5);
+  border-radius: var(--radius-3);
+  background: var(--color-panel-solid);
+}
+
+.vs-r-frame.vs-r-stats-frame {
+  padding: 0;
+  border: 0;
+  background: none;
+}
+
+.vs-r-problem {
+  margin-top: var(--space-2);
+}
+
+.vs-r-problem-list {
+  margin: 0;
+  padding-left: var(--space-4);
+}
+
+.vs-r-prewrap {
+  white-space: pre-wrap;
+}
+
+.vs-r-unavailable,
+.vs-r-action {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.vs-r-unavailable:focus-visible {
+  outline: 2px solid var(--focus-8);
+  outline-offset: 2px;
+  border-radius: var(--radius-2);
+}
+
+.vs-r-swatch {
+  display: inline-block;
+  flex: none;
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+}
+
+/* ---- Stats ---- */
+
+.vs-r-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 128px), 1fr));
+  gap: var(--space-2);
+  margin: 0;
+}
+
+.vs-r-stat {
+  min-width: 0;
+  padding: var(--space-3);
+  border: 1px solid var(--gray-a5);
+  border-radius: var(--radius-3);
+  background: var(--color-panel-solid);
+}
+
+.vs-r-stat dd {
+  margin: 0;
+}
+
+.vs-r-stat-value {
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+  line-height: 1.2;
+}
+
+/* ---- Chart ---- */
+
+.vs-r-chart-body {
+  position: relative;
+  min-width: 0;
+}
+
+.vs-r-chart-plot {
+  position: relative;
+  border-radius: var(--radius-2);
+}
+
+.vs-r-chart-plot:focus-visible {
+  outline: 2px solid var(--focus-8);
+  outline-offset: 2px;
+}
+
+.vs-r-chart-svg {
+  display: block;
+  overflow: visible;
+}
+
+.vs-r-axis-label {
+  font-size: 11px;
+  fill: var(--gray-11);
+  font-variant-numeric: tabular-nums;
+}
+
+.vs-r-donut-total {
+  font-size: 15px;
+  font-weight: 600;
+  fill: var(--gray-12);
+}
+
+.vs-r-chart-tooltip {
+  position: absolute;
+  top: 4px;
+  z-index: 2;
+  min-width: 120px;
+  max-width: 220px;
+  padding: var(--space-2);
+  border: 1px solid var(--gray-a6);
+  border-radius: var(--radius-2);
+  background: var(--color-panel-solid);
+  box-shadow: var(--shadow-3);
+  pointer-events: none;
+}
+
+.vs-r-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-3);
+  margin: var(--space-2) 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.vs-r-legend li {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.vs-r-table-scroll {
+  overflow-x: auto;
+}
+
+/* ---- Compare ---- */
+
+.vs-r-compare {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 190px), 1fr));
+  column-gap: var(--space-2);
+  row-gap: 0;
+}
+
+.vs-r-compare-card {
+  display: grid;
+  grid-template-rows: subgrid;
+  min-width: 0;
+  margin-bottom: var(--space-2);
+  border: 1px solid var(--gray-a5);
+  border-radius: var(--radius-3);
+  overflow: hidden;
+}
+
+.vs-r-compare-card[data-highlight] {
+  border-color: var(--accent-8);
+  box-shadow: inset 0 0 0 1px var(--accent-8);
+}
+
+.vs-r-compare-cell {
+  margin: 0;
+  padding: var(--space-2) var(--space-3);
+  min-width: 0;
+}
+
+.vs-r-compare-cell + .vs-r-compare-cell {
+  border-top: 1px solid var(--gray-a4);
+}
+
+.vs-r-compare-card[data-highlight] > header {
+  background: var(--accent-a3);
+}
+
+.vs-r-compare-attr {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: var(--space-2);
+  overflow-wrap: anywhere;
+  text-align: right;
+}
+
+.vs-r-compare-attr > :first-child {
+  text-align: left;
+}
+
+.vs-r-bullets {
+  list-style: none;
+}
+
+.vs-r-bullets li {
+  display: flex;
+  gap: var(--space-1);
+  align-items: baseline;
+}
+
+/* ---- Timeline ---- */
+
+.vs-r-timeline {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.vs-r-timeline-item {
+  position: relative;
+  display: grid;
+  grid-template-columns: 24px 1fr;
+  gap: var(--space-2);
+  padding-bottom: var(--space-3);
+}
+
+.vs-r-timeline-item:not(:last-child)::before {
+  content: "";
+  position: absolute;
+  left: 11px;
+  top: 24px;
+  bottom: 0;
+  width: 2px;
+  background: var(--gray-a5);
+}
+
+.vs-r-timeline-item[data-status="done"]::before {
+  background: var(--accent-8);
+}
+
+.vs-r-timeline-marker {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: 2px solid var(--gray-a7);
+  background: var(--color-panel-solid);
+  font-size: 13px;
+  line-height: 1;
+  box-sizing: border-box;
+}
+
+.vs-r-timeline-item[data-status="done"] .vs-r-timeline-marker {
+  border-color: var(--accent-9);
+  background: var(--accent-9);
+  color: var(--accent-contrast);
+}
+
+.vs-r-timeline-item[data-status="current"] .vs-r-timeline-marker {
+  border-color: var(--accent-9);
+  box-shadow: 0 0 0 3px var(--accent-a5);
+}
+
+.vs-r-timeline-item[data-status="upcoming"] .vs-r-timeline-content {
+  opacity: 0.8;
+}
+
+.vs-r-timeline-content {
+  min-width: 0;
+  padding-top: 2px;
+  overflow-wrap: anywhere;
+}
+
+/* ---- Checklist ---- */
+
+.vs-r-checklist {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: var(--space-2);
+}
+
+.vs-r-checklist li {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: var(--space-2);
+  align-items: start;
+}
+
+.vs-r-checklist li > :first-child {
+  margin-top: 3px;
+}
+
+.vs-r-checklist-label {
+  cursor: pointer;
+}
+
+.vs-r-checklist li[data-checked] .vs-r-checklist-label {
+  text-decoration: line-through;
+  color: var(--gray-11);
+}
+
+/* ---- Choices ---- */
+
+.vs-r-choice {
+  align-items: flex-start;
+}
+
+/* ---- Calculator ---- */
+
+.vs-r-calc-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 180px), 1fr));
+  gap: var(--space-3);
+  margin-bottom: var(--space-3);
+}
+
+.vs-r-calc-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.vs-r-calc-slider-value {
+  min-width: 3ch;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---- Map ---- */
+
+.vs-r-map-canvas {
+  position: relative;
+  overflow: hidden;
+  border-radius: var(--radius-2);
+  background-color: var(--gray-3);
+  background-image:
+    linear-gradient(var(--gray-a3) 1px, transparent 1px),
+    linear-gradient(90deg, var(--gray-a3) 1px, transparent 1px);
+  background-size: 32px 32px;
+}
+
+.vs-r-map-tiles img {
+  position: absolute;
+  max-width: none;
+  user-select: none;
+}
+
+/* Dim the light raster in dark themes so pins stay the focus. */
+:is(.dark, .dark-theme) .vs-r-map-tiles img {
+  filter: brightness(0.75) contrast(1.05);
+}
+
+.vs-r-map-overlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.vs-r-map-pin {
+  position: absolute;
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  margin: 0;
+  padding: 0;
+  transform: translate(-50%, -50%);
+  border: 2px solid var(--color-panel-solid);
+  border-radius: 50%;
+  background: var(--accent-9);
+  color: var(--accent-contrast);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+  box-shadow: var(--shadow-2);
+  cursor: pointer;
+}
+
+.vs-r-map-pin[data-glyph="custom"] {
+  font-size: 13px;
+}
+
+.vs-r-map-pin[data-active] {
+  width: 30px;
+  height: 30px;
+  background: var(--accent-11);
+  font-size: 15px;
+}
+
+.vs-r-map-pin:focus-visible {
+  outline: 2px solid var(--focus-8);
+  outline-offset: 2px;
+}
+
+.vs-r-map-callout {
+  position: absolute;
+  z-index: 4;
+  max-width: 140px;
+  padding: 2px var(--space-2);
+  transform: translate(-50%, calc(-100% - 20px));
+  border-radius: var(--radius-2);
+  background: var(--color-panel-solid);
+  box-shadow: var(--shadow-3);
+  text-align: center;
+  overflow-wrap: anywhere;
+  pointer-events: none;
+}
+
+.vs-r-map-offline {
+  position: absolute;
+  top: var(--space-2);
+  left: var(--space-2);
+}
+
+.vs-r-map-attribution {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  z-index: 5;
+  padding: 1px 4px;
+  font-size: 10px;
+  color: var(--gray-12);
+  background: color-mix(in srgb, var(--color-panel-solid) 80%, transparent);
+  text-decoration: none;
+}
+
+.vs-r-map-attribution:hover {
+  text-decoration: underline;
+}
+
+.vs-r-map-list {
+  margin: var(--space-2) 0 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 2px;
+}
+
+.vs-r-map-list li {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  border-radius: var(--radius-2);
+}
+
+.vs-r-map-list li[data-active] {
+  background: var(--accent-a3);
+}
+
+.vs-r-map-list-button {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-2);
+  border: 0;
+  border-radius: var(--radius-2);
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.vs-r-map-list-button:focus-visible {
+  outline: 2px solid var(--focus-8);
+}
+
+.vs-r-map-list-marker {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--accent-a4);
+  color: var(--accent-11);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.vs-r-map-list-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.vs-r-map-open {
+  flex: none;
+  padding: var(--space-1) var(--space-2);
+}

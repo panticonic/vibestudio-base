@@ -226,14 +226,15 @@ export function useChatFeedback({
   }, [clientRef, connected]);
   const buildFeedbackMethods = useCallback((): Record<string, MethodDefinition> => {
     const feedbackFormMethodDef: MethodDefinition = {
-      description: `Show a form to collect user input.
+      description: `Show a form and wait for the user's answers. Use it when you need several related inputs or a decision before you can continue; put every question you already know into one form. For one quick question use \`ask_user\`; for non-blocking choices use \`Choices\` in a message or \`inline_ui\`.
 
 **Result:** \`{ type: "submit", value: { fieldKey: userValue, ... } }\` or \`{ type: "cancel" }\`
 
-**Field types:** string, number, boolean, select (needs \`options\`), segmented (\`options\`), multiSelect (\`options\`), slider (\`min\`/\`max\`)
-**Field props:** \`key\` (required), \`label\` (required), \`type\` (required), \`default\`, \`required\`, \`description\`
+**Input field types:** string, textarea, number, boolean, toggle, select / segmented / multiSelect (need \`options: [{ value, label, description? }]\`; \`variant: "buttons" | "cards" | "list"\`), slider (\`min\`/\`max\`/\`step\`, optional \`sliderLabels\`), buttonGroup (\`buttons: [{ value, label, color?, description? }]\`; with \`submitOnSelect: true\` one click answers the form)
+**Display field types:** readonly (text), code (\`language\`, \`maxHeight\`), diff
+**Field props:** \`key\` (required), \`type\` (required), \`label\`, \`default\`, \`required\`, \`description\`, \`placeholder\`, \`group\`, \`order\`
 **Conditional props:** \`visibleWhen\`, \`enabledWhen\`, and warning \`when\` accept \`{ field, operator, value }\`; warning \`when\` also accepts a value or value array for its own field.
-**Choice fields:** select, segmented, and multiSelect include an "Other" free-text option by default unless \`allowFreeText: false\`; multiSelect also includes Select all / Deselect all controls.
+**Choice fields:** select, segmented, and multiSelect include an "Other" free-text option by default unless \`allowFreeText: false\`; select/multiSelect/buttonGroup accept \`submitOnSelect\`; multiSelect also includes Select all / Deselect all controls.
 **Pre-populate:** Add \`values: { "key": "existing value" }\``,
       parameters: FeedbackFormArgsSchema,
       execute: async (args: unknown, ctx: MethodExecutionContext) =>
@@ -246,9 +247,9 @@ export function useChatFeedback({
 - onSubmit(value) — return data to the agent and close the form
 - onCancel() — signal cancellation to the agent
 - onError(message) — signal error
-- chat — chat API (publish messages, call runtime, etc.)
-  - chat.publish(type, payload) — send a message to the conversation
-  - chat.rpc.call(target, method, ...args) — call runtime services
+- chat — chat API
+  - chat.rpc.call(target, method, args) — call a runtime service; \`args\` is the complete positional argument array, e.g. chat.rpc.call("main", "fs.readFile", ["/src/config.ts"])
+  - chat.publish(type, payload) — publish a typed non-message event
 - scope — panel-local durable UI state shared by inline_ui, feedback_custom, and the action bar in this panel instance. Serializable values persist in localStorage across panel reloads; functions, class instances, DOM objects, and other nonserializable values are live-only and are dropped on restore.
 - scopes — scope API for this panel-local UI scope: scopes.save(), scopes.push(), scopes.list(), scopes.get(id)
 
@@ -264,7 +265,7 @@ export function useChatFeedback({
 - Provide either \`code\` or \`path\`. \`path\` reads a context-relative TSX file, supports static relative imports, and infers bare package imports from the nearest package.json when possible. Use \`imports\` for explicit package versions.
 - Do NOT wrap in a Card — rendered inside a container with header and scroll area.
 
-**Available imports:** react, @radix-ui/themes, @radix-ui/react-icons
+**Available imports:** react, @radix-ui/themes, @radix-ui/react-icons, @workspace/react (response components such as \`Chart\`, \`Compare\`, \`PlaceMap\` can show what the user is deciding about)
 
 **Example:**
 \`\`\`tsx

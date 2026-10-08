@@ -115,12 +115,33 @@ describe("composeSystemPrompt", () => {
     ).toBe("CHANNEL");
   });
 
-  it("keeps Vibestudio rich-message and browser-open guidance in the base prompt", () => {
+  it("invites visual and interactive answers without requiring the user to ask", () => {
     expect(VIBESTUDIO_BASE_SYSTEM_PROMPT).toContain(
-      "MDX supports standard Markdown",
+      "treat visual and interactive answers as first-class: the user does not need to ask for them",
     );
-    expect(VIBESTUDIO_BASE_SYSTEM_PROMPT).toContain("Callout.Root");
-    expect(VIBESTUDIO_BASE_SYSTEM_PROMPT).toContain("<ActionButton message=");
+    expect(VIBESTUDIO_BASE_SYSTEM_PROMPT).toContain(
+      "Use plain text for single facts, one-step answers, simple edits",
+    );
+    expect(VIBESTUDIO_BASE_SYSTEM_PROMPT).not.toContain("Keep MDX small");
+    expect(VIBESTUDIO_BASE_SYSTEM_PROMPT).not.toContain("fall back to clear Markdown");
+  });
+
+  it("names the response component catalog and its reference", () => {
+    for (const component of [
+      "Chart",
+      "Stats",
+      "Compare",
+      "Timeline",
+      "Checklist",
+      "PlaceMap",
+      "Choices",
+      "Calculator",
+      "ActionButton",
+    ]) {
+      expect(VIBESTUDIO_BASE_SYSTEM_PROMPT).toContain(`\`${component}\``);
+    }
+    expect(VIBESTUDIO_BASE_SYSTEM_PROMPT).toContain("skills/visualize/COMPONENTS.md");
+    expect(VIBESTUDIO_BASE_SYSTEM_PROMPT).toContain("you receive a ui-feedback note");
     expect(VIBESTUDIO_BASE_SYSTEM_PROMPT).toContain("openExternal(url)");
   });
 

@@ -47,3 +47,7 @@ export {
 } from "./media.js";
 
 export { GeneratedImage, useGeneratedImage, type GeneratedImageProps } from "./GeneratedImage.js";
+
+// Response catalog: prop-driven components (Chart, Stats, Compare, Timeline,
+// Checklist, PlaceMap, Choices, Calculator, ActionButton) shared with MDX messages.
+export * from "@workspace/ui/response";

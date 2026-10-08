@@ -15,7 +15,7 @@ import {
   type ComponentType,
   type ErrorInfo,
 } from "react";
-import { Box, Button, Callout, Flex, Spinner, Text } from "@radix-ui/themes";
+import { Box, Callout, Flex, Spinner, Text } from "@radix-ui/themes";
 import { ExclamationTriangleIcon } from "@radix-ui/react-icons";
 import { EventErrorBoundary } from "@workspace/tool-ui/components/EventErrorBoundary";
 import { InlineUiSurface } from "./InlineUiSurface";
@@ -31,6 +31,12 @@ import type {
 } from "@workspace/agentic-core";
 import type { ConsoleCapture, ConsoleEntry } from "@workspace/eval";
 import { useChatContext } from "../context/ChatContext";
+import {
+  ResponseProblemFeedback,
+  UiFeedbackReporter,
+  type FeedbackDeliveryState,
+  type UiFeedbackAuthor,
+} from "./UiFeedbackReporter";
 
 type InlineUiFailurePhase = "compile" | "render" | "interaction";
 
@@ -196,8 +202,17 @@ function InlineUiConsole({
 }
 
 // ---------------------------------------------------------------------------
-// InlineUiErrorCallout — error display with "Report to Agent" button
+// InlineUiErrorCallout — error display. Inline UI failures auto-report to the
+// authoring agent (`report`). Without a recorded agent author (a bar the user
+// configured) the failure is shown but nothing is sent.
 // ---------------------------------------------------------------------------
+
+/** How a shown failure is auto-reported to the UI's authoring participant. */
+export interface InlineUiFailureReport {
+  author: UiFeedbackAuthor | undefined;
+  /** Identity of this failure occurrence (dedupes re-mounts and retries). */
+  occurrenceKey: string;
+}
 
 export function InlineUiErrorCallout({
   error,
@@ -207,6 +222,8 @@ export function InlineUiErrorCallout({
   phase = "interaction",
   componentStack,
   chat,
+  report,
+  surface = "inline_ui",
 }: {
   error: Error;
   componentId: string;
@@ -215,8 +232,11 @@ export function InlineUiErrorCallout({
   phase?: InlineUiFailurePhase;
   componentStack?: string;
   chat: ChatSandboxValue;
+  report?: InlineUiFailureReport;
+  /** Which agent-authored surface this is; selects the feedback ref. */
+  surface?: "inline_ui" | "action_bar";
 }) {
-  const [reported, setReported] = useState(false);
+  const [delivery, setDelivery] = useState<FeedbackDeliveryState>("sending");
 
   const details = useMemo(
     () =>
@@ -245,19 +265,6 @@ export function InlineUiErrorCallout({
     ],
   );
 
-  const handleReport = useCallback(() => {
-    const message =
-      `[Inline UI Error] Component "${componentId}" encountered an error ` +
-      `during ${phase}:\n\n\`\`\`\n${error.message}\n\`\`\`\n\n` +
-      `${messageId ? `Message: \`${messageId}\`\n\n` : ""}` +
-      `${source ? `Source: \`${source}\`\n\n` : ""}` +
-      `${error.stack ? `Stack trace:\n\`\`\`\n${error.stack}\n\`\`\`` : ""}`;
-    chat.send(message).catch((err) => {
-      console.error("[InlineUiMessage] Failed to report error to agent:", err);
-    });
-    setReported(true);
-  }, [chat, componentId, error, messageId, phase, source]);
-
   return (
     <Callout.Root
       color="red"
@@ -265,6 +272,20 @@ export function InlineUiErrorCallout({
       data-inline-ui-error={componentId}
       data-message-id={messageId}
     >
+      {report ? (
+        <UiFeedbackReporter
+          chat={chat as unknown as Record<string, unknown>}
+          author={report.author}
+          category={phase === "compile" ? "compile_failed" : "render_failed"}
+          refs={surface === "action_bar" ? { actionBarId: componentId } : { inlineUiId: componentId }}
+          errorMessage={error.message || "Unknown error"}
+          errorName={error.name || "Error"}
+          stack={error.stack}
+          componentStack={componentStack}
+          occurrenceKey={report.occurrenceKey}
+          onDelivery={setDelivery}
+        />
+      ) : null}
       <Callout.Icon>
         <ExclamationTriangleIcon />
       </Callout.Icon>
@@ -273,6 +294,15 @@ export function InlineUiErrorCallout({
           <Text size="1">
             Component error: {error.message || "Unknown error"}
           </Text>
+          {report ? (
+            <Text size="1" color="gray">
+              {delivery === "sent"
+                ? "Reported to the authoring agent."
+                : delivery === "failed"
+                  ? "Diagnostic not delivered — the authoring agent was not notified."
+                  : "Reporting to the authoring agent…"}
+            </Text>
+          ) : null}
           <details>
             <summary
               style={{ cursor: "pointer", fontSize: "var(--font-size-1)" }}
@@ -307,15 +337,6 @@ export function InlineUiErrorCallout({
               label="Copy details"
               ariaLabel={`Copy error details for inline UI ${componentId}`}
             />
-            <Button
-              size="1"
-              variant="soft"
-              color="red"
-              disabled={reported}
-              onClick={handleReport}
-            >
-              {reported ? "Reported" : "Report to Agent"}
-            </Button>
           </Flex>
         </Flex>
       </Text>
@@ -330,6 +351,8 @@ export function InlineUiErrorCallout({
 interface InlineUiMessageProps {
   data: InlineUiData | InlineUiCardPayload;
   messageId?: string;
+  /** Participant that authored this inline UI; receives failure feedback. */
+  author?: UiFeedbackAuthor;
   compiledComponent?: ComponentType<{
     props: Record<string, unknown>;
     chat: Record<string, unknown>;
@@ -352,22 +375,26 @@ function isModelCredentialCard(data: InlineUiData): boolean {
 export function InlineUiMessage({
   data,
   messageId,
+  author,
   compiledComponent: CompiledComponent,
   compilationError,
   compilationErrorStack,
   runtime,
 }: InlineUiMessageProps) {
-  const { browserHandoffCaller, chat, scope, scopes, scopeManager, selfId } =
-    useChatContext();
+  const {
+    browserHandoffCaller,
+    chat,
+    onPersistAgentModel,
+    scope,
+    scopes,
+    scopeManager,
+  } = useChatContext();
   const componentProps = useMemo(() => {
     const props = data.props ?? {};
     if (!isModelCredentialCard(data)) return props;
     return {
       ...props,
-      modelPersistenceParticipantId:
-        typeof props["modelPersistenceParticipantId"] === "string"
-          ? props["modelPersistenceParticipantId"]
-          : (selfId ?? undefined),
+      persistAgentModel: onPersistAgentModel,
       browserHandoffCallerId:
         typeof props["browserHandoffCallerId"] === "string"
           ? props["browserHandoffCallerId"]
@@ -377,13 +404,21 @@ export function InlineUiMessage({
           ? props["browserHandoffCallerKind"]
           : browserHandoffCaller.kind,
     };
-  }, [browserHandoffCaller.id, browserHandoffCaller.kind, data, selfId]);
+  }, [
+    browserHandoffCaller.id,
+    browserHandoffCaller.kind,
+    data,
+    onPersistAgentModel,
+  ]);
   const [, forceUpdate] = useReducer((value: number) => value + 1, 0);
   const [runtimeError, setRuntimeError] = useState<{
     error: Error;
     phase: Exclude<InlineUiFailurePhase, "compile">;
     componentStack?: string;
+    /** Distinguishes repeated interaction failures with the same message. */
+    sequence: number;
   } | null>(null);
+  const failureSequence = useRef(0);
 
   // Wrap chat so unhandled async rejections surface visually
   const reportComponentError = useCallback(
@@ -392,6 +427,7 @@ export function InlineUiMessage({
       setRuntimeError({
         error: err,
         phase: info ? "render" : "interaction",
+        sequence: ++failureSequence.current,
         ...(info?.componentStack
           ? { componentStack: info.componentStack }
           : {}),
@@ -431,6 +467,23 @@ export function InlineUiMessage({
     setRuntimeError(null);
   }, [resetKey]);
 
+  const revision = data.renderedAt ?? "";
+  const reportFor = (
+    phase: InlineUiFailurePhase,
+    message: string,
+    sequence?: number,
+  ): InlineUiFailureReport => ({
+    author,
+    occurrenceKey: [
+      "inline_ui",
+      phase,
+      data.id,
+      revision,
+      message,
+      ...(phase === "interaction" ? [String(sequence)] : []),
+    ].join(":"),
+  });
+
   if (runtimeError) {
     return (
       <Box data-inline-ui-id={data.id} data-message-id={messageId}>
@@ -444,6 +497,11 @@ export function InlineUiMessage({
             data.source.type === "file" ? data.source.path : "inline code"
           }
           chat={chat}
+          report={reportFor(
+            runtimeError.phase,
+            runtimeError.error.message,
+            runtimeError.sequence,
+          )}
         />
         <InlineUiConsole
           runtime={runtime}
@@ -468,6 +526,7 @@ export function InlineUiMessage({
             data.source.type === "file" ? data.source.path : "inline code"
           }
           chat={chat}
+          report={reportFor("compile", compilationError)}
         />
         <InlineUiConsole
           runtime={runtime}
@@ -481,6 +540,19 @@ export function InlineUiMessage({
   if (!CompiledComponent) {
     return null;
   }
+
+  const compiled = (
+    <CompiledComponent
+      props={componentProps}
+      chat={wrappedChat as unknown as Record<string, unknown>}
+      scope={scope}
+      scopes={wrappedScopes as unknown as Record<string, unknown>}
+      inlineUi={{
+        id: data.id,
+        renderedAt: "renderedAt" in data ? data.renderedAt : undefined,
+      }}
+    />
+  );
 
   return (
     <InlineUiSurface>
@@ -505,20 +577,23 @@ export function InlineUiMessage({
                 data.source.type === "file" ? data.source.path : "inline code"
               }
               chat={chat}
+              report={reportFor("render", error.message)}
             />
           )}
         >
           <Suspense fallback={<Spinner size="1" />}>
-            <CompiledComponent
-              props={componentProps}
-              chat={wrappedChat as unknown as Record<string, unknown>}
-              scope={scope}
-              scopes={wrappedScopes as unknown as Record<string, unknown>}
-              inlineUi={{
-                id: data.id,
-                renderedAt: "renderedAt" in data ? data.renderedAt : undefined,
-              }}
-            />
+            {author ? (
+              <ResponseProblemFeedback
+                chat={chat as unknown as Record<string, unknown>}
+                author={author}
+                refs={{ inlineUiId: data.id }}
+                scope={`inline_ui:${data.id}:${revision}`}
+              >
+                {compiled}
+              </ResponseProblemFeedback>
+            ) : (
+              compiled
+            )}
           </Suspense>
         </EventErrorBoundary>
         <InlineUiConsole
