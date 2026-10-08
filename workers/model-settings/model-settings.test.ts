@@ -163,16 +163,10 @@ class TestModelSettingsDO extends ModelSettingsDO {
     return Promise.resolve(TestModelSettingsDO.config);
   }
 
-  protected setWorkspaceConfigField(
-    key: string,
-    value: unknown,
-  ): Promise<void> {
-    TestModelSettingsDO.writes.push({ key, value });
-    TestModelSettingsDO.config = {
-      ...TestModelSettingsDO.config,
-      [key]: value,
-    };
-    return Promise.resolve();
+  protected override setStateValue(key: string, value: string): void {
+    super.setStateValue(key, value);
+    if (key === "defaultAgentConfig")
+      TestModelSettingsDO.writes.push({ key, value: JSON.parse(value) });
   }
 }
 
@@ -690,7 +684,7 @@ describe("ModelSettingsDO", () => {
     });
   });
 
-  it("persists a validated default agent config to workspace config", async () => {
+  it("persists validated defaults in service state without changing workspace source", async () => {
     TestModelSettingsDO.config = { ...BASE_CONFIG };
     TestModelSettingsDO.writes = [];
     const { call } = await createTestDO(TestModelSettingsDO);
@@ -723,6 +717,7 @@ describe("ModelSettingsDO", () => {
         },
       },
     ]);
+    expect(TestModelSettingsDO.config.defaultAgentConfig).toBeUndefined();
   });
 
   it("remembers the first successful model and keeps it after later successes", async () => {
@@ -748,10 +743,37 @@ describe("ModelSettingsDO", () => {
       thinkingLevel: "high",
     });
     await call("initializeDefaultAgentModel", "anthropic:claude-opus-4-1");
-    expect(TestModelSettingsDO.config.defaultAgentConfig).toEqual({
-      model: "openai:gpt-5",
-      thinkingLevel: "high",
-      fastMode: false,
+    await expect(call("getSettings")).resolves.toMatchObject({
+      defaultAgentConfig: {
+        model: "openai:gpt-5",
+        thinkingLevel: "high",
+        fastMode: false,
+      },
+    });
+    expect(TestModelSettingsDO.config.defaultAgentConfig).toBeUndefined();
+  });
+
+  it("retains the learned model across activation and later template default changes", async () => {
+    TestModelSettingsDO.config = { ...BASE_CONFIG };
+    const first = await createTestDO(TestModelSettingsDO);
+    await first.call(
+      "initializeDefaultAgentModel",
+      "anthropic:claude-opus-4-1",
+    );
+    expect(TestModelSettingsDO.config.defaultAgentConfig).toBeUndefined();
+    const reopened = await createTestDO(TestModelSettingsDO, undefined, {
+      db: first.db,
+    });
+    await expect(reopened.call("getSettings")).resolves.toMatchObject({
+      defaultModel: "anthropic:claude-opus-4-1",
+      defaultModelSource: "workspace",
+    });
+    TestModelSettingsDO.config = {
+      ...BASE_CONFIG,
+      defaultAgentConfig: { model: "openai:gpt-5" },
+    };
+    await expect(reopened.call("getSettings")).resolves.toMatchObject({
+      defaultModel: "anthropic:claude-opus-4-1",
     });
   });
 

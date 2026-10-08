@@ -456,7 +456,8 @@ export class ModelSettingsDO extends DurableObjectBase {
     input: DefaultAgentConfig,
   ): Promise<ModelSettingsSnapshot> {
     const requested = parseDefaultAgentConfig(input, true);
-    const catalog = await this.assembleCatalog();
+    const workspaceConfig = this.getWorkspaceConfig();
+    const catalog = await this.assembleCatalog(workspaceConfig);
     const model = catalog.models.find((entry) => entry.ref === requested.model);
     if (!model) {
       throw new Error(`Unknown model ref: ${requested.model}`);
@@ -471,14 +472,11 @@ export class ModelSettingsDO extends DurableObjectBase {
         ? { approvalLevel: requested.approvalLevel }
         : {}),
     };
-    await this.setWorkspaceConfigField(
+    this.setStateValue(
       WORKSPACE_DEFAULT_AGENT_CONFIG_FIELD,
-      config,
+      JSON.stringify(config),
     );
-    return this.resolveSettings(catalog, {
-      ...(await this.getWorkspaceConfig()),
-      defaultAgentConfig: config,
-    });
+    return this.resolveSettings(catalog, await workspaceConfig);
   }
 
   @rpc({
@@ -494,7 +492,7 @@ export class ModelSettingsDO extends DurableObjectBase {
   })
   async initializeDefaultAgentModel(model: string): Promise<void> {
     const config = await this.getWorkspaceConfig();
-    if (config.defaultAgentConfig) return;
+    if (this.getSavedDefaultAgentConfig(config)) return;
     await this.setDefaultAgentConfig({ model });
   }
 
@@ -596,21 +594,20 @@ export class ModelSettingsDO extends DurableObjectBase {
     return this.rpc.call<WorkspaceConfig>("main", "workspace.getConfig", []);
   }
 
-  protected setWorkspaceConfigField(
-    key: string,
-    value: unknown,
-  ): Promise<void> {
-    return this.rpc.call<void>("main", "workspace.setConfigField", [
-      key,
-      value,
-    ]);
+  /** Saved preferences belong to this service, not protected workspace source.
+   * Authored template defaults seed a workspace until the user saves a preference. */
+  private getSavedDefaultAgentConfig(config: WorkspaceConfig): unknown {
+    const saved = this.getStateValue(WORKSPACE_DEFAULT_AGENT_CONFIG_FIELD);
+    return saved === null ? config.defaultAgentConfig : JSON.parse(saved);
   }
 
   private resolveSettings(
     catalog: ModelCatalog,
     config: WorkspaceConfig,
   ): ModelSettingsSnapshot {
-    const stored = parseDefaultAgentConfig(config.defaultAgentConfig);
+    const stored = parseDefaultAgentConfig(
+      this.getSavedDefaultAgentConfig(config),
+    );
     const behavior = {
       ...(stored.thinkingLevel ? { thinkingLevel: stored.thinkingLevel } : {}),
       fastMode: stored.fastMode ?? false,
