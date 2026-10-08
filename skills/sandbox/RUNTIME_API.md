@@ -219,6 +219,7 @@ const id = await notifications.show({
   type: "info",
   title: "Notification test",
   message: "notification-show-marker",
+  actions: [{ label: "Accept" }, { label: "Decline" }],
 });
 
 // The host issued this opaque id. Retain it only if this runtime may dismiss
@@ -239,6 +240,10 @@ a person saw the notification. Keep ordinary progress and completion in the
 conversation; use a notification only for brief attention that is useful while
 the user is connected. Notification callbacks belong to the creating runtime's
 live heap and are not a durable workflow or approval mechanism.
+
+For conversation messages and durable inbox alerts, use the agent `notify`
+tool instead; see [Messaging](../messaging/SKILL.md). Its message id and inbox
+delivery do not use this transient notification lifecycle.
 
 ## Webhook Subscriptions
 

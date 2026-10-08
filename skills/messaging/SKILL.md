@@ -10,6 +10,14 @@ channel, how you report to a supervisor, how you steer a child, how you reach a
 person's phone, and how you talk to an agent in another conversation. If you are
 about to write text that someone else should see, `notify` is the tool.
 
+For a temporary shell notification with clickable action buttons and explicit
+dismissal, use the runtime `notifications.show()` and `notifications.dismiss()`
+API described in [Runtime API — Notifications](../sandbox/RUNTIME_API.md#notifications).
+It returns a host-issued notification id once accepted; retain that id for
+cleanup in the same runtime. `notify` instead delivers a conversation message
+and optional inbox alert. Choices written in its Markdown are message text,
+and its returned message id does not identify a dismissible shell notification.
+
 ```
 notify({
   content: "…",              // markdown
