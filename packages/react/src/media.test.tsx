@@ -37,6 +37,8 @@ describe("shared conversation media", () => {
     );
     const initialPlayer = container.querySelector("iframe")!;
     expect(initialPlayer).toBeTruthy();
+    expect(initialPlayer.getAttribute("allow")?.split("; ")).toContain("fullscreen");
+    expect(initialPlayer.hasAttribute("allowfullscreen")).toBe(false);
     expect(new URL(initialPlayer.src).searchParams.get("autoplay")).not.toBe("1");
     expect(
       screen

@@ -126,7 +126,6 @@ function VideoSource({
           title={title}
           src={`https://www.youtube-nocookie.com/embed/${youtube.id}?start=${youtube.start}`}
           allow="encrypted-media; picture-in-picture; fullscreen"
-          allowFullScreen
           referrerPolicy="strict-origin-when-cross-origin"
           style={{
             display: "block",
