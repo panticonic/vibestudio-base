@@ -356,7 +356,7 @@ export default function ChatPanel() {
 
   const resolveWorkspaceDefaultAgentConfig =
     useCallback(async (): Promise<DefaultAgentConfig> => {
-      return (await loadModelSettings()).defaultAgentConfig;
+      return (await loadModelSettings(true)).defaultAgentConfig;
     }, [loadModelSettings]);
 
   useEffect(() => {
@@ -389,11 +389,11 @@ export default function ChatPanel() {
     useState(0);
   const approvalChangeNeedsConnectionRetryRef = useRef(false);
   const modelSettingsRecoveryRef = useRef(false);
-  const approvalEvents = useMemo(() => new EventsClient(rpc), []);
+  const workspaceEvents = useMemo(() => new EventsClient(rpc), []);
   const bootstrapChannelRef = useRef<string | null>(null);
 
   useEffect(() => {
-    const off = approvalEvents.on(SHELL_APPROVAL_PENDING_CHANGED_EVENT, () => {
+    const off = workspaceEvents.on(SHELL_APPROVAL_PENDING_CHANGED_EVENT, () => {
       // A review transition can unblock the model-settings service as well as
       // the chat channel. Refresh that source of truth first; the chat
       // connection is retried only after the catalog is usable again.
@@ -401,12 +401,24 @@ export default function ChatPanel() {
       setModelSettingsRetrySignal((signal) => signal + 1);
       setBootstrapPersistenceRetrySignal((signal) => signal + 1);
     });
-    void approvalEvents.subscribe(SHELL_APPROVAL_PENDING_CHANGED_EVENT);
+    void workspaceEvents.subscribe(SHELL_APPROVAL_PENDING_CHANGED_EVENT);
     return () => {
       off();
-      void approvalEvents.unsubscribe(SHELL_APPROVAL_PENDING_CHANGED_EVENT);
+      void workspaceEvents.unsubscribe(SHELL_APPROVAL_PENDING_CHANGED_EVENT);
     };
-  }, [approvalEvents]);
+  }, [workspaceEvents]);
+
+  useEffect(() => {
+    const event = "workspace:config-changed";
+    const off = workspaceEvents.on(event, () => {
+      setModelSettingsRetrySignal((signal) => signal + 1);
+    });
+    void workspaceEvents.subscribe(event);
+    return () => {
+      off();
+      void workspaceEvents.unsubscribe(event);
+    };
+  }, [workspaceEvents]);
 
   useEffect(() => {
     if (stateArgs.channelName || !resolvedContextId) return;
@@ -577,8 +589,7 @@ export default function ChatPanel() {
   const handleNewConversation = useCallback(
     (options?: NewConversationOptions) => {
       const nextStateArgs: ChatStateArgs = {};
-      if (options?.seed)
-        nextStateArgs.seed = options.seed;
+      if (options?.seed) nextStateArgs.seed = options.seed;
       if (options?.agentConfig) nextStateArgs.agentConfig = options.agentConfig;
       const hasStateArgs = Object.keys(nextStateArgs).length > 0;
       const stateArgsForLink: Record<string, unknown> = { ...nextStateArgs };
@@ -952,8 +963,8 @@ export default function ChatPanel() {
     [availableAgents, buildSubscribeConfig, resolveWorkspaceDefaultAgentConfig],
   );
 
-  // The ONLY path that writes the workspace default agent config (model +
-  // behavior). Driven by the explicit "Save as defaults" control.
+  // Explicitly replace workspace defaults (model + behavior). The first
+  // successful answer initializes an absent model preference on the host.
   const saveDefaultAgentConfig = useCallback(
     async (config: DefaultAgentConfig): Promise<void> => {
       const settings =

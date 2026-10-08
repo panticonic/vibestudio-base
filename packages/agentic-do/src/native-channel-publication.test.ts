@@ -102,6 +102,7 @@ function gate() {
 async function fixture(
   options: {
     storage?: Storage;
+    onSuccessfulAnswer?: Parameters<typeof createNativeChannelPublication>[0]["onSuccessfulAnswer"];
     policy?: NativeChannelProjection["policy"];
     reportTo?: string;
     publish?: Parameters<typeof createNativeChannelPublication>[0]["publish"];
@@ -110,6 +111,7 @@ async function fixture(
 ) {
   const attempts: { key: string; event: AgenticEvent }[] = [];
   const publication = createNativeChannelPublication({
+    onSuccessfulAnswer: options.onSuccessfulAnswer,
     publish:
       options.publish ??
       (async (_channel, _participant, event, key) => {
@@ -226,6 +228,76 @@ describe("native run activity publication", () => {
       await stopping;
       await running;
     }
+  });
+
+  it("remembers the actual model only after its successful final answer is accepted", async () => {
+    const remembered: string[] = [];
+    const f = await fixture({
+      onSuccessfulAnswer: async (model) => {
+        expect(
+          f.attempts.some(({ event }) => event.kind === "message.completed"),
+        ).toBe(true);
+        remembered.push(model);
+      },
+    });
+    f.faux.setResponses([fauxAssistantMessage("Finished")]);
+    await f.conversation.submit({ type: "input", content: "Start" }, context);
+    await f.harness.runPass(context);
+    const answer = f.attempts.find(
+      ({ event }) => event.kind === "message.completed",
+    )!.event;
+    if (answer.kind !== "message.completed") throw new Error("Missing answer");
+    expect(remembered).toEqual([`faux:${f.faux.getModel().id}`]);
+  });
+
+  it("does not remember a failed model answer", async () => {
+    const remembered: string[] = [];
+    const f = await fixture({
+      onSuccessfulAnswer: async (model) => {
+        remembered.push(model);
+      },
+    });
+    f.faux.setResponses([
+      fauxAssistantMessage("Failure", {
+        stopReason: "error",
+        errorMessage: "Provider failed",
+      }),
+    ]);
+    await f.conversation.submit({ type: "input", content: "Start" }, context);
+    await f.harness.runPass(context);
+    expect(
+      f.attempts.some(
+        ({ event }) =>
+          event.kind === "message.completed" &&
+          "outcome" in event.payload && event.payload.outcome === "interrupted",
+      ),
+    ).toBe(true);
+    expect(remembered).toEqual([]);
+  });
+
+  it("retains a default-save failure and joins it when publication is explicitly retried", async () => {
+    let fail = true;
+    const remembered: string[] = [];
+    const f = await fixture({
+      onSuccessfulAnswer: async (model) => {
+        if (fail) throw new Error("Default save failed");
+        remembered.push(model);
+      },
+    });
+    f.faux.setResponses([fauxAssistantMessage("Finished")]);
+    await f.conversation.submit({ type: "input", content: "Start" }, context);
+    await f.harness.runPass(context);
+    const failed = (await publicationTasks(f.harness)).find((task) =>
+      task.state.status === "waiting" && task.state.condition.kind === "failure",
+    );
+    if (!failed || failed.state.status !== "waiting" || failed.state.condition.kind !== "failure")
+      throw new Error("Missing retained default-save failure");
+    expect(remembered).toEqual([]);
+    fail = false;
+    await f.harness.retryTask(failed.id, failed.state.condition.incident, context);
+    await f.harness.runPass(context);
+    expect(remembered).toEqual([`faux:${f.faux.getModel().id}`]);
+    expect((await publicationTasks(f.harness)).every((task) => task.state.status === "terminal")).toBe(true);
   });
 
   it("recovers lifecycle publication after a lost acceptance reply without opening a second turn", async () => {

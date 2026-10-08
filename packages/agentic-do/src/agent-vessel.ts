@@ -215,7 +215,11 @@ import { toCredentialConnectRequest } from "@workspace/model-catalog/providerCon
 import type { RespondPolicy } from "@workspace/agentic-protocol";
 import type { ModelFailureClass } from "@workspace/agentic-core/model-failures";
 import type { RosterEntry } from "@workspace/agentic-core/agent-channel-roster";
-import type { AgentThinkingLevel as ThinkingLevel } from "@workspace/model-catalog/catalog";
+import {
+  MODEL_SETTINGS_SERVICE_PROTOCOL,
+  type AgentThinkingLevel as ThinkingLevel,
+} from "@workspace/model-catalog/catalog";
+import { createDurableObjectServiceClient } from "@vibestudio/shared/workspaceServiceRpc";
 
 import { modelTransportRuntimeEvidence } from "./model-transport-runtime.js";
 
@@ -7317,6 +7321,16 @@ export abstract class AgentVesselBase extends NativeChannelOwner<NativeProductCh
       ...(product?.metadata ? { metadata: product.metadata } : {}),
       rpc: nonce ? withExecutionAdmission(execution.rpc, nonce) : execution.rpc,
     });
+  }
+
+  protected override async onNativeSuccessfulAnswer(
+    modelRef: string,
+  ): Promise<void> {
+    if (this.subagentIdentity()) return;
+    await createDurableObjectServiceClient(
+      this.rpc,
+      MODEL_SETTINGS_SERVICE_PROTOCOL,
+    ).call<void>("initializeDefaultAgentModel", modelRef);
   }
 
   protected override observeNativeModelConnection(

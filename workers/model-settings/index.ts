@@ -481,6 +481,23 @@ export class ModelSettingsDO extends DurableObjectBase {
     });
   }
 
+  @rpc({
+    website: {
+      kind: "closed",
+      reason:
+        "Workspace defaults are initialized by the installed agent runtime.",
+    },
+    principals: ["host", "code"],
+    effect: { kind: "open" },
+    tier: "open",
+    sensitivity: "write",
+  })
+  async initializeDefaultAgentModel(model: string): Promise<void> {
+    const config = await this.getWorkspaceConfig();
+    if (config.defaultAgentConfig) return;
+    await this.setDefaultAgentConfig({ model });
+  }
+
   /** Static pi projection — overridable seam for tests. */
   protected getCatalog(): Promise<ModelCatalog> {
     return getModelCatalog();
@@ -723,7 +740,7 @@ function parseDefaultAgentConfig(
 export default {
   async fetch() {
     return new Response(
-      "Model Settings service.\nMethods: listCatalog, getSettings, getDefaultModel, inspectModels, setDefaultAgentConfig.\n",
+      "Model Settings service.\nMethods: listCatalog, getSettings, getDefaultModel, inspectModels, setDefaultAgentConfig, initializeDefaultAgentModel.\n",
       { headers: { "Content-Type": "text/plain" } },
     );
   },

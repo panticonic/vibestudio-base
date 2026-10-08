@@ -79,6 +79,8 @@ export abstract class NativeChannelOwner<
   private readonly nativeChannels = new Map<string, Promise<Conversation>>();
   private readonly nativeChannelClients = new Map<string, ChannelClient>();
   private readonly nativePublications = createNativeChannelPublication({
+    onSuccessfulAnswer: (modelRef) =>
+      this.runDetached(() => this.onNativeSuccessfulAnswer(modelRef)),
     publish: async (channelId, participantId, event, idempotencyKey) =>
       this.runDetached(() => {
         if (event.kind === "message.read") {
@@ -99,6 +101,8 @@ export abstract class NativeChannelOwner<
         );
       }),
   });
+
+  protected async onNativeSuccessfulAnswer(_modelRef: string): Promise<void> {}
 
   protected abstract getNativeChannelConfiguration(
     channelId: string,

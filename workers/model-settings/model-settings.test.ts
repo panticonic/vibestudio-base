@@ -725,6 +725,50 @@ describe("ModelSettingsDO", () => {
     ]);
   });
 
+  it("remembers the first successful model and keeps it after later successes", async () => {
+    TestModelSettingsDO.config = { ...BASE_CONFIG };
+    TestModelSettingsDO.writes = [];
+    const { call } = await createTestDO(TestModelSettingsDO);
+
+    await call("initializeDefaultAgentModel", "anthropic:claude-opus-4-1");
+    await call("initializeDefaultAgentModel", "openai:gpt-5");
+    expect(TestModelSettingsDO.writes).toEqual([
+      {
+        key: "defaultAgentConfig",
+        value: { model: "anthropic:claude-opus-4-1", fastMode: false },
+      },
+    ]);
+    await expect(call("getSettings")).resolves.toMatchObject({
+      defaultModel: "anthropic:claude-opus-4-1",
+      defaultModelSource: "workspace",
+    });
+
+    await call("setDefaultAgentConfig", {
+      model: "openai:gpt-5",
+      thinkingLevel: "high",
+    });
+    await call("initializeDefaultAgentModel", "anthropic:claude-opus-4-1");
+    expect(TestModelSettingsDO.config.defaultAgentConfig).toEqual({
+      model: "openai:gpt-5",
+      thinkingLevel: "high",
+      fastMode: false,
+    });
+  });
+
+  it("keeps explicit defaults even when their model is unavailable", async () => {
+    const saved = {
+      model: CODEX_CATALOG_ENTRY.ref,
+      thinkingLevel: "high" as const,
+    };
+    TestModelSettingsDO.config = { ...BASE_CONFIG, defaultAgentConfig: saved };
+    TestModelSettingsDO.writes = [];
+    const { call } = await createTestDO(TestModelSettingsDO);
+
+    await call("initializeDefaultAgentModel", "anthropic:claude-opus-4-1");
+    expect(TestModelSettingsDO.config.defaultAgentConfig).toEqual(saved);
+    expect(TestModelSettingsDO.writes).toEqual([]);
+  });
+
   it("persists extended effort levels", async () => {
     TestModelSettingsDO.config = { ...BASE_CONFIG };
     TestModelSettingsDO.writes = [];

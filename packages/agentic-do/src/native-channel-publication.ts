@@ -25,6 +25,7 @@ import { canonicalJson } from "@vibestudio/shared/canonicalJson";
 import {
   AGENTIC_PROTOCOL_VERSION,
   agenticEventSchema,
+  eventKindSchemas,
   agentToolFailureFromUnknown,
   invocationAbandonedPayload,
   invocationCancelledPayload,
@@ -300,6 +301,8 @@ export async function readNativeChannelProjection(
 
 /** Native work owns publication debt; the canonical channel owns idempotent acceptance. */
 export function createNativeChannelPublication(options: {
+  /** Joined with canonical final-answer publication; replay must be idempotent. */
+  readonly onSuccessfulAnswer?: (modelRef: string) => Promise<void>;
   readonly publish: (
     channelId: string,
     participantId: string,
@@ -412,6 +415,37 @@ export function createNativeChannelPublication(options: {
           throw new Error(
             "Native publication lacks canonical channel acceptance",
           );
+        const answer = event.kind === "message.completed"
+          ? eventKindSchemas["message.completed"].parse(event)
+          : undefined;
+        if (
+          options.onSuccessfulAnswer &&
+          answer?.payload.role === "assistant" &&
+          answer.payload.tier === "primary" &&
+          answer.payload.outcome === "completed" &&
+          !answer.payload.failure
+        ) {
+          const entryId = answer.payload.metadata?.["nativeEntryId"];
+          if (typeof entryId !== "number")
+            throw new Error("Successful native answer has no original entry");
+          const entry = await rt.entry(entryId as EntryId, context);
+          const message = entry?.model?.find(
+            (_message, messageIndex) =>
+              `native:${entry.conversationId}:${entry.id}:${messageIndex}` ===
+              event.causality?.messageId,
+          );
+          if (
+            !message ||
+            message.role !== "assistant" ||
+            assistantOutcome(message) !== "completed"
+          )
+            throw new Error(
+              "Successful native answer lost its original model response",
+            );
+          await options.onSuccessfulAnswer(
+            `${message.provider}:${message.model}`,
+          );
+        }
         index++;
         const acknowledged = index;
         await rt.commit(
