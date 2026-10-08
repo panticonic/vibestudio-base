@@ -24,7 +24,13 @@ describe("agent-worker authority manifest", () => {
       protocol: "vibestudio.phone-provisioning.v1",
       availability: "required",
     });
-    expect(manifest.vibestudio.authority.serviceRequests).toContainEqual({
+    const sharedAgent = JSON.parse(
+      readFileSync(
+        new URL("../../packages/agentic-do/package.json", import.meta.url),
+        "utf8",
+      ),
+    );
+    expect(sharedAgent.vibestudio.authority.serviceRequests).toContainEqual({
       protocol: "vibestudio.missions.v1",
       availability: "required",
     });

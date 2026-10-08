@@ -4,6 +4,26 @@
   "description": "Composable agent modules for Durable Objects",
   "type": "module",
   "private": true,
+  "vibestudio": {
+    "authority": {
+      "requests": [],
+      "provides": [],
+      "serviceRequests": [
+        {
+          "protocol": "vibestudio.channel.v1",
+          "availability": "required"
+        },
+        {
+          "protocol": "vibestudio.missions.v1",
+          "availability": "required"
+        },
+        {
+          "protocol": "vibestudio.models.v1",
+          "availability": "required"
+        }
+      ]
+    }
+  },
   "exports": {
     ".": "./src/index.ts",
     "./agent-worker-base": "./src/agent-worker-base.ts",

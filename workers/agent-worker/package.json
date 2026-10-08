@@ -24,12 +24,7 @@
     ],
     "authority": {
       "provides": [],
-      "serviceRequests": [
-        {
-          "protocol": "vibestudio.missions.v1",
-          "availability": "required"
-        }
-      ],
+      "serviceRequests": [],
       "requests": [
         {
           "capability": "accounts.connect",
