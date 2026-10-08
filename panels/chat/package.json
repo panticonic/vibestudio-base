@@ -42,6 +42,15 @@
       ],
       "requests": [
         {
+          "capability": "workspace.dependencies.inspect",
+          "resource": {
+            "kind": "prefix",
+            "prefix": ""
+          },
+          "tier": "gated",
+          "evidence": "intentional-broad"
+        },
+        {
           "capability": "microphone",
           "resource": {
             "kind": "prefix",
