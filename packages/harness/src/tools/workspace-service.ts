@@ -271,19 +271,24 @@ export function createWorkspaceServiceTool(
       await deps.validateConfig(candidate);
       if (signal?.aborted) throw new Error("Operation aborted");
 
-      const vcsResult = await vcs.edit({
-        contextId: toolContextId(context),
-        expectedWorkingHead: workingHead,
-        commandId: toolCommandId(context),
-        changes: [
-          {
-            kind: "text-edit",
-            repositoryId: file.repositoryId,
-            fileId: file.fileId,
-            edits: [{ start: 0, end: sourceContent.length, text: candidate }],
-          },
-        ],
-      });
+      const changed = candidate !== sourceContent;
+      const vcsResult = changed
+        ? await vcs.edit({
+            contextId: toolContextId(context),
+            expectedWorkingHead: workingHead,
+            commandId: toolCommandId(context),
+            changes: [
+              {
+                kind: "text-edit",
+                repositoryId: file.repositoryId,
+                fileId: file.fileId,
+                edits: [
+                  { start: 0, end: sourceContent.length, text: candidate },
+                ],
+              },
+            ],
+          })
+        : undefined;
       const diff = generateDiffString(sourceContent, candidate).diff;
       const docsId =
         operation === "upsert" ? `workspace:${serviceName}` : undefined;
@@ -293,17 +298,17 @@ export function createWorkspaceServiceTool(
             type: "text",
             text:
               operation === "upsert"
-                ? `Declared ${serviceName} and validated the complete workspace config. Open ${docsId} with docs_open before eval.`
+                ? `${changed ? "Declared" : "Already declared"} ${serviceName} and validated the complete workspace config. Open ${docsId} with docs_open before eval.`
                 : `Removed ${serviceName} and validated the complete workspace config.`,
           },
         ],
         details: toolDetails({
-          changed: true,
+          changed,
           operation,
           serviceName,
           ...(docsId ? { docsId } : {}),
           diff,
-          vcsResult,
+          ...(vcsResult ? { vcsResult } : {}),
         }),
       };
     },

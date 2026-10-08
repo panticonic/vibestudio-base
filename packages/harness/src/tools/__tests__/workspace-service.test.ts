@@ -125,6 +125,44 @@ describe("workspace_service tool", () => {
     },
   );
 
+  it("validates repeated upserts without authoring an unchanged semantic edit", async () => {
+    const vcs = new StubVcs({ files: { "meta/vibestudio.yml": initial } });
+    const edit = vi.spyOn(vcs, "edit");
+    const validateConfig = vi.fn(async () => {});
+    const tool = createWorkspaceServiceTool(vcs, authority, { validateConfig });
+    const command = {
+      operation: "upsert" as const,
+      source: "workers/probe",
+      name: "probe-value",
+      title: "Probe value",
+      action: "read the probe value",
+      description: "Report a small value.",
+      notability: "everyday" as const,
+      presentation: { domain: "automation" as const, verb: "see" as const },
+      protocols: ["example.probe.v1"],
+      principals: ["user" as const, "code" as const],
+      binding: "declared" as const,
+      transport: { kind: "worker" as const, routePath: "/probe" },
+    };
+    await executeTool(tool, command, { callId: "invocation:create" });
+    const content = vcs.read("meta/vibestudio.yml");
+    const head = await vcs.status({ contextId: authority.contextId });
+    const repeated = await executeTool(tool, command, {
+      callId: "invocation:repeat",
+    });
+    expect(repeated.details).toMatchObject({
+      changed: false,
+      serviceName: "probe-value",
+      docsId: "workspace:probe-value",
+      diff: "",
+    });
+    expect(repeated.details).not.toHaveProperty("vcsResult");
+    expect(validateConfig).toHaveBeenCalledTimes(2);
+    expect(edit).toHaveBeenCalledOnce();
+    expect(vcs.read("meta/vibestudio.yml")).toBe(content);
+    expect(await vcs.status({ contextId: authority.contextId })).toEqual(head);
+  });
+
   it("does not create a working state when complete-config validation fails", async () => {
     const vcs = new StubVcs({ files: { "meta/vibestudio.yml": initial } });
     const tool = createWorkspaceServiceTool(vcs, authority, {
