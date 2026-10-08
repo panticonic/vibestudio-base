@@ -5863,7 +5863,7 @@ export class GadWorkspaceDO extends DurableObjectBase {
                 t.closed_at AS closed_at,
                 COUNT(DISTINCT CASE WHEN m.status NOT IN ('completed', 'failed') THEN m.message_id END) AS streaming_messages,
                 COUNT(DISTINCT CASE WHEN i.status NOT IN ('completed', 'failed', 'cancelled', 'abandoned') THEN i.invocation_id END) AS nonterminal_invocations,
-                COUNT(DISTINCT e.envelope_id) AS duplicate_open_events
+                MAX(COUNT(DISTINCT e.envelope_id) - 1, 0) AS duplicate_open_events
          FROM trajectory_turns t
          LEFT JOIN trajectory_messages m
            ON m.log_id = t.log_id AND m.head = t.head AND m.turn_id = t.turn_id
@@ -5898,7 +5898,7 @@ export class GadWorkspaceDO extends DurableObjectBase {
           0,
         ),
         duplicateOpenedTurns: scopedRows.filter(
-          (row) => asNumber(row["duplicate_open_events"]) > 1,
+          (row) => asNumber(row["duplicate_open_events"]) > 0,
         ).length,
       },
       rows: scopedRows,
@@ -6448,7 +6448,7 @@ export class GadWorkspaceDO extends DurableObjectBase {
             row["closed_at"] == null ||
             asNumber(row["streaming_messages"]) > 0 ||
             asNumber(row["nonterminal_invocations"]) > 0 ||
-            asNumber(row["duplicate_open_events"]) > 1,
+            asNumber(row["duplicate_open_events"]) > 0,
         )
         .slice(0, 10),
     };

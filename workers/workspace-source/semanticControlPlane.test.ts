@@ -2048,6 +2048,56 @@ describe("trajectory projection invariants", () => {
       turn_id: "turn-1",
       closed_at: expect.any(String),
       streaming_messages: 0,
+      duplicate_open_events: 0,
+    });
+  });
+
+  it("counts only excess turn-open events as duplicates, including closed turns", async () => {
+    const { call, sql } = await createTestDO(GadWorkspaceDO);
+    const channelId = "channel-duplicate-open";
+    for (const [envelopeId, kind] of [
+      ["first-open", "turn.opened"],
+      ["close", "turn.closed"],
+    ] as const) {
+      const opened = event(kind, {
+        turnId: "turn-duplicate" as never,
+        payload: { protocol: AGENTIC_PROTOCOL_VERSION, summary: kind },
+      });
+      await call("appendChannelEnvelope", {
+        channelId,
+        envelopeId,
+        from: opened.actor,
+        payloadKind: AGENTIC_EVENT_PAYLOAD_KIND,
+        payload: opened,
+      });
+    }
+    // Ordinary publication rejects duplicate opens. Corrupt the stored event
+    // kind to exercise the inspector's diagnosis of an inconsistent closed turn.
+    sql.exec(
+      "UPDATE log_events SET payload_kind = 'turn.opened' WHERE log_id = ? AND envelope_id = ?",
+      channelId,
+      "close",
+    );
+    const turns = await call<any>("inspectTurnState", {
+      trajectoryId: channelId,
+      branchId: "main",
+    });
+    expect(turns.summary).toMatchObject({
+      openTurns: 0,
+      duplicateOpenedTurns: 1,
+    });
+    expect(turns.rows[0]).toMatchObject({
+      turn_id: "turn-duplicate",
+      closed_at: expect.any(String),
+      duplicate_open_events: 1,
+    });
+    const health = await call<any>("inspectAgentHealth", { channelId });
+    expect(health.summary).toMatchObject({
+      durableIntegrityOk: false,
+      turnIntegrityIssues: 1,
+    });
+    expect(health.turnState.rows[0]).toMatchObject({
+      duplicate_open_events: 1,
     });
   });
 });
