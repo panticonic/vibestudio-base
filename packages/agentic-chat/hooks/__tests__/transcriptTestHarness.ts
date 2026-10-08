@@ -12,7 +12,7 @@ import {
 } from "@workspace/agentic-protocol";
 import { connectViaRpc, type PubSubClient } from "@workspace/pubsub";
 import { GadWorkspaceDO } from "@workspace-workers/workspace-source";
-import { PubSubChannel } from "../../../workers/pubsub-channel/channel-do.js";
+import { PubSubChannel } from "../../../../workers/pubsub-channel/channel-do.js";
 
 export const TRANSCRIPT_TEST_CHANNEL_ID = "transcript-pipeline";
 export const TRANSCRIPT_TEST_CHANNEL_TARGET = `do:workers/pubsub-channel:PubSubChannel:${TRANSCRIPT_TEST_CHANNEL_ID}`;

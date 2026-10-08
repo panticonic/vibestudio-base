@@ -2,7 +2,7 @@
 import { useEffect } from "react";
 import { act, render, waitFor } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
-import { createTranscriptHarness } from "../transcriptTestHarness.js";
+import { createTranscriptHarness } from "../__tests__/transcriptTestHarness.js";
 import { useChatCore, type ChatCoreState } from "./useChatCore.js";
 
 const projection = vi.hoisted(() => ({ replay: vi.fn() }));

@@ -3,7 +3,7 @@ import { useEffect } from "react";
 import { render, waitFor } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { useChatCore, type ChatCoreState } from "./useChatCore.js";
-import { createTranscriptHarness } from "../transcriptTestHarness.js";
+import { createTranscriptHarness } from "../__tests__/transcriptTestHarness.js";
 
 function SeedProbe({
   harness,

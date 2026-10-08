@@ -21,7 +21,7 @@ import {
   createTranscriptHarness,
   invocationCompleted,
   invocationStarted,
-} from "../hooks/transcriptTestHarness.js";
+} from "../hooks/__tests__/transcriptTestHarness.js";
 import {
   agentToolFailureFromUnknown,
   brandId,

@@ -12,7 +12,7 @@ import {
   createTranscriptHarness,
   invocationCompleted,
   invocationStarted,
-} from "./transcriptTestHarness.js";
+} from "./__tests__/transcriptTestHarness.js";
 
 function Probe({
   client,
