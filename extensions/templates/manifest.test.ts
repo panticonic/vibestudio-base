@@ -46,7 +46,6 @@ describe("templates authority manifest", () => {
       "updateStatus",
       "checkUpdates",
       "updateSignal",
-      "acknowledgeUpdates",
       "updateAssistant",
       "reviewPublication",
     ]);

@@ -33,6 +33,8 @@ it("launches an agent with the exact target and resumed operation, without mergi
     updateAssistant: vi.fn(async () => null),
     updateStatus: vi.fn().mockResolvedValue({
       workspaceEpoch: 0,
+      workspaceAppVersion: "0.1.84",
+      currentAppVersion: "0.1.84",
       checks: [
         {
           source: pin,
@@ -66,7 +68,7 @@ it("launches an agent with the exact target and resumed operation, without mergi
       />
     </Theme>,
   );
-  await screen.findByText("App compatibility review needed");
+  await screen.findByText("App update required");
   fireEvent.click(
     screen.getByRole("button", { name: "Review Personal with an agent" }),
   );
@@ -79,7 +81,12 @@ it("launches an agent with the exact target and resumed operation, without mergi
 
 it("shows the saved paused state and configures the same assistant instead of offering setup", async () => {
   const client = {
-    updateStatus: vi.fn(async () => ({ workspaceEpoch: 0, checks: [] })),
+    updateStatus: vi.fn(async () => ({
+      workspaceEpoch: 0,
+      workspaceAppVersion: "0.1.84",
+      currentAppVersion: "0.1.84",
+      checks: [],
+    })),
     updateAssistant: vi.fn(async () => ({
       state: "paused",
       charter: { trigger: { kind: "schedule", everyMs: 21600000 } },
@@ -103,4 +110,60 @@ it("shows the saved paused state and configures the same assistant instead of of
   );
   expect(configure.mock.calls[0]?.[0]).toContain("same automation");
   expect(screen.queryByText("Set up update assistant")).toBeNull();
+});
+
+it("explains the retained runtime and launches an agent when a compatible target host is unavailable", async () => {
+  const pin = {
+    url: "https://example.test/personal.git",
+    ref: "refs/heads/main",
+    commit: "a".repeat(40),
+  };
+  const review = vi.fn();
+  const client = {
+    updateAssistant: vi.fn(async () => null),
+    updateStatus: vi.fn(async () => ({
+      workspaceEpoch: 0,
+      workspaceAppVersion: "0.1.84",
+      currentAppVersion: "2.0.0",
+      checks: [
+        {
+          source: pin,
+          target: { ...pin, commit: "b".repeat(40) },
+          checkedAt: 1,
+          status: "different-epoch",
+          targetEpoch: 1,
+          targetMinimumAppVersion: "1.2.0",
+          hostError: "Retained host missing",
+        },
+      ],
+    })),
+  };
+  render(
+    <Theme>
+      <TemplateUpdates
+        client={client as unknown as TemplatesClient}
+        workspaceId="retained"
+        sources={[
+          { pin, relationship: "direct", repositories: [], dependencies: [] },
+        ]}
+        onRefresh={async () => {}}
+        onReviewWithAgent={review}
+      />
+    </Theme>,
+  );
+  await screen.findByText("Compatible host unavailable");
+  expect(
+    screen.getByText(/This workspace runs on retained Vibestudio/).textContent,
+  ).toContain("0.1.84");
+  expect(
+    screen.getByText(/This workspace runs on retained Vibestudio/).textContent,
+  ).toContain("2.0.0");
+  expect(screen.queryByText("App update required")).toBeNull();
+  fireEvent.click(
+    screen.getByRole("button", { name: "Review update with an agent" }),
+  );
+  expect(review.mock.calls[0]?.[0]).toContain(
+    "Workspace host: Vibestudio 0.1.84; surrounding app: Vibestudio 2.0.0",
+  );
+  expect(review.mock.calls[0]?.[0]).toContain("1.2.0");
 });

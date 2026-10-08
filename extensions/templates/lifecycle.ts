@@ -1,3 +1,4 @@
+import { installedSourceDependencies } from "./sourceDependencies";
 import {
   TemplateOperations,
   type TemplateOperationStep,
@@ -26,6 +27,9 @@ import type {
 } from "@vibestudio/service-schemas/templates";
 import type { ExtensionContextLike } from "./context.js";
 import { observeWorkspace } from "./workspace.js";
+import { type ParsedTemplateManifest } from "@vibestudio/workspace/templateManifest";
+import { parseWorkspaceAppCompatibilityEnvelope } from "@vibestudio/workspace/configParser";
+import { WORKSPACE_SYSTEM_EPOCH } from "@vibestudio/shared/vcs/systemEpoch";
 
 type Request = Parameters<TemplatesClient["prepareUpdate"]>[0];
 type TreeRepo = TemplateSourceTree["repositories"][number];
@@ -42,6 +46,23 @@ type Update = {
 const identity = (value: unknown) => sha256HexSyncText(canonicalJson(value));
 const sameUrl = (a: string, b: string) =>
   normalizeTemplateGitUrl(a) === normalizeTemplateGitUrl(b);
+
+/** Installed pins freeze the baseline. The selected parent's incoming
+ * declarations choose its next dependency closure, including deliberate pins. */
+export function selectTemplateUpdateSources(
+  manifest: ParsedTemplateManifest,
+  sources: readonly TemplateExactPin[],
+  target: TemplateExactPin,
+): TemplateExactPin[] {
+  const inherited = installedSourceDependencies(manifest, [target.url]);
+  return sources.flatMap((pin) =>
+    sameUrl(pin.url, target.url)
+      ? [target]
+      : inherited.has(normalizeTemplateGitUrl(pin.url))
+        ? []
+        : [pin],
+  );
+}
 
 export function createTemplateLifecycle(
   ctx: ExtensionContextLike,
@@ -384,8 +405,10 @@ export function createTemplateLifecycle(
               purpose: observation.manifest.installation?.upstream
                 ? "author"
                 : "use",
-              sources: observation.templateSources.map((pin) =>
-                sameUrl(pin.url, target.url) ? target : pin,
+              sources: selectTemplateUpdateSources(
+                observation.manifest,
+                observation.templateSources,
+                target,
               ),
             },
           );
@@ -565,12 +588,35 @@ export function createTemplateLifecycle(
             { ...(await envelope(update, key)), deltaId: delta.deltaId },
           ]);
         }
+        const committedState = {
+          kind: "event" as const,
+          eventId: state.committed.eventId,
+        };
+        const metadata = await vcs.resolveRepository({
+          state: committedState,
+          repoPath: "meta",
+        });
+        if (!metadata)
+          throw new Error("Update candidate has no manifest repository");
+        const manifest = await vcs.readFile({
+          state: committedState,
+          repositoryId: metadata.repositoryId,
+          file: { kind: "path", path: "vibestudio.yml" },
+        });
+        if (!manifest || manifest.content.kind !== "text")
+          throw new Error("Update candidate has no text runtime manifest");
+        const requirement = parseWorkspaceAppCompatibilityEnvelope(
+          manifest.content.text,
+        );
         await step(update, "push", "vcs.push", [
           {
             commandId: `${update.contextId}:push`,
             contextId: update.contextId,
             expectedCommittedEventId: state.committed.eventId,
             expectedMainEventId: update.mainEventId,
+            ...(requirement.systemEpoch !== WORKSPACE_SYSTEM_EPOCH
+              ? { epochTransition: true as const }
+              : {}),
           },
         ]);
         update.published = true;

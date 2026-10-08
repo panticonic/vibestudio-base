@@ -8,17 +8,32 @@ export interface ExtensionContextLike {
       path: string;
       statePath: string;
       id: string;
+      appVersion: string;
+      currentAppVersion: string;
       name: string;
       config?: unknown;
     }>;
   };
+  subscriptions?: Array<{ dispose(): void }>;
   rpc: {
-    call<T = unknown>(targetId: string, method: string, ...args: unknown[]): Promise<T>;
+    on?(
+      event: string,
+      callback: (event: { payload: unknown }) => void,
+    ): () => void;
+    call<T = unknown>(
+      targetId: string,
+      method: string,
+      ...args: unknown[]
+    ): Promise<T>;
   };
   credentials: CredentialClient;
   emit(event: string, payload: unknown): void;
   extensions: {
-    invoke<T = unknown>(extension: string, method: string, args?: unknown[]): Promise<T>;
+    invoke<T = unknown>(
+      extension: string,
+      method: string,
+      args?: unknown[],
+    ): Promise<T>;
   };
   invocation: {
     current(): {

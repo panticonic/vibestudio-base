@@ -226,15 +226,6 @@
             "reason": "Workspace update automation is private."
           }
         },
-        "acknowledgeUpdates": {
-          "effect": {
-            "kind": "open"
-          },
-          "website": {
-            "kind": "closed",
-            "reason": "Workspace update automation is private."
-          }
-        },
         "updateAssistant": {
           "effect": {
             "kind": "open"
@@ -375,11 +366,24 @@
           },
           "tier": "gated",
           "evidence": "bounded-dynamic"
+        },
+        {
+          "capability": "workspace-service:gad.workspace",
+          "resource": {
+            "kind": "prefix",
+            "prefix": ""
+          },
+          "tier": "gated",
+          "evidence": "bounded-dynamic"
         }
       ],
       "serviceRequests": [
         {
           "protocol": "vibestudio.missions.v1",
+          "availability": "required"
+        },
+        {
+          "protocol": "vibestudio.gad.workspace.v1",
           "availability": "required"
         }
       ]
@@ -394,6 +398,7 @@
     "@vibestudio/workspace-contracts": "workspace:*",
     "yaml": "^2.8.0",
     "@vibestudio/shared": "workspace:*",
-    "@workspace/integrations": "workspace:*"
+    "@workspace/integrations": "workspace:*",
+    "@workspace/template-management": "workspace:*"
   }
 }

@@ -8,6 +8,7 @@
   },
   "dependencies": {
     "@vibestudio/service-schemas": "workspace:*",
-    "@vibestudio/shared": "workspace:*"
+    "@vibestudio/shared": "workspace:*",
+    "@vibestudio/workspace-contracts": "workspace:*"
   }
 }

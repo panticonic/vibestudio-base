@@ -1,3 +1,8 @@
+import {
+  templateUpdateAgentPrompt,
+  templateUpdateCompatibility,
+} from "@workspace/template-management";
+export { templateUpdateAgentPrompt } from "@workspace/template-management";
 import { useEffect, useState } from "react";
 import {
   Badge,
@@ -16,25 +21,6 @@ import {
 import { useTemplateDraft } from "./templateDraft";
 import "./templateMaintenance.css";
 type Source = Awaited<ReturnType<TemplatesClient["installed"]>>[number];
-export function templateUpdateAgentPrompt(
-  source: Source,
-  check?: TemplateUpdateStatus["checks"][number],
-  operationId?: string,
-) {
-  return [
-    "Review an upstream template update for this workspace. Handle the update agentically: understand incoming changes and local intent before merging, including changes the VCS considers conflict-free.",
-    `Recorded source: ${JSON.stringify(source.pin)}.`,
-    check?.target
-      ? `Exact discovered target: ${JSON.stringify(check.target)}; target systemEpoch: ${check.targetEpoch}.`
-      : "Check the recorded upstream for an exact target first.",
-    operationId
-      ? `Resume existing update operation ${JSON.stringify(operationId)} rather than preparing a duplicate.`
-      : "Prepare a separate semantic review context using the template lifecycle tools only after inspecting compatibility.",
-    "Read the templates skill and its workspace-updates reference. Inspect the base, local edits, and incoming source; preserve local intent, resolve semantic changes with the ordinary VCS tools, and run relevant checks. Do not treat an automatic clean merge as sufficient review.",
-    "Compatibility uses systemEpoch, the host application's major version. A different epoch requires an available matching workspace host and the reviewed epoch-transition handoff; never change the epoch just to silence validation or force a foreign template through the same-epoch update path.",
-    "Present the proposed changes, compatibility requirements, and verification results. Ask the user to approve the concrete result before publishing to workspace main, installing an app update, or restarting. Do not apply the update merely because this review was requested.",
-  ].join("\n\n");
-}
 export function TemplateUpdates({
   client,
   workspaceId,
@@ -79,7 +65,10 @@ export function TemplateUpdates({
       void client
         .updateStatus()
         .then((value) => {
-          if (active) setStatus(value);
+          if (active) {
+            setStatus(value);
+            setError("");
+          }
         })
         .catch((error) => {
           if (active) setError(String(error));
@@ -107,7 +96,9 @@ export function TemplateUpdates({
   const count =
     status?.checks.filter(
       (check) =>
-        check.status === "available" || check.status === "different-epoch",
+        check.status === "available" ||
+        check.status === "different-epoch" ||
+        check.status === "requires-app-update",
     ).length ?? 0;
   const sourceCard = (source: Source) => {
     const check = status?.checks.find(
@@ -115,6 +106,9 @@ export function TemplateUpdates({
         item.source.url === source.pin.url &&
         item.source.commit === source.pin.commit,
     );
+    const compatibility = check
+      ? templateUpdateCompatibility(check, status ?? {})
+      : undefined;
     return (
       <Card key={source.pin.url} className="workspace-source-card">
         <Flex direction="column" gap="3">
@@ -129,12 +123,20 @@ export function TemplateUpdates({
                   ? "Workspace template"
                   : "Supporting dependency"}
             </Badge>
-            {check?.status === "available" && (
-              <Badge color="green">Update available</Badge>
-            )}
-            {check?.status === "different-epoch" && (
-              <Badge color="amber">App compatibility review needed</Badge>
-            )}
+            {check &&
+              ["available", "different-epoch", "requires-app-update"].includes(
+                check.status,
+              ) && (
+                <Badge
+                  color={compatibility?.state === "ready" ? "green" : "amber"}
+                >
+                  {compatibility?.state === "host-unavailable"
+                    ? "Compatible host unavailable"
+                    : compatibility?.state === "app-update-required"
+                      ? "App update required"
+                      : "Ready to review"}
+                </Badge>
+              )}
           </Flex>
           <Text size="2" className="workspace-source-url">
             {source.pin.url.replace(/^git\+/, "")}
@@ -156,13 +158,10 @@ export function TemplateUpdates({
               Couldn’t check this source: {check.error}
             </Text>
           )}
-          {check?.status === "different-epoch" && (
-            <Text size="2">
-              This update targets app version {check.targetEpoch}.x; this
-              workspace uses version {status?.workspaceEpoch}.x. An agent will
-              review whether an app change is needed before updating.
-            </Text>
-          )}
+          {check &&
+            ["available", "different-epoch", "requires-app-update"].includes(
+              check.status,
+            ) && <Text size="2">{compatibility?.message}</Text>}
           {check?.status !== "current" && (
             <Button
               onClick={() =>
@@ -173,6 +172,7 @@ export function TemplateUpdates({
                     request?.sourceUrl === source.pin.url
                       ? request.commandId
                       : undefined,
+                    status ?? undefined,
                   ),
                 )
               }
@@ -199,6 +199,16 @@ export function TemplateUpdates({
           Check for updates
         </Button>
       </Flex>
+      {status && status.workspaceAppVersion !== status.currentAppVersion && (
+        <Callout.Root>
+          <Callout.Text>
+            This workspace runs on retained Vibestudio{" "}
+            {status.workspaceAppVersion}. Your installed app is Vibestudio{" "}
+            {status.currentAppVersion}. An agent can review parent updates to
+            migrate it when you’re ready.
+          </Callout.Text>
+        </Callout.Root>
+      )}
       <Button
         variant="soft"
         onClick={() =>
@@ -238,8 +248,9 @@ export function TemplateUpdates({
             </Text>
           )}
           <Text size="2" color="gray">
-            Runs without an open chat. An agent notifies you when updates are
-            available and asks before applying changes.
+            Checks on your saved schedule and after app updates, without an open
+            chat. Parent updates appear in your inbox with an action to launch
+            an agent to review and merge them.
           </Text>
           {assistantError && (
             <Text size="2" color="red">

@@ -118,6 +118,16 @@ export async function activate(ctx: ExtensionContextLike) {
   const updates = createTemplateUpdateChecks(ctx, (source) =>
     resolveSource(ctx, source),
   );
+  const unsubscribe = ctx.rpc.on?.("workspace:protected-refs-changed", () => {
+    void updates
+      .reconcileInstalled()
+      .catch((error) =>
+        ctx.log.warn?.("Could not reconcile workspace update notices", {
+          error: String(error),
+        }),
+      );
+  });
+  if (unsubscribe) ctx.subscriptions?.push({ dispose: unsubscribe });
   return {
     updateAssistant: async () => {
       const service = await ctx.rpc.call<{ kind: string; targetId?: string }>(
@@ -130,7 +140,6 @@ export async function activate(ctx: ExtensionContextLike) {
       return ctx.rpc.call(service.targetId, "getDefault", "workspace-updates");
     },
     updateSignal: updates.signal,
-    acknowledgeUpdates: updates.acknowledge,
     updateStatus: updates.status,
     checkUpdates: updates.check,
     ...createTemplateLifecycle(ctx, {

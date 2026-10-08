@@ -1,3 +1,4 @@
+import { reconcileDefaultAutomationHost } from "./default-automation-host.js";
 import { createProvider, Type, type Api, type Model } from "@panticonic/pi-ai";
 import { authorNativeTool } from "@workspace/harness";
 import { openAICompletionsApi } from "@panticonic/pi-ai/api/openai-completions.lazy";
@@ -3660,6 +3661,7 @@ export abstract class AgentVesselBase extends NativeChannelOwner<NativeProductCh
     id: string;
     contextId: string;
     definition: unknown;
+    appVersion: string;
   }): Promise<MissionRecord> {
     const definition = WorkspaceAutomationSchema.parse(input.definition);
     if (
@@ -3676,7 +3678,23 @@ export abstract class AgentVesselBase extends NativeChannelOwner<NativeProductCh
       "getDefault",
       [input.id],
     );
-    if (existing) return existing;
+    const reconcileHost = async (mission: MissionRecord, existed: boolean) => {
+      await reconcileDefaultAutomationHost({
+        id: input.id,
+        appVersion: input.appVersion,
+        existing: existed,
+        events: definition.events ?? [],
+        mission,
+        read: (key) => this.getStateValue(key),
+        write: (key, value) => this.setStateValue(key, value),
+        run: (missionId, commandId) =>
+          this.rpc.call(target, "runNow", [missionId], {
+            idempotencyKey: commandId,
+          }),
+      });
+      return mission;
+    };
+    if (existing) return reconcileHost(existing, true);
     const channelId = this.objectKey;
     await this.rpc.call(
       "main",
@@ -3708,12 +3726,13 @@ export abstract class AgentVesselBase extends NativeChannelOwner<NativeProductCh
       );
       this.setStateValue(intentKey, intent);
     }
-    return this.rpc.call<MissionRecord>(
+    const mission = await this.rpc.call<MissionRecord>(
       target,
       "provisionDefault",
       [input.id, JSON.parse(intent)],
       { idempotencyKey: `default-automation:${input.id}:provision` },
     );
+    return reconcileHost(mission, false);
   }
 
   private async automationServiceTarget(callerRpc: RpcClient): Promise<string> {

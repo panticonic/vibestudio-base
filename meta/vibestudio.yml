@@ -1,5 +1,6 @@
 defaultAutomations:
   workspace-updates:
+    events: [app-update]
     action:
       code: |
         import { extensions } from "@workspace/runtime";
@@ -199,6 +200,7 @@ singletonObjects:
   - className: MissionsDO
     key: workspace-missions
     source: workers/missions
+minimumAppVersion: 0.1.84
 systemEpoch: 0
 template:
   description: Shared native agent, workspace and tooling foundations.
