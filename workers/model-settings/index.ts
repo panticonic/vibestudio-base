@@ -334,15 +334,20 @@ export function pickFallbackModel(catalog: ModelCatalog): {
     catalog.models.find((model) => model.ref === ref);
   const preferred = byRef(DEFAULT_AGENT_MODEL_REF);
   const preferredRef = preferred?.ref;
-  if (preferred && isModelUsable(preferred)) return { ref: preferred.ref };
+  if (preferred?.capabilities.tools && isModelUsable(preferred))
+    return { ref: preferred.ref };
   const recommended = catalog.models.find(
-    (model) => model.recommended && isModelUsable(model),
+    (model) =>
+      model.recommended && model.capabilities.tools && isModelUsable(model),
   );
   if (recommended) return { ref: recommended.ref };
   // Prefer the local floor once the user has explicitly installed it.
   const localFloor = byRef(LOCAL_FALLBACK_MODEL_REF);
-  if (localFloor && isModelUsable(localFloor)) return { ref: localFloor.ref };
-  const anyUsable = catalog.models.find(isModelUsable);
+  if (localFloor?.capabilities.tools && isModelUsable(localFloor))
+    return { ref: localFloor.ref };
+  const anyUsable = catalog.models.find(
+    (model) => model.capabilities.tools && isModelUsable(model),
+  );
   if (anyUsable) return { ref: anyUsable.ref };
   // Nothing usable at all — keep the old static preference so the connect
   // flow has a sensible target.
@@ -470,12 +475,10 @@ export class ModelSettingsDO extends DurableObjectBase {
       WORKSPACE_DEFAULT_AGENT_CONFIG_FIELD,
       config,
     );
-    return {
-      catalog,
-      defaultModel: model.ref,
-      defaultModelSource: "workspace",
+    return this.resolveSettings(catalog, {
+      ...(await this.getWorkspaceConfig()),
       defaultAgentConfig: config,
-    };
+    });
   }
 
   /** Static pi projection — overridable seam for tests. */
@@ -601,11 +604,17 @@ export class ModelSettingsDO extends DurableObjectBase {
     const storedEntry = stored.model
       ? catalog.models.find((model) => model.ref === stored.model)
       : undefined;
-    // A configured model is an explicit workspace preference, not an
-    // availability heuristic. Keep it selected while it needs setup so the
-    // first-agent preflight can guide the user through connecting that provider.
-    // Availability only chooses a fallback when no valid preference exists.
-    if (storedEntry) {
+    const fallback = pickFallbackModel(catalog);
+    const fallbackEntry = catalog.models.find(
+      (model) => model.ref === fallback.ref,
+    );
+    // Preserve the stored preference. Temporarily use another agent-capable
+    // model when the preference is unavailable; reconnecting restores it.
+    // With nothing usable, keep the preference as the setup target.
+    if (
+      storedEntry &&
+      (isModelUsable(storedEntry) || !isModelUsable(fallbackEntry))
+    ) {
       return {
         catalog,
         defaultModel: storedEntry.ref,
@@ -613,18 +622,29 @@ export class ModelSettingsDO extends DurableObjectBase {
         defaultAgentConfig: { model: storedEntry.ref, ...behavior },
       };
     }
-    const fallback = pickFallbackModel(catalog);
+    const fallbackBehavior = {
+      ...behavior,
+      fastMode:
+        behavior.fastMode &&
+        !!fallbackEntry?.modelSpec.serviceTiers?.includes("priority"),
+    };
+    if (
+      fallbackBehavior.thinkingLevel &&
+      !fallbackEntry?.thinkingLevels.includes(fallbackBehavior.thinkingLevel)
+    ) {
+      delete fallbackBehavior.thinkingLevel;
+    }
     return {
       catalog,
       defaultModel: fallback.ref,
       defaultModelSource: "fallback",
       ...(stored.model
         ? {
-            defaultModelFallbackReason: "missing",
+            defaultModelFallbackReason: storedEntry ? "unavailable" : "missing",
             invalidDefaultModel: stored.model,
           }
         : {}),
-      defaultAgentConfig: { model: fallback.ref, ...behavior },
+      defaultAgentConfig: { model: fallback.ref, ...fallbackBehavior },
     };
   }
 }

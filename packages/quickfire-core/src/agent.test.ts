@@ -7,7 +7,7 @@ describe("quickfire agent referent contract", () => {
       title: "Build log",
       source: "panels/build-log",
       parentSlotId: "slot-root",
-    });
+    }, { model: "anthropic:connected-model", thinkingLevel: "low", approvalLevel: 1 });
 
   it("defines a general-purpose agent whose attached panel is context, not scope", () => {
     expect(QUICKFIRE_AGENT_PROMPT).toContain(
@@ -69,10 +69,11 @@ describe("quickfire agent referent contract", () => {
     });
   });
 
-  it("defaults new Quickfire agents to the fast Luna profile", () => {
+  it("inherits the resolved workspace model and behavior", () => {
     expect(config()).toMatchObject({
-      model: "openai-codex:gpt-6-luna",
-      thinkingLevel: "high",
+      model: "anthropic:connected-model",
+      thinkingLevel: "low",
+      approvalLevel: 1,
     });
   });
 });

@@ -33,6 +33,7 @@
   "dependencies": {
     "@workspace/agentic-core": "workspace:*",
     "@workspace/quickfire-core": "workspace:*",
+    "@workspace/model-catalog": "workspace:*",
     "@workspace/runtime": "workspace:*",
     "react": "^19.0.0"
   },

@@ -3,6 +3,7 @@ import { createTestDO } from "@workspace/runtime/worker/test-utils";
 import { QuickfireSessionsDO } from "./index.js";
 
 class TestQuickfireSessionsDO extends QuickfireSessionsDO {
+  modelSettingsFailure: Error | null = null;
   readonly calls: Array<{ target: string; method: string; args: unknown[] }> =
     [];
 
@@ -10,6 +11,24 @@ class TestQuickfireSessionsDO extends QuickfireSessionsDO {
     return {
       call: async (target: string, method: string, args: unknown[]) => {
         this.calls.push({ target, method, args });
+        if (method === "workers.resolveService") {
+          expect(args).toEqual(["vibestudio.models.v1"]);
+          return {
+            source: "workers/model-settings",
+            className: "ModelSettingsDO",
+            objectKey: "settings",
+          };
+        }
+        if (method === "getSettings") {
+          if (this.modelSettingsFailure) throw this.modelSettingsFailure;
+          return {
+            defaultAgentConfig: {
+              model: "anthropic:connected-model",
+              thinkingLevel: "low",
+              approvalLevel: 1,
+            },
+          };
+        }
         if (method === "workspace-state.panelTree.detail") {
           return {
             slot: {
@@ -64,6 +83,14 @@ class TestQuickfireSessionsDO extends QuickfireSessionsDO {
 }
 
 describe("QuickfireSessionsDO", () => {
+  it("propagates model discovery failure before allocating a channel or agent", async () => {
+    const { instance } = await createTestDO(TestQuickfireSessionsDO);
+    const failure = new Error("Model settings service disconnected");
+    instance.modelSettingsFailure = failure;
+    await expect(instance.sessionFor({ slotId: "slot-a" })).rejects.toBe(failure);
+    expect(instance.calls.some(({ method }) => method === "runtime.createEntity")).toBe(false);
+  });
+
   it("launches an ordinary AI chat agent with declarative prompt, tools, and panel binding", async () => {
     const { instance } = await createTestDO(TestQuickfireSessionsDO);
     const session = await instance.sessionFor({ slotId: "slot-a" });
@@ -89,8 +116,9 @@ describe("QuickfireSessionsDO", () => {
       state: "fresh",
     });
     expect(spec.stateArgs.agentConfig).toMatchObject({
-      model: "openai-codex:gpt-6-luna",
-      thinkingLevel: "high",
+      model: "anthropic:connected-model",
+      thinkingLevel: "low",
+      approvalLevel: 1,
       systemPromptMode: "append",
       features: {
         resources: { subject: { kind: "panel-slot", id: "slot-a" } },
@@ -103,7 +131,7 @@ describe("QuickfireSessionsDO", () => {
     expect(spec.stateArgs.agentConfig["systemPrompt"]).toContain(
       "title: Build log",
     );
-    expect(spec.stateArgs.agentConfig).not.toHaveProperty("approvalLevel");
+    expect(spec.stateArgs.agentConfig["approvalLevel"]).toBe(1);
     expect(spec.resourceBindings).toEqual([
       {
         resource: { kind: "panel-slot", id: "slot-a" },

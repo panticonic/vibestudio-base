@@ -5,6 +5,11 @@ import {
 } from "@workspace/runtime/worker/kernel";
 import { launchAgentIntoChannel } from "@workspace/agentic-core/agent-launch";
 import { quickfireAgentConfig } from "@workspace/quickfire-core/agent";
+import {
+  MODEL_SETTINGS_SERVICE_PROTOCOL,
+  type ModelSettingsSnapshot,
+} from "@workspace/model-catalog/catalog";
+import type { DORef } from "@workspace/runtime/worker/kernel";
 import type { QuickfireSession } from "@workspace/quickfire-core/service";
 
 const CHANNEL_SOURCE = "workers/pubsub-channel";
@@ -254,6 +259,16 @@ export class QuickfireSessionsDO extends DurableObjectBase {
     }
 
     const panel = await this.panelFor(input.slotId);
+    const modelSettings = await this.rpc.call<DORef>(
+      "main",
+      "workers.resolveService",
+      [MODEL_SETTINGS_SERVICE_PROTOCOL],
+    );
+    const settings = await this.rpc.call<ModelSettingsSnapshot>(
+      doTargetId(modelSettings),
+      "getSettings",
+      [],
+    );
     const suffix = crypto.randomUUID().slice(0, 12);
     const channelId = `quickfire-${suffix}`;
     const agentKey = `quickfire-agent-${suffix}`;
@@ -263,7 +278,11 @@ export class QuickfireSessionsDO extends DurableObjectBase {
       className: AGENT_CLASS,
       key: agentKey,
       channelId,
-      config: quickfireAgentConfig(input.slotId, panel),
+      config: quickfireAgentConfig(
+        input.slotId,
+        panel,
+        settings.defaultAgentConfig,
+      ),
       resourceBindings: agentResourceBindings(input.slotId, channelId),
       replay: true,
       retireEntityOnSubscribeFailure: true,

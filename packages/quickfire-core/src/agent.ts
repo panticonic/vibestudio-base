@@ -1,3 +1,4 @@
+import type { DefaultAgentConfig } from "@workspace/model-catalog/catalog";
 import type { AgentSubscriptionConfig } from "@workspace/agentic-core";
 
 /** Product copy belongs to the surface that selects it, not to AiChatWorker. */
@@ -48,11 +49,11 @@ parent-slot: ${panel.parentSlotId ?? "workspace-root"}
 export function quickfireAgentConfig(
   slotId: string,
   panel: QuickfireInitialPanelContext,
+  defaults: DefaultAgentConfig,
 ): AgentSubscriptionConfig {
   if (!slotId) throw new Error("Quickfire requires a panel slot id");
   return {
-    model: "openai-codex:gpt-6-luna",
-    thinkingLevel: "high",
+    ...defaults,
     handle: "quickfire",
     name: "Quickfire agent",
     systemPrompt: `${QUICKFIRE_AGENT_PROMPT}\n\n${initialPanelContext(slotId, panel)}`,

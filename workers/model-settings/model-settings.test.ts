@@ -19,6 +19,7 @@ import {
   applyCloudAvailability,
   getModelCatalog,
   localEntryToCatalogEntry,
+  pickFallbackModel,
   ModelSettingsDO,
 } from "./index.js";
 import { WORKSPACE_SYSTEM_EPOCH } from "@vibestudio/shared/vcs/systemEpoch";
@@ -508,7 +509,7 @@ describe("ModelSettingsDO", () => {
     });
   });
 
-  it("keeps an unavailable configured model selected for provider setup", async () => {
+  it("uses an available local model without overwriting the disconnected preference", async () => {
     TestModelSettingsDO.config = {
       ...BASE_CONFIG,
       defaultAgentConfig: { model: "openai:gpt-5", thinkingLevel: "low" },
@@ -516,9 +517,11 @@ describe("ModelSettingsDO", () => {
     const { call } = await createTestDO(OfflineModelSettingsDO);
 
     await expect(call("getSettings")).resolves.toMatchObject({
-      defaultModel: "openai:gpt-5",
-      defaultModelSource: "workspace",
-      defaultAgentConfig: { model: "openai:gpt-5", thinkingLevel: "low" },
+      defaultModel: "local:lfm2.5-2.6b",
+      defaultModelSource: "fallback",
+      defaultModelFallbackReason: "unavailable",
+      invalidDefaultModel: "openai:gpt-5",
+      defaultAgentConfig: { model: "local:lfm2.5-2.6b", fastMode: false },
       catalog: {
         models: expect.arrayContaining([
           expect.objectContaining({
@@ -528,6 +531,87 @@ describe("ModelSettingsDO", () => {
         ]),
       },
     });
+  });
+
+  it("uses a connected provider when Codex is disconnected and restores the preference when usable", async () => {
+    TestModelSettingsDO.config = {
+      ...BASE_CONFIG,
+      defaultAgentConfig: {
+        model: CODEX_CATALOG_ENTRY.ref,
+        thinkingLevel: "max",
+        fastMode: true,
+      },
+    };
+    class MixedModelSettingsDO extends TestModelSettingsDO {
+      protected override getCatalog(): Promise<ModelCatalog> {
+        return Promise.resolve({
+          ...CATALOG,
+          models: [CODEX_CATALOG_ENTRY, ...CATALOG.models],
+        });
+      }
+      static connected = false;
+      protected override storedCredentials(): Promise<
+        StoredCredentialSummary[]
+      > {
+        return Promise.resolve([
+          storedCredential("anthropic", "https://api.anthropic.com/v1"),
+          ...(MixedModelSettingsDO.connected
+            ? [storedCredential("codex", CODEX_CATALOG_ENTRY.baseUrl)]
+            : []),
+        ]);
+      }
+    }
+    const { call } = await createTestDO(MixedModelSettingsDO);
+    await expect(call("getSettings")).resolves.toMatchObject({
+      defaultModel: "anthropic:claude-opus-4-1",
+      defaultModelFallbackReason: "unavailable",
+      defaultAgentConfig: {
+        model: "anthropic:claude-opus-4-1",
+        fastMode: false,
+      },
+    });
+    expect(TestModelSettingsDO.config.defaultAgentConfig?.model).toBe(
+      CODEX_CATALOG_ENTRY.ref,
+    );
+    MixedModelSettingsDO.connected = true;
+    await expect(call("getSettings")).resolves.toMatchObject({
+      defaultModel: CODEX_CATALOG_ENTRY.ref,
+      defaultModelSource: "workspace",
+      defaultAgentConfig: { thinkingLevel: "max", fastMode: true },
+    });
+  });
+
+  it("keeps the chosen setup target when no model is usable", async () => {
+    TestModelSettingsDO.config = {
+      ...BASE_CONFIG,
+      defaultAgentConfig: { model: "anthropic:claude-opus-4-1" },
+    };
+    class DisconnectedModelSettingsDO extends TestModelSettingsDO {
+      protected override storedCredentials(): Promise<
+        StoredCredentialSummary[]
+      > {
+        return Promise.resolve([]);
+      }
+    }
+    const { call } = await createTestDO(DisconnectedModelSettingsDO);
+    await expect(call("getSettings")).resolves.toMatchObject({
+      defaultModel: "anthropic:claude-opus-4-1",
+      defaultModelSource: "workspace",
+    });
+  });
+
+  it("never selects a usable model without agent tools over a usable agent model", () => {
+    const noTools = { ...CODEX_CATALOG_ENTRY, capabilities: { tools: false } };
+    expect(
+      pickFallbackModel({ providers: [], models: [noTools, ...CATALOG.models] })
+        .ref,
+    ).toBe("openai:gpt-5");
+    expect(
+      pickFallbackModel({
+        providers: [],
+        models: [CODEX_CATALOG_ENTRY, ...CATALOG.models],
+      }).ref,
+    ).toBe(CODEX_CATALOG_ENTRY.ref);
   });
 
   it("falls back to the local floor when nothing is credentialed (offline first-run)", async () => {
