@@ -1,6 +1,7 @@
 import { randomBytes } from "node:crypto";
 import { mkdir, mkdtemp, rm, stat, unlink, writeFile } from "node:fs/promises";
 import { createServer, type Server, type Socket } from "node:net";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import type { SessionInfo } from "./types.js";
 
@@ -48,14 +49,14 @@ export class SnugServer {
   async start(): Promise<void> {
     if (this.platform === "win32") return;
     if (this.dir) return;
-    // Unix-domain socket paths have a small kernel limit. The ordinary temp
-    // root may be a long caller-owned workspace path, so keep this private
-    // IPC directory under the platform's short system temp root instead.
-    this.dir = await mkdtemp(path.join("/var/tmp", "snug-"));
+    // The sandbox admits its own TMPDIR (home/tmp), not host-global temporary
+    // roots. Keep filesystem ownership there and use relative socket addresses
+    // so the absolute home path does not consume the kernel's sun_path budget.
+    this.dir = await mkdtemp(path.join(tmpdir(), "snug-"));
     this.binDir = path.join(this.dir, "bin");
     try {
-      await mkdir(this.binDir, { recursive: true, mode: 0o700 });
       await assertPrivateDir(this.dir, this.platform);
+      await mkdir(this.binDir, { recursive: true, mode: 0o700 });
       await this.writeCli();
     } catch (error) {
       let cleanupError: unknown;
@@ -82,6 +83,14 @@ export class SnugServer {
     if (!this.dir || !this.binDir) return { env, token: "" };
     const token = randomBytes(24).toString("hex");
     const socketPath = path.join(this.dir, `${randomBytes(16).toString("hex")}.sock`);
+    const socketAddress = path.relative(process.cwd(), socketPath);
+    const socketAddressBytes = Buffer.byteLength(socketAddress);
+    const maxSocketAddressBytes = this.platform === "darwin" ? 103 : 107;
+    if (socketAddressBytes > maxSocketAddressBytes) {
+      throw new Error(
+        `Snug Unix socket address is ${socketAddressBytes} bytes; this platform allows at most ${maxSocketAddressBytes} bytes in sun_path. Keep the runtime working directory closer to its admitted temp root.`,
+      );
+    }
     const connections = new Set<Socket>();
     const server = createServer((socket) => {
       connections.add(socket);
@@ -91,7 +100,7 @@ export class SnugServer {
     try {
       await new Promise<void>((resolve, reject) => {
         server.once("error", reject);
-        server.listen(socketPath, () => {
+        server.listen(socketAddress, () => {
           server.removeListener("error", reject);
           resolve();
         });
@@ -201,10 +210,17 @@ if (!sock) {
   console.error("snug: missing SNUG_SOCK");
   process.exit(2);
 }
+const socketPath = require("node:path");
+try {
+  process.chdir(socketPath.dirname(sock));
+} catch (err) {
+  console.error("snug: could not enter socket directory:", err.message);
+  process.exit(1);
+}
+const socketName = socketPath.basename(sock);
 let data = "";
-let attempts = 0;
 function connect() {
-  const client = net.createConnection(sock);
+  const client = net.createConnection(socketName);
   client.on("connect", () => client.write(JSON.stringify({ proto: 1, version: "${SNUG_CLI_VERSION}", pid: process.pid, argv }) + "\\n"));
   client.on("data", chunk => data += chunk);
   client.on("end", () => {
@@ -216,10 +232,6 @@ function connect() {
     if (res.stdout !== undefined) process.stdout.write(String(res.stdout));
   });
   client.on("error", err => {
-    if ((err.code === "ENOENT" || err.code === "ECONNREFUSED") && attempts++ < 20) {
-      setTimeout(connect, 10);
-      return;
-    }
     console.error("snug:", err.message);
     process.exit(1);
   });
