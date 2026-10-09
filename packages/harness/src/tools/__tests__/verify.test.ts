@@ -100,7 +100,15 @@ describe("context-exact verify tool", () => {
     const execution = executeTool(
       createVerifyTool(callMain, () => "context-7"),
       { operation: "build", target: "packages/example" },
-      { callId: "call-progress", onDetails: (update) => { updates.push(update); }, onOutput: (chunk) => { output.push(chunk); } },
+      {
+        callId: "call-progress",
+        onDetails: (update) => {
+          updates.push(update);
+        },
+        onOutput: (chunk) => {
+          output.push(chunk);
+        },
+      },
     );
 
     expect(output).toEqual(["Building packages/example…"]);
@@ -357,6 +365,156 @@ describe("context-exact verify tool", () => {
       text: expect.stringContaining("45 diagnostics; 40 retained"),
     });
   });
+
+  it("reports compiler refusal without manufacturing an execution, then executes repaired source", async () => {
+    const plan = {
+      protocol: "workspace-test-plan.v1",
+      target: "packages/parser",
+      suite: "unit",
+      runtime: "browser",
+      stateHash: `state:${"a".repeat(64)}`,
+    };
+    const refusal = Object.assign(new Error("Missing document export"), {
+      errorData: {
+        code: "TestCompilationFailed",
+        target: plan.target,
+        suite: plan.suite,
+        runtime: plan.runtime,
+        stateHash: plan.stateHash,
+        diagnostics: [
+          {
+            source: "esbuild",
+            severity: "error",
+            file: "parser.test.ts",
+            line: 1,
+            column: 9,
+            message: "No matching export document",
+          },
+        ],
+      },
+    });
+    let repaired = false;
+    const executor = vi.fn(async () => ({
+      protocol: "workspace-test-execution-result.v1" as const,
+      artifactKey: "b".repeat(64),
+      executionDigest: "c".repeat(64),
+      runtime: "browser" as const,
+      status: "passed" as const,
+      passed: 1,
+      failed: 0,
+      skipped: 0,
+      durationMs: 1,
+      files: [],
+    }));
+    const tool = createVerifyTool(
+      async <T>(method: string) => {
+        if (method === "build.resolveTestSuite") return plan as T;
+        if (!repaired) throw refusal;
+        return {
+          artifactKey: "b".repeat(64),
+          execution: { executionDigest: "c".repeat(64) },
+        } as T;
+      },
+      () => "context-7",
+      executor,
+    );
+    const failed = await executeTool(
+      tool,
+      { operation: "test", target: plan.target },
+      { callId: "compile" },
+    );
+    expect(failed.isError).toBe(true);
+    expect(executor).not.toHaveBeenCalled();
+    expect(failed.details).toMatchObject({
+      status: "compilation-failed",
+      failureKind: "user-code",
+      report: refusal.errorData,
+      receipt: { stateHash: plan.stateHash, status: "compilation-failed" },
+    });
+    const evidence = failed.details as { report: object; receipt: object };
+    for (const key of [
+      "artifactKey",
+      "executionDigest",
+      "passed",
+      "failed",
+      "total",
+    ]) {
+      expect(evidence.report).not.toHaveProperty(key);
+      expect(evidence.receipt).not.toHaveProperty(key);
+    }
+    repaired = true;
+    expect(
+      (
+        await executeTool(
+          tool,
+          { operation: "test", target: plan.target },
+          { callId: "repaired" },
+        )
+      ).isError,
+    ).toBe(false);
+    expect(executor).toHaveBeenCalledOnce();
+  });
+
+  it.each(["untyped", "infrastructure", "mixed", "empty", "wrong-state"])(
+    "propagates %s failures without classifying them as compiler refusal",
+    async (kind) => {
+      const plan = {
+        target: "packages/parser",
+        suite: "unit",
+        runtime: "browser",
+        stateHash: "state:exact",
+      };
+      const source = {
+        source: "esbuild",
+        severity: "error",
+        file: "parser.test.ts",
+        line: 1,
+        column: 1,
+        message: "bad export",
+      };
+      const infra = {
+        ...source,
+        source: "infrastructure",
+        message: "Storage unavailable",
+      };
+      const error = Object.assign(new Error("original failure"), {
+        errorData:
+          kind === "untyped"
+            ? undefined
+            : {
+                code: "TestCompilationFailed",
+                ...plan,
+                stateHash:
+                  kind === "wrong-state" ? "state:other" : plan.stateHash,
+                diagnostics:
+                  kind === "empty"
+                    ? []
+                    : kind === "mixed"
+                      ? [source, infra]
+                      : kind === "infrastructure"
+                        ? [infra]
+                        : [source],
+              },
+      });
+      const executor = vi.fn();
+      const tool = createVerifyTool(
+        async <T>(method: string) => {
+          if (method === "build.resolveTestSuite") return plan as T;
+          throw error;
+        },
+        () => "context-7",
+        executor,
+      );
+      await expect(
+        executeTool(
+          tool,
+          { operation: "test", target: plan.target },
+          { callId: kind },
+        ),
+      ).rejects.toBe(error);
+      expect(executor).not.toHaveBeenCalled();
+    },
+  );
 
   it("runs one focused browser selection without reaching the native extension", async () => {
     const calls = vi.fn();

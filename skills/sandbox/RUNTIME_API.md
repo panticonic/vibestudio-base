@@ -5,10 +5,13 @@ Credentials are URL-bound and may only be used through host-mediated egress.
 The portable runtime surface is workspace-local. `contextId` identifies a
 context branch within the current workspace; it does not select source from
 another workspace. Panels, workers, Durable Objects, and eval resolve their
-code and state from the workspace that owns the current runtime. Cross-workspace
-application RPC forwarding is intentionally unavailable even though the
-transport can carry qualified identities; the receiver trust and invocation
-isolation policy is still awaiting a product decision.
+code and state from the workspace that owns the current runtime. An explicit
+RPC destination can address an existing receiver in another workspace. The
+calling user must belong to both workspaces, both workspaces' outgoing and
+incoming policies must permit the exact operation, and the receiver method
+must declare cross-workspace eligibility. Ordinary receiver authority checks
+still apply. Failures report the concrete denied boundary or receiver error;
+cross-workspace routing does not change where either runtime loads its code.
 
 `services`, `hosts`, and `runtime` are portable `@workspace/runtime` exports:
 they are the same caller-scoped clients in panels, workers, Durable Objects,

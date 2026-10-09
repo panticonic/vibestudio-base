@@ -2,6 +2,26 @@
 
 Recipes for common tasks using the sandbox.
 
+## Store a Nested Immutable File Tree
+
+`blobstore.putTree` stores one directory at a time. Entry names are single
+components, so `"docs/intro.txt"` is a path rather than a valid entry name.
+Store the file, create its containing directory, then reference that child
+tree from the root:
+
+```ts
+const { digest: contentHash } = await blobstore.putText("Introduction");
+const docs = await blobstore.putTree([
+  { name: "intro.txt", kind: "file", contentHash, mode: 33188 },
+], {});
+const root = await blobstore.putTree([
+  { name: "docs", kind: "dir", childHash: docs.treeHash },
+], { root: true });
+```
+
+Readers such as `readFileAtTree(root.treeHash, "docs/intro.txt")` accept paths
+through that tree. Create each referenced blob or child tree before its parent.
+
 ## Build a Live Transcript Dashboard
 
 For an inline status surface that refreshes itself, caches its last display

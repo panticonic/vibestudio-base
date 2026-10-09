@@ -6,7 +6,11 @@ import type {
   ToolRegistration,
   ToolExecutionResult,
 } from "@panticonic/pi-durable";
-import type { UnitBuildReportWire } from "@vibestudio/service-schemas/build";
+import { workspaceTestCompilationFailureSchema } from "@vibestudio/service-schemas/build";
+import type {
+  UnitBuildReportWire,
+  WorkspaceTestCompilationFailure,
+} from "@vibestudio/service-schemas/build";
 import { sha256Hex } from "@vibestudio/content-addressing";
 import type { AgentToolFailure } from "@workspace/agentic-protocol";
 import type {
@@ -89,6 +93,17 @@ interface TestRunResult {
 }
 
 export type VerifyToolDetails =
+  | {
+      operation: "test";
+      target: string;
+      status: "compilation-failed";
+      report: WorkspaceTestCompilationFailure;
+      receipt: UnitVerificationReceiptV1;
+      truncatedDiagnostics: number;
+      truncatedDiagnosticText: number;
+      failureKind: "user-code";
+      failure: AgentToolFailure;
+    }
   | {
       operation: "build" | "test";
       target: string;
@@ -331,18 +346,46 @@ export function createVerifyTool(
             `No ${plan.runtime} test executor is installed for verify`,
           );
         }
-        const artifact = await callMain<WorkspaceTestArtifactV1>(
-          "build.getTestArtifact",
-          [
+        let artifact: WorkspaceTestArtifactV1;
+        try {
+          artifact = await callMain<WorkspaceTestArtifactV1>(
+            "build.getTestArtifact",
+            [
+              command.target,
+              ref,
+              {
+                suite: plan.suite,
+                ...(command.file ? { file: command.file } : {}),
+              },
+            ],
+            signal,
+          );
+        } catch (error) {
+          const parsed = workspaceTestCompilationFailureSchema.safeParse(
+            (error as { errorData?: unknown } | null)?.errorData,
+          );
+          if (
+            !parsed.success ||
+            parsed.data.target !== plan.target ||
+            parsed.data.suite !== plan.suite ||
+            parsed.data.runtime !== plan.runtime ||
+            parsed.data.stateHash !== plan.stateHash ||
+            !parsed.data.diagnostics.some(
+              (diagnostic) => diagnostic.severity === "error",
+            ) ||
+            parsed.data.diagnostics.some(
+              (diagnostic) => diagnostic.source === "infrastructure",
+            )
+          ) {
+            throw error;
+          }
+          return compilationFailureResult(
+            parsed.data,
             command.target,
+            exactContextId,
             ref,
-            {
-              suite: plan.suite,
-              ...(command.file ? { file: command.file } : {}),
-            },
-          ],
-          signal,
-        );
+          );
+        }
         const result = await executeSandboxTest(
           artifact,
           command.testName,
@@ -445,6 +488,64 @@ export function createVerifyTool(
   };
 }
 
+function compilationFailureResult(
+  report: WorkspaceTestCompilationFailure,
+  target: string,
+  contextId: string,
+  ref: string,
+): ToolExecutionResult<JsonRepresentation<VerifyToolDetails>> {
+  const bounded = boundDiagnostics(report);
+  const receipt: UnitVerificationReceiptV1 = {
+    protocol: "unit-verification-receipt.v1",
+    operation: "test",
+    target,
+    contextId,
+    ref,
+    stateHash: report.stateHash,
+    suite: report.suite,
+    runtime: report.runtime,
+    status: "compilation-failed",
+    reportDigest: sha256Hex(encodeUtf8(JSON.stringify(report))),
+    diagnostics: {
+      total: report.diagnostics.length,
+      retained: bounded.report.diagnostics.length,
+      truncated: bounded.truncatedDiagnostics,
+    },
+  };
+  const failure = verificationFailure({
+    code: "test_compilation_failed",
+    message: `Test compilation failed for ${target}; no tests executed.`,
+    recovery: {
+      action: "repair-source",
+      instruction:
+        "Inspect the compiler diagnostics, repair the source, then rerun verify.",
+    },
+  });
+  return {
+    content: [
+      {
+        type: "text",
+        text:
+          failure.message +
+          "\n" +
+          JSON.stringify({ report: bounded.report, receipt }),
+      },
+    ],
+    details: toolDetails({
+      operation: "test",
+      target,
+      status: "compilation-failed",
+      report: bounded.report,
+      receipt,
+      truncatedDiagnostics: bounded.truncatedDiagnostics,
+      truncatedDiagnosticText: bounded.truncatedDiagnosticText,
+      failureKind: "user-code",
+      failure,
+    }),
+    isError: true,
+  };
+}
+
 function verificationFailure(input: {
   code: string;
   message: string;
@@ -509,6 +610,25 @@ function boundBuildReport(report: UnitBuildReportWire): {
   truncatedDiagnostics: number;
   truncatedDiagnosticText: number;
 } {
+  const bounded = boundDiagnostics(report);
+  const builds = report.builds.map((build) => ({
+    ...build,
+    diagnosticIndexes: build.diagnosticIndexes.filter(
+      (index) => index < bounded.report.diagnostics.length,
+    ),
+  }));
+  return { ...bounded, report: { ...bounded.report, builds } };
+}
+
+function boundDiagnostics<
+  T extends { diagnostics: UnitBuildReportWire["diagnostics"] },
+>(
+  report: T,
+): {
+  report: T;
+  truncatedDiagnostics: number;
+  truncatedDiagnosticText: number;
+} {
   let truncatedDiagnosticText = 0;
   const clamp = (
     value: string | undefined,
@@ -552,14 +672,8 @@ function boundBuildReport(report: UnitBuildReportWire): {
         ...(repairOversized ? { repair: undefined } : {}),
       };
     });
-  const builds = report.builds.map((build) => ({
-    ...build,
-    diagnosticIndexes: build.diagnosticIndexes.filter(
-      (index) => index < diagnostics.length,
-    ),
-  }));
   return {
-    report: { ...report, diagnostics, builds },
+    report: { ...report, diagnostics },
     truncatedDiagnostics: Math.max(
       0,
       report.diagnostics.length - MAX_DIAGNOSTICS,
