@@ -473,7 +473,10 @@
                 "properties": {
                   "schemaVersion": {
                     "type": "number",
-                    "const": 1
+                    "enum": [
+                      1,
+                      2
+                    ]
                   },
                   "digest": {
                     "type": "string",

@@ -159,8 +159,21 @@ recreates source state; the effective version identifies the compiled installed 
 
 ## Launch and authority acquisition
 
-`launch({ name, charter })` performs one idempotent durable launch. Authority
-depends on executor mode:
+The native launch tool and UI compile exactly once as the authenticated author.
+Lower-level callers use the same host compiler before calling the controller:
+
+```ts
+const authorityPlan = await rpc.call("main", "authority.compileAuthorityPlan", [
+  { execution: charter.execution },
+]);
+await rpc.call(service.targetId, "launch", [{ name, charter, authorityPlan }]);
+```
+
+The content-addressed plan seals the complete execution intent, canonical service
+arguments, immutable image, and author lifecycle. The controller verifies that
+artifact under its live authenticated invocation; it never recompiles operations
+as its own runtime or borrows the author's context graph. Authority depends on
+executor mode:
 
 - `continue`: the native launch tool compiles the declared operations and
   initiates acquisition for the authenticated current agent task before
@@ -172,7 +185,7 @@ depends on executor mode:
 The durable launch then:
 
 1. Validate and seal the charter.
-2. Ask the host to compile a content-addressed authority plan.
+2. Ask the host to verify the supplied immutable plan against its exact intent and live author.
 3. Persist an active revision and its authority-plan reference.
 4. For an isolated executor, register `mission:<missionId>@<revisionDigest>` with the host under the attributed requesting user.
 5. Start durable acquisition for eligible gated leaves on the selected subject.
@@ -189,6 +202,23 @@ it does not allow or deny runtime calls.
 
 If no matching standing grant exists, dispatcher acquisition follows the ordinary prompt-capable path. The concrete agent/eval invocation owns that approval wait while the mission run remains `executing`; it is not restricted to pregranted authority and MissionsDO does not copy a second acquisition lifecycle.
 
+Name and cadence edits reuse an installed plan when execution meaning is unchanged.
+Changing the action, image, conversation, or operations requires a newly compiled
+plan. Customizing a seeded definition creates a new definition and also requires
+its new author's plan; the ordinary UI performs this preparation automatically.
+
+Historical version-1 artifacts retain their original bytes, digests and admitted
+execution behavior. A new definition or acquisition cannot use an unbound historical
+plan. The UI recompiles historical isolated automations when editing them; continuing
+historical schedules can retain their plan for name or cadence changes because they
+create no mission authority. Lower-level callers must supply a newly compiled plan
+when this migration is required.
+
+Compilation does not grant future executors access to the author's context graph.
+Fresh or method executions still undergo exact target admission and ordinary receiver
+checks in their own execution context. Declare concrete resources their actual runtime
+can use; unavailable or foreign contexts are rejected rather than inferred or expanded.
+
 ## Mission record
 
 ```ts
@@ -199,7 +229,7 @@ type MissionRecord = {
   revision: number;
   charter: MissionCharter;
   authorityPlan: {
-    schemaVersion: 1;
+    schemaVersion: 1 | 2; // New definitions require version 2.
     digest: string;
     artifactRef: `authority-plan:${string}`;
     compilerVersion: string;

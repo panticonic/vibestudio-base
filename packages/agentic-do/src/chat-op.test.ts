@@ -339,7 +339,7 @@ class TestVessel extends AgentVesselBase {
             ) {
               vessel.automationAuthorityCalls.push({ method, args });
               return {
-                schemaVersion: 1,
+                schemaVersion: 2,
                 digest: "c".repeat(64),
                 artifactRef: `authority-plan:${"c".repeat(64)}`,
                 compilerVersion: "test",
@@ -803,6 +803,42 @@ async function expectedEvalCaller(): Promise<string> {
   const key = sha256HexSyncText(`${AGENT_ID}\0${CHANNEL}`).slice(0, 40);
   return `do:vibestudio/internal:EvalDO:${key}`;
 }
+describe("AgentVesselBase default automation authority", () => {
+  it("compiles the creator's exact retained execution and reuses an installed default without recompiling", async () => {
+    const authorityPlan = { schemaVersion: 2, digest: "c".repeat(64), artifactRef: `authority-plan:${"c".repeat(64)}`, compilerVersion: "test", catalogDigest: "d".repeat(64) };
+    let installed: MissionRecord | null = null;
+    const remote = vi.fn(async (_target: string, method: string, args: unknown[]) => {
+      if (method === "workers.resolveService") return { kind: "durable-object", targetId: "do:missions" };
+      if (method === "getDefault") return installed;
+      if (method === "runtime.createEntity") return { targetId: "do:channel" };
+      if (method === "authority.compileAuthorityPlan") return authorityPlan;
+      if (method === "provisionDefault") {
+        installed = { ...(args[1] as object), missionId: "mission-default", state: "active" } as MissionRecord;
+        return installed;
+      }
+      throw new Error(`Unexpected default RPC ${method}`);
+    });
+    class DefaultVessel extends TestVessel {
+      protected override get rpc(): RpcClient { return { call: remote } as unknown as RpcClient; }
+    }
+    const { instance, db } = await createTestDO(DefaultVessel, TEST_AGENT_ENV);
+    databases.push(db);
+    vi.spyOn(instance, "subscribeChannel").mockImplementation(async ({ channelId }) => {
+      await instance.registerSubscriptionForTest(channelId);
+      return { ok: true, participantId: AGENT_ID };
+    });
+    const input = { id: "workspace-review", contextId: "ctx-1", appVersion: "0.1.84", definition: { source: "workers/test", className: "TestAgent", name: "Review", summary: "Review the workspace", action: { kind: "prompt", text: "Review the current workspace." }, trigger: { kind: "manual" }, operations: [{ service: "vcs", method: "status", args: [{ contextId: "ctx-1" }], use: "action" }] } };
+    const first = await instance.initializeAutomation(input);
+    const compiled = remote.mock.calls.find(([, method]) => method === "authority.compileAuthorityPlan")!;
+    expect(compiled[0]).toBe("main");
+    expect(compiled[2]).toEqual([{ execution: first.charter.execution }]);
+    expect(first.charter.execution).toMatchObject({ image: { source: TEST_AGENT_ENV.WORKER_SOURCE, effectiveVersion: TEST_AGENT_ENV.WORKER_EFFECTIVE_VERSION, objectKey: "agent-key" }, conversation: { mode: "continue", executorId: AGENT_ID, contextId: "ctx-1", channelId: "agent-key" }, operations: input.definition.operations });
+    expect(remote).toHaveBeenCalledWith("do:missions", "provisionDefault", [input.id, { name: "Review", charter: first.charter, authorityPlan }], { idempotencyKey: "default-automation:workspace-review:provision" });
+    expect(await instance.initializeAutomation(input)).toEqual(first);
+    expect(remote.mock.calls.filter(([, method]) => method === "authority.compileAuthorityPlan")).toHaveLength(1);
+  });
+});
+
 describe("AgentVesselBase hot-path trace retention", () => {
   it("amortizes retention sweeps while keeping the durable trace bounded", async () => {
     const { instance } = await createTestDO(TestVessel, TEST_AGENT_ENV);
@@ -1057,7 +1093,7 @@ describe("AgentVesselBase.chatOp", () => {
       state: "active",
       revisionDigest: "b".repeat(64),
       authorityPlan: {
-        schemaVersion: 1,
+        schemaVersion: 2,
         digest: "c".repeat(64),
         artifactRef: `authority-plan:${"c".repeat(64)}`,
         compilerVersion: "test",
@@ -1100,6 +1136,7 @@ describe("AgentVesselBase.chatOp", () => {
       Array.from({ length: 2 }, () => ({
         args: [
           {
+            authorityPlan: { schemaVersion: 2, digest: "c".repeat(64), artifactRef: `authority-plan:${"c".repeat(64)}`, compilerVersion: "test", catalogDigest: "d".repeat(64) },
             name: "Daily check",
             charter: {
               summary: "Check the project every morning.",
@@ -1160,6 +1197,10 @@ describe("AgentVesselBase.chatOp", () => {
       }),
     );
 
+    expect(vessel.automationAuthorityCalls.map(({ method }) => method)).toEqual([
+      "authority.compileAuthorityPlan", "authority.compileAuthorityPlan",
+    ]);
+    vessel.automationAuthorityCalls.length = 0;
     await vessel.executeAutomationLaunchForTest({
       ...input,
       operations: [

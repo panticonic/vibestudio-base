@@ -126,6 +126,97 @@ describe("AutomationActivity", () => {
     ).toHaveLength(1);
   });
 
+  it.each(["unchanged", "changed", "seeded", "historical"])(
+    "uses the canonical author plan composition for %s UI edits",
+    async (kind) => {
+      const current = {
+        ...automation,
+        authorityPlan:
+          kind === "historical"
+            ? automation.authorityPlan
+            : { ...automation.authorityPlan, schemaVersion: 2 as const },
+        ...(kind === "seeded" ? { seeded: true } : {}),
+      };
+      const plan = { ...automation.authorityPlan, schemaVersion: 2 as const };
+      const call = vi.fn(async (_target: string, method: string, _args: unknown[]) => {
+        if (method === "workers.resolveService")
+          return { kind: "durable-object", targetId: "do:missions" };
+        if (method === "get") return current;
+        if (method === "authority.compileAuthorityPlan") return plan;
+        if (method === "edit") return current;
+        throw new Error(`Unexpected method ${method}`);
+      });
+      const patch = {
+        name: "My cadence",
+        charter: {
+          ...current.charter,
+          trigger: { kind: "schedule" as const, everyMs: 7200000 },
+          execution:
+            kind === "changed"
+              ? {
+                  ...current.charter.execution,
+                  operations: [
+                    {
+                      service: "vcs",
+                      method: "status",
+                      args: [{ contextId: "context:one" }],
+                      use: "action" as const,
+                    },
+                  ],
+                }
+              : current.charter.execution,
+        },
+      };
+      await createAutomationUiClient({ call }).edit(current.missionId, patch);
+      const compiled = call.mock.calls.filter(
+        ([, method]) => method === "authority.compileAuthorityPlan"
+      );
+      if (kind === "unchanged") {
+        expect(compiled).toHaveLength(0);
+        expect(call.mock.calls.at(-1)).toEqual(["do:missions", "edit", [current.missionId, patch]]);
+      } else {
+        expect(compiled).toEqual([
+          [
+            "main",
+            "authority.compileAuthorityPlan",
+            [{ execution: patch.charter.execution }],
+            undefined,
+          ],
+        ]);
+        expect(call.mock.calls.at(-1)).toEqual([
+          "do:missions",
+          "edit",
+          [current.missionId, { ...patch, authorityPlan: plan }],
+        ]);
+      }
+    }
+  );
+
+  it("retains a historical continuing plan for ordinary cadence edits", async () => {
+    const execution = {
+      ...automation.charter.execution,
+      conversation: {
+        mode: "continue" as const,
+        channelId: "channel:one",
+        contextId: "context:one",
+        executorId: "do:agent:one",
+      },
+    };
+    const current = { ...automation, charter: { ...automation.charter, execution } };
+    const call = vi.fn(async (_target: string, method: string, _args: unknown[]) => {
+      if (method === "workers.resolveService")
+        return { kind: "durable-object", targetId: "do:missions" };
+      if (method === "get" || method === "edit") return current;
+      throw new Error(`Unexpected method ${method}`);
+    });
+    await createAutomationUiClient({ call }).edit(current.missionId, { name: "Renamed" });
+    expect(call.mock.calls.map(([, method]) => method)).toEqual([
+      "workers.resolveService",
+      "get",
+      "edit",
+    ]);
+  });
+
   it("keeps history pills zero-fetch, then lazily loads exact tick controls", async () => {
     const api = client();
     render(

@@ -27,7 +27,8 @@ import type {
 const SCHEDULE_DELIVERY_WINDOW_MS = 5_000;
 import {
   missionCompletionResponse,
-  missionExecutionImageDigest,
+  sameMissionExecution,
+  missionUsesAuthority,
   missionNextRunAt,
   missionPrincipal,
   missionRevisionDigest,
@@ -476,7 +477,7 @@ export class MissionsDO extends DurableObjectBase {
   @schemaRpc()
   async provisionDefault(
     id: string,
-    input: { name: string; charter: MissionCharter },
+    input: { name: string; charter: MissionCharter; authorityPlan: MissionAuthorityPlanReference },
   ): Promise<MissionRecord> {
     const existing = this.getDefault(id);
     if (existing) return existing;
@@ -528,6 +529,7 @@ export class MissionsDO extends DurableObjectBase {
   async launch(input: {
     name: string;
     charter: MissionCharter;
+    authorityPlan: MissionAuthorityPlanReference;
   }): Promise<MissionRecord> {
     return this.launchDefinition(
       input,
@@ -536,7 +538,7 @@ export class MissionsDO extends DurableObjectBase {
   }
 
   private async launchDefinition(
-    input: { name: string; charter: MissionCharter },
+    input: { name: string; charter: MissionCharter; authorityPlan: MissionAuthorityPlanReference },
     launchKey: string,
   ): Promise<MissionRecord> {
     validateMissionCharter(input.charter);
@@ -584,7 +586,7 @@ export class MissionsDO extends DurableObjectBase {
     }
     const now = Date.now();
     try {
-      const authorityPlan = await this.compilePolicy(input.charter);
+      const authorityPlan = await this.verifyPolicy(input.charter, input.authorityPlan);
       const revisionDigest = missionRevisionDigest(
         input.charter,
         authorityPlan.digest,
@@ -637,7 +639,7 @@ export class MissionsDO extends DurableObjectBase {
   @schemaRpc()
   async edit(
     missionId: string,
-    input: { name?: string; charter?: MissionCharter },
+    input: { name?: string; charter?: MissionCharter; authorityPlan?: MissionAuthorityPlanReference },
   ): Promise<MissionRecord> {
     const current = this.requireMission(missionId);
     const caller = this.requireOwnerCaller();
@@ -645,11 +647,14 @@ export class MissionsDO extends DurableObjectBase {
       throw denied("Automation belongs to another user");
     if (current.state === "retired")
       throw denied("Retired automations cannot be edited");
-    if (current.seeded)
+    if (current.seeded) {
+      if (!input.authorityPlan) throw denied("Customizing a workspace automation requires a newly compiled plan");
       return this.launch({
         name: input.name ?? `${current.name} (custom)`,
         charter: input.charter ?? current.charter,
+        authorityPlan: input.authorityPlan,
       });
+    }
     const editKey = this.rpcIdempotencyKey ?? this.rpcRequestId;
     if (!editKey)
       throw new Error("Automation edit requires a command identity");
@@ -684,8 +689,19 @@ export class MissionsDO extends DurableObjectBase {
     }
     const charter = input.charter ?? current.charter;
     validateMissionCharter(charter);
-    const policy = input.charter
-      ? await this.compilePolicy(charter)
+    const executionChanged = !sameMissionExecution(charter.execution, current.charter.execution);
+    if (
+      current.authorityPlan.schemaVersion === 1 &&
+      missionUsesAuthority(charter.execution) &&
+      !input.authorityPlan
+    )
+      throw denied(
+        "Editing an historical isolated automation requires recompiling its authority plan under the authenticated author"
+      );
+    if (executionChanged && !input.authorityPlan)
+      throw denied("Changed automation execution requires a newly compiled authority plan");
+    const policy = input.authorityPlan
+      ? await this.verifyPolicy(charter, input.authorityPlan)
       : current.authorityPlan;
     const digest = missionRevisionDigest(charter, policy.digest);
     if (current.revision === targetRevision) {
@@ -734,7 +750,7 @@ export class MissionsDO extends DurableObjectBase {
         now,
         missionId,
       );
-      if (usesMissionAuthority(current.charter)) {
+      if (missionUsesAuthority(current.charter.execution)) {
         this.enqueueRetirement(
           missionPrincipal(current.missionId, current.revisionDigest),
           now,
@@ -842,7 +858,7 @@ export class MissionsDO extends DurableObjectBase {
         now,
         missionId,
       );
-      if (usesMissionAuthority(mission.charter)) {
+      if (missionUsesAuthority(mission.charter.execution)) {
         this.enqueueRetirement(
           missionPrincipal(mission.missionId, mission.revisionDigest),
           now,
@@ -899,34 +915,22 @@ export class MissionsDO extends DurableObjectBase {
     await this.reconcileEffects(false);
   }
 
-  private async compilePolicy(
+  private async verifyPolicy(
     charter: MissionCharter,
+    reference: MissionAuthorityPlanReference
   ): Promise<MissionAuthorityPlanReference> {
-    const result = await this.rpc.call<MissionAuthorityPlanReference>(
-      "main",
-      "authority.compileAuthorityPlan",
-      [
-        {
-          executionImageDigest: missionExecutionImageDigest(
-            charter.execution.image,
-          ),
-          operations: charter.execution.operations.map((operation) => ({
-            service: operation.service,
-            method: operation.method,
-            ...(operation.args ? { args: [...operation.args] } : {}),
-            use: operation.use,
-          })),
-        },
-      ],
-      {
-        idempotencyKey: `automation:authority-plan:${missionExecutionImageDigest(charter.execution.image)}:${canonicalJson(charter.execution.operations)}`,
-      },
-    );
-    return result;
+    if (reference.schemaVersion !== 2)
+      throw denied("A new automation definition requires an author-bound authority plan");
+    const verified = await this.rpc.call<MissionAuthorityPlanReference>("main", "authority.verifyAuthorityPlan", [{
+      authorityPlanDigest: reference.digest, execution: charter.execution,
+    }]);
+    if (canonicalJson(verified) !== canonicalJson(reference))
+      throw denied("Automation authority plan reference does not match its canonical artifact");
+    return verified;
   }
 
   private async ensureAuthority(mission: MissionRecord): Promise<void> {
-    if (!usesMissionAuthority(mission.charter)) return;
+    if (!missionUsesAuthority(mission.charter.execution)) return;
     const subject = missionPrincipal(mission.missionId, mission.revisionDigest);
     const projection = await this.acquireAuthority(
       subject,
@@ -2097,12 +2101,6 @@ function requireAdmission(admission: AdmissionResult | null): AdmissionResult {
   if (!admission)
     throw new Error("An isolated automation execution requires admission");
   return admission;
-}
-function usesMissionAuthority(charter: MissionCharter): boolean {
-  return !(
-    charter.execution.kind === "agent" &&
-    charter.execution.conversation.mode === "continue"
-  );
 }
 function failure(
   code: string,

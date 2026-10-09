@@ -1,3 +1,4 @@
+import { prepareMissionEdit } from "@vibestudio/automation/mission";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Badge,
@@ -112,14 +113,16 @@ export function createAutomationUiClient(
     (await rpc.call(await target(), method, args)) as T;
   const client: AutomationUiClient = {
     inspect: async (missionId) => {
-      const overview = await call<{ items?: unknown[] }>("overview", [
-        { missionId, limit: 1 },
-      ]);
+      const overview = await call<{ items?: unknown[] }>("overview", [{ missionId, limit: 1 }]);
       const item = overview.items?.[0] as AutomationInspection | undefined;
       return item?.automation?.missionId === missionId ? item : null;
     },
     getRun: (runId) => call("getRun", [runId]),
-    edit: (missionId, patch) => call("edit", [missionId, patch]),
+    edit: async (missionId, patch) => {
+      const current = await call<MissionRecord>("get", [missionId]);
+      if (!current) throw new Error("The automation is unavailable");
+      return call<MissionRecord>("edit", [missionId, await prepareMissionEdit(rpc, current, patch)]);
+    },
     pause: (missionId) => call("pause", [missionId]),
     resume: (missionId) => call("resume", [missionId]),
     runNow: (missionId) => call("runNow", [missionId]),

@@ -190,10 +190,10 @@ import {
 } from "@workspace/agentic-core/subagent-prompt";
 import {
   MISSION_COMPLETION_PROTOCOL,
-  missionExecutionImageDigest,
+  compileMissionAuthorityPlan,
   type AutomationExecutorRunStatus,
   type MissionAgentAction,
-  type MissionAuthorityPlanReference,
+  type MissionCharter,
   type MissionAuthorityProjection,
   type MissionOperationIntent,
   type MissionRecord,
@@ -3744,11 +3744,17 @@ export abstract class AgentVesselBase extends NativeChannelOwner<NativeProductCh
       );
       this.setStateValue(intentKey, intent);
     }
+    const retainedDefinition = JSON.parse(intent) as { name: string; charter: MissionCharter };
+    const authorityPlan = await compileMissionAuthorityPlan(
+      this.rpc,
+      retainedDefinition.charter.execution,
+      `default-automation:${input.id}:authority-plan`
+    );
     const mission = await this.rpc.call<MissionRecord>(
       target,
       "provisionDefault",
-      [input.id, JSON.parse(intent)],
-      { idempotencyKey: `default-automation:${input.id}:provision` },
+      [input.id, { ...retainedDefinition, authorityPlan }],
+      { idempotencyKey: `default-automation:${input.id}:provision` }
     );
     return reconcileHost(mission, false);
   }
@@ -3867,52 +3873,33 @@ export abstract class AgentVesselBase extends NativeChannelOwner<NativeProductCh
     callerRpc: RpcClient,
   ): Promise<MissionRecord> {
     const definition = this.selfAutomationDefinition(channelId, input);
+    const authorityPlan = await compileMissionAuthorityPlan(
+      callerRpc,
+      definition.charter.execution,
+      `automation:task-authority-plan:${sha256HexSyncText(requestIdentity)}`
+    );
     if (
       definition.charter.execution.kind === "agent" &&
       definition.charter.execution.conversation.mode === "continue" &&
       definition.charter.execution.operations.length > 0
     ) {
-      const authorityPlan = await callerRpc.call<MissionAuthorityPlanReference>(
-        "main",
-        "authority.compileAuthorityPlan",
-        [
-          {
-            executionImageDigest: missionExecutionImageDigest(
-              definition.charter.execution.image,
-            ),
-            operations: definition.charter.execution.operations.map(
-              (operation) => ({
-                service: operation.service,
-                method: operation.method,
-                ...(operation.args ? { args: [...operation.args] } : {}),
-                use: operation.use,
-              }),
-            ),
-          },
-        ],
-        {
-          idempotencyKey: `automation:task-authority-plan:${sha256HexSyncText(requestIdentity)}`,
-        },
-      );
       const authority = await callerRpc.call<MissionAuthorityProjection>(
         "main",
         "authority.acquireForCurrentTask",
         [{ authorityPlanDigest: authorityPlan.digest }],
         {
           idempotencyKey: `automation:task-authority:${sha256HexSyncText(requestIdentity)}`,
-        },
+        }
       );
       if (authority.denialIds.length > 0) {
-        throw new Error(
-          "Automation launch was denied required authority for this agent task",
-        );
+        throw new Error("Automation launch was denied required authority for this agent task");
       }
     }
     const target = await this.automationServiceTarget(callerRpc);
     const automation = await callerRpc.call<MissionRecord>(
       target,
       "launch",
-      [definition],
+      [{ ...definition, authorityPlan }],
       {
         idempotencyKey: `automation:launch:${this.objectKey}:${sha256HexSyncText(requestIdentity)}`,
       },
