@@ -390,7 +390,13 @@ row because an HTTP route has no object-key input. A
 `services[].durableObject` declaration without a matching row is a factory;
 callers must pass an explicit `objectKey` to `workers.resolveService`.
 Stateless service routes are live only while the canonical worker instance is
-running.
+running. Their service declaration must reference a worker-backed route on the
+same source and path; each route declares either `worker: true` or
+`durableObject`, never both. HTTP service resolution addresses the published
+canonical worker, not a private task-context build. A task context may declare
+an alias for an existing published route. To author and consume a private
+context-local service without publishing, use a Durable Object service;
+declaring a new HTTP route in the task does not create a private HTTP receiver.
 
 ## Durable Object-backed App Databases
 

@@ -502,7 +502,7 @@ export function renderEntry(entry: CatalogEntry): string {
         : durableObjectGuard +
           (access?.target?.kind === "durable-object"
             ? '// Open a method doc, then call: await rpc.call(service.targetId, "exactMethodName", [/* args */]);'
-            : "// Stateless worker services expose service.routeBasePath for their declared HTTP route.");
+            : "// Stateless worker services expose service.routeBasePath for their published canonical HTTP route.\n// A context-local alias may reference an existing published route; it does not serve task-context code.\n// Private context-local services use Durable Objects.");
       const factoryObjectKey =
         access?.target?.kind === "durable-object" &&
         access.target.defaultObjectKey === null
