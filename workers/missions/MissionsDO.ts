@@ -690,14 +690,6 @@ export class MissionsDO extends DurableObjectBase {
     const charter = input.charter ?? current.charter;
     validateMissionCharter(charter);
     const executionChanged = !sameMissionExecution(charter.execution, current.charter.execution);
-    if (
-      current.authorityPlan.schemaVersion === 1 &&
-      missionUsesAuthority(charter.execution) &&
-      !input.authorityPlan
-    )
-      throw denied(
-        "Editing an historical isolated automation requires recompiling its authority plan under the authenticated author"
-      );
     if (executionChanged && !input.authorityPlan)
       throw denied("Changed automation execution requires a newly compiled authority plan");
     const policy = input.authorityPlan
@@ -1527,6 +1519,10 @@ export class MissionsDO extends DurableObjectBase {
       ...automationActivity(mission, this.rowToRun(row)),
       ...(admission ? { authoritySessionNonce: admission.nonce } : {}),
     };
+    if (execution.action.kind === "notify") {
+      await this.deliverNotification(mission, row, execution.action);
+      return;
+    }
     const executorRpc = admission
       ? withExecutionAdmission(this.rpc, admission.nonce)
       : this.rpc;
@@ -1566,6 +1562,53 @@ export class MissionsDO extends DurableObjectBase {
         { idempotencyKey: `${row.run_id}:dispatch` },
       );
     this.setPhase(row.run_id, "executing");
+  }
+
+  /**
+   * A notify action needs no model turn: MissionsDO writes the owner's inbox
+   * entry itself, linked to the conversation that scheduled it. The inbox
+   * entry is the delivery record, so its failure fails the run; the phone push
+   * is best effort, like every other inbox escalation (no device is normal).
+   */
+  private async deliverNotification(
+    mission: MissionRecord,
+    row: RunRow,
+    action: { text: string; title?: string; alert?: "inbox" | "interrupt" },
+  ): Promise<void> {
+    const id = `automation.notify:${row.run_id}`;
+    const title = action.title ?? mission.name;
+    await this.gad().call("putUserNotification", {
+      id,
+      userId: mission.owner.userId,
+      kind: "automation.notify",
+      title,
+      message: action.text,
+      data: {
+        missionId: mission.missionId,
+        runId: row.run_id,
+        ...(row.channel_id ? { channelId: row.channel_id } : {}),
+      },
+      createdAt: Date.now(),
+      revision: 1,
+    });
+    try {
+      await this.rpc.call("main", "notification.pushUserInbox", [
+        mission.owner.userId,
+        {
+          notificationId: id,
+          kind: "automation.notify",
+          title,
+          body: action.text.split("\n", 1)[0],
+          priority: action.alert === "interrupt" ? "high" : "normal",
+          ...(row.channel_id ? { channelId: row.channel_id } : {}),
+        },
+      ]);
+    } catch {
+      /* no device reached; the inbox entry remains */
+    }
+    this.terminalizeRun(this.requireRunRow(row.run_id), "succeeded", {
+      finalMessage: action.text,
+    });
   }
 
   private async reconcileAgentExecution(

@@ -1,54 +1,55 @@
 # Querying provenance
 
-The semantic record is a relational database, and for set-shaped questions you
-should treat it as one. `provenance({ query: "SELECT …" })` runs one read-only
-statement inside the workspace authority against a versioned set of `prov_*`
-views. The canonical tables stay private; the views are the contract.
+The semantic record is a relational database; query it as one when the
+question is about a set. `provenance({ query: "SELECT …" })` runs one
+read-only statement inside the workspace against a versioned set of `prov_*`
+views. The underlying tables are private; the views are the contract.
 
-## Discover the contract instead of memorizing it
+## Discover the schema
 
-The catalog is self-describing. This is the first query to run, and the only
-schema fact worth remembering:
-
-`prov_schema` is one row per relation, so the whole contract fits in one page —
-read it, then read the `columns` cell of whichever relation you need.
+The catalog describes itself, so start by querying it. `prov_schema` has one
+row per relation, so the whole contract fits on one page. Read it, then read
+the `columns` cell of the relation you need.
 
 ```ts
-provenance({ query: "SELECT relation, meaning, column_count FROM prov_schema" });
 provenance({
-  query: "SELECT columns FROM prov_schema WHERE relation = 'prov_decision_entries'",
+  query: "SELECT relation, meaning, column_count FROM prov_schema",
+});
+provenance({
+  query:
+    "SELECT columns FROM prov_schema WHERE relation = 'prov_decision_entries'",
 });
 provenance({ query: "SELECT version FROM prov_schema_version" });
 ```
 
-Prefer `WHERE relation = '…'` over `LIKE`: it is exact, and the deployed engine
-enforces pattern limits the development engine does not.
+Use `WHERE relation = '…'` rather than `LIKE`: it is exact, and the deployed
+engine enforces pattern limits that the development engine doesn't.
 
-Relations, in one line each: `prov_work_units` (intent tier and text, persisted
-from the one resolver), `prov_changes`, `prov_applied_changes`,
-`prov_content_edges`, `prov_applications`, `prov_events`, `prov_event_parents`,
+The relations are `prov_work_units` (resolved intent tier and text),
+`prov_changes`, `prov_applied_changes`, `prov_content_edges`,
+`prov_applications`, `prov_events`, `prov_event_parents`,
 `prov_event_applications`, `prov_decisions`, `prov_decision_entries`,
 `prov_counteractions`, `prov_external_deltas`, `prov_commands`,
-`prov_invocations`, `prov_turns`, `prov_messages`, `prov_files`, `prov_search`.
+`prov_invocations`, `prov_turns`, `prov_messages`, `prov_files`, and
+`prov_search`.
 
-## Rules the executor enforces
+## Limits the executor enforces
 
-- one statement, one `SELECT` (a non-recursive `WITH` is fine);
-- `prov_*` relations only — naming a canonical table is refused with the term
-  quoted;
-- no recursive CTEs: multi-hop traversal is what `walk` is for, with
-  server-owned bounds;
-- a plan gate refuses full scans of large relations and cartesian joins *before*
-  execution, and a streamed abort stops a query that reads past the scan budget
-  and returns the partial rows with a typed refusal;
-- text columns are bounded excerpts. Full content stays behind `read`;
-- every row you can reach through a query, you could have reached by a legal
-  walk — the visibility basis is the caller's, not the query's.
+- One statement, which must be a `SELECT`. A non-recursive `WITH` is allowed.
+- Only `prov_*` relations. Naming a private table is refused, with the name
+  quoted.
+- No recursive CTEs. Use `walk` for multi-hop traversal; the server bounds it.
+- A plan check refuses full scans of large relations and cartesian joins
+  _before_ execution. A query that reads past the scan budget is stopped
+  mid-stream and returns the partial rows with a typed refusal.
+- Text columns hold bounded excerpts. Use `read` for full content.
+- A query can only return rows you could have reached by a permitted walk;
+  visibility is the caller's.
 
-## Refs, not identities
+## Refs, not IDs
 
-Identity columns render as compact `@ref`s, and a `@ref` is a legal *value* in
-query text — trusted code binds it to the exact identity before execution:
+ID columns render as compact `@ref`s, and you can use a `@ref` as a value in
+query text. Trusted code replaces it with the full ID before execution:
 
 ```ts
 provenance({
@@ -56,11 +57,11 @@ provenance({
 });
 ```
 
-Joins between `prov_` relations need no literal identity at all.
+Joins between `prov_` relations don't need any literal ID.
 
-## Worked examples
+## Examples
 
-**Q3 — the cohort as a set.** Everything one command touched, by coordinate:
+**Everything one command touched**, grouped by path:
 
 ```sql
 SELECT change.result_path AS path, count(*) AS changes
@@ -71,8 +72,7 @@ SELECT change.result_path AS path, count(*) AS changes
  ORDER BY changes DESC
 ```
 
-**Q4 — how two subjects are related.** The join that answers "did the same
-command touch both of these files":
+**How two files are related.** Did the same work unit touch both?
 
 ```sql
 SELECT work.work_unit_id, work.intent_tier, work.intent_text
@@ -83,11 +83,10 @@ SELECT work.work_unit_id, work.intent_tier, work.intent_text
    AND theirs.result_path = 'packages/api/src/deploy.ts'
 ```
 
-If that returns nothing, cause-walk both subjects and intersect the refs before
+If this returns nothing, cause-walk both files and intersect the refs before
 concluding they are unrelated.
 
-**Q5 — purpose drift at one coordinate.** What this file has been *for*, over
-time, tier-labeled:
+**What a file has been _for_ over time**, with intent tiers:
 
 ```sql
 SELECT work.created_at, work.intent_tier, work.intent_text
@@ -97,7 +96,7 @@ SELECT work.created_at, work.intent_tier, work.intent_text
  ORDER BY work.created_at DESC
 ```
 
-**Q6 — rejections as a set.** Which stated intents undid other work:
+**Which stated intents undid other work:**
 
 ```sql
 SELECT work.intent_text, count(*) AS undone
@@ -109,8 +108,8 @@ SELECT work.intent_text, count(*) AS undone
  ORDER BY undone DESC
 ```
 
-**Q7 — content entry composed with a filter.** Decisions whose rationale
-mentions retries:
+**Text search combined with a filter.** Decisions whose rationale mentions
+retries:
 
 ```sql
 SELECT hit.subject_id, entry.resolution, entry.rationale
@@ -119,11 +118,11 @@ SELECT hit.subject_id, entry.resolution, entry.rationale
  WHERE hit.subject_kind = 'decision' AND hit.text LIKE '%retry%'
 ```
 
-For a ranked phrase search without SQL, use `provenance({ target: "search: …" })`
-and walk from the ref it hands back.
+For a ranked phrase search without SQL, use
+`provenance({ target: "search: …" })` and walk from the ref it returns.
 
 ## When not to query
 
-If the question is a chain rather than a set, use a walk: it is one call, it
-renders as a spine instead of a table, and its bounds are the server's problem
-rather than yours.
+If the question is about a chain rather than a set, use a walk. It takes one
+call, renders as a chain instead of a table, and the server manages its
+bounds.

@@ -39,7 +39,7 @@ const automation: MissionRecord = {
   state: "active",
   revisionDigest: "b".repeat(64),
   authorityPlan: {
-    schemaVersion: 1,
+    schemaVersion: 2,
     digest: "e".repeat(64),
     artifactRef: `authority-plan:${"e".repeat(64)}`,
     compilerVersion: "test",
@@ -124,28 +124,37 @@ describe("AutomationActivity", () => {
         ([, method]) => method === "workers.resolveService",
       ),
     ).toHaveLength(1);
+    expect(call.mock.calls[0]).toEqual([
+      "main",
+      "workers.resolveService",
+      ["vibestudio.missions.v1", null],
+    ]);
   });
 
-  it.each(["unchanged", "changed", "seeded", "historical"])(
+  it.each(["unchanged", "changed", "seeded"])(
     "uses the canonical author plan composition for %s UI edits",
     async (kind) => {
       const current = {
         ...automation,
-        authorityPlan:
-          kind === "historical"
-            ? automation.authorityPlan
-            : { ...automation.authorityPlan, schemaVersion: 2 as const },
+        authorityPlan: automation.authorityPlan,
         ...(kind === "seeded" ? { seeded: true } : {}),
       };
       const plan = { ...automation.authorityPlan, schemaVersion: 2 as const };
-      const call = vi.fn(async (_target: string, method: string, _args: unknown[]) => {
-        if (method === "workers.resolveService")
-          return { kind: "durable-object", targetId: "do:missions" };
-        if (method === "get") return current;
-        if (method === "authority.compileAuthorityPlan") return plan;
-        if (method === "edit") return current;
-        throw new Error(`Unexpected method ${method}`);
-      });
+      const call = vi.fn(
+        async (
+          _target: string,
+          method: string,
+          _args: unknown[],
+          _options?: unknown,
+        ) => {
+          if (method === "workers.resolveService")
+            return { kind: "durable-object", targetId: "do:missions" };
+          if (method === "get") return current;
+          if (method === "authority.compileAuthorityPlan") return plan;
+          if (method === "edit") return current;
+          throw new Error(`Unexpected method ${method}`);
+        },
+      );
       const patch = {
         name: "My cadence",
         charter: {
@@ -168,19 +177,27 @@ describe("AutomationActivity", () => {
         },
       };
       await createAutomationUiClient({ call }).edit(current.missionId, patch);
+      expect(call.mock.calls[0]).toEqual([
+        "main",
+        "workers.resolveService",
+        ["vibestudio.missions.v1", null],
+      ]);
       const compiled = call.mock.calls.filter(
         ([, method]) => method === "authority.compileAuthorityPlan"
       );
       if (kind === "unchanged") {
         expect(compiled).toHaveLength(0);
-        expect(call.mock.calls.at(-1)).toEqual(["do:missions", "edit", [current.missionId, patch]]);
+        expect(call.mock.calls.at(-1)).toEqual([
+          "do:missions",
+          "edit",
+          [current.missionId, patch],
+        ]);
       } else {
         expect(compiled).toEqual([
           [
             "main",
             "authority.compileAuthorityPlan",
             [{ execution: patch.charter.execution }],
-            undefined,
           ],
         ]);
         expect(call.mock.calls.at(-1)).toEqual([
@@ -192,7 +209,7 @@ describe("AutomationActivity", () => {
     }
   );
 
-  it("retains a historical continuing plan for ordinary cadence edits", async () => {
+  it("retains a continuing plan for ordinary cadence edits", async () => {
     const execution = {
       ...automation.charter.execution,
       conversation: {
@@ -203,12 +220,19 @@ describe("AutomationActivity", () => {
       },
     };
     const current = { ...automation, charter: { ...automation.charter, execution } };
-    const call = vi.fn(async (_target: string, method: string, _args: unknown[]) => {
-      if (method === "workers.resolveService")
-        return { kind: "durable-object", targetId: "do:missions" };
-      if (method === "get" || method === "edit") return current;
-      throw new Error(`Unexpected method ${method}`);
-    });
+    const call = vi.fn(
+      async (
+        _target: string,
+        method: string,
+        _args: unknown[],
+        _options?: unknown,
+      ) => {
+        if (method === "workers.resolveService")
+          return { kind: "durable-object", targetId: "do:missions" };
+        if (method === "get" || method === "edit") return current;
+        throw new Error(`Unexpected method ${method}`);
+      },
+    );
     await createAutomationUiClient({ call }).edit(current.missionId, { name: "Renamed" });
     expect(call.mock.calls.map(([, method]) => method)).toEqual([
       "workers.resolveService",

@@ -129,7 +129,7 @@ export type OperationJournalEntry =
         byteSize: number;
       };
     }
-  | { type: "stateArgs.set"; id: string };
+  | { type: "stateArgs.patch"; id: string };
 
 export class Journal {
   readonly entries: OperationJournalEntry[] = [];

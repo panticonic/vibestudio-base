@@ -13,7 +13,7 @@ import {
 const mocks = vi.hoisted(() => ({
   waitForApprovalResolution: vi.fn(async () => undefined),
   getStateArgs: vi.fn(),
-  setStateArgs: vi.fn(),
+  patchStateArgs: vi.fn(),
   call: vi.fn(async (_target: string, method: string, args: unknown[]) => {
     if (method === "runtime.createEntity") {
       const spec = args[0] as { key: string; contextId?: string };
@@ -26,7 +26,7 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("@workspace/runtime", () => ({
   rpc: { call: mocks.call },
-  panel: { stateArgs: { get: mocks.getStateArgs, set: mocks.setStateArgs } },
+  panel: { stateArgs: { get: mocks.getStateArgs, patch: mocks.patchStateArgs } },
 }));
 vi.mock("@workspace/pubsub", () => ({
   waitForApprovalResolution: mocks.waitForApprovalResolution,
@@ -329,7 +329,7 @@ describe("claimed agent persistence", () => {
   beforeEach(() => {
     mocks.waitForApprovalResolution.mockReset().mockResolvedValue(undefined);
     mocks.getStateArgs.mockReset().mockReturnValue({ installedAgents: [] });
-    mocks.setStateArgs.mockReset();
+    mocks.patchStateArgs.mockReset();
   });
   it("waits for review then persists the same agent without repeating its launch or losing concurrent records", async () => {
     const agent = {
@@ -348,7 +348,7 @@ describe("claimed agent persistence", () => {
         }),
     );
     mocks.getStateArgs.mockReturnValue({ installedAgents: [] });
-    mocks.setStateArgs
+    mocks.patchStateArgs
       .mockRejectedValueOnce(
         Object.assign(new Error("Waiting for review"), {
           code: "EREVIEWPENDING",
@@ -370,17 +370,17 @@ describe("claimed agent persistence", () => {
         "review-welcome",
       ),
     );
-    expect(mocks.setStateArgs).toHaveBeenCalledTimes(1);
+    expect(mocks.patchStateArgs).toHaveBeenCalledTimes(1);
     mocks.getStateArgs.mockReturnValue({ installedAgents: [concurrent] });
     resolveReview();
     await pending;
-    expect(mocks.setStateArgs).toHaveBeenLastCalledWith({
+    expect(mocks.patchStateArgs).toHaveBeenLastCalledWith({
       installedAgents: [concurrent, agent],
     });
     expect(mocks.call).not.toHaveBeenCalled();
   });
   it("propagates ordinary persistence errors without waiting on approval", async () => {
-    mocks.setStateArgs.mockRejectedValue(new Error("storage unavailable"));
+    mocks.patchStateArgs.mockRejectedValue(new Error("storage unavailable"));
     await expect(
       persistInstalledAgent({
         agentId: "AiChatWorker",

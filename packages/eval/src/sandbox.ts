@@ -2009,8 +2009,8 @@ async function renderOperationJournalFooter(
         return `reloaded #${entry.id}`;
       case "close":
         return `closed #${entry.id}`;
-      case "stateArgs.set":
-        return `set stateArgs on #${entry.id}`;
+      case "stateArgs.patch":
+        return `patched stateArgs on #${entry.id}`;
       default:
         return String(entry.type ?? "workspace operation");
     }

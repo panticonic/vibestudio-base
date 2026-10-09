@@ -1,152 +1,160 @@
 # Authority implementation checklist
 
-Use this checklist for host enforcement and cross-cutting authority changes. The
-capabilities skill contains the userland authoring loop; this reference covers the
-host review inputs that must remain explicit.
+Use this checklist for host enforcement and cross-component authority
+changes. The capabilities skill covers the userland authoring loop; this
+reference lists the host review inputs that must stay explicit.
 
 ## Add or change a host service method
 
-1. Define a strict schema in `packages/service-schemas`. Reject unknown fields at the
-   boundary and keep caller/session/owner identity out of arguments when the host can
-   derive it.
-2. Declare the receiver contract on the service definition: admitted principal kinds,
-   relationship/resource derivation, sensitivity, and effect.
-3. Assign the reviewed tier on that same method schema. Tier is static method
-   semantics: open, gated, or critical. Do not infer it from current callers.
-4. Map the method to a semantic capability on the method schema. Several transport
-   methods may intentionally share one user decision.
-5. For every promptable static host method, add plain-language `presentation` copy
-   on the method schema. Write what the user allows, not the RPC verb. Use
-   `{requesterKind}` only for the panel, worker, app, extension, or agent kind;
-   display identity and immutable authority identity are separate fields. The
-   read-only projection is
+1. Define a strict schema in `packages/service-schemas`. Reject unknown fields
+   at the boundary, and keep caller, session, and owner identity out of the
+   arguments when the host can derive them.
+2. Declare the receiver contract on the service definition: admitted principal
+   kinds, relationship/resource derivation, sensitivity, and effect.
+3. Assign the reviewed tier (open, gated, or critical) on the same method
+   schema. Tier is a property of the method; don't infer it from current
+   callers.
+4. Map the method to a semantic capability on the method schema. Several
+   transport methods may share one user decision.
+5. Give every promptable static host method plain-language `presentation`
+   copy on its schema, describing what the user allows rather than the RPC
+   verb. Use `{requesterKind}` only for the panel, worker, app, extension, or
+   agent kind; display identity and immutable authority identity are separate
+   fields. The read-only projection is
    `packages/shared/src/authority/hostAuthorityCatalog.generated.ts`.
-6. Implement the handler without accepting authority facts from arguments. Preserve
-   the verified caller and authorization context on downstream calls.
-7. Update the explicit receiver-review input in
-   `scripts/runtime-authority-review.json`. Its census digest is a drift detector;
-   the per-method rationale is the human review. Regenerating derived ledgers is not
-   approval.
-8. Add tests for admitted and rejected principal/relationship/resource cases,
-   malformed schemas, semantic capability grouping, tier/presentation coverage, and
+6. Implement the handler without taking authority facts from arguments, and
+   pass the verified caller and authorization context to downstream calls.
+7. Update the receiver-review input in `scripts/runtime-authority-review.json`.
+   Its census digest detects drift; the per-method rationale is the human
+   review. Regenerating derived ledgers is not approval.
+8. Test admitted and rejected principal/relationship/resource cases,
+   malformed schemas, capability grouping, tier and presentation coverage, and
    downstream caller preservation.
 
-Dynamic workspace service copy does not belong in the host presentation census. Put
-its stable user-facing `title`, `action`, and `description` in the live workspace
-service declaration; live docs and resolution consume that same declaration.
+Copy for dynamic workspace services doesn't go in the host presentation
+census. Put its `title`, `action`, and `description` in the live workspace
+service declaration, which live docs and resolution both read.
 
 ## Website admission and effect review
 
-Use [website authority](website-authority.md) for the complete subject and
-escalation contract. Review mandatory method eligibility separately from tier;
-a missing annotation must fail definition, and a closed annotation needs a
-concrete reason. Verify zero workspace I/O before explicit connection, saved
-origin grants on fresh documents, document/generation revocation, and truthful
-approval origin/lifetime copy on both desktop and mobile.
+See [website authority](website-authority.md) for the full contract. Review
+method eligibility separately from tier: a missing annotation must fail at
+definition, and a closed annotation needs a concrete reason. Verify no
+workspace I/O before explicit connection, saved origin grants on fresh
+documents, document/generation revocation, and correct approval origin and
+duration copy on desktop and mobile.
 
-Test root website attribution and liveness at downstream effect and response
-boundaries, including streams, callbacks, queued work, and cross-workspace calls.
-Derive resource scope at its owner, including canonical paths and file-handle
-backing resources. Treat private retained data separately from response audience.
-Do not report the inventory reviewed or the product complete merely because
-bulk annotations and synchronous RPC tests pass.
+Test website attribution and liveness at downstream effect and response
+boundaries, including streams, callbacks, queued work, and cross-workspace
+calls. Derive resource scope at the resource's owner, including canonical
+paths and the resources behind file handles. Treat privately retained data
+separately from the response audience. Passing bulk annotations and
+synchronous RPC tests doesn't mean the inventory is reviewed or the product
+complete.
 
 ## Add or change an executable workspace unit
 
-1. Put gated/critical requests performed by the installed unit in its checked-in
+1. Put the installed unit's gated/critical requests in its checked-in
    `package.json#vibestudio.authority.requests`.
-2. Build the exact semantic context. The build seals the manifest and dependency
+2. Build the semantic context. The build seals the manifest and dependency
    closure but never writes or approves it.
-3. Review the exact effective version: source, transitive dependencies, runtime ABI,
-   and direct requests.
-4. Show added human-readable capabilities first. Keep unchanged capabilities
-   collapsed and summarize removals. One version decision covers code plus its full
-   authority contract.
-5. Carry the admitted exact identity into activation. Do not ask again during build,
+3. Review the effective version: source, transitive dependencies, runtime
+   ABI, and direct requests.
+4. Show added human-readable capabilities first, keep unchanged ones
+   collapsed, and summarize removals. One version decision covers code plus
+   its full authority contract.
+5. Carry the admitted identity into activation; don't ask again at build,
    startup, or first use.
-6. On a fresh workspace, batch all previously unreviewed executable units into one
-   progressive-disclosure startup decision rather than one prompt per unit or
+6. On a fresh workspace, batch all unreviewed executable units into one
+   progressive-disclosure startup decision, not one prompt per unit or
    capability.
 
-Static census generation is valid for shipped host methods. Workspace-built services
-and intra-workspace capabilities stay context-relative: declare them in the semantic
-workspace, discover them through live docs, and resolve them through the live service
-registry. Never regenerate a static host catalog to approve workspace code.
+Static census generation suits shipped host methods. Workspace-built services
+and intra-workspace capabilities are per context: declare them in the
+semantic workspace, find them through live docs, and resolve them through the
+live service registry. Never regenerate a static host catalog to approve
+workspace code.
 
 ## Change a mission
 
-Treat these as one contract:
+These form one contract:
 
-- exact immutable execution image;
+- the immutable execution image;
 - action, conversation mode, and trigger;
 - semantic operation intents;
-- host-compiled, content-addressed authority plan for pre-acquisition, with compiler and catalog versions;
-- durable subject `mission:<id>@<revisionDigest>` and attributed owner;
-- durable target authority requests and grants; and
+- the host-compiled, content-addressed authority plan used for
+  pre-acquisition, with compiler and catalog versions;
+- the durable subject `mission:<id>@<revisionDigest>` and its attributed
+  owner;
+- durable target authority requests and grants;
 - generic executor admission and causal inheritance.
 
-The host compiler—not userland—derives capability/resource leaves from receiver
-contracts. Store the canonical authority-plan body under its digest; never trust a body
-supplied by the mission store or recompile an old revision against a newer
-catalog during admission.
+The host compiler, not userland, derives capability/resource leaves from
+receiver contracts. Store the canonical plan body under its digest; never
+trust a body supplied by the mission store or recompile an old revision
+against a newer catalog during admission.
 
-Launch registers the subject and begins eligible standing acquisition. Pending
-requests belong to the revision, survive the launching execution and host
-restart, and deduplicate by revision plan plus compiled operation. Runtime
-misses still enter ordinary acquisition and may park the invocation.
+Launch registers the subject and starts acquiring eligible standing grants.
+Pending requests belong to the revision, survive the launching execution and
+host restarts, and are deduplicated by revision plan plus compiled operation.
+Runtime misses still go through normal acquisition and may park the
+invocation.
 
-Editing creates a new revision subject. Prevent new admission to the retired
-subject, terminalize its live executions, then revoke its grants. Pause is not
-retirement: it prevents new runs while preserving the same subject and grants.
+Editing creates a new revision subject: block new admissions to the retired
+subject, end its live executions, then revoke its grants. Pausing isn't
+retiring; it stops new runs and keeps the subject and grants.
 
 Execution admission must represent agent-turn, eval, and method executors in
-one authenticated schema with an idempotent admission key, exact image, policy
-digest, parent derivation, renewal owner, and terminal closure. Do not add a
-second transport for one executor kind or bind authority to a channel ID.
+one authenticated schema with an idempotent admission key, execution image,
+policy digest, parent derivation, renewal owner, and terminal closure. Don't
+add a separate transport for one executor kind or bind authority to a
+channel ID.
 
-Observe causal outbound operations in the generic RPC core, including direct,
-request-scoped, and typed-peer calls. Parent closure fences new children only
-after every operation already started has settled, on both handler success and
-failure. Delayed/background work that has not yet started is a separate durable
-execution and must not inherit an expired parent through `waitUntil`.
+Track outbound calls caused by an execution in the generic RPC core,
+including direct, request-scoped, and typed-peer calls. When a parent closes,
+block new children only after every call it already started has settled, on
+handler success and failure. Delayed or background work that hasn't started
+is a separate durable execution and must not inherit an expired parent
+through `waitUntil`.
 
-Preserve terminal child-effect failures through turn closure. A mission run may
-be `succeeded` only when its turn and every terminal child effect succeeded;
-otherwise use `completed-with-errors` with exact invocation evidence or
-`failed` when the turn itself failed.
+Keep terminal child-effect failures through turn closure. A mission run is
+`succeeded` only if its turn and every terminal child effect succeeded;
+otherwise `completed-with-errors` with the invocation evidence, or `failed`
+if the turn itself failed.
 
 ## Change a product-seeded mission
 
-Seed files are strict, checked-in reviewed inputs under the host's seed directory.
-Resolve `@seed` harness and skill hashes only from immutable product snapshot outputs.
-Key reconciliation by the exact product snapshot state and preserve the host/system
-owner. On snapshot drift, create and activate a new exact revision, prevent new
-old admissions, finish old executions, and only then revoke old revision grants.
+Seed files are strict, checked-in, reviewed inputs in the host's seed
+directory. Resolve `@seed` harness and skill hashes only from immutable
+product snapshot outputs. Key reconciliation by the product snapshot state and
+keep the host/system owner. When the snapshot changes, create and activate a
+new revision, block new admissions to the old one, let its executions finish,
+and only then revoke its grants.
 
-Do not read mutable workspace source to construct a product seed. Do not add a
-compatibility or repair path for old schemas; migrate forward and fail closed on
-unknown schemas.
+Don't read mutable workspace source to build a product seed, and don't add a
+compatibility or repair path for old schemas: migrate forward and fail closed
+on unknown schemas.
 
 ## Change the System Agent
 
-Treat these invariants as one boundary:
+These invariants form one boundary:
 
-- one deterministic conversation per workspace, authenticated user, and immutable
-  product snapshot;
-- host-derived context, channel, agent key, and exact locked membership;
-- product-blessed worker effective version and execution digest;
-- product prompt and eval handbook;
+- one deterministic conversation per workspace, authenticated user, and
+  immutable product snapshot;
+- host-derived context, channel, agent key, and locked membership;
+- a product-blessed worker effective version and execution digest;
+- the product prompt and eval handbook;
 - no workspace prompt override, skill injection, or memory recall;
 - exactly `eval` and `notify` as model-facing tools;
-- ordinary typed service/runtime APIs inside eval;
+- the normal typed service/runtime APIs inside eval;
 - no non-delegated approval payload or settlement;
 - no delegation activation, renewal, or widening from conversation eval;
-- no self-blessing, self-grant mutation, or credential extraction; and
+- no self-blessing, self-grant mutation, or credential extraction;
 - desktop and mobile clients call the same typed lifecycle service.
 
-A missing shell feature is not grounds for a System Agent bypass. Add or improve the
-shared semantic service, receiver contract, presentation, and mission exposure so
-ordinary clients and the System Agent use the same boundary.
+A missing shell feature doesn't justify a System Agent bypass. Add or improve
+the shared semantic service, receiver contract, presentation, and mission
+exposure so normal clients and the System Agent use the same boundary.
 
 ## Verification
 
@@ -154,19 +162,19 @@ Run the narrow deterministic tests first, then:
 
 1. authority manifest and runtime receiver-review checks;
 2. host, workerd, userland, and mobile type checks;
-3. host and workspace conventional test suites;
+3. host and workspace test suites;
 4. desktop and mobile approval/lifecycle coverage;
-5. Iroh remote-transport smoke coverage; and
-6. vague model-backed system tests only when model capacity is available.
+5. Iroh remote-transport smoke tests;
+6. vague model-backed system tests, only when model capacity is available.
 
-Model-backed failures are evidence about infrastructure, APIs, or guidance. Do not
-make prompts more prescriptive to route around a platform defect, and do not increase
-optional eval or model-stream timeouts. Terminal infrastructure failure must settle
-the invocation and owning turn.
+Model-backed failures point at infrastructure, APIs, or guidance. Don't make
+prompts more prescriptive to work around a platform defect, and don't raise
+optional eval or model-stream timeouts. A terminal infrastructure failure must
+settle the invocation and its turn.
 
-At tool/service boundaries, preserve structured error data and normalize the
+At tool and service boundaries, keep structured error data and normalize the
 terminal record to `agent-tool-failure.v1`. The original operation failure is
 always the primary cause; cleanup, rollback, and transport failures are
-secondary evidence. Include exact causal IDs and a typed retry policy when
-known. Never make prose parsing, a cleanup throw, or a second error channel the
-control-flow contract.
+secondary evidence. Include causal IDs and a typed retry policy when known.
+Never make prose parsing, a cleanup throw, or a second error channel part of
+control flow.

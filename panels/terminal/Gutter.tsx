@@ -8,6 +8,7 @@ export function Gutter(props: {
 }) {
   return (
     <div
+      className="terminal-gutter"
       role="separator"
       aria-orientation={props.direction === "row" ? "vertical" : "horizontal"}
       aria-valuemin={10}

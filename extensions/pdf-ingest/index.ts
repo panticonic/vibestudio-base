@@ -1,5 +1,5 @@
 import type { ExtensionContext } from "@vibestudio/extension";
-import { assertPdfBytes, toUint8Array } from "./pdf/binary.js";
+import { assertPdfBytes } from "./pdf/binary.js";
 import { createArtifactStoreFromStorage, type ArtifactStore } from "./pdf/artifacts.js";
 import { normalizePageImageMode, selectPages } from "./pdf/pages.js";
 import {
@@ -62,7 +62,7 @@ export async function activate(ctx: ExtensionContextLike, deps: PdfIngestDeps = 
       return engineStatus(options?.ocrLanguages);
     },
 
-    async probe(rawData: unknown, options: PdfProbeOptions = {}): Promise<PdfProbeResult> {
+    async probe(rawData: Uint8Array, options: PdfProbeOptions = {}): Promise<PdfProbeResult> {
       const data = normalizePdfInput(rawData);
       const digest = pdfDigest(data);
       const warnings: string[] = [];
@@ -99,7 +99,7 @@ export async function activate(ctx: ExtensionContextLike, deps: PdfIngestDeps = 
       }
     },
 
-    async ingest(rawData: unknown, options: PdfIngestOptions = {}): Promise<PdfIngestResult> {
+    async ingest(rawData: Uint8Array, options: PdfIngestOptions = {}): Promise<PdfIngestResult> {
       const data = normalizePdfInput(rawData);
       const digest = pdfDigest(data);
       const preserveLayout = options.preserveLayout ?? true;
@@ -224,7 +224,7 @@ export async function activate(ctx: ExtensionContextLike, deps: PdfIngestDeps = 
     },
 
     async renderPage(
-      rawData: unknown,
+      rawData: Uint8Array,
       options: PdfRenderPageOptions = {}
     ): Promise<PdfRenderedPage> {
       const data = normalizePdfInput(rawData);
@@ -316,8 +316,10 @@ function providerNativeStatus(): PdfEngineStatus {
   };
 }
 
-function normalizePdfInput(rawData: unknown): Uint8Array {
-  const data = toUint8Array(rawData);
+function normalizePdfInput(data: unknown): Uint8Array {
+  if (!(data instanceof Uint8Array)) {
+    throw new TypeError("pdf-ingest: expected PDF bytes as a Uint8Array");
+  }
   assertPdfBytes(data);
   return data;
 }

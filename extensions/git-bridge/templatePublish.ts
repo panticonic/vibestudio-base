@@ -1,7 +1,6 @@
 import * as fsp from "node:fs/promises";
 import * as path from "node:path";
 import { Buffer } from "node:buffer";
-import YAML from "yaml";
 import {
   canonicalJson,
   compareUtf16CodeUnits,
@@ -19,8 +18,7 @@ import {
   normalizeTemplateGitUrl,
   TEMPLATE_SOURCE_MANIFEST_PATH,
 } from "@vibestudio/workspace/templateCoordinates";
-import { validateTemplateSnapshotInventory } from "@vibestudio/workspace/templateManifest";
-import { WorkspaceTemplateAuthoringMetadataSchema } from "@vibestudio/workspace-contracts/workspaceConfigSchema";
+import { templateRepositories } from "@vibestudio/workspace/templateManifest";
 import { createGitHubClient, resolveGitHubPublishOperation } from "@workspace/integrations/github";
 import { getRemoteProvider } from "@workspace/integrations/remoteProviders";
 import { GitBridge, type ProtectedRepositorySnapshot } from "./bridge.js";
@@ -166,10 +164,10 @@ export class TemplatePublishEngine {
         });
       }
     }
-    const parsedManifest = YAML.parse(input.manifest) as Record<string, unknown>;
-    const inventory = WorkspaceTemplateAuthoringMetadataSchema.parse(parsedManifest["template"]);
-    validateTemplateSnapshotInventory(
-      { repositories: inventory.repositories },
+    // Repository membership is derived from the exact published source tree.
+    // The authored manifest describes presentation and dependencies; it does
+    // not duplicate a path inventory that can drift from the files.
+    const repositories = templateRepositories(
       expectedTreeEntries.map((entry) => entry.path),
     );
     const expectedTree = canonicalTree(expectedTreeEntries);
@@ -181,6 +179,7 @@ export class TemplatePublishEngine {
         version: tag,
         expectedMainEventId: input.expectedMainEventId,
         manifestDigest: input.manifestDigest,
+        repositories,
         creation: {
           private: input.creation?.private ?? true,
           description: input.creation?.description ?? input.templateName,

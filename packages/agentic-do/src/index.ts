@@ -36,7 +36,7 @@ export {
   CardValidationError,
 } from "./custom-cards.js";
 export type { CustomMessageHandle } from "./custom-cards.js";
-export { FeedbackIngest, formatFeedbackNote } from "./feedback-ingest.js";
+export { formatFeedbackNote } from "./feedback-ingest.js";
 export { installMessageTypes } from "./ui-install.js";
 export type {
   ActionBarSpec,

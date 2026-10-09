@@ -1,65 +1,73 @@
 # CDP Panel Automation
 
-CDP automation is available on any panel-tree target through `PanelHandle`.
-Use top-level `panelTree` for existing panels; `workspace.panelTree` is not part
-of the runtime surface. For web browsing or website automation, open or reuse a
-dedicated browser panel. Existing workspace panels, especially chat panels, are
-application surfaces: inspect them when that app is the target, but do not use
-them as disposable web pages.
+Every panel-tree target supports CDP automation through `PanelHandle`. Use the
+top-level `panelTree` to reach existing panels; `workspace.panelTree` is not
+part of the runtime surface. For web browsing or website automation, open or
+reuse a dedicated browser panel. Existing workspace panels, especially chat
+panels, are applications: inspect them when that app is the target, but do not
+use them as disposable web pages.
 
 ```ts
 import { openPanel, openExternal } from "@workspace/runtime";
 
 const handle = await openPanel("https://example.com", { focus: true });
-let session = await handle.cdp.session();
-let page = session.page;
+const session = await handle.cdp.session();
+const page = session.page;
 
-await page.goto("https://example.com");
 await page.getByRole("button", { name: "Sign in" }).click();
 await page.locator("input[name=query]").fill("Vibestudio");
 await page.locator(".search-button").click();
-await handle.click(".search-button"); // same target, convenience wrapper
+await handle.click(".search-button"); // same session, convenience wrapper
 
-// Prefer the top-level handle lifecycle methods for workspace panels because
-// they return the resulting PanelObservation.
-await handle.cdp.navigate("https://other.com");
-await handle.cdp.goBack();
-await handle.cdp.reload();
+// Lifecycle methods return the resulting PanelObservation. The same
+// session.page keeps working afterwards; it binds the new generation.
+await handle.navigate("https://other.com");
+await handle.reload();
 
 await openExternal("https://docs.example.com");
 await session.close();
 ```
 
-Single-element locator actions and reads require one match. Multiple matches
-fail immediately with `cdp_locator_ambiguous`, the match count, and bounded
-accessible names; they never select the first control or wait for ambiguity to
-expire. Inspect the controls and narrow by an exact accessible name or a
-containing region before acting. Collection operations such as `count()`,
-`all()` and `evaluateAll()` keep their collection semantics. A select's
-associated label excludes its option text.
+This file is the complete CDP reference. Eval-specific notes (scope, headless
+roots, inline UI controllers, viewing screenshots) live in
+[sandbox/BROWSER_AUTOMATION.md](../sandbox/BROWSER_AUTOMATION.md).
 
-`first()` and `nth()` select by document order, including hidden matches. A text
-query can match a hidden select option before a visible heading. Before waiting
-on a narrowed locator, use `count()` and `inspect()` to confirm its role, name
-and visibility, then select the observed control or heading by role and scope.
-A heading's accessible name can include a child count; use its observed name.
+`locator.inspect()` inspects an element; `handle.observe()` inspects the panel
+lifecycle. There is no `page.inspect` or `handle.browser.inspect`. Before the
+first interaction, find the real roles and computed accessible names with
+`getByRole(role).all()` and `locator.inspect()`; descendant text and badges are
+part of accessible names, so do not guess them from visual labels or source.
 
-Drive multi-step flows from the observed view. Open a dialog or editor before
-addressing its fields, and establish the resulting view before issuing dependent
-actions. On `cdp_locator_state_mismatch`, inspect the captured snapshot and match
-evidence, then perform the missing transition or choose a locator for the actual
-view. Repeating the same action or increasing its timeout cannot supply a missing
-UI transition.
+Single-element locator actions and reads require exactly one match. With
+several matches they fail immediately with `cdp_locator_ambiguous`, reporting
+the match count and a bounded list of accessible names. They never pick the
+first control or wait for the ambiguity to resolve. Inspect the controls, then
+narrow by exact accessible name or by a containing region. Collection
+operations such as `count()`, `all()` and `evaluateAll()` still operate on all
+matches. A select's associated label excludes its option text.
 
-For ordinary eval calls, omit `authority.requests` and let the run adapt to the
-authority already admitted for the agent. If the workflow deliberately uses an
-exhaustive per-run allowlist, `handle.cdp.page()` requires `panel.inspect` for
-the panel selected by the handle (the capability is `panel.inspect`, not
-`cdp.page`):
+`first()` and `nth()` select by document order, including hidden matches, so a
+text query can match a hidden select option before a visible heading. Before
+waiting on a narrowed locator, use `count()` and `inspect()` to confirm its
+role, name and visibility, then select the observed control or heading by role
+and scope. A heading's accessible name can include a child count; use the name
+you observed.
+
+Drive multi-step flows from the current view. Open a dialog or editor before
+addressing its fields, and confirm the resulting view before issuing dependent
+actions. On `cdp_locator_state_mismatch`, read the captured snapshot and match
+evidence, then either perform the missing transition or choose a locator for
+the view that is actually shown. Repeating the action or raising its timeout
+will not make a missing UI transition happen.
+
+For normal eval calls, omit `authority.requests`; the run uses the authority
+already admitted for the agent. If the workflow deliberately passes an
+exhaustive per-run allowlist, `handle.cdp.session()` requires `panel.inspect` for
+the handle's panel (the capability is `panel.inspect`):
 
 ```ts
 eval({
-  code: `const page = await scope.panel.cdp.page(); return await page.title();`,
+  code: `const session = await scope.panel.cdp.session(); return await session.page.title();`,
   authority: {
     effects: "read-write",
     requests: [
@@ -72,104 +80,119 @@ eval({
 });
 ```
 
-`timeoutMs` is a top-level eval option alongside `authority`; it is never a
-field inside the authority object. Eval has no default wall-clock deadline; do
-not add one to ordinary panel creation, readiness, or CDP work. Use it only when
-the task itself has a real deadline or is deliberately probing potentially
-non-settling behavior. A supplied `requests` array is exhaustive, so do not
-guess capability names. Omit it unless intentional attenuation is part of the
-task.
+`timeoutMs` is a top-level eval option next to `authority`, never a field
+inside it. Eval has no default wall-clock deadline. Do not add one to panel
+creation, readiness, or CDP work; use it only when the task has a real deadline
+or deliberately probes behavior that may never settle. A supplied `requests`
+array is exhaustive, so do not guess capability names. Omit it unless the task
+calls for attenuation.
 
-`handle.cdp.session()` returns a generation-fenced lease around the canonical
-Playwright-style page driven by our workerd-native CDP client
-(`@workspace/cdp-client`). The session records the immutable `attemptId`,
-`runtimeEntityId`, and `buildKey` that own the page. Use it for multi-step
-automation or any workflow that may rebuild or navigate the panel.
+`handle.cdp.session()` returns the stable generation-fenced session and page,
+driven by our workerd-native CDP client (`@workspace/cdp-client`). It records
+the immutable `attemptId`, `runtimeEntityId`, and `buildKey` of its current
+binding. Keep one session across a workflow; after lifecycle changes its stable
+page rebinds at the next awaited operation. Do not import or install any
+`playwright*` package, and do not import `@workspace/cdp-client` directly for
+normal page work.
 
-`handle.cdp.page()` returns the same canonical Playwright-style page without a
-generation lease. It is appropriate for a one-off read or action when no panel
-lifecycle operation can race the call. These are two ownership levels over one
-browser-automation surface, not separate clients or compatibility tiers. Do
-not import or install any `playwright*` package, and do not import
-`@workspace/cdp-client` directly for ordinary page work.
+`handle.cdp` does not proxy page methods. `handle.cdp.evaluate()` does not
+exist: acquire a session and call `session.page.evaluate(...)`. Page evaluation
+returns the decoded callback value directly; do not append `.result?.value` as
+you would with raw CDP.
 
-`handle.cdp` does not proxy page methods. In particular,
-`handle.cdp.evaluate()` does not exist: acquire a session and call
-`session.page.evaluate(...)`. Page evaluation returns the decoded callback
-value directly, so do not append `.result?.value` as if using raw CDP.
+The page implements the documented methods, not the entire Playwright API.
 
-A `data:` URL follows normal URL syntax. Encode the complete HTML with
-`encodeURIComponent` before putting it after `data:text/html,`; an unescaped
-`#` begins the URL fragment and truncates the document payload, even inside an
-inline script's selector string. For example:
+## Author a disposable page
+
+For a small test document, open a browser panel at `about:blank` and pass the
+HTML to `page.setContent(html)`. It replaces the main frame's document without
+navigating, so no URL encoding is involved, and resolves once the browser has
+committed the document. It works on browser panels only: a workspace panel's
+document is its application, so `setContent()` rejects there with
+`cdp_workspace_navigation_forbidden`. Edit the source and use the panel
+lifecycle instead.
+
+In eval, `openPanel(source, { lifetime: "invocation" })` archives the panel and
+its subtree when the cell finishes, including on failure or cancellation. Use
+`lifetime: "session"` to keep it across cells until the eval session retires.
+Ownership begins when the slot commits, so boot failures are covered too.
+Cleanup is joined and its failures reach the caller. For a narrower block, use
+`await using`:
 
 ```ts
-const html = `<button id="go">Go</button><p id="status">Ready</p>
+await using handle = await openPanel("about:blank"); // archived on block exit
+const session = await handle.cdp.session();
+try {
+  const page = session.page;
+  await page.setContent(`<button id="go">Go</button><p id="status">Ready</p>
 <script>document.querySelector("#go").onclick = () => {
   document.querySelector("#status").textContent = "Done";
-};</script>`;
-const handle = await openPanel(`data:text/html,${encodeURIComponent(html)}`);
+};</script>`);
+  await page.getByRole("button", { name: "Go", exact: true }).click({
+    expect: {
+      locator: page.getByText("Done", { exact: true }),
+      state: "visible",
+    },
+  });
+} finally {
+  await session.close();
+}
 ```
 
-The page is a native CDP client with the documented methods, rather than the
-entire Playwright API. In particular, it has no `setContent()` method. For a
-small disposable browser fixture, open a browser panel at `about:blank` and
-create the owned document with `page.evaluate()`; acquire its page through the
-normal panel session and close that session in `finally`. Use actual source
-edits and the panel lifecycle for workspace app documents.
+Navigation is for browser panels. On a workspace app panel, `page.goto()`,
+`page.reload()`, `page.goBack()`, and `page.goForward()` reject rather than
+bypass the panel lifecycle. Use `await handle.reload()` to reload the current
+renderer with its existing build and storage, or `await handle.rebuild()` after
+source changes. Both return a `PanelObservation`; `handle` itself stays valid.
 
-Navigation belongs to browser panels. On a workspace app panel, `page.goto()`,
-`page.reload()`, `page.goBack()`, and `page.goForward()` reject instead of
-bypassing the panel lifecycle. Use
-`await handle.reload()` to reload the current renderer with its existing build and storage, or
-`await handle.rebuild()` after source changes; both return a
-`PanelObservation`, while the original `handle` remains the handle.
-
-For bulk navigation or imported browser tabs that should remain unloaded until
-the user visits them, use `createPanelSlot(url)` instead. It commits the durable
-browser slot and returns without focusing or waiting for the document. Such a
-slot observes as `pending` and has no CDP generation. When materialization is
-needed for automation, acquire `await handle.cdp.session()`. Session acquisition
-expresses active inspection demand, materializes without changing desktop focus,
-waits for application readiness, and then fences the connection to that exact
-generation. Raw CDP can mutate the page, so session acquisition belongs in a
-read-write eval. A read-only eval can use bounded read helpers such as
+For bulk navigation, or imported browser tabs that should stay unloaded until
+the user visits them, use `createPanelSlot(url)`. It commits the browser slot
+and returns without focusing or waiting for the document. The slot observes as
+`pending` and has no CDP generation. To load it for automation, call
+`await handle.cdp.session()`: this loads the panel without changing desktop
+focus, waits for application readiness, and fences the connection to that
+generation. Raw CDP can mutate the page, so acquiring a session requires a
+read-write eval. A read-only eval can use read helpers such as
 `handle.cdp.screenshot()` and `handle.cdp.consoleHistory()` instead.
 
 ## Ownership and lifetime contract
 
-`PanelHandle` owns the target; `CdpPage` owns one automation connection to that
-target. The boundary is exact:
+`PanelHandle` owns the target; its one stable session owns the automation
+connection to it.
 
-- `await handle.cdp.session()` creates one authenticated CDP connection fenced
-  to the handle's current immutable panel generation. `session.page` owns the
-  automation connection and `session.generation` records its provenance.
-  Concurrent or repeated calls on the same handle reuse that active session
-  until it is closed or the generation changes.
-- `await handle.cdp.page()` creates the same connection without a generation
-  lease for one-off work.
-- `await page.close()` disconnects only that automation client. It does not
-  close, unload, navigate, or otherwise mutate the panel.
-- Eval is a notebook kernel, not an invocation sandbox. A page stored in
-  `scope` remains the same live object across cells while the kernel activation
-  remains resident; no idle request pins that activation. Call `page.close()`
-  explicitly when finished.
-- Durable scope persistence is a recovery snapshot, not the live heap. A page
-  or other class instance cannot be reconstructed after kernel restart; retain
-  stable identity alongside it and reacquire only after `[kernel] Restarted`
-  reports that exact live value as lost.
-- `await handle.archive()` removes an owned panel subtree and therefore invalidates page
-  clients connected to that target.
+- `await handle.cdp.session()` returns the panel's session, binding it to the
+  current immutable panel generation. Every call returns the same object.
+  `session.page` is stable: each awaited operation runs on the bound
+  generation, and `session.generation` / `session.receipt` record which one.
+- `handle.navigate()`, `handle.reload()`, and `handle.rebuild()` mark the
+  session stale. Its next awaited operation re-observes the panel and binds the
+  replacement, recording a `replaced` receipt. An operation already in flight
+  when the generation changes rejects with `panel_cdp_generation_changed`
+  (`errorData.previousGeneration` / `currentGeneration`); nothing is replayed.
+- Listeners registered with `page.on()`, `page.consoleEvents()`, and locators
+  created before the change belong to the old generation and do not carry
+  across. A stale locator rejects with `panel_cdp_generation_changed`;
+  re-register listeners and recreate locators after a `replaced` receipt.
+  Synchronous reads (`url()`, `consoleEvents()`, `on()`) need a bound page:
+  after a change, `await handle.cdp.session()` (or any awaited page operation)
+  first.
+- `await session.close()` disconnects only the automation client. It does not
+  close, unload, navigate, or otherwise change the panel; the next operation
+  connects again.
+- Eval is a notebook kernel. A page stored in `scope` stays the same live object
+  across cells while the kernel activation is resident; idle time does not pin
+  the activation. Call `session.close()` explicitly when finished.
+- Durable scope persistence is a recovery snapshot, not the live heap. The
+  panel's stable `session` is persisted by identity and rehydrated if its panel
+  still exists; use `session.page` after recovery to bind the page. Arbitrary
+  class instances still need a stable identity and explicit reacquisition.
+- `await handle.archive()` removes an owned panel subtree, which invalidates
+  page clients connected to that target. `await using panel = await
+openPanel(url)` archives it when the enclosing block exits.
 - A handle obtained from `panelTree` is non-owned unless the current workflow
-  created it. Disconnecting your `page` is safe; closing the handle is not.
-- Browser `page.goto()` navigation keeps the same CDP target and page
-  connection. Workspace-panel `handle.navigate()` and `handle.rebuild()`
-  replace the runtime incarnation. After either operation, call
-  `const refreshed = await session.refresh()` and continue with
-  `session = refreshed.session; page = session.page`. A `replaced` result
-  includes the prior generation; `reconnected` means the connection died while
-  the generation remained current. Refresh never replays the interrupted
-  browser action.
+  created it. Closing your session is safe; closing the handle is not.
+- Browser `page.goto()` and `page.setContent()` keep the same CDP target and
+  connection.
 
 ```ts
 const session = await handle.cdp.session();
@@ -182,104 +205,150 @@ try {
 }
 ```
 
-Use bounded `panelTree.roots`/`panelTree.children`/`panelTree.search` or
-addressed `panelTree.get` for existing panels. Use `rootOwners()` and
-`rootsForOwner(ownerUserId)` when explicitly inspecting another ownership
-band. Existing handles
-are non-owned: do not call `handle.navigate`, `handle.reload`, or
-`handle.archive` on them unless requested. Do not call `handle.cdp.navigate(url)`
-or `page.goto(url)` on the current chat panel, a parent chat panel, or another
-workspace panel unless the requested task is to replace that exact panel. Open a
-browser panel for arbitrary URLs, login flows, scraping, and browser navigation.
+Reuse one handle and its session per multi-step workflow. Repeated
+`openPanel()` calls without the same `operationId` create separate panels.
+After a possible replacement, inspect `session.receipt` when generation status
+matters.
+
+For controlled React form controls, use the same path a person would. Focus the
+control and use locator keyboard actions such as
+`await page.getByRole("slider").press("ArrowRight")`, then assert the visible
+result. Assigning `.value` and dispatching a synthetic `input` event only
+changes the DOM property; it does not show that React accepted the interaction
+or updated application state.
+
+## Existing panels
+
+Find existing panels with the bounded `panelTree.roots`, `panelTree.children`,
+and `panelTree.search` calls, or address one with `panelTree.get`, instead of
+opening duplicates. Use `rootOwners()` and `rootsForOwner(ownerUserId)` only
+when deliberately inspecting another owner's panels.
 
 ```ts
-// Later, when an owned temporary panel is no longer needed:
-await scope.page?.close();
-await scope.browser?.archive();
-delete scope.browser;
-delete scope.page;
+import { panelTree } from "@workspace/runtime";
+
+const result = await panelTree.search({ query: "New Panel", limit: 20 });
+const target = result.hits
+  .map(({ entry }) => entry.handle)
+  .find((handle) => handle.source === "about/new");
+if (!target) throw new Error("target panel not found");
+const session = await target.cdp.session();
+console.log(await session.page.title());
+await session.close();
 ```
 
-Reuse one handle and one generation-fenced session per multi-step workflow.
-Repeated `openPanel()` calls without the same `operationId` create distinct panels, and repeated
-`handle.cdp.page()` calls create duplicate one-off CDP connections. Repeated
-`handle.cdp.session()` calls on the same handle reuse its active session. After
-a possible replacement, refresh the existing session and use the returned
-session.
+For a collection or other nested container, visit only the sibling groups you
+need with a bounded work queue (`panelTree.children(rootId, { limit: 100 })`),
+and restart the affected groups from their first page if the tree changes.
+When the root is an `about/collection` panel, read the collection conductor
+skill at `about/collection/SKILL.md` in the Personal workspace.
 
-For controlled React form controls, exercise the same user-facing path as a
-person. Focus the control and use locator keyboard actions such as
-`await page.getByRole("slider").press("ArrowRight")`, then assert the visible
-postcondition. Assigning `.value` and dispatching a synthetic `input` event
-only proves that the DOM property changed; it does not establish that React
-accepted the interaction or updated application state.
+With a known slot id, observe before acting:
+
+```ts
+const handle = panelTree.get("panel-slot-id");
+let observation = await handle.observe(); // exact attempt, host state, provenance
+if (observation.phase === "pending") {
+  observation = await handle.focus(); // materializes it; requires read-write authority
+}
+if (observation.phase !== "ready")
+  throw new Error(`Panel is ${observation.phase}`);
+```
+
+Panel ids are plain strings and survive remounts, reloads, and storage; live
+handles and pages do not. In panel or component code, persist the id (props,
+state, or a channel value) and get the handle back with
+`getPanelHandle(savedId)`, then call `handle.cdp.session()`. Eval scope keeps
+handles and sessions by identity; see
+[sandbox/EVAL.md](../sandbox/EVAL.md#serialization).
+
+Existing handles are non-owned: do not call `handle.navigate`,
+`handle.reload`, or `handle.archive` on them unless asked. Do not call
+`handle.navigate(url)` or `page.goto(url)` on the current chat panel, a parent
+chat panel, or any other workspace panel unless the task is to replace that
+panel. Open a browser panel for arbitrary URLs, login flows, scraping, and
+browser navigation.
+
+Ownership follows verified launch ancestry, not the panel's current position
+in the tree. A panel, agent, or eval can control browser panels it launched
+without a prompt for every operation, and a subtree owned by a collection can
+share one explicit orchestration context. Finding an unrelated browser panel
+in `panelTree`, or moving one under a collection, does not grant that control;
+CDP access to a panel in another context still requires the context-boundary
+approval.
+
+`openPanel()` returns once the application is boot-ready, but the slot is
+persisted before that. If `openPanel()` throws `PanelOperationError`, use
+`error.failure.provenance.panelId` to inspect or archive that slot. Calling
+`openPanel()` again creates a duplicate unless both calls pass the same
+`operationId`.
 
 ## Native JavaScript dialogs
 
 `alert`, `confirm`, `prompt`, and `beforeunload` pause browser execution.
-Prepare a `page.on("dialog", handler)` before an action that opens one. The
+Register `page.on("dialog", handler)` before the action that opens one. The
 handler receives a dialog with `type()`, `message()`, `defaultValue()`,
-`accept(promptText?)`, and `dismiss()`. Make the intended decision explicitly;
-no dialog is automatically accepted or dismissed. Remove a temporary handler
-with `page.off("dialog", handler)` when that workflow ends.
+`accept(promptText?)`, and `dismiss()`. Nothing is accepted or dismissed
+automatically; make the decision explicitly. Remove a temporary handler with
+`page.off("dialog", handler)` when the workflow ends.
 
-Without a prepared decision, blocked input or evaluation fails immediately with
-`cdp_dialog_open`, carrying the actual dialog and recovery instruction. The
-connection remains usable. Inspect `page.dialog()`, respond to that pending
-dialog, then observe what the original action did. Do not repeat the click: it
-may still be waiting for the decision. A closed or replaced dialog rejects
-responses with `cdp_dialog_closed`.
+Without a handler, blocked input or evaluation fails immediately with
+`cdp_dialog_open`, which includes the dialog and a recovery instruction. The
+connection stays usable. Inspect `page.dialog()`, respond to the pending
+dialog, then check what the original action did. Do not repeat the click; it
+may still be waiting on the dialog. Responding to a dialog that was already
+closed or replaced fails with `cdp_dialog_closed`.
 
 ## Where it runs
 
-The CDP client is workerd-native: it works in panels **and** in
-worker/DO/server-side-eval contexts. It runs over a WebSocket to the panel's CDP
-endpoint, so any context that holds a panel handle can drive the page —
-including server-side `eval`. `openPanel`/`panelTree`/`getPanelHandle` are part
-of the portable runtime surface from `@workspace/runtime`, so server-side eval
-can create or acquire a panel handle directly before driving CDP automation.
+The CDP client is workerd-native and runs in panels **and** in workers, DOs, and
+server-side eval. It connects over a WebSocket to the panel's CDP endpoint, so
+any context holding a panel handle can drive the page. Because
+`openPanel`/`panelTree`/`getPanelHandle` are part of the portable runtime
+surface in `@workspace/runtime`, server-side eval can create or look up a panel
+handle directly and then automate it.
 
 ## Page surface
 
-`session.page` (or a one-off `handle.cdp.page()`) is the canonical
-Playwright-style page. Actions
-auto-wait for the element to be visible/stable/enabled before acting and
-journal a `cdp-interaction-outcome.v1` receipt after the browser event is
-delivered. `click()`, `dblclick()`, locator `press()`, and checkbox actions also return that
-receipt and accept an `expect` locator postcondition. Other actions such as
-`fill()` return no receipt (`selectOption()` returns selected values); inspect
-their native journal and await a separate locator assertion when needed.
-Delivery is not proof that application state changed. With `expect`, the
-returned receipt reports the observed semantic condition. Do not add sleeps between `fill()`, `press()`,
-`click()`, or other sequential actions.
+`session.page` is a Playwright-style page.
+Actions auto-wait for the element to be visible, stable, and enabled, and
+journal a `cdp-interaction-outcome.v1` receipt once the browser event is
+delivered. `click()`, `dblclick()`, locator `press()`, and the checkbox actions
+also return that receipt and accept an `expect` locator postcondition. Other
+actions such as `fill()` return no receipt (`selectOption()` returns the
+selected values); check their journal entry, and await a separate locator
+assertion when needed. Delivery does not prove that application state changed;
+with `expect`, the receipt reports the observed condition. Do not add sleeps
+between `fill()`, `press()`, `click()`, or other sequential actions.
 
-In eval, native panel operations are also recorded automatically in
-`details.operationJournal`; returning a summary does not discard those receipts.
-An interaction journal entry retains the action, delivery, target selector and
-identity (`found`, `tagName`, `id`, `role`, `accessibleName`), and `effect`.
-It deliberately omits DOM ancestors, attributes, geometry, and repeated text.
-Use the returned click receipt or `locator.inspect()` when you need that rich
-inspection. `effect.status: "not-asserted"` proves dispatch only; use the
-`expect` postcondition below for `"observed"` evidence. A separate `waitFor()`
-checks the UI but does not retroactively change the click receipt.
+In eval, native panel operations are recorded automatically in
+`details.operationJournal`; returning a summary does not discard them. An
+interaction entry keeps the action, delivery, target selector and identity
+(`found`, `tagName`, `id`, `role`, `accessibleName`), and `effect`. It omits DOM
+ancestors, attributes, geometry, and repeated text; use the returned click
+receipt or `locator.inspect()` when you need those. `effect.status:
+"not-asserted"` proves dispatch only; use the `expect` postcondition below to
+get `"observed"` evidence. A later `waitFor()` checks the UI but does not change
+the click receipt.
 
-The journal is bounded. `truncated: true` means it is incomplete, not that the
-application action failed. Retain important outcomes in `scope`, return compact
-receipts, and reobserve current state; do not repeat a mutation just to recreate
-missing evidence. A complete workflow must not be inferred from a partial journal.
+The journal is bounded. `truncated: true` means entries are missing, not that
+the action failed. Keep important outcomes in `scope`, return compact receipts,
+and re-observe current state. Do not repeat a mutation to recreate missing
+evidence, and do not conclude that a workflow completed from a partial journal.
 
-Generation-fenced session acquisition and `session.refresh()` also journal a
-`cdp.session` operation. Its receipt has `status`, the selected `generation`,
-and (for a reconnect/replacement) `previousGeneration`. These completed lifecycle
-facts survive a later exception in the same eval. After refresh, keep
-`scope.session = refreshed.session`; a replaced runtime is a new page and does
-not promise preservation of renderer-local state. Reobserve the actual UI before
-choosing a postcondition. A failed assertion does not mean its action was not
-delivered: inspect the resulting state before deciding on another action.
-The dispatched action remains in the journal even if its postcondition throws,
-with `effect.status: "not-observed"`, the expected locator, and its requested
-state. `not-asserted` means no postcondition was requested; neither status
-claims that the application effect was observed.
+Session acquisition and page rebinding also journal a `cdp.session`
+operation. Its receipt has `status`, the selected `generation`, and, after a
+reconnect or replacement, `previousGeneration`. These entries survive a later
+exception in the same eval. Read `scope.session.receipt` after a page operation.
+A replaced runtime is a new page and renderer-local state
+may be gone; re-observe the UI before choosing a postcondition.
+
+A failed assertion does not mean the action was not delivered; inspect the
+resulting state before acting again. A dispatched action stays in the journal
+even if its postcondition throws, with `effect.status: "not-observed"`, the
+expected locator, and the requested state. `not-asserted` means no
+postcondition was requested. Neither status claims that the application effect
+was observed.
 
 ```ts
 const session = await handle.cdp.session();
@@ -365,128 +434,135 @@ await page.locator(".box").boundingBox();
 await page.locator(".box").inspect();
 ```
 
-`check`, `uncheck`, and `setChecked` dispatch at most one click and wait within
-the action timeout for the retained control to reach the requested state. This
-supports controlled components whose event handler persists asynchronously;
-the action never replays the click while waiting. They return the same native
-interaction receipt as `click` and `press`, with the requested checked/unchecked
-state observed by default. `delivery: "not-needed"` means the control already
-had that state and no pointer event was sent. An optional `expect` observes a
-further application postcondition; it is not silently ignored. Locator
-`waitFor` and interaction postconditions also accept `checked` and `unchecked`.
+`check`, `uncheck`, and `setChecked` dispatch at most one click, then wait
+(within the action timeout) for the control to reach the requested state. This
+supports controlled components whose handlers persist asynchronously; the click
+is never replayed while waiting. They return the same interaction receipt as
+`click` and `press`, and by default the receipt observes the requested
+checked/unchecked state. `delivery: "not-needed"` means the control already had
+that state and no pointer event was sent. An optional `expect` observes an
+additional application postcondition. Locator `waitFor` and interaction
+postconditions also accept `checked` and `unchecked`.
 
-A successful action establishes native dispatch, not completion of asynchronous
-application work. Await the specific rendered effect with `click({ expect })`
-or the result locator's `waitFor` before reading or starting dependent work.
-For unverified mutations, include the application's rendered failure in the
-terminal condition and inspect whether success or failure occurred. A success-only
-wait remains pending after a displayed failure. `waitForFunction` can observe a
-self-contained success-or-error predicate; propagate the original displayed
-failure instead of continuing with dependent actions. See the
+A successful action proves dispatch, not that the application finished its
+asynchronous work. Before reading results or starting dependent work, await the
+specific rendered effect with `click({ expect })` or the result locator's
+`waitFor`. For mutations you have not yet verified, make the wait condition
+cover the application's rendered failure too, and check which one occurred: a
+success-only wait stays pending after a displayed failure. `waitForFunction` can
+observe a self-contained success-or-error predicate. When the app displays a
+failure, report that failure instead of continuing with dependent actions. See
+the
 [rendered-contract debug loop](PANEL_DEBUG_LOOP.md#6-exercise-the-rendered-contract).
-Panel reload readiness establishes the runtime boot handshake; application
-fetches may still be loading. Observe the application's completed state before
-judging saved data. Immediate reads during loading are intermediate evidence,
-not a persistence verdict. Diagnose a failed observation through its structured
-error and the panel's lifecycle/console packet.
 
-Choose roles from the rendered element's semantics, not its label. A plain
-`<input aria-label="Search tasks">` has the `textbox` role; `searchbox` requires
-`type="search"` or an explicit matching role. Use `getByLabel("Search tasks", {
-exact: true })` when the label is the known contract, or inspect the actual
-input type before choosing a role. A label containing "Search" does not change
-an input's role.
+Panel reload readiness covers the runtime boot handshake only; application
+fetches may still be loading. Wait for the application's loaded state before
+judging saved data. Reads taken while loading are intermediate, not a
+persistence verdict. Diagnose a failed observation through its structured error
+and the panel's lifecycle/console packet.
 
-Named role locators identify controls: `getByRole('button', { name: 'Active' })`
-matches the whole normalized, case-sensitive accessible name, not `Mark active…`.
-This intentionally differs from Playwright's fuzzy default. Use a regex or
-explicit `exact: false` for a partial-name search. Duplicate exact names still
-produce an ambiguity error; scope to their container instead of guessing.
-`getByLabel("Count")` can match an output labelled "Count" and controls labelled
-"Increase count" or "Reset count". Use `getByLabel("Count", { exact: true })`
-for the exact output, and a button role/name for each control. A postcondition
-must describe the actual action outcome: visibility of a count output that
-already exists does not establish a changed count. Observe the expected new
-value, or await the application's success or error state.
+Choose roles from the element's semantics, not its label. A plain
+`<input aria-label="Search tasks">` has the `textbox` role; `searchbox`
+requires `type="search"` or an explicit matching role. A label containing
+"Search" does not change the role. Use
+`getByLabel("Search tasks", { exact: true })` when the label is the known
+contract, or inspect the input type before choosing a role.
 
-Other string locators use normalized, case-insensitive substring matching by
-default; `{ exact: true }` selects a case-sensitive whole-string match. The `isVisible`,
-`isChecked`, `isEnabled`, `isDisabled`, and `isEditable` methods are immediate
-snapshots and return `false` when there is no current match. Use `waitFor` when
+Named role locators match the whole normalized, case-sensitive accessible name:
+`getByRole('button', { name: 'Active' })` does not match `Mark active…`. This
+differs from Playwright's fuzzy default. Use a regex or `exact: false` for a
+partial-name search. Duplicate exact names still raise an ambiguity error;
+scope to their container instead of guessing. `getByLabel("Count")` can match
+an output labelled "Count" and controls labelled "Increase count" or "Reset
+count"; use `getByLabel("Count", { exact: true })` for the output and a button
+role/name for each control. A postcondition must describe the action's actual
+outcome: the visibility of a count output that already exists does not show
+that the count changed. Wait for the expected new value, or for the
+application's success or error state.
+
+Other string locators default to normalized, case-insensitive substring
+matching; `{ exact: true }` selects a case-sensitive whole-string match. Text
+locators also accept a `RegExp`, which keeps its source and flags in the
+browser. `fill()`, `type()` (which appends), `clear()`, and the checked-state
+actions set values through the element's native property setter before
+dispatching browser events, so controlled React inputs see a user edit.
+`isVisible`, `isChecked`, `isEnabled`, `isDisabled`, and `isEditable` are
+immediate snapshots and return `false` when nothing matches. Use `waitFor` when
 absence should be retried.
 
 `getByText` matches an element's text, not an arbitrary text-node fragment or
-its accessible name. Visible decorative descendants still contribute even
-when marked `aria-hidden`: an empty-state element containing `✓` and `No done
+its accessible name. Visible decorative descendants count even when marked
+`aria-hidden`: an empty-state element containing `✓` and `No done
 tasks right now.` does not exactly equal `No done tasks right now.`. Read the
-failure snapshot or inspect the rendered element before choosing a deliberate
-substring assertion or a separately identifiable message element. Do not infer
-that the preceding action failed merely because its text assertion missed.
+failure snapshot or inspect the element before choosing a deliberate substring
+assertion or a separately identifiable message element. A missed text assertion
+alone does not mean the preceding action failed.
 
 Accessible names are computed from the live DOM. Descendant text such as a
-numeric badge is part of a button's name, so a visually grouped `Done` + `3`
-button may be named `"Done 3"`. Discover the names first, then use the exact
-string or a deliberate regular expression such as `/^Done\b/`. When a named
-role locator misses, `CdpError` reports the available names for that role.
-If the accessible name exists under another role, the error reports those
-role/name pairs as well; use the rendered role rather than guessing from text.
+numeric badge is part of a button's name, so a `Done` button with a `3` badge
+may be named `"Done 3"`. Discover the names first, then use the exact string or
+a deliberate regular expression such as `/^Done\b/`. When a named role locator
+misses, `CdpError` lists the available names for that role, plus any matching
+names found under other roles. Use the rendered role rather than guessing from
+the text.
 
-Automation failures are structured as `CdpError.errorData` with `code`,
-`operation`, `failureKind`, and `recovery`. An exhausted auto-wait is
-`cdp_locator_state_mismatch` and includes its locator, requested state, and
-timeout. A failed `click({ expect })` is
-`cdp_interaction_outcome_not_observed` and includes both the dispatched and
-expected locators. A crashed, detached, or closed target directs the caller to
-inspect panel diagnostics and acquire a fresh page from the stable panel handle;
-the old page connection is no longer reusable.
+Automation failures carry `CdpError.errorData` with `code`, `operation`,
+`failureKind`, and `recovery`. An exhausted auto-wait is
+`cdp_locator_state_mismatch` and includes the locator, requested state, and
+timeout. A failed `click({ expect })` is `cdp_interaction_outcome_not_observed`
+and includes both the dispatched and expected locators. For a crashed,
+detached, or closed target, inspect panel diagnostics; the session's next
+awaited operation binds the current generation. Repeat only safe reads, never
+the interrupted action.
 
-Failed locator state waits, ambiguous targets, and exhausted pointer actionability
-also carry `errorData.evidence`. A single read-only observation is collected
-after failure, without a separate transport deadline; successful operations do
-not collect it. `status: "captured"` includes capture time, page URL, match count,
-up to eight matches with their actual text/name, visibility, enabled and checked
-states (`checked: null` means not checkable), and a bounded rendered-text
-snapshot of the locator's containing scope. When the scope is absent or the
-locator is unscoped, the snapshot covers the page. Each bounded field and match
-list reports truncation explicitly. Generation-fenced sessions include their
-own immutable panel/attempt/runtime/build identity; this is not evidence that
-the session is still current. Compare it with the panel's current observation
-when diagnosing a stale generation.
+Failed locator state waits, ambiguous targets, and exhausted pointer
+actionability also carry `errorData.evidence`. It is one read-only observation
+collected after the failure, with no separate transport deadline; successful
+operations do not collect it. `status: "captured"` includes capture time, page
+URL, match count, up to eight matches with their text/name, visibility, enabled
+and checked states (`checked: null` means not checkable), and a bounded
+rendered-text snapshot of the locator's containing scope. If the scope is
+missing or the locator is unscoped, the snapshot covers the page. Every bounded
+field and match list reports its truncation. Evidence from a session includes
+its panel/attempt/runtime/build identity. That identity is not proof the session
+is still current; compare it with the panel's current observation when
+diagnosing a stale generation.
 
-The eval result exposes this expected-versus-observed packet in model-facing
-text as well as tool details. A truncated text preview is explicitly marked;
-the full packet remains in `details.errorData`. `status: "unavailable"` records
-why observation failed without replacing the original error. Evidence is a
-post-failure observation, not a claim that the DOM stayed unchanged during the
-wait or collection. A failed interaction postcondition carries evidence for
-the expected locator and retains its completed action receipt in the journal.
-Read the actual state before repairing an assertion: after deleting the last
-active task, `"0 tasks left"` is a successful application result even if an
-assertion incorrectly expected `"1 task left"`. No evidence collection retries
-input, chooses a replacement locator, or relaxes the assertion.
+The eval result shows this expected-versus-observed packet in model-facing text
+as well as in tool details. A truncated text preview is marked as such; the full
+packet stays in `details.errorData`. `status: "unavailable"` records why
+observation failed and keeps the original error. Evidence is observed after the
+failure; it does not claim the DOM was unchanged during the wait or the
+collection. A failed interaction postcondition carries evidence for the expected
+locator and keeps its completed action receipt in the journal. Read the actual
+state before changing an assertion: after deleting the last active task,
+`"0 tasks left"` is a correct result even if the assertion wrongly expected
+`"1 task left"`. Evidence collection never retries input, picks another
+locator, or relaxes the assertion.
 
-Controls repeated for collection items must have item-specific accessible
-names. Treat repeated `"Mark task as completed"` buttons as an accessibility
-defect and repair the app to expose names such as
-`"Complete Write release notes"` before testing the interaction. Do not guess
-item identity with `.first()`, `.last()`, or `.nth()`. If an external page
-cannot be repaired, call `all()` and `inspect()` first; each inspection includes
-nearest-ancestor context so an ordinal can be chosen from rendered evidence.
+Controls repeated per collection item need item-specific accessible names.
+Repeated `"Mark task as completed"` buttons are an accessibility defect: fix the
+app to expose names such as `"Complete Write release notes"` before testing the
+interaction. Do not guess the item with `.first()`, `.last()`, or `.nth()`. If an
+external page cannot be fixed, call `all()` and `inspect()` first; each
+inspection includes nearest-ancestor context, so you can pick an ordinal from
+rendered evidence.
 
-`locator()` accepts CSS plus the standard `text=` selector form. It does not
-forward `text=` to `querySelectorAll`: quoted JSON strings mean exact text and
-unquoted values mean substring text, both compiled into the same canonical
-descriptor used by `getByText`. Prefer the explicit `getBy*` form in authored
-code; the selector form is useful when translating an existing Playwright
-interaction.
+`locator()` accepts CSS plus the standard `text=` selector form. `text=` is not
+passed to `querySelectorAll`: a quoted JSON string means exact text and an
+unquoted value means substring text, both compiled to the same descriptor
+`getByText` uses. Prefer the explicit `getBy*` form in new code; the selector
+form helps when translating existing Playwright code.
 
-Page-level methods (navigation methods are browser-panel-only):
+Page-level methods (navigation methods and `setContent` work only on browser
+panels):
 
 ```ts
-await page.goto("https://example.com");
+await page.goto("https://example.com"); // waits for load
 await page.reload();
 await page.goBack();
 await page.goForward();
+await page.setContent("<h1>Fixture</h1>"); // replace the document in place
 await page.title();
 page.url(); // string, synchronous like Playwright
 await page.content(); // full HTML
@@ -505,20 +581,20 @@ await page.locator("button.submit").click();
 await page.locator('input[name="email"]').fill("user@example.com");
 ```
 
-Actions and waits have no default deadline. Use `timeout` only for a caller
-requirement; `setDefaultTimeout(ms)` selects one for subsequent readiness waits
-and zero disables it. Target destruction, crash and transport loss propagate to
-pending waits. Function checks run as individual observations rather than a
-renderer polling loop. Navigation completion requires lifecycle evidence;
-elapsed time never implies success. `networkidle` is unsupported: observe the
-application's actual readiness condition instead.
+Actions and waits have no default deadline. Pass `timeout` only when the caller
+has a real requirement. `setDefaultTimeout(ms)` sets one for later readiness
+waits; zero disables it. Target destruction, crashes, and transport loss reject
+pending waits. Function checks run as individual observations, not a renderer
+polling loop. Navigation completes only on lifecycle evidence, never because
+time passed. `networkidle` is unsupported; wait for the application's actual
+readiness condition instead.
 
-`page.screenshot()` returns `Uint8Array` and has no filesystem `path` option.
-When a panel handle is available, prefer the one-call host capture and return
-its result from eval, directly or nested alongside verification data. Eval
-attaches each distinct image as native image content, keeps compact attached
-receipts in the returned structure, and does not count image bytes against the
-JSON preview budget. Capture remains read-only:
+`page.screenshot()` returns a `Uint8Array` and has no filesystem `path` option.
+When you have a panel handle, prefer the one-call host capture and return its
+result from eval, alone or nested with verification data. Eval attaches each
+distinct image as native image content, keeps compact receipts in the returned
+structure, and does not count image bytes against the JSON preview budget. The
+capture is read-only:
 
 ```ts
 return await handle.cdp.screenshot({ format: "png" });
@@ -530,10 +606,10 @@ Or combine visual evidence with checks in the same result:
 return { screenshot: await handle.cdp.screenshot(), checks };
 ```
 
-For a standalone CDP page with no panel handle, persist its byte screenshot for
-visual inspection with an opaque context-local temp path, then pass the returned
-file reference directly to `read`. Creating that temp file is a write, so do not
-attenuate the eval cell to `authority.effects: "read-only"`:
+For a standalone CDP page with no panel handle, write the screenshot bytes to a
+context-local temp file and pass the returned file reference to `read`. Creating
+the temp file is a write, so do not restrict the eval cell to
+`authority.effects: "read-only"`:
 
 ```ts
 const bytes = await page.screenshot({ fullPage: true });
@@ -542,26 +618,29 @@ await fs.writeFile(path, bytes);
 return { screenshot: `file:${path}`, byteLength: bytes.length };
 ```
 
-`read({ target: screenshot, kind: "file" })` magic-sniffs extensionless runtime
-artifacts and returns image content to the model. Do not decode PNG/JPEG bytes
-as text or import a package merely to make the image visible. For durable
-content-addressed storage rather than immediate visual inspection, use
-`blobstore.putBytes(bytes)`. Unsupported screenshot options are rejected rather
-than ignored.
+`read({ target: screenshot, kind: "file" })` sniffs the format of extensionless
+runtime files and returns image content to the model. Do not decode PNG/JPEG
+bytes as text or import a package just to view the image. For content-addressed
+storage rather than immediate viewing, use `blobstore.putBytes(bytes)`.
+Unsupported screenshot options are rejected, not ignored.
 
-Evaluation callbacks run in the browser realm. Functions passed
-to `page.evaluate`, `page.waitForFunction`, `locator.evaluate`, and
-`locator.evaluateAll` must be self-contained apart from their explicit
-argument. Exceptions preserve the
-browser's actual exception description and stack; locator failures also include
-the Playwright-style locator string. A generic `Uncaught` without the underlying
-exception is a platform defect, not a prompt for the agent to guess.
-Dialog handlers run in the calling runtime and may retain its variables; they
-are not browser evaluation callbacks.
+Evaluation callbacks run in the browser. Functions passed to `page.evaluate`,
+`page.waitForFunction`, `locator.evaluate`, and `locator.evaluateAll` must be
+self-contained apart from their explicit argument, as in
+`page.evaluate((sel) => document.querySelector(sel)?.textContent, ".title")`.
+A promise that never settles fails with `cdp_evaluation_timeout` only when you
+pass an evaluation `timeout`. Use locator actions, not `element.click()`,
+`form.submit()`, or `form.requestSubmit()` inside `evaluate()`: those skip
+actionability checks, real input, and postconditions. Exceptions keep the
+browser's exception description and stack; locator failures also include the
+Playwright-style locator string. A bare `Uncaught` without the underlying
+exception is a platform defect; report it rather than guessing. Dialog handlers
+run in the calling runtime and may use its variables; they are not browser
+evaluation callbacks.
 
 ## Browser files, network, frames, and popups
 
-Use portable byte payloads for uploads, including hidden file inputs:
+Upload files, including through hidden file inputs, with byte payloads:
 
 ```ts
 await page.locator("input[type=file]").setInputFiles({
@@ -572,7 +651,7 @@ await page.locator("input[type=file]").setInputFiles({
 await page.locator("input[type=file]").setInputFiles([]); // clear
 ```
 
-Observe native requests and responses without intercepting application traffic:
+Observe requests and responses without intercepting application traffic:
 
 ```ts
 page.on("requestfailed", (request) =>
@@ -586,13 +665,14 @@ const response = await responsePending;
 const exported = await response.json(); // body retrieval waits for native completion
 ```
 
-`page.requests()` retains recent request diagnostics. Responses expose status,
-headers, body/text/json, redirects and native loading failures. Capture source
-exports or structured responses when available; visible card titles alone do not
-establish that descriptions, comments, checklists, attachments or history migrated.
+`page.requests()` keeps recent request diagnostics. Responses expose status,
+headers, body/text/json, redirects, and native loading failures. When checking a
+migration or export, capture the source export or structured responses; visible
+card titles alone do not show that descriptions, comments, checklists,
+attachments, or history came across.
 
-Frame locators use each frame's native execution context and input coordinates,
-including nested frames and cross-origin frames:
+Frame locators use each frame's own execution context and input coordinates,
+including nested and cross-origin frames:
 
 ```ts
 await page
@@ -603,8 +683,9 @@ await page
 const frame = page.locator("iframe").nth(1).contentFrame();
 ```
 
-Register activity waits before the triggering action. Hosted panel handles expose
-approved downloads and durable popup panel references, never arbitrary host paths:
+Register activity waits before the triggering action. Hosted panel handles
+expose approved downloads and popup panel references, never arbitrary host
+paths:
 
 ```ts
 const pendingDownload = page.waitForDownload();
@@ -616,26 +697,27 @@ const bytes = await download.body(); // use readChunk(offset, length) for large 
 const pendingPopup = page.waitForPopup();
 await page.getByRole("button", { name: "Open" }).click();
 const popup = await pendingPopup;
-const popupPage = await panelTree.get(popup.panelId).cdp.page();
+const popupSession = await panelTree.get(popup.panelId).cdp.session();
+const popupPage = popupSession.page;
 ```
 
-Downloads and popups use existing browser permissions. Permission denial, provider
-loss, cancellation, and native failures settle waiting callers. No implicit
-elapsed-time deadline supplies a successful or failed outcome. Popups are durable
-panels; archive temporary panels when finished. Raw unhosted CDP connections do
-not provide the host's download or popup lifecycle.
+Downloads and popups use the existing browser permissions. Permission denial,
+provider loss, cancellation, and native failures settle waiting callers; no
+elapsed-time deadline decides the outcome. Popups are persistent panels, so
+archive temporary ones when finished. Raw unhosted CDP connections do not get
+the host's download or popup lifecycle.
 
 ## Not supported
 
 Full request interception (`route`) is not part of this surface. Raw
 `CdpConnection.send(method, params)` and `.on(event, listener)` remain available
-for native protocol operations. Child sessions use `.session(id)` and keep their
-commands, events, dialogs and failures scoped to that native session.
+for native protocol operations. Child sessions use `.session(id)`, which scopes
+their commands, events, dialogs, and failures to that native session.
 
 ## Protocol-level work
 
-For raw CDP, open a connection to the panel's CDP endpoint and drive the
-protocol directly:
+For raw CDP, connect to the panel's CDP endpoint and drive the protocol
+directly:
 
 ```ts
 import { CdpConnection } from "@workspace/cdp-client";
@@ -647,16 +729,38 @@ await c.send("Page.navigate", { url: "https://example.com" });
 c.on("Page.loadEventFired", () => console.log("loaded"));
 ```
 
-Use `c.send(method, params)` to issue CDP commands and `c.on(event, cb)` to
-subscribe to CDP events. This is the escape hatch for anything the page surface
-does not cover (network interception, file inputs, multi-target work).
+`c.send(method, params)` issues CDP commands and `c.on(event, cb)` subscribes to
+CDP events. Use this for anything the page surface does not cover, such as
+network interception.
+
+## Performance profiling
+
+Profile a single reload or interaction on the page you are automating:
+
+```ts
+const report = await page.profile(
+  async () => {
+    await page.getByRole("button", { name: "Open settings" }).click();
+    await page.getByRole("dialog", { name: "Settings" }).waitFor();
+  },
+  { label: "open settings" },
+);
+```
+
+The bounded JSON report includes browser CPU/task/layout deltas, heap, page
+timings and long tasks, network transfer/cache/failures, and optional precise
+JavaScript coverage. Profiling ends when the callback returns, so await a UI or
+network condition instead of sleeping. Use `disableCache: true` for a separate
+cold HTTP-cache run, and `javascriptCoverage: true` only in a separate run for
+attribution because coverage adds overhead. The System workspace's
+`skills/performance/SKILL.md` covers the full workflow across layers.
 
 ## Console diagnostics
 
-Use historical console diagnostics for post-mortem panel debugging. CDP live
-console events start only after a CDP client connects; they cannot recover
-earlier errors. The host captures panel console messages from `webContents` as
-soon as the target is registered:
+Use the console history for post-mortem panel debugging. Live CDP console
+events start only after a client connects and cannot recover earlier errors.
+The host captures panel console messages from `webContents` as soon as the
+target is registered:
 
 ```ts
 const history = await handle.cdp.consoleHistory({
@@ -668,17 +772,18 @@ console.log(history.dropped); // overflow is explicit
 ```
 
 `history.entries` is the recent general log buffer. `history.errors` is a
-separate error-only buffer so high-value errors survive noisy normal logging.
-Entries include `timestamp`, `level`, `message`, `line`, `sourceId`, and `url`.
-For a single panel-debugging call, use `await handle.diagnose()`. The packet
-includes the canonical attempt/phase/failure, host-captured console and
-lifecycle history, and a provenance-bearing document when ready.
+separate error-only buffer, so errors survive noisy logging. Entries include
+`timestamp`, `level`, `message`, `line`, `sourceId`, and `url`. For a single
+debugging call, use `await handle.diagnose()`; it returns the attempt, phase,
+and failure, the host-captured console and lifecycle history, and, when ready,
+the document with its provenance. The captured history also records renderer
+lifecycle failures such as `render-process-gone`, failed main-frame loads, and
+unresponsive-renderer events.
 
-Use the server host log stream for failures outside the renderer, such as panel
-broker errors, build/reload scheduling, workerd supervision, reconnects, and
+Use the server log for failures outside the renderer, such as panel broker
+errors, build/reload scheduling, workerd supervision, reconnects, and
 startup/shutdown. Query `services.serverLog.query(...)` from eval or open
-`about/server-logs` to follow live; the full contract is in
-`../server-logs/SKILL.md`.
+`about/server-logs` to follow it live; see `../server-logs/SKILL.md`.
 
 Prefer a generation-fenced session for automation:
 
@@ -695,58 +800,111 @@ try {
 }
 ```
 
-`page.url()` is a synchronous Playwright-style accessor. Do not `await` it or
-attach `.then()` / `.catch()`; use `await page.evaluate(() => location.href)`
-only when the URL must be computed inside the page after client-side routing.
+`page.url()` is synchronous, as in Playwright. Do not `await` it or attach
+`.then()` / `.catch()`. Use `await page.evaluate(() => location.href)` only when
+the URL must be read inside the page after client-side routing.
 
-`handle.reload()` is panel lifecycle reload for the named workspace panel's
-renderer; it does not rebuild code and does not unload the panel's runtime
-lease. Raw `page.reload()` is available only for browser panel targets.
-`handle.cdp.reload()` delegates to the composed handle runtime, but prefer
-`handle.reload()` for workspace panels because it waits for readiness and
-returns the resulting observation. Reloading the panel currently executing
-eval can cancel that eval after the command is sent; run that reload from a
-stable/root context when possible.
+`handle.reload()` reloads a workspace panel's renderer. It does not rebuild
+code or unload the panel's runtime lease. Raw `page.reload()` works only on
+browser panels. `handle.reload()` waits for readiness and returns the resulting
+observation. Reloading the panel that is running the
+eval can cancel that eval once the command is sent; run such a reload from a
+stable or root context when possible.
 
-Tree relationships do not bypass approval. To drive a parent or sibling, obtain
-that target's handle and use the same `handle.cdp` namespace:
+Tree relationships do not bypass approval. To drive a parent or sibling, get
+that panel's handle and use its `handle.cdp`:
 
 ```ts
 import { panelTree } from "@workspace/runtime";
 
 const parent = panelTree.self().parent();
-if (parent) await parent.cdp.page();
+if (parent) {
+  const parentSession = await parent.cdp.session();
+  await parentSession.page.title();
+  await parentSession.close();
+}
 
 const sibling = panelTree.get("sibling-panel-id");
-await sibling.cdp.navigate("https://example.com/status");
+await sibling.navigate("https://example.com/status");
 ```
 
-Readiness-bearing operations establish a live, booted target. For a discovered
-panel, call `observe()` and require `phase === "ready"` before custom RPC, CDP,
-or `_agent` inspection. If it is `pending` and the task authorizes presenting
-it, call `focus()` under read-write authority. Use `diagnose()` when it is failed
+Readiness-bearing operations return a live, booted target. For a panel you
+discovered, call `observe()` and require `phase === "ready"` before custom RPC,
+CDP, or `_agent` inspection. If it is `pending` and the task allows showing it,
+call `focus()` under read-write authority. Use `diagnose()` when it has failed
 or stalled.
+
+## Examples
+
+Scrape after the content you need has rendered:
+
+```ts
+const browser = await openPanel("https://news.ycombinator.com");
+const session = await browser.cdp.session();
+try {
+  const page = session.page;
+  await page.locator(".titleline > a").first().waitFor();
+  const stories = await page.evaluate(() =>
+    Array.from(document.querySelectorAll(".titleline > a"), (el) => ({
+      title: el.textContent,
+      href: el.getAttribute("href"),
+    })),
+  );
+  return stories.slice(0, 5);
+} finally {
+  await session.close();
+}
+```
+
+Log in, then keep using the same page:
+
+```ts
+const page = (await browser.cdp.session()).page;
+await page.getByLabel("Email").fill("user@example.com");
+await page.getByLabel("Password").fill(password);
+await page.getByRole("button", { name: "Sign in" }).click({
+  expect: { locator: page.locator(".dashboard"), state: "visible" },
+});
+```
+
+Imported browser cookies apply to browser panels opened afterwards. Import
+them from panel code with `browserData.startSensitiveImport(...)` and
+`browserData.observeSensitiveImport(operationId, { afterVersion })`; the host
+reads and stores cookie, password, and form-fill plaintext and returns only
+aggregate counts. `browserData` is not available in server-side eval.
+
+## Tips
+
+- Get one handle and reuse its session. `openPanel`, `panelTree`, and
+  `getPanelHandle` work from server-side eval, panels, workers, and DOs.
+- Keep the stable page across lifecycle changes; check `session.receipt`, and
+  re-register listeners and locators after a `replaced` receipt.
+- Prefer auto-waiting locators. Use `page.evaluate()` for computations that
+  need DOM APIs, not to trigger interactions.
+- In SPAs, wait for application state: after `page.goto(url)`, use a locator or
+  `page.waitForFunction(...)` that only matches once the app has loaded.
+- Actions already wait for their own target, so wait only for a separate
+  prerequisite or postcondition, and never on wall-clock time.
 
 ## Methods
 
-| Method                                             | Description                                                                       |
-| -------------------------------------------------- | --------------------------------------------------------------------------------- |
-| `handle.cdp.session()`                             | Acquire or reuse one generation-fenced CDP session for a multi-step workflow      |
-| `handle.cdp.page()`                                | Connect the canonical CDP client and return the Playwright-style page             |
-| `handle.cdp.getCdpEndpoint()`                      | Get `{ wsEndpoint, token }` for raw `CdpConnection.connect`                       |
-| `handle.cdp.consoleHistory({ limit, errorLimit })` | Read host-captured historical console logs and the separate error buffer          |
-| `handle.diagnose()`                                | Read canonical observation, bounded console/lifecycle history, and ready document |
-| `handle.click(selector)`                           | Click in the target panel through CDP                                             |
-| `handle.cdp.navigate(url)`                         | Low-level handle-runtime navigation alias                                         |
-| `handle.cdp.goBack()` / `goForward()`              | Low-level handle-runtime history aliases                                          |
-| `handle.cdp.reload()`                              | Low-level reload alias; prefer `handle.reload()` for workspace panels             |
-| `handle.cdp.stop()`                                | Stop loading                                                                      |
-| `handle.archive()`                                 | Archive the panel and its subtree                                                 |
+| Method                                             | Description                                                                 |
+| -------------------------------------------------- | --------------------------------------------------------------------------- |
+| `handle.cdp.session()`                             | Bind and return the panel's stable generation-fenced session                |
+| `handle.cdp.getCdpEndpoint()`                      | Get `{ wsEndpoint, token }` for raw `CdpConnection.connect`                 |
+| `handle.cdp.consoleHistory({ limit, errorLimit })` | Read host-captured console history and the separate error buffer            |
+| `handle.cdp.screenshot({ format, quality })`       | Capture through the active host; base64 data, MIME type, dimensions         |
+| `handle.diagnose()`                                | Read the current observation, console/lifecycle history, and ready document |
+| `handle.click(selector)`                           | Click through the panel's session (`handle.cdp.click`)                      |
+| `handle.cdp.stop()`                                | Stop loading                                                                |
+| `handle.archive()`                                 | Archive the panel and its subtree                                           |
 
-Opening panels, CDP, and structural operations prompt on first use per requester
-entity and target panel/root. Privileged shell/about targets use a severe
-danger-tone prompt. The remembered grant does not survive requester navigation.
-Panels currently held by mobile/non-CDP hosts reject CDP access instead of being
-silently taken over.
+Opening panels, CDP access, and structural operations prompt on first use for
+each requesting entity and target panel/root. Privileged shell/about targets
+show a high-danger prompt. The remembered grant does not survive navigation of
+the requester. Panels currently held by mobile or other non-CDP hosts reject CDP
+access rather than being taken over.
 
-Use `openExternal(url)` when the user needs their normal browser profile, password manager, passkeys, or device/browser SSO. `openExternal` is approval-gated.
+Use `openExternal(url)` when the user needs their normal browser profile,
+password manager, passkeys, or device/browser SSO. `openExternal` requires
+approval.

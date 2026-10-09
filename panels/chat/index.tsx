@@ -15,12 +15,14 @@ import {
   buildPanelLink,
   createDurableObjectServiceClient,
   openPanel,
+  getPanelHandle,
   notifications,
   extensions,
 } from "@workspace/runtime";
 import { EventsClient } from "@vibestudio/service-schemas/clients/eventsClient";
 import { SHELL_APPROVAL_PENDING_CHANGED_EVENT } from "@vibestudio/shell-core/approvalState";
 import { recoveryCoordinator } from "@workspace/runtime/internal/diagnostics";
+import { createRuntimeScopeRehydrators } from "@workspace/runtime/panel-runtime";
 import { useStateArgs } from "@workspace/react/hooks";
 import { getVibestudioHostPlatform } from "@workspace/react/responsive";
 import { usePanelTheme, usePanelThemeConfig } from "@workspace/react/theme";
@@ -432,7 +434,7 @@ export default function ChatPanel() {
     const channelName =
       (bootstrapChannelRef.current ??= `chat-${crypto.randomUUID().slice(0, 8)}`);
     setBootstrapChannel(channelName);
-    void panel.stateArgs.set({ channelName }).catch((error) => {
+    void panel.stateArgs.patch({ channelName }).catch((error) => {
       if (disposed) return;
       if (isReviewPending(error)) {
         // The approval event is the fast path. This quiet retry covers a panel
@@ -544,6 +546,7 @@ export default function ChatPanel() {
       clientId: panel.slotId,
       rpc,
       recoveryCoordinator,
+      scopeRehydrators: createRuntimeScopeRehydrators(getPanelHandle),
     }),
     [],
   );
@@ -615,7 +618,7 @@ export default function ChatPanel() {
   const handleFocusMessageConsumed = useCallback((messageId: string) => {
     if (panel.stateArgs.get<ChatStateArgs>().focusMessageId !== messageId)
       return;
-    void panel.stateArgs.set({ focusMessageId: null }).catch(() => undefined);
+    void panel.stateArgs.patch({ focusMessageId: null }).catch(() => undefined);
   }, []);
 
   const handleOpenChannel = useCallback(
@@ -664,7 +667,7 @@ export default function ChatPanel() {
       props?: Record<string, unknown>;
       maxHeight?: number;
     }) => {
-      void panel.stateArgs.set({
+      void panel.stateArgs.patch({
         actionBarFile: value.path,
         actionBarProps: value.path ? (value.props ?? null) : null,
         actionBarMaxHeight: value.path ? (value.maxHeight ?? null) : null,
@@ -1139,7 +1142,7 @@ export default function ChatPanel() {
       const nextInstalled = replaced
         ? existing.map((a) => (a.key === target.objectKey ? newRecord : a))
         : [...existing, newRecord];
-      await panel.stateArgs.set({ installedAgents: nextInstalled });
+      await panel.stateArgs.patch({ installedAgents: nextInstalled });
       return { agentId: source, handle };
     },
     [availableAgents, buildSubscribeConfig, resolveWorkspaceDefaultAgentConfig],
@@ -1218,7 +1221,7 @@ export default function ChatPanel() {
       if (!existing.some((agent) => agent.key === target.objectKey)) {
         throw new Error(`No persisted agent record found for ${participantId}`);
       }
-      await panel.stateArgs.set({ installedAgents: nextInstalled });
+      await panel.stateArgs.patch({ installedAgents: nextInstalled });
       // Per-agent model only — the workspace default is changed solely via the
       // explicit "Save as default" control.
     },
@@ -1240,7 +1243,7 @@ export default function ChatPanel() {
           persisted.key,
           channelName,
         );
-        await panel.stateArgs.set({
+        await panel.stateArgs.patch({
           installedAgents: (currentArgs.installedAgents ?? []).filter(
             (agent) => agent.key !== persisted.key,
           ),
@@ -1425,7 +1428,7 @@ export default function ChatPanel() {
         const current = panel.stateArgs.get<ChatStateArgs>();
         const prior = current.forkCursors?.[forkChannelId] ?? 0;
         if (prior >= headSeq) return;
-        await panel.stateArgs.set({
+        await panel.stateArgs.patch({
           forkCursors: {
             ...(current.forkCursors ?? {}),
             [forkChannelId]: headSeq,

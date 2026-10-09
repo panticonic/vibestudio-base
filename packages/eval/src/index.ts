@@ -67,5 +67,15 @@ export type {
   ScopeEntry,
   ScopeListEntry,
 } from "./scopePersistence.js";
-export { serializeScope, deserializeScope } from "./scopeSerialize.js";
-export type { SerializedScope } from "./scopeSerialize.js";
+export {
+  serializeScope,
+  deserializeScope,
+  SCOPE_REF,
+  ScopeRefUnavailableError,
+} from "./scopeSerialize.js";
+export type {
+  SerializedScope,
+  DeserializedScope,
+  ScopeRef,
+  ScopeRehydrators,
+} from "./scopeSerialize.js";

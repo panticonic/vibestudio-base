@@ -4,9 +4,183 @@ import { vcsMethods } from "@vibestudio/service-schemas/vcs";
 import { createVcsClient } from "./vcsClient.js";
 
 describe("createVcsClient", () => {
-  it("exposes exactly the schema-owned method roster", () => {
+  it("exposes the schema-owned method roster plus the publication composite", () => {
     const client = createVcsClient(async () => null as never, "context:bound");
-    expect(Object.keys(client).sort()).toEqual(Object.keys(vcsMethods).sort());
+    expect(Object.keys(client).sort()).toEqual([...Object.keys(vcsMethods), "publish"].sort());
+  });
+
+  it("mints one fresh command identity per logical mutation call", async () => {
+    const call = vi.fn(async (..._args: unknown[]) => ({
+      contextId: "context:bound",
+      workingHead: { kind: "event", eventId: "event:committed" },
+      discardedApplicationIds: [],
+    }));
+    const client = createVcsClient(
+      async <T>(method: string, ...args: unknown[]) => (await call(method, args[0])) as T,
+      "context:bound"
+    );
+    const expectedWorkingHead = { kind: "event" as const, eventId: "event:committed" };
+
+    await client.discard({ expectedWorkingHead });
+    await client.discard({ expectedWorkingHead });
+
+    const first = call.mock.calls[0]![1] as { commandId: string };
+    const second = call.mock.calls[1]![1] as { commandId: string };
+    expect(first).toMatchObject({ contextId: "context:bound", expectedWorkingHead });
+    expect(first.commandId).toMatch(/^[0-9a-f-]{36}$/u);
+    expect(second.commandId).toMatch(/^[0-9a-f-]{36}$/u);
+    expect(second.commandId).not.toBe(first.commandId);
+  });
+
+  it("keeps an explicit command identity and mints one for an explicit undefined", async () => {
+    const call = vi.fn(async (..._args: unknown[]) => ({
+      contextId: "context:bound",
+      workingHead: { kind: "event", eventId: "event:committed" },
+      discardedApplicationIds: [],
+    }));
+    const client = createVcsClient(
+      async <T>(method: string, ...args: unknown[]) => (await call(method, args[0])) as T,
+      "context:bound"
+    );
+    const expectedWorkingHead = { kind: "event" as const, eventId: "event:committed" };
+
+    await client.discard({ expectedWorkingHead, commandId: "invocation:1" });
+    await client.discard({ expectedWorkingHead, commandId: undefined });
+
+    expect(call.mock.calls[0]![1]).toMatchObject({ commandId: "invocation:1" });
+    expect((call.mock.calls[1]![1] as { commandId: string }).commandId).toMatch(
+      /^[0-9a-f-]{36}$/u
+    );
+  });
+
+  it("never adds a command identity to reads", async () => {
+    const call = vi.fn(async (..._args: unknown[]) => ({
+      contextId: "context:bound",
+      committed: { kind: "event", eventId: "event:committed" },
+      workingHead: { kind: "event", eventId: "event:committed" },
+      clean: true,
+      mainEventId: "event:committed",
+      mainRelation: "at",
+      workingCounts: { applications: 0, workUnits: 0, changes: 0 },
+      integrating: [],
+    }));
+    const client = createVcsClient(
+      async <T>(method: string, ...args: unknown[]) => (await call(method, args[0])) as T,
+      "context:bound"
+    );
+
+    await client.status();
+
+    expect(call).toHaveBeenCalledWith("vcs.status", { contextId: "context:bound" });
+  });
+
+  describe("publish", () => {
+    const status = (overrides: Record<string, unknown>) => ({
+      contextId: "context:bound",
+      committed: { kind: "event", eventId: "event:committed" },
+      workingHead: { kind: "event", eventId: "event:committed" },
+      clean: true,
+      mainEventId: "event:main",
+      mainRelation: "ahead",
+      workingCounts: { applications: 0, workUnits: 0, changes: 0 },
+      integrating: [],
+      ...overrides,
+    });
+    const pushResult = {
+      contextId: "context:bound",
+      eventId: "event:new",
+      mainEventId: "event:new",
+      effectId: "effect:1",
+      appliedAt: "2026-07-24T00:00:00.000Z",
+    };
+
+    it("commits a dirty chain and pushes it against the observed main", async () => {
+      const call = vi.fn(async (method: string, _input: unknown) => {
+        if (method === "vcs.status")
+          return status({
+            clean: false,
+            workingHead: { kind: "application", applicationId: "application:1" },
+          });
+        if (method === "vcs.commit")
+          return {
+            contextId: "context:bound",
+            event: { kind: "event", eventId: "event:new" },
+            committedApplicationIds: ["application:1"],
+            integrationSourceEventIds: [],
+          };
+        return pushResult;
+      });
+      const client = createVcsClient(
+        async <T>(method: string, ...args: unknown[]) => (await call(method, args[0])) as T,
+        "context:bound"
+      );
+
+      const result = await client.publish({ message: "Ship the change" });
+
+      expect(result).toMatchObject({ status: "published", push: pushResult });
+      expect(call.mock.calls.map(([method]) => method)).toEqual([
+        "vcs.status",
+        "vcs.commit",
+        "vcs.push",
+      ]);
+      expect(call.mock.calls[1]![1]).toMatchObject({
+        contextId: "context:bound",
+        expectedWorkingHead: { kind: "application", applicationId: "application:1" },
+        message: "Ship the change",
+      });
+      expect(call.mock.calls[2]![1]).toMatchObject({
+        contextId: "context:bound",
+        expectedCommittedEventId: "event:new",
+        expectedMainEventId: "event:main",
+      });
+      const commandIds = [call.mock.calls[1]![1], call.mock.calls[2]![1]].map(
+        (input) => (input as { commandId: string }).commandId
+      );
+      expect(new Set(commandIds).size).toBe(2);
+    });
+
+    it("pushes a clean committed event without committing", async () => {
+      const call = vi.fn(async (method: string, _input: unknown) =>
+        method === "vcs.status" ? status({}) : pushResult
+      );
+      const client = createVcsClient(
+        async <T>(method: string, ...args: unknown[]) => (await call(method, args[0])) as T,
+        "context:bound"
+      );
+
+      await expect(client.publish()).resolves.toMatchObject({ status: "published", commit: null });
+      expect(call.mock.calls.map(([method]) => method)).toEqual(["vcs.status", "vcs.push"]);
+      expect(call.mock.calls[1]![1]).toMatchObject({
+        expectedCommittedEventId: "event:committed",
+        expectedMainEventId: "event:main",
+      });
+    });
+
+    it.each(["behind", "diverged"] as const)(
+      "returns IntegrationRequired without merging when main is %s",
+      async (mainRelation) => {
+        const call = vi.fn(async (_method: string, _input: unknown) =>
+          status({ mainRelation, clean: false })
+        );
+        const client = createVcsClient(
+          async <T>(method: string, ...args: unknown[]) => (await call(method, args[0])) as T,
+          "context:bound"
+        );
+
+        await expect(client.publish({ message: "Ship" })).resolves.toEqual({
+          status: "integration-required",
+          code: "IntegrationRequired",
+          contextId: "context:bound",
+          mainRelation,
+          mainEventId: "event:main",
+          compare: {
+            target: { kind: "event", eventId: "event:committed" },
+            source: { kind: "event", eventId: "event:main" },
+          },
+        });
+        expect(call.mock.calls.map(([method]) => method)).toEqual(["vcs.status"]);
+      }
+    );
   });
 
   it("dispatches one canonical request without a routing overlay", async () => {

@@ -2,8 +2,7 @@
  * Contributes the chat panel's commands to its owning application host. Lives
  * inside `<ChatProvider>` so it can read the live delivery
  * state and actions straight from the chat context — the single place that has
- * them — and registers ONE state-aware command set (two `useHostCommands`
- * calls in the same panel would clobber each other's registration).
+ * them — and registers one state-aware command set.
  *
  * The set is state-aware on purpose: the host only offers what is actually
  * actionable right now (flush only while something is queued/in-flight, cancel

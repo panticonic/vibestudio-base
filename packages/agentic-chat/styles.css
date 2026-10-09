@@ -106,9 +106,12 @@
 }
 @media (hover: hover) {
   .message-card .copy-button {
-    opacity: 0.25;
+    opacity: 0.45;
   }
-  .message-card .copy-button:hover {
+  .message-card:hover .copy-button,
+  .message-card:focus-within .copy-button,
+  .message-card .copy-button:hover,
+  .message-card .copy-button:focus-visible {
     opacity: 1;
   }
 }
@@ -1373,6 +1376,13 @@
   min-inline-size: 0;
   max-inline-size: 100%;
   overflow: hidden;
+}
+
+.inline-action-pill-group {
+  flex: 0 1 auto;
+  min-inline-size: 0;
+  max-inline-size: min(100%, 34rem);
+  display: inline-flex !important;
 }
 
 .inline-action-pill {

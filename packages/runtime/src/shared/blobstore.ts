@@ -2,7 +2,7 @@
  * Blobstore client — the portable runtime binding for the per-workspace
  * content-addressable blob store, shared by panel · worker · eval.
  *
- * This is the curated client behind `services.blobstore` / `import { blobstore }
+ * This is the curated client behind the `blobstore` binding / `import { blobstore }
  * from "@workspace/runtime"`. Most methods are thin typed wrappers over the
  * `blobstore` RPC service (`@vibestudio/service-schemas/blobstore`). The
  * runtime adds byte conveniences (`putBytes`/`getBytes`) that losslessly bridge
@@ -31,6 +31,7 @@ export const BLOBSTORE_MEMBERS = [
   "putBytes",
   "getBytes",
   "readText",
+  "putPathTree",
 ] as const;
 
 type BlobstoreServiceClient = TypedServiceClient<typeof blobstoreMethods>;
@@ -40,6 +41,25 @@ export type BlobstoreBytes = Uint8Array | ArrayBuffer;
 
 type ReadText = (digest: string) => Promise<string | null>;
 type GetBytes = (digest: string) => Promise<Uint8Array | null>;
+
+type PutTreeResult = Awaited<ReturnType<BlobstoreServiceClient["putTree"]>>;
+type TreeEntry = Parameters<BlobstoreServiceClient["putTree"]>[0][number];
+type FileTreeEntry = Extract<TreeEntry, { kind: "file" }>;
+
+/**
+ * One file of a `putPathTree` input: a string is UTF-8 text, bytes are stored
+ * as-is, and `{ digest }` (for example a `putText`/`putBytes` result) references
+ * a blob that is already stored. `mode` defaults to a regular file.
+ */
+export type PathTreeFile =
+  | string
+  | BlobstoreBytes
+  | { digest: string; mode?: FileTreeEntry["mode"] };
+
+type PutPathTree = (
+  files: Record<string, PathTreeFile>,
+  opts?: Parameters<BlobstoreServiceClient["putTree"]>[1],
+) => Promise<PutTreeResult>;
 
 type MaterializeTree = (
   treeRef: string,
@@ -59,6 +79,12 @@ export type BlobstoreClient = Omit<
   readText: ReadText;
   /** Copy a CAS tree into this runtime's context-scoped filesystem. */
   materializeTree: MaterializeTree;
+  /**
+   * Store a nested file tree from `{ "a/b.txt": text | bytes | { digest } }`.
+   * Stores the file blobs, then every directory bottom-up with `putTree`, and
+   * returns the root's `putTree` result (`opts` applies to the root only).
+   */
+  putPathTree: PutPathTree;
 };
 
 export function createBlobstoreClient(
@@ -204,11 +230,96 @@ export function createBlobstoreClient(
     return { written, unchanged };
   };
 
+  const putPathTree: PutPathTree = async (files, opts) => {
+    type Dir = { files: Map<string, PathTreeFile>; dirs: Map<string, Dir> };
+    const newDir = (): Dir => ({ files: new Map(), dirs: new Map() });
+    const root = newDir();
+    for (const [path, file] of Object.entries(files)) {
+      const segments = path.split("/");
+      if (
+        segments.some(
+          (segment) =>
+            segment === "" ||
+            segment === "." ||
+            segment === ".." ||
+            segment.includes("\0"),
+        )
+      ) {
+        throw new TypeError(
+          `blobstore.putPathTree requires relative file paths without empty, "." or ".." segments (received ${JSON.stringify(path)}).`,
+        );
+      }
+      const name = segments.pop()!;
+      let dir = root;
+      for (const segment of segments) {
+        if (dir.files.has(segment)) {
+          throw new TypeError(
+            `blobstore.putPathTree path ${JSON.stringify(path)} nests under a file.`,
+          );
+        }
+        let child = dir.dirs.get(segment);
+        if (!child) {
+          child = newDir();
+          dir.dirs.set(segment, child);
+        }
+        dir = child;
+      }
+      if (dir.dirs.has(name)) {
+        throw new TypeError(
+          `blobstore.putPathTree path ${JSON.stringify(path)} is both a file and a directory.`,
+        );
+      }
+      dir.files.set(name, file);
+    }
+
+    const storeFile = async (
+      name: string,
+      file: PathTreeFile,
+    ): Promise<FileTreeEntry> => {
+      if (typeof file === "string") {
+        const { digest } = await serviceClient.putText(file);
+        return { name, kind: "file", contentHash: digest, mode: 33188 };
+      }
+      if (file instanceof Uint8Array || file instanceof ArrayBuffer) {
+        const { digest } = await putBytes(file);
+        return { name, kind: "file", contentHash: digest, mode: 33188 };
+      }
+      if (typeof (file as { digest?: unknown } | null)?.digest !== "string") {
+        throw new TypeError(
+          `blobstore.putPathTree file ${JSON.stringify(name)} must be a string, Uint8Array, ArrayBuffer, or { digest }.`,
+        );
+      }
+      return {
+        name,
+        kind: "file",
+        contentHash: file.digest,
+        mode: file.mode ?? 33188,
+      };
+    };
+
+    const storeDir = async (
+      dir: Dir,
+      treeOpts: Parameters<PutPathTree>[1],
+    ): Promise<PutTreeResult> => {
+      const entries: TreeEntry[] = await Promise.all([
+        ...[...dir.files].map(([name, file]) => storeFile(name, file)),
+        ...[...dir.dirs].map(async ([name, child]): Promise<TreeEntry> => {
+          const { treeHash } = await storeDir(child, {});
+          return { name, kind: "dir", childHash: treeHash };
+        }),
+      ]);
+      return serviceClient.putTree(entries, treeOpts ?? {});
+    };
+
+    return storeDir(root, opts);
+  };
+
   return Object.assign(serviceClient, {
     putBytes,
     getBytes,
     readText,
     materializeTree,
+    putPathTree,
   }) as BlobstoreClient;
 }
 

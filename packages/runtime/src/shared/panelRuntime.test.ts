@@ -464,14 +464,17 @@ describe("panel runtime topology composition", () => {
       },
     };
     const evaluate = vi.fn(async () => document);
+    const close = vi.fn(async () => undefined);
     const { runtime, call } = runtimeHarness({
       browserReady: true,
       recordOperation,
-      createCdp: () => ({ page: async () => ({ evaluate }) }) as never,
+      createCdp: () =>
+        ({ session: async () => ({ page: { evaluate }, close }) }) as never,
     });
     const result = await runtime.getPanelHandle("panel:tree/new").snapshot();
     expect(result.document).toEqual(document);
     expect(evaluate).toHaveBeenCalledOnce();
+    expect(close).toHaveBeenCalledOnce();
     expect(
       call.mock.calls.some((entry) => entry[1] === "_agent.snapshot"),
     ).toBe(false);
@@ -1297,6 +1300,65 @@ describe("panel runtime topology composition", () => {
     });
   });
 
+  it("walks a subtree breadth-first across cursors and revision restarts", async () => {
+    const node = (slotId: string, parentSlotId: string, childCount = 0) => ({
+      slotId,
+      title: slotId,
+      kind: "workspace",
+      source: "about/collection",
+      parentSlotId,
+      ownerUserId: null,
+      contextId: "ctx:root",
+      createdAt: 1,
+      childCount,
+    });
+    let revision = 1;
+    const reads: string[] = [];
+    const call = vi.fn(async (_target: string, method: string, args: unknown[]) => {
+      if (method !== "workspace-state.panelTree.page") {
+        throw new Error(`Unexpected RPC method: ${method}`);
+      }
+      const input = args[0] as {
+        group: { parentSlotId: string };
+        cursor?: string;
+      };
+      const parent = input.group.parentSlotId;
+      reads.push(`${parent}${input.cursor ? `@${input.cursor}` : ""}`);
+      // The tree changes while the first walk is between groups.
+      if (parent === "a" && revision === 1) revision = 2;
+      const pages: Record<string, { nodes: unknown[]; nextCursor: string | null }> = {
+        root: { nodes: [node("a", "root", 1)], nextCursor: "more" },
+        "root@more": { nodes: [node("b", "root")], nextCursor: null },
+        a: { nodes: [node("c", "a")], nextCursor: null },
+      };
+      const page = pages[`${parent}${input.cursor ? `@${input.cursor}` : ""}`]!;
+      return { revision, group: input.group, ...page };
+    });
+    const runtime = createPanelRuntime({
+      rpc: { call, emit: vi.fn(), on: vi.fn() } as never,
+      defaultOpenParentId: null,
+      createCdp: () => ({}) as never,
+    });
+
+    const walked: Array<[string, number]> = [];
+    for await (const entry of runtime.panelTree.walk("root", { limit: 10 })) {
+      walked.push([entry.handle.id, entry.depth]);
+    }
+
+    expect(walked).toEqual([
+      ["a", 1],
+      ["b", 1],
+      ["c", 2],
+    ]);
+    expect(reads).toEqual(["root", "root@more", "a", "root", "root@more", "a"]);
+
+    const limited: string[] = [];
+    for await (const entry of runtime.panelTree.walk("root", { limit: 1 })) {
+      limited.push(entry.handle.id);
+    }
+    expect(limited).toEqual(["a"]);
+  });
+
   it("reads the current caller's roots without exposing an ownership key", async () => {
     const { runtime, call } = runtimeHarness();
 
@@ -1393,5 +1455,106 @@ describe("recursive panel ownership", () => {
     expect(
       call.mock.calls.filter(([, method]) => method === "runtime.retireEntity"),
     ).toHaveLength(1);
+  });
+
+  it("closes every cached subtree CDP transport and finishes entity cleanup after a close failure", async () => {
+    const root = "panel:tree/cdp-root";
+    const child = "panel:tree/cdp-child";
+    const rootCloseFailure = new Error("root browser transport close failed");
+    const rootBrowserClose = vi.fn(async () => {
+      throw rootCloseFailure;
+    });
+    const childBrowserClose = vi.fn(async () => undefined);
+    const acknowledge = vi.fn(async () => undefined);
+    const browsers = [rootBrowserClose, childBrowserClose].map((close) => ({
+      contexts: () => [
+        {
+          pages: () => [{ isClosed: () => false }],
+        },
+      ],
+      close,
+    }));
+    let connectIndex = 0;
+    const call = vi.fn(
+      async (_target: string, method: string, args: unknown[]) => {
+        if (method === "workspace-state.panelTree.detail") {
+          const id = args[0] as string;
+          return {
+            ...detail(`${id}-entity`),
+            slot: {
+              parent_slot_id: id === root ? null : root,
+              current_entity_title: id,
+            },
+          };
+        }
+        if (method === "panelRuntime.observeSlot") {
+          const id = args[0] as string;
+          return {
+            version: { epoch: "test", counter: 1 },
+            attempt: {
+              epoch: "test",
+              attemptId: `attempt:${id}`,
+              slotId: id,
+              runtimeEntityId: `${id}-entity`,
+              phase: "ready",
+              revision: 1,
+              reporter: "renderer",
+              updatedAt: 1,
+            },
+            route: {
+              reachable: true,
+              connectionId: `route:${id}`,
+              holderLabel: "Headless",
+              platform: "headless",
+              supportsCdp: true,
+              view: { url: "http://panel.test/", loading: false },
+            },
+          };
+        }
+        if (method === "panelCdp.getCdpEndpoint") {
+          return { wsEndpoint: "ws://panel.test", token: "grant" };
+        }
+        if (method === "workspace-state.slot.close") {
+          return { closeId: root, closedCount: 2 };
+        }
+        if (method === "workspace-state.slot.closeCleanupPage") {
+          return {
+            items: [
+              { slotId: root, entityId: `${root}-entity` },
+              { slotId: child, entityId: `${child}-entity` },
+            ],
+            nextCursor: null,
+          };
+        }
+        if (method === "workspace-state.slot.closeCleanupAck") {
+          return acknowledge();
+        }
+        if (method === "runtime.retireEntity") return undefined;
+        throw new Error(`Unexpected call ${method}`);
+      },
+    );
+    const runtime = createPanelRuntime({
+      rpc: { call, emit: vi.fn(), on: vi.fn() } as never,
+      loadModule: async () => ({
+        BrowserImpl: {
+          connect: async () => browsers[connectIndex++],
+        },
+      }),
+    });
+    const rootHandle = runtime.panelTree.get(root);
+    const childHandle = runtime.panelTree.get(child);
+
+    await rootHandle.cdp.session();
+    await childHandle.cdp.session();
+
+    await expect(rootHandle.archive()).rejects.toBe(rootCloseFailure);
+    expect(rootBrowserClose).toHaveBeenCalledOnce();
+    expect(childBrowserClose).toHaveBeenCalledOnce();
+    expect(
+      call.mock.calls
+        .filter(([, method]) => method === "runtime.retireEntity")
+        .map(([, , args]) => args),
+    ).toEqual([[{ id: `${root}-entity` }], [{ id: `${child}-entity` }]]);
+    expect(acknowledge).not.toHaveBeenCalled();
   });
 });

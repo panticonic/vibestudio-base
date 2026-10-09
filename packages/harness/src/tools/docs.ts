@@ -416,8 +416,7 @@ export function renderEntry(entry: CatalogEntry): string {
           `Eval/raw RPC call:\n${rpcExample}\n\n` +
             "The portable `rpc.call(target, method, args)` form addresses this service; normal caller, authority, and session-admission checks still apply. " +
             "A service name is not necessarily an importable named export of `@workspace/runtime`. " +
-            "Its `services` binding exposes service clients; `services.<name>` may be an ergonomic runtime client when " +
-            "the service name also exists in `@workspace/runtime`.",
+            "In eval, `services.<name>.<method>(...)` is the same raw service call, even when a runtime binding shares the name.",
         );
       }
     } else if (entry.surface === "runtime") {

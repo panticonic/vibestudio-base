@@ -3,64 +3,86 @@ import { CdpError } from "@workspace/cdp-client";
 import { createCdpAutomation } from "./cdpAutomation.js";
 import { Journal, withJournal, currentJournal } from "../shared/journal.js";
 
+const readyObservation = (
+  panelId: string,
+  kind: "workspace" | "browser" = "workspace",
+): import("@vibestudio/shared/panel/observation").PanelObservation => ({
+  panelId,
+  title: "Test panel",
+  source: "panels/test",
+  parentId: null,
+  contextId: "ctx:test",
+  requestedRef: "main",
+  effectiveVersion: "version:test",
+  attemptRef: { epoch: "epoch:test", attemptId: `attempt:${panelId}` },
+  updatedAt: 1,
+  kind,
+  phase: "ready",
+  attemptId: `attempt:${panelId}`,
+  runtimeEntityId: `runtime:${panelId}`,
+  buildKey: `build:${panelId}`,
+});
+
+const connectedBrowser = (
+  page: unknown,
+  close = vi.fn(async () => undefined),
+) => {
+  const fakePage = page as { isClosed?: () => boolean };
+  fakePage.isClosed ??= () => false;
+  return { contexts: () => [{ pages: () => [page] }], close };
+};
+
 describe("createCdpAutomation screenshot", () => {
-  it.each(["page", "session"] as const)(
-    "%s derives browser navigation policy from the ready generation, not a lazy handle hint",
-    async (acquire) => {
-      const page = {
-        goto: vi.fn(async () => undefined),
-        close: vi.fn(),
-        isClosed: () => false,
-      };
-      const ready = {
-        panelId: "panel:lazy",
-        kind: "browser",
-        source: "browser:data:text/html,<h1>Owned page</h1>",
-        phase: "ready",
-        attemptId: "attempt:browser",
-        runtimeEntityId: "panel:browser-runtime",
-        buildKey: null,
-      } as const;
-      const cdp = createCdpAutomation(
-        {
-          call: vi.fn(async () => ({
-            wsEndpoint: "ws://panel",
-            token: "grant",
-          })),
-        } as never,
-        ready.panelId,
-        {
-          kind: "workspace",
-          observe: async () => ready as never,
-          ensureReady: async () => ready as never,
-          loadModule: async () => ({
-            BrowserImpl: {
-              connect: async () => ({
-                contexts: () => [{ pages: () => [page] }],
-              }),
-            },
-          }),
-        },
-      );
-      const acquired = await cdp[acquire]();
-      const connected =
-        acquire === "session"
-          ? (acquired as Awaited<ReturnType<typeof cdp.session>>).page
-          : (acquired as Awaited<ReturnType<typeof cdp.page>>);
-      await connected.goto("data:text/html,<h1>Destination</h1>");
-      expect(page.goto).toHaveBeenCalledWith(
-        "data:text/html,<h1>Destination</h1>",
-      );
-      await connected.close();
-    },
-  );
+  it("session derives browser navigation policy from the ready generation, not a lazy handle hint", async () => {
+    const page = {
+      goto: vi.fn(async () => undefined),
+      close: vi.fn(),
+      isClosed: () => false,
+    };
+    const ready = {
+      panelId: "panel:lazy",
+      kind: "browser",
+      source: "browser:data:text/html,<h1>Owned page</h1>",
+      phase: "ready",
+      attemptId: "attempt:browser",
+      runtimeEntityId: "panel:browser-runtime",
+      buildKey: null,
+    } as const;
+    const cdp = createCdpAutomation(
+      {
+        call: vi.fn(async () => ({
+          wsEndpoint: "ws://panel",
+          token: "grant",
+        })),
+      } as never,
+      ready.panelId,
+      {
+        kind: "workspace",
+        observe: async () => ready as never,
+        ensureReady: async () => ready as never,
+        loadModule: async () => ({
+          BrowserImpl: {
+            connect: async () => ({
+              ...connectedBrowser(page),
+            }),
+          },
+        }),
+      },
+    );
+    const connected = (await cdp.session()).page;
+    await connected.goto("data:text/html,<h1>Destination</h1>");
+    expect(page.goto).toHaveBeenCalledWith(
+      "data:text/html,<h1>Destination</h1>",
+    );
+    await connected.close();
+  });
   it("records native interaction receipts in the journal active when the action completes", async () => {
     let onInteraction: ((receipt: unknown) => void) | undefined;
     const page = { isClosed: () => false };
     const connect = vi.fn(async (_endpoint: string, options: object) => {
       onInteraction = (options as { onInteraction: (receipt: unknown) => void })
         .onInteraction;
-      return { contexts: () => [{ pages: () => [page] }] };
+      return connectedBrowser(page);
     });
     let currentOwner = new AbortController();
     const operationSignal = () => currentOwner.signal;
@@ -71,11 +93,12 @@ describe("createCdpAutomation screenshot", () => {
       "panel:journal",
       {
         loadModule: async () => ({ BrowserImpl: { connect }, CdpError }),
+        observe: async () => readyObservation("panel:journal"),
         recordOperation: (entry) => currentJournal()?.append(entry),
         operationSignal,
       },
     );
-    await cdp.page();
+    (await cdp.session()).page;
     const passedSignal = (
       connect.mock.calls[0]![1] as { operationSignal: () => AbortSignal }
     ).operationSignal;
@@ -149,17 +172,18 @@ describe("createCdpAutomation screenshot", () => {
       { call: vi.fn(async () => ({ wsEndpoint: "ws://panel" })) } as never,
       "panel:profile",
       {
+        observe: async () => readyObservation("panel:profile"),
         recordOperation: (entry) => currentJournal()?.append(entry),
         loadModule: async () => ({
           BrowserImpl: {
             connect: async () => ({
-              contexts: () => [{ pages: () => [{ profile }] }],
+              ...connectedBrowser({ profile }),
             }),
           },
         }),
       },
     );
-    const page = await cdp.page();
+    const page = (await cdp.session()).page;
     await withJournal(journal, async () => {
       expect(await page.profile(async () => undefined)).toBe(report);
     });
@@ -198,17 +222,18 @@ describe("createCdpAutomation screenshot", () => {
       { call: vi.fn(async () => ({ wsEndpoint: "ws://panel" })) } as never,
       "panel:evaluate",
       {
+        observe: async () => readyObservation("panel:evaluate"),
         recordOperation: (entry) => currentJournal()?.append(entry),
         loadModule: async () => ({
           BrowserImpl: {
             connect: async () => ({
-              contexts: () => [{ pages: () => [{ evaluate }] }],
+              ...connectedBrowser({ evaluate }),
             }),
           },
         }),
       },
     );
-    const page = await cdp.page();
+    const page = (await cdp.session()).page;
     await withJournal(journal, async () => {
       expect(await page.evaluate("document.body.innerText")).toBe(result);
       result.status = "guest mutation";
@@ -271,11 +296,12 @@ describe("createCdpAutomation screenshot", () => {
     const bytes = new Uint8Array([1, 2, 3]);
     const screenshot = vi.fn(async () => bytes);
     const cdp = createCdpAutomation({ call } as never, "panel:observations", {
+      observe: async () => readyObservation("panel:observations"),
       recordOperation,
       loadModule: async () => ({
         BrowserImpl: {
           connect: async () => ({
-            contexts: () => [{ pages: () => [{ screenshot }] }],
+            ...connectedBrowser({ screenshot }),
           }),
         },
       }),
@@ -283,7 +309,7 @@ describe("createCdpAutomation screenshot", () => {
     // Evidence is recorded even when the caller returns only a compact count.
     expect((await cdp.consoleHistory()).errors.length).toBe(0);
     await cdp.screenshot();
-    const page = await cdp.page();
+    const page = (await cdp.session()).page;
     expect(await page.screenshot({ type: "jpeg" })).toBe(bytes);
     expect(recordOperation.mock.calls.map(([entry]) => entry)).toEqual([
       {
@@ -308,6 +334,16 @@ describe("createCdpAutomation screenshot", () => {
         },
       },
       {
+        type: "cdp.session",
+        id: "panel:observations",
+        receipt: {
+          status: "acquired",
+          generation: expect.objectContaining({
+            panelId: "panel:observations",
+          }),
+        },
+      },
+      {
         type: "screenshot",
         id: "panel:observations",
         receipt: {
@@ -319,7 +355,7 @@ describe("createCdpAutomation screenshot", () => {
     ]);
     failConsole = true;
     await expect(cdp.consoleHistory()).rejects.toBe(failure);
-    expect(recordOperation).toHaveBeenCalledTimes(3);
+    expect(recordOperation).toHaveBeenCalledTimes(4);
   });
 
   it.each([
@@ -377,11 +413,12 @@ describe("createCdpAutomation screenshot", () => {
       "panel:tree/retained",
       {
         loadModule,
+        observe: async () => readyObservation("panel:tree/retained"),
       },
     );
 
     try {
-      await expect(cdp.page()).rejects.toMatchObject({
+      await expect(cdp.session()).rejects.toMatchObject({
         message: expect.stringContaining(
           "cell execution session is no longer active",
         ),
@@ -423,39 +460,12 @@ describe("createCdpAutomation screenshot", () => {
     ).toBe(false);
   });
 
-  it("uses the composed panel runtime callbacks instead of host navigation methods", async () => {
-    const call = vi.fn(
-      async (_target: string, _method: string, _args: unknown[]) => undefined,
-    );
-    const navigate = vi.fn(async () => undefined);
-    const navigateHistory = vi.fn(async () => undefined);
-    const reload = vi.fn(async () => undefined);
-    const cdp = createCdpAutomation({ call } as never, "panel:child", {
-      navigate,
-      navigateHistory,
-      reload,
-    });
-
-    await cdp.navigate("https://example.com");
-    await cdp.goBack();
-    await cdp.goForward();
-    await cdp.reload();
-
-    expect(navigate).toHaveBeenCalledWith("https://example.com");
-    expect(navigateHistory.mock.calls).toEqual([[-1], [1]]);
-    expect(reload).toHaveBeenCalledOnce();
-    expect(call).not.toHaveBeenCalled();
-  });
-
   it("materializes a deferred target without requiring panel focus", async () => {
     const page = {
       close: vi.fn(async () => undefined),
       isClosed: () => false,
     };
-    const connect = vi.fn(async () => ({
-      contexts: () => [{ pages: () => [page] }],
-      close: vi.fn(async () => undefined),
-    }));
+    const connect = vi.fn(async () => connectedBrowser(page));
     const loadModule = vi.fn(async () => ({
       BrowserImpl: { connect },
       CdpError,
@@ -498,24 +508,13 @@ describe("createCdpAutomation screenshot", () => {
   });
 
   it("fences a CDP session to one panel attempt and explicitly replaces a stale page", async () => {
-    const oldPage = {
-      close: vi.fn(async () => undefined),
-      isClosed: () => false,
-    };
-    const newPage = {
-      close: vi.fn(async () => undefined),
-      isClosed: () => false,
-    };
+    const oldPage = { isClosed: () => false };
+    const newPage = { isClosed: () => false };
+    const oldBrowserClose = vi.fn(async () => undefined);
     const connect = vi
       .fn()
-      .mockResolvedValueOnce({
-        contexts: () => [{ pages: () => [oldPage] }],
-        close: vi.fn(async () => undefined),
-      })
-      .mockResolvedValueOnce({
-        contexts: () => [{ pages: () => [newPage] }],
-        close: vi.fn(async () => undefined),
-      });
+      .mockResolvedValueOnce(connectedBrowser(oldPage, oldBrowserClose))
+      .mockResolvedValueOnce(connectedBrowser(newPage));
     const loadModule = vi.fn(async () => ({
       BrowserImpl: { connect },
       CdpError,
@@ -551,25 +550,27 @@ describe("createCdpAutomation screenshot", () => {
     });
 
     const session = await cdp.session();
+    const firstGeneration = session.generation;
     expect(session.generation).toMatchObject({
       protocol: "panel-cdp-generation.v1",
       attemptId: "attempt:old",
       runtimeEntityId: "panel-runtime:old",
     });
 
-    const refreshed = await session.refresh();
-    expect(refreshed).toMatchObject({
+    const rebound = await cdp.session();
+    expect(rebound).toBe(session);
+    expect(rebound.receipt).toMatchObject({
       status: "replaced",
       previousGeneration: { attemptId: "attempt:old" },
-      session: { generation: { attemptId: "attempt:new" } },
+      generation: { attemptId: "attempt:new" },
     });
-    expect(oldPage.close).toHaveBeenCalledOnce();
+    expect(oldBrowserClose).toHaveBeenCalledOnce();
     expect(connect).toHaveBeenCalledTimes(2);
     expect(connect.mock.calls[0]?.[1]).toMatchObject({
-      inspectionIdentity: session.generation,
+      inspectionIdentity: firstGeneration,
     });
     expect(connect.mock.calls[1]?.[1]).toMatchObject({
-      inspectionIdentity: refreshed.session.generation,
+      inspectionIdentity: rebound.generation,
     });
     expect(recordOperation.mock.calls.map(([entry]) => entry)).toEqual([
       {
@@ -577,15 +578,7 @@ describe("createCdpAutomation screenshot", () => {
         id: "panel:child",
         receipt: {
           status: "acquired",
-          generation: session.generation,
-        },
-      },
-      {
-        type: "cdp.session",
-        id: "panel:child",
-        receipt: {
-          status: "acquired",
-          generation: refreshed.session.generation,
+          generation: firstGeneration,
         },
       },
       {
@@ -593,23 +586,203 @@ describe("createCdpAutomation screenshot", () => {
         id: "panel:child",
         receipt: {
           status: "replaced",
-          generation: refreshed.session.generation,
-          previousGeneration: session.generation,
+          generation: rebound.generation,
+          previousGeneration: firstGeneration,
         },
       },
     ]);
-    if (refreshed.status === "replaced" || refreshed.status === "reconnected") {
-      expect(refreshed.session.page.isClosed()).toBe(false);
-      await refreshed.session.close();
-    }
+    expect(rebound.page.isClosed()).toBe(false);
+    await rebound.close();
   });
+
+  it("closes a candidate and reports generation replacement without retrying acquisition", async () => {
+    const oldGeneration = readyObservation("panel:race");
+    const newGeneration = {
+      panelId: "panel:race",
+      kind: "workspace",
+      phase: "ready",
+      buildKey: "build:replacement",
+      attemptId: "attempt:replacement",
+      runtimeEntityId: "runtime:replacement",
+    } as never;
+    const observe = vi
+      .fn()
+      .mockResolvedValueOnce(oldGeneration)
+      .mockResolvedValueOnce(newGeneration)
+      .mockResolvedValueOnce(newGeneration)
+      .mockResolvedValueOnce(newGeneration);
+    const firstClose = vi.fn(async () => undefined);
+    const secondClose = vi.fn(async () => undefined);
+    const connect = vi
+      .fn()
+      .mockResolvedValueOnce(
+        connectedBrowser({ isClosed: () => false }, firstClose),
+      )
+      .mockResolvedValueOnce(
+        connectedBrowser({ isClosed: () => false }, secondClose),
+      );
+    const cdp = createCdpAutomation(
+      { call: vi.fn(async () => ({ wsEndpoint: "ws://panel" })) } as never,
+      "panel:race",
+      {
+        observe,
+        loadModule: async () => ({ BrowserImpl: { connect }, CdpError }),
+      },
+    );
+
+    await expect(cdp.session()).rejects.toMatchObject({
+      code: "panel_cdp_generation_changed",
+      errorData: { currentGeneration: { attemptId: "attempt:replacement" } },
+    });
+    expect(connect).toHaveBeenCalledOnce();
+    expect(firstClose).toHaveBeenCalledOnce();
+
+    const rebound = await cdp.session();
+    expect(connect).toHaveBeenCalledTimes(2);
+    await rebound.close();
+    expect(secondClose).toHaveBeenCalledOnce();
+  });
+
+  it("closes a late CDP candidate when the stable session closes during reacquisition", async () => {
+    let resolveLateConnection!: (
+      browser: ReturnType<typeof connectedBrowser>,
+    ) => void;
+    let signalAtConnect: AbortSignal | undefined;
+    let announceConnect!: () => void;
+    const connectStarted = new Promise<void>((resolve) => {
+      announceConnect = resolve;
+    });
+    const lateClose = vi.fn(async () => undefined);
+    const connect = vi
+      .fn()
+      .mockResolvedValueOnce(connectedBrowser({ isClosed: () => false }))
+      .mockImplementationOnce(
+        (_endpoint: string, options: { signal?: AbortSignal }) => {
+          signalAtConnect = options.signal;
+          announceConnect();
+          return new Promise((resolve) => {
+            resolveLateConnection = resolve;
+          });
+        },
+      );
+    const cdp = createCdpAutomation(
+      { call: vi.fn(async () => ({ wsEndpoint: "ws://panel" })) } as never,
+      "panel:close-during-bind",
+      {
+        observe: async () => readyObservation("panel:close-during-bind"),
+        loadModule: async () => ({ BrowserImpl: { connect }, CdpError }),
+      },
+    );
+
+    const session = await cdp.session();
+    await session.close();
+    const reacquiring = cdp.session();
+    await connectStarted;
+
+    const closingSession = session.close();
+    expect(signalAtConnect?.aborted).toBe(true);
+
+    resolveLateConnection(
+      connectedBrowser({ isClosed: () => false }, lateClose),
+    );
+    await closingSession;
+    await expect(reacquiring).rejects.toMatchObject({
+      name: "AbortError",
+      code: "panel_cdp_session_closed",
+    });
+    expect(lateClose).toHaveBeenCalledOnce();
+  });
+
+  it.each(["session", "click"] as const)(
+    "propagates the active owner abort while %s waits for readiness",
+    async (operation) => {
+      const owner = new AbortController();
+      const ownerReason = new Error("owning eval was cancelled");
+      let announceReadiness!: () => void;
+      const readinessStarted = new Promise<void>((resolve) => {
+        announceReadiness = resolve;
+      });
+      const ensureReady = vi.fn((signal?: AbortSignal): Promise<never> => {
+        announceReadiness();
+        return new Promise((_, reject) => {
+          signal?.addEventListener("abort", () => reject(signal.reason), {
+            once: true,
+          });
+        });
+      });
+      const connect = vi.fn();
+      const cdp = createCdpAutomation(
+        { call: vi.fn(async () => ({ wsEndpoint: "ws://panel" })) } as never,
+        `panel:owner-abort-${operation}`,
+        {
+          operationSignal: () => owner.signal,
+          ensureReady,
+          loadModule: async () => ({ BrowserImpl: { connect }, CdpError }),
+        },
+      );
+
+      const pending =
+        operation === "session" ? cdp.session() : cdp.click("button");
+      await readinessStarted;
+      owner.abort(ownerReason);
+
+      await expect(pending).rejects.toBe(ownerReason);
+      expect(connect).not.toHaveBeenCalled();
+      expect(ensureReady.mock.calls[0]?.[0]?.aborted).toBe(true);
+    },
+  );
+
+  it.each(["session", "click"] as const)(
+    "closes the candidate and preserves the owner abort during %s readiness verification",
+    async (operation) => {
+      const owner = new AbortController();
+      const ownerReason = new Error(
+        "owning eval was cancelled during verification",
+      );
+      let announceReadiness!: () => void;
+      const readinessStarted = new Promise<void>((resolve) => {
+        announceReadiness = resolve;
+      });
+      const ready = readyObservation(`panel:verify-abort-${operation}`);
+      const ensureReady = vi.fn((signal?: AbortSignal) => {
+        // The mock records this call before running it: the first call is
+        // the binding observation, the second the post-connect verification.
+        if (ensureReady.mock.calls.length === 1) return Promise.resolve(ready);
+        announceReadiness();
+        return new Promise<never>((_, reject) => {
+          signal?.addEventListener("abort", () => reject(signal.reason), {
+            once: true,
+          });
+        });
+      });
+      const close = vi.fn(async () => undefined);
+      const connect = vi.fn(async () =>
+        connectedBrowser({ isClosed: () => false }, close),
+      );
+      const cdp = createCdpAutomation(
+        { call: vi.fn(async () => ({ wsEndpoint: "ws://panel" })) } as never,
+        `panel:verify-abort-${operation}`,
+        {
+          operationSignal: () => owner.signal,
+          ensureReady: ensureReady as never,
+          loadModule: async () => ({ BrowserImpl: { connect }, CdpError }),
+        },
+      );
+
+      const pending =
+        operation === "session" ? cdp.session() : cdp.click("button");
+      await readinessStarted;
+      owner.abort(ownerReason);
+
+      await expect(pending).rejects.toBe(ownerReason);
+      expect(connect).toHaveBeenCalledOnce();
+      expect(close).toHaveBeenCalledOnce();
+    },
+  );
 
   it("reconnects a closed page without pretending the panel generation changed", async () => {
     let firstClosed = false;
     const firstPage = {
-      close: vi.fn(async () => {
-        firstClosed = true;
-      }),
       isClosed: () => firstClosed,
     };
     const secondPage = {
@@ -618,10 +791,15 @@ describe("createCdpAutomation screenshot", () => {
     };
     const connect = vi
       .fn()
-      .mockResolvedValueOnce({ contexts: () => [{ pages: () => [firstPage] }] })
-      .mockResolvedValueOnce({
-        contexts: () => [{ pages: () => [secondPage] }],
-      });
+      .mockResolvedValueOnce(
+        connectedBrowser(
+          firstPage,
+          vi.fn(async () => {
+            firstClosed = true;
+          }),
+        ),
+      )
+      .mockResolvedValueOnce(connectedBrowser(secondPage));
     const generation = {
       panelId: "panel:child",
       phase: "ready",
@@ -642,20 +820,16 @@ describe("createCdpAutomation screenshot", () => {
 
     const session = await cdp.session();
     await session.close();
-    const refreshed = await session.refresh();
+    const rebound = await cdp.session();
 
-    expect(refreshed).toMatchObject({
+    expect(rebound).toBe(session);
+    expect(rebound.receipt).toMatchObject({
       status: "reconnected",
       generation: { attemptId: "attempt:stable" },
-      session: {
-        generation: { attemptId: "attempt:stable" },
-      },
     });
     expect(connect).toHaveBeenCalledTimes(2);
-    if (refreshed.status === "replaced" || refreshed.status === "reconnected") {
-      expect(refreshed.session.page.isClosed()).toBe(false);
-      await refreshed.session.close();
-    }
+    expect(rebound.page.isClosed()).toBe(false);
+    await rebound.close();
   });
 
   it("rejects raw navigation on workspace pages with lifecycle recovery guidance", async () => {
@@ -665,6 +839,7 @@ describe("createCdpAutomation screenshot", () => {
       goBack: vi.fn(),
       goForward: vi.fn(),
       close: vi.fn(async () => undefined),
+      isClosed: () => false,
     };
     const cdp = createCdpAutomation(
       { call: vi.fn(async () => ({ wsEndpoint: "ws://panel" })) } as never,
@@ -682,24 +857,24 @@ describe("createCdpAutomation screenshot", () => {
           }) as never,
         loadModule: async () => ({
           BrowserImpl: {
-            connect: vi.fn(async () => ({
-              contexts: () => [{ pages: () => [page] }],
-            })),
+            connect: vi.fn(async () => connectedBrowser(page)),
           },
           CdpError,
         }),
       },
     );
 
-    const connected = await cdp.page();
+    const connected = (await cdp.session()).page;
     const failure = await connected.reload().catch((error: unknown) => error);
 
     expect(failure).toMatchObject({
       name: "CdpError",
       code: "cdp_workspace_navigation_forbidden",
       errorData: {
-        recovery: "use-panel-handle-lifecycle",
-        instruction: expect.stringContaining("handle.reload()"),
+        recovery: {
+          action: "correct-request",
+          instruction: expect.stringContaining("handle.reload()"),
+        },
       },
     });
     expect(page.reload).not.toHaveBeenCalled();
@@ -710,17 +885,17 @@ describe("createCdpAutomation screenshot", () => {
     const page = {
       goto: vi.fn(async () => ({ frameId: "frame" })),
       close: vi.fn(async () => undefined),
+      isClosed: () => false,
     };
     const cdp = createCdpAutomation(
       { call: vi.fn(async () => ({ wsEndpoint: "ws://panel" })) } as never,
       "panel:browser",
       {
         kind: "browser",
+        observe: async () => readyObservation("panel:browser", "browser"),
         loadModule: async () => ({
           BrowserImpl: {
-            connect: vi.fn(async () => ({
-              contexts: () => [{ pages: () => [page] }],
-            })),
+            connect: vi.fn(async () => connectedBrowser(page)),
           },
           CdpError,
         }),
@@ -728,7 +903,7 @@ describe("createCdpAutomation screenshot", () => {
     );
 
     await expect(
-      (await cdp.page()).goto("https://example.com"),
+      (await cdp.session()).page.goto("https://example.com"),
     ).resolves.toEqual({
       frameId: "frame",
     });
@@ -736,7 +911,7 @@ describe("createCdpAutomation screenshot", () => {
   });
 
   it.each(["success", "failure"] as const)(
-    "closes the temporary page after click %s",
+    "uses the stable session page for click %s",
     async (outcome) => {
       const clickFailure = new Error("click failed");
       const page = {
@@ -749,35 +924,43 @@ describe("createCdpAutomation screenshot", () => {
                 }),
         })),
         close: vi.fn(async () => undefined),
+        isClosed: () => false,
       };
+      const browserClose = vi.fn(async () => undefined);
+      const connect = vi.fn(async () => connectedBrowser(page, browserClose));
       const cdp = createCdpAutomation(
         { call: vi.fn(async () => ({ wsEndpoint: "ws://panel" })) } as never,
         "panel:child",
         {
           kind: "browser",
           loadModule: async () => ({
-            BrowserImpl: {
-              connect: vi.fn(async () => ({
-                contexts: () => [{ pages: () => [page] }],
-              })),
-            },
+            BrowserImpl: { connect },
             CdpError,
           }),
+          observe: async () =>
+            ({
+              panelId: "panel:child",
+              phase: "ready",
+              attemptId: "attempt:stable",
+              runtimeEntityId: "panel:child-runtime",
+              buildKey: "build:stable",
+            }) as never,
         },
       );
 
       if (outcome === "success")
         await expect(cdp.click("button")).resolves.toBeUndefined();
       else await expect(cdp.click("button")).rejects.toBe(clickFailure);
-      expect(page.close).toHaveBeenCalledOnce();
+      expect(browserClose).not.toHaveBeenCalled();
+      await (await cdp.session()).close();
+      expect(browserClose).toHaveBeenCalledOnce();
     },
   );
 
   it("single-flights concurrent session acquisition and reuses the active session", async () => {
     const page = { close: vi.fn(async () => undefined), isClosed: () => false };
-    const connect = vi.fn(async () => ({
-      contexts: () => [{ pages: () => [page] }],
-    }));
+    const browserClose = vi.fn(async () => undefined);
+    const connect = vi.fn(async () => connectedBrowser(page, browserClose));
     const generation = {
       panelId: "panel:child",
       phase: "ready",

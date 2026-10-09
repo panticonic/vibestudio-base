@@ -1,53 +1,55 @@
 # Icons
 
-Use one restrained icon system across workspace UI and unit identity.
+Use a single, restrained icon system for workspace UI and unit identity.
 
 ## Interface icons
 
-- For React panels/apps/packages, import named Lucide components from
+- In React panels, apps, and packages, import named Lucide components from
   `@workspace/ui/icons`, for example
   `import { GitBranch, FileText } from "@workspace/ui/icons"`.
 - Imports are tree-shakeable. Import named components only; never import an
-  all-icons object, sprite, font, or runtime icon loader.
-- For the first-party mobile shell, import named components from
-  `apps/mobile/src/design/icons`. That registry is the sole
-  `lucide-react-native` package boundary: it uses literal per-icon exports so
-  Metro includes only the icons the app renders. Add a missing icon there;
-  never import the package barrel or a package subpath from a caller.
-- Existing Radix icons may remain in established shell surfaces. Do not add
-  Font Awesome, Iconify, React Icons, Heroicons, or another general catalog.
+  object of all icons, a sprite, an icon font, or a runtime icon loader.
+- In the first-party mobile shell, import named components from
+  `apps/mobile/src/design/icons`. That registry is the only module that imports
+  `lucide-react-native`: it exports each icon literally so Metro bundles only
+  the icons the app renders. Add a missing icon there; never import the
+  package's barrel or a package subpath elsewhere.
+- Existing Radix icons may stay in established shell surfaces. Do not add Font
+  Awesome, Iconify, React Icons, Heroicons, or another general icon catalog.
 - Give icon-only controls an accessible name (`aria-label` on web,
-  `accessibilityLabel` on React Native). Decorative icons must be hidden from
-  assistive technology. Never rely on color alone to communicate state.
+  `accessibilityLabel` in React Native), and hide decorative icons from
+  assistive technology. Never use color alone to convey state.
 
 ## Unit identity icons
 
-Every user-visible or executable unit declares exactly one
-`vibestudio.icon`. Choose in this order:
+Every user-visible or executable unit declares exactly one `vibestudio.icon`.
+Choose in this order:
 
-1. A truthful brand mark when the unit directly implements or integrates that
-   named technology (for example Git, TypeScript, Claude, Svelte, or Gmail).
-2. A concrete Lucide object/action for a generic concept (for example
+1. The brand mark of a technology the unit directly implements or integrates
+   (for example Git, TypeScript, Claude, Svelte, or Gmail).
+2. A concrete Lucide object or action for a generic concept (for example
    `file-text`, `database`, `messages-square`, or `shield-check`).
-3. A single semantic emoji only when it is more expressive than a drawn icon.
-4. Original repo-local artwork for a product identity.
+3. A single emoji, only when it says more than a drawn icon would.
+4. Original artwork in the repository for a product identity.
 
 ### Authoring inputs and stored declarations
 
-`vibestudio.icon` stores **one semantic emoji** or a **unit-relative image
+`vibestudio.icon` stores either **one emoji** or a **unit-relative image
 path**, such as `"./assets/icon.svg"`. Image paths must stay inside the unit,
-use canonical path segments, and end in SVG, PNG, JPEG, WebP, AVIF, GIF, or ICO.
-Assets must exist and be at most 1 MiB. URLs, data URLs, labels, and catalog IDs
-are invalid manifest declarations; build and installation validation reject them.
+use normalized path segments, and end in SVG, PNG, JPEG, WebP, AVIF, GIF, or
+ICO. The file must exist and be at most 1 MiB. URLs, data URLs, labels, and
+catalog IDs are not valid in the manifest; build and installation validation
+reject them.
 
 Catalog IDs such as `"lucide:columns-3"` and `"brand:git"` are **authoring
-inputs**, accepted by `prepareProjects`, `prepareApplication`, `prepareUnitIcon`,
-and `setUnitIcon`. Never copy a catalog ID into `package.json`.
+inputs** accepted by `prepareProjects`, `prepareApplication`,
+`prepareUnitIcon`, and `setUnitIcon`. Never copy a catalog ID into
+`package.json`.
 
 For new panels and workers, pass the catalog ID as the scaffolder's `icon`
-argument. For existing units of any executable kind, use `setUnitIcon`. The offline
-catalog includes every SVG shipped by Lucide Static 1.27.0, including its
-aliases. Use `searchProjectCatalog` when you need to discover a name:
+argument. For existing units of any executable kind, use `setUnitIcon`. The
+offline catalog contains every SVG shipped by Lucide Static 1.27.0, including
+aliases. Use `searchProjectCatalog` to find a name:
 
 ```ts
 import {
@@ -73,21 +75,23 @@ return prepareProjects([
 ]);
 ```
 
-The scaffold copies only the selected SVG into `assets/icon.svg`
-and prepares it in the current context without publication. Author the complete
-unit authority values before this invocation; see [PROJECTS.md](../PROJECTS.md).
-It writes `vibestudio.icon: "./assets/icon.svg"`; no icon library enters the
-unit's runtime bundle. Valid requests read only their selected SVG; catalog
-search lists filenames on demand without loading artwork. Catalog search returns
-12 entries by default (at most 500); `listProjectIcons()` returns all ids.
-Newer upstream releases can contain names absent from the pinned catalog.
-Invalid ids fail before mutation with suggestions in the message and bounded
-catalog evidence in structured error data. Brand icons remain the selected
-Simple Icons marks listed below.
+The scaffolder copies only the selected SVG to `assets/icon.svg`, writes
+`vibestudio.icon: "./assets/icon.svg"`, and prepares the result in the current
+context without publishing. Write the unit's complete authority values before
+this call; see [PROJECTS.md](../PROJECTS.md). No icon library ends up in the
+unit's runtime bundle.
+
+A valid request reads only the selected SVG, and catalog search lists file
+names without loading artwork. Search returns 12 entries by default and at most
+500; `listProjectIcons()` returns every id. Newer upstream Lucide releases may
+have names that the pinned catalog lacks. An invalid id fails before anything
+changes, with suggestions in the error message and catalog matches in the
+structured error data. Brand icons are limited to the Simple Icons marks listed
+below.
 
 ### Change an existing unit
 
-Use the same catalog for panels, workers, apps, extensions, and About pages:
+The same catalog works for panels, workers, apps, extensions, and About pages:
 
 ```ts
 import { setUnitIcon } from "@workspace-skills/workspace-dev";
@@ -98,24 +102,24 @@ scope.iconChange = await setUnitIcon({
 });
 ```
 
-This resolves the unit at the current working head and prepares its manifest
-and selected artwork together in one semantic VCS edit. It preserves the rest
-of the manifest, replaces `assets/icon.svg` when present, and returns a
-`preparation` receipt with the new working head. A concurrent edit is a visible
-conflict; inspect the current state before making another deliberate request.
-Review, verify, commit, and publish the candidate through the ordinary workflow.
-It does not publish or rebuild a live unit.
+This reads the unit at the current working head and updates its manifest and
+artwork together in one semantic VCS edit. It leaves the rest of the manifest
+unchanged, replaces `assets/icon.svg` if present, and returns a `preparation`
+receipt with the new working head. A concurrent edit is reported as a conflict;
+check the current state before trying again. The change is not published and
+the live unit is not rebuilt; review, verify, commit, and publish it through
+the normal workflow.
 
-For an emoji, pass it directly. For custom artwork already in the unit, pass
-its `./` path; the operation checks that file at the same working state and
-its size before editing. It leaves previous artwork in place when switching
-to an emoji or another path; remove unused source only when it is no longer
-referenced elsewhere.
+To use an emoji, pass it directly. To use artwork already in the unit, pass its
+`./` path; the operation checks that the file exists at the same working state
+and is within the size limit before editing. Switching to an emoji or another
+path leaves the previous artwork in place; delete it once nothing else
+references it.
 
 ### Author a complete unit manually
 
-Apps and extensions use their normal authoring workflows. To include a catalog
-icon when preparing their files, call the same resolver:
+Apps and extensions follow their own authoring workflows. To include a catalog
+icon in their files, call the same resolver:
 
 ```ts
 import { prepareUnitIcon } from "@workspace-skills/workspace-dev";
@@ -125,17 +129,20 @@ const identity = await prepareUnitIcon("brand:git");
 // Write the complete candidate, including artwork, in one semantic VCS edit.
 ```
 
-`prepareUnitIcon` returns `{ icon, files }` without mutation. Scaffolding and
-`setUnitIcon` use this exact resolver; coloring, licenses, and catalog errors
-are consistent across unit kinds. Custom paths and emoji pass through after
-validation. Keep artwork square, simple, transparent, and legible at 16–20 px.
+`prepareUnitIcon` returns `{ icon, files }` and changes nothing. Scaffolding and
+`setUnitIcon` use the same resolver, so coloring, licenses, and catalog errors
+are the same for every unit kind. Custom paths and emoji are validated and
+passed through. Keep artwork square, simple, transparent, and legible at
+16–20 px.
 
-Do not use generated initials, hash colors, remote favicons, or remote SVG URLs.
-Browser panels use the page's authentic captured favicon instead of a unit icon.
+Do not use generated initials, hash-derived colors, remote favicons, or remote
+SVG URLs. Browser panels show the page's own captured favicon instead of a unit
+icon.
 
 ### Cross-client coverage
 
-An identity change is incomplete until both first-party clients are audited:
+An identity change is not complete until both first-party clients have been
+checked:
 
 | Concept           | Desktop shell    | Mobile shell         |
 | ----------------- | ---------------- | -------------------- |
@@ -145,23 +152,23 @@ An identity change is incomplete until both first-party clients are audited:
 | Unit installation | install review   | install review sheet |
 | Browser identity  | captured favicon | captured favicon     |
 
-Use the same canonical `icon`, source path, and browser-favicon projection in
-both clients. Keep rendering native (`PanelIcon` on desktop,
+Both clients must use the same `icon` value, source path, and browser favicon.
+Render with each client's native component (`PanelIcon` on desktop,
 `MobileUnitIcon`/`MobilePanelIcon` on mobile); do not add a second identity
-field or a mobile-only resolver. On mobile, SVG artwork is rendered by
-`react-native-svg`; React Native `Image` is only the raster path. Add focused
-behavioral coverage for every affected row in this table.
+field or a mobile-only resolver. On mobile, SVG artwork is rendered with
+`react-native-svg`, and React Native `Image` is used only for raster images. Add
+focused behavioral tests for every affected row in the table.
 
 ## Unit ownership and provenance
 
-Each unit owns its checked-in `vibestudio.icon` declaration and local artwork.
-Change the unit's manifest and `assets/icon.svg` together; there is no central
-host-owned assignment table. Run the workspace tests after changing unit
+Each unit owns its `vibestudio.icon` declaration and its local artwork. Change
+the manifest and `assets/icon.svg` together; there is no central table of icon
+assignments in the host. Run the workspace tests after changing a unit's
 identity so the icon-coverage check verifies every executable unit and its
 local asset. Units contain only their own small SVG.
 
-- Semantic sources: Lucide Static 1.27.0, ISC license.
-- Brand sources: Simple Icons 16.27.1. The collection is CC0, but individual
+- Semantic icons: Lucide Static 1.27.0, ISC license.
+- Brand icons: Simple Icons 16.27.1. The collection is CC0, but individual
   marks remain subject to their owners' trademark and usage rules. Use brand
-  marks only for accurate nominative identification, never as decoration or an
-  implication of endorsement.
+  marks only to accurately identify the named technology, never as decoration
+  or to imply endorsement.

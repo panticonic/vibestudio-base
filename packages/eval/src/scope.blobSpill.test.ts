@@ -114,7 +114,7 @@ describe("ScopeManager — blob-spilled large values", () => {
     });
     const handle = {
       id: "panel:one",
-      cdp: { page: async () => ({ title: () => "live" }) },
+      cdp: { session: async () => ({ page: { title: () => "live" } }) },
       observe: async () => ({ phase: "ready" }),
     };
 
@@ -122,7 +122,7 @@ describe("ScopeManager — blob-spilled large values", () => {
     set(warm, "panelId", handle.id);
     await warm.api.save();
     expect(get(warm, "handle")).toBe(handle);
-    expect(typeof (get(warm, "handle") as typeof handle).cdp.page).toBe("function");
+    expect(typeof (get(warm, "handle") as typeof handle).cdp.session).toBe("function");
 
     const cold = new ScopeManager({
       channelId: "notebook",

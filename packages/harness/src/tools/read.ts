@@ -212,16 +212,12 @@ interface FsReadBytesResult {
   nextOffset?: number;
 }
 interface ImageServiceApi {
-  detectMimeType(bytes: BinaryEnvelope): Promise<string | null>;
+  detectMimeType(bytes: Uint8Array): Promise<string | null>;
   resize(
-    bytes: BinaryEnvelope,
+    bytes: Uint8Array,
     mimeType: string,
     opts: { maxWidth: number; maxHeight: number },
   ): Promise<ImageResizeResult>;
-}
-interface BinaryEnvelope {
-  __bin: true;
-  data: string;
 }
 const IMAGE_SERVICE_EXTENSION = "@workspace-extensions/image-service";
 
@@ -260,29 +256,25 @@ export function createReadTool(
     const normalized = requestedPath.replace(/^\/+/, "");
     const match = /^(?:skills\/)?([^/]+)\/SKILL\.md$/iu.exec(normalized);
     if (!match?.[1]) return null;
-    try {
-      const entries = await runtimeRpc.call<
-        Array<{ name: string; dirPath: string; skillPath: string }>
-      >("main", "workspace.listSkills", []);
-      const matches = entries.filter((entry) => entry.name === match[1]);
-      if (matches.length !== 1) return null;
-      const entry = matches[0]!;
-      const content = await runtimeRpc.call<string>(
-        "main",
-        "workspace.readSkill",
-        [entry.dirPath],
-      );
-      return {
-        content: [{ type: "text", text: content }],
-        details: toolDetails({
-          path: entry.skillPath,
-          engine: "runtime-fs",
-          extensionFallback: `workspace-skill-alias:${requestedPath}`,
-        }),
-      };
-    } catch {
-      return null;
-    }
+    const entries = await runtimeRpc.call<
+      Array<{ name: string; dirPath: string; skillPath: string }>
+    >("main", "workspace.listSkills", []);
+    const matches = entries.filter((entry) => entry.name === match[1]);
+    if (matches.length !== 1) return null;
+    const entry = matches[0]!;
+    const content = await runtimeRpc.call<string>(
+      "main",
+      "workspace.readSkill",
+      [entry.dirPath],
+    );
+    return {
+      content: [{ type: "text", text: content }],
+      details: toolDetails({
+        path: entry.skillPath,
+        engine: "runtime-fs",
+        extensionFallback: `workspace-skill-alias:${requestedPath}`,
+      }),
+    };
   };
 
   const missingResult = async (
@@ -547,13 +539,9 @@ export function createReadTool(
         imageService &&
         (isLikelyImagePath(path) || hasSupportedImageMagic(raw))
       ) {
-        // Extension arguments cross a JSON RPC boundary. Preserve bytes in
-        // the runtime's canonical binary envelope instead of relying on a
-        // Uint8Array's in-process prototype surviving serialization.
-        const binary = { __bin: true, data: bytesToBase64(raw) } as const;
-        const mimeType = await imageService.detectMimeType(binary);
+        const mimeType = await imageService.detectMimeType(raw);
         if (mimeType?.startsWith("image/")) {
-          const resized = await imageService.resize(binary, mimeType, {
+          const resized = await imageService.resize(raw, mimeType, {
             maxWidth: 2000,
             maxHeight: 2000,
           });

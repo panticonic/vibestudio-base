@@ -1,4 +1,3 @@
-import { useCallback, useEffect, useState } from "react";
 import { Badge, Button, Callout, Flex, Tabs, Text } from "@radix-ui/themes";
 import { credentialsMethods } from "@vibestudio/service-schemas/credentials";
 import { createTypedServiceClient } from "@vibestudio/shared/typedServiceClient";
@@ -15,6 +14,7 @@ import {
   TemplateUpdates,
   TemplateContributions,
 } from "@workspace/react/templates";
+import { useAsyncResource } from "@workspace/about-shared/asyncState";
 import { AboutPage, AboutThemeRoot } from "@workspace/about-shared/ui";
 
 const templates = createTemplateManagementClient((extension, method, args) =>
@@ -26,45 +26,16 @@ const accounts = createTypedServiceClient(
   (service, method, args) => rpc.call("main", `${service}.${method}`, args),
 );
 const listSourceAccounts = () => accounts.listStoredCredentials();
+const readInfo = () => workspace.getInfo();
+const readSources = () => templates.installed();
 export default function WorkspacePage() {
-  const [info, setInfo] = useState<Awaited<
-    ReturnType<typeof workspace.getInfo>
-  > | null>(null);
-  const [sources, setSources] = useState<Awaited<
-    ReturnType<typeof templates.installed>
-  > | null>(null);
-  const [error, setError] = useState("");
-  const [sourceError, setSourceError] = useState("");
-  const refresh = useCallback(async () => {
-    setSourceError("");
-    try {
-      setSources(await templates.installed());
-    } catch (error) {
-      setSourceError(String(error));
-    }
-  }, []);
-  useEffect(() => {
-    let active = true;
-    void workspace
-      .getInfo()
-      .then((info) => {
-        if (active) setInfo(info);
-      })
-      .catch((error) => {
-        if (active) setError(String(error));
-      });
-    void templates
-      .installed()
-      .then((sources) => {
-        if (active) setSources(sources);
-      })
-      .catch((error) => {
-        if (active) setSourceError(String(error));
-      });
-    return () => {
-      active = false;
-    };
-  }, []);
+  const infoResource = useAsyncResource(readInfo);
+  const sourcesResource = useAsyncResource(readSources);
+  const info = infoResource.data ?? null;
+  const error = infoResource.error;
+  const sources = sourcesResource.data ?? null;
+  const sourceError = sourcesResource.error;
+  const refresh = sourcesResource.refresh;
   const upstream = sources?.find(
     (source) => source.relationship === "upstream",
   );
@@ -83,6 +54,7 @@ export default function WorkspacePage() {
         {error && (
           <Callout.Root color="red">
             <Callout.Text>{error}</Callout.Text>
+            <Button onClick={() => void infoResource.refresh()}>Try again</Button>
           </Callout.Root>
         )}
         {!info && !error && (
@@ -116,7 +88,7 @@ export default function WorkspacePage() {
                   <Callout.Root color="red">
                     <Callout.Text>{sourceError}</Callout.Text>
                     <Button onClick={() => void refresh()}>
-                      Try loading sources again
+                      Try again
                     </Button>
                   </Callout.Root>
                 )}

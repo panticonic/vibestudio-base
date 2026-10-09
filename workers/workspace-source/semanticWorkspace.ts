@@ -72,7 +72,9 @@ import {
 import { assertSemanticVcsPathAdmissible } from "@vibestudio/shared/vcs/pathAdmission";
 import { splitRepoPath } from "@vibestudio/shared/runtime/entitySpec";
 import {
-  nativeInvocationIdentity, nativeInvocationSourceSchema, nativeOriginatingInputSchema,
+  nativeInvocationIdentity,
+  nativeInvocationSourceSchema,
+  nativeOriginatingInputSchema,
 } from "@vibestudio/service-schemas/nativeInvocation";
 import { channelTrajectoryFor } from "@vibestudio/trajectory-identity";
 import {
@@ -1365,7 +1367,9 @@ export class SemanticWorkspace {
           node["logId"],
           node["head"],
           node["messageId"],
-          node["logId"], node["head"], node["messageId"],
+          node["logId"],
+          node["head"],
+          node["messageId"],
         )
         .toArray() as Row[];
       return commands.some((row) =>
@@ -1724,6 +1728,17 @@ export class SemanticWorkspace {
             "EffectMismatch",
             "Publication receipt lacks its host application time",
             { effectId: pending.effectId, contract: "publication-applied-at" },
+          );
+        }
+        if (pending.payload["templateInstallation"]) {
+          const eventId = String(pending.payload["publishedEventId"]);
+          const installation = canonicalJson(
+            pending.payload["templateInstallation"],
+          );
+          this.deps.sql.exec(
+            "INSERT INTO workspace_template_installations (event_id, installation_json) VALUES (?, ?) ON CONFLICT(event_id) DO NOTHING",
+            eventId,
+            installation,
           );
         }
         this.deps.store.updatePendingCommandResult({
@@ -4184,6 +4199,9 @@ export class SemanticWorkspace {
     request: SemanticDispatchRequest,
   ): SemanticDispatchResult {
     return this.runMutation("commit", input, request, () => {
+      const workingHead = input.concludes
+        ? this.concludeSource(input, input.concludes)
+        : asState(input.expectedWorkingHead);
       const before = this.deps.store.workingChain(
         input.contextId,
         MAX_WORKING_APPLICATIONS,
@@ -4197,7 +4215,7 @@ export class SemanticWorkspace {
       const integrationSourceEventIds = derivedSources;
       for (const sourceEventId of integrationSourceEventIds) {
         const comparison = this.mergeComparison(
-          asState(input.expectedWorkingHead),
+          workingHead,
           {
             kind: "event",
             eventId: sourceEventId,
@@ -4240,13 +4258,10 @@ export class SemanticWorkspace {
             `External delta ${deltaId} is not active`,
           );
         }
-        const comparison = this.mergeComparison(
-          asState(input.expectedWorkingHead),
-          {
-            kind: "external-delta",
-            deltaId,
-          },
-        );
+        const comparison = this.mergeComparison(workingHead, {
+          kind: "external-delta",
+          deltaId,
+        });
         const remaining = comparison.coordinates
           .filter(
             (coordinate) =>
@@ -4267,7 +4282,7 @@ export class SemanticWorkspace {
       }
       const committed = this.deps.store.commit({
         contextId: input.contextId,
-        expectedWorkingHead: asState(input.expectedWorkingHead),
+        expectedWorkingHead: workingHead,
         commandId: input.commandId,
         message: input.message ?? null,
         integratesEventIds: integrationSourceEventIds,
@@ -4315,6 +4330,94 @@ export class SemanticWorkspace {
         ? { kind: "effects-pending", result, effects: [effect] }
         : { kind: "complete", result };
     });
+  }
+
+  /**
+   * Record the decision-only application that concludes one complete source,
+   * inside the commit command that names it. Conclusion is never implicit: a
+   * source with undecided coordinates refuses the whole commit, and an
+   * already-concluded source records nothing.
+   */
+  private concludeSource(
+    input: import("@vibestudio/service-schemas/vcs").VcsCommitInput,
+    requested: NonNullable<
+      import("@vibestudio/service-schemas/vcs").VcsCommitInput["concludes"]
+    >,
+  ): StateNodeRef {
+    const target = asState(input.expectedWorkingHead);
+    const source =
+      requested.kind === "event"
+        ? { kind: "event" as const, eventId: requested.eventId }
+        : { kind: "external-delta" as const, deltaId: requested.deltaId };
+    if (source.kind === "external-delta") {
+      const delta = this.deps.store.externalDelta(source.deltaId);
+      if (!delta || delta.status !== "active")
+        throw new SemanticVcsError(
+          "InvalidReference",
+          `External delta ${source.deltaId} is not active`,
+        );
+      if (delta.ownerContextId !== input.contextId)
+        throw new SemanticVcsError(
+          "InvalidReference",
+          `External delta ${source.deltaId} belongs to another context`,
+        );
+    }
+    const comparison = this.mergeComparison(target, source);
+    if (comparison.concluded) return target;
+    const remaining = comparison.coordinates.filter(
+      (coordinate) =>
+        coordinate.status !== "resolved" && coordinate.status !== "convergent",
+    );
+    if (remaining.length) {
+      throw new SemanticVcsError(
+        "IntegrationIncomplete",
+        `Source ${source.kind === "event" ? source.eventId : source.deltaId} is not complete; merge or decide its remaining coordinates before concluding it`,
+        {
+          source,
+          unaccountedCoordinates: remaining.map(
+            (coordinate) => coordinate.coordinate,
+          ),
+        },
+      );
+    }
+    const incorporatedChangeIds: string[] = [];
+    const entries = comparison.coordinates
+      .filter((coordinate) => coordinate.status === "convergent")
+      .map((coordinate) => {
+        const accounted = [
+          ...new Set(
+            coordinate.attribution.theirs.map((entry) => entry.changeId),
+          ),
+        ];
+        incorporatedChangeIds.push(...accounted);
+        return {
+          coordinate: coordinate.coordinate,
+          resolution: "convergent" as const,
+          accountedSourceChangeIds: accounted,
+          rationale: null,
+        };
+      });
+    const draft: MutationDraft = {
+      kind: "merge",
+      intentSummary: input.intentSummary ?? null,
+      incorporatedChangeIds,
+      changes: [],
+      fileResults: [],
+      repositoryResults: [],
+      appliedSourceChanges: [],
+      blobs: [],
+      decisions: [
+        {
+          targetState: target,
+          sourceEventId: source.kind === "event" ? source.eventId : null,
+          sourceDeltaId:
+            source.kind === "external-delta" ? source.deltaId : null,
+          entries,
+        },
+      ],
+    };
+    return this.persistWorkingMutation(input, draft, input.commandId)
+      .workingHead;
   }
 
   private discard(
@@ -5366,6 +5469,21 @@ export class SemanticWorkspace {
           input.expectedMainEventId,
           input.expectedCommittedEventId,
         );
+        if (input.templateInstallation) {
+          const eventId = input.expectedCommittedEventId;
+          const installation = canonicalJson(input.templateInstallation);
+          const existing = this.deps.sql
+            .exec(
+              "SELECT installation_json FROM workspace_template_installations WHERE event_id = ?",
+              eventId,
+            )
+            .toArray()[0] as Row | undefined;
+          if (existing && existing["installation_json"] !== installation)
+            throw new SemanticVcsError(
+              "RevisionChanged",
+              "Installation provenance requires a new publication event",
+            );
+        }
         const effect = this.deps.store.queueEffect({
           scopeKind: "context",
           scopeId: input.contextId,
@@ -5375,6 +5493,9 @@ export class SemanticWorkspace {
             contextId: input.contextId,
             previousEventId: input.expectedMainEventId,
             publishedEventId: input.expectedCommittedEventId,
+            ...(input.templateInstallation
+              ? { templateInstallation: input.templateInstallation }
+              : {}),
             // Protected publication deliberately carries a complete immutable
             // repository snapshot; context working-tree effects are patches.
             repositories: this.publicationRepositories(
@@ -5859,6 +5980,24 @@ export class SemanticWorkspace {
               applicationId: input.source.applicationId,
             }
           : { kind: "external-delta" as const, deltaId: input.source.deltaId };
+    if (source.kind !== "external-delta") {
+      const target = asState(input.target);
+      const alreadyInTarget =
+        source.kind === "event"
+          ? this.eventAncestors(this.stateEvent(target)).has(source.eventId)
+          : this.firstParentLineage(target).applicationIds.includes(
+              source.applicationId,
+            );
+      if (alreadyInTarget) {
+        // Such a source has nothing to integrate; asking it about local work
+        // reverses the comparison and silently reports no changes.
+        throw new SemanticVcsError(
+          "SourceIsAncestor",
+          "The compare source is already in the target's history",
+          { target: input.target, source },
+        );
+      }
+    }
     let comparison: NetMergeComparison;
     try {
       comparison = this.mergeComparison(
@@ -7710,18 +7849,30 @@ export class SemanticWorkspace {
     const head = String(row["cause_head"]);
     const invocationId = String(row["cause_invocation_id"]);
     const turnId = row["turn_id"] == null ? null : String(row["turn_id"]);
-    const startedPayload = row["started_payload_json"] == null ? null
-      : JSON.parse(String(row["started_payload_json"])) as Row;
-    const nativeSource = startedPayload?.["nativeSource"] === undefined ? null
-      : nativeInvocationSourceSchema.parse(startedPayload["nativeSource"]);
-    const originatingInput = nativeSource === null ? null
-      : nativeOriginatingInputSchema.nullable().parse(startedPayload!["originatingInput"]);
-    const messageLogId = originatingInput?.channelRef.objectKey ?? logId;
-    const messageHead = originatingInput ? channelTrajectoryFor(messageLogId).head : head;
-    const messageId = nativeSource !== null ? originatingInput?.messageId ?? null :
-      row["trigger_message_id"] == null
+    const startedPayload =
+      row["started_payload_json"] == null
         ? null
-        : String(row["trigger_message_id"]);
+        : (JSON.parse(String(row["started_payload_json"])) as Row);
+    const nativeSource =
+      startedPayload?.["nativeSource"] === undefined
+        ? null
+        : nativeInvocationSourceSchema.parse(startedPayload["nativeSource"]);
+    const originatingInput =
+      nativeSource === null
+        ? null
+        : nativeOriginatingInputSchema
+            .nullable()
+            .parse(startedPayload!["originatingInput"]);
+    const messageLogId = originatingInput?.channelRef.objectKey ?? logId;
+    const messageHead = originatingInput
+      ? channelTrajectoryFor(messageLogId).head
+      : head;
+    const messageId =
+      nativeSource !== null
+        ? (originatingInput?.messageId ?? null)
+        : row["trigger_message_id"] == null
+          ? null
+          : String(row["trigger_message_id"]);
     let triggerText: string | null = null;
     let sender: unknown = null;
     if (messageId) {
@@ -7742,11 +7893,17 @@ export class SemanticWorkspace {
     }
     return {
       invocation: { kind: "trajectory-invocation", logId, head, invocationId },
-      nativeInvocation: nativeSource === null ? null : nativeInvocationIdentity(nativeSource),
+      nativeInvocation:
+        nativeSource === null ? null : nativeInvocationIdentity(nativeSource),
       originatingInput,
       turn: turnId ? { kind: "trajectory-turn", logId, head, turnId } : null,
       message: messageId
-        ? { kind: "trajectory-message", logId: messageLogId, head: messageHead, messageId }
+        ? {
+            kind: "trajectory-message",
+            logId: messageLogId,
+            head: messageHead,
+            messageId,
+          }
         : null,
       toolName: row["tool_name"] == null ? null : String(row["tool_name"]),
       terminalOutcome:
@@ -12081,20 +12238,41 @@ export class SemanticWorkspace {
             "InvalidReference",
             "Unknown trajectory invocation",
           );
-        const started = row["started_event_id"] == null ? null : this.deps.sql.exec(
-          "SELECT payload_ref_json FROM log_events WHERE log_id=? AND head=? AND envelope_id=? LIMIT 1",
-          String(node["logId"]), String(node["head"]), String(row["started_event_id"]),
-        ).toArray()[0];
-        const payload = started == null ? null : JSON.parse(String(started["payload_ref_json"])) as Row;
-        const nativeSource = payload?.["nativeSource"] === undefined ? null : nativeInvocationSourceSchema.parse(payload["nativeSource"]);
+        const started =
+          row["started_event_id"] == null
+            ? null
+            : this.deps.sql
+                .exec(
+                  "SELECT payload_ref_json FROM log_events WHERE log_id=? AND head=? AND envelope_id=? LIMIT 1",
+                  String(node["logId"]),
+                  String(node["head"]),
+                  String(row["started_event_id"]),
+                )
+                .toArray()[0];
+        const payload =
+          started == null
+            ? null
+            : (JSON.parse(String(started["payload_ref_json"])) as Row);
+        const nativeSource =
+          payload?.["nativeSource"] === undefined
+            ? null
+            : nativeInvocationSourceSchema.parse(payload["nativeSource"]);
         return {
           kind: "trajectory-invocation",
           value: {
             logId: String(node["logId"]),
             head: String(node["head"]),
             invocationId: String(node["invocationId"]),
-            nativeInvocation: nativeSource === null ? null : nativeInvocationIdentity(nativeSource),
-            originatingInput: nativeSource === null ? null : nativeOriginatingInputSchema.nullable().parse(payload!["originatingInput"]),
+            nativeInvocation:
+              nativeSource === null
+                ? null
+                : nativeInvocationIdentity(nativeSource),
+            originatingInput:
+              nativeSource === null
+                ? null
+                : nativeOriginatingInputSchema
+                    .nullable()
+                    .parse(payload!["originatingInput"]),
             turnId: row["turn_id"] == null ? null : String(row["turn_id"]),
             name: row["kind"] == null ? null : String(row["kind"]),
             status: String(row["status"]),
@@ -13163,7 +13341,9 @@ export class SemanticWorkspace {
           String(node["logId"]),
           String(node["head"]),
           String(node["invocationId"]),
-          String(node["logId"]), String(node["head"]), String(node["invocationId"]),
+          String(node["logId"]),
+          String(node["head"]),
+          String(node["invocationId"]),
           after.phase,
           after.phase,
           after.key,
@@ -13202,13 +13382,21 @@ export class SemanticWorkspace {
                     },
                   }
                 : edgeKind === "triggered-by"
-                  ? { kind: edgeKind, from: invocation, to: { kind: "trajectory-message",
-                      logId: String(row["input_log_id"]), head: String(row["input_head"]), messageId: targetId } }
+                  ? {
+                      kind: edgeKind,
+                      from: invocation,
+                      to: {
+                        kind: "trajectory-message",
+                        logId: String(row["input_log_id"]),
+                        head: String(row["input_head"]),
+                        messageId: targetId,
+                      },
+                    }
                   : {
-                    kind: edgeKind,
-                    from: { kind: "command", commandId: targetId },
-                    to: invocation,
-                  },
+                      kind: edgeKind,
+                      from: { kind: "command", commandId: targetId },
+                      to: invocation,
+                    },
         };
       });
     } else if (kind === "trajectory-turn") {
@@ -13378,7 +13566,9 @@ export class SemanticWorkspace {
           String(node["logId"]),
           String(node["head"]),
           String(node["messageId"]),
-          String(node["logId"]), String(node["head"]), String(node["messageId"]),
+          String(node["logId"]),
+          String(node["head"]),
+          String(node["messageId"]),
           after.phase,
           after.phase,
           after.key,
@@ -13417,18 +13607,26 @@ export class SemanticWorkspace {
                     },
                   }
                 : row["target_kind"] === "invocation"
-                  ? { kind: edgeKind, from: { kind: "trajectory-invocation", logId: String(row["target_log_id"]),
-                      head: String(row["target_head"]), invocationId: targetId }, to: message }
+                  ? {
+                      kind: edgeKind,
+                      from: {
+                        kind: "trajectory-invocation",
+                        logId: String(row["target_log_id"]),
+                        head: String(row["target_head"]),
+                        invocationId: targetId,
+                      },
+                      to: message,
+                    }
                   : {
-                    kind: edgeKind,
-                    from: {
-                      kind: "trajectory-turn",
-                      logId: node["logId"],
-                      head: node["head"],
-                      turnId: targetId,
+                      kind: edgeKind,
+                      from: {
+                        kind: "trajectory-turn",
+                        logId: node["logId"],
+                        head: node["head"],
+                        turnId: targetId,
+                      },
+                      to: message,
                     },
-                    to: message,
-                  },
         };
       });
     } else if (kind === "trajectory") {

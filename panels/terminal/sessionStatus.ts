@@ -9,6 +9,12 @@ export function sessionExitText(session: Pick<SessionInfo, "alive" | "exit">): s
   return `exited ${session.exit.code}`;
 }
 
+export function sessionEndedText(session: Pick<SessionInfo, "exit">): string {
+  if (session.exit?.signal) return `Session ended (${session.exit.signal})`;
+  if (session.exit && session.exit.code !== null) return `Session ended (exit ${session.exit.code})`;
+  return "Session ended";
+}
+
 export function sessionFooterText(session: Pick<SessionInfo, "alive" | "exit" | "command" | "cols" | "rows" | "meta">): string {
   const exit = sessionExitText(session);
   const size = `${session.cols}x${session.rows}`;

@@ -3,9 +3,9 @@ import { toolDetails } from "./native-tool-json.js";
 /**
  * Typed mutation surface for context-local workspace services.
  *
- * A service declaration and its optional singleton are one semantic edit. This
- * keeps agents out of brittle YAML splicing and validates the complete candidate
- * before it can become the context's working state.
+ * A root selection, provider export, and optional singleton are one semantic
+ * edit. This keeps source edits atomic and validates the exact candidate before
+ * it can become the context's working state.
  */
 
 import { Type } from "@panticonic/pi-ai";
@@ -36,6 +36,7 @@ const principalSchema = Type.Union([
   Type.Literal("code"),
   Type.Literal("session"),
   Type.Literal("mission"),
+  Type.Literal("website"),
 ]);
 
 const bindingSchema = Type.Union(
@@ -58,106 +59,66 @@ const bindingSchema = Type.Union(
   },
 );
 
+const serviceExportSchema = Type.Union([
+  Type.Object({
+    name: Type.String({ minLength: 1 }),
+    title: Type.Optional(Type.String()),
+    action: Type.String({ minLength: 1 }),
+    description: Type.Optional(Type.String()),
+    notability: Type.Optional(Type.Union([Type.Literal("headline"), Type.Literal("everyday")])),
+    presentation: Type.Object({
+      domain: Type.Union([Type.Literal("files"), Type.Literal("sharing"), Type.Literal("accounts"), Type.Literal("web"), Type.Literal("automation"), Type.Literal("people"), Type.Literal("computer")]),
+      verb: Type.Union([Type.Literal("see"), Type.Literal("act"), Type.Literal("manage")]),
+      substanceKind: Type.Optional(Type.Union([Type.Literal("change-set"), Type.Literal("send"), Type.Literal("deletion"), Type.Literal("custom")])),
+    }, { additionalProperties: false }),
+    protocols: Type.Optional(Type.Array(Type.String(), { uniqueItems: true })),
+    authority: Type.Object({
+      principals: Type.Array(principalSchema, { minItems: 1, uniqueItems: true }),
+      binding: Type.Optional(bindingSchema),
+    }, { additionalProperties: false }),
+    durableObject: Type.Object({ className: Type.String(), context: Type.Optional(Type.Literal("creator")) }, { additionalProperties: false }),
+  }, { additionalProperties: false }),
+  Type.Object({
+    name: Type.String({ minLength: 1 }),
+    title: Type.Optional(Type.String()),
+    action: Type.String({ minLength: 1 }),
+    description: Type.Optional(Type.String()),
+    notability: Type.Optional(Type.Union([Type.Literal("headline"), Type.Literal("everyday")])),
+    presentation: Type.Object({
+      domain: Type.Union([Type.Literal("files"), Type.Literal("sharing"), Type.Literal("accounts"), Type.Literal("web"), Type.Literal("automation"), Type.Literal("people"), Type.Literal("computer")]),
+      verb: Type.Union([Type.Literal("see"), Type.Literal("act"), Type.Literal("manage")]),
+      substanceKind: Type.Optional(Type.Union([Type.Literal("change-set"), Type.Literal("send"), Type.Literal("deletion"), Type.Literal("custom")])),
+    }, { additionalProperties: false }),
+    protocols: Type.Optional(Type.Array(Type.String(), { uniqueItems: true })),
+    authority: Type.Object({
+      principals: Type.Array(principalSchema, { minItems: 1, uniqueItems: true }),
+      binding: Type.Optional(bindingSchema),
+    }, { additionalProperties: false }),
+    worker: Type.Object({ routePath: Type.String() }, { additionalProperties: false }),
+  }, { additionalProperties: false }),
+]);
+
 const workspaceServiceSchema = Type.Union(
   [
     Type.Object(
       {
         operation: Type.Literal("upsert"),
-        name: Type.String({
-          description: "Stable service name to add or update.",
-        }),
         source: Type.String({
           description: "Provider worker source, e.g. workers/todo-store.",
         }),
-        title: Type.String({ description: "User-facing service title." }),
-        action: Type.String({
-          description: 'User-facing verb phrase completing "Allow … to …".',
-        }),
-        description: Type.String({
-          description: "Plain-language purpose of the service.",
-        }),
-        notability: Type.Union(
-          [Type.Literal("headline"), Type.Literal("everyday")],
-          {
-            description:
-              "Use headline when a non-technical person would want to know before adding a caller; everyday for ordinary workspace machinery.",
-          },
-        ),
-        presentation: Type.Object(
-          {
-            domain: Type.Union([
-              Type.Literal("files"),
-              Type.Literal("sharing"),
-              Type.Literal("accounts"),
-              Type.Literal("web"),
-              Type.Literal("automation"),
-              Type.Literal("people"),
-              Type.Literal("computer"),
-            ]),
-            verb: Type.Union([
-              Type.Literal("see"),
-              Type.Literal("act"),
-              Type.Literal("manage"),
-            ]),
-            substanceKind: Type.Optional(
-              Type.Union([
-                Type.Literal("change-set"),
-                Type.Literal("send"),
-                Type.Literal("deletion"),
-                Type.Literal("custom"),
-              ]),
-            ),
-          },
-          {
-            additionalProperties: false,
-            description:
-              "How authority prompts describe the service. Sharing requires substanceKind.",
-          },
-        ),
-        protocols: Type.Array(Type.String(), {
-          minItems: 1,
-          uniqueItems: true,
-          description: "Stable protocols accepted by workers.resolveService().",
-        }),
-        principals: Type.Array(principalSchema, {
-          minItems: 1,
-          uniqueItems: true,
-          description:
-            "Authenticated principal kinds allowed by the service declaration.",
-        }),
-        binding: bindingSchema,
-        transport: Type.Union([
-          Type.Object(
-            {
-              kind: Type.Literal("durable-object"),
-              className: Type.String(),
-              objectKey: Type.Optional(
-                Type.String({
-                  description:
-                    "When present, atomically declares this default singleton object key too.",
-                }),
-              ),
-            },
-            { additionalProperties: false },
-          ),
-          Type.Object(
-            {
-              kind: Type.Literal("worker"),
-              routePath: Type.String(),
-            },
-            { additionalProperties: false },
-          ),
-        ]),
+        service: serviceExportSchema,
+        singletonKey: Type.Optional(Type.String({ minLength: 1 })),
       },
       {
         additionalProperties: false,
         description:
-          "Add or replace one complete context-local service declaration. All declaration metadata is required.",
+          "Select one provider unit service export and optionally declare its Durable Object singleton key.",
       },
     ),
     Type.Object(
       {
         operation: Type.Literal("remove"),
+        source: Type.String({ description: "Provider unit repository path." }),
         name: Type.String({ description: "Stable service name to remove." }),
         removeSingleton: Type.Optional(
           Type.Boolean({
@@ -171,15 +132,15 @@ const workspaceServiceSchema = Type.Union(
   ],
   {
     description:
-      "Use operation=upsert with the complete declaration, or operation=remove with its stable name.",
+      "Service details live in the provider unit package.json; meta/vibestudio.yml selects only source and name.",
   },
 );
 
 export type WorkspaceServiceToolInput =
-  | (ServiceRegistration & { operation: "upsert" })
+  | (Omit<Extract<ServiceMutation, { operation: "create" | "upsert" }>, "operation"> & {
+      operation: "upsert";
+    })
   | Extract<ServiceMutation, { operation: "remove" }>;
-
-type WorkspaceConfigDocument = Parameters<typeof planServiceMutation>[0];
 
 export interface WorkspaceServiceToolDetails {
   changed: boolean;
@@ -192,7 +153,7 @@ export interface WorkspaceServiceToolDetails {
 }
 
 export interface WorkspaceServiceToolDeps {
-  validateConfig(content: string): Promise<void>;
+  validateConfig(candidate: { manifest: string; serviceManifests: Record<string, string> }): Promise<void>;
 }
 
 export function createWorkspaceServiceTool(
@@ -207,7 +168,7 @@ export function createWorkspaceServiceTool(
     name: "workspace_service",
 
     description:
-      "Atomically add, update, or remove a live context-local service declaration in meta/vibestudio.yml. For Durable Objects, transport.objectKey declares the matching singleton in the same validated edit. Use this instead of splicing the services or singletonObjects YAML lists by hand; then confirm the live contract with docs_search/docs_open before eval.",
+      "Atomically add, update, or remove a service export in its provider package.json and select it in meta/vibestudio.yml. For Durable Objects, singletonKey declares the matching singleton in the same validated edit. Use this instead of editing either document by hand; then confirm the live contract with docs_search/docs_open before eval.",
     parameters: workspaceServiceSchema,
 
     execute: async (
@@ -223,7 +184,7 @@ export function createWorkspaceServiceTool(
       // TypeBox union. Keep the implementation on that exact public shape.
       const command = input as WorkspaceServiceToolInput;
       const operation = command.operation;
-      const serviceName = command.name;
+      const serviceName = command.operation === "upsert" ? command.service.name : command.name;
       const workingHead = await resolveToolWorkingState(vcs, context);
       const file = await resolveToolFile(
         vcs,
@@ -238,13 +199,36 @@ export function createWorkspaceServiceTool(
       const sourceContent = file.content.text;
       const document = YAML.parseDocument(sourceContent);
       if (document.errors.length > 0) throw document.errors[0];
-      const raw = document.toJS() as WorkspaceConfigDocument | null;
+      const raw = document.toJS() as { services?: Array<{source:string;name:string}>; singletonObjects?: Array<{source:string;className:string;key:string}> } | null;
       if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
         throw new Error(
           "meta/vibestudio.yml must contain a configuration mapping",
         );
       }
-      const plan = planServiceMutation(raw, command);
+      const providerSource = command.source;
+      const providerPath = `${providerSource}/package.json`;
+      const providerFile = await resolveToolFile(vcs, workingHead, providerPath);
+      if (!providerFile || providerFile.content.kind !== "text") {
+        throw new Error(`Provider unit ${providerSource} has no text package.json`);
+      }
+      let packageDocument: Record<string, unknown>;
+      try {
+        packageDocument = JSON.parse(providerFile.content.text) as Record<string, unknown>;
+      } catch (error) {
+        throw new Error(`${providerPath} is not valid JSON`, { cause: error });
+      }
+      const originalPackageValue = JSON.stringify(packageDocument);
+      const vibestudio = packageDocument["vibestudio"];
+      const unitConfig = typeof vibestudio === "object" && vibestudio !== null && !Array.isArray(vibestudio)
+        ? vibestudio as Record<string, unknown>
+        : {};
+      const exports = unitConfig["services"];
+      if (exports !== undefined && !Array.isArray(exports)) throw new Error(`${providerPath}: vibestudio.services must be an array`);
+      const plan = planServiceMutation({
+        services: raw.services ?? [],
+        singletonObjects: raw.singletonObjects ?? [],
+        providerServices: (exports ?? []) as ServiceRegistration["service"][],
+      }, command);
       if (plan.diagnostic) {
         return {
           content: [
@@ -267,11 +251,16 @@ export function createWorkspaceServiceTool(
       }
       document.set("services", plan.services);
       document.set("singletonObjects", plan.singletonObjects);
+      unitConfig["services"] = plan.providerServices;
+      packageDocument["vibestudio"] = unitConfig;
       const candidate = String(document);
-      await deps.validateConfig(candidate);
+      const providerCandidate = JSON.stringify(packageDocument) === originalPackageValue
+        ? providerFile.content.text
+        : `${JSON.stringify(packageDocument, null, 2)}\n`;
+      await deps.validateConfig({ manifest: candidate, serviceManifests: { [providerSource]: providerCandidate } });
       if (signal?.aborted) throw new Error("Operation aborted");
 
-      const changed = candidate !== sourceContent;
+      const changed = candidate !== sourceContent || providerCandidate !== providerFile.content.text;
       const vcsResult = changed
         ? await vcs.edit({
             contextId: toolContextId(context),
@@ -286,10 +275,21 @@ export function createWorkspaceServiceTool(
                   { start: 0, end: sourceContent.length, text: candidate },
                 ],
               },
+              {
+                kind: "text-edit",
+                repositoryId: providerFile.repositoryId,
+                fileId: providerFile.fileId,
+                edits: [{ start: 0, end: providerFile.content.text.length, text: providerCandidate }],
+              },
             ],
           })
         : undefined;
-      const diff = generateDiffString(sourceContent, candidate).diff;
+      const manifestDiff = generateDiffString(sourceContent, candidate).diff;
+      const providerDiff = generateDiffString(providerFile.content.text, providerCandidate).diff;
+      const diff = [
+        manifestDiff ? `meta/vibestudio.yml\n${manifestDiff}` : "",
+        providerDiff ? `${providerPath}\n${providerDiff}` : "",
+      ].filter(Boolean).join("\n");
       const docsId =
         operation === "upsert" ? `workspace:${serviceName}` : undefined;
       return {
@@ -298,7 +298,7 @@ export function createWorkspaceServiceTool(
             type: "text",
             text:
               operation === "upsert"
-                ? `${changed ? "Declared" : "Already declared"} ${serviceName} and validated the complete workspace config. Open ${docsId} with docs_open before eval.`
+                ? `${changed ? "Selected" : "Already selected"} ${serviceName} from ${providerSource} and validated the complete workspace config. Open ${docsId} with docs_open before eval.`
                 : `Removed ${serviceName} and validated the complete workspace config.`,
           },
         ],

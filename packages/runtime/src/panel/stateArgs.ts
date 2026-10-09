@@ -1,7 +1,7 @@
 import type { PanelSlotId } from "@vibestudio/shared/panel/idValues";
 import {
+  patchPanelStateArgs,
   readPanelStateArgs,
-  updatePanelStateArgs,
 } from "../shared/panelStateArgsPersistence.js";
 
 // Global injected by preload via --vibestudio-state-args command line arg
@@ -60,15 +60,11 @@ export function createStateArgsRuntime(input: {
     snapshot = shared;
     input.changed?.(snapshot);
   };
-  const setForPanel = async <T = Record<string, unknown>>(
+  const patchForPanel = async <T = Record<string, unknown>>(
     panelId: string,
-    updates: Record<string, unknown>,
+    patch: Record<string, unknown>,
   ): Promise<T> => {
-    const next = await updatePanelStateArgs(
-      { call: input.call },
-      panelId,
-      updates,
-    );
+    const next = await patchPanelStateArgs({ call: input.call }, panelId, patch);
     if (panelId === input.slotId) {
       apply(next);
       return snapshot as T;
@@ -77,9 +73,9 @@ export function createStateArgsRuntime(input: {
   };
   return {
     get: <T = Record<string, unknown>>(): T => snapshot as T,
-    set: <T = Record<string, unknown>>(updates: Record<string, unknown>) =>
-      setForPanel<T>(input.slotId, updates),
-    setForPanel,
+    patch: <T = Record<string, unknown>>(patch: Record<string, unknown>) =>
+      patchForPanel<T>(input.slotId, patch),
+    patchForPanel,
     getForPanel: <T = Record<string, unknown>>(panelId: string) =>
       readPanelStateArgs<T>({ call: input.call }, panelId),
     apply,
@@ -101,16 +97,16 @@ function current() {
 export function getStateArgs<T = Record<string, unknown>>(): T {
   return current().get<T>();
 }
-export function setStateArgs<T = Record<string, unknown>>(
-  updates: Record<string, unknown>,
+export function patchStateArgs<T = Record<string, unknown>>(
+  patch: Record<string, unknown>,
 ): Promise<T> {
-  return current().set<T>(updates);
+  return current().patch<T>(patch);
 }
-export function setStateArgsForPanel<T = Record<string, unknown>>(
+export function patchStateArgsForPanel<T = Record<string, unknown>>(
   panelId: string,
-  updates: Record<string, unknown>,
+  patch: Record<string, unknown>,
 ): Promise<T> {
-  return current().setForPanel<T>(panelId, updates);
+  return current().patchForPanel<T>(panelId, patch);
 }
 export function getStateArgsForPanel<T = Record<string, unknown>>(
   panelId: string,

@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { runInNewContext } from "node:vm";
 
-import { BrowserImpl, CdpConnection, CdpError } from "./worker";
+import { BrowserImpl, CDP_RECOVERY, CdpConnection, CdpError } from "./worker";
 import { webSocketAuthProtocol } from "@vibestudio/rpc/protocol/webSocketAuthProtocol";
 
 /**
@@ -1196,7 +1196,7 @@ describe("worker CDP client", () => {
       code: "cdp_dialog_open",
       errorData: {
         operation: "Input.dispatchMouseEvent",
-        recovery: "handle-dialog-and-observe",
+        recovery: CDP_RECOVERY.handleDialogAndObserve,
         dialog: { type: "confirm", message: "Delete this item?" },
       },
     });
@@ -1644,7 +1644,7 @@ describe("worker CDP client", () => {
       errorData: {
         code: "cdp_locator_state_mismatch",
         operation: "waitFor",
-        recovery: "reobserve-locator",
+        recovery: CDP_RECOVERY.reobserveLocator,
         locator:
           'getByRole("button", { name: "Add another column", exact: true })',
         timeoutMs: 25,
@@ -1704,7 +1704,7 @@ describe("worker CDP client", () => {
       "runtime may have been replaced by handle.navigate() or handle.rebuild()",
     );
     await expect(page.title()).rejects.toThrow(
-      "obtain a fresh page with await handle.cdp.page(); do not reuse the cached page",
+      "await handle.cdp.session() and continue with its stable page",
     );
   });
 
@@ -2389,7 +2389,7 @@ describe("worker CDP client", () => {
       code: "cdp_evaluation_failed",
       operation: "Runtime.evaluate",
       failureKind: "user-code",
-      recovery: "correct-page-function",
+      recovery: CDP_RECOVERY.correctPageFunction,
     });
   });
 
@@ -2487,7 +2487,7 @@ describe("worker CDP client", () => {
     expect((err as CdpError).errorData).toMatchObject({
       code: "cdp_locator_not_actionable",
       failureKind: "user-code",
-      recovery: "reobserve-locator",
+      recovery: CDP_RECOVERY.reobserveLocator,
       locator: 'getByTestId("missing")',
       timeoutMs: 40,
     });
@@ -2501,7 +2501,7 @@ describe("worker CDP client", () => {
       new CdpError("Browser evaluation failed", {
         code: "cdp_evaluation_failed",
         operation: "Runtime.evaluate",
-        recovery: "correct-page-function",
+        recovery: CDP_RECOVERY.correctPageFunction,
       }),
     );
 
@@ -2517,7 +2517,7 @@ describe("worker CDP client", () => {
       errorData: {
         code: "cdp_evaluation_failed",
         operation: "count",
-        recovery: "correct-page-function",
+        recovery: CDP_RECOVERY.correctPageFunction,
         locator: 'getByTestId("save")',
       },
     });

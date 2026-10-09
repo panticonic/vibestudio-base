@@ -82,7 +82,37 @@
           "evidence": "intentional-broad"
         }
       ]
-    }
+    },
+    "services": [
+      {
+        "action": "read or change which AI models your workspace uses",
+        "authority": {
+          "binding": "declared",
+          "principals": [
+            "host",
+            "user",
+            "code",
+            "website",
+            "session",
+            "mission"
+          ]
+        },
+        "description": "Read or change the AI model and provider settings for this workspace.",
+        "durableObject": {
+          "className": "ModelSettingsDO"
+        },
+        "name": "models",
+        "notability": "everyday",
+        "presentation": {
+          "domain": "automation",
+          "verb": "manage"
+        },
+        "protocols": [
+          "vibestudio.models.v1"
+        ],
+        "title": "AI model settings"
+      }
+    ]
   },
   "dependencies": {
     "@vibestudio/credential-client": "workspace:*",

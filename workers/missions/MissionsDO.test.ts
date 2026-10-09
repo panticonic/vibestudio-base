@@ -409,39 +409,6 @@ describe("MissionsDO", () => {
     ).toHaveLength(1);
   });
 
-  it("migrates historical isolated cadence edits only through the author's newly compiled plan", async () => {
-    const harness = await createMissions();
-    const original = await harness.callAs<MissionRecord>(alice, "launch", {
-      name: "Historical",
-      charter: agentCharter(),
-      authorityPlan: policy(),
-    });
-    harness.sql.exec(
-      "UPDATE missions SET authority_plan_json=? WHERE mission_id=?",
-      JSON.stringify({ ...policy(), schemaVersion: 1 }),
-      original.missionId
-    );
-    const patch = {
-      charter: { ...original.charter, trigger: { kind: "schedule" as const, everyMs: 7200000 } },
-    };
-    await expect(harness.callAs(alice, "edit", original.missionId, patch)).rejects.toThrow(
-      /historical isolated automation/
-    );
-    expect(await harness.callAs(alice, "get", original.missionId)).toMatchObject({
-      revision: 1,
-      authorityPlan: { schemaVersion: 1 },
-    });
-    harness.setPolicyDigest(HASH_B);
-    const upgraded = await harness.callAs<MissionRecord>(alice, "edit", original.missionId, {
-      ...patch,
-      authorityPlan: policy(HASH_B),
-    });
-    expect(upgraded.authorityPlan).toEqual(policy(HASH_B));
-    expect(harness.calls.some(({ method }) => method === "authority.compileAuthorityPlan")).toBe(
-      false
-    );
-  });
-
   it("deduplicates launch transport retries without duplicate definitions", async () => {
     const { callAs, sql } = await createMissions(IdempotentLaunchMissionsDO);
     const input = { authorityPlan: policy(), name: "Daily summary", charter: agentCharter() };
@@ -730,6 +697,62 @@ describe("MissionsDO", () => {
       harness.calls.some(({ method }) => method === "authority.retireTarget"),
     ).toBe(false);
   });
+
+  it.each(["delivered", "inbox-failed", "push-failed"] as const)(
+    "settles notification delivery from the inbox record: %s",
+    async (delivery) => {
+      const harness = await createMissions();
+      const originalCall = harness.rpcCall.getMockImplementation()!;
+      const notifications: Array<Record<string, unknown>> = [];
+      const pushes: unknown[][] = [];
+      harness.rpcCall.mockImplementation(async (target, method, args = [], options) => {
+        harness.calls.push({ target, method, args, options });
+        if (target === "main" && method === "workers.resolveService")
+          return { kind: "durable-object", targetId: "gad" };
+        if (target === "gad" && method === "putUserNotification") {
+          const notification = args[0] as Record<string, unknown>;
+          if (delivery === "inbox-failed" && notification["kind"] === "automation.notify")
+            throw new Error("Inbox write failed");
+          notifications.push(notification);
+          return notification;
+        }
+        if (target === "main" && method === "notification.pushUserInbox") {
+          pushes.push(args);
+          if (delivery === "push-failed") throw new Error("Device unreachable");
+          return undefined;
+        }
+        return originalCall(target, method, args, options);
+      });
+      const charter = continuingAgentCharter();
+      if (charter.execution.kind !== "agent") throw new Error("Expected agent");
+      charter.execution.action = {
+        kind: "notify", text: "Review the rollout\nDetails", title: "Reminder", alert: "interrupt",
+      };
+      const mission = await harness.callAs<MissionRecord>(alice, "launch", {
+        name: "Rollout reminder", authorityPlan: policy(), charter,
+      });
+      const run = await harness.callAs<MissionRunRecord>(alice, "runNow", mission.missionId);
+      expect(run.phase).toBe("terminal");
+      expect(run.outcome).toBe(delivery === "inbox-failed" ? "failed" : "succeeded");
+      if (delivery === "inbox-failed") {
+        expect(run.failure?.message).toContain("Inbox write failed");
+        expect(pushes).toEqual([]);
+      } else {
+        expect(notifications).toContainEqual(expect.objectContaining({
+          id: `automation.notify:${run.runId}`, userId: "alice", kind: "automation.notify",
+          title: "Reminder", message: "Review the rollout\nDetails",
+          data: { missionId: mission.missionId, runId: run.runId, channelId: "conversation:daily" },
+        }));
+        expect(pushes).toEqual([["alice", expect.objectContaining({
+          notificationId: `automation.notify:${run.runId}`, body: "Review the rollout",
+          priority: "high", channelId: "conversation:daily",
+        })]]);
+      }
+      expect(harness.calls.some(({ method }) =>
+        ["runtime.createContext", "runtime.createEntity", "runAutomationTurn", "runAutomationEval"].includes(method),
+      )).toBe(false);
+    },
+  );
 
   it("records an overlapping occurrence and raises one persistent run issue", async () => {
     const harness = await createMissions();

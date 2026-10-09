@@ -1,17 +1,26 @@
 # Revert and counteractions
 
-Revert authors explicit inverse changes; it does not erase history. The original change, its counteraction, both work units, and every later merge decision remain reachable.
+Revert records explicit inverse changes; it doesn't erase history. The
+original change, its counteraction, both work units, and every later merge
+decision stay reachable.
 
-Use `vcs({ operation: "revert", changeIds, intent })` for exact changes discovered through inspect, history, blame, or memory. Select the semantic change identities, not paths or guessed ordering.
+Use `vcs({ operation: "revert", changeIds, intent })` with change IDs found
+through inspect, history, blame, or memory. Select semantic change IDs, not
+paths or a guessed order.
 
 ```js
 vcs({
   operation: "revert",
   changeIds: ["change:..."],
-  intent: "Remove the temporary compatibility behavior now that all callers use v2"
-})
+  intent:
+    "Remove the temporary compatibility behavior now that all callers use v2",
+});
 ```
 
-The engine plans the selected counteractions as one fact-valid mutation. If newer live state makes an inverse untruthful, it reports `ConflictPresent`; inspect the coordinate and author the desired current result deliberately. Do not force an old endpoint over newer intent.
+The engine plans all selected counteractions as one mutation. If newer state
+means an inverse would no longer be correct, it reports `ConflictPresent`.
+Inspect the coordinate and write the result you want; don't force the old
+value over newer intent.
 
-Use `discard` only to abandon the complete uncommitted application chain and return the context to its committed event. It is not a selective undo.
+Use `discard` only to drop the entire uncommitted application chain and
+return the context to its committed event. It is not a selective undo.

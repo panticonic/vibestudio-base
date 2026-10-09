@@ -279,6 +279,37 @@
                                   "code"
                                 ],
                                 "additionalProperties": false
+                              },
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "kind": {
+                                    "type": "string",
+                                    "const": "notify"
+                                  },
+                                  "text": {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "maxLength": 4000
+                                  },
+                                  "title": {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "maxLength": 200
+                                  },
+                                  "alert": {
+                                    "type": "string",
+                                    "enum": [
+                                      "inbox",
+                                      "interrupt"
+                                    ]
+                                  }
+                                },
+                                "required": [
+                                  "kind",
+                                  "text"
+                                ],
+                                "additionalProperties": false
                               }
                             ]
                           },
@@ -473,10 +504,7 @@
                 "properties": {
                   "schemaVersion": {
                     "type": "number",
-                    "enum": [
-                      1,
-                      2
-                    ]
+                    "const": 2
                   },
                   "digest": {
                     "type": "string",
@@ -3547,8 +3575,7 @@
                   "type": "string",
                   "enum": [
                     "authored",
-                    "inherited",
-                    "unlisted"
+                    "inherited"
                   ]
                 },
                 "inheritedFrom": {

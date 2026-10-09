@@ -435,7 +435,7 @@ function ProfilesTab() {
       ) : null}
       {!loading && !profileError && profiles.length === 0 && (
         <Text size="2" color="gray">
-          No profiles yet. Capture one with profilePanel()/profileWorkerd() from eval.
+          No profiles yet. Ask an agent to profile a panel.
         </Text>
       )}
       {profiles.map((ref) => (

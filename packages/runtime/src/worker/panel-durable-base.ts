@@ -29,6 +29,7 @@ export abstract class PanelDurableObjectBase extends DurableObjectBase {
         selfHandle: () =>
           createNonPanelRuntimeHandle({
             id: String(this.env["DO_ID"] ?? this.ctx.id.toString()),
+            kind: "do",
           }),
         defaultOpenParentId: null,
         requesterPanelId: () =>
@@ -54,7 +55,10 @@ export abstract class PanelDurableObjectBase extends DurableObjectBase {
       });
     }
     if (this.rpcCallerKind === "worker" || this.rpcCallerKind === "do") {
-      return createNonPanelRuntimeHandle({ id: callerId });
+      return createNonPanelRuntimeHandle({
+        id: callerId,
+        kind: this.rpcCallerKind,
+      });
     }
     return null;
   }

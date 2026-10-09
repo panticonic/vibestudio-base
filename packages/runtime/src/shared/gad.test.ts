@@ -29,21 +29,23 @@ describe("createGadClient", () => {
     await gad.listTrajectoryBranches({ limit: 10 });
     await gad.listTrajectoryInvocations({ branchId: "branch-1", limit: 20 });
 
-    expect(rpc.call).toHaveBeenNthCalledWith(1, "main", "workers.resolveService", [
-      "vibestudio.gad.workspace.v1",
-      null,
-    ]);
+    expect(rpc.call).toHaveBeenNthCalledWith(
+      1,
+      "main",
+      "workers.resolveService",
+      ["vibestudio.gad.workspace.v1", null],
+    );
     expect(rpc.call).toHaveBeenNthCalledWith(
       2,
       "do:workers/workspace-source:GadWorkspaceDO:workspace",
       "listTrajectoryBranches",
-      [{ limit: 10 }]
+      [{ limit: 10 }],
     );
     expect(rpc.call).toHaveBeenNthCalledWith(
       3,
       "do:workers/workspace-source:GadWorkspaceDO:workspace",
       "listTrajectoryInvocations",
-      [{ branchId: "branch-1", limit: 20 }]
+      [{ branchId: "branch-1", limit: 20 }],
     );
   });
 
@@ -120,7 +122,13 @@ describe("createGadClient", () => {
                 seq: 1,
                 payloadKind: "custom.kind",
                 from: { kind: "panel", id: "panel:user" },
-                bytes: { from: 1, to: 0, payload: 1, metadata: 0, attachments: 0 },
+                bytes: {
+                  from: 1,
+                  to: 0,
+                  payload: 1,
+                  metadata: 0,
+                  attachments: 0,
+                },
                 payloadSummary: ref,
                 storedRefs: [],
                 publishedAt: "2026-05-20T12:00:00.000Z",
@@ -135,11 +143,59 @@ describe("createGadClient", () => {
     const gad = createGadClient(rpc as never);
 
     await expect(
-      gad.readChannelEnvelopes({ channelId: "channel-1", window: { kind: "tail" } })
+      gad.readChannelEnvelopes({
+        channelId: "channel-1",
+        window: { kind: "tail" },
+      }),
     ).resolves.toMatchObject({ items: [{ payload: { hydrated: true } }] });
-    await expect(gad.inspectChannelEnvelopes({ channelId: "channel-1" })).resolves.toMatchObject({
+    await expect(
+      gad.inspectChannelEnvelopes({ channelId: "channel-1" }),
+    ).resolves.toMatchObject({
       items: [{ envelopeId: "env-1", payloadSummary: ref }],
     });
+  });
+
+  it("routes agent inspection to the channel's own inspectAgent receiver", async () => {
+    const channelTarget = "do:workers/pubsub-channel:PubSubChannel:channel-2";
+    const inspection = {
+      participantId: "do:workers/agent-worker:AiChatWorker:agent-1",
+      channelId: "channel-2",
+      method: "getDebugState",
+      result: { loaded: false },
+      roster: { present: true, transport: "do" },
+    };
+    const rpc = {
+      call: vi.fn(async (target: string, method: string) => {
+        if (target === "main" && method === "workers.resolveService") {
+          return {
+            kind: "durable-object",
+            source: "workers/pubsub-channel",
+            className: "PubSubChannel",
+            objectKey: "channel-2",
+            targetId: channelTarget,
+          };
+        }
+        if (target === channelTarget && method === "inspectAgent")
+          return inspection;
+        throw new Error(`unexpected call ${target}.${method}`);
+      }),
+      stream: vi.fn(),
+    };
+    const gad = createGadClient(rpc as never);
+
+    await expect(
+      gad.inspectAgent({ channelId: "channel-2", method: "getDebugState" }),
+    ).resolves.toEqual(inspection);
+    expect(rpc.call).toHaveBeenNthCalledWith(
+      1,
+      "main",
+      "workers.resolveService",
+      ["vibestudio.channel.v1", "channel-2"],
+    );
+    expect(rpc.call).toHaveBeenNthCalledWith(2, channelTarget, "inspectAgent", [
+      { method: "getDebugState" },
+    ]);
+    expect(gad.collectChannelEnvelopePages).toBeTypeOf("function");
   });
 
   it("exposes typed durable user-notification consumer and producer calls", async () => {
@@ -169,7 +225,8 @@ describe("createGadClient", () => {
             ],
           };
         }
-        if (method === "acknowledgeUserNotification") return { acknowledged: true };
+        if (method === "acknowledgeUserNotification")
+          return { acknowledged: true };
         if (method === "putUserNotification") return args[0];
         if (method === "deleteUserNotification") return { deleted: true };
         throw new Error(`unexpected call ${target}.${method}`);
@@ -181,7 +238,9 @@ describe("createGadClient", () => {
     await expect(gad.listUserNotificationsForMe()).resolves.toMatchObject([
       { id: "channel.invite:channel-1", userId: "usr_bob" },
     ]);
-    await expect(gad.acknowledgeUserNotification("channel.invite:channel-1")).resolves.toBe(true);
+    await expect(
+      gad.acknowledgeUserNotification("channel.invite:channel-1"),
+    ).resolves.toBe(true);
     const generic = {
       id: "build:42",
       userId: "usr_bob",
@@ -191,12 +250,22 @@ describe("createGadClient", () => {
       revision: 1,
     };
     await expect(gad.putUserNotification(generic)).resolves.toEqual(generic);
-    await expect(gad.deleteUserNotification("usr_bob", "build:42")).resolves.toBe(true);
-    expect(rpc.call).toHaveBeenCalledWith(targetId, "listUserNotificationsForMe", []);
-    expect(rpc.call).toHaveBeenCalledWith(targetId, "acknowledgeUserNotification", [
-      { id: "channel.invite:channel-1" },
+    await expect(
+      gad.deleteUserNotification("usr_bob", "build:42"),
+    ).resolves.toBe(true);
+    expect(rpc.call).toHaveBeenCalledWith(
+      targetId,
+      "listUserNotificationsForMe",
+      [],
+    );
+    expect(rpc.call).toHaveBeenCalledWith(
+      targetId,
+      "acknowledgeUserNotification",
+      [{ id: "channel.invite:channel-1" }],
+    );
+    expect(rpc.call).toHaveBeenCalledWith(targetId, "putUserNotification", [
+      generic,
     ]);
-    expect(rpc.call).toHaveBeenCalledWith(targetId, "putUserNotification", [generic]);
     expect(rpc.call).toHaveBeenCalledWith(targetId, "deleteUserNotification", [
       { userId: "usr_bob", id: "build:42" },
     ]);

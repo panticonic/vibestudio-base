@@ -609,26 +609,12 @@ describe("new panel launcher", () => {
       expect(
         screen
           .queryAllByRole("group")
+          .filter((group) => group.getAttribute("aria-label") !== "Search scope")
           .map((group) => group.textContent?.slice(0, 6)),
       ).toEqual(["Panels", "Search"]),
     );
 
     fireEvent.click(screen.getByRole("button", { name: /Go to/ }));
     await waitFor(() => expect(input.value).toBe("chat"));
-  });
-
-  it("routes the retired `>` prefix into the go-to scope and says so", async () => {
-    render(<AboutPanelRoot />);
-    const input = screen.getByRole("combobox") as HTMLTextAreaElement;
-    fireEvent.change(input, { target: { value: ">example" } });
-
-    // The deprecation notice is the whole point of keeping `>` parseable.
-    await screen.findByText(/is now/);
-    // `>` used to mean panels only; it now searches history too.
-    await findRow("Example Docs");
-
-    fireEvent.click(screen.getByRole("button", { name: "Use @" }));
-    await waitFor(() => expect(input.value).toBe("@example"));
-    expect(screen.queryByText(/is now/)).toBeNull();
   });
 });

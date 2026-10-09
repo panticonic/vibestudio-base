@@ -13,14 +13,6 @@ export type StatusKey = "pending" | "complete" | "error" | "cancelled" | "abando
 
 export type StatusTone = "gray" | "green" | "red" | "amber" | "blue";
 
-const STATUS_DOT_COLOR: Record<StatusKey, string> = {
-  pending: "var(--gray-8)",
-  complete: "var(--green-9)",
-  error: "var(--red-9)",
-  cancelled: "var(--amber-9)",
-  abandoned: "var(--amber-9)",
-};
-
 const STATUS_LABEL: Record<ToolExecutionState["status"], string> = {
   pending: "Pending",
   running: "Running",
@@ -82,7 +74,7 @@ export function StatusDot({
         width: 6,
         height: 6,
         borderRadius: "50%",
-        backgroundColor: tone ? `var(--${tone}-9)` : STATUS_DOT_COLOR[statusKey],
+        backgroundColor: `var(--${tone ?? getStatusColor(statusKey)}-9)`,
         flexShrink: 0,
       }}
     />

@@ -613,6 +613,22 @@ describe("SemanticWorkspace snapshot import", () => {
         ],
       },
     });
+    // The service owns listFiles/readFile agreement; callers never cross-check it.
+    const agreed = (value: Record<string, unknown>) => ({
+      authoredChangeId: value["authoredChangeId"],
+      authoredByWorkUnitId: value["authoredByWorkUnitId"],
+      contentClass: value["contentClass"],
+      externalKeys: value["externalKeys"],
+    });
+    if (read.kind !== "host-read" || listed.kind !== "complete")
+      throw new Error("expected a file read request and a complete listing");
+    const listedFile = (
+      listed.result as { files: Array<Record<string, unknown>> }
+    ).files[0]!;
+    expect(listedFile["authoredChangeId"]).toEqual(expect.any(String));
+    expect(agreed(read.request as Record<string, unknown>)).toEqual(
+      agreed(listedFile),
+    );
     const authoredChangeIds = inspectedWork.authoredChangeIds;
     const inspectedChanges = await Promise.all(
       authoredChangeIds.map(async (changeId) => {
@@ -3116,6 +3132,7 @@ it.each(["nonoverlap", "conflict", "removal"] as const)(
       source = pin,
     ): TemplateSourceTree => ({
       sources: [source],
+      installation: { sources: [{ pin: source, manifest: new TextDecoder().decode(manifestFile.bytes) }], upstream: source },
       repositories: [
         repository("projects/example", file),
         repository("meta", manifestFile),
@@ -3260,12 +3277,10 @@ it.each(["nonoverlap", "conflict", "removal"] as const)(
         localRepoPaths: new Set(["projects/example"]),
         templateDependencies: [],
         templateSources: [pin],
-        authoredTop: { systemEpoch: 0 },
+        installation: { upstream: pin, sources: [{ pin, manifest: "systemEpoch: 0\n" }] },
         manifest: {
           top: { systemEpoch: 0 },
-          inventory: { repositories: [] },
           dependencies: [],
-          installation: { upstream: pin, sources: [] },
         },
       });
       let lostPush = true;

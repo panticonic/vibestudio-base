@@ -162,6 +162,7 @@ export function ChatInput({ placeholder, defaultMentions, disabled = false }: Ch
     }
   );
   const [sendError, setSendError] = useState<string | null>(null);
+  const [attachError, setAttachError] = useState<string | null>(null);
   const [showImageInput, setShowImageInput] = useState(false);
   const [selectedMentionIds, setSelectedMentionIds] = useState<Record<string, string>>({});
   const accountProfiles = useAccountProfiles(
@@ -296,13 +297,13 @@ export function ChatInput({ placeholder, defaultMentions, disabled = false }: Ch
         event.preventDefault();
 
         if (pendingImages.length + files.length > MAX_IMAGE_COUNT) {
-          setSendError(`Maximum ${MAX_IMAGE_COUNT} images allowed`);
+          setAttachError(`Maximum ${MAX_IMAGE_COUNT} images allowed`);
           return;
         }
 
         const validation = validateImageFiles(files);
         if (!validation.valid) {
-          setSendError(validation.error ?? "Invalid image");
+          setAttachError(validation.error ?? "Invalid image");
           return;
         }
 
@@ -313,14 +314,16 @@ export function ChatInput({ placeholder, defaultMentions, disabled = false }: Ch
             newImages.push(pending);
           } catch (err) {
             console.error("[ChatInput] Failed to process pasted image:", err);
+            setAttachError(`Failed to process pasted image: ${err}`);
           }
         }
 
         if (newImages.length > 0) {
-          onImagesChange([...pendingImages, ...newImages]);
+          onImagesChange((current) => [...current, ...newImages]);
         }
       } catch (err) {
         console.error("[ChatInput] Image paste handler error:", err);
+        setAttachError(`Failed to paste image: ${err}`);
       }
     };
 
@@ -332,6 +335,7 @@ export function ChatInput({ placeholder, defaultMentions, disabled = false }: Ch
     async (mode: "default" | "after-turn" = "default") => {
       try {
         setSendError(null);
+        setAttachError(null);
         if (disabled || dictation.busy) return;
         // A `/model …` line is a command, never a chat message. If it resolves
         // to models, switch to the top match; otherwise coach instead of
@@ -437,12 +441,13 @@ export function ChatInput({ placeholder, defaultMentions, disabled = false }: Ch
     [input, mentions, onInputChange, handleTextAreaInput]
   );
 
-  const handleImagesChange = useCallback(
-    (images: PendingImage[]) => {
+  const handleImagesChange = useCallback<typeof onImagesChange>(
+    (images) => {
       if (sendError) setSendError(null);
+      if (attachError) setAttachError(null);
       onImagesChange(images);
     },
-    [onImagesChange, sendError]
+    [onImagesChange, sendError, attachError]
   );
 
   const handleKeyDown = useCallback(
@@ -562,8 +567,26 @@ export function ChatInput({ placeholder, defaultMentions, disabled = false }: Ch
       {/* Error display */}
       {sendError && (
         <Box flexShrink="0">
-          <Callout.Root color="red" size="1">
+          <Callout.Root color="red" size="1" role="alert">
             <Callout.Text>Failed to send: {sendError}</Callout.Text>
+          </Callout.Root>
+        </Box>
+      )}
+      {attachError && (
+        <Box flexShrink="0">
+          <Callout.Root color="red" size="1" role="alert">
+            <Flex align="center" justify="between" gap="2">
+              <Callout.Text>Couldn&apos;t attach: {attachError}</Callout.Text>
+              <IconButton
+                size="1"
+                variant="ghost"
+                color="gray"
+                aria-label="Dismiss attachment error"
+                onClick={() => setAttachError(null)}
+              >
+                <Cross2Icon />
+              </IconButton>
+            </Flex>
           </Callout.Root>
         </Box>
       )}
@@ -579,7 +602,7 @@ export function ChatInput({ placeholder, defaultMentions, disabled = false }: Ch
           <ImageInput
             images={pendingImages}
             onImagesChange={handleImagesChange}
-            onError={(error) => setSendError(error)}
+            onError={setAttachError}
             disabled={inputDisabled}
           />
         </Card>
@@ -606,6 +629,7 @@ export function ChatInput({ placeholder, defaultMentions, disabled = false }: Ch
               color="gray"
               onClick={() => setReplyTo(null)}
               title="Cancel reply"
+              aria-label="Cancel reply"
             >
               <Cross2Icon />
             </IconButton>
@@ -636,6 +660,7 @@ export function ChatInput({ placeholder, defaultMentions, disabled = false }: Ch
           )}
           <TextArea
             ref={textAreaRef}
+            aria-label="Message"
             size="2"
             variant="surface"
             className={`chat-input-textarea${dictation.supported ? " chat-input-with-dictation" : ""}`}
@@ -682,7 +707,7 @@ export function ChatInput({ placeholder, defaultMentions, disabled = false }: Ch
             gap="1"
             mt="1"
             className="chat-sending-ghost"
-            aria-live="polite"
+            role="status"
           >
             <Spinner size="1" />
             <Text size="1" color="gray">
@@ -694,7 +719,7 @@ export function ChatInput({ placeholder, defaultMentions, disabled = false }: Ch
 
       {/* Transient "/model" switch confirmation (item 7). */}
       {modelSwitchNotice && (
-        <Box flexShrink="0" mt="1" className="chat-narration-pill-wrap" aria-live="polite">
+        <Box flexShrink="0" mt="1" className="chat-narration-pill-wrap" role="status">
           <Box className="chat-narration-pill">
             <Text size="1">Switched this agent to {modelSwitchNotice}</Text>
           </Box>
@@ -703,7 +728,7 @@ export function ChatInput({ placeholder, defaultMentions, disabled = false }: Ch
 
       {/* Transient flush self-narration pill. */}
       {flushNarration && (
-        <Box flexShrink="0" mt="1" className="chat-narration-pill-wrap" aria-live="polite">
+        <Box flexShrink="0" mt="1" className="chat-narration-pill-wrap" role="status">
           <Box className="chat-narration-pill">
             <Text size="1">{flushNarration.text}</Text>
           </Box>
@@ -712,7 +737,7 @@ export function ChatInput({ placeholder, defaultMentions, disabled = false }: Ch
 
       {/* Reversible-until-committed undo snackbar (~5s). */}
       {undoableAction && (
-        <Box flexShrink="0" mt="1" className="chat-undo-snackbar-wrap" aria-live="polite">
+        <Box flexShrink="0" mt="1" className="chat-undo-snackbar-wrap" role="status">
           <Flex align="center" justify="between" gap="3" className="chat-undo-snackbar">
             <Text size="1">
               {undoableAction.messageIds.length > 1

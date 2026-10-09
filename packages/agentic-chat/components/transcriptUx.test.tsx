@@ -325,9 +325,11 @@ describe("transcript delivery markers", () => {
         "Automation definition created in this conversation",
       ),
     ).toBeTruthy();
-    expect(call).toHaveBeenCalledWith("do:missions", "overview", [
-      { missionId: "mission-talk-timer", limit: 1 },
-    ]);
+    expect(call).toHaveBeenCalledWith(
+      "do:missions",
+      "overview",
+      [{ missionId: "mission-talk-timer", limit: 1 }],
+    );
   });
 
   it("shows a compact ack badge for self-authored non-retracted messages", () => {

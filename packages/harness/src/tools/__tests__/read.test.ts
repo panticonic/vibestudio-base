@@ -726,12 +726,11 @@ describe("createReadTool", () => {
             if (method === "extensions.streamingMethods")
               return Promise.resolve([]);
             const [, extensionMethod, extensionArgs] = args;
-            expect(
-              Array.isArray(extensionArgs) ? extensionArgs[0] : undefined,
-            ).toEqual({
-              __bin: true,
-              data: Buffer.from(pngBytes).toString("base64"),
-            });
+            const imageBytes = Array.isArray(extensionArgs)
+              ? extensionArgs[0]
+              : undefined;
+            expect(imageBytes).toBeInstanceOf(Uint8Array);
+            expect([...(imageBytes as Uint8Array)]).toEqual([...pngBytes]);
             if (extensionMethod === "detectMimeType")
               return Promise.resolve("image/png");
             if (extensionMethod === "resize") {

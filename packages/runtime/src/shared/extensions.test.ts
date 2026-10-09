@@ -77,7 +77,7 @@ describe("createExtensionsClient", () => {
     expect(rpc.stream).not.toHaveBeenCalled();
   });
 
-  it("exposes the untyped `invoke` primitive (so `services.extensions.invoke` works in eval)", async () => {
+  it("exposes the untyped `invoke` primitive with the raw service signature", async () => {
     const rpc = createRpc();
     const extensions = createExtensionsClient(rpc);
 

@@ -9,9 +9,10 @@ import {
 export function installedSourceDependencies(
   manifest: ParsedTemplateManifest,
   roots: readonly string[],
+  installation: import("@vibestudio/workspace-contracts/types").WorkspaceTemplateInstallation | null,
 ): Set<string> {
   const dependencies = new Map(
-    (manifest.installation?.sources ?? []).map((source) => [
+    (installation?.sources ?? []).map((source) => [
       normalizeTemplateGitUrl(source.pin.url),
       parseTemplateManifestContent(source.manifest, manifest.top.systemEpoch)
         .dependencies,

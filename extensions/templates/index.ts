@@ -56,15 +56,29 @@ async function resolveSource(
   );
 }
 
-function inheritedInventory(
+async function inheritedInventory(
+  ctx: ExtensionContextLike,
   observation: Awaited<ReturnType<typeof observeWorkspace>>,
 ) {
-  const installation = observation.manifest.installation;
+  const installation = observation.installation;
   if (!installation)
     throw new Error(
       "This workspace has no installed ownership declarations. Reopen it using the template picker.",
     );
-  const layers = installedDependencyLayers(observation.manifest);
+  const layers = await Promise.all(
+    installedDependencyLayers(
+      observation.manifest,
+      observation.installation,
+    ).map(async (layer) => {
+      const source = installation.sources.find(
+        (source) => source.pin.url === layer.label,
+      );
+      if (!source)
+        throw new Error(`Installed dependency ${layer.label} disappeared`);
+      const inspected = await inspect(ctx, { pin: source.pin });
+      return { ...layer, repositories: inspected.repositories };
+    }),
+  );
   const owners = templateRepositoryOwners(layers);
   owners.delete("meta");
   return {
@@ -119,13 +133,11 @@ export async function activate(ctx: ExtensionContextLike) {
     resolveSource(ctx, source),
   );
   const unsubscribe = ctx.rpc.on?.("workspace:protected-refs-changed", () => {
-    void updates
-      .reconcileInstalled()
-      .catch((error) =>
-        ctx.log.warn?.("Could not reconcile workspace update notices", {
-          error: String(error),
-        }),
-      );
+    void updates.reconcileInstalled().catch((error) =>
+      ctx.log.warn?.("Could not reconcile workspace update notices", {
+        error: String(error),
+      }),
+    );
   });
   if (unsubscribe) ctx.subscriptions?.push({ dispose: unsubscribe });
   return {
@@ -156,7 +168,7 @@ export async function activate(ctx: ExtensionContextLike) {
         ctx,
         observation,
         input,
-        inheritedInventory(observation),
+        await inheritedInventory(ctx, observation),
       );
     },
     publicationRepositories: async ({
@@ -196,7 +208,7 @@ export async function activate(ctx: ExtensionContextLike) {
     },
     authoringParts: async () => {
       const observation = await observeWorkspace(ctx);
-      const inherited = inheritedInventory(observation);
+      const inherited = await inheritedInventory(ctx, observation);
       return (await listTemplateAuthoringParts(ctx, observation)).map(
         (part) => ({
           ...part,
@@ -214,7 +226,7 @@ export async function activate(ctx: ExtensionContextLike) {
         ctx,
         observation,
         input.intent,
-        inheritedInventory(observation),
+        await inheritedInventory(ctx, observation),
       );
       if (plan.fingerprint !== input.expectedFingerprint)
         throw new Error("Workspace changed. Review the release again.");
@@ -230,7 +242,7 @@ export async function activate(ctx: ExtensionContextLike) {
         ctx,
         observation,
         input.intent,
-        inheritedInventory(observation),
+        await inheritedInventory(ctx, observation),
       );
       return { observation, plan };
     }),
@@ -238,7 +250,7 @@ export async function activate(ctx: ExtensionContextLike) {
       const observation = await observeWorkspace(ctx);
       return templateAuthoringSetup(
         observation,
-        inheritedInventory(observation).owners,
+        (await inheritedInventory(ctx, observation)).owners,
       );
     },
     publicationVersion: async ({
@@ -260,7 +272,7 @@ export async function activate(ctx: ExtensionContextLike) {
       return nextPublicationVersion(tags);
     },
     authoringUpstream: async () =>
-      (await observeWorkspace(ctx)).manifest.installation?.upstream ?? null,
+      (await observeWorkspace(ctx)).installation?.upstream ?? null,
   };
 }
 export type Api = Awaited<ReturnType<typeof activate>>;

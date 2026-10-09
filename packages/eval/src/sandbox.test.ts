@@ -1326,7 +1326,7 @@ return fs.readFileSync("/tmp/a");`,
        error.errorData = {
          code: "cdp_target_closed",
          failureKind: "infrastructure",
-         recovery: "reacquire-page"
+         recovery: { action: "reacquire-handle", instruction: "Reacquire the page." }
        };
        throw error;`,
       { syntax: "typescript" },
@@ -1337,7 +1337,7 @@ return fs.readFileSync("/tmp/a");`,
       failureKind: "infrastructure",
       failureCode: "cdp_target_closed",
       errorData: {
-        recovery: "reacquire-page",
+        recovery: { action: "reacquire-handle", instruction: "Reacquire the page." },
       },
     });
   });

@@ -1,146 +1,143 @@
 # Theory of State
 
-## Classify every persistent structure
+## Kinds of persistent structure
 
 Every persistent structure is one of:
 
-- **Log** — an append-only hash-chained sequence for trajectory and channel
+- **Log**: an append-only hash-chained sequence for trajectory and channel
   delivery.
-- **Semantic graph fact** — an immutable typed node or immediate edge: command,
+- **Semantic graph fact**: an immutable typed node or direct edge: command,
   work unit, change, application, decision, content mapping, workspace event,
   or event parent.
-- **Value** — immutable content-addressed bytes or trees used for file content,
+- **Value**: immutable content-addressed bytes or trees for file content,
   large payloads, and build artifacts.
-- **Ref** — a mutable named pointer such as a trajectory head, context committed
-  event, context working head, or protected `main` event.
-- **Cache** — a rebuildable index, materialized context folder, or build output.
+- **Ref**: a mutable named pointer, such as a trajectory head, a context's
+  committed event or working head, or the protected `main` event.
+- **Cache**: a rebuildable index, materialized context folder, or build
+  output.
 
-Never promote a cache, traversal cursor, self-derived digest, or repeated
-projection to authority. Journal an intended external effect before dispatch;
-mint semantic identity before materializing its content projection.
+Never treat a cache, traversal cursor, self-derived digest, or repeated
+projection as a source of truth. Journal an intended external effect before
+dispatching it, and create a semantic ID before materializing its content.
 
-## Join the trajectory to semantic work once
+## Linking the trajectory to semantic work
 
-The unified log envelope carries exact log/head coordinates, ordering,
-causality, actor, payload identity, and hash-chain integrity. A model-visible
-trajectory contains messages, turns, tool invocations, model changes,
-compactions, and summaries. Semantic file mutations are not copied into that
-log: the workspace graph owns commands, work units, changes, applications, and
-events. The invocation-to-command edge is their one exact join.
+The unified log envelope carries log/head coordinates, ordering, causality,
+actor, payload identity, and hash-chain integrity. A model-visible trajectory
+holds messages, turns, tool invocations, model changes, compactions, and
+summaries. Semantic file mutations aren't copied into it; the workspace graph
+holds commands, work units, changes, applications, and events. The
+invocation-to-command edge is the one link between them.
 
-An agent-caused semantic command points to its verified ingress coordinate from
-that trajectory; an authorized direct command stops honestly at itself. Neither
-copies actor/invocation fields into every VCS node or creates another invocation
+An agent-caused semantic command points to its verified ingress coordinate in
+the trajectory; an authorized direct command ends at itself. Neither copies
+actor or invocation fields into every VCS node or keeps a second invocation
 registry. Executor, initiating intent, authorization, incorporation, and blame
-are separate graph walks. Approvals and runtime diagnostics remain with their
-domain owners; there is no sidecar provenance or claims ledger.
+are separate graph walks. Approvals and runtime diagnostics stay in their own
+domains; there is no provenance sidecar or claims ledger.
 
-## Use one semantic workspace graph
+## The semantic workspace graph
 
-A committed state is a workspace event. A local state is the latest work
+A committed state is a workspace event; a local state is the latest work
 application. Each context stores two pointers:
 
-- `committedEventId` — its immutable local commit boundary;
-- `workingHead` — the committed event when clean, otherwise the latest local
+- `committedEventId`: its immutable local commit boundary;
+- `workingHead`: the committed event when clean, otherwise the latest local
   application.
 
-Each application points to its exact event/application basis and applies one
-work unit. Every edit, move, copy, integration decision, or revert appends one
-ordinary local application. Commit consumes the complete local chain and
-creates one event; discard drops the complete chain. There is no parallel
-composition or partial-commit state machine.
+Each application points to its event/application basis and applies one work
+unit. Every edit, move, copy, merge decision, or revert appends one local
+application. Commit turns the complete local chain into one event; discard
+drops it. There is no separate composition step or partial-commit state.
 
 One authenticated workspace fact map holds typed repository and file states.
-Repository manifests map paths to stable file IDs. File state owns placement,
-content, mode, size, and tombstone predecessor. A content edit changes one file
-fact; a move preserves file ID; a copy mints file ID. The copy change itself
-owns one typed source endpoint (state, repository, file, path, and content),
-from which both the `authored-copy-source` adjacency and each application's
-ordinary mapped content edge are derived. Do not add a copy-source table,
+Repository manifests map paths to stable file IDs. File state holds placement,
+content, mode, size, and deletion predecessor. A content edit changes one file
+fact, a move keeps the file ID, and a copy creates a new one. The copy change
+stores one typed source endpoint (state, repository, file, path, and
+content), from which both the `authored-copy-source` edge and each
+application's mapped content edge are derived. Don't add a copy-source table,
 payload convention, or copy-specific traversal graph.
 
-Work units group coherent intent. Changes record expressive edit, lifecycle,
+Work units group changes made for one intent. Changes record edit, lifecycle,
 move, copy, import, and counteraction semantics. Applications record how work
-was applied to an exact basis. Integration decisions account for exact source
-changes by adopting, reconciling with truthful state evidence, or declining
-with rationale. Immediate content edges preserve, copy, or incorporate exact
-coordinates, so blame walks transitively without storing transitive snapshots.
+was applied to a basis. Merge decisions account for source changes by
+adopting them, reconciling them with evidence from the current state, or
+declining them with a rationale. Direct content edges preserve, copy, or
+incorporate specific coordinates, so blame walks transitively without stored
+transitive snapshots.
 
-Import creates an explicit evidence barrier. Exact snapshot bytes may be known
-while earlier external origin remains unknown; provenance stops honestly where
-evidence stops.
+An import is an explicit evidence boundary: the snapshot bytes may be known
+while their earlier origin isn't, and provenance stops there.
 
-Read [vibestudio-vcs](../vibestudio-vcs/SKILL.md) for the operating procedure.
+See [vibestudio-vcs](../vibestudio-vcs/SKILL.md) for the operating procedure.
 
-## Separate semantics from host effects
+## Semantics versus host effects
 
-The semantic workspace authority owns contexts, events, work, changes,
-applications, decisions, content lineage, comparisons, command journaling, and
-the durable effect outbox.
+The semantic workspace owns contexts, events, work, changes, applications,
+decisions, content lineage, comparisons, command journaling, and the durable
+effect outbox.
 
-Invocation diagnostics are a bounded read projection over those existing
-authorities, not a sidecar ledger. `gad.diagnoseInvocation` joins the exact
-trajectory coordinate to its projected invocation/turn, terminal events,
-causal semantic commands, effect intents, and receipts. Every section has an
-explicit limit and truncation fact; the projection stores nothing and cannot
-change semantic state.
+Invocation diagnostics are a bounded read view over those records, not a
+separate ledger. `gad.diagnoseInvocation` joins a trajectory coordinate to its
+projected invocation and turn, terminal events, caused semantic commands,
+effect intents, and receipts. Every section has an explicit limit and reports
+truncation; the view stores nothing and can't change semantic state.
 
-Two narrow host-effect ports consume exact requests and return receipts:
+Two narrow host-effect ports take specific requests and return receipts:
 
-- workspace content observation/materialization;
-- approval-gated protected-ref compare-and-swap.
+- workspace content observation and materialization;
+- approval-gated compare-and-swap of protected refs.
 
-These ports do not interpret changes, conflicts, integration completeness, or
-ancestry. They are not another VCS. The semantic authority performs no direct
-filesystem or protected-ref effect.
+They don't interpret changes, conflicts, integration completeness, or
+ancestry, and aren't a second VCS. The semantic workspace performs no
+filesystem or protected-ref effects itself.
 
-The build subsystem is a separate content consumer, not a semantic effect port.
-It can be invoked explicitly against an exact context for fast feedback and is
-also invoked by protected publication for the affected build closure. Build
-observations and artifacts do not become semantic history; only the successful
-candidate gate permits the protected ref effect.
+The build subsystem consumes content; it isn't a semantic effect port. You can
+run it against a context for quick feedback, and protected publication runs
+it for the affected build closure. Build results never become semantic
+history; only a successful candidate gate permits the protected-ref effect.
 
-Materialized context folders and host content-tree digests are projections.
-Build keys identify derived artifacts. None is semantic revision identity.
+Materialized context folders, host content-tree digests, and build keys are
+all derived; none identifies a semantic revision.
 
-## Walk provenance directly
+## Walking provenance
 
-Expose one typed node vocabulary across `inspect`, `neighbors`, `history`, and
-`blame`. Define each relation once with its exact allowed endpoint kinds and
-derive the identical canonical edge from either incident node. Persist only
-immediate normalized facts, never a second adjacency graph. Page adjacency in deterministic order
-with one opaque cursor; keep traversal state in the caller and restart from the
-root if a mutable trajectory grows. Derive ancestry from event parents and
-content origin from coordinate mappings.
+`inspect`, `neighbors`, `history`, and `blame` share one typed node
+vocabulary. Each relation is defined once with its allowed endpoint kinds and
+reads the same from either end. Only direct normalized facts are stored, with
+no second adjacency graph. Adjacency is paged in deterministic order with one
+opaque cursor; the caller holds traversal state and restarts from the root if
+a trajectory grows. Ancestry comes from event parents, content origin from
+coordinate mappings.
 
-If a proposed persistent object merely summarizes facts reachable through
-these edges, make it a rebuildable cache or delete it.
+If a proposed stored object only summarizes facts reachable through these
+edges, make it a rebuildable cache or drop it.
 
-## Store runtime state with its owner
+## Where runtime state lives
 
 - Durable Object SQL is the durable SQL primitive; each DO owns its schema.
-- The per-workspace blobstore owns immutable content-addressed values.
-- The host state directory owns DO databases, blob/build stores, projected
-  context folders, and device credentials.
-- Framework-internal DOs own their bounded runtime concerns; workspace units do
-  not acquire host authority from filesystem position.
+- The per-workspace blobstore holds immutable content-addressed values.
+- The host state directory holds DO databases, blob and build stores,
+  projected context folders, and device credentials.
+- Framework-internal DOs own their bounded runtime concerns. Workspace units
+  gain no host authority from filesystem position.
 
 ## Build from content, publish events
 
-Builds are content-addressed and demand-driven. An effective version derives
-from one unit's content, transitive internal dependencies, and global build
-keys. Equal effective versions reuse artifacts. An explicit context build is
-the fast local diagnostic loop; the protected-main gate repeats the exact
-candidate build/typecheck before ref mutation. A post-publication build
-remains a derived projection.
+Builds are content-addressed and on demand. A unit's effective version comes
+from its content, transitive internal dependencies, and global build keys;
+equal versions reuse artifacts. A context build is the quick local check, and
+the protected-main gate repeats the candidate build and typecheck before
+changing a ref. Builds after publication are derived.
 
 Protected `vcs.push` publishes an already committed event. The semantic
-authority validates event ancestry and integration facts; the publication gate
-obtains approval and atomically advances protected refs. Publication creates no
-source-history event. Candidate build/typecheck success is a precondition for
-content-changing pushes.
+workspace validates ancestry and integration facts; the publication gate
+obtains approval and advances protected refs atomically. Publication creates
+no source-history event, and content-changing pushes require a successful
+candidate build and typecheck.
 
-Runtime activation consumes derived artifacts and fails closed. If the newly
-published source cannot be built, validated, or started, its artifact is not
-activated and the previous runnable artifact remains selected. The semantic
-publication remains true; a repair is a new ordinary event.
+Runtime activation uses derived artifacts and fails closed. If new source
+can't be built, validated, or started, its artifact isn't activated and the
+previous runnable artifact stays selected. The publication still stands; the
+fix is a new event.

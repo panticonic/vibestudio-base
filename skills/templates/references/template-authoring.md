@@ -1,10 +1,11 @@
 # Authoring a workspace snapshot
 
 List protected-main repositories with `authoringParts`. Pass the selected
-repositories to `inspectAuthoring` with a name and description. The inspection
-reads template dependencies from `meta/vibestudio.yml`, excludes repositories
-they provide, adds locally owned workspace-package dependencies and referenced
-runtime units, then returns a manifest and fingerprint.
+repositories, a name, and a description to `inspectAuthoring`. Inspection
+reads template dependencies from `meta/vibestudio.yml`, leaves out
+repositories those dependencies provide, adds locally owned workspace-package
+dependencies and referenced runtime units, and returns a manifest and a
+fingerprint.
 
 ```js
 const templates = "@workspace-extensions/templates";
@@ -17,20 +18,21 @@ const inspection = await extensions.invoke(templates, "inspectAuthoring", [
 ]);
 ```
 
-Select the repositories that match the requested source; `authoringParts` is
-an inventory, not a request to include the whole workspace. Match the requested
-source to its repository kind and package identity: a reusable library is a
-package, while an extension provides a workspace capability. Do not substitute
-the extension that calls a library for the library's own source. The inspection
-adds the required closure automatically.
+Select only the repositories that match what was asked for; `authoringParts`
+is an inventory, not a request to include the whole workspace. Match the
+requested source by repository kind and package identity: a reusable library
+is a package, while an extension provides a workspace capability. Don't
+substitute an extension that calls a library for the library itself.
+Inspection adds the required dependencies automatically.
 
-Keep the exact inspection in `scope` and return a compact review containing its
-fingerprint, main event, manifest, and requested/required/included parts. If that
-review exceeds eval's bounded return, read the retained value in pages before
-claiming the plan is ready. A truncated preview is not the complete plan.
+Keep the inspection in `scope` and return a compact review with its
+fingerprint, main event, manifest, and requested/required/included parts. If
+the review is larger than eval's return limit, read the retained value in
+pages before saying the plan is ready; a truncated preview is not the full
+plan.
 
-Review `requestedParts`, `requiredParts`, and `includedParts`. Publish only
-that unchanged plan:
+Review `requestedParts`, `requiredParts`, and `includedParts`, then publish
+that plan unchanged:
 
 ```js
 const request = {
@@ -50,7 +52,7 @@ const review = await extensions.invoke(templates, "reviewPublication", [
   request,
 ]);
 // Show added, changed and removed files. Fetch oldHash/newHash blobs only when
-// needed for drill-down. Obtain the user’s approval of this exact release.
+// needed for drill-down. Get the user's approval of this exact release.
 const publication = await extensions.invoke(templates, "publishAuthoring", [
   {
     ...request,
@@ -59,17 +61,18 @@ const publication = await extensions.invoke(templates, "publishAuthoring", [
 ]);
 ```
 
-The snapshot owns its selected runtime configuration, including provider and
-trust declarations that refer to included units. A fresh workspace still starts
-without inherited grants or credentials. Dependency declarations belong in the
-workspace manifest and are retained automatically; never add a second dependency
-channel, composition disables, workspace identity, concrete secrets, or author
-identity to the publication request.
+The snapshot carries the runtime configuration of the selected parts,
+including provider and trust declarations for included units. A new workspace
+created from it still starts with no inherited grants or credentials.
+Dependency declarations live in the workspace manifest and are kept
+automatically. Don't add dependencies, composition disables, workspace
+identity, concrete secrets, or author identity to the publication request.
 
-Use `authoringSetup` to prefill the current template’s name, description, upstream,
-and authored parts. For an existing upstream omit `creation`; it requires contents
-write access, not repository administration. Review validates account access and
-returns the actual upstream diff; publishing rejects changed upstream or local
-source. Do not use per-unit `git.pushUpstream` to publish a complete template.
-`git.upstreamStatus([])` inspects separately declared per-unit Git upstreams;
-it does not inspect the workspace’s template publishing destination.
+Use `authoringSetup` to prefill the current template's name, description,
+upstream, and authored parts. For an existing upstream, omit `creation`; this
+needs contents write access, not repository administration. Review checks
+account access and returns the actual diff against the upstream; publishing
+is rejected if the upstream or local source changed since. Don't use per-unit
+`git.pushUpstream` to publish a whole template. `git.upstreamStatus([])`
+reports separately declared per-unit Git upstreams, not the workspace's
+template publishing destination.

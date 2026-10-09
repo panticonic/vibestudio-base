@@ -4,52 +4,54 @@ Recipes for common tasks using the sandbox.
 
 ## Store a Nested Immutable File Tree
 
-`blobstore.putTree` stores one directory at a time. Entry names are single
-components, so `"docs/intro.txt"` is a path rather than a valid entry name.
-Store the file, create its containing directory, then reference that child
-tree from the root:
+`blobstore.putPathTree` takes full relative paths. A string is stored as UTF-8
+text, bytes as-is, and `{ digest }` (such as a `putText` result) references a
+blob that is already stored:
 
 ```ts
-const { digest: contentHash } = await blobstore.putText("Introduction");
-const docs = await blobstore.putTree([
-  { name: "intro.txt", kind: "file", contentHash, mode: 33188 },
-], {});
-const root = await blobstore.putTree([
-  { name: "docs", kind: "dir", childHash: docs.treeHash },
-], { root: true });
+const root = await blobstore.putPathTree(
+  {
+    "docs/intro.txt": "Introduction",
+    "assets/logo.png": pngBytes,
+    "bin/run.sh": { digest: script.digest, mode: 33261 },
+  },
+  { root: true },
+);
 ```
 
-Readers such as `readFileAtTree(root.treeHash, "docs/intro.txt")` accept paths
-through that tree. Create each referenced blob or child tree before its parent.
+It returns the root's `{ treeHash, stateHash? }`. Readers such as
+`readFileAtTree(root.treeHash, "docs/intro.txt")` accept the same paths.
+`putTree` stores one directory node from single-component entry names when you
+need that lower level.
 
 ## Build a Live Transcript Dashboard
 
-For an inline status surface that refreshes itself, caches its last display
+For an inline status view that refreshes itself, caches its last display
 state, and updates in place when the agent renders it again, use the
 [Live Dashboard Pattern](INLINE_UI.md#live-dashboard-pattern). It also covers
-manual refresh, request-race protection, and gating optional remote discovery
-behind an explained user action.
+manual refresh, protection against racing requests, and putting optional remote
+discovery behind an explained user action.
 
 ## Recover From a Durable Object Schema Refusal
 
-Treat `DO_SCHEMA_INCOMPATIBLE` as a schema-design signal. Inspect its structured
-`errorData`; do not infer the cause from prose and do not encode schema state in
-application data.
+`DO_SCHEMA_INCOMPATIBLE` means the stored data does not match the current
+schema; fix the schema design. Read the structured `errorData` rather than
+parsing the message text, and do not store schema state in application data.
 
-1. Do not translate the store. The pre-release runtime supports one exact
-   current schema and rejects every other shape unchanged.
-2. For deliberately disposable state, pass the exact resolved target to
-   `workers.resetStorage(target, intent)`. The operation fences new RPCs and
-   verifies a backup before deletion.
+1. Do not migrate the store. The pre-release runtime supports only the current
+   schema and rejects any other shape without changing it.
+2. If the state is disposable, pass the resolved target to
+   `workers.resetStorage(target, intent)`. The reset blocks new RPCs and
+   verifies a backup before deleting anything.
 3. List or restore that backup with `workers.listStorageBackups(target)` and
    `workers.restoreStorageBackup(target, operationId, intent)`.
 
-`DO_MAINTENANCE_IN_PROGRESS` means the host fence is active; wait
-instead of creating a parallel path.
+`DO_MAINTENANCE_IN_PROGRESS` means the host is blocking RPCs for maintenance.
+Wait for it to finish; do not route around it.
 
 ## Read a File and Display It
 
-`fs` is injected into eval (context-scoped) — do not import it.
+`fs` is injected into eval and scoped to the context. Do not import it.
 
 ```
 eval({ code: `
@@ -150,26 +152,32 @@ eval({
 
 ## npm Packages in Inline UI
 
-> **Defensive coding:** When using `props` in inline UI components, always default the parameter (`{ props = {}, chat }`) and guard property access (`props?.items ?? []`). For small datasets, embedding constants directly in the component source is simpler and more portable than passing `props`.
+> **Defensive coding:** When an inline UI component uses `props`, default the parameter (`{ props = {}, chat }`) and guard property access (`props?.items ?? []`). For small datasets, constants in the component source are simpler and more portable than `props`.
 
 `eval` runs server-side (in the `EvalDO`) and `inline_ui` compiles in the chat
-panel — they have **separate module registries**, so preloading a package in
-`eval` does NOT make it available to `inline_ui`. To use a non-default npm
-package in a component, put the component in a context-relative file and declare
-the dependency in the nearest `package.json` (the panel infers file-loaded
-imports), or avoid the dependency by embedding the small bit of logic directly.
+panel. They have **separate module registries**: a package loaded in `eval` is
+not available to `inline_ui`. To use a non-default npm package in a component,
+put the component in a context-relative file and declare the dependency in the
+nearest `package.json` (the panel infers imports for files it loads). For a
+small piece of logic, inline it instead of adding the dependency.
+
+Create `.tmp/ui/package.json` with the dependency before saving the component:
+
+```json
+{ "private": true, "dependencies": { "lodash": "^4.17.21" } }
+```
 
 ```ts
 // Component lives in a file whose nearest package.json lists "lodash";
 // the panel resolves the import when it compiles the file.
 inline_ui({
-  path: ".vibestudio/ui/shuffler.tsx",
+  path: ".tmp/ui/shuffler.tsx",
   props: { items: ["Apple", "Banana", "Cherry"] },
 });
 ```
 
 ```tsx
-// .vibestudio/ui/shuffler.tsx
+// .tmp/ui/shuffler.tsx
 import { useState } from "react";
 import { Button, Flex, Text } from "@radix-ui/themes";
 import _ from "lodash";
@@ -191,30 +199,30 @@ export default function Shuffler({ props = {} }) {
 }
 ```
 
-For larger eval/UI code, prefer writing a context-relative file and using the
+For larger eval or UI code, write a context-relative file and pass it with the
 tool's `path` parameter. Static relative imports from that file are resolved,
-and bare package imports are inferred from the nearest `package.json` when
+and bare package imports are inferred from the nearest `package.json` where
 possible:
 
 ```ts
-eval({ path: ".vibestudio/eval/audit.ts" });
-inline_ui({ path: ".vibestudio/ui/audit-panel.tsx", props: { runId } });
+eval({ path: ".tmp/eval/audit.ts" });
+inline_ui({ path: ".tmp/ui/audit-panel.tsx", props: { runId } });
 feedback_custom({
-  path: ".vibestudio/ui/confirm-audit.tsx",
+  path: ".tmp/ui/confirm-audit.tsx",
   title: "Confirm audit",
 });
 ```
 
 ## Call an API with a URL-bound credential
 
-The general pattern: store a URL-bound credential once, then fetch through the
-runtime credential proxy.
+Store a URL-bound credential once, then send requests through the runtime
+credential proxy.
 
-The `credentials.fetch(url, init, { credentialId })` wrapper (which returns a
-`Response`) is part of the portable runtime surface from `@workspace/runtime`;
-it works from server-side eval, panels, workers, and DOs. In eval, import
-`credentials` from `@workspace/runtime` and use `credentials.fetch` for external
-requests that need stored credentials:
+`credentials.fetch(url, init, { credentialId })` returns a `Response`. It is
+part of the portable runtime in `@workspace/runtime` and works from server-side
+eval, panels, workers, and DOs. In eval, import `credentials` from
+`@workspace/runtime` and use `credentials.fetch` for external requests that need
+a stored credential:
 
 ```tsx
 import { credentials } from "@workspace/runtime";
@@ -240,42 +248,42 @@ const response = await credentials.fetch(
     },
     body: JSON.stringify({ query: "meeting notes" }),
   },
-  { credentialId: credential.id }
+  { credentialId: credential.id },
 );
 const results = await response.json();
 ```
 
-See [RUNTIME_API.md](RUNTIME_API.md) for the full runtime surface. Works with any
-configured provider; check
-`await credentials.listStoredCredentials()` to see what's available.
+This works with any configured provider; call
+`await credentials.listStoredCredentials()` to see what is stored. See
+[RUNTIME_API.md](RUNTIME_API.md) for the full runtime API.
 
 ## Protect a Custom Userland Resource
 
-The portable runtime has no advisory `approvals` namespace. A provider protects
-its resource declaratively:
+The portable runtime has no `approvals` namespace for ad hoc prompts. A
+provider protects its resource declaratively:
 
 1. Add a user-facing capability definition to the provider package's
    `vibestudio.authority.provides`.
-2. Bind the receiving `@rpc` method to that unit-local capability with a literal
-   `userland-capability` effect.
-3. Let the host derive the exact receiver resource and run the ordinary trusted
+2. Bind the receiving `@rpc` method to that unit-local capability with a
+   literal `userland-capability` effect.
+3. The host then derives the receiver resource and runs its normal capability
    acquisition flow before provider code executes.
 
-Do not add a second prompt around filesystem, browser, credential, Git, panel,
-or other host-mediated operations. Those APIs already acquire their own host
-capabilities. See the [capabilities skill](../capabilities/SKILL.md) for complete
+Do not add your own prompt around filesystem, browser, credential, Git, panel,
+or other host-mediated operations; those APIs already request their own host
+capabilities. See the [capabilities skill](../capabilities/SKILL.md) for full
 receiver-object and opaque-handle examples.
 
 ## Browser data (bookmarks/history/protected import/tabs)
 
-`browserData` from `@workspace/runtime` is a **panel/component runtime**
-capability: it invokes the manifest-selected `browserData` provider namespace,
-whose broker extension preserves the verified caller and is the only code
-source admitted by the canonical BrowserDataDO. Panel code must not resolve or
-call that DO directly. Non-sensitive imported records and Vibestudio-native
-visits share this one provider and one store. Server-side eval (caller kind `server`) cannot use
-the desktop import operations — run browser-import work from panel code or an
-`inline_ui`/`feedback_custom` component:
+`browserData` from `@workspace/runtime` is available to **panel and component
+code**. It calls the `browserData` provider namespace selected in the manifest.
+That provider's broker extension passes along the verified caller and is the
+only code the BrowserDataDO accepts calls from, so panel code must not resolve
+or call the DO directly. Non-sensitive imported records and visits recorded by
+Vibestudio itself share this provider and store. Server-side eval (caller kind
+`server`) cannot use the desktop import operations; run browser imports from
+panel code or an `inline_ui`/`feedback_custom` component:
 
 ```tsx
 import { browserData } from "@workspace/runtime";
@@ -308,20 +316,20 @@ if (host) {
 const bookmarks = await browserData.exportBookmarks("json");
 ```
 
-Profiles and filesystem paths never enter userland. `startImport` is
-deterministic for the same opaque host/source pair; reruns update changed
-source records without duplicating canonical data. `openTabsAsPanels()` is
-intentionally not idempotent; it creates panels each time it is called. By
-default it creates a new source-browser root with one nested collection per
-window. Pass `destination: "caller"` to attach the hierarchy to the calling
-panel, or `groupBy: "none"` to place every tab directly under the chosen anchor.
+Browser profiles and filesystem paths are never exposed to userland.
+`startImport` is deterministic for a given opaque host/source pair: rerunning it
+updates changed records without creating duplicates. `openTabsAsPanels()` is
+deliberately not idempotent and creates new panels on every call. By default it
+creates a new root for the source browser with one nested collection per window.
+Pass `destination: "caller"` to attach the tabs under the calling panel, or
+`groupBy: "none"` to place every tab directly under the chosen anchor.
 
 ## Query a DO-backed App Database and Show Results
 
-For user-facing app data, call a Durable Object service that owns SQLite through
-`this.sql`. There is no generic panel-side app database endpoint; expose narrow
-methods such as `listTodos` and `upsertTodo` on the DO, then call those methods
-from UI code. See
+Store user-facing app data in a Durable Object service that uses SQLite through
+`this.sql`. There is no generic app database endpoint for panels. Expose narrow
+methods such as `listTodos` and `upsertTodo` on the DO and call them from UI
+code. See
 [workspace-dev/WORKERS.md](../workspace-dev/WORKERS.md#durable-object-backed-app-databases)
 for the worker and manifest declaration.
 
@@ -404,9 +412,8 @@ export default function TodoStoreView({ props = {} }) {
 ## Open a Website and Import Its Cookies
 
 `openPanel` works from server-side eval, panels, workers, and DOs. `browserData`
-goes through the manifest-declared browser-data broker, so this combined
-cookie-import recipe still runs from panel code or an
-`inline_ui`/`feedback_custom` component:
+goes through the browser-data broker declared in the manifest, so this recipe
+must run from panel code or an `inline_ui`/`feedback_custom` component:
 
 ```tsx
 import { openPanel } from "@workspace/runtime";
@@ -429,7 +436,9 @@ if (host) {
     dataTypes: ["cookies"],
     operationId,
   });
-  // Poll observeSensitiveImport(operationId) while status.state is "running".
-  // Plaintext stays inside the host; only aggregate status returns here.
+  // While status.state is "running" or "applying", call
+  // observeSensitiveImport(operationId, { afterVersion: status.version }); it
+  // resolves on the next change. Plaintext stays inside the host; only
+  // aggregate status returns here.
 }
 ```

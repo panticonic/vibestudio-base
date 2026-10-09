@@ -223,7 +223,7 @@ function projectChatMessage(
       ...((message.diagnostic.detail ?? message.content)
         ? { detail: message.diagnostic.detail ?? message.content }
         : {}),
-      // The panel offers "Resume at reset" / "Retry with local model" here.
+      // The panel offers "Retry when the limit resets" / "Retry with local model" here.
       // This venue cannot run either, so it advertises the panel instead.
       ...(message.diagnostic.resetAt || severity === "error"
         ? { recoverable: true }

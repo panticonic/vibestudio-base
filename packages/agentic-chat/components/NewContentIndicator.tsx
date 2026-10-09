@@ -1,4 +1,4 @@
-import { Badge, Flex } from "@radix-ui/themes";
+import { Button, Flex } from "@radix-ui/themes";
 import { ArrowDownIcon } from "@radix-ui/react-icons";
 
 interface NewContentIndicatorProps {
@@ -18,18 +18,10 @@ export function NewContentIndicator({ onClick }: NewContentIndicatorProps) {
         zIndex: 10,
       }}
     >
-      <Badge
-        color="blue"
-        size="2"
-        style={{ cursor: "pointer", padding: "4px 12px" }}
-        onClick={onClick}
-        tabIndex={0}
-      >
-        <Flex align="center" gap="1">
-          <ArrowDownIcon />
-          New messages
-        </Flex>
-      </Badge>
+      <Button color="blue" size="2" variant="soft" onClick={onClick}>
+        <ArrowDownIcon />
+        New messages
+      </Button>
     </Flex>
   );
 }

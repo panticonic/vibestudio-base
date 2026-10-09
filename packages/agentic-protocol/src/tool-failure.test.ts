@@ -66,14 +66,17 @@ describe("agent tool failure contract", () => {
     });
   });
 
-  it("maps CDP recovery codes to portable handle recovery", () => {
+  it("carries typed CDP recovery into the portable failure", () => {
     const failure = agentToolFailureFromUnknown(
       Object.assign(new Error("target connection closed"), {
         code: "cdp_target_closed",
         errorData: {
           code: "cdp_target_closed",
           failureKind: "infrastructure",
-          recovery: "reacquire-page"
+          recovery: {
+            action: "reacquire-handle",
+            instruction: "Reacquire the page."
+          }
         }
       }),
       { operation: "tool.eval", stage: "execute" }
@@ -81,8 +84,7 @@ describe("agent tool failure contract", () => {
 
     expect(failure.recovery).toEqual({
       action: "reacquire-handle",
-      instruction:
-        "Refresh or reacquire the panel's generation-fenced CDP session. Do not reuse the cached page."
+      instruction: "Reacquire the page."
     });
   });
 

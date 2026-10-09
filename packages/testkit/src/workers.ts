@@ -98,7 +98,7 @@ export async function ensureWorker(
   const identity = { kind: "worker" as const, entityId: handle.id };
   const running = await waitFor(
     async () => {
-      const status = await runtime.supervision.describe(identity);
+      const [status] = await runtime.supervision.describe(identity);
       if (status?.status === "error") {
         throw new Error(`worker ${name} entered error state`);
       }

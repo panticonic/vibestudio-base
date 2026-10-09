@@ -2,62 +2,60 @@
 
 ## Build the current context
 
-Build is a projection of source state, not a second history. Use the ordinary
-build service with the context ref (`ctx:<contextId>`) and the smallest relevant
-unit or package. Inspect its structured esbuild, TypeScript, and authority
-diagnostics and repair the cited files
-through ordinary local edits. In eval, the direct shape is
-`await services.build.getBuildReport(unit, "ctx:" + contextId)`; other clients
-should discover the same live `build.getBuildReport` service schema.
+A build is derived from source state, not a second history. Call the build
+service with the context ref (`ctx:<contextId>`) and the smallest relevant
+unit or package, read its structured esbuild, TypeScript, and authority
+diagnostics, and fix the cited files with normal local edits. In eval, call
+`await services.build.getBuildReport(unit, "ctx:" + contextId)`; other
+clients should look up the live `build.getBuildReport` schema.
 
-Do not mint semantic identities from build keys or content digests. After a
-repair, build the new context state again and keep VCS orientation through
-`vcs.status`. The local check is deliberately not authority, but it is the
-fast path for consuming the same structured diagnostics the publication gate
-will enforce.
+Don't create semantic IDs from build keys or content digests. After a fix,
+build the new context state again and keep using `vcs.status` for
+orientation. The local check grants nothing, but it is the fastest way to see
+the diagnostics the publication gate will enforce.
 
 ## Publish through VCS
 
-`vcs.push` is the only protected publication operation. It accepts an exact
-clean committed event and the exact main event observed by `status`. Push
-validates semantic ancestry and integration completeness, runs the
-candidate-state build/typecheck/authority gate for changed units and their transitive
-reverse dependents, obtains the required approval, and atomically advances the
-protected refs through a durable effect.
+`vcs.push` is the only way to publish to protected refs. It takes a clean
+committed event and the main event observed by `status`, validates ancestry
+and integration completeness, runs the candidate build/typecheck/authority
+gate for changed units and their transitive dependents, obtains approval, and
+advances the protected refs atomically through a durable effect.
 
-Publication protects semantic history as well as bytes. If the committed event
-preserves every repository byte, approval still names the exact previous and
-new semantic events and main advances. An exact replay of an already-applied
-publication does not prompt again; a generic retry or host operation cannot
-manufacture publication authority.
+Runtime code calls `vcs.publish({ message? })` instead of assembling that
+sequence. It reads status once, commits the uncommitted chain when there is
+one, and pushes the committed event against the observed main, with the same
+gate and approval. If main is not an ancestor of the context, it returns
+`{ code: "IntegrationRequired", mainRelation, compare }` and changes nothing;
+it never merges. The agent tool's `push` returns the same result.
 
-Publication does not create a source event. A build/typecheck, ancestry,
+Publication protects semantic history as well as bytes: even if no repository
+byte changed, the approval names the previous and new semantic events and the
+main advance. Replaying an already-applied publication doesn't prompt again; a
+generic retry or host operation can't obtain publication authority.
+
+Publication creates no source event. A build/typecheck, ancestry,
 integration, authorization, approval, or atomic-ref failure advances no
-protected ref.
+protected ref. Handle refusals by code:
 
-Handle refusals by typed code:
+- On `IntegrationRequired`, review the returned `compare`, merge from the
+  newly observed main, commit, and publish again.
+- On `IntegrationIncomplete`, run the returned `allRemaining` recipe before
+  retrying commit or publication.
+- Stop when authorization or approval is required.
+- Keep integrity and host-effect diagnostics intact.
+- On a build or typecheck refusal, read every diagnostic, fix the source,
+  rerun the context report, commit, and push the new event.
 
-- merge from the freshly observed main when it advanced; the protected-main
-  driver performs its own conflict-only preflight and makes zero mutations if
-  conflicts exist;
-- on `IntegrationIncomplete`, execute the returned `allRemaining` recovery
-  recipe before retrying commit or publication;
-- stop for required authorization or approval;
-- preserve integrity and host-effect diagnostics;
-- for a build/typecheck refusal, consume every diagnostic, repair the cited
-  source, rerun the exact-context report, commit the repaired chain, and push
-  the new exact committed event.
+## Builds after publication
 
-## Treat post-publication builds as projections
+Build subscribers may react to the new `main` and produce derived,
+content-addressed artifacts. Their success or failure never rewrites or rolls
+back the semantic event or protected refs; inspect them with unit diagnostics
+and server logs.
 
-Build subscribers may react to the newly published `main` and produce derived,
-content-addressed artifacts. Their success or failure does not rewrite or roll
-back the semantic event or protected refs. Use unit diagnostics and server logs
-to inspect those projections.
-
-Activation remains fail closed. A failed build, validation, or startup must not
-become runnable; the last known-good runnable artifact remains selected. Repair
-the source in a new local application, run an explicit context check, commit,
-and publish the new event. Unit logs, panel consoles, and screenshots help
-debug projections and runtime behavior, but do not replace semantic `status`,
-`history`, or provenance inspection.
+Activation fails closed: a failed build, validation, or startup never becomes
+runnable, and the last known-good artifact stays selected. Fix the source in a
+new local application, run a context check, commit, and publish. Unit logs,
+panel consoles, and screenshots help debug runtime behavior but don't replace
+semantic `status`, `history`, or provenance inspection.

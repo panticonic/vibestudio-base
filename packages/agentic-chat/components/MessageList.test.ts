@@ -352,7 +352,7 @@ describe("MessageList typing indicators (roster-based)", () => {
       } as never),
     );
 
-    fireEvent.click(screen.getByRole("button", { name: /resume at reset/i }));
+    fireEvent.click(screen.getByRole("button", { name: /retry when the limit resets/i }));
 
     await waitFor(() => {
       expect(callMethod).toHaveBeenCalledWith(
@@ -367,7 +367,7 @@ describe("MessageList typing indicators (roster-based)", () => {
     expect(await screen.findByText("Scheduled")).toBeTruthy();
   });
 
-  it("switches the live agent to the local model before persisting and sending retry", async () => {
+  it("switches the live agent to the local model before persisting and resuming its turn", async () => {
     const calls: Array<{
       participantId: string;
       method: string;
@@ -422,12 +422,14 @@ describe("MessageList typing indicators (roster-based)", () => {
     fireEvent.click(retryButton);
 
     await waitFor(() =>
-      expect(send).toHaveBeenCalledWith("retry", { tier: "primary" }),
+      expect(calls.map((call) => [call.participantId, call.method])).toEqual([
+        ["agent-1", "getAgentSettings"],
+        ["agent-1", "setModel"],
+        ["agent-1", "resume"],
+      ]),
     );
-    expect(calls.map((call) => [call.participantId, call.method])).toEqual([
-      ["agent-1", "getAgentSettings"],
-      ["agent-1", "setModel"],
-    ]);
+    // Retrying re-runs the agent's turn; it never posts a "retry" user message.
+    expect(send).not.toHaveBeenCalled();
     expect(calls[1]?.args).toEqual({ model: LOCAL_FALLBACK_MODEL_REF });
     expect(onPersistAgentModel).toHaveBeenCalledWith(
       "agent-1",
@@ -470,16 +472,16 @@ describe("MessageList typing indicators (roster-based)", () => {
       fireEvent.click(await screen.findByRole("button", { name: /^retry$/i }));
 
       await waitFor(() =>
-        expect(send).toHaveBeenCalledWith("retry", { tier: "primary" }),
+        expect(callMethod).toHaveBeenCalledWith("agent-1", "resume", {}),
       );
-      expect(callMethod).not.toHaveBeenCalled();
+      expect(send).not.toHaveBeenCalled();
       expect(
         screen.queryByRole("button", { name: /retry with local model/i }),
       ).toBeNull();
     },
   );
 
-  it("does not mark local retry ready or send retry when live model switching fails", async () => {
+  it("does not resume the turn when live model switching fails", async () => {
     const calls: Array<{
       participantId: string;
       method: string;
@@ -536,11 +538,11 @@ describe("MessageList typing indicators (roster-based)", () => {
     fireEvent.click(retryButton);
 
     expect(
-      await screen.findByRole("button", { name: /retry local failed/i }),
+      await screen.findByRole("button", { name: /couldn't retry/i }),
     ).toBeTruthy();
     expect(send).not.toHaveBeenCalled();
+    expect(calls.map((call) => call.method)).not.toContain("resume");
     expect(onPersistAgentModel).not.toHaveBeenCalled();
-    expect(screen.queryByText("Retry ready")).toBeNull();
     warn.mockRestore();
   });
 
@@ -593,7 +595,7 @@ describe("MessageList typing indicators (roster-based)", () => {
     );
 
     const startButton = await screen.findByRole("button", {
-      name: /new chat without history/i,
+      name: /start a fresh chat/i,
     });
     fireEvent.click(startButton);
 

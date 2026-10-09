@@ -26,7 +26,7 @@ import type { ParsedNotification } from "./notificationParser.js";
 import { resolveTerminalTheme, type TerminalAppearance } from "./paneTheme.js";
 import { paneAttentionShadow, paneBorderColor } from "./paneChrome.js";
 import { PaneHeader, previewTarget } from "./PaneHeader.js";
-import { sessionFooterText } from "./sessionStatus.js";
+import { sessionEndedText, sessionFooterText } from "./sessionStatus.js";
 import type { TerminalSearchOptions } from "./terminalFrontend.js";
 import type { NotificationSeverity, SessionInfo, ShellApi } from "./types.js";
 import { createVscodeTerminalFrontend } from "./vscodeTerminalFrontend.js";
@@ -699,7 +699,7 @@ export function PaneView(props: {
             style={{ position: "absolute", zIndex: 3, left: 0, right: 0, bottom: "0.75rem" }}
           >
             <Text size="2" color="gray">
-              Session ended
+              {sessionEndedText(props.session)}
             </Text>
             <Button size="1" variant="soft" onClick={props.onRestart}>
               Restart

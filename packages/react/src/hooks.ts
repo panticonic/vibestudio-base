@@ -3,7 +3,13 @@
  * Provides declarative, idiomatic React APIs for panel features.
  */
 
-import { useState, useEffect, useMemo, useRef } from "react";
+import {
+  useState,
+  useEffect,
+  useMemo,
+  useRef,
+  useSyncExternalStore,
+} from "react";
 import * as runtime from "@workspace/runtime";
 import { Rpc } from "@workspace/runtime";
 import type { HostCommand, PanelHandle } from "@workspace/runtime";
@@ -28,7 +34,10 @@ export function usePanel() {
 /**
  * Contribute commands to the owning application shell and handle a selection.
  * Each host presents the commands idiomatically (for example, a desktop
- * command palette or native mobile action sheet).
+ * command palette or native mobile action sheet). Any number of components may
+ * call this hook: the shell shows the union of every live registration, a
+ * selection reaches only the hook that owns its id, and unmounting removes only
+ * that hook's commands. Command ids must be unique across the panel.
  *
  * @example
  * ```tsx
@@ -38,39 +47,32 @@ export function usePanel() {
  * );
  * ```
  */
-export function useHostCommands(commands: HostCommand[], onRun: (commandId: string) => void): void {
+export function useHostCommands(
+  commands: HostCommand[],
+  onRun: (commandId: string) => void,
+): void {
   // Keep the latest handler in a ref so re-registration only tracks `commands`.
   const onRunRef = useRef(onRun);
   onRunRef.current = onRun;
 
-  // Re-register whenever the command set's identity changes.
-  const key = useMemo(
-    () => JSON.stringify(commands.map((c) => [c.id, c.label, c.description, c.group])),
-    [commands]
+  // Commands are plain serializable data: re-register whenever any field
+  // (including args, requiresFocus, and danger) changes.
+  const key = useMemo(() => JSON.stringify(commands), [commands]);
+
+  // A website contributes only while connected to a workspace, and registers
+  // as soon as it connects.
+  const connected = useSyncExternalStore(
+    runtime.workspaceConnection.subscribe,
+    () => runtime.workspaceConnection.connected,
   );
 
   useEffect(() => {
-    // Registration must never crash a host that lacks host-command support
-    // (headless runtimes or tests rendering a panel without a
-    // connected bridge). The runtime's own calls are already fire-and-forget;
-    // this guards the access path itself.
-    let unsubscribe: () => void = () => {};
-    try {
-      runtime.panel.registerHostCommands(commands);
-      unsubscribe = runtime.panel.onHostCommandRun((commandId) => onRunRef.current(commandId));
-    } catch {
-      // No command-capable host — contribute nothing, silently.
-    }
-    return () => {
-      try {
-        unsubscribe();
-        runtime.panel.unregisterHostCommands();
-      } catch {
-        // ignore teardown on a host without host-command support
-      }
-    };
+    if (!connected) return;
+    return runtime.panel.registerHostCommands(commands, (commandId) =>
+      onRunRef.current(commandId),
+    );
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [key]);
+  }, [key, connected]);
 }
 
 /**
@@ -153,12 +155,16 @@ export function usePanelPartition(): string | null {
 export function usePanelRpcGlobalEvent<T = unknown>(
   eventName: string,
   handler: (fromPanelId: string, payload: T) => void,
-  website: import("@vibestudio/rpc").WebsiteMethodPolicy
+  website: import("@vibestudio/rpc").WebsiteMethodPolicy,
 ): void {
   useEffect(() => {
-    const unsubscribe = runtime.rpc.on(eventName, (event) => {
-      handler(event.caller.callerId, event.payload as T);
-    }, website);
+    const unsubscribe = runtime.rpc.on(
+      eventName,
+      (event) => {
+        handler(event.caller.callerId, event.payload as T);
+      },
+      website,
+    );
     return unsubscribe;
   }, [eventName, handler, website]);
 }
@@ -262,7 +268,9 @@ export function usePanelFocus(): boolean {
  * ```
  */
 export function useConnectionError(): { code: number; reason: string } | null {
-  const [error, setError] = useState<{ code: number; reason: string } | null>(null);
+  const [error, setError] = useState<{ code: number; reason: string } | null>(
+    null,
+  );
 
   useEffect(() => {
     return runtime.panel.onConnectionError((err) => {
@@ -294,7 +302,7 @@ export function useConnectionError(): { code: number; reason: string } | null {
  *   const [doc, setDoc] = useState(initialDoc);
  *   const [dirty, setDirty] = useState(false);
  *   useAgentState("editor", { path: doc.path, dirty, length: doc.text.length });
- *   // An agent debugging this panel: await parent.state()
+ *   // An agent debugging this panel: await getParent()?.state()
  *   // => { editor: { path: "Welcome.mdx", dirty: true, length: 1280 } }
  *   return <textarea value={doc.text} onChange={...} />;
  * }
@@ -326,12 +334,12 @@ export function useAgentState(key: string, value: unknown): void {
  * host-published `"vibestudio:stateArgsChanged"` window event, whose `detail`
  * carries the new args. Use this React hook in place of the one-shot
  * `runtime.panel.stateArgs.get()` when the panel must follow live updates made
- * via `runtime.panel.stateArgs.set()` (or by another panel).
+ * via `runtime.panel.stateArgs.patch()` (or by another panel).
  *
  * This is the React-bound replacement for the former
  * `runtime.panel.stateArgs.use` / `@workspace/runtime` `useStateArgs`, which was
  * moved here to keep `@workspace/runtime` framework-neutral. The non-reactive
- * `get`/`set` helpers remain in `@workspace/runtime`.
+ * `get`/`patch` helpers remain in `@workspace/runtime`.
  *
  * @example
  * ```tsx
@@ -348,9 +356,15 @@ export function useStateArgs<T = Record<string, unknown>>(): T {
     const handler = (event: CustomEvent<Record<string, unknown>>) => {
       setArgs(event.detail as T);
     };
-    window.addEventListener("vibestudio:stateArgsChanged", handler as EventListener);
+    window.addEventListener(
+      "vibestudio:stateArgsChanged",
+      handler as EventListener,
+    );
     return () =>
-      window.removeEventListener("vibestudio:stateArgsChanged", handler as EventListener);
+      window.removeEventListener(
+        "vibestudio:stateArgsChanged",
+        handler as EventListener,
+      );
   }, []);
 
   return args;

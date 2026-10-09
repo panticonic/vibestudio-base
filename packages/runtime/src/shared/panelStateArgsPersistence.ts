@@ -1,7 +1,5 @@
 import type { RpcClient } from "@vibestudio/rpc";
 import { decodePanelStateArgs } from "@vibestudio/shared/panelStateArgs";
-import { validateStateArgsAsync } from "@vibestudio/shared/asyncStateArgsValidator";
-import type { StateArgsSchema } from "@vibestudio/shared/stateArgs";
 import { asPanelSlotId } from "@vibestudio/shared/panel/idValues";
 import { callWorkspaceState, createRuntimeWorkspaceStateClient } from "./workspaceStateClient.js";
 
@@ -9,11 +7,6 @@ type PanelStateArgsRpc = Pick<RpcClient, "call">;
 
 interface PanelStateArgsDetail {
   currentHistory: { state_args: string | null };
-  entity: { activeBuildKey?: string };
-}
-
-interface PanelBuildMetadata {
-  stateArgsSchema?: StateArgsSchema;
 }
 
 export async function readPanelStateArgs<T = Record<string, unknown>>(
@@ -27,32 +20,19 @@ export async function readPanelStateArgs<T = Record<string, unknown>>(
   return decodePanelStateArgs(detail.currentHistory.state_args) as T;
 }
 
-export async function updatePanelStateArgs(
+/**
+ * Apply an RFC 7386 JSON merge patch to a panel's stateArgs: objects merge
+ * recursively, `null` deletes a key, and arrays and scalars replace. The
+ * workspace-state owner serializes the merge and validates the result against
+ * the panel's active build schema, so concurrent patches compose.
+ */
+export function patchPanelStateArgs(
   rpc: PanelStateArgsRpc,
   panelId: string,
-  updates: Record<string, unknown>
+  patch: Record<string, unknown>
 ): Promise<Record<string, unknown>> {
-  const workspaceState = createRuntimeWorkspaceStateClient(rpc);
-  const detail = (await workspaceState.getPanelDetail(
-    asPanelSlotId(panelId)
-  )) as PanelStateArgsDetail | null;
-  if (!detail) throw new Error(`Panel not found: ${panelId}`);
-
-  const current = decodePanelStateArgs(detail.currentHistory.state_args);
-  const merged = Object.fromEntries(
-    Object.entries({ ...current, ...updates }).filter(([, value]) => value !== null)
+  return createRuntimeWorkspaceStateClient(rpc).patchCurrentStateArgs(
+    asPanelSlotId(panelId),
+    patch
   );
-  const metadata = detail.entity.activeBuildKey
-    ? await rpc.call<PanelBuildMetadata | null>("main", "build.getBuildMetadata", [
-        detail.entity.activeBuildKey,
-        { includeExecutableModules: false },
-      ])
-    : null;
-  const validation = await validateStateArgsAsync(merged, metadata?.stateArgsSchema);
-  if (!validation.success) {
-    throw new Error(`Invalid stateArgs: ${validation.error}`);
-  }
-  const next = validation.data as Record<string, unknown>;
-  await workspaceState.updateCurrentStateArgs(asPanelSlotId(panelId), next);
-  return next;
 }

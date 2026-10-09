@@ -450,13 +450,13 @@ describe("ChatInput send-button intent", () => {
 });
 
 describe("ChatInput narration / undo / ghost", () => {
-  it("renders the flush narration pill with an aria-live region", () => {
+  it("renders the flush narration pill as a status region", () => {
     renderInput({
       flushNarration: { text: "Delivered 2 steers", remaining: 0 },
     });
     const pill = screen.getByText("Delivered 2 steers");
     expect(pill).toBeTruthy();
-    expect(pill.closest('[aria-live="polite"]')).toBeTruthy();
+    expect(pill.closest('[role="status"]')).toBeTruthy();
   });
 
   it("renders the undo snackbar and fires undoLastAction", () => {

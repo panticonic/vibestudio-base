@@ -202,7 +202,7 @@ describe("renderEntry (readable docs_open text)", () => {
     expect(text).toContain('await rpc.call("main", "workers.listSources", [])');
     expect(text).toContain("services.<name>");
     expect(text).toContain("not necessarily an importable named export");
-    expect(text).toContain("ergonomic runtime client");
+    expect(text).toContain("even when a runtime binding shares the name");
     expect(text).toContain(
       "authority, and session-admission checks still apply",
     );

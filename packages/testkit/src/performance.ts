@@ -240,15 +240,15 @@ export async function readStartupProfile(): Promise<{
 export async function profilePanelInteraction(
   handle: PanelHandle,
   action: (
-    page: Awaited<ReturnType<PanelHandle["cdp"]["page"]>>,
+    page: Awaited<ReturnType<PanelHandle["cdp"]["session"]>>["page"],
   ) => void | Promise<void>,
   options?: CdpProfileOptions,
 ): Promise<CdpProfileReport> {
-  const page = await handle.cdp.page();
+  const session = await handle.cdp.session();
   try {
-    return await page.profile(() => action(page), options);
+    return await session.page.profile(() => action(session.page), options);
   } finally {
-    await page.close();
+    await session.close();
   }
 }
 

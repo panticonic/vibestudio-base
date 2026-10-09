@@ -1,6 +1,6 @@
 import { createServer } from "node:http";
 import { describe, expect, it } from "vitest";
-import { rpc } from "@vibestudio/rpc";
+import { decodeRpcJson, encodeRpcJson, rpc } from "@vibestudio/rpc";
 import { DIRECT_AUTHORITY_ACCEPTED_AT_HEADER } from "@vibestudio/rpc/internal";
 import type { AuthenticatedCaller, RpcEnvelope } from "@vibestudio/rpc";
 import type {
@@ -192,11 +192,7 @@ class StructuredErrorDO extends TestDurableObjectBase {
   })
   failWithAggregate(): never {
     const cause = new Error("lower-level repository detail");
-    throw new AggregateError(
-      [cause],
-      "authored domain failure",
-      { cause },
-    );
+    throw new AggregateError([cause], "authored domain failure", { cause });
   }
 }
 
@@ -282,10 +278,10 @@ class WorkReadyProbeDO extends TestDurableObjectBase {
   protected createTables(): void {}
 
   protected override durableWorkQueues(): readonly [
-    "agent-wake",
-    "agent-effect",
+    "workspace-publication",
+    "channel-delivery",
   ] {
-    return ["agent-wake", "agent-effect"];
+    return ["workspace-publication", "channel-delivery"];
   }
 
   @rpc({
@@ -299,7 +295,7 @@ class WorkReadyProbeDO extends TestDurableObjectBase {
     sensitivity: "write",
   })
   enqueue(): { committed: true } {
-    this.markWorkReady("agent-wake", "agent-wake", "agent-effect");
+    this.markWorkReady("workspace-publication", "workspace-publication", "channel-delivery");
     return { committed: true };
   }
 
@@ -313,13 +309,13 @@ class WorkReadyProbeDO extends TestDurableObjectBase {
     tier: "open",
     sensitivity: "write",
   })
-  drain(queue: "agent-wake" | "agent-effect"): { drained: true } {
+  drain(queue: "workspace-publication" | "channel-delivery"): { drained: true } {
     this.acknowledgeDurableWorkReady(queue);
     return { drained: true };
   }
 
   override async resumeAfterRestart(): Promise<void> {
-    this.markWorkReady("agent-wake");
+    this.markWorkReady("workspace-publication");
   }
 }
 
@@ -866,6 +862,30 @@ describe("DurableObjectBase request parsing", () => {
     await expect(response.json()).resolves.toEqual([["op-1"], "shell:owner"]);
   });
 
+  it("carries native bytes through the RPC wire codec in both directions", async () => {
+    const { instance } = await createTestDO(EchoDO);
+    const fetchable = instance as unknown as {
+      fetch(request: Request): Promise<Response>;
+    };
+    const response = await fetchable.fetch(
+      new Request("http://test/test-key/echo", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: encodeRpcJson({
+          args: [new Uint8Array([0, 1, 255]), { "\u0000bytes": "AAE=" }],
+          __instanceToken: "token",
+          __instanceId: "do:internal/WorkspaceDO:test-key",
+          __caller: authenticatedTestCaller("echo"),
+        }),
+      }),
+    );
+
+    expect(decodeRpcJson(await response.text())).toEqual([
+      new Uint8Array([0, 1, 255]),
+      { "\u0000bytes": "AAE=" },
+    ]);
+  });
+
   it("keeps ordinary object payloads as a single argument", async () => {
     const { call } = await createTestDO(EchoDO);
 
@@ -1360,8 +1380,8 @@ describe("DurableObjectBase work-ready receipts", () => {
 
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toEqual([
-      "agent-wake",
-      "agent-effect",
+      "workspace-publication",
+      "channel-delivery",
     ]);
   });
 
@@ -1387,16 +1407,16 @@ describe("DurableObjectBase work-ready receipts", () => {
     const ordinary = await request("enqueue", []);
     await expect(ordinary.json()).resolves.toEqual({ committed: true });
     expect(ordinary.headers.get(DURABLE_WORK_READY_HEADER)).toBe(
-      "agent-effect,agent-wake",
+      "channel-delivery,workspace-publication",
     );
 
     const firstAlarm = await request("__alarm", []);
     expect(firstAlarm.headers.get(DURABLE_WORK_READY_HEADER)).toBe(
-      "agent-effect,agent-wake",
+      "channel-delivery,workspace-publication",
     );
     const secondAlarm = await request("__alarm", []);
     expect(secondAlarm.headers.get(DURABLE_WORK_READY_HEADER)).toBe(
-      "agent-effect,agent-wake",
+      "channel-delivery,workspace-publication",
     );
     expect(
       sql
@@ -1407,12 +1427,12 @@ describe("DurableObjectBase work-ready receipts", () => {
         )
         .toArray(),
     ).toEqual([
-      { key: "durable-work-ready-generation:agent-effect", value: "1" },
-      { key: "durable-work-ready-generation:agent-wake", value: "1" },
+      { key: "durable-work-ready-generation:channel-delivery", value: "1" },
+      { key: "durable-work-ready-generation:workspace-publication", value: "1" },
     ]);
 
-    await request("drain", ["agent-wake"]);
-    await request("drain", ["agent-effect"]);
+    await request("drain", ["workspace-publication"]);
+    await request("drain", ["channel-delivery"]);
     const drainedAlarm = await request("__alarm", []);
     expect(drainedAlarm.headers.get(DURABLE_WORK_READY_HEADER)).toBeNull();
 
@@ -1424,7 +1444,7 @@ describe("DurableObjectBase work-ready receipts", () => {
         reason: "planned",
       },
     ]);
-    expect(resume.headers.get(DURABLE_WORK_READY_HEADER)).toBe("agent-wake");
+    expect(resume.headers.get(DURABLE_WORK_READY_HEADER)).toBe("workspace-publication");
   });
 
   it("releases claims when a facet is reconstructed under the same host driver", async () => {
@@ -1811,28 +1831,30 @@ describe("DurableObjectBase server-driven alarm durability", () => {
       };
       const target = "do:workers/test:ObservedAlarmProbeDO:alarm";
       let settled = false;
-      const responsePromise = instance.fetch(
-        new Request("http://test/alarm/__rpc", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            from: caller.callerId,
-            target,
-            delivery: { caller },
-            provenance: [],
-            message: {
-              type: "request",
-              requestId: "schedule-two-wakes-with-first-failure",
-              fromId: caller.callerId,
-              method: "scheduleTwoWakes",
-              args: [Date.now() + 1_000],
-            },
+      const responsePromise = instance
+        .fetch(
+          new Request("http://test/alarm/__rpc", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              from: caller.callerId,
+              target,
+              delivery: { caller },
+              provenance: [],
+              message: {
+                type: "request",
+                requestId: "schedule-two-wakes-with-first-failure",
+                fromId: caller.callerId,
+                method: "scheduleTwoWakes",
+                args: [Date.now() + 1_000],
+              },
+            }),
           }),
-        }),
-      ).then((response) => {
-        settled = true;
-        return response;
-      });
+        )
+        .then((response) => {
+          settled = true;
+          return response;
+        });
 
       await secondWriteObserved;
       await instance.alarmFailureObserved;

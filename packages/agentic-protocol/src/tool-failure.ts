@@ -237,10 +237,9 @@ function recoveryFor(
   data: Record<string, unknown> | null
 ): NonNullable<AgentToolFailure["recovery"]> {
   const explicit = record(data?.["recovery"]);
-  const legacyRecovery = nonempty(data?.["recovery"]);
   const explicitAction = nonempty(explicit?.["action"]);
   const explicitInstruction =
-    nonempty(explicit?.["instruction"]) ?? nonempty(data?.["remediation"]);
+    nonempty(explicit?.["instruction"]);
   const panelNextAction = nonempty(explicit?.["nextAction"]);
   if (
     explicitAction &&
@@ -264,21 +263,6 @@ function recoveryFor(
     return {
       action: "repair-source",
       instruction: "Repair the panel source from its diagnostics, rebuild it, then continue.",
-    };
-  }
-  if (legacyRecovery?.includes("reacquire-page")) {
-    return {
-      action: "reacquire-handle",
-      instruction:
-        legacyRecovery === "inspect-panel-and-reacquire-page"
-          ? "Inspect the panel lifecycle, then refresh or reacquire its generation-fenced CDP session. Do not reuse the cached page."
-          : "Refresh or reacquire the panel's generation-fenced CDP session. Do not reuse the cached page.",
-    };
-  }
-  if (legacyRecovery === "reobserve-locator") {
-    return {
-      action: "reobserve",
-      instruction: "Inspect the current DOM and form a locator from current accessible facts.",
     };
   }
   const authorityRepair = authorityRemediation(data);

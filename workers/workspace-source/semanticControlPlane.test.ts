@@ -241,6 +241,7 @@ describe("GadWorkspaceDO unified log and semantic VCS schema", () => {
   it("fails closed when topology does not bind a workspace identity", async () => {
     const { instance } = await createTestDO(GadWorkspaceDO, {
       __objectKey: "storage-coordinate-is-not-workspace-identity",
+      WORKSPACE_ID: undefined,
     });
     const semanticWorkspaceId = (
       instance as unknown as { semanticWorkspaceId(): string }
@@ -1922,10 +1923,9 @@ describe("trajectory projection invariants", () => {
       // A broad detailed-inspector limit must not make the summary unbounded.
       limit: 500,
     });
+    expect(health.caller).toBeNull();
     expect(health.summary).toMatchObject({
-      ok: false,
       durableIntegrityOk: true,
-      inFlightOnly: true,
       activity: "in-flight",
       publicationIssues: 0,
       turnIntegrityIssues: 0,
@@ -1962,7 +1962,6 @@ describe("trajectory projection invariants", () => {
           .summary,
       ).toMatchObject({
         activity: "in-flight",
-        inFlightOnly: true,
         nonterminalInvocations: 1,
         openTurns: 0,
       });
@@ -1982,8 +1981,99 @@ describe("trajectory projection invariants", () => {
           .summary,
       ).toMatchObject({
         activity: "idle",
-        ok: true,
+        durableIntegrityOk: true,
         nonterminalInvocations: 0,
+      });
+    } finally {
+      db.close();
+    }
+  });
+
+  it("excludes the attested caller's own invocation and turn from activity", async () => {
+    const { instance, call, db } = await createTestDO(GadWorkspaceDO);
+    try {
+      const channelId = "self-channel";
+      const append = (id: string, value: AgenticEvent) =>
+        call("appendChannelEnvelope", {
+          channelId,
+          envelopeId: id,
+          from: owner,
+          payloadKind: AGENTIC_EVENT_PAYLOAD_KIND,
+          payload: value,
+        });
+      await append(
+        "self-turn",
+        event("turn.opened", {
+          turnId: "turn-self" as never,
+          payload: { protocol: AGENTIC_PROTOCOL_VERSION, summary: "self" },
+        }),
+      );
+      await append(
+        "self-eval",
+        event("invocation.started", {
+          turnId: "turn-self" as never,
+          causality: { invocationId: "eval-self" as never },
+          payload: { protocol: AGENTIC_PROTOCOL_VERSION, name: "eval" },
+        }),
+      );
+      const inspectAs = async (invocationId: string) => {
+        // The receiver reads the caller only from host-attested admission.
+        Object.defineProperty(instance, "authorization", {
+          configurable: true,
+          get: () => ({
+            executionSession: {
+              causalParent: { logId: channelId, head: "main", invocationId },
+            },
+          }),
+        });
+        try {
+          return await instance.inspectAgentHealth({ channelId });
+        } finally {
+          Reflect.deleteProperty(instance, "authorization");
+        }
+      };
+
+      const self = await inspectAs("eval-self");
+      expect(self.caller).toEqual({
+        invocationId: "eval-self",
+        turnId: "turn-self",
+      });
+      expect(self.summary).toMatchObject({
+        durableIntegrityOk: true,
+        activity: "idle",
+        openTurns: 0,
+        nonterminalInvocations: 0,
+      });
+      expect(self.turnState.rows).toEqual([]);
+      expect(self.invocationState.rows).toEqual([]);
+      expect(AgentHealthInspectionSchema.safeParse(self).success).toBe(true);
+
+      // Other work in the caller's turn still counts.
+      await append(
+        "sibling-tool",
+        event("invocation.started", {
+          turnId: "turn-self" as never,
+          causality: { invocationId: "sibling" as never },
+          payload: { protocol: AGENTIC_PROTOCOL_VERSION, name: "fetch" },
+        }),
+      );
+      expect((await inspectAs("eval-self")).summary).toMatchObject({
+        activity: "in-flight",
+        openTurns: 0,
+        nonterminalInvocations: 1,
+      });
+
+      // An unprojected caller invocation hides no other turn or invocation.
+      expect(
+        await inspectAs("unrelated").then(({ caller, summary }) => ({
+          caller,
+          openTurns: summary.openTurns,
+          nonterminalInvocations: summary.nonterminalInvocations,
+        })),
+      ).toEqual({
+        caller: { invocationId: "unrelated", turnId: null },
+        openTurns: 1,
+        nonterminalInvocations: 2,
       });
     } finally {
       db.close();

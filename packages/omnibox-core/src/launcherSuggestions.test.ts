@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 import {
   autocompleteForSuggestion,
   buildWebSearchSuggestions,
-  isDeprecatedLauncherPrefix,
   rankHistorySuggestions,
   buildIdleLauncherSuggestions,
   buildLauncherSuggestions,
@@ -121,12 +120,8 @@ describe("launcher suggestions", () => {
     });
   });
 
-  it("keeps the retired panels-only prefix working as an alias of go-to", () => {
-    const parsed = parseLauncherInput("> term");
-    expect(parsed).toEqual({ mode: "goto", prefix: ">", query: "term" });
-    // The prefix survives parsing precisely so the page can say it is retired.
-    expect(isDeprecatedLauncherPrefix(parsed)).toBe(true);
-    expect(isDeprecatedLauncherPrefix(parseLauncherInput("@term"))).toBe(false);
+  it("treats > as ordinary text rather than a scope prefix", () => {
+    expect(parseLauncherInput("> term")).toEqual({ mode: "all", prefix: "", query: "> term" });
   });
 
   it("ranks panel and browser destinations in one usage-weighted list", () => {
@@ -262,16 +257,6 @@ describe("launcher suggestions", () => {
     // Go-to includes new web destinations as well as previously visited ones.
     expect(new Set(goTo.map((item) => item.kind))).toEqual(
       new Set(["panel", "history", "url"]),
-    );
-    const aliased = buildLauncherSuggestions({
-      value: ">",
-      panels,
-      panelUsage: {},
-      browserSuggestions: history,
-      browserUrl: null,
-    });
-    expect(new Set(aliased.map((item) => item.kind))).toEqual(
-      new Set(["panel", "history"]),
     );
     const chatOnly = buildLauncherSuggestions({
       value: "/hello there",

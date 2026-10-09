@@ -2,13 +2,12 @@ import { expect, it } from "vitest";
 import { nextPublicationVersion, templateAuthoringSetup } from "./authoring.js";
 import { parseTemplateManifestContent } from "@vibestudio/workspace/templateManifest";
 import type { SemanticWorkspaceObservation } from "./workspace.js";
-it("defaults to declared contents, including explicit overrides, without copying inherited or incidental units", () => {
+it("derives local authored contents from the source tree and marks dependency units inherited", () => {
   const manifest = parseTemplateManifestContent(
     `systemEpoch: 0
 template:
   name: Personal
   description: Personal tools
-  repositories: [meta, panels/personal, panels/chat]
   dependencies:
     - url: git+https://example.test/base.git
   overrides:
@@ -39,10 +38,10 @@ template:
     setup.parts
       .filter((part) => part.ownership === "authored")
       .map((part) => part.repoPath),
-  ).toEqual(["panels/chat", "panels/personal"]);
+  ).toEqual(["panels/chat", "panels/personal", "projects/scratch"]);
   expect(
     setup.parts.find((part) => part.repoPath === "projects/scratch")?.ownership,
-  ).toBe("unlisted");
+  ).toBe("authored");
   expect(setup.dependencies).toEqual([
     { url: "git+https://example.test/base.git" },
   ]);

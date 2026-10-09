@@ -1,12 +1,15 @@
+import type { RespondPolicy } from "@workspace/agentic-protocol";
+
 export type AgentThinkingLevel = "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
-export type AgentApprovalLevel = 0 | 1 | 2;
+/** Approval levels: 0=manual, 1=auto-safe, 2=full-auto. Single source of truth. */
+export const AGENT_APPROVAL_LEVELS = [0, 1, 2] as const;
+export type AgentApprovalLevel = (typeof AGENT_APPROVAL_LEVELS)[number];
+export function isAgentApprovalLevel(value: unknown): value is AgentApprovalLevel {
+  return AGENT_APPROVAL_LEVELS.includes(value as AgentApprovalLevel);
+}
 export type AgentFallbackScope = "unattended" | "all-turns";
-export type AgentRespondPolicy =
-  | "all"
-  | "mentioned"
-  | "mentioned-strict"
-  | "mentioned-or-followup"
-  | "from-participants";
+/** Alias of the protocol's RespondPolicy (values: RESPOND_POLICIES). */
+export type AgentRespondPolicy = RespondPolicy;
 export type AgentSystemPromptMode = "append" | "replace" | "replace-vibestudio";
 /**
  * When the agent WAKES to run a turn on a channel. "every-envelope" (default,

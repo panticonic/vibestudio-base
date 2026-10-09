@@ -20,7 +20,7 @@ mutation except `push` advances an exact context working head; `commit` and
 | `vcs.copy` | `context-write` | Copy exact source files into new identities with immediate coordinate provenance. | `RevisionChanged`, `Unauthorized`, `InvalidReference`, `NoEffect`, `CommandIdReuse`, `ScopeTooLarge`, `IntegrityFailure`, `DestinationOccupied` |
 | `vcs.merge` | `context-write` | Merge one bounded page of stable coordinates from an exact event or external delta by net effect. | `RevisionChanged`, `Unauthorized`, `InvalidReference`, `NoEffect`, `CommandIdReuse`, `ScopeTooLarge`, `IntegrityFailure`, `ConflictPresent`, `CoupledGroupIncomplete` |
 | `vcs.revert` | `context-write` | Author explicit counteractions of exact semantic changes. | `RevisionChanged`, `Unauthorized`, `InvalidReference`, `NoEffect`, `CommandIdReuse`, `ScopeTooLarge`, `IntegrityFailure`, `ConflictPresent` |
-| `vcs.commit` | `context-write` | Commit the complete local application chain; derive every integration parent from recorded merge decisions. | `RevisionChanged`, `Unauthorized`, `InvalidReference`, `NoEffect`, `CommandIdReuse`, `ScopeTooLarge`, `IntegrityFailure`, `IntegrationIncomplete` |
+| `vcs.commit` | `context-write` | Commit the complete local application chain; derive every integration parent from recorded merge decisions. `concludes` atomically records the decision-only conclusion of one complete convergent or net-zero source. | `RevisionChanged`, `Unauthorized`, `InvalidReference`, `NoEffect`, `CommandIdReuse`, `ScopeTooLarge`, `IntegrityFailure`, `IntegrationIncomplete` |
 | `vcs.discard` | `context-write` | Discard the complete uncommitted chain and return to the committed event. | `RevisionChanged`, `Unauthorized`, `InvalidReference`, `NoEffect`, `CommandIdReuse`, `ScopeTooLarge`, `IntegrityFailure` |
 | `vcs.importSnapshot` | `context-write` | Import one exact complete external snapshot as ordinary changes on an import work unit and atomically return the committed event, application, work unit, admitted repository IDs, and canonical external snapshot. | `RevisionChanged`, `Unauthorized`, `InvalidReference`, `NoEffect`, `CommandIdReuse`, `ScopeTooLarge`, `IntegrityFailure`, `DestinationOccupied`, `WorkingChangesPresent`, `ExternalEffectFailed` |
 | `vcs.registerExternalDelta` | `context-write` | Register one exact unapplied old-to-new external repository delta. | `RevisionChanged`, `Unauthorized`, `InvalidReference`, `NoEffect`, `CommandIdReuse`, `ScopeTooLarge`, `IntegrityFailure`, `ExternalEffectFailed` |
@@ -29,7 +29,7 @@ mutation except `push` advances an exact context working head; `commit` and
 | `vcs.push` | `workspace-write` | Publish one exact already-committed event to protected main; epochTransition requests the reviewed host handoff for a foreign-epoch candidate. | `RevisionChanged`, `Unauthorized`, `InvalidReference`, `WorkingChangesPresent`, `CommandIdReuse`, `ExternalEffectFailed`, `BuildGateFailed`, `IntegrityFailure` |
 | `vcs.mainState` | `read` | Read the current protected main event without creating a context. | `Unauthorized`, `InvalidReference`, `ScopeTooLarge`, `IntegrityFailure` |
 | `vcs.status` | `read` | Return context pointers, clean state, main relation, and compact working counts. | `Unauthorized`, `InvalidReference`, `ScopeTooLarge`, `IntegrityFailure` |
-| `vcs.compare` | `read` | Compare an exact target state with a committed source event or coordinator-owned external delta by semantic change. | `Unauthorized`, `InvalidReference`, `ScopeTooLarge`, `IntegrityFailure` |
+| `vcs.compare` | `read` | Compare an exact target state with a committed source event or coordinator-owned external delta by semantic change. | `Unauthorized`, `InvalidReference`, `ScopeTooLarge`, `IntegrityFailure`, `SourceIsAncestor` |
 | `vcs.inspect` | `read` | Inspect one typed semantic node and a bounded preview of its direct adjacency. | `Unauthorized`, `InvalidReference`, `ScopeTooLarge`, `IntegrityFailure` |
 | `vcs.neighbors` | `read` | Page immediate typed provenance edges without persisting traversal state. | `Unauthorized`, `InvalidReference`, `ScopeTooLarge`, `IntegrityFailure` |
 | `vcs.history` | `read` | Page event history in either direction or past file history from one exact state. | `Unauthorized`, `InvalidReference`, `ScopeTooLarge`, `IntegrityFailure` |
@@ -57,10 +57,12 @@ mutation except `push` advances an exact context working head; `commit` and
 - `NoEffect`
 - `RevisionChanged`
 - `ScopeTooLarge`
+- `SourceIsAncestor`
 - `Unauthorized`
 - `WorkingChangesPresent`
 
 Mutation `commandId` values are idempotency identities, not actor or
-authorship credentials. Retry the same ID only with an identical request.
+authorship credentials. The runtime client mints one per call and reuses it
+only for its own transport retries; omit it.
 Provenance is walked through typed nodes with `inspect`, `neighbors`,
 `history`, and `blame`.

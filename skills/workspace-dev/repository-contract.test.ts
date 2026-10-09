@@ -99,9 +99,10 @@ describe("panel debugging guidance", () => {
     expect(loop).toContain("ref: `ctx:${ctx.contextId}`");
     expect(loop).toContain("requestedRef");
     expect(loop).toContain(
-      "scope.refreshReceipt = await scope.panelSession.refresh()",
+      "scope.refreshReceipt = scope.panelSession.receipt",
     );
-    expect(loop).toContain("scope.panelSession = scope.refreshReceipt.session");
+    expect(loop).toContain("await scope.panelSession.page.title()");
+    expect(loop).toContain("the runtime never replays it");
     expect(loop).toContain("const page = scope.panelSession.page");
     expect(loop).toContain(
       'return await scope.panel.cdp.screenshot({ format: "png" })',
@@ -139,10 +140,11 @@ describe("host command guidance", () => {
     expect(panelApi).toContain(
       'import { useHostCommands } from "@workspace/react"',
     );
-    expect(panelApi).toContain("Registration is a complete replacement");
-    expect(panelApi).toContain("exactly once per panel runtime");
+    expect(panelApi).toContain("Each registration owns its own commands");
+    expect(panelApi).toContain("panel.registerHostCommands(commands, (commandId)");
     expect(runtimeApi).toContain("registerHostCommands");
-    expect(runtimeApi).toContain("onHostCommandRun");
+    expect(runtimeApi).not.toContain("unregisterHostCommands");
+    expect(runtimeApi).not.toContain("onHostCommandRun");
     if (appSkill !== null && appAuthoring !== null) {
       expect(appSkill).toContain(
         "AUTHORING.md#hosting-panel-contributed-commands",

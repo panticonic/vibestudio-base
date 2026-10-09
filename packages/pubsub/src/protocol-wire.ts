@@ -4,7 +4,6 @@
  */
 
 import type {
-  BootstrapSnapshot,
   ParticipantSnapshot,
   ReplayReady,
   ServerLogEvent,
@@ -55,14 +54,3 @@ export type RpcChannelMessage =
   | RpcReadyMessage
   | RpcErrorMessage
   | RpcSignalMessage;
-
-export function snapshotToRpcControl(
-  snapshot: Extract<BootstrapSnapshot, { kind: "roster-snapshot" }>
-): RpcRosterSnapshotMessage {
-  return {
-    kind: "control",
-    type: "roster-snapshot",
-    participants: snapshot.participants,
-    ts: snapshot.ts,
-  };
-}

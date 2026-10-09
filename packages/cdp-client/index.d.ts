@@ -21,6 +21,12 @@ export type {
 // Kept in sync with src/worker.ts (the implementation for the worker/workerd and
 // vibestudio-panel conditions).
 
+/** Typed recovery step: the single shape agent tool failures consume. */
+export interface CdpRecovery {
+  action: "correct-request" | "reobserve" | "reacquire-handle";
+  instruction: string;
+}
+
 export interface BoundingBox {
   x: number;
   y: number;
@@ -385,6 +391,12 @@ export interface CdpPage {
   /** Playwright-compatible synchronous current URL. Do not await or attach `.catch()`. */
   url(): string;
   content(): Promise<string>;
+  /**
+   * Replace the main frame's document without navigating (the URL is
+   * unchanged). Browser panels only: workspace panels reject it, because their
+   * document is the panel application.
+   */
+  setContent(html: string): Promise<void>;
   /** Set a caller-selected deadline for actions/reads. Default: no deadline; zero disables it. */
   setDefaultTimeout(timeoutMs: number): void;
   /** Emulate a CSS viewport on the current target. */
@@ -549,13 +561,7 @@ export interface CdpFailureData {
     | "cdp_dialog_closed";
   operation: string;
   failureKind: "user-code" | "infrastructure";
-  recovery:
-    | "correct-page-function"
-    | "reobserve-locator"
-    | "reacquire-page"
-    | "inspect-panel-and-reacquire-page"
-    | "use-panel-handle-lifecycle"
-    | "handle-dialog-and-observe";
+  recovery: CdpRecovery;
   locator?: string;
   timeoutMs?: number;
   /** Completed readiness observations, including the initial observation. */

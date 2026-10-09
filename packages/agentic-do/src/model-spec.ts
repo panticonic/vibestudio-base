@@ -8,8 +8,6 @@
 
 import {
   getBuiltinModel as getModel,
-  getBuiltinModels as getModels,
-  getBuiltinProviders as getProviders,
 } from "@panticonic/pi-ai/providers/all";
 import type {
   PiModelSpec,
@@ -120,20 +118,4 @@ export function materializeModel(
       : null;
   }
   return materializeCloudModel(providerId, modelId);
-}
-
-/** Enumerate the pi-ai registry as materialization inputs (catalog build). */
-export function allCloudModels(): Array<{
-  providerId: string;
-  model: PiModelLike;
-}> {
-  const out: Array<{ providerId: string; model: PiModelLike }> = [];
-  for (const providerId of getProviders()) {
-    for (const model of getModels(
-      providerId as never,
-    ) as unknown as PiModelLike[]) {
-      out.push({ providerId, model });
-    }
-  }
-  return out;
 }

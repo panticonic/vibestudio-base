@@ -21,6 +21,8 @@ import type {
   Rpc,
   TypedCallProxy,
 } from "../core/index.js";
+import { invalidateCdpGeneration } from "../panel/cdpAutomation.js";
+import { defineScopeRef } from "./scopeRef.js";
 
 export interface PanelHandleMetadata {
   id: string;
@@ -72,9 +74,9 @@ export interface PanelHandleHostOps {
   focus?(id: string, options?: PanelFocusOptions): Promise<PanelObservation>;
   stateArgs?: {
     get<T = Record<string, unknown>>(id: string): Promise<T>;
-    set(
+    patch(
       id: string,
-      updates: Record<string, unknown>,
+      patch: Record<string, unknown>,
     ): Promise<Record<string, unknown>>;
   };
   snapshot?(
@@ -231,13 +233,13 @@ export function createPanelHandle<
         if (!ops?.stateArgs?.get) return {} as TState;
         return ops.stateArgs.get<TState>(metadata.id);
       },
-      set: async <TState = Record<string, unknown>>(
-        updates: Record<string, unknown>,
+      patch: async <TState = Record<string, unknown>>(
+        patch: Record<string, unknown>,
       ) => {
-        if (!ops?.stateArgs?.set) {
-          throw new Error("stateArgs.set is not available for this handle");
+        if (!ops?.stateArgs?.patch) {
+          throw new Error("stateArgs.patch is not available for this handle");
         }
-        return ops.stateArgs.set(metadata.id, updates) as Promise<TState>;
+        return ops.stateArgs.patch(metadata.id, patch) as Promise<TState>;
       },
     },
     async emit(event: string, payload: unknown) {
@@ -270,21 +272,30 @@ export function createPanelHandle<
     navigate: async (source: string, options?: PanelNavigateOptions) => {
       if (!ops?.navigate)
         throw new Error("navigate is not available for this handle");
+      invalidateCdpGeneration(cdp);
       return lifecycle(() => ops.navigate!(metadata.id, source, options));
     },
     reload: async (waitOptions?: PanelWaitOptions) => {
       if (!ops?.reload)
         throw new Error("reload is not available for this handle");
+      invalidateCdpGeneration(cdp);
       return lifecycle(() => ops.reload!(metadata.id, waitOptions));
     },
     archive: async () => {
       if (!ops?.archive)
         throw new Error("archive is not available for this handle");
+      invalidateCdpGeneration(cdp);
       return ops.archive(metadata.id);
+    },
+    // `await using` owns the panel for the enclosing block: disposal is
+    // archive, and its failure propagates out of the block.
+    [Symbol.asyncDispose]: async () => {
+      await handle.archive();
     },
     unload: async () => {
       if (!ops?.unload)
         throw new Error("unload is not available for this handle");
+      invalidateCdpGeneration(cdp);
       return ops.unload(metadata.id);
     },
     setTitle: async (title: string, titleOptions?: PanelSetTitleOptions) => {
@@ -317,6 +328,7 @@ export function createPanelHandle<
     rebuild: async (waitOptions?: PanelWaitOptions) => {
       if (!ops?.rebuild)
         throw new Error("rebuild is not available for this handle");
+      invalidateCdpGeneration(cdp);
       return lifecycle(() => ops.rebuild!(metadata.id, waitOptions));
     },
     focus: (focusOptions?: PanelFocusOptions) => {
@@ -347,6 +359,7 @@ export function createPanelHandle<
       Promise.resolve(undefined),
   } as PanelHandle<T, E, EmitE>;
 
+  defineScopeRef(handle, () => ({ kind: "panel", id: metadata.id }));
   return handle;
 }
 
@@ -354,65 +367,16 @@ export function unavailableCdp(id: string): CdpAutomation {
   const unavailable = () =>
     Promise.reject(new Error(`CDP is not available for panel ${id}`));
   return {
-    page: unavailable,
     session: unavailable,
     consoleHistory: unavailable,
     getCdpEndpoint: unavailable,
-    navigate: unavailable,
-    goBack: unavailable,
-    goForward: unavailable,
-    reload: unavailable,
     stop: unavailable,
     click: unavailable,
     screenshot: unavailable,
   };
 }
 
-export function createNoPanelHandle(): PanelHandle {
-  const noParent = () => Promise.reject(new Error("No parent panel"));
-  const handle: PanelHandle = {
-    id: "",
-    title: "",
-    source: "",
-    kind: "workspace",
-    parentId: null,
-    observe: noParent,
-    call: new Proxy({} as PanelHandle["call"], {
-      get: () => noParent,
-    }),
-    cdp: unavailableCdp("parent"),
-    click: noParent,
-    diagnose: noParent,
-    stateArgs: {
-      get: <TState = Record<string, unknown>>() =>
-        Promise.resolve({} as TState),
-      set: noParent,
-    },
-    emit: noParent,
-    on: () => () => {},
-    withContract: () => handle as never,
-    parent: () => null,
-    navigate: noParent,
-    reload: noParent,
-    archive: noParent,
-    unload: noParent,
-    setTitle: noParent,
-    movePanel: noParent,
-    takeOver: noParent,
-    openDevTools: noParent,
-    rebuild: noParent,
-    focus: noParent,
-    snapshot: noParent,
-    tree: () => Promise.resolve(undefined),
-    state: () => Promise.resolve(undefined),
-    routes: () => Promise.resolve(undefined),
-    setMode: () => Promise.resolve(undefined),
-  };
-  return handle;
-}
-
 export interface ParentHandleApi {
-  readonly parent: PanelHandle;
   getParent<
     T extends Rpc.ExposedMethods = Rpc.ExposedMethods,
     E extends Rpc.RpcEventMap = Rpc.RpcEventMap,
@@ -439,7 +403,10 @@ export function createRuntimeParentHandle(
   if (!parentId) return null;
   if (parentKind === "panel") return getPanelHandle(parentId);
   if (parentKind === "worker" || parentKind === "do") {
-    return createNonPanelRuntimeHandle({ id: parentEntityId ?? parentId });
+    return createNonPanelRuntimeHandle({
+      id: parentEntityId ?? parentId,
+      kind: parentKind,
+    });
   }
   if (parentId.startsWith("worker:") || parentId.startsWith("do:")) {
     return createNonPanelRuntimeHandle({ id: parentId });
@@ -450,7 +417,6 @@ export function createRuntimeParentHandle(
 export function createParentHandleApi(
   resolveParent: () => PanelHandle | null,
 ): ParentHandleApi {
-  const parent = resolveParent() ?? createNoPanelHandle();
   const getParent = <
     T extends Rpc.ExposedMethods = Rpc.ExposedMethods,
     E extends Rpc.RpcEventMap = Rpc.RpcEventMap,
@@ -463,11 +429,13 @@ export function createParentHandleApi(
   ): PanelHandleFromContract<C, "parent"> | null => {
     return getParent()?.withContract(contract, "parent") ?? null;
   };
-  return { parent, getParent, getParentWithContract };
+  return { getParent, getParentWithContract };
 }
 
 export function createNonPanelRuntimeHandle(options: {
   id: string;
+  /** Runtime entity kind; derived from a `worker:`/`do:` id prefix when omitted. */
+  kind?: "worker" | "do";
   title?: string;
   source?: string;
   parentId?: string | null;
@@ -491,7 +459,7 @@ export function createNonPanelRuntimeHandle(options: {
     stateArgs: {
       get: <TState = Record<string, unknown>>() =>
         Promise.resolve({} as TState),
-      set: unavailable,
+      patch: unavailable,
     },
     emit: unavailable,
     on: () => () => {},
@@ -500,6 +468,7 @@ export function createNonPanelRuntimeHandle(options: {
     navigate: unavailable,
     reload: unavailable,
     archive: unavailable,
+    [Symbol.asyncDispose]: unavailable,
     unload: unavailable,
     setTitle: unavailable,
     movePanel: unavailable,
@@ -513,6 +482,17 @@ export function createNonPanelRuntimeHandle(options: {
     routes: () => Promise.resolve(undefined),
     setMode: () => Promise.resolve(undefined),
   };
+  const entityKind =
+    options.kind ??
+    (options.id.startsWith("worker:")
+      ? "worker"
+      : options.id.startsWith("do:")
+        ? "do"
+        : null);
+  // An entity of unknown kind has no reacquirable identity; it stays volatile.
+  if (entityKind) {
+    defineScopeRef(handle, () => ({ kind: entityKind, id: options.id }));
+  }
   return handle;
 }
 

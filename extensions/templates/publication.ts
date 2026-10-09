@@ -27,6 +27,7 @@ type Publication = {
   plan: TemplateAuthoringInspection;
   authored: Record<string, unknown>;
   installation: WorkspaceTemplateInstallation;
+  nextInstallation?: WorkspaceTemplateInstallation;
   steps: Record<string, TemplateOperationStep>;
 };
 
@@ -79,7 +80,7 @@ export function createTemplatePublisher(
           throw new Error(
             "Workspace source changed after inspection; inspect authoring again",
           );
-        if (!observation.manifest.installation)
+        if (!observation.installation)
           throw new Error("Workspace ownership declarations are missing");
         const destination =
           request.destination.provider === "github"
@@ -89,13 +90,13 @@ export function createTemplatePublisher(
             : null;
         if (
           destination &&
-          observation.manifest.installation.sources.some(
+          observation.installation.sources.some(
             (source) =>
               normalizeTemplateGitUrl(source.pin.url) === destination &&
-              (!observation.manifest.installation?.upstream ||
+              (!observation.installation?.upstream ||
                 normalizeTemplateGitUrl(source.pin.url) !==
                   normalizeTemplateGitUrl(
-                    observation.manifest.installation.upstream.url,
+                    observation.installation.upstream.url,
                   )),
           )
         )
@@ -107,7 +108,7 @@ export function createTemplatePublisher(
           contextId: `template-publication-${operationIdentity(request.commandId).slice(0, 24)}`,
           plan,
           authored: templateManifestDocument(observation.manifest),
-          installation: observation.manifest.installation,
+          installation: observation.installation,
           steps: {},
         };
         await operations.save(operation);
@@ -175,16 +176,9 @@ export function createTemplatePublisher(
         metadata["description"] = plan.request.description;
         const release = YAML.parse(plan.manifest) as {
           template: {
-            repositories: string[];
             overrides?: Array<{ repoPath: string; source: string }>;
           };
         };
-        metadata["repositories"] = [
-          ...new Set([
-            ...(metadata["repositories"] as string[]),
-            ...release.template.repositories,
-          ]),
-        ].sort();
         const overrides = new Map(
           (
             (metadata["overrides"] as Array<{
@@ -196,7 +190,7 @@ export function createTemplatePublisher(
         for (const override of release.template.overrides ?? [])
           overrides.set(override.repoPath, override);
         if (overrides.size) metadata["overrides"] = [...overrides.values()];
-        metadata["installation"] = {
+        operation.nextInstallation = {
           sources: [...sources, { pin: upstream, manifest: plan.manifest }],
           upstream,
         };
@@ -257,6 +251,7 @@ export function createTemplatePublisher(
               await vcs.status({ contextId: operation.contextId })
             ).committed.eventId,
             expectedMainEventId: plan.mainEventId,
+            templateInstallation: operation.nextInstallation,
           },
         ]);
       else await step("push", "vcs.push", []);

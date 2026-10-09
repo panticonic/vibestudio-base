@@ -5,6 +5,9 @@ import { reportDraftContent } from "@vibestudio/service-schemas/problemReportBun
 export { reportDraftContent } from "@vibestudio/service-schemas/problemReportBundle";
 import { problemReportsMethods } from "@vibestudio/service-schemas/problemReports";
 import type { RpcCaller } from "@vibestudio/rpc";
+export type ProblemReportsClient = ReturnType<
+  typeof createProblemReportsClient
+>;
 export function createProblemReportsClient(rpc: Pick<RpcCaller, "call">) {
   return createTypedServiceClient(
     "problemReports",

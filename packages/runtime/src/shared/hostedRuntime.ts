@@ -37,6 +37,14 @@ import { PanelOperationError } from "@vibestudio/shared/panel/observation";
 import { helpfulNamespace } from "./helpfulNamespace.js";
 import { createGadClient, type GadClient } from "./gad.js";
 import { createImagesClient, type ImagesClient } from "./images.js";
+import {
+  createProblemReportsClient,
+  type ProblemReportsClient,
+} from "./problemReports.js";
+import {
+  createMissionsClient,
+  type MissionsClient,
+} from "@vibestudio/automation/mission";
 import { createBlobstoreClient, type BlobstoreClient } from "./blobstore.js";
 import { createWorkspaceClient, type WorkspaceClient } from "./workspace.js";
 import {
@@ -114,7 +122,7 @@ export interface RuntimeHost {
    * null when there is no parent. Each target builds this closure from its own
    * provenance (panel bootstrap globals, worker `PARENT_*` env, eval `RunArgs`),
    * typically via `createRuntimeParentHandle`. `createHostedRuntime` derives the
-   * portable `parent`/`getParent`/`getParentWithContract` from it.
+   * portable `getParent`/`getParentWithContract` from it.
    */
   resolveParent: () => PanelHandle | null;
 }
@@ -129,14 +137,16 @@ export interface WorkspaceRuntime {
   readonly fs: RuntimeFs;
   /** Call a `main` (server) service method: `callMain("fs.readFile", path)`. */
   readonly callMain: MainCaller;
-  /** This runtime's parent panel handle (a no-panel handle when there is none). */
-  readonly parent: ParentHandleApi["parent"];
   readonly getParent: ParentHandleApi["getParent"];
   readonly getParentWithContract: ParentHandleApi["getParentWithContract"];
   readonly gad: GadClient;
   /** Per-workspace content-addressable blob store (persist/fetch large artifacts). */
   readonly blobstore: BlobstoreClient;
   readonly images: ImagesClient;
+  /** Automations: launch/edit compile the authority plan as this caller. */
+  readonly missions: MissionsClient;
+  /** Local problem reports owned by the calling user; send requests one-time human approval. */
+  readonly problemReports: ProblemReportsClient;
   readonly workspace: WorkspaceClient;
   readonly workspaces: WorkspaceCreationClient;
   readonly runtime: RuntimeServiceClient;
@@ -179,40 +189,31 @@ export { createPanelRuntime } from "./panelRuntime.js";
 export { createRuntimeParentHandle } from "./handles.js";
 
 /**
- * Convenience `services.<name>.<method>(...)` namespace, identical on every
- * target. Non-colliding service names resolve to a client that dispatches via
- * `callMain("<name>.<method>", args)` with no hand-curated list; names that
- * collide with rich runtime bindings intentionally resolve to those ergonomic
- * clients instead.
+ * Raw service namespace, identical on every target: `services.<name>` is
+ * always the server service named `<name>`, never a runtime client. Every
+ * `.<method>(...args)` becomes `rt.callMain("<name>.<method>", ...args)`, i.e.
+ * `rpc.call("main", "<name>.<method>", args)`, so the methods and arguments are
+ * exactly the service catalog's. Rich runtime clients (`fs`, `vcs`,
+ * `blobstore`, `workers`, …) are separate top-level bindings.
  *
- * Two layers, composed:
- *  1. ERGONOMIC OVERRIDE — if `<name>` is a real member of the hosted runtime
- *     (`gad`/`fs`/`vcs`/`credentials`/`blobstore`/`workers`/…), `services.<name>`
- *     returns that SAME rich client object, so the curated, typed surface wins.
- *  2. DYNAMIC FALLBACK — otherwise `services.<name>` is a typed proxy whose every
- *     `.<method>(...args)` becomes `rt.callMain("<name>.<method>", ...args)`,
- *     i.e. `rpc.call("main", "<name>.<method>", args)`.
- *
- * SECURITY: the fallback adds NO new access. It routes solely through `callMain`,
+ * SECURITY: the proxy adds NO new access. It routes solely through `callMain`,
  * and the server dispatcher enforces each method's `policy.allowed`
  * (serviceDispatcher.ts `dispatch` → `checkServiceAccess`) at the single choke
- * point — a `do`-denied method still rejects server-side. The proxy is purely
- * ergonomic reach, never an authorization bypass.
+ * point — a `do`-denied method still rejects server-side.
  *
  * This helper is implementation detail, but its result is a portable runtime
  * member: `createHostedRuntime` installs it as `services` on every target. The
  * cross-target parity gate includes that member directly.
  */
 export function createServicesProxy(
-  rt: WorkspaceRuntime,
+  rt: Pick<WorkspaceRuntime, "callMain">,
 ): Record<string, unknown> {
-  const rtRecord = rt as unknown as Record<string, unknown>;
-  // Cache per-service fallback clients so repeated `services.foo` access is stable
+  // Cache per-service clients so repeated `services.foo` access is stable
   // (=== across reads) and a method proxy isn't rebuilt on every property get.
-  const fallbackClients = new Map<string, Record<string, unknown>>();
+  const clients = new Map<string, Record<string, unknown>>();
 
-  const fallbackClient = (service: string): Record<string, unknown> => {
-    const cached = fallbackClients.get(service);
+  const serviceClient = (service: string): Record<string, unknown> => {
+    const cached = clients.get(service);
     if (cached) return cached;
     const methodCache = new Map<
       string,
@@ -234,27 +235,20 @@ export function createServicesProxy(
         },
       },
     ) as Record<string, unknown>;
-    fallbackClients.set(service, client);
+    clients.set(service, client);
     return client;
   };
 
   return new Proxy(
     {},
     {
-      get(_t, prop, receiver) {
-        if (typeof prop === "symbol")
-          return Reflect.get(rtRecord, prop, receiver);
-        const name = String(prop);
-        // Layer 1 — ergonomic override: the rich, curated runtime client wins.
-        // `in` (not a truthy check) so a falsy-but-present member still overrides.
-        if (name in rtRecord) return rtRecord[name];
-        // Layer 2 — dynamic fallback: any other registered service, by name.
-        return fallbackClient(name);
+      get(_t, prop) {
+        if (typeof prop === "symbol") return undefined;
+        return serviceClient(prop);
       },
-      // So `name in services` and Reflect.has are honest about the override layer
-      // (the fallback is open-ended, so membership there is always "yes").
+      // The namespace is open-ended: every service name is a member.
       has(_t, prop) {
-        return typeof prop === "string" ? true : prop in rtRecord;
+        return typeof prop === "string";
       },
     },
   );
@@ -406,12 +400,16 @@ export function createHostedRuntime(host: RuntimeHost): WorkspaceRuntime {
     rpc,
     fs: host.fs,
     callMain,
-    parent: parentApi.parent,
     getParent: parentApi.getParent,
     getParentWithContract: parentApi.getParentWithContract,
     gad,
     blobstore,
     images: helpfulNamespace("images", createImagesClient(rpc)),
+    missions: helpfulNamespace("missions", createMissionsClient(rpc)),
+    problemReports: helpfulNamespace(
+      "problemReports",
+      createProblemReportsClient(rpc),
+    ),
     workspace,
     workspaces,
     runtime: runtimeService,

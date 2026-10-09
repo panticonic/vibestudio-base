@@ -18,6 +18,9 @@ import {
   CopyIcon,
   CheckIcon,
   ChatBubbleIcon,
+  CrossCircledIcon,
+  ExclamationTriangleIcon,
+  InfoCircledIcon,
   ReloadIcon,
   Cross2Icon,
   DotsHorizontalIcon,
@@ -32,7 +35,6 @@ import { LOCAL_FALLBACK_MODEL_REF } from "@workspace/model-catalog/catalog";
 import type { AgentSubscriptionConfig } from "@workspace/agentic-core";
 import type { Participant } from "@workspace/pubsub";
 import { useOptionalChatMessageActions } from "../context/ChatContext";
-import { useOptionalChatInputActions } from "../context/ChatInputContext";
 import { TypingIndicator } from "./TypingIndicator";
 import { MessageContent } from "./MessageContent";
 import { MessageSurface } from "./MessageSurface";
@@ -112,14 +114,6 @@ const PROVIDER_LEVEL_FAILURE_CODES = new Set([
 function chatCallMethod(chat: Record<string, unknown>): ChatCallMethod | null {
   return typeof chat["callMethod"] === "function"
     ? (chat["callMethod"] as ChatCallMethod)
-    : null;
-}
-
-function chatSend(
-  chat: Record<string, unknown>,
-): ((content: string, opts?: unknown) => Promise<unknown>) | null {
-  return typeof chat["send"] === "function"
-    ? (chat["send"] as (content: string, opts?: unknown) => Promise<unknown>)
     : null;
 }
 
@@ -271,10 +265,10 @@ export const MessageCard = React.memo(function MessageCard({
     "idle" | "scheduling" | "scheduled" | "failed"
   >("idle");
   const [retryLocalState, setRetryLocalState] = useState<
-    "idle" | "switching" | "ready" | "sent" | "failed"
+    "idle" | "switching" | "sent" | "failed"
   >("idle");
   const [retryState, setRetryState] = useState<
-    "idle" | "sending" | "ready" | "sent" | "failed"
+    "idle" | "sending" | "sent" | "failed"
   >("idle");
   const [cleanStartState, setCleanStartState] = useState<
     "idle" | "starting" | "started" | "failed"
@@ -283,7 +277,6 @@ export const MessageCard = React.memo(function MessageCard({
     string | null | undefined
   >(undefined);
   const [longContentExpanded, setLongContentExpanded] = useState(false);
-  const inputActions = useOptionalChatInputActions();
   const messageActions = useOptionalChatMessageActions();
   const automationClient = useMemo(() => {
     if (
@@ -306,7 +299,6 @@ export const MessageCard = React.memo(function MessageCard({
     );
   }, [chat, msg.automation, msg.automationDefinition, msg.contentType]);
   const callMethod = chatCallMethod(chat);
-  const sendFromChat = chatSend(chat);
   const providerLevelModelFailure =
     msg.contentType === "diagnostic" &&
     msg.diagnostic?.code === "message_failed" &&
@@ -330,9 +322,8 @@ export const MessageCard = React.memo(function MessageCard({
     providerLevelModelFailure &&
     currentAgentModelKnown &&
     !currentAgentModelIsLocal &&
-    Boolean(callMethod && (inputActions || sendFromChat));
-  const canRetry =
-    sameModelRetryFailure && Boolean(inputActions || sendFromChat);
+    Boolean(callMethod);
+  const canRetry = sameModelRetryFailure && Boolean(callMethod);
   const canStartCleanLocalChat =
     localContextOverflowFailure &&
     currentAgentModelKnown &&
@@ -380,41 +371,26 @@ export const MessageCard = React.memo(function MessageCard({
             console.warn("[MessageCard] local model persistence failed:", err);
           });
       }
-      if (sendFromChat) {
-        await sendFromChat("retry", { tier: "primary" });
-        setRetryLocalState("sent");
-      } else if (inputActions) {
-        inputActions.onInputChange("retry");
-        setRetryLocalState("ready");
-      }
+      // `resume` re-runs the agent's turn without adding a user message.
+      await callMethod(msg.senderId, "resume", {});
+      setRetryLocalState("sent");
     } catch (err) {
       console.warn("[MessageCard] Retry with local model failed:", err);
       setRetryLocalState("failed");
     }
-  }, [
-    callMethod,
-    currentAgentModelRef,
-    inputActions,
-    messageActions,
-    msg.senderId,
-    sendFromChat,
-  ]);
+  }, [callMethod, currentAgentModelRef, messageActions, msg.senderId]);
 
   const handleRetry = useCallback(async () => {
+    if (!callMethod) return;
     setRetryState("sending");
     try {
-      if (sendFromChat) {
-        await sendFromChat("retry", { tier: "primary" });
-        setRetryState("sent");
-      } else if (inputActions) {
-        inputActions.onInputChange("retry");
-        setRetryState("ready");
-      }
+      await callMethod(msg.senderId, "resume", {});
+      setRetryState("sent");
     } catch (err) {
       console.warn("[MessageCard] Retry failed:", err);
       setRetryState("failed");
     }
-  }, [inputActions, sendFromChat]);
+  }, [callMethod, msg.senderId]);
 
   const handleStartCleanLocalChat = useCallback(async () => {
     const onNewConversation = messageActions?.onNewConversation;
@@ -663,12 +639,21 @@ export const MessageCard = React.memo(function MessageCard({
         : msg.diagnostic.severity === "warning"
           ? "amber"
           : "blue";
+    const SeverityIcon =
+      msg.diagnostic.severity === "error"
+        ? CrossCircledIcon
+        : msg.diagnostic.severity === "warning"
+          ? ExclamationTriangleIcon
+          : InfoCircledIcon;
     return (
       <Box key={key} className="message-row message-row-system">
-        <Card className="message-card message-card-lifecycle">
+        <Card
+          className="message-card message-card-lifecycle"
+          role={msg.diagnostic.severity === "error" ? "alert" : undefined}
+        >
           <Flex align="start" gap="2">
             <Box className="message-lifecycle-icon" aria-hidden="true">
-              <ChatBubbleIcon />
+              <SeverityIcon />
             </Box>
             <Flex direction="column" gap="1" style={{ minWidth: 0 }}>
               <Flex align="center" gap="2" wrap="wrap">
@@ -708,7 +693,7 @@ export const MessageCard = React.memo(function MessageCard({
                         ? "Scheduled"
                         : resumeScheduleState === "failed"
                           ? "Retry scheduling"
-                          : "Resume at reset"}
+                          : "Retry when the limit resets"}
                   </Button>
                 </Flex>
               )}
@@ -720,22 +705,19 @@ export const MessageCard = React.memo(function MessageCard({
                     color={retryLocalState === "failed" ? "red" : "blue"}
                     disabled={
                       retryLocalState === "switching" ||
-                      retryLocalState === "ready" ||
                       retryLocalState === "sent"
                     }
                     onClick={handleRetryWithLocalModel}
-                    title="Switch this agent to the local fallback model and prepare a retry"
+                    title="Switch this agent to the local fallback model and retry"
                   >
                     <ReloadIcon />
                     {retryLocalState === "switching"
                       ? "Switching"
-                      : retryLocalState === "ready"
-                        ? "Ready — press Send"
-                        : retryLocalState === "sent"
-                          ? "Retry sent"
-                          : retryLocalState === "failed"
-                            ? "Retry local failed"
-                            : "Retry with local model"}
+                      : retryLocalState === "sent"
+                        ? "Retrying"
+                        : retryLocalState === "failed"
+                          ? "Couldn't retry — try again"
+                          : "Retry with local model"}
                   </Button>
                 </Flex>
               )}
@@ -745,24 +727,16 @@ export const MessageCard = React.memo(function MessageCard({
                     size="1"
                     variant="soft"
                     color={retryState === "failed" ? "red" : "blue"}
-                    disabled={
-                      retryState === "sending" ||
-                      retryState === "ready" ||
-                      retryState === "sent"
-                    }
+                    disabled={retryState === "sending" || retryState === "sent"}
                     onClick={handleRetry}
                     title="Retry this turn with the current model"
                   >
                     <ReloadIcon />
-                    {retryState === "sending"
+                    {retryState === "sending" || retryState === "sent"
                       ? "Retrying"
-                      : retryState === "ready"
-                        ? "Ready — press Send"
-                        : retryState === "sent"
-                          ? "Retry sent"
-                          : retryState === "failed"
-                            ? "Retry failed"
-                            : "Retry"}
+                      : retryState === "failed"
+                        ? "Couldn't retry — try again"
+                        : "Retry"}
                   </Button>
                 </Flex>
               )}
@@ -786,7 +760,7 @@ export const MessageCard = React.memo(function MessageCard({
                         ? "New chat opened"
                         : cleanStartState === "failed"
                           ? "New chat failed"
-                          : "New chat without history"}
+                          : "Start a fresh chat (no history)"}
                   </Button>
                 </Flex>
               )}
@@ -1014,6 +988,7 @@ export const MessageCard = React.memo(function MessageCard({
                   onBlur={handleClearCopied}
                   onPointerLeave={handleClearCopied}
                   title="Copy message"
+                  aria-label="Copy message"
                 >
                   {isCopied ? <CheckIcon /> : <CopyIcon />}
                 </IconButton>
@@ -1042,6 +1017,7 @@ export const MessageCard = React.memo(function MessageCard({
                   color="gray"
                   onClick={handleReply}
                   title="Reply"
+                  aria-label="Reply"
                 >
                   <ChatBubbleIcon />
                 </IconButton>

@@ -3,22 +3,22 @@ export type StartupUnitStatus = {
   pendingApproval?: unknown;
 } | null;
 
+/** Phase text only; the ticking elapsed counter is rendered separately so assistive tech hears phase changes, not every second. */
 export function terminalStartupPendingLabel(args: {
   pending: boolean;
   elapsedSeconds: number;
   shellUnit: StartupUnitStatus;
 }): string | undefined {
   if (!args.pending) return undefined;
-  const suffix = args.elapsedSeconds >= 1 ? ` ${args.elapsedSeconds}s` : "";
-  if (isUnitApprovalPending(args.shellUnit)) return `Waiting for unit approval...${suffix}`;
+  if (isUnitApprovalPending(args.shellUnit)) return "Waiting for your approval…";
   if (isExtensionPreparing(args.shellUnit)) {
     return args.elapsedSeconds >= 20
-      ? `Still preparing terminal...${suffix}`
-      : `Preparing terminal...${suffix}`;
+      ? "Still setting up the terminal…"
+      : "Setting up the terminal…";
   }
-  if (args.elapsedSeconds >= 15) return `Still waiting for terminal approval...${suffix}`;
-  if (args.elapsedSeconds >= 1) return `Waiting for terminal approval...${suffix}`;
-  return "Starting terminal...";
+  if (args.elapsedSeconds >= 15) return "Still waiting for your approval…";
+  if (args.elapsedSeconds >= 1) return "Waiting for your approval…";
+  return "Starting terminal…";
 }
 
 export function terminalStartupDetail(args: {
@@ -41,29 +41,29 @@ export function terminalStartupDetail(args: {
   }
   if (isUnitApprovalPending(args.shellUnit)) {
     return {
-      title: "Approve shell unit",
-      detail: "The terminal is waiting for the shell unit approval before it can start.",
+      title: "Allow the terminal",
+      detail: "Vibestudio needs your OK to start a shell. Look for the approval prompt at the top of the window.",
     };
   }
   if (isExtensionPreparing(args.shellUnit)) {
     return {
-      title: args.elapsedSeconds >= 20 ? "Still preparing terminal" : "Preparing terminal",
+      title: args.elapsedSeconds >= 20 ? "Still setting up the terminal" : "Setting up the terminal…",
       detail: args.elapsedSeconds >= 20
-        ? "The shell extension is still building or starting. The request is already in progress, so additional clicks will not start more terminals."
-        : "Building or starting the shell extension. The first run can take around 20 seconds.",
+        ? "This is taking longer than usual. Your request is already in progress, so clicking again will not start more terminals."
+        : "The first start can take around 20 seconds.",
     };
   }
   if (args.status === "waitingApproval") {
     return {
-      title: args.elapsedSeconds >= 15 ? "Still waiting for terminal approval" : "Starting terminal session",
+      title: args.elapsedSeconds >= 15 ? "Still waiting for your approval" : "Starting terminal session",
       detail: args.elapsedSeconds >= 15
-        ? "The terminal request is still pending approval. Check the approval bar instead of opening another terminal."
-        : "If an approval bar appears, allow the terminal session. The request is already in progress.",
+        ? "Vibestudio is waiting for your OK. Look for the approval prompt at the top of the window instead of opening another terminal."
+        : "If an approval prompt appears, allow the terminal session. Your request is already in progress.",
     };
   }
   return {
     title: "Starting terminal",
-    detail: "Opening the shell extension and creating the first session.",
+    detail: "Creating your first terminal session.",
   };
 }
 

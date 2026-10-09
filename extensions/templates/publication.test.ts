@@ -23,14 +23,15 @@ it("records its own upstream and overrides, and retries an uncertain main push w
     const source = YAML.stringify({
       systemEpoch: 0,
       defaultRepo: "projects/example",
-      template: { repositories: ["projects/example"] },
+      template: {  },
     });
+  const installation = { sources: [{ pin, manifest: source }] };
     const initial = YAML.stringify({
       systemEpoch: 0,
+      defaultRepo: "projects/example",
       template: {
-        repositories: ["meta"],
         dependencies: [{ url: pin.url }],
-        installation: { sources: [{ pin, manifest: source }] },
+
       },
     });
     const manifest = parseTemplateManifestContent(initial, 0);
@@ -39,7 +40,6 @@ it("records its own upstream and overrides, and retries an uncertain main push w
       template: {
         name: "Mine",
         description: "Mine",
-        repositories: ["meta", "projects/example"],
         dependencies: [{ url: pin.url }],
         overrides: [{ repoPath: "projects/example", source: pin.url }],
       },
@@ -152,8 +152,8 @@ it("records its own upstream and overrides, and retries an uncertain main push w
         mainEventId: "before",
         mainState: { kind: "event", eventId: "before" },
         runtimeTop: rootRuntimeFromTemplateManifest(manifest),
-        authoredTop: manifest.top,
         manifest,
+        installation,
         localRepoPaths: new Set(["meta", "projects/example"]),
         templateDependencies: manifest.dependencies,
         templateSources: [pin],
@@ -164,8 +164,8 @@ it("records its own upstream and overrides, and retries an uncertain main push w
       createTemplatePublisher(ctx, inspect)(request),
     ).rejects.toThrow("response lost");
     const recorded = parseTemplateManifestContent(text, 0);
-    expect(recorded.installation?.upstream?.url).toBe(published.templateUrl);
-    expect(recorded.installation?.upstream?.credential).toBe("Publish account");
+    expect((pushes[0] as { templateInstallation: { upstream: { url: string } } }).templateInstallation.upstream.url).toBe(published.templateUrl);
+    expect((pushes[0] as { templateInstallation: { upstream: { credential: string } } }).templateInstallation.upstream.credential).toBe("Publish account");
     expect(recorded.dependencies).toEqual([{ url: pin.url }]);
     expect(recorded.overrides).toEqual([
       { repoPath: "projects/example", source: pin.url },

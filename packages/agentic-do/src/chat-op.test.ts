@@ -170,7 +170,7 @@ function automationRecord(
     state: "active",
     revisionDigest: "b".repeat(64),
     authorityPlan: {
-      schemaVersion: 1,
+      schemaVersion: 2,
       digest: "c".repeat(64),
       artifactRef: `authority-plan:${"c".repeat(64)}`,
       compilerVersion: "test",

@@ -423,7 +423,8 @@ describe("SemanticWorkspace net-effect merge", () => {
     ).rejects.toMatchObject({ code: "IntegrityFailure" });
   });
 
-  it("records a decision-only merge when the source chain has zero net effect", async () => {
+  /** A target with an unrelated change and a committed source whose chain nets to zero. */
+  async function zeroNetIntegration() {
     const sql = await createInMemorySql();
     createSemanticVcsSchema(sql);
     const store = new SemanticVcsStore(sql, () => timestamp);
@@ -606,6 +607,11 @@ describe("SemanticWorkspace net-effect merge", () => {
         resolution: { complete: true, remainingCoordinateCount: 0, concluded: false },
       },
     });
+    return { semantic, store, acknowledge, base, target, source };
+  }
+
+  it("records a decision-only merge when the source chain has zero net effect", async () => {
+    const { semantic, store, acknowledge, base, target, source } = await zeroNetIntegration();
 
     const mergeDispatch = await semantic.dispatch("merge", {
       ingress,
@@ -722,5 +728,115 @@ describe("SemanticWorkspace net-effect merge", () => {
       base.event.eventId,
       source.event.eventId,
     ]);
+  });
+
+  it("concludes a complete source atomically inside commit", async () => {
+    const { semantic, store, acknowledge, base, target, source } = await zeroNetIntegration();
+    const sourceRef = { kind: "event" as const, eventId: source.event.eventId };
+
+    const committedDispatch = await semantic.dispatch("commit", {
+      ingress,
+      input: {
+        contextId: "context:target-zero",
+        commandId: "command:zero-concluding-commit",
+        expectedWorkingHead: target.workingHead,
+        message: "Conclude reviewed zero-effect source",
+        concludes: sourceRef,
+      },
+    });
+    const committed = pending<{
+      event: { kind: "event"; eventId: string };
+      committedApplicationIds: string[];
+      integrationSourceEventIds: string[];
+    }>(committedDispatch);
+    acknowledge(committedDispatch);
+    expect(committed.integrationSourceEventIds).toEqual([source.event.eventId]);
+    expect(committed.committedApplicationIds).toHaveLength(2);
+    expect(store.event(committed.event.eventId)?.parentEventIds).toEqual([
+      base.event.eventId,
+      source.event.eventId,
+    ]);
+    const status = await semantic.dispatch("status", {
+      ingress,
+      input: { contextId: "context:target-zero" },
+    });
+    expect(status).toMatchObject({ kind: "complete", result: { clean: true, integrating: [] } });
+    await expect(
+      semantic.dispatch("compare", {
+        ingress,
+        input: { target: committed.event, source: sourceRef, limit: 100 },
+      })
+    ).rejects.toMatchObject({
+      code: "SourceIsAncestor",
+      detail: { target: committed.event, source: sourceRef },
+    });
+  });
+
+  it("refuses to conclude an incomplete source and persists nothing", async () => {
+    const { semantic, store, acknowledge, base, target, source } = await zeroNetIntegration();
+    const repository = store.facts.repositoryAtPath(store.stateRoot(base.event), "packages/zero");
+    if (!repository || repository.presence !== "present") throw new Error("missing repository");
+    const file = store.facts.fileAtPath(
+      store.stateRoot(base.event),
+      repository.repositoryId,
+      "index.ts"
+    );
+    if (!file || file.state.presence !== "placed") throw new Error("missing file");
+    store.forkContext("context:source-zero", "context:incomplete-source");
+    const sourceEditDispatch = await semantic.dispatch("edit", {
+      ingress,
+      input: {
+        contextId: "context:incomplete-source",
+        commandId: "command:incomplete-source-edit",
+        expectedWorkingHead: source.event,
+        changes: [
+          {
+            kind: "content-replace",
+            repositoryId: repository.repositoryId,
+            fileId: file.state.fileId,
+            content: { kind: "text", text: "incoming\n" },
+          },
+        ],
+      },
+    });
+    const sourceEdit = pending<{ workingHead: { kind: "application"; applicationId: string } }>(
+      sourceEditDispatch
+    );
+    acknowledge(sourceEditDispatch);
+    const sourceCommitDispatch = await semantic.dispatch("commit", {
+      ingress,
+      input: {
+        contextId: "context:incomplete-source",
+        commandId: "command:incomplete-source-commit",
+        expectedWorkingHead: sourceEdit.workingHead,
+        message: "Incoming content",
+      },
+    });
+    const incoming = pending<{ event: { kind: "event"; eventId: string } }>(sourceCommitDispatch);
+    acknowledge(sourceCommitDispatch);
+
+    await expect(
+      semantic.dispatch("commit", {
+        ingress,
+        input: {
+          contextId: "context:target-zero",
+          commandId: "command:premature-conclusion",
+          expectedWorkingHead: target.workingHead,
+          message: "Conclude too early",
+          concludes: { kind: "event", eventId: incoming.event.eventId },
+        },
+      })
+    ).rejects.toMatchObject({
+      code: "IntegrationIncomplete",
+      detail: { source: { kind: "event", eventId: incoming.event.eventId } },
+    });
+    const status = await semantic.dispatch("status", {
+      ingress,
+      input: { contextId: "context:target-zero" },
+    });
+    expect(status).toMatchObject({
+      kind: "complete",
+      result: { workingHead: target.workingHead, clean: false },
+    });
   });
 });

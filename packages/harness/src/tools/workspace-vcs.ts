@@ -50,6 +50,7 @@ import {
   type ToolVcs,
   type ToolMutationContext,
 } from "./tool-vcs.js";
+import { publicationIntegrationRequired } from "@workspace/runtime/vcs-publish";
 
 const coordinateSchema = Type.Union([
   Type.Object(
@@ -179,6 +180,13 @@ const workspaceVcsSchema = Type.Union([
         description:
           "Durable intent summary for the one atomic workspace event.",
       }),
+      concludes: Type.Optional(
+        Type.String({
+          minLength: 1,
+          description:
+            "Source event or external delta whose compare reports complete:true, concluded:false (convergent or net-zero). Commit records its decision-only conclusion atomically and refuses if it is incomplete.",
+        }),
+      ),
       intent: Type.Optional(Type.String({ minLength: 1 })),
     },
     { additionalProperties: false },
@@ -253,7 +261,7 @@ export type WorkspaceVcsToolInput =
       intent?: string;
     }
   | { operation: "revert"; changeIds: string[]; intent?: string }
-  | { operation: "commit"; message: string; intent?: string }
+  | { operation: "commit"; message: string; concludes?: string; intent?: string }
   | { operation: "discard" }
   | {
       operation: "blame";
@@ -416,7 +424,10 @@ function sourceFromSelector(
   return null;
 }
 
-function invalidSourceResult(operation: "compare" | "merge", source: string) {
+function invalidSourceResult(
+  operation: "compare" | "merge" | "commit",
+  source: string,
+) {
   return resultOf(
     operation,
     `Source ${source} is not an available event or external delta. Pass an exact returned identity or compact semantic @ref unchanged.`,
@@ -677,6 +688,11 @@ export function createWorkspaceVcsTool(
             { operation: "commit", field: "message" },
           );
         }
+        const concludes = command.concludes
+          ? sourceFromSelector(references, command.concludes)
+          : null;
+        if (command.concludes && !concludes)
+          return invalidSourceResult(command.operation, command.concludes);
         const expectedWorkingHead = await resolveToolWorkingState(vcs, context);
         let result: VcsCommitResult;
         try {
@@ -685,6 +701,7 @@ export function createWorkspaceVcsTool(
             expectedWorkingHead,
             commandId: toolCommandId(context),
             message,
+            ...(concludes ? { concludes } : {}),
             ...(command.intent ? { intentSummary: command.intent } : {}),
           });
         } catch (error) {
@@ -899,6 +916,15 @@ export function createWorkspaceVcsTool(
         throw new Error("Unsupported vcs operation");
       }
       const status = await vcs.status({ contextId });
+      const integration = publicationIntegrationRequired(status);
+      if (integration) {
+        return resultOf(
+          command.operation,
+          `Protected main ${integration.mainEventId} is ${integration.mainRelation === "behind" ? "ahead of" : "diverged from"} this context; nothing was published. ` +
+            `Integrate it first: vcs({"operation":"merge","source":"${integration.mainEventId}"}), then commit and push again.`,
+          integration,
+        );
+      }
       if (status.committed.kind !== "event")
         throw new Error("Committed state is not an event");
       const result = await vcs.push({
@@ -927,6 +953,15 @@ async function compareWithDiagnostics(
     if (!(error instanceof Error)) throw error;
     const failure = error as Error & { errorData?: Record<string, unknown> };
     const data = failure.errorData;
+    if (data?.["code"] === "SourceIsAncestor") {
+      // The source has nothing to integrate; the local view is the question.
+      const recovery = { operation: "compare", view: "local" } as const;
+      Object.assign(error, {
+        errorData: { ...data, recovery },
+        message: `${error.message}\nTo review local work against protected main, call vcs(${JSON.stringify(recovery)}).`,
+      });
+      throw error;
+    }
     if (
       data?.["code"] !== "IntegrityFailure" ||
       !Array.isArray(data["subjects"])

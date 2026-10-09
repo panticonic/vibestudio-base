@@ -22,6 +22,8 @@
  */
 import {
   createConnectionlessRpcClient,
+  decodeRpcJson,
+  encodeRpcJson,
   type ConnectionlessRpcClient,
   type RpcClient,
   type RpcEnvelope,
@@ -61,6 +63,7 @@ export type * from "../core/types.js";
 export type {
   CreatePanelSlotOptions,
   OpenPanelOptions,
+  PanelLifetime,
   PanelRuntimeTree,
 } from "../shared/panelRuntime.js";
 export type {
@@ -160,43 +163,45 @@ export let gatewayFetch: WorkspaceRuntime["gatewayFetch"] = (() => {
 function runtimeMember<K extends keyof WorkspaceRuntime>(
   name: K,
 ): WorkspaceRuntime[K] {
-  return new Proxy(
-    function () {},
-    {
-      apply(_target, _thisArg, args) {
-        const runtime = activeRuntime;
-        if (!runtime) {
-          throw new Error(
-            `Worker runtime has not been initialized; cannot call ${String(name)}`,
-          );
-        }
-        return Reflect.apply(runtime[name] as (...args: unknown[]) => unknown, runtime, args);
-      },
-      get(_target, property) {
-        const runtime = activeRuntime;
-        if (!runtime) {
-          throw new Error(
-            `Worker runtime has not been initialized; cannot read ${String(name)}`,
-          );
-        }
-        const value = runtime[name] as unknown as Record<PropertyKey, unknown>;
-        const member = value[property];
-        return typeof member === "function" ? member.bind(value) : member;
-      },
+  return new Proxy(function () {}, {
+    apply(_target, _thisArg, args) {
+      const runtime = activeRuntime;
+      if (!runtime) {
+        throw new Error(
+          `Worker runtime has not been initialized; cannot call ${String(name)}`,
+        );
+      }
+      return Reflect.apply(
+        runtime[name] as (...args: unknown[]) => unknown,
+        runtime,
+        args,
+      );
     },
-  ) as WorkspaceRuntime[K];
+    get(_target, property) {
+      const runtime = activeRuntime;
+      if (!runtime) {
+        throw new Error(
+          `Worker runtime has not been initialized; cannot read ${String(name)}`,
+        );
+      }
+      const value = runtime[name] as unknown as Record<PropertyKey, unknown>;
+      const member = value[property];
+      return typeof member === "function" ? member.bind(value) : member;
+    },
+  }) as WorkspaceRuntime[K];
 }
 
 // These are lazy only because worker modules are evaluated before the host
 // has supplied WORKER_ID/GATEWAY_URL. Calls made by the module after runtime
 // initialization see the real hosted clients.
 export const callMain = runtimeMember("callMain");
-export const parent = runtimeMember("parent");
 export const getParent = runtimeMember("getParent");
 export const getParentWithContract = runtimeMember("getParentWithContract");
 export const gad = runtimeMember("gad");
 export const blobstore = runtimeMember("blobstore");
 export const images = runtimeMember("images");
+export const missions = runtimeMember("missions");
+export const problemReports = runtimeMember("problemReports");
 export const workspace = runtimeMember("workspace");
 export const workspaces = runtimeMember("workspaces");
 export const runtime = runtimeMember("runtime");
@@ -209,7 +214,9 @@ export const extensions = runtimeMember("extensions");
 export const templates = runtimeMember("templates");
 export const notifications = runtimeMember("notifications");
 export const workers = runtimeMember("workers");
-export const createDurableObjectServiceClient = runtimeMember("createDurableObjectServiceClient");
+export const createDurableObjectServiceClient = runtimeMember(
+  "createDurableObjectServiceClient",
+);
 export const openExternal = runtimeMember("openExternal");
 export const createPanelSlot = runtimeMember("createPanelSlot");
 export const openPanel = runtimeMember("openPanel");
@@ -356,7 +363,8 @@ export function createWorkerRuntime(env: WorkerEnv): WorkerRuntime {
   const parentEntityId = (env.PARENT_ENTITY_ID as string) || parentId;
   const parentKind = parseParentKind(env.PARENT_KIND);
 
-  if (!env.WORKSPACE_ID) throw new Error("Worker env must provide WORKSPACE_ID");
+  if (!env.WORKSPACE_ID)
+    throw new Error("Worker env must provide WORKSPACE_ID");
 
   // The unified connectionless client — same core as panel/eval, envelope-native.
   const connectionless = createConnectionlessRpcClient({
@@ -398,6 +406,7 @@ export function createWorkerRuntime(env: WorkerEnv): WorkerRuntime {
     selfHandle: () =>
       createNonPanelRuntimeHandle({
         id: selfId,
+        kind: "worker",
         parentId,
         parent: resolveParent,
       }),
@@ -436,7 +445,7 @@ export function createWorkerRuntime(env: WorkerEnv): WorkerRuntime {
   };
   const core = createHostedRuntime(host);
 
-  // Worker-only infra layered on the portable surface (callMain/parent/expose
+  // Worker-only infra layered on the portable surface (callMain/getParent/expose
   // now come from `core` / `rpc.expose`).
   const runtime: WorkerRuntime = {
     ...core,
@@ -483,28 +492,14 @@ function parseParentKind(kind: unknown): "panel" | "worker" | "do" | null {
   return kind === "panel" || kind === "worker" || kind === "do" ? kind : null;
 }
 
+/** The host passes gateway aliases as a parsed string array to every runtime. */
 function parseGatewayAliases(value: unknown): string[] {
-  if (Array.isArray(value)) {
-    return value.filter(
-      (entry): entry is string => typeof entry === "string" && entry.length > 0,
-    );
-  }
-  if (typeof value !== "string" || value.length === 0) return [];
-  try {
-    const parsed = JSON.parse(value) as unknown;
-    if (Array.isArray(parsed)) {
-      return parsed.filter(
+  return Array.isArray(value)
+    ? value.filter(
         (entry): entry is string =>
           typeof entry === "string" && entry.length > 0,
-      );
-    }
-  } catch {
-    // Fall through to comma-separated env syntax.
-  }
-  return value
-    .split(",")
-    .map((entry) => entry.trim())
-    .filter(Boolean);
+      )
+    : [];
 }
 /**
  * Handle incoming RPC POST requests for a worker.
@@ -521,9 +516,9 @@ export function handleWorkerRpc(
   const url = new URL(request.url);
   if (url.pathname.endsWith("/__rpc") && request.method === "POST") {
     return (async () => {
-      const body = await request.json();
+      const body = decodeRpcJson(await request.text());
       const result = await runtime.handleRpcPost(body);
-      return new Response(JSON.stringify(result), {
+      return new Response(encodeRpcJson(result), {
         headers: { "Content-Type": "application/json" },
       });
     })();
@@ -532,3 +527,9 @@ export function handleWorkerRpc(
 }
 
 export type * from "../shared/images.js";
+export type {
+  MissionCharter,
+  MissionRecord,
+  MissionRunRecord,
+  MissionsClient,
+} from "@vibestudio/automation/mission";

@@ -1,37 +1,29 @@
 import { describe, expect, it, vi } from "vitest";
 import type { RpcClient } from "@vibestudio/rpc";
-import { updatePanelStateArgs } from "./panelStateArgsPersistence.js";
+import { patchPanelStateArgs } from "./panelStateArgsPersistence.js";
 
-describe("updatePanelStateArgs", () => {
-  it("reads only compact validation metadata before persisting state args", async () => {
+describe("patchPanelStateArgs", () => {
+  it("sends the merge patch to the workspace-state owner and returns its result", async () => {
     const call = vi.fn(async (_target: string, method: string, args: unknown[]) => {
-      if (method === "workspace-state.panelTree.detail") {
-        return {
-          currentHistory: { state_args: JSON.stringify({ preserved: true }) },
-          entity: { activeBuildKey: "build-chat" },
-        };
+      if (method === "workspace-state.slot.patchCurrentStateArgs") {
+        return { preserved: true, channelName: "chat-1" };
       }
-      if (method === "build.getBuildMetadata") {
-        return { stateArgsSchema: { type: "object" } };
-      }
-      if (method === "workspace-state.slot.updateCurrentStateArgs") return undefined;
       throw new Error(`Unexpected RPC ${method} ${JSON.stringify(args)}`);
     });
 
     await expect(
-      updatePanelStateArgs({ call: call as RpcClient["call"] }, "panel:tree/chat", {
+      patchPanelStateArgs({ call: call as RpcClient["call"] }, "panel:tree/chat", {
         channelName: "chat-1",
+        stale: null,
       }),
     ).resolves.toEqual({ preserved: true, channelName: "chat-1" });
 
-    expect(call).toHaveBeenCalledWith("main", "build.getBuildMetadata", [
-      "build-chat",
-      { includeExecutableModules: false },
-    ]);
+    // The patch travels unmerged: the owner reads, merges, and validates.
+    expect(call).toHaveBeenCalledTimes(1);
     expect(call).toHaveBeenCalledWith(
       "main",
-      "workspace-state.slot.updateCurrentStateArgs",
-      ["panel:tree/chat", { preserved: true, channelName: "chat-1" }],
+      "workspace-state.slot.patchCurrentStateArgs",
+      ["panel:tree/chat", { channelName: "chat-1", stale: null }],
     );
   });
 });

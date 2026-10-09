@@ -1,4 +1,4 @@
-import { prepareMissionEdit } from "@vibestudio/automation/mission";
+import { createMissionsClient } from "@vibestudio/automation/mission";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Badge,
@@ -79,7 +79,6 @@ function effectFailureKey(effect: MissionRunEffectFailure): string {
     : `provider:${source.nativeTaskId}:${source.assistantEntryId}:${source.nativeEntryId}:${source.callId}`;
 }
 
-const resolvedTargetByRpc = new WeakMap<AutomationUiRpc, Promise<string>>();
 const clientByRpc = new WeakMap<AutomationUiRpc, AutomationUiClient>();
 
 export function createAutomationUiClient(
@@ -90,42 +89,18 @@ export function createAutomationUiClient(
     const existing = clientByRpc.get(rpc);
     if (existing) return existing;
   }
-  const target = () => {
-    let targetPromise = resolvedTargetByRpc.get(rpc);
-    if (targetPromise) return targetPromise;
-    targetPromise = rpc
-      .call("main", "workers.resolveService", ["vibestudio.missions.v1"])
-      .then((value) => {
-        const service = value as { kind?: unknown; targetId?: unknown };
-        if (service.kind !== "durable-object" || !service.targetId) {
-          throw new Error("The Automations service is unavailable");
-        }
-        return String(service.targetId);
-      })
-      .catch((error) => {
-        resolvedTargetByRpc.delete(rpc);
-        throw error;
-      });
-    resolvedTargetByRpc.set(rpc, targetPromise);
-    return targetPromise;
-  };
-  const call = async <T,>(method: string, args: unknown[]) =>
-    (await rpc.call(await target(), method, args)) as T;
+  const missions = createMissionsClient(rpc);
   const client: AutomationUiClient = {
     inspect: async (missionId) => {
-      const overview = await call<{ items?: unknown[] }>("overview", [{ missionId, limit: 1 }]);
+      const overview = await missions.overview({ missionId, limit: 1 }) as { items?: unknown[] };
       const item = overview.items?.[0] as AutomationInspection | undefined;
       return item?.automation?.missionId === missionId ? item : null;
     },
-    getRun: (runId) => call("getRun", [runId]),
-    edit: async (missionId, patch) => {
-      const current = await call<MissionRecord>("get", [missionId]);
-      if (!current) throw new Error("The automation is unavailable");
-      return call<MissionRecord>("edit", [missionId, await prepareMissionEdit(rpc, current, patch)]);
-    },
-    pause: (missionId) => call("pause", [missionId]),
-    resume: (missionId) => call("resume", [missionId]),
-    runNow: (missionId) => call("runNow", [missionId]),
+    getRun: (runId) => missions.getRun(runId),
+    edit: (missionId, patch) => missions.edit(missionId, patch),
+    pause: (missionId) => missions.pause(missionId),
+    resume: (missionId) => missions.resume(missionId),
+    runNow: (missionId) => missions.runNow(missionId),
     ...(openConversation ? { openConversation } : {}),
   };
   if (!openConversation) clientByRpc.set(rpc, client);
@@ -447,7 +422,7 @@ export function AutomationParametersEditor({
     const execution = automation.charter.execution;
     if (execution.kind === "method")
       return JSON.stringify(execution.args, null, 2);
-    return execution.action.kind === "prompt"
+    return "text" in execution.action
       ? execution.action.text
       : execution.action.code;
   });
@@ -504,8 +479,8 @@ export function AutomationParametersEditor({
       nextExecution =
         execution.kind === "method"
           ? { ...execution, args: JSON.parse(payload) as unknown[] }
-          : execution.action.kind === "prompt"
-            ? { ...execution, action: { kind: "prompt", text: payload } }
+          : "text" in execution.action
+            ? { ...execution, action: { ...execution.action, text: payload } }
             : { ...execution, action: { ...execution.action, code: payload } };
       if (
         nextExecution.kind === "method" &&
@@ -679,30 +654,34 @@ export function AutomationParametersEditor({
         <Text as="div" size="1" color="gray" mb="1">
           {execution.kind === "method"
             ? "Method arguments (JSON array)"
-            : execution.action.kind !== "prompt"
-              ? execution.action.kind === "watch"
-                ? "Watch check code"
-                : "Exact eval code"
-              : "Prompt text"}
+            : execution.action.kind === "watch"
+              ? "Watch check code"
+              : execution.action.kind === "eval"
+                ? "Exact eval code"
+                : execution.action.kind === "notify"
+                  ? "Notification text"
+                  : "Prompt text"}
         </Text>
         <TextArea
           aria-label={
             execution.kind === "method"
               ? "Method arguments"
-              : execution.action.kind !== "prompt"
+              : "code" in execution.action
                 ? "Eval code"
-                : "Prompt text"
+                : execution.action.kind === "notify"
+                  ? "Notification text"
+                  : "Prompt text"
           }
           value={payload}
           onChange={(event) => setPayload(event.target.value)}
           resize="vertical"
           style={{
             minHeight:
-              execution.kind === "agent" && execution.action.kind !== "prompt"
+              execution.kind === "agent" && "code" in execution.action
                 ? 220
                 : 120,
             fontFamily:
-              execution.kind === "agent" && execution.action.kind !== "prompt"
+              execution.kind === "agent" && "code" in execution.action
                 ? "var(--code-font-family)"
                 : undefined,
           }}
@@ -960,14 +939,14 @@ function Inspector({
           <Text
             size="2"
             style={
-              execution.kind === "method" || execution.action.kind !== "prompt"
+              execution.kind === "method" || "code" in execution.action
                 ? { fontFamily: "var(--code-font-family)" }
                 : undefined
             }
           >
             {execution.kind === "method"
               ? `${execution.method}(${JSON.stringify(execution.args, null, 2)})`
-              : execution.action.kind !== "prompt"
+              : "code" in execution.action
                 ? execution.action.code
                 : execution.action.text}
           </Text>

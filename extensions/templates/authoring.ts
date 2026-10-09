@@ -18,6 +18,7 @@ import { normalizeWorkspaceRepoPath } from "@vibestudio/workspace/remotes";
 import { WorkspaceConfigTopLayerSchema } from "@vibestudio/workspace-contracts/workspaceConfigSchema";
 import { WORKSPACE_PACKAGE_SCOPES } from "@vibestudio/workspace-contracts/sourceDirs";
 import type { WorkspaceConfig } from "@vibestudio/workspace-contracts/types";
+import { authoredTemplateManifest } from "@vibestudio/workspace/templateManifest";
 import { resolveTemplateClosure } from "@vibestudio/workspace/templateClosure";
 import type { ExtensionContextLike } from "./context.js";
 import type { SemanticWorkspaceObservation } from "./workspace.js";
@@ -67,52 +68,14 @@ function selectedRecords<T>(
   return result.length ? result : undefined;
 }
 
-function selectedGitMap<T>(
-  value: Record<string, Record<string, T>> | undefined,
-  selected: ReadonlySet<string>,
-): Record<string, Record<string, T>> | undefined {
-  if (!value) return undefined;
-  const result: Record<string, Record<string, T>> = {};
-  for (const [section, repos] of Object.entries(value)) {
-    const kept = Object.fromEntries(
-      Object.entries(repos).filter(([repo]) =>
-        selected.has(`${section}/${repo}`),
-      ),
-    );
-    if (Object.keys(kept).length) result[section] = kept;
-  }
-  return Object.keys(result).length ? result : undefined;
-}
-
 function projectManifest(
-  config: WorkspaceConfig,
-  /** Repositories whose files this release owns. */
-  selected: ReadonlySet<string>,
+  config: import("@vibestudio/workspace/templateManifest").ParsedTemplateManifest["top"],
   /** Local selection plus repositories reacquired through declared dependencies. */
   available: ReadonlySet<string>,
   packageOwners: ReadonlyMap<string, string>,
   presentation: { name: string; description: string },
-  includeWorkspaceDefaults: boolean,
   dependencies: readonly import("@vibestudio/workspace-contracts/types").WorkspaceTemplateDependency[],
 ): string {
-  const upstreams = selectedGitMap(config.git?.upstreams, available);
-  const portableUpstreams = upstreams
-    ? Object.fromEntries(
-        Object.entries(upstreams).map(([section, repos]) => [
-          section,
-          Object.fromEntries(
-            Object.entries(repos).map(([repo, upstream]) => {
-              const {
-                authorEmail: _email,
-                authorName: _name,
-                ...portable
-              } = upstream;
-              return [repo, portable];
-            }),
-          ),
-        ]),
-      )
-    : undefined;
   const providers = config.providers
     ? Object.fromEntries(
         Object.entries(config.providers).filter(([, declaration]) => {
@@ -146,6 +109,9 @@ function projectManifest(
     : undefined;
   const runtime = WorkspaceConfigTopLayerSchema.parse({
     systemEpoch: config.systemEpoch,
+    ...(config.minimumAppVersion
+      ? { minimumAppVersion: config.minimumAppVersion }
+      : {}),
     ...(config.defaultAutomations
       ? {
           defaultAutomations: Object.fromEntries(
@@ -178,22 +144,11 @@ function projectManifest(
     ...(selectedRecords(config.apps, available)
       ? { apps: selectedRecords(config.apps, available) }
       : {}),
-    ...(includeWorkspaceDefaults && config.panelRestorePolicy
+    ...(config.panelRestorePolicy
       ? { panelRestorePolicy: config.panelRestorePolicy }
       : {}),
-    ...(includeWorkspaceDefaults && config.defaultAgentConfig
+    ...(config.defaultAgentConfig
       ? { defaultAgentConfig: config.defaultAgentConfig }
-      : {}),
-    ...(config.git &&
-    (selectedGitMap(config.git.remotes, available) || portableUpstreams)
-      ? {
-          git: {
-            ...(selectedGitMap(config.git.remotes, available)
-              ? { remotes: selectedGitMap(config.git.remotes, available) }
-              : {}),
-            ...(portableUpstreams ? { upstreams: portableUpstreams } : {}),
-          },
-        }
       : {}),
     ...(providers && Object.keys(providers).length ? { providers } : {}),
     ...(trust && Object.keys(trust).length ? { trust } : {}),
@@ -206,7 +161,6 @@ function projectManifest(
       // Declared so an installation acquires what this was built on, rather
       // than expecting to find it copied in here.
       ...(dependencies && dependencies.length > 0 ? { dependencies } : {}),
-      repositories: [...selected].sort(compareUtf16CodeUnits),
     },
   });
 }
@@ -429,19 +383,15 @@ export async function inspectTemplateAuthoring(
       return targets;
     },
   });
-  const included = new Set(closure.included);
   const required = new Set(closure.required);
 
   const includedParts = closure.included;
   const projectedManifest = projectManifest(
-    observation.authoredTop as WorkspaceConfig,
-    new Set(includedParts),
+    authoredTemplateManifest(observation.manifest, observation.installation)
+      .top,
     new Set([...includedParts, ...inherited]),
     packageOwners,
     { name, description },
-    observation.manifest.inventory.repositories.every(
-      (repoPath) => included.has(repoPath) || inherited.has(repoPath),
-    ),
     observation.templateDependencies,
   );
   const document = YAML.parse(projectedManifest) as {
@@ -508,12 +458,11 @@ export function templateAuthoringSetup(
   inheritedOwners: ReadonlyMap<string, string>,
 ) {
   const manifest = observation.manifest;
-  const declared = new Set(manifest.inventory.repositories);
   const overrides = new Set(manifest.overrides?.map((item) => item.repoPath));
   return {
     name: manifest.presentation?.name ?? "",
     description: manifest.presentation?.description ?? "",
-    upstream: manifest.installation?.upstream ?? null,
+    upstream: observation.installation?.upstream ?? null,
     dependencies: [...manifest.dependencies],
     parts: [...observation.localRepoPaths]
       .filter((repoPath) => repoPath !== "meta")
@@ -522,12 +471,9 @@ export function templateAuthoringSetup(
         const inheritedFrom = inheritedOwners.get(repoPath);
         return {
           repoPath,
-          ownership: (overrides.has(repoPath) ||
-          (declared.has(repoPath) && !inheritedFrom)
+          ownership: (overrides.has(repoPath) || !inheritedFrom
             ? "authored"
-            : inheritedFrom
-              ? "inherited"
-              : "unlisted") as "authored" | "inherited" | "unlisted",
+            : "inherited") as "authored" | "inherited",
           ...(inheritedFrom ? { inheritedFrom } : {}),
         };
       }),

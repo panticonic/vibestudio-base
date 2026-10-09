@@ -1,18 +1,26 @@
 # HTTP fetch handler
 
-An extension can additionally expose an HTTP surface by adding a default export with a `fetch` method. The gateway routes `/_r/ext/<encoded-name>/*` to it. The RPC surface (the `activate(ctx)` return value) is the canonical one; `fetch` is optional and only worth adding when a caller specifically wants fetch-call ergonomics.
+An extension can also serve HTTP by default-exporting an object with a `fetch`
+method. The gateway routes `/_r/ext/<encoded-name>/*` to it. The RPC methods
+returned from `activate(ctx)` remain the primary interface; add `fetch` only
+when a caller needs to speak HTTP.
 
 ## Minimum example
 
 ```ts
-import type { ExtensionContext, ExtensionFetchContext } from "@vibestudio/extension";
+import type {
+  ExtensionContext,
+  ExtensionFetchContext,
+} from "@vibestudio/extension";
 
 let activated: ExtensionContext;
 
 export async function activate(ctx: ExtensionContext) {
   activated = ctx;
   return {
-    async ping() { return "pong"; },
+    async ping() {
+      return "pong";
+    },
   };
 }
 
@@ -31,21 +39,36 @@ export default {
 
 ## Semantics
 
-- **Request / Response** are standard Fetch API types. Pass `Response.json(...)`, `new Response(buffer, { status })`, etc.
-- **`ExtensionFetchContext`** is the same activated `ExtensionContext` plus a `waitUntil(promise)` method for fire-and-forget background work the host will keep alive after the response returns. It's not a per-request context — it's the same long-lived `ctx` your `activate()` saw.
-- **Caller identity** is in `ctx.invocation.current()`, same as for RPC. Per-call approvals derive the original panel/worker from the host's active invocation chain.
-- **Route prefix** is `/_r/ext/<encoded-name>/*`. The remainder is passed through. No custom top-level routes (`/webhooks/github`, `/api/...`) in v1 — those are deferred until the custom-route system lands.
-- **Auth** is the standard caller-token bearer flow. Unauthenticated requests get 401 from the gateway before they reach your handler.
-- **Body size** is capped at **32 MB** inbound; exceeding the cap returns 413. Streamed bodies count chunk-by-chunk.
+- **Request and Response** are the standard Fetch API types. Return
+  `Response.json(...)`, `new Response(buffer, { status })`, and so on.
+- **`ExtensionFetchContext`** is the long-lived `ctx` that `activate()`
+  received, plus `waitUntil(promise)`. It is not created per request.
+- **Caller identity** comes from `ctx.invocation.current()`, as with RPC.
+  Per-call approvals trace the originating panel or worker through the host's
+  active invocation chain.
+- **Routes**: everything after `/_r/ext/<encoded-name>` is passed to the
+  handler. Custom top-level routes (`/webhooks/github`, `/api/...`) are not
+  supported in v1; they wait on the custom-route system.
+- **Auth** uses the standard caller-token bearer flow. The gateway returns 401
+  for unauthenticated requests before they reach the handler.
+- **Request body** is capped at **32 MB**; larger bodies get 413. Streamed bodies
+  are counted as they are read.
 - **Lifecycle**:
-  - Requests before `activate()` finishes get **503** with a descriptive body. No queueing.
-  - Requests while the extension is in `pending-approval` or `error` also get 503.
-  - The fetch handler runs in the **same process** as `activate` — they share state, can call each other, can share connection pools.
-- **`waitUntil(promise)`** — registered promises are settled after the response returns; rejections are logged but don't surface to the caller. Use this for analytics, cache warming, etc.
+  - Requests that arrive before `activate()` finishes get **503** with an
+    explanatory body. They are not queued.
+  - Requests while the extension is `pending-approval` or `error` also get 503.
+  - The fetch handler runs in the **same process** as `activate`, so the two
+    share state and connection pools and can call each other.
+- **`waitUntil(promise)`** keeps background work alive after the response is
+  sent. Rejections are logged and not reported to the caller. Use it for
+  analytics, cache warming, and similar work.
 
 ## Streaming responses
 
-Return a `Response` whose body is a `ReadableStream` and the host streams chunks back to the caller. Server-sent events, large file downloads, and incremental responses all work this way. The current envelope buffers chunks server-side via base64 frames — fully live WS chunking is a future-work item.
+Return a `Response` with a `ReadableStream` body and the host streams the chunks
+to the caller. Server-sent events, large downloads, and incremental responses
+all work this way. Chunks currently travel as base64 frames buffered on the
+server; live WebSocket chunking is planned.
 
 ## Reading streamed request bodies
 
@@ -66,16 +89,21 @@ export default {
 };
 ```
 
-The 32 MB cap applies to total bytes read; the host throws `EFBIG` mid-stream if you exceed it.
+The 32 MB cap applies to the total bytes read. The host throws `EFBIG`
+mid-stream when it is exceeded.
 
 ## When to use fetch vs RPC
 
-Prefer RPC (the `activate` return surface) by default:
+Default to RPC:
 
-- **RPC** is typed end-to-end via `extensions.use<T>(name).method(...)`, the dispatcher validates args, and you get caller attribution for free.
-- **Fetch** is for cases where the caller naturally speaks HTTP — embedding an existing HTTP-shaped library, exposing a download endpoint that benefits from streaming, or proxying to an upstream service that returns Fetch-compatible responses.
+- **RPC** is typed end to end through `extensions.use<T>(name).method(...)`.
+  The dispatcher validates arguments and attributes the caller automatically.
+- **Fetch** suits callers that already speak HTTP: wrapping an HTTP-shaped
+  library, a download endpoint that benefits from streaming, or a proxy to an
+  upstream service that returns Fetch-compatible responses.
 
-A common pattern is to expose both: a typed RPC surface for in-app callers and a thin fetch handler that delegates to the same internal helpers. See `workspace/extensions/browser-data/` for an example of the dual surface.
+You can offer both: typed RPC for in-app callers and a thin fetch handler that
+calls the same internal helpers.
 
 ## Reaching it from userland
 
@@ -84,8 +112,11 @@ From a panel or worker:
 ```ts
 import { gatewayFetch } from "@workspace/runtime";
 
-const res = await gatewayFetch(`/_r/ext/${encodeURIComponent("@workspace-extensions/hello")}/status`);
+const res = await gatewayFetch(
+  `/_r/ext/${encodeURIComponent("@workspace-extensions/hello")}/status`,
+);
 console.log(await res.json());
 ```
 
-`gatewayFetch` is the bearer-authenticated fetch helper exported from `@workspace/runtime`. It signs the request with the caller's token so your extension gets proper caller attribution.
+`gatewayFetch` from `@workspace/runtime` sends the request with the caller's
+bearer token, so the extension sees the correct caller.

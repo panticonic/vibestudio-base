@@ -15,15 +15,23 @@ import type {
   MessageTypeDefinition,
   MethodDefinition,
   Participant,
-  RegisterMessageTypeInput
+  RegisterMessageTypeInput,
 } from "@workspace/pubsub";
 import type { MessageTier, ParticipantRef } from "@workspace/agentic-protocol";
 import type { RecoveryCoordinator } from "@vibestudio/shell-core/recoveryCoordinator";
 import type { ResidentSessionRegistrar } from "@vibestudio/shared/residentSession";
-import type { SandboxOptions, SandboxResult, ScopesApi } from "@workspace/eval";
+import type {
+  SandboxOptions,
+  SandboxResult,
+  ScopesApi,
+  ScopeRehydrators,
+} from "@workspace/eval";
 import type { ChatMethodResult } from "./invocation-result.js";
 import type { AgentSubscriptionConfig } from "./agent-subscription-config.js";
-import type { DefaultAgentConfig, ModelCatalog } from "@workspace/model-catalog/catalog";
+import type {
+  DefaultAgentConfig,
+  ModelCatalog,
+} from "@workspace/model-catalog/catalog";
 
 // The canonical participant metadata shape lives in @workspace/pubsub so that
 // lower-level packages (like @workspace/agentic-do, which can't depend on
@@ -55,18 +63,20 @@ export interface ConnectionConfig {
       targetId: string,
       method: string,
       args: unknown[],
-      options?: { timeoutMs?: number; signal?: AbortSignal }
+      options?: { timeoutMs?: number; signal?: AbortSignal },
     ): Promise<R>;
     stream(
       targetId: string,
       method: string,
       args: unknown[],
-      options?: { signal?: AbortSignal }
+      options?: { signal?: AbortSignal },
     ): Promise<Response>;
     on: import("@vibestudio/rpc").RpcClient["on"];
     selfId: string;
     registerResidentSession?: ResidentSessionRegistrar["registerResidentSession"];
   };
+  /** Host factories for identity-only live values restored from local eval scope. */
+  scopeRehydrators?: ScopeRehydrators;
   protocol?: string;
   recoveryCoordinator?: Pick<
     RecoveryCoordinator,
@@ -122,13 +132,15 @@ export interface AgenticChatActions {
   >;
   /** Revoke every reusable authority rule attached to this conversation. */
   onResetTaskRules?: () => Promise<number>;
-  onNewConversation?: (options?: NewConversationOptions) => void | Promise<void>;
+  onNewConversation?: (
+    options?: NewConversationOptions,
+  ) => void | Promise<void>;
   /** Add a new agent to the channel, optionally with a full subscription config. */
   onAddAgent?: (
     channelName: string,
     contextId?: string,
     agentId?: string,
-    config?: AgentSubscriptionConfig
+    config?: AgentSubscriptionConfig,
   ) => Promise<{ agentId: string; handle: string } | void>;
   /**
    * Update the uncommitted first-agent intent. A concrete config lets the host
@@ -139,7 +151,7 @@ export interface AgenticChatActions {
     channelName: string,
     contextId: string | undefined,
     agentId: string | undefined,
-    config: AgentSubscriptionConfig | null
+    config: AgentSubscriptionConfig | null,
   ) => Promise<void>;
   /**
    * Replace an existing agent (resolved by its participant id) with a fresh DO,
@@ -150,16 +162,22 @@ export interface AgenticChatActions {
     channelName: string,
     participantId: string,
     agentId?: string,
-    config?: AgentSubscriptionConfig
+    config?: AgentSubscriptionConfig,
   ) => Promise<{ agentId: string; handle: string } | void>;
   onRemoveAgent?: (channelName: string, handle: string) => Promise<void>;
   /** Start installing a local model. Availability/progress remains catalog-owned. */
   onInstallLocalModel?: (modelRef: string) => Promise<ModelSetupResult>;
-  onConnectModelProvider?: (modelRef: string, method: string, browser: "internal" | "external", signal: AbortSignal, configuration?: Record<string, string>) => Promise<void>;
+  onConnectModelProvider?: (
+    modelRef: string,
+    method: string,
+    browser: "internal" | "external",
+    signal: AbortSignal,
+    configuration?: Record<string, string>,
+  ) => Promise<void>;
   onPersistAgentModel?: (
     channelName: string,
     participantId: string,
-    model: string
+    model: string,
   ) => Promise<void>;
   /** Explicitly save the full default agent config (model + behavior) as the
    *  workspace default — the ONLY path that writes it. Wired to a "Save as
@@ -187,7 +205,10 @@ export interface AgenticChatActions {
    * `[Open ▸]`, the guest chip's origin link, and the external-conversations
    * menu all route through this. Absent on hosts that cannot open panels.
    */
-  onOpenChannel?: (channelId: string, opts?: { focusMessageId?: string }) => Promise<void> | void;
+  onOpenChannel?: (
+    channelId: string,
+    opts?: { focusMessageId?: string },
+  ) => Promise<void> | void;
   onBecomeVisible?: () => void;
   /** Raise host-level attention for a blocking in-chat question. */
   onAttentionRequired?: (title: string, message?: string) => void;
@@ -204,7 +225,7 @@ export interface ChatSandboxValue {
   publish: (
     eventType: string,
     payload: unknown,
-    options?: { idempotencyKey?: string }
+    options?: { idempotencyKey?: string },
   ) => Promise<unknown>;
   send: (
     content: string,
@@ -214,7 +235,7 @@ export interface ChatSandboxValue {
       mentions?: string[];
       replyTo?: string;
       metadata?: Record<string, unknown>;
-    }
+    },
   ) => Promise<unknown>;
   publishCustomMessage: (
     input: {
@@ -222,22 +243,22 @@ export interface ChatSandboxValue {
       initialState?: unknown;
       displayMode?: CustomMessageDisplayMode;
     },
-    options?: { idempotencyKey?: string }
+    options?: { idempotencyKey?: string },
   ) => Promise<{ messageId: string; pubsubId: number | undefined }>;
   updateCustomMessage: (
     messageId: string,
     update: unknown,
-    options?: { idempotencyKey?: string }
+    options?: { idempotencyKey?: string },
   ) => Promise<number | undefined>;
   /** Register (or refresh) a custom message renderer on the channel. */
   registerMessageType: (
     input: RegisterMessageTypeInput,
-    options?: { idempotencyKey?: string }
+    options?: { idempotencyKey?: string },
   ) => Promise<number | undefined>;
   /** Retire a custom message renderer (tombstones the typeId at the current seq). */
   clearMessageType: (
     typeId: string,
-    options?: { idempotencyKey?: string }
+    options?: { idempotencyKey?: string },
   ) => Promise<number | undefined>;
   /** Look up a single registered message type (null when absent/cleared). */
   getMessageType: (typeId: string) => Promise<MessageTypeDefinition | null>;
@@ -252,34 +273,36 @@ export interface ChatSandboxValue {
     participantId: string,
     method: string,
     args: unknown,
-    options?: { timeoutMs?: number; signal?: AbortSignal }
+    options?: { timeoutMs?: number; signal?: AbortSignal },
   ) => Promise<unknown>;
   /** Call a participant method and resolve to the full invocation result envelope. */
   callMethodResult: (
     participantId: string,
     method: string,
     args: unknown,
-    options?: { timeoutMs?: number; signal?: AbortSignal }
+    options?: { timeoutMs?: number; signal?: AbortSignal },
   ) => Promise<ChatMethodResult>;
   /**
    * Resolve a participant by handle, accepting either "handle" or "@handle".
    * Async so the same surface works server-side (agent eval), where the roster
    * is fetched over RPC rather than held in memory.
    */
-  participantByHandle: (handle: string) => Promise<Participant<ChatParticipantMetadata> | null>;
+  participantByHandle: (
+    handle: string,
+  ) => Promise<Participant<ChatParticipantMetadata> | null>;
   /** Call a participant method by handle and resolve to the provider's result payload. */
   callMethodByHandle: (
     handle: string,
     method: string,
     args: unknown,
-    options?: { timeoutMs?: number; signal?: AbortSignal }
+    options?: { timeoutMs?: number; signal?: AbortSignal },
   ) => Promise<unknown>;
   /** Call a participant method by handle and resolve to the full invocation result envelope. */
   callMethodResultByHandle: (
     handle: string,
     method: string,
     args: unknown,
-    options?: { timeoutMs?: number; signal?: AbortSignal }
+    options?: { timeoutMs?: number; signal?: AbortSignal },
   ) => Promise<ChatMethodResult>;
   /**
    * Scroll the chat to a message and briefly highlight it. Resolves false
@@ -302,7 +325,10 @@ export interface ToolProviderDeps {
     current: { publish: (eventType: string, payload: unknown) => void } | null;
   };
   contextId: string;
-  executeSandbox: (code: string, options: SandboxOptions) => Promise<SandboxResult>;
+  executeSandbox: (
+    code: string,
+    options: SandboxOptions,
+  ) => Promise<SandboxResult>;
   chat: ChatSandboxValue;
   /** The inviting panel's durable local scope, shared with client_eval and rendered UI. */
   scope: Record<string, unknown>;
@@ -310,4 +336,6 @@ export interface ToolProviderDeps {
 }
 
 /** Inject tools at connect time */
-export type ToolProvider = (deps: ToolProviderDeps) => Record<string, MethodDefinition>;
+export type ToolProvider = (
+  deps: ToolProviderDeps,
+) => Record<string, MethodDefinition>;

@@ -37,8 +37,8 @@ export default function TemplatesPage() {
           </Button>
         </Flex>
         <Text as="p" color="gray" mb="4">
-          Explore templates to start a new workspace. Updates and publishing for
-          your current workspace live in This workspace.
+          Choose a template to start a new workspace. Updates and publishing for
+          your current workspace are under Manage this workspace.
         </Text>
         <TemplateBrowser
           client={templates}

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { sessionExitText, sessionFooterText } from "./sessionStatus.js";
+import { sessionEndedText, sessionExitText, sessionFooterText } from "./sessionStatus.js";
 import type { SessionInfo } from "./types.js";
 import { VSCODE_SHELL_INTEGRATION_META_KEY } from "./vscodeShellIntegrationMeta.js";
 
@@ -29,6 +29,13 @@ describe("session status presentation", () => {
         },
       },
     }))).toBe("/repo/packages/app · 80x24");
+  });
+});
+
+describe("session ended text", () => {
+  it("includes the exit code when known", () => {
+    expect(sessionEndedText({ exit: { code: 1, at: 1 } })).toBe("Session ended (exit 1)");
+    expect(sessionEndedText({ exit: undefined })).toBe("Session ended");
   });
 });
 

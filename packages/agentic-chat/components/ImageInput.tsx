@@ -3,6 +3,7 @@
  */
 
 import { useCallback, useRef, useState, useEffect } from "react";
+import type { Dispatch, SetStateAction } from "react";
 import { Box, Flex, IconButton, Text, Tooltip } from "@radix-ui/themes";
 import { ImageIcon, Cross2Icon, PlusIcon } from "@radix-ui/react-icons";
 import type { AttachmentInput } from "@workspace/pubsub";
@@ -21,7 +22,7 @@ interface ImageInputProps {
   /** Currently pending images */
   images: PendingImage[];
   /** Callback when images change */
-  onImagesChange: (images: PendingImage[]) => void;
+  onImagesChange: Dispatch<SetStateAction<PendingImage[]>>;
   /** Error callback for validation failures */
   onError?: (error: string) => void;
   /** Whether the input is disabled */
@@ -98,20 +99,16 @@ export function ImageInput({
         }
       }
 
-      onImagesChange([...images, ...newImages]);
+      if (newImages.length > 0) onImagesChange((current) => [...current, ...newImages]);
     },
     [images, onImagesChange, onError, maxImages]
   );
 
   const removeImage = useCallback(
     (localId: number) => {
-      const image = images.find((img) => img.localId === localId);
-      if (image) {
-        URL.revokeObjectURL(image.previewUrl);
-      }
-      onImagesChange(images.filter((img) => img.localId !== localId));
+      onImagesChange((current) => current.filter((img) => img.localId !== localId));
     },
-    [images, onImagesChange]
+    [onImagesChange]
   );
 
   const handleFileSelect = useCallback(
@@ -174,24 +171,6 @@ export function ImageInput({
                 height={64}
                 style={{ objectFit: "cover", borderRadius: "var(--radius-2)" }}
               />
-              {/* Show pending indicator */}
-              <Box
-                position="absolute"
-                bottom="0"
-                left="0"
-                px="1"
-                style={{
-                  background: "rgba(0,0,0,0.7)",
-                  borderTopRightRadius: "var(--radius-1)",
-                  borderBottomLeftRadius: "var(--radius-2)",
-                  maxWidth: "100%",
-                  overflow: "hidden",
-                }}
-              >
-                <Text size="1" style={{ color: "var(--amber-9)", fontFamily: "monospace", fontSize: "9px" }}>
-                  pending
-                </Text>
-              </Box>
               <Tooltip content={`${image.file.name} (${formatBytes(image.file.size)})`}>
                 <IconButton
                   size="1"
@@ -199,6 +178,7 @@ export function ImageInput({
                   color="gray"
                   radius="full"
                   style={{ position: "absolute", top: -6, right: -6, width: 18, height: 18 }}
+                  aria-label={`Remove ${image.file.name}`}
                   onClick={() => removeImage(image.localId)}
                 >
                   <Cross2Icon width={10} height={10} />

@@ -1,8 +1,8 @@
 # Authoring a portable panel website
 
-Keep one panel package and one application component. The normal `entry` exports
-the installed panel component. `website.entry` points to a browser file that
-mounts that component into `#root`.
+Use one panel package with one application component. The panel's `entry`
+exports the installed panel component. `website.entry` points to a browser file
+that mounts that component into `#root`.
 
 ```json
 {
@@ -23,12 +23,12 @@ mounts that component into `#root`.
 }
 ```
 
-`expects` and template locators express intent. They never block a build and do
-not form a dependency solver. The agent inspects live capabilities and adapts.
-The website bundle must be self contained: undeclared external imports are a
-build error.
+`expects` and template locators are hints. They never block a build and are not
+resolved as dependencies; the agent checks what the workspace actually provides
+and adapts. The website bundle must be self-contained: undeclared external
+imports fail the build.
 
-Connected web pages use the ordinary `@workspace/runtime` connection flow from
-[workspace website development](../../workspace-dev/WEBSITES.md). Publication
-does not grant workspace access, and workspace connection does not grant
-publication authority.
+Connected web pages use the standard `@workspace/runtime` connection flow from
+[workspace website development](../../workspace-dev/WEBSITES.md). Publishing a
+site does not grant it workspace access, and connecting to a workspace does not
+grant permission to publish.

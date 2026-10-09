@@ -1,0 +1,82 @@
+{
+  "name": "@workspace-workers/images",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "vibestudio": {
+    "tests": [
+      {
+        "name": "native",
+        "runtime": "native",
+        "include": [
+          "**/*.test.ts"
+        ]
+      }
+    ],
+    "title": "Images",
+    "icon": "🎨",
+    "kind": "worker",
+    "entry": "index.ts",
+    "durable": {
+      "classes": [
+        {
+          "className": "ImagesDO"
+        }
+      ]
+    },
+    "authority": {
+      "provides": [],
+      "requests": [
+        {
+          "capability": "credential.use",
+          "resource": {
+            "kind": "prefix",
+            "prefix": ""
+          },
+          "tier": "gated",
+          "evidence": "intentional-broad"
+        }
+      ]
+    },
+    "services": [
+      {
+        "action": "generate and manage reusable image assets",
+        "authority": {
+          "binding": "declared",
+          "principals": [
+            "host",
+            "user",
+            "code",
+            "website",
+            "session",
+            "mission"
+          ]
+        },
+        "description": "Generate durable image assets, manage art direction, and read retained image content.",
+        "durableObject": {
+          "className": "ImagesDO"
+        },
+        "name": "images",
+        "notability": "everyday",
+        "presentation": {
+          "domain": "automation",
+          "verb": "manage"
+        },
+        "protocols": [
+          "vibestudio.images.v1"
+        ],
+        "title": "Generated image assets"
+      }
+    ]
+  },
+  "dependencies": {
+    "@workspace/runtime": "workspace:*",
+    "@workspace/harness": "workspace:*",
+    "@vibestudio/credential-client": "workspace:*",
+    "@vibestudio/content-addressing": "workspace:*"
+  },
+  "devDependencies": {
+    "@vibestudio/shared": "workspace:*",
+    "vitest": "^3.2.7"
+  }
+}

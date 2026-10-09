@@ -65,7 +65,7 @@ export async function openChannelPanel(
   if (existingId) {
     const existing = panelTree.get(existingId);
     if (opts?.focusMessageId) {
-      await existing.stateArgs.set({ focusMessageId: opts.focusMessageId }).catch(() => undefined);
+      await existing.stateArgs.patch({ focusMessageId: opts.focusMessageId }).catch(() => undefined);
     }
     await existing.focus();
     return { id: existingId };

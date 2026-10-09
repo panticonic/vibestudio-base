@@ -384,6 +384,86 @@ describe("useAgenticChat set_title", () => {
     unmount();
   });
 
+  it("loads inline action bar code through the panel-owned persisted file", async () => {
+    const client = createClient();
+    const publish = vi.fn(async () => 1);
+    Object.assign(client, { publish, roster: {} });
+    let methods: Record<string, MethodDefinition> | undefined;
+    pubsubMock.connectViaRpc.mockImplementation(
+      (options: { methods: Record<string, MethodDefinition> }) => {
+        methods = options.methods;
+        return client;
+      },
+    );
+    const files = new Map<string, string>();
+    const base = createRpcCall();
+    const call = vi.fn(async (target: string, method: string, args: unknown[]) => {
+      if (method === "fs.writeFile") {
+        files.set(args[0] as string, args[1] as string);
+        return undefined;
+      }
+      if (method === "fs.readFile") {
+        const value = files.get(args[0] as string);
+        if (value === undefined) throw new Error(`ENOENT ${String(args[0])}`);
+        return value;
+      }
+      return (base as (...values: unknown[]) => Promise<unknown>)(target, method, args);
+    }) as unknown as ConnectionConfig["rpc"]["call"];
+    const onActionBarFileChange = vi.fn();
+    function ActionBarProbe() {
+      useAgenticChat({
+        config: {
+          clientId: "panel:chat",
+          rpc: {
+            selfId: "panel:chat",
+            call,
+            stream: vi.fn(async () => new Response()),
+            on: vi.fn(() => () => undefined),
+          },
+        },
+        channelName: "chat-title-test",
+        metadata: { name: "Chat Panel", type: "panel" },
+        onActionBarFileChange,
+        features: FULL_AGENTIC_CHAT_FEATURES,
+      });
+      return null;
+    }
+    const { unmount } = render(<ActionBarProbe />);
+    await waitFor(() => expect(methods).toBeDefined());
+    const result = vi.fn((value: unknown, options?: unknown) => ({ value, options }));
+    const ctx = { callerId: "do:author", result } as never;
+    const code = "export default function ActionBar() { return <div>bar</div>; }";
+    await waitFor(async () => {
+      const loaded = (await methods!["load_action_bar"]!.execute({ code }, ctx)) as {
+        ok?: boolean;
+      };
+      expect(loaded.ok).toBe(true);
+    });
+    const managedPath = ".tmp/action-bars/panel_chat.tsx";
+    expect(files.get(managedPath)).toBe(code);
+    expect(onActionBarFileChange).toHaveBeenLastCalledWith({
+      path: managedPath,
+      props: undefined,
+      maxHeight: undefined,
+    });
+
+    // A compile failure leaves the persisted file backing the current bar intact.
+    const broken = (await methods!["load_action_bar"]!.execute(
+      { code: "export default function A( { return <div>; }" },
+      ctx,
+    )) as { value: { ok: boolean; compileError: boolean } };
+    expect(broken.value).toMatchObject({ ok: false, compileError: true });
+    expect(files.get(managedPath)).toBe(code);
+
+    const ambiguous = (await methods!["load_action_bar"]!.execute(
+      { code, path: "panels/bar/index.tsx" },
+      ctx,
+    )) as { value: { ok: boolean; error: string } };
+    expect(ambiguous.value).toEqual({ ok: false, error: "Provide exactly one of code or path" });
+
+    unmount();
+  });
+
   it("rejects uncompilable inline UI and action bar sources without publishing", async () => {
     const client = createClient();
     const publish = vi.fn(async () => 1);

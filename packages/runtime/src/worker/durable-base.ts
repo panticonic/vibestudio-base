@@ -33,6 +33,8 @@ export type {
 } from "@vibestudio/shared/doDispatcher";
 import {
   collectExposableMethods,
+  decodeRpcJson,
+  encodeRpcJson,
   envelopeFromMessage,
   rpcExposedMethodNames,
   rpcErrorDataOf,
@@ -598,7 +600,11 @@ export abstract class DurableObjectBase {
     error?: string;
     caller?: AttestedCaller | null;
   } {
-    const parsed = JSON.parse(body);
+    const parsed = decodeRpcJson(body);
+    const dispatchArgs: unknown =
+      parsed && typeof parsed === "object"
+        ? (parsed as { args?: unknown }).args
+        : undefined;
     if (Array.isArray(parsed)) {
       return { args: parsed };
     }
@@ -606,7 +612,7 @@ export abstract class DurableObjectBase {
       parsed &&
       typeof parsed === "object" &&
       ("__instanceToken" in parsed || "__instanceId" in parsed) &&
-      Array.isArray((parsed as { args?: unknown }).args)
+      Array.isArray(dispatchArgs)
     ) {
       const caller = (parsed as { __caller?: unknown }).__caller;
       if (caller && typeof caller === "object") {
@@ -616,7 +622,7 @@ export abstract class DurableObjectBase {
           typeof record["callerKind"] === "string"
         ) {
           return {
-            args: (parsed as { args: unknown[] }).args,
+            args: dispatchArgs,
             caller: {
               callerId: record["callerId"],
               callerKind: record[
@@ -644,7 +650,7 @@ export abstract class DurableObjectBase {
         }
       }
       return {
-        args: (parsed as { args: unknown[] }).args,
+        args: dispatchArgs,
       };
     }
     return { args: [parsed] };
@@ -1228,9 +1234,9 @@ export abstract class DurableObjectBase {
           ? dispatchResult.reason
           : alarmResult.status === "rejected" &&
               alarmResult.reason instanceof AggregateError
-            ? alarmResult.reason.cause ??
+            ? (alarmResult.reason.cause ??
               alarmResult.reason.errors[0] ??
-              alarmResult.reason
+              alarmResult.reason)
             : primaryFailure;
       const message =
         serializedFailure instanceof Error
@@ -1242,7 +1248,7 @@ export abstract class DurableObjectBase {
           ? (serializedFailure as Error & { code?: string }).code
           : undefined;
       return new Response(
-        JSON.stringify({
+        encodeRpcJson({
           error: message,
           errorKind: rpcErrorKindOf(serializedFailure),
           ...(rpcDiagnosticIdOf(serializedFailure)
@@ -1305,7 +1311,7 @@ export abstract class DurableObjectBase {
       if (body) {
         const result = this.parseRequestBody(body);
         if (result.error) {
-          return new Response(JSON.stringify({ error: result.error }), {
+          return new Response(encodeRpcJson({ error: result.error }), {
             status: 400,
             headers: { "Content-Type": "application/json" },
           });
@@ -1327,7 +1333,7 @@ export abstract class DurableObjectBase {
         );
         if (denial) {
           return new Response(
-            JSON.stringify({
+            encodeRpcJson({
               error: denial.reason,
               errorCode: denial.code,
               errorKind: "access",
@@ -1372,7 +1378,7 @@ export abstract class DurableObjectBase {
             : method === "__lifecycle/initializeClone"
               ? this.initializeClone(args[0] as LifecycleCloneInput)
               : await this.resumeAfterRestart(args[0] as LifecycleResumeInput);
-        return new Response(JSON.stringify(result ?? null), {
+        return new Response(encodeRpcJson(result ?? null), {
           headers: this.workReadyHeaders(),
         });
       });
@@ -1381,33 +1387,30 @@ export abstract class DurableObjectBase {
     // Alarm endpoint — server-driven (workerd lacks SQLite/facet alarms).
     // The AlarmDriver fires this on schedule; gate to the server caller.
     if (method === "__alarm") {
-      return await this.withVerifiedCaller(
-        verifiedCallerFromBody,
-        async () => {
-          const denial = this.inboundHostControlDenial(
-            method,
-            authorityAcceptedAt,
+      return await this.withVerifiedCaller(verifiedCallerFromBody, async () => {
+        const denial = this.inboundHostControlDenial(
+          method,
+          authorityAcceptedAt,
+        );
+        if (denial) {
+          return new Response(
+            encodeRpcJson({
+              error: denial.reason,
+              errorCode: denial.code,
+              errorKind: "access",
+              errorData: { authorityFailure: denial.failure },
+            }),
+            {
+              status: 403,
+              headers: { "Content-Type": "application/json" },
+            },
           );
-          if (denial) {
-            return new Response(
-              JSON.stringify({
-                error: denial.reason,
-                errorCode: denial.code,
-                errorKind: "access",
-                errorData: { authorityFailure: denial.failure },
-              }),
-              {
-                status: 403,
-                headers: { "Content-Type": "application/json" },
-              },
-            );
-          }
-          const nextAlarm = await this.alarm();
-          return new Response(JSON.stringify({ nextAlarm }), {
-            headers: this.workReadyHeaders(),
-          });
-        },
-      );
+        }
+        const nextAlarm = await this.alarm();
+        return new Response(encodeRpcJson({ nextAlarm }), {
+          headers: this.workReadyHeaders(),
+        });
+      });
     }
 
     // Method-path dispatch (the server's instance-token channel,
@@ -1441,7 +1444,7 @@ export abstract class DurableObjectBase {
     if (responseMessage?.type === "response" && "error" in responseMessage) {
       if (responseMessage.error.startsWith('Method "')) {
         return new Response(
-          JSON.stringify({ error: `Unknown method: ${method}` }),
+          encodeRpcJson({ error: `Unknown method: ${method}` }),
           {
             status: 404,
             headers: { "Content-Type": "application/json" },
@@ -1454,7 +1457,7 @@ export abstract class DurableObjectBase {
           ? 403
           : 500;
       return new Response(
-        JSON.stringify({
+        encodeRpcJson({
           error: responseMessage.error,
           errorKind: responseMessage.errorKind,
           ...(responseMessage.diagnosticId
@@ -1477,14 +1480,14 @@ export abstract class DurableObjectBase {
       responseMessage?.type === "response" && "result" in responseMessage
         ? (responseMessage.result ?? null)
         : null;
-    return new Response(JSON.stringify(result), {
+    return new Response(encodeRpcJson(result), {
       headers: this.workReadyHeaders(dispatched.readyQueues),
     });
   }
 
   /** Handle an `RpcEnvelope` POSTed to `__rpc`; returns a response envelope (or `{}` for events). */
   private async handleInboundEnvelope(request: Request): Promise<Response> {
-    const envelope = (await request.json()) as RpcEnvelope;
+    const envelope = decodeRpcJson(await request.text()) as RpcEnvelope;
     const message = envelope.message;
     const authorityAcceptedAt = directAuthorityAcceptedAt(request);
     if (message?.type === "event") {
@@ -1507,7 +1510,7 @@ export abstract class DurableObjectBase {
       });
       if (denial) {
         return new Response(
-          JSON.stringify({
+          encodeRpcJson({
             error: denial.reason,
             errorCode: denial.code,
             errorKind: "access",
@@ -1532,7 +1535,7 @@ export abstract class DurableObjectBase {
           `${method}: host authority attestation nonce was replayed or is outside ` +
           "the receiver's retention bound";
         return new Response(
-          JSON.stringify({
+          encodeRpcJson({
             error: reason,
             errorCode: "EACCES",
             errorKind: "access",
@@ -1544,13 +1547,13 @@ export abstract class DurableObjectBase {
         );
       }
       this.connectionlessClient().deliver(envelope);
-      return new Response(JSON.stringify({}), {
+      return new Response(encodeRpcJson({}), {
         headers: { "Content-Type": "application/json" },
       });
     }
     if (message?.type !== "request" && message?.type !== "stream-request") {
       this.connectionlessClient().deliver(envelope);
-      return new Response(JSON.stringify({}), {
+      return new Response(encodeRpcJson({}), {
         headers: { "Content-Type": "application/json" },
       });
     }
@@ -1568,7 +1571,7 @@ export abstract class DurableObjectBase {
         if (responseMessage.result instanceof Response)
           return responseMessage.result;
         return new Response(
-          JSON.stringify({
+          encodeRpcJson({
             error: `Streaming method ${message.method} did not return a Response`,
           }),
           { status: 500, headers: { "Content-Type": "application/json" } },
@@ -1581,7 +1584,7 @@ export abstract class DurableObjectBase {
             ? 403
             : 500;
         return new Response(
-          JSON.stringify({
+          encodeRpcJson({
             error: responseMessage.error,
             errorKind: responseMessage.errorKind,
             ...(responseMessage.diagnosticId
@@ -1598,7 +1601,7 @@ export abstract class DurableObjectBase {
         );
       }
       return new Response(
-        JSON.stringify({
+        encodeRpcJson({
           error: `Streaming method ${message.method} did not produce a response`,
         }),
         { status: 500, headers: { "Content-Type": "application/json" } },
@@ -1609,7 +1612,7 @@ export abstract class DurableObjectBase {
       authorityAcceptedAt,
     );
     const responseEnvelope = dispatched.result;
-    return new Response(JSON.stringify(responseEnvelope ?? {}), {
+    return new Response(encodeRpcJson(responseEnvelope ?? {}), {
       headers: this.workReadyHeaders(dispatched.readyQueues),
     });
   }

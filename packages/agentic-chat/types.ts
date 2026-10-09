@@ -39,7 +39,7 @@ import type {
 } from "@workspace/pubsub";
 import type { ActiveFeedback, ToolApprovalProps } from "@workspace/tool-ui";
 import type { PendingImage } from "./utils/imageUtils";
-import type { ComponentType, RefObject } from "react";
+import type { ComponentType, Dispatch, RefObject, SetStateAction } from "react";
 import type { SandboxImportLoader, ScopeManager, ScopesApi } from "@workspace/eval";
 import type { MessageTier } from "@workspace/agentic-protocol";
 import type { DefaultAgentConfig } from "@workspace/model-catalog/catalog";
@@ -166,7 +166,7 @@ export interface ChatInputContextValue {
       metadata?: Record<string, unknown>;
     }
   ) => Promise<void>;
-  onImagesChange: (images: PendingImage[]) => void;
+  onImagesChange: Dispatch<SetStateAction<PendingImage[]>>;
   replyTo: string | null;
   replyToMessage: ChatMessage | null;
   setReplyTo: (messageId: string | null) => void;

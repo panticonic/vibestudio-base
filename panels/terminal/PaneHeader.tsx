@@ -124,6 +124,8 @@ export function PaneHeader(props: {
           <button
             key={port}
             onClick={() => props.onOpenPort(port)}
+            aria-label={`Open port ${port} in browser`}
+            title={`Open port ${port} in browser`}
             style={{ border: 0, padding: 0, background: "transparent" }}
           >
             <Badge size="1" variant="soft" color="blue">

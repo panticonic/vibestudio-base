@@ -86,6 +86,31 @@ const METHOD_START_REDRIVE_BASE_DELAY_MS = 100;
 const METHOD_START_REDRIVE_MAX_DELAY_MS = 5_000;
 
 /**
+ * Exponential backoff between redrives of an ambiguously-acknowledged method
+ * start. `failures` is the 1-based count of failures so far; an abort of
+ * `signal` ends the wait early.
+ */
+async function waitForMethodStartRedrive(
+  failures: number,
+  signal?: AbortSignal,
+): Promise<void> {
+  if (signal?.aborted) return;
+  const delayMs = Math.min(
+    METHOD_START_REDRIVE_BASE_DELAY_MS * 2 ** Math.min(failures - 1, 6),
+    METHOD_START_REDRIVE_MAX_DELAY_MS,
+  );
+  await new Promise<void>((resolve) => {
+    const finish = () => {
+      clearTimeout(timer);
+      signal?.removeEventListener("abort", finish);
+      resolve();
+    };
+    const timer = setTimeout(finish, delayMs);
+    signal?.addEventListener("abort", finish, { once: true });
+  });
+}
+
+/**
  * Method advertisements cross the model-tool boundary, whose schemas use JSON
  * Schema semantics. OpenAPI 3.0 represents exclusive numeric bounds as a
  * boolean plus `minimum`; JSON Schema draft 7 represents the bound itself as a
@@ -1483,12 +1508,8 @@ export function connectViaRpc<
           const failure = toPubSubError(error, "connection");
           handleError(failure);
           if (!isAmbiguousMethodStartFailure(error)) return;
-          const delayMs = Math.min(
-            METHOD_START_REDRIVE_BASE_DELAY_MS * 2 ** Math.min(failures, 6),
-            METHOD_START_REDRIVE_MAX_DELAY_MS,
-          );
           failures += 1;
-          await new Promise<void>((resolve) => setTimeout(resolve, delayMs));
+          await waitForMethodStartRedrive(failures);
           continue;
         }
         if (!claim.claimed || !claim.generation) return;
@@ -2684,23 +2705,6 @@ export function connectViaRpc<
       deleteMethodCallState(state);
     };
 
-    const waitForMethodStartRedrive = async (
-      delayMs: number,
-    ): Promise<void> => {
-      if (startRecoveryController.signal.aborted) return;
-      await new Promise<void>((resolve) => {
-        const finish = () => {
-          clearTimeout(timer);
-          startRecoveryController.signal.removeEventListener("abort", finish);
-          resolve();
-        };
-        const timer = setTimeout(finish, delayMs);
-        startRecoveryController.signal.addEventListener("abort", finish, {
-          once: true,
-        });
-      });
-    };
-
     const cancelCall = (
       notifyProvider: boolean,
       waitForProvider: boolean,
@@ -2779,12 +2783,11 @@ export function connectViaRpc<
               rejectMethodStart(error);
               return;
             }
-            const delayMs = Math.min(
-              METHOD_START_REDRIVE_BASE_DELAY_MS * 2 ** Math.min(failures, 6),
-              METHOD_START_REDRIVE_MAX_DELAY_MS,
-            );
             failures += 1;
-            await waitForMethodStartRedrive(delayMs);
+            await waitForMethodStartRedrive(
+              failures,
+              startRecoveryController.signal,
+            );
           }
         }
       })();

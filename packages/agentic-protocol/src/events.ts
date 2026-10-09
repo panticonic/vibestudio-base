@@ -866,7 +866,7 @@ export interface AutomationDefinitionSnapshot {
   name: string;
   summary: string;
   revision: number;
-  action: "prompt" | "eval" | "watch" | "method";
+  action: "prompt" | "eval" | "watch" | "notify" | "method";
   createdAt: number;
   state: "active";
   nextRunAt?: number;

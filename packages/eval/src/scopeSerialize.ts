@@ -83,6 +83,66 @@ function tagged(type: string, value: unknown = null): TypeTagged {
 }
 
 // ---------------------------------------------------------------------------
+// Durable references to live runtime objects
+// ---------------------------------------------------------------------------
+
+/**
+ * A live runtime object (panel handle, worker/DO handle, CDP session) that can
+ * be reacquired by identity implements this symbol, returning `{ kind, id }`.
+ * Only that identity is persisted; cached routing (rpc target ids, leases,
+ * connections) never is. On hydrate, the eval host's rehydrator for `kind`
+ * reacquires the object through the same lookup-by-id authority as user code.
+ */
+export const SCOPE_REF = Symbol.for("vibestudio.scopeRef");
+
+export interface ScopeRef {
+  kind: string;
+  id: string;
+}
+
+/** Host-supplied reacquisition by identity, one entry per scope-ref kind. */
+export type ScopeRehydrators = Readonly<Record<string, (id: string) => unknown>>;
+
+/** A persisted scope reference could not be reacquired; its top-level key is lost. */
+export class ScopeRefUnavailableError extends Error {
+  readonly code = "scope_ref_unavailable";
+  constructor(
+    readonly ref: ScopeRef,
+    reason: string,
+    options?: { cause?: unknown }
+  ) {
+    super(`Scope reference ${ref.kind}:${ref.id} cannot be rehydrated: ${reason}`, options);
+    this.name = "ScopeRefUnavailableError";
+  }
+}
+
+function readScopeRef(val: object, path: string, dropped: DroppedEntry[]): ScopeRef | null {
+  let ref: Partial<ScopeRef> | null | undefined;
+  try {
+    const describe = (val as { [SCOPE_REF]?: unknown })[SCOPE_REF];
+    if (typeof describe !== "function") return null;
+    ref = (describe as () => unknown).call(val) as Partial<ScopeRef> | null | undefined;
+  } catch (error) {
+    dropped.push({
+      path,
+      reason: `scope reference failed: ${error instanceof Error ? error.message : String(error)}`,
+    });
+    return null;
+  }
+  if (
+    !ref ||
+    typeof ref.kind !== "string" ||
+    !ref.kind ||
+    typeof ref.id !== "string" ||
+    !ref.id
+  ) {
+    dropped.push({ path, reason: "invalid scope reference" });
+    return null;
+  }
+  return { kind: ref.kind, id: ref.id };
+}
+
+// ---------------------------------------------------------------------------
 // Serialization
 // ---------------------------------------------------------------------------
 
@@ -147,6 +207,15 @@ function serializeValue(
     return val;
   }
   if (t === "bigint") return tagged("BigInt", val.toString());
+
+  // Live runtime objects persist as their durable identity. Identity, not
+  // object graph, is the persisted meaning, so repeated references are fine.
+  if (t === "object" || t === "function") {
+    const droppedBefore = dropped.length;
+    const ref = readScopeRef(val as object, path, dropped);
+    if (ref) return tagged("ScopeRef", ref);
+    if (dropped.length !== droppedBefore) return undefined;
+  }
 
   // Drop functions and symbols
   if (t === "function") {
@@ -431,13 +500,14 @@ function restoreExtensibility<T extends object>(value: T, extensible: boolean): 
   return value;
 }
 
-function deserializeValue(val: unknown): unknown {
+function deserializeValue(val: unknown, rehydrators: ScopeRehydrators | undefined): unknown {
+  const restore = (child: unknown): unknown => deserializeValue(child, rehydrators);
   if (val === null || val === undefined) return val;
   const t = typeof val;
   if (t === "string" || t === "number" || t === "boolean") return val;
 
   if (Array.isArray(val)) {
-    return val.map(deserializeValue);
+    return val.map(restore);
   }
 
   if (typeof val === "object" && val !== null) {
@@ -469,7 +539,7 @@ function deserializeValue(val: unknown): unknown {
             extensible: boolean;
           };
           const expression = new RegExp(rv.source, rv.flags);
-          expression.lastIndex = deserializeValue(rv.lastIndex) as number;
+          expression.lastIndex = restore(rv.lastIndex) as number;
           return restoreExtensibility(expression, rv.extensible);
         }
         case "Map": {
@@ -479,20 +549,67 @@ function deserializeValue(val: unknown): unknown {
           };
           return restoreExtensibility(
             new Map(
-              map.entries.map(([key, value]) => [deserializeValue(key), deserializeValue(value)])
+              map.entries.map(([key, value]) => [restore(key), restore(value)])
             ),
             map.extensible
           );
         }
         case "Set": {
           const set = val.v as { items: unknown[]; extensible: boolean };
-          return restoreExtensibility(new Set(set.items.map(deserializeValue)), set.extensible);
+          return restoreExtensibility(new Set(set.items.map(restore)), set.extensible);
         }
         case "BigInt":
           return BigInt(val.v as string);
+        case "ScopeRef": {
+          const ref = val.v;
+          if (
+            typeof ref !== "object" ||
+            ref === null ||
+            Object.getPrototypeOf(ref) !== Object.prototype ||
+            Reflect.ownKeys(ref).length !== 2 ||
+            !Object.prototype.hasOwnProperty.call(ref, "kind") ||
+            !Object.prototype.hasOwnProperty.call(ref, "id") ||
+            typeof (ref as ScopeRef).kind !== "string" ||
+            !(ref as ScopeRef).kind ||
+            typeof (ref as ScopeRef).id !== "string" ||
+            !(ref as ScopeRef).id
+          ) {
+            throw new TypeError("Malformed persisted scope reference");
+          }
+          const scopeRef = ref as ScopeRef;
+          const rehydrate =
+            rehydrators &&
+            Object.prototype.hasOwnProperty.call(rehydrators, scopeRef.kind)
+              ? rehydrators[scopeRef.kind]
+              : undefined;
+          if (!rehydrate) {
+            throw new ScopeRefUnavailableError(
+              scopeRef,
+              rehydrators
+                ? `no rehydrator for kind "${scopeRef.kind}"`
+                : "no rehydrators supplied"
+            );
+          }
+          try {
+            const restored = rehydrate(scopeRef.id);
+            if (
+              restored === null ||
+              (typeof restored !== "object" && typeof restored !== "function")
+            ) {
+              throw new Error("lookup returned no live runtime object");
+            }
+            return restored;
+          } catch (error) {
+            throw new ScopeRefUnavailableError(
+              scopeRef,
+              error instanceof Error ? error.message : String(error),
+              { cause: error }
+            );
+          }
+        }
         case "Array": {
           const array = val.v as { items: unknown[]; extensible: boolean };
-          return restoreExtensibility(array.items.map(deserializeValue), array.extensible);
+          return restoreExtensibility(array.items.map(restore), array.extensible);
         }
         case "Object": {
           const object = val.v as {
@@ -506,7 +623,7 @@ function deserializeValue(val: unknown): unknown {
           >;
           for (const [key, child] of object.entries) {
             Object.defineProperty(result, key, {
-              value: deserializeValue(child),
+              value: restore(child),
               enumerable: true,
               configurable: true,
               writable: true,
@@ -520,7 +637,7 @@ function deserializeValue(val: unknown): unknown {
     // Plain object
     const result: Record<string, unknown> = {};
     for (const [key, child] of Object.entries(val)) {
-      result[key] = deserializeValue(child);
+      result[key] = restore(child);
     }
     return result;
   }
@@ -528,16 +645,37 @@ function deserializeValue(val: unknown): unknown {
   return val;
 }
 
-export function deserializeScope(json: string): Map<string, unknown> {
-  const parsed = JSON.parse(json) as Record<string, unknown>;
-  const map = new Map<string, unknown>();
-  for (const [key, value] of Object.entries(parsed)) {
-    map.set(key, deserializeValue(value));
-  }
-  return map;
+export interface DeserializedScope {
+  values: Map<string, unknown>;
+  /** Top-level keys whose persisted scope references could not be reacquired. */
+  lost: Array<{ key: string; error: ScopeRefUnavailableError }>;
 }
 
-/** Deserialize a single spilled value's JSON (the content stored in the blob store). */
-export function deserializeScopeValue(json: string): unknown {
-  return deserializeValue(JSON.parse(json));
+/**
+ * Deserialize a persisted scope row. Scope references are reacquired through
+ * `rehydrators`; a reference that cannot be (unknown kind, no registry, or a
+ * failing lookup) makes its whole top-level key lost, never a plain copy.
+ */
+export function deserializeScope(json: string, rehydrators?: ScopeRehydrators): DeserializedScope {
+  const parsed = JSON.parse(json) as Record<string, unknown>;
+  const values = new Map<string, unknown>();
+  const lost: DeserializedScope["lost"] = [];
+  for (const [key, value] of Object.entries(parsed)) {
+    try {
+      values.set(key, deserializeValue(value, rehydrators));
+    } catch (error) {
+      if (!(error instanceof ScopeRefUnavailableError)) throw error;
+      lost.push({ key, error });
+    }
+  }
+  return { values, lost };
+}
+
+/**
+ * Deserialize a single spilled value's JSON (the content stored in the blob
+ * store). Throws ScopeRefUnavailableError when a scope reference inside it
+ * cannot be reacquired.
+ */
+export function deserializeScopeValue(json: string, rehydrators?: ScopeRehydrators): unknown {
+  return deserializeValue(JSON.parse(json), rehydrators);
 }

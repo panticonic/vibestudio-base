@@ -12,6 +12,7 @@ import {
   deserializeScopeValue,
   isScopeBlobRef,
   SCOPE_BLOB_REF,
+  type ScopeRehydrators,
 } from "./scopeSerialize.js";
 
 /** Sentinel: a referenced spill blob could not be read (missing/corrupt). Surfaced as a lost key. */
@@ -58,6 +59,7 @@ export class ScopeManager {
   private proxy: Record<string, unknown>;
   private changeListeners = new Set<() => void>();
   private persistence: ScopePersistence | undefined;
+  private rehydrators: ScopeRehydrators | undefined;
   private channelId: string;
   private panelId: string;
   private currentScopeId: string;
@@ -66,10 +68,21 @@ export class ScopeManager {
   private dirty = false;
   private disposed = false;
 
-  constructor(opts: { channelId: string; panelId: string; persistence?: ScopePersistence }) {
+  constructor(opts: {
+    channelId: string;
+    panelId: string;
+    persistence?: ScopePersistence;
+    /**
+     * Host-owned reacquisition of persisted live-object references (panel,
+     * worker and DO handles, CDP sessions) by identity. Without an entry for a
+     * reference's kind, that top-level key is reported lost on hydrate.
+     */
+    rehydrators?: ScopeRehydrators;
+  }) {
     this.channelId = opts.channelId;
     this.panelId = opts.panelId;
     this.persistence = opts.persistence;
+    this.rehydrators = opts.rehydrators;
     this.currentScopeId = crypto.randomUUID();
     this.currentCreatedAt = Date.now();
     this.backing = new Map();
@@ -183,25 +196,26 @@ export class ScopeManager {
     this.currentScopeId = entry.id;
     this.currentCreatedAt = entry.createdAt;
 
-    const restoredMap = deserializeScope(entry.data);
+    const restoredMap = deserializeScope(entry.data, this.rehydrators);
     const validDigests = new Set(entry.blobRefs ?? []);
-    const blobFailures: string[] = [];
-    for (const [key, value] of restoredMap) {
+    // A persisted reference that cannot be reacquired is lost as a whole key.
+    const unrecoverableKeys: string[] = restoredMap.lost.map(({ key }) => key);
+    for (const [key, value] of restoredMap.values) {
       const resolved = await this.resolveBlobRef(value, validDigests, p);
       if (resolved === BLOB_RESOLVE_FAILED) {
         // A referenced blob was missing/corrupt — surface it as lost rather than silently
         // setting `undefined`, and don't brick the rest of the scope.
-        blobFailures.push(key);
+        unrecoverableKeys.push(key);
         continue;
       }
       this.backing.set(key, resolved);
     }
 
     return {
-      restored: entry.serializedKeys.filter((k) => !blobFailures.includes(k)),
+      restored: entry.serializedKeys.filter((k) => !unrecoverableKeys.includes(k)),
       // `volatileKeys` is the complete top-level recovery authority.
       // `droppedPaths` is deliberately bounded and diagnostic-only.
-      lost: [...new Set([...entry.volatileKeys, ...blobFailures])],
+      lost: [...new Set([...entry.volatileKeys, ...unrecoverableKeys])],
     };
   }
 
@@ -286,10 +300,10 @@ export class ScopeManager {
   ): Promise<Record<string, unknown> | null> {
     const entry = await persistence.get(id);
     if (!entry) return null;
-    const map = deserializeScope(entry.data);
+    const map = deserializeScope(entry.data, this.rehydrators);
     const validDigests = new Set(entry.blobRefs ?? []);
     const obj: Record<string, unknown> = {};
-    for (const [key, value] of map) {
+    for (const [key, value] of map.values) {
       const resolved = await this.resolveBlobRef(value, validDigests, persistence);
       if (resolved !== BLOB_RESOLVE_FAILED) obj[key] = resolved; // omit a key whose blob is unreadable
     }
@@ -319,9 +333,9 @@ export class ScopeManager {
     }
     if (blobJson == null) return BLOB_RESOLVE_FAILED; // referenced blob missing
     try {
-      return deserializeScopeValue(blobJson);
+      return deserializeScopeValue(blobJson, this.rehydrators);
     } catch {
-      return BLOB_RESOLVE_FAILED; // corrupt blob content
+      return BLOB_RESOLVE_FAILED; // corrupt blob content or an unreacquirable scope reference
     }
   }
 

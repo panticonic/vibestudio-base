@@ -1,139 +1,108 @@
 # Interaction Patterns
 
-Choose the interaction that gives the user the most direct control over the
-outcome with the least effort. A visual or interactive answer is often that
-interaction; the user does not need to ask for it.
+Pick the interaction that gives the user the most direct control over the
+outcome for the least effort. Often that is a visual or interactive answer, and
+the user does not have to ask for one.
 
 ## Use MDX response components
 
 Use response components in your message (`Chart`, `Compare`, `PlaceMap`,
 `Timeline`, `Checklist`, `Calculator`, `Stats`, `Choices`, `ActionButton`)
 whenever data, options, places, steps, or what-if math are clearer shown than
-told. When none fits, define a one-off component in the message — with its own
-state if it needs it — rather than falling back to prose. End with `Choices` or `ActionButton`s when the next step is one of a few
-directions; the selection returns as a message with a structured
-`interaction`. See [visualize](../visualize/SKILL.md).
+described. If none fits, define a one-off component in the message, with its
+own state if needed, instead of falling back to prose. When the next step is one
+of a few directions, end with `Choices` or `ActionButton`s; the selection comes
+back as a message with a structured `interaction`. See
+[visualize](../visualize/SKILL.md).
 
 ## Use `eval`
 
-Use `eval` for deterministic runtime work where no user choice is needed:
+Use `eval` for deterministic runtime work that needs no user choice:
 
 - Read workspace state.
 - Run a typecheck or test.
-- Create a project after the user has already approved the shape.
+- Create a project after the user has approved its shape.
 - Verify a credential or API response.
 
 ## Use `ask_user` and `feedback_form`
 
 Block only when you cannot continue without the answer. Use `ask_user` for one
-question, and `feedback_form` for several related inputs in one form:
+question and `feedback_form` for several related inputs in one form:
 
 - Pick one option from a list you must act on.
 - Supply a few settings needed before work can start.
 - Enter a short label or numeric setting.
 
-When the conversation can proceed without the answer, offer `Choices`
-instead.
+If the conversation can continue without the answer, offer `Choices` instead.
 
-Do not chain several feedback forms to implement one setup flow. If the next
-question is already known, it belongs in the same surface. Do not expose
-implementation choices—credential formats, protocol variants, permission
-names, storage modes, or browser mechanics—when a recommended default can
-derive them from the user's goal.
+Do not chain several feedback forms into one setup flow; if you already know the
+next question, put it in the same form. Do not ask about implementation details
+(credential formats, protocol variants, permission names, storage modes, browser
+mechanics) when a recommended default can be derived from the user's goal.
 
 ## Use `inline_ui`
 
-Use `inline_ui` for a self-contained workflow whose component can invoke the
+Use `inline_ui` for a self-contained workflow whose component can call the
 trusted runtime or skill helpers itself:
 
 - Provider and OAuth setup.
 - Browser/profile/data import.
-- Deep-linked checklists.
+- Checklists with deep links.
 - Progress, verification, retry, and completion states.
 
 A setup surface should:
 
-- ask in plain language about outcomes, not implementation;
+- ask about outcomes in plain language, not about implementation;
 - preselect the safest useful default;
 - keep related choices, explanations, links, progress, and retry together;
-- reveal advanced controls only after an explicit need;
-- use action buttons for where an operation happens instead of a separate
-  question;
+- show advanced controls only when they are needed;
+- offer one action button per place an operation can happen (for example
+  internal or external browser) instead of asking a separate question;
 - call trusted helpers directly from its buttons;
-- keep status, errors, retry, and success in the component.
+- show status, errors, retry, and success in the component.
 
-Do not return setup choices to the agent merely so it can assemble a function
-call containing those choices.
+Do not send setup choices back to the agent just so it can assemble a function
+call from them.
 
-Use direct link buttons in the UI:
+Put direct link buttons in the UI. `OpenLinkButtons` from `@workspace/react`
+renders the internal-panel and system-browser buttons, tracks each one's
+pending state and failure, and keeps the other enabled:
 
 ```tsx
-import { useState } from "react";
-import { Button, Flex, Text } from "@radix-ui/themes";
-import { GlobeIcon, OpenInNewWindowIcon } from "@radix-ui/react-icons";
-import { openPanel, openExternal } from "@workspace/runtime";
+import { Flex, Text } from "@radix-ui/themes";
+import { OpenLinkButtons } from "@workspace/react";
 
 export default function SetupStep() {
-  const url = "https://console.cloud.google.com/apis/credentials";
-  const [status, setStatus] = useState({});
-
-  async function run(kind, action) {
-    setStatus((current) => ({ ...current, [kind]: "pending" }));
-    try {
-      await action();
-      setStatus((current) => ({ ...current, [kind]: "done" }));
-    } catch (cause) {
-      const message = cause instanceof Error ? cause.message : String(cause);
-      setStatus((current) => ({ ...current, [kind]: message }));
-    }
-  }
-
-  const error = [status.internal, status.external].find(
-    (value) => value && value !== "pending" && value !== "done"
-  );
   return (
-    <Flex direction="column" gap="3" p="2" style={{ width: "100%", minWidth: 0 }}>
+    <Flex
+      direction="column"
+      gap="3"
+      p="2"
+      style={{ width: "100%", minWidth: 0 }}
+    >
       <Text size="2" weight="bold">
         Open the credentials page
       </Text>
-      <Flex gap="2">
-        <Button
-          size="1"
-          variant="soft"
-          disabled={status.internal === "pending"}
-          onClick={async () => run("internal", () => openPanel(url, { focus: true }))}
-        >
-          <GlobeIcon /> {status.internal === "pending" ? "Opening…" : "Internal"}
-        </Button>
-        <Button
-          size="1"
-          variant="soft"
-          disabled={status.external === "pending"}
-          onClick={async () => run("external", () => openExternal(url))}
-        >
-          <OpenInNewWindowIcon />{" "}
-          {status.external === "pending" ? "Awaiting approval…" : "External"}
-        </Button>
-      </Flex>
-      {error && (
-        <Text size="1" color="red">
-          {error} — retry when ready.
-        </Text>
-      )}
+      <OpenLinkButtons url="https://console.cloud.google.com/apis/credentials" />
     </Flex>
   );
 }
 ```
 
+For any other trusted helper, give each control its own `useAction` from
+`@workspace/react`. `run()` never rejects; it reports `pending`, `status`
+(`idle`, `pending`, `done`, `failed`), and the failure `error` for that control
+only.
+
 ## Use `feedback_custom`
 
-Use `feedback_custom` only when the agent truly needs a returned decision
-before it can determine the next operation, and the component cannot own that
-operation itself. Examples:
+Use `feedback_custom` only when the agent needs a returned decision to choose
+its next operation and the component cannot perform that operation itself. For
+example:
 
-- selecting one of several fundamentally different plans the agent must author;
+- selecting one of several fundamentally different plans the agent must write;
 - approving a generated proposal before the agent changes workspace files;
-- supplying structured requirements that become input to later reasoning.
+- supplying structured requirements that feed later reasoning.
 
 If every result maps directly to an existing helper call, use `inline_ui` and
 make that call in the component.
@@ -141,22 +110,23 @@ make that call in the component.
 ## Use `load_action_bar`
 
 Use `load_action_bar` for compact controls or status that should stay visible
-above chat history in the current panel:
+above the chat history in the current panel:
 
 - Current workflow status.
 - Pinned next actions.
 - Small control strips for a running task.
 - A file-backed UI the agent can edit and reload.
 
-`load_action_bar` reads a context-relative TSX file from the current panel's
-filesystem context. It is panel-local; it does not affect other panels on the
-same channel. Keep the UI compact and use `inline_ui` for larger dashboards or
-inspectable results that belong in the transcript.
+`load_action_bar` takes inline TSX `code`, or a context-relative TSX file `path`
+read from the current panel's filesystem context; inline code persists across
+panel reloads without a file of your own. It affects only that panel, not other
+panels on the same channel. Keep it compact; use `inline_ui` for larger
+dashboards or results that belong in the transcript.
 
-When creating the file under a workspace repo namespace such as `panels/`, use
-a canonical repo-shaped path like `panels/action-bar-review/index.tsx`.
-File-oriented APIs also accept `panels/action-bar-review.tsx` as shorthand for
-`panels/action-bar-review/action-bar-review.tsx` and report the canonical path.
+Under a workspace repo namespace such as `panels/`, use a repo-shaped path like
+`panels/action-bar-review/index.tsx`. File-oriented APIs also accept the
+shorthand `panels/action-bar-review.tsx`, expand it to
+`panels/action-bar-review/action-bar-review.tsx`, and report the expanded path.
 
 ## Browser Opens
 
@@ -164,9 +134,10 @@ File-oriented APIs also accept `panels/action-bar-review.tsx` as shorthand for
 - System browser: `openExternal(url)`
 - OAuth authorize URLs: `openExternal(url, { expectedRedirectUri })`
 
-Await these helpers in a caught async handler, show action-scoped pending and
-failure state, and keep unrelated controls enabled. An approval prompt is
-workflow progress, not a reason to block the component or panel tree.
+Use `OpenLinkButtons` for these, or run the helper through `useAction` so the
+pending and failure state belong to that action only and other controls stay
+enabled. A pending approval prompt is a normal step in the workflow and must
+not block the component or the panel tree.
 
-`openExternal` is approval-gated. Do not invent provider-specific browser-open
-bridges.
+`openExternal` requires approval. Do not invent provider-specific ways to open
+a browser.

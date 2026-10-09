@@ -11,6 +11,7 @@ import type {
   AgentResourceBinding,
   AgentToolBinding,
 } from "@workspace/agentic-core";
+import type { RespondPolicy } from "@workspace/agentic-protocol";
 import { createPanelDescribeTool } from "./panel-describe-tool.js";
 import {
   createPanelCdpEndpointTool,
@@ -24,7 +25,7 @@ type ChatAgentConfig = {
   name?: string;
   systemPrompt?: string;
   systemPromptMode?: "replace" | "append";
-  respondPolicy?: "all" | "mentioned" | "mentioned-strict" | "from-participants";
+  respondPolicy?: RespondPolicy;
   respondFrom?: string[];
 };
 

@@ -29,18 +29,16 @@ try {
 }
 ```
 
-The handle owns the panel target; the session owns one generation-fenced
-automation connection to a runtime incarnation. Prefer one session for a related
-operation sequence and close it in `finally`. The one-off `handle.cdp.page()` is
-available, but its caller owns the returned connection and must call
-`page.close()`. Neither close operation archives the panel; `handle.archive()`
-archives an owned panel subtree.
+The handle owns the panel target; the session owns one stable generation-fenced
+automation connection. Use the session's stable page throughout a related
+operation sequence and close it in `finally`. Closing the session does not
+archive the panel; `handle.archive()` archives an owned panel subtree.
 
 Raw `page.goto()`, `page.reload()`, `page.goBack()`, and `page.goForward()` are
 browser-panel operations. Workspace pages reject them so navigation cannot
 bypass panel readiness and generation tracking. Use `handle.navigate()`,
-`handle.reload()`, or `handle.rebuild()`, then call `session.refresh()` (or close
-the old session and acquire a new one).
+`handle.reload()`, or `handle.rebuild()`. The stable session page rebinds at its
+next awaited operation, and `session.receipt` reports the resulting generation.
 
 A deferred panel observation has phase `pending` and no CDP generation. Run
 `await handle.focus()` to materialize it before acquiring a session. In
@@ -328,7 +326,8 @@ const bytes = await download.body(); // use readChunk(offset, length) for large 
 const pendingPopup = page.waitForPopup();
 await page.getByRole("button", { name: "Open" }).click();
 const popup = await pendingPopup;
-const popupPage = await panelTree.get(popup.panelId).cdp.page();
+const popupSession = await panelTree.get(popup.panelId).cdp.session();
+const popupPage = popupSession.page;
 ```
 
 Downloads and popups use existing browser permissions. Permission denial, provider

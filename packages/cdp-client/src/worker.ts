@@ -489,7 +489,7 @@ export class CdpConnection {
       {
         code: "cdp_dialog_open",
         operation: method,
-        recovery: "handle-dialog-and-observe",
+        recovery: CDP_RECOVERY.handleDialogAndObserve,
         dialog: dialog.data,
         cause,
         instruction:
@@ -522,7 +522,7 @@ export class CdpConnection {
                 {
                   code: "cdp_dialog_closed",
                   operation: "Page.handleJavaScriptDialog",
-                  recovery: "handle-dialog-and-observe",
+                  recovery: CDP_RECOVERY.handleDialogAndObserve,
                 },
               ),
             );
@@ -567,7 +567,7 @@ export class CdpConnection {
             code: "cdp_target_connection_failed",
             operation: "connect",
             failureKind: "infrastructure",
-            recovery: "inspect-panel-and-reacquire-page",
+            recovery: CDP_RECOVERY.inspectPanelAndReacquirePage,
           },
         ),
       );
@@ -575,12 +575,12 @@ export class CdpConnection {
     ws.addEventListener("close", () => {
       this.disconnect(
         new CdpError(
-          "CDP target connection closed. The panel may have been closed, or its runtime may have been replaced by handle.navigate() or handle.rebuild(). If the panel still exists, obtain a fresh page with await handle.cdp.page(); do not reuse the cached page.",
+          "CDP target connection closed. The panel may have been closed, or its runtime may have been replaced by handle.navigate() or handle.rebuild(). If the panel still exists, await handle.cdp.session() and continue with its stable page.",
           {
             code: "cdp_target_closed",
             operation: "connection",
             failureKind: "infrastructure",
-            recovery: "reacquire-page",
+            recovery: CDP_RECOVERY.reacquirePage,
           },
         ),
       );
@@ -628,13 +628,13 @@ export class CdpConnection {
       }
       const reason =
         this.closeError?.message ??
-        "CDP connection is closed. Obtain a fresh page before sending more commands.";
+        "CDP connection is closed. Reconnect before sending more commands.";
       return Promise.reject(
         new CdpError(`Cannot send ${method}: ${reason}`, {
           code: "cdp_target_closed",
           operation: method,
           failureKind: "infrastructure",
-          recovery: "reacquire-page",
+          recovery: CDP_RECOVERY.reacquirePage,
         }),
       );
     }
@@ -688,7 +688,7 @@ export class CdpConnection {
           code: "cdp_target_closed",
           operation: "close",
           failureKind: "user-code",
-          recovery: "reacquire-page",
+          recovery: CDP_RECOVERY.reacquirePage,
         },
       ),
     );
@@ -821,7 +821,7 @@ export class CdpConnection {
           code: "cdp_protocol_error",
           operation: "receive",
           failureKind: "infrastructure",
-          recovery: "inspect-panel-and-reacquire-page",
+          recovery: CDP_RECOVERY.inspectPanelAndReacquirePage,
           cause: err,
         }),
       );
@@ -864,7 +864,7 @@ export class CdpConnection {
               code: crashed ? "cdp_target_crashed" : "cdp_target_detached",
               operation: parsed.method,
               failureKind: "infrastructure",
-              recovery: "inspect-panel-and-reacquire-page",
+              recovery: CDP_RECOVERY.inspectPanelAndReacquirePage,
             },
           ),
         );
@@ -946,7 +946,7 @@ export class CdpSession {
         new CdpError("Browser child dialog requires a response", {
           code: "cdp_dialog_open",
           operation: method,
-          recovery: "handle-dialog-and-observe",
+          recovery: CDP_RECOVERY.handleDialogAndObserve,
           dialog: this.activeDialog.dialog.data,
         }),
       );
@@ -987,7 +987,7 @@ export class CdpSession {
               new CdpError("Browser dialog already answered or closed", {
                 code: "cdp_dialog_closed",
                 operation: "Page.handleJavaScriptDialog",
-                recovery: "handle-dialog-and-observe",
+                recovery: CDP_RECOVERY.handleDialogAndObserve,
               }),
             );
           state.response = this.send("Page.handleJavaScriptDialog", {
@@ -1471,6 +1471,37 @@ export type CdpLocatorEvidence = {
   | { status: "unavailable"; reason: string }
 );
 
+/** Typed recovery step: the single shape agent tool failures consume. */
+export interface CdpRecovery {
+  action: "correct-request" | "reobserve" | "reacquire-handle";
+  instruction: string;
+}
+
+export const CDP_RECOVERY = {
+  reobserveLocator: {
+    action: "reobserve",
+    instruction: "Inspect the current DOM and form a locator from current accessible facts.",
+  },
+  reacquirePage: {
+    action: "reacquire-handle",
+    instruction:
+      "Await an operation on the stable panel CDP session to bind its current generation, then repeat only safe reads. Do not replay an interrupted action.",
+  },
+  inspectPanelAndReacquirePage: {
+    action: "reacquire-handle",
+    instruction:
+      "Inspect the panel lifecycle, then await an operation on the stable CDP session to bind its current generation. Do not replay an interrupted action.",
+  },
+  correctPageFunction: {
+    action: "correct-request",
+    instruction: "Correct the page function, then call it again.",
+  },
+  handleDialogAndObserve: {
+    action: "reobserve",
+    instruction: "Handle the open JavaScript dialog, then observe the page again.",
+  },
+} as const satisfies Record<string, CdpRecovery>;
+
 export interface CdpFailureData {
   code:
     | "cdp_target_connection_failed"
@@ -1491,13 +1522,7 @@ export interface CdpFailureData {
     | "cdp_workspace_navigation_forbidden";
   operation: string;
   failureKind: "user-code" | "infrastructure";
-  recovery:
-    | "correct-page-function"
-    | "reobserve-locator"
-    | "reacquire-page"
-    | "inspect-panel-and-reacquire-page"
-    | "use-panel-handle-lifecycle"
-    | "handle-dialog-and-observe";
+  recovery: CdpRecovery;
   locator?: string;
   timeoutMs?: number;
   observations?: number;
@@ -1549,7 +1574,7 @@ export class CdpError extends Error {
       code: this.code,
       operation: options.operation ?? "locator",
       failureKind,
-      recovery: options.recovery ?? "reobserve-locator",
+      recovery: options.recovery ?? CDP_RECOVERY.reobserveLocator,
       ...(options.locator ? { locator: options.locator } : {}),
       ...(options.timeoutMs === undefined
         ? {}
@@ -2068,6 +2093,22 @@ class WorkerCdpPage {
     );
   }
 
+  /**
+   * Replace the main frame's document with `html` without navigating; the
+   * URL is unchanged. Resolves once the browser has committed the document.
+   */
+  async setContent(html: string): Promise<void> {
+    const frameId = this.mainFrameId;
+    if (!frameId) {
+      throw new CdpError("The page has no main frame to receive content", {
+        code: "cdp_protocol_error",
+        operation: "page.setContent()",
+        recovery: CDP_RECOVERY.reacquirePage,
+      });
+    }
+    await this.connection.send("Page.setDocumentContent", { frameId, html });
+  }
+
   /** Set a caller-selected deadline for actions/reads. By default there is no deadline. */
   setDefaultTimeout(timeoutMs: number): void {
     if (!Number.isFinite(timeoutMs) || timeoutMs < 0)
@@ -2176,7 +2217,7 @@ class WorkerCdpPage {
       throw new CdpError(formatRuntimeException(result.exceptionDetails), {
         code: "cdp_evaluation_failed",
         operation,
-        recovery: "correct-page-function",
+        recovery: CDP_RECOVERY.correctPageFunction,
       });
     }
     return result.result?.value;
@@ -2255,7 +2296,7 @@ class WorkerCdpPage {
             {
               code: "cdp_locator_ambiguous",
               operation: op,
-              recovery: "reobserve-locator",
+              recovery: CDP_RECOVERY.reobserveLocator,
               matchCount: failure.matchCount,
               candidates: failure.candidates,
               instruction:
@@ -2326,7 +2367,7 @@ class WorkerCdpPage {
             {
               code: "cdp_locator_state_mismatch",
               operation: op,
-              recovery: "reobserve-locator",
+              recovery: CDP_RECOVERY.reobserveLocator,
               ...budget.failureData,
               state,
             },
@@ -2375,7 +2416,7 @@ class WorkerCdpPage {
         locator: where,
         code: "cdp_locator_operation_failed",
         operation: op,
-        recovery: "reobserve-locator",
+        recovery: CDP_RECOVERY.reobserveLocator,
         evidence,
       });
     }
@@ -2505,7 +2546,7 @@ class WorkerCdpPage {
         throw new CdpError(`${budget.description} waiting for function`, {
           code: "cdp_readiness_exhausted",
           operation: "waitForFunction",
-          recovery: "correct-page-function",
+          recovery: CDP_RECOVERY.correctPageFunction,
           ...budget.failureData,
         });
       await this.pauseObservation(Math.min(polling, remaining));
@@ -2642,7 +2683,7 @@ class WorkerCdpPage {
         locator: where,
         code: "cdp_locator_not_actionable",
         operation: "click",
-        recovery: "reobserve-locator",
+        recovery: CDP_RECOVERY.reobserveLocator,
         ...budget.failureData,
         evidence: await this.captureLocatorEvidence(descriptor),
       },
@@ -2740,7 +2781,7 @@ class WorkerCdpPage {
           locator: describeLocator(descriptor),
           code: "cdp_interaction_outcome_not_observed",
           operation: action,
-          recovery: "reobserve-locator",
+          recovery: CDP_RECOVERY.reobserveLocator,
           ...(Number.isFinite(timeoutMs) ? { timeoutMs } : {}),
           ...(cause instanceof CdpError
             ? {

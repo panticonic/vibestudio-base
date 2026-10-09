@@ -494,15 +494,6 @@ export function TemplateAuthoring({
                       ))}
                     </div>
                   )}
-                  {setup.parts.some(
-                    (part) => part.ownership === "unlisted",
-                  ) && (
-                    <Text as="p" size="2" color="gray" mt="2">
-                      Additional workspace units are not declared by this
-                      template. Review them under Customize included units to
-                      include them.
-                    </Text>
-                  )}
                   {removed.length > 0 && (
                     <Callout.Root color="amber" mt="3">
                       <Callout.Text>
@@ -534,24 +525,6 @@ export function TemplateAuthoring({
                       Owned by this template
                     </Heading>
                     {partRows(authored)}
-                    {setup.parts.some(
-                      (part) => part.ownership === "unlisted",
-                    ) && (
-                      <>
-                        <Heading size="2" mt="4">
-                          Additional workspace units
-                        </Heading>
-                        <Text size="1" color="gray">
-                          Not declared by this template. Include only what
-                          belongs in this release.
-                        </Text>
-                        {partRows(
-                          setup.parts.filter(
-                            (part) => part.ownership === "unlisted",
-                          ),
-                        )}
-                      </>
-                    )}
                     {inherited.length > 0 && (
                       <details>
                         <summary>

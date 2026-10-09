@@ -33,14 +33,14 @@ async function fixture(
   const target = { ...source, commit: "b".repeat(40) };
   const observation: Pick<
     workspace.SemanticWorkspaceObservation,
-    "manifest" | "templateSources"
+    "manifest" | "templateSources" | "installation"
   > = {
     manifest: {
       top: { systemEpoch: 0 },
-      inventory: { repositories: [] },
       dependencies: [],
     },
     templateSources: [source],
+    installation: null,
   };
   vi.spyOn(workspace, "observeWorkspace").mockResolvedValue(
     observation as never,
@@ -220,20 +220,20 @@ it("refreshes one coherent workspace notice when a parent and its dependency bot
   const base = { ...f.source, url: "https://example.test/base.git" };
   const baseTarget = { ...base, commit: "c".repeat(40) };
   f.observation.templateSources = [base, f.source];
-  f.observation.manifest.installation = {
+  f.observation.installation = {
     sources: [
       {
         pin: base,
         manifest: JSON.stringify({
           systemEpoch: 0,
-          template: { repositories: [] },
+          template: {  },
         }),
       },
       {
         pin: f.source,
         manifest: JSON.stringify({
           systemEpoch: 0,
-          template: { repositories: [], dependencies: [{ url: base.url }] },
+          template: {  dependencies: [{ url: base.url }] },
         }),
       },
     ],

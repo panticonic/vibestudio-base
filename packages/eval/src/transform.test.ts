@@ -26,6 +26,18 @@ describe("transformCode", () => {
       expect(result.code).not.toContain("<div>");
     });
 
+    it("keeps `await using` declarations for the runtime's native disposal", async () => {
+      const result = await transformCode(
+        `import { openPanel } from "@workspace/runtime";
+await using owned = await openPanel("about/new", { parentId: null });
+return owned.id;`,
+        { syntax: "typescript" }
+      );
+
+      expect(result.code).toContain("await using owned =");
+      expect(result.requires).toContain("@workspace/runtime");
+    });
+
     it("transforms JSX to CommonJS", async () => {
       const result = await transformCode(
         `export default function App() { return <span>Hi</span>; }`,

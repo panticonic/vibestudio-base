@@ -28,7 +28,34 @@
           "evidence": "intentional-broad"
         }
       ]
-    }
+    },
+    "services": [
+      {
+        "action": "manage panel-bound command conversations",
+        "authority": {
+          "binding": "declared",
+          "principals": [
+            "host",
+            "user",
+            "code"
+          ]
+        },
+        "description": "Owns durable Quickfire conversations attached to panel slots.",
+        "durableObject": {
+          "className": "QuickfireSessionsDO"
+        },
+        "name": "quickfire",
+        "notability": "everyday",
+        "presentation": {
+          "domain": "automation",
+          "verb": "manage"
+        },
+        "protocols": [
+          "vibestudio.quickfire.v1"
+        ],
+        "title": "Command conversations"
+      }
+    ]
   },
   "dependencies": {
     "@workspace/agentic-core": "workspace:*",

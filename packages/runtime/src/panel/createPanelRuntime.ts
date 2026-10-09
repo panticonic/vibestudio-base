@@ -72,17 +72,18 @@ export function createPanelApi(
   };
   const _core = createHostedRuntime(_panelHost);
 
-  // Portable top-level surface (callMain/parent/getParent/getParentWithContract +
+  // Portable top-level surface (callMain/getParent/getParentWithContract +
   // every rpc-mediated namespace + panel-tree affordances) — sourced from _core so
   // panel ≡ worker ≡ eval.
   const {
     callMain,
-    parent,
     getParent,
     getParentWithContract,
     gad,
     blobstore,
     images,
+    missions,
+    problemReports,
     workspace,
     workspaces,
     runtime,
@@ -163,8 +164,6 @@ export function createPanelApi(
     getThemeConfig: bootstrapRuntime.getThemeConfig,
     onThemeConfigChange: bootstrapRuntime.onThemeConfigChange,
     registerHostCommands: bootstrapRuntime.registerHostCommands,
-    unregisterHostCommands: bootstrapRuntime.unregisterHostCommands,
-    onHostCommandRun: bootstrapRuntime.onHostCommandRun,
     onFocus: bootstrapRuntime.onFocus,
     onConnectionError: bootstrapRuntime.onConnectionError,
     onChildCreated: _onChildCreated,
@@ -173,8 +172,8 @@ export function createPanelApi(
     switchContext,
     stateArgs: helpfulNamespace("panel.stateArgs", {
       get: bootstrapRuntime.stateArgs.get,
-      set: bootstrapRuntime.stateArgs.set,
-      setForPanel: bootstrapRuntime.stateArgs.setForPanel,
+      patch: bootstrapRuntime.stateArgs.patch,
+      patchForPanel: bootstrapRuntime.stateArgs.patchForPanel,
     }),
   });
 
@@ -188,12 +187,13 @@ export function createPanelApi(
     gatewayConfig,
     gatewayFetch,
     callMain,
-    parent,
     getParent,
     getParentWithContract,
     gad,
     blobstore,
     images,
+    missions,
+    problemReports,
     workspace,
     workspaces,
     runtime,

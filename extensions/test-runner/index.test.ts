@@ -26,17 +26,11 @@ function fixture(runtime: "browser" | "native" = "native") {
       },
     }),
   );
-  const ensureMaterialized = vi.fn(async () => undefined);
+  const ensureMaterialized = vi.fn(async () => path.join(projections, "ctx-1"));
   return {
     target,
     ensureMaterialized,
     ctx: {
-      workspace: {
-        getInfo: async () => ({
-          path: projections,
-          contextProjectionsPath: projections,
-        }),
-      },
       fs: { ensureMaterialized },
       invocation: {
         current: () => ({ caller: { callerId: "agent", contextId: "ctx-1" } }),
@@ -73,7 +67,11 @@ describe("native test adapter boundary", () => {
     const { ctx } = fixture();
     const api = await activate(ctx);
     await expect(
-      api.runNative({ target: "packages/fixture", suite: "missing", ...identity }),
+      api.runNative({
+        target: "packages/fixture",
+        suite: "missing",
+        ...identity,
+      }),
     ).rejects.toThrow("Unknown declared test suite");
   });
 
@@ -94,7 +92,12 @@ describe("native test adapter boundary", () => {
       ...identity,
       fileFilter: "simple.test.ts",
     });
-    expect(result).toMatchObject({ status: "passed", passed: 1, failed: 0, total: 1 });
+    expect(result).toMatchObject({
+      status: "passed",
+      passed: 1,
+      failed: 0,
+      total: 1,
+    });
     const contextNodeModules = path.join(
       path.dirname(target),
       "..",
@@ -107,21 +110,36 @@ describe("native test adapter boundary", () => {
     ).toEqual([]);
   });
   it.each([
-    ["failed", 'import { expect, it } from "vitest"; it("fails", () => expect(1).toBe(2));'],
+    [
+      "failed",
+      'import { expect, it } from "vitest"; it("fails", () => expect(1).toBe(2));',
+    ],
     ["no-tests", 'import { it } from "vitest"; it.skip("skipped", () => {});'],
-  ] as const)("returns the native %s terminal status", async (status, source) => {
-    const { ctx, target } = fixture();
-    fs.writeFileSync(path.join(target, "simple.test.ts"), source);
-    const api = await activate(ctx);
-    expect(await api.runNative({ target: "packages/fixture", suite: "unit", ...identity })).toMatchObject({ status });
-  });
+  ] as const)(
+    "returns the native %s terminal status",
+    async (status, source) => {
+      const { ctx, target } = fixture();
+      fs.writeFileSync(path.join(target, "simple.test.ts"), source);
+      const api = await activate(ctx);
+      expect(
+        await api.runNative({
+          target: "packages/fixture",
+          suite: "unit",
+          ...identity,
+        }),
+      ).toMatchObject({ status });
+    },
+  );
 
   it("rejects an unhandled engine error despite a passing test report", async () => {
     const { ctx, target } = fixture();
-    fs.writeFileSync(path.join(target, "simple.test.ts"),
-      'import { it } from "vitest"; it("partial pass", async () => { setTimeout(() => { throw new Error("unhandled native failure"); }, 0); await new Promise(resolve => setTimeout(resolve, 20)); });');
+    fs.writeFileSync(
+      path.join(target, "simple.test.ts"),
+      'import { it } from "vitest"; it("partial pass", async () => { setTimeout(() => { throw new Error("unhandled native failure"); }, 0); await new Promise(resolve => setTimeout(resolve, 20)); });',
+    );
     const api = await activate(ctx);
-    await expect(api.runNative({ target: "packages/fixture", suite: "unit", ...identity })).rejects.toThrow("verification did not complete");
+    await expect(
+      api.runNative({ target: "packages/fixture", suite: "unit", ...identity }),
+    ).rejects.toThrow("verification did not complete");
   });
-
 });

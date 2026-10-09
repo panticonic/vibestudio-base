@@ -36,10 +36,7 @@ export interface TestRunResult {
 }
 
 interface ExtensionContextLike {
-  workspace: {
-    getInfo(): Promise<{ path: string; contextProjectionsPath: string }>;
-  };
-  fs: { ensureMaterialized(scope: string | string[] | "all"): Promise<void> };
+  fs: { ensureMaterialized(scope: string | string[] | "all"): Promise<string> };
   invocation: {
     current(): {
       caller: { callerId: string; callerKind?: string; contextId?: string };
@@ -257,10 +254,12 @@ export async function activate(ctx: ExtensionContextLike) {
   return {
     async runNative(request: TestRunRequest): Promise<TestRunResult> {
       assertTarget(request.target);
-      if (!request.artifactKey || !/^[0-9a-f]{64}$/u.test(request.executionDigest)) {
+      if (
+        !request.artifactKey ||
+        !/^[0-9a-f]{64}$/u.test(request.executionDigest)
+      ) {
         throw new Error("runNative requires a sealed execution identity");
       }
-      const info = await ctx.workspace.getInfo();
       const invocation = ctx.invocation.current();
       const contextId =
         request.contextId ??
@@ -269,8 +268,7 @@ export async function activate(ctx: ExtensionContextLike) {
       if (!contextId)
         throw new Error("test-runner.runNative requires a contextId");
       assertContextId(contextId);
-      await ctx.fs.ensureMaterialized(request.target);
-      const root = path.join(info.contextProjectionsPath, contextId);
+      const root = await ctx.fs.ensureMaterialized(request.target);
       const targetPath = within(root, request.target);
       const suiteIncludes = declaredNativeSuite(targetPath, request.suite);
       if (request.fileFilter) within(targetPath, request.fileFilter);
@@ -285,7 +283,9 @@ export async function activate(ctx: ExtensionContextLike) {
         const filePattern = request.fileFilter
           ? within(targetPath, request.fileFilter)
           : targetPath;
-        const vitestNode = createRequire(import.meta.url).resolve("vitest/node");
+        const vitestNode = createRequire(import.meta.url).resolve(
+          "vitest/node",
+        );
         fs.writeFileSync(
           runnerPath,
           nativeRunnerSource({
@@ -353,7 +353,8 @@ export async function activate(ctx: ExtensionContextLike) {
         const passed = report.numPassedTests ?? 0;
         const failed = report.numFailedTests ?? 0;
         const total = report.numTotalTests ?? passed + failed;
-        const status = total === 0 ? "no-tests" : failed > 0 ? "failed" : "passed";
+        const status =
+          total === 0 ? "no-tests" : failed > 0 ? "failed" : "passed";
         const expectedCode = status === "failed" ? 1 : 0;
         if (outcome.code !== expectedCode) {
           throw new Error(
@@ -366,7 +367,9 @@ export async function activate(ctx: ExtensionContextLike) {
           artifactKey: request.artifactKey,
           executionDigest: request.executionDigest,
           summary:
-            status === "no-tests" ? "No tests matched the execution filter" : failed
+            status === "no-tests"
+              ? "No tests matched the execution filter"
+              : failed
                 ? `${failed} of ${total} tests failed`
                 : `${passed} tests passed`,
           passed,

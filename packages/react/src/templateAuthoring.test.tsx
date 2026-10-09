@@ -100,7 +100,7 @@ it("reviews the complete selection and retries the same captured publication aft
   expect(client.inspectAuthoring).toHaveBeenCalledTimes(1);
 });
 
-it("prefills upstream metadata and declared contents, and derives the version from remote tags", async () => {
+it("prefills upstream metadata and local source contents, and derives the version from remote tags", async () => {
   const setup = {
     name: "Personal",
     description: "Personal tools",
@@ -122,7 +122,7 @@ it("prefills upstream metadata and declared contents, and derives the version fr
         ownership: "inherited",
         inheritedFrom: "git+https://github.com/team/base.git",
       },
-      { repoPath: "projects/scratch", ownership: "unlisted" },
+      { repoPath: "projects/scratch", ownership: "authored" },
     ],
   };
   const client = {
@@ -167,7 +167,7 @@ it("prefills upstream metadata and declared contents, and derives the version fr
   expect(client.inspectAuthoring).toHaveBeenCalledWith({
     name: "Personal",
     description: "Personal tools",
-    parts: ["panels/personal", "panels/chat"],
+    parts: ["panels/personal", "panels/chat", "projects/scratch"],
   });
 });
 

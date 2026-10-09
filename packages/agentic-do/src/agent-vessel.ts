@@ -156,6 +156,7 @@ import {
   AGENTIC_PROTOCOL_VERSION,
   hydrateStoredValueRefs,
   isRespondPolicy,
+  RESPOND_POLICIES,
   participantRefFromMetadata,
   resolveShouldRespond,
   resolveHandle,
@@ -182,7 +183,12 @@ import {
   publishAgentTaskSeed,
   subscribeAgentToChannel,
 } from "@workspace/agentic-core/agent-launch";
-import { resolveAgentObservationConfig } from "@workspace/agentic-core";
+import {
+  AGENT_APPROVAL_LEVELS,
+  isAgentApprovalLevel,
+  resolveAgentObservationConfig,
+  type AgentApprovalLevel,
+} from "@workspace/agentic-core";
 import {
   subagentFirstTaskPrompt,
   subagentRuntimePrompt,
@@ -191,6 +197,7 @@ import {
 import {
   MISSION_COMPLETION_PROTOCOL,
   compileMissionAuthorityPlan,
+  createMissionsClient,
   type AutomationExecutorRunStatus,
   type MissionAgentAction,
   type MissionCharter,
@@ -430,7 +437,7 @@ function observableSubagentLaunchConfig(
   return Object.keys(selected).length > 0 ? selected : null;
 }
 
-export type ApprovalLevel = 0 | 1 | 2;
+export type ApprovalLevel = AgentApprovalLevel;
 
 export type CustomMessageReducer = (state: unknown, update: unknown) => unknown;
 
@@ -1322,7 +1329,7 @@ export abstract class AgentVesselBase extends NativeChannelOwner<NativeProductCh
       seed.fallbackScope = c["fallbackScope"];
     }
     const al = c["approvalLevel"];
-    if (al === 0 || al === 1 || al === 2) seed.approvalLevel = al;
+    if (isAgentApprovalLevel(al)) seed.approvalLevel = al;
     if (isRespondPolicy(c["respondPolicy"]))
       seed.respondPolicy = c["respondPolicy"];
     const rf = c["respondFrom"];
@@ -1562,7 +1569,7 @@ export abstract class AgentVesselBase extends NativeChannelOwner<NativeProductCh
     return {
       name: "launch_automation",
       description:
-        "Create and immediately start one recurring or manual automation. By default the current agent wakes in this conversation; choose a fresh conversation only for a separate topic or genuinely long-running background task. If shared context would help and wake-ups can be more than one hour apart, ask the user which mode they want when their intent is unclear. A prompt action is an instruction for the future agent, not a final message payload: preserve requested effects such as notifying the owner instead of supplying only the text to send. A watch action runs deterministic code first: return {protocol: 'automation-signal.v1', prompt: null} to finish quietly without a model call, or a nonempty prompt string to continue this run with the agent. The nonempty watch prompt is the future agent's task: preserve requested effects there. For owner notifications, explicitly instruct it to call notify with to: owner and alert: inbox; a final chat reply does not send an inbox notification. Model-facing tools such as notify are available to prompt actions and signaled watch turns, not as eval JavaScript globals. List concrete external service operations known at launch so the host can pre-acquire eligible standing grants; this list is not a runtime allowlist, and omitted authority falls back to ordinary user approval during a run. The running automation is added to this chat as an inspectable pill before the tool returns.",
+        "Create and immediately start one recurring or manual automation. By default the current agent wakes in this conversation; choose a fresh conversation only for a separate topic or genuinely long-running background task. If shared context would help and wake-ups can be more than one hour apart, ask the user which mode they want when their intent is unclear. For a reminder or any fixed message to the owner, use a notify action: it delivers the text to the owner's inbox and phone on each run without a model turn. A prompt action is an instruction for the future agent, not a message payload; a final chat reply from it does not reach the owner's inbox, so when the work itself must end in a notification, tell the agent to call notify with to: owner. A watch action runs deterministic code first: return {protocol: 'automation-signal.v1', prompt: null} to finish quietly without a model call, or a nonempty prompt string to continue this run with the agent. Model-facing tools such as notify are available to prompt actions and signaled watch turns, not as eval JavaScript globals. List concrete external service operations known at launch so the host can pre-acquire eligible standing grants; this list is not a runtime allowlist, and omitted authority falls back to ordinary user approval during a run. The running automation is added to this chat as an inspectable pill before the tool returns.",
       parameters: Type.Unsafe<Record<string, JsonValue>>({
         type: "object",
         properties: {
@@ -1592,6 +1599,26 @@ export abstract class AgentVesselBase extends NativeChannelOwner<NativeProductCh
                   reset: { type: "boolean" },
                 },
                 required: ["kind", "code"],
+                additionalProperties: false,
+              },
+              {
+                type: "object",
+                description:
+                  "Deliver this exact text to the owner's inbox (and phone) on each run, with no model turn. Runs in the current conversation.",
+                properties: {
+                  kind: { const: "notify" },
+                  text: { type: "string" },
+                  title: {
+                    type: "string",
+                    description: "Headline; defaults to the automation name.",
+                  },
+                  alert: {
+                    enum: ["inbox", "interrupt"],
+                    description:
+                      "'inbox' (default) or 'interrupt' for a high-priority push.",
+                  },
+                },
+                required: ["kind", "text"],
                 additionalProperties: false,
               },
             ],
@@ -1661,7 +1688,7 @@ export abstract class AgentVesselBase extends NativeChannelOwner<NativeProductCh
                 args: {
                   type: "array",
                   description:
-                    "The receiver's canonical service argument tuple. Inspect the service method schema and supply required arguments, including context IDs that a portable JavaScript wrapper may supply implicitly. For example, vcs.status requires [{ contextId: theContextId }].",
+                    "The receiver's service argument tuple, as you would pass it through the runtime client. Omit a context-bound method's contextId (for example, vcs.status takes no args here): the host binds it to this agent's context, exactly as the runtime wrapper does.",
                 },
                 use: { enum: ["action", "conditional"] },
               },
@@ -2531,19 +2558,6 @@ export abstract class AgentVesselBase extends NativeChannelOwner<NativeProductCh
     };
   }
 
-  /** Deliver an addressing-approved message to the reasoning loop. */
-
-  /** Route a `message.edited` / `message.retracted` channel event to the loop
-   *  as an edit/retract command. The fold enforces the author guard and the
-   *  read-wins cutoff; here we only skip our own events and require a target. */
-
-  /** Settle our pending channel_call effects from the channel's durable
-   *  invocation terminals (the channel broadcasts them to all subscribers,
-   *  including us, the caller). This IS the outcome-delivery leg of the
-   *  channel_call at-least-once protocol — without it a turn that invokes a
-   *  panel method (inline UI, feedback, …) never advances. Duplicate delivery is
-   *  a no-op: the outbox row is gone after the first settle. */
-
   protected turnContent(_channelId: string, event: ChannelEvent): string {
     const agentic = event.payload as { payload?: { blocks?: unknown[] } };
     const content = (agentic.payload?.blocks ?? [])
@@ -3345,9 +3359,11 @@ export abstract class AgentVesselBase extends NativeChannelOwner<NativeProductCh
       }
       case "setApprovalLevel": {
         const level = (args as { level?: unknown } | null)?.level;
-        if (level !== 0 && level !== 1 && level !== 2) {
+        if (!isAgentApprovalLevel(level)) {
           return {
-            result: { error: "setApprovalLevel requires level: 0, 1, or 2" },
+            result: {
+              error: `setApprovalLevel requires level: ${AGENT_APPROVAL_LEVELS.join(", ")}`,
+            },
             isError: true,
           };
         }
@@ -3359,7 +3375,7 @@ export abstract class AgentVesselBase extends NativeChannelOwner<NativeProductCh
           return {
             result: {
               error:
-                "setRespondPolicy requires policy: all, mentioned, mentioned-strict, mentioned-or-followup, or from-participants",
+                `setRespondPolicy requires policy: ${RESPOND_POLICIES.join(", ")}`,
             },
             isError: true,
           };
@@ -3745,16 +3761,10 @@ export abstract class AgentVesselBase extends NativeChannelOwner<NativeProductCh
       this.setStateValue(intentKey, intent);
     }
     const retainedDefinition = JSON.parse(intent) as { name: string; charter: MissionCharter };
-    const authorityPlan = await compileMissionAuthorityPlan(
-      this.rpc,
-      retainedDefinition.charter.execution,
-      `default-automation:${input.id}:authority-plan`
-    );
-    const mission = await this.rpc.call<MissionRecord>(
-      target,
-      "provisionDefault",
-      [input.id, { ...retainedDefinition, authorityPlan }],
-      { idempotencyKey: `default-automation:${input.id}:provision` }
+    const mission = await createMissionsClient(this.rpc).provisionDefault(
+      input.id,
+      retainedDefinition,
+      { idempotencyKey: `default-automation:${input.id}:provision` },
     );
     return reconcileHost(mission, false);
   }
@@ -6730,8 +6740,8 @@ export abstract class AgentVesselBase extends NativeChannelOwner<NativeProductCh
     }
     if ("approvalLevel" in patch) {
       const l = patch["approvalLevel"];
-      if (l !== 0 && l !== 1 && l !== 2)
-        throw new Error("approvalLevel must be 0, 1, or 2");
+      if (!isAgentApprovalLevel(l))
+        throw new Error(`approvalLevel must be ${AGENT_APPROVAL_LEVELS.join(", ")}`);
       next.approvalLevel = l;
     }
     if ("respondPolicy" in patch) {

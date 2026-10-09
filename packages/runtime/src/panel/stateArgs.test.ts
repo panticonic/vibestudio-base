@@ -33,17 +33,21 @@ describe("state args snapshots", () => {
     expect(state.get<typeof initial>().agents[0]?.config.model).toBe("two");
   });
 
-  it("shares the canonical snapshot across a setter reply and duplicate host event", async () => {
+  it("shares the canonical snapshot across a patch reply and duplicate host event", async () => {
     const initial = { config: { enabled: true }, cursor: 1 };
     const changed = vi.fn();
-    const call = async <T>(_service: string, method: string): Promise<T> => {
-      if (method === "workspace-state.panelTree.detail") {
-        return {
-          currentHistory: { state_args: JSON.stringify(initial) },
-          entity: {},
-        } as T;
+    const calls: Array<{ method: string; args: unknown[] }> = [];
+    const call = async <T>(
+      _service: string,
+      method: string,
+      args: unknown[],
+    ): Promise<T> => {
+      calls.push({ method, args });
+      if (method === "workspace-state.slot.patchCurrentStateArgs") {
+        // The owner returns its authoritative merged result.
+        return { config: { enabled: true }, cursor: 2 } as T;
       }
-      return undefined as T;
+      throw new Error(`Unexpected RPC ${method}`);
     };
     const state = createStateArgsRuntime({
       slotId: asPanelSlotId("panel:tree/test"),
@@ -51,10 +55,35 @@ describe("state args snapshots", () => {
       call,
       changed,
     });
-    const reply = await state.set({ cursor: 2 });
+    const reply = await state.patch({ cursor: 2 });
+    expect(calls).toEqual([
+      {
+        method: "workspace-state.slot.patchCurrentStateArgs",
+        args: ["panel:tree/test", { cursor: 2 }],
+      },
+    ]);
     expect(reply).toBe(state.get());
     state.apply({ config: { enabled: true }, cursor: 2 });
     expect(changed).toHaveBeenCalledTimes(1);
     expect(state.get<typeof initial>().config).toBe(initial.config);
+  });
+
+  it("propagates an owner refusal without touching the local snapshot", async () => {
+    const initial = { cursor: 1 };
+    const changed = vi.fn();
+    const conflict = Object.assign(new Error("stateArgs patch conflicted"), {
+      code: "PANEL_STATE_ARGS_CONFLICT",
+    });
+    const state = createStateArgsRuntime({
+      slotId: asPanelSlotId("panel:tree/test"),
+      initial,
+      call: async () => {
+        throw conflict;
+      },
+      changed,
+    });
+    await expect(state.patch({ cursor: 2 })).rejects.toBe(conflict);
+    expect(state.get()).toBe(initial);
+    expect(changed).not.toHaveBeenCalled();
   });
 });

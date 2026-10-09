@@ -1,148 +1,130 @@
 # External snapshot import
 
-## Import one exact snapshot
+## Import one snapshot
 
-Use `vcs.importSnapshot` when Git, an archive, upload, filesystem tree, or
-generated source enters semantic history. One import creates one ordinary work
-unit with `kind: "import"` and one committed event over exact complete
-repository trees. The work unit requires one `externalSnapshot` value. Its
-repository and file differences are ordinary changes: repository create, file
-create/delete/mode, and whole-content replacement. There is no synthetic
-barrier change or second import graph.
+Use `vcs.importSnapshot` when content from Git, an archive, an upload, a
+filesystem tree, or a generator enters semantic history. One import creates
+one work unit with `kind: "import"` (which requires an `externalSnapshot`
+value) and one committed event over complete repository trees. The recorded
+differences are normal changes: repository create, file create/delete/mode,
+and whole-content replacement. There is no special barrier change or separate
+import graph.
 
-Provide exactly the external-source coordinate that can be proved:
+Provide only the source information you can prove:
 
 - source kind and canonical credential-free URI;
-- exact snapshot revision;
-- complete repository trees with each file's canonical path, exact content
-  hash, and mode.
+- snapshot revision;
+- complete repository trees, with each file's canonical path, content hash,
+  and mode.
 
-The host content owner verifies the named CAS digests and returns their
-intrinsic content descriptors without transporting the blobs into semantic
-execution. Callers do not assert content kind, byte length, or coordinate
-extent. The semantic workspace validates the host receipt, enriches every file
-fact with its observed intrinsic descriptor, then derives one
-canonical `snapshotDigest` from the complete normalized repository/file
-facts; callers do not supply a root, tree hash, or snapshot digest. The
-work unit stores all four values together:
-`sourceKind`, `sourceUri`, `snapshotRevision`, and `snapshotDigest`. They answer
-which source snapshot the importer observed and which verified descriptors
-crossed the boundary, at snapshot granularity. The source coordinate is
-source-observed evidence—not cryptographic identity, authorization, or native
-authorship—and does not assert who authored any path or coordinate before
-import. Never place a checkout path, embedded credentials, access token, or
-signed query parameters in the stored source URI. For Git, use the canonical credential-free remote; a
-local-only remote is represented by an opaque digest, not its machine path.
+The host content store verifies the named CAS digests and returns each blob's
+content descriptor without sending the blobs into semantic execution. Callers
+don't state content kind, byte length, or coordinate extent, and don't supply
+a root, tree hash, or snapshot digest. The semantic workspace validates the
+host receipt, adds each observed descriptor to its file fact, and derives a
+canonical `snapshotDigest` from the complete normalized facts.
 
-The normalized snapshot also stores the complete sorted IDs of every repository
-the snapshot targeted, including an identical re-import that authors no content
-change. Work-unit inspection returns that exact `targetRepositoryIds` vector.
-`imports-repository` neighbors expose the same relation as typed walkable edges.
-Do not infer targets from authored-change previews, which are independently
-bounded and may be empty.
+The work unit stores `sourceKind`, `sourceUri`, `snapshotRevision`, and
+`snapshotDigest` together. They record which snapshot the importer observed
+and which verified descriptors came in, at snapshot granularity. They are
+observations, not a cryptographic identity, authorization, or native
+authorship, and say nothing about who wrote any path before the import. Never
+put a checkout path, embedded credentials, access token, or signed query
+parameters in the source URI. For Git, use the credential-free remote URL; a
+local-only remote is represented by an opaque digest, not its path.
 
-Capture/read the external source through the ordinary `fs` owner so its exact
-content digests are present in the workspace CAS. `vcs.importSnapshot` consumes
-the complete source-level repository/file facts; it does not accept intrinsic
-content claims, a caller root, a raw host path, or perform a hidden filesystem
-read.
+The snapshot also stores the sorted IDs of every targeted repository, even
+for an identical re-import that changes nothing. Work-unit inspection returns
+them as `targetRepositoryIds`, and `imports-repository` neighbors expose them
+as edges. Don't infer targets from authored-change previews, which are bounded
+separately and may be empty.
 
-One import remains one atomic semantic transaction regardless of repository or
-file count. Repositories and files must arrive in strict canonical path order;
-manifest reads use bounded pages internally so database query limits do not leak
-into the public contract. Each path component is at most 255 UTF-8 bytes and a
-complete file path is at most 512 UTF-8 bytes because those are path-identity
-constraints, not operation-capacity policy. There is no descriptor-size or item-count
-ceiling, upload session, chunk assembler, or partial visible import state.
+Read the external source through `fs` so its digests are in the workspace
+CAS. `vcs.importSnapshot` takes the complete repository and file facts; it
+doesn't accept caller content descriptors, a caller root, or a raw host path,
+and never reads the filesystem itself.
 
-Every path crosses one shared admission predicate at schema ingress, semantic
-resume, external adapters, host scans, and materialization. `.git`, `.gad`, the
-materializer's context-binding file, and exact credential-bearing filenames
-such as `.env` cannot enter semantic state: common project tools consume those
-exact names automatically, so materializing them can disclose credentials.
-Project configuration such as `.npmrc` remains ordinary tracked source; secrets
-belong in the credential store, not repository configuration. Templates such as
-`.env.example` also remain ordinary source. Ordinary project content such as `dist/`, `out/`,
-`release/`, `coverage/`, `.cache/`, `node_modules/`, logs, archives, and
-environment templates is not excluded merely by convention.
+An import is one atomic transaction regardless of size. Repositories and
+files must be in canonical path order. Manifest reads are paged internally,
+so database limits don't leak into the contract. A path component may be at
+most 255 UTF-8 bytes and a file path at most 512; these are path-identity
+limits, not capacity limits. There is no descriptor-size or item-count limit,
+upload session, chunking, or partially visible import.
 
-There is no evidence-quality mode, per-path last-touch data, imported author,
-external commit graph, or evidence mini-graph. Do not traverse Git history to
-make the import look more complete. A shallow clone is sufficient when it can
-identify the requested revision and exact tree. If a separate Git query says a
-commit last touched a path, describe that as external path-level evidence; do
-not turn it into Vibestudio line blame. The current import contract deliberately
-does not persist that optional claim. Blame stops at an import boundary when
-its terminal ordinary change belongs to an import work unit.
+One shared path check applies at schema ingress, semantic resume, external
+adapters, host scans, and materialization. `.git`, `.gad`, the materializer's
+context-binding file, and credential-bearing filenames such as `.env` can
+never enter semantic state, because common tools read those names
+automatically and materializing them could expose credentials. Configuration
+such as `.npmrc` is normal tracked source (secrets belong in the credential
+store), as are templates such as `.env.example`. `dist/`, `out/`, `release/`,
+`coverage/`, `.cache/`, `node_modules/`, logs, archives, and environment
+templates are not excluded by convention.
 
-Content classification is exact and source-independent. Decode the complete
-blob as strict UTF-8. A successful decode produces text with `byteLength` equal
-to the original octet count and `coordinateExtent` equal to the decoded UTF-16
-code-unit length. Any malformed sequence produces opaque bytes with equal byte
-length and coordinate extent. File extension, MIME type, NUL heuristics,
-replacement decoding, and caller overrides do not participate.
+Imports have no evidence-quality mode, per-path last-touch data, imported
+author, or external commit graph. Don't walk Git history to make an import
+look more complete; a shallow clone that identifies the revision and tree is
+enough. If a separate Git query says a commit last touched a path, call it
+external path-level evidence, not Vibestudio line blame; the import doesn't
+store it. Blame stops at an import boundary when its terminal change belongs
+to an import work unit.
 
-## Prepare causal ingress and state
+Classification depends only on the bytes. The whole blob is decoded as strict
+UTF-8. On success it is text: `byteLength` is the byte count and
+`coordinateExtent` the UTF-16 code-unit length. Any malformed sequence makes
+it opaque bytes, with equal byte length and coordinate extent. Extension, MIME
+type, NUL heuristics, replacement decoding, and caller overrides play no part.
 
-When an agent imports, run it from the real tool invocation so the graph remains
-trigger message → turn → invocation → globally unique semantic command → import
-work unit → ordinary changes. An authorized direct import instead stops
-honestly at its semantic command. Do not create a wrapper agent or synthetic
-adapter invocation.
+## Prepare the import
 
-Import requires a clean context because it creates a committed import event
-directly. Commit or discard local applications first. Supply the current
-working head and one globally unique command ID with the source tuple and
-complete repository/file source facts. The semantic workspace observes each
-distinct content digest through the existing content port, validates its
-intrinsic descriptor, and derives the snapshot digest only from the normalized
-combination. Raw blob bytes do not cross
-into semantic execution.
+An agent should import from its actual tool invocation, so the graph reads
+trigger message → turn → invocation → semantic command → import work unit →
+changes. An authorized direct import ends at its semantic command. Don't
+create a wrapper agent or synthetic adapter invocation.
 
-For a new repository, omit its repository ID and provide a vacant workspace
-path. For a later complete snapshot of an existing repository, provide its
-stable repository ID. The imported manifest is complete, not a patch. The
-semantic workspace derives only the changes between that complete snapshot and
-the exact basis. Unchanged files do not get fake changes.
+Import needs a clean context, because it creates a committed event directly;
+commit or discard local applications first. Supply the current working head,
+a globally unique command ID, the source fields, and the complete repository
+and file facts. Raw bytes never enter semantic execution.
 
-A whole-content external replacement records exact before and after endpoints
-but no inferred preservation mapping. Similar bytes do not prove coordinate
-continuity. Because import changes use the ordinary vocabulary, they appear in
-normal compare pages, can be merged in bounded coordinate pages, and can be
-reverted without an import-specific workflow.
+For a new repository, omit its ID and give a vacant workspace path. For a
+later snapshot of an existing repository, give its ID. The manifest is always
+complete, not a patch: only differences from the current basis become
+changes, and unchanged files get none.
+
+A whole-content replacement records before and after endpoints but no
+preservation mapping; similar bytes don't prove continuity. Import changes
+use the normal vocabulary, so they appear in compare pages, merge page by
+page, and revert without any import-specific workflow.
 
 ## Verify the result
 
-The successful return is the atomic acknowledgement of the committed import. It
-includes `contextId`, `eventId`, `applicationId`, `workUnitId`,
-`importedRepositoryIds`, and the complete canonical `externalSnapshot`. These
-fields are required; callers must not accept an event-only result or reconstruct
-the application/work-unit/snapshot tuple in a post-commit pass.
+A successful return confirms the committed import and must include
+`contextId`, `eventId`, `applicationId`, `workUnitId`,
+`importedRepositoryIds`, and the complete `externalSnapshot`. Don't accept an
+event-only result or reconstruct the rest afterwards. Check that:
 
-Confirm that the returned `externalSnapshot` exposes `sourceKind`, `sourceUri`,
-`snapshotRevision`, and `snapshotDigest` together, plus the complete sorted
-`targetRepositoryIds` vector. Confirm that `importedRepositoryIds` names the
-same admitted repositories. Independently inspect the returned event,
-application, and import work unit; the persisted work unit must expose the same
-snapshot. The `imports-repository` neighbors expose those same exact targets as
-walkable edges.
-Inspect its ordinary authored changes and confirm the repository identities and
-imported file states. Confirm each placed file reports intrinsic `contentKind`,
-`byteLength`, and `coordinateExtent`.
+- `externalSnapshot` has `sourceKind`, `sourceUri`, `snapshotRevision`,
+  `snapshotDigest`, and the sorted `targetRepositoryIds`;
+- `importedRepositoryIds` names the same repositories;
+- the event, application, and work unit inspect correctly, and the stored work
+  unit has the same snapshot;
+- `imports-repository` neighbors list the same targets;
+- the authored changes have the expected repositories and file states, and
+  each placed file reports `contentKind`, `byteLength`, and
+  `coordinateExtent`.
 
-For a vague question such as “who changed this line, and what do we actually
-know?”, first run bounded blame. Walk native mappings normally. When a span
-stops at an import boundary, pass its terminal typed `change` root unchanged to
-`inspect`, then do the same with its `workUnit` and `command` roots. Report the work unit's four
-snapshot fields and its exact recorded intent summary, plus any later native
-intent the graph actually proves. Join the change to its work unit through the
-change's exact ownership field; never depend on membership in a bounded
-authored-change preview. Say
-explicitly that pre-import coordinate authorship is unknown. The importer may
-have caused the admission command; that does not make it the author of the
-external bytes. Do not attribute the line to the external revision's committer
-or source system either.
+For a vague question like "who changed this line, and what do we actually
+know?", run bounded blame and follow native mappings. When a span stops at an
+import boundary, pass its terminal `change` root unchanged to `inspect`, then
+its `workUnit` and `command` roots. Report the four snapshot fields, the
+recorded intent summary, and any later native intent the graph proves. Reach
+the work unit through the change's ownership field, not a bounded
+authored-change preview. Say plainly that pre-import authorship is unknown.
+Issuing the import command doesn't make the importer the author of the
+external bytes, and neither the external revision's committer nor the source
+system should be named as author.
 
-Retry an identical uncertain import with the same command ID. Any change to the
-source tuple, repository/file facts, or expected working head requires a
-new globally unique command ID.
+Retry an identical uncertain import with the same command ID. Any change to
+the source fields, repository or file facts, or expected working head needs a
+new command ID.

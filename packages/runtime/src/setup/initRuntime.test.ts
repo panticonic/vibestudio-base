@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { rpcDiagnosticIdOf, type EnvelopeRpcTransport, type RpcEnvelope } from "@vibestudio/rpc";
 import { initRuntime } from "./initRuntime.js";
-import { setStateArgs } from "../panel/stateArgs.js";
+import { patchStateArgs } from "../panel/stateArgs.js";
 import { DEFAULT_THEME_CONFIG } from "../types.js";
 import {
   HOST_COMMAND_CONTRIBUTION_EVENT,
@@ -231,7 +231,7 @@ describe("initRuntime", () => {
       token: "token",
     };
     g.__vibestudioShell = {
-      setStateArgs: vi.fn(),
+      patchStateArgs: vi.fn(),
       getInfo: vi.fn(),
       focusPanel: vi.fn(),
     };
@@ -295,7 +295,7 @@ describe("initRuntime", () => {
       token: "token",
     };
     g.__vibestudioShell = {
-      setStateArgs: vi.fn(),
+      patchStateArgs: vi.fn(),
       getInfo: vi.fn(),
       focusPanel: vi.fn(),
     };
@@ -366,11 +366,8 @@ describe("initRuntime", () => {
                 envelope,
                 message.method === "workers.resolveService"
                   ? { kind: "durable-object", targetId: WORKSPACE_STATE_TARGET }
-                  : message.method === "workspace-state.panelTree.detail"
-                    ? {
-                        currentHistory: { state_args: '{"fromHost":true}' },
-                        entity: {},
-                      }
+                  : message.method === "workspace-state.slot.patchCurrentStateArgs"
+                    ? { mode: "live", fromHost: true }
                     : undefined,
               ),
             );
@@ -378,11 +375,11 @@ describe("initRuntime", () => {
         }),
     });
 
-    await setStateArgs({ mode: "live" });
+    await patchStateArgs({ mode: "live" });
 
     expect(panelTreeSetStateArgsMock).toHaveBeenCalledWith(
-      "workspace-state.slot.updateCurrentStateArgs",
-      ["panel:tree/slot-1", { mode: "live", fromHost: true }],
+      "workspace-state.slot.patchCurrentStateArgs",
+      ["panel:tree/slot-1", { mode: "live" }],
     );
     expect(panelWindow.__vibestudioStateArgs).toEqual({
       mode: "live",
@@ -418,7 +415,7 @@ describe("initRuntime", () => {
         },
       ),
       removeEventListener: vi.fn(),
-      setStateArgs: vi.fn(),
+      patchStateArgs: vi.fn(),
       getInfo: vi.fn(),
       focusPanel: vi.fn(),
     };
@@ -456,7 +453,7 @@ describe("initRuntime", () => {
       token: "token",
     };
     g.__vibestudioShell = {
-      setStateArgs: vi.fn(),
+      patchStateArgs: vi.fn(),
       getInfo: vi.fn(),
       focusPanel: vi.fn(),
     };
@@ -481,7 +478,7 @@ describe("initRuntime", () => {
       token: "token",
     };
     g.__vibestudioShell = {
-      setStateArgs: vi.fn(),
+      patchStateArgs: vi.fn(),
       getInfo: vi.fn(),
       focusPanel: vi.fn(),
     };
@@ -509,7 +506,7 @@ describe("initRuntime", () => {
       token: "token",
     };
     g.__vibestudioShell = {
-      setStateArgs: vi.fn(),
+      patchStateArgs: vi.fn(),
       getInfo: vi.fn(),
       focusPanel: vi.fn(),
     };
@@ -644,7 +641,7 @@ describe("initRuntime", () => {
       token: "token",
     };
     g.__vibestudioShell = {
-      setStateArgs: vi.fn(),
+      patchStateArgs: vi.fn(),
       getInfo: vi.fn(),
       focusPanel: vi.fn(),
     };
@@ -813,10 +810,11 @@ describe("initRuntime", () => {
         }),
     });
 
-    const parent = runtime.parent;
+    const parent = runtime.getParent();
+    if (!parent) throw new Error("expected a parent handle");
     await parent.archive();
     await parent.navigate("panels/next", { contextId: "ctx-next" });
-    await parent.stateArgs.set({ mode: "fixture" });
+    await parent.stateArgs.patch({ mode: "fixture" });
 
     expect(sends).toEqual(
       expect.arrayContaining([
@@ -845,7 +843,7 @@ describe("initRuntime", () => {
         }),
         {
           targetId: WORKSPACE_STATE_TARGET,
-          method: "workspace-state.slot.updateCurrentStateArgs",
+          method: "workspace-state.slot.patchCurrentStateArgs",
           args: ["panel:tree/parent-slot", { mode: "fixture" }],
         },
       ]),
@@ -869,7 +867,7 @@ describe("initRuntime", () => {
       token: "token",
     };
     g.__vibestudioShell = {
-      setStateArgs: vi.fn(),
+      patchStateArgs: vi.fn(),
       getInfo: vi.fn(),
       focusPanel: vi.fn(),
     };
@@ -937,7 +935,7 @@ describe("initRuntime", () => {
       token: "token",
     };
     g.__vibestudioShell = {
-      setStateArgs: vi.fn(),
+      patchStateArgs: vi.fn(),
       getInfo: vi.fn(),
       focusPanel: vi.fn(),
     };
@@ -951,49 +949,73 @@ describe("initRuntime", () => {
           },
         }),
     });
-    const onRun = vi.fn();
-    runtime.onHostCommandRun(onRun);
-
-    runtime.registerHostCommands([{ id: "open", label: "Open" }]);
-    await vi.waitFor(() => {
-      expect(
-        sent.some(
+    const contributions = () =>
+      sent
+        .filter(
           (envelope) =>
             envelope.target === "shell" &&
             envelope.message.type === "event" &&
-            envelope.message.event === HOST_COMMAND_CONTRIBUTION_EVENT &&
-            JSON.stringify(envelope.message.payload) ===
-              JSON.stringify({ commands: [{ id: "open", label: "Open" }] }),
-        ),
-      ).toBe(true);
-    });
+            envelope.message.event === HOST_COMMAND_CONTRIBUTION_EVENT,
+        )
+        .map((envelope) =>
+          JSON.stringify((envelope.message as { payload: unknown }).payload),
+        );
+    const runCommand = (commandId: string) =>
+      (deliverInbound as ((envelope: RpcEnvelope) => void) | null)?.({
+        from: "shell",
+        target: "panel:panel-1",
+        delivery: { caller: { callerId: "shell", callerKind: "shell" } },
+        provenance: [],
+        message: {
+          type: "event",
+          fromId: "shell",
+          event: HOST_COMMAND_RUN_EVENT,
+          payload: { commandId },
+        },
+      });
 
-    (deliverInbound as ((envelope: RpcEnvelope) => void) | null)?.({
-      from: "shell",
-      target: "panel:panel-1",
-      delivery: { caller: { callerId: "shell", callerKind: "shell" } },
-      provenance: [],
-      message: {
-        type: "event",
-        fromId: "shell",
-        event: HOST_COMMAND_RUN_EVENT,
-        payload: { commandId: "open" },
-      },
-    });
-    expect(onRun).toHaveBeenCalledWith("open");
-
-    runtime.unregisterHostCommands();
+    const onOpen = vi.fn();
+    const onClose = vi.fn();
+    const disposeOpen = runtime.registerHostCommands(
+      [{ id: "open", label: "Open" }],
+      onOpen,
+    );
+    const disposeClose = runtime.registerHostCommands(
+      [{ id: "close", label: "Close" }],
+      onClose,
+    );
     await vi.waitFor(() => {
-      expect(
-        sent.some(
-          (envelope) =>
-            envelope.target === "shell" &&
-            envelope.message.type === "event" &&
-            envelope.message.event === HOST_COMMAND_CONTRIBUTION_EVENT &&
-            JSON.stringify(envelope.message.payload) ===
-              JSON.stringify({ commands: [] }),
-        ),
-      ).toBe(true);
+      expect(contributions()).toContain(
+        JSON.stringify({
+          commands: [
+            { id: "open", label: "Open" },
+            { id: "close", label: "Close" },
+          ],
+        }),
+      );
+    });
+
+    expect(() =>
+      runtime.registerHostCommands([{ id: "open", label: "Again" }], vi.fn()),
+    ).toThrow(/Host command id "open" is already registered/);
+
+    runCommand("open");
+    expect(onOpen).toHaveBeenCalledWith("open");
+    expect(onClose).not.toHaveBeenCalled();
+
+    disposeOpen();
+    await vi.waitFor(() => {
+      expect(contributions().at(-1)).toBe(
+        JSON.stringify({ commands: [{ id: "close", label: "Close" }] }),
+      );
+    });
+    runCommand("open");
+    expect(onOpen).toHaveBeenCalledTimes(1);
+
+    disposeClose();
+    disposeClose();
+    await vi.waitFor(() => {
+      expect(contributions().at(-1)).toBe(JSON.stringify({ commands: [] }));
     });
   });
 });

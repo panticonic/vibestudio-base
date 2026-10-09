@@ -4,23 +4,15 @@ import { webSearchUrl } from "@vibestudio/shared/webSearch";
 import type { LaunchablePanel } from "./launchablePanels";
 
 /**
- * The unified prefix grammar (spec §1.2).
- *
- * Until P6 this engine spoke `about/new`'s original grammar, where `>` meant
- * "panels only" and `@` meant "history only". The overlay palette demoted
- * panels off `>` (in an overlay, *actions* are the primary citizens) and made
- * `@` the single "go to" scope over destinations of every kind. Keeping two
- * grammars for the same keystrokes was the last thing standing between the two
- * surfaces, so `about/new` adopted this one: `@` is go-to, `/` is chat, bare is
- * everything. `>` remains parsed — `about/new` has no command slate for it to
- * mean anything else — and is treated as an alias of `@` so a year of muscle
- * memory still lands somewhere sensible while the deprecation hint is shown.
+ * The unified prefix grammar (spec §1.2), shared with the overlay palette:
+ * `@` is the single "go to" scope over destinations of every kind, `/` is chat,
+ * and bare input searches everything.
  */
 export type LauncherMode = "all" | "goto" | "chat";
 
 export interface LauncherInput {
   mode: LauncherMode;
-  prefix: "" | ">" | "@" | "/";
+  prefix: "" | "@" | "/";
   query: string;
 }
 
@@ -59,14 +51,9 @@ export const DEFAULT_LAUNCHER_SUGGESTION_LIMIT = 20;
 
 export function parseLauncherInput(input: string): LauncherInput {
   const first = input[0];
-  const prefix = first === ">" || first === "@" || first === "/" ? first : "";
+  const prefix = first === "@" || first === "/" ? first : "";
   const mode: LauncherMode = prefix === "/" ? "chat" : prefix ? "goto" : "all";
   return { mode, prefix, query: prefix ? input.slice(1).trimStart() : input };
-}
-
-/** True while the typed prefix is the retired panels-only `>` (see LauncherMode). */
-export function isDeprecatedLauncherPrefix(input: LauncherInput): boolean {
-  return input.prefix === ">";
 }
 
 export function isLikelyAgentPrompt(input: string): boolean {

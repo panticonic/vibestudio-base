@@ -1,6 +1,15 @@
 # Automations API
 
-Resolve `vibestudio.missions.v1` with `workers.resolveService(...)` and call its Durable Object target with `rpc.call(service.targetId, method, args)`. Prefer the native `launch_automation` tool for work owned by the current agent: it seals the installed execution image and conversation binding without guest-code identity discovery. Prefer `control_automation` for conversational pause/resume/run/remove requests; it resolves the owner-visible target and avoids guest-code service discovery.
+Code reaches the `vibestudio.missions.v1` controller through the `missions`
+client from `@workspace/runtime`; it resolves the service and compiles
+authority plans for you.
+
+For work done by the current agent, prefer the `launch_automation` tool. It
+seals the installed execution image and conversation binding, so guest code
+does not have to discover its own identity. For pause/resume/run/remove
+requests in conversation, prefer `control_automation`. It resolves an
+automation the owner can see, so guest code does not have to discover the
+service.
 
 ## Native control
 
@@ -12,13 +21,13 @@ type AgentAutomationControl = {
 };
 ```
 
-Omit the target only when one eligible automation is active in the current
-conversation. Otherwise pass one exact name or the `missionId` returned by
-launch. Use `pause` for ordinary “stop” language; it is reversible. `retire` is
-permanent and is reserved for explicit deletion. A user-authored request to
-control their own automation is executed directly by the native tool and is
-not routed through eval or a redundant approval card. Ownership and user
-attribution are still checked by MissionsDO.
+Omit the target only when exactly one eligible automation is active in the
+current conversation. Otherwise pass its exact name or the `missionId` returned
+by launch. Use `pause` when the user says “stop”; it is reversible. `retire` is
+permanent and only for explicit deletion. A user's request to control their own
+automation is executed directly by the tool and is
+not routed through eval or a redundant approval card. MissionsDO still checks
+ownership and user attribution.
 
 ## Agent launch input
 
@@ -34,6 +43,12 @@ type AgentAutomationLaunch = {
         syntax?: "javascript" | "typescript" | "jsx" | "tsx";
         timeoutMs?: number;
         reset?: boolean;
+      }
+    | {
+        kind: "notify";
+        text: string;
+        title?: string; // defaults to the automation name
+        alert?: "inbox" | "interrupt"; // default "inbox"
       };
   trigger: MissionTrigger;
   conversation?: { mode: "fresh" | "continue" };
@@ -48,42 +63,48 @@ type MissionOperationIntent = {
 };
 ```
 
-When `conversation` is omitted, the native tool seals the current channel and
-context as `mode: "continue"`. Explicit `fresh` creates a separate context for
-each run. Use that only for a separate topic or intentionally independent
-background work; it is not the default for an automation requested in an
-ongoing conversation.
+When `conversation` is omitted, the tool seals the current channel and context
+as `mode: "continue"`. Explicit `fresh` creates a separate context for each
+run. Use it only for a separate topic or deliberately independent background
+work; it is not the default for an automation requested in an ongoing
+conversation.
 
-Operations express concrete external service calls predictable at launch. Do not supply
-capability names, permission rows, grants, runtime identities, or channel IDs.
-The host compiles each operation against the live receiver-owned method contract
-for durable pre-acquisition. `args` is the receiver's canonical service tuple,
-including arguments supplied implicitly by a JavaScript wrapper. Omitting it is
-valid only for a method that accepts no arguments. For `vcs.status()`, observe
-the project's `contextId` from `@workspace/runtime` and declare
-`args: [{ contextId }]`; never substitute an invented context ID or placeholder.
-Observing an action's service arguments does not require discovering the
-executor's build, class, object key, or channel: the native launch tool seals
-those identity facts itself. Include predictable service calls selected by a
-prompt action. The artifact is not a runtime allowlist: genuinely dynamic or
-accidentally omitted operations use ordinary prompt-capable acquisition when
-actually invoked.
+`operations` lists the external service calls you can predict at launch. Do not
+supply capability names, permission rows, grants, runtime identities, or
+channel IDs. The host compiles each operation against the receiver's live
+method contract for durable pre-acquisition.
 
-Model-facing agent tools are not eval JavaScript globals. `notify` remains a
-prompt tool and is not translated into its internal service implementation.
-Eval actions import the ordinary `@workspace/runtime` APIs they use.
+- `args` is the receiver's argument tuple, as you would pass it through the
+  runtime client. Omit it for a method that takes no arguments.
+- Leave out a context-bound method's `contextId` (for example, declare
+  `vcs.status` with no `args`). The host compiler binds it to the author's
+  context, exactly as the runtime wrapper does. An explicit `contextId` names
+  another concrete context and is never a placeholder.
+- Reading these arguments does not require looking up the executor's build,
+  class, object key, or channel; the launch tool seals those itself.
+- Include the predictable service calls a prompt action will make.
+- The plan is not a runtime allowlist. Dynamic or accidentally omitted
+  operations go through ordinary prompt-capable acquisition when invoked.
+- Declare only external service methods the action invokes. The mission
+  service itself handles scheduling, run admission, fresh-conversation
+  creation, result delivery, and completion; the charter and admission already
+  cover those. Never declare made-up operations such as `missions.finishRun` or
+  `chat.publish`.
 
-`action.text` for a prompt action is the future turn's instruction, not its final output. Keep the semantic verb from the user's request: “Notify the owner with the exact text …” is a notification instruction, while the bare text alone is only a request for an ordinary chat response.
+Model-facing agent tools are not eval JavaScript globals. `notify` stays a
+prompt tool and is not translated into its internal service calls. Eval actions
+import the `@workspace/runtime` APIs they use. An eval publishes its return
+value into the run conversation; returning `automation-completion.v1` also
+completes the recurring mission.
 
-Only external service methods invoked by the action belong in `operations`.
-The mission service itself owns scheduling, run admission, fresh-conversation
-creation, result delivery, and completion settlement. Those intrinsic effects
-are already sealed by the charter and admission, so never declare synthetic
-operations such as `missions.finishRun` or `chat.publish`. An eval publishes its
-ordinary return value into the run conversation; returning
-`automation-completion.v1` additionally completes the recurring mission.
+`action.text` for a prompt action is the future turn's instruction, not its
+final output. To send fixed text to the owner, use a `notify` action instead:
+MissionsDO writes the owner's inbox entry (linked to this conversation) and
+pushes it to their devices, with no model turn. `notify` requires
+`conversation` mode `continue`. A failed inbox write fails the run; a failed
+push does not, because the inbox entry is the delivery record.
 
-The installed vessel fills this exact image:
+The installed vessel fills in this image:
 
 ```ts
 type MissionExecutionImage = {
@@ -119,6 +140,12 @@ type MissionCharter = {
               syntax?: "javascript" | "typescript" | "jsx" | "tsx";
               timeoutMs?: number;
               reset?: boolean;
+            }
+          | {
+              kind: "notify";
+              text: string;
+              title?: string;
+              alert?: "inbox" | "interrupt";
             };
         conversation:
           | { mode: "fresh" }
@@ -152,72 +179,74 @@ type MissionTrigger =
     };
 ```
 
-A method charter’s own root invocation is already sealed by its image and method;
-`operations` declares the additional service effects reachable from that method.
-The source ref and effective version are independent immutable facts: the ref
-recreates source state; the effective version identifies the compiled installed image.
+A method charter's root invocation is already covered by its image and method;
+`operations` declares the further service calls that method can make. The
+source ref and effective version are independent: the ref recreates the source
+state, and the effective version identifies the compiled installed image.
 
 ## Launch and authority acquisition
 
-The native launch tool and UI compile exactly once as the authenticated author.
-Lower-level callers use the same host compiler before calling the controller:
+The launch tool and the UI compile the plan once, as the authenticated author.
+Code uses the `missions` runtime client, which does the same: it compiles the
+plan as the caller, then calls the controller.
 
 ```ts
-const authorityPlan = await rpc.call("main", "authority.compileAuthorityPlan", [
-  { execution: charter.execution },
-]);
-await rpc.call(service.targetId, "launch", [{ name, charter, authorityPlan }]);
+import { missions } from "@workspace/runtime";
+
+const automation = await missions.launch({ name, charter });
+await missions.edit(automation.missionId, { name: "Renamed" });
 ```
 
-The content-addressed plan seals the complete execution intent, canonical service
-arguments, immutable image, and author lifecycle. The controller verifies that
-artifact under its live authenticated invocation; it never recompiles operations
-as its own runtime or borrows the author's context graph. Authority depends on
-executor mode:
+The content-addressed plan fixes the full execution intent, service arguments,
+immutable image, and author lifecycle. The controller verifies the plan within
+its own authenticated invocation; it never recompiles operations itself or
+borrows the author's context graph. Authority depends on the executor mode:
 
-- `continue`: the native launch tool compiles the declared operations and
-  initiates acquisition for the authenticated current agent task before
-  installing the schedule. Scheduled turns then use ordinary agent authority.
+- `continue`: the launch tool compiles the declared operations and starts
+  acquisition for the authenticated current agent task before installing the
+  schedule. Scheduled turns then use the agent's normal authority.
 - `fresh` or `method`: MissionsDO registers the immutable mission revision and
-  initiates acquisition for its mission subject. The fresh agent, method, and
+  starts acquisition for its mission subject. The fresh agent, method, and
   child eval inherit that authority through execution admission.
 
-The durable launch then:
+Launch then:
 
 1. Validate and seal the charter.
-2. Ask the host to verify the supplied immutable plan against its exact intent and live author.
+2. Ask the host to verify the supplied plan against its intent and the live
+   author.
 3. Persist an active revision and its authority-plan reference.
-4. For an isolated executor, register `mission:<missionId>@<revisionDigest>` with the host under the attributed requesting user.
+4. For an isolated executor, register `mission:<missionId>@<revisionDigest>`
+   with the host, attributed to the requesting user.
 5. Start durable acquisition for eligible gated leaves on the selected subject.
 6. Return the active record with pending, granted, and denied request IDs.
 
-Launch institution is immediate. Individual capability decisions may still be pending; they target the durable mission revision and survive the launch execution and host restart without duplicate cards.
+The automation is active as soon as launch returns. Individual capability
+decisions may still be pending; they belong to the mission revision and survive
+the end of the launch execution and host restarts without duplicate cards.
 
 For an isolated execution, MissionsDO asks the host for admission bound to the
-exact revision, plan, image, executor, and idempotent key. Causal eval and
-service calls inherit it through ordinary RPC authorization context. A
-continuing turn receives no mission admission or nonce; it is ordinary input to
-the existing agent. The authority plan records launch-time acquisition intent;
+revision, plan, image, executor, and idempotency key. Eval and service calls it
+causes inherit that admission through the RPC authorization context. A
+continuing turn gets no mission admission or nonce; it is normal input to the
+existing agent. The authority plan records launch-time acquisition intent;
 it does not allow or deny runtime calls.
 
-If no matching standing grant exists, dispatcher acquisition follows the ordinary prompt-capable path. The concrete agent/eval invocation owns that approval wait while the mission run remains `executing`; it is not restricted to pregranted authority and MissionsDO does not copy a second acquisition lifecycle.
+If no matching standing grant exists, the dispatcher falls back to ordinary
+acquisition, which can prompt. The agent or eval invocation waits for that
+approval while the mission run stays `executing`. It is not limited to
+pregranted authority, and MissionsDO does not run a second acquisition
+lifecycle.
 
-Name and cadence edits reuse an installed plan when execution meaning is unchanged.
-Changing the action, image, conversation, or operations requires a newly compiled
-plan. Customizing a seeded definition creates a new definition and also requires
-its new author's plan; the ordinary UI performs this preparation automatically.
+Editing only the name or cadence reuses the installed plan. `missions.edit`
+compiles a new plan when the action, image, conversation, or operations change,
+or when a seeded definition is customized (a new definition with a new author).
+Each plan binds the exact invocation intent and its authenticated author.
 
-Historical version-1 artifacts retain their original bytes, digests and admitted
-execution behavior. A new definition or acquisition cannot use an unbound historical
-plan. The UI recompiles historical isolated automations when editing them; continuing
-historical schedules can retain their plan for name or cadence changes because they
-create no mission authority. Lower-level callers must supply a newly compiled plan
-when this migration is required.
-
-Compilation does not grant future executors access to the author's context graph.
-Fresh or method executions still undergo exact target admission and ordinary receiver
-checks in their own execution context. Declare concrete resources their actual runtime
-can use; unavailable or foreign contexts are rejected rather than inferred or expanded.
+Compilation does not give future executors access to the author's context
+graph. Fresh and method executions still go through target admission and the
+receiver's normal checks in their own execution context. Declare concrete
+resources their runtime can actually use; unavailable or foreign contexts are
+rejected, not inferred or expanded.
 
 ## Mission record
 
@@ -229,7 +258,7 @@ type MissionRecord = {
   revision: number;
   charter: MissionCharter;
   authorityPlan: {
-    schemaVersion: 1 | 2; // New definitions require version 2.
+    schemaVersion: 2;
     digest: string;
     artifactRef: `authority-plan:${string}`;
     compilerVersion: string;
@@ -257,9 +286,9 @@ type MissionRecord = {
 
 Lifecycle state is not part of the revision digest. Pause and resume therefore
 preserve isolated mission grants and never revoke authority from a shared
-continuing agent task. Editing isolated behavior creates a new digest and
-mission subject; editing a continuing definition re-plans predictable
-operations for the existing agent task.
+continuing agent task. Editing an isolated automation's behavior creates a
+new digest and mission subject; editing a continuing definition re-plans its
+predictable operations for the existing agent task.
 
 ## Run record
 
@@ -320,23 +349,28 @@ type MissionRunRecord = {
 };
 ```
 
-Nonterminal phases are resumable checkpoints, not UI-only status. Persist a phase before its external effect and reuse the phase’s stable idempotency key on recovery. Wake handling resumes existing nonterminal runs before admitting newly due runs.
+Nonterminal phases are resumable checkpoints, not just UI status. Persist a
+phase before its external effect, and reuse the phase's stable idempotency key
+on recovery. Wake handling resumes existing nonterminal runs before admitting newly due runs.
 
-`succeeded` means both the turn and all of its terminal child effects succeeded.
-If the agent recovered enough to finish its turn but any child effect failed,
-the executor records `completed-with-errors` and preserves `effectFailures`.
-This distinction is generic; notification delivery is not special-cased.
-Mission attention is a retryable projection into the ordinary durable GAD
-inbox; the mission run remains the canonical outcome if that projection is
-temporarily unavailable.
+`succeeded` means the turn and all of its child effects succeeded. If the agent
+finished its turn but any child effect failed, the executor records
+`completed-with-errors` and keeps `effectFailures`. This applies to every
+effect; notification delivery is not a special case. Mission alerts are written
+to the GAD inbox with retries; if the inbox is temporarily unavailable, the run
+record still holds the outcome.
 
-The RPC runtime observes every outbound operation through direct clients,
-request-scoped clients, and typed peers. An inbound execution remains active
-until every RPC it started settles, including when its handler throws. Work
-intended to outlive that execution must be journaled and admitted later under
-its own execution identity.
+The RPC runtime tracks every outbound call made through direct clients,
+request-scoped clients, and typed peers. An inbound execution stays active
+until every RPC it started settles, even if its handler throws. Work that must
+outlive the execution has to be journaled and admitted later under its own
+execution identity.
 
 ## Methods
+
+The `missions` client exposes each method below except the executor-only
+`finishRun`. Its `launch` and `edit` compile the authority plan first, so
+callers never pass one.
 
 | Method      | Arguments                                          | Result                                               |
 | ----------- | -------------------------------------------------- | ---------------------------------------------------- |
@@ -353,18 +387,21 @@ its own execution identity.
 | `retire`    | `missionId`                                        | retired definition                                   |
 | `finishRun` | structured terminal result                         | `void`; executor-only                                |
 
-`overview` returns its aggregate counters in `stats`, alongside the requested
-definition page. `stats.total` counts visible automation definitions;
-`stats.active` and `stats.completed` count definitions in those states;
-`stats.running` counts runs whose phase is not terminal; and
-`stats.issueRunsLast24Hours` counts runs started in the last 24 hours with an
-`outcome` of `failed` or `completed-with-errors`. These counters cover the
-entire caller-visible ledger and do not change with `limit`, `cursor`, `filter`,
-`query`, or `missionId`. In particular, `completed` is a definition-state
-count, while `issueRunsLast24Hours` is a recent run-outcome count.
+`overview` returns aggregate counters in `stats` next to the requested
+definition page:
 
-The dashboard and chat inspector consume these records directly. The chat pill
-is a launch snapshot only until opened; every inspector open queries `overview`
-for the canonical definition and recent runs. They show failed child effects,
-declared pre-acquisition operations, and the host authority-plan reference
-rather than reconstructing a permission model in userland.
+- `stats.total`: visible automation definitions.
+- `stats.active`, `stats.completed`: definitions in those states.
+- `stats.running`: runs whose phase is not terminal.
+- `stats.issueRunsLast24Hours`: runs started in the last 24 hours with an
+  `outcome` of `failed` or `completed-with-errors`.
+
+The counters cover the caller's whole visible ledger and ignore `limit`,
+`cursor`, `filter`, `query`, and `missionId`. `completed` counts
+definitions, while `issueRunsLast24Hours` counts runs.
+
+The dashboard and chat inspector read these records directly. The chat pill
+shows its launch snapshot until it is opened; each inspector open queries
+`overview` for the current definition and recent runs. The inspector shows
+failed child effects, declared pre-acquisition operations, and the host's
+authority-plan reference; it does not rebuild a permission model in userland.

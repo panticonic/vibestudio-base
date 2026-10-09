@@ -1,15 +1,15 @@
 # External dependency resolution
 
-Buildable workspace units are not pnpm importers. Declare ordinary registry
-dependencies in the unit's `dependencies`; declare resolution policy under
-`vibestudio.dependencyResolution`. Build V2 reads both from the exact
-materialized source being built. It never inherits root package-manager policy.
+Buildable workspace units are not pnpm importers. List registry dependencies in
+the unit's `dependencies` and resolution policy under
+`vibestudio.dependencyResolution`. Build V2 reads both from the materialized
+source it is building and never inherits the root package manager's policy.
 
 ## Contents
 
 - [Declare dependencies](#declare-dependencies)
-- [Own it, or let the realm provide it](#own-it-or-let-the-realm-provide-it)
 - [Use ranges by default](#use-ranges-by-default)
+- [Own it, or let the realm provide it](#own-it-or-let-the-realm-provide-it)
 - [Override a resolution](#override-a-resolution)
 - [Patch an exact dependency](#patch-an-exact-dependency)
 - [Own a patched integration](#own-a-patched-integration)
@@ -18,7 +18,8 @@ materialized source being built. It never inherits root package-manager policy.
 
 ## Declare dependencies
 
-Put every direct external import in `dependencies` with a registry version:
+Put every directly imported external package in `dependencies` with a registry
+version:
 
 ```json
 {
@@ -30,62 +31,63 @@ Put every direct external import in `dependencies` with a registry version:
 
 Use `workspace:*` for internal workspace packages. Do not add a buildable unit
 to `pnpm-workspace.yaml`, the checkout lockfile, or the host's dependencies.
-Build V2 installs the external closure into a content-addressed derived
-environment when it builds a consumer.
+When Build V2 builds a consumer, it installs the external dependency closure
+into a content-addressed derived environment.
 
-Declare everything you import. Nothing is added on your behalf: a package that
-appears in no manifest is not installed, even when something you depend on
-names it as its own peer. A gap surfaces as an unresolved import naming the
-specifier, never as a version the registry picked for you.
+Declare everything you import; nothing is added for you. A package that no
+manifest lists is not installed, even if one of your dependencies names it as
+a peer. The gap shows up as an unresolved import naming the specifier, never as
+a version picked for you.
 
 ## Use ranges by default
 
-An exact dependency pin is a claim that no other compatible release can run the
-integration. Do not make that claim incidentally. Use the narrowest truthful
-semver range so canonical builds can reuse the dependency realm packaged with
-the Host.
+Pinning an exact version claims that no other compatible release works with
+your code. Do not make that claim by accident. Use the narrowest semver range
+that is actually true, so builds can reuse the dependency set packaged with the
+Host.
 
-Exact pins require a concrete byte-identity or ABI reason. Current legitimate
-classes are a source patch whose selector names exact bytes, and JavaScript for
+Exact pins need a concrete byte-identity or ABI reason. Currently the valid
+reasons are a source patch whose selector names exact bytes, and JavaScript for
 a native module or renderer that must match the version compiled into the
-mobile APK. The manifest must carry that policy through
-`vibestudio.dependencyResolution`, the mobile native-module policy, or an
-adjacent dependency comment. Test tooling, preference, and “this is what was
-installed when I wrote it” are not reasons to pin.
+mobile APK. The manifest must record the reason through
+`vibestudio.dependencyResolution`, the mobile native-module policy, or a
+comment next to the dependency. Test tooling, preference, and "this is what was
+installed when I wrote it" are not reasons to pin.
 
-`pnpm check:userland-dependencies` enforces both sides of reuse: undocumented
-exact pins fail, and every Host runtime range shared with Base must be wholly
-contained by Base's accepted range. Mere overlap is unstable because a later
-Host installation may legally select a lower version.
+`pnpm check:userland-dependencies` enforces reuse in both directions:
+undocumented exact pins fail, and every Host runtime range shared with Base
+must fall entirely within Base's accepted range. Overlap is not enough, because
+a later Host installation may legitimately pick a lower version.
 
 ## Own it, or let the realm provide it
 
-Two declarations, and the difference is who supplies the running instance.
+The two fields differ in who supplies the running instance.
 
 `dependencies` are yours. They are installed for your closure and bundled into
-your artifact, at the version you name.
+your artifact at the version you name.
 
-`peerDependencies` belong to whatever composes you. They are installed so your
-code typechecks, but never bundled: the realm that loads you supplies the live
-instance.
+`peerDependencies` belong to whatever loads you. They are installed so your
+code typechecks but are never bundled; the realm that loads you supplies the
+live instance.
 
-That distinction is not bookkeeping. A panel's inline UI, a `feedback_custom`
-component and an eval'd snippet all execute inside the *panel's* realm and
-resolve their imports through that realm's module map. A guest that bundles its
-own React puts a second React in one realm, and the host's hooks and the
-guest's hooks stop being the same hooks -- which presents as a hook error far
-from its cause, or as a Radix component rendering outside the host's Theme.
+This matters at runtime. A panel's inline UI, a `feedback_custom` component,
+and an eval'd snippet all run inside the _panel's_ realm and resolve imports
+through that realm's module map. A guest that bundles its own React puts a
+second React into the realm, so the host's hooks and the guest's hooks are no
+longer the same. The result is a hook error far from its cause, or a Radix
+component rendering outside the host's Theme.
 
-Which one you write follows from how the unit is loaded:
+Which field to use depends on how the unit is loaded:
 
-| Unit | Loaded | React and the UI kit go in |
-| --- | --- | --- |
-| Panel, about page, app | On its own | `dependencies` -- it *is* the realm |
-| Worker, extension | On its own | `dependencies`, if it renders at all |
-| Skill, package | Into someone's realm | `peerDependencies` |
+| Unit                   | Loaded               | React and the UI kit go in       |
+| ---------------------- | -------------------- | -------------------------------- |
+| Panel, about page, app | On its own           | `dependencies` (it is the realm) |
+| Worker, extension      | On its own           | `dependencies`, if it renders    |
+| Skill, package         | Into another's realm | `peerDependencies`               |
 
-A runtime root has nothing above it, so it must own every peer its closure
-asks for. Build V2 refuses it otherwise, naming the packages that asked:
+A unit loaded on its own has nothing above it to provide peers, so it must own
+every peer its closure needs. Otherwise Build V2 refuses it and names the
+packages that asked:
 
 ```
 @workspace-about/new is loaded on its own, so nothing provides its closure's
@@ -94,19 +96,18 @@ peers: react-dom@19.2.4 (required by @workspace/about-shared, @workspace/react,
 version it should own.
 ```
 
-Own the pair together. `react-dom` carries its own peer range on `react`, so a
-root that owns one and not the other is a root whose renderer version is
-decided by whatever resolves first.
+Declare `react` and `react-dom` together. `react-dom` has its own peer range on
+`react`, so a unit that owns only one of them gets whichever renderer version
+happens to resolve first.
 
-A library leaves its peers external and gets them from the realm at load. If
-the realm does not have one, the import fails at load naming the module -- fix
-it by exposing the module on the host panel (`vibestudio.exposeModules`), not
-by moving the peer into `dependencies`.
+A library leaves its peers external and gets them from the realm when it
+loads. If the realm lacks one, loading fails with an error naming the module.
+Fix that by exposing the module on the host panel (`vibestudio.exposeModules`),
+not by moving the peer into `dependencies`.
 
 ### Say what you actually accept
 
-A peer range is a claim about every consumer, and it is checked. Write the
-range you mean:
+A peer range is checked against every consumer, so write the range you mean:
 
 ```json
 {
@@ -115,27 +116,26 @@ range you mean:
 }
 ```
 
-An exact `19.0.0` says *only* 19.0.0 will do. If a consuming app owns 19.2.4,
-its build is refused -- correctly, because the claim was false. `^19.0.0` says
-what a shared package usually means: any React 19, whichever one my consumer
-owns. `@workspace/quickfire-core` needs exactly this, because the desktop shell
-provides 19.2.4 while `apps/mobile` provides 19.0.0, pinned by the react-native
-renderer compiled into the installed APK.
+An exact `19.0.0` accepts _only_ 19.0.0, so a consuming app that owns 19.2.4 is
+refused. `^19.0.0` usually expresses what a shared package means: any React 19
+the consumer owns. `@workspace/quickfire-core` needs exactly this, because the
+desktop shell provides 19.2.4 while `apps/mobile` provides 19.0.0, which is
+pinned by the react-native renderer compiled into the installed APK.
 
-Mark a peer `optional` when only part of your package needs it -- most often a
-type-only reference (`import type { ComponentType } from "react"`). It is still
-installed for typechecking and still external, but a consumer that never
-reaches that part is not made to own an instance. `@workspace/eval` and
-`@workspace/agentic-core` are declared this way, which is why a worker can use
-them without adopting a renderer it never runs.
+Mark a peer `optional` when only part of your package needs it, most often for
+a type-only reference (`import type { ComponentType } from "react"`). It is
+still installed for typechecking and still external, but a consumer that never
+uses that part does not have to own an instance. `@workspace/eval` and
+`@workspace/agentic-core` declare React this way, which is why a worker can use
+them without owning a renderer it never runs.
 
-A peer is optional for a closure only when every package that declares it says
-so: one package that genuinely renders makes the instance required for all of
-them.
+A peer is optional for a closure only if every package that declares it marks
+it optional. One package that really renders makes the instance required for
+all of them.
 
 ## Override a resolution
 
-Put dependency pins in the unit that owns the integration:
+Put version overrides in the unit that owns the integration:
 
 ```json
 {
@@ -150,19 +150,20 @@ Put dependency pins in the unit that owns the integration:
 }
 ```
 
-Override keys may name a package or one package major. Values must be registry
-versions accepted by Build V2. A direct-dependency override changes that direct
-install request; a transitive override becomes npm resolution policy in the
-derived install. Overrides propagate through the internal workspace dependency
-closure. Conflicting values for one selector fail the build.
+Override keys name a package or a single major version of a package. Values
+must be registry versions Build V2 accepts. Overriding a direct dependency
+changes that install request; overriding a transitive dependency becomes npm
+resolution policy in the derived install. Overrides apply across the unit's
+internal workspace dependency closure. Conflicting values for the same selector
+fail the build.
 
 Do not use top-level `overrides`, `resolutions`, `pnpm.overrides`, or
 `pnpm.patchedDependencies` in a buildable unit. Those are package-manager
-importer policy and have no live workspace-build semantics.
+settings and have no effect on workspace builds.
 
 ## Patch an exact dependency
 
-Declare a unified text diff beside its owner:
+Declare a unified text diff in the unit that owns it:
 
 ```json
 {
@@ -183,20 +184,20 @@ Declare a unified text diff beside its owner:
 ```
 
 The selector must be an exact registry `package@version`, including the scope
-for scoped packages. Ranges are invalid. `path` is relative to the declaring
-unit and must remain inside it. Patch paths may use the conventional `a/` and
-`b/` prefixes; absolute paths, `..`, and symlink traversal are rejected.
+for scoped packages; ranges are invalid. `path` is relative to the declaring
+unit and must stay inside it. File paths inside the patch may use the usual
+`a/` and `b/` prefixes; absolute paths, `..`, and paths through symlinks are
+rejected.
 
-`roots` names one or more of the owner's direct external dependencies whose
-installed closures carry the target:
+`roots` lists one or more of the owner's direct external dependencies whose
+installed closures contain the target:
 
 - For a direct patch, name the target itself.
-- For a transitive patch, name the direct parent dependency.
-- If several direct dependencies can carry the same exact target, name each
-  relevant root.
+- For a transitive patch, name the direct dependency it comes through.
+- If several direct dependencies can bring in the same exact target, name each
+  of them.
 
-For example, patch `transitive-package` reached through `parent-package` like
-this:
+For example, to patch `transitive-package` reached through `parent-package`:
 
 ```json
 {
@@ -216,14 +217,14 @@ this:
 }
 ```
 
-Every root must be that owner's direct external dependency. `roots` selects
-whether a patch belongs in a derived dependency subset; it is not another
-dependency request and does not make a missing target optional.
+Every root must be a direct external dependency of the owner. `roots` only
+decides which derived dependency subsets include the patch; it does not request
+a dependency, and it does not make a missing target optional.
 
 ## Own a patched integration
 
-Give a patched external one canonical workspace owner, normally an adapter
-under `packages/`:
+Give a patched external package a single owner in the workspace, normally an
+adapter package under `packages/`:
 
 1. Put the upstream dependency, overrides, patch file, and patch declaration in
    the adapter.
@@ -231,86 +232,88 @@ under `packages/`:
 3. Make consumers depend on and import the adapter, not the patched upstream
    package.
 
-Within one internal dependency closure, another unit may not directly depend
-on or override the patched package. Two owners may not declare the same exact
-patch selector. These checks make the workspace import name the explicit
-identity of the patched integration instead of silently changing an upstream
-import. For maintained changes spanning several packages, publish a coherent
-immutable fork and declare its exact versions instead of carrying local patches.
+Within one internal dependency closure, no other unit may depend directly on or
+override the patched package, and no two owners may declare the same exact
+patch selector. This way, importing the adapter's name is how code opts into
+the patched version, and plain upstream imports are never changed silently. For
+long-lived changes spanning several packages, publish an immutable fork and
+depend on its exact versions instead of carrying local patches.
 
-Use an adapter even when the target is transitive: the owner depends on the
-direct parent named in `roots`, carries the policy, and exposes the stable
-workspace-facing API. Do not teach the host, root installer, or an unrelated
-consumer about that userland dependency.
+Use an adapter even when the target is transitive: the adapter depends on the
+direct dependency named in `roots`, carries the policy, and exposes a stable API
+to the workspace. Do not make the host, the root installer, or unrelated
+consumers aware of that userland dependency.
 
 ## Understand the live build behavior
 
 For each build, Build V2:
 
-1. Collects policies and patch bytes from the exact internal source closure,
-   splitting externals into what the unit owns and what its peers leave to the
-   composing realm.
-2. Reuses one complete package-owned Host dependency realm when it satisfies the
-   whole closure and no override or patch changes the requested bytes. Otherwise
-   it installs the derived registry dependency environment -- both halves, since
-   a typecheck needs a peer's declarations, and nothing beyond them.
-3. Applies each patch to every installed package whose name and version exactly
-   match the selector, including hoisted and nested copies.
-4. Seals dependency versions, overrides, patch roots, and patch-content digests
-   into the cache key and build recipe.
+1. Collects policies and patch bytes from the unit's internal source closure,
+   separating externals the unit owns from those its peers leave to the realm
+   that loads it.
+2. Reuses a complete dependency set packaged with the Host when it satisfies
+   the whole closure and no override or patch changes the requested bytes.
+   Otherwise it installs a derived registry environment containing both owned
+   packages and peers (a typecheck needs the peers' declarations) and nothing
+   else.
+3. Applies each patch to every installed package whose name and version match
+   the selector exactly, including hoisted and nested copies.
+4. Includes dependency versions, overrides, patch roots, and patch-content
+   digests in the cache key and build recipe.
 5. Records the digest of every patched or deleted file and rejects a modified
    or incomplete cache receipt.
 
-The compiler resolves every bare import through that prepared realm. It does
-not perform Node-style ancestor discovery from the materialized source path;
-an undeclared `~/node_modules` package is never a build input. Installed package
-manifests and their nesting are fingerprinted into the build key, so reinstalling
-the Host with a different valid dependency graph cannot reuse an artifact built
-from the old graph.
+The compiler resolves every bare import through that prepared environment. It
+does not search parent directories of the source path the way Node does, so an
+undeclared package in `~/node_modules` is never a build input. Installed package
+manifests and their nesting are part of the build key, so reinstalling the Host
+with a different valid dependency graph cannot reuse an artifact built from the
+old one.
 
-Patch application is strict. The build fails for an absent patch file, unsafe
-path, duplicate owner, conflicting override, missing declared root, selector
-that matches no installed package, empty patch, or hunk that does not apply.
-Patches are unified text diffs applied after dependency installation; they do
-not modify install-script behavior and are not a binary-patching mechanism.
+Patching is strict. The build fails for a missing patch file, an unsafe path, a
+duplicate owner, a conflicting override, a missing declared root, a selector
+that matches no installed package, an empty patch, or a hunk that does not
+apply. Patches are unified text diffs applied after installation; they do not
+change install-script behavior and cannot patch binaries.
 
-Extensions can produce a smaller runtime dependency install after bundling. A
-patch enters that install only when at least one declared root remains
-external. Once selected, the patch is still mandatory and must match. A patch
-whose roots were bundled stays out of the runtime install while still affecting
-the build environment. Runtime dependency caches and sealed recipes preserve
-the same patch inputs for reconstruction after eviction.
+Extensions can get a smaller runtime dependency install after bundling. A patch
+is part of that install only if at least one of its roots is still external;
+once included, it is still mandatory and must match. A patch whose roots were
+all bundled stays out of the runtime install but still affects the build
+environment. Runtime dependency caches and sealed recipes keep the same patch
+inputs so the install can be rebuilt after eviction.
 
 ### Checkout validation limitation
 
-Runtime Build V2 isolates each unit closure and can therefore build independent
-patched and unpatched consumers of the same exact transitive package. The
-checkout-wide TypeScript and Vitest commands still merge userland requirements
-into one validation install, so they cannot represent both identities at once.
-The native agent packages use the published `@panticonic/pi-*` fork at exact
-version `0.99.2-vibestudio.9`; that closure has no patched/unpatched Pi split.
+Runtime Build V2 isolates each unit's closure, so it can build a patched and an
+unpatched consumer of the same exact transitive package side by side. The
+checkout-wide TypeScript and Vitest commands, however, merge all userland
+requirements into one validation install and cannot represent both versions at
+once. The native agent packages use the published `@panticonic/pi-*` fork at
+exact version `1.1.0-vibestudio.1`, so that closure has no patched/unpatched Pi
+split.
 
-Do not address this by preferring root `node_modules`, conditionally aliasing
-one test, or applying the patch checkout-wide. A complete validation design
-needs policy-owned TypeScript/Vitest projects, an explicit rule for integration
-tests that cross policy closures, and script-enabled runtime projections for
-tests that load native dependencies. Until that design lands, treat a second
-independent unpatched consumer as a validation-architecture blocker even
-though its isolated runtime Build V2 build is valid.
+Do not work around this by preferring root `node_modules`, aliasing one test
+conditionally, or applying the patch to the whole checkout. A proper fix needs
+TypeScript/Vitest projects per policy closure, an explicit rule for integration
+tests that span closures, and runtime projections with install scripts enabled
+for tests that load native dependencies. Until that exists, treat adding a
+second, unpatched consumer as blocked on validation, even though Build V2 can
+build it correctly in isolation.
 
 ## Diagnose and verify
 
-Run an exact Build V2 report for the consuming unit. A root `pnpm install` does
-not exercise userland patching and is not evidence that the patch works.
+Run a Build V2 report for the consuming unit. A root `pnpm install` does not
+apply userland patches and says nothing about whether a patch works.
 
-Dependency-shaped build refusals name their own remedy:
+Build refusals caused by dependencies name their own fix:
 
-| Refusal | Meaning |
-| --- | --- |
-| `loaded on its own, so nothing provides its closure's peers` | A runtime root reached a peer nobody owns. Declare it in that root's `dependencies`. |
-| `resolves a dependency its own closure rejects` | A peer range excludes the version its consumer owns. The range is a claim; make it true or widen it. |
-| `requires X@range, but the closure installed X@version` | Two installed packages disagree. Declare a version their dependents share. |
-| `Module "X" not available` at load | A library's peer is not in the loading realm. Expose it on the host panel (`vibestudio.exposeModules`). |
+| Refusal                                                      | Meaning and fix                                                                                                  |
+| ------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------- |
+| `loaded on its own, so nothing provides its closure's peers` | A unit loaded on its own needs a peer nobody owns. Add it to that unit's `dependencies`.                         |
+| `resolves a dependency its own closure rejects`              | A peer range excludes the version the consumer owns. Correct or widen the range.                                 |
+| `requires X@range, but the closure installed X@version`      | Two installed packages disagree. Declare a version all their dependents accept.                                  |
+| `Module "X" not available` at load                           | A library's peer is missing from the realm loading it. Expose it on the host panel (`vibestudio.exposeModules`). |
 
 From a Vibestudio source checkout, run the relevant focused tests plus:
 
@@ -321,16 +324,16 @@ pnpm check:userland-package-manager-boundary
 pnpm type-check:userland
 ```
 
-`check:userland-dependencies` answers the ownership question for every unit
-from the graph alone, without building anything, and prints the same refusal a
-build would. Use it after editing any manifest: a build only asks about the
-unit you build, so an app whose closure lost an owner can stay quiet until the
-moment it is loaded on a device. Inside a workspace, `verify` asks the same
-question for the unit it checks.
+`check:userland-dependencies` checks dependency ownership for every unit from
+the dependency graph alone, without building, and prints the same refusal a
+build would. Run it after editing any manifest: a build only checks the unit
+being built, so an app whose closure lost an owner may not fail until it is
+loaded on a device. Inside a workspace, `verify` runs the same check for the
+unit it verifies.
 
 The boundary check rejects userland package-manager policy, host dependencies
-on userland units, and root patches reaching into `workspace/`. When updating
+on userland units, and root patches that reach into `workspace/`. When updating
 an upstream version, update its direct dependency, exact patch selector, and
-patch contents together, then rebuild the real consumer. A no-longer-applicable
-patch must fail visibly; never retain it through a best-effort or once-only
-installation path.
+patch contents together, then rebuild the real consumer. A patch that no longer
+applies must fail visibly; do not keep it alive through a best-effort or
+install-once path.

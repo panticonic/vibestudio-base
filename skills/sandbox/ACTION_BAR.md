@@ -1,61 +1,46 @@
 # Action Bar
 
-Use `load_action_bar` for compact UI that should stay visible at the top of
-the current chat panel, above chat history and below the chat header. It is
-best for small workflow controls, current status, pinned next actions, and
-short-lived command palettes.
+`load_action_bar` renders compact UI at the top of the current chat panel,
+below the chat header and above the history. Use it for small workflow
+controls, current status, pinned next actions, and short-lived command
+palettes.
 
-`load_action_bar` is panel-local. It does not write a visible chat message, but
-it does publish a typed durable UI event so the transcript system and agent can
-observe that an action bar was loaded or cleared. Other panels may have
-different filesystem contexts, so always treat the rendered action bar as
-belonging only to the panel that exposes the tool.
+The action bar belongs to the panel that exposes the tool. Other panels may use
+different filesystem contexts and do not see it. Loading or clearing a bar does
+not write a visible chat message, but it does publish a typed UI event, so the
+transcript and the agent can see that it happened.
 
-## File Format
+## Source
 
-Create a context-relative TSX file that default-exports a React component. The
-component receives the same bindings as `inline_ui`:
+Pass the component either inline as `code` or as a context-relative TSX file
+`path`. Either way it default-exports a React component:
 
 ```tsx
-export default function ActionBar({ props = {}, chat }) {
+export default function ActionBar({ props = {}, chat, scope, scopes }) {
   // ...
 }
 ```
 
-The component receives `{ props, chat }` only. It does NOT receive
-`scope`/`scopes` — the eval REPL scope is server-side (in the agent's `EvalDO`)
-and is not shared into panel-rendered components. Reach runtime services from a
-component via `chat.rpc.call(...)`.
+Like inline UI, the component receives `{ props, chat, scope, scopes }`.
+`scope` here is the panel's browser-local scope (see
+[INLINE_UI.md](INLINE_UI.md#panel-scope)), not the eval REPL scope, which lives
+server-side in the agent's `EvalDO`. Reach runtime services with
+`chat.rpc.call(...)`.
 
-When creating an action-bar file inside a workspace repo namespace such as
-`panels/`, write inside a repo-shaped path, for example
-`panels/action-bar-review/index.tsx`. File-oriented APIs also accept
-`panels/action-bar-review.tsx` as shorthand and return its canonical expansion,
-`panels/action-bar-review/action-bar-review.tsx`.
+For a temporary bar, pass `code`. The panel writes it to a scratch file it owns,
+one per panel, and keeps that path in its state, so the bar survives panel
+reloads. Do not create, track, or delete a file yourself; loading new `code`
+replaces the panel's file, and `clear` removes the bar.
 
-The native `write`/`edit` tools record workspace source changes in VCS and route
-ordinary non-repo paths to context-local scratch when runtime fs is available.
-Platform-owned or ignored paths such as `.tmp` and `.vibestudio` remain reserved.
-For a transient action bar, create it through eval's runtime filesystem instead:
+For an action bar that belongs with the workspace source, or one that uses
+static relative imports of local helper files, write a checked-in file and pass
+its `path`. Inside a workspace repo namespace such as `panels/`, use a
+repo-shaped path, for example `panels/action-bar-review/index.tsx`.
+File-oriented APIs also accept the shorthand `panels/action-bar-review.tsx` and
+return its expansion, `panels/action-bar-review/action-bar-review.tsx`.
 
-```ts
-const stem = await fs.mktemp("action-bar");
-const actionBarPath = `${stem.replace(/^\/+/, "")}.tsx`;
-await fs.writeFile(actionBarPath, `
-  export default function ActionBar() {
-    return <div>Temporary controls</div>;
-  }
-`);
-return actionBarPath;
-```
-
-Pass the returned context-relative `actionBarPath` to `load_action_bar`, clear
-the bar when done, then remove the TSX file. (`mktemp` reserves an unused name;
-it does not create the `stem` file.) Use a checked-in repo-shaped path when the
-action bar is meant to persist.
-
-Action bars can call agent methods by handle without first resolving a
-participant id:
+Action bars can call agent methods by handle without looking up a participant
+id:
 
 ```tsx
 await chat.callMethodByHandle("gmail", "checkNow", {});
@@ -64,50 +49,58 @@ const compose = await chat.callMethodByHandle("@gmail", "compose", {
 });
 ```
 
-`chat.callMethodByHandle()` returns the provider payload directly.
-`chat.callMethodResultByHandle()` returns the full invocation envelope when
-metadata such as attachments or content type is needed.
+`chat.callMethodByHandle()` returns the provider payload.
+`chat.callMethodResultByHandle()` returns the full invocation envelope, for
+when you need metadata such as attachments or content type.
 
-Available imports are the same as `inline_ui`: `react`, `@radix-ui/themes`,
-`@radix-ui/react-icons`, and preloaded workspace/runtime modules already
-available in the panel. Static relative imports from the action-bar file are
-supported for local helpers/components. Bare package imports are inferred from
-the nearest `package.json` when possible; use `imports` for explicit package
-versions. Package-local aliases from `package.json` `imports` and simple
-`tsconfig.json` paths are supported.
+Imports work as in `inline_ui`: `react`, `@radix-ui/themes`,
+`@radix-ui/react-icons`, and the workspace/runtime modules preloaded in the
+panel; use `imports` to pin package versions. A `path` source also supports
+static relative imports of local helpers and components, and infers bare
+package imports from the nearest `package.json` when possible.
+Package-local aliases from `package.json` `imports` and simple `tsconfig.json`
+paths are supported.
 
-Keep the component compact. The chat panel defaults to a 180px maximum height,
-keeps overflow scrollable, and shows a resize handle when content reaches the
-height cap. User resizing updates the panel's `actionBarMaxHeight` state arg for
-file-backed action bars.
+Keep the component compact. The default maximum height is 180px (`maxHeight`
+is clamped to 64–360px). Overflow scrolls, and a resize handle appears when
+content reaches the cap. For file-backed action bars, resizing updates the
+panel's `actionBarMaxHeight` state arg.
 
 ## Load Or Replace
 
 ```ts
 load_action_bar({
+  code: `export default function ActionBar() {
+    return <div>Temporary controls</div>;
+  }`,
+});
+
+load_action_bar({
   path: "panels/action-bar-review/index.tsx",
   props: { mode: "review" },
-  maxHeight: 220
-})
+  maxHeight: 220,
+});
 ```
 
-The panel reads the file from its current filesystem context, compiles it, and
-renders it at the top of the chat. Calling `load_action_bar` again replaces the
-previous action bar for that panel.
+Pass exactly one of `code` or `path`. The panel compiles the source, reading a
+`path` from its current filesystem context, and renders it at the top of the
+chat. Calling `load_action_bar` again replaces the
+panel's previous action bar.
 
-A compile failure (syntax error, unresolved import) is returned directly as an
-error result and the current bar is left unchanged. Render-time and props
-failures arrive as ui-feedback notes.
+A compile failure (syntax error, unresolved import) comes back as an error
+result and leaves the current bar unchanged. Render-time and props failures
+arrive as ui-feedback notes: a note starts a repair turn if you are idle, or
+follows your current turn. Fix the source and call `load_action_bar` again.
 
 ## Clear
 
 ```ts
-load_action_bar({ clear: true })
+load_action_bar({ clear: true });
 ```
 
 ## Initial Panel State
 
-Chat panels can be opened with an initial action bar via state args:
+A chat panel can open with an action bar set through state args:
 
 ```ts
 {
@@ -116,7 +109,7 @@ Chat panels can be opened with an initial action bar via state args:
 }
 ```
 
-When a panel loads or clears an action bar, the host records a typed
-`ui.action_bar.updated` event in the PubSub channel log. The event is not a chat
-bubble, but it is part of the canonical transcript data used by the panel and
-agent. Do not create separate hidden context notes for action bars.
+Loading or clearing an action bar records a typed `ui.action_bar.updated` event
+in the PubSub channel log. It is not a chat bubble, but the panel and agent read
+it as part of the transcript, so do not add separate hidden context notes about
+action bars.

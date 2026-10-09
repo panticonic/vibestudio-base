@@ -174,12 +174,57 @@ export function createBaseRuntime(deps: BaseRuntimeDeps) {
   };
 
   // Host-command dispatch is panel ↔ shell messaging. Contributions are
-  // host-local UI state; they never transit a server service.
-  const hostCommandRunCallbacks = new Set<(commandId: string) => void>();
+  // host-local UI state; they never transit a server service. Each
+  // registration owns its commands and handler; the shell always receives the
+  // merged set of every live registration, and a run reaches only the
+  // registration that owns the selected id.
+  const hostCommandRegistrations = new Map<
+    symbol,
+    { commands: HostCommand[]; onRun: (commandId: string) => void }
+  >();
+  const emitHostCommands = () => {
+    const commands = [...hostCommandRegistrations.values()].flatMap(
+      (registration) => registration.commands,
+    );
+    void rpc
+      .emit("shell", HOST_COMMAND_CONTRIBUTION_EVENT, { commands })
+      .catch((error: unknown) =>
+        console.warn("[runtime] Failed to publish host commands:", error),
+      );
+  };
+  const registerHostCommands = (
+    commands: HostCommand[],
+    onRun: (commandId: string) => void,
+  ): (() => void) => {
+    const taken = new Set(
+      [...hostCommandRegistrations.values()].flatMap((registration) =>
+        registration.commands.map((command) => command.id),
+      ),
+    );
+    for (const command of commands) {
+      if (taken.has(command.id)) {
+        throw new Error(
+          `Host command id "${command.id}" is already registered in this panel; host command ids must be unique across every registration`,
+        );
+      }
+      taken.add(command.id);
+    }
+    const token = Symbol("host-commands");
+    hostCommandRegistrations.set(token, { commands: [...commands], onRun });
+    emitHostCommands();
+    return () => {
+      if (hostCommandRegistrations.delete(token)) emitHostCommands();
+    };
+  };
   const onHostCommandRunEvent = (payload: unknown) => {
     const commandId = (payload as { commandId?: unknown } | null)?.commandId;
     if (typeof commandId !== "string") return;
-    for (const cb of hostCommandRunCallbacks) cb(commandId);
+    for (const registration of hostCommandRegistrations.values()) {
+      if (registration.commands.some((command) => command.id === commandId)) {
+        registration.onRun(commandId);
+        return;
+      }
+    }
   };
   const hostCommandUnsubscribers = [
     rpc.on(
@@ -209,7 +254,7 @@ export function createBaseRuntime(deps: BaseRuntimeDeps) {
     focusUnsubscribers.length = 0;
     themeListeners.clear();
     themeConfigListeners.clear();
-    hostCommandRunCallbacks.clear();
+    hostCommandRegistrations.clear();
     stopHostEvents?.();
   };
 
@@ -277,26 +322,7 @@ export function createBaseRuntime(deps: BaseRuntimeDeps) {
       };
     },
     onFocus,
-    registerHostCommands: (commands: HostCommand[]) => {
-      void rpc
-        .emit("shell", HOST_COMMAND_CONTRIBUTION_EVENT, { commands })
-        .catch((error: unknown) =>
-          console.warn("[runtime] Failed to register host commands:", error),
-        );
-    },
-    unregisterHostCommands: () => {
-      void rpc
-        .emit("shell", HOST_COMMAND_CONTRIBUTION_EVENT, { commands: [] })
-        .catch((error: unknown) =>
-          console.warn("[runtime] Failed to unregister host commands:", error),
-        );
-    },
-    onHostCommandRun: (callback: (commandId: string) => void) => {
-      hostCommandRunCallbacks.add(callback);
-      return () => {
-        hostCommandRunCallbacks.delete(callback);
-      };
-    },
+    registerHostCommands,
     expose: (
       method: string,
       handler: (...args: any[]) => unknown | Promise<unknown>,

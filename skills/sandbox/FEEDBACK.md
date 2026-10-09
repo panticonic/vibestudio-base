@@ -1,19 +1,22 @@
 # Feedback Forms
 
-Block the agent until the user responds. Two variants: schema-based (simple forms) and custom (full React component).
+Feedback forms block the agent until the user responds. There are two
+variants: `feedback_form` (schema-based) and `feedback_custom` (a React
+component).
 
 ## feedback_form (Schema-Based)
 
-For standard forms with typed fields. No code needed.
+A standard form built from typed fields, with no code.
 
-Use this when you cannot continue without the answer: one decision or a set of
-related inputs. For one quick question, `ask_user` is simpler; when the
+Use it when you cannot continue without the answer: one decision or a set of
+related inputs. For one quick question, `ask_user` is simpler. If the
 conversation can continue without the answer, offer non-blocking `Choices`
-(see [visualize](../visualize/SKILL.md)).
-Never serialize a known multi-step setup into several one-question forms.
-Provider setup, permission selection, deep links, progress, retry, and
-explanatory choices belong in a persistent `inline_ui` surface that calls its
-trusted helpers directly.
+instead (see [visualize](../visualize/SKILL.md)).
+
+Do not split a known multi-step setup into several one-question forms. Provider
+setup, permission selection, deep links, progress, retry, and explanatory
+choices belong in a persistent `inline_ui` surface that calls its trusted
+helpers directly.
 
 ### Parameters
 
@@ -30,25 +33,25 @@ trusted helpers directly.
 
 ### Field Types
 
-| Type          | Extra Props                   | Description                                                 |
-| ------------- | ----------------------------- | ----------------------------------------------------------- |
-| `string`      | —                             | Text input                                                  |
-| `number`      | —                             | Number input                                                |
-| `boolean`     | —                             | Checkbox                                                    |
-| `select`      | `options: { value, label }[]` | Dropdown                                                    |
-| `slider`      | `min`, `max`                  | Range slider                                                |
-| `segmented`   | `options: { value, label }[]` | Segmented control                                           |
-| `multiSelect` | `options: { value, label }[]` | Multiple checkboxes with Select all / Deselect all controls |
-| `textarea`    | —                             | Multi-line text input                                       |
-| `toggle`      | —                             | Switch                                                      |
+| Type          | Extra Props                                                           | Description                                                    |
+| ------------- | --------------------------------------------------------------------- | -------------------------------------------------------------- |
+| `string`      | —                                                                     | Text input                                                     |
+| `number`      | —                                                                     | Number input                                                   |
+| `boolean`     | —                                                                     | Checkbox                                                       |
+| `select`      | `options: { value, label }[]`                                         | Dropdown                                                       |
+| `slider`      | `min`, `max`                                                          | Range slider                                                   |
+| `segmented`   | `options: { value, label }[]`                                         | Segmented control                                              |
+| `multiSelect` | `options: { value, label }[]`                                         | Multiple checkboxes with Select all / Deselect all controls    |
+| `textarea`    | —                                                                     | Multi-line text input                                          |
+| `toggle`      | —                                                                     | Switch                                                         |
 | `buttonGroup` | `buttons: { value, label, color?, description? }[]`, `submitOnSelect` | Row of answer buttons; with `submitOnSelect` one click answers |
-| `readonly`    | —                             | Display-only text                                           |
-| `code`        | `language`, `maxHeight`       | Highlighted code or JSON (display)                          |
-| `diff`        | `language`, `maxHeight`       | Diff view (display)                                         |
+| `readonly`    | —                                                                     | Display-only text                                              |
+| `code`        | `language`, `maxHeight`                                               | Highlighted code or JSON (display)                             |
+| `diff`        | `language`, `maxHeight`                                               | Diff view (display)                                            |
 
-Choice fields (`select`, `segmented`, and `multiSelect`) show an automatic
-free-text "Other" choice in feedback forms unless `allowFreeText: false` is set
-on the field. `buttonGroup` can opt in with `allowFreeText: true`. Customize it
+Choice fields (`select`, `segmented`, `multiSelect`) automatically add a
+free-text "Other" choice; set `allowFreeText: false` on the field to remove it.
+`buttonGroup` adds one only with `allowFreeText: true`. Customize the choice
 with `freeTextLabel`, `freeTextPlaceholder`, and `freeTextKey`.
 
 ### Field Definition
@@ -92,14 +95,14 @@ feedback_form({
 
 ## feedback_custom (React Component)
 
-For complex decisions that schema-based forms cannot express and whose
-structured result the agent genuinely needs for subsequent reasoning.
+For complex decisions that a schema-based form cannot express, when the agent
+needs the structured result for its later reasoning.
 
-Do not use this as the default provider-setup surface. When every control maps
-to an existing runtime or skill helper, use `inline_ui`, invoke that helper in
-the component, and keep progress, errors, retry, and completion there. Returning
-choices to the agent solely to assemble a function call is an unnecessary
-agent-mediated control plane.
+Do not use it as the default surface for provider setup. When every control
+maps to an existing runtime or skill helper, use `inline_ui`, call the helper
+from the component, and show progress, errors, retry, and completion there.
+Sending choices back to the agent only so it can assemble a function call adds
+a needless round trip through the agent.
 
 ### Parameters
 
@@ -110,14 +113,15 @@ agent-mediated control plane.
 | `imports` | `Record<string, string>` | Explicit package versions, same semantics as eval imports |
 | `title`   | string                   | Container header title                                    |
 
-File-loaded feedback components support static relative imports from the entry
-file and infer bare package imports from the nearest `package.json` when
-possible. Package-local aliases from `package.json` `imports` and simple
-`tsconfig.json` paths are supported.
+Feedback components loaded from a file support static relative imports from
+the entry file, and bare package imports are inferred from the nearest
+`package.json` when possible. Package-local aliases from `package.json`
+`imports` and simple `tsconfig.json` paths are supported.
 
 ### Component Contract
 
-The component receives `{ onSubmit, onCancel, onError, chat }`:
+The component receives `{ onSubmit, onCancel, onError, chat, scope, scopes }`
+and must be the default export:
 
 ```tsx
 export default function MyForm({ onSubmit, onCancel, onError, chat }) {
@@ -128,15 +132,25 @@ export default function MyForm({ onSubmit, onCancel, onError, chat }) {
 }
 ```
 
-**Must use `export default`.**
+`scope` and `scopes` are the panel's browser-local scope, shared with inline UI
+and the action bar (see [INLINE_UI.md](INLINE_UI.md#panel-scope)).
 
 ### Rendering Context
 
-The component renders inside a container Card with a header, scroll area, and resize handle. Do NOT wrap your component in a top-level Card. Use `<Flex direction="column" gap="3" p="2">` or similar as root.
+The component renders inside a container Card with a header, scroll area, and
+resize handle. Do not wrap it in another top-level Card; use
+`<Flex direction="column" gap="3" p="2">` or similar as the root.
 
 ### Error Handling
 
-Render-time errors and synchronous throws in event handlers are caught by the host's error boundary. Errors from `chat.publish`, `chat.callMethod`, and `chat.rpc.call` are caught even when awaited without try/catch. **Errors in `async` handlers that `await` other APIs (e.g. `fetch`, `fs.readFile`, third-party libraries) should be wrapped in try/catch** — on failure, call `onError(message)` to signal the failure back to the agent, or surface the error inline and leave `onSubmit`/`onCancel` uncalled so the user can retry.
+The host's error boundary catches render-time errors and synchronous throws in
+event handlers. Errors from `chat.publish`, `chat.callMethod`, and
+`chat.rpc.call` are caught too, even when awaited without try/catch.
+
+**Wrap other awaited calls in `async` handlers (`fetch`, `fs.readFile`,
+third-party libraries) in try/catch.** On failure, either call
+`onError(message)` to report it to the agent, or show the error inline and leave
+`onSubmit`/`onCancel` uncalled so the user can retry.
 
 ### Result
 
@@ -196,6 +210,6 @@ export default function ReviewRequest({ onSubmit, onCancel }) {
     </Flex>
   );
 }`,
-  title: "Browser Import"
+  title: "Review Request"
 })
 ```

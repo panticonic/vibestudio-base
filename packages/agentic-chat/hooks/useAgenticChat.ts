@@ -11,17 +11,28 @@
  *
  * For minimal chat (no tools, no feedback, no debug), use useChatCore directly.
  */
-import { useCallback, useMemo, useReducer, useRef, useEffect, useState } from "react";
+import {
+  useCallback,
+  useMemo,
+  useReducer,
+  useRef,
+  useEffect,
+  useState,
+} from "react";
 import { z } from "zod";
 import { createTypedServiceClient } from "@vibestudio/shared/typedServiceClient";
 import { fsMethods } from "@vibestudio/service-schemas/fs";
-import type { ChannelConfig, MethodExecutionContext, PubSubClient } from "@workspace/pubsub";
+import type {
+  ChannelConfig,
+  MethodExecutionContext,
+  PubSubClient,
+} from "@workspace/pubsub";
 import { ScopeManager } from "@workspace/eval/scope";
 import type {
   SandboxImportLoader,
   SandboxOptions,
   SandboxResult,
-  ScopeBlobBackend
+  ScopeBlobBackend,
 } from "@workspace/eval";
 import {
   AGENTIC_EVENT_PAYLOAD_KIND,
@@ -29,7 +40,7 @@ import {
   type ParticipantKind,
   participantRefFromMetadata,
   type ParticipantRef,
-  type AgenticEvent
+  type AgenticEvent,
 } from "@workspace/agentic-protocol";
 import { useChatCore } from "./core/useChatCore";
 import { useForkLineage } from "./useForkLineage";
@@ -53,25 +64,31 @@ import type {
   ChatInputContextValue,
   ActionBarData,
   BrowserHandoffCallerKind,
-  ForkNavHandlers
+  ForkNavHandlers,
 } from "../types";
 import { channelParticipantId, runtimeCallerId } from "../types";
 import type { MessageTypeComponentEntry } from "../types";
 import { customInspectorPayload } from "../components/CustomMessage";
 import { unwrapChatMethodResult } from "@workspace/agentic-core";
-import type { ChatMethodResult, AgentSubscriptionConfig } from "@workspace/agentic-core";
+import type {
+  ChatMethodResult,
+  AgentSubscriptionConfig,
+} from "@workspace/agentic-core";
 import {
   LocalStorageScopePersistence,
-  panelLocalScopeChannelId
+  panelLocalScopeChannelId,
 } from "../utils/localStorageScopePersistence";
 import { scheduleBackgroundWork } from "../utils/scheduleBackgroundWork";
 import { sendSandboxText, type SandboxSendOptions } from "./sandboxSend";
-import { connectionRetryDelayMs, isTransientConnectionFailure } from "./connectionRetry";
+import {
+  connectionRetryDelayMs,
+  isTransientConnectionFailure,
+} from "./connectionRetry";
 import {
   composeAgenticChatMethods,
   resolveAgenticChatFeatures,
   type AgenticChatFeature,
-  type ResolvedAgenticChatFeatures
+  type ResolvedAgenticChatFeatures,
 } from "../features";
 
 const NO_INLINE_UI_MESSAGES: ChatContextValue["messages"] = [];
@@ -83,7 +100,7 @@ interface InstalledAgentInfo {
 function actionBarLoadKey(
   path: string,
   props: Record<string, unknown> | undefined,
-  maxHeight: number | undefined
+  maxHeight: number | undefined,
 ): string {
   let propsKey = "";
   try {
@@ -94,23 +111,34 @@ function actionBarLoadKey(
   return `${path}\n${propsKey}\n${maxHeight ?? ""}`;
 }
 
-function actorKindFromMetadata(type: string | undefined, participantId?: string): ParticipantKind {
+function actorKindFromMetadata(
+  type: string | undefined,
+  participantId?: string,
+): ParticipantKind {
   // A `user:<userId>` participant id is the channel-stamped human identity
   // (WP6 §4) — it always resolves to the semantic `user` role, regardless of
   // the client-supplied metadata type.
   if (participantId?.startsWith("user:")) return "user";
-  if (type === "agent" || type === "system" || type === "panel" || type === "external") return type;
+  if (
+    type === "agent" ||
+    type === "system" ||
+    type === "panel" ||
+    type === "external"
+  )
+    return type;
   return "user";
 }
 
-function browserHandoffCallerKindFromMetadata(type: string | undefined): BrowserHandoffCallerKind {
+function browserHandoffCallerKindFromMetadata(
+  type: string | undefined,
+): BrowserHandoffCallerKind {
   if (type === "app" || type === "shell") return type;
   return "panel";
 }
 
 function actorForClient(
   client: Pick<PubSubClient<ChatParticipantMetadata>, "clientId" | "roster">,
-  metadata: ClientParticipantMetadata
+  metadata: ClientParticipantMetadata,
 ) {
   const id = client.clientId ?? metadata.handle ?? "panel";
   // Live identity projection (WP6 §3/§5): the channel stamps human
@@ -123,13 +151,13 @@ function actorForClient(
     kind: actorKindFromMetadata(merged.type ?? metadata.type, id),
     id,
     displayName: merged.name ?? merged.handle ?? id,
-    metadata: { ...merged }
+    metadata: { ...merged },
   };
 }
 
 async function waitForMethodHandle<T>(
   handle: { result: Promise<T>; cancel?: () => Promise<void> },
-  options?: { timeoutMs?: number; signal?: AbortSignal }
+  options?: { timeoutMs?: number; signal?: AbortSignal },
 ): Promise<T> {
   let timeout: ReturnType<typeof setTimeout> | undefined;
   let abortCleanup: (() => void) | undefined;
@@ -148,7 +176,7 @@ async function waitForMethodHandle<T>(
             cancel();
             reject(new Error(`Method call timed out after ${timeoutMs}ms`));
           }, timeoutMs);
-        })
+        }),
       );
     }
     if (options?.signal) {
@@ -163,8 +191,9 @@ async function waitForMethodHandle<T>(
             reject(new Error("Method call aborted"));
           };
           options.signal!.addEventListener("abort", onAbort, { once: true });
-          abortCleanup = () => options.signal!.removeEventListener("abort", onAbort);
-        })
+          abortCleanup = () =>
+            options.signal!.removeEventListener("abort", onAbort);
+        }),
       );
     }
     return await Promise.race([handle.result, ...blockers]);
@@ -241,10 +270,12 @@ export function useAgenticChat({
   connectionRetrySignal,
   features: requestedFeatures,
 }: UseAgenticChatOptions): UseAgenticChatResult {
-  const [features] = useState(() => resolveAgenticChatFeatures(requestedFeatures));
+  const [features] = useState(() =>
+    resolveAgenticChatFeatures(requestedFeatures),
+  );
   const metadata = useMemo<ClientParticipantMetadata>(
     () => metadataOption ?? { name: channelName, type: "panel" },
-    [channelName, metadataOption]
+    [channelName, metadataOption],
   );
   // --- Core (durable channel trajectory events -> transcript view model) ---
   const core = useChatCore({
@@ -271,13 +302,13 @@ export function useAgenticChat({
     selfMetadata: {
       type: metadata.type,
       name: metadata.name,
-      handle: metadata.handle
+      handle: metadata.handle,
     },
     messages: core.messages,
     replaySettled: core.replaySettled,
     retrySignal: connectionRetrySignal,
     client: core.client,
-    nav: forkNav
+    nav: forkNav,
   });
   const scopeBlobBackend = useMemo<ScopeBlobBackend>(
     () => ({
@@ -287,20 +318,26 @@ export function useAgenticChat({
           size: number;
         }>,
       getText: (digest: string) =>
-        config.rpc.call("main", "blobstore.getText", [digest]) as Promise<string | null>
+        config.rpc.call("main", "blobstore.getText", [digest]) as Promise<
+          string | null
+        >,
     }),
-    [config.rpc]
+    [config.rpc],
   );
   const scopeManager = useMemo(
     () =>
       new ScopeManager({
         channelId: panelLocalScopeChannelId(channelName, config.clientId),
         panelId: "panel-ui",
-        persistence: new LocalStorageScopePersistence(scopeBlobBackend)
+        persistence: new LocalStorageScopePersistence(scopeBlobBackend),
+        rehydrators: config.scopeRehydrators,
       }),
-    [channelName, config.clientId, scopeBlobBackend]
+    [channelName, config.clientId, config.scopeRehydrators, scopeBlobBackend],
   );
-  const [scopeVersion, bumpScopeVersion] = useReducer((value: number) => value + 1, 0);
+  const [scopeVersion, bumpScopeVersion] = useReducer(
+    (value: number) => value + 1,
+    0,
+  );
   useEffect(() => {
     let cancelled = false;
     const unsubscribe = scopeManager.onChange(bumpScopeVersion);
@@ -311,12 +348,13 @@ export function useAgenticChat({
         bumpScopeVersion();
         if (result.lost.length > 0) {
           console.warn(
-            `[panel-ui-scope] Cold recovery lost live-only keys: [${result.lost.join(", ")}]`
+            `[panel-ui-scope] Cold recovery lost live-only keys: [${result.lost.join(", ")}]`,
           );
         }
       })
       .catch((err) => {
-        if (!cancelled) console.warn("[panel-ui-scope] Failed to hydrate:", err);
+        if (!cancelled)
+          console.warn("[panel-ui-scope] Failed to hydrate:", err);
       });
     const persistIfDirty = () => {
       if (!scopeManager.isDirty) return;
@@ -342,15 +380,15 @@ export function useAgenticChat({
   const publishTypedAgenticEvent = useCallback(
     async (
       event: AgenticEvent,
-      options?: { idempotencyKey?: string }
+      options?: { idempotencyKey?: string },
     ): Promise<number | undefined> => {
       const client = core.clientRef.current;
       if (!client) return undefined;
       return client.publish(AGENTIC_EVENT_PAYLOAD_KIND, event, {
-        idempotencyKey: options?.idempotencyKey ?? crypto.randomUUID()
+        idempotencyKey: options?.idempotencyKey ?? crypto.randomUUID(),
       });
     },
-    [core.clientRef]
+    [core.clientRef],
   );
   // --- Mirror host-owned installed agents into transient pending badges until they join ---
   useEffect(() => {
@@ -364,40 +402,49 @@ export function useAgenticChat({
         if (!core.clientRef.current) {
           return Promise.reject(new Error("Agentic chat is not connected"));
         }
-        return sendSandboxText(core.publishText, content, opts, crypto.randomUUID());
+        return sendSandboxText(
+          core.publishText,
+          content,
+          opts,
+          crypto.randomUUID(),
+        );
       },
       publish: (
         eventType: string,
         payload: unknown,
         opts?: {
           idempotencyKey?: string;
-        }
+        },
       ) => {
         return core.clientRef.current!.publish(eventType, payload, {
           ...opts,
-          idempotencyKey: opts?.idempotencyKey ?? crypto.randomUUID()
+          idempotencyKey: opts?.idempotencyKey ?? crypto.randomUUID(),
         }) as Promise<unknown>;
       },
       publishCustomMessage: (input, opts) => {
         return core.clientRef.current!.publishCustomMessage(input, {
-          idempotencyKey: opts?.idempotencyKey ?? crypto.randomUUID()
+          idempotencyKey: opts?.idempotencyKey ?? crypto.randomUUID(),
         });
       },
       updateCustomMessage: (messageId, update, opts) => {
         return core.clientRef.current!.updateCustomMessage(messageId, update, {
-          idempotencyKey: opts?.idempotencyKey ?? crypto.randomUUID()
+          idempotencyKey: opts?.idempotencyKey ?? crypto.randomUUID(),
         });
       },
       registerMessageType: (input, opts) => {
         return core.clientRef.current!.registerMessageType(
           input,
-          opts?.idempotencyKey ? { idempotencyKey: opts.idempotencyKey } : undefined
+          opts?.idempotencyKey
+            ? { idempotencyKey: opts.idempotencyKey }
+            : undefined,
         );
       },
       clearMessageType: (typeId, opts) => {
         return core.clientRef.current!.clearMessageType(
           typeId,
-          opts?.idempotencyKey ? { idempotencyKey: opts.idempotencyKey } : undefined
+          opts?.idempotencyKey
+            ? { idempotencyKey: opts.idempotencyKey }
+            : undefined,
         );
       },
       getMessageType: (typeId) => {
@@ -407,16 +454,18 @@ export function useAgenticChat({
         return core.clientRef.current!.getMessageTypes();
       },
       getParticipants: async () => {
-        return Object.values(core.clientRef.current?.roster ?? {}).map(({ id, ref, metadata }) => ({
-          id,
-          ref,
-          type: metadata.type,
-          name: metadata.name,
-          isPerson: metadata.type === "user",
-          isAgent: metadata.type === "agent",
-          ...(metadata.handle ? { handle: metadata.handle } : {}),
-          ...(metadata.methods ? { methods: metadata.methods } : {})
-        }));
+        return Object.values(core.clientRef.current?.roster ?? {}).map(
+          ({ id, ref, metadata }) => ({
+            id,
+            ref,
+            type: metadata.type,
+            name: metadata.name,
+            isPerson: metadata.type === "user",
+            isAgent: metadata.type === "agent",
+            ...(metadata.handle ? { handle: metadata.handle } : {}),
+            ...(metadata.methods ? { methods: metadata.methods } : {}),
+          }),
+        );
       },
       replayEnvelope: (envelopeId: string) => {
         return core.clientRef.current!.getEnvelope(envelopeId);
@@ -425,15 +474,20 @@ export function useAgenticChat({
         pid: string,
         method: string,
         callArgs: unknown,
-        options?: { timeoutMs?: number; signal?: AbortSignal }
+        options?: { timeoutMs?: number; signal?: AbortSignal },
       ) => {
-        const handle = core.clientRef.current!.callMethod(pid, method, callArgs, options);
+        const handle = core.clientRef.current!.callMethod(
+          pid,
+          method,
+          callArgs,
+          options,
+        );
         const result = await waitForMethodHandle(
           handle as {
             result: Promise<ChatMethodResult>;
             cancel?: () => Promise<void>;
           },
-          options
+          options,
         );
         return unwrapChatMethodResult(result);
       },
@@ -441,24 +495,33 @@ export function useAgenticChat({
         pid: string,
         method: string,
         callArgs: unknown,
-        options?: { timeoutMs?: number; signal?: AbortSignal }
+        options?: { timeoutMs?: number; signal?: AbortSignal },
       ) => {
-        const handle = core.clientRef.current!.callMethod(pid, method, callArgs, options);
+        const handle = core.clientRef.current!.callMethod(
+          pid,
+          method,
+          callArgs,
+          options,
+        );
         return waitForMethodHandle(
           handle as {
             result: Promise<ChatMethodResult>;
             cancel?: () => Promise<void>;
           },
-          options
+          options,
         );
       },
       participantByHandle: async (rawHandle: string) => {
-        const handle = rawHandle.startsWith("@") ? rawHandle.slice(1) : rawHandle;
+        const handle = rawHandle.startsWith("@")
+          ? rawHandle.slice(1)
+          : rawHandle;
         const roster = core.clientRef.current?.roster ?? {};
         return (
           Object.values(roster).find((participant) => {
             const metadataHandle = participant.metadata?.handle;
-            return typeof metadataHandle === "string" && metadataHandle === handle;
+            return (
+              typeof metadataHandle === "string" && metadataHandle === handle
+            );
           }) ?? null
         );
       },
@@ -466,24 +529,29 @@ export function useAgenticChat({
         rawHandle: string,
         method: string,
         callArgs: unknown,
-        options?: { timeoutMs?: number; signal?: AbortSignal }
+        options?: { timeoutMs?: number; signal?: AbortSignal },
       ) => {
-        const handle = rawHandle.startsWith("@") ? rawHandle.slice(1) : rawHandle;
+        const handle = rawHandle.startsWith("@")
+          ? rawHandle.slice(1)
+          : rawHandle;
         const roster = core.clientRef.current?.roster ?? {};
-        const participant = Object.values(roster).find((item) => item.metadata?.handle === handle);
-        if (!participant) throw new Error(`No participant with handle @${handle}`);
+        const participant = Object.values(roster).find(
+          (item) => item.metadata?.handle === handle,
+        );
+        if (!participant)
+          throw new Error(`No participant with handle @${handle}`);
         const methodHandle = core.clientRef.current!.callMethod(
           participant.id,
           method,
           callArgs,
-          options
+          options,
         );
         const result = await waitForMethodHandle(
           methodHandle as {
             result: Promise<ChatMethodResult>;
             cancel?: () => Promise<void>;
           },
-          options
+          options,
         );
         return unwrapChatMethodResult(result);
       },
@@ -491,24 +559,29 @@ export function useAgenticChat({
         rawHandle: string,
         method: string,
         callArgs: unknown,
-        options?: { timeoutMs?: number; signal?: AbortSignal }
+        options?: { timeoutMs?: number; signal?: AbortSignal },
       ) => {
-        const handle = rawHandle.startsWith("@") ? rawHandle.slice(1) : rawHandle;
+        const handle = rawHandle.startsWith("@")
+          ? rawHandle.slice(1)
+          : rawHandle;
         const roster = core.clientRef.current?.roster ?? {};
-        const participant = Object.values(roster).find((item) => item.metadata?.handle === handle);
-        if (!participant) throw new Error(`No participant with handle @${handle}`);
+        const participant = Object.values(roster).find(
+          (item) => item.metadata?.handle === handle,
+        );
+        if (!participant)
+          throw new Error(`No participant with handle @${handle}`);
         const methodHandle = core.clientRef.current!.callMethod(
           participant.id,
           method,
           callArgs,
-          options
+          options,
         );
         return waitForMethodHandle(
           methodHandle as {
             result: Promise<ChatMethodResult>;
             cancel?: () => Promise<void>;
           },
-          options
+          options,
         );
       },
       focusMessage: async (messageId: string): Promise<boolean> => {
@@ -523,11 +596,11 @@ export function useAgenticChat({
               [
                 {
                   boxShadow: "0 0 0 3px var(--accent-a7)",
-                  borderRadius: "8px"
+                  borderRadius: "8px",
                 },
-                { boxShadow: "0 0 0 3px transparent", borderRadius: "8px" }
+                { boxShadow: "0 0 0 3px transparent", borderRadius: "8px" },
               ],
-              { duration: 1600, easing: "ease-out" }
+              { duration: 1600, easing: "ease-out" },
             );
             return true;
           }
@@ -537,9 +610,16 @@ export function useAgenticChat({
       },
       contextId: contextId ?? "",
       channelId: channelName,
-      rpc: config.rpc
+      rpc: config.rpc,
     }),
-    [contextId, channelName, config.rpc, core.clientRef, metadata, publishTypedAgenticEvent]
+    [
+      contextId,
+      channelName,
+      config.rpc,
+      core.clientRef,
+      metadata,
+      publishTypedAgenticEvent,
+    ],
   );
   // --- Bound executeSandbox with optional host import loading wired ---
   const boundExecuteSandbox = useCallback(
@@ -547,25 +627,47 @@ export function useAgenticChat({
       const { executeSandbox } = await import("@workspace/eval/sandbox");
       return executeSandbox(code, {
         ...opts,
-        ...(opts.loadImport || !importLoader ? {} : { loadImport: importLoader })
+        ...(opts.loadImport || !importLoader
+          ? {}
+          : { loadImport: importLoader }),
       });
     },
-    [importLoader]
+    [importLoader],
   );
   const loadSourceFile = useCallback(
     async (path: string) => {
-      const fsClient = createTypedServiceClient("fs", fsMethods, (service, method, args) =>
-        config.rpc.call("main", `${service}.${method}`, args)
+      const fsClient = createTypedServiceClient(
+        "fs",
+        fsMethods,
+        (service, method, args) =>
+          config.rpc.call("main", `${service}.${method}`, args),
       );
       return (await fsClient.readFile(path, "utf8")) as string;
     },
-    [config.rpc]
+    [config.rpc],
+  );
+  // `load_action_bar({ code })` owns exactly one context-local scratch file per
+  // panel. The panel persists that path like any other action-bar file, so a
+  // reload restores the bar through the same file-backed state arg.
+  const managedActionBarPath = `.tmp/action-bars/${config.clientId.replace(/[^A-Za-z0-9_-]/gu, "_")}.tsx`;
+  const writeManagedActionBar = useCallback(
+    async (code: string) => {
+      const fsClient = createTypedServiceClient(
+        "fs",
+        fsMethods,
+        (service, method, args) =>
+          config.rpc.call("main", `${service}.${method}`, args),
+      );
+      await fsClient.writeFile(managedActionBarPath, code);
+      return managedActionBarPath;
+    },
+    [config.rpc, managedActionBarPath],
   );
   const feedback = useChatFeedback({
     chat,
     loadImport: importLoader,
     clientRef: core.clientRef,
-    connected: core.connected
+    connected: core.connected,
   });
   const chatTools = useChatTools({
     clientRef: core.clientRef,
@@ -573,27 +675,29 @@ export function useAgenticChat({
     contextId: contextId ?? "",
     executeSandbox: boundExecuteSandbox,
     chat,
-    scopeManager
+    scopeManager,
   });
   const debug = useChatDebug();
   const inlineUi = useInlineUi({
     client: core.client,
     messages: features.inlineUi ? core.messages : NO_INLINE_UI_MESSAGES,
     loadSourceFile,
-    loadImport: importLoader
+    loadImport: importLoader,
   });
   const messageTypes = useMessageTypeRegistry({
     client: core.client,
     messages: core.messages,
     definitions: core.messageTypes,
     loadSourceFile,
-    loadImport: importLoader
+    loadImport: importLoader,
   });
-  const [actionBarData, setActionBarData] = useState<ActionBarData | null>(null);
+  const [actionBarData, setActionBarData] = useState<ActionBarData | null>(
+    null,
+  );
   const actionBar = useActionBar({
     data: features.actionBar ? actionBarData : null,
     loadSourceFile,
-    loadImport: importLoader
+    loadImport: importLoader,
   });
   const lastLoadedActionBarKeyRef = useRef<string | null>(null);
   useEffect(() => {
@@ -602,7 +706,7 @@ export function useAgenticChat({
     if (!canonical?.source) return;
     const next: ActionBarData = {
       id: canonical.id ?? "canonical-action-bar",
-      source: canonical.source
+      source: canonical.source,
     };
     if (canonical.author) next.author = canonical.author;
     if (canonical.turnId !== undefined) next.turnId = canonical.turnId;
@@ -614,7 +718,7 @@ export function useAgenticChat({
       lastLoadedActionBarKeyRef.current = actionBarLoadKey(
         canonical.source.path,
         canonical.props,
-        canonical.maxHeight
+        canonical.maxHeight,
       );
     }
   }, [core.canonicalActionBar, features.actionBar]);
@@ -632,7 +736,7 @@ export function useAgenticChat({
         idempotencyKey?: string;
         requestedBy?: ParticipantRef;
         turnId?: string;
-      }
+      },
     ) => {
       const client = core.clientRef.current;
       if (!client) return;
@@ -641,27 +745,30 @@ export function useAgenticChat({
         uiType: "action_bar",
         ...(payload.requestedBy ? { requestedBy: payload.requestedBy } : {}),
         cleared: action === "cleared",
-        result: payload.ok ? { ok: true } : { ok: false, error: payload.error }
+        result: payload.ok ? { ok: true } : { ok: false, error: payload.error },
       };
       if (payload.id !== undefined) eventPayload.id = payload.id;
-      if (payload.path !== undefined) eventPayload.source = { type: "file", path: payload.path };
+      if (payload.path !== undefined)
+        eventPayload.source = { type: "file", path: payload.path };
       if (payload.imports !== undefined) eventPayload.imports = payload.imports;
       if (payload.props !== undefined) eventPayload.props = payload.props;
-      if (payload.maxHeight !== undefined) eventPayload.maxHeight = payload.maxHeight;
+      if (payload.maxHeight !== undefined)
+        eventPayload.maxHeight = payload.maxHeight;
       await publishTypedAgenticEvent(
         {
           kind: "ui.action_bar.updated",
           actor: actorForClient(client, metadata),
           ...(payload.turnId ? { turnId: payload.turnId as never } : {}),
           payload: eventPayload,
-          createdAt: new Date().toISOString()
+          createdAt: new Date().toISOString(),
         },
         {
-          idempotencyKey: payload.idempotencyKey ?? `ui:action-bar:${crypto.randomUUID()}`
-        }
+          idempotencyKey:
+            payload.idempotencyKey ?? `ui:action-bar:${crypto.randomUUID()}`,
+        },
       );
     },
-    [core.clientRef, metadata, publishTypedAgenticEvent]
+    [core.clientRef, metadata, publishTypedAgenticEvent],
   );
   const loadActionBarFromFile = useCallback(
     async ({
@@ -672,7 +779,7 @@ export function useAgenticChat({
       persistStateArgs = true,
       idempotencyKey,
       requestedBy,
-      turnId
+      turnId,
     }: {
       path: string;
       props?: Record<string, unknown>;
@@ -705,14 +812,18 @@ export function useAgenticChat({
           imports,
           props,
           maxHeight,
-          ...(turnId ? { turnId } : {})
+          ...(turnId ? { turnId } : {}),
         });
-        lastLoadedActionBarKeyRef.current = actionBarLoadKey(trimmedPath, props, maxHeight);
+        lastLoadedActionBarKeyRef.current = actionBarLoadKey(
+          trimmedPath,
+          props,
+          maxHeight,
+        );
         if (persistStateArgs) {
           await onActionBarFileChange?.({
             path: trimmedPath,
             props,
-            maxHeight
+            maxHeight,
           });
         }
         await publishActionBarContext("loaded", {
@@ -724,7 +835,7 @@ export function useAgenticChat({
           ok: true,
           idempotencyKey,
           requestedBy,
-          turnId
+          turnId,
         });
         return { ok: true, id };
       } catch (err) {
@@ -738,19 +849,19 @@ export function useAgenticChat({
           error,
           idempotencyKey,
           requestedBy,
-          turnId
+          turnId,
         });
         return { ok: false, error };
       }
     },
-    [loadSourceFile, onActionBarFileChange, publishActionBarContext]
+    [loadSourceFile, onActionBarFileChange, publishActionBarContext],
   );
   const clearActionBar = useCallback(
     async ({
       persistStateArgs = true,
       idempotencyKey,
       requestedBy,
-      turnId
+      turnId,
     }: {
       persistStateArgs?: boolean;
       idempotencyKey?: string;
@@ -762,16 +873,21 @@ export function useAgenticChat({
       if (persistStateArgs) {
         await onActionBarFileChange?.({ path: null });
       }
-      await publishActionBarContext("cleared", { ok: true, idempotencyKey, requestedBy, turnId });
+      await publishActionBarContext("cleared", {
+        ok: true,
+        idempotencyKey,
+        requestedBy,
+        turnId,
+      });
     },
-    [onActionBarFileChange, publishActionBarContext]
+    [onActionBarFileChange, publishActionBarContext],
   );
   const updateActionBarMaxHeight = useCallback(
     (
       maxHeight: number,
       options?: {
         saveState?: boolean;
-      }
+      },
     ) => {
       setActionBarData((current) => {
         if (!current) return current;
@@ -780,20 +896,20 @@ export function useAgenticChat({
           void onActionBarFileChange?.({
             path: current.source.path,
             props: current.props,
-            maxHeight
+            maxHeight,
           });
         }
         return next;
       });
     },
-    [onActionBarFileChange]
+    [onActionBarFileChange],
   );
   useEffect(() => {
     if (!features.actionBar || !core.connected || !initialActionBarFile) return;
     const loadKey = actionBarLoadKey(
       initialActionBarFile,
       initialActionBarProps,
-      initialActionBarMaxHeight
+      initialActionBarMaxHeight,
     );
     if (lastLoadedActionBarKeyRef.current === loadKey) return;
     // State-arg action bars decorate the chat; their file validation and
@@ -804,7 +920,7 @@ export function useAgenticChat({
         props: initialActionBarProps,
         maxHeight: initialActionBarMaxHeight,
         persistStateArgs: false,
-        idempotencyKey: `ui:initial-action-bar:${channelName}:${loadKey}`
+        idempotencyKey: `ui:initial-action-bar:${channelName}:${loadKey}`,
       });
     });
   }, [
@@ -814,7 +930,7 @@ export function useAgenticChat({
     initialActionBarProps,
     initialActionBarMaxHeight,
     loadActionBarFromFile,
-    features.actionBar
+    features.actionBar,
   ]);
   // --- Stable refs for connection effect (avoids unstable object deps) ---
   const feedbackRef = useRef(feedback);
@@ -831,8 +947,10 @@ export function useAgenticChat({
     importLoader,
     boundExecuteSandbox,
     loadSourceFile,
+    managedActionBarPath,
+    writeManagedActionBar,
     chat,
-    scopeManager
+    scopeManager,
   });
   connectionMethodsRef.current = {
     clearActionBar,
@@ -842,8 +960,10 @@ export function useAgenticChat({
     importLoader,
     boundExecuteSandbox,
     loadSourceFile,
+    managedActionBarPath,
+    writeManagedActionBar,
     chat,
-    scopeManager
+    scopeManager,
   };
   // Live snapshot for the inspect_card method: agents debug a card by reading
   // the same data the UI's "Copy details" produces.
@@ -853,7 +973,7 @@ export function useAgenticChat({
   }>({ messages: [], registry: new Map() });
   cardInspectionRef.current = {
     messages: core.messages,
-    registry: messageTypes.messageTypeComponents
+    registry: messageTypes.messageTypeComponents,
   };
   // --- Connect to channel on mount ---
   useEffect(() => {
@@ -872,7 +992,9 @@ export function useAgenticChat({
           const toolMethods = chatToolsRef.current.buildToolMethods();
           const methods = composeAgenticChatMethods(
             toolMethods,
-            features.feedback ? feedbackRef.current.buildFeedbackMethods() : undefined,
+            features.feedback
+              ? feedbackRef.current.buildFeedbackMethods()
+              : undefined,
             {
               inspect_card: {
                 description:
@@ -881,35 +1003,48 @@ export function useAgenticChat({
                   "card you published is not rendering, looks wrong, or a user reports a stuck spinner — it " +
                   "returns exactly what the user's 'Copy details' button shows. Parameters: { messageId: string }.",
                 parameters: z.object({
-                  messageId: z.string().describe("The custom message id (custom.started messageId)")
+                  messageId: z
+                    .string()
+                    .describe(
+                      "The custom message id (custom.started messageId)",
+                    ),
                 }),
                 execute: async (args: unknown, ctx: MethodExecutionContext) => {
                   const { messageId } = args as { messageId?: string };
                   if (!messageId)
-                    return ctx.result({ ok: false, error: "Missing messageId" }, { isError: true });
+                    return ctx.result(
+                      { ok: false, error: "Missing messageId" },
+                      { isError: true },
+                    );
                   const snapshot = cardInspectionRef.current;
                   const message = snapshot.messages.find(
-                    (item) => item.custom?.messageId === messageId
+                    (item) => item.custom?.messageId === messageId,
                   );
                   if (!message?.custom) {
                     const known = snapshot.messages
                       .filter((item) => item.custom)
-                      .map((item) => `${item.custom!.typeId}:${item.custom!.messageId}`);
-                    return ctx.result({
-                      ok: false,
-                      error: `No custom message "${messageId}" in this channel view.`,
-                      knownCards: known
-                    }, { isError: true });
+                      .map(
+                        (item) =>
+                          `${item.custom!.typeId}:${item.custom!.messageId}`,
+                      );
+                    return ctx.result(
+                      {
+                        ok: false,
+                        error: `No custom message "${messageId}" in this channel view.`,
+                        knownCards: known,
+                      },
+                      { isError: true },
+                    );
                   }
                   return {
                     ok: true,
                     details: customInspectorPayload(
                       message.custom,
-                      snapshot.registry.get(message.custom.typeId)
-                    )
+                      snapshot.registry.get(message.custom.typeId),
+                    ),
                   };
-                }
-              }
+                },
+              },
             },
             features.inlineUi
               ? {
@@ -963,36 +1098,41 @@ export default function Spending({ props }) {
                         .min(1)
                         .optional()
                         .describe(
-                          "Stable component ID. Reusing it updates and bumps the existing card; omit it to create a new card."
+                          "Stable component ID. Reusing it updates and bumps the existing card; omit it to create a new card.",
                         ),
                       code: z
                         .string()
                         .optional()
                         .describe(
-                          "TSX source code for the component. Provide either code or path."
+                          "TSX source code for the component. Provide either code or path.",
                         ),
                       path: z
                         .string()
                         .optional()
                         .describe(
-                          "Context-relative TSX file to render instead of inline code. Supports static relative imports."
+                          "Context-relative TSX file to render instead of inline code. Supports static relative imports.",
                         ),
                       imports: z
                         .record(z.string(), z.string())
                         .optional()
-                        .describe("On-demand package builds. Same semantics as eval imports."),
+                        .describe(
+                          "On-demand package builds. Same semantics as eval imports.",
+                        ),
                       props: z
                         .record(z.unknown())
                         .optional()
-                        .describe("Props passed to the component as { props }")
+                        .describe("Props passed to the component as { props }"),
                     }),
-                    execute: async (args: unknown, ctx: MethodExecutionContext) => {
+                    execute: async (
+                      args: unknown,
+                      ctx: MethodExecutionContext,
+                    ) => {
                       const {
                         id: requestedId,
                         code,
                         path,
                         imports,
-                        props
+                        props,
                       } = args as {
                         id?: string;
                         code?: string;
@@ -1007,56 +1147,68 @@ export default function Spending({ props }) {
                       if (!sourceCode) {
                         return ctx.result(
                           { ok: false, error: "Missing code or path" },
-                          { isError: true }
+                          { isError: true },
                         );
                       }
                       const validation = await validateComponentSource(
-                        { code: sourceCode, ...(trimmedPath ? { path: trimmedPath } : {}) },
+                        {
+                          code: sourceCode,
+                          ...(trimmedPath ? { path: trimmedPath } : {}),
+                        },
                         {
                           imports,
                           loadSourceFile: methodRuntime.loadSourceFile,
-                          loadImport: methodRuntime.importLoader
-                        }
+                          loadImport: methodRuntime.importLoader,
+                        },
                       );
                       if (!validation.ok) {
-                        return ctx.result({ ...validation, compileError: true }, { isError: true });
+                        return ctx.result(
+                          { ...validation, compileError: true },
+                          { isError: true },
+                        );
                       }
                       const client = core.clientRef.current;
                       if (!client)
                         return ctx.result(
                           { ok: false, error: "Not connected" },
-                          { isError: true }
+                          { isError: true },
                         );
                       const id = requestedId?.trim() || crypto.randomUUID();
                       const source = trimmedPath
                         ? { type: "file" as const, path: trimmedPath }
                         : { type: "code" as const, code: code! };
-                      const eventPayload: AgenticEvent<"ui.inline_rendered">["payload"] = {
-                        protocol: AGENTIC_PROTOCOL_VERSION,
-                        uiType: "inline",
-                        requestedBy: participantRefFromMetadata(ctx.callerId, client.roster?.[ctx.callerId]?.metadata),
-                        id,
-                        source
-                      };
+                      const eventPayload: AgenticEvent<"ui.inline_rendered">["payload"] =
+                        {
+                          protocol: AGENTIC_PROTOCOL_VERSION,
+                          uiType: "inline",
+                          requestedBy: participantRefFromMetadata(
+                            ctx.callerId,
+                            client.roster?.[ctx.callerId]?.metadata,
+                          ),
+                          id,
+                          source,
+                        };
                       if (imports !== undefined) eventPayload.imports = imports;
                       if (props !== undefined) eventPayload.props = props;
                       await methodRuntime.publishTypedAgenticEvent(
                         {
                           kind: "ui.inline_rendered",
                           actor: actorForClient(client, methodRuntime.metadata),
-                          ...(ctx.turnId ? { turnId: ctx.turnId as never } : {}),
+                          ...(ctx.turnId
+                            ? { turnId: ctx.turnId as never }
+                            : {}),
                           payload: eventPayload,
-                          createdAt: new Date().toISOString()
+                          createdAt: new Date().toISOString(),
                         },
                         // The component ID is intentionally reusable. Event idempotency
                         // remains unique so a later render is reduced as an update.
                         {
-                          idempotencyKey: `ui:inline:${id}:${crypto.randomUUID()}`
-                        }
+                          idempotencyKey: `ui:inline:${id}:${crypto.randomUUID()}`,
+                        },
                       );
                       return { ok: true, id };
-                    }
-                  }
+                    },
+                  },
                 }
               : undefined,
             features.actionBar
@@ -1065,30 +1217,40 @@ export default function Spending({ props }) {
                     description: `Load, replace, or clear a compact persistent action bar at the top of this chat panel.
 
 Use this for small always-available controls or status for the current workflow.
-The TSX source is read from a file in this panel's current filesystem context.
+Pass exactly one source: \`code\` (inline TSX) or \`path\` (a context-relative TSX
+file in this panel's current filesystem context, e.g. a checked-in repo file).
+Inline code is written to a scratch file this panel owns and persists, so the bar
+survives panel reloads; do not create, track, or delete a file for it.
 The loaded component receives { props, chat, scope, scopes }, supports the same
-imports as inline_ui, supports static relative imports from the loaded file,
-infers bare package imports from the nearest package.json when possible, and
-must export default.
+imports as inline_ui, and must export default. A \`path\` source also supports
+static relative imports from the loaded file and infers bare package imports from
+the nearest package.json when possible.
 
 Unlike inline_ui, load_action_bar does not add visible chat history. The latest
 loaded file replaces any previous action bar for this panel only. Other panels
 connected to this channel may be in different filesystem contexts.
 Keep it compact; the panel clamps the rendered height to a small scrollable area.
-Use package imports available to inline_ui plus relative imports for local helper files.
 
-Result: \`{ ok: true, id }\` means the file compiled and the bar was loaded. A compile failure (syntax error, unresolved import) is returned directly as an error result \`{ ok: false, error, compileError: true }\` and the current bar is left unchanged. Render-time and props failures arrive afterward as ui-feedback notes: one starts a repair turn when you are idle, or follows your current turn.`,
+Result: \`{ ok: true, id }\` means the source compiled and the bar was loaded. A compile failure (syntax error, unresolved import) is returned directly as an error result \`{ ok: false, error, compileError: true }\` and the current bar is left unchanged. Render-time and props failures arrive afterward as ui-feedback notes: one starts a repair turn when you are idle, or follows your current turn.`,
                     parameters: z.object({
+                      code: z
+                        .string()
+                        .optional()
+                        .describe(
+                          "Inline TSX source with a default-exported component. Provide code or path unless clear is true.",
+                        ),
                       path: z
                         .string()
                         .optional()
                         .describe(
-                          "Context-relative TSX file to load. Required unless clear is true."
+                          "Context-relative TSX file to load. Provide code or path unless clear is true.",
                         ),
                       imports: z
                         .record(z.string(), z.string())
                         .optional()
-                        .describe("On-demand package builds. Same semantics as eval imports."),
+                        .describe(
+                          "On-demand package builds. Same semantics as eval imports.",
+                        ),
                       props: z
                         .record(z.unknown())
                         .optional()
@@ -1097,62 +1259,91 @@ Result: \`{ ok: true, id }\` means the file compiled and the bar was loaded. A c
                         .number()
                         .optional()
                         .describe(
-                          "Preferred maximum height in pixels. Defaults to 180 and is clamped between 64 and 360."
+                          "Preferred maximum height in pixels. Defaults to 180 and is clamped between 64 and 360.",
                         ),
                       clear: z
                         .boolean()
                         .optional()
-                        .describe("When true, remove the current action bar.")
+                        .describe("When true, remove the current action bar."),
                     }),
-                    execute: async (args: unknown, ctx: MethodExecutionContext) => {
-                      const { path, imports, props, maxHeight, clear } = args as {
-                        path?: string;
-                        imports?: Record<string, string>;
-                        props?: Record<string, unknown>;
-                        maxHeight?: number;
-                        clear?: boolean;
-                      };
+                    execute: async (
+                      args: unknown,
+                      ctx: MethodExecutionContext,
+                    ) => {
+                      const { code, path, imports, props, maxHeight, clear } =
+                        args as {
+                          code?: string;
+                          path?: string;
+                          imports?: Record<string, string>;
+                          props?: Record<string, unknown>;
+                          maxHeight?: number;
+                          clear?: boolean;
+                        };
                       const client = core.clientRef.current;
                       if (!client)
                         return ctx.result(
                           { ok: false, error: "Not connected" },
-                          { isError: true }
+                          { isError: true },
                         );
-                      const requestedBy = participantRefFromMetadata(ctx.callerId, client.roster?.[ctx.callerId]?.metadata);
+                      const requestedBy = participantRefFromMetadata(
+                        ctx.callerId,
+                        client.roster?.[ctx.callerId]?.metadata,
+                      );
                       if (clear) {
-                        await methodRuntime.clearActionBar({ requestedBy, turnId: ctx.turnId });
+                        await methodRuntime.clearActionBar({
+                          requestedBy,
+                          turnId: ctx.turnId,
+                        });
                         return { ok: true, cleared: true };
                       }
-                      if (!path)
+                      const inlineCode = code?.trim() ? code : undefined;
+                      const filePath = path?.trim();
+                      if ((inlineCode === undefined) === !filePath)
                         return ctx.result(
-                          { ok: false, error: "Missing path" },
-                          { isError: true }
-                        );
-                      const barPath = path.trim();
-                      if (barPath) {
-                        const validation = await validateComponentSource(
-                          { code: await methodRuntime.loadSourceFile(barPath), path: barPath },
                           {
-                            imports,
-                            loadSourceFile: methodRuntime.loadSourceFile,
-                            loadImport: methodRuntime.importLoader
-                          }
+                            ok: false,
+                            error: "Provide exactly one of code or path",
+                          },
+                          { isError: true },
                         );
-                        if (!validation.ok) {
-                          return ctx.result({ ...validation, compileError: true }, { isError: true });
-                        }
+                      const barPath =
+                        filePath ?? methodRuntime.managedActionBarPath;
+                      // Validate before writing: the managed file may back the
+                      // currently loaded bar, which a compile failure must keep.
+                      const validation = await validateComponentSource(
+                        {
+                          code:
+                            inlineCode ??
+                            (await methodRuntime.loadSourceFile(barPath)),
+                          path: barPath,
+                        },
+                        {
+                          imports,
+                          loadSourceFile: methodRuntime.loadSourceFile,
+                          loadImport: methodRuntime.importLoader,
+                        },
+                      );
+                      if (!validation.ok) {
+                        return ctx.result(
+                          { ...validation, compileError: true },
+                          { isError: true },
+                        );
                       }
+                      if (inlineCode !== undefined)
+                        await methodRuntime.writeManagedActionBar(inlineCode);
                       const result = await methodRuntime.loadActionBarFromFile({
-                        path,
+                        path: barPath,
                         imports,
                         props,
                         maxHeight,
                         requestedBy,
-                        turnId: ctx.turnId
+                        turnId: ctx.turnId,
                       });
-                      return result.ok ? result : ctx.result(result, { isError: true });
-                    }
-                  }
+                      return result.ok
+                        ? result
+                        : ctx.result(result, { isError: true });
+                    },
+                  },
                 }
               : undefined,
             features.clientEval
@@ -1162,17 +1353,17 @@ Result: \`{ ok: true, id }\` means the file compiled and the bar was loaded. A c
                     executeSandbox: methodRuntime.boundExecuteSandbox,
                     loadSourceFile: methodRuntime.loadSourceFile,
                     getChat: () => methodRuntime.chat,
-                    scopeManager: methodRuntime.scopeManager
-                  })
+                    scopeManager: methodRuntime.scopeManager,
+                  }),
                 }
-              : undefined
+              : undefined,
           );
           await core.connectToChannel({
             signal: controller.signal,
             channelId: channelName,
             methods,
             channelConfig,
-            contextId
+            contextId,
           });
           connected = true;
           return;
@@ -1188,7 +1379,10 @@ Result: \`{ ok: true, id }\` means the file compiled and the bar was loaded. A c
           // call can time out on a slow machine and succeed moments later;
           // saying so at warning level reports a defect for something that
           // healed itself, and the retry that follows is the real answer.
-          console.debug(`[Chat] Transient connection failure; retrying in ${delayMs}ms`, err);
+          console.debug(
+            `[Chat] Transient connection failure; retrying in ${delayMs}ms`,
+            err,
+          );
           await new Promise<void>((resolve) => {
             retryTimer = setTimeout(resolve, delayMs);
           });
@@ -1215,7 +1409,7 @@ Result: \`{ ok: true, id }\` means the file compiled and the bar was loaded. A c
     core.clientRef,
     connectionAttempt,
     connectionRetrySignal,
-    features
+    features,
   ]);
   // --- Wrap platform actions ---
   const handleAddAgent = useCallback(
@@ -1224,42 +1418,60 @@ Result: \`{ ok: true, id }\` means the file compiled and the bar was loaded. A c
       const launcherContextId = core.clientRef.current?.contextId;
       await actions.onAddAgent(channelName, launcherContextId, agentId, config);
     },
-    [channelName, core.clientRef, actions]
+    [channelName, core.clientRef, actions],
   );
   const handlePrepareAgent = useCallback(
-    async (agentId: string | undefined, config: AgentSubscriptionConfig | null) => {
+    async (
+      agentId: string | undefined,
+      config: AgentSubscriptionConfig | null,
+    ) => {
       if (!actions?.onPrepareAgent) return;
       const launcherContextId = core.clientRef.current?.contextId;
-      await actions.onPrepareAgent(channelName, launcherContextId, agentId, config);
+      await actions.onPrepareAgent(
+        channelName,
+        launcherContextId,
+        agentId,
+        config,
+      );
     },
-    [channelName, core.clientRef, actions]
+    [channelName, core.clientRef, actions],
   );
   const handleReplaceAgent = useCallback(
-    async (participantId: string, agentId?: string, config?: AgentSubscriptionConfig) => {
+    async (
+      participantId: string,
+      agentId?: string,
+      config?: AgentSubscriptionConfig,
+    ) => {
       if (!actions?.onReplaceAgent) return;
       await actions.onReplaceAgent(channelName, participantId, agentId, config);
     },
-    [channelName, actions]
+    [channelName, actions],
   );
   const handlePersistAgentModel = useCallback(
     async (participantId: string, model: string) => {
       if (!actions?.onPersistAgentModel) return;
       await actions.onPersistAgentModel(channelName, participantId, model);
     },
-    [channelName, actions]
+    [channelName, actions],
   );
   const handleRemoveAgent = useCallback(
     async (handle: string) => {
       if (!actions?.onRemoveAgent) return;
       await actions.onRemoveAgent(channelName, handle);
     },
-    [channelName, actions]
+    [channelName, actions],
   );
   const sessionEnabled = true; // Always persistent: transcript state is projected from the durable PubSub log.
   const onAddAgent = actions?.onAddAgent ? handleAddAgent : undefined;
-  const onPrepareAgent = actions?.onPrepareAgent ? handlePrepareAgent : undefined;
-  const onReplaceAgent = actions?.onReplaceAgent ? handleReplaceAgent : undefined;
-  const onPersistAgentModel = actions?.onPersistAgentModel ? handlePersistAgentModel : undefined;
+  const onPrepareAgent = actions?.onPrepareAgent
+    ? handlePrepareAgent
+    : undefined;
+  const onReplaceAgent = actions?.onReplaceAgent
+    ? handleReplaceAgent
+    : undefined;
+  const onPersistAgentModel = actions?.onPersistAgentModel
+    ? handlePersistAgentModel
+    : undefined;
   const onInstallLocalModel = actions?.onInstallLocalModel;
   const onConnectModelProvider = actions?.onConnectModelProvider;
   const availableAgents = actions?.availableAgents;
@@ -1316,7 +1528,7 @@ Result: \`{ ok: true, id }\` means the file compiled and the bar was loaded. A c
   // which holds the first message(s) until the agent it spawns joins the roster.
   const inputContextValue = useMemo<ChatInputContextValue>(
     () => ({ ...core.inputContextValue, onSendMessage: deferredSendMessage }),
-    [core.inputContextValue, deferredSendMessage]
+    [core.inputContextValue, deferredSendMessage],
   );
 
   // Keep the observer transport identity independent from transcript and UI
@@ -1329,8 +1541,8 @@ Result: \`{ ok: true, id }\` means the file compiled and the bar was loaded. A c
         name: metadata.name,
         type: metadata.type,
         ...(metadata.handle ? { handle: metadata.handle } : {}),
-        ...(metadata.panelId ? { panelId: metadata.panelId } : {})
-      }
+        ...(metadata.panelId ? { panelId: metadata.panelId } : {}),
+      },
     }),
     [
       config.clientId,
@@ -1342,8 +1554,8 @@ Result: \`{ ok: true, id }\` means the file compiled and the bar was loaded. A c
       metadata.name,
       metadata.type,
       metadata.handle,
-      metadata.panelId
-    ]
+      metadata.panelId,
+    ],
   );
 
   // --- Assemble context values ---
@@ -1356,7 +1568,7 @@ Result: \`{ ok: true, id }\` means the file compiled and the bar was loaded. A c
       channelTitle: core.channelTitle,
       browserHandoffCaller: {
         id: runtimeCallerId(config.rpc.selfId),
-        kind: browserHandoffCallerKindFromMetadata(metadata.type)
+        kind: browserHandoffCallerKindFromMetadata(metadata.type),
       },
       sessionEnabled,
       connectionError: core.connectionError,
@@ -1432,7 +1644,7 @@ Result: \`{ ok: true, id }\` means the file compiled and the bar was loaded. A c
       // channel; reuses this panel's own transport config.
       childTranscript,
       // MDX messages resolve their imports through the same loader as inline UI.
-      importLoader
+      importLoader,
     }),
     [
       core.connected,
@@ -1512,8 +1724,8 @@ Result: \`{ ok: true, id }\` means the file compiled and the bar was loaded. A c
       forkNav,
       forkState,
       childTranscript,
-      importLoader
-    ]
+      importLoader,
+    ],
   );
   return { contextValue, inputContextValue, features };
 }

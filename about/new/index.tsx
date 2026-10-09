@@ -82,7 +82,7 @@ type DisplaySuggestion = LauncherSuggestion & {
   openPanels?: OpenPanel[];
 };
 
-type ModePrefix = "" | ">" | "@" | "/";
+type ModePrefix = "" | "@" | "/";
 
 const PANEL_USAGE_CACHE_KEY = "vibestudio:new-panel-durable-usage";
 const CATALOG_REVALIDATE_INTERVAL_MS = 30_000;
@@ -98,13 +98,8 @@ const IDLE_GROUP_ORDER: LauncherSuggestion["kind"][] = [
 ];
 
 /**
- * The unified prefix grammar (spec §1.2).
- *
- * `>` used to be this page's "panels only" scope. It now belongs to the
- * overlay palette's command slate, which this page does not have — so `@` is
- * the single "go to" scope over panels *and* history, `/` is chat, and bare is
- * everything. A typed `>` is still parsed as `@` for one release, with the
- * deprecation notice below saying so, rather than silently searching nothing.
+ * The unified prefix grammar (spec §1.2): `@` is the single "go to" scope
+ * over panels *and* history, `/` is chat, and bare is everything.
  */
 const MODES: Array<{
   prefix: Exclude<ModePrefix, "">;
@@ -114,10 +109,6 @@ const MODES: Array<{
   { prefix: "@", mode: "goto", label: "Go to" },
   { prefix: "/", mode: "chat", label: "Chat" },
 ];
-
-/** The retired panels-only prefix, kept working for one release. */
-const DEPRECATED_PREFIX = ">";
-const REPLACEMENT_PREFIX = "@";
 
 /** Let the launcher paint and accept input before optional ranking data starts crossing RPC. */
 function scheduleBackgroundRefresh(callback: () => void): () => void {
@@ -357,7 +348,12 @@ function LauncherNotice({
   children: ReactNode;
 }) {
   return (
-    <Callout.Root color={color} size="1" variant="surface">
+    <Callout.Root
+      color={color}
+      size="1"
+      variant="surface"
+      role={color === "red" ? "alert" : "status"}
+    >
       <Callout.Icon>
         <ExclamationTriangleIcon />
       </Callout.Icon>
@@ -1125,7 +1121,7 @@ function NewPanelPage() {
             </div>
           </div>
           <div className="launcher-actions">
-            <div className="launcher-modes" aria-label="Search scope">
+            <div className="launcher-modes" role="group" aria-label="Search scope">
               {MODES.map((mode) => (
                 <button
                   key={mode.prefix}
@@ -1182,23 +1178,6 @@ function NewPanelPage() {
             onClick={() => void refreshCatalog(true)}
           >
             Retry
-          </Button>
-        </LauncherNotice>
-      ) : null}
-      {parsedInput.prefix === DEPRECATED_PREFIX ? (
-        <LauncherNotice color="orange">
-          <Text size="2">
-            <code>&gt;</code> is now <code>@</code> — one &ldquo;go to&rdquo;
-            scope for panels and recent pages. Searching there instead.
-          </Text>
-          <Button
-            size="1"
-            variant="soft"
-            onClick={() =>
-              replaceInput(`${REPLACEMENT_PREFIX}${parsedInput.query}`)
-            }
-          >
-            Use @
           </Button>
         </LauncherNotice>
       ) : null}

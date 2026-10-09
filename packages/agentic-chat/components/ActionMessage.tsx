@@ -7,7 +7,7 @@ import type { ChatSandboxValue } from "@workspace/agentic-core";
 import { ExpandableChevron } from "./shared/Chevron";
 import { CollapsibleSection } from "./shared/CollapsibleSection";
 import { CopyButton } from "./shared/CopyButton";
-import { getStatusColor, getStatusKey, StatusDot } from "./shared/invocationStatus";
+import { executionStatusLabel, getStatusColor, getStatusKey, StatusDot } from "./shared/invocationStatus";
 import { ToolArgumentsView, ToolDataView } from "./shared/ToolDataView";
 import { renderDocsToolResult } from "./tool-result-renderers/DocsResult";
 import {
@@ -416,60 +416,61 @@ export const ActionPill = React.memo(function ActionPill({
   const displayName = presentation.displayName;
   const title = preview ? `${displayName}: ${preview}` : displayName;
 
+  const statusLabel = executionStatusLabel(payload.execution.status);
+
   return (
-    <Flex
-      className="inline-action-pill"
-      data-testid="invocation-pill"
-      data-invocation-name={payload.name}
-      data-invocation-status={statusKey}
-      title={title}
-      align="center"
-      gap="1"
-      onClick={() => onExpand(id)}
-      onKeyDown={(event) => {
-        if (event.currentTarget !== event.target) return;
-        if (event.key === "Enter" || event.key === " ") {
-          event.preventDefault();
-          onExpand(id);
-        }
-      }}
-      role="button"
-      tabIndex={0}
-      aria-label={title}
-      style={{
-        cursor: "pointer",
-        userSelect: "none",
-        padding: "2px 6px",
-        borderRadius: "4px",
-        backgroundColor: `var(--${color}-a3)`,
-        border: `1px solid var(--${color}-a5)`,
-      }}
-    >
-      {isPending ? (
-        <Spinner size="1" />
-      ) : (
-        <StatusDot statusKey={statusKey} tone={color} />
-      )}
-      <Text className="inline-pill-label" size="1" color={color} weight="medium">
-        {displayName}
-      </Text>
-      {preview && (
-        <Text className="inline-pill-description" size="1" color="gray">
-          {preview}
+    <Flex align="center" gap="1" className="inline-action-pill-group">
+      <Flex
+        className="inline-action-pill"
+        data-testid="invocation-pill"
+        data-invocation-name={payload.name}
+        data-invocation-status={statusKey}
+        title={title}
+        align="center"
+        gap="1"
+        onClick={() => onExpand(id)}
+        onKeyDown={(event) => {
+          if (event.currentTarget !== event.target) return;
+          if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            onExpand(id);
+          }
+        }}
+        role="button"
+        tabIndex={0}
+        aria-expanded={false}
+        aria-label={`${title} — ${statusLabel}`}
+        style={{
+          cursor: "pointer",
+          userSelect: "none",
+          padding: "2px 6px",
+          borderRadius: "4px",
+          backgroundColor: `var(--${color}-a3)`,
+          border: `1px solid var(--${color}-a5)`,
+        }}
+      >
+        {isPending ? (
+          <Spinner size="1" />
+        ) : (
+          <StatusDot statusKey={statusKey} tone={color} />
+        )}
+        <Text className="inline-pill-label" size="1" color={color} weight="medium">
+          {displayName}
         </Text>
-      )}
+        {preview && (
+          <Text className="inline-pill-description" size="1" color="gray">
+            {preview}
+          </Text>
+        )}
+      </Flex>
       {isPending && onCancel && (
         <IconButton
           size="1"
           color="gray"
           variant="ghost"
-          onClick={(e) => {
-            e.stopPropagation();
-            onCancel();
-          }}
+          onClick={onCancel}
           aria-label="Cancel pending tool call"
           title="Stop"
-          style={{ marginLeft: 4 }}
         >
           <StopIcon />
         </IconButton>

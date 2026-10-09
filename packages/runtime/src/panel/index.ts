@@ -25,6 +25,7 @@ export type {
 export type {
   CreatePanelSlotOptions,
   OpenPanelOptions,
+  PanelLifetime,
   PanelRuntimeTree,
 } from "../shared/panelRuntime.js";
 export type * from "../shared/gad.js";
@@ -83,6 +84,12 @@ export type { NotificationClient } from "./notifications.js";
 export type { CdpAutomation, CdpEndpoint } from "./cdpAutomation.js";
 export type { AdBlockStats, AdBlockApi } from "./adblock.js";
 export type * from "../shared/images.js";
+export type {
+  MissionCharter,
+  MissionRecord,
+  MissionRunRecord,
+  MissionsClient,
+} from "@vibestudio/automation/mission";
 export { createPanelRuntime, type PanelApi } from "./createPanelRuntime.js";
 export {
   connectWorkspace,
@@ -97,12 +104,13 @@ export const fs = defaultMember("fs");
 export { gatewayConfig } from "./defaultRuntime.js";
 export const gatewayFetch = defaultMember("gatewayFetch");
 export const callMain = defaultMember("callMain");
-export const parent = defaultMember("parent");
 export const getParent = defaultMember("getParent");
 export const getParentWithContract = defaultMember("getParentWithContract");
 export const gad = defaultMember("gad");
 export const blobstore = defaultMember("blobstore");
 export const images = defaultMember("images");
+export const missions = defaultMember("missions");
+export const problemReports = defaultMember("problemReports");
 export const workspace = defaultMember("workspace");
 export const workspaces = defaultMember("workspaces");
 export const runtime = defaultMember("runtime");

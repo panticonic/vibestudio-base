@@ -121,19 +121,17 @@ describe("@workspace-extensions/pdf-ingest", () => {
     expect(result.selectedPages).toEqual([1]);
   });
 
-  it("accepts extension-RPC serialized PDF byte payloads", async () => {
+  it("accepts native PDF bytes across the extension RPC boundary", async () => {
     const api = await testApi();
     const pdf = makePdf(["BT", "/F1 12 Tf", "36 120 Td (Serialized) Tj", "ET"]);
-    const numericRecord = JSON.parse(JSON.stringify(pdf));
-    const base64Envelope = { __bin: true, data: Buffer.from(pdf).toString("base64") };
+    const fromBytes = await api.probe(pdf, { pages: "1" });
+    const fromBuffer = await api.probe(Buffer.from(pdf), { pages: "1" });
 
-    const fromNumericRecord = await api.probe(numericRecord, { pages: "1" });
-    const fromBytesWrapper = await api.probe({ bytes: numericRecord }, { pages: "1" });
-    const fromEnvelope = await api.probe(base64Envelope, { pages: "1" });
-
-    expect(fromNumericRecord.document.pageCount).toBe(1);
-    expect(fromBytesWrapper.document.pageCount).toBe(1);
-    expect(fromEnvelope.document.pageCount).toBe(1);
+    expect(fromBytes.document.pageCount).toBe(1);
+    expect(fromBuffer.document.pageCount).toBe(1);
+    await expect(
+      api.probe({ __bin: true, data: Buffer.from(pdf).toString("base64") } as never)
+    ).rejects.toThrow("expected PDF bytes as a Uint8Array");
   });
 
   it("reports bundled and optional engines separately", async () => {

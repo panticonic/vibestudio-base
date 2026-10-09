@@ -29,6 +29,10 @@ export type {
   ModelCatalogEntry,
   ModelCatalogProvider,
 } from "@workspace/model-catalog/catalog";
+export {
+  AGENT_APPROVAL_LEVELS,
+  isAgentApprovalLevel,
+} from "./agent-subscription-config.js";
 export type {
   AgentApprovalLevel,
   AgentConfig,

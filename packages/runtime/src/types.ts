@@ -26,12 +26,7 @@ export interface RmOptions {
   force?: boolean;
 }
 
-export interface BinaryEnvelope {
-  __bin: true;
-  data: string;
-}
-
-export type RuntimeBinaryData = Uint8Array | ArrayBuffer | ArrayBufferView | BinaryEnvelope;
+export type RuntimeBinaryData = Uint8Array | ArrayBuffer | ArrayBufferView;
 
 /**
  * Options for opening a file.

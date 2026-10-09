@@ -747,7 +747,6 @@ describe("worker panelTree handles", () => {
     });
 
     const parent = runtime.getParent();
-    expect(runtime.parent.id).toBe("panel:tree/parent-slot");
     expect(parent?.id).toBe("panel:tree/parent-slot");
     expect(runtime.getParentWithContract({ source: "panels/child" })?.id).toBe(
       "panel:tree/parent-slot",

@@ -286,9 +286,15 @@ describe("prepareProjects", () => {
     });
     expect(result.panel.authorityReview?.manifest.requests).toEqual([]);
     expect(result.panel.authorityReview?.manifest.serviceRequests).toEqual([]);
-    expect(
-      YAML.parse(mocks.files.get("meta/vibestudio.yml") as string).services[0],
-    ).toMatchObject({
+    const config = YAML.parse(mocks.files.get("meta/vibestudio.yml") as string);
+    expect(config.services[0]).toEqual({
+      source: result.worker.created,
+      name: "manual-store",
+    });
+    const provider = JSON.parse(
+      mocks.files.get(`${result.worker.created}/package.json`) as string,
+    );
+    expect(provider.vibestudio.services[0]).toMatchObject({
       notability: "headline",
       authority: { binding: "consent" },
     });
@@ -322,8 +328,14 @@ describe("prepareProjects", () => {
       objectKey: "main",
     });
     const config = YAML.parse(mocks.files.get("meta/vibestudio.yml") as string);
-    expect(config.services[0]).toMatchObject({
+    expect(config.services[0]).toEqual({
+      source: result.worker.created,
       name: "notes-store",
+    });
+    const provider = JSON.parse(
+      mocks.files.get(`${result.worker.created}/package.json`) as string,
+    );
+    expect(provider.vibestudio.services[0]).toMatchObject({
       authority: { binding: { declaredFor: ["panels/notes"] } },
       protocols: ["notes.v1"],
     });
@@ -354,7 +366,14 @@ describe("prepareProjects", () => {
     expect(mocks.validateConfig).toHaveBeenCalledWith(
       "main",
       "workspace.validateConfig",
-      [expect.any(String)],
+      [
+        expect.objectContaining({
+          manifest: expect.any(String),
+          serviceManifests: {
+            [result.worker.created]: expect.any(String),
+          },
+        }),
+      ],
     );
     expect(mocks.commit).not.toHaveBeenCalled();
     expect(mocks.push).not.toHaveBeenCalled();

@@ -21,7 +21,7 @@ export interface AgentProductMetadata {
     ownerUserId: string;
     name: string;
     revision: number;
-    action: "prompt" | "eval" | "watch" | "method";
+    action: "prompt" | "eval" | "watch" | "notify" | "method";
     trigger: "manual" | "scheduled";
     startedAt: number;
     createdAt: number;

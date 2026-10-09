@@ -18,6 +18,68 @@ describe("createBlobstoreClient", () => {
     await expect(client.readText(digest)).resolves.toBe("hello");
   });
 
+  it("stores a nested path tree bottom-up through putTree", async () => {
+    const textDigest = "a".repeat(64);
+    const bytesDigest = "b".repeat(64);
+    const existingDigest = "c".repeat(64);
+    const calls: Array<{ method: string; args: unknown[] }> = [];
+    const rpc = {
+      call: vi.fn(async (_target: string, method: string, args: unknown[]) => {
+        calls.push({ method, args });
+        if (method === "blobstore.putText") return { digest: textDigest, size: 5 };
+        if (method === "blobstore.putBase64")
+          return { digest: bytesDigest, size: 3 };
+        if (method === "blobstore.putTree") {
+          const entries = args[0] as Array<{ name: string }>;
+          const id = entries.some((entry) => entry.name === "docs") ? "1" : "2";
+          return { treeHash: `manifest:${id.repeat(64)}` };
+        }
+        throw new Error(`unexpected ${method}`);
+      }),
+    };
+    const client = createBlobstoreClient(rpc as never);
+
+    const result = await client.putPathTree(
+      {
+        "README.md": "hello",
+        "docs/intro.bin": new Uint8Array([1, 2, 3]),
+        "docs/run.sh": { digest: existingDigest, mode: 33261 },
+      },
+      { root: true },
+    );
+
+    expect(result).toEqual({ treeHash: `manifest:${"1".repeat(64)}` });
+    const trees = calls.filter((call) => call.method === "blobstore.putTree");
+    expect(trees).toHaveLength(2);
+    expect(trees[0]!.args).toEqual([
+      [
+        { name: "intro.bin", kind: "file", contentHash: bytesDigest, mode: 33188 },
+        { name: "run.sh", kind: "file", contentHash: existingDigest, mode: 33261 },
+      ],
+      {},
+    ]);
+    expect(trees[1]!.args).toEqual([
+      [
+        { name: "README.md", kind: "file", contentHash: textDigest, mode: 33188 },
+        { name: "docs", kind: "dir", childHash: `manifest:${"2".repeat(64)}` },
+      ],
+      { root: true },
+    ]);
+  });
+
+  it("rejects path-tree paths that are not plain relative file paths", async () => {
+    const client = createBlobstoreClient({ call: vi.fn() } as never);
+    await expect(client.putPathTree({ "a//b.txt": "x" })).rejects.toThrow(
+      /relative file paths/,
+    );
+    await expect(client.putPathTree({ "../b.txt": "x" })).rejects.toThrow(
+      /relative file paths/,
+    );
+    await expect(
+      client.putPathTree({ a: "file", "a/b.txt": "nested" }),
+    ).rejects.toThrow(/nests under a file/);
+  });
+
   it("materializes through caller-scoped fs without invoking the admin host materializer", async () => {
     const firstDigest = "a".repeat(64);
     const secondDigest = "b".repeat(64);

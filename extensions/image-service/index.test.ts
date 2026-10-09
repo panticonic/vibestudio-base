@@ -57,23 +57,19 @@ describe("@workspace-extensions/image-service", () => {
     await expect(service.detectMimeType(new Uint8Array([0x00, 0x01, 0x02]))).resolves.toBeNull();
   });
 
-  it("does not depend on a Node-global Buffer in the extension worker", async () => {
+  it("accepts native Uint8Array and ArrayBuffer inputs and rejects legacy encodings", async () => {
+    const service = await api();
     const input = await photonPng();
-    const original = globalThis.Buffer;
-    Reflect.deleteProperty(globalThis, "Buffer");
-    try {
-      const service = await api();
-      await expect(service.detectMimeType({ __bin: true, data: TINY_PNG_BASE64 })).resolves.toBe(
-        "image/png"
-      );
-      await expect(service.resize(input, "image/png", undefined)).resolves.toMatchObject({
-        mimeType: "image/png",
-        width: 1,
-        height: 1,
-      });
-    } finally {
-      globalThis.Buffer = original;
-    }
+    const arrayBuffer = new ArrayBuffer(input.byteLength);
+    new Uint8Array(arrayBuffer).set(input);
+    await expect(service.detectMimeType(arrayBuffer)).resolves.toBe("image/png");
+    await expect(service.detectMimeType({ __bin: true, data: TINY_PNG_BASE64 } as never)).rejects.toThrow("Uint8Array or ArrayBuffer");
+    await expect(service.detectMimeType(TINY_PNG_BASE64 as never)).rejects.toThrow("Uint8Array or ArrayBuffer");
+    await expect(service.resize(input, "image/png", undefined)).resolves.toMatchObject({
+      mimeType: "image/png",
+      width: 1,
+      height: 1,
+    });
   });
 
   it("resizes tiny PNGs without changing dimensions", async () => {

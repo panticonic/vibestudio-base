@@ -1,88 +1,83 @@
 # Panel API
 
-Import panel APIs from `@workspace/runtime` in panels, initialized plain workers,
-and server-side eval. Durable Objects use the owning instance methods on
-`PanelDurableObjectBase` from `@workspace/runtime/worker/panel-durable-base`;
-module-level runtime clients do not bind to an object. Both forms share the same
-panel completion contract.
+Panels, initialized plain workers, and server-side eval import the panel APIs
+from `@workspace/runtime`. Durable Objects instead use the instance methods on
+`PanelDurableObjectBase` from `@workspace/runtime/worker/panel-durable-base`,
+because module-level runtime clients are not bound to an object. Both forms
+follow the same completion rules.
 
 ## The completion contract
 
-Readiness-waiting panel operations have one meaning:
+The panel operations behave as follows:
 
-- `await createPanelSlot(...)` commits creation and returns the durable handle
-  without requesting a presentation lease or waiting for activation, build, or
-  boot. The panel remains unloaded until a consumer explicitly presents or
-  inspects it.
-  It is the receipt-oriented primitive for
-  navigation workflows whose caller may have a shorter lifetime than the
-  panel build. Its `CreatePanelSlotOptions` deliberately has no `focus` or
-  readiness-affecting option.
+- `await createPanelSlot(...)` commits the new slot and returns its durable
+  handle. It does not request a presentation lease or wait for activation,
+  build, or boot, and the panel stays unloaded until something presents or
+  inspects it. Use it for navigation workflows where the caller may not live
+  as long as the panel build takes. `CreatePanelSlotOptions` deliberately has no
+  `focus` option and nothing else that affects readiness.
 - `await openPanel(...)`, `focus()`, `navigate()`, `reload()`, `rebuild()`, and
-  `snapshot()`
-  return only after the exact selected runtime attempt is application
+  `snapshot()` return only once the selected runtime attempt is application
   **boot-ready**. `focus: false` only suppresses presentation; `openPanel`
-  still waits for readiness. The wait has no fixed deadline; `options.signal`
-  is the caller-owned cancellation boundary.
-- They never treat a lease, a registered WebContents/CDP target, `about:blank`,
-  or a successfully generated HTML shell as application success.
+  still waits for readiness. The wait has no fixed deadline; use
+  `options.signal` to cancel it.
+- None of these counts a lease, a registered WebContents/CDP target,
+  `about:blank`, or a generated HTML shell as success.
 - A resolve, build, host, navigation, bundle, or entry failure rejects with
-  `PanelOperationError`. Do not infer success from a panel id or an empty
-  snapshot.
-- `snapshot()` then returns a capture tied to the attempt it read.
+  `PanelOperationError`. A panel id or an empty snapshot does not mean success.
+- `snapshot()` returns a capture tied to the attempt it read.
 
-Internally, creation has two deliberate boundaries. The durable tree slot is
-committed and becomes observable immediately; build preparation, host
-assignment, navigation, and application boot then advance that slot through the
-canonical phases. This prevents a slow or broken initial panel from blocking
-tree discovery, owner seeding, or creation of unrelated panels. The public
-`createPanelSlot(...)` exposes the committed boundary; `openPanel(...)`
-composes it with the readiness wait and still waits for its own attempt to
-reach `ready`. Readiness is observed once and then follows that exact
-server-minted attempt through `awaitAttempt`; a ready observation resolves
-without another sample, and failed/stopped observations reject immediately.
+### How creation proceeds
 
-Execution activation is not presentation. Committing a code-panel slot emits a
-level-triggered durable intent; the server execution reconciler owns the
-reserved entity's activation, retries transient failures, and recovers
-`preparing` reservations after restart. `createPanelSlot(...)` does not await
-that work. `openPanel(...)` joins the same idempotent activation and then
-materializes and waits for boot, so it reports activation failures while
-preserving the already committed slot. Materialization must follow activation:
-connection grants require the panel principal registered by that transition.
-Activation itself does not allocate a renderer. Presentation
-reconciliation advances only a lease that already exists; it never turns an
-unloaded slot into a resident one.
+Creation happens in two steps. First the slot is committed to the panel tree
+and is immediately observable. Then build preparation, host assignment,
+navigation, and application boot move it through its phases. This way a slow
+or broken new panel cannot block tree discovery, owner seeding, or creation of
+other panels. `createPanelSlot(...)` returns after the first step;
+`openPanel(...)` also waits for its own attempt to reach `ready`. It observes
+readiness once and then follows that server-minted attempt through
+`awaitAttempt`: a ready observation resolves without sampling again, and a
+failed or stopped observation rejects immediately.
 
-Readiness-bearing operations also ensure presentation before they wait. This
-uses the idempotent `panelRuntime.ensureSlot` transition for programmatic
-runtimes, preferring the headless CDP host and falling back to a CDP-capable
-desktop host. A native desktop focus bridge owns its local lease instead, so a
-UI focus request does not move the panel to headless merely to satisfy an
-observation. `unload()` releases the presentation lease but preserves the
-durable slot and runtime entity; the next `focus()`, `openPanel()` wait,
-navigation, reload, rebuild, snapshot, or CDP operation can materialize it
-again. `observe()` itself is read-only and therefore reports the current
-attempt and route without silently reacquiring resources.
+Activating execution is separate from presenting the panel. Committing a code
+panel's slot records a level-triggered intent; the server's execution
+reconciler activates the reserved runtime entity, retries transient failures,
+and resumes `preparing` reservations after a restart. `createPanelSlot(...)`
+does not wait for this. `openPanel(...)` joins the same idempotent activation,
+then materializes the panel and waits for boot, so it reports activation
+failures while keeping the slot it already committed. Materialization has to
+follow activation, because connection grants need the panel principal that
+activation registers. Activation does not allocate a renderer, and presentation
+reconciliation only advances an existing lease; it never makes an unloaded
+slot resident.
 
-The state combinations are intentional: a committed slot may have no lease;
-a leased host may have no view while it is materializing; and a reconnecting
-lease may be temporarily unreachable while its attempt remains durably ready.
-A mobile lease is a valid visible presentation
-but cannot satisfy programmatic inspection, so readiness-bearing programmatic
-operations fail immediately with `host_unavailable`. Host materialization
-failures are reported as terminal host failures, not left as an unbounded
-pending wait; a later ensure can retry the failed host incarnation.
-Terminal build, host, load, and boot states reject immediately with host
-evidence, diagnostic id, and full attempt provenance—never with an apparently
-successful blank handle. Preparation has no renderer and is not inferred from
-elapsed time; activation is the explicit transition that allows a host to
-materialize the real renderer.
+Operations that wait for readiness first make sure the panel is presented. For
+programmatic runtimes they call the idempotent `panelRuntime.ensureSlot`
+transition, which prefers the headless CDP host and falls back to a CDP-capable
+desktop host. A native desktop focus bridge holds its own local lease instead,
+so a UI focus request does not move the panel to headless just to observe it.
+`unload()` releases the presentation lease but keeps the slot and runtime
+entity; the next `focus()`, `openPanel()` wait, navigation, reload, rebuild,
+snapshot, or CDP operation can materialize the panel again. `observe()` is
+read-only: it reports the current attempt and route without acquiring
+anything.
 
-This is intentionally stricter than browser “load” state. The generated panel
-bootstrap reports `loading → booting → ready` and reports entry errors,
-unhandled rejections, missing assets, and incomplete runtime configuration as
-failures.
+These states can legitimately combine: a committed slot may have no lease; a
+host holding a lease may have no view while it materializes; and a lease that
+is reconnecting may be briefly unreachable while its attempt stays ready. A
+mobile lease is a valid visible presentation but cannot serve programmatic
+inspection, so programmatic operations that wait for readiness fail
+immediately with `host_unavailable`. A host materialization failure is reported
+as a terminal host failure rather than left pending, and a later ensure can
+retry the failed host incarnation. Terminal build, host, load, and boot states
+reject immediately with host evidence, a diagnostic id, and the full attempt
+provenance, never with a handle to a blank panel. Preparation has no renderer
+and is never inferred from elapsed time; activation is the step that lets a
+host create the real renderer.
+
+This is stricter than the browser's "load" state. The generated panel bootstrap
+reports `loading → booting → ready` and reports entry errors, unhandled
+rejections, missing assets, and incomplete runtime configuration as failures.
 
 ```ts
 import { openPanel, PanelOperationError } from "@workspace/runtime";
@@ -91,7 +86,6 @@ try {
   const panel = await openPanel("panels/my-app", {
     focus: true,
     contextId: ctx.contextId,
-    ref: `ctx:${ctx.contextId}`,
   });
   const observation = await panel.observe();
   const capture = await panel.snapshot();
@@ -106,9 +100,9 @@ try {
 }
 ```
 
-`PanelOperationError.errorData.recovery` is the retry contract. Source- and
-build-correctable failures report `repair-and-rebuild`; runtime/host failures
-report `observe-and-reacquire`. Do not blindly repeat the same lifecycle call.
+`PanelOperationError.errorData.recovery` says how to retry. Failures you can fix
+in source or the build report `repair-and-rebuild`; runtime and host failures
+report `observe-and-reacquire`. Do not just repeat the same lifecycle call.
 
 ## Discovery and creation
 
@@ -120,6 +114,7 @@ panelTree.rootOwners(input?): Promise<PanelRuntimeTreeRootOwnerPage>
 panelTree.rootsForOwner(ownerUserId, input?): Promise<PanelRuntimeTreePage>
 panelTree.children(parentSlotId, input?): Promise<PanelRuntimeTreePage>
 panelTree.page(input): Promise<PanelRuntimeTreePage>
+panelTree.walk(rootSlotId, { limit }): AsyncIterableIterator<PanelRuntimeTreeWalkEntry>
 panelTree.path(id): Promise<PanelRuntimeTreePath | null>
 panelTree.search(input): Promise<PanelRuntimeTreeSearchPage>
 panelTree.parent(id): PanelHandle | null
@@ -128,12 +123,12 @@ createPanelSlot(source, opts?): Promise<PanelHandle>
 openPanel(source, opts?): Promise<PanelHandle>
 ```
 
-`PanelHandle.id` is the durable panel-tree slot id and corresponds to
-`PanelTreeNode.slotId`; a handle has no separate `slotId` property. Archiving
-that id removes the durable panel subtree, whereas closing a CDP page only
+`PanelHandle.id` is the slot id in the panel tree and equals
+`PanelTreeNode.slotId`; handles have no separate `slotId` property. Archiving
+that id removes the panel's subtree, whereas closing a CDP page only
 disconnects the automation client.
 
-The bounded discovery methods return page objects, not bare arrays:
+The discovery methods are paged and return page objects, not arrays:
 
 ```ts
 type PanelRuntimeTreeRootOwnerPage = {
@@ -162,37 +157,43 @@ type PanelRuntimeTreeSearchPage = {
 };
 ```
 
-When creation may be redelivered, pass the same non-empty `operationId` on
-every attempt. Its durable identity includes `source`, `contextId`, `parentId`,
-and `ref`, so reusing an operation id for a different logical open cannot alias
-the original slot. An exact retry resumes the committed slot, including after
-an ambiguous transport failure. `slug` and `operationId` are mutually
-exclusive because each defines stable slot identity.
+If a creation request may be delivered more than once, pass the same non-empty
+`operationId` on every attempt. The operation's identity also includes
+`source`, `contextId`, `parentId`, and `ref`, so reusing an operation id for a
+different open cannot return the original slot. An identical retry resumes the
+committed slot, including after an ambiguous transport failure. `slug` and
+`operationId` cannot be combined, because each one defines the slot's stable
+identity.
 
-`self()` and `get()` are synchronous handle factories; they do no I/O.
-Use `roots({ limit })` for the current verified caller's root panels. Ownership
-is derived by the host; do not manufacture an `ownerUserId`. Cross-owner
-workspace visibility is unchanged: use `rootOwners()` followed by
-`rootsForOwner(ownerUserId, input?)` when the task spans another member's or
-the ownerless workspace ownership band. Use bounded `children()`, `path()`,
-and `search()` reads for addressed
-navigation. `page()` remains available when constructing a discriminated
-sibling group directly. There are deliberately no whole-tree or whole-sibling
-reads. Continue from `nextCursor` only while the page revision is unchanged;
-restart the group from its first page after a revision change. The scalar fields
-`id`, `title`, `source`, `kind`, and `parentId` are the handle’s last observed
-descriptor. `search({ query })` accepts plain text and matches indexed titles,
-source paths, manifest descriptions/dependencies, tags, and keywords. Punctuation
-separates terms rather than acting as query-language syntax, so a copied title
-such as `vibestudio | Trello` is a valid query. Search includes committed slots
-even when their runtime is not ready. Use `observe()` whenever correctness
-depends on live runtime state.
+- `self()` and `get()` build handles synchronously without I/O.
+- `roots({ limit })` returns the verified caller's own root panels. The host
+  derives ownership; do not supply an `ownerUserId`.
+- For panels owned by another member, or by nobody (the workspace band), call
+  `rootOwners()` and then `rootsForOwner(ownerUserId, input?)`. Visibility is
+  the same as for your own roots.
+- Use `children()`, `path()`, and `search()` to navigate to a specific panel.
+  `page()` reads a sibling group you specify directly. There is no call that
+  reads the whole tree or all siblings at once.
+- Follow `nextCursor` only while the page `revision` is unchanged; if it
+  changes, restart the group from its first page.
+- To visit a subtree, iterate `walk(rootSlotId, { limit })`. It yields
+  `{ node, handle, depth }` breadth-first, follows cursors, and restarts on a
+  revision change without yielding a slot twice. Receiving `limit` entries
+  means the subtree may hold more.
+- The handle's `id`, `title`, `source`, `kind`, and `parentId` fields hold the
+  last observed values. Call `observe()` whenever you need live runtime state.
+- `search({ query })` takes plain text and matches indexed titles, source
+  paths, manifest descriptions and dependencies, tags, and keywords.
+  Punctuation separates terms and has no query syntax, so a copied title such
+  as `vibestudio | Trello` is a valid query. Results include committed slots
+  whose runtime is not ready yet.
 
-Root groups are attribution bands, not access-control boundaries. A root whose
-`ownerUserId` is the current user appears as **Your panels**; an ownerless root
-appears as **Workspace**; other member ids appear under that member. Children
-remain attached to their parent regardless of who created them. All groups are
-workspace-visible unless an independent authority policy says otherwise.
+Root groups describe who created a panel; they do not control access. A root
+whose `ownerUserId` is the current user appears under **Your panels**, an
+ownerless root under **Workspace**, and other members' roots under that member.
+Children stay attached to their parent whoever created them. All groups are
+visible to the whole workspace unless a separate authority policy restricts
+them.
 
 ```ts
 let cursor: string | undefined;
@@ -208,48 +209,43 @@ do {
 } while (cursor);
 ```
 
-`openPanel(source)` uses main/pushed code. To run unpublished context code, pass
-both the intended storage context and explicit code ref:
+A panel's code builds from its own context (`ctx:<its contextId>`) unless
+`ref` names other code, such as `"main"`. To run the unpublished code of the
+current context and pick up its later edits on rebuild, share that context:
 
 ```ts
-const panel = await openPanel("panels/my-app", {
-  contextId: ctx.contextId,
-  ref: `ctx:${ctx.contextId}`,
-});
+const panel = await openPanel("panels/my-app", { contextId: ctx.contextId });
 ```
 
-`contextId` alone selects storage/filesystem isolation; it never selects code
-provenance.
+If you omit `contextId`, reserving the panel creates a new context forked from
+the verified creator's current working state, and records it as a lifecycle
+child of the creator's context. The panel runs the creator's code as of the
+fork; later edits in the creator's context do not reach it. The creator can then
+inspect, automate, rebuild, or archive the panel without approval for a foreign
+context, and destroying the creator's context also retires the panel's
+context. When an installed extension creates the panel, the extension acts as
+the lifecycle deputy, while the host-verified root initiator owns the new
+context and supplies its human attribution. Ownership never comes from
+extension input; there is no owner or parent field for callers to set.
 
-When `contextId` is omitted, panel reservation mints a fresh context and
-atomically records it as a lifecycle child of the verified creator's context.
-The creator may inspect, automate, rebuild, or archive that panel without a
-foreign-context approval, and destroying the creator context recursively
-retires the panel context. When an installed extension performs the creation,
-the extension remains the lifecycle deputy while the host-verified root
-initiator owns the new context and supplies its human attribution. Ownership
-never comes from extension input, and there is no caller-supplied owner/parent
-field.
+Passing an explicit `contextId` shares that existing context and does not
+re-parent it. Use it for running a context's working code and for
+applications that are meant to share storage. Omit it to give the panel its own
+isolated context.
 
-Passing an explicit `contextId` deliberately shares that existing semantic
-context and does not re-parent it. This is the right form for context-local code
-(`ref: "ctx:<id>"`) and for applications that intentionally share storage.
-Use omission for an isolated panel world; use an explicit id only when sharing
-is part of the design.
-
-When parentage is implicit, the server resolves the caller's runtime lineage to
-an open tree slot. Pass `parentId: null` for an owned root or an explicit open
-slot id when that is the intended topology.
+If you do not pass `parentId`, the server finds the open tree slot that
+corresponds to the caller's runtime lineage. Pass `parentId: null` for a root
+you own, or an open slot id to choose the parent yourself.
 
 ## Host commands
 
-Use host commands for secondary panel actions that belong in application
-chrome. A panel contributes intent once; each application host chooses an
-idiomatic presentation. Desktop currently merges commands into its command
-palette, while mobile presents them as native panel actions. The panel must not
-render a second mobile-only header merely to expose the same actions.
+Use host commands for secondary panel actions that belong in the application
+chrome. The panel declares its commands once, and each host presents them in
+its own way: desktop adds them to its command palette, mobile shows them as
+native panel actions. Do not render an extra mobile-only header in the panel to
+expose the same actions.
 
-For React panels, prefer the declarative hook from `@workspace/react`:
+In React panels, use the hook from `@workspace/react`:
 
 ```tsx
 import { useMemo } from "react";
@@ -283,30 +279,34 @@ function TaskPanel({ canRefresh }: { canRefresh: boolean }) {
 }
 ```
 
-`HostCommand` has four fields:
+`HostCommand` fields:
 
-| Field         | Contract                                                                                                                            |
-| ------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
-| `id`          | Required stable machine id, unique within this panel's contributed set. Keep it independent of translated or changing display copy. |
-| `label`       | Required concise action label. Describe what selection does, not where a host currently renders it.                                 |
-| `description` | Optional supporting copy. A host may shorten or omit it when space is constrained.                                                  |
-| `group`       | Optional section label. A host may group, flatten, or omit sections according to its native interaction model.                      |
+| Field           | Meaning                                                                                                             |
+| --------------- | ------------------------------------------------------------------------------------------------------------------- |
+| `id`            | Required. Stable machine id, unique among this panel's commands. Do not derive it from translated or changing copy. |
+| `label`         | Required. Short action label describing what the command does, not where a host shows it.                           |
+| `description`   | Optional supporting text. A host may shorten or omit it when space is tight.                                        |
+| `group`         | Optional section label. A host may group, flatten, or omit sections to fit its own interaction model.               |
+| `args`          | Optional ordered arguments the host prompts for before running (`string`, `enum`, `number`, or `url`).              |
+| `requiresFocus` | Optional. Offer the command only while this panel is focused.                                                       |
+| `danger`        | Optional. Destructive: hosts use their danger tone and never auto-run it.                                           |
 
-Registration is a complete replacement, not an append operation. Call
-`useHostCommands` exactly once per panel runtime and compose every feature's
-commands into that one array. Two hook calls can overwrite one another, and
-one hook's cleanup can clear the other hook's contribution. Express disabled
-or unavailable actions by omitting them from the current set; the contract has
-no parallel enabled-state channel.
+Each registration owns its own commands. Any component may call
+`useHostCommands`; the host shows the union of every live registration in the
+panel, a selection reaches only the registration that owns its id, and
+unmounting removes only that registration's commands. Command ids must be
+unique across the panel: registering an id another registration already owns
+throws. To disable an action, leave it out of the current set; there is no
+separate enabled flag.
 
-The hook re-contributes when command metadata changes, always invokes the
-latest handler, unsubscribes from selections on unmount, and clears the panel's
-contribution. Memoize state-derived command arrays so the ownership and update
-boundary stays obvious. A command-capable host is not guaranteed: headless and
-test hosts may present nothing, so essential workflows must remain operable in
-panel content or through the panel's programmable API.
+The hook re-registers when command metadata changes and always calls the
+latest handler. Memoize command arrays derived from state so it is clear when
+they change. Not every host shows commands: headless and test hosts may show
+nothing, so essential workflows must also work from the panel content or the
+panel's programmable API.
 
-Non-React panel code can use the same panel-local contract imperatively:
+Non-React panel code registers commands with their handler and keeps the
+returned disposer:
 
 ```ts
 import { panel, type HostCommand } from "@workspace/runtime";
@@ -314,37 +314,32 @@ import { panel, type HostCommand } from "@workspace/runtime";
 const commands: HostCommand[] = [
   { id: "task-refresh", label: "Refresh tasks", group: "Tasks" },
 ];
-const unsubscribe = panel.onHostCommandRun((commandId) => {
+export const dispose = panel.registerHostCommands(commands, (commandId) => {
   if (commandId === "task-refresh") void refreshTasks();
 });
-panel.registerHostCommands(commands);
-
-export function dispose() {
-  unsubscribe();
-  panel.unregisterHostCommands();
-}
 ```
 
-This is ephemeral host-local UI state. Contributions target the owning shell
-and never become a server service, durable state, cross-panel broadcast, or
-notification. The panel owns command ids, labels, current availability, and
-the action implementation. The host owns keyboard/touch presentation,
-placement, accessibility, and routing the selected id back to that same panel.
-Do not put chat-, terminal-, or feature-specific branching in generic shell
-code. If desktop and mobile need different visual controls for the same action,
-share the panel behavior and keep only their renderers host-specific.
+Host commands are temporary UI state local to the host. They go only to the
+shell displaying the panel and never become a server service, stored state, a
+broadcast to other panels, or a notification. The panel decides command ids,
+labels, which commands are currently available, and what each one does. The
+host handles keyboard and touch presentation, placement, accessibility, and
+sending the selected id back to the same panel. Do not add chat-, terminal-, or
+other feature-specific branches to generic shell code. If desktop and mobile
+need different controls for the same action, share the panel behavior and make
+only the renderers host-specific.
 
 In tests, capture the `useHostCommands` arguments, assert the current command
-set and stable ids, invoke the captured handler, and verify the panel action.
-Shell routing tests belong to the host and should prove that every
-`target: "shell"` envelope remains local and cannot fall through to a
+set and its ids, call the captured handler, and check the panel's action. Shell
+routing tests belong to the host; they should show that every
+`target: "shell"` envelope stays local and cannot fall through to a
 server-backed panel session.
 
 ### Handing the user to the panel's agent
 
-The inverse of a host command: a panel can open the shell's command overlay
-bound to itself, optionally with the compose box pre-filled. Nothing is sent on
-the panel's behalf — the user reads the request and presses send.
+This is the reverse of a host command: a panel can open the shell's command
+overlay for itself, optionally with the compose box pre-filled. Nothing is sent
+for the panel; the user reads the text and presses send.
 
 ```ts
 import { panel } from "@workspace/runtime";
@@ -354,31 +349,35 @@ await panel.openCommandAgent({
 });
 ```
 
-Under the hood this is the open host method `app.openShellSurface(target)`
-(also `panel.openShellSurface(target)`), whose targets are:
+This calls the open host method `app.openShellSurface(target)` (also available
+as `panel.openShellSurface(target)`). Its targets are:
 
-| Target                                                                                                                                              | Opens                                                                                                                                    |
-| --------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
-| `{ kind: "command-agent", panelId?, mode?, prompt? }`                                                                                               | the command overlay about a panel; the shell focuses that panel first so the overlay, the focused panel and the bound conversation agree |
-| `{ kind: "about", page }`                                                                                                                           | an About page by id (`permissions`, `credentials`, `automations`, …)                                                                     |
-| `{ kind: "panel-command", panelId, commandId }`                                                                                                     | a host command that panel contributed — routed exactly like a palette selection                                                          |
-| `{ kind: "settings", section?: "connection" \| "devices" \| "profile" \| "appearance" \| "apps" \| "hosts" \| "templates" }`, `"workspace-chooser"` | management chrome                                                                                                                        |
+| Target                                                 | Opens                                                                                                                                           |
+| ------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| `{ kind: "command-agent", panelId?, mode?, prompt? }`  | The command overlay for a panel (the focused panel if `panelId` is omitted). The shell focuses that panel first so all three agree.             |
+| `{ kind: "about", page }`                              | An About page by id (`permissions`, `credentials`, `automations`, …)                                                                            |
+| `{ kind: "panel-command", panelId, commandId }`        | A host command that panel contributed, routed the same way as a palette selection                                                               |
+| `{ kind: "problem-report" }`                           | The problem report surface                                                                                                                      |
+| `{ kind: "settings", section?, workspaceId? }`         | Settings; `section` is one of `problem-reporting`, `connection`, `devices`, `profile`, `appearance`, `apps`, `hosts`, `templates`, `workspaces` |
+| `{ kind: "workspace-chooser", template?, sourceUrl? }` | The workspace chooser                                                                                                                           |
 
-`panel.describeShellSurfaces()` lists the kinds this host can open; offer only
-those instead of probing. Hosts without shell chrome (headless server, some
-clients) reject `openShellSurface` — treat that as an ordinary unavailable
-feature, not a failure of the panel.
+`"settings"` and `"workspace-chooser"` can also be passed as bare strings.
 
-Every target also has a deep link for the same thing from outside a session —
-`createShellSurfaceLink(target)` in `@vibestudio/shared/shellSurface` gives
-`vibestudio://ask?…`, `vibestudio://about?…`, `vibestudio://command?…`,
-`vibestudio://surface?…` (or the `https://vibestudio.app/…` share carrier).
-Panels with state are reached by the sibling `vibestudio://panel?source=…`
-link (`@vibestudio/shared/panelLocation`).
+`panel.describeShellSurfaces()` lists the kinds the current host can open;
+offer only those instead of trying each one. Hosts without shell chrome (the
+headless server and some clients) reject `openShellSurface`. Treat that as an
+unavailable feature, not a panel failure.
+
+Each target also has a deep link that opens it from outside a session.
+`createShellSurfaceLink(target)` in `@vibestudio/shared/shellSurface` produces
+`vibestudio://ask?…`, `vibestudio://about?…`, `vibestudio://command?…`, or
+`vibestudio://surface?…` (or the equivalent `https://vibestudio.app/…` share
+link). Panels with state are reached through the related
+`vibestudio://panel?source=…` link (`@vibestudio/shared/panelLocation`).
 
 ## One observation model
 
-`await handle.observe()` is the cheap canonical status read:
+`await handle.observe()` is the cheap status read:
 
 ```ts
 interface PanelObservation {
@@ -424,31 +423,29 @@ interface PanelObservation {
 }
 ```
 
-Boot phase belongs to the attempt while `host.reachable` belongs to its current
-transport route. A reconnect can therefore flip reachability without erasing
-an already-ready attempt or waking exact-attempt waiters. Every new
-materialization receives a fresh attempt, even when it presents the same
-runtime entity and build key.
+The boot phase belongs to the attempt, while `host.reachable` describes the
+current transport route. A reconnect can therefore change reachability without
+resetting an attempt that is already ready, and without waking callers waiting
+on that attempt. Every new materialization gets a new attempt, even when it
+shows the same runtime entity and build key.
 
-Every inspecting renderer host must implement the canonical
-`panelObservation` host command. Desktop and headless publish the same canonical
-`PanelHostObservation` value (including the nested `view` and `boot` states)
-and execute the same bounded page probe for `document.readyState`, the current URL, and
-`globalThis.__vibestudioPanelBoot`, then parse the result through the same
-shared contract. Target registration, successful navigation, an empty DOM, or
-the existence of a browser view is never a readiness substitute. A missing
-command or malformed observation is a `host_unavailable` platform failure and
-must be repaired in the host; callers must not infer success or fall back to a
-different readiness surface.
+Every renderer host that supports inspection must implement the
+`panelObservation` host command. Desktop and headless hosts publish the same
+`PanelHostObservation` value (including the nested `view` and `boot` states).
+Both run the same bounded page probe for `document.readyState`, the current
+URL, and `globalThis.__vibestudioPanelBoot`, and parse the result with the same
+shared schema. Target registration, successful navigation, an empty DOM, or an
+existing browser view never counts as readiness. A missing command or malformed
+observation is a `host_unavailable` platform failure that must be fixed in the
+host; callers must not assume success or fall back to another readiness check.
 
-There are no separate `refresh()`, `getInfo()`, `ensureLoaded()`, or
-`isLoaded()` handle concepts. They previously exposed different partial truths
-and could report success for a broken panel. Use `observe()`; `phase ===
-"ready"` is the sole positive readiness answer.
+Handles have no `refresh()`, `getInfo()`, `ensureLoaded()`, or `isLoaded()`.
+Those older methods each reported part of the state and could report success
+for a broken panel. Use `observe()`; only `phase === "ready"` means ready.
 
 ## Failures
 
-Read `error.failure`, not string fragments:
+Read `error.failure` instead of matching message text:
 
 ```ts
 interface PanelRuntimeFailure {
@@ -487,56 +484,56 @@ interface PanelRuntimeFailure {
 }
 ```
 
-The failure and the shell error display come from the same host/server
-observation. If an operation rejects, do not immediately retry or open another
-panel. Inspect its failure first; retries cannot fix a missing unit, wrong ref,
-compile error, or throwing entry module.
+The failure and the error shown in the shell come from the same observation. If
+an operation rejects, do not immediately retry or open another panel; read the
+failure first. Retrying cannot fix a missing unit, a wrong ref, a compile
+error, or an entry module that throws.
 
 ## Handle operations
 
-| Member                                          | Contract                                                                                                                       |
-| ----------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
-| `observe()`                                     | Current exact attempt, phase, host state, provenance, and structured failure                                                   |
-| `diagnose()`                                    | One bounded packet containing `observation`, historical console/lifecycle records, and a document when ready                   |
-| `snapshot(opts?)`                               | Boot-ready document capture with `panelId`, `attemptId`, `runtimeEntityId`, `buildKey`, and `capturedAt`                       |
-| `navigate(source, opts?)`                       | Transactionally prepare a new source/ref/context attempt, activate it, and wait for ready                                      |
-| `rebuild(opts?)`                                | Transactionally prepare a new immutable attempt for the current source/ref without adding a history entry, then wait for ready |
-| `reload(opts?)`                                 | Reload the current view and wait for its boot handshake                                                                        |
-| `focus(opts?)`                                  | Assign/present the panel and wait for ready                                                                                    |
-| `children()` / `parent()`                       | Tree relationships                                                                                                             |
-| `stateArgs.get()` / `stateArgs.set()`           | Validated host-owned application state args                                                                                    |
-| `archive()` / `unload()`                        | Durable subtree removal or live-runtime release                                                                                |
-| `tree()` / `state()` / `routes()` / `setMode()` | Optional workspace `_agent` application inspection                                                                             |
-| `cdp.session()` / `cdp.page()`                  | Generation-fenced multi-step automation or a one-off canonical CDP page                                                        |
-| `click(selector)`                               | Approval-gated one-off CDP convenience                                                                                         |
+| Member                                          | What it does                                                                                                        |
+| ----------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| `observe()`                                     | Current attempt, phase, host state, provenance, and structured failure                                              |
+| `diagnose()`                                    | One bounded packet with `observation`, past console and lifecycle records, and a document if ready                  |
+| `snapshot(opts?)`                               | Document capture of a boot-ready panel with `panelId`, `attemptId`, `runtimeEntityId`, `buildKey`, and `capturedAt` |
+| `navigate(source, opts?)`                       | Prepares and activates an attempt for a new source/ref/context, then waits for ready                                |
+| `rebuild(opts?)`                                | Prepares a new immutable attempt for the current source/ref without a history entry, then waits for ready           |
+| `reload(opts?)`                                 | Reloads the current view and waits for its boot handshake                                                           |
+| `focus(opts?)`                                  | Assigns and presents the panel, then waits for ready                                                                |
+| `children()` / `parent()`                       | Tree relationships                                                                                                  |
+| `stateArgs.get()` / `stateArgs.patch()`           | Validated, host-stored application state args                                                                       |
+| `archive()` / `unload()`                        | Removes the panel subtree / releases the live runtime                                                               |
+| `tree()` / `state()` / `routes()` / `setMode()` | Optional inspection through the application's `_agent` API                                                          |
+| `cdp.session()`                                 | Stable generation-fenced CDP session and Playwright-style page                                                      |
+| `click(selector)`                               | Click through the panel's CDP session; requires approval                                                            |
 
 `navigate()`, `reload()`, `rebuild()`, and `focus()` return
-`Promise<PanelObservation>`, not another `PanelHandle`. Keep using the original
-handle for `observe()`, `snapshot()`, and later lifecycle operations:
+`Promise<PanelObservation>`, not a new `PanelHandle`. Keep using the original
+handle for `observe()`, `snapshot()`, and later lifecycle calls:
 
 ```ts
 const observation = await handle.rebuild();
 const capture = await handle.snapshot();
 ```
 
-Code metadata and runtime creation use the same selected ref: an explicit
-navigation ref wins; otherwise the destination panel's context supplies the
-code state. Rebuild retains the current panel's context and explicit ref,
-not the inspecting agent's context.
+Code metadata and runtime creation use the same ref: an explicit navigation ref
+wins; otherwise the destination panel's context decides which code runs.
+Rebuild keeps the panel's own context and explicit ref, not the context of the
+agent inspecting it.
 
-All readiness-bearing methods accept `{ signal?: AbortSignal }`; `navigate()`
-and `focus()` include it in their existing options object. Cancellation stops
-the caller's wait. It does not roll back a durable creation or destroy a panel
-whose commit may already have succeeded.
+All methods that wait for readiness accept `{ signal?: AbortSignal }`;
+`navigate()` and `focus()` take it in their existing options object.
+Cancelling stops the caller's wait. It does not undo a creation or destroy a
+panel whose commit may already have succeeded.
 
-`navigate()` and `rebuild()` are atomic replacements: the new runtime and build
-are prepared before the current history entry is replaced. A preparation
-failure does not pretend that the old attempt was replaced. The panel-tree id
-and handle remain stable, while runtime entity, build key, and CDP endpoint are
-incarnation-scoped. For multi-step automation, keep one `cdp.session()` and call
-`session.refresh()` after either operation. Continue only with the returned
-session and page; its `current`, `reconnected`, or `replaced` status explains
-whether the immutable generation changed, and it never replays an action.
+`navigate()` and `rebuild()` replace the panel atomically: the new runtime and
+build are prepared before the current history entry is replaced, so a
+preparation failure leaves the old attempt in place. The panel-tree id and
+handle stay the same, while the runtime entity, build key, and CDP endpoint
+belong to one incarnation. For multi-step automation, keep one `cdp.session()`
+and keep using the same `session.page`; the next awaited operation rebinds the
+stable page to the current generation without replaying an interrupted action.
+Read `session.receipt` for acquired, reconnected, or replaced status.
 
 ## Snapshot provenance
 
@@ -552,12 +549,12 @@ const capture = await panel.snapshot();
 // }
 ```
 
-Always inspect `capture.document`, not the top level. The identities prevent a
-capture from being mistaken for a later rebuild or navigation.
+Read `capture.document`, not the top-level fields. The ids let you tell this
+capture apart from one taken after a later rebuild or navigation.
 
 ## Diagnostics
 
-Use one diagnostic call when something is wrong:
+When something is wrong, make one diagnostic call:
 
 ```ts
 const packet = await panel.diagnose();
@@ -567,19 +564,19 @@ else console.log(packet.consoleHistory.error);
 console.log(packet.document?.document.text);
 ```
 
-`consoleHistory` has `entries`, `errors`, `dropped`, and `capacity`; it has no
-separate `warnings` array. Filter warnings with
+`consoleHistory` has `entries`, `errors`, `dropped`, and `capacity`; there is no
+`warnings` array. Get warnings with
 `entries.filter((entry) => entry.level === "warning")`.
 
-`diagnose()` is safe for a failed attempt: it returns the canonical failure and
-whatever bounded host evidence exists instead of requiring a successful
-snapshot first. For a live runtime entity, use its exact
-`{ kind, entityId }` identity with `runtime.supervision.health(identity)` or
-`runtime.supervision.logs(identity)`; these reads do **not** request a new build
-and must not be used as proof that the current working source compiles. Use
-`services.build.getBuildReport(source, \`ctx:${ctx.contextId}\`)` for that
-structured compile/build check. Read server logs only when the panel packet
-shows the failure is below the lifecycle boundary.
+`diagnose()` works on a failed attempt: it returns the failure and whatever
+bounded host evidence exists, without needing a successful snapshot first. For
+a live runtime entity, pass its `{ kind, entityId }` identity to
+`runtime.supervision.health(identity)` or `runtime.supervision.logs(identity)`.
+These reads do **not** trigger a build and do not prove that the current working
+source compiles; use
+``services.build.getBuildReport(source, `ctx:${ctx.contextId}`)`` for that.
+Read server logs only when the panel packet shows the failure is below the
+panel lifecycle.
 
 ## State and agent inspection
 
@@ -589,43 +586,51 @@ Inside a panel:
 import { panel } from "@workspace/runtime";
 
 const initial = panel.stateArgs.get();
-await panel.stateArgs.set({ theme: "dark" });
+await panel.stateArgs.patch({ theme: "dark" });
 ```
+
+Patches follow RFC 7386: objects merge recursively, `null` deletes a key, and
+arrays and scalars replace their previous value. The state owner serializes
+concurrent patches and validates the merged result against the active build.
 
 From a handle:
 
 ```ts
-await handle.stateArgs.set({ theme: "dark" });
+await handle.stateArgs.patch({ theme: "dark" });
 const next = await handle.stateArgs.get();
 ```
 
-`handle.state()` is empty unless the application registers state providers via
+`handle.state()` is empty unless the application registers state providers with
 `useAgentState` or `agentApi.registerStateProvider`.
 
 ## CDP
 
-`handle.cdp.session().page` is the preferred generation-fenced Playwright-style
-automation surface; `handle.cdp.page()` is the one-off connection form. Both are
-the same client, and their caller must close the session/page it owns. Do not
-install Playwright. For historical diagnostics use `diagnose()`; use
-`handle.cdp.consoleHistory()` only when you specifically need a filtered console
-read. CDP access is served by the active desktop/headless host and rejects when
-a non-CDP mobile host owns the target.
+`handle.cdp.session()` returns the stable Playwright-style automation page,
+generation-fenced to the owning panel. Keep the session through lifecycle
+changes and close it when the workflow ends.
+Do not install Playwright. For past diagnostics use `diagnose()`; use
+`handle.cdp.consoleHistory()` only when you need a filtered console read. The
+active desktop or headless host serves CDP access; it is rejected when a mobile
+host, which has no CDP, holds the panel.
 
-In server-side eval, use this handle API directly. The CDP client selects the
+In server-side eval, use this handle API directly. The CDP client picks the
 runtime's supported WebSocket transport; do not open the panel's private HTTP
-URL, construct a raw WebSocket, or install a second browser library as fallback.
+URL, build a raw WebSocket, or install another browser library as a fallback.
 
-The page surface includes `page.keyboard.press/type/insertText`,
+The page API includes `page.keyboard.press/type/insertText`,
 `page.setViewportSize/viewportSize`, `locator.evaluate/evaluateAll`, regex
-text/name locators, and React-compatible form updates. Browser callbacks are
-serialized into the page realm, so pass external data as the explicit callback
-argument. Browser evaluation errors preserve the real exception description
-and stack; locator failures add the exact rendered locator. See
-[BROWSER.md](BROWSER.md) for the complete supported surface.
+text and name locators, and form updates that work with React. Browser
+callbacks are serialized into the page, so pass outside data as the callback's
+explicit argument. Browser evaluation errors keep the real exception
+description and stack, and locator failures include the rendered locator. See
+[BROWSER.md](BROWSER.md) for the full API.
 
 ## Ownership
 
-Archive temporary panels in `finally`. Reuse an existing handle rather than
-opening duplicates. Leave a panel open only when the user asked to keep it or it
-is the primary deliverable being inspected.
+Bind a temporary panel with `await using panel = await openPanel(...)`; it is
+archived with its subtree when the block exits, including on failure. A panel
+that must outlive one block (for example, across eval cells) stays in `scope`
+and is archived explicitly when the workflow ends. Never bind a handle you did
+not create: disposing it archives that panel. Reuse an existing handle instead
+of opening duplicates. Leave a panel open only if the user asked to keep it or it
+is the deliverable being inspected.

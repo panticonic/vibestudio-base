@@ -66,17 +66,8 @@ export { createThinkingTracker, createActionTracker } from "./tracker-factories.
 // Tool name utilities
 export * from "./tool-name-utils.js";
 
-// Tool schemas and validation
-export * from "./tool-types.js";
-
-// Tool approval logic
-export * from "./tool-approval.js";
-
 // Context window usage types
 export * from "./context-tracker.js";
-
-// Action descriptions
-export { getDetailedActionDescription } from "./action-descriptions.js";
 
 // TODO list types and code generation
 export { type TodoItem, getTodoListCode, getCachedTodoListCode } from "./todo-types.js";
@@ -132,6 +123,3 @@ export {
 
 // Async utilities
 export { AsyncQueue, createFanout } from "./async-queue.js";
-
-// Approval schema builder
-export { createApprovalSchema, type CreateApprovalSchemaParams } from "./approval-schema.js";

@@ -34,7 +34,7 @@ Session knobs are method calls on the agent participant:
   entry.
 - `setApprovalLevel({ level })` where `level` is `0`, `1`, or `2`.
 - `setRespondPolicy({ policy, from? })` where `policy` is `all`, `mentioned`,
-  `mentioned-strict`, or `from-participants`.
+  `mentioned-strict`, `mentioned-or-followup`, or `from-participants`.
 - `getAgentSettings()` returns current values and whether each came from state,
   subscription config, or defaults.
 - `connectModelCredential({ providerId, ... })` starts the provider's OAuth or

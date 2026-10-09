@@ -52,6 +52,7 @@ export function parentUpdateChecks(
   const inherited = installedSourceDependencies(
     observation.manifest,
     checks.map((check) => check.source.url),
+    observation.installation,
   );
   return checks.filter(
     (check) => !inherited.has(normalizeTemplateGitUrl(check.source.url)),

@@ -1,16 +1,16 @@
 # Panel Build, Debug, and Polish Loop
 
-Use this workflow to create or edit a panel, diagnose actual failures, inspect
-its rendered behavior, and deliver the requested result. Select the steps that
-the observed state requires; do not invent defects merely to demonstrate the
-workflow. Explicitly requested fault-injection or regression tests are different:
-keep intentional failures in an isolated candidate, verify that failed artifacts
-remain inactive, and repair them before publication. Read the larger API
-references when an observed result needs further diagnosis.
+Use this workflow to create or edit a panel, diagnose real failures, inspect
+how it renders, and deliver the requested result. Do only the steps the
+observed state calls for; do not invent defects to demonstrate the workflow. If
+the user explicitly asks for fault-injection or regression tests, keep the
+intentional failures in an isolated candidate, check that the failed artifacts
+stay inactive, and repair them before publication. Consult the larger API
+references when a result needs deeper diagnosis.
 
 ## 1. Prepare once
 
-For a new persistent app, author the explicit authority policy from
+For a new persistent app, write the authority policy described in
 [PROJECTS.md](PROJECTS.md), then prepare the connected candidate:
 
 ```ts
@@ -25,13 +25,14 @@ scope.workerSource = scope.prepared.worker.created;
 return scope.prepared;
 ```
 
-The application receipt is an object, not an array. It exposes both units,
-service wiring, the exact context preparation head, and the supplied policy.
-Code/config are prepared together, but no commit, push, activation, or grant
-has occurred. Customize and review that existing pair instead of registering
-a second service.
+The application receipt is an object, not an array. It describes both units,
+the service wiring, the context's working head after preparation, and the
+policy you supplied. Code and config are prepared together, but
+no commit, push, activation, or grant has occurred. Customize and review this panel and
+worker pair; do not register a second service.
 
-For a standalone panel without a new store, deliberately supply its ceiling:
+For a standalone panel without a new store, supply its authority ceiling
+explicitly:
 
 ```ts
 import { prepareProjects } from "@workspace-skills/workspace-dev";
@@ -48,21 +49,22 @@ scope.panelSource = scope.prepared[0].created;
 return scope.prepared;
 ```
 
-Author those authority values for the task before this invocation. Neither
-helper fills missing requests. Never call either preparation API again to
-recover an existing candidate. Inspect current VCS status and destinations
-after an uncertain edit; later build, open, screenshot, or publication failures
-do not roll preparation back. Follow ordinary VCS receipts/retry policy, not
-a scaffold-specific publication recovery helper.
+Write these authority values for the task before calling the helper; neither
+helper fills in missing requests. Never call either preparation API again to
+recover an existing candidate. If you are unsure whether an edit landed,
+check VCS status and the destination paths. Later build, open, screenshot, or
+publication failures do not undo preparation. Recover publication with the
+usual VCS receipts and retry rules; there is no scaffold-specific recovery
+helper.
 
-Before delivery, review the complete authority envelope and candidate diff,
-verify exact unit paths, and commit/push the exact reviewed candidate as
-described in [WORKFLOW.md](WORKFLOW.md#review-verify-and-publish). Context-pinned
-UI verification below can happen before publication.
+Before delivery, review the full authority envelope and the candidate diff,
+verify the unit paths, and commit and push the reviewed candidate as described
+in [WORKFLOW.md](WORKFLOW.md#review-verify-and-publish). The context-pinned UI
+checks below can run before publication.
 
-## 2. Author and observe the compiler result
+## 2. Author and read the compiler result
 
-Use `write`/`edit` for source. Build the exact working context, not main:
+Edit source with `write`/`edit`. Build the working context, not main:
 
 ```ts
 const report = await services.build.getBuildReport(
@@ -75,15 +77,17 @@ return {
 };
 ```
 
-Repair the cited source diagnostics, then rerun this same report. Keep an
-independent UI problem separate when the requested work needs a distinct review
-or verification boundary; otherwise group edits by their actual user intent.
+Fix the cited source diagnostics and rerun the same report. Group edits by
+user intent; keep an unrelated UI problem separate only when it needs its own
+review or verification.
 
 ## 3. Open the unpublished context build once
 
-Panel activation defaults to the verified caller's context. Pin the current
-context explicitly when retaining a handle across later source operations,
-and retain its stable id:
+A panel builds from its own context. Without `contextId` it gets a new context
+forked from yours and never sees your later edits, so share the current context
+when you will rebuild the same handle across source operations. The explicit
+`ref` is the same selection, recorded so `requestedRef` can be checked. Keep
+the handle in scope:
 
 ```ts
 import { openPanel } from "@workspace/runtime";
@@ -93,7 +97,6 @@ scope.panel = await openPanel(scope.panelSource, {
   ref: `ctx:${ctx.contextId}`,
   focus: true,
 });
-scope.panelId = scope.panel.id;
 const observation = await scope.panel.observe();
 if (observation.requestedRef !== `ctx:${ctx.contextId}`) {
   throw new Error(`Wrong panel ref: ${observation.requestedRef}`);
@@ -101,26 +104,25 @@ if (observation.requestedRef !== `ctx:${ctx.contextId}`) {
 return observation;
 ```
 
-Do not call `openPanel` again to refresh it. Reuse `scope.panel`. After a
-reported kernel restart, recover the same panel with
-`getPanelHandle(scope.panelId)` rather than opening another slot.
+Do not call `openPanel` again to refresh the panel; reuse `scope.panel`. It
+also survives a kernel restart: scope persists the handle by id and reacquires
+the same panel.
 
 ## 4. Inspect the rendered state
 
-Acquire one generation-fenced session for the current runtime incarnation and
-return the panel handle's native screenshot result, directly or nested alongside
-interaction receipts and checks. Both forms attach the image for visual inspection
-without embedding its bytes in JSON. Omit an exact `authority.requests` list for
-ordinary eval; if intentionally attenuating, `cdp.page()` requires the exact
-`panel.inspect` request documented in `BROWSER.md`.
+Acquire one generation-fenced CDP session for the current runtime incarnation
+and return the panel handle's native screenshot result, either directly or
+nested next to interaction receipts and checks. Either way, eval attaches the
+image for you to look at without putting its bytes in JSON. Normally omit
+`authority.requests` in eval; if you deliberately narrow it, `cdp.session()` needs
+the `panel.inspect` request documented in `BROWSER.md`.
 
-Run CDP session/page acquisition in a read-write eval even when the subsequent
-locator calls only read text. The acquired connection can also execute scripts
-and mutate the page; a read-only eval cannot acquire that authority. For visual
-inspection without a CDP connection, use a read-only eval returning
-`await scope.panel.cdp.screenshot({ format: "png" })`; console inspection can use
-`await scope.panel.cdp.consoleHistory()`. Do not acquire `cdp.page()` first for
-either bounded read.
+Acquire the CDP session or page in a read-write eval, even if the locator calls
+afterwards only read text: the connection can also run scripts and change the
+page, and a read-only eval cannot obtain that authority. To only look at the
+panel, use a read-only eval that returns
+`await scope.panel.cdp.screenshot({ format: "png" })`; to read the console, use
+`await scope.panel.cdp.consoleHistory()`. Neither needs `cdp.session()`.
 
 ```ts
 scope.panelSession = await scope.panel.cdp.session();
@@ -132,22 +134,22 @@ console.log(roles);
 return await scope.panel.cdp.screenshot({ format: "png" });
 ```
 
-Eval attaches this canonical screenshot result as image content. No temp file,
-filesystem write authority, or follow-up `read` call is needed. Do not infer the
-visual defect from source/DOM text alone.
+Eval attaches the returned screenshot as image content. No temp file,
+filesystem write authority, or follow-up `read` call is needed. Judge visual
+defects from the screenshot, not from source or DOM text alone.
 
-## 5. Apply UI changes, rebuild the same panel, and reacquire the page
+## 5. Apply UI changes and rebuild the same panel
 
-Make the separate source edit and rerun the exact-context build report.
+Make the source edit and rerun the build report for the context.
 
-A visible improvement must change the rendered interface. Editing a README
-does not improve the panel UI. Capture the changed interface after rebuilding
-and confirm the intended text, layout, or interaction change on the new runtime:
+A visible improvement must change the rendered interface; editing a README
+does not improve the panel. After rebuilding, capture the interface and confirm
+the intended text, layout, or interaction change on the new runtime:
 
 ```ts
 scope.rebuildObservation = await scope.panel.rebuild();
-scope.refreshReceipt = await scope.panelSession.refresh();
-scope.panelSession = scope.refreshReceipt.session;
+await scope.panelSession.page.title(); // Rebind the stable page after rebuild.
+scope.refreshReceipt = scope.panelSession.receipt;
 return {
   status: scope.refreshReceipt.status,
   generation: scope.panelSession.generation,
@@ -155,94 +157,97 @@ return {
 };
 ```
 
-Keep this replacement receipt before a separate UI probe. If that probe fails,
-recover the locator and report the retained replacement receipt with the next
-observed interaction. Return the full interaction outcome or a bounded
-projection preserving its protocol, delivery, and effect; do not discard those
-coordinates when reporting only the new count.
+Store this session receipt before running a separate UI probe. If the probe
+fails, fix the locator and report the stored receipt together with the next
+observed interaction. Return the full interaction outcome, or a summary that
+keeps its protocol, delivery, and effect fields; do not drop them when you only
+need to report, say, a new count.
 
-`rebuild()` keeps the panel id but replaces its runtime incarnation, so an old
-page must not be reused. A generation-fenced session reports `replaced` when
-that happens and returns the page for the new immutable attempt; it never
-replays an uncertain interaction. Acquire the initial session with
-`scope.panelSession = await scope.panel.cdp.session()`. Building, serving,
-connecting, and application boot are
-distinct stages and cold builds can legitimately take time; do not impose a
-generic fixed deadline on `rebuild()` or on the surrounding eval cell. The
-runtime has no implicit readiness deadline and reports terminal boot failures
-directly. Pass a signal only when the caller owns a real cancellation boundary
-(for example, a user cancelled the operation or a larger workflow has an
-explicit end-to-end deadline), not as a speculative safety timeout. If such a
-caller-owned cancellation fires, call `scope.panel.diagnose()` in the next cell
-to retrieve the exact observation, boot failure, console history, and ready
-document without rebuilding again. Inspect a fresh screenshot after the change
-using the same native image result as in step 4.
+`rebuild()` keeps the panel id and replaces the runtime incarnation. The session
+and its page remain stable: the next page operation binds to the new incarnation,
+and `scope.panelSession.receipt` reports `replaced`. An interaction interrupted
+by replacement fails explicitly; the runtime never replays it.
+
+Building, serving, connecting, and application boot are separate stages, and
+cold builds can take a while. Do not put a fixed deadline on `rebuild()` or on
+the eval cell around it. The runtime has no implicit readiness deadline and
+reports terminal boot failures directly. Pass a signal only when the caller
+really can be cancelled, for example because the user cancelled or a larger
+workflow has an explicit end-to-end deadline, not as a precautionary timeout.
+If that cancellation fires, call `scope.panel.diagnose()` in the next cell to
+get the observation, boot failure, console history, and ready document without
+rebuilding again. Then inspect a fresh screenshot the same way as in step 4.
 
 ## 6. Exercise the rendered contract
 
-Use the accessible roles/names you just inspected. Do not guess labels from
-source and do not use `.first()`, `.last()`, or `.nth()` for repeated item
-actions. Repeated controls must have item-specific names such as
-`Complete Buy milk` and `Delete Buy milk`; repair the panel if they do not.
+Use the accessible roles and names you just inspected. Do not guess labels from
+source, and do not use `.first()`, `.last()`, or `.nth()` to act on repeated
+items. Repeated controls must have item-specific names such as
+`Complete Buy milk` and `Delete Buy milk`; fix the panel if they do not. Before
+waiting on a narrowed locator, inspect the element it matches: `first()` picks
+in document order and can choose a hidden option whose text also appears in a
+visible heading. Use the observed role, name, and container. See
+[BROWSER.md](BROWSER.md) for locator and wait semantics.
 
-Exercise the application's data-entry, update, filtering, and removal flows
-against the fresh page. Retain each observed outcome in `scope` before starting
-the next action; a later failure must not erase earlier successful evidence.
-For an application with persistent user data, reload through the panel handle,
-refresh the generation-fenced session, and verify that the saved data survives.
-Actions auto-wait for an actionable control; dispatch does not establish that
-an asynchronous save, fetch, or React update finished. For each mutation,
-observe its rendered completion condition before another dependent action.
-Use `click({ expect: { locator, state } })` or `press("Enter", { expect: { locator, state } })`
-when the expected condition follows that action, or the expected locator's
-`waitFor({ state })` before reading it.
-For an unverified asynchronous mutation, observe the application's terminal
-success **or** its rendered failure, then inspect which occurred. A success-only
-wait can strand debugging after the application has already displayed an error.
-Use `page.waitForFunction` with a self-contained predicate for the actual result
-and visible error UI, or an `expect` locator that covers those terminal states.
-Propagate the displayed error before another dependent action; a terminal-state
-interaction receipt proves observation, not successful application behavior.
-Do not replace a missing terminal condition with elapsed sleeps or a timeout.
+Exercise the application's data entry, update, filtering, and removal flows on
+the rebuilt panel. Store each observed outcome in `scope` before starting the next
+action so a later failure cannot erase earlier evidence. For an application
+with persistent user data, reload through the panel handle and use the stable
+page to check that the saved data survived.
 
-Prefer the action's explicit `expect` when reporting an observed interaction:
-the native eval journal retains its target identity and semantic outcome even
-when you return only a compact summary. Rich target inspection remains on the
-returned interaction receipt, not the journal. A separate `waitFor()` does not promote
-a dispatch-only receipt to an observed one. See [browser receipt contracts](BROWSER.md#page-surface).
-After reload/reacquisition, wait for the application's loaded result rather
-than treating its first loading state as an empty database or a failure.
-Choose conditions from the delivered UI, not elapsed sleeps. If an observation
-fails, inspect its structured error, `panel.diagnose()`, and console history;
-report a persistence defect only when the loaded result contradicts the saved
-state or diagnostics establish the failure. For newly authored or restyled UI,
-also follow [theme verification](WORKFLOW.md#theme-and-layout): inspect light and
-dark appearances, switch the host choice with the same panel open, and restore
-the prior setting. Check custom surfaces and open overlays, not just the theme
-class. Finish by reading console events,
-capturing the final screenshot, closing the page client, and returning compact
-evidence.
+Actions wait automatically for the control to be actionable, but dispatching
+an action does not mean an asynchronous save, fetch, or React update has
+finished. After each mutation, wait for its rendered completion before the next
+dependent action:
+
+- Use `click({ expect: { locator, state } })` or
+  `press("Enter", { expect: { locator, state } })` when the expected condition
+  follows that action.
+- Otherwise call `waitFor({ state })` on the expected locator before reading it.
+- For an asynchronous mutation you have not yet verified, wait for either the
+  success state **or** the rendered error, then check which one happened.
+  Waiting only for success leaves you stuck when the application has already
+  shown an error. Use `page.waitForFunction` with a self-contained predicate
+  that covers both the result and the visible error UI, or an `expect` locator
+  that matches both terminal states.
+- If an error is displayed, report it before any dependent action. A receipt
+  showing the terminal state proves you observed it, not that the application
+  behaved correctly.
+- Never substitute sleeps or timeouts for a missing completion condition.
+
+Prefer the action's `expect` option when reporting an interaction: the eval
+journal keeps its target identity and semantic outcome even if you return only
+a short summary. Detailed target inspection is on the returned interaction
+receipt, not in the journal. A separate `waitFor()` does not turn a
+dispatch-only receipt into an observed one. See [browser receipt
+contracts](BROWSER.md#page-surface).
+
+After a reload or reacquisition, wait for the application's loaded state;
+its first loading state is not an empty database or a failure. Choose wait
+conditions from the rendered UI. If an observation fails, inspect its
+structured error, `panel.diagnose()`, and console history. Report a persistence
+defect only when the loaded result contradicts the saved state or diagnostics
+show the failure.
+
+For new or restyled UI, also follow [theme
+verification](WORKFLOW.md#theme-and-layout): inspect the light and dark
+appearances, switch the host setting with the panel open, and restore the
+previous setting. Check custom surfaces and open overlays, not only the theme
+class. Finish by reading console events, capturing the final screenshot,
+closing the page client, and returning compact evidence.
 
 When the task includes performance, read `skills/performance/SKILL.md` and wrap
-the exact interaction plus its real completion condition with `page.profile()`.
-Run precise JS coverage separately from the latency measurement because
-coverage changes execution cost.
+the interaction plus its real completion condition in `page.profile()`. Measure
+precise JS coverage in a separate run, because coverage slows execution.
 
 ## 7. Commit and publish once
 
-Read `skills/vibestudio-vcs/SKILL.md`, reobserve `vcs.status`, commit the complete
-local application chain, and publish that exact committed event. A failed
-protected build gate means repair source, rebuild, and commit a new event; it
-never means rerun scaffold or blindly push the rejected event.
+Read `skills/vibestudio-vcs/SKILL.md`, call `vcs.status` again, commit the
+complete local application chain, and publish that committed event. If the
+protected build gate fails, repair the source, rebuild, and commit a new event;
+do not rerun the scaffold or push the rejected event again unchanged.
 
-After publication, `scope.panel.rebuild()` may be used to verify protected main
-only after its requested ref has deliberately been changed to main. Report the
-requested changes, visual review, exact build status, interaction
-evidence, console errors, and publication receipt.
-
-
-Choose live UI postconditions from the observed accessibility contract. Before
-waiting on a narrowed locator, inspect its matched element; `first()` selects
-document order and can choose a hidden option whose text also appears in a
-visible heading. Use the observed role/name and container. See
-[BROWSER.md](BROWSER.md) for locator and wait semantics.
+After publication, you can use `scope.panel.rebuild()` to check protected main,
+but only after deliberately changing the panel's requested ref to main. Report
+the requested changes, the visual review, build status, interaction evidence,
+console errors, and the publication receipt.

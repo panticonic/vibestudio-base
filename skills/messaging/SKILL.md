@@ -5,18 +5,18 @@ description: Message anyone — the channel, a person, another agent, a subagent
 
 # Messaging
 
-There is one messaging primitive: **`notify`**. It is how you speak to the
-channel, how you report to a supervisor, how you steer a child, how you reach a
-person's phone, and how you talk to an agent in another conversation. If you are
-about to write text that someone else should see, `notify` is the tool.
+**`notify`** is the messaging tool. Use it to speak to the channel, report to
+a supervisor, steer a child, reach a person's phone, or talk to an agent in
+another conversation. Any text someone else should see goes through `notify`.
 
-For a temporary shell notification with clickable action buttons and explicit
-dismissal, use the runtime `notifications.show()` and `notifications.dismiss()`
-API described in [Runtime API — Notifications](../sandbox/RUNTIME_API.md#notifications).
-It returns a host-issued notification id once accepted; retain that id for
-cleanup in the same runtime. `notify` instead delivers a conversation message
-and optional inbox alert. Choices written in its Markdown are message text,
-and its returned message id does not identify a dismissible shell notification.
+`notify` delivers a conversation message and an optional inbox alert. Choices
+written in its Markdown are just message text, and its returned message id does
+not identify a dismissible shell notification. For a temporary shell
+notification with clickable action buttons and explicit dismissal, use the
+runtime `notifications.show()` and `notifications.dismiss()` API described in
+[Runtime API — Notifications](../sandbox/RUNTIME_API.md#notifications).
+`show()` returns a host-issued notification id once accepted; keep that id to
+dismiss the notification from the same runtime.
 
 ```
 notify({
@@ -33,60 +33,55 @@ notify({
 
 `to` takes one ref or a list. Omitting it addresses the whole channel.
 
-| Ref                          | Reaches                                                                                                                                            |
-| ---------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
-| _(omitted)_                  | everyone in this conversation                                                                                                                      |
-| `@handle`                    | one participant here — an agent or a person; a person is also found by handle when they are a workspace member who has not joined this channel yet |
-| `participant:<id>`           | the same, by exact id                                                                                                                              |
-| `user:<id>`                  | a specific person, on this channel or not (they are added to it)                                                                                   |
-| `owner`                      | the person this channel belongs to (fails when there is more than one person here — nobody is guessed)                                             |
-| `parent`                     | your supervisor, when you are a subagent                                                                                                           |
-| `run:<runId>`                | a subagent you spawned, in its own task channel                                                                                                    |
-| `agent:<handle>@<channelId>` | an agent instance in another conversation                                                                                                          |
-| `channel:<id>`               | everyone in another conversation                                                                                                                   |
+| Ref                          | Reaches                                                                                            |
+| ---------------------------- | -------------------------------------------------------------------------------------------------- |
+| _(omitted)_                  | everyone in this conversation                                                                      |
+| `@handle`                    | one participant here, agent or person; also a workspace member who has not joined this channel yet |
+| `participant:<id>`           | the same, by exact id                                                                              |
+| `user:<id>`                  | a specific person, on this channel or not (they are added to it)                                   |
+| `owner`                      | the person this channel belongs to; fails if more than one person is here                          |
+| `parent`                     | your supervisor, when you are a subagent                                                           |
+| `run:<runId>`                | a subagent you spawned, in its own task channel                                                    |
+| `agent:<handle>@<channelId>` | an agent instance in another conversation                                                          |
+| `channel:<id>`               | everyone in another conversation                                                                   |
 
-Run a `list_addressees` to see exactly these, filled in, for where you are
-standing. Every row prints the string `to` accepts — discovery output is notify
-input, so there is nothing to translate.
+`list_addressees` shows these refs filled in for your current conversation.
+Each row prints the exact string `to` accepts.
 
-**Unresolvable refs fail the call.** A misspelled handle comes back with
-suggestions rather than being broadcast to everyone; a handle that matches two
-participants comes back asking which. This is deliberate: guessing is how an
-agent tells the wrong person something.
+**Unresolvable refs fail the call.** A misspelled handle returns suggestions
+instead of being broadcast; a handle that matches two participants returns an
+error asking which one. Nothing is guessed, so a message never reaches the
+wrong person.
 
-A requested recipient is part of the user's instruction. If that person is
-absent or ambiguous, report that to the caller and show the available addressees.
-A roster entry is evidence that someone is reachable, not permission to send
-the intended recipient's note to them. Do not substitute the caller, another
-participant or the whole channel unless the user explicitly chooses that
-alternative. Keep the original note unsent while asking for that choice.
+A recipient the user named is part of the instruction. If that person is absent
+or ambiguous, tell the caller and show the available addressees. Do not send the
+note to the caller, another participant, or the whole channel instead, just
+because they appear in the roster, unless the user explicitly chooses that.
+Hold the note unsent while you ask.
 
 ## The alert ladder
 
-Three rungs, each a superset of the one below. They are named for what the
-_recipient experiences_, because that is the only thing you can be held to —
-not for how urgent the news feels to you.
+Three rungs, each including everything the one below it does. They are named
+for what the _recipient experiences_, not for how urgent the news feels to you.
 
-| Rung        | What the person gets                            | When                                                                                          |
-| ----------- | ----------------------------------------------- | --------------------------------------------------------------------------------------------- |
-| `none`      | the message in the channel, nothing else        | agent-to-agent, and ordinary channel utterances. The default.                                 |
-| `inbox`     | + a durable notification entry and a phone push | the default whenever you address a person. It lands and it travels, without seizing a screen. |
-| `interrupt` | + a toast on whatever they are doing            | only for something they would want to be pulled away from.                                    |
+| Rung        | What the person gets                            | When                                                                                 |
+| ----------- | ----------------------------------------------- | ------------------------------------------------------------------------------------ |
+| `none`      | the message in the channel, nothing else        | agent-to-agent and ordinary channel messages. The default.                           |
+| `inbox`     | + a durable notification entry and a phone push | the default when you address a person. It reaches them without taking over a screen. |
+| `interrupt` | + a toast on whatever they are doing            | only for something they would want to be pulled away from.                           |
 
 Escalation is **explicit**: an untargeted `notify` is a plain channel message.
-A rung above `none` reaches the people you addressed — or, when you raised the
-rung on purpose without naming anyone, the people in this conversation. Nobody
-outside the conversation is ever guessed at.
+A rung above `none` reaches the people you addressed. If you set the rung
+without naming anyone, it reaches the people in this conversation. Nobody
+outside the conversation is ever notified by inference.
 
-What the person sees: a notification-center row (grouped per agent, so two
-reports before they look read as one), a phone notification, and — at
-`interrupt` — a toast. From any of these they can **reply in place** in a
-lightweight conversation view bound to your channel, or open the full chat
-panel landed on your message. The durable entry retires only when the person
-explicitly replies, opens it from the inbox, or dismisses it. Rendering a
-mounted chat panel is not acknowledgement: window visibility, panel presence,
-and human attention are different facts. Do not re-notify an entry the person
-has already disposed of.
+The person sees a notification-center row (grouped per agent, so two reports
+before they look appear as one), a phone notification, and at `interrupt` a
+toast. From any of these they can **reply in place** in a small conversation
+view bound to your channel, or open the full chat panel at your message. The
+inbox entry is cleared only when the person replies, opens it from the inbox,
+or dismisses it. A chat panel being mounted or visible does not count as
+acknowledgement. Do not re-notify an entry the person has already handled.
 
 Worked examples:
 
@@ -111,45 +106,43 @@ notify({
 });
 ```
 
-For a recurring notification, put the same explicit `notify` call in an
-agent-owned automation prompt. Use `alert: "inbox"` explicitly even though
-person-addressed messages currently default there. `notify` is an agent tool,
-not a service operation, so omit the automation `operations` list unless the
-action separately makes concrete external service calls. See
-[Automations](../automations/SKILL.md); `launch_automation` immediately creates
-the active revision and seals the current agent's identity and installed image.
+For a recurring notification, put the same `notify` call in an agent-owned
+automation prompt. Pass `alert: "inbox"` explicitly, even though messages to a
+person currently default to it. `notify` is an agent tool, not a service
+operation, so leave the automation's `operations` list empty unless the action
+also makes external service calls. See [Automations](../automations/SKILL.md);
+`launch_automation` creates the active automation immediately and seals the
+current agent's identity and installed image.
 
-An explicit `inbox` or `interrupt` rung is part of the tool effect. If its
-durable entry or live inbox invalidation fails, `notify` fails rather than
-claiming delivery merely because the channel message was published. An
-automation that completes its turn after such a failure is recorded as
-`completed-with-errors`; its inspector shows the exact failed invocation and
-the mission owner projects an addressed failure entry through the ordinary
-durable GAD inbox. That projection retries independently of the canonical run.
+An explicit `inbox` or `interrupt` rung is part of what `notify` must deliver.
+If the inbox entry or the live inbox update fails, `notify` fails, even though
+the channel message was published. An automation whose turn completes after
+such a failure is recorded as `completed-with-errors`. Its inspector shows the
+failed invocation, and the mission owner posts a failure entry to the GAD
+inbox, retrying independently of the run record.
 
 ## Etiquette
 
-Notification is cheap. Keep it **rare**.
+Sending a notification is easy. Keep it **rare**.
 
-- **Notable circumstances only.** Report what this conversation has established
-  as report-worthy and what the user or your supervisor asked to hear about.
-  Turn narration is not a notification.
-- **Expectations are addressable state.** "Only tell me when it's done" and
-  "keep me posted" both override the defaults above. When you spawn a subagent,
-  say in its task what you want to hear about.
-- **Steer, don't poll.** `notify({ to: "run:<runId>" })` is for correcting
-  course or supplying information the child lacks. While work is active, it
-  steers that turn; after the child reports, fails, or is cancelled, it starts
-  a follow-up turn in the same retained context. Progress is read with
-  `inspect_subagent` / `read_subagent` or from the child's ordinary report.
-  Messaging a working child merely to ask how it is going costs it a turn and
-  buys nothing.
-- **Prefer addressed over broadcast.** An addressed message wakes exactly who
-  should act; a broadcast makes everyone decide whether it was for them.
-- **Break ping cycles.** Do not reply to acknowledgments, do not thank, do not
-  re-notify what the recipient already acknowledged. If an exchange stops
-  producing new information, stop messaging. There is a hop cap underneath you,
-  but it is a backstop, not a budget to spend.
+- **Notable events only.** Report what this conversation has established as
+  worth reporting and what the user or your supervisor asked to hear about. Do
+  not narrate your turn.
+- **Follow stated expectations.** "Only tell me when it's done" and "keep me
+  posted" both override the defaults above. When you spawn a subagent, say in
+  its task what you want to hear about.
+- **Steer, don't poll.** Use `notify({ to: "run:<runId>" })` to correct course
+  or give the child information it lacks. While the child is working, the
+  message steers its current turn; after it reports, fails, or is cancelled, the
+  message starts a follow-up turn in the same context. Read progress with
+  `inspect_subagent` / `read_subagent` or from the child's report. Asking a
+  working child how it is going costs it a turn and gains nothing.
+- **Address rather than broadcast.** An addressed message wakes only the people
+  who should act; a broadcast makes everyone decide whether it was for them.
+- **Break ping cycles.** Do not reply to acknowledgments, do not thank, and do
+  not re-notify what the recipient already acknowledged. When an exchange stops
+  producing new information, stop messaging. A hop cap exists, but it is a
+  safety limit, not a budget.
 
 ## Finding someone to talk to
 
@@ -160,23 +153,23 @@ Notification is cheap. Keep it **rare**.
   overview, and print `agent:<handle>@<channelId>` refs ready to paste into
   `notify`.
 
-**Be findable.** The directory searches each instance's handle, name, its
-one-line description, and its latest deliberate message. Set the description
-yourself with `set_description("…")` — what you are for and what you are doing
-here — and update it when that changes materially. An agent with no
-description is found only by its handle.
+**Be findable.** The directory searches each instance's handle, name,
+one-line description, and latest deliberate message. Set your description with
+`set_description("…")`, saying what you are for and what you are doing here,
+and update it when that changes materially. An agent with no description can be
+found only by its handle.
 
-An agent instance is a **(worker, channel) pair**. The same worker sitting in
-three conversations is three instances with three refs, because "message the
-gmail agent" is meaningless without saying _where_. Addressing a bare
-`agent:<handle>` when the worker runs in several channels fails with the list.
+An agent instance is a **(worker, channel) pair**. A worker in three
+conversations is three instances with three refs, since "message the gmail
+agent" is ambiguous without saying _where_. Addressing a bare `agent:<handle>`
+when the worker runs in several channels fails and lists the candidates.
 
-Instances that have left their channel stay discoverable with
-`includeTerminal`. Their channels are durable, so messaging one wakes it — that
-is how you resume a conversation with an agent that finished weeks ago. Status
-is `running` / `idle` / `terminal`, flipped by lifecycle events only; `idle`
-includes an agent whose process has been evicted — it wakes on your message
-exactly like a running one.
+Instances that have left their channel remain discoverable with
+`includeTerminal`. Their channels persist, so messaging one wakes it; this is
+how you resume a conversation with an agent that finished weeks ago. Status is
+`running`, `idle`, or `terminal` and changes only on lifecycle events. `idle`
+includes an agent whose process was evicted; it wakes on your message just like
+a running one.
 
 ## Talking to an agent in another conversation
 
@@ -188,23 +181,21 @@ notify({
 });
 ```
 
-The message lands as an ordinary message in _their_ channel, marked as coming
-from you and from here; they can reply symmetrically — a guest message tells its
-recipient the exact `agent:<handle>@<channelId>` ref to answer with. Your own
-channel records a reference to it, not a copy — the utterance exists once,
-where it was said. Guest messages are not editable after sending.
+The message arrives as a normal message in _their_ channel, marked as coming
+from you and from your channel. A guest message includes the
+`agent:<handle>@<channelId>` ref the recipient can use to reply. Your own
+channel records a reference to the message, not a copy. Guest messages cannot
+be edited after sending.
 
-Two consequences worth knowing:
-
-- The conversation-depth cap travels with the message. A ping-pong across two
-  channels is bounded exactly like one inside a single channel.
-- A channel with locked membership refuses guests, and says so as a _closed
-  channel_ rather than as an unknown addressee. Do not retry it.
+- The conversation-depth cap travels with the message, so a back-and-forth
+  across two channels is bounded the same way as one inside a single channel.
+- A channel with locked membership refuses guests and reports a _closed
+  channel_ error, not an unknown addressee. Do not retry it.
 
 ## What `notify` is not
 
-It does not compel a reply. It makes one _possible_ (the recipient is addressed,
-so their respond policy can wake them) and _observable_ (the message is durable
-and the escalation is recorded). Whether anyone answers is theirs to decide.
+It does not force a reply. It makes one _possible_ (the recipient is addressed,
+so their respond policy can wake them) and _observable_ (the message is stored
+and the escalation is recorded). Whether anyone answers is up to them.
 
 For a blocking question you cannot continue without, use `ask_user`.

@@ -5,15 +5,14 @@ description: Add or remove a worker-backed agent from a chat channel.
 
 # Adding an agent to a channel
 
-This skill operates existing agent implementations. To author or change the
-chat panel, agent worker/runtime, channel, or protocol, read
-[agentic development](../agentic-development/SKILL.md).
+This skill adds and removes existing agents. To write or change the chat
+panel, agent worker/runtime, channel, or protocol, read [agentic
+development](../agentic-development/SKILL.md).
 
-An agent is a worker DO inside the current workspace. The generic chat-agent
-example is `workers/agent-worker` / `AiChatWorker`; `workers/explorer-agent` is
-a Personal-specific diagnostic worker and is not a general application agent.
-Use the general helper to create an instance and
-subscribe it:
+An agent is a worker DO in the current workspace. The general chat agent is
+`AiChatWorker` in `workers/agent-worker`. `workers/explorer-agent` is a
+Personal-only diagnostic worker, not a general-purpose agent. Use the helper to
+create an instance and subscribe it to a channel:
 
 ```ts
 import { addAgentToChannel } from "@workspace-skills/agents";
@@ -29,69 +28,66 @@ const result = await addAgentToChannel({
     /* model, respondPolicy, … per-agent behavior */
   },
 });
-// → { ok, channelId, contextId, targetId, participantId, key: "explorer-<channelId>" }
+// → { ok, channelId, contextId, targetId, participantId, key: "assistant-<channelId>" }
 ```
 
 Remove with `removeAgentFromChannel({ source, className, handle, channelId })`.
 
-The worker, channel, prompt resources, and agent state are resolved in the
-workspace that owns the target panel. Contexts are branches inside that same
-workspace; they do not load source from another workspace. Quickfire follows
-the target panel's workspace as well. Personal and System are private
-per-user workspaces, and native client code runs from that user's System
-workspace.
+The worker, channel, prompt resources, and agent state all come from the
+workspace of the target panel. Contexts are branches within that workspace and
+never load source from another workspace. Quickfire also uses the target
+panel's workspace. Personal and System are private per-user workspaces; native
+client code runs from the user's System workspace.
 
 ## Per-channel identity
 
-Instances are keyed per channel (`${handle}-${channelId}`), so every channel
-gets its own agent DO. This is load-bearing:
+Instances are keyed per channel (`${handle}-${channelId}`), so each channel
+gets its own agent DO. Two consequences:
 
-- Never reuse a scheduled or shared instance key for an ad-hoc channel — sharing
-  one DO across channels mixes turn state and corrupts logs.
-- Never replace the helper with `resolveDurableObject` and a guessed key — that
-  resolves a supplied identity rather than minting a safe channel-local one.
+- Do not reuse a scheduled or shared instance key for an ad-hoc channel. One DO
+  serving several channels mixes their turn state and corrupts logs.
+- Do not replace the helper with `resolveDurableObject` and a guessed key. That
+  resolves whatever key you pass instead of creating a channel-local one.
 
-That per-channel key is also this instance's **directory identity**. Joining a
+The per-channel key also determines the agent's **directory entry**. Joining a
 channel registers the agent in the workspace agent directory as
-`<handle>@<channelId>`, which is directly addressable:
-`notify({ to: "agent:<handle>@<channelId>" })`. One worker in three channels is
-three directory rows sharing a worker id — correct, because "message the gmail
-agent" is meaningless without saying where. See the `messaging` skill.
+`<handle>@<channelId>`, which you can address directly:
+`notify({ to: "agent:<handle>@<channelId>" })`. One worker in three channels has
+three directory entries with the same worker id, because a message to an agent
+must say which channel it belongs to. See the `messaging` skill.
 
-Re-adding the same handle to the same channel is idempotent. Membership is
-durable; presence and typing are disposable UI state. The helper delegates to
-the canonical `launchAgentIntoChannel` lifecycle. Panel products that can
-request workspace review pass their approval adapter as `waitForReview`; the
-helper then waits and retries the same idempotent launch.
+Adding the same handle to the same channel again is idempotent. Membership is
+persisted; presence and typing are transient UI state. The helper calls
+`launchAgentIntoChannel`. Panels that can request workspace review pass their
+approval adapter as `waitForReview`; the helper then waits for the review and
+retries the launch.
 
 ## Multi-agent product topology
 
-Use `respondPolicy: "mentioned-strict"` for agents that should act only on
-addressed work. Give ordinary unmentioned player text one explicit default
-recipient—usually a command interpreter—instead of broadcasting it. A direct
-mention may bypass the interpreter when the product intends expert access.
+Use `respondPolicy: "mentioned-strict"` for agents that should act only when
+addressed. Send user text that mentions no one to a single default recipient,
+usually a command interpreter, instead of broadcasting it. If the product wants
+to allow direct access to experts, a direct mention can bypass the interpreter.
 
-Address work with the `notify` addressee grammar (`@handle`,
-`participant:<id>`, `agent:<handle>@<channelId>`) rather than hand-rolled
-mention plumbing; an unresolvable addressee fails the call with suggestions
-instead of degrading into a broadcast. The `messaging` skill is the reference.
+Address messages with the `notify` addressee syntax (`@handle`,
+`participant:<id>`, `agent:<handle>@<channelId>`) rather than building your own
+mention handling. An addressee that does not resolve fails the call with
+suggestions; it never falls back to a broadcast. See the `messaging` skill.
 
-A command interpreter translates natural language into narrow addressed
-requests. It must reread authoritative application state before resolving
-references such as “the first plan” or “Engineering's proposal,” and ask a
-clarifying question rather than inventing an identifier. Do not give it mutation
-authority merely because it coordinates the conversation. State-changing
-methods validate the authenticated caller and leave legality, costs, and
-invariants to deterministic code.
+A command interpreter turns natural language into narrow, addressed requests.
+Before resolving references such as “the first plan” or “Engineering's
+proposal,” it must reread the application state, and it should ask a clarifying
+question rather than invent an identifier. Coordinating the conversation does
+not mean it needs permission to change state. Methods that change state check
+the authenticated caller and leave rules, costs, and invariants to
+deterministic code.
 
-Treat agent-to-agent progression as an addressed durable effect. When a state
-transition requires a follow-up message, persist the transition and pending
-directive together, publish with a deterministic idempotency key, and clear the
-directive only after publication succeeds. Redrive it after hibernation or
-reload. A successful mutation followed by an unrecorded best-effort send is not
-a complete workflow.
+If a state change must be followed by a message to another agent, record the
+pending message in the same write as the state change and publish it with a
+deterministic idempotency key, so a reload can resend it without duplicating it.
 
 ## Per-agent setup wrappers
 
-Agents needing credentials, onboarding, or custom config should wrap this
-helper. Keep prerequisites in the wrapper; channel membership stays here.
+Agents that need credentials, onboarding, or custom config should wrap this
+helper. Put the prerequisites in the wrapper and leave channel membership to
+this helper.

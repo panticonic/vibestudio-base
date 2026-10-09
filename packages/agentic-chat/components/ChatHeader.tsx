@@ -491,17 +491,35 @@ function TaskRulesMenu({
     []
   );
   const [loaded, setLoaded] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
   const refresh = React.useCallback(() => {
-    void onList().then((next) => {
-      setRules(next);
-      setLoaded(true);
-    });
+    setError(null);
+    onList().then(
+      (next) => {
+        setRules(next);
+        setLoaded(true);
+      },
+      (err: unknown) => setError(err instanceof Error ? err.message : String(err))
+    );
   }, [onList]);
   return (
     <DropdownMenu.Sub onOpenChange={(open) => open && refresh()}>
       <DropdownMenu.SubTrigger>Chat permissions</DropdownMenu.SubTrigger>
       <DropdownMenu.SubContent>
-        {!loaded ? <DropdownMenu.Item disabled>Loading…</DropdownMenu.Item> : null}
+        {error ? (
+          <>
+            <DropdownMenu.Item disabled>Couldn&apos;t load permissions: {error}</DropdownMenu.Item>
+            <DropdownMenu.Item
+              onSelect={(event) => {
+                event.preventDefault();
+                refresh();
+              }}
+            >
+              Retry
+            </DropdownMenu.Item>
+          </>
+        ) : null}
+        {!loaded && !error ? <DropdownMenu.Item disabled>Loading…</DropdownMenu.Item> : null}
         {loaded && rules.length === 0 ? (
           <DropdownMenu.Item disabled>No saved permissions</DropdownMenu.Item>
         ) : null}
@@ -516,10 +534,14 @@ function TaskRulesMenu({
           disabled={rules.length === 0}
           onSelect={(event) => {
             event.preventDefault();
-            void onReset().then(() => {
-              setRules([]);
-              setLoaded(true);
-            });
+            onReset().then(
+              () => {
+                setRules([]);
+                setLoaded(true);
+                setError(null);
+              },
+              (err: unknown) => setError(err instanceof Error ? err.message : String(err))
+            );
           }}
         >
           Reset permissions for this chat

@@ -80,56 +80,58 @@ onboarding:
 
 # Website publishing
 
-Publish from the exact workspace state the user reviewed. Packaging and provider
-protocols run in workspace code; the Host compiles immutable artifacts, stores
-credentials, mediates HTTP, and reviews the sealed publication intent.
+Publish the workspace state the user reviewed, identified by a fixed reference.
+Packaging and provider protocols run in workspace code. The Host compiles
+immutable artifacts, stores credentials, sends the HTTP requests, and reviews
+the sealed publication request.
 
 ## Onboarding routes
 
-The installed skill contributes the ready **Publish websites** capability and
-the optional Vercel and Cloudflare Pages connection rows to onboarding. Follow
-the typed target returned by onboarding:
+This skill adds the **Publish websites** capability and optional Vercel and
+Cloudflare Pages connection rows to onboarding. Act on the target that
+onboarding returns:
 
 - For `connection.vercel-publishing`, render
   `skills/website-publishing/PublishingSetup.tsx` once with
   `{ provider: "vercel" }`.
 - For `connection.cloudflare-pages`, render the same component once with
   `{ provider: "cloudflare-pages" }`.
-- For `capability.website-publishing`, help choose or author the panel first,
-  then choose a destination and continue with the happy path below. A provider
-  connection is optional preparation, not a prerequisite for authoring.
-- GitHub is one shared connection. Route setup through
+- For `capability.website-publishing`, help choose or write the panel first,
+  then choose a destination and follow the happy path below. Authoring does not
+  require a provider connection.
+- GitHub uses the single shared GitHub connection. Set it up through
   `skills/github/GitHubSetup.tsx` with `{ accessLevel: "publish-pages" }`; do
-  not create a second GitHub Pages credential row.
+  not create a separate GitHub Pages credential row.
 
-The setup components open the provider's own token page and send the secret
-straight to the Host credential dialog. Never ask the user to paste a token in
+The setup components open the provider's token page and send the secret
+directly to the Host credential dialog. Never ask the user to paste a token in
 chat or inline UI state. After a successful connection, render the onboarding
-overview again so its owner observation refreshes.
+overview again so it shows the new connection status.
 
 ## Happy path
 
-1. Read [authoring](references/authoring.md), then ensure the panel declares
-   `vibestudio.website.entry`. Reuse the application component and add a small
-   browser mount entry. `expects` and `suggestedTemplates` are guidance for an
-   agent. Treat dependency ranges and template locators as suggestions. Inspect
-   the current workspace, repair what is actually present, and record exact
-   hashes only in build and publication receipts.
-2. Commit the source and use its exact `ctx:` or `state:` reference.
+1. Read [authoring](references/authoring.md), then make sure the panel
+   declares `vibestudio.website.entry`. Reuse the application component and add
+   a small browser mount entry. `expects`, `suggestedTemplates`, dependency
+   ranges, and template locators are suggestions for the agent. Inspect the
+   current workspace and fix what is there. Record exact hashes only in build
+   and publication receipts.
+2. Commit the source and use its `ctx:` or `state:` reference.
 3. Import `{ credentials, rpc }` from `@workspace/runtime` and `website` from
    `@workspace/integrations`, then call `website.packageWebsite(rpc, unit,
-   exactRef)`. Review the complete returned
-   public file inventory. The public `vibestudio-build.json` contains content
-   identity and no workspace state, source path, credentials, or transcript.
-4. Choose one provider reference below. Generate one durable `operationId` and
-   retain the initial input plus every receipt in `scope` before awaiting the
-   next external step. Reuse the same ID after uncertain failures.
+exactRef)`. Review the full list of public files it returns. The public
+   `vibestudio-build.json` identifies the content and contains no workspace
+   state, source paths, credentials, or transcript.
+4. Pick a provider reference below and generate one `operationId` for this
+   artifact and destination. The Host journals the operation: if a call fails
+   or its result is lost, call the same deploy function again with the same
+   ID and it resumes from the last completed phase.
 5. Let the Host collect or connect credentials. Never ask for a token in chat,
-   read one from files, put one in eval state, or call provider APIs outside
-   `credentials.publishFetch`.
-6. After submission, observe the returned deployment. Call
-   `verifyPublishedWebsite(receipt)` only when the provider reports it ready;
-   it verifies that the public manifest matches the reviewed artifact digest.
+   read one from files, put one in eval state, or call provider APIs except
+   through `credentials.publishFetch`.
+6. After submission, watch the returned deployment. Call
+   `verifyPublishedWebsite(receipt)` only once the provider reports it ready; it
+   checks that the public manifest matches the reviewed artifact digest.
 
 ## Providers
 
@@ -137,20 +139,24 @@ overview again so its owner observation refreshes.
 - [Cloudflare Pages](references/cloudflare-pages.md)
 - [GitHub Pages](references/github-pages.md)
 
-Provider project and account choices are userland facts. Ask for them only when
-they cannot be inferred from a retained receipt or the connected account.
-Preview is the default for Vercel and branch deployments. Production promotion
-uses a new reviewed operation and the same immutable artifact.
+The provider project and account are chosen in the workspace. Ask the user only
+when you cannot infer them from the workspace or the connected account.
+Vercel and branch deployments default to preview. Promoting to production is a
+new reviewed operation on the same immutable artifact.
 
 ## Recovery
 
-Receipts move through `prepared`, `uploading`, `submitted`, and `deployed`.
-`submitted` means the provider accepted a deployment, not that the public URL is
-ready. After a timeout, inspect or verify the retained deployment ID before
-creating anything. A changed artifact, destination, environment, or provider
-requires a new operation ID. Safe content uploads are content addressed and may
-be repeated with the original ID.
+The Host journal records each operation's completed phase: `prepared`,
+`destination-ready`, `uploaded`, then `submitted`. Calling the deploy function
+again with the same `operationId` resumes after the last recorded phase, and a
+submitted operation returns its receipt without contacting the provider.
+`submitted` means the provider accepted a deployment; the public URL may not
+be ready yet, so verify its deployment ID before creating anything new. The
+operation ID stays bound to its artifact, destination, environment, and
+provider; a different one fails with `WEBSITE_PUBLICATION_INTENT_CONFLICT`
+and needs a new ID. `verifyPublishedWebsite` adds `verifiedAt` once the public
+manifest matches.
 
-The Host may reject a target outside the caller supplied audience even if the
-stored credential is broader. Do not widen that audience to make a failing
-request pass; correct the provider adapter or destination.
+The Host may reject a target outside the audience the caller supplied, even if
+the stored credential allows more. Do not widen the audience to make a failing
+request pass; fix the provider adapter or the destination.

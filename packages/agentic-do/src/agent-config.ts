@@ -1,6 +1,5 @@
 import type { ThinkingLevel } from "@workspace/harness";
-
-type ApprovalLevel = 0 | 1 | 2;
+import type { AgentApprovalLevel } from "@workspace/agentic-core";
 import {
   listProviderConnectPresets,
   toAgentCredentialSetup,
@@ -18,7 +17,7 @@ export const DEFAULT_MODEL = DEFAULT_AGENT_MODEL_REF;
 export const DEFAULT_THINKING_LEVEL: ThinkingLevel = "medium";
 
 /** Default approval: 0=manual, 1=auto-safe, 2=full-auto. */
-export const DEFAULT_APPROVAL_LEVEL: ApprovalLevel = 2;
+export const DEFAULT_APPROVAL_LEVEL: AgentApprovalLevel = 2;
 
 export const DEFAULT_RESPOND_POLICY = "all" as const;
 

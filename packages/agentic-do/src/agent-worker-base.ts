@@ -37,6 +37,7 @@ import {
 import {
   AGENTIC_PROTOCOL_VERSION,
   ALERT_RUNGS,
+  RESPOND_POLICIES,
   defaultAlertRung,
   isAddresseeError,
   isAlertRung,
@@ -62,6 +63,7 @@ import {
   PROVIDER_CREDENTIAL_SETUPS,
 } from "./agent-config.js";
 import type { RespondPolicy } from "@workspace/agentic-protocol";
+import { AGENT_APPROVAL_LEVELS } from "@workspace/agentic-core";
 
 type StandardAgentMethodName =
   | "pause"
@@ -523,9 +525,9 @@ export abstract class AgentWorkerBase extends AgentVesselBase {
       ),
       author(({ vcs, mutationContext, toolRpc }) =>
         createWorkspaceServiceTool(vcs, mutationContext, {
-          validateConfig: (content) =>
+          validateConfig: (candidate) =>
             toolRpc
-              .call("main", "workspace.validateConfig", [content])
+              .call("main", "workspace.validateConfig", [candidate])
               .then(() => undefined),
         }),
       ),
@@ -1740,8 +1742,8 @@ export abstract class AgentWorkerBase extends AgentVesselBase {
                   enum: ["minimal", "low", "medium", "high", "xhigh", "max"],
                   description: "Child reasoning level.",
                 },
-                approvalLevel: { type: "integer", minimum: 0, maximum: 3 },
-                respondPolicy: { type: "string" },
+                approvalLevel: { type: "integer", enum: [...AGENT_APPROVAL_LEVELS] },
+                respondPolicy: { type: "string", enum: [...RESPOND_POLICIES] },
                 handle: { type: "string" },
                 fallbackModel: { type: "string" },
               },
@@ -2134,7 +2136,7 @@ export abstract class AgentWorkerBase extends AgentVesselBase {
       {
         name: "inspectMethodSuspensions",
         description:
-          "Inspect the pending effect outbox (dispatch cache over the log)",
+          "Inspect this channel's native harness scheduling, tasks, and submissions",
       },
     ];
     const include = opts?.include ? new Set<string>(opts.include) : null;

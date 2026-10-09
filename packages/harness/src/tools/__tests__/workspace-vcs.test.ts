@@ -776,10 +776,13 @@ describe("workspace VCS agent tool", () => {
 
     await executeTool(
       tool,
-      { operation: "commit", message: "Integrate source" },
+      { operation: "commit", message: "Integrate source", concludes: "event:source" },
       { callId: "call:commit" },
     );
 
+    expect(f.commit).toHaveBeenCalledWith(
+      expect.objectContaining({ concludes: { kind: "event", eventId: "event:source" } }),
+    );
     expect(onIntegrationSourcesCommitted).toHaveBeenCalledWith(
       expect.objectContaining({ integrationSourceEventIds: ["event:source"] }),
     );
@@ -883,5 +886,28 @@ describe("workspace VCS agent tool", () => {
       expectedCommittedEventId: "event:committed",
       expectedMainEventId: "event:main",
     });
+  });
+
+  it("returns IntegrationRequired without pushing or merging when main moved", async () => {
+    const f = fixture();
+    f.status.mockResolvedValueOnce({
+      contextId: "context:test",
+      committed: { kind: "event", eventId: "event:committed" },
+      workingHead: { kind: "event", eventId: "event:committed" },
+      clean: true,
+      mainEventId: "event:main",
+      mainRelation: "diverged",
+      workingCounts: { applications: 0, workUnits: 0, changes: 0 },
+      integrating: [],
+    });
+    const tool = createWorkspaceVcsTool("/", f.vcs, {
+      contextId: "context:test",
+      commandId: "command:push",
+    });
+    const result = await executeTool(tool, { operation: "push" }, { callId: "call:push" });
+    expect(f.push).not.toHaveBeenCalled();
+    expect(f.merge).not.toHaveBeenCalled();
+    expect(JSON.stringify(result)).toContain('"code":"IntegrationRequired"');
+    expect(JSON.stringify(result)).toContain('"source":{"kind":"event","eventId":"event:main"}');
   });
 });

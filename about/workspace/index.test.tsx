@@ -65,7 +65,7 @@ it("keeps publishing reachable when recorded sources cannot be loaded", async ()
   );
   render(<WorkspacePage />);
   await screen.findByRole("heading", { name: "Personal authoring" });
-  await screen.findByText("Error: Source temporarily unavailable");
+  await screen.findByText("Source temporarily unavailable");
   fireEvent.mouseDown(screen.getByRole("tab", { name: /Publish/ }), {
     button: 0,
     ctrlKey: false,

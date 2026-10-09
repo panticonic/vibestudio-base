@@ -40,18 +40,7 @@ export {
   type SurfaceTone,
 } from "./components/SurfaceFrame";
 export { ToolPreviewField, type ToolPreviewFieldProps } from "./components/ToolPreviewField";
-export { ErrorBoundary } from "./components/ErrorBoundary";
 export { EventErrorBoundary, type EventErrorBoundaryProps } from "./components/EventErrorBoundary";
-
-// Tool Previews (core exports)
-export {
-  BashPreview,
-  isBashArgs,
-  hasRichPreview,
-  RICH_PREVIEW_TOOLS,
-  type BashArgs,
-  type RichPreviewToolName,
-} from "./components/tool-previews/core.js";
 
 // ============================================================================
 // Hooks
@@ -62,7 +51,6 @@ export { useToolApproval, APPROVAL_LEVELS } from "./hooks/useToolApproval";
 // ============================================================================
 // Utilities
 // ============================================================================
-export { createApprovalSchema, type CreateApprovalSchemaParams } from "./utils/createApprovalSchema";
 export { trackPromise } from "./utils/trackAsyncErrors";
 
 // ============================================================================

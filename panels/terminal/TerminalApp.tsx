@@ -131,7 +131,6 @@ export function TerminalApp() {
   const [initialOpenStartedAt, setInitialOpenStartedAt] = useState<number | null>(null);
   const [sessionOpenPending, setSessionOpenPending] = useState(false);
   const [sessionOpenStartedAt, setSessionOpenStartedAt] = useState<number | null>(null);
-  const [now, setNow] = useState(Date.now());
   const [shellUnit, setShellUnit] = useState<ShellUnitStatus | null>(null);
   const [resizeKey, setResizeKey] = useState(0);
   const initialOpenPendingRef = useRef(!state.tree);
@@ -160,14 +159,6 @@ export function TerminalApp() {
     initialOpenStatus === "opening" || initialOpenStatus === "waitingApproval";
   const anyOpenPending = sessionOpenPending || initialOpenBusy;
   const pendingStartedAt = sessionOpenStartedAt ?? initialOpenStartedAt;
-  const sessionOpenElapsedSeconds = pendingStartedAt
-    ? Math.max(0, Math.floor((now - pendingStartedAt) / 1000))
-    : 0;
-  const sessionOpenPendingLabel = terminalStartupPendingLabel({
-    pending: anyOpenPending,
-    elapsedSeconds: sessionOpenElapsedSeconds,
-    shellUnit,
-  });
   const setSessions = useCallback(
     (updater: (sessions: Record<string, SessionInfo>) => Record<string, SessionInfo>) => {
       sessionStore.replace(updater(sessionStore.getSnapshot()));
@@ -347,7 +338,7 @@ export function TerminalApp() {
           const snapshot = pendingStatePersistenceRef.current;
           pendingStatePersistenceRef.current = null;
           try {
-            await panel.stateArgs.set(snapshot);
+            await panel.stateArgs.patch(snapshot);
           } catch (error) {
             // A launch/install review can temporarily gate the workspace-state
             // service. That is expected while the user is deciding; the latest
@@ -441,7 +432,7 @@ export function TerminalApp() {
   const runInteractiveOpen = useCallback(
     async <T,>(operation: () => Promise<T>): Promise<T | undefined> => {
       if (interactiveOpenInFlightRef.current || initialOpenInFlightRef.current) {
-        showToast(sessionOpenPendingLabel ?? "Terminal request already in progress");
+        showToast("Terminal request already in progress");
         return undefined;
       }
       interactiveOpenInFlightRef.current = true;
@@ -462,7 +453,7 @@ export function TerminalApp() {
         setSessionOpenStartedAt(null);
       }
     },
-    [sessionOpenPendingLabel, showToast]
+    [showToast]
   );
 
   const openDefaultPane = useCallback(async (): Promise<string | undefined> => {
@@ -513,12 +504,6 @@ export function TerminalApp() {
     },
     []
   );
-
-  useEffect(() => {
-    if (!anyOpenPending) return;
-    const timer = window.setInterval(() => setNow(Date.now()), 1000);
-    return () => window.clearInterval(timer);
-  }, [anyOpenPending]);
 
   useEffect(() => {
     void refreshShellUnit()
@@ -1037,11 +1022,7 @@ export function TerminalApp() {
               status={initialOpenStatus}
               error={initialOpenError}
               shellUnit={shellUnit}
-              elapsedSeconds={
-                initialOpenStartedAt
-                  ? Math.max(0, Math.floor((now - initialOpenStartedAt) / 1000))
-                  : 0
-              }
+              startedAt={initialOpenStartedAt}
               onOpen={() => void openDefaultPane()}
               onPickContext={openTerminalInContext}
               loadContexts={loadContexts}
@@ -1049,27 +1030,8 @@ export function TerminalApp() {
             />
           )}
         </Box>
-        {sessionOpenPendingLabel && visibleTree ? (
-          <Box
-            role="status"
-            aria-live="polite"
-            px="2"
-            py="1"
-            style={{
-              position: "absolute",
-              left: "50%",
-              bottom: "0.5rem",
-              transform: "translateX(-50%)",
-              zIndex: 7,
-              borderRadius: "var(--radius-2)",
-              background: "var(--gray-3)",
-              boxShadow: "var(--shadow-2)",
-            }}
-          >
-            <Text size="1" color="gray">
-              {sessionOpenPendingLabel}
-            </Text>
-          </Box>
+        {anyOpenPending && pendingStartedAt && visibleTree ? (
+          <StartupProgressPill startedAt={pendingStartedAt} shellUnit={shellUnit} />
         ) : null}
         <Toast toast={toast} onDismiss={dismissToast} />
         {state.notificationCenterOpen ? (
@@ -1126,24 +1088,73 @@ export function TerminalApp() {
   );
 }
 
+/** Seconds since `startedAt`; the only 1s ticker, kept out of TerminalApp so the app does not re-render each second. */
+function useElapsedSeconds(startedAt: number | null): number {
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => {
+    if (startedAt === null) return;
+    setNow(Date.now());
+    const timer = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, [startedAt]);
+  return startedAt === null ? 0 : Math.max(0, Math.floor((now - startedAt) / 1000));
+}
+
+/** Phase text is the live region; the ticking counter is aria-hidden so only phase changes are announced. */
+function ElapsedCounter({ seconds }: { seconds: number }) {
+  return seconds >= 1 ? <span aria-hidden="true"> {seconds}s</span> : null;
+}
+
+function StartupProgressPill(props: { startedAt: number; shellUnit: ShellUnitStatus | null }) {
+  const elapsedSeconds = useElapsedSeconds(props.startedAt);
+  const label = terminalStartupPendingLabel({
+    pending: true,
+    elapsedSeconds,
+    shellUnit: props.shellUnit,
+  });
+  return (
+    <Box
+      px="2"
+      py="1"
+      style={{
+        position: "absolute",
+        left: "50%",
+        bottom: "0.5rem",
+        transform: "translateX(-50%)",
+        zIndex: 7,
+        borderRadius: "var(--radius-2)",
+        background: "var(--gray-3)",
+        boxShadow: "var(--shadow-2)",
+      }}
+    >
+      <Text size="1" color="gray">
+        <span role="status" aria-live="polite">
+          {label}
+        </span>
+        <ElapsedCounter seconds={elapsedSeconds} />
+      </Text>
+    </Box>
+  );
+}
+
 function EmptyTerminalState(props: {
   status: "idle" | "opening" | "waitingApproval" | "failed";
   error: string | null;
   shellUnit: ShellUnitStatus | null;
-  elapsedSeconds: number;
+  startedAt: number | null;
   onOpen(): void;
   onPickContext(contextId?: string, opts?: PickedContextOptions): void;
   loadContexts(): Promise<ContextOption[]>;
   createContext(): Promise<CreatedContext>;
 }) {
   const isBusy = props.status === "opening" || props.status === "waitingApproval";
+  const elapsedSeconds = useElapsedSeconds(props.startedAt);
   const copy = terminalStartupDetail({
     status: props.status,
-    elapsedSeconds: props.elapsedSeconds,
+    elapsedSeconds,
     shellUnit: props.shellUnit,
     error: props.error,
   });
-  const elapsed = props.elapsedSeconds >= 1 ? `Waiting ${props.elapsedSeconds}s` : undefined;
 
   return (
     <EmptyState
@@ -1151,9 +1162,9 @@ function EmptyTerminalState(props: {
       description={
         <>
           {copy.detail}
-          {elapsed ? (
-            <Text as="div" size="1" color="gray" mt="2" role="status" aria-live="polite">
-              {elapsed}
+          {elapsedSeconds >= 1 ? (
+            <Text as="div" size="1" color="gray" mt="2" aria-hidden="true">
+              Waiting {elapsedSeconds}s
             </Text>
           ) : null}
         </>

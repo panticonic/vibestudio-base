@@ -1,9 +1,10 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   deserializeScope,
   deserializeScopeValue,
   isScopeBlobRef,
   SCOPE_BLOB_REF,
+  SCOPE_REF,
   serializeScope,
 } from "./scopeSerialize.js";
 
@@ -11,7 +12,10 @@ import {
  * Round-trip a scope: serialize → spill into an in-memory blob map → JSON → deserialize → hydrate,
  * mirroring what `ScopeManager.persist`/`hydrate` do against a real content-addressed blob store.
  */
-function roundTrip(scope: Map<string, unknown>) {
+function roundTrip(
+  scope: Map<string, unknown>,
+  rehydrators?: Readonly<Record<string, (id: string) => unknown>>,
+) {
   const res = serializeScope(scope);
   const blobs = new Map<string, string>();
   let n = 0;
@@ -22,16 +26,49 @@ function roundTrip(scope: Map<string, unknown>) {
   }
   const data = JSON.stringify(res.serialized);
   const out = new Map<string, unknown>();
-  for (const [key, value] of deserializeScope(data)) {
+  const restored = deserializeScope(data, rehydrators);
+  for (const [key, value] of restored.values) {
     out.set(
       key,
       isScopeBlobRef(value)
-        ? deserializeScopeValue(blobs.get(value[SCOPE_BLOB_REF] as string)!)
+        ? deserializeScopeValue(blobs.get(value[SCOPE_BLOB_REF] as string)!, rehydrators)
         : value
     );
   }
-  return { ...res, data, blobs, out };
+  return { ...res, data, blobs, out, lost: restored.lost };
 }
+
+describe("scope runtime references", () => {
+  it("persists only identity and reacquires the live object through its host factory", () => {
+    const panelHandle = {
+      id: "panel:one",
+      [SCOPE_REF]: () => ({ kind: "panel", id: "panel:one" }),
+    };
+    const restoredPanel = { id: "panel:one", live: true };
+    const rt = roundTrip(new Map([["handle", panelHandle]]), {
+      panel: (id) => (id === "panel:one" ? restoredPanel : null),
+    });
+
+    expect(rt.out.get("handle")).toBe(restoredPanel);
+    expect(rt.serialized).toEqual({
+      handle: { __vibestudioScopeType__: "ScopeRef", v: { kind: "panel", id: "panel:one" } },
+    });
+    expect(rt.lost).toEqual([]);
+  });
+
+  it("reports an unreacquirable identity as lost instead of restoring a data-shaped object", () => {
+    const panelHandle = {
+      id: "panel:gone",
+      [SCOPE_REF]: () => ({ kind: "panel", id: "panel:gone" }),
+    };
+    const rt = roundTrip(new Map([["handle", panelHandle]]), { panel: () => null });
+
+    expect(rt.out.has("handle")).toBe(false);
+    expect(rt.lost).toEqual([
+      expect.objectContaining({ key: "handle", error: expect.objectContaining({ code: "scope_ref_unavailable" }) }),
+    ]);
+  });
+});
 
 describe("scope serialization — spill (not drop) of large values", () => {
   it("spills an oversized top-level value to a blob and hydrates it losslessly", () => {
@@ -116,6 +153,31 @@ describe("scope serialization — spill (not drop) of large values", () => {
     expect(out.negativeInfinity).toBe(Number.NEGATIVE_INFINITY);
     expect(Object.is(out.negativeZero, -0)).toBe(true);
     expect(out.userTag).toEqual({ __vibestudioScopeType__: "Date", v: 0 });
+  });
+
+  it("keeps user data shaped like a ScopeRef envelope as ordinary data", () => {
+    const userValue = {
+      __vibestudioScopeType__: "ScopeRef",
+      v: { kind: "panel", id: "panel:user-data" },
+    };
+    const rehydrate = vi.fn(() => ({ shouldNotBeCalled: true }));
+    const rt = roundTrip(new Map([["value", userValue]]), { panel: rehydrate });
+
+    expect(rt.out.get("value")).toEqual(userValue);
+    expect(rehydrate).not.toHaveBeenCalled();
+    expect(rt.lost).toEqual([]);
+  });
+
+  it("rejects malformed persisted ScopeRef tags before invoking a rehydrator", () => {
+    const rehydrate = vi.fn(() => ({ live: true }));
+    const persisted = JSON.stringify({
+      handle: { __vibestudioScopeType__: "ScopeRef", v: { kind: "panel" } },
+    });
+
+    expect(() => deserializeScope(persisted, { panel: rehydrate })).toThrow(
+      "Malformed persisted scope reference",
+    );
+    expect(rehydrate).not.toHaveBeenCalled();
   });
 
   it("preserves invalid Dates, special RegExp state, and object extensibility", () => {

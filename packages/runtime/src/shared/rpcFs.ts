@@ -2,49 +2,34 @@
  * RPC-backed RuntimeFs implementation.
  *
  * Each method calls rpc.call<T>("main", "fs.{method}", ...args).
- * Binary data is encoded as { __bin: true, data: base64String } for JSON transport.
+ * Binary data travels as native Uint8Array values through the RPC wire codec.
  *
  * Shared between panels and workers — no Node.js or browser-specific dependencies.
  */
-import { base64ToBytes, bytesToBase64, type RpcClient } from "@vibestudio/rpc";
+import type { RpcClient } from "@vibestudio/rpc";
 import type {
   RuntimeFs,
   FileStats,
   Dirent,
   FileHandle,
-  BinaryEnvelope,
   RuntimeBinaryData,
 } from "../types.js";
 import { toFileStats } from "./fs-utils.js";
 // ---------------------------------------------------------------------------
 // Binary helpers
 // ---------------------------------------------------------------------------
-function isBinaryEnvelope(v: unknown): v is BinaryEnvelope {
-  return (
-    typeof v === "object" &&
-    v !== null &&
-    (v as any).__bin === true &&
-    typeof (v as any).data === "string"
-  );
-}
-function encodeBinary(buf: Uint8Array): BinaryEnvelope {
-  return { __bin: true, data: bytesToBase64(buf) };
-}
-function decodeBinary(envelope: BinaryEnvelope): Uint8Array {
-  return base64ToBytes(envelope.data);
-}
 function toUint8Array(data: RuntimeBinaryData): Uint8Array {
   if (data instanceof ArrayBuffer) return new Uint8Array(data);
   if (ArrayBuffer.isView(data)) {
     return new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
   }
   throw new TypeError(
-    "Binary filesystem payload must be an ArrayBuffer, ArrayBuffer view, or binary envelope"
+    "Binary filesystem payload must be an ArrayBuffer or ArrayBuffer view"
   );
 }
-function encodeWritePayload(data: string | RuntimeBinaryData): string | BinaryEnvelope {
-  if (typeof data === "string" || isBinaryEnvelope(data)) return data;
-  return encodeBinary(toUint8Array(data));
+function encodeWritePayload(data: string | RuntimeBinaryData): string | Uint8Array {
+  if (typeof data === "string") return data;
+  return toUint8Array(data);
 }
 // ---------------------------------------------------------------------------
 // Dirent reconstruction
@@ -141,11 +126,7 @@ export function createRpcFs(rpc: Pick<RpcClient, "call">, options: RpcFsOptions 
       return path;
     },
     async readFile(path: string, encoding?: string): Promise<string | Uint8Array> {
-      const result = await call<string | BinaryEnvelope>("readFile", path, encoding);
-      if (isBinaryEnvelope(result)) {
-        return decodeBinary(result);
-      }
-      return result as string;
+      return call<string | Uint8Array>("readFile", path, encoding);
     },
     async writeFile(path: string, data: string | RuntimeBinaryData): Promise<void> {
       await call<void>("writeFile", path, encodeWritePayload(data));
@@ -228,10 +209,9 @@ export function createRpcFs(rpc: Pick<RpcClient, "call">, options: RpcFsOptions 
         }> {
           const result = await call<{
             bytesRead: number;
-            buffer: BinaryEnvelope;
+            buffer: Uint8Array;
           }>("handleRead", handleId, length, position);
-          const decoded = decodeBinary(result.buffer);
-          buffer.set(decoded, offset);
+          buffer.set(result.buffer, offset);
           return { bytesRead: result.bytesRead, buffer };
         },
         async write(
@@ -258,7 +238,7 @@ export function createRpcFs(rpc: Pick<RpcClient, "call">, options: RpcFsOptions 
           }
           const result = await call<{
             bytesWritten: number;
-          }>("handleWrite", handleId, encodeBinary(slice), pos);
+          }>("handleWrite", handleId, slice, pos);
           return { bytesWritten: result.bytesWritten, buffer };
         },
         async close(): Promise<void> {

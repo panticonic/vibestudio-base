@@ -99,7 +99,7 @@ export function createRuntime(deps: RuntimeDeps) {
     ? panelRuntime.getPanelHandle(parentSlotId)
     : null;
   // The barrel feeds this resolver to the host so `createHostedRuntime` derives
-  // the portable `parent`/`getParent`/`getParentWithContract`. The same handles
+  // the portable `getParent`/`getParentWithContract`. The same handles
   // are also exposed here for the panel runtime's own (non-barrel) consumers.
   const resolveParent = () => parentHandleOrNull;
   const parentApi = createParentHandleApi(resolveParent);
@@ -118,7 +118,6 @@ export function createRuntime(deps: RuntimeDeps) {
 
     panelRuntime,
     resolveParent,
-    parent: parentApi.parent,
     getParent: parentApi.getParent,
     getParentWithContract: parentApi.getParentWithContract,
 
@@ -139,8 +138,6 @@ export function createRuntime(deps: RuntimeDeps) {
     onThemeConfigChange: base.onThemeConfigChange,
 
     registerHostCommands: base.registerHostCommands,
-    unregisterHostCommands: base.unregisterHostCommands,
-    onHostCommandRun: base.onHostCommandRun,
 
     onFocus: base.onFocus,
 

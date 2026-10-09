@@ -19,7 +19,7 @@ export interface WorkerEnv {
   /** HTTP base URL for gateway server (e.g., "http://127.0.0.1:8080") */
   GATEWAY_URL: string;
   /** Additional gateway URLs that should use the internal bearer token. */
-  GATEWAY_URL_ALIASES?: string | string[];
+  GATEWAY_URL_ALIASES?: string[];
   /** Parent panel/worker ID used to seed the unified parent handle */
   PARENT_ID?: string;
   /** Parent runtime entity ID used for RPC when the parent is a panel slot */

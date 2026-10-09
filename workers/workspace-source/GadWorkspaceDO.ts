@@ -1457,12 +1457,44 @@ export class GadWorkspaceDO extends DurableObjectBase {
   }
 
   @schemaRpc()
+  workspaceSourceTemplateInstallation(input: {
+    eventId: string;
+  }):
+    | import("@vibestudio/workspace-contracts/types").WorkspaceTemplateInstallation
+    | null {
+    this.ensureReady();
+    if (!this.semanticVcsStore().event(input.eventId))
+      throw new Error(`Unknown workspace event ${input.eventId}`);
+    const row = this.sql
+      .exec(
+        `
+      WITH RECURSIVE ancestry(event_id, depth) AS (
+        SELECT ?, 0
+        UNION ALL
+        SELECT p.parent_event_id, a.depth + 1 FROM ancestry a
+        JOIN gad_workspace_event_parents p ON p.event_id = a.event_id AND p.ordinal = 0
+      )
+      SELECT i.installation_json FROM ancestry a
+      JOIN workspace_template_installations i ON i.event_id = a.event_id
+      ORDER BY a.depth LIMIT 1
+    `,
+        input.eventId,
+      )
+      .toArray()[0] as JsonRecord | undefined;
+    return row ? JSON.parse(String(row["installation_json"])) : null;
+  }
+
+  @schemaRpc()
   async workspaceSourceInitializeExactSnapshot(
     input: InitializeExactWorkspaceSnapshotInput,
   ): Promise<WorkspaceSourceInitializationInspection> {
     this.ensureReady();
     const requestDigest = sha256HexSyncText(
-      canonicalJson({ pin: input.pin, repositories: input.repositories }),
+      canonicalJson({
+        pin: input.pin,
+        repositories: input.repositories,
+        installation: input.installation,
+      }),
     );
     const existing = this.workspaceSourceInitializationRow();
     if (existing && String(existing["command_id"]) !== input.commandId) {
@@ -1707,6 +1739,7 @@ export class GadWorkspaceDO extends DurableObjectBase {
             commandId: pushCommandId,
             expectedCommittedEventId: context.committed.ref.eventId,
             expectedMainEventId: genesisEventId,
+            templateInstallation: input.installation,
           },
           ingress: {
             causalParent: null,
@@ -6411,6 +6444,23 @@ export class GadWorkspaceDO extends DurableObjectBase {
     });
   }
 
+  private invocationTurnId(
+    logId: string,
+    head: string,
+    invocationId: string,
+  ): string | null {
+    const row = this.sql
+      .exec(
+        `SELECT turn_id FROM trajectory_invocations
+         WHERE log_id = ? AND head = ? AND invocation_id = ?`,
+        logId,
+        head,
+        invocationId,
+      )
+      .toArray()[0];
+    return asString(row?.["turn_id"]);
+  }
+
   @schemaRpc()
   async inspectAgentHealth(
     input: InspectAgentHealthInput,
@@ -6426,13 +6476,14 @@ export class GadWorkspaceDO extends DurableObjectBase {
       branchId,
       limit,
     });
+    const trajectoryId = logIdForChannel(input.channelId);
     const fullTurnState = this.inspectTurnState({
-      trajectoryId: logIdForChannel(input.channelId),
+      trajectoryId,
       branchId,
       limit,
     });
     const fullInvocationState = this.inspectInvocationState({
-      trajectoryId: logIdForChannel(input.channelId),
+      trajectoryId,
       branchId,
       limit,
     });
@@ -6440,9 +6491,34 @@ export class GadWorkspaceDO extends DurableObjectBase {
       channelId: input.channelId,
       limit,
     });
+    // The calling eval's own tool invocation (and the turn it runs in) cannot
+    // close until this call returns. Identify it from the host-attested
+    // execution admission, never from caller input, and leave it out of the
+    // activity snapshot so a self-inspection reports only other work.
+    const causalParent =
+      this.authorization?.executionSession?.causalParent ?? null;
+    const caller =
+      causalParent &&
+      causalParent.logId === trajectoryId &&
+      causalParent.head === branchId
+        ? {
+            invocationId: causalParent.invocationId,
+            turnId: this.invocationTurnId(
+              trajectoryId,
+              branchId,
+              causalParent.invocationId,
+            ),
+          }
+        : null;
+    const otherTurns = fullTurnState.rows.filter(
+      (row) => caller?.turnId == null || row["turn_id"] !== caller.turnId,
+    );
+    const otherInvocations = fullInvocationState.rows.filter(
+      (row) => row["invocation_id"] !== caller?.invocationId,
+    );
     const turnState: TurnStateInspection = {
       summary: fullTurnState.summary,
-      rows: fullTurnState.rows
+      rows: otherTurns
         .filter(
           (row) =>
             row["closed_at"] == null ||
@@ -6458,19 +6534,17 @@ export class GadWorkspaceDO extends DurableObjectBase {
       "cancelled",
       "abandoned",
     ]);
+    const isTerminalInvocation = (row: InvocationStateRow) =>
+      terminalInvocationStatuses.has(String(row["status"]));
     const invocationState: InvocationStateInspection = {
       summary: fullInvocationState.summary,
-      rows: fullInvocationState.rows
-        .filter((row) => {
-          const terminal = terminalInvocationStatuses.has(
-            String(row["status"]),
-          );
-          return (
-            !terminal ||
+      rows: otherInvocations
+        .filter(
+          (row) =>
+            !isTerminalInvocation(row) ||
             asNumber(row["started_events"]) !== 1 ||
-            asNumber(row["terminal_events"]) !== 1
-          );
-        })
+            asNumber(row["terminal_events"]) !== 1,
+        )
         .slice(0, 10),
     };
     const roster: ChannelRosterInspection = {
@@ -6493,32 +6567,34 @@ export class GadWorkspaceDO extends DurableObjectBase {
       asNumber(publicationIntegrity.summary.missingMappings) +
       asNumber(publicationIntegrity.summary.orphanMappings) +
       asNumber(publicationIntegrity.summary.sequenceMismatches);
-    const openTurns = asNumber(turnState.summary.openTurns);
-    const streamingMessages = asNumber(turnState.summary.streamingMessages);
-    const nonterminalInvocations = asNumber(
-      fullInvocationState.summary.openProjectedInvocations,
+    const openTurns = otherTurns.filter(
+      (row) => row["closed_at"] == null,
+    ).length;
+    const streamingMessages = otherTurns.reduce(
+      (sum, row) => sum + asNumber(row["streaming_messages"]),
+      0,
     );
+    const nonterminalInvocations = otherInvocations.filter(
+      (row) => !isTerminalInvocation(row),
+    ).length;
     const turnIntegrityIssues = asNumber(
-      turnState.summary.duplicateOpenedTurns,
+      fullTurnState.summary.duplicateOpenedTurns,
     );
     const storageIssues = storage.rows.length;
-    const activity: "idle" | "in-flight" =
-      openTurns > 0 || streamingMessages > 0 || nonterminalInvocations > 0
-        ? "in-flight"
-        : "idle";
-    const durableIntegrityOk =
-      publicationIssues === 0 &&
-      turnIntegrityIssues === 0 &&
-      storageIssues === 0;
     return {
       channelId: input.channelId,
       branchId,
       generatedAt: nowIso(),
+      caller,
       summary: {
-        ok: durableIntegrityOk && activity === "idle",
-        durableIntegrityOk,
-        inFlightOnly: durableIntegrityOk && activity === "in-flight",
-        activity,
+        durableIntegrityOk:
+          publicationIssues === 0 &&
+          turnIntegrityIssues === 0 &&
+          storageIssues === 0,
+        activity:
+          openTurns > 0 || streamingMessages > 0 || nonterminalInvocations > 0
+            ? "in-flight"
+            : "idle",
         publicationIssues,
         turnIntegrityIssues,
         openTurns,

@@ -36,6 +36,7 @@ export const SEMANTIC_VCS_REQUIRED_TABLES = [
   "vcs_workspace_heads",
   "gad_workspace_events",
   "gad_workspace_event_parents",
+  "workspace_template_installations",
   "gad_workspace_event_applications",
   "gad_work_units",
   "gad_external_deltas",
@@ -227,6 +228,11 @@ export function createSemanticVcsSchema(sql: SqlStorage): void {
       ON gad_workspace_events(command_id, event_id);
     CREATE INDEX IF NOT EXISTS idx_gad_workspace_events_root
       ON gad_workspace_events(result_workspace_fact_root_id, event_id);
+
+    CREATE TABLE IF NOT EXISTS workspace_template_installations (
+      event_id TEXT PRIMARY KEY,
+      installation_json TEXT NOT NULL CHECK (json_valid(installation_json) = 1)
+    );
 
     CREATE TABLE IF NOT EXISTS gad_workspace_event_parents (
       event_id TEXT NOT NULL,
@@ -627,7 +633,7 @@ export function createTrajectoryMirrorSchema(sql: SqlStorage): void {
   `);
   sql.exec(
     `CREATE INDEX IF NOT EXISTS idx_trajectory_turns_trigger_message
-     ON trajectory_turns(log_id, head, trigger_message_id)`
+     ON trajectory_turns(log_id, head, trigger_message_id)`,
   );
   sql.exec(`
     CREATE TABLE IF NOT EXISTS trajectory_messages (
@@ -645,15 +651,15 @@ export function createTrajectoryMirrorSchema(sql: SqlStorage): void {
   `);
   sql.exec(
     `CREATE INDEX IF NOT EXISTS idx_trajectory_messages_turn
-     ON trajectory_messages(log_id, head, turn_id, message_id)`
+     ON trajectory_messages(log_id, head, turn_id, message_id)`,
   );
   sql.exec(
     `CREATE INDEX IF NOT EXISTS idx_trajectory_messages_started
-     ON trajectory_messages(started_event_id, log_id, head, message_id)`
+     ON trajectory_messages(started_event_id, log_id, head, message_id)`,
   );
   sql.exec(
     `CREATE INDEX IF NOT EXISTS idx_trajectory_messages_completed
-     ON trajectory_messages(completed_event_id, log_id, head, message_id)`
+     ON trajectory_messages(completed_event_id, log_id, head, message_id)`,
   );
   sql.exec(`
     CREATE TABLE IF NOT EXISTS trajectory_message_blocks (
@@ -669,11 +675,11 @@ export function createTrajectoryMirrorSchema(sql: SqlStorage): void {
   `);
   sql.exec(
     `CREATE INDEX IF NOT EXISTS idx_trajectory_message_blocks_message
-     ON trajectory_message_blocks(log_id, head, message_id, block_index, block_id)`
+     ON trajectory_message_blocks(log_id, head, message_id, block_index, block_id)`,
   );
   sql.exec(
     `CREATE INDEX IF NOT EXISTS idx_trajectory_message_blocks_invocation
-     ON trajectory_message_blocks(invocation_id, log_id, head, message_id)`
+     ON trajectory_message_blocks(invocation_id, log_id, head, message_id)`,
   );
   sql.exec(`
     CREATE TABLE IF NOT EXISTS trajectory_invocations (
@@ -695,15 +701,15 @@ export function createTrajectoryMirrorSchema(sql: SqlStorage): void {
     )
   `);
   sql.exec(
-    `CREATE INDEX IF NOT EXISTS idx_trajectory_invocations_transport ON trajectory_invocations(transport_call_id)`
+    `CREATE INDEX IF NOT EXISTS idx_trajectory_invocations_transport ON trajectory_invocations(transport_call_id)`,
   );
-    // Invocation→turn traversal is shared by semantic provenance inspectors.
+  // Invocation→turn traversal is shared by semantic provenance inspectors.
   sql.exec(
     `CREATE INDEX IF NOT EXISTS idx_trajectory_invocations_scoped_turn
-     ON trajectory_invocations(log_id, head, turn_id, invocation_id)`
+     ON trajectory_invocations(log_id, head, turn_id, invocation_id)`,
   );
   sql.exec(
     `CREATE INDEX IF NOT EXISTS idx_trajectory_invocations_identity
-     ON trajectory_invocations(invocation_id, log_id, head)`
+     ON trajectory_invocations(invocation_id, log_id, head)`,
   );
 }

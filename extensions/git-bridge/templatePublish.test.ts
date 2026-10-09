@@ -115,7 +115,7 @@ function publicationInput(
   overrides: Partial<Parameters<TemplatePublishEngine["publish"]>[0]> = {},
 ): Parameters<TemplatePublishEngine["publish"]>[0] {
   const manifest =
-    "systemEpoch: 59\ntemplate:\n  name: News\n  repositories: [panels/news]\n";
+    "systemEpoch: 59\ntemplate:\n  name: News\n";
   return {
     operationId: "publish-news-v1",
     expectedMainEventId: "event:main",
@@ -338,7 +338,7 @@ describe("TemplatePublishEngine", () => {
     ]);
     const input = publicationInput({
       manifest:
-        "systemEpoch: 59\ntemplate:\n  name: News\n  repositories: [meta, panels/news]\n",
+        "systemEpoch: 59\ntemplate:\n  name: News\n",
       parts: [
         { repoPath: "meta", subdir: "meta" },
         { repoPath: "panels/news", subdir: "panels/news" },
@@ -386,6 +386,19 @@ describe("TemplatePublishEngine", () => {
       ),
     ).rejects.toThrow("maps multiple files to meta/vibestudio.yml");
   });
+
+  it("rejects invalid destination repo paths before remote side effects", async () => {
+    const fixture = engine();
+    await expect(
+      fixture.engine.publish(
+        publicationInput({
+          parts: [{ repoPath: "panels/news", subdir: "README" }],
+        }),
+      ),
+    ).rejects.toThrow(/Invalid workspace repo path/);
+    expect(resolveOrCreateRepo).not.toHaveBeenCalled();
+  });
+
   it("publishes into a repository that was created but is still empty", async () => {
     resolveOrCreateRepo.mockResolvedValueOnce({
       destination: {

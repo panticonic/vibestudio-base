@@ -116,31 +116,40 @@ export interface PanelCdpGeneration {
   buildKey: string | null;
 }
 
-export interface PanelCdpSession {
-  readonly protocol: "panel-cdp-session.v1";
-  readonly generation: PanelCdpGeneration;
-  readonly page: CdpPage;
-  /**
-   * Re-observe the durable panel attempt. The current page is retained when
-   * its generation is still active; otherwise it is closed and replaced.
-   * No browser interaction is replayed.
-   */
-  refresh(): Promise<PanelCdpSessionRefresh>;
-  close(): Promise<void>;
-}
-
-export type PanelCdpSessionRefresh =
-  | { status: "current"; session: PanelCdpSession }
-  | {
-      status: "reconnected";
-      generation: PanelCdpGeneration;
-      session: PanelCdpSession;
-    }
+/**
+ * How the session's page came to be bound to its current generation. A
+ * `replaced` receipt means the panel moved to a new immutable runtime attempt
+ * between two operations; nothing from the previous generation was replayed.
+ */
+export type PanelCdpSessionReceipt =
+  | { status: "acquired"; generation: PanelCdpGeneration }
+  | { status: "reconnected"; generation: PanelCdpGeneration }
   | {
       status: "replaced";
+      generation: PanelCdpGeneration;
       previousGeneration: PanelCdpGeneration;
-      session: PanelCdpSession;
     };
+
+/**
+ * The panel's one stable automation session. `page` is a stable object that
+ * binds to the panel's current generation at operation boundaries: the first
+ * awaited operation after a generation change (handle.rebuild/navigate/reload,
+ * or a replacement observed when the old target closed) connects the new
+ * generation and records a `replaced` receipt. An operation already in flight
+ * when the generation changes rejects with `panel_cdp_generation_changed`; it
+ * is never replayed. Listeners, `consoleEvents()`, and locators belong to the
+ * generation they were bound to and do not carry across.
+ */
+export interface PanelCdpSession {
+  readonly protocol: "panel-cdp-session.v1";
+  /** Generation the page is bound to; null until the first binding. */
+  readonly generation: PanelCdpGeneration | null;
+  /** Receipt of the most recent binding; null until the first binding. */
+  readonly receipt: PanelCdpSessionReceipt | null;
+  readonly page: CdpPage;
+  /** Disconnect the bound target. The next operation binds again. */
+  close(): Promise<void>;
+}
 
 export interface PanelScreenshotOptions {
   format?: "png" | "jpeg";
@@ -176,12 +185,11 @@ export interface PanelConsoleHistoryOptions {
 export type PanelDiagnosticsResult = PanelDiagnosticPacket;
 
 export interface CdpAutomation {
-  /** The canonical @workspace/cdp-client automation page for this panel target. */
-  page(): Promise<CdpPage>;
   /**
-   * Acquire the one active page fenced to the panel's current immutable
-   * runtime attempt. Concurrent and repeated acquisition reuses that session
-   * until it is closed or its generation changes.
+   * Bind and return the panel's one stable automation session. Every call
+   * returns the same object; awaiting it re-observes the panel and binds the
+   * current generation, which synchronous page reads (`url()`,
+   * `consoleEvents()`, `on()`) require after a generation change.
    */
   session(): Promise<PanelCdpSession>;
   /**
@@ -194,11 +202,8 @@ export interface CdpAutomation {
     options?: PanelConsoleHistoryOptions,
   ): Promise<PanelConsoleHistoryResult>;
   getCdpEndpoint(): Promise<CdpEndpoint>;
-  navigate(url: string): Promise<void>;
-  goBack(): Promise<void>;
-  goForward(): Promise<void>;
-  reload(): Promise<void>;
   stop(): Promise<void>;
+  /** Click through the panel's session: `(await session()).page.locator(selector).click()`. */
   click(selector: string): Promise<void>;
   /**
    * One-RPC host capture, including hidden/unslotted panels. Returning this
@@ -287,9 +292,12 @@ export interface PanelHandle<
 
   readonly stateArgs: {
     get<TState = Record<string, unknown>>(): Promise<TState>;
-    /** Merge a patch; use null to remove a key. Returns the full resulting state. */
-    set<TState = Record<string, unknown>>(
-      updates: Record<string, unknown>,
+    /**
+     * Apply an RFC 7386 JSON merge patch: objects merge recursively, `null`
+     * deletes a key, arrays and scalars replace. Returns the full resulting state.
+     */
+    patch<TState = Record<string, unknown>>(
+      patch: Record<string, unknown>,
     ): Promise<TState>;
   };
 
@@ -343,6 +351,13 @@ export interface PanelHandle<
   diagnose(): Promise<PanelDiagnosticsResult>;
   /** Durably archive this panel and its subtree, retiring their live runtimes. */
   archive(): Promise<PanelLifecycleResult>;
+  /**
+   * `await using panel = await openPanel(...)` archives the panel and its
+   * subtree when the enclosing block exits, exactly like `archive()`. Bind
+   * only panels this code owns; disposing a handle to someone else's panel
+   * archives it too.
+   */
+  [Symbol.asyncDispose](): Promise<void>;
   unload(): Promise<PanelLifecycleResult>;
   /** Set this slot's display title without loading its runtime. */
   setTitle(title: string, options?: PanelSetTitleOptions): Promise<void>;

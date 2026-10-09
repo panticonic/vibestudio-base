@@ -1,6 +1,7 @@
 import { contextId, fs, vcs, rpc } from "@workspace/runtime";
 import YAML from "yaml";
 import { planServiceMutation } from "@vibestudio/workspace-contracts/serviceMutation";
+import type { WorkspaceServiceExport } from "@vibestudio/workspace-contracts/types";
 import type { VcsEditChange } from "@vibestudio/service-schemas/vcs";
 import {
   parseUnitAuthorityManifest,
@@ -14,7 +15,6 @@ import {
   type ProjectPreparation,
 } from "./project-preparation.js";
 export type { ProjectPreparation } from "./project-preparation.js";
-import type { ServiceRegistration } from "@vibestudio/workspace-contracts/serviceMutation";
 import {
   PROJECT_TYPES,
   assertProjectIdentity,
@@ -233,7 +233,7 @@ async function resolveProject(
         const templateConfigPath = `templates/${panelTemplate}/template.json`;
         if (!(await fs.exists(templateConfigPath))) {
           throw new Error(
-            `Template "${panelTemplate}" not found. Check workspace/templates/ for available templates.`,
+            `Template "${panelTemplate}" not found. List templates/ in the workspace for available templates.`,
           );
         }
         const templateConfig = JSON.parse(
@@ -779,7 +779,11 @@ export interface ApplicationAuthorityPolicy {
   rationale: string;
   panel: UnitAuthorityManifest;
   worker: UnitAuthorityManifest;
-  service: Pick<ServiceRegistration, "principals" | "binding" | "notability">;
+  service: {
+    principals: WorkspaceServiceExport["authority"]["principals"];
+    binding: NonNullable<WorkspaceServiceExport["authority"]["binding"]>;
+    notability: WorkspaceServiceExport["notability"];
+  };
   methods: RecordStoreMethodPolicies;
 }
 
@@ -936,24 +940,44 @@ export default function App() {
     objectKey: "main",
     docsId: `workspace:${workerName}`,
   };
-  const plan = planServiceMutation(config, {
-    operation: "create",
+  const workerPackage = JSON.parse(worker.files["package.json"]!) as Record<string, unknown>;
+  const workerVibestudio = workerPackage["vibestudio"] as Record<string, unknown>;
+  const declaredProviderServices = workerVibestudio["services"];
+  if (declaredProviderServices !== undefined && !Array.isArray(declaredProviderServices)) {
+    throw new Error("Generated worker package.json vibestudio.services must be an array");
+  }
+  const providerServices = (declaredProviderServices ?? []) as WorkspaceServiceExport[];
+  const serviceExport = {
     name: workerName,
-    source: worker.projectPath,
     title: `${title} Store`,
     action: "Manage records",
     description: `Stores records for ${title}.`,
     notability: authority.service.notability,
-    presentation: { domain: "files", verb: "manage" },
+    presentation: { domain: "files" as const, verb: "manage" as const },
     protocols: [protocol],
-    principals: authority.service.principals,
-    binding: authority.service.binding,
-    transport: { kind: "durable-object", className, objectKey: "main" },
+    authority: { principals: authority.service.principals, binding: authority.service.binding },
+    durableObject: { className },
+  };
+  const plan = planServiceMutation({
+    services: config.services ?? [],
+    singletonObjects: config.singletonObjects ?? [],
+    providerServices,
+  }, {
+    operation: "create",
+    source: worker.projectPath,
+    service: serviceExport,
+    singletonKey: "main",
   });
+  workerVibestudio["services"] = plan.providerServices;
+  workerPackage["vibestudio"] = workerVibestudio;
+  worker.files["package.json"] = `${JSON.stringify(workerPackage, null, 2)}\n`;
   document.set("services", plan.services);
   document.set("singletonObjects", plan.singletonObjects);
   const candidate = String(document);
-  await rpc.call("main", "workspace.validateConfig", [candidate]);
+  await rpc.call("main", "workspace.validateConfig", [{
+    manifest: candidate,
+    serviceManifests: { [worker.projectPath]: worker.files["package.json"]! },
+  }]);
   const preparation = await prepareChanges(
     [
       repositoryChange(panel.projectPath, panel.files),

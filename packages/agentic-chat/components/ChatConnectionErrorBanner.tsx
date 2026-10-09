@@ -17,7 +17,7 @@ export function ChatConnectionStateMarker() {
 /**
  * Renders a dismissible banner at the top of the chat whenever the
  * `ConnectionManager` has surfaced an error (subscribe failure or event-stream
- * rejection). Kept simple — one line per error — so the user immediately sees
+ * rejection). Kept simple so the user immediately sees
  * that the chat is broken instead of staring at a silent empty panel.
  *
  * Cleared automatically on successful (re)connect; also dismissible by the
@@ -36,6 +36,7 @@ export function ChatConnectionErrorBanner() {
         color={color}
         size="1"
         variant="surface"
+        role={pending ? "status" : "alert"}
         style={{ maxWidth: "100%", boxSizing: "border-box" }}
       >
         <Callout.Icon>
@@ -55,9 +56,8 @@ export function ChatConnectionErrorBanner() {
               style={{
                 display: "block",
                 maxWidth: "100%",
-                whiteSpace: "nowrap",
-                overflow: "hidden",
-                textOverflow: "ellipsis",
+                whiteSpace: "pre-wrap",
+                overflowWrap: "anywhere",
               }}
             >
               {pending ? pending.message : connectionError.message}

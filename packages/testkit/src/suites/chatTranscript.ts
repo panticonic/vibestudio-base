@@ -59,7 +59,7 @@ export const chatTranscript = suite("chat-transcript", {
     withPanel(
       "panels/chat",
       async (handle) => {
-        const page = await handle.cdp.page();
+        const page = (await handle.cdp.session()).page;
         await waitForText(handle, AGENT_REPLY, { timeoutMs: 60_000 });
         await waitFor(
           () =>
@@ -105,10 +105,10 @@ export const chatTranscript = suite("chat-transcript", {
           "forked this conversation from message"
         );
 
-        // Context navigation rematerializes the panel in the same slot, which
-        // intentionally retires the previous CDP target. Reconnect before
-        // interacting with the newly loaded child panel.
-        const childPage = await handle.cdp.page();
+        // The app's own context navigation rematerialized the panel in the same
+        // slot without going through a handle lifecycle method. Awaiting the
+        // session re-observes the slot and binds the new generation.
+        const childPage = (await handle.cdp.session()).page;
         await childPage.getByRole("button", { name: "Switch fork" }).click();
         await childPage.getByRole("menuitem", { name: /Parent conversation/ }).click();
         await waitFor(

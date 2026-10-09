@@ -5,41 +5,38 @@ description: Discover, create, publish, and agentically review workspace updates
 
 # Workspace templates
 
-For a new or derived panel/worker repository inside an existing workspace, use
-[workspace development](../workspace-dev/PROJECTS.md), including its dry-run
-fork plans. A workspace template and a project scaffold are different sources;
-this skill manages whole workspace templates, not panel/worker forks.
+This skill covers whole workspace templates. For a new or forked panel/worker
+repository inside an existing workspace, including dry-run fork plans, use
+[workspace development](../workspace-dev/PROJECTS.md); a project scaffold is a
+different kind of source.
 
-`@workspace-extensions/templates` owns exact acquisition,
-manifest inspection, dependency composition, and snapshot publication. A
-template is a Git repository with `meta/vibestudio.yml`; it may declare other
-template repositories as dependencies. Templates confer no grants.
+`@workspace-extensions/templates` fetches template sources at exact versions,
+inspects manifests, composes dependencies, and publishes snapshots. A template
+is a Git repository with `meta/vibestudio.yml`, which may declare other
+template repositories as dependencies. Templates grant nothing.
 
-Base is an ordinary dependency-free template. Personal and System are ordinary
-independent template repositories that depend on Base. Creation recursively
-acquires those repositories, merges their manifests and inventories, then runs
-from the resulting materialized workspace source. It does not connect the new
-workspace to another running workspace.
+Base has no dependencies; Personal and System are separate templates that
+depend on Base. Creating a workspace fetches those repositories recursively,
+merges their manifests and inventories, and runs from the resulting
+materialized source. The new workspace isn't connected to any other running
+workspace.
 
-Use [public-contract.json](public-contract.json) for exact method shapes and
-[workspace creation](references/workspace-creation.md) for folder, URL, link and
-recovery behavior, and [template authoring](references/template-authoring.md)
-when publishing.
-
-## Update a workspace
-
-Use [workspace updates](references/workspace-updates.md) for conditional agentic
-automations, source checks, notifications, semantic review, and host compatibility.
+- [public-contract.json](public-contract.json): method shapes.
+- [Workspace creation](references/workspace-creation.md): folder, URL, link,
+  and recovery behavior.
+- [Template authoring](references/template-authoring.md): publishing.
+- [Workspace updates](references/workspace-updates.md): update automations,
+  source checks, notifications, semantic review, and host compatibility.
 
 ## Add a workspace
 
-Open **Add workspace** from the sidebar or onboarding. Choose a folder on the
-host or enter a Git URL. The host captures the selected folder's current bytes,
-including unpublished changes, and reviews that exact snapshot. Its filesystem
-path never enters workspace code. Development checkouts selected at launch use
-the same exact source acquisition path.
+Open **Add workspace** from the sidebar or onboarding and choose a host folder
+or a Git URL. For a folder, the host captures its current bytes, including
+unpublished changes, and reviews that snapshot; the path never reaches
+workspace code. Development checkouts selected at launch are acquired the same
+way.
 
-Websites can offer an Add workspace link. Use the existing shell-surface link
+Websites can offer an Add workspace link. Build it with the shell-surface link
 builder so the Git URL is encoded correctly:
 
 ```ts
@@ -50,11 +47,10 @@ const href = createShellSurfaceLink({
 });
 ```
 
-The link pre-fills the source for review; it does not create a workspace. The
-same link works from a browser panel or an installed panel. A literal link has
-the form `vibestudio://surface?v=1&kind=workspace-chooser&source=ENCODED_GIT_URL`.
-Use connected accounts for private repositories instead of embedding credentials
-in the URL.
+The link pre-fills the source for review and works from browser and installed
+panels; it doesn't create a workspace. Its literal form is
+`vibestudio://surface?v=1&kind=workspace-chooser&source=ENCODED_GIT_URL`. Use
+connected accounts for private repositories, not credentials in the URL.
 
 Agents can inspect a remote source through the installed extension:
 
@@ -65,86 +61,87 @@ return await extensions.invoke("@workspace-extensions/templates", "inspect", [
 ]);
 ```
 
-Call `inspect` with an already reviewed exact `{ pin }` or a direct
-`{ url, credential? }`. The result contains the exact immutable `pin`,
-self-asserted presentation, validated dependency declarations, and repository
-and file inventory. Pass
-that exact pin to the ordinary workspace creation flow as `rootTemplate`,
-creating a new independently running workspace. Host-selected local snapshots already have
-an inspection; do not re-fetch their unpublished checkpoint from remote Git.
+Call `inspect` with an already reviewed `{ pin }` or with
+`{ url, credential? }`. The result has the exact immutable `pin`, the source's
+self-described presentation, validated dependency declarations, and the
+repository and file inventory. Pass the pin to workspace creation as
+`rootTemplate`, creating a new independently running workspace. Local
+snapshots selected on the host are already inspected; don't re-fetch their
+unpublished checkpoint from remote Git.
 
-To incorporate selected source into an existing workspace, use ordinary VCS
-compare and merge operations and record their normal source baseline. Template
-metadata does not choose merge precedence or apply provider, trust, credential,
-or authority settings.
+To bring selected source into an existing workspace, use VCS compare and
+merge operations and record the usual source baseline. Template metadata
+doesn't set merge precedence or apply provider, trust, credential, or
+authority settings.
 
 ## Copy selected source between workspaces
 
 Native System clients use `prepareSelectedTransfer` from
-`@workspace/workspace-transfer`. It is a shared client implementation over the
-existing authenticated `vcs` and `blobstore` services, not an application RPC
-bridge. Application RPC uses an explicit workspace destination, deliberately
-exposed receiver methods, and both workspaces' boundary policies in addition
-to ordinary operation authority; see [RPC](../workspace-dev/RPC.md). Source
-transfer does not create an RPC permission or share runtime state.
+`@workspace/workspace-transfer`, a shared client library over the
+authenticated `vcs` and `blobstore` services. It is not an application RPC
+bridge, creates no RPC permission, and shares no runtime state. (Application
+RPC needs an explicit destination, deliberately exposed receiver methods, and
+both workspaces' boundary policies on top of operation authority; see
+[RPC](../workspace-dev/RPC.md).)
 
-Read `vcs.mainState()` to capture protected main directly without creating an
-observation context. Capture the source workspace, exact VCS state and explicitly selected
-repository/file paths. Capture the destination workspace, repository path,
-review context ID and expected working head. Supply source/destination labels
-and the audience from the current hub/account selection. Pass a client factory
-bound to that authenticated hub/account. Its VCS client needs `listFiles`,
-`status`, `importSnapshot`, `registerExternalDelta`, `compare` and `merge`; its
-blobstore client needs `getBase64` and `putBase64`.
+Inputs:
+
+- the source workspace, its VCS state (read `vcs.mainState()` to capture
+  protected main without creating an observation context), and the explicitly
+  selected repository/file paths;
+- the destination workspace, repository path, review context ID, and expected
+  working head;
+- source/destination labels and the audience from the current hub/account
+  selection;
+- a client factory bound to that hub/account. Its VCS client needs
+  `listFiles`, `status`, `importSnapshot`, `registerExternalDelta`, `compare`,
+  and `merge`; its blobstore client needs `getBase64` and `putBase64`.
 
 `prepareSelectedTransfer(input, getWorkspaceClient)` returns an immutable
-`preview` and an `execute()` method. The preview shows exact source/destination
-filenames, digest, mode, byte count and audience. Preparation sends nothing to
-the destination. Review the preview and recheck destination membership before
-calling `execute()`. Native UI confirms the workspace audience: only the owner
-for private workspaces, or all current and future authorized members for ordinary
-workspaces. Reconfirm if that audience policy changed, or if a review explicitly
-promised an exact roster and that roster changed.
-Selection is bounded to 200 regular/executable files and 4 MiB of content;
-oversized files are rejected from metadata before their bytes are fetched.
+`preview` and `execute()`. The preview lists source and destination
+filenames, digest, mode, byte count, and audience; preparing sends nothing.
+Review it and recheck destination membership before `execute()`. The native UI
+confirms the audience: only the owner for a private workspace, otherwise all
+current and future authorized members. Confirm again if that policy changed,
+or if the review promised a specific member list that changed. Selections are
+limited to 200 regular or executable files and 4 MiB; oversized files are
+rejected from metadata before their bytes are fetched.
 
-For a fresh review branch, reserve an ID locally and call
-`runtime.createContext({ contextId })` only after Copy is confirmed. Capture the
-destination main event as `expectedWorkingHead`: execution checks the new
-context's actual head before disclosing source content. If main advanced, it
-requires a fresh review. Execution also revalidates source and destination
-access and verifies every copied content digest. It transfers selected bytes
-and a fresh import boundary, never source history, runtime data, membership,
-credentials or grants.
+For a new review branch, reserve an ID locally and call
+`runtime.createContext({ contextId })` only after the user confirms Copy. Use
+the destination main event as `expectedWorkingHead`; execution checks the new
+context's head before revealing source content and requires a fresh review if
+main moved. It also rechecks access on both sides and verifies every copied
+digest. It transfers the selected bytes with a new import boundary, never
+source history, runtime data, membership, credentials, or grants.
 
-With no destination `repositoryId`, execution imports the complete selected
-manifest as a new repository in that review context. With an existing
-`repositoryId`, it registers an external delta covering only the selected
-destination paths, then returns ordinary compare/merge results. Unselected
-destination files remain unchanged. The baseline is the selected destination
-content: this operation is an explicit copy, not an ancestry-preserving source
-merge. A true authored-baseline merge requires an available, authorized baseline
-and the existing external-delta workflow.
+Without a destination `repositoryId`, execution imports the selection as a new
+repository in the review context. With one, it registers an external delta
+covering only the selected destination paths and returns normal compare/merge
+results; unselected files are untouched. The baseline is the selected
+destination content, so this is an explicit copy, not an ancestry-preserving
+merge. A real merge against an authored baseline needs that baseline to be
+available and authorized, and uses the external-delta workflow.
 
-An existing-repository result may contain conflicts or unfinished merge pages.
-Continue with ordinary VCS review and explicit conflict resolution, then commit
-and finalize the delta. New-repository import is committed locally by the normal
-import operation. Neither path pushes to main; publication remains the ordinary
-separate review and approval flow. Keep the operation ID for canonical command
-reconciliation if a connection fails during execution.
+An existing-repository result may have conflicts or unfinished merge pages:
+continue with VCS review and explicit resolution, then commit and finalize the
+delta. A new-repository import is committed locally by the import itself.
+Neither pushes to main; publishing is a separate review and approval. Keep the
+operation ID to reconcile the command if the connection drops during
+execution.
 
 ## Author and publish
 
-Use `authoringParts`, then `inspectAuthoring` with `{ name, description,
-parts }`. Dependencies come from the current workspace's
-`meta/vibestudio.yml`, not from the request. Review `requiredParts`: repositories
-provided by declared dependencies are excluded; workspace-package dependencies
-and runtime companions owned by this template are included.
+Call `authoringParts`, then `inspectAuthoring` with
+`{ name, description, parts }`. Dependencies come from the current workspace's
+`meta/vibestudio.yml`, not the request. In `requiredParts`, repositories
+provided by declared dependencies are excluded, and workspace-package
+dependencies and runtime companions owned by this template are included.
 
-Publish the unchanged receipt through `publishAuthoring` with its fingerprint,
-version, explicit destination, and fresh command ID. The resulting URL, ref,
-commit, and snapshot are the exact release coordinates. Share the source URL
-or an exact source link to let another user review and create a workspace.
+Publish the unchanged inspection with `publishAuthoring`, passing its
+fingerprint, a version, an explicit destination, and a fresh command ID. The
+returned URL, ref, commit, and snapshot identify the release; share the source
+URL or a source link so others can review it and create a workspace.
 
-Logical credential names may be recorded. Concrete credential IDs are used only
-for the explicit publication call and never written into the snapshot.
+Logical credential names may be recorded. Concrete credential IDs are used
+only for the publication call and never written into the snapshot.

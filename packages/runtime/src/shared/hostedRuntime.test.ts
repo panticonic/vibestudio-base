@@ -175,7 +175,7 @@ describe("createHostedRuntime", () => {
     const { host, calls } = recordingHost();
     const core = createHostedRuntime(host);
 
-    // The agent's instinct in eval: persist a screenshot via services.blobstore.
+    // The agent's instinct in eval: persist a screenshot via blobstore.
     // This must reach the `blobstore` RPC service (which admits `do` callers),
     // not be undefined.
     expect(typeof core.blobstore.putBase64).toBe("function");
@@ -340,8 +340,8 @@ describe("createHostedRuntime ⟷ portable surface parity", () => {
 });
 
 /**
- * createServicesProxy — rich runtime clients override by identity; all
- * non-colliding service names use a dynamic callMain proxy. No hand-curated list.
+ * createServicesProxy — every name is the raw server service, dispatched
+ * through callMain. No hand-curated list and no runtime-client override.
  */
 it("routes workspace creation and receipt recovery through the same portable host client", async () => {
   const { host, calls } = recordingHost();
@@ -363,15 +363,22 @@ it("routes workspace creation and receipt recovery through the same portable hos
 });
 
 describe("createServicesProxy", () => {
-  it("returns the SAME rich client object for a name present on the runtime (ergonomic override)", () => {
-    const { host } = recordingHost();
+  it("resolves names shared with runtime bindings to the raw service, not the runtime client", async () => {
+    const { host, calls } = recordingHost();
     const rt = createHostedRuntime(host);
-    const services = createServicesProxy(rt);
-    // services.vcs === the bare vcs (and `import { vcs }`): one shared client, no copy.
-    expect(services["vcs"]).toBe(rt.vcs);
-    expect(services["blobstore"]).toBe(rt.blobstore);
-    expect(services["fs"]).toBe(rt.fs);
-    expect(services["workers"]).toBe(rt.workers);
+    const services = createServicesProxy(rt) as Record<
+      string,
+      Record<string, (...a: unknown[]) => Promise<unknown>>
+    >;
+    for (const name of ["vcs", "blobstore", "fs", "workers"] as const) {
+      expect(services[name]).not.toBe(rt[name]);
+    }
+    await services["workers"]!["listSources"]!();
+    expect(calls).toContainEqual({
+      target: "main",
+      method: "workers.listSources",
+      args: [],
+    });
   });
 
   it("dynamically reaches ANY other service via callMain (no curated list, no gap)", async () => {
@@ -381,12 +388,11 @@ describe("createServicesProxy", () => {
       string,
       Record<string, (...a: unknown[]) => Promise<unknown>>
     >;
-    // `audit` is a real server service with NO rich runtime client — it must STILL
-    // be reachable by name, dispatching through callMain → rpc.call("main", …).
-    await services["audit"]!["query"]!({ limit: 5 });
+    // An unlisted service must be reachable without adding a runtime binding.
+    await services["futureService"]!["query"]!({ limit: 5 });
     expect(calls).toContainEqual({
       target: "main",
-      method: "audit.query",
+      method: "futureService.query",
       args: [{ limit: 5 }],
     });
   });

@@ -112,10 +112,10 @@ import {
   type PolicyEnvelopeView,
 } from "@workspace/channel-policies";
 import {
-  AGENT_INSPECTION_METHODS,
   AGENT_INSPECTION_RPC_METHOD,
-  isAgentInspectionMethod,
-  type AgentInspectionMethod,
+  AgentInspectionRequestSchema,
+  type AgentInspectionRequest,
+  type AgentInspectionResult,
 } from "@vibestudio/shared/agentInspection";
 
 /** Subscribed humans move through these activity states without being removed
@@ -338,21 +338,6 @@ function scrubUserParticipantMetadata(
   scrubbed["type"] = "user";
   scrubbed["kind"] = "user";
   return scrubbed;
-}
-
-const AGENT_INSPECTION_TIMEOUT_MS = 5_000;
-
-interface AgentInspectionResult {
-  participantId: string;
-  channelId: string;
-  methodName: string;
-  result: unknown;
-  isError?: boolean;
-  roster: {
-    present: boolean;
-    transport?: string;
-    metadata?: Record<string, unknown>;
-  };
 }
 
 interface ChannelDeliveryInput {
@@ -1751,10 +1736,13 @@ export class PubSubChannel extends DurableObjectBase {
     // loss, even if the disposable delivery cursor already passed that event.
     const resolution = this.getStateValue("openingRequestResolution");
     if (resolution && !this.getStateValue("openingRequestOutcome")) {
-      const accepted = appended?.type === "config-update" &&
+      const accepted =
+        appended?.type === "config-update" &&
         appended.messageId === "conversation-seed:resolution"
-        ? appended
-        : await this.channelLog.getEventByEnvelopeId("conversation-seed:resolution");
+          ? appended
+          : await this.channelLog.getEventByEnvelopeId(
+              "conversation-seed:resolution",
+            );
       if (accepted) this.setStateValue("openingRequestOutcome", resolution);
     }
     // A later relationship fold can legitimately replace the relationship
@@ -2304,7 +2292,12 @@ export class PubSubChannel extends DurableObjectBase {
           messageId: `conversation-seed:${index}`,
           idempotency: "idempotent-by-id",
         });
-        broadcast(this.broadcastDeps, event, { kind: "log", phase: "live" }, "conversation-seed");
+        broadcast(
+          this.broadcastDeps,
+          event,
+          { kind: "log", phase: "live" },
+          "conversation-seed",
+        );
       }
       this.setStateValue("conversationSeedInstalled", "true");
     })().finally(() => {
@@ -2355,9 +2348,12 @@ export class PubSubChannel extends DurableObjectBase {
     const outcome =
       this.getStateValue("openingRequestResolution") ?? requestedOutcome;
     if (outcome === "deliver") {
-      const accepted = await this.channelLog.getEventByEnvelopeId("conversation-seed:opening");
+      const accepted = await this.channelLog.getEventByEnvelopeId(
+        "conversation-seed:opening",
+      );
       if (
-        !accepted && !this.sql
+        !accepted &&
+        !this.sql
           .exec(
             `SELECT 1 FROM channel_relationships WHERE active = 1 AND attached = 1 AND json_extract(metadata_json, '$.type') = 'agent' LIMIT 1`,
           )
@@ -2385,14 +2381,16 @@ export class PubSubChannel extends DurableObjectBase {
         "user",
       );
       message.actor = author;
-      const event = accepted ?? await this.appendDurable({
-        type: AGENTIC_EVENT_PAYLOAD_KIND,
-        payload: message,
-        senderId: author.id,
-        senderMetadata: author.metadata,
-        messageId: "conversation-seed:opening",
-        idempotency: "idempotent-by-id",
-      });
+      const event =
+        accepted ??
+        (await this.appendDurable({
+          type: AGENTIC_EVENT_PAYLOAD_KIND,
+          payload: message,
+          senderId: author.id,
+          senderMetadata: author.metadata,
+          messageId: "conversation-seed:opening",
+          idempotency: "idempotent-by-id",
+        }));
       broadcast(
         this.broadcastDeps,
         event,
@@ -2402,7 +2400,8 @@ export class PubSubChannel extends DurableObjectBase {
     }
     this.setStateValue("openingRequestResolution", outcome);
     const config = this.getChannelConfig() ?? {};
-    const { openingRequest: _openingRequest, ...initialization } = config.initialization ?? {};
+    const { openingRequest: _openingRequest, ...initialization } =
+      config.initialization ?? {};
     // The durable notification completes the operation. Until it is accepted,
     // the retained request remains retryable, including after an eviction.
     const event = await this.appendDurable({
@@ -3996,7 +3995,7 @@ export class PubSubChannel extends DurableObjectBase {
 
     const event = buildChannelEvent(
       0,
-      `sig_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+      `sig_${crypto.randomUUID()}`,
       "signal",
       payloadJson,
       participantId,
@@ -4695,17 +4694,27 @@ export class PubSubChannel extends DurableObjectBase {
     const parsedSeed = conversationSeedSchema.parse(seed ?? {});
     const normalizedConfig: ChannelConfig = {
       ...creationConfig,
-      membershipPolicy: this.normalizeLockedMembershipPolicy(config.membershipPolicy),
+      membershipPolicy: this.normalizeLockedMembershipPolicy(
+        config.membershipPolicy,
+      ),
     };
     const existingContextId = this.getStateValue("contextId");
     const existingConfig = this.getChannelConfig();
     if (existingContextId) {
-      const { initialization: _currentInitialization, ...storedConfig } = existingConfig ?? {};
-      const storedSeed = conversationSeedSchema.parse(JSON.parse(this.getStateValue("conversationSeed") ?? "{}"));
-      if (existingContextId !== contextId || !existingConfig ||
-          canonicalJson(storedConfig) !== canonicalJson(normalizedConfig) ||
-          canonicalJson(storedSeed) !== canonicalJson(parsedSeed))
-        throw new Error("initializeLockedChannel: existing channel definition does not match");
+      const { initialization: _currentInitialization, ...storedConfig } =
+        existingConfig ?? {};
+      const storedSeed = conversationSeedSchema.parse(
+        JSON.parse(this.getStateValue("conversationSeed") ?? "{}"),
+      );
+      if (
+        existingContextId !== contextId ||
+        !existingConfig ||
+        canonicalJson(storedConfig) !== canonicalJson(normalizedConfig) ||
+        canonicalJson(storedSeed) !== canonicalJson(parsedSeed)
+      )
+        throw new Error(
+          "initializeLockedChannel: existing channel definition does not match",
+        );
     } else {
       this.initChannel(contextId, { ...normalizedConfig, seed: parsedSeed });
       this.policyHost.invalidatePolicySelection();
@@ -5001,10 +5010,9 @@ export class PubSubChannel extends DurableObjectBase {
     sensitivity: "read",
   })
   async adminInspectAgent(
-    participantId: string,
-    methodName = "getDebugState",
+    request: AgentInspectionRequest,
   ): Promise<AgentInspectionResult> {
-    return this.inspectAgentReadOnly(participantId, methodName);
+    return this.inspectAgentReadOnly(request);
   }
 
   @rpc({
@@ -5023,33 +5031,50 @@ export class PubSubChannel extends DurableObjectBase {
     sensitivity: "admin",
   })
   async inspectAgent(
-    participantId: string,
-    methodName = "getDebugState",
+    request: AgentInspectionRequest,
   ): Promise<AgentInspectionResult> {
-    this.assertSupportedAgentInspectionMethod(methodName);
-    return this.inspectAgentReadOnly(participantId, methodName);
+    return this.inspectAgentReadOnly(request);
   }
 
-  private assertSupportedAgentInspectionMethod(
-    methodName: string,
-  ): asserts methodName is AgentInspectionMethod {
-    if (isAgentInspectionMethod(methodName)) return;
-    throw new Error(
-      `inspectAgent: unsupported method ${methodName}; expected one of ` +
-        AGENT_INSPECTION_METHODS.join(", "),
-    );
+  /** The named participant, or the channel's sole DO-backed agent. */
+  private inspectionParticipantId(participantId: string | undefined): string {
+    if (participantId !== undefined) {
+      if (!parseDOParticipantId(participantId)) {
+        throw new Error(
+          `inspectAgent: participant ${participantId} is not a Durable Object participant id`,
+        );
+      }
+      return participantId;
+    }
+    const agents = this.sql
+      .exec(`SELECT id FROM participants WHERE transport = 'do' ORDER BY id`)
+      .toArray()
+      .map((row) => String(row["id"]))
+      .filter((id) => parseDOParticipantId(id) !== null);
+    if (agents.length !== 1) {
+      throw new Error(
+        `inspectAgent: participantId is required; channel ${this.objectKey} has ` +
+          (agents.length === 0
+            ? "no agent participant"
+            : `${agents.length} agent participants: ${agents.join(", ")}`),
+      );
+    }
+    return agents[0]!;
   }
 
   private async inspectAgentReadOnly(
-    participantId: string,
-    methodName: string,
+    input: AgentInspectionRequest,
   ): Promise<AgentInspectionResult> {
-    this.assertSupportedAgentInspectionMethod(methodName);
-    if (!parseDOParticipantId(participantId)) {
+    const parsed = AgentInspectionRequestSchema.safeParse(input);
+    if (!parsed.success) {
       throw new Error(
-        `inspectAgent: participant ${participantId} is not a Durable Object participant id`,
+        `inspectAgent: invalid request: ${parsed.error.issues.map((issue) => issue.message).join("; ")}`,
       );
     }
+    const { method } = parsed.data;
+    const participantId = this.inspectionParticipantId(
+      parsed.data.participantId,
+    );
 
     const rosterRows = this.sql
       .exec(
@@ -5076,8 +5101,8 @@ export class PubSubChannel extends DurableObjectBase {
     const response = (await this.rpc.call(
       participantId,
       AGENT_INSPECTION_RPC_METHOD,
-      [this.objectKey, methodName],
-      { readOnly: true, timeoutMs: AGENT_INSPECTION_TIMEOUT_MS },
+      [this.objectKey, method],
+      { readOnly: true },
     )) as { result?: unknown; isError?: boolean } | unknown;
     const payload =
       response && typeof response === "object" && "result" in response
@@ -5087,7 +5112,7 @@ export class PubSubChannel extends DurableObjectBase {
     return {
       participantId,
       channelId: this.objectKey,
-      methodName,
+      method,
       result: payload.result,
       ...(payload.isError !== undefined
         ? { isError: payload.isError === true }
@@ -7013,7 +7038,7 @@ export class PubSubChannel extends DurableObjectBase {
     if (this.lineageSubscriptionStreams.size === 0) return;
     const event = buildChannelEvent(
       0,
-      `linsig_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+      `linsig_${crypto.randomUUID()}`,
       "signal",
       JSON.stringify({
         content: JSON.stringify({

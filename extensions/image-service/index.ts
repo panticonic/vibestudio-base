@@ -4,28 +4,10 @@ import { resizeImage, formatDimensionNote, type ImageResizeOptions } from "./ima
 import { convertImage } from "./image/image-convert.js";
 import { detectMimeFromBytes } from "./image/mime.js";
 
-function toUint8Array(value: unknown): Uint8Array {
+function toUint8Array(value: Uint8Array | ArrayBuffer): Uint8Array {
   if (value instanceof Uint8Array) return value;
-  if (value && typeof value === "object") {
-    const obj = value as Record<string, unknown>;
-    if (obj["__bin"] === true && typeof obj["data"] === "string") {
-      return new Uint8Array(Buffer.from(obj["data"], "base64"));
-    }
-    if (obj["type"] === "Buffer" && Array.isArray(obj["data"])) {
-      return new Uint8Array(obj["data"] as number[]);
-    }
-    if ("buffer" in obj && (obj as { buffer?: unknown }).buffer instanceof ArrayBuffer) {
-      const view = obj as { buffer: ArrayBuffer; byteOffset?: number; byteLength?: number };
-      return new Uint8Array(
-        view.buffer,
-        view.byteOffset ?? 0,
-        view.byteLength ?? view.buffer.byteLength
-      );
-    }
-  }
-  if (Array.isArray(value)) return new Uint8Array(value as number[]);
-  if (typeof value === "string") return new Uint8Array(Buffer.from(value, "base64"));
-  throw new Error("image-service: expected binary data");
+  if (value instanceof ArrayBuffer) return new Uint8Array(value);
+  throw new Error("image-service: expected Uint8Array or ArrayBuffer");
 }
 
 /** Public API surface of this extension — the awaited return of {@link activate}. */
@@ -39,7 +21,7 @@ declare module "@vibestudio/extension" {
 export async function activate(ctx: { log: { info(message: string): void } }) {
   ctx.log.info("image-service activating");
   return {
-    async resize(rawData: unknown, mimeType: string, options?: ImageResizeOptions) {
+    async resize(rawData: Uint8Array | ArrayBuffer, mimeType: string, options?: ImageResizeOptions) {
       const data = toUint8Array(rawData);
       const result = await resizeImage(
         { type: "image", mimeType, data: Buffer.from(data).toString("base64") },
@@ -68,7 +50,7 @@ export async function activate(ctx: { log: { info(message: string): void } }) {
       return out;
     },
 
-    async convert(rawData: unknown, sourceMimeType: string, targetMimeType: string) {
+    async convert(rawData: Uint8Array | ArrayBuffer, sourceMimeType: string, targetMimeType: string) {
       const result = await convertImage(toUint8Array(rawData), sourceMimeType, targetMimeType);
       if (!result) {
         throw new Error(
@@ -81,7 +63,7 @@ export async function activate(ctx: { log: { info(message: string): void } }) {
       };
     },
 
-    async getMetadata(rawData: unknown) {
+    async getMetadata(rawData: Uint8Array | ArrayBuffer) {
       const bytes = toUint8Array(rawData);
       const mimeType = detectMimeFromBytes(bytes);
       if (!mimeType || !["image/png", "image/jpeg", "image/webp"].includes(mimeType))
@@ -100,7 +82,7 @@ export async function activate(ctx: { log: { info(message: string): void } }) {
         image.free();
       }
     },
-    async detectMimeType(rawData: unknown) {
+    async detectMimeType(rawData: Uint8Array | ArrayBuffer) {
       return detectMimeFromBytes(toUint8Array(rawData));
     },
   };

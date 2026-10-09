@@ -39,9 +39,11 @@
     "./internal/diagnostics": "./src/internal/diagnostics.ts",
     "./images": "./src/shared/images.ts",
     "./image-loader": "./src/shared/imageLoader.ts",
-    "./problem-reports": "./src/shared/problemReports.ts"
+    "./problem-reports": "./src/shared/problemReports.ts",
+    "./vcs-publish": "./src/shared/vcsPublish.ts"
   },
   "dependencies": {
+    "@vibestudio/automation": "workspace:*",
     "@vibestudio/browser-data": "workspace:*",
     "@vibestudio/credential-client": "workspace:*",
     "@vibestudio/durable": "workspace:*",

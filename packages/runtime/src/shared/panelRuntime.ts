@@ -57,7 +57,9 @@ import type {
 } from "../core/index.js";
 import type { RuntimeCodePanelEntityCreateSpec } from "@vibestudio/shared/runtime/entitySpec";
 import {
+  cdpSessionOf,
   createCdpAutomation,
+  invalidateCdpGeneration,
   type CdpAutomation,
 } from "../panel/cdpAutomation.js";
 import {
@@ -67,8 +69,8 @@ import {
   type PanelHandleMetadata,
 } from "./handles.js";
 import {
+  patchPanelStateArgs,
   readPanelStateArgs,
-  updatePanelStateArgs,
 } from "./panelStateArgsPersistence.js";
 import {
   asPanelEntityId,
@@ -158,7 +160,17 @@ export interface OpenPanelOptions extends CreatePanelSlotOptions {
   focus?: boolean;
   /** Cancel this readiness observation without rolling back the committed slot. */
   signal?: AbortSignal;
+  /**
+   * Bind the panel and its subtree to an owning lifecycle that archives it
+   * when that lifecycle ends: "invocation" when the current eval run settles,
+   * "session" when the eval session is retired. Omitted, the panel is durable
+   * until explicitly archived. Only runtimes with such an owner (eval) accept it.
+   */
+  lifetime?: PanelLifetime;
 }
+
+/** Owning lifecycle whose end archives a panel opened with `lifetime`. */
+export type PanelLifetime = "invocation" | "session";
 
 export interface PanelRuntimeTree {
   self(): PanelHandle;
@@ -176,6 +188,17 @@ export interface PanelRuntimeTree {
     input?: PanelTreePageWindow,
   ): Promise<PanelRuntimeTreePage>;
   page(input: PanelTreePageInput): Promise<PanelRuntimeTreePage>;
+  /**
+   * Breadth-first walk of the descendants of `rootSlotId` (excluding the root),
+   * yielding at most `limit` entries. Follows page cursors itself. When the tree
+   * revision changes mid-walk it restarts from the root and skips entries it
+   * already yielded, so each slot is yielded at most once. Receiving `limit`
+   * entries means the subtree may hold more.
+   */
+  walk(
+    rootSlotId: string,
+    options: PanelTreeWalkOptions,
+  ): AsyncIterableIterator<PanelRuntimeTreeWalkEntry>;
   path(id: string): Promise<PanelRuntimeTreePath | null>;
   search(input: PanelTreeSearchInput): Promise<PanelRuntimeTreeSearchPage>;
   /** Durable, workspace-wide launch frequency grouped by panel source. */
@@ -196,6 +219,16 @@ export interface PanelRuntimeTree {
 export interface PanelRuntimeTreeEntry {
   node: PanelTreeNode;
   handle: PanelHandle;
+}
+
+export interface PanelTreeWalkOptions {
+  /** Maximum number of entries to yield; bounds the work of one walk. */
+  limit: number;
+}
+
+export interface PanelRuntimeTreeWalkEntry extends PanelRuntimeTreeEntry {
+  /** 1 for the root's children, 2 for grandchildren, and so on. */
+  depth: number;
 }
 
 export interface PanelRuntimeTreePage {
@@ -268,7 +301,16 @@ export interface CreatePanelRuntimeOptions {
   }) => void;
   onReload?: (id: string) => void;
   onClose?: (id: string) => void;
-  onStateArgsSet?: (id: string) => void;
+  onStateArgsPatch?: (id: string) => void;
+  /**
+   * Lifecycle owner for `openPanel(..., { lifetime })`. Called once the slot
+   * is durably committed; the owner archives the panel subtree on its
+   * authoritative end event. Runtimes without an owner reject `lifetime`.
+   */
+  claimPanelLifetime?: (entry: {
+    id: string;
+    lifetime: PanelLifetime;
+  }) => void | Promise<void>;
   /** Host-side timing sink for durable panel creation stages. */
   onCreateSlotTiming?: (event: {
     panelId: string;
@@ -462,7 +504,38 @@ export function createPanelRuntime(
     ref: meta.ref ?? null,
   });
 
-  const createCdp = (metadata: PanelHandleMetadata): CdpAutomation =>
+  // One automation (and so one stable CDP session) per panel slot, shared by
+  // every handle this runtime hands out, so a lifecycle change made through
+  // any handle fences the session all of them use.
+  const panelCdp = new Map<string, CdpAutomation>();
+  const createCdp = (metadata: PanelHandleMetadata): CdpAutomation => {
+    if (options.createCdp) return options.createCdp(metadata);
+    let cdp = panelCdp.get(metadata.id);
+    if (!cdp) {
+      cdp = createIndependentCdp(metadata);
+      panelCdp.set(metadata.id, cdp);
+    }
+    return cdp;
+  };
+  /**
+   * Run a lifecycle operation that may replace the panel's generation. The
+   * panel's session is fenced before (operations in flight) and after
+   * (bindings made while it ran) so its next operation re-observes.
+   */
+  const changingGeneration = async <T>(
+    id: string,
+    operation: () => Promise<T>,
+  ): Promise<T> => {
+    const before = panelCdp.get(id);
+    if (before) invalidateCdpGeneration(before);
+    try {
+      return await operation();
+    } finally {
+      const after = panelCdp.get(id);
+      if (after) invalidateCdpGeneration(after);
+    }
+  };
+  const createIndependentCdp = (metadata: PanelHandleMetadata): CdpAutomation =>
     options.createCdp?.(metadata) ??
     createCdpAutomation(options.rpc, metadata.id, {
       kind: metadata.kind,
@@ -470,12 +543,9 @@ export function createPanelRuntime(
       loadModule: options.loadModule,
       operationSignal: options.operationSignal,
       recordOperation,
-      navigate: (url) => navigatePanel(metadata.id, url).then(() => undefined),
-      navigateHistory: (delta) =>
-        navigateHistory(metadata.id, delta).then(() => undefined),
-      reload: () => options.rpc.call("main", "panelCdp.reload", [metadata.id]),
       observe: () => observePanel(metadata.id),
-      ensureReady: async () => waitUntilReady(await observePanel(metadata.id)),
+      ensureReady: async (signal) =>
+        waitUntilReady(await observePanel(metadata.id), signal),
     });
 
   const observePanel = async (id: string): Promise<PanelObservation> => {
@@ -793,28 +863,74 @@ export function createPanelRuntime(
     }
   };
 
-  const closePanel = async (id: string): Promise<PanelLifecycleResult> => {
+  const closePanel = (id: string): Promise<PanelLifecycleResult> =>
+    changingGeneration(id, () => closePanelUnfenced(id));
+  const closePanelUnfenced = async (
+    id: string,
+  ): Promise<PanelLifecycleResult> => {
     const closed = await workspaceState.closeSlot(asPanelSlotId(id));
+    const cleanupFailures: unknown[] = [];
+    const runCleanup = async (operation: () => Promise<unknown> | unknown) => {
+      try {
+        await operation();
+      } catch (error) {
+        cleanupFailures.push(error);
+      }
+    };
+    let cursor: string | undefined;
     for (;;) {
-      const page = await workspaceState.getCloseCleanupPage({
-        closeId: closed.closeId,
-        limit: 200,
-      });
+      const failureCount = cleanupFailures.length;
+      let page: Awaited<ReturnType<typeof workspaceState.getCloseCleanupPage>>;
+      try {
+        page = await workspaceState.getCloseCleanupPage({
+          closeId: closed.closeId,
+          ...(cursor ? { cursor } : {}),
+          limit: 200,
+        });
+      } catch (error) {
+        cleanupFailures.push(error);
+        break;
+      }
       if (page.items.length === 0) break;
       // Every receipt belongs to the durably closed subtree, including
       // unloaded descendants. Ownership observers must see all closed slots.
-      for (const item of page.items) options.onClose?.(item.slotId);
+      for (const item of page.items) {
+        await runCleanup(() => options.onClose?.(item.slotId));
+      }
       for (const item of page.items) {
         if (item.entityId) {
-          await options.rpc.call("main", "runtime.retireEntity", [
-            { id: item.entityId },
-          ]);
+          await runCleanup(() =>
+            options.rpc.call("main", "runtime.retireEntity", [
+              { id: item.entityId },
+            ]),
+          );
         }
       }
-      await workspaceState.acknowledgeCloseCleanup(
-        page.items.map((item) => asPanelSlotId(item.slotId)),
+      for (const item of page.items) {
+        const cdp = panelCdp.get(item.slotId);
+        if (cdp) {
+          // Closing the stable session aborts and joins any pending bind, then
+          // closes its owned browser transport. Keep the cached identity so
+          // every outstanding handle remains fenced on that same session.
+          await runCleanup(() => cdpSessionOf(cdp).close());
+        }
+      }
+      if (cleanupFailures.length === failureCount) {
+        await runCleanup(() =>
+          workspaceState.acknowledgeCloseCleanup(
+            page.items.map((item) => asPanelSlotId(item.slotId)),
+          ),
+        );
+      }
+      cursor = page.nextCursor ?? undefined;
+      if (!cursor) break;
+    }
+    if (cleanupFailures.length === 1) throw cleanupFailures[0];
+    if (cleanupFailures.length > 1) {
+      throw new AggregateError(
+        cleanupFailures,
+        "Panel close cleanup could not retire all owned resources",
       );
-      if (!page.nextCursor) break;
     }
     return {
       panelId: id,
@@ -827,7 +943,11 @@ export function createPanelRuntime(
     };
   };
 
-  const navigatePanel = async (
+  const navigatePanel = (
+    ...args: Parameters<typeof navigatePanelUnfenced>
+  ): ReturnType<typeof navigatePanelUnfenced> =>
+    changingGeneration(args[0], () => navigatePanelUnfenced(...args));
+  const navigatePanelUnfenced = async (
     id: string,
     source: string,
     navigateOptions?: PanelNavigateOptions,
@@ -937,7 +1057,11 @@ export function createPanelRuntime(
     return waitUntilReady(observation, navigateOptions?.signal, attempt);
   };
 
-  const navigateHistory = async (
+  const navigateHistory = (
+    ...args: Parameters<typeof navigateHistoryUnfenced>
+  ): ReturnType<typeof navigateHistoryUnfenced> =>
+    changingGeneration(args[0], () => navigateHistoryUnfenced(...args));
+  const navigateHistoryUnfenced = async (
     id: string,
     delta: -1 | 1,
     waitOptions?: PanelWaitOptions,
@@ -1268,7 +1392,9 @@ export function createPanelRuntime(
       const ready = await waitUntilReady(initial, waitOptions?.signal);
       if (!ready.runtimeEntityId)
         throw new Error(`Ready browser panel ${id} has no runtime identity`);
-      const page = await createCdp(
+      // A private connection: the capture must not disturb the panel's
+      // shared session or the listeners bound to it.
+      const session = await createIndependentCdp(
         metadataFromResult(id, {
           title: ready.title,
           source: ready.source,
@@ -1280,10 +1406,14 @@ export function createPanelRuntime(
           buildKey: ready.buildKey,
           ref: ready.requestedRef,
         }),
-      ).page();
-      document = await page.evaluate<PanelSnapshotObservation["document"]>(
-        DOM_SNAPSHOT_EXPRESSION,
-      );
+      ).session();
+      try {
+        document = await session.page.evaluate<
+          PanelSnapshotObservation["document"]
+        >(DOM_SNAPSHOT_EXPRESSION);
+      } finally {
+        await session.close();
+      }
       observation = await observePanel(id);
       if (
         observation.attemptId !== ready.attemptId ||
@@ -1369,7 +1499,8 @@ export function createPanelRuntime(
         parentId ?? metadataCache.get(id)?.parentId ?? null;
       return resolvedParentId ? panelTree.get(resolvedParentId) : null;
     },
-    reload: async (id, waitOptions) => {
+    reload: (id, waitOptions) =>
+      changingGeneration(id, async () => {
       const detail = await requirePanelDetail(id);
       await ensurePanelMaterialized(id);
       await options.rpc.call("main", "runtime.supervision.restart", [
@@ -1382,17 +1513,19 @@ export function createPanelRuntime(
       options.onReload?.(id);
       recordOperation({ type: "reload", id });
       return result;
-    },
+      }),
     archive: async (id) => {
       const result = await closePanel(id);
       recordOperation({ type: "close", id });
       return result;
     },
     unload: (id) =>
-      options.rpc.call<PanelLifecycleResult>(
-        "main",
-        "panelRuntime.unloadSlot",
-        [id],
+      changingGeneration(id, () =>
+        options.rpc.call<PanelLifecycleResult>(
+          "main",
+          "panelRuntime.unloadSlot",
+          [id],
+        ),
       ),
     setTitle: (id, title, titleOptions) =>
       callState("panel.updateTitle", [
@@ -1438,10 +1571,10 @@ export function createPanelRuntime(
     },
     stateArgs: {
       get: getStateArgs,
-      set: async (id, updates) => {
-        const next = await updatePanelStateArgs(options.rpc, id, updates);
-        options.onStateArgsSet?.(id);
-        recordOperation({ type: "stateArgs.set", id });
+      patch: async (id, patch) => {
+        const next = await patchPanelStateArgs(options.rpc, id, patch);
+        options.onStateArgsPatch?.(id);
+        recordOperation({ type: "stateArgs.patch", id });
         return next;
       },
     },
@@ -1550,6 +1683,46 @@ export function createPanelRuntime(
     },
     page(input) {
       return readPage(input);
+    },
+    async *walk(rootSlotId, { limit }) {
+      if (!Number.isSafeInteger(limit) || limit < 1) {
+        throw new Error("panelTree.walk requires a positive integer limit");
+      }
+      const yielded = new Set<string>();
+      restart: while (yielded.size < limit) {
+        let revision: number | undefined;
+        const queue: Array<{ parentSlotId: string; depth: number }> = [
+          { parentSlotId: rootSlotId, depth: 1 },
+        ];
+        for (let next = queue.shift(); next; next = queue.shift()) {
+          let cursor: string | null = null;
+          do {
+            const page = await readPage({
+              group: { kind: "children", parentSlotId: next.parentSlotId },
+              ...(cursor ? { cursor } : {}),
+              limit: 100,
+            });
+            if (revision !== undefined && page.revision !== revision) {
+              continue restart;
+            }
+            revision = page.revision;
+            for (const entry of page.entries) {
+              if (entry.node.childCount > 0) {
+                queue.push({
+                  parentSlotId: entry.node.slotId,
+                  depth: next.depth + 1,
+                });
+              }
+              if (yielded.has(entry.node.slotId)) continue;
+              yielded.add(entry.node.slotId);
+              yield { ...entry, depth: next.depth };
+              if (yielded.size >= limit) return;
+            }
+            cursor = page.nextCursor;
+          } while (cursor);
+        }
+        return;
+      }
     },
     async path(id) {
       const path = await callPanelState<PanelTreePath | null>("path", [id]);
@@ -1850,8 +2023,26 @@ export function createPanelRuntime(
     source: string,
     openOptions?: OpenPanelOptions,
   ): Promise<PanelHandle> => {
+    const lifetime = openOptions?.lifetime;
+    if (lifetime !== undefined) {
+      if (lifetime !== "invocation" && lifetime !== "session") {
+        throw new Error(
+          `openPanel: lifetime must be "invocation" or "session", got ${JSON.stringify(lifetime)}`,
+        );
+      }
+      if (!options.claimPanelLifetime) {
+        throw new Error(
+          `openPanel: lifetime "${lifetime}" requires an owning eval invocation or session; this runtime has none. Archive the panel explicitly (or bind it with \`await using\`).`,
+        );
+      }
+    }
     const committed = await commitPanelSlot(source, openOptions);
     const panelHandle = committed.panelHandle;
+    // Claim ownership at durable commit, before readiness: a panel whose boot
+    // fails is still part of the owned subtree the lifecycle end retires.
+    if (lifetime !== undefined) {
+      await options.claimPanelLifetime!({ id: panelHandle.id, lifetime });
+    }
     let observation: PanelObservation | null = null;
     try {
       // Slot creation is level-triggered: the server owns activation as soon as
@@ -1955,3 +2146,5 @@ export function createRuntimeSelfHandle(options: {
 }): PanelHandle {
   return createNonPanelRuntimeHandle(options);
 }
+
+export { createRuntimeScopeRehydrators } from "./scopeRehydrators.js";

@@ -5,6 +5,7 @@
   "type": "module",
   "vibestudio": {
     "displayName": "Speech",
+    "icon": "./assets/icon.svg",
     "entry": "index.ts",
     "extension": {
       "activationEvents": [

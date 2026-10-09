@@ -12,6 +12,7 @@ import {
   QuestionMarkCircledIcon,
   LockClosedIcon,
   MobileIcon,
+  ChatBubbleIcon,
 } from "@radix-ui/react-icons";
 import { buildPanelLink } from "@workspace/runtime";
 import { useIsMobile } from "@workspace/react";
@@ -30,7 +31,7 @@ const helpSections: HelpSection[] = [
     title: "Getting Started",
     icon: <RocketIcon />,
     content:
-      "Vibestudio is your personal vibe computer: a workspace for building, browsing, and working with AI agents. " +
+      "Vibestudio is a personal workspace for building, browsing, and working with AI agents. " +
       "Everything opens in panels, while sensitive actions remain sandboxed until you approve them.",
   },
   {
@@ -44,8 +45,8 @@ const helpSections: HelpSection[] = [
     title: "Panels",
     icon: <DashboardIcon />,
     content:
-      "Panels can be chats, terminals, personal apps, tools, or websites. Use Cmd/Ctrl+T to open one and Cmd/Ctrl+W to close the current one, " +
-      "and Cmd/Ctrl+K to find actions contributed by the panel you are using.",
+      "Panels can be chats, terminals, personal apps, tools, or websites. Open and close them from the panel launcher; " +
+      "see Quick Reference below for the shortcuts.",
   },
   {
     title: "Agents and providers",
@@ -53,6 +54,13 @@ const helpSections: HelpSection[] = [
     content:
       "Agents work inside your workspace, but cannot silently cross protected boundaries. " +
       "Open a chat from the panel launcher and connect a supported model provider when prompted.",
+  },
+  {
+    title: "Chatting with agents",
+    icon: <ChatBubbleIcon />,
+    content:
+      "Type @ in the message box to mention a specific agent and / for commands such as /model. " +
+      "Press Esc on an empty message box to stop a running agent, and use the attach button or paste to add images.",
   },
   {
     title: "Approvals and sandboxing",

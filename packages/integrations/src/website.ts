@@ -3,6 +3,7 @@ import type {
   StoredCredentialSummary,
   UrlAudience,
   WebsitePublicationIntent,
+  WebsitePublicationReceipt,
 } from "@vibestudio/credential-client";
 import type { RpcCaller } from "@vibestudio/rpc";
 import { blake3 } from "@noble/hashes/blake3.js";
@@ -41,22 +42,11 @@ export interface WebsitePackage {
   };
 }
 
-export interface PublicationReceipt {
-  operationId: string;
-  provider: "vercel" | "cloudflare-pages" | "github-pages";
-  destination: string;
-  environment: "preview" | "production";
-  artifactDigest: string;
-  phase: "prepared" | "uploading" | "submitted" | "deployed" | "failed";
-  deploymentId?: string;
-  url?: string;
-  error?: string;
-  updatedAt: string;
-}
+/** The host journal's record of one reviewed publication operation. */
+export type PublicationReceipt = WebsitePublicationReceipt;
 
-export type SavePublicationReceipt = (
-  receipt: PublicationReceipt,
-) => void | Promise<void>;
+/** A submitted publication whose public URL serves the published build. */
+export type VerifiedPublication = PublicationReceipt & { verifiedAt: string };
 
 const encoder = new TextEncoder();
 
@@ -359,11 +349,42 @@ async function publishingCredential(
   return resolved;
 }
 
-async function save(
-  saveReceipt: SavePublicationReceipt | undefined,
-  receipt: PublicationReceipt,
-) {
-  await saveReceipt?.(receipt);
+/**
+ * Run one reviewed publication from the host journal's last completed phase.
+ * The host binds the operation id to the exact artifact and destination, so a
+ * retry with the same id resumes (or returns the submitted receipt) and a
+ * changed artifact or destination is refused before any provider request.
+ */
+async function publishFromJournal(
+  credentials: CredentialClient,
+  publication: WebsitePublicationIntent,
+  steps: {
+    prepareDestination?: () => Promise<void>;
+    upload: () => Promise<void>;
+    submit: () => Promise<{ deploymentId: string; url: string }>;
+  },
+): Promise<PublicationReceipt> {
+  let receipt = await credentials.beginWebsitePublication(publication);
+  if (receipt.phase === "prepared" && steps.prepareDestination) {
+    await steps.prepareDestination();
+    receipt = await credentials.recordWebsitePublication(publication, {
+      phase: "destination-ready",
+    });
+  }
+  if (receipt.phase === "prepared" || receipt.phase === "destination-ready") {
+    await steps.upload();
+    receipt = await credentials.recordWebsitePublication(publication, {
+      phase: "uploaded",
+    });
+  }
+  if (receipt.phase === "uploaded") {
+    const deployment = await steps.submit();
+    receipt = await credentials.recordWebsitePublication(publication, {
+      phase: "submitted",
+      ...deployment,
+    });
+  }
+  return receipt;
 }
 
 export async function deployToVercel(input: {
@@ -374,7 +395,6 @@ export async function deployToVercel(input: {
   teamId?: string;
   environment?: "preview" | "production";
   credentialId?: string;
-  saveReceipt?: SavePublicationReceipt;
 }): Promise<PublicationReceipt> {
   const environment = input.environment ?? "preview";
   const destination = input.teamId
@@ -399,72 +419,56 @@ export async function deployToVercel(input: {
     audience[0]!.url,
     input.credentialId,
   );
-  await input.credentials.beginWebsitePublication(publication);
-  let receipt: PublicationReceipt = {
-    operationId: input.operationId,
-    provider: "vercel",
-    destination,
-    environment,
-    artifactDigest: input.site.artifactDigest,
-    phase: "prepared",
-    updatedAt: new Date().toISOString(),
-  };
-  await save(input.saveReceipt, receipt);
-  const deploymentFiles: Array<{ file: string; sha: string; size: number }> =
-    [];
-  receipt = {
-    ...receipt,
-    phase: "uploading",
-    updatedAt: new Date().toISOString(),
-  };
-  await save(input.saveReceipt, receipt);
-  for (const file of input.site.files) {
-    const sha = await digest("SHA-1", file.bytes);
-    const response = await input.credentials.publishFetch(
-      publication,
-      audience[0]!.url,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": file.contentType,
-          "x-vercel-digest": sha,
-          "Content-Length": String(file.bytes.byteLength),
-        },
-        body: exactArrayBuffer(file.bytes),
-      },
-      { credentialId: credential.id, audiences: audience },
-    );
-    if (!response.ok && response.status !== 409)
-      await responseError(response, `Upload ${file.path}`);
-    deploymentFiles.push({ file: file.path, sha, size: file.bytes.byteLength });
-  }
-  const deployment = await json<{ id: string; url: string }>(
-    await input.credentials.publishFetch(
-      publication,
-      audience[1]!.url,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: input.project,
-          files: deploymentFiles,
-          projectSettings: { framework: null },
-          ...(environment === "production" ? { target: "production" } : {}),
-        }),
-      },
-      { credentialId: credential.id, audiences: audience },
-    ),
-    "Create Vercel deployment",
+  const deploymentFiles = await Promise.all(
+    input.site.files.map(async (file) => ({
+      file: file.path,
+      sha: await digest("SHA-1", file.bytes),
+      size: file.bytes.byteLength,
+    })),
   );
-  receipt = {
-    ...receipt,
-    phase: "submitted",
-    deploymentId: deployment.id,
-    url: `https://${deployment.url}`,
-    updatedAt: new Date().toISOString(),
-  };
-  await save(input.saveReceipt, receipt);
-  return receipt;
+  return publishFromJournal(input.credentials, publication, {
+    upload: async () => {
+      for (const [index, file] of input.site.files.entries()) {
+        const response = await input.credentials.publishFetch(
+          publication,
+          audience[0]!.url,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": file.contentType,
+              "x-vercel-digest": deploymentFiles[index]!.sha,
+              "Content-Length": String(file.bytes.byteLength),
+            },
+            body: exactArrayBuffer(file.bytes),
+          },
+          { credentialId: credential.id, audiences: audience },
+        );
+        if (!response.ok && response.status !== 409)
+          await responseError(response, `Upload ${file.path}`);
+      }
+    },
+    submit: async () => {
+      const deployment = await json<{ id: string; url: string }>(
+        await input.credentials.publishFetch(
+          publication,
+          audience[1]!.url,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              name: input.project,
+              files: deploymentFiles,
+              projectSettings: { framework: null },
+              ...(environment === "production" ? { target: "production" } : {}),
+            }),
+          },
+          { credentialId: credential.id, audiences: audience },
+        ),
+        "Create Vercel deployment",
+      );
+      return { deploymentId: deployment.id, url: `https://${deployment.url}` };
+    },
+  });
 }
 
 export async function deployToCloudflarePages(input: {
@@ -477,7 +481,6 @@ export async function deployToCloudflarePages(input: {
   productionBranch?: string;
   environment?: "preview" | "production";
   credentialId?: string;
-  saveReceipt?: SavePublicationReceipt;
 }): Promise<PublicationReceipt> {
   const environment =
     input.environment ?? (input.branch ? "preview" : "production");
@@ -502,70 +505,13 @@ export async function deployToCloudflarePages(input: {
     projectBase,
     input.credentialId,
   );
-  await input.credentials.beginWebsitePublication(publication);
-  const existingProject = await input.credentials.publishFetch(
-    publication,
-    projectBase,
-    { method: "GET" },
-    { credentialId: primary.id, audiences: apiAudience },
-  );
-  if (existingProject.status === 404) {
-    await json(
-      await input.credentials.publishFetch(
-        publication,
-        projectsBase,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            name: input.project,
-            production_branch: input.productionBranch ?? "main",
-          }),
-        },
-        { credentialId: primary.id, audiences: apiAudience },
-      ),
-      "Create Cloudflare Pages project",
-    );
-  } else if (!existingProject.ok) {
-    await responseError(existingProject, "Inspect Cloudflare Pages project");
-  }
   const assetUrls = ["check-missing", "upload", "upsert-hashes"].map(
     (name) => `https://api.cloudflare.com/client/v4/pages/assets/${name}`,
   );
-  const jwt = await input.credentials.deriveCredential({
-    publication,
-    source: {
-      url: `${projectBase}/upload-token`,
-      method: "GET",
-      credentialId: primary.id,
-      audiences: apiAudience,
-    },
-    extract: { jsonPath: ["result", "jwt"] },
-    credential: {
-      label: `Cloudflare Pages upload: ${input.project}`,
-      audience: assetUrls.map((url) => ({ url, match: "exact" })),
-      injection: {
-        type: "header",
-        name: "Authorization",
-        valueTemplate: "Bearer {token}",
-      },
-      expiresInMs: 15 * 60_000,
-      metadata: {
-        providerId: "cloudflare-pages-upload",
-        project: input.project,
-      },
-    },
-  });
-  let receipt: PublicationReceipt = {
-    operationId: input.operationId,
-    provider: "cloudflare-pages",
-    destination,
-    environment,
-    artifactDigest: input.site.artifactDigest,
-    phase: "uploading",
-    updatedAt: new Date().toISOString(),
-  };
-  await save(input.saveReceipt, receipt);
+  const assetAudience = assetUrls.map((url) => ({
+    url,
+    match: "exact" as const,
+  }));
   const hashToFile = new Map(
     input.site.files.map((file) => {
       if (file.bytes.byteLength > 25 * 1024 * 1024) {
@@ -575,106 +521,156 @@ export async function deployToCloudflarePages(input: {
     }),
   );
   const hashes = [...hashToFile.keys()];
-  const assetAudience = assetUrls.map((url) => ({
-    url,
-    match: "exact" as const,
-  }));
-  const missing = await json<{ result: string[] }>(
-    await input.credentials.publishFetch(
-      publication,
-      assetUrls[0]!,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ hashes }),
-      },
-      { credentialId: jwt.id, audiences: assetAudience },
-    ),
-    "Check Cloudflare Pages assets",
-  );
-  const pending = missing.result.map((key) => {
-    const file = hashToFile.get(key);
-    if (!file) throw new Error(`Cloudflare requested an unknown asset: ${key}`);
-    return { key, file };
-  });
-  const batches: (typeof pending)[] = [];
-  let batch: typeof pending = [];
-  let batchBytes = 0;
-  for (const item of pending) {
-    if (
-      batch.length > 0 &&
-      (batchBytes + item.file.bytes.byteLength > 40 * 1024 * 1024 ||
-        batch.length >= 2_000)
-    ) {
-      batches.push(batch);
-      batch = [];
-      batchBytes = 0;
-    }
-    batch.push(item);
-    batchBytes += item.file.bytes.byteLength;
-  }
-  if (batch.length > 0) batches.push(batch);
-  for (const uploadBatch of batches) {
-    const payload = uploadBatch.map(({ key, file }) => ({
-      key,
-      value: bytesToBase64(file.bytes),
-      metadata: { contentType: file.contentType },
-      base64: true,
-    }));
-    await json(
-      await input.credentials.publishFetch(
+  return publishFromJournal(input.credentials, publication, {
+    prepareDestination: async () => {
+      const existingProject = await input.credentials.publishFetch(
         publication,
-        assetUrls[1]!,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload),
+        projectBase,
+        { method: "GET" },
+        { credentialId: primary.id, audiences: apiAudience },
+      );
+      if (existingProject.status === 404) {
+        await json(
+          await input.credentials.publishFetch(
+            publication,
+            projectsBase,
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                name: input.project,
+                production_branch: input.productionBranch ?? "main",
+              }),
+            },
+            { credentialId: primary.id, audiences: apiAudience },
+          ),
+          "Create Cloudflare Pages project",
+        );
+      } else if (!existingProject.ok) {
+        await responseError(existingProject, "Inspect Cloudflare Pages project");
+      }
+    },
+    upload: async () => {
+      const jwt = await input.credentials.deriveCredential({
+        publication,
+        source: {
+          url: `${projectBase}/upload-token`,
+          method: "GET",
+          credentialId: primary.id,
+          audiences: apiAudience,
         },
-        { credentialId: jwt.id, audiences: assetAudience },
-      ),
-      "Upload Cloudflare Pages assets",
-    );
-  }
-  await json(
-    await input.credentials.publishFetch(
-      publication,
-      assetUrls[2]!,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ hashes }),
-      },
-      { credentialId: jwt.id, audiences: assetAudience },
-    ),
-    "Commit Cloudflare Pages assets",
-  );
-  const manifest = Object.fromEntries(
-    input.site.files.map((file) => [
-      `/${file.path}`,
-      cloudflarePagesHash(file),
-    ]),
-  );
-  const form = new FormData();
-  form.set("manifest", JSON.stringify(manifest));
-  if (input.branch) form.set("branch", input.branch);
-  const deployment = await json<{ result: { id: string; url: string } }>(
-    await input.credentials.publishFetch(
-      publication,
-      `${projectBase}/deployments`,
-      { method: "POST", body: form },
-      { credentialId: primary.id, audiences: apiAudience },
-    ),
-    "Create Cloudflare Pages deployment",
-  );
-  receipt = {
-    ...receipt,
-    phase: "submitted",
-    deploymentId: deployment.result.id,
-    url: deployment.result.url,
-    updatedAt: new Date().toISOString(),
-  };
-  await save(input.saveReceipt, receipt);
-  return receipt;
+        extract: { jsonPath: ["result", "jwt"] },
+        credential: {
+          label: `Cloudflare Pages upload: ${input.project}`,
+          audience: assetAudience,
+          injection: {
+            type: "header",
+            name: "Authorization",
+            valueTemplate: "Bearer {token}",
+          },
+          expiresInMs: 15 * 60_000,
+          metadata: {
+            providerId: "cloudflare-pages-upload",
+            project: input.project,
+          },
+        },
+      });
+      const missing = await json<{ result: string[] }>(
+        await input.credentials.publishFetch(
+          publication,
+          assetUrls[0]!,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ hashes }),
+          },
+          { credentialId: jwt.id, audiences: assetAudience },
+        ),
+        "Check Cloudflare Pages assets",
+      );
+      const pending = missing.result.map((key) => {
+        const file = hashToFile.get(key);
+        if (!file)
+          throw new Error(`Cloudflare requested an unknown asset: ${key}`);
+        return { key, file };
+      });
+      const batches: (typeof pending)[] = [];
+      let batch: typeof pending = [];
+      let batchBytes = 0;
+      for (const item of pending) {
+        if (
+          batch.length > 0 &&
+          (batchBytes + item.file.bytes.byteLength > 40 * 1024 * 1024 ||
+            batch.length >= 2_000)
+        ) {
+          batches.push(batch);
+          batch = [];
+          batchBytes = 0;
+        }
+        batch.push(item);
+        batchBytes += item.file.bytes.byteLength;
+      }
+      if (batch.length > 0) batches.push(batch);
+      for (const uploadBatch of batches) {
+        const payload = uploadBatch.map(({ key, file }) => ({
+          key,
+          value: bytesToBase64(file.bytes),
+          metadata: { contentType: file.contentType },
+          base64: true,
+        }));
+        await json(
+          await input.credentials.publishFetch(
+            publication,
+            assetUrls[1]!,
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(payload),
+            },
+            { credentialId: jwt.id, audiences: assetAudience },
+          ),
+          "Upload Cloudflare Pages assets",
+        );
+      }
+      await json(
+        await input.credentials.publishFetch(
+          publication,
+          assetUrls[2]!,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ hashes }),
+          },
+          { credentialId: jwt.id, audiences: assetAudience },
+        ),
+        "Commit Cloudflare Pages assets",
+      );
+    },
+    submit: async () => {
+      const manifest = Object.fromEntries(
+        input.site.files.map((file) => [
+          `/${file.path}`,
+          cloudflarePagesHash(file),
+        ]),
+      );
+      const form = new FormData();
+      form.set("manifest", JSON.stringify(manifest));
+      if (input.branch) form.set("branch", input.branch);
+      const deployment = await json<{ result: { id: string; url: string } }>(
+        await input.credentials.publishFetch(
+          publication,
+          `${projectBase}/deployments`,
+          { method: "POST", body: form },
+          { credentialId: primary.id, audiences: apiAudience },
+        ),
+        "Create Cloudflare Pages deployment",
+      );
+      return {
+        deploymentId: deployment.result.id,
+        url: deployment.result.url,
+      };
+    },
+  });
 }
 
 /** Files to commit under docs/ before using the existing protected Git publication flow. */
@@ -690,7 +686,7 @@ export function githubPagesFiles(
 export async function verifyPublishedWebsite(
   receipt: PublicationReceipt,
   fetchPublic: (url: string) => Promise<Response> = fetch,
-): Promise<PublicationReceipt> {
+): Promise<VerifiedPublication> {
   if (!receipt.url)
     throw new Error("The publication has no observed public URL");
   const manifestUrl = new URL(
@@ -704,5 +700,5 @@ export async function verifyPublishedWebsite(
   );
   if (`sha256:${manifest.buildId}` !== receipt.artifactDigest)
     throw new Error("The public website serves a different build");
-  return { ...receipt, phase: "deployed", updatedAt: new Date().toISOString() };
+  return { ...receipt, verifiedAt: new Date().toISOString() };
 }

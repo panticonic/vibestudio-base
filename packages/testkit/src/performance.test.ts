@@ -131,7 +131,7 @@ describe("performance summaries", () => {
         .mockResolvedValueOnce(observation),
       reload: vi.fn().mockResolvedValue(observation),
       cdp: {
-        page: vi.fn(() => {
+        session: vi.fn(() => {
           throw new Error("CDP cannot span incarnations");
         }),
       },
@@ -144,6 +144,6 @@ describe("performance summaries", () => {
       report: { label: "reload", value: observation },
     });
     expect(handle.reload).toHaveBeenCalledOnce();
-    expect(handle.cdp.page).not.toHaveBeenCalled();
+    expect(handle.cdp.session).not.toHaveBeenCalled();
   });
 });

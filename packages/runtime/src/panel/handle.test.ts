@@ -89,8 +89,9 @@ function createRpcCall() {
             : { buildKey: "build-created" }),
         };
       }
+      case "workspace-state.slot.patchCurrentStateArgs":
+        return { preserved: true, ...(args[1] as Record<string, unknown>) };
       case "workspace-state.slot.create":
-      case "workspace-state.slot.updateCurrentStateArgs":
       case "workspace-state.panel.index":
       case "workspace-state.panel.updateTitle":
       case "panelTree.focus":
@@ -496,7 +497,7 @@ describe("PanelHandle", () => {
       wsEndpoint: "ws://localhost",
       token: "t",
     });
-    await expect(typedChild.stateArgs.set({ mode: "live" })).resolves.toEqual({
+    await expect(typedChild.stateArgs.patch({ mode: "live" })).resolves.toEqual({
       mode: "live",
       preserved: true,
     });
@@ -511,8 +512,8 @@ describe("PanelHandle", () => {
     });
     expect(rpcCall).toHaveBeenCalledWith(
       "main",
-      "workspace-state.slot.updateCurrentStateArgs",
-      ["panel:tree/child-1", { mode: "live", preserved: true }],
+      "workspace-state.slot.patchCurrentStateArgs",
+      ["panel:tree/child-1", { mode: "live" }],
     );
   });
 
@@ -857,17 +858,99 @@ describe("PanelHandle", () => {
     );
   });
 
-  it("fails loudly for operations on the unified no-parent handle", async () => {
-    const { createNoPanelHandle } = await import("../shared/handles.js");
-    const handle = createNoPanelHandle();
+  it("archives on async disposal and propagates an archive failure", async () => {
+    const { createPanelHandle, unavailableCdp } =
+      await import("../shared/handles.js");
+    const archive = vi
+      .fn()
+      .mockResolvedValueOnce({ status: "archived" })
+      .mockRejectedValueOnce(new Error("archive denied"));
+    const handle = createPanelHandle({
+      rpc: { call: vi.fn(), on: vi.fn() } as never,
+      metadata: { id: "panel:tree/owned", source: "panels/example" },
+      cdp: unavailableCdp("panel:tree/owned"),
+      ops: { archive },
+    });
 
-    expect(handle.parent()).toBeNull();
-    await expect(handle.call["anything"]!()).rejects.toThrow("No parent panel");
-    await expect(handle.archive()).rejects.toThrow("No parent panel");
-    await expect(handle.stateArgs.set({ mode: "fixture" })).rejects.toThrow(
-      "No parent panel",
+    await handle[Symbol.asyncDispose]();
+    expect(archive).toHaveBeenCalledExactlyOnceWith("panel:tree/owned");
+    await expect(handle[Symbol.asyncDispose]()).rejects.toThrow(
+      "archive denied",
     );
-    await expect(handle.emit("event", {})).rejects.toThrow("No parent panel");
+  });
+
+  it("rejects an owned lifetime before committing a slot when no lifecycle owner exists", async () => {
+    const { createPanelHandleApi } = await import("./handle.js");
+    const call = createRpcCall();
+    const { openPanel } = createPanelHandleApi({ call, on: vi.fn() } as never);
+
+    await expect(
+      openPanel("panels/example", { lifetime: "invocation" }),
+    ).rejects.toThrow(/requires an owning eval invocation or session/);
+    expect(call).not.toHaveBeenCalled();
+  });
+
+  it.each(["invocation", "session"] as const)(
+    "claims %s ownership before activation, including a failed boot",
+    async (lifetime) => {
+      const { createPanelRuntime } = await import("../shared/panelRuntime.js");
+      const call = createRpcCall();
+      const delegate = call.getMockImplementation()!;
+      const claim = vi.fn();
+      const failure = new Error("Panel activation failed");
+      call.mockImplementation(async (target, method, args) => {
+        if (method === "runtime.activateReservedEntity") {
+          expect(claim).toHaveBeenCalledExactlyOnceWith({ id: expect.any(String), lifetime });
+          throw failure;
+        }
+        return delegate(target, method, args);
+      });
+      const runtime = createPanelRuntime({
+        rpc: { call, on: vi.fn() } as never,
+        claimPanelLifetime: claim,
+      });
+      await expect(runtime.openPanel("panels/example", { lifetime, focus: false })).rejects.toMatchObject({
+        code: "PANEL_OPERATION_FAILED",
+        failure: {
+          message: expect.stringContaining(failure.message),
+          details: { slotCommitted: true },
+        },
+      });
+      expect(claim).toHaveBeenCalledOnce();
+    },
+  );
+
+  it("persists only durable identities as scope references", async () => {
+    const { createPanelHandle, createNonPanelRuntimeHandle, unavailableCdp } =
+      await import("../shared/handles.js");
+    const ref = (value: object) =>
+      (value as Record<symbol, () => unknown>)[
+        Symbol.for("vibestudio.scopeRef")
+      ]?.();
+    const panel = createPanelHandle({
+      rpc: { call: vi.fn(), on: vi.fn() } as never,
+      metadata: {
+        id: "panel:tree/owned",
+        rpcTargetId: "panel:cached-entity",
+      },
+      cdp: unavailableCdp("panel:tree/owned"),
+    });
+
+    expect(ref(panel)).toEqual({ kind: "panel", id: "panel:tree/owned" });
+    expect(
+      Object.prototype.propertyIsEnumerable.call(
+        panel,
+        Symbol.for("vibestudio.scopeRef"),
+      ),
+    ).toBe(false);
+    expect(ref(createNonPanelRuntimeHandle({ id: "worker:agent" }))).toEqual({
+      kind: "worker",
+      id: "worker:agent",
+    });
+    expect(
+      ref(createNonPanelRuntimeHandle({ id: "agent-entity", kind: "do" })),
+    ).toEqual({ kind: "do", id: "agent-entity" });
+    expect(ref(createNonPanelRuntimeHandle({ id: "opaque" }))).toBeUndefined();
   });
 
   it("routes non-Electron CDP calls through the server panelCdp service", async () => {
@@ -888,9 +971,12 @@ describe("PanelHandle", () => {
       token: "t",
     });
 
-    expect(rpcCall).toHaveBeenCalledWith("main", "panelCdp.getCdpEndpoint", [
-      "panel-1",
-    ]);
+    expect(rpcCall).toHaveBeenCalledWith(
+      "main",
+      "panelCdp.getCdpEndpoint",
+      ["panel-1"],
+      undefined,
+    );
   });
 
   it("routes non-Electron CDP drive verbs through panelCdp", async () => {
@@ -901,7 +987,7 @@ describe("PanelHandle", () => {
       on: vi.fn(),
     } as never);
 
-    await getPanelHandle("panel:tree/panel-1", "browser").cdp.navigate(
+    await getPanelHandle("panel:tree/panel-1", "browser").navigate(
       "https://example.com",
     );
 
@@ -972,37 +1058,44 @@ describe("PanelHandle", () => {
   it("supports handle.click as a CDP automation convenience", async () => {
     const click = vi.fn(async () => undefined);
     const close = vi.fn(async () => undefined);
+    const isClosed = vi.fn(() => false);
     const locator = vi.fn(() => ({ click }));
-    const page = { locator, close };
+    const page = { locator, isClosed };
     const connect = vi.fn(async () => ({
       contexts: () => [{ pages: () => [page] }],
+      close,
     }));
     const loadCdpClient = vi.fn(() => ({ BrowserImpl: { connect } }));
     vi.doMock("@workspace/cdp-client", loadCdpClient);
-    const rpcCall = vi.fn(async () => ({
-      wsEndpoint: "ws://server/cdp/panel-1",
-      token: "token-1",
-    }));
+    const rpcCall = createRpcCall();
     const { createPanelHandleApi } = await import("./handle.js");
     const { getPanelHandle } = createPanelHandleApi({
       call: rpcCall,
       on: vi.fn(),
     } as never);
 
-    await getPanelHandle("panel-1", "browser").click("button.submit");
+    const handle = getPanelHandle("panel:tree/panel-1", "browser");
+    await handle.click("button.submit");
 
-    expect(rpcCall).toHaveBeenCalledWith("main", "panelCdp.getCdpEndpoint", [
-      "panel-1",
-    ]);
+    expect(rpcCall).toHaveBeenCalledWith(
+      "main",
+      "panelCdp.getCdpEndpoint",
+      ["panel:tree/panel-1"],
+      { signal: expect.any(AbortSignal) },
+    );
     expect(locator).toHaveBeenCalledWith("button.submit");
     expect(click).toHaveBeenCalledWith();
-    expect(close).toHaveBeenCalledOnce();
     expect(loadCdpClient).toHaveBeenCalledOnce();
+    // The click ran on the panel's stable session, which stays bound.
+    expect(close).not.toHaveBeenCalled();
+    await (await handle.cdp.session()).close();
+    expect(close).toHaveBeenCalledOnce();
   });
 
   it("loads the canonical CDP page client only when requested", async () => {
     const page = {
       marker: "async-page",
+      isClosed: vi.fn(() => false),
       title: vi.fn(async function (this: { marker: string }) {
         return this.marker;
       }),
@@ -1019,11 +1112,12 @@ describe("PanelHandle", () => {
       on: vi.fn(),
     } as never);
 
-    const connectedPage = await getPanelHandle("panel:tree/browser-1").cdp.page();
-    expect((connectedPage as unknown as { marker: string }).marker).toBe(
-      page.marker,
-    );
-    // The canonical page proxy must preserve the browser client's receiver.
+    const handle = getPanelHandle("panel:tree/browser-1");
+    const session = await handle.cdp.session();
+    const connectedPage = session.page;
+    expect(connectedPage).not.toBe(page);
+    expect((await handle.cdp.session()).page).toBe(connectedPage);
+    // The stable page proxy must preserve the browser client's receiver.
     expect(await connectedPage.title()).toBe("async-page");
     expect(page.title).toHaveBeenCalledOnce();
 
@@ -1040,7 +1134,7 @@ describe("PanelHandle", () => {
     } as never);
 
     await expect(
-      getPanelHandle("panel:tree/browser-1").cdp.page(),
+      getPanelHandle("panel:tree/browser-1").cdp.session(),
     ).rejects.toThrow(/module does not expose BrowserImpl\.connect/);
   });
 
@@ -1057,18 +1151,14 @@ describe("PanelHandle", () => {
     // CDP automation is available for every panel target, including workspace
     // panels and the panel the agent is running in (panelTree.self()).
     await expect(
-      getPanelHandle("panel:tree/workspace-1").cdp.navigate(
-        "https://example.com",
-      ),
-    ).resolves.toBeUndefined();
+      getPanelHandle("panel:tree/workspace-1").navigate("https://example.com"),
+    ).resolves.toMatchObject({ phase: "ready" });
     await expect(
       getPanelHandle("panel:tree/workspace-1").cdp.getCdpEndpoint(),
     ).resolves.toEqual({
       wsEndpoint: "ws://localhost",
       token: "t",
     });
-    await expect(panelTree.self().cdp.reload()).resolves.toBeUndefined();
-
     expect(rpcCall).toHaveBeenCalledWith(
       "main",
       "workspace-state.slot.commitPreparedNavigation",
@@ -1079,12 +1169,22 @@ describe("PanelHandle", () => {
       "panelTree.navigate",
       expect.any(Array),
     );
-    expect(rpcCall).toHaveBeenCalledWith("main", "panelCdp.getCdpEndpoint", [
-      "panel:tree/workspace-1",
-    ]);
-    expect(rpcCall).toHaveBeenCalledWith("main", "panelCdp.reload", [
-      "panel:tree/panel-self",
-    ]);
+    expect(rpcCall).toHaveBeenCalledWith(
+      "main",
+      "panelCdp.getCdpEndpoint",
+      ["panel:tree/workspace-1"],
+      undefined,
+    );
+    await expect(panelTree.self().cdp.getCdpEndpoint()).resolves.toEqual({
+      wsEndpoint: "ws://localhost",
+      token: "t",
+    });
+    expect(rpcCall).toHaveBeenCalledWith(
+      "main",
+      "panelCdp.getCdpEndpoint",
+      ["panel:tree/panel-self"],
+      undefined,
+    );
   });
 
   it("hydrates direct children through bounded pages", async () => {

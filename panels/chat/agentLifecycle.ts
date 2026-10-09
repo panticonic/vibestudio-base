@@ -47,7 +47,7 @@ export async function persistInstalledAgent(agent: InstalledAgentRecord): Promis
     const current = panel.stateArgs.get<{
       installedAgents?: InstalledAgentRecord[];
     }>();
-    await panel.stateArgs.set({
+    await panel.stateArgs.patch({
       installedAgents: appendInstalledAgent(current.installedAgents, agent),
     });
   }, waitForPanelReview);

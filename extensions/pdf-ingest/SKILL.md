@@ -6,8 +6,8 @@ description: Extract text, layout, OCR, page images, metadata, or structure from
 # PDF Ingestion
 
 Use `@workspace-extensions/pdf-ingest` for local PDF work. Do not assume
-`pdftotext`, `pdfinfo`, Poppler, or Tesseract are installed on the host.
-The extension brings bundled-capable dependencies and reports engine status.
+`pdftotext`, `pdfinfo`, Poppler, or Tesseract are installed on the host. The
+extension bundles its own engines and reports their status.
 
 ## Fast Path
 
@@ -15,34 +15,29 @@ The extension brings bundled-capable dependencies and reports engine status.
 import { extensions } from "@workspace/runtime";
 
 const pdf = extensions.use("@workspace-extensions/pdf-ingest");
-const result = await pdf.ingest(toPdfExtensionBytes(fileBytes), {
+const result = await pdf.ingest(fileBytes, {
   preserveLayout: true,
   ocrFallback: true,
   pageImages: "on-ocr",
   ocrLanguages: ["eng"],
 });
 
-function toPdfExtensionBytes(bytes: Uint8Array | ArrayBuffer | number[]) {
-  const uint8 = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
-  return { __bin: true, data: Buffer.from(uint8).toString("base64") };
-}
 ```
 
-For workspace files inside the same runtime, reading with `fs.readFile(path)`
-and passing the returned bytes directly is fine. For bytes returned by Drive,
-tool calls, or another RPC boundary, use the base64 envelope above before
-calling `pdf.ingest(...)`, `pdf.probe(...)`, or `pdf.renderPage(...)`.
+Pass the PDF bytes as a `Uint8Array` (from `fs.readFile`, Drive, a tool call, or
+any other RPC result) directly to `pdf.ingest(...)`, `pdf.probe(...)`, or
+`pdf.renderPage(...)`. RPC carries bytes natively; there is no envelope to build.
 
 ## Engine Policy
 
 - Use PDF.js embedded-text extraction first. It is local, bundled, Apache-2.0,
   and returns text items with geometry for line reconstruction.
 - Use OCR fallback only for pages with sparse embedded text, or when the user
-  explicitly asks for OCR. OCR is local through Tesseract.js with bundled English
-  trained data.
+  asks for OCR. OCR runs locally with Tesseract.js and bundled English trained
+  data.
 - Treat Docling, vendored Poppler, and provider-native PDF paths as optional
   adapters. Check `await pdf.engines()` before relying on them.
-- Do not use cloud OCR unless the user explicitly chooses that privacy/cost
+- Do not use cloud OCR unless the user explicitly accepts its privacy and cost
   tradeoff.
 
 ## Structure-sensitive documents
@@ -57,15 +52,13 @@ For poetry, tables, or other layout-sensitive documents, start with:
 }
 ```
 
-Inspect `pages[].lines` and geometry rather than relying only on flattened text.
-Use page warnings, confidence, and statistics to identify material that needs
-review.
+Inspect `pages[].lines` and their geometry instead of relying only on the
+flattened text. Use page warnings, confidence, and statistics to find material
+that needs review.
 
 ## Useful Calls
 
 ```ts
-const pdfBytes = toPdfExtensionBytes(fileBytes);
-
 await pdf.probe(pdfBytes, { pages: "1-3" });
 await pdf.renderPage(pdfBytes, { pageNumber: 2, scale: 2 });
 await pdf.readArtifact(page.imageArtifactId);
@@ -82,9 +75,9 @@ await pdf.engines({ ocrLanguages: ["eng"] });
 
 ## Failure Handling
 
-- If `probe` reports `encrypted: true`, ask for a password-capable follow-up;
-  the current extension does not accept passwords.
+- If `probe` reports `encrypted: true`, ask for a password-capable follow-up.
+  The extension does not accept passwords.
 - If OCR language data is missing, the result includes warnings and engine
   diagnostics. Do not silently switch to a cloud provider.
-- For long PDFs, pass `pages` or `maxPages` first, inspect quality, then ingest
-  the rest in batches.
+- For long PDFs, first ingest a subset with `pages` or `maxPages`, check the
+  quality, then ingest the rest in batches.

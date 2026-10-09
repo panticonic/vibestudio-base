@@ -5,40 +5,42 @@ description: Discover an attached phone or emulator, install Vibestudio, and pai
 
 # Phone setup
 
-Success means the phone’s visible workspace is ready, not merely installed or paired. Ask only for the next physical
-action supported by discovery, then rediscover. Don't require the user to
-interpret adb, Xcode, provider, or pairing internals.
+Setup is done when the workspace on the phone is ready. Installing the app or
+pairing the phone is not enough. Ask the user for one physical action at a time,
+based on what discovery reports, then rediscover. Don't make the user interpret
+adb, Xcode, provider, or pairing details.
 
-This is the end-user flow through a connected desktop. For repository work on a
-developer device, open the System workspace and use its `extensions/mobile-debug`
-unit when installed. This Base skill covers the account setup flow below.
+This skill covers end-user setup through a connected desktop. For repository
+work on a developer device, open the System workspace and use its
+`extensions/mobile-debug` unit if installed.
 
-## Setup owner
+## Where setup runs
 
-Phone setup is an account operation owned by System. The desktop's **Devices →
-Set up a phone** action opens its setup chat there. In a Personal or project chat,
-guide the user to that entry point before starting this workflow. Do not try to
-call into System from another workspace or install a second phone provider.
+Phone setup is an account operation that runs in the System workspace. The
+desktop's **Devices → Set up a phone** action opens a setup chat there. In a
+Personal or project chat, send the user to that entry point instead of starting
+this workflow. Do not call into System from another workspace or install a
+second phone provider.
 
 ## Interactive setup
 
-Render the shared card once. It handles preparation, desktop/phone selection,
-progress, physical-action guidance, errors, and retries without round trips to
-the agent:
+Render the setup card once. It handles preparation, desktop and phone
+selection, progress, guidance for physical steps, errors, and retries without
+going back to the agent:
 
 ```ts
 inline_ui({ id: "phone-setup", path: "skills/phone-setup/PhoneSetup.tsx" });
 ```
 
 The card uses the public service; adb, Xcode, and the phone are attached to the
-user's desktop. Never expose a pairing secret. Do not call the private
+user's desktop. Never reveal a pairing secret. Do not call the private
 `phoneNativeEndpoint` transport or pass its `clientId`/`input` wrapper to the
 public service.
 
 ## Agent automation
 
-For unattended testing or an explicit request to complete setup directly, use
-the same client as the card:
+For unattended testing, or when the user explicitly asks you to complete setup
+yourself, use the same client as the card:
 
 ```ts
 import { phoneSetup } from "@workspace-skills/phone-setup";
@@ -62,47 +64,53 @@ const workspace = await phone.waitForWorkspace(paired);
 return { paired, workspace }; // Success ONLY if workspace.status === "ready".
 ```
 
-Resolve providers and devices before choosing; the abbreviated example does not
-justify picking the first of multiple choices. `phoneSetup()` resolves
-`workers.resolveService("vibestudio.phone-provisioning.v1")` once. For direct API
-work, open its live docs. Preserve returned provider and device IDs exactly.
-`provision` is a stream: use the helper rather than `rpc.call`.
+List providers and devices before choosing. The example throws when there is
+more than one choice; never just pick the first. `phoneSetup()` resolves
+`workers.resolveService("vibestudio.phone-provisioning.v1")` once; open that
+service's live docs for direct API work. Pass returned provider and device IDs
+through unchanged. `provision` streams its results, so call it through the
+helper, not `rpc.call`.
 
-Prepare tools before discovery. Missing Android tools are installed with checksum
-verification by the desktop after normal approval; no SDK or terminal steps.
-No desktop: ask the user to open the desktop app on the same account/server.
-No ready phone: explain the observed physical action, then rediscover.
+Prepare tools before discovery. After the usual approval, the desktop installs
+any missing Android tools and verifies their checksums; the user needs no SDK or
+terminal steps. If there is no desktop, ask the user to open the desktop app on
+the same account and server. If no phone is ready, explain the physical step
+discovery points to, then rediscover.
 
-`waitForWorkspace` observes the actual workspace lifecycle without an implicit deadline.
-An optional third `AbortSignal` cancels its pending RPC/observation and propagates
-the original cancellation reason. A transport failure rejects with its original
-error; pairing evidence remains in the result you already retained.
+`waitForWorkspace` follows the workspace's actual lifecycle and has no built-in
+deadline. An optional third argument, an `AbortSignal`, cancels the pending
+RPC or observation and rejects with the original cancellation reason. A
+transport failure rejects with its original error; the pairing result you
+already saved is unaffected.
 
-Once paired, retain the result. If workspace preparation is slow or fails,
-repeat `phone.readiness(paired.pairedDevice.deviceId)` or `waitForWorkspace`.
+Keep the pairing result. If workspace preparation is slow or fails, call
+`phone.readiness(paired.pairedDevice.deviceId)` or `waitForWorkspace` again.
 Never reinstall or create another invite just to check readiness. Tell the user
-they may unplug only after `status: "ready"`. A waiting/failed state is not success.
-Normal installed-agent requests and user review apply; do not add eval authority
-overrides or retry a fixed-code manifest denial.
+they may unplug only after `status: "ready"`; a waiting or failed state is not
+success. The usual installed-agent permission requests and user review apply.
+Do not add eval authority overrides, and do not retry a fixed-code manifest
+denial.
 
 ## Android readiness
 
 Use only the steps discovery requires:
 
-- Unlock the device and connect with a data-capable USB cable. Try a different
-  data USB mode, cable, or port when no device appears.
+- Unlock the device and connect it with a USB cable that carries data. If no
+  device appears, try a different USB mode, cable, or port.
 - If required, enable Developer options (tap build number), then enable USB
   debugging. Menu placement varies by manufacturer.
 - Keep the phone unlocked and accept the USB-debugging trust prompt. Remembering
   the desktop is optional.
-- `unauthorized` = unresolved phone-side trust prompt. `offline` =
-  connection/readiness problem. Don't install until discovery reports ready.
+- `unauthorized` means the trust prompt on the phone hasn't been accepted.
+  `offline` means a connection or readiness problem. Don't install until
+  discovery reports the device ready.
 
-For emulators: wait for the home screen. No cable or RSA prompt needed.
+For emulators, wait for the home screen. No cable or RSA prompt is involved.
 
 ## iPhone readiness
 
-iPhone dev installation requires a connected Mac with Xcode and valid signing:
+Installing a development build on an iPhone requires a connected Mac with Xcode
+and valid signing:
 
 - Unlock the phone, connect to the Mac, trust the computer.
 - Enable Developer Mode if iOS requests it.
@@ -110,27 +118,29 @@ iPhone dev installation requires a connected Mac with Xcode and valid signing:
   missing.
 - Rediscover only after Xcode reports the device ready.
 
-Source deployment from Windows/Linux requires a Mac provider — don't present it
-as a phone-side repair.
+Deploying from source on Windows or Linux requires a Mac provider. Don't present
+that as something the user can fix on the phone.
 
 ## Recovery
 
 - **No provider**: reconnect the desktop app to the same account/server.
-- **No device**: check unlock, cable/data mode, trust/debugging, provider state.
-- **Unauthorized/offline**: resolve the phone-side prompt or physical
-  connection, then rediscover instead of repeatedly provisioning.
-- **Install failure**: preserve the exact provider issue; check storage,
-  compatibility, signing, and build modes.
-- **Pairing timeout**: keep both devices awake, verify connectivity, retry the
-  single provision transaction. Don't mint an agent-visible invite.
-- **Workspace preparation**: wait for or diagnose the real readiness condition;
-  process liveness is insufficient.
+- **No device**: check that the phone is unlocked, the cable and USB data mode,
+  trust and debugging settings, and the provider state.
+- **Unauthorized/offline**: resolve the prompt on the phone or the physical
+  connection, then rediscover. Don't keep re-running provisioning.
+- **Install failure**: report the provider's error as given; check storage,
+  compatibility, signing, and build mode.
+- **Pairing invite expired**: the phone did not redeem the invite before it
+  expired. Keep both devices awake, check connectivity, and retry the single
+  provision call. Don't create an invite the agent can see.
+- **Workspace preparation**: wait for or diagnose the workspace readiness
+  status; a running process does not mean the workspace is ready.
 
-For repository diagnostics, capture the physical debug-device identity before
+For repository diagnostics, record the physical debug device's identity before
 provisioning and use `mobile-debug.verifyWorkspaceReady` afterward. A hub device
-ID ≠ an adb serial; keep those identities separate. Don't use the development
-extension in ordinary onboarding.
+ID is not an adb serial; keep them separate. Don't use the development extension
+during normal onboarding.
 
-If trusted desktop provisioning is unavailable, direct the user to the shell's
-Devices surface and its pairing QR. Don't split the automated operation into
+If trusted desktop provisioning is unavailable, send the user to the shell's
+Devices page and its pairing QR code. Don't break the automated operation into
 manual hub-control or credential steps.

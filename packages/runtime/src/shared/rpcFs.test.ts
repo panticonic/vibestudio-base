@@ -1,10 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { base64ToBytes, bytesToBase64 } from "@vibestudio/rpc";
 import { createRpcFs } from "./rpcFs.js";
-
-function decode(env: unknown): Uint8Array {
-  return base64ToBytes((env as { data: string }).data);
-}
 
 function mockRpc() {
   const calls: Array<{ method: string; args: unknown[] }> = [];
@@ -12,7 +7,7 @@ function mockRpc() {
     call: vi.fn(async (_target: string, method: string, args: unknown[]) => {
       calls.push({ method, args });
       if (method === "fs.open") return { handleId: 7 };
-      if (method === "fs.handleWrite") return { bytesWritten: decode(args[1]).length };
+      if (method === "fs.handleWrite") return { bytesWritten: (args[1] as Uint8Array).length };
       if (method === "fs.writeFile" || method === "fs.appendFile") return undefined;
       throw new Error(`unexpected rpc ${method}`);
     }),
@@ -67,9 +62,9 @@ describe("createRpcFs transport lifetime", () => {
 });
 
 describe("createRpcFs binary file writes", () => {
-  it("returns portable bytes without relying on a Buffer global", async () => {
+  it("returns native wire bytes without relying on a Buffer global", async () => {
     const rpc = {
-      call: vi.fn(async () => ({ __bin: true, data: bytesToBase64(new Uint8Array([0, 1, 255])) })),
+      call: vi.fn(async () => new Uint8Array([0, 1, 255])),
     };
     const priorBuffer = globalThis.Buffer;
     try {
@@ -81,16 +76,17 @@ describe("createRpcFs binary file writes", () => {
     }
   });
 
-  it("passes existing binary envelopes through without double encoding", async () => {
+  it("sends byte views through RPC without a JSON envelope", async () => {
     const { rpc, calls } = mockRpc();
     const fs = createRpcFs(rpc as never);
-    const envelope = { __bin: true as const, data: bytesToBase64(new Uint8Array([0, 1, 255])) };
+    const bytes = new Uint8Array([0, 1, 255]);
 
-    await fs.writeFile("/f.bin", envelope);
+    await fs.writeFile("/f.bin", bytes);
 
     const write = calls.find((c) => c.method === "fs.writeFile")!;
     expect(write.args[0]).toBe("/f.bin");
-    expect(write.args[1]).toBe(envelope);
+    expect(write.args[1]).toBeInstanceOf(Uint8Array);
+    expect([...(write.args[1] as Uint8Array)]).toEqual([...bytes]);
   });
 
   it("encodes ArrayBuffer and DataView payloads for file writes", async () => {
@@ -105,8 +101,8 @@ describe("createRpcFs binary file writes", () => {
 
     const arrayWrite = calls.find((c) => c.method === "fs.writeFile")!;
     const viewAppend = calls.find((c) => c.method === "fs.appendFile")!;
-    expect([...decode(arrayWrite.args[1])]).toEqual([1, 2, 3]);
-    expect([...decode(viewAppend.args[1])]).toEqual([8, 7]);
+    expect(arrayWrite.args[1]).toEqual(new Uint8Array([1, 2, 3]));
+    expect(viewAppend.args[1]).toEqual(new Uint8Array([8, 7]));
   });
 });
 
@@ -147,7 +143,7 @@ describe("createRpcFs FileHandle.write (Node-parity)", () => {
     const res = await fh.write("héllo", 12); // write(string, position)
 
     const w = calls.find((c) => c.method === "fs.handleWrite")!;
-    expect(new TextDecoder().decode(decode(w.args[1]))).toBe("héllo"); // encoded, not `buffer.subarray`-crashed
+    expect(new TextDecoder().decode(w.args[1] as Uint8Array)).toBe("héllo");
     expect(w.args[2]).toBe(12); // 2nd arg is POSITION for the string overload
     expect(res.bytesWritten).toBe(new TextEncoder().encode("héllo").length);
   });
@@ -160,7 +156,7 @@ describe("createRpcFs FileHandle.write (Node-parity)", () => {
     await fh.write(new Uint8Array([1, 2, 3, 4, 5]), 1, 3, 99); // write(buffer, offset, length, position)
 
     const w = calls.find((c) => c.method === "fs.handleWrite")!;
-    expect([...decode(w.args[1])]).toEqual([2, 3, 4]);
+    expect([...(w.args[1] as Uint8Array)]).toEqual([2, 3, 4]);
     expect(w.args[2]).toBe(99);
   });
 
@@ -174,7 +170,7 @@ describe("createRpcFs FileHandle.write (Node-parity)", () => {
     await fh.write(view, 1, 2, 44);
 
     const w = calls.find((c) => c.method === "fs.handleWrite")!;
-    expect([...decode(w.args[1])]).toEqual([7, 6]);
+    expect([...(w.args[1] as Uint8Array)]).toEqual([7, 6]);
     expect(w.args[2]).toBe(44);
   });
 });
