@@ -179,6 +179,25 @@ class StructuredErrorDO extends TestDurableObjectBase {
     };
     throw error;
   }
+
+  @rpc({
+    website: {
+      kind: "eligible",
+      rationale: "Explicit receiver exposure for this test fixture.",
+    },
+    principals: ["host"],
+    effect: { kind: "open" },
+    tier: "open",
+    sensitivity: "read",
+  })
+  failWithAggregate(): never {
+    const cause = new Error("lower-level repository detail");
+    throw new AggregateError(
+      [cause],
+      "authored domain failure",
+      { cause },
+    );
+  }
 }
 
 class LifecycleProbeDO extends TestDurableObjectBase {
@@ -386,6 +405,40 @@ class AlarmProbeDO extends TestDurableObjectBase {
   scheduleWake(wakeAt: number): string {
     this.setAlarmAt(wakeAt);
     return "scheduled";
+  }
+
+  @rpc({
+    website: {
+      kind: "eligible",
+      rationale: "Explicit receiver exposure for this test fixture.",
+    },
+    principals: ["host"],
+    effect: { kind: "open" },
+    tier: "open",
+    sensitivity: "write",
+  })
+  scheduleTwoWakes(wakeAt: number): string {
+    this.setAlarmAt(wakeAt);
+    this.setAlarmAt(wakeAt + 1);
+    return "scheduled";
+  }
+}
+
+class ObservedAlarmProbeDO extends AlarmProbeDO {
+  private resolveAlarmFailure!: () => void;
+  readonly alarmFailureObserved = new Promise<void>((resolve) => {
+    this.resolveAlarmFailure = resolve;
+  });
+
+  protected override async persistAlarmSchedule(
+    schedule: DoAlarmSchedule | null,
+  ): Promise<void> {
+    try {
+      await super.persistAlarmSchedule(schedule);
+    } catch (error) {
+      this.resolveAlarmFailure();
+      throw error;
+    }
   }
 }
 
@@ -1005,6 +1058,27 @@ describe("DurableObjectBase request parsing", () => {
       },
     });
   });
+
+  it("preserves an AggregateError message from a user method across HTTP", async () => {
+    const { instance } = await createTestDO(StructuredErrorDO);
+    const response = await instance.fetch(
+      new Request("http://test/test-key/failWithAggregate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          args: [],
+          __instanceToken: "token",
+          __instanceId: "do:internal/WorkspaceDO:test-key",
+          __caller: authenticatedTestCaller("failWithAggregate"),
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(500);
+    await expect(response.json()).resolves.toMatchObject({
+      error: "authored domain failure",
+    });
+  });
 });
 
 describe("DurableObjectBase lifecycle routing", () => {
@@ -1518,6 +1592,129 @@ describe("DurableObjectBase server-driven alarm durability", () => {
 
       await expect(call("scheduleWake", Date.now() + 1_000)).rejects.toThrow();
     } finally {
+      server.closeAllConnections();
+      await new Promise<void>((resolve, reject) =>
+        server.close((error) => (error ? reject(error) : resolve())),
+      );
+    }
+  });
+
+  it("returns typed durable scheduling failures from inbound __rpc over HTTP", async () => {
+    const errorData = {
+      source: "test-fixture",
+      detail: "first alarm persistence write failed",
+    };
+    let writes = 0;
+    let observeSecondWrite!: () => void;
+    const secondWriteObserved = new Promise<void>((resolve) => {
+      observeSecondWrite = resolve;
+    });
+    let releaseSecondWrite!: () => void;
+    const secondWriteGate = new Promise<void>((resolve) => {
+      releaseSecondWrite = resolve;
+    });
+    const server = createServer(async (request, response) => {
+      const chunks: Buffer[] = [];
+      for await (const chunk of request) chunks.push(Buffer.from(chunk));
+      const envelope = JSON.parse(Buffer.concat(chunks).toString("utf8")) as {
+        from: string;
+        target: string;
+        message: { requestId: string; method: string };
+      };
+      writes += 1;
+      if (writes === 2) {
+        observeSecondWrite();
+        await secondWriteGate;
+      }
+      response.setHeader("Content-Type", "application/json");
+      response.end(
+        JSON.stringify({
+          from: envelope.target,
+          target: envelope.from,
+          delivery: { caller: { callerId: "main", callerKind: "server" } },
+          provenance: [],
+          message: {
+            type: "response",
+            requestId: envelope.message.requestId,
+            ...(writes === 1
+              ? {
+                  error: "Invocation authority parent is not active",
+                  errorKind: "access",
+                  errorCode: "INVOCATION_AUTHORITY_PARENT_NOT_ACTIVE",
+                  errorData,
+                }
+              : { result: null }),
+          },
+        }),
+      );
+    });
+    await new Promise<void>((resolve) =>
+      server.listen(0, "127.0.0.1", resolve),
+    );
+    const address = server.address();
+    if (!address || typeof address === "string")
+      throw new Error("test server did not bind TCP");
+
+    try {
+      const { instance } = await createTestDO(ObservedAlarmProbeDO, {
+        GATEWAY_URL: `http://127.0.0.1:${address.port}`,
+        WORKER_SOURCE: "workers/test",
+        WORKER_CLASS_NAME: "ObservedAlarmProbeDO",
+        __objectKey: "alarm",
+      });
+      const caller = {
+        callerId: "main",
+        callerKind: "server" as const,
+        authorization: createTestDirectAuthority({
+          callerKind: "server",
+          method: "scheduleTwoWakes",
+          effect: { kind: "open" },
+          tier: "open",
+          targetPrincipals: ["host"],
+          source: "workers/test",
+          className: "ObservedAlarmProbeDO",
+          objectKey: "alarm",
+        }),
+      };
+      const target = "do:workers/test:ObservedAlarmProbeDO:alarm";
+      let settled = false;
+      const responsePromise = instance.fetch(
+        new Request("http://test/alarm/__rpc", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            from: caller.callerId,
+            target,
+            delivery: { caller },
+            provenance: [],
+            message: {
+              type: "request",
+              requestId: "schedule-two-wakes-with-first-failure",
+              fromId: caller.callerId,
+              method: "scheduleTwoWakes",
+              args: [Date.now() + 1_000],
+            },
+          }),
+        }),
+      ).then((response) => {
+        settled = true;
+        return response;
+      });
+
+      await secondWriteObserved;
+      await instance.alarmFailureObserved;
+      expect(settled).toBe(false);
+      releaseSecondWrite();
+      const response = await responsePromise;
+      expect(response.status).toBe(500);
+      await expect(response.json()).resolves.toMatchObject({
+        error: "Invocation authority parent is not active",
+        errorKind: "access",
+        errorCode: "INVOCATION_AUTHORITY_PARENT_NOT_ACTIVE",
+        errorData,
+      });
+    } finally {
+      releaseSecondWrite();
       server.closeAllConnections();
       await new Promise<void>((resolve, reject) =>
         server.close((error) => (error ? reject(error) : resolve())),

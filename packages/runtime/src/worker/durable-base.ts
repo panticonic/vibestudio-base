@@ -1061,17 +1061,31 @@ export abstract class DurableObjectBase {
   private readonly pendingAlarmRpcs = new Set<Promise<void>>();
 
   private trackAlarmRpc(pending: Promise<void>): void {
+    // The request may take another async turn before its fetch boundary drains
+    // this set. Observe rejection now while retaining the original promise for
+    // drainAlarmRpcs to report after all owned writes settle.
+    void pending.catch(() => undefined);
     this.pendingAlarmRpcs.add(pending);
   }
 
   private async drainAlarmRpcs(): Promise<void> {
+    const failures: unknown[] = [];
     while (this.pendingAlarmRpcs.size > 0) {
       const pending = [...this.pendingAlarmRpcs];
-      try {
-        await Promise.all(pending);
-      } finally {
-        for (const settled of pending) this.pendingAlarmRpcs.delete(settled);
+      const outcomes = await Promise.allSettled(pending);
+      for (const [index, outcome] of outcomes.entries()) {
+        this.pendingAlarmRpcs.delete(pending[index]!);
+        if (outcome.status === "rejected") failures.push(outcome.reason);
       }
+    }
+    const uniqueFailures = [...new Set(failures)];
+    if (uniqueFailures.length === 1) throw uniqueFailures[0];
+    if (uniqueFailures.length > 1) {
+      throw new AggregateError(
+        uniqueFailures,
+        "Multiple durable alarm persistence RPCs failed",
+        { cause: uniqueFailures[0] },
+      );
     }
   }
 
@@ -1132,34 +1146,107 @@ export abstract class DurableObjectBase {
   // --- HTTP dispatch + WebSocket upgrade ---
 
   async fetch(request: Request): Promise<Response> {
-    try {
-      const segments = new URL(request.url).pathname.split("/").filter(Boolean);
-      if (segments.length >= 1 && !this._objectKey) {
-        this._objectKey = decodeURIComponent(segments[0]!);
+    const dispatchResult = await Promise.resolve()
+      .then(async (): Promise<Response> => {
+        const segments = new URL(request.url).pathname
+          .split("/")
+          .filter(Boolean);
+        if (segments.length >= 1 && !this._objectKey) {
+          this._objectKey = decodeURIComponent(segments[0]!);
+        }
+        const objectKey = this._objectKey ?? this.ctx.id.name;
+        if (!objectKey)
+          throw new Error("Durable Object request has no exact object key");
+        return dispatchWithDurableObjectSchemaGuard({
+          request,
+          identity: {
+            source: String(this.env["WORKER_SOURCE"] ?? ""),
+            className: String(
+              this.env["WORKER_CLASS_NAME"] ?? this.constructor.name,
+            ),
+            objectKey,
+          },
+          ensureReady: () => this.initializeSchema(),
+          dispatch: () => this.dispatchFetch(request),
+        });
+      })
+      .then(
+        (value) => ({ status: "fulfilled" as const, value }),
+        (reason: unknown) => ({ status: "rejected" as const, reason }),
+      );
+
+    // setAlarmAt/deleteAlarm mirror the synchronous DO storage API, but this
+    // runtime persists alarms through an asynchronous server RPC. Do not let a
+    // request return until those durability writes have settled: a hibernation
+    // or eviction immediately after the response must never lose the only wake
+    // that advances an effect outbox.
+    const alarmResult = await this.drainAlarmRpcs().then(
+      () => ({ status: "fulfilled" as const, value: undefined }),
+      (reason: unknown) => ({ status: "rejected" as const, reason }),
+    );
+
+    if (
+      dispatchResult.status === "rejected" ||
+      alarmResult.status === "rejected"
+    ) {
+      const failures = [
+        ...(dispatchResult.status === "rejected"
+          ? [dispatchResult.reason]
+          : []),
+        ...(alarmResult.status === "rejected" ? [alarmResult.reason] : []),
+      ].flatMap((failure) =>
+        failure instanceof AggregateError ? [...failure.errors] : [failure],
+      );
+      const uniqueFailures = [...new Set(failures)];
+      const primaryFailure =
+        dispatchResult.status === "rejected"
+          ? dispatchResult.reason
+          : alarmResult.status === "rejected"
+            ? alarmResult.reason
+            : undefined;
+      if (uniqueFailures.length > 1) {
+        const aggregate = new AggregateError(
+          uniqueFailures,
+          "Durable Object request retained additional failures",
+          { cause: primaryFailure },
+        );
+        console.error(aggregate);
       }
-      const objectKey = this._objectKey ?? this.ctx.id.name;
-      if (!objectKey)
-        throw new Error("Durable Object request has no exact object key");
-      return await dispatchWithDurableObjectSchemaGuard({
-        request,
-        identity: {
-          source: String(this.env["WORKER_SOURCE"] ?? ""),
-          className: String(
-            this.env["WORKER_CLASS_NAME"] ?? this.constructor.name,
-          ),
-          objectKey,
+      const serializedFailure =
+        dispatchResult.status === "rejected"
+          ? dispatchResult.reason
+          : alarmResult.status === "rejected" &&
+              alarmResult.reason instanceof AggregateError
+            ? alarmResult.reason.cause ??
+              alarmResult.reason.errors[0] ??
+              alarmResult.reason
+            : primaryFailure;
+      const message =
+        serializedFailure instanceof Error
+          ? serializedFailure.message
+          : String(serializedFailure);
+      const errorData = rpcErrorDataOf(serializedFailure);
+      const errorCode =
+        serializedFailure instanceof Error
+          ? (serializedFailure as Error & { code?: string }).code
+          : undefined;
+      return new Response(
+        JSON.stringify({
+          error: message,
+          errorKind: rpcErrorKindOf(serializedFailure),
+          ...(rpcDiagnosticIdOf(serializedFailure)
+            ? { diagnosticId: rpcDiagnosticIdOf(serializedFailure) }
+            : {}),
+          ...(typeof errorCode === "string" ? { errorCode } : {}),
+          ...(errorData === undefined ? {} : { errorData }),
+        }),
+        {
+          status: 500,
+          headers: { "Content-Type": "application/json" },
         },
-        ensureReady: () => this.initializeSchema(),
-        dispatch: () => this.dispatchFetch(request),
-      });
-    } finally {
-      // setAlarmAt/deleteAlarm mirror the synchronous DO storage API, but this
-      // runtime persists alarms through an asynchronous server RPC. Do not let
-      // an ordinary request return until those durability writes have
-      // settled: a hibernation or eviction immediately after the response must
-      // never lose the only wake that advances an effect outbox.
-      await this.drainAlarmRpcs();
+      );
     }
+    return dispatchResult.value;
   }
 
   private async dispatchFetch(request: Request): Promise<Response> {
@@ -1200,193 +1287,169 @@ export abstract class DurableObjectBase {
       return this.handleInboundEnvelope(request);
     }
 
-    try {
-      let args: unknown[] = [];
-      let verifiedCallerFromBody: AttestedCaller | null = null;
-      if (request.method === "POST") {
-        const body = await request.text();
-        if (body) {
-          const result = this.parseRequestBody(body);
-          if (result.error) {
-            return new Response(JSON.stringify({ error: result.error }), {
-              status: 400,
-              headers: { "Content-Type": "application/json" },
-            });
-          }
-          args = result.args;
-          verifiedCallerFromBody = result.caller ?? null;
+    let args: unknown[] = [];
+    let verifiedCallerFromBody: AttestedCaller | null = null;
+    if (request.method === "POST") {
+      const body = await request.text();
+      if (body) {
+        const result = this.parseRequestBody(body);
+        if (result.error) {
+          return new Response(JSON.stringify({ error: result.error }), {
+            status: 400,
+            headers: { "Content-Type": "application/json" },
+          });
         }
+        args = result.args;
+        verifiedCallerFromBody = result.caller ?? null;
       }
+    }
 
-      if (method === "__lifecycle/prepare" || method === "__lifecycle/resume") {
-        return await this.withVerifiedCaller(
-          verifiedCallerFromBody,
-          async () => {
-            const denial = this.inboundHostControlDenial(
-              method,
-              authorityAcceptedAt,
-            );
-            if (denial) {
-              return new Response(
-                JSON.stringify({
-                  error: denial.reason,
-                  errorCode: denial.code,
-                  errorKind: "access",
-                  errorData: { authorityFailure: denial.failure },
-                }),
-                {
-                  status: 403,
-                  headers: { "Content-Type": "application/json" },
-                },
-              );
-            }
-            // Live module replacement may update the class schema while this
-            // activation retains its previous schemaReady cache. Lifecycle is the
-            // generation boundary, so revalidate the one current schema here.
-            await this.ensureSchema();
-            const result =
-              method === "__lifecycle/prepare"
-                ? await (async () => {
-                    await this.drainAlarmRpcs();
-                    return this.releaseForLifecycle(
-                      args[0] as LifecyclePrepareInput,
-                    );
-                  })()
-                : await this.resumeAfterRestart(
-                    args[0] as LifecycleResumeInput,
-                  );
-            return new Response(JSON.stringify(result ?? null), {
-              headers: this.workReadyHeaders(),
-            });
-          },
-        );
-      }
-
-      // Alarm endpoint — server-driven (workerd lacks SQLite/facet alarms).
-      // The AlarmDriver fires this on schedule; gate to the server caller.
-      if (method === "__alarm") {
-        return await this.withVerifiedCaller(
-          verifiedCallerFromBody,
-          async () => {
-            const denial = this.inboundHostControlDenial(
-              method,
-              authorityAcceptedAt,
-            );
-            if (denial) {
-              return new Response(
-                JSON.stringify({
-                  error: denial.reason,
-                  errorCode: denial.code,
-                  errorKind: "access",
-                  errorData: { authorityFailure: denial.failure },
-                }),
-                {
-                  status: 403,
-                  headers: { "Content-Type": "application/json" },
-                },
-              );
-            }
-            const nextAlarm = await this.alarm();
-            return new Response(JSON.stringify({ nextAlarm }), {
-              headers: this.workReadyHeaders(),
-            });
-          },
-        );
-      }
-
-      // Method-path dispatch (the server's instance-token channel,
-      // `DODispatch.dispatch`): build an inbound request envelope from
-      // {method, args, __caller} and route it through the SAME converged core
-      // dispatch as `__rpc`. `(this)[method]` is gone — `exposeAll` is the single
-      // dispatch. Returns the raw method result (the DODispatch contract).
-      const caller: AttestedCaller = verifiedCallerFromBody ?? {
-        callerId: "",
-        callerKind: "unknown",
-      };
-      const envelope = envelopeFromMessage({
-        selfId: `do:${this.env["WORKER_SOURCE"]}:${this.env["WORKER_CLASS_NAME"]}:${this.objectKey}`,
-        from: caller.callerId || "unknown",
-        target: `do:${this.env["WORKER_SOURCE"]}:${this.env["WORKER_CLASS_NAME"]}:${this.objectKey}`,
-        caller,
-        message: {
-          type: "request",
-          requestId: crypto.randomUUID(),
-          fromId: caller.callerId || "unknown",
-          method,
-          args,
-        },
-      });
-      const dispatched = await this.dispatchInboundEnvelope(
-        envelope,
-        directAuthorityAcceptedAt(request),
-      );
-      const responseEnvelope = dispatched.result;
-      const responseMessage = responseEnvelope?.message;
-      if (responseMessage?.type === "response" && "error" in responseMessage) {
-        if (responseMessage.error.startsWith('Method "')) {
-          return new Response(
-            JSON.stringify({ error: `Unknown method: ${method}` }),
-            {
-              status: 404,
-              headers: { "Content-Type": "application/json" },
-            },
+    if (method === "__lifecycle/prepare" || method === "__lifecycle/resume") {
+      return await this.withVerifiedCaller(
+        verifiedCallerFromBody,
+        async () => {
+          const denial = this.inboundHostControlDenial(
+            method,
+            authorityAcceptedAt,
           );
-        }
-        const status =
-          responseMessage.errorCode === "EACCES" ||
-          responseMessage.errorCode === "EVAL_READ_ONLY"
-            ? 403
-            : 500;
+          if (denial) {
+            return new Response(
+              JSON.stringify({
+                error: denial.reason,
+                errorCode: denial.code,
+                errorKind: "access",
+                errorData: { authorityFailure: denial.failure },
+              }),
+              {
+                status: 403,
+                headers: { "Content-Type": "application/json" },
+              },
+            );
+          }
+          // Live module replacement may update the class schema while this
+          // activation retains its previous schemaReady cache. Lifecycle is the
+          // generation boundary, so revalidate the one current schema here.
+          await this.ensureSchema();
+          const result =
+            method === "__lifecycle/prepare"
+              ? await (async () => {
+                  await this.drainAlarmRpcs();
+                  return this.releaseForLifecycle(
+                    args[0] as LifecyclePrepareInput,
+                  );
+                })()
+              : await this.resumeAfterRestart(
+                  args[0] as LifecycleResumeInput,
+                );
+          return new Response(JSON.stringify(result ?? null), {
+            headers: this.workReadyHeaders(),
+          });
+        },
+      );
+    }
+
+    // Alarm endpoint — server-driven (workerd lacks SQLite/facet alarms).
+    // The AlarmDriver fires this on schedule; gate to the server caller.
+    if (method === "__alarm") {
+      return await this.withVerifiedCaller(
+        verifiedCallerFromBody,
+        async () => {
+          const denial = this.inboundHostControlDenial(
+            method,
+            authorityAcceptedAt,
+          );
+          if (denial) {
+            return new Response(
+              JSON.stringify({
+                error: denial.reason,
+                errorCode: denial.code,
+                errorKind: "access",
+                errorData: { authorityFailure: denial.failure },
+              }),
+              {
+                status: 403,
+                headers: { "Content-Type": "application/json" },
+              },
+            );
+          }
+          const nextAlarm = await this.alarm();
+          return new Response(JSON.stringify({ nextAlarm }), {
+            headers: this.workReadyHeaders(),
+          });
+        },
+      );
+    }
+
+    // Method-path dispatch (the server's instance-token channel,
+    // `DODispatch.dispatch`): build an inbound request envelope from
+    // {method, args, __caller} and route it through the SAME converged core
+    // dispatch as `__rpc`. `(this)[method]` is gone — `exposeAll` is the single
+    // dispatch. Returns the raw method result (the DODispatch contract).
+    const caller: AttestedCaller = verifiedCallerFromBody ?? {
+      callerId: "",
+      callerKind: "unknown",
+    };
+    const envelope = envelopeFromMessage({
+      selfId: `do:${this.env["WORKER_SOURCE"]}:${this.env["WORKER_CLASS_NAME"]}:${this.objectKey}`,
+      from: caller.callerId || "unknown",
+      target: `do:${this.env["WORKER_SOURCE"]}:${this.env["WORKER_CLASS_NAME"]}:${this.objectKey}`,
+      caller,
+      message: {
+        type: "request",
+        requestId: crypto.randomUUID(),
+        fromId: caller.callerId || "unknown",
+        method,
+        args,
+      },
+    });
+    const dispatched = await this.dispatchInboundEnvelope(
+      envelope,
+      directAuthorityAcceptedAt(request),
+    );
+    const responseEnvelope = dispatched.result;
+    const responseMessage = responseEnvelope?.message;
+    if (responseMessage?.type === "response" && "error" in responseMessage) {
+      if (responseMessage.error.startsWith('Method "')) {
         return new Response(
-          JSON.stringify({
-            error: responseMessage.error,
-            errorKind: responseMessage.errorKind,
-            ...(responseMessage.diagnosticId
-              ? { diagnosticId: responseMessage.diagnosticId }
-              : {}),
-            ...(responseMessage.errorCode
-              ? { errorCode: responseMessage.errorCode }
-              : {}),
-            ...(responseMessage.errorData !== undefined
-              ? { errorData: responseMessage.errorData }
-              : {}),
-          }),
+          JSON.stringify({ error: `Unknown method: ${method}` }),
           {
-            status,
+            status: 404,
             headers: { "Content-Type": "application/json" },
           },
         );
       }
-      const result =
-        responseMessage?.type === "response" && "result" in responseMessage
-          ? (responseMessage.result ?? null)
-          : null;
-      return new Response(JSON.stringify(result), {
-        headers: this.workReadyHeaders(dispatched.readyQueues),
-      });
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      const errorData = rpcErrorDataOf(err);
-      const errorCode =
-        err instanceof Error
-          ? (err as Error & { code?: string }).code
-          : undefined;
+      const status =
+        responseMessage.errorCode === "EACCES" ||
+        responseMessage.errorCode === "EVAL_READ_ONLY"
+          ? 403
+          : 500;
       return new Response(
         JSON.stringify({
-          error: message,
-          errorKind: rpcErrorKindOf(err),
-          ...(rpcDiagnosticIdOf(err)
-            ? { diagnosticId: rpcDiagnosticIdOf(err) }
+          error: responseMessage.error,
+          errorKind: responseMessage.errorKind,
+          ...(responseMessage.diagnosticId
+            ? { diagnosticId: responseMessage.diagnosticId }
             : {}),
-          ...(typeof errorCode === "string" ? { errorCode } : {}),
-          ...(errorData === undefined ? {} : { errorData }),
+          ...(responseMessage.errorCode
+            ? { errorCode: responseMessage.errorCode }
+            : {}),
+          ...(responseMessage.errorData !== undefined
+            ? { errorData: responseMessage.errorData }
+            : {}),
         }),
         {
-          status: 500,
+          status,
           headers: { "Content-Type": "application/json" },
         },
       );
     }
+    const result =
+      responseMessage?.type === "response" && "result" in responseMessage
+        ? (responseMessage.result ?? null)
+        : null;
+    return new Response(JSON.stringify(result), {
+      headers: this.workReadyHeaders(dispatched.readyQueues),
+    });
   }
 
   /** Handle an `RpcEnvelope` POSTed to `__rpc`; returns a response envelope (or `{}` for events). */
