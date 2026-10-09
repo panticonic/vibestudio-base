@@ -19,6 +19,8 @@ import {
 } from "@workspace/agentic-protocol";
 import type { ChannelClient } from "./channel-client.js";
 import type { NativeInvocationExecution } from "./native-invocation-boundary.js";
+import { nativeTaskProductContext } from "./native-product-context.js";
+import { nativeTurnId } from "./native-turn-id.js";
 import type { ChannelEvent } from "@workspace/pubsub";
 
 export type NativeChannelMethodRequest = {
@@ -28,6 +30,8 @@ export type NativeChannelMethodRequest = {
   targetIds: string[];
   method: string;
   args: JsonValue;
+  /** The calling native turn; the executing participant attributes its output to it. */
+  turnId?: string;
 };
 type ChannelMethodClient = Pick<
   ChannelClient,
@@ -125,6 +129,8 @@ function validateRequest(
     !callerId ||
     typeof method !== "string" ||
     !method ||
+    (request["turnId"] !== undefined &&
+      (typeof request["turnId"] !== "string" || !request["turnId"])) ||
     !Array.isArray(targetIds) ||
     !targetIds.length ||
     !targetIds.every(
@@ -142,6 +148,9 @@ function validateRequest(
     method,
     targetIds: [...targetIds],
     args: request["args"]!,
+    ...(typeof request["turnId"] === "string"
+      ? { turnId: request["turnId"] }
+      : {}),
   };
 }
 function validateOutcome(value: JsonValue): NativeChannelMethodOutcome {
@@ -565,6 +574,19 @@ export async function consumeNativeChannelMethodReceipt(
   return { accepted: true };
 }
 
+/** The native run that owns this tool task, as its published turn identity. */
+async function callingTurn(
+  harness: Harness,
+  api: ToolExecutionApi,
+  context: Context,
+): Promise<{ turnId?: string }> {
+  const product = await nativeTaskProductContext(harness, api.taskId, context);
+  const input = product?.inputs[0];
+  return input === undefined
+    ? {}
+    : { turnId: nativeTurnId(api.conversationId, input) };
+}
+
 /** The native tool task owns the continuation; the channel owns dispatch,
  * provider claim fencing and terminal truth. Neither reimplements the other. */
 export function createNativeChannelMethodExecution(
@@ -609,7 +631,11 @@ export function createNativeChannelMethodExecution(
         context,
       );
       const request =
-        admission?.request ?? validateRequest(await selectRequest());
+        admission?.request ??
+        validateRequest({
+          ...(await selectRequest()),
+          ...(await callingTurn(harness, api, context)),
+        });
       const binding = sha256HexSyncText(
         canonicalJson({
           taskId: api.taskId,
@@ -655,7 +681,11 @@ export function createNativeChannelMethodExecution(
           call.callId,
           request.method,
           request.args,
-          { invocationId: call.invocationId, transportCallId: call.callId },
+          {
+            invocationId: call.invocationId,
+            transportCallId: call.callId,
+            ...(request.turnId === undefined ? {} : { turnId: request.turnId }),
+          },
         );
       }
       await consumeNativeChannelMethodReceipt(

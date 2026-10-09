@@ -27,9 +27,10 @@ Build with the response components from `@workspace/react` (`Chart`, `Stats`,
 `ActionButton`, `Image`, `Video`) before hand-writing layouts; see
 [COMPONENTS.md](../visualize/COMPONENTS.md).
 
-If a component fails to compile or render, you receive a ui-feedback note on
-your next turn naming the inline UI id and the error. Fix the source and render
-again with the same `id`.
+A compile failure (syntax error, unresolved import) is returned directly as an
+error result with the compiler message, and no card is published. Render-time
+and props failures arrive as a ui-feedback note naming the inline UI id and the
+error; it starts a repair turn when you are idle, or follows your current turn. Fix the source and render again with the same `id`.
 
 For provider setup, OAuth, imports, and similar workflows, prefer `inline_ui`
 when the component can perform the operation. Keep browser actions, trusted

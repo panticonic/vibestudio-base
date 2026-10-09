@@ -1,3 +1,6 @@
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   createModels,
@@ -10,6 +13,7 @@ import {
   createRegistry,
   defineDoc,
   InboxDoc,
+  LiveDoc,
   MemoryStorage,
   StorageRejected,
   type Harness,
@@ -18,6 +22,7 @@ import {
   type Storage,
   type StorageWrite,
 } from "@panticonic/pi-durable";
+import { openNodeSqliteStorage } from "@panticonic/pi-durable/storage/sqlite/node";
 import type { UiFeedbackPayload } from "@workspace/agentic-protocol";
 import {
   openBoundAgentSession,
@@ -90,8 +95,8 @@ class RejectingStorage extends MemoryStorage {
   }
 }
 
-async function fixture(
-  storage = new RejectingStorage(),
+async function fixture<S extends Storage = RejectingStorage>(
+  storage: S = new RejectingStorage() as Storage as S,
   extra: Partial<HarnessOptions> = {},
 ) {
   const models = createModels();
@@ -1943,5 +1948,315 @@ describe("native product channel admission", () => {
       (await f.storage.entry(placed!.entry!, context))?.entry.model?.[0]
         ?.content,
     ).toEqual(expect.stringContaining("corrected"));
+  });
+});
+
+describe("ui feedback repair turns", () => {
+  /** Model calls are ready while `ready` allows; later generations wait (a busy run). */
+  async function repairFixture<S extends Storage = RejectingStorage>(
+    storage: S = new RejectingStorage() as Storage as S,
+    ready = Infinity,
+  ) {
+    let calls = 0;
+    const f = await fixture(storage, {
+      modelRequests: async (request, api) => {
+        if (calls++ >= ready)
+          return {
+            status: "waiting",
+            condition: {
+              kind: "input",
+              conversationId: request.conversationId,
+              after: request.cutoff,
+              kinds: ["test.model-ready"],
+            },
+          };
+        await api.prepare(request.model, context);
+        return { status: "ready", options: {}, close: async () => {} };
+      },
+    });
+    return f;
+  }
+  type Fixture = { conversation: { id: number }; storage: Storage };
+  function turnOf(
+    f: Fixture,
+    submissionId: number,
+  ): string {
+    return `native-run:${f.conversation.id}:${submissionId}`;
+  }
+  function failureOf(occurrenceKey: string, turnId: string): NativeChannelIntake {
+    const intake = feedback(occurrenceKey);
+    if (intake.kind !== "feedback") throw new Error("unreachable");
+    return {
+      kind: "feedback",
+      payload: {
+        ...intake.payload,
+        category: "props_invalid",
+        refs: { messageId: `message:${occurrenceKey}` as never, component: "Calculator", turnId: turnId as never },
+      },
+    };
+  }
+  async function placedText(
+    f: Fixture,
+    submissionId: number,
+  ): Promise<string> {
+    const record = await f.storage.submission(submissionId as never, context);
+    const content = (await f.storage.entry(record!.entry!, context))?.entry
+      .model?.[0]?.content;
+    return typeof content === "string" ? content : JSON.stringify(content);
+  }
+  async function submissionType(
+    f: Fixture,
+    submissionId: number,
+  ) {
+    return (await f.storage.submission(submissionId as never, context))?.type;
+  }
+
+  it("wakes an idle agent once, as a UI notice, for a failure of an ordinary turn's output", async () => {
+    const f = await repairFixture();
+    f.faux.setResponses([
+      fauxAssistantMessage("ordinary reply"),
+      fauxAssistantMessage("repair reply"),
+      fauxAssistantMessage("next reply"),
+    ]);
+    const ordinary = await submitNativeChannelDelivery(
+      f.harness,
+      binding,
+      delivery("ordinary"),
+      { kind: "input", content: "show a calculator" },
+      context,
+    );
+    await f.harness.runPass(context);
+    expect(f.faux.state.callCount).toBe(1);
+
+    const woken = await submitNativeChannelDelivery(
+      f.harness,
+      binding,
+      delivery("failure"),
+      failureOf("calc:one", turnOf(f, ordinary.submissionId)),
+      context,
+    );
+    expect(await submissionType(f, woken.submissionId)).toBe("input");
+    await f.harness.runPass(context);
+    expect(f.faux.state.callCount).toBe(2);
+    const notice = await placedText(f, woken.submissionId);
+    expect(notice).toContain("[ui-feedback] Automatic notice from the chat panel");
+    expect(notice).toContain("Calculator in message message:calc:one rejected props");
+    expect(
+      (await retainedNativeChannelDelivery(f.harness, "failure", context))
+        ?.feedbackOccurrenceKeys,
+    ).toEqual(["calc:one"]);
+
+    // Dedupe: the same occurrence never wakes or queues again.
+    const duplicate = await submitNativeChannelDelivery(
+      f.harness,
+      binding,
+      delivery("failure-duplicate"),
+      failureOf("calc:one", turnOf(f, ordinary.submissionId)),
+      context,
+    );
+    // A later failure of the already repaired turn waits for the next turn.
+    const later = await submitNativeChannelDelivery(
+      f.harness,
+      binding,
+      delivery("failure-later"),
+      failureOf("calc:later", turnOf(f, ordinary.submissionId)),
+      context,
+    );
+    expect(await submissionType(f, duplicate.submissionId)).toBe("write");
+    expect(await submissionType(f, later.submissionId)).toBe("write");
+    await f.harness.runPass(context);
+    expect(f.faux.state.callCount).toBe(2);
+
+    const next = await submitNativeChannelDelivery(
+      f.harness,
+      binding,
+      delivery("next"),
+      { kind: "input", content: "thanks" },
+      context,
+    );
+    await f.harness.runPass(context);
+    const nextText = await placedText(f, next.submissionId);
+    expect(nextText).toContain("message:calc:later");
+    expect(nextText).not.toContain("message:calc:one");
+  });
+
+  it("queues a failure of a repair turn's own output for the next ordinary turn, also after restart", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "native-feedback-repair-"));
+    const path = join(directory, "agent.sqlite");
+    try {
+      const f = await repairFixture(await openNodeSqliteStorage(path));
+      f.faux.setResponses([
+        fauxAssistantMessage("ordinary reply"),
+        fauxAssistantMessage("repair reply"),
+        fauxAssistantMessage("next reply"),
+      ]);
+      const ordinary = await submitNativeChannelDelivery(
+        f.harness,
+        binding,
+        delivery("ordinary"),
+        { kind: "input", content: "show a calculator" },
+        context,
+      );
+      await f.harness.runPass(context);
+      const repair = await submitNativeChannelDelivery(
+        f.harness,
+        binding,
+        delivery("failure"),
+        failureOf("calc:one", turnOf(f, ordinary.submissionId)),
+        context,
+      );
+      await f.harness.runPass(context);
+      expect(f.faux.state.callCount).toBe(2);
+      await f.harness.close(context);
+
+      const reopened = await repairFixture(await openNodeSqliteStorage(path));
+      reopened.faux.setResponses([fauxAssistantMessage("next reply")]);
+      expect(reopened.conversation.id).toBe(f.conversation.id);
+      const repairFailure = await submitNativeChannelDelivery(
+        reopened.harness,
+        binding,
+        delivery("repair-failure"),
+        failureOf("calc:repair", turnOf(f, repair.submissionId)),
+        context,
+      );
+      const ordinaryAgain = await submitNativeChannelDelivery(
+        reopened.harness,
+        binding,
+        delivery("ordinary-failure-again"),
+        failureOf("calc:again", turnOf(f, ordinary.submissionId)),
+        context,
+      );
+      expect(await submissionType(reopened, repairFailure.submissionId)).toBe(
+        "write",
+      );
+      expect(await submissionType(reopened, ordinaryAgain.submissionId)).toBe(
+        "write",
+      );
+      await reopened.harness.runPass(context);
+      expect(reopened.faux.state.callCount).toBe(0);
+
+      const next = await submitNativeChannelDelivery(
+        reopened.harness,
+        binding,
+        delivery("next"),
+        { kind: "input", content: "and now?" },
+        context,
+      );
+      await reopened.harness.runPass(context);
+      expect(await placedText(reopened, next.submissionId)).toContain(
+        "message:calc:repair",
+      );
+    } finally {
+      await Promise.allSettled(
+        sessions.splice(0).map((session) => session.close(context)),
+      );
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("does not wake for unattributable failures or another conversation's turns", async () => {
+    const f = await repairFixture();
+    const foreign = await submitNativeChannelDelivery(
+      f.harness,
+      binding,
+      delivery("foreign"),
+      failureOf("calc:foreign", "native-run:999999:1"),
+      context,
+    );
+    const unknownInput = await submitNativeChannelDelivery(
+      f.harness,
+      binding,
+      delivery("unknown-input"),
+      failureOf("calc:unknown", turnOf(f, 987654)),
+      context,
+    );
+    expect(await submissionType(f, foreign.submissionId)).toBe("write");
+    expect(await submissionType(f, unknownInput.submissionId)).toBe("write");
+  });
+
+  it("while the producing turn runs, the repair follows it and later failures join the queued repair", async () => {
+    const f = await repairFixture(new RejectingStorage(), 0);
+    const ordinary = await submitNativeChannelDelivery(
+      f.harness,
+      binding,
+      delivery("ordinary"),
+      { kind: "input", content: "show two calculators" },
+      context,
+    );
+    await f.harness.runPass(context);
+    const first = await submitNativeChannelDelivery(
+      f.harness,
+      binding,
+      delivery("failure-one"),
+      failureOf("calc:one", turnOf(f, ordinary.submissionId)),
+      context,
+    );
+    const second = await submitNativeChannelDelivery(
+      f.harness,
+      binding,
+      delivery("failure-two"),
+      failureOf("calc:two", turnOf(f, ordinary.submissionId)),
+      context,
+    );
+    expect(await submissionType(f, first.submissionId)).toBe("input");
+    expect(await submissionType(f, second.submissionId)).toBe("write");
+    const inbox = await f.harness.snapshot(InboxDoc, f.conversation.id, context);
+    const inputs = inbox!.items.filter((item) => item.mode !== "write");
+    expect(inputs).toEqual([
+      expect.objectContaining({ id: first.submissionId, mode: "followUp" }),
+    ]);
+    const queued = inputs[0] as { content: unknown };
+    expect(queued.content).toEqual(expect.stringContaining("message:calc:one"));
+    expect(queued.content).toEqual(expect.stringContaining("message:calc:two"));
+  });
+
+  it("a failure arriving while its repair turn runs steers into that repair turn", async () => {
+    const f = await repairFixture(new RejectingStorage(), 1);
+    f.faux.setResponses([fauxAssistantMessage("ordinary reply")]);
+    const ordinary = await submitNativeChannelDelivery(
+      f.harness,
+      binding,
+      delivery("ordinary"),
+      { kind: "input", content: "show two calculators" },
+      context,
+    );
+    await f.harness.runPass(context);
+    const repair = await submitNativeChannelDelivery(
+      f.harness,
+      binding,
+      delivery("failure-one"),
+      failureOf("calc:one", turnOf(f, ordinary.submissionId)),
+      context,
+    );
+    await f.harness.runPass(context);
+    expect(
+      (await f.harness.snapshot(LiveDoc, f.conversation.id, context))?.run
+        ?.inputs,
+    ).toEqual([repair.submissionId]);
+    const joined = await submitNativeChannelDelivery(
+      f.harness,
+      binding,
+      delivery("failure-two"),
+      failureOf("calc:two", turnOf(f, ordinary.submissionId)),
+      context,
+    );
+    expect(await submissionType(f, joined.submissionId)).toBe("input");
+    const inbox = await f.harness.snapshot(InboxDoc, f.conversation.id, context);
+    expect(inbox?.items.filter((item) => item.mode !== "write")).toEqual([
+      expect.objectContaining({
+        id: joined.submissionId,
+        mode: "steer",
+        content: expect.stringContaining("message:calc:two"),
+      }),
+    ]);
+    // Failures of the joined repair turn's output still do not wake.
+    const repairFailure = await submitNativeChannelDelivery(
+      f.harness,
+      binding,
+      delivery("repair-failure"),
+      failureOf("calc:repair", turnOf(f, repair.submissionId)),
+      context,
+    );
+    expect(await submissionType(f, repairFailure.submissionId)).toBe("write");
   });
 });

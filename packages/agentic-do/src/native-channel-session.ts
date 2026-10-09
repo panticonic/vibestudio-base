@@ -1,9 +1,13 @@
 import type { Context, JsonValue } from "@panticonic/pi-chord";
-import { formatFeedbackNote } from "./feedback-ingest.js";
+import {
+  formatFeedbackNote,
+  formatFeedbackRepairInput,
+} from "./feedback-ingest.js";
 import {
   configure,
   defineDoc,
   defineDocFamily,
+  LiveDoc,
   UserEntry,
   type AgentChange,
   type Conversation,
@@ -35,6 +39,7 @@ import {
   retainedAgentExecutionOwner,
   retainedAgentExecutionOwnerInTransaction,
 } from "./native-agent-session.js";
+import { nativeTurnId, nativeTurnInput } from "./native-turn-id.js";
 
 export interface NativeChannelBinding {
   readonly channelId: string;
@@ -57,7 +62,9 @@ export interface NativeChannelDelivery {
   readonly agenticContext: ChannelAgenticContext;
 }
 
-/** Only product policy selects an input. Observations and feedback are passive. */
+/** Only product policy selects an input. Observations are passive; feedback is
+ * passive except a first visible failure of an ordinary turn's output, which
+ * admits a repair input (see `feedbackRepairAdmission`). */
 export type NativeChannelIntake =
   | {
       readonly kind: "input";
@@ -771,6 +778,121 @@ const FeedbackOccurrences = defineDoc<{
 const FEEDBACK_DEDUPE_WINDOW_MS = 10 * 60 * 1000;
 const MAX_PENDING_FEEDBACK = 20;
 
+/** The one repair input admitted for an ordinary turn's failing output, keyed by that turn. */
+const FeedbackRepair = defineDocFamily<
+  { input: SubmissionId | null; notes: string[] },
+  null
+>({
+  kind: "vibestudio.feedback-repair",
+  version: 1,
+  scope: "session",
+  family: true,
+  initial: () => ({ input: null, notes: [] }),
+  checkpointWhen: () => true,
+});
+
+/** Marks a feedback repair input by submission; a run it opens is a repair turn. */
+const FeedbackRepairInput = defineDocFamily<{ turnId: string }, null>({
+  kind: "vibestudio.feedback-repair-input",
+  version: 1,
+  scope: "session",
+  family: true,
+  initial: () => ({ turnId: "" }),
+  checkpointWhen: () => true,
+});
+
+type FeedbackRepairAdmission = {
+  /** The ordinary turn whose output failed. */
+  readonly turnId: string;
+  /** `followUp` opens the repair turn; `steer` joins the running one. */
+  readonly whenBusy: "followUp" | "steer";
+};
+
+/**
+ * Whether a feedback delivery wakes its agent. Only a first-seen failure of
+ * output produced by an ordinary (non-repair) native turn of this conversation
+ * does: it opens that turn's single repair turn, or joins it while it runs.
+ * Everything else, including failures of a repair turn's own output and any
+ * later failure of an already repaired turn, waits passively for the next turn.
+ */
+async function feedbackRepairAdmission(
+  harness: Harness,
+  conversationId: ConversationId,
+  payload: UiFeedbackPayload,
+  context: Context,
+): Promise<FeedbackRepairAdmission | null> {
+  const input = nativeTurnInput(conversationId, payload.refs?.turnId);
+  if (input === null) return null;
+  const now = Date.now();
+  const seen = await harness.snapshot(FeedbackOccurrences, context);
+  if (
+    seen?.seen.some(
+      (item) =>
+        item.occurrenceKey === payload.occurrenceKey &&
+        item.at >= now - FEEDBACK_DEDUPE_WINDOW_MS,
+    )
+  )
+    return null;
+  const record = await (await harness.submission(input, context))?.status(
+    context,
+  );
+  if (record?.type !== "input" || record.conversationId !== conversationId)
+    return null;
+  if (
+    (await harness.snapshot(FeedbackRepairInput, String(input), context))
+      ?.turnId
+  )
+    return null;
+  const turnId = nativeTurnId(conversationId, input);
+  const repair = await harness.snapshot(FeedbackRepair, turnId, context);
+  if (!repair?.input) return { turnId, whenBusy: "followUp" };
+  const live = await harness.snapshot(LiveDoc, conversationId, context);
+  return live?.run?.inputs[0] === repair.input
+    ? { turnId, whenBusy: "steer" }
+    : null;
+}
+
+/** Record one occurrence for deduplication; false when it is already represented. */
+async function recordFeedbackOccurrence(
+  tx: Tx,
+  occurrenceKey: string,
+): Promise<boolean> {
+  const seen = await tx.doc(FeedbackOccurrences);
+  const now = Date.now();
+  seen.seen = seen.seen.filter(
+    (item) => item.at >= now - FEEDBACK_DEDUPE_WINDOW_MS,
+  );
+  if (seen.seen.some((item) => item.occurrenceKey === occurrenceKey))
+    return false;
+  seen.seen.push({ occurrenceKey, at: now });
+  return true;
+}
+
+/** Add a note to its turn's repair input while that input still waits in the inbox. */
+async function joinQueuedFeedbackRepair(
+  tx: Tx,
+  conversationId: ConversationId,
+  payload: UiFeedbackPayload,
+  note: string,
+): Promise<boolean> {
+  const input = nativeTurnInput(conversationId, payload.refs?.turnId);
+  if (input === null) return false;
+  const repair = await tx.doc(
+    FeedbackRepair,
+    nativeTurnId(conversationId, input),
+    null,
+  );
+  if (repair.input === null) return false;
+  const notes = [...repair.notes, note];
+  const result = await tx.reviseQueuedInput(repair.input, {
+    kind: "replace",
+    content: formatFeedbackRepairInput(notes),
+  });
+  if (result !== "updated") return false;
+  repair.notes = notes;
+  return true;
+}
+
 function assertBinding(
   binding: NativeChannelBinding,
   ownerContextId: string,
@@ -1107,6 +1229,15 @@ export async function submitNativeChannelDelivery(
       );
     return sourceReplay;
   }
+  const repair =
+    prepared.kind === "feedback"
+      ? await feedbackRepairAdmission(
+          harness,
+          conversationId,
+          prepared.payload,
+          context,
+        )
+      : null;
   let fresh = false;
   const admit = async (tx: Tx, submissionId: SubmissionId) => {
     await requireNativeChannelReady(tx, conversationId);
@@ -1212,7 +1343,55 @@ export async function submitNativeChannelDelivery(
             },
             context,
           )
-        : await conversation.submit(
+        : prepared.kind === "feedback" && repair
+          ? await conversation.submit(
+              {
+                type: "input",
+                requestId: incoming.deliveryId,
+                whenBusy: repair.whenBusy,
+                content: async (tx, submissionId) => {
+                  const admission = await admit(tx, submissionId);
+                  await recordNativeChannelInputAdmission(
+                    tx,
+                    conversationId,
+                    submissionId,
+                  );
+                  await prepareInput?.(tx, {
+                    conversationId,
+                    submissionId,
+                    delivery: incoming,
+                    binding: bound,
+                  });
+                  await recordFeedbackOccurrence(
+                    tx,
+                    prepared.payload.occurrenceKey,
+                  );
+                  admission.feedbackOccurrenceKeys = [
+                    prepared.payload.occurrenceKey,
+                  ];
+                  (
+                    await tx.doc(FeedbackRepairInput, String(submissionId), null)
+                  ).turnId = repair.turnId;
+                  const note = formatFeedbackNote(prepared.payload);
+                  if (repair.whenBusy === "followUp") {
+                    const owed = await tx.doc(
+                      FeedbackRepair,
+                      repair.turnId,
+                      null,
+                    );
+                    // A racing first failure keeps its own repair input; this
+                    // one is still a repair input, so it cannot wake again.
+                    if (owed.input === null) {
+                      owed.input = submissionId;
+                      owed.notes = [note];
+                    }
+                  }
+                  return formatFeedbackRepairInput([note]);
+                },
+              },
+              context,
+            )
+          : await conversation.submit(
             {
               type: "write",
               requestId: incoming.deliveryId,
@@ -1238,28 +1417,26 @@ export async function submitNativeChannelDelivery(
                     conversationId,
                     prepared,
                   );
-                const seen = await tx.doc(FeedbackOccurrences);
-                const now = Date.now();
-                seen.seen = seen.seen.filter(
-                  (item) => item.at >= now - FEEDBACK_DEDUPE_WINDOW_MS,
-                );
+                const note = formatFeedbackNote(prepared.payload);
                 if (
-                  !seen.seen.some(
-                    (item) =>
-                      item.occurrenceKey === prepared.payload.occurrenceKey,
-                  )
+                  (await recordFeedbackOccurrence(
+                    tx,
+                    prepared.payload.occurrenceKey,
+                  )) &&
+                  !(await joinQueuedFeedbackRepair(
+                    tx,
+                    conversationId,
+                    prepared.payload,
+                    note,
+                  ))
                 ) {
-                  seen.seen.push({
-                    occurrenceKey: prepared.payload.occurrenceKey,
-                    at: now,
-                  });
                   const feedback = await tx.doc(
                     ChannelFeedback,
                     conversationId,
                   );
                   feedback.pending.push({
                     occurrenceKey: prepared.payload.occurrenceKey,
-                    note: formatFeedbackNote(prepared.payload),
+                    note,
                     frontier: {
                       channelRef: { ...incoming.channelRef },
                       sequence: incoming.eventSequence,

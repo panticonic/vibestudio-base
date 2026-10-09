@@ -31,10 +31,14 @@ export interface InlineUiCardPayload {
   props?: Record<string, unknown>;
   /** Latest render event time. Changes when a stable-ID card is refreshed. */
   renderedAt?: string;
+  /** Agent turn whose `inline_ui` call rendered this revision. */
+  turnId?: string;
 }
 
 export interface ActionBarPayload {
   id?: string;
+  /** Agent turn whose `load_action_bar` call published this bar. */
+  turnId?: string;
   source?: SandboxSource;
   imports?: Record<string, string>;
   props?: Record<string, unknown>;

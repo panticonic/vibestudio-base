@@ -10,10 +10,12 @@ import {
   ResponseActionsProvider,
   responseComponents,
 } from "@workspace/ui/response";
+import { VIBESTUDIO_BASE_SYSTEM_PROMPT } from "@workspace/harness/system-prompt";
 import { mdxComponents } from "./markdownComponents";
 
 /**
- * Every ```mdx example in the model-facing docs must render as written:
+ * Every ```mdx example in the model-facing docs and the base system prompt's
+ * component quick reference must render as written:
  * models copy these blocks, so an example that throws or trips a catalog
  * ProblemNotice teaches the wrong thing. Examples are rendered in jsdom with
  * the real MDX registry; map tiles and images are network resources that jsdom
@@ -26,23 +28,44 @@ const DOCS = [
   "../../../skills/sandbox/MDX.md",
 ] as const;
 
+/** Fenced ```mdx blocks, including ones indented under a list item (dedented). */
 function mdxBlocks(markdown: string): string[] {
-  return [...markdown.matchAll(/^```mdx[^\n]*\n([\s\S]*?)^```/gm)].map(
-    (match) => match[1]!,
+  return [...markdown.matchAll(/^( *)```mdx[^\n]*\n([\s\S]*?)^\1```/gm)].map(
+    (match) => {
+      const indent = match[1]!.length;
+      return match[2]!
+        .split("\n")
+        .map((line) => line.slice(Math.min(indent, line.length - line.trimStart().length)))
+        .join("\n");
+    },
   );
 }
 
 const catalogTags = Object.keys(responseComponents);
 const catalogTagRe = new RegExp(`<(${catalogTags.join("|")})[\\s/>]`, "g");
 
-describe("documented MDX examples", () => {
-  for (const doc of DOCS) {
-    const markdown = readFileSync(
-      fileURLToPath(new URL(doc, import.meta.url)),
-      "utf8",
+const SOURCES = [
+  ...DOCS.map((doc) => ({
+    name: doc.split("/").slice(-2).join("/"),
+    markdown: readFileSync(fileURLToPath(new URL(doc, import.meta.url)), "utf8"),
+  })),
+  { name: "base system prompt", markdown: VIBESTUDIO_BASE_SYSTEM_PROMPT },
+];
+
+describe("the base system prompt's component quick reference", () => {
+  it("shows every catalog component with its exact props", () => {
+    const shown = new Set(
+      mdxBlocks(VIBESTUDIO_BASE_SYSTEM_PROMPT).flatMap((block) =>
+        [...block.matchAll(catalogTagRe)].map((match) => match[1]!),
+      ),
     );
+    expect([...shown].sort()).toEqual([...catalogTags].sort());
+  });
+});
+
+describe("documented MDX examples", () => {
+  for (const { name, markdown } of SOURCES) {
     const blocks = mdxBlocks(markdown);
-    const name = doc.split("/").slice(-2).join("/");
 
     it(`${name} documents at least one mdx example`, () => {
       expect(blocks.length).toBeGreaterThan(0);

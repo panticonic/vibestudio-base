@@ -37,6 +37,7 @@ import { useDeferredAgent } from "./useDeferredAgent";
 import { useChatFeedback } from "./features/useChatFeedback";
 import { useChatTools } from "./features/useChatTools";
 import { buildClientEvalMethod } from "./features/clientEval";
+import { validateComponentSource } from "./features/validateComponentSource";
 import { useChatDebug } from "./features/useChatDebug";
 import { useInlineUi } from "./features/useInlineUi";
 import { useActionBar } from "./features/useActionBar";
@@ -604,6 +605,7 @@ export function useAgenticChat({
       source: canonical.source
     };
     if (canonical.author) next.author = canonical.author;
+    if (canonical.turnId !== undefined) next.turnId = canonical.turnId;
     if (canonical.imports !== undefined) next.imports = canonical.imports;
     if (canonical.props !== undefined) next.props = canonical.props;
     if (canonical.maxHeight !== undefined) next.maxHeight = canonical.maxHeight;
@@ -629,6 +631,7 @@ export function useAgenticChat({
         error?: string;
         idempotencyKey?: string;
         requestedBy?: ParticipantRef;
+        turnId?: string;
       }
     ) => {
       const client = core.clientRef.current;
@@ -649,6 +652,7 @@ export function useAgenticChat({
         {
           kind: "ui.action_bar.updated",
           actor: actorForClient(client, metadata),
+          ...(payload.turnId ? { turnId: payload.turnId as never } : {}),
           payload: eventPayload,
           createdAt: new Date().toISOString()
         },
@@ -667,7 +671,8 @@ export function useAgenticChat({
       imports,
       persistStateArgs = true,
       idempotencyKey,
-      requestedBy
+      requestedBy,
+      turnId
     }: {
       path: string;
       props?: Record<string, unknown>;
@@ -677,6 +682,8 @@ export function useAgenticChat({
       idempotencyKey?: string;
       /** The participant that asked for this bar (the `load_action_bar` caller). */
       requestedBy?: ParticipantRef;
+      /** The caller's turn that asked for this bar. */
+      turnId?: string;
     }): Promise<
       | {
           ok: true;
@@ -697,7 +704,8 @@ export function useAgenticChat({
           source: { type: "file", path: trimmedPath },
           imports,
           props,
-          maxHeight
+          maxHeight,
+          ...(turnId ? { turnId } : {})
         });
         lastLoadedActionBarKeyRef.current = actionBarLoadKey(trimmedPath, props, maxHeight);
         if (persistStateArgs) {
@@ -715,7 +723,8 @@ export function useAgenticChat({
           maxHeight,
           ok: true,
           idempotencyKey,
-          requestedBy
+          requestedBy,
+          turnId
         });
         return { ok: true, id };
       } catch (err) {
@@ -728,7 +737,8 @@ export function useAgenticChat({
           ok: false,
           error,
           idempotencyKey,
-          requestedBy
+          requestedBy,
+          turnId
         });
         return { ok: false, error };
       }
@@ -739,18 +749,20 @@ export function useAgenticChat({
     async ({
       persistStateArgs = true,
       idempotencyKey,
-      requestedBy
+      requestedBy,
+      turnId
     }: {
       persistStateArgs?: boolean;
       idempotencyKey?: string;
       requestedBy?: ParticipantRef;
+      turnId?: string;
     } = {}) => {
       setActionBarData(null);
       lastLoadedActionBarKeyRef.current = null;
       if (persistStateArgs) {
         await onActionBarFileChange?.({ path: null });
       }
-      await publishActionBarContext("cleared", { ok: true, idempotencyKey, requestedBy });
+      await publishActionBarContext("cleared", { ok: true, idempotencyKey, requestedBy, turnId });
     },
     [onActionBarFileChange, publishActionBarContext]
   );
@@ -924,7 +936,7 @@ export function useAgenticChat({
 - scope: panel-local durable UI state shared by inline_ui, feedback_custom, and the action bar in this panel instance. Serializable values persist in localStorage across panel reloads; nonserializable values are live-only and dropped on restore.
 - scopes: scopes.save(), scopes.push(), scopes.list(), scopes.get(id)
 
-**Lifecycle:** The card starts expanded and auto-collapses above 400px; users can expand or collapse it. Pass a stable \`id\` for one evolving surface: a later render by the same participant with that ID replaces the card and moves it to the newest position. Omit \`id\` for a new independent card. If the component fails to compile or render, you automatically receive a ui-feedback note naming the inline UI id and the error on your next turn; fix the source and render again with the same id.
+**Lifecycle:** The card starts expanded and auto-collapses above 400px; users can expand or collapse it. Pass a stable \`id\` for one evolving surface: a later render by the same participant with that ID replaces the card and moves it to the newest position. Omit \`id\` for a new independent card. **Result:** \`{ ok: true, id }\` means the source compiled and the card was published. A compile failure (syntax error, unresolved import) is returned directly as an error result \`{ ok: false, error, compileError: true }\` with the compiler message, and nothing is rendered; fix the source and call again. Render-time and props failures happen after publishing: a ui-feedback note naming the inline UI id and the error starts a repair turn when you are idle, or follows your current turn (failures of what you publish in a repair turn wait for your next turn); fix the source and render again with the same id.
 
 **Imports:** react, @radix-ui/themes, @radix-ui/react-icons, @workspace/react, @workspace/runtime. Provide either \`code\` or \`path\`; \`path\` reads a context-relative TSX file, supports static relative imports, and infers bare package imports from the nearest package.json. Use \`imports\` for explicit package versions.
 **Must use** \`export default\`. Root with an unframed layout that stays usable at a 320px card width.
@@ -989,22 +1001,25 @@ export default function Spending({ props }) {
                         props?: Record<string, unknown>;
                       };
                       const trimmedPath = path?.trim();
-                      if (trimmedPath) {
-                        await methodRuntime.loadSourceFile(trimmedPath);
-                      } else if (!code) {
+                      const sourceCode = trimmedPath
+                        ? await methodRuntime.loadSourceFile(trimmedPath)
+                        : code;
+                      if (!sourceCode) {
                         return ctx.result(
                           { ok: false, error: "Missing code or path" },
                           { isError: true }
                         );
                       }
-                      if (imports && Object.keys(imports).length > 0) {
-                        const { executeSandbox } = await import("@workspace/eval/sandbox");
-                        await executeSandbox("", {
+                      const validation = await validateComponentSource(
+                        { code: sourceCode, ...(trimmedPath ? { path: trimmedPath } : {}) },
+                        {
                           imports,
-                          ...(methodRuntime.importLoader
-                            ? { loadImport: methodRuntime.importLoader }
-                            : {})
-                        });
+                          loadSourceFile: methodRuntime.loadSourceFile,
+                          loadImport: methodRuntime.importLoader
+                        }
+                      );
+                      if (!validation.ok) {
+                        return ctx.result({ ...validation, compileError: true }, { isError: true });
                       }
                       const client = core.clientRef.current;
                       if (!client)
@@ -1029,6 +1044,7 @@ export default function Spending({ props }) {
                         {
                           kind: "ui.inline_rendered",
                           actor: actorForClient(client, methodRuntime.metadata),
+                          ...(ctx.turnId ? { turnId: ctx.turnId as never } : {}),
                           payload: eventPayload,
                           createdAt: new Date().toISOString()
                         },
@@ -1059,7 +1075,9 @@ Unlike inline_ui, load_action_bar does not add visible chat history. The latest
 loaded file replaces any previous action bar for this panel only. Other panels
 connected to this channel may be in different filesystem contexts.
 Keep it compact; the panel clamps the rendered height to a small scrollable area.
-Use package imports available to inline_ui plus relative imports for local helper files.`,
+Use package imports available to inline_ui plus relative imports for local helper files.
+
+Result: \`{ ok: true, id }\` means the file compiled and the bar was loaded. A compile failure (syntax error, unresolved import) is returned directly as an error result \`{ ok: false, error, compileError: true }\` and the current bar is left unchanged. Render-time and props failures arrive afterward as ui-feedback notes: one starts a repair turn when you are idle, or follows your current turn.`,
                     parameters: z.object({
                       path: z
                         .string()
@@ -1102,7 +1120,7 @@ Use package imports available to inline_ui plus relative imports for local helpe
                         );
                       const requestedBy = participantRefFromMetadata(ctx.callerId, client.roster?.[ctx.callerId]?.metadata);
                       if (clear) {
-                        await methodRuntime.clearActionBar({ requestedBy });
+                        await methodRuntime.clearActionBar({ requestedBy, turnId: ctx.turnId });
                         return { ok: true, cleared: true };
                       }
                       if (!path)
@@ -1110,12 +1128,27 @@ Use package imports available to inline_ui plus relative imports for local helpe
                           { ok: false, error: "Missing path" },
                           { isError: true }
                         );
+                      const barPath = path.trim();
+                      if (barPath) {
+                        const validation = await validateComponentSource(
+                          { code: await methodRuntime.loadSourceFile(barPath), path: barPath },
+                          {
+                            imports,
+                            loadSourceFile: methodRuntime.loadSourceFile,
+                            loadImport: methodRuntime.importLoader
+                          }
+                        );
+                        if (!validation.ok) {
+                          return ctx.result({ ...validation, compileError: true }, { isError: true });
+                        }
+                      }
                       const result = await methodRuntime.loadActionBarFromFile({
                         path,
                         imports,
                         props,
                         maxHeight,
-                        requestedBy
+                        requestedBy,
+                        turnId: ctx.turnId
                       });
                       return result.ok ? result : ctx.result(result, { isError: true });
                     }

@@ -81,8 +81,9 @@ Good MDX uses:
 - Summaries with badges, callouts, tabs, and tables
 
 If the message's MDX fails to compile or render, it falls back to plain text
-and you receive a ui-feedback note on your next turn. Repair it in your next
-message.
+and a ui-feedback note starts a repair turn when you are idle, or follows your
+current turn. Repair it in your next message. Failures of what you publish in a
+repair turn wait for your next turn instead.
 
 Use `inline_ui`, `load_action_bar`, or `feedback_custom` instead for:
 

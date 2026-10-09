@@ -269,6 +269,8 @@ export interface ProjectedInlineUi {
 
 export interface ProjectedActionBar {
   id?: string;
+  /** Agent turn whose `load_action_bar` call published this bar. */
+  turnId?: TurnId;
   actor: ActorRef;
   /** Who the bar is attributed to: `requestedBy ?? actor`. */
   author: ActorRef | ParticipantRef;
@@ -1077,6 +1079,7 @@ export function applyUiEvent(
       updatedAt: event.createdAt,
     };
     if (payload.id !== undefined) nextActionBar.id = payload.id;
+    if (event.turnId !== undefined) nextActionBar.turnId = event.turnId;
     if (payload.source !== undefined) nextActionBar.source = payload.source;
     if (payload.imports !== undefined) nextActionBar.imports = payload.imports;
     if (payload.props !== undefined) nextActionBar.props = payload.props;

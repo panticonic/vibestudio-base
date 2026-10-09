@@ -50,6 +50,7 @@ export interface NativeChannelProjection {
   readonly reportTo?: string;
 }
 import { prepareNativeChannelReadReceipts } from "./native-channel-session.js";
+import { nativeTurnId } from "./native-turn-id.js";
 import {
   nativeRunWaitPresentation,
   type NativeWaitNotice,
@@ -115,12 +116,6 @@ const AutomationPublication = defineDocFamily<
   initial: () => ({ opened: false, closed: false }),
   checkpointWhen: () => true,
 });
-function nativeTurnId(
-  conversationId: ConversationId,
-  input: SubmissionId,
-): TurnId {
-  return `native-run:${conversationId}:${input}` as TurnId;
-}
 // An immutable index of existing publication debt, not another delivery queue.
 const AnswerPublication = defineDocFamily<
   {

@@ -441,6 +441,8 @@ export interface MethodExecutionContext {
   transportCallId: string;
   /** Caller's client ID */
   callerId: string;
+  /** The caller's turn that issued this call, when the caller is an agent turn. */
+  turnId?: string;
   /** Abort signal (aborted when caller cancels) */
   signal: AbortSignal;
   /** Stream a partial result */

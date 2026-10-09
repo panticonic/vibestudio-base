@@ -210,6 +210,8 @@ function InlineUiConsole({
 /** How a shown failure is auto-reported to the UI's authoring participant. */
 export interface InlineUiFailureReport {
   author: UiFeedbackAuthor | undefined;
+  /** Agent turn that published the failing UI; lets the agent attribute it. */
+  turnId?: string;
   /** Identity of this failure occurrence (dedupes re-mounts and retries). */
   occurrenceKey: string;
 }
@@ -277,7 +279,10 @@ export function InlineUiErrorCallout({
           chat={chat as unknown as Record<string, unknown>}
           author={report.author}
           category={phase === "compile" ? "compile_failed" : "render_failed"}
-          refs={surface === "action_bar" ? { actionBarId: componentId } : { inlineUiId: componentId }}
+          refs={{
+            ...(surface === "action_bar" ? { actionBarId: componentId } : { inlineUiId: componentId }),
+            ...(report.turnId ? { turnId: report.turnId as never } : {}),
+          }}
           errorMessage={error.message || "Unknown error"}
           errorName={error.name || "Error"}
           stack={error.stack}
@@ -474,6 +479,7 @@ export function InlineUiMessage({
     sequence?: number,
   ): InlineUiFailureReport => ({
     author,
+    ...(data.turnId ? { turnId: data.turnId } : {}),
     occurrenceKey: [
       "inline_ui",
       phase,
@@ -586,7 +592,10 @@ export function InlineUiMessage({
               <ResponseProblemFeedback
                 chat={chat as unknown as Record<string, unknown>}
                 author={author}
-                refs={{ inlineUiId: data.id }}
+                refs={{
+                  inlineUiId: data.id,
+                  ...(data.turnId ? { turnId: data.turnId as never } : {}),
+                }}
                 scope={`inline_ui:${data.id}:${revision}`}
               >
                 {compiled}
@@ -636,11 +645,14 @@ export function parseInlineUiData(content: string): InlineUiData | null {
       typeof record["renderedAt"] === "string"
         ? record["renderedAt"]
         : undefined;
+    const turnId =
+      typeof record["turnId"] === "string" ? record["turnId"] : undefined;
     const shared = {
       id: record["id"],
       ...(imports ? { imports } : {}),
       ...(props ? { props } : {}),
       ...(renderedAt ? { renderedAt } : {}),
+      ...(turnId ? { turnId } : {}),
     };
     const source = record["source"];
     if (typeof source === "object" && source !== null) {

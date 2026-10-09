@@ -27,6 +27,8 @@ vi.mock("@workspace/tool-ui", () => ({
   }),
 }));
 
+import * as ReactJsxRuntime from "react/jsx-runtime";
+import * as ReactJsxDevRuntime from "react/jsx-dev-runtime";
 import { useAgenticChat } from "./useAgenticChat";
 import type { ChatContextValue, ConnectionConfig } from "../types";
 import {
@@ -99,14 +101,34 @@ function Probe({
   return null;
 }
 
+const sandboxGlobals = globalThis as Record<string, unknown>;
+
 describe("useAgenticChat set_title", () => {
   beforeEach(() => {
+    // Component compilation resolves requires through the runtime module map.
+    const moduleMap: Record<string, unknown> = {
+      "react/jsx-runtime": ReactJsxRuntime,
+      "react/jsx-dev-runtime": ReactJsxDevRuntime,
+    };
+    sandboxGlobals["__vibestudioModuleMap__"] = moduleMap;
+    sandboxGlobals["__vibestudioRequire__"] = (id: string) => {
+      if (id in moduleMap) return moduleMap[id];
+      throw new Error(`Module not found: ${id}`);
+    };
+    sandboxGlobals["__vibestudioPreloadModules__"] = async (ids: string[]) =>
+      ids.map((id) => {
+        if (id in moduleMap) return moduleMap[id];
+        throw new Error(`Module not found: ${id}`);
+      });
     document.title = "";
     pubsubMock.connectViaRpc.mockReset();
   });
 
   afterEach(() => {
     vi.restoreAllMocks();
+    delete sandboxGlobals["__vibestudioModuleMap__"];
+    delete sandboxGlobals["__vibestudioRequire__"];
+    delete sandboxGlobals["__vibestudioPreloadModules__"];
   });
 
   it("uses the runtime RPC id, not the channel participant id, for browser handoff", async () => {
@@ -358,6 +380,67 @@ describe("useAgenticChat set_title", () => {
     expect(inline?.actor.id).toBe("panel:chat");
     expect(inline?.payload.requestedBy).toMatchObject(requestedBy);
     expect(bar?.payload.requestedBy).toMatchObject(requestedBy);
+
+    unmount();
+  });
+
+  it("rejects uncompilable inline UI and action bar sources without publishing", async () => {
+    const client = createClient();
+    const publish = vi.fn(async () => 1);
+    Object.assign(client, { publish, roster: {} });
+    let methods: Record<string, MethodDefinition> | undefined;
+    pubsubMock.connectViaRpc.mockImplementation(
+      (options: { methods: Record<string, MethodDefinition> }) => {
+        methods = options.methods;
+        return client;
+      },
+    );
+    const config: ConnectionConfig = {
+      clientId: "panel:chat",
+      rpc: {
+        selfId: "panel:chat",
+        call: createRpcCall(),
+        stream: vi.fn(async () => new Response()),
+        on: vi.fn(() => () => undefined),
+      },
+    };
+    const { unmount } = render(<Probe config={config} loadDynamicImports={false} />);
+    await waitFor(() => expect(methods).toBeDefined());
+    // Wait until the hook has adopted the connected client.
+    await waitFor(async () => {
+      await methods!["inline_ui"]!.execute(
+        { code: "export default () => null" },
+        { callerId: "do:author", result: vi.fn() } as never,
+      );
+      expect(publish).toHaveBeenCalled();
+    });
+    publish.mockClear();
+    const result = vi.fn((value: unknown, options?: unknown) => ({ value, options }));
+    const ctx = { callerId: "do:author", result } as never;
+
+    const syntax = (await methods!["inline_ui"]!.execute(
+      { code: "export default function A( { return <div>; }" },
+      ctx,
+    )) as { value: { ok: boolean; error: string; compileError: boolean }; options: unknown };
+    expect(syntax.value).toMatchObject({ ok: false, compileError: true });
+    expect(syntax.value.error).toBeTruthy();
+    expect(syntax.options).toEqual({ isError: true });
+
+    const unresolved = (await methods!["inline_ui"]!.execute(
+      {
+        code: 'import x from "definitely-not-a-package-xyz"; export default () => <div>{String(x)}</div>;',
+      },
+      ctx,
+    )) as { value: { ok: boolean; error: string } };
+    expect(unresolved.value.ok).toBe(false);
+    expect(unresolved.value.error).toContain("definitely-not-a-package-xyz");
+    expect(publish).not.toHaveBeenCalled();
+
+    await methods!["inline_ui"]!.execute(
+      { id: "valid", code: "export default () => <div>ok</div>;" },
+      ctx,
+    );
+    expect(publish).toHaveBeenCalledTimes(1);
 
     unmount();
   });

@@ -22,6 +22,15 @@ export interface MessageFeedbackTarget {
   chat: Record<string, unknown>;
   author: UiFeedbackAuthor;
   messageId: string;
+  /** Turn that produced the message; lets the agent attribute the failure. */
+  turnId?: string;
+}
+
+function feedbackRefs(feedback: MessageFeedbackTarget) {
+  return {
+    messageId: feedback.messageId as never,
+    ...(feedback.turnId ? { turnId: feedback.turnId as never } : {}),
+  };
 }
 
 interface RichMessageContentProps {
@@ -58,7 +67,7 @@ function MdxFailureReporter({
       chat={feedback.chat}
       author={feedback.author}
       category={category}
-      refs={{ messageId: feedback.messageId as never }}
+      refs={feedbackRefs(feedback)}
       errorMessage={err.message || "Unknown error"}
       errorName={err.name || "Error"}
       stack={err.stack}
@@ -245,7 +254,7 @@ export const RichMessageContent = React.memo(function RichMessageContent({
             <ResponseProblemFeedback
               chat={feedback.chat}
               author={feedback.author}
-              refs={{ messageId: feedback.messageId as never }}
+              refs={feedbackRefs(feedback)}
               scope={`mdx:${feedback.messageId}:${contentFingerprint(content)}`}
             >
               <MdxComponent />

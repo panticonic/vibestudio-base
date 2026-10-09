@@ -78,6 +78,7 @@ function feedbackEqual(
   return (
     a.chat === b.chat &&
     a.messageId === b.messageId &&
+    a.turnId === b.turnId &&
     a.author.kind === b.author.kind &&
     a.author.id === b.author.id
   );

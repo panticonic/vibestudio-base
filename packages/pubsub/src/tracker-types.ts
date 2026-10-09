@@ -82,6 +82,8 @@ export interface InlineUiData {
   props?: Record<string, unknown>;
   /** Latest stable-ID render revision. */
   renderedAt?: string;
+  /** Agent turn whose `inline_ui` call rendered this revision. */
+  turnId?: string;
 }
 
 /**

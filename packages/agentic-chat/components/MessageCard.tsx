@@ -1140,6 +1140,7 @@ export const MessageCard = React.memo(function MessageCard({
                           chat,
                           author: { kind: senderType, id: msg.senderId },
                           messageId: msg.id,
+                          ...(msg.turnId ? { turnId: msg.turnId } : {}),
                         }
                       : undefined
                   }

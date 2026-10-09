@@ -58,7 +58,11 @@ function ChatActionBarContent({ actionBar }: { actionBar: ActionBarState }) {
   const resetKey = `${data.id}:${JSON.stringify(data.props ?? {})}`;
   const reportFor = (phase: "compile" | "render" | "interaction", message: string): InlineUiFailureReport | undefined =>
     data.author
-      ? { author: data.author, occurrenceKey: ["action_bar", phase, data.id, message].join(":") }
+      ? {
+          author: data.author,
+          ...(data.turnId ? { turnId: data.turnId } : {}),
+          occurrenceKey: ["action_bar", phase, data.id, message].join(":"),
+        }
       : undefined;
   useEffect(() => { setAsyncError(null); }, [resetKey]);
 
@@ -168,7 +172,10 @@ function ChatActionBarContent({ actionBar }: { actionBar: ActionBarState }) {
               <ResponseProblemFeedback
                 chat={chat as unknown as Record<string, unknown>}
                 author={data.author}
-                refs={{ actionBarId: data.id }}
+                refs={{
+                  actionBarId: data.id,
+                  ...(data.turnId ? { turnId: data.turnId as never } : {}),
+                }}
                 scope={`action_bar:${data.id}:${JSON.stringify(data.props ?? {})}`}
               >
                 <CompiledComponent

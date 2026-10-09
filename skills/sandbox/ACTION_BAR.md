@@ -95,6 +95,10 @@ The panel reads the file from its current filesystem context, compiles it, and
 renders it at the top of the chat. Calling `load_action_bar` again replaces the
 previous action bar for that panel.
 
+A compile failure (syntax error, unresolved import) is returned directly as an
+error result and the current bar is left unchanged. Render-time and props
+failures arrive as ui-feedback notes.
+
 ## Clear
 
 ```ts

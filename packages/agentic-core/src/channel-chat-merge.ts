@@ -326,6 +326,7 @@ export function actionBarPayloadFromChannelView(state: ChannelViewState): Action
     },
   };
   if (latestItem.id !== undefined) payload.id = latestItem.id;
+  if (latestItem.turnId !== undefined) payload.turnId = latestItem.turnId;
   if (latestItem.imports !== undefined) payload.imports = latestItem.imports;
   if (latestItem.props !== undefined) payload.props = latestItem.props;
   if (latestItem.maxHeight !== undefined) payload.maxHeight = latestItem.maxHeight;
@@ -1284,6 +1285,7 @@ function projectedInlineUiToChatMessage(
   };
   if (inlineUi.imports !== undefined) payload.imports = inlineUi.imports;
   if (inlineUi.props !== undefined) payload.props = inlineUi.props;
+  if (inlineUi.turnId !== undefined) payload.turnId = inlineUi.turnId;
   return {
     id: `inline-ui:${participantId}:${inlineUi.id}`,
     senderId: inlineUi.author.id,

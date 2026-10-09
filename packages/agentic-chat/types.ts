@@ -98,6 +98,8 @@ export interface ActionBarData {
   maxHeight?: number;
   /** Participant that authored this bar; receives failure feedback. */
   author?: ActionBarAuthor;
+  /** Agent turn whose `load_action_bar` call published this bar. */
+  turnId?: string;
 }
 
 /** Who authored an action bar (the target of its `ui.feedback`). */

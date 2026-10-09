@@ -30,6 +30,7 @@ import {
 import type { ChannelEvent } from "@workspace/pubsub";
 import { ChannelClient } from "./channel-client.js";
 import { createNativeChannelMethodTools } from "./native-channel-method-tools.js";
+import { prepareNativeProductContexts } from "./native-product-context.js";
 import {
   consumeNativeChannelMethodReceipt,
   createNativeChannelMethodExecution,
@@ -143,7 +144,7 @@ async function fixture(
           string,
           string,
           unknown,
-          { invocationId: string; transportCallId: string },
+          { invocationId: string; transportCallId: string; turnId?: string },
         ];
         if (!routes.has(callId)) {
           const route: ChannelCallDescriptor = {
@@ -154,6 +155,7 @@ async function fixture(
             args: input,
             invocationId: opts.invocationId,
             transportCallId: opts.transportCallId,
+            ...(opts.turnId ? { turnId: opts.turnId } : {}),
             createdAt: new Date().toISOString(),
           };
           routes.set(callId, route);
@@ -268,7 +270,11 @@ async function fixture(
   const open = async () => {
     harness = await Harness.open(
       await openNodeSqliteStorage(join(directory, "owner.sqlite")),
-      { models, registry },
+      {
+        models,
+        registry,
+        prepareCommit: (tx, staged) => prepareNativeProductContexts(tx, staged),
+      },
       context,
     );
     sessions.push(harness);
@@ -344,6 +350,8 @@ describe("native channel method ownership", () => {
       method: "inline_ui",
       target: { id: "user:one" },
       args: { path: "skills/onboarding/SetupHub.tsx" },
+      // The executing participant learns the calling native turn.
+      turnId: `native-run:${f.root.id}:${f.submission.id}`,
     });
     const conversationId = f.root.id;
     await f.harness.close(context);

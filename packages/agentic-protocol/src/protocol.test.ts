@@ -1578,6 +1578,7 @@ describe("@workspace/agentic-protocol reducers", () => {
     const actionBar: AgenticEvent<"ui.action_bar.updated"> = {
       kind: "ui.action_bar.updated",
       actor: agent,
+      turnId: brandId<TurnId>("turn-bar"),
       payload: {
         protocol: AGENTIC_PROTOCOL_VERSION,
         uiType: "action_bar",
@@ -1600,6 +1601,7 @@ describe("@workspace/agentic-protocol reducers", () => {
       type: "file",
       path: "ActionBar.tsx",
     });
+    expect(state.actionBars["participant-agent-1"]?.turnId).toBe("turn-bar");
   });
 
   it("attributes UI published on behalf of a requester to the requester", () => {

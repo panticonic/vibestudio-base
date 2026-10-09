@@ -141,7 +141,7 @@ describe("composeSystemPrompt", () => {
       expect(VIBESTUDIO_BASE_SYSTEM_PROMPT).toContain(`\`${component}\``);
     }
     expect(VIBESTUDIO_BASE_SYSTEM_PROMPT).toContain("skills/visualize/COMPONENTS.md");
-    expect(VIBESTUDIO_BASE_SYSTEM_PROMPT).toContain("you receive a ui-feedback note");
+    expect(VIBESTUDIO_BASE_SYSTEM_PROMPT).toContain("a ui-feedback note starts a repair turn when you are idle");
     expect(VIBESTUDIO_BASE_SYSTEM_PROMPT).toContain("openExternal(url)");
   });
 

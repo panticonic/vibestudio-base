@@ -68,10 +68,13 @@ you cannot proceed without the answer.
 ## Writing MDX that renders
 
 MDX renders once the message completes. A message whose MDX fails to compile or
-render falls back to plain text, and you receive a ui-feedback note on your next
-turn. The same is true of `inline_ui` components and `load_action_bar` bars. A
-catalog component whose props are rejected shows the user a notice instead, and
-you receive a ui-feedback note naming the component and the problems. Repair and
+render falls back to plain text. `inline_ui` components and `load_action_bar`
+bars that fail to compile are rejected with the compiler error in the tool
+result (nothing is shown); their render-time failures are reported. A catalog
+component whose props are rejected shows the user a notice instead. Each visible
+failure reaches you as a ui-feedback note naming the subject and the error: it
+starts a repair turn when you are idle, or follows your current turn (failures
+of what you publish in a repair turn wait for your next turn). Repair and
 re-render; do not abandon the visual.
 
 - Close every tag; self-close components without children (`<Stats ... />`).

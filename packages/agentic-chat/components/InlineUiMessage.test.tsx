@@ -287,6 +287,29 @@ describe("InlineUiMessage", () => {
       expect(view.container.querySelector(".vs-r-problem")).toBeTruthy();
     });
 
+    it("attributes a failure to the turn that rendered the inline UI", async () => {
+      chatContext.chat.publish.mockClear();
+      render(
+        <InlineUiMessage
+          data={{ ...data, id: "fb-turn", turnId: "native-run:7:9" }}
+          messageId="inline-ui:agent:author:fb-turn"
+          author={author}
+          compilationError="Unexpected token"
+        />,
+      );
+      await waitFor(() =>
+        expect(chatContext.chat.publish).toHaveBeenCalledTimes(1),
+      );
+      const [, event] = chatContext.chat.publish.mock.calls[0] as unknown as [
+        string,
+        { payload: Record<string, unknown> },
+      ];
+      expect(event.payload).toMatchObject({
+        category: "compile_failed",
+        refs: { inlineUiId: "fb-turn", turnId: "native-run:7:9" },
+      });
+    });
+
     it("publishes compile_failed to the author once and shows delivery", async () => {
       chatContext.chat.publish.mockClear();
       const view = render(

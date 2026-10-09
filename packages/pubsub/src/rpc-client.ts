@@ -1650,6 +1650,7 @@ export function connectViaRpc<
       invocationId: event.invocationId,
       transportCallId: event.transportCallId,
       callerId: event.senderId,
+      ...(event.turnId ? { turnId: event.turnId } : {}),
       signal: abortController.signal,
       stream: async (content: unknown) => {
         await trackStreamSubmission(

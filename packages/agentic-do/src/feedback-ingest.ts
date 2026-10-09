@@ -145,3 +145,15 @@ export function formatFeedbackNote(payload: UiFeedbackPayload): string {
     remedy,
   ].join("\n");
 }
+
+/**
+ * Model input of a feedback repair: a UI notice from the chat panel about the
+ * agent's own visibly failing output. It is not a user message and is never
+ * published to the channel as one.
+ */
+export function formatFeedbackRepairInput(notes: readonly string[]): string {
+  return [
+    "[ui-feedback] Automatic notice from the chat panel, not a message from the user: UI you published is failing where the user can see it. Repair it now, or briefly tell the user what went wrong. Failures of what you publish while repairing are not reported until the next turn.",
+    ...notes,
+  ].join("\n\n");
+}
