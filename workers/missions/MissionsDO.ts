@@ -3,6 +3,7 @@ import {
   schemaRpc,
   type DurableObjectContext,
 } from "@workspace/runtime/worker/kernel";
+import type { LifecyclePrepareInput, LifecyclePrepareResult, LifecycleResumeInput } from "@workspace/runtime/worker/durable-base";
 import { withExecutionAdmission } from "@vibestudio/rpc/internal";
 import { missionsMethods } from "@vibestudio/service-schemas/missions";
 import type {
@@ -125,6 +126,68 @@ export class MissionsDO extends DurableObjectBase {
   // A run has exactly one lifecycle driver. Cancellation is retained in durable
   // state, so an activation change cannot lose an accepted stop request.
   private readonly runDrivers = new Map<string, Promise<void>>();
+  private readonly runControllers = new Map<string, AbortController>();
+  private readonly runAdmissions = new Set<Promise<MissionRunRecord>>();
+  private readonly runInterruptions = new Map<string, Promise<void>>();
+  private ownership: Promise<void> | null = null;
+  private sealed = false;
+
+  private acquireRunOwnership(): Promise<void> {
+    if (this.sealed) throw new Error("Automation ledger is sealed for lifecycle release");
+    if (!this.ownership) {
+      const acquisition = this.runDetached(() => this.registerLifecycleRelease({ owner: "mission-runs" }));
+      this.ownership = acquisition;
+      void acquisition.catch(() => { if (this.ownership === acquisition) this.ownership = null; });
+    }
+    return this.ownership;
+  }
+
+  override async releaseForLifecycle(input: LifecyclePrepareInput): Promise<LifecyclePrepareResult> {
+    this.sealed = true;
+    try {
+      if (this.ownership) await this.ownership;
+      // Accepted admissions must finish writing their durable run row before
+      // release decides which work to interrupt. Admissions no longer include
+      // execution itself, so this barrier cannot strand a remote dispatch.
+      const admissions = await Promise.allSettled([...this.runAdmissions]);
+      const admissionFailures = admissions.flatMap((result) => result.status === "rejected" ? [result.reason] : []);
+      if (admissionFailures.length) throw new AggregateError(admissionFailures, "Automation admission release failed");
+      if (input.mode === "retire") {
+        const rows = this.sql.exec("SELECT * FROM mission_runs WHERE phase!='terminal' ORDER BY started_at,run_id").toArray() as unknown as RunRow[];
+        this.ctx.storage.transactionSync(() => {
+          for (const row of rows) this.setStateValue(`cancel-run:${row.run_id}`, "requested");
+        });
+        for (const row of rows) this.runControllers.get(row.run_id)?.abort(new Error("Automation run cancelled for lifecycle retirement"));
+        // Persist cancellation before signaling executors. The running driver
+        // observes this marker at its next boundary and cannot dispatch again.
+        const interrupted = await Promise.allSettled(rows.map((row) => this.interruptRun(row)));
+        const interruptionFailures = interrupted.flatMap((result) => result.status === "rejected" ? [result.reason] : []);
+        if (interruptionFailures.length)
+          throw new AggregateError(interruptionFailures, "Automation cancellation signal failed");
+      }
+      const joined = await Promise.allSettled([...this.runDrivers.values()]);
+      const failures = joined.flatMap((result) => result.status === "rejected" ? [result.reason] : []);
+      if (failures.length) throw new AggregateError(failures, "Automation advancement release failed");
+      if (input.mode === "retire") {
+        const rows = this.sql.exec("SELECT * FROM mission_runs WHERE phase!='terminal' ORDER BY started_at,run_id").toArray() as unknown as RunRow[];
+        for (const row of rows) await this.cancelRun(row);
+        await this.reconcileEffects(true, true);
+        await this.clearLifecycleRelease();
+      }
+      // Suspend retains the ledger's durable lease for host restart recovery.
+      return { status: "ready" };
+    } catch (error) {
+      return { status: "failed", detail: describeError(error) };
+    }
+  }
+
+  override async resumeAfterRestart(_input: LifecycleResumeInput): Promise<void> {
+    await this.initializeSchema();
+    this.sealed = false;
+    await this.acquireRunOwnership();
+    await this.resumeRuns();
+    await this.reconcileEffects(true);
+  }
 
   constructor(ctx: DurableObjectContext, env: unknown) {
     super(ctx, env);
@@ -241,7 +304,6 @@ export class MissionsDO extends DurableObjectBase {
 
   override async alarm(): Promise<{ wakeAt: number } | null> {
     await super.alarm();
-    await this.resumeRuns();
     await this.reconcileEffects(false);
     const now = Date.now();
     const due = this.sql
@@ -790,6 +852,7 @@ export class MissionsDO extends DurableObjectBase {
       );
       for (const run of runs) this.setStateValue(`cancel-run:${String(run["run_id"])}`, "requested");
     });
+    for (const run of runs) this.runControllers.get(String(run["run_id"]))?.abort(new Error("Automation run cancelled"));
     // Join preparation before stopping the resulting executor. No phase can
     // dispatch after the stop request without encountering the lifecycle gate.
     for (const run of runs) {
@@ -1088,14 +1151,19 @@ export class MissionsDO extends DurableObjectBase {
     await this.gad().call("putUserNotification", effect.notification);
   }
 
-  private async reconcileEffects(throwOnFailure: boolean): Promise<void> {
+  private async reconcileEffects(
+    throwOnFailure: boolean,
+    includeDeferred = false,
+  ): Promise<void> {
     const now = Date.now();
-    const rows = this.sql
-      .exec(
-        "SELECT effect_id,payload_json,attempts FROM mission_effects WHERE next_attempt_at<=? ORDER BY next_attempt_at,effect_id",
-        now,
-      )
-      .toArray();
+    const rows = (includeDeferred
+      ? this.sql.exec(
+          "SELECT effect_id,payload_json,attempts FROM mission_effects ORDER BY next_attempt_at,effect_id",
+        )
+      : this.sql.exec(
+          "SELECT effect_id,payload_json,attempts FROM mission_effects WHERE next_attempt_at<=? ORDER BY next_attempt_at,effect_id",
+          now,
+        )).toArray();
     for (const row of rows) {
       const effectId = String(row["effect_id"]);
       try {
@@ -1139,11 +1207,31 @@ export class MissionsDO extends DurableObjectBase {
     }
   }
 
-  private async startExecution(
+  private startExecution(
     mission: MissionRecord,
     trigger: "manual" | "scheduled",
     occurrenceKey: string,
   ): Promise<MissionRunRecord> {
+    if (this.sealed) throw new Error("Automation ledger is sealed for lifecycle release");
+    const admission = this.admitRun(mission, trigger, occurrenceKey);
+    this.runAdmissions.add(admission);
+    void admission.then(
+      () => this.runAdmissions.delete(admission),
+      () => this.runAdmissions.delete(admission),
+    );
+    return admission.then(async (run) => {
+      if (!this.sealed) await this.advanceRun(run.runId);
+      return this.requireRun(run.runId);
+    });
+  }
+
+  private async admitRun(
+    mission: MissionRecord,
+    trigger: "manual" | "scheduled",
+    occurrenceKey: string,
+  ): Promise<MissionRunRecord> {
+    await this.acquireRunOwnership();
+    if (this.sealed) throw new Error("Automation ledger is sealed for lifecycle release");
     const now = Date.now();
     const completion = this.completionBeforeRun(mission, now);
     if (completion) {
@@ -1153,8 +1241,11 @@ export class MissionsDO extends DurableObjectBase {
     this.requireActive(mission);
     const subject = missionPrincipal(mission.missionId, mission.revisionDigest);
     const runId = await deterministicRunId(subject, occurrenceKey);
+    if (this.sealed) throw new Error("Automation ledger is sealed for lifecycle release");
     const existing = this.getRunRow(runId);
-    if (existing) return this.rowToRun(existing);
+    if (existing) {
+      return this.requireRun(runId);
+    }
     // Deterministic identity and authority preparation yield to other commands.
     // Recheck admission against the current owner state before creating work.
     const latest = this.requireMission(mission.missionId, true);
@@ -1211,7 +1302,6 @@ export class MissionsDO extends DurableObjectBase {
       if (trigger === "scheduled")
         this.advanceSchedule(mission, now, runNumber);
     });
-    await this.advanceRun(runId);
     return this.requireRun(runId);
   }
 
@@ -1229,10 +1319,20 @@ export class MissionsDO extends DurableObjectBase {
     if (active) return active;
     // The durable run owns execution. A manual command admits the run but
     // cannot lend its transient caller or task closure to the executor.
-    const driver = this.runDetached(() => this.driveRun(runId));
+    await this.acquireRunOwnership();
+    if (this.sealed) return;
+    // Acquisition can yield: another request may have acquired this same run.
+    const acquired = this.runDrivers.get(runId);
+    if (acquired) return acquired;
+    const controller = new AbortController();
+    this.runControllers.set(runId, controller);
+    const driver = this.runDetached(() => this.driveRun(runId, controller.signal));
     this.runDrivers.set(runId, driver);
     try { await driver; }
-    finally { if (this.runDrivers.get(runId) === driver) this.runDrivers.delete(runId); }
+    finally {
+      if (this.runDrivers.get(runId) === driver) this.runDrivers.delete(runId);
+      if (this.runControllers.get(runId) === controller) this.runControllers.delete(runId);
+    }
   }
 
   private checkRunCancellation(runId: string): void {
@@ -1241,21 +1341,42 @@ export class MissionsDO extends DurableObjectBase {
   }
 
   private async cancelRun(row: RunRow): Promise<void> {
-    if (row.executor_id && row.channel_id) {
-      await this.rpc.call(row.executor_id, "interruptChannel", [row.channel_id, true]);
+    await this.interruptRun(row);
+    let current = this.requireRunRow(row.run_id);
+    if (current.phase === "terminal") {
+      this.deleteStateValue(`cancel-run:${row.run_id}`);
+      return;
     }
-    await this.closeAdmission(this.requireRunRow(row.run_id));
-    this.terminalizeRun(this.requireRunRow(row.run_id), "cancelled", {});
+    await this.closeAdmission(current);
+    current = this.requireRunRow(row.run_id);
+    if (current.phase !== "terminal")
+      this.terminalizeRun(current, "cancelled", {});
     this.deleteStateValue(`cancel-run:${row.run_id}`);
   }
 
-  private async driveRun(runId: string): Promise<void> {
+  private async interruptRun(row: RunRow): Promise<void> {
+    if (!row.executor_id || !row.channel_id) return;
+    let interruption = this.runInterruptions.get(row.run_id);
+    if (!interruption) {
+      interruption = this.rpc.call(
+        row.executor_id,
+        "interruptChannel",
+        [row.channel_id, true],
+      ).then(() => undefined);
+      this.runInterruptions.set(row.run_id, interruption);
+      void interruption.catch(() => {
+        if (this.runInterruptions.get(row.run_id) === interruption)
+          this.runInterruptions.delete(row.run_id);
+      });
+    }
+    await interruption;
+  }
+
+  private async driveRun(runId: string, signal: AbortSignal): Promise<void> {
     try {
       let row = this.getRunRow(runId);
       if (!row || row.phase === "terminal") return;
       this.checkRunCancellation(runId);
-      if (row.phase === "executing" && row.progress_at + 60_000 > Date.now())
-        return;
       const mission = this.requireMission(row.mission_id, true);
       if (
         row.mission_subject !==
@@ -1292,10 +1413,10 @@ export class MissionsDO extends DurableObjectBase {
               "main",
               "runtime.createContext",
               [{}],
-              { idempotencyKey: `${runId}:context` },
+              { idempotencyKey: `${runId}:context`, signal },
             );
             contextId = created.contextId;
-            await this.activateChannel(channelId, contextId, runId);
+            await this.activateChannel(channelId, contextId, runId, signal);
           }
         } else contextId = `automation-method:${mission.missionId}`;
         this.sql.exec(
@@ -1318,6 +1439,7 @@ export class MissionsDO extends DurableObjectBase {
                 runId,
                 row.context_id ?? undefined,
                 row.channel_id ?? undefined,
+                signal,
               );
         if (
           execution.kind === "agent" &&
@@ -1334,7 +1456,7 @@ export class MissionsDO extends DurableObjectBase {
                 delivery: "all",
               },
             ],
-            { idempotencyKey: `${runId}:subscribe` },
+            { idempotencyKey: `${runId}:subscribe`, signal },
           );
         }
         this.sql.exec(
@@ -1347,7 +1469,7 @@ export class MissionsDO extends DurableObjectBase {
         this.checkRunCancellation(runId);
       }
       if (row.phase === "execution-admitting") {
-        const admission = await this.admit(mission, row);
+        const admission = await this.admit(mission, row, signal);
         this.sql.exec(
           "UPDATE mission_runs SET phase='dispatching',progress_at=?,failure_json=NULL,authority_session_id=? WHERE run_id=? AND phase='execution-admitting'",
           Date.now(),
@@ -1358,21 +1480,21 @@ export class MissionsDO extends DurableObjectBase {
         this.checkRunCancellation(runId);
       }
       if (row.phase === "dispatching") {
-        const admission = await this.admit(mission, row);
+        const admission = await this.admit(mission, row, signal);
         if (admission) this.recordAdmission(runId, admission);
         this.checkRunCancellation(runId);
         if (execution.kind === "method")
-          await this.dispatchMethod(mission, row, requireAdmission(admission));
-        else await this.dispatchAgent(mission, row, admission);
+          await this.dispatchMethod(mission, row, requireAdmission(admission), signal);
+        else await this.dispatchAgent(mission, row, admission, signal);
         this.checkRunCancellation(runId);
       }
       if (row.phase === "executing") {
         if (execution.kind === "method") {
-          const admission = await this.admit(mission, row);
+          const admission = await this.admit(mission, row, signal);
           if (admission) this.recordAdmission(runId, admission);
-          await this.dispatchMethod(mission, row, requireAdmission(admission));
+          await this.dispatchMethod(mission, row, requireAdmission(admission), signal);
         } else {
-          await this.reconcileAgentExecution(mission, row);
+          await this.reconcileAgentExecution(mission, row, signal);
         }
       }
     } catch (error) {
@@ -1387,7 +1509,7 @@ export class MissionsDO extends DurableObjectBase {
       }
       if (retryFor(error) === "automatic") {
         this.deferRun(row, error);
-        return;
+        throw error;
       }
       const detail = describeError(error);
       this.enqueueRunIssue(
@@ -1399,7 +1521,7 @@ export class MissionsDO extends DurableObjectBase {
         await this.closeAdmission(row);
       } catch (closeError) {
         this.deferRun(row, closeError);
-        return;
+        throw closeError;
       }
       this.terminalizeRun(row, "failed", {
         failure: failure(errorCode(error), row.phase, detail, retryFor(error)),
@@ -1411,6 +1533,7 @@ export class MissionsDO extends DurableObjectBase {
   private async admit(
     mission: MissionRecord,
     row: RunRow,
+    signal: AbortSignal,
   ): Promise<AdmissionResult | null> {
     if (!row.executor_id || !row.context_id)
       throw new Error("Automation executor is not prepared");
@@ -1463,7 +1586,7 @@ export class MissionsDO extends DurableObjectBase {
                 },
         },
       ],
-      { idempotencyKey: `${row.run_id}:admit` },
+      { idempotencyKey: `${row.run_id}:admit`, signal },
     );
   }
 
@@ -1471,6 +1594,7 @@ export class MissionsDO extends DurableObjectBase {
     mission: MissionRecord,
     row: RunRow,
     admission: AdmissionResult,
+    signal: AbortSignal,
   ): Promise<void> {
     const execution = mission.charter.execution;
     if (execution.kind !== "method" || !row.executor_id)
@@ -1482,18 +1606,23 @@ export class MissionsDO extends DurableObjectBase {
         admission.nonce,
       ).call(row.executor_id, execution.method, [...execution.args], {
         idempotencyKey: `${row.run_id}:dispatch`,
+        signal,
       });
+      this.checkRunCancellation(row.run_id);
       const completion = missionCompletionResponse(result);
       await this.closeAdmission(this.requireRunRow(row.run_id));
+      this.checkRunCancellation(row.run_id);
       this.terminalizeRun(this.requireRunRow(row.run_id), "succeeded", {
         finalMessage: completion?.response ?? resultSummary(result),
         completionResponse: completion?.response,
       });
     } catch (error) {
+      if (signal.aborted || this.getStateValue(`cancel-run:${row.run_id}`))
+        throw error;
       const current = this.requireRunRow(row.run_id);
       if (retryFor(error) === "automatic") {
         this.deferRun(current, error);
-        return;
+        throw error;
       }
       await this.closeAdmission(this.requireRunRow(row.run_id));
       this.terminalizeRun(this.requireRunRow(row.run_id), "failed", {
@@ -1511,6 +1640,7 @@ export class MissionsDO extends DurableObjectBase {
     mission: MissionRecord,
     row: RunRow,
     admission: AdmissionResult | null,
+    signal: AbortSignal,
   ): Promise<void> {
     const execution = mission.charter.execution;
     if (execution.kind !== "agent" || !row.executor_id || !row.channel_id)
@@ -1520,7 +1650,7 @@ export class MissionsDO extends DurableObjectBase {
       ...(admission ? { authoritySessionNonce: admission.nonce } : {}),
     };
     if (execution.action.kind === "notify") {
-      await this.deliverNotification(mission, row, execution.action);
+      await this.deliverNotification(mission, row, execution.action, signal);
       return;
     }
     const executorRpc = admission
@@ -1537,7 +1667,7 @@ export class MissionsDO extends DurableObjectBase {
             automation: activity,
           },
         ],
-        { idempotencyKey: `${row.run_id}:dispatch` },
+        { idempotencyKey: `${row.run_id}:dispatch`, signal },
       );
     else
       await executorRpc.call(
@@ -1559,7 +1689,7 @@ export class MissionsDO extends DurableObjectBase {
             },
           },
         ],
-        { idempotencyKey: `${row.run_id}:dispatch` },
+        { idempotencyKey: `${row.run_id}:dispatch`, signal },
       );
     this.setPhase(row.run_id, "executing");
   }
@@ -1574,10 +1704,11 @@ export class MissionsDO extends DurableObjectBase {
     mission: MissionRecord,
     row: RunRow,
     action: { text: string; title?: string; alert?: "inbox" | "interrupt" },
+    signal: AbortSignal,
   ): Promise<void> {
     const id = `automation.notify:${row.run_id}`;
     const title = action.title ?? mission.name;
-    await this.gad().call("putUserNotification", {
+    await this.gad().callWithOptions("putUserNotification", [{
       id,
       userId: mission.owner.userId,
       kind: "automation.notify",
@@ -1590,7 +1721,7 @@ export class MissionsDO extends DurableObjectBase {
       },
       createdAt: Date.now(),
       revision: 1,
-    });
+    }], { signal });
     try {
       await this.rpc.call("main", "notification.pushUserInbox", [
         mission.owner.userId,
@@ -1602,7 +1733,7 @@ export class MissionsDO extends DurableObjectBase {
           priority: action.alert === "interrupt" ? "high" : "normal",
           ...(row.channel_id ? { channelId: row.channel_id } : {}),
         },
-      ]);
+      ], { signal });
     } catch {
       /* no device reached; the inbox entry remains */
     }
@@ -1614,6 +1745,7 @@ export class MissionsDO extends DurableObjectBase {
   private async reconcileAgentExecution(
     mission: MissionRecord,
     row: RunRow,
+    signal: AbortSignal,
   ): Promise<void> {
     if (!row.executor_id || !row.channel_id)
       throw new Error("Automation executor is not prepared");
@@ -1621,6 +1753,7 @@ export class MissionsDO extends DurableObjectBase {
       row.executor_id,
       "describeAutomationRun",
       [{ channelId: row.channel_id, runId: row.run_id }],
+      { signal },
     );
     if (status.state === "queued" || status.state === "running") {
       this.sql.exec(
@@ -1635,9 +1768,9 @@ export class MissionsDO extends DurableObjectBase {
       // dispatching and submit the same receiver-idempotent run identity.
       this.setPhase(row.run_id, "dispatching");
       const current = this.requireRunRow(row.run_id);
-      const admission = await this.admit(mission, current);
+      const admission = await this.admit(mission, current, signal);
       if (admission) this.recordAdmission(row.run_id, admission);
-      await this.dispatchAgent(mission, current, admission);
+      await this.dispatchAgent(mission, current, admission, signal);
       return;
     }
     if (status.effectFailures?.length) {
@@ -1669,6 +1802,7 @@ export class MissionsDO extends DurableObjectBase {
     runId: string,
     contextId?: string,
     channelId?: string,
+    signal?: AbortSignal,
   ): Promise<{ targetId: string }> {
     const objectKey =
       execution.kind === "agent" && execution.conversation.mode === "fresh"
@@ -1694,7 +1828,7 @@ export class MissionsDO extends DurableObjectBase {
           ...(channelId ? { agentChannelId: channelId } : {}),
         },
       ],
-      { idempotencyKey: `${runId}:target` },
+      { idempotencyKey: `${runId}:target`, ...(signal ? { signal } : {}) },
     );
     if (!value?.targetId || (contextId && value.contextId !== contextId))
       throw new Error(
@@ -1721,6 +1855,7 @@ export class MissionsDO extends DurableObjectBase {
     channelId: string,
     contextId: string,
     runId: string,
+    signal?: AbortSignal,
   ): Promise<void> {
     await this.rpc.call(
       "main",
@@ -1734,7 +1869,7 @@ export class MissionsDO extends DurableObjectBase {
           contextId,
         },
       ],
-      { idempotencyKey: `${runId}:channel` },
+      { idempotencyKey: `${runId}:channel`, ...(signal ? { signal } : {}) },
     );
   }
 
@@ -1814,6 +1949,7 @@ export class MissionsDO extends DurableObjectBase {
         row.run_id,
       );
       this.deleteStateValue(`cancel-run:${row.run_id}`);
+      this.runInterruptions.delete(row.run_id);
       if (completion) this.markCompleted(mission.missionId, completion, now);
       if (acknowledgeExecutor) this.enqueueExecutorTerminalAck(row, now);
     });
@@ -1891,7 +2027,6 @@ export class MissionsDO extends DurableObjectBase {
       .exec(
         `SELECT MIN(wake_at) AS wake FROM (
       SELECT next_run_at AS wake_at FROM missions WHERE state='active' AND next_run_at IS NOT NULL
-      UNION ALL SELECT progress_at+60000 AS wake_at FROM mission_runs WHERE phase!='terminal'
       UNION ALL SELECT next_attempt_at AS wake_at FROM mission_effects
     )`,
       )

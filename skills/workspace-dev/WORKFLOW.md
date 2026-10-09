@@ -204,8 +204,16 @@ publication or the live runtime. Keep its `workingHead`, structural preflight,
 and authority review. Preflight does not check the semantic build. Read the
 structured dependency diagnostics and fix the named source or manifests.
 
-Never call either preparation API again to recover an existing candidate. If a
-response was lost, check VCS status and the destination paths first. If a later
+Never call either preparation API again to repair an existing candidate. When
+you received its result, replay the retained `preparation.command` with ordinary
+`vcs.edit`. Preparation returns the full command/application/work-unit receipt.
+If the response itself is lost, recovery requires a caller-owned `commandId` and
+`expectedWorkingHead` retained before mutation; pass them before preparation and
+regenerate at that original identity and basis. VCS replays identical requests
+and refuses changed ones. Without that retained identity, a new helper call is
+a new command, and the occupied destination is rejected without overwrite. See
+[preparation recovery](PROJECTS.md#review-verify-and-publish).
+If a later
 build, open, or publication step fails, reuse the source path you stored and
 fix that step. Do not add another `panels/` prefix to it.
 

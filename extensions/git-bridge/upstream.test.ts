@@ -267,9 +267,18 @@ function createBridge(
         },
       }),
   );
+  const withEventExportPreviewLocked = vi.fn(
+    async (
+      repo: string,
+      _eventId: string,
+      options: unknown,
+      inspect: Parameters<typeof withProtectedExportPreviewLocked>[2],
+    ) => withProtectedExportPreviewLocked(repo, options, inspect),
+  );
   return {
     bridge: {
       exportLockedInner,
+      withEventExportPreviewLocked,
       withProtectedExportPreviewLocked,
       importLockedInner,
       repoGitDir,
@@ -277,6 +286,7 @@ function createBridge(
       pendingImportCandidate,
     },
     exportLockedInner,
+    withEventExportPreviewLocked,
     withProtectedExportPreviewLocked,
     importLockedInner,
     repoGitDir,
@@ -363,6 +373,66 @@ describe("UpstreamEngine", () => {
   afterEach(() => {
     vi.clearAllTimers();
     vi.useRealTimers();
+  });
+
+  it("creates a remote branch from the exact semantic event without changing managed tracking", async () => {
+    const repo = "projects/demo";
+    const created = createBridge();
+    const { engine, files } = makeEngine(
+      buildConfig([{ repo, url: "https://example.test/demo.git" }]),
+      created.bridge,
+    );
+    const before = new Map(files);
+    await expect(
+      engine.createBranch({
+        repoPath: repo,
+        branch: "fix/test",
+        from: "event:local",
+      }),
+    ).resolves.toEqual({
+      repoPath: repo,
+      branch: "fix/test",
+      eventId: "event:local",
+      headCommit: "head-sha",
+    });
+    expect(created.withEventExportPreviewLocked).toHaveBeenCalledWith(
+      repo,
+      "event:local",
+      expect.any(Object),
+      expect.any(Function),
+    );
+    expect(gitFns.push).toHaveBeenCalledWith(
+      expect.objectContaining({
+        dir: `/previews/${repo}`,
+        url: "https://example.test/demo.git",
+        ref: "HEAD",
+        remoteRef: "refs/heads/fix/test",
+        expectedRemoteHead: null,
+      }),
+    );
+    expect(created.exportLockedInner).not.toHaveBeenCalled();
+    expect(gitFns.createBranch).not.toHaveBeenCalled();
+    expect(files).toEqual(before);
+  });
+
+  it("propagates remote branch refusal without changing managed state", async () => {
+    const repo = "projects/demo";
+    const created = createBridge();
+    const { engine, files } = makeEngine(
+      buildConfig([{ repo, url: "https://example.test/demo.git" }]),
+      created.bridge,
+    );
+    const before = new Map(files);
+    const failure = new Error("Remote branch already exists");
+    gitFns.push.mockRejectedValueOnce(failure);
+    await expect(
+      engine.createBranch({
+        repoPath: repo,
+        branch: "fix/test",
+        from: "event:local",
+      }),
+    ).rejects.toBe(failure);
+    expect(files).toEqual(before);
   });
 
   it("initializes the canonical provider state without reading workspace source", async () => {
@@ -699,6 +769,9 @@ describe("UpstreamEngine", () => {
 
     expect(result.outcome).toBe("remote-missing-created");
     expect(gitFns.push).toHaveBeenCalledTimes(1);
+    expect(gitFns.push).toHaveBeenCalledWith(
+      expect.objectContaining({ expectedRemoteHead: null }),
+    );
   });
 
   it("omits overwrite evidence when a forced push creates a missing remote branch", async () => {
@@ -755,6 +828,9 @@ describe("UpstreamEngine", () => {
         ],
       },
     });
+    expect(gitFns.push).toHaveBeenCalledWith(
+      expect.objectContaining({ expectedRemoteHead: "remote-head" }),
+    );
   });
 
   it("describes unrelated history without inventing a comparable commit count", async () => {
@@ -818,6 +894,9 @@ describe("UpstreamEngine", () => {
 
     expect(gitFns.fetch).toHaveBeenCalled();
     expect(gitFns.push).toHaveBeenCalledTimes(1);
+    expect(gitFns.push).toHaveBeenCalledWith(
+      expect.objectContaining({ expectedRemoteHead: null }),
+    );
     expect(readStored(files).repos[repo]).toMatchObject({
       status: "behind",
       lastPushedSha: "local-head",
@@ -1932,7 +2011,9 @@ describe("UpstreamEngine", () => {
     });
     const { bridge } = createBridge();
     const { engine } = makeEngine(
-      buildConfig([{ repo: "projects/demo", url: "https://forge.example/acme/demo.git" }]),
+      buildConfig([
+        { repo: "projects/demo", url: "https://forge.example/acme/demo.git" },
+      ]),
       bridge,
     );
     const pushUpstream = vi.spyOn(engine, "pushUpstream");

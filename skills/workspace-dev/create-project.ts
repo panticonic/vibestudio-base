@@ -13,8 +13,9 @@ import { prepareUnitIcon } from "./unit-icons.js";
 import {
   prepareChanges,
   type ProjectPreparation,
+  type PreparationCommand,
 } from "./project-preparation.js";
-export type { ProjectPreparation } from "./project-preparation.js";
+export type { ProjectPreparation, PreparationCommand } from "./project-preparation.js";
 import {
   PROJECT_TYPES,
   assertProjectIdentity,
@@ -194,10 +195,6 @@ async function resolveProject(
 
   const canonicalProjectType = projectType as ProjectType;
   const projectPath = `${typeDir}/${name}`;
-
-  if (await fs.exists(projectPath)) {
-    throw new Error(`Project already exists: ${projectPath}`);
-  }
 
   const files: Record<string, string> = {};
   const suppliedAuthority =
@@ -707,16 +704,21 @@ export interface PreparedProject {
 /** Create context-local repositories. Review, verify, commit and publish separately. */
 export async function prepareProjects(
   projects: PrepareProjectParams[],
+  command?: PreparationCommand,
 ): Promise<PreparedProject[]> {
   if (!projects.length)
     throw new Error("prepareProjects requires at least one project");
+  const beforeCreate = command
+    ? { workingHead: command.expectedWorkingHead }
+    : await vcs.status({ contextId });
   const resolved = await Promise.all(projects.map(resolveProject));
   const preparation = await prepareChanges(
     resolved.map((project) =>
       repositoryChange(project.projectPath, project.files),
     ),
     `Prepare ${resolved.map((project) => project.projectPath).join(", ")}`,
-    await vcs.status({ contextId }),
+    beforeCreate,
+    command?.commandId,
   );
   return resolved.map((project, i) =>
     preparedProject(
@@ -794,6 +796,7 @@ export interface PrepareApplicationParams {
   /** Authoring input resolved by prepareUnitIcon for both units. */
   icon?: string;
   authority: ApplicationAuthorityPolicy;
+  command?: PreparationCommand;
 }
 
 export interface PrepareApplicationResult {
@@ -819,6 +822,7 @@ export async function prepareApplication({
   title = name,
   icon,
   authority,
+  command,
 }: PrepareApplicationParams): Promise<PrepareApplicationResult> {
   const workerName = `${name}-store`;
   const protocol = `${name}.v1`;
@@ -836,6 +840,9 @@ export async function prepareApplication({
   literalMethodPolicy(authority.methods.listRecords);
   literalMethodPolicy(authority.methods.upsertRecord);
   authority = JSON.parse(JSON.stringify(authority));
+  const beforeCreate = command
+    ? { workingHead: command.expectedWorkingHead }
+    : await vcs.status({ contextId });
   const [panel, worker] = await Promise.all([
     resolveProject({
       projectType: "panel",
@@ -914,7 +921,6 @@ export default function App() {
     name,
     files: panel.files,
   });
-  const beforeCreate = await vcs.status({ contextId });
   const repository = await vcs.resolveRepository({
     state: beforeCreate.workingHead,
     repoPath: "meta",
@@ -991,6 +997,7 @@ export default function App() {
     ],
     `Prepare connected application ${name}`,
     beforeCreate,
+    command?.commandId,
   );
   return {
     panel: preparedProject(panel, authority.rationale, preparation),

@@ -229,10 +229,21 @@ skill](../vibestudio-vcs/SKILL.md). Changed code or policy needs a new review
 and verification; an earlier preparation receipt does not cover it.
 
 If a build, open, or publication fails, repair the existing candidate. Never
-call either preparation API again to recover it. The connected panel path is
+call either preparation API again to repair an existing candidate. The connected panel path is
 `scope.prepared.panel.created`; independent unit paths are
-`scope.prepared[0].created`. If an edit response is lost, check VCS and the
-destination paths instead of recreating blindly. Recover publication through
+`scope.prepared[0].created`. Preparation retains the exact `command` and the
+complete VCS receipt, including `commandId`, `workUnitId`, and `applicationId`.
+If you received the preparation result, replay its exact edit with
+`vcs.edit(preparation.command)`. Recovery when the response itself is lost
+requires retaining a caller-owned identity and basis before mutation: pass `{ commandId,
+expectedWorkingHead }` as the second argument to `prepareProjects`, or as
+`command` in `prepareApplication`. Regeneration at that original basis and
+identity reaches VCS's ordinary command comparison: an identical request replays
+its original receipt; changed bytes or intent fail with `CommandIdReuse`.
+Without that retained identity, a fresh helper call is a new command; the
+atomic `repository-create` rejects an occupied destination without overwriting
+it. Destination admission therefore permits identical command replay while
+preserving existing projects. Recover publication through
 the typed VCS status, receipts, and retry rules; there is no scaffold-specific
 helper.
 

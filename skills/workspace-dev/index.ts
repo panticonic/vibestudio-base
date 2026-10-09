@@ -13,6 +13,7 @@ export type {
   ForkProjectOptions,
   ForkProjectResult,
   ProjectPreparation,
+  PreparationCommand,
   ApplicationAuthorityPolicy,
   RecordStoreMethodPolicies,
 } from "./create-project.js";

@@ -1,10 +1,13 @@
 import { contextId, vcs } from "@workspace/runtime";
-import type { VcsEditChange } from "@vibestudio/service-schemas/vcs";
+import type { VcsEditChange, VcsEditInput, VcsWorkingMutationResult } from "@vibestudio/service-schemas/vcs";
 
-export interface ProjectPreparation {
+/** Caller-owned identity and observed basis of one semantic edit. */
+export type PreparationCommand = Pick<VcsEditInput, "commandId" | "expectedWorkingHead">;
+
+export interface ProjectPreparation extends VcsWorkingMutationResult {
   protocol: "project-preparation.v1";
-  contextId: string;
-  workingHead: Awaited<ReturnType<typeof vcs.edit>>["workingHead"];
+  /** Retain this exact request for ordinary VCS transport recovery. */
+  command: VcsEditInput;
   publication: "unchanged";
   liveRuntime: "unchanged";
 }
@@ -12,19 +15,22 @@ export interface ProjectPreparation {
 export async function prepareChanges(
   changes: VcsEditChange[],
   summary: string,
-  status: Awaited<ReturnType<typeof vcs.status>>,
+  status: Pick<Awaited<ReturnType<typeof vcs.status>>, "workingHead">,
+  commandId = `workspace-dev:prepare:${contextId}:${crypto.randomUUID()}`,
 ): Promise<ProjectPreparation> {
-  const result = await vcs.edit({
+  const command: VcsEditInput = {
     contextId,
     expectedWorkingHead: status.workingHead,
-    commandId: `workspace-dev:prepare:${contextId}:${crypto.randomUUID()}`,
+    commandId,
     intentSummary: summary,
     changes,
-  });
+  };
+  const result = await vcs.edit(command);
   return {
+    ...result,
     protocol: "project-preparation.v1",
     contextId,
-    workingHead: result.workingHead,
+    command,
     publication: "unchanged",
     liveRuntime: "unchanged",
   };

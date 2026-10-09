@@ -142,6 +142,52 @@ export class UpstreamEngine {
       this.enqueue(entry.repoPath, 2_000, entry.credentialIdOverride);
   }
 
+  async createBranch(input: {
+    repoPath: string;
+    branch: string;
+    from: string;
+  }): Promise<{
+    repoPath: string;
+    branch: string;
+    eventId: string;
+    headCommit: string;
+  }> {
+    const repo = normalizeWorkspaceRepoPath(input.repoPath);
+    const branch = validateWorkspaceGitRemoteBranch(input.branch);
+    if (!input.from.trim())
+      throw new Error("A semantic source event is required");
+    return withRepoLock(repo, async () => {
+      const scope = await this.resolveRepoScope(repo, { persistState: false });
+      const git = this.gitClient(scope.credential);
+      return this.bridge.withEventExportPreviewLocked(
+        repo,
+        input.from,
+        {
+          authorName: scope.upstream.authorName,
+          authorEmail: scope.upstream.authorEmail,
+        },
+        async ({ dir, exported }) => {
+          if (!exported.headCommit)
+            throw new Error(`No Git commit was exported for ${input.from}`);
+          await git.push({
+            dir,
+            url: scope.remote.url,
+            remote: scope.transportRemote,
+            ref: "HEAD",
+            remoteRef: `refs/heads/${branch}`,
+            expectedRemoteHead: null,
+          });
+          return {
+            repoPath: repo,
+            branch,
+            eventId: input.from,
+            headCommit: exported.headCommit,
+          };
+        },
+      );
+    });
+  }
+
   async pushUpstream(
     repoPath: string,
     opts: GitPushUpstreamOptions = {},
@@ -283,6 +329,7 @@ export class UpstreamEngine {
           ref: localRef,
           remoteRef: `refs/heads/${upstream.branch}`,
           force: opts.force ?? false,
+          expectedRemoteHead: remoteHead,
         });
       } catch (error) {
         if (!opts.force && error instanceof GitPushRejectedError) {
@@ -850,7 +897,9 @@ export class UpstreamEngine {
       owner = operation.destinationOwner;
     }
     if (!owner) {
-      throw new Error(`Publishing to ${provider.displayName} requires an owner`);
+      throw new Error(
+        `Publishing to ${provider.displayName} requires an owner`,
+      );
     }
     const repoName = input.name ?? repo.split("/").at(-1) ?? repo;
     const remoteName = input.remote

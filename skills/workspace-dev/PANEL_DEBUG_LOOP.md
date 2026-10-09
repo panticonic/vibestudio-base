@@ -51,8 +51,12 @@ return scope.prepared;
 
 Write these authority values for the task before calling the helper; neither
 helper fills in missing requests. Never call either preparation API again to
-recover an existing candidate. If you are unsure whether an edit landed,
-check VCS status and the destination paths. Later build, open, screenshot, or
+repair an existing candidate. If its response arrived, replay the exact retained
+`preparation.command` through `vcs.edit`. If the response itself was lost, use
+the caller-owned command identity and original basis retained before mutation;
+regeneration at that identity and basis is subject to VCS's exact request
+comparison. Without that identity, a new helper call is a new command and the
+occupied destination is rejected without overwrite. Later build, open, screenshot, or
 publication failures do not undo preparation. Recover publication with the
 usual VCS receipts and retry rules; there is no scaffold-specific recovery
 helper.

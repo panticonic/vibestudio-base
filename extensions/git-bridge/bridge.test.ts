@@ -339,7 +339,9 @@ describe("GitBridge semantic snapshot boundary", () => {
     });
     expect(host.vcs.neighbors).not.toHaveBeenCalled();
     expect(host.vcs.inspect).not.toHaveBeenCalledWith(
-      expect.objectContaining({ node: { kind: "event", eventId: "event:imported" } })
+      expect.objectContaining({
+        node: { kind: "event", eventId: "event:imported" },
+      })
     );
     expect(host.blobstore.putBase64).toHaveBeenCalledTimes(2);
     expect(host.blobstore.putBase64).toHaveBeenCalledWith(
@@ -386,7 +388,9 @@ describe("GitBridge semantic snapshot boundary", () => {
     await bridge.git.init(dir, "main");
     writeFileSync(path.join(dir, "one.txt"), "shared bytes\n");
     writeFileSync(path.join(dir, "two.txt"), "shared bytes\n");
-    writeFileSync(path.join(dir, "run.sh"), "#!/bin/sh\nexit 0\n", { mode: 0o755 });
+    writeFileSync(path.join(dir, "run.sh"), "#!/bin/sh\nexit 0\n", {
+      mode: 0o755,
+    });
     await bridge.git.add(dir, "one.txt");
     await bridge.git.add(dir, "two.txt");
     await bridge.git.add(dir, "run.sh");
@@ -397,7 +401,9 @@ describe("GitBridge semantic snapshot boundary", () => {
     });
 
     await expect(
-      bridge.importLockedInner(repoPath, { sourceUri: "https://example.test/real-tree.git" })
+      bridge.importLockedInner(repoPath, {
+        sourceUri: "https://example.test/real-tree.git",
+      })
     ).resolves.toEqual({
       contextId: expect.stringMatching(/^git-bridge-/),
       eventId: "event:real-import",
@@ -477,7 +483,9 @@ describe("GitBridge semantic snapshot boundary", () => {
       .mockResolvedValue([["index.ts", 1, 1, 1]]);
 
     await expect(
-      bridge.importLockedInner(repoPath, { sourceUri: "https://example.test/demo.git" })
+      bridge.importLockedInner(repoPath, {
+        sourceUri: "https://example.test/demo.git",
+      })
     ).resolves.toEqual({
       contextId: expect.stringMatching(/^git-bridge-/),
       eventId: main.eventId,
@@ -494,7 +502,10 @@ describe("GitBridge semantic snapshot boundary", () => {
     expect(getCurrentCommit).toHaveBeenCalledTimes(2);
     expect(statusMatrix).not.toHaveBeenCalled();
     expect(host.vcs.resolveRepository).toHaveBeenCalledOnce();
-    expect(host.vcs.resolveRepository).toHaveBeenCalledWith({ state: main, repoPath });
+    expect(host.vcs.resolveRepository).toHaveBeenCalledWith({
+      state: main,
+      repoPath,
+    });
     expect(host.vcs.neighbors).not.toHaveBeenCalled();
     expect(host.vcs.inspect).not.toHaveBeenCalledWith(
       expect.objectContaining({
@@ -574,7 +585,9 @@ describe("GitBridge semantic snapshot boundary", () => {
     vi.spyOn(bridge.git, "statusMatrix").mockResolvedValue([["index.ts", 1, 1, 1]]);
 
     await expect(
-      bridge.importLockedInner(repoPath, { sourceUri: "https://example.test/owner/demo.git" })
+      bridge.importLockedInner(repoPath, {
+        sourceUri: "https://example.test/owner/demo.git",
+      })
     ).resolves.toEqual({
       contextId: expect.stringMatching(/^git-bridge-/),
       eventId: "event:imported",
@@ -619,7 +632,9 @@ describe("GitBridge semantic snapshot boundary", () => {
     vi.spyOn(bridge.git, "statusMatrix").mockResolvedValue([["index.ts", 1, 1, 1]]);
 
     await expect(
-      bridge.importLockedInner(repoPath, { sourceUri: "https://example.test/owner/demo.git" })
+      bridge.importLockedInner(repoPath, {
+        sourceUri: "https://example.test/owner/demo.git",
+      })
     ).rejects.toThrow(/content store integrity mismatch for index\.ts/);
     expect(host.blobstore.putBase64).toHaveBeenCalledWith(
       Buffer.from("captured\n").toString("base64")
@@ -735,7 +750,9 @@ describe("GitBridge semantic snapshot boundary", () => {
       .mockResolvedValue([["index.ts", 1, 2, 2]]);
 
     await expect(
-      bridge.importLockedInner(repoPath, { sourceUri: "https://example.test/demo.git" })
+      bridge.importLockedInner(repoPath, {
+        sourceUri: "https://example.test/demo.git",
+      })
     ).resolves.toMatchObject({ changed: true });
     expect(host.vcs.importSnapshot).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -853,8 +870,14 @@ describe("GitBridge semantic snapshot boundary", () => {
       clobberedLocalEdits: [],
     });
     expect(host.vcs.resolveRepository).toHaveBeenCalledTimes(2);
-    expect(host.vcs.resolveRepository).toHaveBeenNthCalledWith(1, { state: main, repoPath });
-    expect(host.vcs.resolveRepository).toHaveBeenNthCalledWith(2, { state: main, repoPath });
+    expect(host.vcs.resolveRepository).toHaveBeenNthCalledWith(1, {
+      state: main,
+      repoPath,
+    });
+    expect(host.vcs.resolveRepository).toHaveBeenNthCalledWith(2, {
+      state: main,
+      repoPath,
+    });
     expect(host.vcs.neighbors).not.toHaveBeenCalled();
     expect(bridge.git.commit).toHaveBeenCalledTimes(1);
 
@@ -900,6 +923,111 @@ describe("GitBridge semantic snapshot boundary", () => {
     });
     expect(readFileSync(path.join(dir, "index.ts"), "utf8")).toBe("checkout-only edit\n");
     expect(() => readFileSync(path.join(previewDir, ".git", "HEAD"), "utf8")).toThrow();
+    vi.mocked(host.vcs.inspect).mockImplementation(async ({ node }) =>
+      node.kind === "repository"
+        ? repositoryInspection(node.state as typeof main, repoPath)
+        : eventInspection(node.kind === "event" ? node.eventId : "unexpected")
+    );
+    vi.mocked(host.vcs.status).mockClear();
+    const source = { kind: "event" as const, eventId: "event:local" };
+    const failure = new Error("Remote publication refused");
+    await expect(
+      bridge.withEventExportPreviewLocked(repoPath, source.eventId, {}, async (preview) => {
+        previewDir = preview.dir;
+        expect(preview.exported.headCommit).toBe("git:main");
+        expect(bridge.git.commit).toHaveBeenLastCalledWith(
+          expect.objectContaining({
+            message: expect.stringContaining(`Vibestudio-Event: ${source.eventId}`),
+          })
+        );
+        throw failure;
+      })
+    ).rejects.toBe(failure);
+    expect(host.vcs.status).not.toHaveBeenCalled();
+    expect(host.vcs.resolveRepository).toHaveBeenLastCalledWith({
+      state: source,
+      repoPath,
+    });
+    expect(readFileSync(path.join(dir, "index.ts"), "utf8")).toBe("checkout-only edit\n");
+    expect(() => readFileSync(path.join(previewDir, "index.ts"), "utf8")).toThrow();
+  });
+
+  it("projects a local event into a real Git tree, preserving unchanged files and retiring its private checkout", async () => {
+    const repoPath = "projects/demo";
+    const { host } = baseHost(root);
+    const textAt = (eventId: string, file: string) =>
+      file === "stable.ts" ? "unchanged\n" : `${eventId}\n`;
+    host.vcs.status = vi.fn(async ({ contextId }) => status(contextId, "event:main"));
+    host.vcs.resolveRepository = vi.fn(async ({ state }) => ({
+      state,
+      repositoryId: "repository:demo",
+      repoPath,
+    }));
+    host.vcs.inspect = vi.fn(async ({ node }) =>
+      node.kind === "repository"
+        ? repositoryInspection(node.state as { kind: "event"; eventId: string }, repoPath)
+        : eventInspection(node.kind === "event" ? node.eventId : "unexpected")
+    );
+    host.vcs.listFiles = vi.fn(async ({ state, repositoryId }) => ({
+      state,
+      repositoryId,
+      files: ["stable.ts", "changed.ts"].map((file) => {
+        const text = textAt((state as { eventId: string }).eventId, file);
+        return {
+          fileId: file,
+          path: file,
+          contentHash: sha256Hex(Buffer.from(text)),
+          ...INTERNAL_LIST_LINEAGE,
+          mode: 0o644,
+          contentKind: "text" as const,
+          byteLength: text.length,
+          coordinateExtent: text.length,
+        };
+      }),
+      nextCursor: null,
+    }));
+    host.vcs.readFile = vi.fn(async ({ state, file, repositoryId }) => {
+      const fileId = (file as { fileId: string }).fileId;
+      const text = textAt((state as { eventId: string }).eventId, fileId);
+      return {
+        repositoryId,
+        fileId,
+        repoPath,
+        path: fileId,
+        contentHash: sha256Hex(Buffer.from(text)),
+        ...INTERNAL_LIST_LINEAGE,
+        mode: 0o644,
+        content: { kind: "text" as const, text },
+      };
+    });
+    const bridge = new GitBridge(host);
+    const baseline = await bridge.exportProtectedRepository(repoPath);
+    vi.mocked(host.vcs.status).mockClear();
+    let previewDir = "";
+    await bridge.withEventExportPreviewLocked(
+      repoPath,
+      "event:local",
+      {},
+      async ({ dir, exported }) => {
+        previewDir = dir;
+        expect(exported.headCommit).not.toBe(baseline.headCommit);
+        const tree = await bridge.git.readCommitTree(dir, exported.headCommit!);
+        expect(
+          tree.map((entry) => [
+            entry.path,
+            entry.type === "blob" ? Buffer.from(entry.bytes).toString("utf8") : "unexpected",
+          ])
+        ).toEqual([
+          ["changed.ts", "event:local\n"],
+          ["stable.ts", "unchanged\n"],
+        ]);
+      }
+    );
+    expect(host.vcs.status).not.toHaveBeenCalled();
+    expect(await bridge.git.getCurrentCommit(await bridge.repoGitDir(repoPath))).toBe(
+      baseline.headCommit
+    );
+    expect(() => readFileSync(path.join(previewDir, ".git", "HEAD"))).toThrow();
   });
 
   it("rejects a template source event that is not the current protected main", async () => {
@@ -946,8 +1074,14 @@ describe("GitBridge semantic snapshot boundary", () => {
         "publish-news-v1"
       )
     ).resolves.toEqual([
-      expect.objectContaining({ repoPath: "panels/news", eventId: "event:main" }),
-      expect.objectContaining({ repoPath: "workers/news-agent", eventId: "event:main" }),
+      expect.objectContaining({
+        repoPath: "panels/news",
+        eventId: "event:main",
+      }),
+      expect.objectContaining({
+        repoPath: "workers/news-agent",
+        eventId: "event:main",
+      }),
     ]);
     expect(host.ensureContext).toHaveBeenCalledExactlyOnceWith(
       expect.stringMatching(/^git-bridge-template-publication-/u)
@@ -961,8 +1095,14 @@ describe("GitBridge semantic snapshot boundary", () => {
     const { host } = baseHost(root);
     host.vcs.status = vi.fn(async ({ contextId }) => ({
       ...status(contextId, "event:main"),
-      committed: { kind: "event" as const, eventId: "event:external-candidate" },
-      workingHead: { kind: "event" as const, eventId: "event:external-candidate" },
+      committed: {
+        kind: "event" as const,
+        eventId: "event:external-candidate",
+      },
+      workingHead: {
+        kind: "event" as const,
+        eventId: "event:external-candidate",
+      },
       mainRelation: "ahead" as const,
     }));
     const bridge = new GitBridge(host);

@@ -71,7 +71,9 @@ type GitBridgeApi = {
   suggestTemplateContribution(
     input: TemplatePushInput,
   ): ReturnType<TemplatePushEngine["push"]>;
-  reviewTemplatePublication(input: Omit<GitTemplatePublishInput, "expectedRemoteCommit">): ReturnType<TemplatePublishEngine["review"]>;
+  reviewTemplatePublication(
+    input: Omit<GitTemplatePublishInput, "expectedRemoteCommit">,
+  ): ReturnType<TemplatePublishEngine["review"]>;
   publishTemplate(
     input: GitTemplatePublishInput,
   ): ReturnType<TemplatePublishEngine["publish"]>;
@@ -140,6 +142,9 @@ export async function activate(ctx: ExtensionContextLike) {
     ) {
       return upstream.upstreamStatus(repoPaths, options);
     },
+    createBranch(input: Parameters<UpstreamEngine["createBranch"]>[0]) {
+      return upstream.createBranch(input);
+    },
     pushUpstream(repoPath: string, options?: GitPushUpstreamOptions) {
       return upstream.pushUpstream(repoPath, options);
     },
@@ -191,7 +196,9 @@ export async function activate(ctx: ExtensionContextLike) {
     suggestTemplateContribution(input: TemplatePushInput) {
       return templatePush.push(input);
     },
-    reviewTemplatePublication(input: Omit<GitTemplatePublishInput, "expectedRemoteCommit">) {
+    reviewTemplatePublication(
+      input: Omit<GitTemplatePublishInput, "expectedRemoteCommit">,
+    ) {
       return templatePublish.review(input);
     },
     publishTemplate(input: GitTemplatePublishInput) {

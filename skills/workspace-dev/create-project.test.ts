@@ -195,6 +195,7 @@ function resetRuntimeMocks(): void {
   });
   mocks.edit.mockImplementation(
     async (input: {
+      commandId: string;
       changes: Array<{
         kind: string;
         edits?: Array<{ text: string }>;
@@ -224,6 +225,15 @@ function resetRuntimeMocks(): void {
         }
       }
       return {
+        commandId: input.commandId,
+        contextId: "ctx:test",
+        workUnitId: "work-unit:created",
+        applicationId: "application:created",
+        changeCount: input.changes.length,
+        changeIds: [],
+        incorporatedChangeCount: 0,
+        incorporatedChangeIds: [],
+        decisionIds: [],
         workingHead: {
           kind: "application",
           applicationId: "application:created",
@@ -311,6 +321,43 @@ describe("prepareProjects", () => {
     ).rejects.toThrow("Working head changed");
     expect(mocks.commit).not.toHaveBeenCalled();
     expect(mocks.push).not.toHaveBeenCalled();
+  });
+  it("regenerates the same application command at its original basis after its destinations exist", async () => {
+    resetRuntimeMocks();
+    const { prepareApplication } = await import("./index.js");
+    const command = {
+      commandId: "caller-owned-preparation",
+      expectedWorkingHead: { kind: "application" as const, applicationId: "application:working" },
+    };
+    const params = { name: "replay", authority: applicationPolicy("replay"), command };
+    const first = await prepareApplication(params);
+    const originalMetadata = await mocks.readFile.mock.results[0]!.value;
+    mocks.readFile.mockResolvedValue(originalMetadata);
+    mocks.status.mockRejectedValue(new Error("A replay must use the original observed basis"));
+    const replay = await prepareApplication(params);
+    expect(mocks.edit.mock.calls[1]![0]).toEqual(first.preparation.command);
+    expect(replay.preparation).toEqual(first.preparation);
+    expect(first.preparation).toMatchObject({
+      commandId: command.commandId, workUnitId: "work-unit:created", applicationId: "application:created",
+      command: { ...command, contextId: "ctx:test" },
+    });
+    expect(mocks.readFile).toHaveBeenLastCalledWith(expect.objectContaining({ state: command.expectedWorkingHead }));
+  });
+
+  it("retains a projects command and propagates identity reuse without minting a replacement", async () => {
+    resetRuntimeMocks();
+    const { prepareProjects } = await import("./index.js");
+    const command = {
+      commandId: "projects-command",
+      expectedWorkingHead: { kind: "event" as const, eventId: "event:basis" },
+    };
+    const first = (await prepareProjects([{ projectType: "project", name: "replay" }], command))[0]!;
+    await prepareProjects([{ projectType: "project", name: "replay" }], command);
+    expect(mocks.edit.mock.calls[1]![0]).toEqual(first.preparation.command);
+    const originalFailure = new Error("CommandIdReuse: generated source changed");
+    mocks.edit.mockRejectedValueOnce(originalFailure);
+    await expect(prepareProjects([{ projectType: "project", name: "changed" }], command)).rejects.toBe(originalFailure);
+    expect(mocks.edit).toHaveBeenLastCalledWith(expect.objectContaining({ commandId: command.commandId }));
   });
   it("prepares a connected application in one validated edit without publishing", async () => {
     resetRuntimeMocks();

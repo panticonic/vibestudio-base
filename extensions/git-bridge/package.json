@@ -22,6 +22,7 @@
             "detachUpstream",
             "setAutoPush",
             "upstreamStatus",
+            "createBranch",
             "pushUpstream",
             "pullUpstream",
             "publishRepo",
