@@ -34,9 +34,16 @@ type CanonicalVcs = TypedServiceClient<typeof vcsMethods>;
 type CanonicalBlobstore = TypedServiceClient<typeof blobstoreMethods>;
 
 const PAGE_LIMIT = 500;
+export interface RepositorySelection {
+  contextId: string;
+  checkoutId: string;
+}
+
 export interface BridgeHost {
   checkoutRoot(): Promise<string>;
   ensureContext(contextId: string): Promise<void>;
+  retireContext(contextId: string): Promise<void>;
+  repositorySelection(repoPath: string): Promise<RepositorySelection | null>;
   blobstore: Pick<CanonicalBlobstore, "putBase64">;
   vcs: Pick<
     CanonicalVcs,
@@ -90,13 +97,16 @@ export class PendingImportCandidateError extends Error {
   constructor(readonly candidate: PendingImportCandidate) {
     super(
       `External snapshot candidate ${candidate.eventId} in context ${candidate.contextId} ` +
-        `must be compared and incrementally integrated before exporting protected main`
+        `must be compared and incrementally integrated before exporting protected main`,
     );
     this.name = "PendingImportCandidateError";
   }
 }
 
-type CheckoutMap = Record<string, { contentHash: string; mode: number; regular: boolean }>;
+type CheckoutMap = Record<
+  string,
+  { contentHash: string; mode: number; regular: boolean }
+>;
 
 interface ImportedFile {
   path: string;
@@ -118,13 +128,16 @@ interface RepositoryAtState {
 
 type ListedRepositoryFile = VcsListFilesResult["files"][number];
 
-function sameCheckoutTree(tracked: CheckoutMap, files: ListedRepositoryFile[]): boolean {
+function sameCheckoutTree(
+  tracked: CheckoutMap,
+  files: ListedRepositoryFile[],
+): boolean {
   if (Object.keys(tracked).length !== files.length) return false;
   return files.every(
     (file) =>
       tracked[file.path]?.contentHash === file.contentHash &&
       tracked[file.path]?.mode === file.mode &&
-      tracked[file.path]?.regular === true
+      tracked[file.path]?.regular === true,
   );
 }
 
@@ -132,7 +145,7 @@ function commandId(kind: string): string {
   return `git-bridge:${kind}:${randomUUID()}`;
 }
 
-function contextForRepository(repoPath: string): string {
+export function contextForRepository(repoPath: string): string {
   return `git-bridge-${sha256HexSyncText(repoPath).slice(0, 24)}`;
 }
 
@@ -154,7 +167,8 @@ function sameState(left: VcsStateNodeRef, right: VcsStateNodeRef): boolean {
     left.kind === right.kind &&
     (left.kind === "event"
       ? right.kind === "event" && left.eventId === right.eventId
-      : right.kind === "application" && left.applicationId === right.applicationId)
+      : right.kind === "application" &&
+        left.applicationId === right.applicationId)
   );
 }
 
@@ -165,7 +179,9 @@ function sameState(left: VcsStateNodeRef, right: VcsStateNodeRef): boolean {
 export function provenanceGitUri(remote: string): string {
   const value = remote.trim();
   const windowsDrivePath = /^[A-Za-z]:/u.test(value);
-  const scp = windowsDrivePath ? null : /^(?:[^@/:]+@)?([^/:]+):(.+)$/u.exec(value);
+  const scp = windowsDrivePath
+    ? null
+    : /^(?:[^@/:]+@)?([^/:]+):(.+)$/u.exec(value);
   if (scp && !value.includes("://")) {
     return `ssh://${scp[1]}/${scp[2]!.replace(/^\/+/, "")}`;
   }
@@ -196,7 +212,64 @@ export class GitBridge {
   }
 
   async repoGitDir(repoPath: string): Promise<string> {
-    return path.join(await this.host.checkoutRoot(), normalizeWorkspaceRepoPath(repoPath));
+    const repo = normalizeWorkspaceRepoPath(repoPath);
+    const selected = await this.host.repositorySelection(repo);
+    return selected
+      ? (await this.importLocation(selected.checkoutId)).gitDir
+      : path.join(await this.host.checkoutRoot(), repo);
+  }
+
+  private async repositoryContext(repo: string): Promise<string> {
+    return (
+      (await this.host.repositorySelection(repo))?.contextId ??
+      contextForRepository(repo)
+    );
+  }
+
+  private importContextId(checkoutId: string): string {
+    if (!/^[a-f0-9-]{36}$/.test(checkoutId))
+      throw new Error("Invalid import checkout identity");
+    return `git-bridge-import-${checkoutId}`;
+  }
+
+  async importLocation(
+    checkoutId: string,
+  ): Promise<{ contextId: string; gitDir: string }> {
+    return {
+      contextId: this.importContextId(checkoutId),
+      gitDir: path.join(await this.host.checkoutRoot(), ".imports", checkoutId),
+    };
+  }
+
+  async discardImport(checkoutId: string): Promise<void> {
+    const contextId = this.importContextId(checkoutId);
+    const failures: unknown[] = [];
+    let gitDir: string | undefined;
+    try {
+      gitDir = (await this.importLocation(checkoutId)).gitDir;
+    } catch (error) {
+      failures.push(error);
+    }
+    try {
+      await this.host.retireContext(contextId);
+    } catch (error) {
+      failures.push(error);
+    }
+    if (gitDir) {
+      try {
+        await fsp.rm(gitDir, { recursive: true, force: true });
+      } catch (error) {
+        failures.push(error);
+      }
+    }
+    if (failures.length === 1) throw failures[0];
+    if (failures.length > 1) {
+      throw new AggregateError(
+        failures,
+        "Git import context and checkout could not both be retired",
+        { cause: failures[0] },
+      );
+    }
   }
 
   async checkoutExists(repoPath: string): Promise<boolean> {
@@ -214,7 +287,7 @@ export class GitBridge {
       authorName?: string;
       authorEmail?: string;
       expectedMainEventId?: string;
-    } = {}
+    } = {},
   ): Promise<ExportResult> {
     return withRepoLock(repoPath, (repo) => this.exportLockedInner(repo, opts));
   }
@@ -227,17 +300,17 @@ export class GitBridge {
    */
   async readProtectedRepository(
     repoPath: string,
-    mainEventId: string
+    mainEventId: string,
   ): Promise<ProtectedRepositorySnapshot> {
     const repo = normalizeWorkspaceRepoPath(repoPath);
     const pending = await this.pendingImportCandidate(repo);
     if (pending) throw new PendingImportCandidateError(pending);
-    const contextId = contextForRepository(repo);
+    const contextId = await this.repositoryContext(repo);
     await this.host.ensureContext(contextId);
     const status = await this.host.vcs.status({ contextId });
     if (status.mainEventId !== mainEventId) {
       throw new Error(
-        `Protected main changed from ${mainEventId} to ${status.mainEventId} before template export`
+        `Protected main changed from ${mainEventId} to ${status.mainEventId} before template export`,
       );
     }
     return this.readRepositoryAtEvent(repo, mainEventId);
@@ -253,9 +326,10 @@ export class GitBridge {
   async readProtectedRepositories(
     repoPaths: readonly string[],
     mainEventId: string,
-    operationId: string
+    operationId: string,
   ): Promise<ProtectedRepositorySnapshot[]> {
-    if (!operationId.trim()) throw new Error("Template publication operationId is required");
+    if (!operationId.trim())
+      throw new Error("Template publication operationId is required");
     const repos = repoPaths.map(normalizeWorkspaceRepoPath);
     if (new Set(repos).size !== repos.length) {
       throw new Error("Template publication contains duplicate repositories");
@@ -265,7 +339,7 @@ export class GitBridge {
     const status = await this.host.vcs.status({ contextId });
     if (status.mainEventId !== mainEventId) {
       throw new Error(
-        `Protected main changed from ${mainEventId} to ${status.mainEventId} before template export`
+        `Protected main changed from ${mainEventId} to ${status.mainEventId} before template export`,
       );
     }
     const snapshots: ProtectedRepositorySnapshot[] = [];
@@ -280,12 +354,16 @@ export class GitBridge {
 
   private async readRepositoryAtEvent(
     repo: string,
-    mainEventId: string
+    mainEventId: string,
   ): Promise<ProtectedRepositorySnapshot> {
     const state = { kind: "event" as const, eventId: mainEventId };
     const repository = await this.findRepository(state, repo);
-    if (!repository) throw new Error(`Cannot export absent repository '${repo}'`);
-    const listed = await this.listRepositoryFiles(state, repository.repositoryId);
+    if (!repository)
+      throw new Error(`Cannot export absent repository '${repo}'`);
+    const listed = await this.listRepositoryFiles(
+      state,
+      repository.repositoryId,
+    );
     const files: ProtectedRepositorySnapshot["files"] = [];
     for (const file of listed) {
       const content = await this.host.vcs.readFile({
@@ -293,7 +371,8 @@ export class GitBridge {
         repositoryId: repository.repositoryId,
         file: { kind: "id", fileId: file.fileId },
       });
-      if (!content) throw new Error(`Semantic state lost ${file.path} during Git export`);
+      if (!content)
+        throw new Error(`Semantic state lost ${file.path} during Git export`);
       const bytes =
         content.content.kind === "text"
           ? Buffer.from(content.content.text, "utf8")
@@ -317,7 +396,7 @@ export class GitBridge {
           contentHash,
           size,
           mode: mode === 0o755 ? 0o100755 : 0o100644,
-        }))
+        })),
       ),
       files,
     };
@@ -329,7 +408,7 @@ export class GitBridge {
       authorName?: string;
       authorEmail?: string;
       expectedMainEventId?: string;
-    }
+    },
   ): Promise<ExportResult> {
     const repo = normalizeWorkspaceRepoPath(repoPath);
     const pending = await this.pendingImportCandidate(repo);
@@ -345,7 +424,7 @@ export class GitBridge {
       authorEmail?: string;
       expectedMainEventId?: string;
     },
-    inspect: (preview: { dir: string; exported: ExportResult }) => Promise<T>
+    inspect: (preview: { dir: string; exported: ExportResult }) => Promise<T>,
   ): Promise<T> {
     const repo = normalizeWorkspaceRepoPath(repoPath);
     const pending = await this.pendingImportCandidate(repo);
@@ -353,7 +432,7 @@ export class GitBridge {
     return this.withExportPreviewLocked(
       repo,
       (dir) => this.exportProtectedStateToDirectory(repo, dir, opts, false),
-      inspect
+      inspect,
     );
   }
 
@@ -362,20 +441,27 @@ export class GitBridge {
     repoPath: string,
     eventId: string,
     opts: { authorName?: string; authorEmail?: string },
-    inspect: (preview: { dir: string; exported: ExportResult }) => Promise<T>
+    inspect: (preview: { dir: string; exported: ExportResult }) => Promise<T>,
   ): Promise<T> {
     const repo = normalizeWorkspaceRepoPath(repoPath);
     return this.withExportPreviewLocked(
       repo,
-      (dir) => this.exportStateToDirectory(repo, dir, { kind: "event", eventId }, opts, false),
-      inspect
+      (dir) =>
+        this.exportStateToDirectory(
+          repo,
+          dir,
+          { kind: "event", eventId },
+          opts,
+          false,
+        ),
+      inspect,
     );
   }
 
   private async withExportPreviewLocked<T>(
     repo: string,
     exportSnapshot: (dir: string) => Promise<ExportResult>,
-    inspect: (preview: { dir: string; exported: ExportResult }) => Promise<T>
+    inspect: (preview: { dir: string; exported: ExportResult }) => Promise<T>,
   ): Promise<T> {
     const scratchRoot = path.join(await this.host.checkoutRoot(), ".previews");
     await fsp.mkdir(scratchRoot, { recursive: true });
@@ -387,9 +473,13 @@ export class GitBridge {
       await fsp.mkdir(previewDir, { recursive: true });
       const checkoutDir = await this.repoGitDir(repo);
       try {
-        await fsp.cp(path.join(checkoutDir, ".git"), path.join(previewDir, ".git"), {
-          recursive: true,
-        });
+        await fsp.cp(
+          path.join(checkoutDir, ".git"),
+          path.join(previewDir, ".git"),
+          {
+            recursive: true,
+          },
+        );
       } catch (error) {
         if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
       }
@@ -423,9 +513,9 @@ export class GitBridge {
       authorEmail?: string;
       expectedMainEventId?: string;
     },
-    detectLocalEdits: boolean
+    detectLocalEdits: boolean,
   ): Promise<ExportResult> {
-    const contextId = contextForRepository(repo);
+    const contextId = await this.repositoryContext(repo);
     await this.host.ensureContext(contextId);
     const status = await this.host.vcs.status({ contextId });
     return this.exportStateToDirectory(
@@ -433,7 +523,7 @@ export class GitBridge {
       gitDir,
       { kind: "event", eventId: status.mainEventId },
       opts,
-      detectLocalEdits
+      detectLocalEdits,
     );
   }
 
@@ -446,7 +536,7 @@ export class GitBridge {
       authorEmail?: string;
       expectedMainEventId?: string;
     },
-    detectLocalEdits: boolean
+    detectLocalEdits: boolean,
   ): Promise<ExportResult> {
     try {
       await fsp.access(path.join(gitDir, ".git"));
@@ -456,7 +546,8 @@ export class GitBridge {
     }
 
     const repository = await this.findRepository(state, repo);
-    if (!repository) throw new Error(`Cannot export absent repository '${repo}'`);
+    if (!repository)
+      throw new Error(`Cannot export absent repository '${repo}'`);
 
     const inspected = await this.host.vcs.inspect({
       node: state,
@@ -466,8 +557,14 @@ export class GitBridge {
       throw new Error(`Semantic source ${state.eventId} is not an event`);
     }
     const event = inspected.node.value;
-    const targetFiles = await this.listRepositoryFiles(state, repository.repositoryId);
-    if (opts.expectedMainEventId !== undefined && opts.expectedMainEventId !== state.eventId) {
+    const targetFiles = await this.listRepositoryFiles(
+      state,
+      repository.repositoryId,
+    );
+    if (
+      opts.expectedMainEventId !== undefined &&
+      opts.expectedMainEventId !== state.eventId
+    ) {
       const reviewedState = {
         kind: "event" as const,
         eventId: opts.expectedMainEventId,
@@ -475,21 +572,28 @@ export class GitBridge {
       const reviewedRepository = await this.findRepository(reviewedState, repo);
       const reviewedFiles =
         reviewedRepository?.repositoryId === repository.repositoryId
-          ? await this.listRepositoryFiles(reviewedState, reviewedRepository.repositoryId)
+          ? await this.listRepositoryFiles(
+              reviewedState,
+              reviewedRepository.repositoryId,
+            )
           : null;
-      const reviewedByPath = new Map(reviewedFiles?.map((file) => [file.path, file]));
+      const reviewedByPath = new Map(
+        reviewedFiles?.map((file) => [file.path, file]),
+      );
       if (
         !reviewedFiles ||
         reviewedFiles.length !== targetFiles.length ||
         targetFiles.some((file) => {
           const reviewed = reviewedByPath.get(file.path);
           return (
-            !reviewed || reviewed.contentHash !== file.contentHash || reviewed.mode !== file.mode
+            !reviewed ||
+            reviewed.contentHash !== file.contentHash ||
+            reviewed.mode !== file.mode
           );
         })
       ) {
         throw new Error(
-          `Repository ${repo} changed since reviewed event ${opts.expectedMainEventId}; review the new source before publishing`
+          `Repository ${repo} changed since reviewed event ${opts.expectedMainEventId}; review the new source before publishing`,
         );
       }
     }
@@ -498,7 +602,10 @@ export class GitBridge {
     const clobberedLocalEdits = detectLocalEdits
       ? await this.detectLocalDrift(gitDir, tracked)
       : [];
-    if (checkout.eventId === event.eventId && sameCheckoutTree(tracked, targetFiles)) {
+    if (
+      checkout.eventId === event.eventId &&
+      sameCheckoutTree(tracked, targetFiles)
+    ) {
       return {
         exported: 0,
         headCommit: checkout.commitSha,
@@ -510,7 +617,7 @@ export class GitBridge {
       repository.repositoryId,
       gitDir,
       tracked,
-      targetFiles
+      targetFiles,
     );
     await this.stageMaterializedChanges(gitDir, materialized);
     const message =
@@ -528,7 +635,8 @@ export class GitBridge {
         email: opts.authorEmail ?? "vibestudio@local",
       },
     });
-    if (!headCommit) throw new Error(`Git did not create a commit for ${event.eventId}`);
+    if (!headCommit)
+      throw new Error(`Git did not create a commit for ${event.eventId}`);
 
     this.trace("export complete", { repo, eventId: event.eventId, headCommit });
     return { exported: 1, headCommit, clobberedLocalEdits };
@@ -536,7 +644,7 @@ export class GitBridge {
 
   async commitMapping(
     repoPath: string,
-    opts: { limit?: number } = {}
+    opts: { limit?: number } = {},
   ): Promise<Array<{ gitSha: string; eventId: string; summary: string }>> {
     return withRepoLock(repoPath, async (repo) => {
       const commits = await this.git.log(await this.repoGitDir(repo), {
@@ -559,16 +667,21 @@ export class GitBridge {
 
   async importRepoTree(
     repoPath: string,
-    opts: { summary?: string; sourceUri?: string } = {}
+    opts: { summary?: string; sourceUri?: string } = {},
   ): Promise<ImportResult> {
     return withRepoLock(repoPath, (repo) => this.importLockedInner(repo, opts));
   }
 
-  async pendingImportCandidate(repoPath: string): Promise<PendingImportCandidate | null> {
-    const contextId = contextForRepository(normalizeWorkspaceRepoPath(repoPath));
+  async pendingImportCandidate(
+    repoPath: string,
+  ): Promise<PendingImportCandidate | null> {
+    const contextId = await this.repositoryContext(
+      normalizeWorkspaceRepoPath(repoPath),
+    );
     await this.host.ensureContext(contextId);
     const status = await this.host.vcs.status({ contextId });
-    if (status.mainRelation !== "ahead" && status.mainRelation !== "diverged") return null;
+    if (status.mainRelation !== "ahead" && status.mainRelation !== "diverged")
+      return null;
     return status.committed.kind === "event"
       ? { contextId, eventId: status.committed.eventId }
       : null;
@@ -576,19 +689,38 @@ export class GitBridge {
 
   async importLockedInner(
     repoPath: string,
-    opts: { summary?: string; sourceUri?: string }
+    opts: { summary?: string; sourceUri?: string },
   ): Promise<ImportResult> {
     const repo = normalizeWorkspaceRepoPath(repoPath);
-    const contextId = contextForRepository(repo);
-    const gitDir = await this.repoGitDir(repo);
+    return this.importCheckout(
+      repo,
+      {
+        contextId: await this.repositoryContext(repo),
+        gitDir: await this.repoGitDir(repo),
+      },
+      opts,
+    );
+  }
+
+  async importCheckout(
+    repoPath: string,
+    location: { contextId: string; gitDir: string },
+    opts: { summary?: string; sourceUri?: string },
+  ): Promise<ImportResult> {
+    const repo = normalizeWorkspaceRepoPath(repoPath);
+    const { contextId, gitDir } = location;
     await this.host.ensureContext(contextId);
     const status = await this.host.vcs.status({ contextId });
     if (!status.clean) {
-      throw new Error(`Cannot import ${repo}: import context has uncommitted semantic work`);
+      throw new Error(
+        `Cannot import ${repo}: import context has uncommitted semantic work`,
+      );
     }
     const gitCommit = await this.git.getCurrentCommit(gitDir);
     if (!gitCommit) {
-      throw new Error(`Cannot import ${repo}: checkout has no exact Git HEAD revision`);
+      throw new Error(
+        `Cannot import ${repo}: checkout has no exact Git HEAD revision`,
+      );
     }
     const snapshot = await readExactGitSnapshot({
       git: this.git,
@@ -596,17 +728,21 @@ export class GitBridge {
       commit: gitCommit,
       label: repo,
       sink: {
-        put: async (bytes) => this.host.blobstore.putBase64(Buffer.from(bytes).toString("base64")),
+        put: async (bytes) =>
+          this.host.blobstore.putBase64(Buffer.from(bytes).toString("base64")),
       },
     }).catch((error) => {
       throw new Error(
-        `Cannot import ${repo}: could not read exact Git commit ${gitCommit}: ${errorMessage(error)}`
+        `Cannot import ${repo}: could not read exact Git commit ${gitCommit}: ${errorMessage(error)}`,
       );
     });
     const files: ImportedFile[] = snapshot.files;
     const currentRepo = await this.findRepository(status.workingHead, repo);
     const currentFiles = currentRepo
-      ? await this.listRepositoryFiles(status.workingHead, currentRepo.repositoryId)
+      ? await this.listRepositoryFiles(
+          status.workingHead,
+          currentRepo.repositoryId,
+        )
       : [];
     const remotes = opts.sourceUri ? [] : await this.git.listRemotes(gitDir);
     const observedRemote =
@@ -615,7 +751,7 @@ export class GitBridge {
       (remotes.length === 1 ? remotes[0]!.url : null);
     if (!observedRemote) {
       throw new Error(
-        `Cannot import ${repo}: the exact Git source remote is ambiguous; provide sourceUri`
+        `Cannot import ${repo}: the exact Git source remote is ambiguous; provide sourceUri`,
       );
     }
     const sourceUri = provenanceGitUri(observedRemote);
@@ -623,7 +759,8 @@ export class GitBridge {
       status.committed.kind === "event"
         ? await this.importEvidenceAtEvent(status.committed.eventId, sourceUri)
         : null;
-    const priorRevision = priorEvidence?.externalSnapshot.snapshotRevision ?? null;
+    const priorRevision =
+      priorEvidence?.externalSnapshot.snapshotRevision ?? null;
     if (
       priorEvidence !== null &&
       priorRevision === gitCommit &&
@@ -634,8 +771,8 @@ export class GitBridge {
           (current) =>
             current.path === file.path &&
             current.contentHash === file.contentHash &&
-            current.mode === file.mode
-        )
+            current.mode === file.mode,
+        ),
       )
     ) {
       return {
@@ -691,14 +828,16 @@ export class GitBridge {
   private async importEvidenceAtEvent(
     eventId: string,
     sourceUri: string,
-    expectedWorkUnitId?: string
+    expectedWorkUnitId?: string,
   ): Promise<ImportResult["semanticEvidence"] | null> {
     const event = await this.host.vcs.inspect({
       node: { kind: "event", eventId },
       edgeLimit: 1,
     });
     if (event.node.kind !== "event") return null;
-    for (const applicationId of [...event.node.value.applicationIds].reverse()) {
+    for (const applicationId of [
+      ...event.node.value.applicationIds,
+    ].reverse()) {
       const application = await this.host.vcs.inspect({
         node: { kind: "application", applicationId },
         edgeLimit: 1,
@@ -714,7 +853,8 @@ export class GitBridge {
       if (
         workUnit.node.kind === "work-unit" &&
         workUnit.node.value.kind === "import" &&
-        (!expectedWorkUnitId || workUnit.node.value.workUnitId === expectedWorkUnitId) &&
+        (!expectedWorkUnitId ||
+          workUnit.node.value.workUnitId === expectedWorkUnitId) &&
         workUnit.node.value.externalSnapshot?.sourceKind === "git" &&
         workUnit.node.value.externalSnapshot.sourceUri === sourceUri
       ) {
@@ -730,18 +870,20 @@ export class GitBridge {
 
   private async findRepository(
     state: VcsStateNodeRef,
-    repoPath: string
+    repoPath: string,
   ): Promise<RepositoryAtState | null> {
     const repository = await this.host.vcs.resolveRepository({
       state,
       repoPath,
     });
-    return repository ? { repositoryId: repository.repositoryId, repoPath } : null;
+    return repository
+      ? { repositoryId: repository.repositoryId, repoPath }
+      : null;
   }
 
   private async listRepositoryFiles(
     state: VcsStateNodeRef,
-    repositoryId: string
+    repositoryId: string,
   ): Promise<ListedRepositoryFile[]> {
     const files: ListedRepositoryFile[] = [];
     let cursor: string | undefined;
@@ -753,7 +895,9 @@ export class GitBridge {
         ...(cursor ? { cursor } : {}),
       });
       if (!sameState(page.state, state)) {
-        throw new Error("Repository listing changed semantic state while paging");
+        throw new Error(
+          "Repository listing changed semantic state while paging",
+        );
       }
       files.push(...page.files);
       cursor = page.nextCursor ?? undefined;
@@ -766,10 +910,12 @@ export class GitBridge {
     repositoryId: string,
     gitDir: string,
     tracked: CheckoutMap,
-    files: ListedRepositoryFile[]
+    files: ListedRepositoryFile[],
   ): Promise<MaterializeResult> {
     const target = new Set(files.map((file) => file.path));
-    const removePaths = Object.keys(tracked).filter((file) => !target.has(file));
+    const removePaths = Object.keys(tracked).filter(
+      (file) => !target.has(file),
+    );
     for (const file of removePaths) {
       await fsp.rm(safeCheckoutJoin(gitDir, file), {
         recursive: true,
@@ -797,7 +943,8 @@ export class GitBridge {
         repositoryId,
         file: { kind: "id", fileId: file.fileId },
       });
-      if (!content) throw new Error(`Semantic state lost ${file.path} during Git export`);
+      if (!content)
+        throw new Error(`Semantic state lost ${file.path} during Git export`);
       const bytes =
         content.content.kind === "text"
           ? Buffer.from(content.content.text, "utf8")
@@ -824,7 +971,9 @@ export class GitBridge {
     const entries = await this.git.readCommitTree(gitDir, commitSha);
     const files: CheckoutMap = {};
     for (const entry of entries) {
-      const regular = entry.type === "blob" && (entry.mode === 0o100644 || entry.mode === 0o100755);
+      const regular =
+        entry.type === "blob" &&
+        (entry.mode === 0o100644 || entry.mode === 0o100755);
       files[entry.path] = {
         contentHash:
           entry.type === "blob"
@@ -837,18 +986,29 @@ export class GitBridge {
     const [head] = await this.git.log(gitDir, { ref: commitSha, depth: 1 });
     return {
       commitSha,
-      eventId: head ? (/^Vibestudio-Event: (\S+)$/mu.exec(head.message)?.[1] ?? null) : null,
+      eventId: head
+        ? (/^Vibestudio-Event: (\S+)$/mu.exec(head.message)?.[1] ?? null)
+        : null,
       files,
     };
   }
 
-  private async stageMaterializedChanges(gitDir: string, result: MaterializeResult): Promise<void> {
-    for (const relPath of new Set([...result.removePaths, ...result.stagePaths])) {
+  private async stageMaterializedChanges(
+    gitDir: string,
+    result: MaterializeResult,
+  ): Promise<void> {
+    for (const relPath of new Set([
+      ...result.removePaths,
+      ...result.stagePaths,
+    ])) {
       await this.git.add(gitDir, relPath);
     }
   }
 
-  private async detectLocalDrift(gitDir: string, tracked: CheckoutMap): Promise<string[]> {
+  private async detectLocalDrift(
+    gitDir: string,
+    tracked: CheckoutMap,
+  ): Promise<string[]> {
     const drifted: string[] = [];
     for (const [relPath, expected] of Object.entries(tracked)) {
       try {
@@ -856,7 +1016,10 @@ export class GitBridge {
         const bytes = await fsp.readFile(absolute);
         const stat = await fsp.stat(absolute);
         const mode = stat.mode & 0o111 ? 0o755 : 0o644;
-        if (sha256Hex(bytes) !== expected.contentHash || mode !== expected.mode) {
+        if (
+          sha256Hex(bytes) !== expected.contentHash ||
+          mode !== expected.mode
+        ) {
           drifted.push(relPath);
         }
       } catch {

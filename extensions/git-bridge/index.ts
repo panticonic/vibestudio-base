@@ -33,7 +33,10 @@ import { TemplatePublishEngine } from "./templatePublish.js";
 import type { TemplatePushInput } from "./templatePush.js";
 import type { ExtensionContextLike } from "./context.js";
 
-function createBridgeHost(ctx: ExtensionContextLike): BridgeHost {
+function createBridgeHost(
+  ctx: ExtensionContextLike,
+  repositorySelection: BridgeHost["repositorySelection"],
+): BridgeHost {
   const main = <T>(method: string, ...args: unknown[]): Promise<T> =>
     ctx.rpc.call<T>("main", method, ...args);
   const vcs = createTypedServiceClient(
@@ -57,6 +60,10 @@ function createBridgeHost(ctx: ExtensionContextLike): BridgeHost {
     ensureContext: async (contextId) => {
       await runtime.createContext({ contextId });
     },
+    retireContext: async (contextId) => {
+      await runtime.destroyContext({ contextId });
+    },
+    repositorySelection,
     blobstore,
     vcs,
   };
@@ -86,7 +93,9 @@ export type Api = Awaited<ReturnType<typeof activate>>;
 
 export async function activate(ctx: ExtensionContextLike) {
   ctx.log.info("git-bridge activating");
-  const bridge = new GitBridge(createBridgeHost(ctx));
+  const bridge = new GitBridge(
+    createBridgeHost(ctx, (repo) => upstream.repositorySelection(repo)),
+  );
   const upstream = new UpstreamEngine(ctx, bridge);
   const templatePush = new TemplatePushEngine(ctx, bridge);
   const templatePublish = new TemplatePublishEngine(ctx, bridge);

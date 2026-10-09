@@ -1,5 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  mkdtempSync,
+  mkdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import * as fsp from "node:fs/promises";
 import { tmpdir } from "node:os";
 import * as path from "node:path";
@@ -7,7 +13,10 @@ import { sha256Hex, sha256HexSyncText } from "@vibestudio/content-addressing";
 import type { GitCommitTreeEntry } from "@vibestudio/git";
 import { GitBridge, provenanceGitUri, type BridgeHost } from "./bridge.js";
 
-const fsPromisesMocks = vi.hoisted(() => ({ rm: vi.fn(), originalRm: vi.fn() }));
+const fsPromisesMocks = vi.hoisted(() => ({
+  rm: vi.fn(),
+  originalRm: vi.fn(),
+}));
 vi.mock("node:fs/promises", async (importOriginal) => {
   const actual = await importOriginal<typeof import("node:fs/promises")>();
   fsPromisesMocks.originalRm.mockImplementation(actual.rm.bind(actual));
@@ -18,7 +27,7 @@ vi.mock("node:fs/promises", async (importOriginal) => {
 function commitBlob(
   filePath: string,
   content: string | Buffer,
-  mode: 0o100644 | 0o100755 = 0o100644
+  mode: 0o100644 | 0o100755 = 0o100644,
 ): GitCommitTreeEntry {
   const bytes = Buffer.isBuffer(content) ? content : Buffer.from(content);
   return {
@@ -54,7 +63,10 @@ function eventInspection(eventId: string, applicationId = "application:1") {
   };
 }
 
-function repositoryInspection(state: { kind: "event"; eventId: string }, repoPath: string) {
+function repositoryInspection(
+  state: { kind: "event"; eventId: string },
+  repoPath: string,
+) {
   return {
     root: {
       kind: "repository" as const,
@@ -76,7 +88,10 @@ function repositoryInspection(state: { kind: "event"; eventId: string }, repoPat
   };
 }
 
-function applicationInspection(applicationId = "application:1", workUnitId = "work:import") {
+function applicationInspection(
+  applicationId = "application:1",
+  workUnitId = "work:import",
+) {
   return {
     root: { kind: "application" as const, applicationId },
     node: {
@@ -96,7 +111,11 @@ function applicationInspection(applicationId = "application:1", workUnitId = "wo
   };
 }
 
-function importWorkUnitInspection(revision: string, sourceUri: string, workUnitId = "work:import") {
+function importWorkUnitInspection(
+  revision: string,
+  sourceUri: string,
+  workUnitId = "work:import",
+) {
   return {
     root: { kind: "work-unit" as const, workUnitId },
     node: {
@@ -188,6 +207,8 @@ function baseHost(root: string) {
     });
   const host: BridgeHost = {
     checkoutRoot: async () => root,
+    repositorySelection: vi.fn(async () => null),
+    retireContext: vi.fn(async () => undefined),
     ensureContext: vi.fn(async () => undefined),
     blobstore: {
       putBase64: vi.fn(async (bytesBase64: string) => {
@@ -214,12 +235,14 @@ describe("GitBridge semantic snapshot boundary", () => {
     "C:/Users/alice/demo.git",
     String.raw`C:relative\demo.git`,
   ])("keeps the Windows-local remote %s private", (remote) => {
-    expect(provenanceGitUri(remote)).toBe(`git-local://sha256/${sha256HexSyncText(remote)}`);
+    expect(provenanceGitUri(remote)).toBe(
+      `git-local://sha256/${sha256HexSyncText(remote)}`,
+    );
   });
 
   it("preserves SCP-style remote identity", () => {
     expect(provenanceGitUri("git@example.test:owner/demo.git")).toBe(
-      "ssh://example.test/owner/demo.git"
+      "ssh://example.test/owner/demo.git",
     );
   });
 
@@ -240,11 +263,88 @@ describe("GitBridge semantic snapshot boundary", () => {
     const bridge = new GitBridge(host);
 
     expect(await bridge.repoGitDir("projects/demo")).toBe(
-      path.join(checkoutRoot, "projects", "demo")
+      path.join(checkoutRoot, "projects", "demo"),
     );
     expect(await bridge.repoGitDir("projects/demo")).not.toBe(
-      path.join(sourceRoot, "projects", "demo")
+      path.join(sourceRoot, "projects", "demo"),
     );
+  });
+
+  it("routes a selected import through its durable context and checkout identity", async () => {
+    const repoPath = "projects/selected-import";
+    const checkoutId = "00000000-0000-4000-8000-000000000001";
+    const selection = {
+      contextId: `git-bridge-import-${checkoutId}`,
+      checkoutId,
+    };
+    const { host } = baseHost(root);
+    host.repositorySelection = vi.fn(async (repo) =>
+      repo === repoPath ? selection : null,
+    );
+    host.vcs.status = vi.fn(async ({ contextId }) =>
+      status(contextId, "event:main"),
+    );
+    const bridge = new GitBridge(host);
+
+    await expect(bridge.repoGitDir(repoPath)).resolves.toBe(
+      path.join(root, ".imports", checkoutId),
+    );
+    await expect(bridge.pendingImportCandidate(repoPath)).resolves.toBeNull();
+    expect(host.ensureContext).toHaveBeenCalledWith(selection.contextId);
+    expect(host.vcs.status).toHaveBeenCalledWith({
+      contextId: selection.contextId,
+    });
+  });
+
+  it("attempts both import resource retirements and preserves both failures", async () => {
+    const checkoutId = "00000000-0000-4000-8000-000000000002";
+    const { host } = baseHost(root);
+    const bridge = new GitBridge(host);
+    const location = await bridge.importLocation(checkoutId);
+    await fsp.mkdir(location.gitDir, { recursive: true });
+    writeFileSync(path.join(location.gitDir, "retained"), "owned\n");
+    const contextFailure = new Error("import context could not be retired");
+    const checkoutFailure = new Error("import checkout could not be removed");
+    vi.mocked(host.retireContext).mockRejectedValueOnce(contextFailure);
+    vi.mocked(fsp.rm).mockImplementation(async (target, options) => {
+      if (target === location.gitDir) throw checkoutFailure;
+      return fsPromisesMocks.originalRm(target, options);
+    });
+
+    const failure = await bridge
+      .discardImport(checkoutId)
+      .catch((error: unknown) => error);
+
+    expect(failure).toBeInstanceOf(AggregateError);
+    expect((failure as AggregateError).errors).toEqual([
+      contextFailure,
+      checkoutFailure,
+    ]);
+    expect((failure as AggregateError).cause).toBe(contextFailure);
+    expect(host.retireContext).toHaveBeenCalledWith(location.contextId);
+    expect(readFileSync(path.join(location.gitDir, "retained"), "utf8")).toBe(
+      "owned\n",
+    );
+  });
+
+  it("reads only the atomically selected checkout and candidate context", async () => {
+    const checkoutId = "11111111-1111-1111-1111-111111111111";
+    const { host } = baseHost(root);
+    host.repositorySelection = vi.fn(async () => ({
+      checkoutId,
+      contextId: `git-bridge-import-${checkoutId}`,
+    }));
+    host.vcs.status = vi.fn(async ({ contextId }) =>
+      status(contextId, "event:main"),
+    );
+    const bridge = new GitBridge(host);
+    expect(await bridge.repoGitDir("projects/demo")).toBe(
+      path.join(root, ".imports", checkoutId),
+    );
+    await bridge.pendingImportCandidate("projects/demo");
+    expect(host.vcs.status).toHaveBeenCalledWith({
+      contextId: `git-bridge-import-${checkoutId}`,
+    });
   });
 
   it("imports one exact checkout snapshot as a semantic candidate", async () => {
@@ -254,7 +354,9 @@ describe("GitBridge semantic snapshot boundary", () => {
     writeFileSync(path.join(dir, "index.ts"), "export const value = 1;\n");
     writeFileSync(path.join(dir, "binary.dat"), Buffer.from([0xff, 0xfe]));
     const { host } = baseHost(root);
-    host.vcs.status = vi.fn(async ({ contextId }) => status(contextId, "event:main"));
+    host.vcs.status = vi.fn(async ({ contextId }) =>
+      status(contextId, "event:main"),
+    );
     host.vcs.inspect = vi.fn(async ({ node }) => {
       if (node.kind === "event" && node.eventId === "event:imported") {
         return eventInspection(node.eventId, "application:imported");
@@ -266,7 +368,7 @@ describe("GitBridge semantic snapshot boundary", () => {
         return importWorkUnitInspection(
           "a".repeat(40),
           "https://example.test/owner/demo.git",
-          node.workUnitId
+          node.workUnitId,
         );
       }
       const inspected = eventInspection("event:main");
@@ -281,7 +383,7 @@ describe("GitBridge semantic snapshot boundary", () => {
         sourceUri: "https://example.test/owner/demo.git",
         revision: "a".repeat(40),
         repositoryId: "repository:projects/demo",
-      })
+      }),
     );
     const bridge = new GitBridge(host);
     vi.spyOn(bridge.git, "getCurrentCommit").mockResolvedValue("a".repeat(40));
@@ -297,7 +399,7 @@ describe("GitBridge semantic snapshot boundary", () => {
     await expect(
       bridge.importLockedInner(repoPath, {
         sourceUri: "https://token@example.test/owner/demo.git?signature=secret",
-      })
+      }),
     ).resolves.toEqual({
       contextId: expect.stringMatching(/^git-bridge-/),
       eventId: "event:imported",
@@ -311,7 +413,9 @@ describe("GitBridge semantic snapshot boundary", () => {
         }),
       },
     });
-    expect(host.ensureContext).toHaveBeenCalledWith(expect.stringMatching(/^git-bridge-/));
+    expect(host.ensureContext).toHaveBeenCalledWith(
+      expect.stringMatching(/^git-bridge-/),
+    );
     expect(host.vcs.importSnapshot).toHaveBeenCalledWith(
       expect.objectContaining({
         contextId: expect.stringMatching(/^git-bridge-/),
@@ -333,13 +437,15 @@ describe("GitBridge semantic snapshot boundary", () => {
               }),
               expect.objectContaining({
                 path: "index.ts",
-                contentHash: sha256Hex(Buffer.from("export const value = 1;\n")),
+                contentHash: sha256Hex(
+                  Buffer.from("export const value = 1;\n"),
+                ),
                 mode: 0o644,
               }),
             ]),
           }),
         ],
-      })
+      }),
     );
     expect(host.vcs.resolveRepository).toHaveBeenCalledOnce();
     expect(host.vcs.resolveRepository).toHaveBeenCalledWith({
@@ -350,14 +456,14 @@ describe("GitBridge semantic snapshot boundary", () => {
     expect(host.vcs.inspect).not.toHaveBeenCalledWith(
       expect.objectContaining({
         node: { kind: "event", eventId: "event:imported" },
-      })
+      }),
     );
     expect(host.blobstore.putBase64).toHaveBeenCalledTimes(2);
     expect(host.blobstore.putBase64).toHaveBeenCalledWith(
-      Buffer.from([0xff, 0xfe]).toString("base64")
+      Buffer.from([0xff, 0xfe]).toString("base64"),
     );
     expect(host.blobstore.putBase64).toHaveBeenCalledWith(
-      Buffer.from("export const value = 1;\n").toString("base64")
+      Buffer.from("export const value = 1;\n").toString("base64"),
     );
   });
 
@@ -366,7 +472,9 @@ describe("GitBridge semantic snapshot boundary", () => {
     const dir = path.join(root, repoPath);
     mkdirSync(dir, { recursive: true });
     const { host } = baseHost(root);
-    host.vcs.status = vi.fn(async ({ contextId }) => status(contextId, "event:main"));
+    host.vcs.status = vi.fn(async ({ contextId }) =>
+      status(contextId, "event:main"),
+    );
     host.vcs.importSnapshot = vi.fn(async () =>
       importSnapshotResult({
         eventId: "event:real-import",
@@ -375,7 +483,7 @@ describe("GitBridge semantic snapshot boundary", () => {
         sourceUri: "https://example.test/real-tree.git",
         revision: commitOid,
         repositoryId: "repository:projects/real-tree",
-      })
+      }),
     );
     host.vcs.inspect = vi.fn(async ({ node }) => {
       if (node.kind === "event") {
@@ -388,10 +496,13 @@ describe("GitBridge semantic snapshot boundary", () => {
         return importWorkUnitInspection(
           commitOid,
           "https://example.test/real-tree.git",
-          node.workUnitId
+          node.workUnitId,
         );
       }
-      return repositoryInspection({ kind: "event", eventId: "event:main" }, repoPath);
+      return repositoryInspection(
+        { kind: "event", eventId: "event:main" },
+        repoPath,
+      );
     });
     const bridge = new GitBridge(host);
     await bridge.git.init(dir, "main");
@@ -412,7 +523,7 @@ describe("GitBridge semantic snapshot boundary", () => {
     await expect(
       bridge.importLockedInner(repoPath, {
         sourceUri: "https://example.test/real-tree.git",
-      })
+      }),
     ).resolves.toEqual({
       contextId: expect.stringMatching(/^git-bridge-/),
       eventId: "event:real-import",
@@ -439,7 +550,7 @@ describe("GitBridge semantic snapshot boundary", () => {
             ],
           }),
         ],
-      })
+      }),
     );
     expect(host.blobstore.putBase64).toHaveBeenCalledTimes(2);
   });
@@ -451,17 +562,26 @@ describe("GitBridge semantic snapshot boundary", () => {
     writeFileSync(path.join(dir, "index.ts"), "same\n");
     const main = { kind: "event" as const, eventId: "event:main" };
     const { host } = baseHost(root);
-    host.vcs.status = vi.fn(async ({ contextId }) => status(contextId, main.eventId));
-    host.vcs.resolveRepository = vi.fn(async ({ state, repoPath: resolvedPath }) => ({
-      state,
-      repositoryId: `repository:${resolvedPath}`,
-      repoPath: resolvedPath,
-    }));
+    host.vcs.status = vi.fn(async ({ contextId }) =>
+      status(contextId, main.eventId),
+    );
+    host.vcs.resolveRepository = vi.fn(
+      async ({ state, repoPath: resolvedPath }) => ({
+        state,
+        repositoryId: `repository:${resolvedPath}`,
+        repoPath: resolvedPath,
+      }),
+    );
     host.vcs.inspect = vi.fn(async ({ node }) => {
-      if (node.kind === "repository") return repositoryInspection(main, repoPath);
-      if (node.kind === "application") return applicationInspection(node.applicationId);
+      if (node.kind === "repository")
+        return repositoryInspection(main, repoPath);
+      if (node.kind === "application")
+        return applicationInspection(node.applicationId);
       if (node.kind === "work-unit") {
-        return importWorkUnitInspection("a".repeat(40), "https://example.test/demo.git");
+        return importWorkUnitInspection(
+          "a".repeat(40),
+          "https://example.test/demo.git",
+        );
       }
       return eventInspection(main.eventId);
     });
@@ -486,7 +606,9 @@ describe("GitBridge semantic snapshot boundary", () => {
     const getCurrentCommit = vi
       .spyOn(bridge.git, "getCurrentCommit")
       .mockResolvedValue("a".repeat(40));
-    vi.spyOn(bridge.git, "readCommitTree").mockResolvedValue([commitBlob("index.ts", "same\n")]);
+    vi.spyOn(bridge.git, "readCommitTree").mockResolvedValue([
+      commitBlob("index.ts", "same\n"),
+    ]);
     const statusMatrix = vi
       .spyOn(bridge.git, "statusMatrix")
       .mockResolvedValue([["index.ts", 1, 1, 1]]);
@@ -494,7 +616,7 @@ describe("GitBridge semantic snapshot boundary", () => {
     await expect(
       bridge.importLockedInner(repoPath, {
         sourceUri: "https://example.test/demo.git",
-      })
+      }),
     ).resolves.toEqual({
       contextId: expect.stringMatching(/^git-bridge-/),
       eventId: main.eventId,
@@ -519,7 +641,7 @@ describe("GitBridge semantic snapshot boundary", () => {
     expect(host.vcs.inspect).not.toHaveBeenCalledWith(
       expect.objectContaining({
         node: expect.objectContaining({ kind: "repository" }),
-      })
+      }),
     );
     expect(host.vcs.importSnapshot).not.toHaveBeenCalled();
   });
@@ -531,14 +653,19 @@ describe("GitBridge semantic snapshot boundary", () => {
     writeFileSync(path.join(dir, "index.ts"), "same\n");
     const main = { kind: "event" as const, eventId: "event:main" };
     const { host } = baseHost(root);
-    host.vcs.status = vi.fn(async ({ contextId }) => status(contextId, main.eventId));
-    host.vcs.resolveRepository = vi.fn(async ({ state, repoPath: resolvedPath }) => ({
-      state,
-      repositoryId: `repository:${resolvedPath}`,
-      repoPath: resolvedPath,
-    }));
+    host.vcs.status = vi.fn(async ({ contextId }) =>
+      status(contextId, main.eventId),
+    );
+    host.vcs.resolveRepository = vi.fn(
+      async ({ state, repoPath: resolvedPath }) => ({
+        state,
+        repositoryId: `repository:${resolvedPath}`,
+        repoPath: resolvedPath,
+      }),
+    );
     host.vcs.inspect = vi.fn(async ({ node }) => {
-      if (node.kind === "repository") return repositoryInspection(main, repoPath);
+      if (node.kind === "repository")
+        return repositoryInspection(main, repoPath);
       if (node.kind === "application") {
         return node.applicationId === "application:new"
           ? applicationInspection(node.applicationId, "work:imported")
@@ -549,12 +676,12 @@ describe("GitBridge semantic snapshot boundary", () => {
           ? importWorkUnitInspection(
               "b".repeat(40),
               "https://example.test/owner/demo.git",
-              node.workUnitId
+              node.workUnitId,
             )
           : importWorkUnitInspection(
               "a".repeat(40),
               "https://example.test/owner/demo.git",
-              node.workUnitId
+              node.workUnitId,
             );
       }
       return node.kind === "event" && node.eventId === "event:imported"
@@ -586,17 +713,21 @@ describe("GitBridge semantic snapshot boundary", () => {
         sourceUri: "https://example.test/owner/demo.git",
         revision: "b".repeat(40),
         repositoryId: "repository:projects/demo",
-      })
+      }),
     );
     const bridge = new GitBridge(host);
     vi.spyOn(bridge.git, "getCurrentCommit").mockResolvedValue("b".repeat(40));
-    vi.spyOn(bridge.git, "readCommitTree").mockResolvedValue([commitBlob("index.ts", "same\n")]);
-    vi.spyOn(bridge.git, "statusMatrix").mockResolvedValue([["index.ts", 1, 1, 1]]);
+    vi.spyOn(bridge.git, "readCommitTree").mockResolvedValue([
+      commitBlob("index.ts", "same\n"),
+    ]);
+    vi.spyOn(bridge.git, "statusMatrix").mockResolvedValue([
+      ["index.ts", 1, 1, 1],
+    ]);
 
     await expect(
       bridge.importLockedInner(repoPath, {
         sourceUri: "https://example.test/owner/demo.git",
-      })
+      }),
     ).resolves.toEqual({
       contextId: expect.stringMatching(/^git-bridge-/),
       eventId: "event:imported",
@@ -613,7 +744,7 @@ describe("GitBridge semantic snapshot boundary", () => {
     expect(host.vcs.importSnapshot).toHaveBeenCalledWith(
       expect.objectContaining({
         source: expect.objectContaining({ commit: "b".repeat(40) }),
-      })
+      }),
     );
   });
 
@@ -623,7 +754,9 @@ describe("GitBridge semantic snapshot boundary", () => {
     mkdirSync(path.join(dir, ".git"), { recursive: true });
     writeFileSync(path.join(dir, "index.ts"), "captured\n");
     const { host } = baseHost(root);
-    host.vcs.status = vi.fn(async ({ contextId }) => status(contextId, "event:main"));
+    host.vcs.status = vi.fn(async ({ contextId }) =>
+      status(contextId, "event:main"),
+    );
     host.vcs.inspect = vi.fn(async () => {
       const inspected = eventInspection("event:main");
       inspected.node.value.applicationIds = [];
@@ -638,15 +771,17 @@ describe("GitBridge semantic snapshot boundary", () => {
     vi.spyOn(bridge.git, "readCommitTree").mockResolvedValue([
       commitBlob("index.ts", "captured\n"),
     ]);
-    vi.spyOn(bridge.git, "statusMatrix").mockResolvedValue([["index.ts", 1, 1, 1]]);
+    vi.spyOn(bridge.git, "statusMatrix").mockResolvedValue([
+      ["index.ts", 1, 1, 1],
+    ]);
 
     await expect(
       bridge.importLockedInner(repoPath, {
         sourceUri: "https://example.test/owner/demo.git",
-      })
+      }),
     ).rejects.toThrow(/content store integrity mismatch for index\.ts/);
     expect(host.blobstore.putBase64).toHaveBeenCalledWith(
-      Buffer.from("captured\n").toString("base64")
+      Buffer.from("captured\n").toString("base64"),
     );
     expect(host.vcs.importSnapshot).not.toHaveBeenCalled();
   });
@@ -659,12 +794,16 @@ describe("GitBridge semantic snapshot boundary", () => {
     writeFileSync(path.join(dir, ".env"), "SECRET=not-imported\n");
     const main = { kind: "event" as const, eventId: "event:main" };
     const { host } = baseHost(root);
-    host.vcs.status = vi.fn(async ({ contextId }) => status(contextId, main.eventId));
-    host.vcs.resolveRepository = vi.fn(async ({ state, repoPath: resolvedPath }) => ({
-      state,
-      repositoryId: `repository:${resolvedPath}`,
-      repoPath: resolvedPath,
-    }));
+    host.vcs.status = vi.fn(async ({ contextId }) =>
+      status(contextId, main.eventId),
+    );
+    host.vcs.resolveRepository = vi.fn(
+      async ({ state, repoPath: resolvedPath }) => ({
+        state,
+        repositoryId: `repository:${resolvedPath}`,
+        repoPath: resolvedPath,
+      }),
+    );
     host.vcs.inspect = vi.fn(async () => repositoryInspection(main, repoPath));
     host.vcs.listFiles = vi.fn(async () => ({
       state: main,
@@ -695,7 +834,7 @@ describe("GitBridge semantic snapshot boundary", () => {
     ]);
 
     await expect(bridge.importLockedInner(repoPath, {})).rejects.toThrow(
-      /Git commit tracks paths excluded from the semantic snapshot \(\.env\)/
+      /Git commit tracks paths excluded from the semantic snapshot \(\.env\)/,
     );
     expect(host.vcs.importSnapshot).not.toHaveBeenCalled();
   });
@@ -705,7 +844,9 @@ describe("GitBridge semantic snapshot boundary", () => {
     const dir = path.join(root, repoPath);
     mkdirSync(path.join(dir, ".git"), { recursive: true });
     const { host } = baseHost(root);
-    host.vcs.status = vi.fn(async ({ contextId }) => status(contextId, "event:main"));
+    host.vcs.status = vi.fn(async ({ contextId }) =>
+      status(contextId, "event:main"),
+    );
     const bridge = new GitBridge(host);
     const statusMatrix = vi.spyOn(bridge.git, "statusMatrix");
     vi.spyOn(bridge.git, "getCurrentCommit").mockResolvedValue("a".repeat(40));
@@ -720,7 +861,7 @@ describe("GitBridge semantic snapshot boundary", () => {
     ]);
 
     await expect(bridge.importLockedInner(repoPath, {})).rejects.toThrow(
-      /link \(blob, mode 120000\).*only regular files and executable files are importable/
+      /link \(blob, mode 120000\).*only regular files and executable files are importable/,
     );
     expect(statusMatrix).not.toHaveBeenCalled();
     expect(host.vcs.importSnapshot).not.toHaveBeenCalled();
@@ -732,9 +873,12 @@ describe("GitBridge semantic snapshot boundary", () => {
     mkdirSync(path.join(dir, ".git"), { recursive: true });
     writeFileSync(path.join(dir, "index.ts"), "dirty\n");
     const { host } = baseHost(root);
-    host.vcs.status = vi.fn(async ({ contextId }) => status(contextId, "event:main"));
+    host.vcs.status = vi.fn(async ({ contextId }) =>
+      status(contextId, "event:main"),
+    );
     host.vcs.inspect = vi.fn(async ({ node }) => {
-      if (node.kind !== "event") throw new Error("unexpected non-event inspection");
+      if (node.kind !== "event")
+        throw new Error("unexpected non-event inspection");
       const inspection = eventInspection(node.eventId);
       inspection.node.value.applicationIds = [];
       return inspection;
@@ -747,7 +891,7 @@ describe("GitBridge semantic snapshot boundary", () => {
         sourceUri: "https://example.test/demo.git",
         revision: "b".repeat(40),
         repositoryId: "repository:projects/demo",
-      })
+      }),
     );
     const bridge = new GitBridge(host);
     vi.spyOn(bridge.git, "getCurrentCommit").mockResolvedValue("b".repeat(40));
@@ -761,7 +905,7 @@ describe("GitBridge semantic snapshot boundary", () => {
     await expect(
       bridge.importLockedInner(repoPath, {
         sourceUri: "https://example.test/demo.git",
-      })
+      }),
     ).resolves.toMatchObject({ changed: true });
     expect(host.vcs.importSnapshot).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -771,7 +915,7 @@ describe("GitBridge semantic snapshot boundary", () => {
             files: [expect.objectContaining({ path: "index.ts" })],
           }),
         ],
-      })
+      }),
     );
     expect(statusMatrix).not.toHaveBeenCalled();
   });
@@ -781,7 +925,9 @@ describe("GitBridge semantic snapshot boundary", () => {
     const dir = path.join(root, repoPath);
     mkdirSync(path.join(dir, ".git"), { recursive: true });
     const { host } = baseHost(root);
-    host.vcs.status = vi.fn(async ({ contextId }) => status(contextId, "event:main"));
+    host.vcs.status = vi.fn(async ({ contextId }) =>
+      status(contextId, "event:main"),
+    );
     const bridge = new GitBridge(host);
     vi.spyOn(bridge.git, "getCurrentCommit")
       .mockResolvedValueOnce("a".repeat(40))
@@ -789,10 +935,12 @@ describe("GitBridge semantic snapshot boundary", () => {
     vi.spyOn(bridge.git, "readCommitTree").mockResolvedValue([
       commitBlob("index.ts", "committed\n"),
     ]);
-    vi.spyOn(bridge.git, "statusMatrix").mockResolvedValue([["index.ts", 1, 1, 1]]);
+    vi.spyOn(bridge.git, "statusMatrix").mockResolvedValue([
+      ["index.ts", 1, 1, 1],
+    ]);
 
     await expect(bridge.importLockedInner(repoPath, {})).rejects.toThrow(
-      /Git HEAD advanced while resolving the snapshot/
+      /Git HEAD advanced while resolving the snapshot/,
     );
     expect(host.vcs.importSnapshot).not.toHaveBeenCalled();
   });
@@ -808,16 +956,20 @@ describe("GitBridge semantic snapshot boundary", () => {
       repositoryId: "repository:projects/demo",
     };
     const { host } = baseHost(root);
-    host.vcs.status = vi.fn(async ({ contextId }) => status(contextId, main.eventId));
-    host.vcs.resolveRepository = vi.fn(async ({ state, repoPath: resolvedPath }) => ({
-      state,
-      repositoryId: repositoryRef.repositoryId,
-      repoPath: resolvedPath,
-    }));
+    host.vcs.status = vi.fn(async ({ contextId }) =>
+      status(contextId, main.eventId),
+    );
+    host.vcs.resolveRepository = vi.fn(
+      async ({ state, repoPath: resolvedPath }) => ({
+        state,
+        repositoryId: repositoryRef.repositoryId,
+        repoPath: resolvedPath,
+      }),
+    );
     host.vcs.inspect = vi.fn(async ({ node }) =>
       node.kind === "repository"
         ? repositoryInspection(main, repoPath)
-        : eventInspection(main.eventId)
+        : eventInspection(main.eventId),
     );
     host.vcs.listFiles = vi.fn(async ({ state }) => ({
       state,
@@ -894,12 +1046,13 @@ describe("GitBridge semantic snapshot boundary", () => {
     await expect(
       bridge.exportProtectedRepository(repoPath, {
         expectedMainEventId: "event:before-remote-config",
-      })
+      }),
     ).resolves.toMatchObject({ headCommit: "git:main", exported: 0 });
     const listFiles = host.vcs.listFiles;
     host.vcs.listFiles = vi.fn(async (input) => {
       const page = await listFiles(input);
-      return input.state.kind === "event" && input.state.eventId === "event:before-remote-config"
+      return input.state.kind === "event" &&
+        input.state.eventId === "event:before-remote-config"
         ? {
             ...page,
             files: page.files.map((file) => ({
@@ -912,7 +1065,7 @@ describe("GitBridge semantic snapshot boundary", () => {
     await expect(
       bridge.exportProtectedRepository(repoPath, {
         expectedMainEventId: "event:before-remote-config",
-      })
+      }),
     ).rejects.toThrow("review the new source before publishing");
     expect(bridge.git.commit).toHaveBeenCalledTimes(1);
     host.vcs.listFiles = listFiles;
@@ -924,41 +1077,56 @@ describe("GitBridge semantic snapshot boundary", () => {
         previewDir = preview.dir;
         expect(preview.dir).not.toBe(dir);
         return preview.exported;
-      })
+      }),
     ).resolves.toEqual({
       exported: 0,
       headCommit: "git:main",
       clobberedLocalEdits: [],
     });
-    expect(readFileSync(path.join(dir, "index.ts"), "utf8")).toBe("checkout-only edit\n");
-    expect(() => readFileSync(path.join(previewDir, ".git", "HEAD"), "utf8")).toThrow();
+    expect(readFileSync(path.join(dir, "index.ts"), "utf8")).toBe(
+      "checkout-only edit\n",
+    );
+    expect(() =>
+      readFileSync(path.join(previewDir, ".git", "HEAD"), "utf8"),
+    ).toThrow();
     vi.mocked(host.vcs.inspect).mockImplementation(async ({ node }) =>
       node.kind === "repository"
         ? repositoryInspection(node.state as typeof main, repoPath)
-        : eventInspection(node.kind === "event" ? node.eventId : "unexpected")
+        : eventInspection(node.kind === "event" ? node.eventId : "unexpected"),
     );
     vi.mocked(host.vcs.status).mockClear();
     const source = { kind: "event" as const, eventId: "event:local" };
     const failure = new Error("Remote publication refused");
     await expect(
-      bridge.withEventExportPreviewLocked(repoPath, source.eventId, {}, async (preview) => {
-        previewDir = preview.dir;
-        expect(preview.exported.headCommit).toBe("git:main");
-        expect(bridge.git.commit).toHaveBeenLastCalledWith(
-          expect.objectContaining({
-            message: expect.stringContaining(`Vibestudio-Event: ${source.eventId}`),
-          })
-        );
-        throw failure;
-      })
+      bridge.withEventExportPreviewLocked(
+        repoPath,
+        source.eventId,
+        {},
+        async (preview) => {
+          previewDir = preview.dir;
+          expect(preview.exported.headCommit).toBe("git:main");
+          expect(bridge.git.commit).toHaveBeenLastCalledWith(
+            expect.objectContaining({
+              message: expect.stringContaining(
+                `Vibestudio-Event: ${source.eventId}`,
+              ),
+            }),
+          );
+          throw failure;
+        },
+      ),
     ).rejects.toBe(failure);
     expect(host.vcs.status).not.toHaveBeenCalled();
     expect(host.vcs.resolveRepository).toHaveBeenLastCalledWith({
       state: source,
       repoPath,
     });
-    expect(readFileSync(path.join(dir, "index.ts"), "utf8")).toBe("checkout-only edit\n");
-    expect(() => readFileSync(path.join(previewDir, "index.ts"), "utf8")).toThrow();
+    expect(readFileSync(path.join(dir, "index.ts"), "utf8")).toBe(
+      "checkout-only edit\n",
+    );
+    expect(() =>
+      readFileSync(path.join(previewDir, "index.ts"), "utf8"),
+    ).toThrow();
 
     const cleanupFailure = new Error("preview checkout could not be removed");
     let previewRootToFail: string | undefined;
@@ -989,9 +1157,9 @@ describe("GitBridge semantic snapshot boundary", () => {
       cleanupFailure,
     ]);
     expect((combinedFailure as AggregateError).cause).toBe(publicationFailure);
-    expect(readFileSync(path.join(previewDir, "cleanup-sentinel"), "utf8")).toBe(
-      "owned\n",
-    );
+    expect(
+      readFileSync(path.join(previewDir, "cleanup-sentinel"), "utf8"),
+    ).toBe("owned\n");
   });
 
   it("projects a local event into a real Git tree, preserving unchanged files and retiring its private checkout", async () => {
@@ -999,7 +1167,9 @@ describe("GitBridge semantic snapshot boundary", () => {
     const { host } = baseHost(root);
     const textAt = (eventId: string, file: string) =>
       file === "stable.ts" ? "unchanged\n" : `${eventId}\n`;
-    host.vcs.status = vi.fn(async ({ contextId }) => status(contextId, "event:main"));
+    host.vcs.status = vi.fn(async ({ contextId }) =>
+      status(contextId, "event:main"),
+    );
     host.vcs.resolveRepository = vi.fn(async ({ state }) => ({
       state,
       repositoryId: "repository:demo",
@@ -1007,8 +1177,11 @@ describe("GitBridge semantic snapshot boundary", () => {
     }));
     host.vcs.inspect = vi.fn(async ({ node }) =>
       node.kind === "repository"
-        ? repositoryInspection(node.state as { kind: "event"; eventId: string }, repoPath)
-        : eventInspection(node.kind === "event" ? node.eventId : "unexpected")
+        ? repositoryInspection(
+            node.state as { kind: "event"; eventId: string },
+            repoPath,
+          )
+        : eventInspection(node.kind === "event" ? node.eventId : "unexpected"),
     );
     host.vcs.listFiles = vi.fn(async ({ state, repositoryId }) => ({
       state,
@@ -1057,30 +1230,34 @@ describe("GitBridge semantic snapshot boundary", () => {
         expect(
           tree.map((entry) => [
             entry.path,
-            entry.type === "blob" ? Buffer.from(entry.bytes).toString("utf8") : "unexpected",
-          ])
+            entry.type === "blob"
+              ? Buffer.from(entry.bytes).toString("utf8")
+              : "unexpected",
+          ]),
         ).toEqual([
           ["changed.ts", "event:local\n"],
           ["stable.ts", "unchanged\n"],
         ]);
-      }
+      },
     );
     expect(host.vcs.status).not.toHaveBeenCalled();
-    expect(await bridge.git.getCurrentCommit(await bridge.repoGitDir(repoPath))).toBe(
-      baseline.headCommit
-    );
+    expect(
+      await bridge.git.getCurrentCommit(await bridge.repoGitDir(repoPath)),
+    ).toBe(baseline.headCommit);
     expect(() => readFileSync(path.join(previewDir, ".git", "HEAD"))).toThrow();
   });
 
   it("rejects a template source event that is not the current protected main", async () => {
     const { host } = baseHost(root);
-    host.vcs.status = vi.fn(async ({ contextId }) => status(contextId, "event:main"));
+    host.vcs.status = vi.fn(async ({ contextId }) =>
+      status(contextId, "event:main"),
+    );
     const bridge = new GitBridge(host);
 
     await expect(
-      bridge.readProtectedRepository("projects/demo", "event:unpublished")
+      bridge.readProtectedRepository("projects/demo", "event:unpublished"),
     ).rejects.toThrow(
-      "Protected main changed from event:unpublished to event:main before template export"
+      "Protected main changed from event:unpublished to event:main before template export",
     );
     expect(host.vcs.resolveRepository).not.toHaveBeenCalled();
   });
@@ -1089,10 +1266,15 @@ describe("GitBridge semantic snapshot boundary", () => {
     const { host } = baseHost(root);
     let activeRepositoryReads = 0;
     let maximumActiveRepositoryReads = 0;
-    host.vcs.status = vi.fn(async ({ contextId }) => status(contextId, "event:main"));
+    host.vcs.status = vi.fn(async ({ contextId }) =>
+      status(contextId, "event:main"),
+    );
     host.vcs.resolveRepository = vi.fn(async ({ state, repoPath }) => {
       activeRepositoryReads += 1;
-      maximumActiveRepositoryReads = Math.max(maximumActiveRepositoryReads, activeRepositoryReads);
+      maximumActiveRepositoryReads = Math.max(
+        maximumActiveRepositoryReads,
+        activeRepositoryReads,
+      );
       await new Promise<void>((resolve) => setImmediate(resolve));
       activeRepositoryReads -= 1;
       return {
@@ -1113,8 +1295,8 @@ describe("GitBridge semantic snapshot boundary", () => {
       bridge.readProtectedRepositories(
         ["panels/news", "workers/news-agent"],
         "event:main",
-        "publish-news-v1"
-      )
+        "publish-news-v1",
+      ),
     ).resolves.toEqual([
       expect.objectContaining({
         repoPath: "panels/news",
@@ -1126,7 +1308,7 @@ describe("GitBridge semantic snapshot boundary", () => {
       }),
     ]);
     expect(host.ensureContext).toHaveBeenCalledExactlyOnceWith(
-      expect.stringMatching(/^git-bridge-template-publication-/u)
+      expect.stringMatching(/^git-bridge-template-publication-/u),
     );
     expect(host.vcs.status).toHaveBeenCalledTimes(1);
     expect(maximumActiveRepositoryReads).toBe(1);
@@ -1150,7 +1332,7 @@ describe("GitBridge semantic snapshot boundary", () => {
     const bridge = new GitBridge(host);
 
     await expect(bridge.exportProtectedRepository(repoPath)).rejects.toThrow(
-      /candidate event:external-candidate.*git-bridge-.*incrementally integrated/
+      /candidate event:external-candidate.*git-bridge-.*incrementally integrated/,
     );
     expect(host.vcs.inspect).not.toHaveBeenCalled();
   });

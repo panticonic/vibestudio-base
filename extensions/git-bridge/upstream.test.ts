@@ -189,7 +189,13 @@ function createCtx(
   if (stored === undefined && opts.initializeState !== false) {
     files.set(
       STATE_FILE,
-      JSON.stringify({ version: 1, configuration: config, repos: {} }),
+      JSON.stringify({
+        version: 2,
+        configuration: config,
+        repos: {},
+        imports: {},
+        selections: {},
+      }),
     );
   }
   const notifications = { show: vi.fn(async () => "notif-id") };
@@ -249,6 +255,38 @@ function createBridge(
     changed: true,
   }));
   const repoGitDir = vi.fn(async (repo: string) => `/repos/${repo}`);
+  const importLocation = vi.fn(async (id: string) => ({
+    contextId: `git-bridge-import-${id}`,
+    gitDir: path.join(
+      path.dirname(await repoGitDir("staging")),
+      ".imports",
+      id,
+    ),
+  }));
+  const importCheckout = vi.fn(
+    async (_repo: string, location: { contextId: string }) => ({
+      ...(await importLockedInner()),
+      contextId: location.contextId,
+      semanticEvidence: {
+        applicationId: "application:imported",
+        workUnitId: "work:imported",
+        externalSnapshot: {
+          sourceKind: "git",
+          sourceUri: "git+https://github.com/acme/fresh-clone.git",
+          snapshotRevision: "abc",
+          snapshotDigest: `snapshot:${"a".repeat(64)}`,
+          canonicalSnapshot: `v1-sha256:${"c".repeat(64)}`,
+          targetRepositoryIds: ["repo:imported"],
+        },
+      },
+    }),
+  );
+  const discardImport = vi.fn(async (id: string) => {
+    await fsp.rm((await importLocation(id)).gitDir, {
+      recursive: true,
+      force: true,
+    });
+  });
   const checkoutExists = vi.fn(async () => true);
   const pendingImportCandidate = vi.fn(
     async (): Promise<{ contextId: string; eventId: string } | null> => null,
@@ -288,6 +326,9 @@ function createBridge(
       withEventExportPreviewLocked,
       withProtectedExportPreviewLocked,
       importLockedInner,
+      importCheckout,
+      importLocation,
+      discardImport,
       repoGitDir,
       checkoutExists,
       pendingImportCandidate,
@@ -317,9 +358,13 @@ function readStored(files: Map<string, string>): {
       nextRetryAt?: number;
     }
   >;
+  imports: Record<string, unknown>;
+  selections: Record<string, unknown>;
 } {
   const raw = files.get(STATE_FILE);
-  return raw ? JSON.parse(raw) : { version: 1, configuration: {}, repos: {} };
+  return raw
+    ? JSON.parse(raw)
+    : { version: 2, configuration: {}, repos: {}, imports: {}, selections: {} };
 }
 
 function makeEngine(
@@ -452,9 +497,11 @@ describe("UpstreamEngine", () => {
     await engine.activate();
 
     expect(readStored(files)).toEqual({
-      version: 1,
+      version: 2,
       configuration: {},
       repos: {},
+      imports: {},
+      selections: {},
     });
     expect(rpc.call).not.toHaveBeenCalled();
   });
@@ -466,7 +513,13 @@ describe("UpstreamEngine", () => {
     const files = new Map([
       [
         STATE_FILE,
-        JSON.stringify({ version: 1, configuration: canonical, repos: {} }),
+        JSON.stringify({
+          version: 2,
+          configuration: canonical,
+          repos: {},
+          imports: {},
+          selections: {},
+        }),
       ],
     ]);
     const { bridge } = createBridge();
@@ -1477,9 +1530,11 @@ describe("UpstreamEngine", () => {
     expect(gitFns.fastForward).not.toHaveBeenCalled();
     expect(created.importLockedInner).not.toHaveBeenCalled();
     expect(readStored(files)).toEqual({
-      version: 1,
+      version: 2,
       configuration: config,
       repos: {},
+      imports: {},
+      selections: {},
     });
   });
 
@@ -1579,8 +1634,10 @@ describe("UpstreamEngine", () => {
       [
         STATE_FILE,
         JSON.stringify({
-          version: 1,
+          version: 2,
           configuration: config,
+          imports: {},
+          selections: {},
           repos: {
             [repo]: {
               configFingerprint: "0".repeat(64),
@@ -1913,7 +1970,7 @@ describe("UpstreamEngine", () => {
     const checkoutRoot = path.join(root, "state", "git-checkouts");
     const repo = "projects/fresh-clone";
     const config = buildConfig([{ repo, autoPush: false }]);
-    const { bridge, importLockedInner } = createBridge();
+    const { bridge } = createBridge();
     bridge.repoGitDir.mockResolvedValue(path.join(checkoutRoot, repo));
     const { engine } = makeEngine(config, bridge, {
       workspaceRoot: path.join(root, "state"),
@@ -1928,22 +1985,133 @@ describe("UpstreamEngine", () => {
         expect.not.objectContaining({ fullHistory: true }),
       );
       expect(gitFns.clone).toHaveBeenCalledWith(
-        expect.objectContaining({ dir: path.join(checkoutRoot, repo) }),
+        expect.objectContaining({ dir: expect.stringContaining("/.imports/") }),
       );
       await expect(
         fsp.access(path.join(sourceRoot, repo)),
       ).rejects.toMatchObject({
         code: "ENOENT",
       });
-      expect(importLockedInner).toHaveBeenCalledWith(repo, {
-        summary: "Import projects/fresh-clone from github.com/acme/fresh-clone",
-        sourceUri: "https://github.com/acme/fresh-clone.git",
-      });
-      expect(result).toEqual({
-        contextId: "git-bridge-candidate",
+      expect(bridge.importCheckout).toHaveBeenCalledWith(
+        repo,
+        expect.objectContaining({
+          contextId: expect.stringMatching(/^git-bridge-import-/),
+        }),
+        {
+          summary:
+            "Import projects/fresh-clone from github.com/acme/fresh-clone",
+          sourceUri: "https://github.com/acme/fresh-clone.git",
+        },
+      );
+      expect(result).toMatchObject({
+        contextId: expect.stringMatching(/^git-bridge-import-/),
         eventId: "event:imported",
         changed: true,
       });
+      const selection = await engine.repositorySelection(repo);
+      expect(selection).toMatchObject({
+        contextId: result.contextId,
+        checkoutId: expect.any(String),
+      });
+      expect(gitFns.clone.mock.calls[0]![0].dir).toContain(
+        selection!.checkoutId,
+      );
+
+    } finally {
+      await fsp.rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("selects configuration and the candidate together, and returns the original receipt after reopening", async () => {
+    const root = await fsp.mkdtemp(
+      path.join(os.tmpdir(), "git-import-select-"),
+    );
+    const repo = "projects/atomic";
+    const request = {
+      path: repo,
+      remote: {
+        name: "origin",
+        url: "https://github.com/acme/atomic.git",
+        branch: "main",
+      },
+    };
+    const { bridge } = createBridge();
+    bridge.repoGitDir.mockResolvedValue(path.join(root, repo));
+    const { engine, files, ctx } = makeEngine({}, bridge);
+    gitFns.clone.mockImplementation(async ({ dir }: { dir: string }) => {
+      expect(readStored(files).configuration).toEqual({});
+      expect(await engine.repositorySelection(repo)).toBeNull();
+      await fsp.mkdir(dir, { recursive: true });
+    });
+    const importSnapshot = bridge.importCheckout.getMockImplementation()!;
+    bridge.importCheckout.mockImplementation(async (...args) => {
+      expect(readStored(files).configuration).toEqual({});
+      expect(await engine.repositorySelection(repo)).toBeNull();
+      return importSnapshot(...args);
+    });
+    // Model a committed atomic replacement whose acknowledgment was lost.
+    const replace = ctx.storage.replaceFile;
+    ctx.storage.replaceFile = async (name, bytes) => {
+      await replace(name, bytes);
+      if (JSON.parse(String(bytes)).selections?.[repo])
+        throw new Error("lost selection reply");
+    };
+    try {
+      const receipt = await engine.importProject(request);
+      expect(await engine.repositorySelection(repo)).toMatchObject({
+        contextId: receipt.candidate.contextId,
+      });
+      expect(readStored(files).configuration).toMatchObject({
+        upstreams: { projects: { atomic: { remote: "origin" } } },
+      });
+      expect(bridge.discardImport).not.toHaveBeenCalled();
+      const reopened = makeEngine({}, bridge, { files }).engine;
+      await reopened.activate();
+      expect(bridge.discardImport).not.toHaveBeenCalled();
+      expect(await reopened.importProject(request)).toEqual(receipt);
+      expect(gitFns.clone).toHaveBeenCalledTimes(1);
+      expect(bridge.importCheckout).toHaveBeenCalledTimes(1);
+    } finally {
+      await fsp.rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("keeps failed candidates unselected and retires retained cleanup debt on reopen", async () => {
+    const root = await fsp.mkdtemp(
+      path.join(os.tmpdir(), "git-import-discard-"),
+    );
+    const repo = "projects/failed";
+    const { bridge } = createBridge();
+    bridge.repoGitDir.mockResolvedValue(path.join(root, repo));
+    const { engine, files } = makeEngine({}, bridge);
+    gitFns.clone.mockImplementation(async ({ dir }: { dir: string }) => {
+      await fsp.mkdir(dir, { recursive: true });
+    });
+    const importFailure = new Error("semantic admission failed");
+    bridge.importCheckout.mockRejectedValueOnce(importFailure);
+    const cleanupFailure = new Error("context retirement failed");
+    bridge.discardImport.mockRejectedValueOnce(cleanupFailure);
+    try {
+      await expect(
+        engine.importProject({
+          path: repo,
+          remote: {
+            name: "origin",
+            url: "https://github.com/acme/failed.git",
+            branch: "main",
+          },
+        }),
+      ).rejects.toMatchObject({ errors: [importFailure, cleanupFailure] });
+      expect(readStored(files).configuration).toEqual({});
+      expect(await engine.repositorySelection(repo)).toBeNull();
+      expect(Object.keys(JSON.parse(files.get(STATE_FILE)!).imports)).toEqual([
+        repo,
+      ]);
+      await makeEngine({}, bridge, { files }).engine.activate();
+      expect(JSON.parse(files.get(STATE_FILE)!).imports).toEqual({});
+      await expect(
+        fsp.access(gitFns.clone.mock.calls[0]![0].dir),
+      ).rejects.toMatchObject({ code: "ENOENT" });
     } finally {
       await fsp.rm(root, { recursive: true, force: true });
     }
@@ -1967,7 +2135,9 @@ describe("UpstreamEngine", () => {
     gitFns.clone.mockRejectedValueOnce(authFailure);
     gitFns.getRemoteDefaultBranch.mockResolvedValueOnce("trunk");
     try {
-      await expect(engine.cloneRepo({ repoPath: repo })).rejects.toBe(authFailure);
+      await expect(engine.cloneRepo({ repoPath: repo })).rejects.toBe(
+        authFailure,
+      );
       expect(gitFns.getRemoteDefaultBranch).not.toHaveBeenCalled();
     } finally {
       await fsp.rm(root, { recursive: true, force: true });
@@ -2005,7 +2175,9 @@ describe("UpstreamEngine", () => {
         cleanupFailure,
       ]);
       expect((failure as AggregateError).cause).toBe(cloneFailure);
-      await expect(fsp.access(absolutePath)).resolves.toBeUndefined();
+      await expect(
+        fsp.access(gitFns.clone.mock.calls[0]![0].dir),
+      ).resolves.toBeUndefined();
     } finally {
       await fsp.rm(root, { recursive: true, force: true });
     }

@@ -1,4 +1,9 @@
 import * as fsp from "node:fs/promises";
+import { randomUUID } from "node:crypto";
+import {
+  gitImportedWorkspaceRepoSchema,
+  gitRemoteSchema,
+} from "@vibestudio/service-schemas/gitInterop";
 import * as path from "node:path";
 import { stableSha256Hex } from "@vibestudio/content-addressing";
 import { GitAuthError, GitClient, GitPushRejectedError } from "@vibestudio/git";
@@ -86,9 +91,17 @@ type StoredUpstreamState = Exclude<
 type StoredRepoStatePatch = Partial<Omit<StoredRepoState, "configFingerprint">>;
 
 interface StoredState {
-  version: 1;
+  version: 2;
   configuration: GitConfig;
   repos: Record<string, StoredRepoState>;
+  imports: Record<
+    string,
+    { checkoutId: string; remote: WorkspaceGitRemoteConfig }
+  >;
+  selections: Record<
+    string,
+    { checkoutId: string; receipt: GitImportedWorkspaceRepo }
+  >;
 }
 
 interface RuntimeRepoState {
@@ -132,6 +145,14 @@ export class UpstreamEngine {
 
   async activate(): Promise<void> {
     await this.readConfig();
+    // A previous provider activation has terminated. Its unselected candidates
+    // have no public owner and must be retired before new imports are admitted.
+    const state = await this.readState();
+    for (const [repo, staged] of Object.entries(state.imports)) {
+      await withRepoLock(repo, () =>
+        this.discardStagedImport(repo, staged.checkoutId),
+      );
+    }
     await this.reportHealth();
   }
 
@@ -974,6 +995,30 @@ export class UpstreamEngine {
     };
   }
 
+  async repositorySelection(repo: string) {
+    await this.stateWrite;
+    const selected = (await this.readState()).selections[repo];
+    return selected
+      ? {
+          contextId: selected.receipt.candidate.contextId,
+          checkoutId: selected.checkoutId,
+        }
+      : null;
+  }
+
+  private async discardStagedImport(
+    repo: string,
+    checkoutId: string,
+  ): Promise<void> {
+    await this.bridge.discardImport(checkoutId);
+    await this.stateTransaction((state) => {
+      if (state.imports[repo]?.checkoutId !== checkoutId)
+        return { result: undefined, changed: false };
+      delete state.imports[repo];
+      return { result: undefined, changed: true };
+    });
+  }
+
   async importProject(
     request: GitImportProjectRequest,
   ): Promise<GitImportedWorkspaceRepo> {
@@ -983,91 +1028,166 @@ export class UpstreamEngine {
         `Imports must target one of: ${WORKSPACE_IMPORT_PARENT_DIRS.join(", ")}`,
       );
     }
-    let remote = validateWorkspaceGitRemote(request.remote);
-    const before = await this.readConfig();
-    const existingRemote = getDeclaredRemoteForRepo(before, repo, remote.name);
-    let existingUpstream: ResolvedWorkspaceGitUpstream | null = null;
-    try {
-      existingUpstream = getDeclaredUpstreamForRepo(before, repo);
-    } catch {
-      existingUpstream = null;
-    }
-    if (
-      existingRemote &&
-      (existingRemote.url !== remote.url ||
-        (remote.branch !== undefined &&
-          existingRemote.branch !== undefined &&
-          existingRemote.branch !== remote.branch))
-    ) {
-      throw new Error(
-        `Import declaration for ${repo} conflicts with its existing remote`,
+    return withRepoLock(repo, async () => {
+      let remote = validateWorkspaceGitRemote(request.remote);
+      const before = await this.readConfig();
+      const existingRemote = getDeclaredRemoteForRepo(
+        before,
+        repo,
+        remote.name,
       );
-    }
-    if (existingUpstream && existingUpstream.remote !== remote.name) {
-      throw new Error(
-        `Import declaration for ${repo} conflicts with its existing upstream`,
-      );
-    }
-    if (!remote.branch) {
-      const discovered = await this.remoteDefaultBranch({
-        url: remote.url,
-        credentialIdOverride: request.credentialIdOverride,
-      });
-      if (!discovered.branch) {
+      const existingUpstream = getDeclaredUpstreamForRepo(before, repo);
+      if (
+        existingRemote &&
+        (existingRemote.url !== remote.url ||
+          (remote.branch !== undefined &&
+            existingRemote.branch !== undefined &&
+            existingRemote.branch !== remote.branch))
+      )
         throw new Error(
-          `Remote ${remote.url} does not advertise a default branch; specify remote.branch explicitly`,
+          `Import declaration for ${repo} conflicts with its existing remote`,
         );
+      if (existingUpstream && existingUpstream.remote !== remote.name)
+        throw new Error(
+          `Import declaration for ${repo} conflicts with its existing upstream`,
+        );
+      if (!remote.branch) {
+        remote = {
+          ...remote,
+          branch: existingUpstream?.branch ?? existingRemote?.branch,
+        };
       }
-      remote = { ...remote, branch: discovered.branch };
-    }
-    if (!existingRemote || !existingUpstream) {
-      await this.applyConfigMutation(
-        (current) =>
-          setDeclaredUpstreamInConfig(
-            existingRemote
-              ? current
-              : setDeclaredRemoteInConfig(current, repo, remote),
-            repo,
-            { remote: remote.name, branch: remote.branch, autoPush: false },
-          ),
-        `record Git import ${repo} from ${remote.url}`,
-      );
-    }
-    try {
-      const candidate = await this.cloneRepo({
-        repoPath: repo,
-        credentialIdOverride: request.credentialIdOverride,
+      if (!remote.branch) {
+        const discovered = await this.remoteDefaultBranch({
+          url: remote.url,
+          credentialIdOverride: request.credentialIdOverride,
+        });
+        if (!discovered.branch)
+          throw new Error(
+            `Remote ${remote.url} does not advertise a default branch; specify remote.branch explicitly`,
+          );
+        remote = { ...remote, branch: discovered.branch };
+      }
+      const selected = (await this.readState()).selections[repo];
+      if (selected) {
+        if (
+          !existingRemote ||
+          !existingUpstream ||
+          stableSha256Hex(selected.receipt.remote) !== stableSha256Hex(remote)
+        )
+          throw new Error(`Path already exists: ${repo}`);
+        return structuredClone(selected.receipt);
+      }
+      const absolutePath = await this.bridge.repoGitDir(repo);
+      try {
+        await fsp.access(absolutePath);
+        throw new Error(`Path already exists: ${repo}`);
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+      }
+      const staged = (await this.readState()).imports[repo];
+      if (staged) await this.discardStagedImport(repo, staged.checkoutId);
+      const checkoutId = randomUUID();
+      await this.stateTransaction((state) => {
+        state.imports[repo] = { checkoutId, remote };
+        return { result: undefined, changed: true };
       });
-      return { path: repo, remote, candidate };
-    } catch (error) {
-      if (!existingRemote || !existingUpstream) {
+      try {
+        const location = await this.bridge.importLocation(checkoutId);
+        await fsp.mkdir(path.dirname(location.gitDir), { recursive: true });
+        const upstream =
+          existingUpstream ??
+          getDeclaredUpstreamForRepo(
+            setDeclaredUpstreamInConfig(
+              setDeclaredRemoteInConfig({}, repo, remote),
+              repo,
+              { remote: remote.name, branch: remote.branch, autoPush: false },
+            ),
+            repo,
+          )!;
+        const git = this.gitClient(
+          this.credentialFor(upstream, remote, request.credentialIdOverride),
+        );
+        await git.clone({
+          url: remote.url,
+          dir: location.gitDir,
+          ref: remote.branch,
+        });
+        if (remote.name !== "origin")
+          await git.addRemote(location.gitDir, remote.name, remote.url);
+        const candidate = await this.bridge.importCheckout(repo, location, {
+          summary: `Import ${repo} from ${displayRemote(remote.url)}`,
+          sourceUri: remote.url,
+        });
+        const receipt = gitImportedWorkspaceRepoSchema.parse({
+          path: repo,
+          remote,
+          candidate,
+        });
+        if (candidate.contextId !== location.contextId)
+          throw new Error(
+            "Semantic import returned a foreign candidate context",
+          );
+        await this.stateTransaction((state) => {
+          // Preserve concurrent changes to other repositories, but never promote
+          // a candidate over a changed declaration for this repository.
+          if (
+            stableSha256Hex(
+              getDeclaredRemoteForRepo(state.configuration, repo, remote.name),
+            ) !== stableSha256Hex(existingRemote) ||
+            stableSha256Hex(
+              getDeclaredUpstreamForRepo(state.configuration, repo),
+            ) !== stableSha256Hex(existingUpstream)
+          )
+            throw new Error(
+              `Git configuration changed while importing ${repo}`,
+            );
+          if (state.imports[repo]?.checkoutId !== checkoutId)
+            throw new Error(`Git import ownership changed for ${repo}`);
+          const config = setDeclaredUpstreamInConfig(
+            existingRemote
+              ? state.configuration
+              : setDeclaredRemoteInConfig(state.configuration, repo, remote),
+            repo,
+            existingUpstream
+              ? declaredUpstreamConfig(existingUpstream)
+              : { remote: remote.name, branch: remote.branch, autoPush: false },
+          );
+          validateWorkspaceGitConfig(config);
+          state.configuration = config;
+          state.selections[repo] = { checkoutId, receipt };
+          delete state.imports[repo];
+          return { result: undefined, changed: true };
+        });
+        return receipt;
+      } catch (error) {
+        // replaceFile may have committed before its response was lost. Read
+        // the authoritative selection before deciding which resources we own.
+        let current: StoredState;
         try {
-          await this.applyConfigMutation((current) => {
-            const withoutUpstream = existingUpstream
-              ? setDeclaredUpstreamInConfig(
-                  current,
-                  repo,
-                  declaredUpstreamConfig(existingUpstream),
-                )
-              : removeDeclaredUpstreamFromConfig(current, repo);
-            return existingRemote
-              ? setDeclaredRemoteInConfig(withoutUpstream, repo, existingRemote)
-              : removeDeclaredRemoteFromConfig(
-                  withoutUpstream,
-                  repo,
-                  remote.name,
-                );
-          }, `roll back failed Git import ${repo}`);
+          await this.stateWrite;
+          current = await this.readState();
+        } catch (readError) {
+          throw attachGitCleanupFailure(
+            error,
+            readError,
+            "inspect-import-selection",
+          );
+        }
+        if (current.selections[repo]?.checkoutId === checkoutId)
+          return structuredClone(current.selections[repo]!.receipt);
+        try {
+          await this.discardStagedImport(repo, checkoutId);
         } catch (cleanupError) {
           throw attachGitCleanupFailure(
             error,
             cleanupError,
-            "restore-import-config",
+            "discard-import-candidate",
           );
         }
+        throw error;
       }
-      throw error;
-    }
+    });
   }
 
   async cloneRepo(input: {
@@ -1075,79 +1195,25 @@ export class UpstreamEngine {
     credentialIdOverride?: string | null;
   }): Promise<ImportResult> {
     const repo = normalizeWorkspaceRepoPath(input.repoPath);
-    return withRepoLock(repo, async () => {
-      const config = await this.readConfig();
-      const upstream = getDeclaredUpstreamForRepo(config, repo);
-      if (!upstream)
-        throw new Error(`No approved upstream is declared for ${repo}`);
-      const remote = getDeclaredRemoteForRepo(config, repo, upstream.remote);
-      if (!remote)
-        throw new Error(
-          `No approved remote ${upstream.remote} is declared for ${repo}`,
-        );
-      const absolutePath = await this.bridge.repoGitDir(repo);
-      if (!isSupportedImportRepoPath(repo)) {
-        throw new Error(
-          `Imports must target one of: ${WORKSPACE_IMPORT_PARENT_DIRS.join(", ")}`,
-        );
-      }
-      try {
-        await fsp.access(absolutePath);
-        throw new Error(`Path already exists: ${repo}`);
-      } catch (err) {
-        if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
-      }
-      await fsp.mkdir(path.dirname(absolutePath), { recursive: true });
-      const git = this.gitClient(
-        this.credentialFor(upstream, remote, input.credentialIdOverride),
+    const config = await this.readConfig();
+    const upstream = getDeclaredUpstreamForRepo(config, repo);
+    if (!upstream)
+      throw new Error(`No approved upstream is declared for ${repo}`);
+    const remote = getDeclaredRemoteForRepo(config, repo, upstream.remote);
+    if (!remote)
+      throw new Error(
+        `No approved remote ${upstream.remote} is declared for ${repo}`,
       );
-      const cloneRef = upstream.branch ?? remote.branch;
-      try {
-        await git.clone({
-          url: remote.url,
-          dir: absolutePath,
-          ref: cloneRef,
-        });
-      } catch (err) {
-        await removeFailedGitCheckout(absolutePath, err);
-        // Preserve the typed credential failure: the default-branch hint is
-        // diagnostic only and must not turn an actionable auth error into a
-        // generic branch-selection error.
-        if (err instanceof GitAuthError) throw err;
-        // When the requested branch was a default-assumption (not user-declared
-        // config we can trust), name the remote's ACTUAL default branch in the
-        // error instead of leaving a bare git failure.
-        if (cloneRef) {
-          const actualDefault = await git
-            .getRemoteDefaultBranch(remote.url)
-            .catch(() => null);
-          if (actualDefault && actualDefault !== cloneRef) {
-            throw new Error(
-              `Clone of ${displayRemote(remote.url)} branch "${cloneRef}" failed ` +
-                `(${errorMessage(err)}). The remote's default branch is "${actualDefault}" — ` +
-                `re-import with --branch ${actualDefault}.`,
-              { cause: err },
-            );
-          }
-        }
-        throw err;
-      }
-
-      try {
-        if (remote.name !== "origin") {
-          await git
-            .addRemote(absolutePath, remote.name, remote.url)
-            .catch(() => undefined);
-        }
-        return await this.bridge.importLockedInner(repo, {
-          summary: `Import ${repo} from ${displayRemote(remote.url)}`,
-          sourceUri: remote.url,
-        });
-      } catch (err) {
-        await removeFailedGitCheckout(absolutePath, err);
-        throw err;
-      }
+    const imported = await this.importProject({
+      path: repo,
+      remote: {
+        name: remote.name,
+        url: remote.url,
+        branch: upstream.branch ?? remote.branch,
+      },
+      credentialIdOverride: input.credentialIdOverride,
     });
+    return imported.candidate;
   }
 
   async commitMapping(
@@ -1999,9 +2065,15 @@ function errorMessage(error: unknown): string {
 function attachGitCleanupFailure(
   primary: unknown,
   cleanup: unknown,
-  stage: "restore-import-config",
+  stage: "inspect-import-selection" | "discard-import-candidate",
 ): Error {
-  const error = primary instanceof Error ? primary : new Error(String(primary));
+  if (!(primary instanceof GitAuthError))
+    return new AggregateError(
+      [primary, cleanup],
+      `Git import failed during ${stage}`,
+      { cause: primary },
+    );
+  const error = primary;
   const existing =
     isRecord(error) && isRecord(error["errorData"]) ? error["errorData"] : {};
   const errorData = {
@@ -2028,21 +2100,6 @@ function attachGitCleanupFailure(
       configurable: true,
     });
     return wrapped;
-  }
-}
-
-async function removeFailedGitCheckout(
-  absolutePath: string,
-  primary: unknown,
-): Promise<void> {
-  try {
-    await fsp.rm(absolutePath, { recursive: true, force: true });
-  } catch (cleanupFailure) {
-    throw new AggregateError(
-      [primary, cleanupFailure],
-      "Git import failed and its checkout could not be retired",
-      { cause: primary },
-    );
   }
 }
 
@@ -2106,7 +2163,13 @@ function transportRemoteForFingerprint(fingerprint: string): string {
 }
 
 function emptyStoredState(): StoredState {
-  return { version: 1, configuration: {}, repos: {} };
+  return {
+    version: 2,
+    configuration: {},
+    repos: {},
+    imports: {},
+    selections: {},
+  };
 }
 
 const STORED_UPSTREAM_STATES = new Set<StoredUpstreamState>([
@@ -2119,20 +2182,62 @@ const STORED_UPSTREAM_STATES = new Set<StoredUpstreamState>([
 ]);
 
 function parseStoredState(value: unknown): StoredState | null {
-  if (
-    !isRecord(value) ||
-    !hasOnlyKeys(value, ["version", "configuration", "repos"])
-  )
+  if (!isRecord(value)) return null;
+  const version = value["version"];
+  if (version !== 2) return null;
+  if (!hasOnlyKeys(value, ["version", "configuration", "repos", "imports", "selections"]))
     return null;
-  if (value["version"] !== 1) return null;
   const configuration = value["configuration"];
   if (!isRecord(configuration) || !isRecord(value["repos"])) return null;
   const validatedConfiguration = GitConfigSchema.parse(configuration);
   validateWorkspaceGitConfig(validatedConfiguration);
   const repos = parseStoredRepos(value["repos"]);
-  return repos
-    ? { version: 1, configuration: validatedConfiguration as GitConfig, repos }
-    : null;
+  if (!repos) return null;
+  const state: StoredState = {
+    version: 2,
+    configuration: validatedConfiguration as GitConfig,
+    repos,
+    imports: {},
+    selections: {},
+  };
+  if (!isRecord(value["imports"]) || !isRecord(value["selections"]))
+    return null;
+  for (const [repo, entry] of Object.entries(value["imports"])) {
+    if (
+      normalizeWorkspaceRepoPath(repo) !== repo ||
+      !isRecord(entry) ||
+      !hasOnlyKeys(entry, ["checkoutId", "remote"]) ||
+      typeof entry["checkoutId"] !== "string" ||
+      !/^[a-f0-9-]{36}$/.test(entry["checkoutId"])
+    )
+      return null;
+    state.imports[repo] = {
+      checkoutId: entry["checkoutId"],
+      remote: validateWorkspaceGitRemote(
+        gitRemoteSchema.parse(entry["remote"]),
+      ),
+    };
+  }
+  for (const [repo, entry] of Object.entries(value["selections"])) {
+    if (
+      normalizeWorkspaceRepoPath(repo) !== repo ||
+      !isRecord(entry) ||
+      !hasOnlyKeys(entry, ["checkoutId", "receipt"]) ||
+      typeof entry["checkoutId"] !== "string" ||
+      !/^[a-f0-9-]{36}$/.test(entry["checkoutId"])
+    )
+      return null;
+    const receipt = gitImportedWorkspaceRepoSchema.parse(entry["receipt"]);
+    if (
+      receipt.path !== repo ||
+      receipt.candidate.contextId !==
+        `git-bridge-import-${entry["checkoutId"]}` ||
+      state.imports[repo]
+    )
+      return null;
+    state.selections[repo] = { checkoutId: entry["checkoutId"], receipt };
+  }
+  return state;
 }
 
 function parseStoredRepos(
