@@ -39,6 +39,18 @@ function resultDetails(payload: InvocationCardPayload): Record<string, unknown> 
   return valueRecord(valueRecord(payload.execution.result)?.["details"]);
 }
 
+function completedFailedVerification(payload: InvocationCardPayload): string | null {
+  if (
+    payload.name !== "verify" ||
+    payload.execution.status !== "complete" ||
+    payload.execution.isError === true
+  ) {
+    return null;
+  }
+  const status = resultDetails(payload)?.["status"];
+  return status === "failed" || status === "compilation-failed" ? status : null;
+}
+
 function protocolText(payload: InvocationCardPayload): string {
   const content = valueRecord(payload.execution.result)?.["protocolContent"];
   if (!Array.isArray(content)) return "";
@@ -83,6 +95,22 @@ export function toolPresentation(payload: InvocationCardPayload): {
   const args = payload.arguments;
   const details = resultDetails(payload);
   const fileMutation = extractFileMutationDetails(payload.execution.result);
+  const failedVerification = completedFailedVerification(payload);
+  if (failedVerification) {
+    const operation = details?.["operation"] ?? args["operation"];
+    const target = compactText(details?.["target"] ?? args["target"], 64);
+    const outcome =
+      operation === "build"
+        ? "Build failed"
+        : failedVerification === "compilation-failed"
+          ? "Test compilation failed"
+          : "Tests failed";
+    return {
+      displayName: "Verify",
+      preview: `${outcome}${target ? ` · ${target}` : ""}`,
+      color: "amber",
+    };
+  }
   if (payload.name === "write") {
     const path = compactText(args["path"], 72) || "file";
     const outcome = fileMutation?.status === "conflict" ? " · conflict" : "";
@@ -379,7 +407,10 @@ export const ActionPill = React.memo(function ActionPill({
   const statusKey = getStatusKey(payload);
   const isPending = statusKey === "pending";
   const presentation = useMemo(() => toolPresentation(payload), [payload]);
-  const color = presentation.color ?? getStatusColor(statusKey);
+  const color =
+    statusKey === "complete"
+      ? presentation.color ?? getStatusColor(statusKey)
+      : getStatusColor(statusKey);
 
   const preview = presentation.preview;
   const displayName = presentation.displayName;
@@ -414,7 +445,11 @@ export const ActionPill = React.memo(function ActionPill({
         border: `1px solid var(--${color}-a5)`,
       }}
     >
-      {isPending ? <Spinner size="1" /> : <StatusDot statusKey={statusKey} />}
+      {isPending ? (
+        <Spinner size="1" />
+      ) : (
+        <StatusDot statusKey={statusKey} tone={color} />
+      )}
       <Text className="inline-pill-label" size="1" color={color} weight="medium">
         {displayName}
       </Text>
@@ -460,17 +495,24 @@ export const ExpandedAction = React.memo(function ExpandedAction({
   const isPending = statusKey === "pending";
   const isError = statusKey === "error";
   const presentation = useMemo(() => toolPresentation(payload), [payload]);
-  const color = presentation.color ?? getStatusColor(statusKey);
+  const color =
+    statusKey === "complete"
+      ? presentation.color ?? getStatusColor(statusKey)
+      : getStatusColor(statusKey);
   const fileMutation = useMemo(
     () => extractFileMutationDetails(payload.execution.result),
     [payload.execution.result]
   );
   const resultColor =
-    fileMutation?.status === "conflict"
-      ? "amber"
-      : fileMutation?.status === "unchanged"
-        ? "gray"
-        : "green";
+    statusKey !== "complete"
+      ? getStatusColor(statusKey)
+      : completedFailedVerification(payload)
+        ? "amber"
+        : fileMutation?.status === "conflict"
+          ? "amber"
+          : fileMutation?.status === "unchanged"
+            ? "gray"
+            : "green";
 
   const displayName = presentation.displayName;
 
@@ -505,7 +547,7 @@ export const ExpandedAction = React.memo(function ExpandedAction({
         <Text color={color} style={{ display: "flex", alignItems: "center" }}>
           <ExpandableChevron expanded={true} />
         </Text>
-        <StatusDot statusKey={statusKey} />
+        <StatusDot statusKey={statusKey} tone={color} />
         <Text size="1" color={color} weight="medium">
           {displayName}
         </Text>

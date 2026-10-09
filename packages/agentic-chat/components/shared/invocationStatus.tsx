@@ -69,14 +69,20 @@ export function isLiveStatus(status: ToolExecutionState["status"]): boolean {
   return status === "pending" || status === "running";
 }
 
-export function StatusDot({ statusKey }: { statusKey: StatusKey }) {
+export function StatusDot({
+  statusKey,
+  tone,
+}: {
+  statusKey: StatusKey;
+  tone?: StatusTone;
+}) {
   return (
     <Box
       style={{
         width: 6,
         height: 6,
         borderRadius: "50%",
-        backgroundColor: STATUS_DOT_COLOR[statusKey],
+        backgroundColor: tone ? `var(--${tone}-9)` : STATUS_DOT_COLOR[statusKey],
         flexShrink: 0,
       }}
     />

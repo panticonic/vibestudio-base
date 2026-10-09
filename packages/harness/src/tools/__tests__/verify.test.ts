@@ -127,7 +127,7 @@ describe("context-exact verify tool", () => {
     await expect(execution).resolves.toMatchObject({ isError: false });
   });
 
-  it("keeps structured build diagnostics while marking a failed build as an error", async () => {
+  it("returns source build diagnostics as a completed failed-check report", async () => {
     const { callMain } = rpcResult({
       stateHash: `state:${"b".repeat(64)}`,
       repoPath: "panels/editor",
@@ -154,7 +154,7 @@ describe("context-exact verify tool", () => {
       { callId: "call-build" },
     );
 
-    expect(result.isError).toBe(true);
+    expect(result.isError).toBe(false);
     expect(result.content[0]).toMatchObject({
       type: "text",
       text: expect.stringContaining("1 diagnostic"),
@@ -172,35 +172,20 @@ describe("context-exact verify tool", () => {
       (result.details as { receipt: unknown }).receipt,
     );
     expect((result.content[0] as { text: string }).text).toContain(
-      "Do not rerun this unchanged build.",
+      "Inspect these diagnostics, repair the source or dependency, then rerun verify once",
     );
     expect(result.details).toMatchObject({
       operation: "build",
-      failureKind: "user-code",
       report: { diagnostics: [{ source: "tsc", severity: "error" }] },
-      failure: {
-        protocol: "agent-tool-failure.v1",
-        code: "build_verification_failed",
-        kind: "domain",
-        message: "Build failed for panels/editor with 1 diagnostic.",
-        operation: "tool.verify",
-        recovery: { action: "repair-source" },
-      },
     });
-    const failure = (result.details as { failure?: Record<string, unknown> })
-      .failure;
-    expect(failure).not.toHaveProperty("data");
-    expect(failure).not.toHaveProperty("report");
-    expect(failure).not.toHaveProperty("receipt");
+    expect(result.details).not.toHaveProperty("failureKind");
+    expect(result.details).not.toHaveProperty("failure");
     expect(JSON.stringify(result)).not.toContain("[object Object]");
   });
 
-  it("does not classify an infrastructure build diagnostic as guest source", async () => {
-    const { callMain } = rpcResult({
-      stateHash: `state:${"b".repeat(64)}`,
-      repoPath: "panels/editor",
-      kind: "panel",
-      status: "failed" as const,
+  it.each([
+    {
+      name: "infrastructure-only",
       diagnostics: [
         {
           source: "infrastructure" as const,
@@ -211,7 +196,41 @@ describe("context-exact verify tool", () => {
           message: "Declared runtime dependency is unavailable",
         },
       ],
-      builds: [{ target: "runtime" as const, diagnosticIndexes: [0] }],
+    },
+    {
+      name: "mixed source and infrastructure",
+      diagnostics: [
+        {
+          source: "tsc" as const,
+          severity: "error" as const,
+          file: "panels/editor/index.tsx",
+          line: 4,
+          column: 9,
+          message: "Cannot find name 'missing'",
+        },
+        {
+          source: "infrastructure" as const,
+          severity: "error" as const,
+          file: "panels/editor/package.json",
+          line: 0,
+          column: 0,
+          message: "Declared runtime dependency is unavailable",
+        },
+      ],
+    },
+  ])("classifies $name build reports as infrastructure failures", async ({ diagnostics }) => {
+    const { callMain } = rpcResult({
+      stateHash: `state:${"b".repeat(64)}`,
+      repoPath: "panels/editor",
+      kind: "panel",
+      status: "failed" as const,
+      diagnostics,
+      builds: [
+        {
+          target: "runtime" as const,
+          diagnosticIndexes: diagnostics.map((_, index) => index),
+        },
+      ],
     });
 
     const result = await executeTool(
@@ -225,6 +244,62 @@ describe("context-exact verify tool", () => {
 
     expect(result.isError).toBe(true);
     expect(result.details).not.toHaveProperty("failureKind");
+    expect(result.details).toMatchObject({
+      status: "failed",
+      failure: {
+        protocol: "agent-tool-failure.v1",
+        code: "build_verification_failed",
+        kind: "infrastructure",
+        retry: { policy: "reobserve" },
+        recovery: { action: "reobserve" },
+      },
+    });
+    const text = (result.content[0] as { text: string }).text;
+    expect(text).toContain("Build verification for panels/editor encountered an infrastructure failure.");
+    expect(text).toContain("Declared runtime dependency is unavailable");
+    expect(text).toContain(
+      "Do not repair user source based on this report",
+    );
+    expect(text).not.toContain("repair the source or dependency");
+  });
+
+  it("keeps a failed build report without error diagnostics as an integrity failure", async () => {
+    const { callMain } = rpcResult({
+      stateHash: `state:${"b".repeat(64)}`,
+      repoPath: "panels/editor",
+      kind: "panel",
+      status: "failed" as const,
+      diagnostics: [],
+      builds: [],
+    });
+    const result = await executeTool(
+      createVerifyTool(callMain, () => "context-7"),
+      { operation: "build", target: "panels/editor" },
+      { callId: "call-build" },
+    );
+
+    expect(result.isError).toBe(true);
+    expect(result.details).toMatchObject({
+      status: "failed",
+      report: { status: "failed", diagnostics: [] },
+      receipt: { status: "failed" },
+      failure: {
+        protocol: "agent-tool-failure.v1",
+        code: "build_report_inconsistent",
+        kind: "integrity",
+        retry: { policy: "none" },
+        recovery: { action: "stop" },
+      },
+    });
+    const text = (result.content[0] as { text: string }).text;
+    expect(text).toContain(
+      "failed but contains no error diagnostics",
+    );
+    expect(text).toContain(
+      "stop. The failed status has no error diagnostic",
+    );
+    expect(text).toContain("inspect the build report producer");
+    expect(text).not.toContain("repair the source or dependency");
   });
 
   it("passes host-derived structured repairs through the diagnostic bounds untouched", async () => {
@@ -423,13 +498,20 @@ describe("context-exact verify tool", () => {
       { operation: "test", target: plan.target },
       { callId: "compile" },
     );
-    expect(failed.isError).toBe(true);
+    expect(failed.isError).toBe(false);
     expect(executor).not.toHaveBeenCalled();
     expect(failed.details).toMatchObject({
       status: "compilation-failed",
-      failureKind: "user-code",
       report: refusal.errorData,
       receipt: { stateHash: plan.stateHash, status: "compilation-failed" },
+    });
+    expect(failed.details).not.toHaveProperty("failureKind");
+    expect(failed.details).not.toHaveProperty("failure");
+    expect(failed.content[0]).toMatchObject({
+      type: "text",
+      text: expect.stringContaining(
+        "Inspect the compiler diagnostics, repair the source, then rerun verify.",
+      ),
     });
     const evidence = failed.details as { report: object; receipt: object };
     for (const key of [
@@ -628,22 +710,35 @@ describe("context-exact verify tool", () => {
             failed: status === "failed" ? 1 : 0,
             skipped: 0,
             durationMs: 1,
-            files: [{ file: "parser.test.ts", status: "pass" }],
+            files:
+              status === "failed"
+                ? [
+                    {
+                      file: "parser.test.ts",
+                      status: "fail",
+                      errors: ["expected 1 to equal 2"],
+                    },
+                  ]
+                : [{ file: "parser.test.ts", status: "pass" }],
           }),
         ),
         { operation: "test", target: "packages/parser" },
         { callId: "call-test" },
       );
-      expect(result.isError).toBe(true);
+      expect(result.isError).toBe(status !== "failed");
       expect(result.details).toMatchObject({
         status,
         report: { status },
         receipt: { status },
       });
       if (status === "failed") {
-        expect(result.details).toMatchObject({
-          failureKind: "user-code",
-          failure: { kind: "domain" },
+        expect(result.details).not.toHaveProperty("failureKind");
+        expect(result.details).not.toHaveProperty("failure");
+        expect(result.content[0]).toMatchObject({
+          type: "text",
+          text: expect.stringContaining(
+            "Inspect these failures, repair the source or tests, then rerun verify once.",
+          ),
         });
       } else {
         expect(result.details).not.toHaveProperty("failureKind");

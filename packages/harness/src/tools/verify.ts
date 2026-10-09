@@ -101,8 +101,6 @@ export type VerifyToolDetails =
       receipt: UnitVerificationReceiptV1;
       truncatedDiagnostics: number;
       truncatedDiagnosticText: number;
-      failureKind: "user-code";
-      failure: AgentToolFailure;
     }
   | {
       operation: "build" | "test";
@@ -225,14 +223,16 @@ export function createVerifyTool(
         );
         const bounded = boundBuildReport(report);
         const failed = report.status !== "ok";
+        const errorDiagnostics = report.diagnostics.filter(
+          (diagnostic) => diagnostic.severity === "error",
+        );
+        const hasInfrastructureFailure = errorDiagnostics.some(
+          (diagnostic) => diagnostic.source === "infrastructure",
+        );
         const sourceFailure =
           report.status === "failed" &&
-          report.diagnostics.some(
-            (diagnostic) => diagnostic.severity === "error",
-          ) &&
-          report.diagnostics
-            .filter((diagnostic) => diagnostic.severity === "error")
-            .every((diagnostic) => diagnostic.source !== "infrastructure");
+          errorDiagnostics.length > 0 &&
+          !hasInfrastructureFailure;
         const receipt = buildVerificationReceipt(
           command.target,
           exactContextId,
@@ -240,16 +240,29 @@ export function createVerifyTool(
           bounded,
         );
         const failure =
-          report.status === "failed"
-            ? verificationFailure({
-                code: "build_verification_failed",
-                message: `Build failed for ${command.target} with ${report.diagnostics.length} ${report.diagnostics.length === 1 ? "diagnostic" : "diagnostics"}.`,
-                recovery: {
-                  action: "repair-source",
-                  instruction:
-                    "This receipt already proves the current failure; do not rerun unchanged. Inspect the returned diagnostics, or use receipt.reportRequest once when omitted diagnostics are required. Repair the source or dependencies, then rerun verify once with the same target.",
-                },
-              })
+          report.status === "failed" && !sourceFailure
+            ? hasInfrastructureFailure
+              ? verificationFailure({
+                  code: "build_verification_failed",
+                  kind: "infrastructure",
+                  retryPolicy: "reobserve",
+                  message: `Build verification for ${command.target} encountered an infrastructure failure.`,
+                  recovery: {
+                    action: "reobserve",
+                    instruction:
+                      "Inspect the infrastructure diagnostics and restore the required provider, dependency, or service. Do not repair user source based on this report; rerun verify after the infrastructure issue is resolved.",
+                  },
+                })
+              : verificationFailure({
+                  code: "build_report_inconsistent",
+                  kind: "integrity",
+                  message: `Build report for ${command.target} is failed but contains no error diagnostics.`,
+                  recovery: {
+                    action: "stop",
+                    instruction:
+                      "Keep the original report and receipt, and stop. The failed status has no error diagnostic to guide a source repair; inspect the build report producer.",
+                  },
+                })
             : report.status === "skipped"
               ? verificationFailure({
                   code: "build_target_not_buildable",
@@ -266,7 +279,7 @@ export function createVerifyTool(
           content: [
             {
               type: "text",
-              text: renderBuild(command.target, bounded.report, receipt),
+              text: renderBuild(command.target, bounded.report, receipt, failure),
             },
           ],
           details: toolDetails({
@@ -283,10 +296,9 @@ export function createVerifyTool(
             },
             truncatedDiagnostics: bounded.truncatedDiagnostics,
             truncatedDiagnosticText: bounded.truncatedDiagnosticText,
-            ...(sourceFailure ? { failureKind: "user-code" as const } : {}),
             ...(failure ? { failure } : {}),
           }),
-          isError: failed,
+          isError: failed && !sourceFailure,
         };
       }
 
@@ -428,39 +440,29 @@ export function createVerifyTool(
         status,
       };
       const failure =
-        status === "failed"
+        status === "no-tests"
           ? verificationFailure({
-              code: "test_verification_failed",
-              message: `Tests failed for ${command.target}: ${report.failed} of ${report.total} failed.`,
+              code: "no_tests_discovered",
+              message: `No tests were discovered for ${command.target}.`,
+              retryPolicy: "correct-input",
               recovery: {
-                action: "repair-source",
+                action: "correct-request",
                 instruction:
-                  "Inspect the returned report.details, repair the failing source or tests, then rerun verify once.",
+                  "Inspect the unit's test files and correct target, file, or testName before retrying.",
               },
             })
-          : status === "no-tests"
+          : status === "cancelled" || status === "infrastructure-error"
             ? verificationFailure({
-                code: "no_tests_discovered",
-                message: `No tests were discovered for ${command.target}.`,
-                retryPolicy: "correct-input",
+                code: `test_execution_${status.replaceAll("-", "_")}`,
+                kind: status === "cancelled" ? "cancelled" : "infrastructure",
+                message: `Test execution ${status} for ${command.target}; partial counts do not prove verification.`,
                 recovery: {
-                  action: "correct-request",
+                  action: "stop",
                   instruction:
-                    "Inspect the unit's test files and correct target, file, or testName before retrying.",
+                    "Inspect the execution failure before starting a new verification attempt.",
                 },
               })
-            : status === "cancelled" || status === "infrastructure-error"
-              ? verificationFailure({
-                  code: `test_execution_${status.replaceAll("-", "_")}`,
-                  kind: status === "cancelled" ? "cancelled" : "infrastructure",
-                  message: `Test execution ${status} for ${command.target}; partial counts do not prove verification.`,
-                  recovery: {
-                    action: "stop",
-                    instruction:
-                      "Inspect the execution failure before starting a new verification attempt.",
-                  },
-                })
-              : undefined;
+            : undefined;
       return {
         content: [
           {
@@ -479,10 +481,12 @@ export function createVerifyTool(
           receipt,
           truncatedFiles: bounded.truncatedFiles,
           truncatedErrors: bounded.truncatedErrors,
-          ...(status === "failed" ? { failureKind: "user-code" as const } : {}),
           ...(failure ? { failure } : {}),
         }),
-        isError: status !== "passed",
+        isError:
+          status === "no-tests" ||
+          status === "cancelled" ||
+          status === "infrastructure-error",
       };
     },
   };
@@ -512,21 +516,15 @@ function compilationFailureResult(
       truncated: bounded.truncatedDiagnostics,
     },
   };
-  const failure = verificationFailure({
-    code: "test_compilation_failed",
-    message: `Test compilation failed for ${target}; no tests executed.`,
-    recovery: {
-      action: "repair-source",
-      instruction:
-        "Inspect the compiler diagnostics, repair the source, then rerun verify.",
-    },
-  });
+  const message =
+    `Test compilation failed for ${target}; no tests executed. ` +
+    "Inspect the compiler diagnostics, repair the source, then rerun verify.";
   return {
     content: [
       {
         type: "text",
         text:
-          failure.message +
+          message +
           "\n" +
           JSON.stringify({ report: bounded.report, receipt }),
       },
@@ -539,10 +537,8 @@ function compilationFailureResult(
       receipt,
       truncatedDiagnostics: bounded.truncatedDiagnostics,
       truncatedDiagnosticText: bounded.truncatedDiagnosticText,
-      failureKind: "user-code",
-      failure,
     }),
-    isError: true,
+    isError: false,
   };
 }
 
@@ -717,6 +713,7 @@ function renderBuild(
   target: string,
   report: UnitBuildReportWire,
   receipt: UnitVerificationReceiptV1,
+  failure?: AgentToolFailure,
 ): string {
   const diagnostics = receipt.diagnostics!;
   const diagnosticSummary =
@@ -729,7 +726,11 @@ function renderBuild(
     `${diagnosticSummary}). ` +
     "This verifies a context candidate only; protected main and every live runtime remain unchanged. " +
     "The bounded diagnostics and exact reusable receipt follow; use receipt.reportRequest only when omitted diagnostics are required." +
-    (report.status === "failed" ? " Do not rerun this unchanged build." : "") +
+    (report.status === "failed"
+      ? failure
+        ? ` ${failure.message}${failure.recovery?.instruction ? ` ${failure.recovery.instruction}` : ""}`
+        : " Inspect these diagnostics, repair the source or dependency, then rerun verify once; do not rerun unchanged."
+      : "") +
     "\n" +
     JSON.stringify({ diagnostics: report.diagnostics, receipt })
   );
@@ -748,5 +749,8 @@ function renderTests(
       ? `No tests were discovered for ${target}; verification did not pass.`
       : `Tests ${status} for ${target} in ${report.runtime}: ${report.passed} passed, ${report.failed} failed, ${report.total} total.`,
     ...errors,
+    ...(status === "failed"
+      ? ["Inspect these failures, repair the source or tests, then rerun verify once."]
+      : []),
   ].join("\n");
 }
