@@ -1022,6 +1022,25 @@ describe("native channel publication ownership", () => {
       outcome: { status: "completed" },
     });
   });
+  it("explicit cancellation propagates a retained predecessor incident without stranding its join", async () => {
+    const original = new Error("earlier publication needs repair");
+    const f = await fixture({ publish: async () => { throw original; } });
+    await f.append("first owed answer");
+    await f.append("second owed answer");
+    await f.append("last owed answer");
+    await f.harness.runPass(context);
+    const tasks = await publicationTasks(f.harness);
+    const last = tasks.at(-1)!;
+    await f.harness.abortTask(last.id, context);
+    await f.harness.runPass(context);
+    await expect(f.harness.waitForTask(last.id, context)).rejects.toBe(original);
+    expect((await f.harness.getTask(tasks[0]!.id, context))?.state).toMatchObject({
+      status: "waiting", condition: { kind: "failure" },
+    });
+    expect((await f.harness.getTask(last.id, context))?.state).toMatchObject({
+      status: "waiting", condition: { kind: "failure" },
+    });
+  });
   it.each([
     { origin: "direct", isError: false, failureKind: null },
     { origin: "direct", isError: true, failureKind: null },

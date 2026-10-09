@@ -274,7 +274,7 @@ export async function waitForNativeAnswerPublication(
 
 /** Join retained predecessors too: a repair incident does not settle dependent tasks. */
 async function waitForPublicationChain(
-  harness: Harness,
+  harness: Pick<Harness, "getTask" | "waitForTask">,
   answerTask: NonNullable<Awaited<ReturnType<Harness["getTask"]>>>,
   context: Context,
 ): Promise<void> {
@@ -359,7 +359,10 @@ export function createNativeChannelPublication(options: {
         if (!previous)
           throw new Error("Native publication lost its ordered predecessor");
         if (previous.state.status !== "terminal") {
-          if (abort) previous = await rt.waitForTask(previousId, context);
+          if (abort) {
+            await waitForPublicationChain(rt, previous, context);
+            previous = await rt.waitForTask(previousId, context);
+          }
           else {
             await rt.commit(
               () => ({
