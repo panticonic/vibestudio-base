@@ -1648,7 +1648,11 @@ export abstract class AgentVesselBase extends NativeChannelOwner<NativeProductCh
               properties: {
                 service: { type: "string" },
                 method: { type: "string" },
-                args: { type: "array" },
+                args: {
+                  type: "array",
+                  description:
+                    "The receiver's canonical service argument tuple. Inspect the service method schema and supply required arguments, including context IDs that a portable JavaScript wrapper may supply implicitly. For example, vcs.status requires [{ contextId: theContextId }].",
+                },
                 use: { enum: ["action", "conditional"] },
               },
               required: ["service", "method", "use"],
