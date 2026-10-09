@@ -585,8 +585,9 @@ used by panel launch and includes every build target plus the static authority
 diagnostics. The extension's TypeScript-only result does not replace it.
 
 `checkPanel` returns `{ diagnostics, errorCount, warningCount }` and infers the
-installed caller's context. Pass `{ contextId }` only to check a different
-context.
+installed caller's context. An explicit `{ contextId }` must match that context.
+To check another context, invoke the extension from an execution in that context;
+the caller's materialization and compiler admission then share the same authority.
 
 #### `verify({ operation: "test" })`
 
