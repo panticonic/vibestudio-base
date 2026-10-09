@@ -816,10 +816,10 @@ describe("prepareProjects", () => {
         template: "durable-service",
       },
     ]);
-    await prepareProjects([
+    const [agenticWorker] = await prepareProjects([
       {
         authority: noEffects,
-        authorityReason: "Fixture has no host effects",
+        authorityReason: "Declare only the effects built into the agentic template.",
         methods: recordMethods,
         projectType: "worker",
         name: "agent-worker",
@@ -836,7 +836,6 @@ describe("prepareProjects", () => {
         "workers/durable-worker/package.json",
         "@workspace-workers/durable-worker",
       ],
-      ["workers/agent-worker/package.json", "@workspace-workers/agent-worker"],
     ] as const) {
       const source = mocks.files.get(path);
       expect(typeof source).toBe("string");
@@ -847,6 +846,33 @@ describe("prepareProjects", () => {
         parseUnitAuthorityManifest(manifest.vibestudio.authority).requests,
       ).toEqual([]);
     }
+    const agenticManifest = JSON.parse(
+      mocks.files.get("workers/agent-worker/package.json") as string,
+    );
+    expect(agenticManifest.vibestudio.authority.requests).toEqual([
+      {
+        capability: "workspace-service:models",
+        resource: {
+          kind: "exact",
+          key: "do:workers/model-settings:ModelSettingsDO:workspace-model-settings",
+        },
+        tier: "gated",
+        evidence: "exact",
+        packages: ["@workspace/agentic-do"],
+      },
+    ]);
+    expect(agenticWorker?.authorityReview?.manifest).toEqual(
+      agenticManifest.vibestudio.authority,
+    );
+    expect(agenticWorker?.authorityReview?.rationale).toContain(
+      "@workspace/agentic-do",
+    );
+    expect(agenticWorker?.authorityReview?.rationale).toContain(
+      "exact, package-scoped request",
+    );
+    expect(mocks.files.get("workers/agent-worker/AUTHORITY.md")).toContain(
+      "@workspace/agentic-do",
+    );
     const durableManifest = JSON.parse(
       mocks.files.get("workers/durable-worker/package.json") as string,
     );
@@ -859,6 +885,63 @@ describe("prepareProjects", () => {
     expect(mocks.files.get("workers/durable-worker/index.ts")).toContain(
       'from "@workspace/runtime/worker/kernel"',
     );
+  });
+
+  it("preserves a covering agentic model request and unrelated authority declarations", async () => {
+    const { prepareProjects } = await import("./index.js");
+    const coveringRequest = {
+      capability: "workspace-service:models",
+      resource: { kind: "prefix" as const, prefix: "do:workers/model-settings:" },
+      tier: "gated" as const,
+      evidence: "bounded-dynamic" as const,
+      packages: ["@workspace/agentic-do"],
+    };
+    const unrelatedRequest = {
+      capability: "accounts.connect",
+      resource: { kind: "exact" as const, key: "accounts.connect" },
+      tier: "gated" as const,
+      evidence: "exact" as const,
+    };
+    const serviceRequest = {
+      protocol: "vibestudio.missions.v1",
+      availability: "required" as const,
+    };
+    const providedCapability = {
+      name: "agentic.test",
+      title: "Test capability",
+      action: "Run the test capability.",
+      tier: "gated" as const,
+      sensitivity: "read" as const,
+      resourceType: "agentic.test",
+      presentation: { domain: "automation" as const, verb: "see" as const },
+      notability: "everyday" as const,
+      grantScopes: ["once" as const],
+    };
+
+    const [prepared] = await prepareProjects([
+      {
+        authority: {
+          requests: [coveringRequest, unrelatedRequest],
+          serviceRequests: [serviceRequest],
+          provides: [providedCapability],
+        },
+        authorityReason: "Keep the declared integration and provider contract.",
+        projectType: "worker",
+        name: "covered-agent",
+        template: "agentic",
+      },
+    ]);
+    const manifest = JSON.parse(
+      mocks.files.get("workers/covered-agent/package.json") as string,
+    ).vibestudio.authority;
+
+    expect(manifest.requests).toEqual(
+      expect.arrayContaining([coveringRequest, unrelatedRequest]),
+    );
+    expect(manifest.requests).toHaveLength(2);
+    expect(manifest.serviceRequests).toEqual([serviceRequest]);
+    expect(manifest.provides).toEqual([providedCapability]);
+    expect(prepared?.authorityReview?.manifest).toEqual(manifest);
   });
 
   it("preserves the chosen empty panel ceiling without adding runtime authority", async () => {

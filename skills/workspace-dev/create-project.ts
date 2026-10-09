@@ -6,6 +6,7 @@ import {
   parseUnitAuthorityManifest,
   type UnitAuthorityManifest,
 } from "@vibestudio/shared/authorityManifest";
+import { authorityRequestCoversEffect } from "@vibestudio/shared/authority/userlandResources";
 import type { ResolvedRpcAuthority } from "@vibestudio/rpc";
 import { prepareUnitIcon } from "./unit-icons.js";
 import {
@@ -133,6 +134,49 @@ interface ResolvedProject {
   title: string;
   files: Record<string, string>;
   preflight: ProjectPreflightReport;
+  authorityReason?: string;
+}
+
+const AGENTIC_TEMPLATE_AUTHORITY = [
+  {
+    capability: "workspace-service:models",
+    resource: {
+      kind: "exact" as const,
+      key: "do:workers/model-settings:ModelSettingsDO:workspace-model-settings",
+    },
+    tier: "gated" as const,
+    evidence: "exact" as const,
+    packages: ["@workspace/agentic-do"],
+  },
+] as const;
+
+const AGENTIC_TEMPLATE_AUTHORITY_REASON =
+  "The generated @workspace/agentic-do dependency calls the workspace model-settings service. This manifest includes its exact, package-scoped request; it is a request, not a grant.";
+
+function authorityWithTemplateRequirements(
+  authority: UnitAuthorityManifest,
+  template: string | undefined,
+): UnitAuthorityManifest {
+  if (template !== "agentic") return authority;
+  const requests = [...authority.requests];
+  for (const required of AGENTIC_TEMPLATE_AUTHORITY) {
+    const effect = {
+      capability: required.capability,
+      tier: required.tier,
+      resource: required.resource,
+      ...(required.packages ? { packageName: required.packages[0] } : {}),
+    };
+    if (!requests.some((request) => authorityRequestCoversEffect(request, effect))) {
+      requests.push(required);
+    }
+  }
+  return parseUnitAuthorityManifest({
+    requests,
+    ...(authority.serviceRequests
+      ? { serviceRequests: authority.serviceRequests }
+      : {}),
+    provides: authority.provides,
+  });
 }
 
 async function resolveProject(
@@ -156,13 +200,24 @@ async function resolveProject(
   }
 
   const files: Record<string, string> = {};
-  const authority =
+  const suppliedAuthority =
     canonicalProjectType === "panel" || canonicalProjectType === "worker"
       ? requireAuthority(params.authority, params.authorityReason)
       : undefined;
+  const agenticWorker = canonicalProjectType === "worker" && template === "agentic";
+  const authority = suppliedAuthority
+    ? authorityWithTemplateRequirements(
+        suppliedAuthority,
+        agenticWorker ? template : undefined,
+      )
+    : undefined;
+  const authorityReason =
+    params.authorityReason && agenticWorker
+      ? `${params.authorityReason}\n\n${AGENTIC_TEMPLATE_AUTHORITY_REASON}`
+      : params.authorityReason;
   if (authority)
     files["AUTHORITY.md"] =
-      `# Authority intent\n\n${params.authorityReason}\n\nThis rationale is review evidence, not a grant. The manifest and receiver contracts define the requested ceiling.\n`;
+      `# Authority intent\n\n${authorityReason}\n\nThis rationale is review evidence, not a grant. The manifest and receiver contracts define the requested ceiling.\n`;
   const preparedIcon = await prepareUnitIcon(icon);
   const manifestIcon = preparedIcon.icon;
   Object.assign(files, preparedIcon.files);
@@ -634,6 +689,7 @@ export default {
     title,
     files,
     preflight,
+    ...(authorityReason ? { authorityReason } : {}),
   };
 }
 
@@ -663,7 +719,11 @@ export async function prepareProjects(
     await vcs.status({ contextId }),
   );
   return resolved.map((project, i) =>
-    preparedProject(project, projects[i]!.authorityReason, preparation),
+    preparedProject(
+      project,
+      project.authorityReason ?? projects[i]!.authorityReason,
+      preparation,
+    ),
   );
 }
 
