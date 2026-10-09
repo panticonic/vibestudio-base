@@ -3801,25 +3801,46 @@ export abstract class AgentVesselBase extends NativeChannelOwner<NativeProductCh
       delivery: "all",
       config: { name: definition.name },
     });
-    // Retain the exact first intent across interruption and template changes.
-    const intentKey = `default-automation:${input.id}:intent`;
-    let intent = this.getStateValue(intentKey);
-    if (!intent) {
-      intent = JSON.stringify(
-        this.selfAutomationDefinition(channelId, definition),
-      );
-      this.setStateValue(intentKey, intent);
-    }
-    const retainedDefinition = JSON.parse(intent) as {
-      name: string;
-      charter: MissionCharter;
-    };
-    const mission = await createMissionsClient(this.rpc).provisionDefault(
+    const mission = await this.provisionChannelAutomation(
       input.id,
-      retainedDefinition,
-      { idempotencyKey: `default-automation:${input.id}:provision` },
+      channelId,
+      definition,
     );
     return reconcileHost(mission, false);
+  }
+
+  /** Product defaults share the same installed identity and retained first intent
+   * as workspace defaults. Existing user edits, pause and retirement win. */
+  protected async provisionChannelAutomation(
+    id: string,
+    channelId: string,
+    definition: unknown,
+    callerRpc: RpcClient = this.rpc,
+  ): Promise<MissionRecord> {
+    const missions = createMissionsClient(callerRpc);
+    const existing = await missions.getDefault(id);
+    if (existing) return existing;
+    const intentKey = `default-automation:${id}:intent`;
+    let intent = this.getStateValue(intentKey);
+    if (!intent) {
+      const state = (definition as { state?: unknown }).state;
+      if (state !== undefined && state !== "active" && state !== "paused")
+        throw new Error("Default automation state must be active or paused");
+      intent = JSON.stringify({
+        ...this.selfAutomationDefinition(channelId, definition),
+        ...(state === undefined ? {} : { state }),
+      });
+      this.setStateValue(intentKey, intent);
+    }
+    return missions.provisionDefault(
+      id,
+      JSON.parse(intent) as {
+        name: string;
+        charter: MissionCharter;
+        state?: "active" | "paused";
+      },
+      { idempotencyKey: `default-automation:${id}:provision` },
+    );
   }
 
   private async automationServiceTarget(callerRpc: RpcClient): Promise<string> {
@@ -4013,7 +4034,7 @@ export abstract class AgentVesselBase extends NativeChannelOwner<NativeProductCh
   /** Expand the native agent tool input into an exact installed mission
    * charter. Identity and code version come from this executing vessel, never
    * from model-authored strings or a racy build lookup. */
-  private selfAutomationDefinition(
+  protected selfAutomationDefinition(
     channelId: string,
     raw: unknown,
   ): {

@@ -578,6 +578,50 @@ describe("MissionsDO", () => {
     });
   });
 
+  it("admits a paused default atomically and preserves its state on a lost-response retry", async () => {
+    const harness = await createMissions();
+    const input = {
+      name: "Vacation briefing",
+      authorityPlan: policy(),
+      charter: continuingAgentCharter(),
+      state: "paused" as const,
+    };
+    input.charter.trigger = { kind: "schedule", everyMs: 600_000 };
+    const first = await harness.callAs<MissionRecord>(
+      alice,
+      "provisionDefault",
+      "vacation",
+      input,
+    );
+    expect(first).toMatchObject({ state: "paused", runCount: 0 });
+    expect(first.nextRunAt).toBeUndefined();
+    expect(await harness.callAs(alice, "pause", first.missionId)).toEqual(
+      first,
+    );
+    expect(
+      harness.sql.exec("SELECT COUNT(*) AS count FROM mission_runs").one(),
+    ).toEqual({ count: 0 });
+    const retry = await harness.callAs<MissionRecord>(
+      alice,
+      "provisionDefault",
+      "vacation",
+      { ...input, state: "active" },
+    );
+    expect(retry).toMatchObject({
+      missionId: first.missionId,
+      state: "paused",
+    });
+    const resumed = await harness.callAs<MissionRecord>(
+      alice,
+      "resume",
+      first.missionId,
+    );
+    expect(resumed.state).toBe("active");
+    expect(await harness.callAs(alice, "resume", first.missionId)).toEqual(
+      resumed,
+    );
+  });
+
   it("keeps distinct declared defaults distinct even when their watch actions match", async () => {
     const { callAs } = await createMissions();
     const charter = continuingAgentCharter();

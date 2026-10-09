@@ -679,6 +679,7 @@ export class MissionsDO extends DurableObjectBase {
       name: string;
       charter: MissionCharter;
       authorityPlan: MissionAuthorityPlanReference;
+      state?: "active" | "paused";
     },
   ): Promise<MissionRecord> {
     const existing = this.getDefault(id);
@@ -744,6 +745,7 @@ export class MissionsDO extends DurableObjectBase {
       name: string;
       charter: MissionCharter;
       authorityPlan: MissionAuthorityPlanReference;
+      state?: "active" | "paused";
     },
     launchKey: string,
   ): Promise<MissionRecord> {
@@ -806,17 +808,22 @@ export class MissionsDO extends DurableObjectBase {
         denialIds: [],
       };
       const origin = scheduleOrigin(input.charter, now);
-      const nextRunAt = initialNextRunAt(input.charter, now, origin);
+      const state = input.state ?? "active";
+      const nextRunAt =
+        state === "active"
+          ? initialNextRunAt(input.charter, now, origin)
+          : null;
       this.ctx.storage.transactionSync(() => {
         this.sql.exec(
           `INSERT INTO missions
           (mission_id,name,revision,charter_json,authority_plan_json,owner_user_id,state,revision_digest,authority_json,seeded,schedule_origin_at,next_run_at,last_run_at,created_at,updated_at,activated_at,run_count)
-          VALUES (?,?,1,?,?,?, 'active',?,?,0,?,?,NULL,?,?,?,0)`,
+          VALUES (?,?,1,?,?,?,?,?,?,0,?,?,NULL,?,?,?,0)`,
           missionId,
           input.name,
           canonicalJson(input.charter),
           canonicalJson(authorityPlan),
           caller.userId,
+          state,
           revisionDigest,
           canonicalJson(authority),
           origin,
@@ -1036,6 +1043,7 @@ export class MissionsDO extends DurableObjectBase {
   @schemaRpc()
   pause(missionId: string): MissionRecord {
     const mission = this.requireMission(missionId);
+    if (mission.state === "paused") return mission;
     this.requireActive(mission);
     this.sql.exec(
       "UPDATE missions SET state='paused',next_run_at=NULL,updated_at=? WHERE mission_id=?",
@@ -1048,6 +1056,7 @@ export class MissionsDO extends DurableObjectBase {
   @schemaRpc()
   resume(missionId: string): MissionRecord {
     const mission = this.requireMission(missionId);
+    if (mission.state === "active") return mission;
     if (mission.state !== "paused")
       throw denied("Only paused automations can resume");
     if (
@@ -1173,6 +1182,7 @@ export class MissionsDO extends DurableObjectBase {
   }
 
   private async ensureAuthority(mission: MissionRecord): Promise<void> {
+    if (mission.state !== "active") return;
     if (!missionUsesAuthority(mission.charter.execution)) return;
     const subject = missionPrincipal(mission.missionId, mission.revisionDigest);
     const projection = await this.acquireAuthority(
