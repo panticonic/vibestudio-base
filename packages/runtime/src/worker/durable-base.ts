@@ -628,6 +628,9 @@ export abstract class DurableObjectBase {
               ...(typeof record["userId"] === "string"
                 ? { userId: record["userId"] }
                 : {}),
+              ...(typeof record["workspaceId"] === "string"
+                ? { workspaceId: record["workspaceId"] }
+                : {}),
               ...(record["authorization"] &&
               typeof record["authorization"] === "object"
                 ? {
@@ -792,9 +795,9 @@ export abstract class DurableObjectBase {
   /**
    * The authenticated caller of the in-flight method, in the canonical
    * `AuthenticatedCaller` shape shared with the bridge and server. Sourced from
-   * the signed `X-vibestudio-Rpc-Caller-*` headers the server injects. Null when
-   * there is no active RPC caller (e.g. alarm/lifecycle). Prefer this over the
-   * raw `rpcCallerId`/`rpcCallerKind` pair for authorization checks.
+   * the host-attested caller carried by the canonical RPC envelope. Null when
+   * there is no active RPC caller (e.g. alarm/lifecycle). Workspace and user IDs
+   * describe caller attribution; use `this.authorization` for host authority facts.
    */
   protected get caller(): AuthenticatedCaller | null {
     if (this.activeVerifiedCaller) {
@@ -806,6 +809,7 @@ export abstract class DurableObjectBase {
           ? { callerPanelId: caller.callerPanelId }
           : {}),
         ...(caller.userId ? { userId: caller.userId } : {}),
+        ...(caller.workspaceId ? { workspaceId: caller.workspaceId } : {}),
       };
     }
     if (this._invocationContext.current()) return null;
