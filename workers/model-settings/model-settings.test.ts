@@ -1090,3 +1090,276 @@ describe("model discovery evidence and original failures", () => {
     expect(f.calls).toContain("extensions.invoke");
   });
 });
+
+it("observes default changes and settles pending observations on owner retirement", async () => {
+  const fixture = await createTestDO(TestModelSettingsDO);
+  let live = 0;
+  Object.defineProperty(fixture.instance, "rpc", {
+    value: {
+      call: async (
+        _target: string,
+        method: string,
+        args: [{ afterVersion?: string }],
+        options: { signal: AbortSignal },
+      ) => {
+        if (method !== "credentials.observeChanges")
+          throw new Error(`Unexpected fixture RPC: ${method}`);
+        if (!args[0].afterVersion) return { version: "test-credentials" };
+        return new Promise((_resolve, reject) => {
+          live++;
+          const aborted = () => {
+            live--;
+            reject(
+              Object.assign(new Error("Credential observation cancelled"), {
+                code: "RPC_ABORTED",
+              }),
+            );
+          };
+          options.signal.addEventListener("abort", aborted, { once: true });
+          if (options.signal.aborted) aborted();
+        });
+      },
+    },
+  });
+  try {
+    const initial = await fixture.instance.observeChanges();
+    const changed = fixture.instance.observeChanges({
+      afterVersion: initial.version,
+    });
+    await fixture.call("setDefaultAgentConfig", {
+      model: "openai:gpt-5",
+      thinkingLevel: "high",
+    });
+    const updated = await changed;
+    expect(updated.version).not.toBe(initial.version);
+    const waiting = fixture.instance.observeChanges({
+      afterVersion: updated.version,
+    });
+    const rejected = expect(waiting).rejects.toThrow("retired");
+    await fixture.instance.releaseForLifecycle({
+      epoch: "suspend",
+      mode: "suspend",
+      reason: "restart",
+      deadlineMs: 0,
+    });
+    await rejected;
+    expect(live).toBe(0);
+    await expect(fixture.instance.observeChanges()).rejects.toThrow("retiring");
+  } finally {
+    fixture.db.close();
+  }
+});
+
+it("preserves an independently cancelled credential observation", async () => {
+  const fixture = await createTestDO(TestModelSettingsDO);
+  const failure = Object.assign(
+    new Error("credential observation disconnected"),
+    {
+      code: "RPC_ABORTED",
+    },
+  );
+  Object.defineProperty(fixture.instance, "rpc", {
+    value: {
+      call: async () => {
+        throw failure;
+      },
+    },
+  });
+  try {
+    await expect(fixture.instance.observeChanges()).rejects.toBe(failure);
+  } finally {
+    fixture.db.close();
+  }
+});
+
+it("invalidates setup when credential availability changes independently", async () => {
+  const fixture = await createTestDO(TestModelSettingsDO);
+  let credentialVersion = "credential-1";
+  let publishCredentialChange: (() => void) | undefined;
+  Object.defineProperty(fixture.instance, "rpc", {
+    value: {
+      call: async (
+        _target: string,
+        method: string,
+        args: [{ afterVersion?: string }],
+        options: { signal: AbortSignal },
+      ) => {
+        if (method !== "credentials.observeChanges")
+          throw new Error(`Unexpected fixture RPC: ${method}`);
+        if (args[0].afterVersion !== credentialVersion)
+          return { version: credentialVersion };
+        return new Promise<{ version: string }>((resolve, reject) => {
+          const aborted = () =>
+            reject(
+              Object.assign(new Error("Credential observation cancelled"), {
+                code: "RPC_ABORTED",
+              }),
+            );
+          publishCredentialChange = () => {
+            options.signal.removeEventListener("abort", aborted);
+            resolve({ version: credentialVersion });
+          };
+          options.signal.addEventListener("abort", aborted, { once: true });
+          if (options.signal.aborted) aborted();
+        });
+      },
+    },
+  });
+  try {
+    const initial = await fixture.instance.observeChanges();
+    const waiting = fixture.instance.observeChanges({
+      afterVersion: initial.version,
+    });
+    credentialVersion = "credential-2";
+    publishCredentialChange?.();
+    const updated = await waiting;
+    expect(updated.version).not.toBe(initial.version);
+    expect(JSON.parse(updated.version)).toEqual([
+      JSON.parse(initial.version)[0],
+      credentialVersion,
+    ]);
+  } finally {
+    fixture.db.close();
+  }
+});
+
+it("preserves a credential observer cleanup failure after a default change", async () => {
+  const fixture = await createTestDO(TestModelSettingsDO);
+  const cleanupFailure = new Error("credential observer cleanup failed");
+  Object.defineProperty(fixture.instance, "rpc", {
+    value: {
+      call: async (
+        _target: string,
+        method: string,
+        args: [{ afterVersion?: string }],
+        options: { signal: AbortSignal },
+      ) => {
+        if (method !== "credentials.observeChanges")
+          throw new Error(`Unexpected fixture RPC: ${method}`);
+        if (!args[0].afterVersion) return { version: "credential-1" };
+        return new Promise((_resolve, reject) => {
+          options.signal.addEventListener(
+            "abort",
+            () => reject(cleanupFailure),
+            { once: true },
+          );
+          if (options.signal.aborted) reject(cleanupFailure);
+        });
+      },
+    },
+  });
+  try {
+    const initial = await fixture.instance.observeChanges();
+    const waiting = fixture.instance.observeChanges({
+      afterVersion: initial.version,
+    });
+    await fixture.call("setDefaultAgentConfig", {
+      model: "openai:gpt-5",
+      thinkingLevel: "high",
+    });
+    await expect(waiting).rejects.toBe(cleanupFailure);
+  } finally {
+    fixture.db.close();
+  }
+});
+
+it("keeps the initial credential snapshot joined across a local default change", async () => {
+  const fixture = await createTestDO(TestModelSettingsDO);
+  let resolveInitial!: (value: { version: string }) => void;
+  let credentialSignal!: AbortSignal;
+  Object.defineProperty(fixture.instance, "rpc", {
+    value: {
+      call: async (
+        _target: string,
+        method: string,
+        _args: [{ afterVersion?: string }],
+        options: { signal: AbortSignal },
+      ) => {
+        if (method !== "credentials.observeChanges")
+          throw new Error(`Unexpected fixture RPC: ${method}`);
+        credentialSignal = options.signal;
+        return new Promise<{ version: string }>((resolve, reject) => {
+          resolveInitial = resolve;
+          options.signal.addEventListener(
+            "abort",
+            () =>
+              reject(
+                Object.assign(new Error("Credential observation cancelled"), {
+                  code: "RPC_ABORTED",
+                }),
+              ),
+            { once: true },
+          );
+        });
+      },
+    },
+  });
+  try {
+    let settled = false;
+    const initial = fixture.instance.observeChanges().then((value) => {
+      settled = true;
+      return value;
+    });
+    await fixture.call("setDefaultAgentConfig", {
+      model: "openai:gpt-5",
+      thinkingLevel: "high",
+    });
+    expect(credentialSignal.aborted).toBe(false);
+    expect(settled).toBe(false);
+    resolveInitial({ version: "credential-initial" });
+    const snapshot = await initial;
+    expect(JSON.parse(snapshot.version)[0]).toBe(
+      (
+        fixture.instance as unknown as { defaultVersion(): string }
+      ).defaultVersion(),
+    );
+    expect(JSON.parse(snapshot.version)[1]).toBe("credential-initial");
+  } finally {
+    fixture.db.close();
+  }
+});
+
+it("cancels and joins the required initial credential read on retirement", async () => {
+  const fixture = await createTestDO(TestModelSettingsDO);
+  let live = 0;
+  Object.defineProperty(fixture.instance, "rpc", {
+    value: {
+      call: async (
+        _target: string,
+        method: string,
+        _args: [{ afterVersion?: string }],
+        options: { signal: AbortSignal },
+      ) => {
+        if (method !== "credentials.observeChanges")
+          throw new Error(`Unexpected fixture RPC: ${method}`);
+        return new Promise((_resolve, reject) => {
+          live++;
+          const abort = () => {
+            live--;
+            reject(
+              Object.assign(new Error("Initial credential read cancelled"), {
+                code: "RPC_ABORTED",
+              }),
+            );
+          };
+          options.signal.addEventListener("abort", abort, { once: true });
+          if (options.signal.aborted) abort();
+        });
+      },
+    },
+  });
+  try {
+    const pending = fixture.instance.observeChanges();
+    await Promise.resolve();
+    await fixture.instance.releaseForLifecycle({
+      epoch: "suspend",
+      mode: "suspend",
+      reason: "restart",
+      deadlineMs: 0,
+    });
+    await expect(pending).rejects.toBeDefined();
+    expect(live).toBe(0);
+  } finally {
+    fixture.db.close();
+  }
+});

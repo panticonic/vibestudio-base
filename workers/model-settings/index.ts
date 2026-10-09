@@ -55,6 +55,7 @@ import {
   isStoredCredentialUsable,
   type StoredCredentialSummary,
 } from "@vibestudio/credential-client";
+import { isRpcAborted } from "@vibestudio/rpc";
 
 const AGENT_THINKING_LEVELS = new Set<string>([
   "minimal",
@@ -355,6 +356,207 @@ export function pickFallbackModel(catalog: ModelCatalog): {
 }
 
 export class ModelSettingsDO extends DurableObjectBase {
+  private readonly observers = new Set<{
+    afterVersion: string;
+    resolve(value: string): void;
+    reject(error: unknown): void;
+  }>();
+  private observationClosed = false;
+
+  private defaultVersion(): string {
+    return JSON.stringify(
+      this.getStateValue(WORKSPACE_DEFAULT_AGENT_CONFIG_FIELD) ?? null,
+    );
+  }
+
+  private publishDefaultChange(): void {
+    const version = this.defaultVersion();
+    for (const observer of this.observers) {
+      if (version !== observer.afterVersion) observer.resolve(version);
+    }
+  }
+
+  @rpc({
+    principals: ["host", "code"],
+    effect: { kind: "open" },
+    tier: "open",
+    sensitivity: "read",
+    website: {
+      kind: "closed",
+      reason:
+        "Workspace model setup observation belongs to authenticated workspace clients.",
+    },
+  })
+  async observeChanges(
+    input: { afterVersion?: string } = {},
+  ): Promise<{ version: string }> {
+    if (this.observationClosed)
+      throw new Error("Model settings owner is retiring");
+    const signal = this.rpcAbortSignal;
+    signal?.throwIfAborted();
+    const previous =
+      input.afterVersion === undefined
+        ? null
+        : this.parseObservationVersion(input.afterVersion);
+    const currentDefault = this.defaultVersion();
+    if (previous && currentDefault !== previous[0]) {
+      return {
+        version: this.encodeObservationVersion(currentDefault, previous[1]),
+      };
+    }
+
+    const childController = new AbortController();
+    const parentAborted = () => childController.abort(signal?.reason);
+    signal?.addEventListener("abort", parentAborted, { once: true });
+    if (signal?.aborted) parentAborted();
+
+    let resolveDefault!: (version: string) => void;
+    let rejectDefault!: (error: unknown) => void;
+    const defaultChanged = new Promise<string>((resolve, reject) => {
+      resolveDefault = resolve;
+      rejectDefault = reject;
+    });
+    const observer = {
+      afterVersion: currentDefault,
+      resolve: resolveDefault,
+      reject: (error: unknown) => {
+        childController.abort(error);
+        rejectDefault(error);
+      },
+    };
+    const aborted = () => observer.reject(signal?.reason);
+    this.observers.add(observer);
+    signal?.addEventListener("abort", aborted, { once: true });
+
+    const credentialObservation = this.rpc.call<{ version: string }>(
+      "main",
+      "credentials.observeChanges",
+      [previous ? { afterVersion: previous[1] } : {}],
+      { signal: childController.signal },
+    );
+    const credentialChanged = credentialObservation.then((result) => {
+      if (!result || typeof result.version !== "string")
+        throw new Error("Credential observation returned an invalid revision");
+      return result.version;
+    });
+    const defaultEvent = defaultChanged.then((version) => ({
+      kind: "default" as const,
+      version,
+    }));
+    const credentialEvent = credentialChanged.then((version) => ({
+      kind: "credential" as const,
+      version,
+    }));
+
+    try {
+      const event = await Promise.race([defaultEvent, credentialEvent]);
+      if (event.kind === "credential") {
+        return {
+          version: this.encodeObservationVersion(
+            this.defaultVersion(),
+            event.version,
+          ),
+        };
+      }
+
+      // The first call has no credential revision to carry forward. A default
+      // change while that read is pending updates the other half of the
+      // snapshot, but cannot cancel or replace the required credential read.
+      if (!previous) {
+        const credentialVersion = await credentialChanged;
+        return {
+          version: this.encodeObservationVersion(
+            this.defaultVersion(),
+            credentialVersion,
+          ),
+        };
+      }
+
+      const completed = new Error(
+        "Model settings changed while awaiting credentials",
+      );
+      childController.abort(completed);
+      try {
+        const credentialVersion = await credentialChanged;
+        return {
+          version: this.encodeObservationVersion(
+            event.version,
+            credentialVersion,
+          ),
+        };
+      } catch (error) {
+        if (!isRpcAborted(error)) throw error;
+        return {
+          version: this.encodeObservationVersion(event.version, previous[1]),
+        };
+      }
+    } catch (error) {
+      childController.abort(error);
+      try {
+        await credentialChanged;
+      } catch (cleanupError) {
+        if (!isRpcAborted(cleanupError) && cleanupError !== error) {
+          throw new AggregateError(
+            [error, cleanupError],
+            "Model settings observation failed and credential observation cleanup failed.",
+            { cause: error },
+          );
+        }
+      }
+      throw error;
+    } finally {
+      childController.abort(new Error("Model settings observation completed"));
+      observer.reject(
+        new Error("Model settings default observation completed"),
+      );
+      await Promise.allSettled([defaultChanged, credentialChanged]);
+      this.observers.delete(observer);
+      signal?.removeEventListener("abort", aborted);
+      signal?.removeEventListener("abort", parentAborted);
+    }
+  }
+
+  private parseObservationVersion(version: string): readonly [string, string] {
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(version);
+    } catch {
+      throw new Error("Model settings observation version is invalid");
+    }
+    if (
+      !Array.isArray(parsed) ||
+      parsed.length !== 2 ||
+      typeof parsed[0] !== "string" ||
+      typeof parsed[1] !== "string"
+    ) {
+      throw new Error("Model settings observation version is invalid");
+    }
+    return [parsed[0], parsed[1]];
+  }
+
+  private encodeObservationVersion(
+    defaultVersion: string,
+    credentialVersion: string,
+  ): string {
+    return JSON.stringify([defaultVersion, credentialVersion]);
+  }
+
+  override async releaseForLifecycle(
+    input: Parameters<DurableObjectBase["releaseForLifecycle"]>[0],
+  ) {
+    this.observationClosed = true;
+    for (const observer of this.observers)
+      observer.reject(new Error("Model settings owner retired"));
+    return super.releaseForLifecycle(input);
+  }
+
+  override async resumeAfterRestart(
+    input: Parameters<DurableObjectBase["resumeAfterRestart"]>[0],
+  ) {
+    await super.resumeAfterRestart(input);
+    this.observationClosed = false;
+  }
+
   protected createTables(): void {}
 
   @rpc({
@@ -476,6 +678,7 @@ export class ModelSettingsDO extends DurableObjectBase {
       WORKSPACE_DEFAULT_AGENT_CONFIG_FIELD,
       JSON.stringify(config),
     );
+    this.publishDefaultChange();
     return this.resolveSettings(catalog, await workspaceConfig);
   }
 
