@@ -3,7 +3,7 @@ import type {
   CreateWebhookIngressSubscriptionRequest,
   RotateWebhookIngressSecretResult,
   WebhookIngressSubscriptionSummary,
-} from "@vibestudio/shared/webhooks/ingress";
+} from "@vibestudio/shared/webhooks/contracts";
 export {
   WEBHOOK_DEFAULT_MAX_BODY_BYTES,
   WEBHOOK_DEFAULT_DIRECT_MAX_BODY_BYTES,
@@ -23,7 +23,7 @@ export type {
   WebhookResponsePolicy,
   WebhookTarget,
   WebhookVerifierConfig,
-} from "@vibestudio/shared/webhooks/ingress";
+} from "@vibestudio/shared/webhooks/contracts";
 export interface WebhookIngressClient {
   createSubscription(
     input: CreateWebhookIngressSubscriptionRequest
