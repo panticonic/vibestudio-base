@@ -1,10 +1,19 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import * as fsp from "node:fs/promises";
 import { tmpdir } from "node:os";
 import * as path from "node:path";
 import { sha256Hex, sha256HexSyncText } from "@vibestudio/content-addressing";
 import type { GitCommitTreeEntry } from "@vibestudio/git";
 import { GitBridge, provenanceGitUri, type BridgeHost } from "./bridge.js";
+
+const fsPromisesMocks = vi.hoisted(() => ({ rm: vi.fn(), originalRm: vi.fn() }));
+vi.mock("node:fs/promises", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("node:fs/promises")>();
+  fsPromisesMocks.originalRm.mockImplementation(actual.rm.bind(actual));
+  fsPromisesMocks.rm.mockImplementation(fsPromisesMocks.originalRm);
+  return { ...actual, rm: fsPromisesMocks.rm };
+});
 
 function commitBlob(
   filePath: string,
@@ -950,6 +959,39 @@ describe("GitBridge semantic snapshot boundary", () => {
     });
     expect(readFileSync(path.join(dir, "index.ts"), "utf8")).toBe("checkout-only edit\n");
     expect(() => readFileSync(path.join(previewDir, "index.ts"), "utf8")).toThrow();
+
+    const cleanupFailure = new Error("preview checkout could not be removed");
+    let previewRootToFail: string | undefined;
+    vi.mocked(fsp.rm).mockImplementation(async (target, options) => {
+      if (target === previewRootToFail) throw cleanupFailure;
+      return fsPromisesMocks.originalRm(target, options);
+    });
+    const publicationFailure = new Error("remote rejected branch publication");
+    let combinedFailure: unknown;
+    await bridge
+      .withEventExportPreviewLocked(
+        repoPath,
+        source.eventId,
+        {},
+        async (preview) => {
+          previewDir = preview.dir;
+          previewRootToFail = path.dirname(preview.dir);
+          writeFileSync(path.join(preview.dir, "cleanup-sentinel"), "owned\n");
+          throw publicationFailure;
+        },
+      )
+      .catch((error: unknown) => {
+        combinedFailure = error;
+      });
+    expect(combinedFailure).toBeInstanceOf(AggregateError);
+    expect((combinedFailure as AggregateError).errors).toEqual([
+      publicationFailure,
+      cleanupFailure,
+    ]);
+    expect((combinedFailure as AggregateError).cause).toBe(publicationFailure);
+    expect(readFileSync(path.join(previewDir, "cleanup-sentinel"), "utf8")).toBe(
+      "owned\n",
+    );
   });
 
   it("projects a local event into a real Git tree, preserving unchanged files and retiring its private checkout", async () => {

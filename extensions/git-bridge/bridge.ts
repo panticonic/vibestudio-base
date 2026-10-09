@@ -381,6 +381,8 @@ export class GitBridge {
     await fsp.mkdir(scratchRoot, { recursive: true });
     const previewRoot = await fsp.mkdtemp(path.join(scratchRoot, "export-"));
     const previewDir = path.join(previewRoot, "repo");
+    let operationFailed = false;
+    let operationFailure: unknown;
     try {
       await fsp.mkdir(previewDir, { recursive: true });
       const checkoutDir = await this.repoGitDir(repo);
@@ -393,8 +395,23 @@ export class GitBridge {
       }
       const exported = await exportSnapshot(previewDir);
       return await inspect({ dir: previewDir, exported });
+    } catch (error) {
+      operationFailed = true;
+      operationFailure = error;
+      throw error;
     } finally {
-      await fsp.rm(previewRoot, { recursive: true, force: true });
+      try {
+        await fsp.rm(previewRoot, { recursive: true, force: true });
+      } catch (cleanupFailure) {
+        if (operationFailed) {
+          throw new AggregateError(
+            [operationFailure, cleanupFailure],
+            "Git preview operation failed and its checkout could not be retired",
+            { cause: operationFailure },
+          );
+        }
+        throw cleanupFailure;
+      }
     }
   }
 

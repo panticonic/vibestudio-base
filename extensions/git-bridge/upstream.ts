@@ -1108,19 +1108,12 @@ export class UpstreamEngine {
           dir: absolutePath,
           ref: cloneRef,
         });
-        if (remote.name !== "origin") {
-          await git
-            .addRemote(absolutePath, remote.name, remote.url)
-            .catch(() => undefined);
-        }
-        return await this.bridge.importLockedInner(repo, {
-          summary: `Import ${repo} from ${displayRemote(remote.url)}`,
-          sourceUri: remote.url,
-        });
       } catch (err) {
-        await fsp
-          .rm(absolutePath, { recursive: true, force: true })
-          .catch(() => undefined);
+        await removeFailedGitCheckout(absolutePath, err);
+        // Preserve the typed credential failure: the default-branch hint is
+        // diagnostic only and must not turn an actionable auth error into a
+        // generic branch-selection error.
+        if (err instanceof GitAuthError) throw err;
         // When the requested branch was a default-assumption (not user-declared
         // config we can trust), name the remote's ACTUAL default branch in the
         // error instead of leaving a bare git failure.
@@ -1133,9 +1126,25 @@ export class UpstreamEngine {
               `Clone of ${displayRemote(remote.url)} branch "${cloneRef}" failed ` +
                 `(${errorMessage(err)}). The remote's default branch is "${actualDefault}" — ` +
                 `re-import with --branch ${actualDefault}.`,
+              { cause: err },
             );
           }
         }
+        throw err;
+      }
+
+      try {
+        if (remote.name !== "origin") {
+          await git
+            .addRemote(absolutePath, remote.name, remote.url)
+            .catch(() => undefined);
+        }
+        return await this.bridge.importLockedInner(repo, {
+          summary: `Import ${repo} from ${displayRemote(remote.url)}`,
+          sourceUri: remote.url,
+        });
+      } catch (err) {
+        await removeFailedGitCheckout(absolutePath, err);
         throw err;
       }
     });
@@ -2019,6 +2028,21 @@ function attachGitCleanupFailure(
       configurable: true,
     });
     return wrapped;
+  }
+}
+
+async function removeFailedGitCheckout(
+  absolutePath: string,
+  primary: unknown,
+): Promise<void> {
+  try {
+    await fsp.rm(absolutePath, { recursive: true, force: true });
+  } catch (cleanupFailure) {
+    throw new AggregateError(
+      [primary, cleanupFailure],
+      "Git import failed and its checkout could not be retired",
+      { cause: primary },
+    );
   }
 }
 

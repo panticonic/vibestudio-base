@@ -21,6 +21,13 @@ import { GitAuthError, GitPushRejectedError } from "@vibestudio/git";
 import { registerRemoteProvider } from "@workspace/integrations/remoteProviders";
 import { UpstreamEngine } from "./upstream.js";
 
+const fsPromisesMocks = vi.hoisted(() => ({ rm: vi.fn() }));
+vi.mock("node:fs/promises", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("node:fs/promises")>();
+  fsPromisesMocks.rm.mockImplementation(actual.rm.bind(actual));
+  return { ...actual, rm: fsPromisesMocks.rm };
+});
+
 const STATE_FILE = "state/upstream-state.json";
 
 // Shared network-method fakes. Hoisted so the (hoisted) vi.mock factory can
@@ -1937,6 +1944,68 @@ describe("UpstreamEngine", () => {
         eventId: "event:imported",
         changed: true,
       });
+    } finally {
+      await fsp.rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("preserves the clone auth error instead of replacing it with branch guidance", async () => {
+    const root = await fsp.mkdtemp(
+      path.join(os.tmpdir(), "git-bridge-clone-auth-"),
+    );
+    const repo = "projects/clone-auth";
+    const { bridge } = createBridge();
+    bridge.repoGitDir.mockResolvedValue(
+      path.join(root, "state", "git-checkouts", repo),
+    );
+    const { engine } = makeEngine(
+      buildConfig([{ repo, autoPush: false }]),
+      bridge,
+      { workspaceRoot: path.join(root, "state") },
+    );
+    const authFailure = new GitAuthError("401 Unauthorized", 401);
+    gitFns.clone.mockRejectedValueOnce(authFailure);
+    gitFns.getRemoteDefaultBranch.mockResolvedValueOnce("trunk");
+    try {
+      await expect(engine.cloneRepo({ repoPath: repo })).rejects.toBe(authFailure);
+      expect(gitFns.getRemoteDefaultBranch).not.toHaveBeenCalled();
+    } finally {
+      await fsp.rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("aggregates failed-checkout cleanup with the original clone failure", async () => {
+    const root = await fsp.mkdtemp(
+      path.join(os.tmpdir(), "git-bridge-clone-cleanup-"),
+    );
+    const checkoutRoot = path.join(root, "state", "git-checkouts");
+    const repo = "projects/clone-cleanup";
+    const absolutePath = path.join(checkoutRoot, repo);
+    const { bridge } = createBridge();
+    bridge.repoGitDir.mockResolvedValue(absolutePath);
+    const { engine } = makeEngine(
+      buildConfig([{ repo, autoPush: false }]),
+      bridge,
+      { workspaceRoot: path.join(root, "state") },
+    );
+    const cloneFailure = new Error("remote disconnected during clone");
+    const cleanupFailure = new Error("checkout could not be removed");
+    gitFns.clone.mockImplementationOnce(async ({ dir }: { dir: string }) => {
+      await fsp.mkdir(dir, { recursive: true });
+      throw cloneFailure;
+    });
+    vi.mocked(fsp.rm).mockRejectedValueOnce(cleanupFailure);
+    try {
+      const failure = await engine
+        .cloneRepo({ repoPath: repo })
+        .catch((error: unknown) => error);
+      expect(failure).toBeInstanceOf(AggregateError);
+      expect((failure as AggregateError).errors).toEqual([
+        cloneFailure,
+        cleanupFailure,
+      ]);
+      expect((failure as AggregateError).cause).toBe(cloneFailure);
+      await expect(fsp.access(absolutePath)).resolves.toBeUndefined();
     } finally {
       await fsp.rm(root, { recursive: true, force: true });
     }
