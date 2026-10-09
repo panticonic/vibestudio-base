@@ -19,7 +19,7 @@ export function DictationButton({
     ? "Stop dictation"
     : active
       ? "Cancel dictation"
-      : "Dictate in English";
+      : "Dictate";
   return (
     <Button
       className="dictation-button"

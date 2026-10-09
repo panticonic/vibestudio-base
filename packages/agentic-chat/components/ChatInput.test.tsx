@@ -201,7 +201,7 @@ it("dictates into the draft selection without sending and releases the microphon
     });
     textarea().setSelectionRange(7, 15);
     const dictate = await screen.findByRole("button", {
-      name: "Dictate in English",
+      name: "Dictate",
     });
     await act(async () => fireEvent.click(dictate));
     expect(textarea().readOnly).toBe(true);

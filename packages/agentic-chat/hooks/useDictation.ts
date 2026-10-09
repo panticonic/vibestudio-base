@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   SPEECH_MAX_PCM_BYTES,
+  SPEECH_EXTENSION,
   type SpeechEvent,
-} from "@vibestudio/service-schemas/speech";
+} from "@workspace/speech";
 
 export interface SpeechRpc {
   call(target: string, method: string, args: unknown[]): Promise<unknown>;
@@ -45,8 +46,12 @@ export async function transcribeRecording(
     binary += String.fromCharCode(...bytes.subarray(i, i + 8192));
   const response = await rpc.stream(
     "main",
-    "speech.transcribe",
-    [{ format: "pcm_f32le", sampleRate: 16000, audio: btoa(binary) }],
+    "extensions.invokeStream",
+    [
+      SPEECH_EXTENSION,
+      "transcribe",
+      [{ format: "pcm_f32le", sampleRate: 16000, audio: btoa(binary) }],
+    ],
     { signal },
   );
   const transcript: { text?: string } = {};
@@ -305,7 +310,7 @@ export function useDictation(
       };
       recorder.start();
       setPhase("recording");
-      setMessage("Recording · English · Up to one minute");
+      setMessage("Recording · Up to one minute");
     } catch (error) {
       fail(capture, error);
     }
@@ -318,7 +323,11 @@ export function useDictation(
     setPhase("checking");
     setMessage("Checking voice input…");
     try {
-      const status = (await rpc!.call("main", "speech.status", [])) as {
+      const status = (await rpc!.call("main", "extensions.invoke", [
+        SPEECH_EXTENSION,
+        "status",
+        [],
+      ])) as {
         ready: boolean;
       };
       if (preparation.current !== operation) return;
@@ -327,7 +336,7 @@ export function useDictation(
       else {
         setPhase("offer");
         setMessage(
-          "Load voice input to get ready to speak. The model runs locally and stays ready for your next recording.",
+          "Prepare voice input to get ready to speak. Downloads once, then runs offline in this workspace.",
         );
       }
     } catch (error) {
@@ -345,9 +354,14 @@ export function useDictation(
     setMessage("Preparing voice input…");
     setLoadProgress(undefined);
     try {
-      const response = await rpc.stream("main", "speech.prepare", [], {
-        signal: operation.signal,
-      });
+      const response = await rpc.stream(
+        "main",
+        "extensions.invokeStream",
+        [SPEECH_EXTENSION, "prepare", []],
+        {
+          signal: operation.signal,
+        },
+      );
       let ready = false;
       await readSpeechEvents(response, operation.signal, (event) => {
         if (preparation.current !== operation) return;

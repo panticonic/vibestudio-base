@@ -1,0 +1,55 @@
+{
+  "name": "@workspace-extensions/speech",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "vibestudio": {
+    "displayName": "Speech",
+    "entry": "index.ts",
+    "extension": {
+      "activationEvents": [
+        "onInvoke"
+      ],
+      "streamingMethods": [
+        "prepare",
+        "transcribe"
+      ],
+      "methodAuthority": {
+        "status": {
+          "effect": {
+            "kind": "open"
+          },
+          "website": {
+            "kind": "eligible",
+            "rationale": "Runs offline inference over caller-supplied audio; microphone permission belongs to the caller."
+          }
+        },
+        "prepare": {
+          "effect": {
+            "kind": "open"
+          },
+          "website": {
+            "kind": "eligible",
+            "rationale": "Runs offline inference over caller-supplied audio; microphone permission belongs to the caller."
+          }
+        },
+        "transcribe": {
+          "effect": {
+            "kind": "open"
+          },
+          "website": {
+            "kind": "eligible",
+            "rationale": "Runs offline inference over caller-supplied audio; microphone permission belongs to the caller."
+          }
+        }
+      }
+    },
+    "authority": {
+      "provides": [],
+      "requests": []
+    }
+  },
+  "dependencies": {
+    "@workspace/speech": "workspace:*"
+  }
+}

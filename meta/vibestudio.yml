@@ -18,6 +18,7 @@ defaultAutomations:
 defaultRepo: projects/default
 extensions:
   - source: extensions/git-bridge
+  - source: extensions/speech
   - source: extensions/image-service
   - source: extensions/pdf-ingest
   - source: extensions/file-tools
@@ -216,6 +217,7 @@ template:
     - extensions/image-service
     - extensions/pdf-ingest
     - extensions/shell
+    - extensions/speech
     - extensions/templates
     - extensions/test-runner
     - meta
@@ -236,6 +238,7 @@ template:
     - packages/quickfire-core
     - packages/react
     - packages/runtime
+    - packages/speech
     - packages/template-management
     - packages/test-runtime
     - packages/testkit

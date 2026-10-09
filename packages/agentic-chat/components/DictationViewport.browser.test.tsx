@@ -118,9 +118,9 @@ it("offers model preparation before capture and keeps all voice status above a s
     ).toBeLessThanOrEqual(bounds.top);
   };
   await expect
-    .poll(() => screen.getByRole("button", { name: "Dictate in English" }))
+    .poll(() => screen.getByRole("button", { name: "Dictate" }))
     .toBeTruthy();
-  fireEvent.click(screen.getByRole("button", { name: "Dictate in English" }));
+  fireEvent.click(screen.getByRole("button", { name: "Dictate" }));
   await expect
     .poll(() => screen.getByRole("button", { name: "Load voice input" }))
     .toBeTruthy();

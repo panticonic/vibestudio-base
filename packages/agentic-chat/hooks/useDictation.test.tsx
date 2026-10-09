@@ -52,16 +52,22 @@ it("resamples supplied audio and reads progress across RPC chunk boundaries", as
   expect(progress).toHaveBeenCalledWith("Loading…");
   expect(stream).toHaveBeenCalledWith(
     "main",
-    "speech.transcribe",
-    [{ format: "pcm_f32le", sampleRate: 16000, audio: expect.any(String) }],
+    "extensions.invokeStream",
+    [
+      "@workspace-extensions/speech",
+      "transcribe",
+      [{ format: "pcm_f32le", sampleRate: 16000, audio: expect.any(String) }],
+    ],
     { signal },
   );
   const args = stream.mock.calls[0] as unknown as [
     string,
     string,
-    [{ audio: string }],
+    [string, string, [{ audio: string }]],
   ];
-  const audio = Uint8Array.from(atob(args[2][0].audio), (c) => c.charCodeAt(0));
+  const audio = Uint8Array.from(atob(args[2][2][0].audio), (c) =>
+    c.charCodeAt(0),
+  );
   expect(new DataView(audio.buffer).getFloat32(0, true)).toBe(0.25);
 });
 it("stops a late microphone grant after cancellation and releases the audio context", async () => {
