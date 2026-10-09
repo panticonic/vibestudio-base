@@ -133,14 +133,14 @@ type MissionTrigger =
       everyMs: number;
       anchorAt?: number;
       jitterMs?: number;
-      untilAt?: number;
+      untilAt?: number; // Exclusive UTC Unix epoch-millisecond deadline.
       maxRuns?: number;
     }
   | {
       kind: "cron";
       expression: string;
       timezone: string;
-      untilAt?: number;
+      untilAt?: number; // Exclusive UTC instant; timezone applies only to recurrence.
       maxRuns?: number;
     };
 ```

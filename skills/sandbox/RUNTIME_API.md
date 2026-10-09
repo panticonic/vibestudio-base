@@ -157,7 +157,10 @@ operations require an exact identity returned by `runtime.supervision.list()`:
 use `describe(identity)`, `health(identity)`, `logs(identity)`, or
 `restart(identity)`. Release history is separately addressed by
 `{ kind, releaseId }` through `versions(release)` and `rollback(release,
-options)`. Never substitute a package name or source path for either identity.
+options)`. For workspace apps, `releaseId` is the exact `name` returned by
+`build.listUnits()`, including its package-like spelling. Release history is
+available even when no app process is active. Do not substitute a source path
+for that release ID, or a build-unit name for a live entity identity.
 Server-wide workspace selection and catalog operations belong to the human
 shell or CLI's stable hub session and are intentionally absent from runtime
 eval. A System management page may select another workspace as a resource, but

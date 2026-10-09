@@ -150,7 +150,7 @@ Use cron for wall-clock cadence and always provide an IANA timezone:
 }
 ```
 
-The minimum cadence is one minute. `untilAt` prevents a run starting at or after the boundary. `maxRuns` counts admitted runs; overlap skips do not count. Calendar evaluation follows the declared timezone through daylight-saving transitions.
+The minimum cadence is one minute. `untilAt` is an absolute Unix epoch-millisecond instant in UTC and prevents a run starting at or after that boundary. `Date.UTC(...)` returns this value; its month argument is zero-based. Convert a requested local calendar deadline to its actual UTC instant before supplying `untilAt`. Cron's `timezone` controls recurrence through daylight-saving transitions; it does not reinterpret `untilAt` as local time. `maxRuns` counts admitted runs; overlap skips do not count.
 
 ## Lifecycle and recovery
 

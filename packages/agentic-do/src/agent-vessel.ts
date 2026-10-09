@@ -1611,7 +1611,12 @@ export abstract class AgentVesselBase extends NativeChannelOwner<NativeProductCh
                   everyMs: { type: "integer", minimum: 60000 },
                   anchorAt: { type: "integer", minimum: 0 },
                   jitterMs: { type: "integer", minimum: 0 },
-                  untilAt: { type: "integer", minimum: 0 },
+                  untilAt: {
+                    type: "integer",
+                    minimum: 0,
+                    description:
+                      "Exclusive absolute deadline in Unix epoch milliseconds (UTC). No run starts at or after this instant. Convert a local calendar deadline to UTC before supplying it.",
+                  },
                   maxRuns: { type: "integer", minimum: 1 },
                 },
                 required: ["kind", "everyMs"],
@@ -1623,7 +1628,12 @@ export abstract class AgentVesselBase extends NativeChannelOwner<NativeProductCh
                   kind: { const: "cron" },
                   expression: { type: "string" },
                   timezone: { type: "string" },
-                  untilAt: { type: "integer", minimum: 0 },
+                  untilAt: {
+                    type: "integer",
+                    minimum: 0,
+                    description:
+                      "Exclusive absolute deadline in Unix epoch milliseconds (UTC). No run starts at or after this instant. timezone controls cron recurrence only; convert a local calendar deadline to UTC before supplying untilAt.",
+                  },
                   maxRuns: { type: "integer", minimum: 1 },
                 },
                 required: ["kind", "expression", "timezone"],
