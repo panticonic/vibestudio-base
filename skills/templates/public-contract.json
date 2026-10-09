@@ -3547,8 +3547,7 @@
                   "type": "string",
                   "enum": [
                     "authored",
-                    "inherited",
-                    "unlisted"
+                    "inherited"
                   ]
                 },
                 "inheritedFrom": {

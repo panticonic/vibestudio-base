@@ -76,6 +76,7 @@ describe("WorkspaceSourceProviderV1", () => {
       { path: "vibestudio.yml", contentHash, mode: 0o100644 },
     ]).stateHash as `state:${string}`;
     const input: InitializeExactWorkspaceSnapshotInput = {
+      installation: { sources: [] },
       commandId: "initialize:one",
       pin: {
         url: "git+https://example.test/base.git",
@@ -109,6 +110,9 @@ describe("WorkspaceSourceProviderV1", () => {
       ],
     };
 
+    input.installation = {
+      sources: [{ pin: input.pin, manifest: new TextDecoder().decode(bytes) }],
+    };
     let inspection =
       await instance.workspaceSourceInitializeExactSnapshot(input);
     const effectKinds: string[] = [];
@@ -151,6 +155,18 @@ describe("WorkspaceSourceProviderV1", () => {
         initializedStateHash: expect.stringMatching(/^state:[0-9a-f]{64}$/u),
       },
     });
+    if (inspection.state !== "ready")
+      throw new Error("Initialization did not finish");
+    expect(
+      instance.workspaceSourceTemplateInstallation({
+        eventId: inspection.receipt.initializedEventId,
+      }),
+    ).toEqual(input.installation);
+    expect(() =>
+      instance.workspaceSourceTemplateInstallation({
+        eventId: "unknown:event",
+      }),
+    ).toThrow("Unknown workspace event");
     expect(effectKinds).toEqual(["observe-content", "publish-main"]);
     await expect(
       instance.workspaceSourceInitializeExactSnapshot(input),
@@ -203,6 +219,7 @@ describe("WorkspaceSourceProviderV1", () => {
       WORKSPACE_ID: "workspace-two",
     });
     const base: InitializeExactWorkspaceSnapshotInput = {
+      installation: { sources: [] },
       commandId: "initialize:two",
       pin: {
         url: "git+https://example.test/base.git",

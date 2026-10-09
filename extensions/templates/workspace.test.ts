@@ -37,17 +37,20 @@ describe("template workspace observation", () => {
             content: {
               kind: "text",
               text: [
-                "systemEpoch: 1",
+                "systemEpoch: 0",
                 "template:",
                 "  name: Test",
                 "  description: Test template",
-                "  repositories: []",
                 "  dependencies:",
                 "    - url: git+https://example.test/base.git",
                 "",
               ].join("\n"),
             },
           };
+        }
+        if (method === "workspaceTemplateSource.readInstallation") {
+          expect(args).toEqual([{ eventId: state.eventId }]);
+          return null;
         }
         throw new Error(`Unexpected observation mutation: ${method}`);
       },
@@ -57,7 +60,7 @@ describe("template workspace observation", () => {
       workspace: {
         getInfo: async () => ({
           id: "workspace:test",
-          config: { systemEpoch: 1 },
+          config: { systemEpoch: 0 },
         }),
       },
     } as unknown as ExtensionContextLike;
@@ -71,6 +74,7 @@ describe("template workspace observation", () => {
       "vcs.mainState",
       "vcs.resolveRepository",
       "vcs.readFile",
+      "workspaceTemplateSource.readInstallation",
       "vcs.listDirectory",
     ]);
   });

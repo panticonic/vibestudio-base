@@ -11,6 +11,7 @@ import {
   removeDeclaredUpstreamFromConfig,
   setDeclaredRemoteInConfig,
   setDeclaredUpstreamInConfig,
+  validateWorkspaceGitConfig,
   validateWorkspaceGitRemote,
   validateWorkspaceGitUpstream,
   validateWorkspaceGitRemoteBranch,
@@ -21,7 +22,6 @@ import {
   WORKSPACE_IMPORT_PARENT_DIRS,
   isSupportedImportRepoPath,
 } from "@vibestudio/workspace/pathPolicy";
-import { workspaceConfigDigest } from "@vibestudio/workspace/preparedConfig";
 import type {
   GitCommitMappingRow,
   GitDetachUpstreamResult,
@@ -41,10 +41,11 @@ import type {
   GitUpstreams,
 } from "@vibestudio/service-schemas/gitInterop";
 import type {
-  WorkspaceConfig,
+  GitConfig,
   WorkspaceGitRemoteConfig,
   WorkspaceGitUpstreamConfig,
 } from "@vibestudio/workspace-contracts/types";
+import { GitConfigSchema } from "@vibestudio/workspace-contracts/workspaceConfigSchema";
 import { resolveGitHubPublishOperation } from "@workspace/integrations/github";
 import { getRemoteProvider } from "@workspace/integrations/remoteProviders";
 import {
@@ -85,7 +86,8 @@ type StoredUpstreamState = Exclude<
 type StoredRepoStatePatch = Partial<Omit<StoredRepoState, "configFingerprint">>;
 
 interface StoredState {
-  version: 2;
+  version: 1;
+  configuration: GitConfig;
   repos: Record<string, StoredRepoState>;
 }
 
@@ -121,37 +123,28 @@ type SyncResult =
 export class UpstreamEngine {
   private runtime = new Map<string, RuntimeRepoState>();
   private stateWrite = Promise.resolve();
+  private stateInitialization: Promise<StoredState> | null = null;
 
   constructor(
     private readonly ctx: ExtensionContextLike,
-    private readonly bridge: GitBridge
+    private readonly bridge: GitBridge,
   ) {}
 
   async activate(): Promise<void> {
-    try {
-      await this.readConfig();
-    } catch (error) {
-      // Provider activation must not depend on workspace RPC readiness. The
-      // build smoke intentionally supplies no live config, and a real server
-      // can also activate extensions while workspace services are converging.
-      // Every provider operation reads the current config on demand; main-head
-      // notifications enqueue affected repos once the workspace is live.
-      this.ctx.log.warn?.("git upstream startup deferred until workspace config is available", {
-        error: errorMessage(error),
-      });
-    }
+    await this.readConfig();
     await this.reportHealth();
   }
 
   reconcileUpstreams(
-    entries: Array<{ repoPath: string; credentialIdOverride?: string | null }>
+    entries: Array<{ repoPath: string; credentialIdOverride?: string | null }>,
   ): void {
-    for (const entry of entries) this.enqueue(entry.repoPath, 2_000, entry.credentialIdOverride);
+    for (const entry of entries)
+      this.enqueue(entry.repoPath, 2_000, entry.credentialIdOverride);
   }
 
   async pushUpstream(
     repoPath: string,
-    opts: GitPushUpstreamOptions = {}
+    opts: GitPushUpstreamOptions = {},
   ): Promise<GitPushUpstreamResult> {
     const repo = normalizeWorkspaceRepoPath(repoPath);
     return withRepoLock(repo, async () => {
@@ -166,7 +159,9 @@ export class UpstreamEngine {
           expectedMainEventId: opts.expectedMainEventId,
         });
         if (result.outcome === "exported-only") {
-          throw new Error("Manual upstream push stopped after export without observing the remote");
+          throw new Error(
+            "Manual upstream push stopped after export without observing the remote",
+          );
         }
         return result;
       } catch (err) {
@@ -190,7 +185,7 @@ export class UpstreamEngine {
   private async syncLocked(
     repo: string,
     scope: RepoOperationScope,
-    opts: { push: boolean; force?: boolean; expectedMainEventId?: string }
+    opts: { push: boolean; force?: boolean; expectedMainEventId?: string },
   ): Promise<SyncResult> {
     const { upstream, remote, fingerprint, transportRemote } = scope;
     const git = this.gitClient(scope.credential);
@@ -220,22 +215,36 @@ export class UpstreamEngine {
     });
     const observedAt = Date.now();
     const remoteRef = `refs/remotes/${transportRemote}/${upstream.branch}`;
-    const remoteHead = fetched.remoteRefExists ? await git.resolveRef(dir, remoteRef) : null;
+    const remoteHead = fetched.remoteRefExists
+      ? await git.resolveRef(dir, remoteRef)
+      : null;
     if (fetched.remoteRefExists && !remoteHead) {
-      throw new Error(`Fetched remote branch ${upstream.branch} could not be resolved`);
+      throw new Error(
+        `Fetched remote branch ${upstream.branch} could not be resolved`,
+      );
     }
-    await this.updateRepoState(repo, fingerprint, { lastSuccessfulObservationAt: observedAt });
+    await this.updateRepoState(repo, fingerprint, {
+      lastSuccessfulObservationAt: observedAt,
+    });
     if (remoteHead === exported.headCommit) {
       await this.updateRepoState(repo, fingerprint, { status: "in-sync" });
       this.clearBackoff(repo, fingerprint);
       return { ...exported, outcome: "already-at-remote" };
     }
-    const comparison = remoteHead === null ? null : await git.compareRefs(dir, "HEAD", remoteRef);
+    const comparison =
+      remoteHead === null
+        ? null
+        : await git.compareRefs(dir, "HEAD", remoteRef);
     if (!opts.force && remoteHead !== null) {
-      const remoteAdvanced = comparison === null || comparison.behind > 0 || comparison.diverged;
+      const remoteAdvanced =
+        comparison === null || comparison.behind > 0 || comparison.diverged;
       if (remoteAdvanced) {
         const relationship =
-          comparison === null ? "unrelated" : comparison.diverged ? "diverged" : "behind";
+          comparison === null
+            ? "unrelated"
+            : comparison.diverged
+              ? "diverged"
+              : "behind";
         await this.updateRepoState(repo, fingerprint, {
           status: relationship === "unrelated" ? "diverged" : relationship,
         });
@@ -244,13 +253,21 @@ export class UpstreamEngine {
           outcome: "remote-advanced",
           remoteHead,
           relationship,
-          ...(comparison ? { aheadBy: comparison.ahead, behindBy: comparison.behind } : {}),
+          ...(comparison
+            ? { aheadBy: comparison.ahead, behindBy: comparison.behind }
+            : {}),
         };
       }
     }
     let overwrites: GitOverwritePreview | undefined;
     if (opts.force) {
-      overwrites = await this.previewOverwrites(git, dir, remoteRef, remoteHead, comparison);
+      overwrites = await this.previewOverwrites(
+        git,
+        dir,
+        remoteRef,
+        remoteHead,
+        comparison,
+      );
     }
     const localRef = (await git.getCurrentBranch(dir)) ?? DEFAULT_BRANCH;
     this.setRunning(repo, fingerprint, "pushing");
@@ -279,7 +296,11 @@ export class UpstreamEngine {
             ? await git.resolveRef(dir, remoteRef)
             : null;
           if (refreshedHead) {
-            const refreshedComparison = await git.compareRefs(dir, "HEAD", remoteRef);
+            const refreshedComparison = await git.compareRefs(
+              dir,
+              "HEAD",
+              remoteRef,
+            );
             if (
               refreshedComparison !== null &&
               refreshedComparison.behind === 0 &&
@@ -331,7 +352,7 @@ export class UpstreamEngine {
 
   async pullUpstream(
     repoPath: string,
-    opts: { dryRun?: boolean; credentialIdOverride?: string | null } = {}
+    opts: { dryRun?: boolean; credentialIdOverride?: string | null } = {},
   ): Promise<GitPullUpstreamResult & { imported?: ImportResult }> {
     const repo = normalizeWorkspaceRepoPath(repoPath);
     return withRepoLock(repo, async () => {
@@ -383,7 +404,11 @@ export class UpstreamEngine {
                   incoming: [],
                 };
               }
-              const tracking = (await git.compareRefs(dir, "HEAD", remoteRef)) ?? {
+              const tracking = (await git.compareRefs(
+                dir,
+                "HEAD",
+                remoteRef,
+              )) ?? {
                 ahead: 1,
                 behind: 1,
                 diverged: true,
@@ -396,9 +421,14 @@ export class UpstreamEngine {
                 behindBy: tracking.behind,
                 aheadBy: tracking.ahead,
                 remoteBranchExists: true,
-                incoming: await this.commitSummaries(git, dir, remoteRef, tracking.behind),
+                incoming: await this.commitSummaries(
+                  git,
+                  dir,
+                  remoteRef,
+                  tracking.behind,
+                ),
               };
-            }
+            },
           );
         }
         const dir = await this.bridge.repoGitDir(repo);
@@ -421,7 +451,9 @@ export class UpstreamEngine {
           ref: upstream.branch,
         });
         const remoteRef = `refs/remotes/${transportRemote}/${upstream.branch}`;
-        const remoteHead = fetched.remoteRefExists ? await git.resolveRef(dir, remoteRef) : null;
+        const remoteHead = fetched.remoteRefExists
+          ? await git.resolveRef(dir, remoteRef)
+          : null;
         if (!fetched.remoteRefExists || !remoteHead) {
           // The tracked remote branch does not exist yet — nothing to pull,
           // and nothing to fabricate: report the state explicitly.
@@ -446,10 +478,19 @@ export class UpstreamEngine {
           behind: 1,
           diverged: true,
         };
-        const incoming = await this.commitSummaries(git, dir, remoteRef, tracking.behind);
+        const incoming = await this.commitSummaries(
+          git,
+          dir,
+          remoteRef,
+          tracking.behind,
+        );
         if (tracking.behind === 0) {
           await this.updateRepoState(repo, fingerprint, {
-            status: statusFromCounts(tracking.ahead, tracking.behind, tracking.diverged),
+            status: statusFromCounts(
+              tracking.ahead,
+              tracking.behind,
+              tracking.diverged,
+            ),
           });
           this.clearBackoff(repo, fingerprint);
           return {
@@ -494,10 +535,16 @@ export class UpstreamEngine {
           summary: `Pull ${upstream.remote}/${upstream.branch}${head ? ` @ ${head.slice(0, 7)}` : ""}`,
           sourceUri: remote.url,
         });
-        const postPull = await this.aheadBehind(repo, scope, { fetch: false }).catch(() => null);
+        const postPull = await this.aheadBehind(repo, scope, {
+          fetch: false,
+        }).catch(() => null);
         await this.updateRepoState(repo, fingerprint, {
           status: postPull
-            ? statusFromCounts(postPull.aheadBy, postPull.behindBy, postPull.diverged)
+            ? statusFromCounts(
+                postPull.aheadBy,
+                postPull.behindBy,
+                postPull.diverged,
+              )
             : "in-sync",
         });
         this.clearBackoff(repo, fingerprint);
@@ -526,7 +573,7 @@ export class UpstreamEngine {
 
   async upstreamStatus(
     repoPaths: string[],
-    options: GitUpstreamStatusOptions = {}
+    options: GitUpstreamStatusOptions = {},
   ): Promise<GitUpstreamStatusRow[]> {
     const listedConfig = await this.readConfig();
     const repos = repoPaths.length
@@ -540,7 +587,8 @@ export class UpstreamEngine {
           let remote: WorkspaceGitRemoteConfig | null = null;
           try {
             resolved = getDeclaredUpstreamForRepo(config, repo);
-            if (resolved) remote = this.requireRemote(config, repo, resolved.remote);
+            if (resolved)
+              remote = this.requireRemote(config, repo, resolved.remote);
           } catch (err) {
             await this.clearRepoState(repo);
             return {
@@ -567,20 +615,26 @@ export class UpstreamEngine {
             options.branch === undefined &&
             options.credentialIdOverride === undefined;
           resolved = this.applyStatusOptions(config, repo, resolved, options);
-          const operationalRemote = this.requireRemote(config, repo, resolved.remote);
+          const operationalRemote = this.requireRemote(
+            config,
+            repo,
+            resolved.remote,
+          );
           const operationalFingerprint = upstreamConfigFingerprint(
             repo,
             resolved,
-            operationalRemote
+            operationalRemote,
           );
-          const transportRemote = transportRemoteForFingerprint(operationalFingerprint);
+          const transportRemote = transportRemoteForFingerprint(
+            operationalFingerprint,
+          );
           const operationScope: RepoOperationScope = {
             upstream: resolved,
             remote: operationalRemote,
             credential: this.credentialFor(
               resolved,
               operationalRemote,
-              options.credentialIdOverride
+              options.credentialIdOverride,
             ),
             fingerprint: operationalFingerprint,
             stored,
@@ -598,8 +652,8 @@ export class UpstreamEngine {
               state: "not-materialized" as const,
               error:
                 `Declared upstream has no operational checkout. If ${repo} is already present ` +
-              `in protected main, run \`vibestudio vcs git push --repo ${repo}\` to rebuild ` +
-              `the checkout from semantic state and synchronize it. Otherwise import the absent repository explicitly.`,
+                `in protected main, run \`vibestudio vcs git push --repo ${repo}\` to rebuild ` +
+                `the checkout from semantic state and synchronize it. Otherwise import the absent repository explicitly.`,
             };
           }
           // A semantic candidate blocks publication, never observation. The
@@ -617,7 +671,8 @@ export class UpstreamEngine {
             });
           } catch (err) {
             const declaredRuntime =
-              observesDeclaredTarget && runtime?.configFingerprint === stored.configFingerprint
+              observesDeclaredTarget &&
+              runtime?.configFingerprint === stored.configFingerprint
                 ? runtime
                 : undefined;
             return {
@@ -626,15 +681,25 @@ export class UpstreamEngine {
               branch: resolved.branch,
               autoPush: resolved.autoPush,
               state:
-                err instanceof GitAuthError ? ("auth-failed" as const) : ("fetch-failed" as const),
+                err instanceof GitAuthError
+                  ? ("auth-failed" as const)
+                  : ("fetch-failed" as const),
               error: errorMessage(err),
               lastSuccessfulObservationAt: observesDeclaredTarget
                 ? stored.lastSuccessfulObservationAt
                 : undefined,
-              lastSuccessfulPushCommit: observesDeclaredTarget ? stored.lastPushedSha : undefined,
-              lastSuccessfulPushAt: observesDeclaredTarget ? stored.lastPushedAt : undefined,
-              lastFailureReason: observesDeclaredTarget ? stored.lastError : undefined,
-              lastFailureAt: observesDeclaredTarget ? stored.lastFailureAt : undefined,
+              lastSuccessfulPushCommit: observesDeclaredTarget
+                ? stored.lastPushedSha
+                : undefined,
+              lastSuccessfulPushAt: observesDeclaredTarget
+                ? stored.lastPushedAt
+                : undefined,
+              lastFailureReason: observesDeclaredTarget
+                ? stored.lastError
+                : undefined,
+              lastFailureAt: observesDeclaredTarget
+                ? stored.lastFailureAt
+                : undefined,
               nextRetryAt: declaredRuntime?.retryAt,
               ...(candidate ? { candidate } : {}),
             };
@@ -642,7 +707,9 @@ export class UpstreamEngine {
           const observedAt = Date.now();
           const remoteBranchExists = fetched.remoteRefExists;
           const remoteRef = `refs/remotes/${transportRemote}/${resolved.branch}`;
-          const remoteHead = remoteBranchExists ? await git.resolveRef(dir, remoteRef) : null;
+          const remoteHead = remoteBranchExists
+            ? await git.resolveRef(dir, remoteRef)
+            : null;
           let relationship: GitUpstreamRelationship | undefined;
           let counts: { aheadBy: number; behindBy: number } | undefined;
           let computed: GitUpstreamState;
@@ -657,10 +724,18 @@ export class UpstreamEngine {
               lastSuccessfulObservationAt: observesDeclaredTarget
                 ? stored.lastSuccessfulObservationAt
                 : undefined,
-              lastSuccessfulPushCommit: observesDeclaredTarget ? stored.lastPushedSha : undefined,
-              lastSuccessfulPushAt: observesDeclaredTarget ? stored.lastPushedAt : undefined,
-              lastFailureReason: observesDeclaredTarget ? stored.lastError : undefined,
-              lastFailureAt: observesDeclaredTarget ? stored.lastFailureAt : undefined,
+              lastSuccessfulPushCommit: observesDeclaredTarget
+                ? stored.lastPushedSha
+                : undefined,
+              lastSuccessfulPushAt: observesDeclaredTarget
+                ? stored.lastPushedAt
+                : undefined,
+              lastFailureReason: observesDeclaredTarget
+                ? stored.lastError
+                : undefined,
+              lastFailureAt: observesDeclaredTarget
+                ? stored.lastFailureAt
+                : undefined,
             };
           }
           if (!remoteBranchExists) {
@@ -671,20 +746,28 @@ export class UpstreamEngine {
               relationship = "diverged";
               computed = "diverged";
             } else {
-              relationship = statusFromCounts(compared.ahead, compared.behind, compared.diverged);
+              relationship = statusFromCounts(
+                compared.ahead,
+                compared.behind,
+                compared.diverged,
+              );
               counts = { aheadBy: compared.ahead, behindBy: compared.behind };
               computed = relationship;
             }
           }
           if (observesDeclaredTarget) {
             await this.updateRepoState(repo, stored.configFingerprint, {
-              status: computed === "empty" ? undefined : (computed as StoredUpstreamState),
+              status:
+                computed === "empty"
+                  ? undefined
+                  : (computed as StoredUpstreamState),
               lastSuccessfulObservationAt: observedAt,
             });
             stored = { ...stored, lastSuccessfulObservationAt: observedAt };
           }
           const declaredRuntime =
-            observesDeclaredTarget && runtime?.configFingerprint === stored.configFingerprint
+            observesDeclaredTarget &&
+            runtime?.configFingerprint === stored.configFingerprint
               ? runtime
               : undefined;
           return {
@@ -700,18 +783,27 @@ export class UpstreamEngine {
             lastSuccessfulObservationAt: observesDeclaredTarget
               ? stored.lastSuccessfulObservationAt
               : undefined,
-            lastSuccessfulPushCommit: observesDeclaredTarget ? stored.lastPushedSha : undefined,
-            lastSuccessfulPushAt: observesDeclaredTarget ? stored.lastPushedAt : undefined,
-            lastFailureReason: observesDeclaredTarget ? stored.lastError : undefined,
+            lastSuccessfulPushCommit: observesDeclaredTarget
+              ? stored.lastPushedSha
+              : undefined,
+            lastSuccessfulPushAt: observesDeclaredTarget
+              ? stored.lastPushedAt
+              : undefined,
+            lastFailureReason: observesDeclaredTarget
+              ? stored.lastError
+              : undefined,
             // Auto-push visibility: an agent must see queued work, the last
             // background failure, and the retry schedule without log access.
-            autoPushRequired: !candidate && resolved.autoPush && computed === "ahead",
-            lastFailureAt: observesDeclaredTarget ? stored.lastFailureAt : undefined,
+            autoPushRequired:
+              !candidate && resolved.autoPush && computed === "ahead",
+            lastFailureAt: observesDeclaredTarget
+              ? stored.lastFailureAt
+              : undefined,
             nextRetryAt: declaredRuntime?.retryAt,
             ...(candidate ? { candidate } : {}),
           };
-        })
-      )
+        }),
+      ),
     );
     await this.reportHealth();
     return rows;
@@ -844,10 +936,14 @@ export class UpstreamEngine {
           existingRemote.branch !== undefined &&
           existingRemote.branch !== remote.branch))
     ) {
-      throw new Error(`Import declaration for ${repo} conflicts with its existing remote`);
+      throw new Error(
+        `Import declaration for ${repo} conflicts with its existing remote`,
+      );
     }
     if (existingUpstream && existingUpstream.remote !== remote.name) {
-      throw new Error(`Import declaration for ${repo} conflicts with its existing upstream`);
+      throw new Error(
+        `Import declaration for ${repo} conflicts with its existing upstream`,
+      );
     }
     if (!remote.branch) {
       const discovered = await this.remoteDefaultBranch({
@@ -856,7 +952,7 @@ export class UpstreamEngine {
       });
       if (!discovered.branch) {
         throw new Error(
-          `Remote ${remote.url} does not advertise a default branch; specify remote.branch explicitly`
+          `Remote ${remote.url} does not advertise a default branch; specify remote.branch explicitly`,
         );
       }
       remote = { ...remote, branch: discovered.branch };
@@ -865,11 +961,13 @@ export class UpstreamEngine {
       await this.applyConfigMutation(
         (current) =>
           setDeclaredUpstreamInConfig(
-            existingRemote ? current : setDeclaredRemoteInConfig(current, repo, remote),
+            existingRemote
+              ? current
+              : setDeclaredRemoteInConfig(current, repo, remote),
             repo,
-            { remote: remote.name, branch: remote.branch, autoPush: false }
+            { remote: remote.name, branch: remote.branch, autoPush: false },
           ),
-        `record Git import ${repo} from ${remote.url}`
+        `record Git import ${repo} from ${remote.url}`,
       );
     }
     try {
@@ -881,23 +979,28 @@ export class UpstreamEngine {
     } catch (error) {
       if (!existingRemote || !existingUpstream) {
         try {
-          await this.applyConfigMutation(
-            (current) => {
-              const withoutUpstream = existingUpstream
-                ? setDeclaredUpstreamInConfig(
-                    current,
-                    repo,
-                    declaredUpstreamConfig(existingUpstream)
-                  )
-                : removeDeclaredUpstreamFromConfig(current, repo);
-              return existingRemote
-                ? setDeclaredRemoteInConfig(withoutUpstream, repo, existingRemote)
-                : removeDeclaredRemoteFromConfig(withoutUpstream, repo, remote.name);
-            },
-            `roll back failed Git import ${repo}`
-          );
+          await this.applyConfigMutation((current) => {
+            const withoutUpstream = existingUpstream
+              ? setDeclaredUpstreamInConfig(
+                  current,
+                  repo,
+                  declaredUpstreamConfig(existingUpstream),
+                )
+              : removeDeclaredUpstreamFromConfig(current, repo);
+            return existingRemote
+              ? setDeclaredRemoteInConfig(withoutUpstream, repo, existingRemote)
+              : removeDeclaredRemoteFromConfig(
+                  withoutUpstream,
+                  repo,
+                  remote.name,
+                );
+          }, `roll back failed Git import ${repo}`);
         } catch (cleanupError) {
-          throw attachGitCleanupFailure(error, cleanupError, "restore-import-config");
+          throw attachGitCleanupFailure(
+            error,
+            cleanupError,
+            "restore-import-config",
+          );
         }
       }
       throw error;
@@ -912,12 +1015,18 @@ export class UpstreamEngine {
     return withRepoLock(repo, async () => {
       const config = await this.readConfig();
       const upstream = getDeclaredUpstreamForRepo(config, repo);
-      if (!upstream) throw new Error(`No approved upstream is declared for ${repo}`);
+      if (!upstream)
+        throw new Error(`No approved upstream is declared for ${repo}`);
       const remote = getDeclaredRemoteForRepo(config, repo, upstream.remote);
-      if (!remote) throw new Error(`No approved remote ${upstream.remote} is declared for ${repo}`);
+      if (!remote)
+        throw new Error(
+          `No approved remote ${upstream.remote} is declared for ${repo}`,
+        );
       const absolutePath = await this.bridge.repoGitDir(repo);
       if (!isSupportedImportRepoPath(repo)) {
-        throw new Error(`Imports must target one of: ${WORKSPACE_IMPORT_PARENT_DIRS.join(", ")}`);
+        throw new Error(
+          `Imports must target one of: ${WORKSPACE_IMPORT_PARENT_DIRS.join(", ")}`,
+        );
       }
       try {
         await fsp.access(absolutePath);
@@ -926,7 +1035,9 @@ export class UpstreamEngine {
         if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
       }
       await fsp.mkdir(path.dirname(absolutePath), { recursive: true });
-      const git = this.gitClient(this.credentialFor(upstream, remote, input.credentialIdOverride));
+      const git = this.gitClient(
+        this.credentialFor(upstream, remote, input.credentialIdOverride),
+      );
       const cloneRef = upstream.branch ?? remote.branch;
       try {
         await git.clone({
@@ -935,24 +1046,30 @@ export class UpstreamEngine {
           ref: cloneRef,
         });
         if (remote.name !== "origin") {
-          await git.addRemote(absolutePath, remote.name, remote.url).catch(() => undefined);
+          await git
+            .addRemote(absolutePath, remote.name, remote.url)
+            .catch(() => undefined);
         }
         return await this.bridge.importLockedInner(repo, {
           summary: `Import ${repo} from ${displayRemote(remote.url)}`,
           sourceUri: remote.url,
         });
       } catch (err) {
-        await fsp.rm(absolutePath, { recursive: true, force: true }).catch(() => undefined);
+        await fsp
+          .rm(absolutePath, { recursive: true, force: true })
+          .catch(() => undefined);
         // When the requested branch was a default-assumption (not user-declared
         // config we can trust), name the remote's ACTUAL default branch in the
         // error instead of leaving a bare git failure.
         if (cloneRef) {
-          const actualDefault = await git.getRemoteDefaultBranch(remote.url).catch(() => null);
+          const actualDefault = await git
+            .getRemoteDefaultBranch(remote.url)
+            .catch(() => null);
           if (actualDefault && actualDefault !== cloneRef) {
             throw new Error(
               `Clone of ${displayRemote(remote.url)} branch "${cloneRef}" failed ` +
                 `(${errorMessage(err)}). The remote's default branch is "${actualDefault}" — ` +
-                `re-import with --branch ${actualDefault}.`
+                `re-import with --branch ${actualDefault}.`,
             );
           }
         }
@@ -963,82 +1080,86 @@ export class UpstreamEngine {
 
   async commitMapping(
     repoPath: string,
-    opts: { limit?: number } = {}
+    opts: { limit?: number } = {},
   ): Promise<GitCommitMappingRow[]> {
-    return this.bridge.commitMapping(normalizeWorkspaceRepoPath(repoPath), opts);
+    return this.bridge.commitMapping(
+      normalizeWorkspaceRepoPath(repoPath),
+      opts,
+    );
   }
 
   async remoteDefaultBranch(input: {
     url: string;
     credentialIdOverride?: string | null;
   }): Promise<{ branch: string | null }> {
-    const git = this.gitClient({ credentialId: input.credentialIdOverride ?? null });
+    const git = this.gitClient({
+      credentialId: input.credentialIdOverride ?? null,
+    });
     return { branch: await git.getRemoteDefaultBranch(input.url) };
   }
 
   async setUpstream(
     repoPath: string,
-    config: WorkspaceGitUpstreamConfig
+    config: WorkspaceGitUpstreamConfig,
   ): Promise<GitUpstreams> {
     const repo = normalizeWorkspaceRepoPath(repoPath);
     const normalized = validateWorkspaceGitUpstream(config);
-    const result = await this.applyConfigMutation(
-      (current) => {
-        if (!getDeclaredRemoteForRepo(current, repo, normalized.remote)) {
-          throw new Error(`Upstream remote "${normalized.remote}" is not declared for ${repo}`);
-        }
-        return setDeclaredUpstreamInConfig(current, repo, normalized);
-      },
-      `set Git upstream for ${repo}`
-    );
+    const result = await this.applyConfigMutation((current) => {
+      if (!getDeclaredRemoteForRepo(current, repo, normalized.remote)) {
+        throw new Error(
+          `Upstream remote "${normalized.remote}" is not declared for ${repo}`,
+        );
+      }
+      return setDeclaredUpstreamInConfig(current, repo, normalized);
+    }, `set Git upstream for ${repo}`);
     await this.clearRepoState(repo);
     await this.reportHealth();
-    return result.config.git?.upstreams ?? {};
+    return result.config?.upstreams ?? {};
   }
 
   async setRemote(
     repoPath: string,
-    remote: WorkspaceGitRemoteConfig
+    remote: WorkspaceGitRemoteConfig,
   ): Promise<GitSharedRemotes> {
     const repo = normalizeWorkspaceRepoPath(repoPath);
     const normalized = validateWorkspaceGitRemote(remote);
     const result = await this.applyConfigMutation(
       (current) => setDeclaredRemoteInConfig(current, repo, normalized),
-      `set Git remote ${normalized.name} for ${repo}`
+      `set Git remote ${normalized.name} for ${repo}`,
     );
-    return result.config.git?.remotes ?? {};
+    return result.config?.remotes ?? {};
   }
 
-  async removeRemote(repoPath: string, remoteName: string): Promise<GitSharedRemotes> {
+  async removeRemote(
+    repoPath: string,
+    remoteName: string,
+  ): Promise<GitSharedRemotes> {
     const repo = normalizeWorkspaceRepoPath(repoPath);
     const name = validateWorkspaceGitRemoteName(remoteName);
-    const result = await this.applyConfigMutation(
-      (current) => {
-        const withoutRemote = removeDeclaredRemoteFromConfig(current, repo, name);
-        let upstream: WorkspaceGitUpstreamConfig | null = null;
-        try {
-          upstream = getDeclaredUpstreamForRepo(current, repo);
-        } catch {
-          upstream = null;
-        }
-        return upstream?.remote === name
-          ? removeDeclaredUpstreamFromConfig(withoutRemote, repo)
-          : withoutRemote;
-      },
-      `remove Git remote ${name} from ${repo}`
-    );
-    return result.config.git?.remotes ?? {};
+    const result = await this.applyConfigMutation((current) => {
+      const withoutRemote = removeDeclaredRemoteFromConfig(current, repo, name);
+      let upstream: WorkspaceGitUpstreamConfig | null = null;
+      try {
+        upstream = getDeclaredUpstreamForRepo(current, repo);
+      } catch {
+        upstream = null;
+      }
+      return upstream?.remote === name
+        ? removeDeclaredUpstreamFromConfig(withoutRemote, repo)
+        : withoutRemote;
+    }, `remove Git remote ${name} from ${repo}`);
+    return result.config?.remotes ?? {};
   }
 
   async removeUpstream(repoPath: string): Promise<GitUpstreams> {
     const repo = normalizeWorkspaceRepoPath(repoPath);
     const result = await this.applyConfigMutation(
       (current) => removeDeclaredUpstreamFromConfig(current, repo),
-      `remove Git upstream from ${repo}`
+      `remove Git upstream from ${repo}`,
     );
     await this.clearRepoState(repo);
     await this.reportHealth();
-    return result.config.git?.upstreams ?? {};
+    return result.config?.upstreams ?? {};
   }
 
   async setAutoPush(repoPath: string, enabled: boolean): Promise<GitUpstreams> {
@@ -1046,22 +1167,23 @@ export class UpstreamEngine {
     const result = await this.applyConfigMutation(
       (current) => {
         const upstream = getDeclaredUpstreamForRepo(current, repo);
-        if (!upstream) throw new Error(`No upstream tracking is declared for ${repo}`);
+        if (!upstream)
+          throw new Error(`No upstream tracking is declared for ${repo}`);
         return setDeclaredUpstreamInConfig(current, repo, {
           ...declaredUpstreamConfig(upstream),
           autoPush: enabled,
         });
       },
-      `${enabled ? "enable" : "disable"} automatic Git push for ${repo}`
+      `${enabled ? "enable" : "disable"} automatic Git push for ${repo}`,
     );
     await this.clearRepoState(repo);
     await this.reportHealth();
-    return result.config.git?.upstreams ?? {};
+    return result.config?.upstreams ?? {};
   }
 
   async detachUpstream(
     repoPath: string,
-    options: { forgetRemote?: boolean; remote?: string } = {}
+    options: { forgetRemote?: boolean; remote?: string } = {},
   ): Promise<GitDetachUpstreamResult> {
     const repo = normalizeWorkspaceRepoPath(repoPath);
     const current = await this.readConfig();
@@ -1073,7 +1195,9 @@ export class UpstreamEngine {
     }
     const remoteName =
       options.forgetRemote === true
-        ? validateWorkspaceGitRemoteName(options.remote ?? upstream?.remote ?? "origin")
+        ? validateWorkspaceGitRemoteName(
+            options.remote ?? upstream?.remote ?? "origin",
+          )
         : null;
     const result = await this.applyConfigMutation(
       (config) => {
@@ -1082,54 +1206,70 @@ export class UpstreamEngine {
           ? removeDeclaredRemoteFromConfig(withoutUpstream, repo, remoteName)
           : withoutUpstream;
       },
-      `disconnect Git upstream from ${repo}${remoteName ? ` and remove ${remoteName}` : ""}`
+      `disconnect Git upstream from ${repo}${remoteName ? ` and remove ${remoteName}` : ""}`,
     );
     await this.clearRepoState(repo);
     await this.reportHealth();
     return {
-      upstreams: result.config.git?.upstreams ?? {},
-      remotes: result.config.git?.remotes ?? {},
+      upstreams: result.config?.upstreams ?? {},
+      remotes: result.config?.remotes ?? {},
       removedRemote: remoteName,
     };
   }
 
   private async applyConfigMutation(
-    mutate: (current: WorkspaceConfig) => WorkspaceConfig,
-    summary: string
-  ): Promise<{ changed: boolean; resultDigest: string; config: WorkspaceConfig }> {
-    const current = await this.readConfig();
-    const nextState = mutate(current);
-    return this.ctx.rpc.call("main", "workspace.applyPreparedConfig", {
-      expectedBaseDigest: workspaceConfigDigest(current),
-      nextState,
-      resultDigest: workspaceConfigDigest(nextState),
-      allowedPathScope: ["git.remotes", "git.upstreams"],
-      summary,
+    mutate: (current: GitConfig) => GitConfig,
+    summary: string,
+  ): Promise<{ changed: boolean; resultDigest: string; config: GitConfig }> {
+    return this.stateTransaction((state) => {
+      const next = mutate(state.configuration);
+      validateWorkspaceGitConfig(next);
+      const resultDigest = stableSha256Hex(next);
+      const changed = resultDigest !== stableSha256Hex(state.configuration);
+      state.configuration = next;
+      if (changed) this.ctx.log.info(summary);
+      return {
+        changed,
+        result: { changed, resultDigest, config: structuredClone(next) },
+      };
     });
   }
 
   async openGitTab(repoPath?: string): Promise<{
     opened: false;
     repoPath?: string;
-    openPanel: { source: string; stateArgs?: Record<string, unknown>; name?: string };
+    openPanel: {
+      source: string;
+      stateArgs?: Record<string, unknown>;
+      name?: string;
+    };
   }> {
-    const normalized = repoPath ? normalizeWorkspaceRepoPath(repoPath) : undefined;
+    const normalized = repoPath
+      ? normalizeWorkspaceRepoPath(repoPath)
+      : undefined;
     return {
       opened: false,
       ...(normalized ? { repoPath: normalized } : {}),
       openPanel: {
         source: "about/workspace-history",
         name: "Git upstreams",
-        ...(normalized ? { stateArgs: { gitRepo: normalized } } : { stateArgs: { gitRepo: "" } }),
+        ...(normalized
+          ? { stateArgs: { gitRepo: normalized } }
+          : { stateArgs: { gitRepo: "" } }),
       },
     };
   }
 
-  private enqueue(repoPath: string, delayMs = 2_000, credentialIdOverride?: string | null): void {
+  private enqueue(
+    repoPath: string,
+    delayMs = 2_000,
+    credentialIdOverride?: string | null,
+  ): void {
     const repo = normalizeWorkspaceRepoPath(repoPath);
     const runtime = this.runtime.get(repo) ?? {};
     if (runtime.debounceTimer) clearTimeout(runtime.debounceTimer);
-    if (credentialIdOverride !== undefined) runtime.credentialIdOverride = credentialIdOverride;
+    if (credentialIdOverride !== undefined)
+      runtime.credentialIdOverride = credentialIdOverride;
     runtime.debounceTimer = setTimeout(() => {
       const current = this.runtime.get(repo);
       if (current) delete current.debounceTimer;
@@ -1143,7 +1283,11 @@ export class UpstreamEngine {
     this.runtime.set(repo, runtime);
   }
 
-  private scheduleRetry(repo: string, fingerprint: string, delayMs: number): void {
+  private scheduleRetry(
+    repo: string,
+    fingerprint: string,
+    delayMs: number,
+  ): void {
     const runtime = this.runtime.get(repo);
     if (!runtime || runtime.configFingerprint !== fingerprint) return;
     if (runtime.retryTimer) clearTimeout(runtime.retryTimer);
@@ -1186,7 +1330,11 @@ export class UpstreamEngine {
           runtime.retryAt &&
           Date.now() < runtime.retryAt
         ) {
-          this.scheduleRetry(repo, scope.fingerprint, runtime.retryAt - Date.now());
+          this.scheduleRetry(
+            repo,
+            scope.fingerprint,
+            runtime.retryAt - Date.now(),
+          );
           return;
         }
         // Tracking always exports (local-only, keeps the checkout current).
@@ -1202,7 +1350,7 @@ export class UpstreamEngine {
           await this.showFailureNotification(
             repo,
             scope.upstream,
-            `The remote branch advanced (${result.relationship}); pull and review its incoming changes before pushing.`
+            `The remote branch advanced (${result.relationship}); pull and review its incoming changes before pushing.`,
           );
         }
       } catch (err) {
@@ -1228,7 +1376,7 @@ export class UpstreamEngine {
   private async classifyFailure(
     repo: string,
     scope: RepoOperationScope,
-    err: unknown
+    err: unknown,
   ): Promise<StoredRepoStatePatch> {
     const message = errorMessage(err);
     const lastFailureAt = Date.now();
@@ -1237,7 +1385,9 @@ export class UpstreamEngine {
     }
     if (err instanceof GitPushRejectedError) {
       // Confirm divergence deterministically before pausing pushes on it.
-      const counts = await this.aheadBehind(repo, scope, { fetch: true }).catch(() => null);
+      const counts = await this.aheadBehind(repo, scope, { fetch: true }).catch(
+        () => null,
+      );
       if (counts?.diverged) {
         return { status: "diverged", lastError: message, lastFailureAt };
       }
@@ -1253,7 +1403,7 @@ export class UpstreamEngine {
     repo: string,
     scope: RepoOperationScope,
     err: unknown,
-    force: boolean
+    force: boolean,
   ): Promise<void> {
     const patch = await this.classifyFailure(repo, scope, err);
     // A forced push that still failed is never a divergence pause — the caller
@@ -1267,12 +1417,12 @@ export class UpstreamEngine {
   private async handlePullFailure(
     repo: string,
     scope: RepoOperationScope,
-    err: unknown
+    err: unknown,
   ): Promise<void> {
     await this.updateRepoState(
       repo,
       scope.fingerprint,
-      await this.classifyFailure(repo, scope, err)
+      await this.classifyFailure(repo, scope, err),
     );
   }
 
@@ -1280,7 +1430,7 @@ export class UpstreamEngine {
     repo: string,
     scope: RepoOperationScope,
     upstream: ResolvedWorkspaceGitUpstream,
-    err: unknown
+    err: unknown,
   ): Promise<void> {
     const fingerprint = scope.fingerprint;
     const patch = await this.classifyFailure(repo, scope, err);
@@ -1290,7 +1440,11 @@ export class UpstreamEngine {
       patch.status === "diverged"
     ) {
       if (await this.updateRepoState(repo, fingerprint, patch)) {
-        await this.showFailureNotification(repo, upstream, patch.lastError ?? errorMessage(err));
+        await this.showFailureNotification(
+          repo,
+          upstream,
+          patch.lastError ?? errorMessage(err),
+        );
       }
       return;
     }
@@ -1298,7 +1452,7 @@ export class UpstreamEngine {
     if (!runtime || runtime.configFingerprint !== fingerprint) return;
     const nextBackoff = Math.min(
       runtime.backoffMs ? runtime.backoffMs * 2 : TRANSIENT_BACKOFF_MIN_MS,
-      TRANSIENT_BACKOFF_MAX_MS
+      TRANSIENT_BACKOFF_MAX_MS,
     );
     if (await this.updateRepoState(repo, fingerprint, patch)) {
       runtime.backoffMs = nextBackoff;
@@ -1310,7 +1464,7 @@ export class UpstreamEngine {
   private async showFailureNotification(
     repo: string,
     upstream: ResolvedWorkspaceGitUpstream,
-    reason: string
+    reason: string,
   ): Promise<void> {
     const remote = `${upstream.remote}/${upstream.branch}`;
     await this.ctx.notifications.show({
@@ -1357,7 +1511,7 @@ export class UpstreamEngine {
     dir: string,
     remoteRef: string,
     remoteHead: string | null,
-    counts: { ahead: number; behind: number; diverged: boolean } | null
+    counts: { ahead: number; behind: number; diverged: boolean } | null,
   ): Promise<GitOverwritePreview | undefined> {
     if (!remoteHead) return undefined;
     if (!counts) {
@@ -1365,7 +1519,7 @@ export class UpstreamEngine {
         git,
         dir,
         remoteRef,
-        OVERWRITE_PREVIEW_LIMIT + 1
+        OVERWRITE_PREVIEW_LIMIT + 1,
       );
       return {
         relationship: "unrelated",
@@ -1383,7 +1537,7 @@ export class UpstreamEngine {
         git,
         dir,
         remoteRef,
-        Math.min(count, OVERWRITE_PREVIEW_LIMIT)
+        Math.min(count, OVERWRITE_PREVIEW_LIMIT),
       ),
       truncated: count > OVERWRITE_PREVIEW_LIMIT,
     };
@@ -1393,7 +1547,7 @@ export class UpstreamEngine {
     git: GitClient,
     dir: string,
     ref: string,
-    limit: number
+    limit: number,
   ): Promise<Array<{ sha: string; summary: string }>> {
     if (limit <= 0) return [];
     const commits = await git.log(dir, { ref, depth: limit });
@@ -1411,7 +1565,7 @@ export class UpstreamEngine {
   private async aheadBehind(
     repo: string,
     scope: RepoOperationScope,
-    options: { fetch?: boolean } = {}
+    options: { fetch?: boolean } = {},
   ): Promise<{ aheadBy: number; behindBy: number; diverged: boolean }> {
     const dir = await this.bridge.repoGitDir(repo);
     const git = this.gitClient(scope.credential);
@@ -1436,10 +1590,18 @@ export class UpstreamEngine {
     const counts = await git.compareRefs(dir, "HEAD", remoteRef);
     // Both refs exist but share no merge base: genuinely unrelated histories.
     if (!counts) return { aheadBy: 1, behindBy: 1, diverged: true };
-    return { aheadBy: counts.ahead, behindBy: counts.behind, diverged: counts.diverged };
+    return {
+      aheadBy: counts.ahead,
+      behindBy: counts.behind,
+      diverged: counts.diverged,
+    };
   }
 
-  private setRunning(repo: string, fingerprint: string, state: "exporting" | "pushing"): void {
+  private setRunning(
+    repo: string,
+    fingerprint: string,
+    state: "exporting" | "pushing",
+  ): void {
     const runtime = this.runtime.get(repo);
     if (!runtime || runtime.configFingerprint !== fingerprint) return;
     runtime.running = state;
@@ -1468,13 +1630,18 @@ export class UpstreamEngine {
       ...(runtime && "credentialIdOverride" in runtime
         ? { credentialIdOverride: runtime.credentialIdOverride }
         : {}),
-      ...(runtime?.debounceTimer ? { debounceTimer: runtime.debounceTimer } : {}),
+      ...(runtime?.debounceTimer
+        ? { debounceTimer: runtime.debounceTimer }
+        : {}),
     });
   }
 
   private async resolveRepoScope(
     repo: string,
-    options: { persistState?: boolean; credentialIdOverride?: string | null } = {}
+    options: {
+      persistState?: boolean;
+      credentialIdOverride?: string | null;
+    } = {},
   ): Promise<RepoOperationScope> {
     const config = await this.readConfig();
     const upstream = this.requireUpstream(config, repo);
@@ -1484,41 +1651,53 @@ export class UpstreamEngine {
     if (options.persistState === false) {
       const current = (await this.readState()).repos[repo];
       stored =
-        current?.configFingerprint === configFingerprint ? { ...current } : { configFingerprint };
+        current?.configFingerprint === configFingerprint
+          ? { ...current }
+          : { configFingerprint };
     } else {
       stored = await this.reconcileRepoState(repo, upstream, remote);
     }
     return {
       upstream,
       remote,
-      credential: this.credentialFor(upstream, remote, options.credentialIdOverride),
+      credential: this.credentialFor(
+        upstream,
+        remote,
+        options.credentialIdOverride,
+      ),
       fingerprint: configFingerprint,
       stored,
       transportRemote: transportRemoteForFingerprint(configFingerprint),
     };
   }
 
-  private requireUpstream(config: WorkspaceConfig, repo: string): ResolvedWorkspaceGitUpstream {
+  private requireUpstream(
+    config: GitConfig,
+    repo: string,
+  ): ResolvedWorkspaceGitUpstream {
     const upstream = getDeclaredUpstreamForRepo(config, repo);
     if (!upstream) throw new Error(`No upstream is configured for ${repo}`);
     return upstream;
   }
 
   private requireRemote(
-    config: WorkspaceConfig,
+    config: GitConfig,
     repo: string,
-    remoteName: string
+    remoteName: string,
   ): WorkspaceGitRemoteConfig {
     const remote = getDeclaredRemoteForRepo(config, repo, remoteName);
-    if (!remote) throw new Error(`No approved remote ${remoteName} is declared for ${repo}`);
+    if (!remote)
+      throw new Error(
+        `No approved remote ${remoteName} is declared for ${repo}`,
+      );
     return remote;
   }
 
   private applyStatusOptions(
-    config: WorkspaceConfig,
+    config: GitConfig,
     repo: string,
     upstream: ResolvedWorkspaceGitUpstream,
-    options: GitUpstreamStatusOptions
+    options: GitUpstreamStatusOptions,
   ): ResolvedWorkspaceGitUpstream {
     const remoteName = options.remote
       ? validateWorkspaceGitRemoteName(options.remote)
@@ -1539,9 +1718,10 @@ export class UpstreamEngine {
   private credentialFor(
     upstream: ResolvedWorkspaceGitUpstream,
     remote: WorkspaceGitRemoteConfig,
-    credentialIdOverride: string | null | undefined
+    credentialIdOverride: string | null | undefined,
   ): GitCredentialSelection {
-    if (credentialIdOverride !== undefined) return { credentialId: credentialIdOverride };
+    if (credentialIdOverride !== undefined)
+      return { credentialId: credentialIdOverride };
     if (upstream.credential) {
       return {
         logicalCredential: {
@@ -1553,15 +1733,14 @@ export class UpstreamEngine {
     return { credentialId: null };
   }
 
-  private async readConfig(): Promise<WorkspaceConfig> {
-    const config = await this.ctx.rpc.call<WorkspaceConfig | null>("main", "workspace.getConfig");
-    if (!config) throw new Error("Workspace config is unavailable");
-    return config;
+  private async readConfig(): Promise<GitConfig> {
+    await this.stateWrite;
+    return (await this.readState()).configuration;
   }
 
   private gitClient(
     credential: GitCredentialSelection = { credentialId: null },
-    gitIntent?: { force: boolean; overwrites?: GitOverwritePreview }
+    gitIntent?: { force: boolean; overwrites?: GitOverwritePreview },
   ): GitClient {
     return new GitClient(fsp, {
       http: this.gitHttp(credential, gitIntent),
@@ -1570,7 +1749,7 @@ export class UpstreamEngine {
 
   private gitHttp(
     credential: GitCredentialSelection,
-    gitIntent?: { force: boolean; overwrites?: GitOverwritePreview }
+    gitIntent?: { force: boolean; overwrites?: GitOverwritePreview },
   ) {
     return this.ctx.credentials.gitHttp({
       ...credential,
@@ -1579,32 +1758,74 @@ export class UpstreamEngine {
   }
 
   private async readState(): Promise<StoredState> {
+    if (this.stateInitialization) return this.stateInitialization;
+    const initialization = this.loadState();
+    this.stateInitialization = initialization;
+    void initialization.then(
+      () => {
+        if (this.stateInitialization === initialization)
+          this.stateInitialization = null;
+      },
+      () => {
+        if (this.stateInitialization === initialization)
+          this.stateInitialization = null;
+      },
+    );
+    return initialization;
+  }
+
+  private async loadState(): Promise<StoredState> {
+    let parsed: unknown;
     try {
       const raw = await this.ctx.storage.readFile(STATE_FILE, "utf8");
-      const parsed: unknown = JSON.parse(typeof raw === "string" ? raw : raw.toString("utf8"));
-      return parseStoredState(parsed) ?? emptyStoredState();
-    } catch {
-      return emptyStoredState();
+      try {
+        parsed = JSON.parse(
+          typeof raw === "string" ? raw : raw.toString("utf8"),
+        );
+      } catch (error) {
+        throw new Error("Corrupt Git service state: invalid JSON", {
+          cause: error,
+        });
+      }
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+      return this.persistInitialState(emptyStoredState());
     }
+
+    const current = parseStoredState(parsed);
+    if (current) return current;
+    throw new Error("Invalid or unsupported Git service state");
+  }
+
+  private async persistInitialState(state: StoredState): Promise<StoredState> {
+    await this.ctx.storage.mkdir("state", { recursive: true });
+    await this.ctx.storage.replaceFile(
+      STATE_FILE,
+      JSON.stringify(state, null, 2),
+    );
+    return state;
   }
 
   /** Serializes the WHOLE state transaction: concurrent per-repo jobs share
    *  one state file, so an unserialized read would clobber sibling repos. */
   private stateTransaction<T>(
-    transact: (state: StoredState) => { result: T; changed: boolean }
+    transact: (state: StoredState) => { result: T; changed: boolean },
   ): Promise<T> {
     const run = this.stateWrite.then(async () => {
       const state = await this.readState();
       const outcome = transact(state);
       if (outcome.changed) {
         await this.ctx.storage.mkdir("state", { recursive: true });
-        await this.ctx.storage.writeFile(STATE_FILE, JSON.stringify(state, null, 2));
+        await this.ctx.storage.replaceFile(
+          STATE_FILE,
+          JSON.stringify(state, null, 2),
+        );
       }
       return outcome.result;
     });
     this.stateWrite = run.then(
       () => undefined,
-      () => undefined
+      () => undefined,
     );
     return run;
   }
@@ -1612,7 +1833,7 @@ export class UpstreamEngine {
   private async reconcileRepoState(
     repo: string,
     upstream: ResolvedWorkspaceGitUpstream,
-    remote: WorkspaceGitRemoteConfig
+    remote: WorkspaceGitRemoteConfig,
   ): Promise<StoredRepoState> {
     const configFingerprint = upstreamConfigFingerprint(repo, upstream, remote);
     const stored = await this.stateTransaction((state) => {
@@ -1643,7 +1864,7 @@ export class UpstreamEngine {
   private updateRepoState(
     repo: string,
     fingerprint: string,
-    patch: StoredRepoStatePatch
+    patch: StoredRepoStatePatch,
   ): Promise<boolean> {
     return this.stateTransaction((state) => {
       const current = state.repos[repo];
@@ -1668,7 +1889,9 @@ export class UpstreamEngine {
     const degraded = Object.entries(state.repos)
       .filter(
         ([, repo]) =>
-          repo.status === "auth-failed" || repo.status === "behind" || repo.status === "diverged"
+          repo.status === "auth-failed" ||
+          repo.status === "behind" ||
+          repo.status === "diverged",
       )
       .map(([repo, status]) => `${repo}: ${status.status}`);
     if (degraded.length === 0) {
@@ -1685,7 +1908,7 @@ export class UpstreamEngine {
 function statusFromCounts(
   aheadBy: number,
   behindBy: number,
-  diverged = aheadBy > 0 && behindBy > 0
+  diverged = aheadBy > 0 && behindBy > 0,
 ): GitUpstreamRelationship {
   if (diverged) return "diverged";
   if (aheadBy > 0) return "ahead";
@@ -1704,13 +1927,11 @@ function errorMessage(error: unknown): string {
 function attachGitCleanupFailure(
   primary: unknown,
   cleanup: unknown,
-  stage: "restore-import-config"
+  stage: "restore-import-config",
 ): Error {
   const error = primary instanceof Error ? primary : new Error(String(primary));
   const existing =
-    isRecord(error) && isRecord(error["errorData"])
-      ? error["errorData"]
-      : {};
+    isRecord(error) && isRecord(error["errorData"]) ? error["errorData"] : {};
   const errorData = {
     ...existing,
     cleanupFailures: [
@@ -1739,15 +1960,21 @@ function attachGitCleanupFailure(
 }
 
 function declaredUpstreamConfig(
-  upstream: ResolvedWorkspaceGitUpstream
+  upstream: ResolvedWorkspaceGitUpstream,
 ): WorkspaceGitUpstreamConfig {
   return {
     remote: upstream.remote,
     branch: upstream.branch,
     autoPush: upstream.autoPush,
-    ...(upstream.credential !== undefined ? { credential: upstream.credential } : {}),
-    ...(upstream.authorEmail !== undefined ? { authorEmail: upstream.authorEmail } : {}),
-    ...(upstream.authorName !== undefined ? { authorName: upstream.authorName } : {}),
+    ...(upstream.credential !== undefined
+      ? { credential: upstream.credential }
+      : {}),
+    ...(upstream.authorEmail !== undefined
+      ? { authorEmail: upstream.authorEmail }
+      : {}),
+    ...(upstream.authorName !== undefined
+      ? { authorName: upstream.authorName }
+      : {}),
   };
 }
 
@@ -1763,7 +1990,7 @@ function displayRemote(url: string): string {
 function upstreamConfigFingerprint(
   repo: string,
   upstream: ResolvedWorkspaceGitUpstream,
-  remote: WorkspaceGitRemoteConfig
+  remote: WorkspaceGitRemoteConfig,
 ): string {
   const identity = {
     repoPath: repo,
@@ -1792,7 +2019,7 @@ function transportRemoteForFingerprint(fingerprint: string): string {
 }
 
 function emptyStoredState(): StoredState {
-  return { version: 2, repos: {} };
+  return { version: 1, configuration: {}, repos: {} };
 }
 
 const STORED_UPSTREAM_STATES = new Set<StoredUpstreamState>([
@@ -1805,10 +2032,25 @@ const STORED_UPSTREAM_STATES = new Set<StoredUpstreamState>([
 ]);
 
 function parseStoredState(value: unknown): StoredState | null {
-  if (!isRecord(value) || !hasOnlyKeys(value, ["version", "repos"])) return null;
-  const version = value["version"];
-  const repoValues = value["repos"];
-  if (version !== 2 || !isRecord(repoValues)) return null;
+  if (
+    !isRecord(value) ||
+    !hasOnlyKeys(value, ["version", "configuration", "repos"])
+  )
+    return null;
+  if (value["version"] !== 1) return null;
+  const configuration = value["configuration"];
+  if (!isRecord(configuration) || !isRecord(value["repos"])) return null;
+  const validatedConfiguration = GitConfigSchema.parse(configuration);
+  validateWorkspaceGitConfig(validatedConfiguration);
+  const repos = parseStoredRepos(value["repos"]);
+  return repos
+    ? { version: 1, configuration: validatedConfiguration as GitConfig, repos }
+    : null;
+}
+
+function parseStoredRepos(
+  repoValues: Record<string, unknown>,
+): Record<string, StoredRepoState> | null {
   const repos: Record<string, StoredRepoState> = {};
   for (const [repo, candidate] of Object.entries(repoValues)) {
     try {
@@ -1820,7 +2062,8 @@ function parseStoredState(value: unknown): StoredState | null {
     const configFingerprint = candidate["configFingerprint"];
     const lastPushedSha = candidate["lastPushedSha"];
     const lastPushedAt = candidate["lastPushedAt"];
-    const lastSuccessfulObservationAt = candidate["lastSuccessfulObservationAt"];
+    const lastSuccessfulObservationAt =
+      candidate["lastSuccessfulObservationAt"];
     const status = candidate["status"];
     const lastError = candidate["lastError"];
     const lastFailureAt = candidate["lastFailureAt"];
@@ -1861,19 +2104,26 @@ function parseStoredState(value: unknown): StoredState | null {
       configFingerprint,
       ...(lastPushedSha !== undefined ? { lastPushedSha } : {}),
       ...(lastPushedAt !== undefined ? { lastPushedAt } : {}),
-      ...(lastSuccessfulObservationAt !== undefined ? { lastSuccessfulObservationAt } : {}),
-      ...(status !== undefined ? { status: status as StoredUpstreamState } : {}),
+      ...(lastSuccessfulObservationAt !== undefined
+        ? { lastSuccessfulObservationAt }
+        : {}),
+      ...(status !== undefined
+        ? { status: status as StoredUpstreamState }
+        : {}),
       ...(lastError !== undefined ? { lastError } : {}),
       ...(lastFailureAt !== undefined ? { lastFailureAt } : {}),
     };
   }
-  return { version: 2, repos };
+  return repos;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function hasOnlyKeys(value: Record<string, unknown>, allowed: readonly string[]): boolean {
+function hasOnlyKeys(
+  value: Record<string, unknown>,
+  allowed: readonly string[],
+): boolean {
   return Object.keys(value).every((key) => allowed.includes(key));
 }

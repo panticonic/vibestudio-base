@@ -19,7 +19,34 @@
     "authority": {
       "provides": [],
       "requests": []
-    }
+    },
+    "services": [
+      {
+        "action": "manage panel titles, search, and launcher usage",
+        "authority": {
+          "binding": "declared",
+          "principals": [
+            "host",
+            "user",
+            "code"
+          ]
+        },
+        "description": "Manage how panels, search results, and the app launcher are organized.",
+        "durableObject": {
+          "className": "WorkspacePresentationDO"
+        },
+        "name": "workspace.presentation",
+        "notability": "everyday",
+        "presentation": {
+          "domain": "computer",
+          "verb": "manage"
+        },
+        "protocols": [
+          "vibestudio.workspace-presentation.v1"
+        ],
+        "title": "Workspace presentation"
+      }
+    ]
   },
   "dependencies": {
     "@vibestudio/service-schemas": "workspace:*",

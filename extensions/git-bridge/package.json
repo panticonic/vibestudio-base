@@ -175,15 +175,6 @@
           "evidence": "intentional-broad"
         },
         {
-          "capability": "workspace.config.apply",
-          "resource": {
-            "kind": "prefix",
-            "prefix": ""
-          },
-          "tier": "gated",
-          "evidence": "intentional-broad"
-        },
-        {
           "capability": "workspace.storage.delete",
           "resource": {
             "kind": "prefix",

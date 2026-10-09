@@ -1,6 +1,6 @@
 defaultAutomations:
   workspace-updates:
-    events: [app-update]
+    events: [ app-update ]
     action:
       code: |
         import { extensions } from "@workspace/runtime";
@@ -37,151 +37,20 @@ providers:
   gitInterop:
     extension: extensions/git-bridge
 services:
-  - action: manage your workspace files, history, and setup
-    authority:
-      binding: declared
-      principals:
-        - host
-        - user
-        - code
-        - session
-        - mission
-    description: Manages your workspace's files, version history, and initial setup.
-    durableObject:
-      className: GadWorkspaceDO
+  - source: workers/workspace-source
     name: gad.workspace
-    notability: everyday
-    presentation:
-      domain: automation
-      verb: manage
-    protocols:
-      - vibestudio.workspace-source.v1
-      - vibestudio.gad.workspace.v1
-    source: workers/workspace-source
-    title: Workspace source
-  - action: send and receive messages in your conversations
-    authority:
-      binding: declared
-      principals:
-        - host
-        - user
-        - code
-        - website
-        - session
-        - mission
-    description: Access your workspace's conversations, including sending messages and reading replies.
-    durableObject:
-      className: PubSubChannel
-      context: creator
+  - source: workers/pubsub-channel
     name: channel
-    notability: everyday
-    presentation:
-      domain: sharing
-      substanceKind: send
-      verb: act
-    protocols:
-      - vibestudio.channel.v1
-    source: workers/pubsub-channel
-    title: Conversations
-  - action: manage panel titles, search, and launcher usage
-    authority:
-      binding: declared
-      principals:
-        - host
-        - user
-        - code
-    description: Manage how panels, search results, and the app launcher are organized.
-    durableObject:
-      className: WorkspacePresentationDO
+  - source: workers/workspace-presentation
     name: workspace.presentation
-    notability: everyday
-    presentation:
-      domain: computer
-      verb: manage
-    protocols:
-      - vibestudio.workspace-presentation.v1
-    source: workers/workspace-presentation
-    title: Workspace presentation
-  - action: read or change which AI models your workspace uses
-    authority:
-      binding: declared
-      principals:
-        - host
-        - user
-        - code
-        - website
-        - session
-        - mission
-    description: Read or change the AI model and provider settings for this workspace.
-    durableObject:
-      className: ModelSettingsDO
+  - source: workers/model-settings
     name: models
-    notability: everyday
-    presentation:
-      domain: automation
-      verb: manage
-    protocols:
-      - vibestudio.models.v1
-    source: workers/model-settings
-    title: AI model settings
-  - action: manage panel-bound command conversations
-    authority:
-      binding: declared
-      principals:
-        - host
-        - user
-        - code
-    description: Owns durable Quickfire conversations attached to panel slots.
-    durableObject:
-      className: QuickfireSessionsDO
+  - source: workers/quickfire-service
     name: quickfire
-    notability: everyday
-    presentation:
-      domain: automation
-      verb: manage
-    protocols:
-      - vibestudio.quickfire.v1
-    source: workers/quickfire-service
-    title: Command conversations
-  - action: manage automated tasks
-    authority:
-      binding: declared
-      principals:
-        - host
-        - user
-        - code
-    description: Launch automated tasks immediately, then inspect and control their running definitions.
-    durableObject:
-      className: MissionsDO
+  - source: workers/missions
     name: missions
-    notability: headline
-    presentation:
-      domain: automation
-      verb: manage
-    protocols:
-      - vibestudio.missions.v1
-    source: workers/missions
-    title: Automated tasks
-  - action: run workspace tests and record results
-    authority:
-      binding: declared
-      principals:
-        - host
-        - user
-        - code
-        - session
-    description: Run this workspace's test suite and record results.
-    durableObject:
-      className: TestkitDriverDO
+  - source: workers/testkit-driver
     name: testkit-driver
-    notability: everyday
-    presentation:
-      domain: automation
-      verb: act
-    protocols:
-      - vibestudio.testkit-driver.v1
-    source: workers/testkit-driver
-    title: Test runner
 singletonObjects:
   - className: TestkitDriverDO
     key: workspace-testkit-driver
@@ -206,75 +75,3 @@ systemEpoch: 0
 template:
   description: Shared native agent, workspace and tooling foundations.
   name: Base
-  repositories:
-    - about/help
-    - about/new
-    - about/templates
-    - about/testbench
-    - about/workspace
-    - extensions/file-tools
-    - extensions/git-bridge
-    - extensions/image-service
-    - extensions/pdf-ingest
-    - extensions/shell
-    - extensions/speech
-    - extensions/templates
-    - extensions/test-runner
-    - meta
-    - packages/about-shared
-    - packages/agentic-chat
-    - packages/agentic-core
-    - packages/agentic-do
-    - packages/agentic-protocol
-    - packages/cdp-client
-    - packages/channel-fork
-    - packages/channel-policies
-    - packages/eval
-    - packages/harness
-    - packages/integrations
-    - packages/model-catalog
-    - packages/omnibox-core
-    - packages/pubsub
-    - packages/quickfire-core
-    - packages/react
-    - packages/runtime
-    - packages/speech
-    - packages/template-management
-    - packages/test-runtime
-    - packages/testkit
-    - packages/tool-ui
-    - packages/ui
-    - packages/vcs-engine
-    - panels/chat
-    - panels/terminal
-    - projects/default
-    - skills/agentic-development
-    - skills/agents
-    - skills/api-integrations
-    - skills/architecture
-    - skills/automations
-    - skills/capabilities
-    - skills/extensiondev
-    - skills/gad-context
-    - skills/messaging
-    - skills/phone-setup
-    - skills/problem-reporting
-    - skills/provenance-orientation
-    - skills/sandbox
-    - skills/templates
-    - skills/terminal
-    - skills/vibestudio-vcs
-    - skills/visualize
-    - skills/web-research
-    - skills/website-publishing
-    - skills/workspace-dev
-    - templates/default
-    - workers/agent-worker
-    - workers/missions
-    - workers/model-settings
-    - workers/pubsub-channel
-    - workers/quickfire-service
-    - workers/silent-agent-worker
-    - workers/testkit-driver
-    - workers/workspace-presentation
-    - workers/workspace-source

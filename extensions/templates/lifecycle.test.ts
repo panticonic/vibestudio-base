@@ -11,13 +11,12 @@ const pin = {
 afterEach(() => vi.restoreAllMocks());
 it("contributes only reviewed units owned by the selected source and rejects stale reviews", async () => {
   const observation: Awaited<ReturnType<typeof workspace.observeWorkspace>> = {
+    installation: null,
     mainEventId: "event:one",
     mainState: { kind: "event" as const, eventId: "event:one" },
     runtimeTop: { systemEpoch: 1 },
-    authoredTop: { systemEpoch: 1 },
     manifest: {
       top: { systemEpoch: 1 },
-      inventory: { repositories: [] },
       dependencies: [],
     },
     localRepoPaths: new Set(["meta", "panels/example", "panels/personal"]),
@@ -78,13 +77,11 @@ it("classifies the recorded authoring upstream, direct templates, and transitive
     mainEventId: "event:one",
     mainState: { kind: "event" as const, eventId: "event:one" },
     runtimeTop: { systemEpoch: 1 },
-    authoredTop: { systemEpoch: 1 },
     manifest: {
       top: { systemEpoch: 1 },
-      inventory: { repositories: [] },
       dependencies: [],
-      installation: { upstream, sources: [] },
     },
+    installation: { upstream, sources: [] },
     localRepoPaths: new Set<string>(),
     templateDependencies: [{ url: pin.url }],
     templateSources: [dependency, pin, upstream],
@@ -104,7 +101,7 @@ it("classifies the recorded authoring upstream, direct templates, and transitive
     [pin.url, "direct"],
     [upstream.url, "upstream"],
   ]);
-  observation.manifest.installation = {
+  observation.installation = {
     sources: [],
   };
   observation.templateDependencies = [{ url: upstream.url }];
@@ -126,15 +123,9 @@ it("refreshes a selected parent's dependency closure while retaining peer select
   ) =>
     JSON.stringify({
       systemEpoch: 0,
-      template: { repositories: [], dependencies },
+      template: {  dependencies },
     });
-  const manifest = parseTemplateManifestContent(
-    JSON.stringify({
-      systemEpoch: 0,
-      template: {
-        repositories: ["meta"],
-        dependencies: [{ url: root.url }],
-        installation: {
+  const installation = {
           sources: [
             { pin: base, manifest: sourceManifest() },
             {
@@ -152,18 +143,24 @@ it("refreshes a selected parent's dependency closure while retaining peer select
               ]),
             },
           ],
-        },
+        };
+  const manifest = parseTemplateManifestContent(
+    JSON.stringify({
+      systemEpoch: 0,
+      template: {
+        dependencies: [{ url: root.url }],
+
       },
     }),
     0,
   );
   const target = { ...parent, commit: "b".repeat(40) };
   expect(
-    selectTemplateUpdateSources(manifest, [base, parent, peer, root], target),
+    selectTemplateUpdateSources(manifest, [base, parent, peer, root], target, installation),
   ).toEqual([target, peer, root]);
   // The incoming parent's declaration, rather than an installed dependency pin,
   // remains responsible for choosing its dependency's exact version.
-  expect(manifest.installation?.sources[1]?.manifest).toContain(base.commit);
+  expect(installation.sources[1]?.manifest).toContain(base.commit);
 });
 
 it.each([0, 1])(
@@ -180,7 +177,7 @@ it.each([0, 1])(
       mainEventId: "main:one",
       target: pin,
       before: { repositories: [] },
-      after: { repositories: [] },
+      after: { repositories: [], installation: { sources: [{ pin, manifest: "systemEpoch: 0\n" }] } },
       steps: { commit: { method: "vcs.commit", args: [], done: true } },
       published: false,
     };
@@ -242,6 +239,7 @@ it.each([0, 1])(
       contextId: "update:context",
       expectedCommittedEventId: "candidate:one",
       expectedMainEventId: "main:one",
+      templateInstallation: operation.after.installation,
       ...(offset ? { epochTransition: true } : {}),
     });
   },

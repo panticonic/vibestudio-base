@@ -154,3 +154,62 @@ it("reports inaccessible tags instead of suggesting an unverified first release"
     }),
   ).rejects.toThrow("403");
 });
+
+it("derives inherited ownership from the pinned source tree without a manifest inventory", async () => {
+  const pin = {
+    url: "https://example.test/base.git",
+    ref: "refs/heads/main",
+    commit: "c".repeat(40),
+  };
+  const { parseTemplateManifestContent } =
+    await import("@vibestudio/workspace/templateManifest");
+  const installation = { sources: [{ pin, manifest: "systemEpoch: 0\n" }] };
+  const manifest = parseTemplateManifestContent(
+    JSON.stringify({
+      systemEpoch: 0,
+      template: {
+        name: "Mine",
+        dependencies: [{ url: pin.url }],
+
+      },
+    }),
+    0,
+  );
+  const workspace = await import("./workspace.js");
+  const observe = vi
+    .spyOn(workspace, "observeWorkspace")
+    .mockResolvedValueOnce({
+      manifest,
+      installation,
+      localRepoPaths: new Set(["meta", "panels/inherited", "projects/local"]),
+    } as never);
+  try {
+    const call = vi.fn(async (_target, method, inspectedPin) => {
+      if (method !== "workspaceTemplateSource.inspectExact")
+        throw new Error(`Unexpected method: ${method}`);
+      expect(inspectedPin).toEqual(pin);
+      return {
+        pin,
+        repositories: ["meta", "panels/inherited"],
+        dependencies: [],
+      };
+    });
+    const api = await activate({
+      storage: { root: process.cwd() },
+      log: { info: vi.fn() },
+      rpc: { call },
+    } as never);
+    const setup = await api.authoringSetup();
+    expect(setup.parts).toEqual([
+      {
+        repoPath: "panels/inherited",
+        ownership: "inherited",
+        inheritedFrom: pin.url,
+      },
+      { repoPath: "projects/local", ownership: "authored" },
+    ]);
+    expect(call).toHaveBeenCalledOnce();
+  } finally {
+    observe.mockRestore();
+  }
+});

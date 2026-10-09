@@ -10,7 +10,7 @@
  * `GitBridge` is faked entirely and passed positionally; the engine only calls
  * `repoGitDir`, `exportLockedInner` and `importLockedInner` on it. The extension
  * context is an in-memory fake (Map-backed storage, an rpc that serves
- * `workspace.getConfig`, recording notifications).
+ * recording notifications).
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
@@ -98,7 +98,7 @@ interface ConfigEntry {
   declareRemote?: boolean;
 }
 
-/** Build a WorkspaceConfig with git.remotes + git.upstreams for the entries. */
+/** Build Git service settings for the entries. */
 function buildConfig(entries: ConfigEntry[]): unknown {
   const remotes: Record<string, Record<string, Record<string, unknown>>> = {};
   const upstreams: Record<string, Record<string, unknown>> = {};
@@ -116,12 +116,22 @@ function buildConfig(entries: ConfigEntry[]): unknown {
       remote,
       ...(entry.branch ? { branch: entry.branch } : {}),
       autoPush: entry.autoPush ?? false,
-      ...(entry.credential !== undefined ? { credential: entry.credential } : {}),
+      ...(entry.credential !== undefined
+        ? { credential: entry.credential }
+        : {}),
       ...(entry.authorEmail ? { authorEmail: entry.authorEmail } : {}),
       ...(entry.authorName ? { authorName: entry.authorName } : {}),
     };
   }
-  return { git: { remotes, upstreams } };
+  return { remotes, upstreams };
+}
+
+function writeConfiguration(
+  files: Map<string, string>,
+  configuration: unknown,
+) {
+  const state = JSON.parse(files.get(STATE_FILE)!);
+  files.set(STATE_FILE, JSON.stringify({ ...state, configuration }));
 }
 
 function createStorage(files: Map<string, string>) {
@@ -139,7 +149,16 @@ function createStorage(files: Map<string, string>) {
       return value;
     },
     async writeFile(p: string, data: string | Uint8Array) {
-      files.set(p, typeof data === "string" ? data : Buffer.from(data).toString("utf8"));
+      files.set(
+        p,
+        typeof data === "string" ? data : Buffer.from(data).toString("utf8"),
+      );
+    },
+    async replaceFile(p: string, data: string | Uint8Array) {
+      files.set(
+        p,
+        typeof data === "string" ? data : Buffer.from(data).toString("utf8"),
+      );
     },
   };
 }
@@ -148,29 +167,36 @@ function createCtx(
   config: unknown,
   opts: {
     files?: Map<string, string>;
-    health?: { report: ReturnType<typeof vi.fn>; healthy: ReturnType<typeof vi.fn> };
+    health?: {
+      report: ReturnType<typeof vi.fn>;
+      healthy: ReturnType<typeof vi.fn>;
+    };
     workspaceRoot?: string;
-  } = {}
+    initializeState?: boolean;
+    replaceFailure?: Error;
+  } = {},
 ) {
-  let currentConfig = config;
   const files = opts.files ?? new Map<string, string>();
+  const stored = files.get(STATE_FILE);
+  if (stored === undefined && opts.initializeState !== false) {
+    files.set(
+      STATE_FILE,
+      JSON.stringify({ version: 1, configuration: config, repos: {} }),
+    );
+  }
   const notifications = { show: vi.fn(async () => "notif-id") };
   const rpc = {
-    call: vi.fn(async (_target: string, method: string, input?: unknown) => {
-      if (method === "workspace.getConfig") return currentConfig;
-      if (method === "workspace.applyPreparedConfig") {
-        const prepared = input as { nextState: unknown; resultDigest: string };
-        currentConfig = prepared.nextState;
-        return {
-          changed: true,
-          resultDigest: prepared.resultDigest,
-          config: currentConfig,
-        };
-      }
+    call: vi.fn(async (_target: string, method: string) => {
       throw new Error(`unexpected rpc call: ${method}`);
     }),
   };
   const credentials = { gitHttp: vi.fn(() => ({ request: vi.fn() })) };
+  const storage = createStorage(files);
+  if (opts.replaceFailure) {
+    storage.replaceFile = async () => {
+      throw opts.replaceFailure;
+    };
+  }
   const ctx = {
     name: "@workspace-extensions/custom-git-provider",
     workspace: {
@@ -182,7 +208,7 @@ function createCtx(
     credentials,
     notifications,
     rpc,
-    storage: { root: opts.workspaceRoot ?? "/tmp/ws/state", ...createStorage(files) },
+    storage: { root: opts.workspaceRoot ?? "/tmp/ws/state", ...storage },
     log: { info: vi.fn(), warn: vi.fn() },
     ...(opts.health ? { health: opts.health } : {}),
   };
@@ -192,14 +218,18 @@ function createCtx(
     notifications,
     rpc,
     credentials,
-    currentConfig: () => currentConfig,
+    currentConfig: () => JSON.parse(files.get(STATE_FILE)!).configuration,
   };
 }
 
 function createBridge(
   opts: {
-    exportResult?: { exported: number; headCommit: string | null; clobberedLocalEdits?: string[] };
-  } = {}
+    exportResult?: {
+      exported: number;
+      headCommit: string | null;
+      clobberedLocalEdits?: string[];
+    };
+  } = {},
 ) {
   const exportLockedInner = vi.fn(async () => ({
     clobberedLocalEdits: [],
@@ -213,7 +243,7 @@ function createBridge(
   const repoGitDir = vi.fn(async (repo: string) => `/repos/${repo}`);
   const checkoutExists = vi.fn(async () => true);
   const pendingImportCandidate = vi.fn(
-    async (): Promise<{ contextId: string; eventId: string } | null> => null
+    async (): Promise<{ contextId: string; eventId: string } | null> => null,
   );
   const withProtectedExportPreviewLocked = vi.fn(
     async (
@@ -221,8 +251,12 @@ function createBridge(
       _options: unknown,
       inspect: (preview: {
         dir: string;
-        exported: { exported: number; headCommit: string | null; clobberedLocalEdits: string[] };
-      }) => Promise<unknown>
+        exported: {
+          exported: number;
+          headCommit: string | null;
+          clobberedLocalEdits: string[];
+        };
+      }) => Promise<unknown>,
     ) =>
       inspect({
         dir: `/previews/${repo}`,
@@ -230,7 +264,7 @@ function createBridge(
           clobberedLocalEdits: [],
           ...(opts.exportResult ?? { exported: 1, headCommit: "head-sha" }),
         },
-      })
+      }),
   );
   return {
     bridge: {
@@ -252,6 +286,7 @@ function createBridge(
 
 function readStored(files: Map<string, string>): {
   version: number;
+  configuration: unknown;
   repos: Record<
     string,
     {
@@ -266,7 +301,7 @@ function readStored(files: Map<string, string>): {
   >;
 } {
   const raw = files.get(STATE_FILE);
-  return raw ? JSON.parse(raw) : { version: 2, repos: {} };
+  return raw ? JSON.parse(raw) : { version: 1, configuration: {}, repos: {} };
 }
 
 function makeEngine(
@@ -274,9 +309,14 @@ function makeEngine(
   bridge: unknown,
   opts: {
     files?: Map<string, string>;
-    health?: { report: ReturnType<typeof vi.fn>; healthy: ReturnType<typeof vi.fn> };
+    health?: {
+      report: ReturnType<typeof vi.fn>;
+      healthy: ReturnType<typeof vi.fn>;
+    };
     workspaceRoot?: string;
-  } = {}
+    initializeState?: boolean;
+    replaceFailure?: Error;
+  } = {},
 ) {
   const created = createCtx(config, opts);
   const engine = new UpstreamEngine(created.ctx as never, bridge as never);
@@ -324,9 +364,122 @@ describe("UpstreamEngine", () => {
     vi.useRealTimers();
   });
 
-  it("returns the declared provider result and submits one exact prepared config mutation", async () => {
+  it("initializes the canonical provider state without reading workspace source", async () => {
+    const { bridge } = createBridge();
+    const { engine, files, rpc } = makeEngine({}, bridge, {
+      files: new Map(),
+      initializeState: false,
+    });
+
+    await engine.activate();
+
+    expect(readStored(files)).toEqual({
+      version: 1,
+      configuration: {},
+      repos: {},
+    });
+    expect(rpc.call).not.toHaveBeenCalled();
+  });
+
+  it("leaves the canonical provider configuration unchanged on activation", async () => {
+    const canonical = buildConfig([
+      { repo: "projects/tracked", url: "https://example.test/canonical.git" },
+    ]);
+    const files = new Map([
+      [
+        STATE_FILE,
+        JSON.stringify({ version: 1, configuration: canonical, repos: {} }),
+      ],
+    ]);
+    const { bridge } = createBridge();
+    const { engine, rpc } = makeEngine({}, bridge, { files });
+
+    await engine.activate();
+
+    expect(rpc.call).not.toHaveBeenCalled();
+    expect(readStored(files).configuration).toEqual(canonical);
+  });
+
+  it("leaves initial state absent when the atomic initialization write fails", async () => {
+    const files = new Map<string, string>();
+    const writeFailure = new Error("atomic replace failed");
+    const { bridge } = createBridge();
+    const { engine } = makeEngine({}, bridge, {
+      files,
+      initializeState: false,
+      replaceFailure: writeFailure,
+    });
+
+    await expect(engine.activate()).rejects.toBe(writeFailure);
+
+    expect(files.has(STATE_FILE)).toBe(false);
+  });
+
+  it("fails explicitly on malformed persisted state without replacing it", async () => {
+    const original = "{not-json";
+    const files = new Map([[STATE_FILE, original]]);
+    const { bridge } = createBridge();
+    const { engine } = makeEngine({}, bridge, { files });
+
+    await expect(engine.activate()).rejects.toThrow(
+      "Corrupt Git service state: invalid JSON",
+    );
+
+    expect(files.get(STATE_FILE)).toBe(original);
+  });
+
+  it("serializes concurrent settings writes and recovers them after restart", async () => {
+    const { bridge } = createBridge();
+    const { engine, files } = makeEngine({}, bridge);
+    await Promise.all([
+      engine.setRemote("projects/one", {
+        name: "origin",
+        url: "https://example.com/one.git",
+      }),
+      engine.setRemote("projects/two", {
+        name: "origin",
+        url: "https://example.com/two.git",
+      }),
+    ]);
+    const restarted = makeEngine({}, bridge, { files });
+    await restarted.engine.setUpstream("projects/one", {
+      remote: "origin",
+      branch: "main",
+    });
+    expect(readStored(files).configuration).toMatchObject({
+      remotes: {
+        projects: {
+          one: { origin: { url: "https://example.com/one.git" } },
+          two: { origin: { url: "https://example.com/two.git" } },
+        },
+      },
+      upstreams: { projects: { one: { remote: "origin", branch: "main" } } },
+    });
+    expect(restarted.rpc.call).not.toHaveBeenCalled();
+  });
+
+  it("propagates storage errors instead of treating unreadable settings as empty", async () => {
+    const { bridge } = createBridge();
+    const { ctx } = createCtx({});
+    const error = Object.assign(new Error("permission denied"), {
+      code: "EACCES",
+    });
+    ctx.storage.readFile = async () => {
+      throw error;
+    };
+    const engine = new UpstreamEngine(ctx as never, bridge as never);
+    await expect(engine.activate()).rejects.toBe(error);
+    await expect(
+      engine.setRemote("projects/one", {
+        name: "origin",
+        url: "https://example.com/one.git",
+      }),
+    ).rejects.toBe(error);
+  });
+
+  it("persists the publishing destination without a workspace config mutation", async () => {
     const repo = "projects/configured";
-    const config = { git: { remotes: {}, upstreams: {} } };
+    const config = { remotes: {}, upstreams: {} };
     const { bridge } = createBridge();
     const { engine, rpc, currentConfig } = makeEngine(config, bridge);
 
@@ -335,7 +488,7 @@ describe("UpstreamEngine", () => {
         name: "origin",
         url: "https://github.com/acme/configured.git",
         branch: "main",
-      })
+      }),
     ).resolves.toEqual({
       projects: {
         configured: {
@@ -347,22 +500,14 @@ describe("UpstreamEngine", () => {
       },
     });
 
-    const preparedCalls = rpc.call.mock.calls.filter(
-      ([, method]) => method === "workspace.applyPreparedConfig"
-    );
-    expect(preparedCalls).toHaveLength(1);
-    expect(preparedCalls[0]?.[2]).toMatchObject({
-      expectedBaseDigest: expect.stringMatching(/^v1-sha256:/),
-      resultDigest: expect.stringMatching(/^v1-sha256:/),
-      allowedPathScope: ["git.remotes", "git.upstreams"],
-      summary: `set Git remote origin for ${repo}`,
-    });
+    expect(rpc.call).not.toHaveBeenCalled();
     expect(currentConfig()).toMatchObject({
-      git: {
-        remotes: {
-          projects: {
-            configured: {
-              origin: { url: "https://github.com/acme/configured.git", branch: "main" },
+      remotes: {
+        projects: {
+          configured: {
+            origin: {
+              url: "https://github.com/acme/configured.git",
+              branch: "main",
             },
           },
         },
@@ -370,7 +515,7 @@ describe("UpstreamEngine", () => {
     });
   });
 
-  it("returns upstream maps rather than leaking the prepared mutation envelope", async () => {
+  it("returns upstream maps rather than leaking the service mutation envelope", async () => {
     const repo = "projects/tracked";
     const config = buildConfig([{ repo, autoPush: false }]);
     const { bridge } = createBridge();
@@ -421,7 +566,7 @@ describe("UpstreamEngine", () => {
         ref: "master",
         remoteRef: "refs/heads/main",
         force: false,
-      })
+      }),
     );
   });
 
@@ -429,10 +574,15 @@ describe("UpstreamEngine", () => {
     const anonymousRepo = "projects/anonymous";
     const credentialRepo = "projects/authenticated";
     const { bridge } = createBridge();
-    const anonymous = makeEngine(buildConfig([{ repo: anonymousRepo, autoPush: true }]), bridge);
+    const anonymous = makeEngine(
+      buildConfig([{ repo: anonymousRepo, autoPush: true }]),
+      bridge,
+    );
     const authenticated = makeEngine(
-      buildConfig([{ repo: credentialRepo, autoPush: true, credential: "github" }]),
-      bridge
+      buildConfig([
+        { repo: credentialRepo, autoPush: true, credential: "github" },
+      ]),
+      bridge,
     );
 
     await anonymous.engine.pushUpstream(anonymousRepo);
@@ -441,7 +591,9 @@ describe("UpstreamEngine", () => {
       credentialIdOverride: "github-credential",
     });
 
-    expect(anonymous.credentials.gitHttp).toHaveBeenCalledWith({ credentialId: null });
+    expect(anonymous.credentials.gitHttp).toHaveBeenCalledWith({
+      credentialId: null,
+    });
     expect(authenticated.credentials.gitHttp).toHaveBeenCalledWith({
       logicalCredential: {
         name: "github",
@@ -492,10 +644,12 @@ describe("UpstreamEngine", () => {
     const repo = "projects/d";
     const config = buildConfig([{ repo, autoPush: true }]);
     const files = new Map<string, string>();
-    const { bridge } = createBridge({ exportResult: { exported: 1, headCommit: "same-sha" } });
+    const { bridge } = createBridge({
+      exportResult: { exported: 1, headCommit: "same-sha" },
+    });
     const { engine } = makeEngine(config, bridge, { files });
 
-    // First push records a v2 state entry scoped to this declared upstream.
+    // First push records state scoped to this declared upstream.
     await expect(engine.pushUpstream(repo)).resolves.toMatchObject({
       outcome: "remote-missing-created",
     });
@@ -505,7 +659,10 @@ describe("UpstreamEngine", () => {
 
     // A fresh engine using the same config and storage still observes the wire.
     const engine2 = makeEngine(config, bridge, { files }).engine;
-    gitFns.fetch.mockResolvedValue({ fetchHead: "same-sha", remoteRefExists: true });
+    gitFns.fetch.mockResolvedValue({
+      fetchHead: "same-sha",
+      remoteRefExists: true,
+    });
     gitFns.resolveRef.mockResolvedValue("same-sha");
 
     // Auto job: exports and verifies the remote ref before taking the no-op.
@@ -566,17 +723,26 @@ describe("UpstreamEngine", () => {
     const config = buildConfig([{ repo, autoPush: false }]);
     const { bridge } = createBridge();
     const { engine } = makeEngine(config, bridge);
-    gitFns.fetch.mockResolvedValue({ fetchHead: "remote-head", remoteRefExists: true });
+    gitFns.fetch.mockResolvedValue({
+      fetchHead: "remote-head",
+      remoteRefExists: true,
+    });
     gitFns.resolveRef.mockResolvedValueOnce("remote-head");
-    gitFns.compareRefs.mockResolvedValueOnce({ ahead: 1, behind: 3, diverged: true });
+    gitFns.compareRefs.mockResolvedValueOnce({
+      ahead: 1,
+      behind: 3,
+      diverged: true,
+    });
     gitFns.log.mockResolvedValueOnce(
       Array.from({ length: 3 }, (_, index) => ({
         oid: `remote-${index}`,
         message: `Remote commit ${index}\n`,
-      }))
+      })),
     );
 
-    await expect(engine.pushUpstream(repo, { force: true })).resolves.toMatchObject({
+    await expect(
+      engine.pushUpstream(repo, { force: true }),
+    ).resolves.toMatchObject({
       overwrites: {
         relationship: "related",
         count: 3,
@@ -595,14 +761,17 @@ describe("UpstreamEngine", () => {
     const config = buildConfig([{ repo, autoPush: false }]);
     const { bridge } = createBridge();
     const { engine } = makeEngine(config, bridge);
-    gitFns.fetch.mockResolvedValue({ fetchHead: "remote-head", remoteRefExists: true });
+    gitFns.fetch.mockResolvedValue({
+      fetchHead: "remote-head",
+      remoteRefExists: true,
+    });
     gitFns.resolveRef.mockResolvedValueOnce("remote-head");
     gitFns.compareRefs.mockResolvedValueOnce(null);
     gitFns.log.mockResolvedValueOnce(
       Array.from({ length: 21 }, (_, index) => ({
         oid: `remote-${index}`,
         message: `Remote commit ${index}\n`,
-      }))
+      })),
     );
 
     const result = await engine.pushUpstream(repo, { force: true });
@@ -619,15 +788,24 @@ describe("UpstreamEngine", () => {
     const repo = "projects/upstream-advanced";
     const config = buildConfig([{ repo, autoPush: true }]);
     const files = new Map<string, string>();
-    const { bridge } = createBridge({ exportResult: { exported: 1, headCommit: "local-head" } });
+    const { bridge } = createBridge({
+      exportResult: { exported: 1, headCommit: "local-head" },
+    });
     const { engine } = makeEngine(config, bridge, { files });
 
     await expect(engine.pushUpstream(repo)).resolves.toMatchObject({
       outcome: "remote-missing-created",
     });
-    gitFns.fetch.mockResolvedValue({ fetchHead: "upstream-head", remoteRefExists: true });
+    gitFns.fetch.mockResolvedValue({
+      fetchHead: "upstream-head",
+      remoteRefExists: true,
+    });
     gitFns.resolveRef.mockResolvedValue("upstream-head");
-    gitFns.compareRefs.mockResolvedValue({ ahead: 0, behind: 1, diverged: false });
+    gitFns.compareRefs.mockResolvedValue({
+      ahead: 0,
+      behind: 1,
+      diverged: false,
+    });
 
     await expect(engine.pushUpstream(repo)).resolves.toMatchObject({
       outcome: "remote-advanced",
@@ -642,34 +820,6 @@ describe("UpstreamEngine", () => {
     expect(readStored(files).repos[repo]).toMatchObject({
       status: "behind",
       lastPushedSha: "local-head",
-    });
-  });
-
-  it("ignores version 1 state instead of migrating its last-pushed sha", async () => {
-    const repo = "projects/v1-cut";
-    const config = buildConfig([{ repo, autoPush: true }]);
-    const files = new Map<string, string>([
-      [
-        STATE_FILE,
-        JSON.stringify({ version: 1, repos: { [repo]: { lastPushedSha: "same-sha" } } }),
-      ],
-    ]);
-    const { bridge } = createBridge({ exportResult: { exported: 1, headCommit: "same-sha" } });
-    const { engine } = makeEngine(config, bridge, { files });
-
-    await expect(engine.pushUpstream(repo)).resolves.toMatchObject({
-      outcome: "remote-missing-created",
-    });
-
-    expect(gitFns.push).toHaveBeenCalledTimes(1);
-    expect(readStored(files)).toMatchObject({
-      version: 2,
-      repos: {
-        [repo]: {
-          configFingerprint: expect.any(String),
-          lastPushedSha: "same-sha",
-        },
-      },
     });
   });
 
@@ -706,7 +856,7 @@ describe("UpstreamEngine", () => {
             },
           }),
         ]),
-      })
+      }),
     );
 
     // No retry timer was scheduled: further time passes with no new attempts.
@@ -724,11 +874,18 @@ describe("UpstreamEngine", () => {
     // Typed rejection + a confirming remote comparison: divergence policy is
     // never decided from error prose alone.
     gitFns.push.mockRejectedValue(
-      new GitPushRejectedError("Updates were rejected: non-fast-forward")
+      new GitPushRejectedError("Updates were rejected: non-fast-forward"),
     );
-    gitFns.fetch.mockResolvedValue({ fetchHead: "remote-head", remoteRefExists: true });
+    gitFns.fetch.mockResolvedValue({
+      fetchHead: "remote-head",
+      remoteRefExists: true,
+    });
     gitFns.resolveRef.mockResolvedValue("remote-head");
-    gitFns.compareRefs.mockResolvedValue({ ahead: 1, behind: 2, diverged: true });
+    gitFns.compareRefs.mockResolvedValue({
+      ahead: 1,
+      behind: 2,
+      diverged: true,
+    });
     const { engine, files, notifications } = makeEngine(config, bridge);
 
     engine.reconcileUpstreams([{ repoPath: repo }]);
@@ -753,7 +910,9 @@ describe("UpstreamEngine", () => {
     const repo = "projects/g";
     const config = buildConfig([{ repo, autoPush: true }]);
     const { bridge, exportLockedInner } = createBridge();
-    gitFns.push.mockRejectedValue(new Error("ECONNRESET: connection reset by peer"));
+    gitFns.push.mockRejectedValue(
+      new Error("ECONNRESET: connection reset by peer"),
+    );
     const { engine, files } = makeEngine(config, bridge);
 
     engine.reconcileUpstreams([{ repoPath: repo }]);
@@ -775,7 +934,9 @@ describe("UpstreamEngine", () => {
     const repo = "projects/h";
     const config = buildConfig([{ repo, autoPush: true }]);
     const files = new Map<string, string>();
-    const { bridge } = createBridge({ exportResult: { exported: 1, headCommit: "persist-sha" } });
+    const { bridge } = createBridge({
+      exportResult: { exported: 1, headCommit: "persist-sha" },
+    });
     const { engine } = makeEngine(config, bridge, { files });
 
     engine.reconcileUpstreams([{ repoPath: repo }]);
@@ -793,9 +954,16 @@ describe("UpstreamEngine", () => {
   it("forces the same head to each changed remote URL and upstream branch", async () => {
     const repo = "projects/config-scope";
     const files = new Map<string, string>();
-    const { bridge } = createBridge({ exportResult: { exported: 1, headCommit: "stable-head" } });
+    const { bridge } = createBridge({
+      exportResult: { exported: 1, headCommit: "stable-head" },
+    });
     const initialConfig = buildConfig([
-      { repo, autoPush: true, url: "https://github.com/acme/first.git", branch: "main" },
+      {
+        repo,
+        autoPush: true,
+        url: "https://github.com/acme/first.git",
+        branch: "main",
+      },
     ]);
     const first = makeEngine(initialConfig, bridge, { files }).engine;
 
@@ -807,8 +975,14 @@ describe("UpstreamEngine", () => {
 
     gitFns.push.mockClear();
     const changedRemoteConfig = buildConfig([
-      { repo, autoPush: true, url: "https://github.com/acme/second.git", branch: "main" },
+      {
+        repo,
+        autoPush: true,
+        url: "https://github.com/acme/second.git",
+        branch: "main",
+      },
     ]);
+    writeConfiguration(files, changedRemoteConfig);
     const second = makeEngine(changedRemoteConfig, bridge, { files }).engine;
     await expect(second.pushUpstream(repo)).resolves.toMatchObject({
       outcome: "remote-missing-created",
@@ -818,41 +992,58 @@ describe("UpstreamEngine", () => {
       expect.objectContaining({
         url: "https://github.com/acme/second.git",
         remote: expect.stringMatching(/^vibestudio-[a-f0-9]{24}$/),
-      })
+      }),
     );
     const secondFingerprint = readStored(files).repos[repo]?.configFingerprint;
     expect(secondFingerprint).not.toBe(firstFingerprint);
 
     gitFns.push.mockClear();
     const changedBranchConfig = buildConfig([
-      { repo, autoPush: true, url: "https://github.com/acme/second.git", branch: "release" },
+      {
+        repo,
+        autoPush: true,
+        url: "https://github.com/acme/second.git",
+        branch: "release",
+      },
     ]);
+    writeConfiguration(files, changedBranchConfig);
     const third = makeEngine(changedBranchConfig, bridge, { files }).engine;
     await expect(third.pushUpstream(repo)).resolves.toMatchObject({
       outcome: "remote-missing-created",
     });
     expect(gitFns.push).toHaveBeenCalledWith(
-      expect.objectContaining({ remoteRef: "refs/heads/release" })
+      expect.objectContaining({ remoteRef: "refs/heads/release" }),
     );
-    expect(readStored(files).repos[repo]?.configFingerprint).not.toBe(secondFingerprint);
+    expect(readStored(files).repos[repo]?.configFingerprint).not.toBe(
+      secondFingerprint,
+    );
   });
 
   it("clears a persisted failure when declared upstream configuration changes", async () => {
     const repo = "projects/failure-scope";
     const files = new Map<string, string>();
-    const { bridge } = createBridge({ exportResult: { exported: 1, headCommit: "retry-head" } });
-    const initialConfig = buildConfig([{ repo, autoPush: true, credential: "old-credential" }]);
+    const { bridge } = createBridge({
+      exportResult: { exported: 1, headCommit: "retry-head" },
+    });
+    const initialConfig = buildConfig([
+      { repo, autoPush: true, credential: "old-credential" },
+    ]);
     const first = makeEngine(initialConfig, bridge, { files }).engine;
-    gitFns.push.mockRejectedValueOnce(new GitAuthError("401 Unauthorized", 401));
+    gitFns.push.mockRejectedValueOnce(
+      new GitAuthError("401 Unauthorized", 401),
+    );
 
     await expect(
-      first.pushUpstream(repo, { credentialIdOverride: "concrete-old" })
+      first.pushUpstream(repo, { credentialIdOverride: "concrete-old" }),
     ).rejects.toThrow("401 Unauthorized");
     expect(readStored(files).repos[repo]?.status).toBe("auth-failed");
 
     gitFns.push.mockReset();
     gitFns.push.mockResolvedValue(undefined);
-    const changedConfig = buildConfig([{ repo, autoPush: true, credential: "new-credential" }]);
+    const changedConfig = buildConfig([
+      { repo, autoPush: true, credential: "new-credential" },
+    ]);
+    writeConfiguration(files, changedConfig);
     const second = makeEngine(changedConfig, bridge, { files }).engine;
     gitFns.fetch.mockResolvedValueOnce({ remoteRefExists: false });
     const [status] = await second.upstreamStatus([repo], {
@@ -864,7 +1055,7 @@ describe("UpstreamEngine", () => {
     expect(status?.error).toBeUndefined();
     expect(readStored(files).repos[repo]).not.toHaveProperty("status");
     await expect(
-      second.pushUpstream(repo, { credentialIdOverride: "concrete-new" })
+      second.pushUpstream(repo, { credentialIdOverride: "concrete-new" }),
     ).resolves.toMatchObject({
       outcome: "remote-missing-created",
     });
@@ -875,7 +1066,7 @@ describe("UpstreamEngine", () => {
     const repo = "projects/backoff-scope";
     const config = buildConfig([
       { repo, autoPush: true, url: "https://github.com/acme/before.git" },
-    ]) as { git: unknown };
+    ]);
     const { bridge, exportLockedInner } = createBridge({
       exportResult: { exported: 1, headCommit: "backoff-head" },
     });
@@ -889,11 +1080,12 @@ describe("UpstreamEngine", () => {
 
     gitFns.push.mockReset();
     gitFns.push.mockResolvedValue(undefined);
-    config.git = (
-      buildConfig([{ repo, autoPush: true, url: "https://github.com/acme/after.git" }]) as {
-        git: unknown;
-      }
-    ).git;
+    writeConfiguration(
+      files,
+      buildConfig([
+        { repo, autoPush: true, url: "https://github.com/acme/after.git" },
+      ]),
+    );
     engine.reconcileUpstreams([{ repoPath: repo }]);
     await vi.advanceTimersByTimeAsync(2_000);
 
@@ -909,7 +1101,9 @@ describe("UpstreamEngine", () => {
     const repo = "projects/status-override";
     const config = buildConfig([{ repo, autoPush: true, branch: "main" }]);
     const files = new Map<string, string>();
-    const { bridge } = createBridge({ exportResult: { exported: 1, headCommit: "same-head" } });
+    const { bridge } = createBridge({
+      exportResult: { exported: 1, headCommit: "same-head" },
+    });
     const { engine } = makeEngine(config, bridge, { files });
 
     await expect(engine.pushUpstream(repo)).resolves.toMatchObject({
@@ -928,7 +1122,10 @@ describe("UpstreamEngine", () => {
     expect(status?.lastFailureReason).toBeUndefined();
     expect(readStored(files).repos[repo]?.configFingerprint).toBe(fingerprint);
 
-    gitFns.fetch.mockResolvedValue({ fetchHead: "same-head", remoteRefExists: true });
+    gitFns.fetch.mockResolvedValue({
+      fetchHead: "same-head",
+      remoteRefExists: true,
+    });
     gitFns.resolveRef.mockResolvedValue("same-head");
     await expect(engine.pushUpstream(repo)).resolves.toMatchObject({
       outcome: "already-at-remote",
@@ -937,7 +1134,7 @@ describe("UpstreamEngine", () => {
     expect(gitFns.push).not.toHaveBeenCalled();
   });
 
-  it("tolerates a broken upstream declaration during activate and reports it as error", async () => {
+  it("propagates a broken stored upstream at activation", async () => {
     const healthy = "projects/ok";
     const broken = "projects/bad";
     const config = buildConfig([
@@ -947,15 +1144,10 @@ describe("UpstreamEngine", () => {
     const { bridge } = createBridge();
     const { engine } = makeEngine(config, bridge);
 
-    await expect(engine.activate()).resolves.toBeUndefined();
-
-    gitFns.fetch.mockResolvedValueOnce({ remoteRefExists: false });
-    const rows = await engine.upstreamStatus([]);
-    const brokenRow = rows.find((row) => row.repoPath === broken);
-    const healthyRow = rows.find((row) => row.repoPath === healthy);
-    expect(brokenRow?.state).toBe("error");
-    expect(healthyRow).toBeDefined();
-    expect(healthyRow?.state).not.toBe("error");
+    await expect(engine.activate()).rejects.toThrow(
+      'Upstream remote "origin" is not declared',
+    );
+    expect(gitFns.fetch).not.toHaveBeenCalled();
   });
 
   it("clears the running state after an export failure", async () => {
@@ -1046,7 +1238,11 @@ describe("UpstreamEngine", () => {
     }));
     gitFns.push.mockRejectedValue(new GitAuthError("auth boom", 401));
     gitFns.resolveRef.mockResolvedValue("remote-head");
-    gitFns.compareRefs.mockResolvedValue({ ahead: 1, behind: 1, diverged: true });
+    gitFns.compareRefs.mockResolvedValue({
+      ahead: 1,
+      behind: 1,
+      diverged: true,
+    });
     const { engine, files } = makeEngine(config, bridge);
 
     engine.reconcileUpstreams([{ repoPath: repoA }, { repoPath: repoB }]);
@@ -1061,7 +1257,7 @@ describe("UpstreamEngine", () => {
     const repo = "projects/immutable-route";
     const config = buildConfig([
       { repo, autoPush: true, url: "https://example.com/before.git" },
-    ]) as { git: unknown };
+    ]);
     const enteredExport = deferred();
     const releaseExport = deferred();
     let exportCount = 0;
@@ -1076,18 +1272,23 @@ describe("UpstreamEngine", () => {
           enteredExport.resolve();
           await releaseExport.promise;
         }
-        return { exported: 1, headCommit: "stable-head", clobberedLocalEdits: [] };
+        return {
+          exported: 1,
+          headCommit: "stable-head",
+          clobberedLocalEdits: [],
+        };
       }),
     };
-    const { engine } = makeEngine(config, bridge);
+    const { engine, files } = makeEngine(config, bridge);
 
     const firstPush = engine.pushUpstream(repo);
     await enteredExport.promise;
-    config.git = (
-      buildConfig([{ repo, autoPush: true, url: "https://example.com/after.git" }]) as {
-        git: unknown;
-      }
-    ).git;
+    writeConfiguration(
+      files,
+      buildConfig([
+        { repo, autoPush: true, url: "https://example.com/after.git" },
+      ]),
+    );
     releaseExport.resolve();
     await firstPush;
     await engine.pushUpstream(repo);
@@ -1109,7 +1310,7 @@ describe("UpstreamEngine", () => {
 
   it("re-reads auto-push only after acquiring the repo lock", async () => {
     const repo = "projects/locked-auto-policy";
-    const config = buildConfig([{ repo, autoPush: true }]) as { git: unknown };
+    const config = buildConfig([{ repo, autoPush: true }]);
     const enteredExport = deferred();
     const releaseExport = deferred();
     let exportCount = 0;
@@ -1124,16 +1325,20 @@ describe("UpstreamEngine", () => {
           enteredExport.resolve();
           await releaseExport.promise;
         }
-        return { exported: 1, headCommit: `head-${exportCount}`, clobberedLocalEdits: [] };
+        return {
+          exported: 1,
+          headCommit: `head-${exportCount}`,
+          clobberedLocalEdits: [],
+        };
       }),
     };
-    const { engine } = makeEngine(config, bridge);
+    const { engine, files } = makeEngine(config, bridge);
 
     const manualPush = engine.pushUpstream(repo);
     await enteredExport.promise;
     engine.reconcileUpstreams([{ repoPath: repo }]);
     await vi.advanceTimersByTimeAsync(2_000);
-    config.git = (buildConfig([{ repo, autoPush: false }]) as { git: unknown }).git;
+    writeConfiguration(files, buildConfig([{ repo, autoPush: false }]));
     releaseExport.resolve();
     await manualPush;
     await vi.advanceTimersByTimeAsync(0);
@@ -1147,9 +1352,16 @@ describe("UpstreamEngine", () => {
     const config = buildConfig([{ repo, autoPush: false }]);
     const created = createBridge();
     const { engine, files } = makeEngine(config, created.bridge);
-    gitFns.fetch.mockResolvedValue({ fetchHead: "remote-head", remoteRefExists: true });
+    gitFns.fetch.mockResolvedValue({
+      fetchHead: "remote-head",
+      remoteRefExists: true,
+    });
     gitFns.resolveRef.mockResolvedValueOnce("remote-head");
-    gitFns.compareRefs.mockResolvedValueOnce({ ahead: 1, behind: 2, diverged: true });
+    gitFns.compareRefs.mockResolvedValueOnce({
+      ahead: 1,
+      behind: 2,
+      diverged: true,
+    });
     gitFns.log.mockResolvedValueOnce([
       { oid: "incoming-1", message: "Incoming one\n" },
       { oid: "incoming-2", message: "Incoming two\n" },
@@ -1173,11 +1385,15 @@ describe("UpstreamEngine", () => {
     expect(created.exportLockedInner).not.toHaveBeenCalled();
     expect(created.repoGitDir).not.toHaveBeenCalled();
     expect(gitFns.fetch).toHaveBeenCalledWith(
-      expect.objectContaining({ dir: `/previews/${repo}` })
+      expect.objectContaining({ dir: `/previews/${repo}` }),
     );
     expect(gitFns.fastForward).not.toHaveBeenCalled();
     expect(created.importLockedInner).not.toHaveBeenCalled();
-    expect(files.size).toBe(0);
+    expect(readStored(files)).toEqual({
+      version: 1,
+      configuration: config,
+      repos: {},
+    });
   });
 
   it("classifies pull fetch authentication failures in fingerprint-scoped state", async () => {
@@ -1201,9 +1417,16 @@ describe("UpstreamEngine", () => {
     const config = buildConfig([{ repo, autoPush: false, branch: "release" }]);
     const { bridge } = createBridge();
     const { engine } = makeEngine(config, bridge);
-    gitFns.fetch.mockResolvedValue({ fetchHead: "remote-head", remoteRefExists: true });
+    gitFns.fetch.mockResolvedValue({
+      fetchHead: "remote-head",
+      remoteRefExists: true,
+    });
     gitFns.resolveRef.mockResolvedValue("remote-head");
-    gitFns.compareRefs.mockResolvedValue({ ahead: 0, behind: 1, diverged: false });
+    gitFns.compareRefs.mockResolvedValue({
+      ahead: 0,
+      behind: 1,
+      diverged: false,
+    });
     gitFns.getCurrentBranch.mockResolvedValue("master");
 
     await engine.pullUpstream(repo);
@@ -1214,7 +1437,7 @@ describe("UpstreamEngine", () => {
         remote: expect.stringMatching(/^vibestudio-[a-f0-9]{24}$/),
         ref: "master",
         remoteRef: "release",
-      })
+      }),
     );
   });
 
@@ -1223,17 +1446,31 @@ describe("UpstreamEngine", () => {
     const config = buildConfig([{ repo, autoPush: false, branch: "release" }]);
     const { bridge } = createBridge();
     const { engine } = makeEngine(config, bridge);
-    gitFns.fetch.mockResolvedValue({ fetchHead: "remote-head", remoteRefExists: true });
+    gitFns.fetch.mockResolvedValue({
+      fetchHead: "remote-head",
+      remoteRefExists: true,
+    });
     gitFns.resolveRef.mockResolvedValue("remote-head");
-    gitFns.compareRefs.mockResolvedValue({ ahead: 2, behind: 3, diverged: true });
+    gitFns.compareRefs.mockResolvedValue({
+      ahead: 2,
+      behind: 3,
+      diverged: true,
+    });
     gitFns.getCurrentBranch.mockResolvedValue("master");
 
     const result = await engine.pullUpstream(repo);
 
-    expect(gitFns.checkout).toHaveBeenCalledWith("/repos/projects/pull-diverged", "remote-head", {
-      force: true,
-    });
-    expect(gitFns.deleteBranch).toHaveBeenCalledWith("/repos/projects/pull-diverged", "master");
+    expect(gitFns.checkout).toHaveBeenCalledWith(
+      "/repos/projects/pull-diverged",
+      "remote-head",
+      {
+        force: true,
+      },
+    );
+    expect(gitFns.deleteBranch).toHaveBeenCalledWith(
+      "/repos/projects/pull-diverged",
+      "master",
+    );
     expect(gitFns.createBranch).toHaveBeenCalledWith({
       dir: "/repos/projects/pull-diverged",
       name: "master",
@@ -1248,14 +1485,15 @@ describe("UpstreamEngine", () => {
     });
   });
 
-  it("discards malformed version 2 state instead of accepting legacy-shaped fields", async () => {
-    const repo = "projects/strict-v2";
+  it("rejects malformed service state without erasing it", async () => {
+    const repo = "projects/strict-state";
     const config = buildConfig([{ repo, autoPush: true }]);
     const files = new Map<string, string>([
       [
         STATE_FILE,
         JSON.stringify({
-          version: 2,
+          version: 1,
+          configuration: config,
           repos: {
             [repo]: {
               configFingerprint: "0".repeat(64),
@@ -1266,41 +1504,48 @@ describe("UpstreamEngine", () => {
         }),
       ],
     ]);
-    const { bridge } = createBridge({ exportResult: { exported: 1, headCommit: "same-head" } });
+    const { bridge } = createBridge({
+      exportResult: { exported: 1, headCommit: "same-head" },
+    });
     const { engine } = makeEngine(config, bridge, { files });
 
-    await expect(engine.pushUpstream(repo)).resolves.toMatchObject({
-      outcome: "remote-missing-created",
-    });
-
-    expect(gitFns.push).toHaveBeenCalledTimes(1);
-    expect(readStored(files).repos[repo]).not.toHaveProperty("running");
+    const before = files.get(STATE_FILE);
+    await expect(engine.pushUpstream(repo)).rejects.toThrow(
+      "Invalid or unsupported Git service state",
+    );
+    expect(gitFns.push).not.toHaveBeenCalled();
+    expect(files.get(STATE_FILE)).toBe(before);
   });
 
   it("reports recovered health when a configuration change clears a persisted failure", async () => {
     const repo = "projects/health-scope";
-    const config = buildConfig([{ repo, autoPush: true, credential: "bad" }]) as {
-      git: unknown;
-    };
+    const config = buildConfig([{ repo, autoPush: true, credential: "bad" }]);
     const health = { report: vi.fn(), healthy: vi.fn() };
     const { bridge } = createBridge();
-    const { engine } = makeEngine(config, bridge, { health });
-    gitFns.push.mockRejectedValueOnce(new GitAuthError("401 Unauthorized", 401));
+    const { engine, files } = makeEngine(config, bridge, { health });
+    gitFns.push.mockRejectedValueOnce(
+      new GitAuthError("401 Unauthorized", 401),
+    );
 
     await expect(
-      engine.pushUpstream(repo, { credentialIdOverride: "concrete-bad" })
+      engine.pushUpstream(repo, { credentialIdOverride: "concrete-bad" }),
     ).rejects.toThrow("401 Unauthorized");
     expect(health.report).toHaveBeenLastCalledWith(
       "degraded",
-      expect.objectContaining({ reasons: [`${repo}: auth-failed`] })
+      expect.objectContaining({ reasons: [`${repo}: auth-failed`] }),
     );
 
-    config.git = (
-      buildConfig([{ repo, autoPush: true, credential: "good" }]) as { git: unknown }
-    ).git;
-    await engine.upstreamStatus([repo], { credentialIdOverride: "concrete-good" });
+    writeConfiguration(
+      files,
+      buildConfig([{ repo, autoPush: true, credential: "good" }]),
+    );
+    await engine.upstreamStatus([repo], {
+      credentialIdOverride: "concrete-good",
+    });
 
-    expect(health.healthy).toHaveBeenLastCalledWith({ summary: "git upstream healthy" });
+    expect(health.healthy).toHaveBeenLastCalledWith({
+      summary: "git upstream healthy",
+    });
   });
 
   it("clears an authentication pause after a successful declared-target status fetch", async () => {
@@ -1309,7 +1554,9 @@ describe("UpstreamEngine", () => {
     const health = { report: vi.fn(), healthy: vi.fn() };
     const { bridge } = createBridge();
     const { engine, files } = makeEngine(config, bridge, { health });
-    gitFns.push.mockRejectedValueOnce(new GitAuthError("401 Unauthorized", 401));
+    gitFns.push.mockRejectedValueOnce(
+      new GitAuthError("401 Unauthorized", 401),
+    );
     await expect(engine.pushUpstream(repo)).rejects.toThrow("401 Unauthorized");
     expect(readStored(files).repos[repo]?.status).toBe("auth-failed");
 
@@ -1320,7 +1567,9 @@ describe("UpstreamEngine", () => {
     expect(status?.state).toBe("ahead");
     expect(status?.error).toBeUndefined();
     expect(readStored(files).repos[repo]?.status).toBe("ahead");
-    expect(health.healthy).toHaveBeenLastCalledWith({ summary: "git upstream healthy" });
+    expect(health.healthy).toHaveBeenLastCalledWith({
+      summary: "git upstream healthy",
+    });
   });
 
   it("exports gad main into the checkout BEFORE judging pull divergence", async () => {
@@ -1328,9 +1577,16 @@ describe("UpstreamEngine", () => {
     const config = buildConfig([{ repo, autoPush: false }]);
     const { bridge, exportLockedInner } = createBridge();
     const { engine } = makeEngine(config, bridge);
-    gitFns.fetch.mockResolvedValue({ fetchHead: "remote-head", remoteRefExists: true });
+    gitFns.fetch.mockResolvedValue({
+      fetchHead: "remote-head",
+      remoteRefExists: true,
+    });
     gitFns.resolveRef.mockResolvedValue("remote-head");
-    gitFns.compareRefs.mockResolvedValue({ ahead: 0, behind: 1, diverged: false });
+    gitFns.compareRefs.mockResolvedValue({
+      ahead: 0,
+      behind: 1,
+      diverged: false,
+    });
 
     await engine.pullUpstream(repo);
 
@@ -1367,9 +1623,16 @@ describe("UpstreamEngine", () => {
     const config = buildConfig([{ repo, autoPush: false }]);
     const { bridge, importLockedInner } = createBridge();
     const { engine } = makeEngine(config, bridge);
-    gitFns.fetch.mockResolvedValue({ fetchHead: "remote-head", remoteRefExists: true });
+    gitFns.fetch.mockResolvedValue({
+      fetchHead: "remote-head",
+      remoteRefExists: true,
+    });
     gitFns.resolveRef.mockResolvedValue("remote-head");
-    gitFns.compareRefs.mockResolvedValue({ ahead: 2, behind: 0, diverged: false });
+    gitFns.compareRefs.mockResolvedValue({
+      ahead: 2,
+      behind: 0,
+      diverged: false,
+    });
 
     const result = await engine.pullUpstream(repo);
 
@@ -1405,7 +1668,9 @@ describe("UpstreamEngine", () => {
   it("returns status 'empty' when a push has nothing exportable, never 'in-sync'", async () => {
     const repo = "projects/empty-push";
     const config = buildConfig([{ repo, autoPush: false }]);
-    const { bridge } = createBridge({ exportResult: { exported: 0, headCommit: null } });
+    const { bridge } = createBridge({
+      exportResult: { exported: 0, headCommit: null },
+    });
     const { engine } = makeEngine(config, bridge);
 
     const result = await engine.pushUpstream(repo);
@@ -1432,14 +1697,22 @@ describe("UpstreamEngine", () => {
   it("surfaces and preserves a pending semantic candidate instead of auto-exporting over it", async () => {
     const repo = "projects/pending-candidate";
     const config = buildConfig([{ repo, autoPush: true }]);
-    const { bridge, exportLockedInner, pendingImportCandidate } = createBridge();
+    const { bridge, exportLockedInner, pendingImportCandidate } =
+      createBridge();
     pendingImportCandidate.mockResolvedValue({
       contextId: "git-bridge-pending",
       eventId: "event:external-candidate",
     });
-    gitFns.fetch.mockResolvedValue({ fetchHead: "remote-head", remoteRefExists: true });
+    gitFns.fetch.mockResolvedValue({
+      fetchHead: "remote-head",
+      remoteRefExists: true,
+    });
     gitFns.resolveRef.mockResolvedValue("remote-head");
-    gitFns.compareRefs.mockResolvedValue({ ahead: 1, behind: 0, diverged: false });
+    gitFns.compareRefs.mockResolvedValue({
+      ahead: 1,
+      behind: 0,
+      diverged: false,
+    });
     const { engine } = makeEngine(config, bridge);
 
     const [row] = await engine.upstreamStatus([repo]);
@@ -1484,7 +1757,11 @@ describe("UpstreamEngine", () => {
     const { engine } = makeEngine(config, bridge);
     gitFns.fetch.mockRejectedValue(new Error("ENOTFOUND github.com"));
     gitFns.resolveRef.mockResolvedValue("remote-head");
-    gitFns.compareRefs.mockResolvedValue({ ahead: 2, behind: 0, diverged: false });
+    gitFns.compareRefs.mockResolvedValue({
+      ahead: 2,
+      behind: 0,
+      diverged: false,
+    });
 
     const [row] = await engine.upstreamStatus([repo]);
 
@@ -1508,7 +1785,9 @@ describe("UpstreamEngine", () => {
     await vi.advanceTimersByTimeAsync(2_000);
 
     expect(readStored(files).repos[repo]?.status).toBe("error");
-    expect(readStored(files).repos[repo]?.lastFailureAt).toEqual(expect.any(Number));
+    expect(readStored(files).repos[repo]?.lastFailureAt).toEqual(
+      expect.any(Number),
+    );
     // Retryable: the 30s transient backoff fires instead of a hard pause.
     await vi.advanceTimersByTimeAsync(30_000);
     expect(exportLockedInner).toHaveBeenCalledTimes(2);
@@ -1517,7 +1796,9 @@ describe("UpstreamEngine", () => {
   it("exposes autoPushRequired, lastFailureAt and nextRetryAt in status rows", async () => {
     const repo = "projects/visibility";
     const config = buildConfig([{ repo, autoPush: true }]);
-    const { bridge } = createBridge({ exportResult: { exported: 1, headCommit: "vis-head" } });
+    const { bridge } = createBridge({
+      exportResult: { exported: 1, headCommit: "vis-head" },
+    });
     const { engine, files } = makeEngine(config, bridge);
     gitFns.push.mockRejectedValue(new Error("ECONNRESET"));
 
@@ -1538,25 +1819,33 @@ describe("UpstreamEngine", () => {
   });
 
   it("uses a shallow snapshot clone and returns its semantic candidate", async () => {
-    const root = await fsp.mkdtemp(path.join(os.tmpdir(), "git-bridge-fresh-clone-"));
+    const root = await fsp.mkdtemp(
+      path.join(os.tmpdir(), "git-bridge-fresh-clone-"),
+    );
     const sourceRoot = path.join(root, "source");
     const checkoutRoot = path.join(root, "state", "git-checkouts");
     const repo = "projects/fresh-clone";
     const config = buildConfig([{ repo, autoPush: false }]);
     const { bridge, importLockedInner } = createBridge();
     bridge.repoGitDir.mockResolvedValue(path.join(checkoutRoot, repo));
-    const { engine } = makeEngine(config, bridge, { workspaceRoot: path.join(root, "state") });
+    const { engine } = makeEngine(config, bridge, {
+      workspaceRoot: path.join(root, "state"),
+    });
     gitFns.clone.mockImplementation(async (input: { dir: string }) => {
       await fsp.mkdir(input.dir, { recursive: true });
     });
     try {
       const result = await engine.cloneRepo({ repoPath: repo });
 
-      expect(gitFns.clone).toHaveBeenCalledWith(expect.not.objectContaining({ fullHistory: true }));
       expect(gitFns.clone).toHaveBeenCalledWith(
-        expect.objectContaining({ dir: path.join(checkoutRoot, repo) })
+        expect.not.objectContaining({ fullHistory: true }),
       );
-      await expect(fsp.access(path.join(sourceRoot, repo))).rejects.toMatchObject({
+      expect(gitFns.clone).toHaveBeenCalledWith(
+        expect.objectContaining({ dir: path.join(checkoutRoot, repo) }),
+      );
+      await expect(
+        fsp.access(path.join(sourceRoot, repo)),
+      ).rejects.toMatchObject({
         code: "ENOENT",
       });
       expect(importLockedInner).toHaveBeenCalledWith(repo, {

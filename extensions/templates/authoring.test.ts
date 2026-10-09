@@ -7,14 +7,10 @@ function observation(eventId: string) {
     mainEventId: eventId,
     mainState: { kind: "event" as const, eventId },
     runtimeTop: { systemEpoch: 0 },
-    authoredTop: { systemEpoch: 0 },
+    installation: null,
     localRepoPaths: new Set(["meta", "panels/news"]),
     templateDependencies: [],
-    manifest: {
-      inventory: { repositories: ["meta", "panels/news"] },
-      dependencies: [],
-      top: { systemEpoch: 0 },
-    },
+    manifest: { dependencies: [], top: { systemEpoch: 0 } },
   };
 }
 
@@ -38,7 +34,7 @@ function context() {
               return {
                 content: {
                   kind: "text",
-                  text: "systemEpoch: 0\ntemplate:\n  name: Source\n  repositories: [panels/news]\n",
+                  text: "systemEpoch: 0\ntemplate:\n  name: Source\n",
                 },
               };
             }
@@ -84,10 +80,8 @@ describe("template authoring source closure", () => {
 
     expect(first.includedParts).toEqual(["meta", "panels/news"]);
     expect(first.fingerprint).not.toBe(second.fingerprint);
-    expect(YAML.parse(first.manifest).template).toEqual(
-      expect.objectContaining({
-        repositories: ["meta", "panels/news"],
-      }),
+    expect(YAML.parse(first.manifest).template).not.toHaveProperty(
+      "repositories",
     );
   });
 
@@ -128,7 +122,7 @@ it("retains package providers by their owning repository and extension providers
       },
     },
   };
-  current.authoredTop = current.runtimeTop;
+  current.manifest.top = current.runtimeTop;
   const inspect = (parts: string[]) =>
     inspectTemplateAuthoring(
       context() as never,
@@ -162,18 +156,21 @@ it("publishes a selected inherited unit as an explicit override and permits depe
       { name: "Mine", description: "My workspace", parts },
       inherited,
     );
-  const override = YAML.parse((await inspect(["panels/news"])).manifest);
+  const overridePlan = await inspect(["panels/news"]);
+  const override = YAML.parse(overridePlan.manifest);
+  expect(overridePlan.includedParts).toEqual(["meta", "panels/news"]);
   expect(override.template).toEqual({
     name: "Mine",
     description: "My workspace",
     dependencies: current.templateDependencies,
-    repositories: ["meta", "panels/news"],
     overrides: [
       { repoPath: "panels/news", source: "https://example.test/base.git" },
     ],
   });
-  const onlyDependency = YAML.parse((await inspect([])).manifest);
-  expect(onlyDependency.template.repositories).toEqual(["meta"]);
+  const onlyDependencyPlan = await inspect([]);
+  const onlyDependency = YAML.parse(onlyDependencyPlan.manifest);
+  expect(onlyDependencyPlan.includedParts).toEqual(["meta"]);
+  expect(onlyDependency.template).not.toHaveProperty("repositories");
   expect(onlyDependency.template.dependencies).toEqual(
     current.templateDependencies,
   );
@@ -186,10 +183,11 @@ it("retains declared workspace defaults when incidental repositories are exclude
   const config = {
     systemEpoch: 0,
     defaultAgentConfig: { model: "provider:model" },
+    panelRestorePolicy: "focused" as const,
   };
   const source = {
     ...current,
-    authoredTop: config,
+    manifest: { ...current.manifest, top: config },
     runtimeTop: config,
     localRepoPaths: new Set(["meta", "panels/news", "projects/scratch"]),
   };
@@ -212,6 +210,7 @@ it("retains declared workspace defaults when incidental repositories are exclude
   expect(YAML.parse(plan.manifest).defaultAgentConfig).toEqual(
     config.defaultAgentConfig,
   );
+  expect(YAML.parse(plan.manifest).panelRestorePolicy).toBe("focused");
   expect(plan.includedParts).not.toContain("projects/scratch");
 });
 
@@ -222,7 +221,7 @@ it("preserves authored startup configuration referencing a dependency without co
   ];
   const source = {
     ...current,
-    authoredTop: { systemEpoch: 0, initPanels: startup },
+    manifest: { top: { systemEpoch: 0, initPanels: startup }, dependencies: [{ url: "https://example.test/base.git" }] },
     runtimeTop: { systemEpoch: 0, initPanels: startup },
     templateDependencies: [{ url: "https://example.test/base.git" }],
   };
@@ -234,6 +233,7 @@ it("preserves authored startup configuration referencing a dependency without co
   );
   const manifest = YAML.parse(result.manifest);
   expect(manifest.initPanels).toEqual(startup);
-  expect(manifest.template.repositories).toEqual(["meta"]);
+  expect(result.includedParts).toEqual(["meta"]);
+  expect(manifest.template).not.toHaveProperty("repositories");
   expect(manifest.template.dependencies).toEqual(source.templateDependencies);
 });

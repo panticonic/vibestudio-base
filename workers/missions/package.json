@@ -84,7 +84,34 @@
           "evidence": "bounded-dynamic"
         }
       ]
-    }
+    },
+    "services": [
+      {
+        "action": "manage automated tasks",
+        "authority": {
+          "binding": "declared",
+          "principals": [
+            "host",
+            "user",
+            "code"
+          ]
+        },
+        "description": "Launch automated tasks immediately, then inspect and control their running definitions.",
+        "durableObject": {
+          "className": "MissionsDO"
+        },
+        "name": "missions",
+        "notability": "headline",
+        "presentation": {
+          "domain": "automation",
+          "verb": "manage"
+        },
+        "protocols": [
+          "vibestudio.missions.v1"
+        ],
+        "title": "Automated tasks"
+      }
+    ]
   },
   "dependencies": {
     "@vibestudio/automation": "workspace:*",

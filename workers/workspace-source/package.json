@@ -56,7 +56,37 @@
           "evidence": "intentional-broad"
         }
       ]
-    }
+    },
+    "services": [
+      {
+        "action": "manage your workspace files, history, and setup",
+        "authority": {
+          "binding": "declared",
+          "principals": [
+            "host",
+            "user",
+            "code",
+            "session",
+            "mission"
+          ]
+        },
+        "description": "Manages your workspace's files, version history, and initial setup.",
+        "durableObject": {
+          "className": "GadWorkspaceDO"
+        },
+        "name": "gad.workspace",
+        "notability": "everyday",
+        "presentation": {
+          "domain": "automation",
+          "verb": "manage"
+        },
+        "protocols": [
+          "vibestudio.workspace-source.v1",
+          "vibestudio.gad.workspace.v1"
+        ],
+        "title": "Workspace source"
+      }
+    ]
   },
   "dependencies": {
     "@vibestudio/content-addressing": "workspace:*",

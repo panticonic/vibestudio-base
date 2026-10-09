@@ -3116,6 +3116,7 @@ it.each(["nonoverlap", "conflict", "removal"] as const)(
       source = pin,
     ): TemplateSourceTree => ({
       sources: [source],
+      installation: { sources: [{ pin: source, manifest: new TextDecoder().decode(manifestFile.bytes) }], upstream: source },
       repositories: [
         repository("projects/example", file),
         repository("meta", manifestFile),
@@ -3260,12 +3261,10 @@ it.each(["nonoverlap", "conflict", "removal"] as const)(
         localRepoPaths: new Set(["projects/example"]),
         templateDependencies: [],
         templateSources: [pin],
-        authoredTop: { systemEpoch: 0 },
+        installation: { upstream: pin, sources: [{ pin, manifest: "systemEpoch: 0\n" }] },
         manifest: {
           top: { systemEpoch: 0 },
-          inventory: { repositories: [] },
           dependencies: [],
-          installation: { upstream: pin, sources: [] },
         },
       });
       let lostPush = true;

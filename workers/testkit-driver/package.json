@@ -100,7 +100,35 @@
           "evidence": "intentional-broad"
         }
       ]
-    }
+    },
+    "services": [
+      {
+        "action": "run workspace tests and record results",
+        "authority": {
+          "binding": "declared",
+          "principals": [
+            "host",
+            "user",
+            "code",
+            "session"
+          ]
+        },
+        "description": "Run this workspace's test suite and record results.",
+        "durableObject": {
+          "className": "TestkitDriverDO"
+        },
+        "name": "testkit-driver",
+        "notability": "everyday",
+        "presentation": {
+          "domain": "automation",
+          "verb": "act"
+        },
+        "protocols": [
+          "vibestudio.testkit-driver.v1"
+        ],
+        "title": "Test runner"
+      }
+    ]
   },
   "dependencies": {
     "@workspace/runtime": "workspace:*",

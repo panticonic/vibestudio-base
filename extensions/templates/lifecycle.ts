@@ -53,8 +53,15 @@ export function selectTemplateUpdateSources(
   manifest: ParsedTemplateManifest,
   sources: readonly TemplateExactPin[],
   target: TemplateExactPin,
+  installation:
+    | import("@vibestudio/workspace-contracts/types").WorkspaceTemplateInstallation
+    | null,
 ): TemplateExactPin[] {
-  const inherited = installedSourceDependencies(manifest, [target.url]);
+  const inherited = installedSourceDependencies(
+    manifest,
+    [target.url],
+    installation,
+  );
   return sources.flatMap((pin) =>
     sameUrl(pin.url, target.url)
       ? [target]
@@ -294,8 +301,8 @@ export function createTemplateLifecycle(
       observation.templateSources.map(async (pin) => ({
         ...(await sources.inspect(pin)),
         relationship:
-          observation.manifest.installation?.upstream &&
-          sameUrl(pin.url, observation.manifest.installation.upstream.url)
+          observation.installation?.upstream &&
+          sameUrl(pin.url, observation.installation.upstream.url)
             ? ("upstream" as const)
             : observation.templateDependencies.some((dependency) =>
                   sameUrl(dependency.url, pin.url),
@@ -393,22 +400,19 @@ export function createTemplateLifecycle(
             "workspaceTemplateSource.composeExact",
             {
               sources: observation.templateSources,
-              purpose: observation.manifest.installation?.upstream
-                ? "author"
-                : "use",
+              purpose: observation.installation?.upstream ? "author" : "use",
             },
           );
           const after = await ctx.rpc.call<TemplateSourceTree>(
             "main",
             "workspaceTemplateSource.composeExact",
             {
-              purpose: observation.manifest.installation?.upstream
-                ? "author"
-                : "use",
+              purpose: observation.installation?.upstream ? "author" : "use",
               sources: selectTemplateUpdateSources(
                 observation.manifest,
                 observation.templateSources,
                 target,
+                observation.installation,
               ),
             },
           );
@@ -614,6 +618,7 @@ export function createTemplateLifecycle(
             contextId: update.contextId,
             expectedCommittedEventId: state.committed.eventId,
             expectedMainEventId: update.mainEventId,
+            templateInstallation: update.after.installation,
             ...(requirement.systemEpoch !== WORKSPACE_SYSTEM_EPOCH
               ? { epochTransition: true as const }
               : {}),

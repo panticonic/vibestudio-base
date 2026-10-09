@@ -1726,6 +1726,17 @@ export class SemanticWorkspace {
             { effectId: pending.effectId, contract: "publication-applied-at" },
           );
         }
+        if (pending.payload["templateInstallation"]) {
+          const eventId = String(pending.payload["publishedEventId"]);
+          const installation = canonicalJson(
+            pending.payload["templateInstallation"],
+          );
+          this.deps.sql.exec(
+            "INSERT INTO workspace_template_installations (event_id, installation_json) VALUES (?, ?) ON CONFLICT(event_id) DO NOTHING",
+            eventId,
+            installation,
+          );
+        }
         this.deps.store.updatePendingCommandResult({
           scopeKind: pending.scopeKind,
           scopeId: pending.scopeId,
@@ -5366,6 +5377,21 @@ export class SemanticWorkspace {
           input.expectedMainEventId,
           input.expectedCommittedEventId,
         );
+        if (input.templateInstallation) {
+          const eventId = input.expectedCommittedEventId;
+          const installation = canonicalJson(input.templateInstallation);
+          const existing = this.deps.sql
+            .exec(
+              "SELECT installation_json FROM workspace_template_installations WHERE event_id = ?",
+              eventId,
+            )
+            .toArray()[0] as Row | undefined;
+          if (existing && existing["installation_json"] !== installation)
+            throw new SemanticVcsError(
+              "RevisionChanged",
+              "Installation provenance requires a new publication event",
+            );
+        }
         const effect = this.deps.store.queueEffect({
           scopeKind: "context",
           scopeId: input.contextId,
@@ -5375,6 +5401,9 @@ export class SemanticWorkspace {
             contextId: input.contextId,
             previousEventId: input.expectedMainEventId,
             publishedEventId: input.expectedCommittedEventId,
+            ...(input.templateInstallation
+              ? { templateInstallation: input.templateInstallation }
+              : {}),
             // Protected publication deliberately carries a complete immutable
             // repository snapshot; context working-tree effects are patches.
             repositories: this.publicationRepositories(

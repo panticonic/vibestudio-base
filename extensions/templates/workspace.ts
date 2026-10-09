@@ -8,14 +8,14 @@ import type {
 import {
   installedDependencyLayers,
   parseTemplateManifestContent,
-  rootRuntimeFromTemplateManifest,
   type ParsedTemplateManifest,
 } from "@vibestudio/workspace/templateManifest";
-import { WorkspaceConfigSchema } from "@vibestudio/workspace-contracts/workspaceConfigSchema";
+import { readWorkspaceConfig } from "@vibestudio/workspace/configParser";
 import type {
   WorkspaceConfig,
   WorkspaceTemplatePin,
   WorkspaceTemplateDependency,
+  WorkspaceTemplateInstallation,
 } from "@vibestudio/workspace-contracts/types";
 import type { ExtensionContextLike } from "./context.js";
 
@@ -24,8 +24,8 @@ export interface SemanticWorkspaceObservation {
   mainEventId: string;
   mainState: VcsStateNodeRef;
   runtimeTop: Omit<WorkspaceConfig, "id">;
-  authoredTop: Omit<WorkspaceConfig, "id">;
   manifest: ParsedTemplateManifest;
+  installation: WorkspaceTemplateInstallation | null;
   localRepoPaths: Set<string>;
   templateDependencies: readonly WorkspaceTemplateDependency[];
   templateSources: readonly WorkspaceTemplatePin[];
@@ -77,11 +77,6 @@ export async function observeWorkspace(
   const info = await ctx.workspace.getInfo();
   if (!info.config)
     throw new Error("Workspace info did not expose its resolved configuration");
-  const parsed = WorkspaceConfigSchema.parse({
-    ...(info.config as object),
-    id: info.id,
-  });
-  const { id: _id, ...runtimeTop } = parsed;
   const metaRepository = await ctx.rpc.call<VcsResolveRepositoryResult>(
     "main",
     "vcs.resolveRepository",
@@ -94,27 +89,65 @@ export async function observeWorkspace(
     file: { kind: "path", path: "vibestudio.yml" },
   });
   if (!meta) throw new Error("Workspace meta/vibestudio.yml disappeared");
-  const manifest = parseTemplateManifestContent(
+  const content =
     meta.content.kind === "text"
       ? meta.content.text
-      : Buffer.from(meta.content.base64, "base64").toString("utf8"),
+      : Buffer.from(meta.content.base64, "base64").toString("utf8");
+  const config = await readWorkspaceConfig(
+    {
+      readText: async (filePath) => {
+        if (filePath === "meta/vibestudio.yml") return content;
+        const repoPath = filePath.slice(0, -"/package.json".length);
+        const repo = await ctx.rpc.call<VcsResolveRepositoryResult>(
+          "main",
+          "vcs.resolveRepository",
+          { state: mainState, repoPath },
+        );
+        if (!repo) return null;
+        const file = await ctx.rpc.call<VcsReadFileResult>(
+          "main",
+          "vcs.readFile",
+          {
+            state: mainState,
+            repositoryId: repo.repositoryId,
+            file: { kind: "path", path: "package.json" },
+          },
+        );
+        return !file
+          ? null
+          : file.content.kind === "text"
+            ? file.content.text
+            : Buffer.from(file.content.base64, "base64").toString("utf8");
+      },
+    },
+    info.id,
+  );
+  const { id: _id, ...runtimeTop } = config;
+  const manifest = parseTemplateManifestContent(
+    content,
     runtimeTop.systemEpoch,
   );
-  const sources = manifest.installation?.sources ?? [];
-  const templateSources = installedDependencyLayers(manifest).map((layer) => {
-    const source = sources.find((source) => source.pin.url === layer.label);
-    if (!source)
-      throw new Error(`Installed dependency ${layer.label} disappeared`);
-    return source.pin;
-  });
-  if (manifest.installation?.upstream)
-    templateSources.push(manifest.installation.upstream);
+  const installation = await ctx.rpc.call<WorkspaceTemplateInstallation | null>(
+    "main",
+    "workspaceTemplateSource.readInstallation",
+    { eventId: mainState.eventId },
+  );
+  const sources = installation?.sources ?? [];
+  const templateSources = installedDependencyLayers(manifest, installation).map(
+    (layer) => {
+      const source = sources.find((source) => source.pin.url === layer.label);
+      if (!source)
+        throw new Error(`Installed dependency ${layer.label} disappeared`);
+      return source.pin;
+    },
+  );
+  if (installation?.upstream) templateSources.push(installation.upstream);
   return {
     mainEventId: mainState.eventId,
     mainState,
-    runtimeTop: rootRuntimeFromTemplateManifest(manifest),
-    authoredTop: manifest.top,
+    runtimeTop,
     manifest,
+    installation,
     localRepoPaths: await repositoryPaths(ctx, mainState),
     templateDependencies: manifest.dependencies,
     templateSources,

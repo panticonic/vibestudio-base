@@ -164,7 +164,39 @@
           "evidence": "bounded-dynamic"
         }
       ]
-    }
+    },
+    "services": [
+      {
+        "action": "send and receive messages in your conversations",
+        "authority": {
+          "binding": "declared",
+          "principals": [
+            "host",
+            "user",
+            "code",
+            "website",
+            "session",
+            "mission"
+          ]
+        },
+        "description": "Access your workspace's conversations, including sending messages and reading replies.",
+        "durableObject": {
+          "className": "PubSubChannel",
+          "context": "creator"
+        },
+        "name": "channel",
+        "notability": "everyday",
+        "presentation": {
+          "domain": "sharing",
+          "substanceKind": "send",
+          "verb": "act"
+        },
+        "protocols": [
+          "vibestudio.channel.v1"
+        ],
+        "title": "Conversations"
+      }
+    ]
   },
   "dependencies": {
     "@workspace/agentic-core": "workspace:*",

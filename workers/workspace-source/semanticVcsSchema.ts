@@ -36,6 +36,7 @@ export const SEMANTIC_VCS_REQUIRED_TABLES = [
   "vcs_workspace_heads",
   "gad_workspace_events",
   "gad_workspace_event_parents",
+  "workspace_template_installations",
   "gad_workspace_event_applications",
   "gad_work_units",
   "gad_external_deltas",
@@ -227,6 +228,11 @@ export function createSemanticVcsSchema(sql: SqlStorage): void {
       ON gad_workspace_events(command_id, event_id);
     CREATE INDEX IF NOT EXISTS idx_gad_workspace_events_root
       ON gad_workspace_events(result_workspace_fact_root_id, event_id);
+
+    CREATE TABLE IF NOT EXISTS workspace_template_installations (
+      event_id TEXT PRIMARY KEY,
+      installation_json TEXT NOT NULL CHECK (json_valid(installation_json) = 1)
+    );
 
     CREATE TABLE IF NOT EXISTS gad_workspace_event_parents (
       event_id TEXT NOT NULL,

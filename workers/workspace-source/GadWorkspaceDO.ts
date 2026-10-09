@@ -1457,12 +1457,44 @@ export class GadWorkspaceDO extends DurableObjectBase {
   }
 
   @schemaRpc()
+  workspaceSourceTemplateInstallation(input: {
+    eventId: string;
+  }):
+    | import("@vibestudio/workspace-contracts/types").WorkspaceTemplateInstallation
+    | null {
+    this.ensureReady();
+    if (!this.semanticVcsStore().event(input.eventId))
+      throw new Error(`Unknown workspace event ${input.eventId}`);
+    const row = this.sql
+      .exec(
+        `
+      WITH RECURSIVE ancestry(event_id, depth) AS (
+        SELECT ?, 0
+        UNION ALL
+        SELECT p.parent_event_id, a.depth + 1 FROM ancestry a
+        JOIN gad_workspace_event_parents p ON p.event_id = a.event_id AND p.ordinal = 0
+      )
+      SELECT i.installation_json FROM ancestry a
+      JOIN workspace_template_installations i ON i.event_id = a.event_id
+      ORDER BY a.depth LIMIT 1
+    `,
+        input.eventId,
+      )
+      .toArray()[0] as JsonRecord | undefined;
+    return row ? JSON.parse(String(row["installation_json"])) : null;
+  }
+
+  @schemaRpc()
   async workspaceSourceInitializeExactSnapshot(
     input: InitializeExactWorkspaceSnapshotInput,
   ): Promise<WorkspaceSourceInitializationInspection> {
     this.ensureReady();
     const requestDigest = sha256HexSyncText(
-      canonicalJson({ pin: input.pin, repositories: input.repositories }),
+      canonicalJson({
+        pin: input.pin,
+        repositories: input.repositories,
+        installation: input.installation,
+      }),
     );
     const existing = this.workspaceSourceInitializationRow();
     if (existing && String(existing["command_id"]) !== input.commandId) {
@@ -1707,6 +1739,7 @@ export class GadWorkspaceDO extends DurableObjectBase {
             commandId: pushCommandId,
             expectedCommittedEventId: context.committed.ref.eventId,
             expectedMainEventId: genesisEventId,
+            templateInstallation: input.installation,
           },
           ingress: {
             causalParent: null,
