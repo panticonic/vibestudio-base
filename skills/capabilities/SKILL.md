@@ -87,6 +87,13 @@ prepared service again. For existing or intentionally custom providers:
    return rpc.call(service.targetId, "methodName", []);
    ```
 
+For an existing declared service whose provider method changed in source,
+updating its declaration does not update the live RPC receiver. Verify the
+context candidate, commit and publish the provider repository, wait for
+publication, then resolve the service again before calling the method. See
+[worker and Durable Object guidance](../workspace-dev/WORKERS.md)
+for this existing-service publication path.
+
 `docs_search` and `docs_open` are not eval globals or runtime exports. Never
 source-scan another unit to reconstruct the roster or add dynamic service names
 to a generated host catalog.
