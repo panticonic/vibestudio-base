@@ -187,7 +187,11 @@ describe("worker panelTree handles", () => {
           "x-vibestudio-runtime-id",
         );
         envelopeFrom = JSON.parse(String(init?.body ?? "{}"))?.from;
-        return respond(init, { ok: true });
+        const response = respond(init, { ok: true });
+        const reply = await response.json();
+        return new Response(
+          JSON.stringify({ ...reply, destination: { kind: "workspace", workspaceId: "workspace:test" } }),
+        );
       },
     ) as typeof fetch;
 
@@ -196,6 +200,7 @@ describe("worker panelTree handles", () => {
       WORKER_ID: "probe",
       WORKER_SOURCE: "workers/identity-probe",
       RPC_AUTH_TOKEN: "token",
+      WORKSPACE_ID: "workspace:test",
       CONTEXT_ID: "ctx",
       GATEWAY_URL: "http://server.test",
     });
@@ -219,7 +224,8 @@ describe("worker panelTree handles", () => {
     expect(() => entry.createDurableObjectServiceClient("probe.v1")).toThrow("not been initialized");
     const runtime = entry.createWorkerRuntime({
       WORKER_ID: "probe", WORKER_SOURCE: "workers/probe",
-      RPC_AUTH_TOKEN: "token", CONTEXT_ID: "ctx", GATEWAY_URL: "http://server.test",
+      RPC_AUTH_TOKEN: "token",
+      WORKSPACE_ID: "workspace:test", CONTEXT_ID: "ctx", GATEWAY_URL: "http://server.test",
     });
     try {
       const client = entry.createDurableObjectServiceClient("probe.v1", "chosen");
@@ -293,6 +299,7 @@ describe("worker panelTree handles", () => {
       WORKER_ID: "agent",
       WORKER_SOURCE: "workers/agent",
       RPC_AUTH_TOKEN: "token",
+      WORKSPACE_ID: "workspace:test",
       CONTEXT_ID: "ctx",
       GATEWAY_URL: "http://server.test",
     });
@@ -355,6 +362,7 @@ describe("worker panelTree handles", () => {
       WORKER_ID: "agent",
       WORKER_SOURCE: "workers/agent",
       RPC_AUTH_TOKEN: "token",
+      WORKSPACE_ID: "workspace:test",
       CONTEXT_ID: "ctx",
       GATEWAY_URL: "http://server.test",
     });
@@ -411,6 +419,7 @@ describe("worker panelTree handles", () => {
       WORKER_ID: "agent",
       WORKER_SOURCE: "workers/agent",
       RPC_AUTH_TOKEN: "token",
+      WORKSPACE_ID: "workspace:test",
       CONTEXT_ID: "ctx",
       GATEWAY_URL: "http://server.test",
     });
@@ -538,6 +547,7 @@ describe("worker panelTree handles", () => {
       WORKER_ID: "agent",
       WORKER_SOURCE: "workers/agent",
       RPC_AUTH_TOKEN: "token",
+      WORKSPACE_ID: "workspace:test",
       CONTEXT_ID: "ctx",
       GATEWAY_URL: "http://server.test",
       PARENT_ID: "panel:tree/parent-slot",
@@ -638,6 +648,7 @@ describe("worker panelTree handles", () => {
       WORKER_ID: "agent",
       WORKER_SOURCE: "workers/agent",
       RPC_AUTH_TOKEN: "token",
+      WORKSPACE_ID: "workspace:test",
       CONTEXT_ID: "ctx",
       GATEWAY_URL: "http://server.test",
       PARENT_ID: "panel:tree/parent-slot",
@@ -727,6 +738,7 @@ describe("worker panelTree handles", () => {
       WORKER_ID: "agent",
       WORKER_SOURCE: "workers/agent",
       RPC_AUTH_TOKEN: "token",
+      WORKSPACE_ID: "workspace:test",
       CONTEXT_ID: "ctx",
       GATEWAY_URL: "http://server.test",
       PARENT_ID: "panel:tree/parent-slot",

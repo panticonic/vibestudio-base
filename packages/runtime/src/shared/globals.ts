@@ -18,6 +18,8 @@ export interface GatewayConfig {
  * Injected globals available in both panel and worker environments.
  */
 declare global {
+  /** Exact owning workspace supplied by the authenticated panel host. */
+  var __vibestudioWorkspaceId: string | undefined;
   /** Runtime entity ID for this panel or worker */
   var __vibestudioEntityId: string | undefined;
   /** Stable workspace slot id for panel tree operations. */
@@ -59,6 +61,7 @@ declare global {
 }
 
 export interface InjectedConfig {
+  workspaceId: string;
   entityId: PanelEntityId;
   slotId?: PanelSlotId;
   contextId: string;
@@ -74,6 +77,7 @@ export interface InjectedConfig {
 // Access globals via globalThis to support VM sandbox environments
 // where globals are set on the context object
 const g = globalThis as unknown as {
+  __vibestudioWorkspaceId?: string;
   __vibestudioEntityId?: string;
   __vibestudioSlotId?: string;
   __vibestudioContextId?: string;
@@ -124,6 +128,12 @@ export function getInjectedConfig(): InjectedConfig {
       "Vibestudio runtime globals not found. Expected __vibestudioEntityId to be defined."
     );
   }
+  const workspaceId = g.__vibestudioWorkspaceId;
+  if (typeof workspaceId !== "string" || !workspaceId) {
+    throw new Error(
+      "Vibestudio runtime globals not found. Expected __vibestudioWorkspaceId to identify the owning workspace.",
+    );
+  }
   if (!g.__vibestudioGatewayConfig?.serverUrl || !g.__vibestudioGatewayConfig?.token) {
     throw new Error(
       "Vibestudio runtime globals not found. Expected __vibestudioGatewayConfig with serverUrl and token."
@@ -135,6 +145,7 @@ export function getInjectedConfig(): InjectedConfig {
   const gatewayConfig = normalizeGatewayConfigForBrowser(g.__vibestudioGatewayConfig);
 
   return {
+    workspaceId,
     entityId: entityId as PanelEntityId,
     slotId: g.__vibestudioSlotId as PanelSlotId | undefined,
     contextId: g.__vibestudioContextId ?? "",

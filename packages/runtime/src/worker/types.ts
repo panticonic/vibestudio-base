@@ -8,6 +8,8 @@
 export interface WorkerEnv {
   /** Auth token for RPC authentication */
   RPC_AUTH_TOKEN: string;
+  /** Exact workspace identity supplied by the authenticated runtime host. */
+  WORKSPACE_ID: string;
   /** Worker instance name (e.g., "hello") */
   WORKER_ID: string;
   /** Exact workspace source that, together with WORKER_ID, forms the sealed entity id. */

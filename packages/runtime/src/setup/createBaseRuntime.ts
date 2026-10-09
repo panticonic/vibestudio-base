@@ -27,6 +27,7 @@ import {
 
 export interface BaseRuntimeDeps {
   onRecovery?: import("@vibestudio/rpc").RpcClientRecoveryOptions["onRecovery"];
+  workspaceId: string;
   selfId: string;
   environment?: import("../panel/runtimeEnvironment.js").PanelRuntimeEnvironment;
   /** Primary envelope transport (single WS for panels, WS for workers) */
@@ -38,10 +39,13 @@ export interface BaseRuntimeDeps {
 }
 
 export function createBaseRuntime(deps: BaseRuntimeDeps) {
+  if (!deps.workspaceId)
+    throw new Error("Runtime requires its authenticated owning workspace identity");
   const rpcLifetime = new AbortController();
   const primaryTransport = deps.createTransport(rpcLifetime.signal);
   const rpc = createRpcClient({
     selfId: deps.selfId,
+    workspaceId: deps.workspaceId,
     transport: primaryTransport,
     onRecovery: deps.onRecovery,
     authorityAcquisition: "wait",

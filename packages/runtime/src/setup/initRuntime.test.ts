@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { EnvelopeRpcTransport, RpcEnvelope } from "@vibestudio/rpc";
+import { rpcDiagnosticIdOf, type EnvelopeRpcTransport, type RpcEnvelope } from "@vibestudio/rpc";
 import { initRuntime } from "./initRuntime.js";
 import { setStateArgs } from "../panel/stateArgs.js";
 import { DEFAULT_THEME_CONFIG } from "../types.js";
@@ -9,6 +9,7 @@ import {
 } from "@vibestudio/shared/hostCommands";
 
 const g = globalThis as typeof globalThis & {
+  __vibestudioWorkspaceId?: string;
   __vibestudioEntityId?: string;
   __vibestudioSlotId?: string;
   __vibestudioContextId?: string;
@@ -91,7 +92,72 @@ function stubPanelWindow(): EventTarget & {
 }
 
 describe("initRuntime", () => {
+  it("settles addressed foreign replies and preserves original errors while rejecting another workspace", async () => {
+    g.__vibestudioWorkspaceId = "workspace:test";
+    g.__vibestudioEntityId = "panel:panel-1";
+    g.__vibestudioGatewayConfig = { serverUrl: "http://server.test", token: "test-token" };
+    let deliverReply!: (envelope: RpcEnvelope) => void;
+    let outgoing!: RpcEnvelope;
+    const transport = createTransport({
+      onSend(envelope, deliver) {
+        if (envelope.message.type === "request" && envelope.message.method === "readGreeting") {
+          outgoing = envelope;
+          deliverReply = deliver;
+        }
+      },
+    });
+    const { runtime } = initRuntime({ createTransport: () => transport });
+    const reply = (workspaceId: string, failure = false): RpcEnvelope => ({
+      ...responseFor(outgoing, { greeting: "hello across workspaces" }),
+      destination: { kind: "workspace", workspaceId },
+      delivery: { caller: { callerId: outgoing.target, callerKind: "server", workspaceId: "peer" } },
+      ...(failure && outgoing.message.type === "request"
+        ? {
+            message: {
+              type: "response" as const,
+              requestId: outgoing.message.requestId,
+              error: "Original receiver failure",
+              errorKind: "application" as const,
+              errorCode: "RECEIVER_FAILED",
+              errorData: { phase: "readGreeting" },
+              diagnosticId: "c129a216-5c2d-4de5-979b-8a315f1aff22",
+            },
+          }
+        : {}),
+    });
+    try {
+      const call = runtime.rpc.call("do:workers/peer:Receiver:main", "readGreeting", [], {
+        destination: { kind: "workspace", workspaceId: "peer" },
+      });
+      await Promise.resolve();
+      let settled = false;
+      void call.then(() => {
+        settled = true;
+      });
+      deliverReply(reply("another-workspace"));
+      await Promise.resolve();
+      expect(settled).toBe(false);
+      deliverReply(reply("workspace:test"));
+      await expect(call).resolves.toEqual({ greeting: "hello across workspaces" });
+      const failed = runtime.rpc.call("do:workers/peer:Receiver:main", "readGreeting", [], {
+        destination: { kind: "workspace", workspaceId: "peer" },
+      });
+      await Promise.resolve();
+      deliverReply(reply("workspace:test", true));
+      const error = await failed.catch((failure: unknown) => failure);
+      expect(error).toMatchObject({
+        message: "Original receiver failure",
+        code: "RECEIVER_FAILED",
+        errorKind: "application",
+        errorData: { phase: "readGreeting" },
+      });
+      expect(rpcDiagnosticIdOf(error)).toBe("c129a216-5c2d-4de5-979b-8a315f1aff22");
+    } finally {
+      runtime.destroy();
+    }
+  });
   afterEach(() => {
+    delete g.__vibestudioWorkspaceId;
     delete g.__vibestudioEntityId;
     delete g.__vibestudioSlotId;
     delete g.__vibestudioContextId;
@@ -117,6 +183,7 @@ describe("initRuntime", () => {
       serverUrl: "https://gateway.test",
       token: "test-token",
     };
+    g.__vibestudioWorkspaceId = "workspace:test";
     g.__vibestudioEntityId = "panel:panel-1";
     g.__vibestudioSlotId = "panel:tree/slot-1";
     g.__vibestudioContextId = "ctx-1";
@@ -154,6 +221,7 @@ describe("initRuntime", () => {
   });
 
   it("uses the injected canonical panel id as the RPC self id", () => {
+    g.__vibestudioWorkspaceId = "workspace:test";
     g.__vibestudioEntityId = "panel:panel-1";
     g.__vibestudioSlotId = "panel:tree/slot-1";
     g.__vibestudioContextId = "ctx-1";
@@ -178,6 +246,7 @@ describe("initRuntime", () => {
   });
 
   it("binds filesystem clients to their own runtime without global reinitialization", async () => {
+    g.__vibestudioWorkspaceId = "workspace:test";
     g.__vibestudioEntityId = "panel:panel-1";
     g.__vibestudioContextId = "ctx-1";
     g.__vibestudioKind = "panel";
@@ -196,6 +265,7 @@ describe("initRuntime", () => {
           }),
       }).runtime;
     const first = make("first workspace");
+    g.__vibestudioWorkspaceId = "workspace:test";
     g.__vibestudioEntityId = "panel:panel-2";
     g.__vibestudioContextId = "ctx-2";
     const second = make("second workspace");
@@ -215,6 +285,7 @@ describe("initRuntime", () => {
 
   it("preserves call delivery metadata through the runtime transport envelope", async () => {
     const sent: RpcEnvelope[] = [];
+    g.__vibestudioWorkspaceId = "workspace:test";
     g.__vibestudioEntityId = "panel:panel-1";
     g.__vibestudioSlotId = "panel:tree/slot-1";
     g.__vibestudioContextId = "ctx-1";
@@ -265,6 +336,7 @@ describe("initRuntime", () => {
     const panelTreeSetStateArgsMock = vi.fn();
     const stateArgsChanged = vi.fn();
     const panelWindow = stubPanelWindow();
+    g.__vibestudioWorkspaceId = "workspace:test";
     g.__vibestudioEntityId = "panel:entity-1";
     g.__vibestudioSlotId = "panel:tree/slot-1";
     g.__vibestudioContextId = "ctx-1";
@@ -329,6 +401,7 @@ describe("initRuntime", () => {
     const panelWindow = stubPanelWindow();
     const stateArgsChanged = vi.fn();
     const shellListeners: Array<(event: string, payload: unknown) => void> = [];
+    g.__vibestudioWorkspaceId = "workspace:test";
     g.__vibestudioEntityId = "panel:panel-1";
     g.__vibestudioSlotId = "panel:tree/slot-1";
     g.__vibestudioContextId = "ctx-1";
@@ -373,6 +446,7 @@ describe("initRuntime", () => {
 
   it("normalizes loopback gateway URLs to the panel page origin", () => {
     vi.stubGlobal("location", { origin: "http://localhost:3000" });
+    g.__vibestudioWorkspaceId = "workspace:test";
     g.__vibestudioEntityId = "panel:panel-1";
     g.__vibestudioSlotId = "panel:tree/slot-1";
     g.__vibestudioContextId = "ctx-1";
@@ -397,6 +471,7 @@ describe("initRuntime", () => {
 
   it("does not normalize non-equivalent gateway origins", () => {
     vi.stubGlobal("location", { origin: "http://localhost:3000" });
+    g.__vibestudioWorkspaceId = "workspace:test";
     g.__vibestudioEntityId = "panel:panel-1";
     g.__vibestudioSlotId = "panel:tree/slot-1";
     g.__vibestudioContextId = "ctx-1";
@@ -422,6 +497,7 @@ describe("initRuntime", () => {
   it("uses the parent slot id for handle identity/control and the parent entity id for RPC", async () => {
     const sends: Array<{ targetId: string; method: string; args: unknown[] }> =
       [];
+    g.__vibestudioWorkspaceId = "workspace:test";
     g.__vibestudioEntityId = "panel:child-entity";
     g.__vibestudioSlotId = "child-slot";
     g.__vibestudioContextId = "ctx-1";
@@ -556,6 +632,7 @@ describe("initRuntime", () => {
     const sends: Array<{ targetId: string; method: string; args: unknown[] }> =
       [];
     let currentEntityId = "panel:nav-parent-entity";
+    g.__vibestudioWorkspaceId = "workspace:test";
     g.__vibestudioEntityId = "panel:child-entity";
     g.__vibestudioSlotId = "child-slot";
     g.__vibestudioContextId = "ctx-1";
@@ -782,6 +859,7 @@ describe("initRuntime", () => {
   it("launches workers through runtime.createEntity (server derives the parent)", async () => {
     const sends: Array<{ targetId: string; method: string; args: unknown[] }> =
       [];
+    g.__vibestudioWorkspaceId = "workspace:test";
     g.__vibestudioEntityId = "panel:child-entity";
     g.__vibestudioSlotId = "child-slot";
     g.__vibestudioContextId = "ctx-1";
@@ -849,6 +927,7 @@ describe("initRuntime", () => {
   it("keeps command-palette contributions on attributed panel-to-shell events", async () => {
     const sent: RpcEnvelope[] = [];
     let deliverInbound: ((envelope: RpcEnvelope) => void) | null = null;
+    g.__vibestudioWorkspaceId = "workspace:test";
     g.__vibestudioEntityId = "panel:panel-1";
     g.__vibestudioSlotId = "panel:tree/slot-1";
     g.__vibestudioContextId = "ctx-1";

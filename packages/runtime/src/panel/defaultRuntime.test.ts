@@ -9,6 +9,7 @@ function provider() {
       documentId: "document-1",
       origin: "https://example.com",
       bootstrap: {
+        workspaceId: "workspace:test",
         runtimeId: "panel:test",
         slotId: "slot:test",
         contextId: "test",

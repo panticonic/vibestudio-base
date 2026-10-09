@@ -356,12 +356,15 @@ export function createWorkerRuntime(env: WorkerEnv): WorkerRuntime {
   const parentEntityId = (env.PARENT_ENTITY_ID as string) || parentId;
   const parentKind = parseParentKind(env.PARENT_KIND);
 
+  if (!env.WORKSPACE_ID) throw new Error("Worker env must provide WORKSPACE_ID");
+
   // The unified connectionless client — same core as panel/eval, envelope-native.
   const connectionless = createConnectionlessRpcClient({
     selfId,
     serverUrl,
     authToken: env.RPC_AUTH_TOKEN,
     callerKind: "worker",
+    workspaceId: env.WORKSPACE_ID,
   });
   const rpc = connectionless.client;
   installWorkerConsoleBridge(rpc);

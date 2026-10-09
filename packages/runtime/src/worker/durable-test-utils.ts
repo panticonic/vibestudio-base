@@ -151,6 +151,7 @@ const AGENTIC_ENV_DEFAULTS: Record<string, string> = {
   GATEWAY_URL: "http://test-server.invalid",
   RPC_AUTH_TOKEN: "test-token",
   WORKER_SOURCE: "test",
+  WORKSPACE_ID: "test",
   WORKER_CLASS_NAME: "TestDO",
   WORKERD_SESSION_ID: "test-session",
   WORKERD_BOOT_GENERATION: "1",

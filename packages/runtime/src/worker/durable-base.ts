@@ -683,11 +683,15 @@ export abstract class DurableObjectBase {
       if (!serverUrl) {
         throw new Error("RPC not available: GATEWAY_URL not configured");
       }
+      const workspaceId = this.env["WORKSPACE_ID"];
+      if (typeof workspaceId !== "string" || !workspaceId)
+        throw new Error("RPC not available: WORKSPACE_ID not configured");
       const connectionless = createInternalConnectionlessRpcClient({
         selfId: `do:${source}:${className}:${this.objectKey}`,
         serverUrl,
         authToken: token,
         callerKind: "do",
+        workspaceId,
         // Continue only the currently executing host-attested invocation.
         // The callback is evaluated per outbound envelope; once inbound
         // dispatch restores its caller, alarms and later work carry no nonce.

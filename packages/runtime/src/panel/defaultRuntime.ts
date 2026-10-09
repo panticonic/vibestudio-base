@@ -100,6 +100,7 @@ export function connectWorkspace(
     if (attempt !== generation) throw disconnected();
     const bootstrap = connection.bootstrap;
     const instance = createPanelRuntime({
+      workspaceId: bootstrap.workspaceId,
       selfId: bootstrap.runtimeId as PanelEntityId,
       entityId: bootstrap.runtimeId as PanelEntityId,
       slotId: bootstrap.slotId as PanelSlotId,

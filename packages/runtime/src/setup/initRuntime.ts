@@ -42,6 +42,7 @@ export function initRuntime(options: InitRuntimeOptions): InitRuntimeResult {
   const runtime = createRuntime({
     environment: injectedPanelEnvironment(),
     selfId: config.entityId,
+    workspaceId: config.workspaceId,
     createTransport: options.createTransport,
     onRecovery: options.onRecovery,
     entityId: config.entityId,

@@ -1606,6 +1606,7 @@ describe("DurableObjectBase server-driven alarm durability", () => {
       response.setHeader("Content-Type", "application/json");
       response.end(
         JSON.stringify({
+          destination: { kind: "workspace", workspaceId: "test" },
           from: envelope.target,
           target: envelope.from,
           delivery: { caller: { callerId: "main", callerKind: "server" } },

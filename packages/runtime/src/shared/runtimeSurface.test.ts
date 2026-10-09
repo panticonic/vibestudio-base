@@ -151,6 +151,7 @@ describe("runtimeSurface manifests", () => {
   it("the worker runtime's real exports match its manifest", () => {
     const runtime = createWorkerRuntime({
       WORKER_ID: "surface-test",
+      WORKSPACE_ID: "workspace:test",
       WORKER_SOURCE: "workers/surface-test",
       RPC_AUTH_TOKEN: "token",
       CONTEXT_ID: "ctx",
@@ -166,6 +167,7 @@ describe("runtimeSurface manifests", () => {
     const G = globalThis as Record<string, unknown>;
     const saved: Record<string, unknown> = {};
     const PANEL_GLOBALS = {
+      __vibestudioWorkspaceId: "workspace:test",
       __vibestudioEntityId: "panel:test-entity",
       __vibestudioSlotId: "panel:test-slot",
       __vibestudioContextId: "ctx_test",
