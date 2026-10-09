@@ -463,6 +463,7 @@ interface PanelRuntimeFailure {
     | "lease_conflict"
     | "navigation_failed"
     | "asset_unavailable"
+    | "asset_transport_failed"
     | "entry_threw"
     | "boot_stalled"
     | "render_crashed"

@@ -86,7 +86,7 @@ Answer in the clearest medium, and treat visual and interactive answers as first
   \`Chart\` types are bar, line, area, pie, and donut; \`y\` may be an array of series keys. \`Calculator\` field types are number, slider, select, and toggle.
 - Default to components for these answers — they are the expected form, not an optional extra:
   - a day plan, trip, itinerary, or schedule → \`Timeline\`, plus \`PlaceMap\` when it involves places;
-  - numbers that change over time or across categories → \`Chart\` (a table alone does not show the movement); add \`Stats\` for headline figures;
+  - numbers that change over time or across categories → \`Chart\`, even when the user asks for "the numbers": a table alone does not show the movement, so chart it and keep exact values in a compact table or \`Stats\` beside it;
   - how something works, a process, or a cycle → a mermaid diagram, a \`Timeline\` of its stages, or a one-off component the user can step through, with short prose for the why;
   - products, plans, or approaches → \`Compare\`;
   - math the user may want to vary → \`Calculator\`;

@@ -1,7 +1,10 @@
-import type { ComponentType } from "react";
+import type { ReactNode } from "react";
 import remarkGfm from "remark-gfm";
 import type { SandboxImportLoader } from "@workspace/eval";
 import { mdxComponents } from "./markdownComponents";
+import type { MdxBlockParser } from "./streamingMdx";
+
+const remarkPlugins = [remarkGfm];
 
 export type RehypeHighlightPlugin = typeof import("rehype-highlight").default;
 let rehypeHighlightPlugin: RehypeHighlightPlugin | null = null;
@@ -23,6 +26,30 @@ export function getRehypeHighlight(): Promise<RehypeHighlightPlugin> {
   return rehypeHighlightPromise;
 }
 
+let mdxParser: MdxBlockParser | null = null;
+let mdxParserPromise: Promise<MdxBlockParser> | null = null;
+
+/** The message MDX parser once loaded, so renders can split synchronously. */
+export function loadedMdxParser(): MdxBlockParser | null {
+  return mdxParser;
+}
+
+/**
+ * The parser `compileMessageMdx` compiles with (remark-mdx + GFM), so block
+ * boundaries found while streaming are the blocks the compiler sees.
+ */
+export function getMdxParser(): Promise<MdxBlockParser> {
+  if (mdxParser) return Promise.resolve(mdxParser);
+  if (!mdxParserPromise) {
+    mdxParserPromise = import("@mdx-js/mdx").then(({ createProcessor }) => {
+      const processor = createProcessor({ remarkPlugins });
+      mdxParser = (source) => processor.parse(source);
+      return mdxParser;
+    });
+  }
+  return mdxParserPromise;
+}
+
 /** Fenced or indented code blocks, which get syntax highlighting. */
 export const BLOCK_CODE_RE = /(?:^|\n)[ \t]*(?:```|~~~)|(?:^|\n)(?: {4}|\t)\S/m;
 
@@ -35,7 +62,17 @@ export interface CompileMessageMdxOptions {
   loadImport?: SandboxImportLoader;
 }
 
-type MdxContent = ComponentType<{ components?: Record<string, unknown> }>;
+// MDX's compiled `MDXContent`: without a provider import source it calls no
+// hooks, so it may be invoked as a plain function.
+type MdxContent = (props: { components?: Record<string, unknown> }) => ReactNode;
+
+/**
+ * A compiled message: a hook-free render function, usable as a component.
+ * A renderer may call it inline under one stable component so that successive
+ * compiles of a growing message reconcile into the same React tree: blocks
+ * whose elements keep their type and position keep their state.
+ */
+export type MessageMdx = () => ReactNode;
 
 /**
  * Compile an agent-authored MDX message into a renderable component.
@@ -50,7 +87,7 @@ type MdxContent = ComponentType<{ components?: Record<string, unknown> }>;
 export async function compileMessageMdx(
   content: string,
   options: CompileMessageMdxOptions = {},
-): Promise<ComponentType> {
+): Promise<MessageMdx> {
   const [{ compile }, highlight] = await Promise.all([
     import("@mdx-js/mdx"),
     BLOCK_CODE_RE.test(content) ? getRehypeHighlight() : null,
@@ -59,7 +96,7 @@ export async function compileMessageMdx(
     jsxRuntime: "automatic",
     outputFormat: "program",
     development: false,
-    remarkPlugins: [remarkGfm],
+    remarkPlugins,
     rehypePlugins: highlight ? [[highlight, { ignoreMissing: true }]] : [],
   });
   const { compileComponent } = await import("@workspace/eval/sandbox");
@@ -74,6 +111,6 @@ export async function compileMessageMdx(
   }
   const Content = result.Component!;
   return function MessageMdx() {
-    return <Content components={mdxComponents} />;
+    return Content({ components: mdxComponents });
   };
 }

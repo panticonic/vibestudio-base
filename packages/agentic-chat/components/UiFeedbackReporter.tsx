@@ -125,19 +125,23 @@ export function UiFeedbackReporter({
  * participant as one `props_invalid` ui.feedback. `scope` identifies the
  * rendered revision (message content, inline UI revision) so a corrected
  * re-send that fails the same way reports again; within a scope the same
- * component + problems collapse to one occurrence.
+ * component + problems collapse to one occurrence. While `reporting` is false
+ * (a message still streaming) notices only render; the same tree starts
+ * reporting once it is enabled, without remounting the content.
  */
 export function ResponseProblemFeedback({
   chat,
   author,
   refs,
   scope,
+  reporting = true,
   children,
 }: {
   chat: Record<string, unknown>;
   author: UiFeedbackAuthor | undefined;
   refs: NonNullable<UiFeedbackPayload["refs"]>;
   scope: string;
+  reporting?: boolean;
   children: ReactNode;
 }) {
   const [reports, setReports] = useState<Map<string, ResponseProblemReport>>(
@@ -154,7 +158,7 @@ export function ResponseProblemFeedback({
   );
   const reporter = useMemo<ResponseProblemReporter>(() => ({ report }), [report]);
   return (
-    <ResponseProblemReporterContext.Provider value={reporter}>
+    <ResponseProblemReporterContext.Provider value={reporting ? reporter : null}>
       {children}
       {[...reports].map(([occurrenceKey, problem]) => (
         <UiFeedbackReporter
