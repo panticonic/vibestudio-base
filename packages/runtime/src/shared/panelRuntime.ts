@@ -34,7 +34,7 @@ import {
 import {
   browserSourceFromHostname,
   generateContextId,
-} from "@vibestudio/shared/panelFactory";
+} from "@vibestudio/shared/panelIdentity";
 import { validateStateArgsAsync } from "@vibestudio/shared/asyncStateArgsValidator";
 import {
   panelFailure,
