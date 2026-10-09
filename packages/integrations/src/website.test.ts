@@ -111,6 +111,7 @@ describe("website publishing", () => {
           provider: "cloudflare-pages",
         }),
         extract: { jsonPath: ["result", "jwt"] },
+        credential: expect.objectContaining({ expiry: "jwt" }),
       }),
     );
     expect(calls.map(({ url }) => url)).toEqual(

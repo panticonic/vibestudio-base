@@ -568,7 +568,7 @@ export async function deployToCloudflarePages(input: {
             name: "Authorization",
             valueTemplate: "Bearer {token}",
           },
-          expiresInMs: 15 * 60_000,
+          expiry: "jwt",
           metadata: {
             providerId: "cloudflare-pages-upload",
             project: input.project,
