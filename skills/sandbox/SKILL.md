@@ -87,10 +87,11 @@ Use stable inline IDs when rerendering one workflow. Send user-authored
 follow-up prompts with `chat.send(...)`; publish custom visual state only
 through typed custom-message APIs. Never construct raw transcript rows.
 
-Show rather than tell: answer with response components in MDX or an inline UI
-whenever a visual or interactive answer serves the user better than prose (see
-[visualize](../visualize/SKILL.md)). Use inline UI when the UI needs its own
-state, logic, or runtime calls. Use feedback only when you cannot continue
+Show rather than tell: answer with response components, a one-off component
+defined in the message, or an inline UI whenever a visual or interactive answer
+serves the user better than prose (see [visualize](../visualize/SKILL.md)). Use
+inline UI for durable surfaces that refresh, call workspace services or runtime
+APIs, or that the user returns to. Use feedback only when you cannot continue
 without the returned decision; otherwise offer non-blocking `Choices`.
 
 ## Paths and source

@@ -1,7 +1,16 @@
 // @vitest-environment jsdom
 import { render, waitFor } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { RichMessageContent } from "./RichMessageContent.js";
+import { installPanelModules, warmMessageMdx } from "./panelModules.testing";
+
+// Message MDX compiles through the panel's sandbox module registry.
+beforeAll(warmMessageMdx);
+let restorePanelModules: () => void;
+beforeEach(() => {
+  restorePanelModules = installPanelModules();
+});
+afterEach(() => restorePanelModules());
 
 function target() {
   const publish = vi.fn(async () => undefined);

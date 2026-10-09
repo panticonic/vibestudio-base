@@ -9,7 +9,8 @@ interaction; the user does not need to ask for it.
 Use response components in your message (`Chart`, `Compare`, `PlaceMap`,
 `Timeline`, `Checklist`, `Calculator`, `Stats`, `Choices`, `ActionButton`)
 whenever data, options, places, steps, or what-if math are clearer shown than
-told. End with `Choices` or `ActionButton`s when the next step is one of a few
+told. When none fits, define a one-off component in the message — with its own
+state if it needs it — rather than falling back to prose. End with `Choices` or `ActionButton`s when the next step is one of a few
 directions; the selection returns as a message with a structured
 `interaction`. See [visualize](../visualize/SKILL.md).
 

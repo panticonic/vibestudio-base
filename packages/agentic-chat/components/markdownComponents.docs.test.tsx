@@ -3,22 +3,22 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { render } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
-import * as runtime from "react/jsx-runtime";
-import type { ComponentType } from "react";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   ResponseActionsProvider,
   responseComponents,
 } from "@workspace/ui/response";
 import { VIBESTUDIO_BASE_SYSTEM_PROMPT } from "@workspace/harness/system-prompt";
-import { mdxComponents } from "./markdownComponents";
+import { compileMessageMdx } from "./messageMdx";
+import { installPanelModules } from "./panelModules.testing";
 
 /**
  * Every ```mdx example in the model-facing docs and the base system prompt's
  * component quick reference must render as written:
  * models copy these blocks, so an example that throws or trips a catalog
- * ProblemNotice teaches the wrong thing. Examples are rendered in jsdom with
- * the real MDX registry; map tiles and images are network resources that jsdom
+ * ProblemNotice teaches the wrong thing. Examples compile through the message
+ * pipeline against the panel's module registry, so a documented `import`
+ * resolves (or fails) exactly as it does in the chat panel; map tiles and images are network resources that jsdom
  * does not fetch, but the components render their offline/placeholder frames
  * without them, so no block is skipped.
  */
@@ -64,6 +64,12 @@ describe("the base system prompt's component quick reference", () => {
 });
 
 describe("documented MDX examples", () => {
+  let restoreModules: () => void;
+  beforeEach(() => {
+    restoreModules = installPanelModules();
+  });
+  afterEach(() => restoreModules());
+
   for (const { name, markdown } of SOURCES) {
     const blocks = mdxBlocks(markdown);
 
@@ -73,13 +79,7 @@ describe("documented MDX examples", () => {
 
     blocks.forEach((block, index) => {
       it(`${name} mdx block ${index + 1} renders without problems`, async () => {
-        const { evaluate } = await import("@mdx-js/mdx");
-        const { default: Content } = await evaluate(block, {
-          ...runtime,
-          development: false,
-          useMDXComponents: (() => mdxComponents) as never,
-        });
-        const Mdx = Content as ComponentType;
+        const Mdx = await compileMessageMdx(block);
         const view = render(
           <ResponseActionsProvider send={async () => undefined}>
             <Mdx />

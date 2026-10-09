@@ -281,9 +281,22 @@ export interface CompileModuleResult<
   module?: T;
   cacheKey?: string;
   error?: string;
+  /** Developer-facing stack for the source-loading/compilation boundary. */
+  errorStack?: string;
+  /** Structured boundary category preserved from source/import RPC failures. */
+  errorKind?: string;
+  /** Structured boundary code preserved for retry and recovery policy. */
+  code?: string;
+  /** Structured boundary details preserved without parsing error copy. */
+  errorData?: unknown;
 }
 
 export interface CompileComponentOptions {
+  /**
+   * Source syntax (default: "tsx"). Code already compiled to JavaScript, such
+   * as an MDX document's ES module, passes "javascript".
+   */
+  syntax?: "javascript" | "typescript" | "jsx" | "tsx";
   /** Packages to build and load before compilation. Same semantics as eval imports. */
   imports?: Record<string, string>;
   /** Dynamic import loader — keeps this module free of runtime/RPC deps */
@@ -2013,6 +2026,78 @@ async function renderOperationJournalFooter(
 // =============================================================================
 
 /**
+ * Load the module's imports, transform it, and resolve every require it makes
+ * through the panel's module map (building declared or inferred imports with
+ * `loadImport`). Returns the transformed CommonJS code, which is also the
+ * module's cache key. Shared by every compile entry point so authored UI code
+ * resolves imports identically wherever it comes from.
+ */
+async function prepareModule(
+  code: string,
+  options: CompileComponentOptions,
+): Promise<string> {
+  const syntax = options.syntax ?? "tsx";
+  if (options.imports && Object.keys(options.imports).length > 0) {
+    if (!options.loadImport) {
+      throw new Error("loadImport callback required when imports are specified");
+    }
+    await loadImports(options.imports, options.loadImport);
+  }
+
+  const requireOptions = {
+    loadImport: options.loadImport,
+    loadSourceFile: options.loadSourceFile,
+    sourcePath: options.sourcePath,
+    imports: options.imports,
+  };
+  const prepared = await prepareSourceCode(
+    code,
+    {
+      syntax,
+      sourcePath: options.sourcePath,
+      sourceFiles: options.sourceFiles,
+      loadSourceFile: options.loadSourceFile,
+    },
+    (requires, context) => ensureRequires(requires, requireOptions, context),
+  );
+
+  const transformed = await transformCode(prepared.code, { syntax });
+
+  await ensureRequires(
+    transformed.requires.filter(
+      (specifier) => !prepared.localModuleIds.has(specifier),
+    ),
+    requireOptions,
+  );
+  return transformed.code;
+}
+
+/** Structured failure fields for a compile entry point's result. */
+function compileFailure(err: unknown) {
+  const errorKind =
+    err &&
+    typeof err === "object" &&
+    typeof (err as { errorKind?: unknown }).errorKind === "string"
+      ? (err as { errorKind: string }).errorKind
+      : undefined;
+  const code =
+    err &&
+    typeof err === "object" &&
+    typeof (err as { code?: unknown }).code === "string"
+      ? (err as { code: string }).code
+      : undefined;
+  const errorData = structuredFailureData(err);
+  return {
+    success: false as const,
+    error: err instanceof Error ? err.message : String(err),
+    ...(err instanceof Error && err.stack ? { errorStack: err.stack } : {}),
+    ...(errorKind ? { errorKind } : {}),
+    ...(code ? { code } : {}),
+    ...(errorData === undefined ? {} : { errorData }),
+  };
+}
+
+/**
  * Compile TSX code into a React component.
  *
  * Used for persistent (inline_ui/action bar) and transient (feedback_custom)
@@ -2034,51 +2119,7 @@ export async function compileComponent<
       ? createConsoleCapture({ capacity: options.consoleCapacity })
       : undefined;
   try {
-    if (options.imports && Object.keys(options.imports).length > 0) {
-      if (!options.loadImport) {
-        throw new Error(
-          "loadImport callback required when imports are specified",
-        );
-      }
-      await loadImports(options.imports, options.loadImport);
-    }
-
-    const prepared = await prepareSourceCode(
-      code,
-      {
-        syntax: "tsx",
-        sourcePath: options.sourcePath,
-        sourceFiles: options.sourceFiles,
-        loadSourceFile: options.loadSourceFile,
-      },
-      (requires, context) =>
-        ensureRequires(
-          requires,
-          {
-            loadImport: options.loadImport,
-            loadSourceFile: options.loadSourceFile,
-            sourcePath: options.sourcePath,
-            imports: options.imports,
-          },
-          context,
-        ),
-    );
-
-    const transformed = await transformCode(prepared.code, { syntax: "tsx" });
-
-    await ensureRequires(
-      transformed.requires.filter(
-        (specifier) => !prepared.localModuleIds.has(specifier),
-      ),
-      {
-        loadImport: options.loadImport,
-        loadSourceFile: options.loadSourceFile,
-        sourcePath: options.sourcePath,
-        imports: options.imports,
-      },
-    );
-
-    const cacheKey = transformed.code;
+    const cacheKey = await prepareModule(code, options);
     const Component = executeDefault<T>(
       cacheKey,
       consoleCapture ? { console: consoleCapture.proxy } : {},
@@ -2090,26 +2131,8 @@ export async function compileComponent<
       ...(consoleCapture ? { runtime: { console: consoleCapture } } : {}),
     };
   } catch (err) {
-    const errorKind =
-      err &&
-      typeof err === "object" &&
-      typeof (err as { errorKind?: unknown }).errorKind === "string"
-        ? (err as { errorKind: string }).errorKind
-        : undefined;
-    const code =
-      err &&
-      typeof err === "object" &&
-      typeof (err as { code?: unknown }).code === "string"
-        ? (err as { code: string }).code
-        : undefined;
-    const errorData = structuredFailureData(err);
     return {
-      success: false,
-      error: err instanceof Error ? err.message : String(err),
-      ...(err instanceof Error && err.stack ? { errorStack: err.stack } : {}),
-      ...(errorKind ? { errorKind } : {}),
-      ...(code ? { code } : {}),
-      ...(errorData === undefined ? {} : { errorData }),
+      ...compileFailure(err),
       ...(consoleCapture ? { runtime: { console: consoleCapture } } : {}),
     };
   }
@@ -2129,57 +2152,10 @@ export async function compileModule<
   options: CompileComponentOptions = {},
 ): Promise<CompileModuleResult<T>> {
   try {
-    if (options.imports && Object.keys(options.imports).length > 0) {
-      if (!options.loadImport) {
-        throw new Error(
-          "loadImport callback required when imports are specified",
-        );
-      }
-      await loadImports(options.imports, options.loadImport);
-    }
-
-    const prepared = await prepareSourceCode(
-      code,
-      {
-        syntax: "tsx",
-        sourcePath: options.sourcePath,
-        sourceFiles: options.sourceFiles,
-        loadSourceFile: options.loadSourceFile,
-      },
-      (requires, context) =>
-        ensureRequires(
-          requires,
-          {
-            loadImport: options.loadImport,
-            loadSourceFile: options.loadSourceFile,
-            sourcePath: options.sourcePath,
-            imports: options.imports,
-          },
-          context,
-        ),
-    );
-
-    const transformed = await transformCode(prepared.code, { syntax: "tsx" });
-
-    await ensureRequires(
-      transformed.requires.filter(
-        (specifier) => !prepared.localModuleIds.has(specifier),
-      ),
-      {
-        loadImport: options.loadImport,
-        loadSourceFile: options.loadSourceFile,
-        sourcePath: options.sourcePath,
-        imports: options.imports,
-      },
-    );
-
-    const cacheKey = transformed.code;
+    const cacheKey = await prepareModule(code, options);
     const result = execute(cacheKey);
     return { success: true, module: result.exports as T, cacheKey };
   } catch (err) {
-    return {
-      success: false,
-      error: err instanceof Error ? err.message : String(err),
-    };
+    return compileFailure(err);
   }
 }

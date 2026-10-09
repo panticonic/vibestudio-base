@@ -916,7 +916,7 @@ export function useAgenticChat({
                   inline_ui: {
                     description: `Render an interactive UI component inline in the chat transcript. Non-blocking: it returns immediately and the user interacts whenever they choose.
 
-**When to use:** whenever a visual or interactive answer serves the user better than prose — the user does not need to ask for UI. Reach for it for plans and itineraries, comparisons, data the user will explore, calculators and what-if tools, checklists and multi-step setup, dashboards, and anything the user may come back to. For presentation that needs no state or code, write MDX components directly in your message instead (the same response components are available there).
+**When to use:** whenever a visual or interactive answer serves the user better than prose — the user does not need to ask for UI. Reach for it for plans and itineraries, comparisons, data the user will explore, calculators and what-if tools, checklists and multi-step setup, dashboards, and anything the user may come back to. For presentation and local interaction — response components, or a one-off component with its own state defined in the message — write MDX in your message instead. Use inline_ui for a durable surface: refreshed under a stable id, calling workspace services or runtime APIs, or something the user returns to.
 
 **Contrast with other tools:**
 - \`eval\`: agent-triggered side effects; runs immediately and returns a result.
@@ -1430,7 +1430,9 @@ Result: \`{ ok: true, id }\` means the file compiled and the bar was loaded. A c
       forkState: forkNav ? forkState : undefined,
       // Lets subagent cards open an observer connection on a child's task
       // channel; reuses this panel's own transport config.
-      childTranscript
+      childTranscript,
+      // MDX messages resolve their imports through the same loader as inline UI.
+      importLoader
     }),
     [
       core.connected,
@@ -1509,7 +1511,8 @@ Result: \`{ ok: true, id }\` means the file compiled and the bar was loaded. A c
       chatTools.toolApprovalValue,
       forkNav,
       forkState,
-      childTranscript
+      childTranscript,
+      importLoader
     ]
   );
   return { contextValue, inputContextValue, features };

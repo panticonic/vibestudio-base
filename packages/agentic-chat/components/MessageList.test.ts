@@ -2,7 +2,7 @@
 
 import React from "react";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { beforeAll, describe, it, expect, vi } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, it, expect, vi } from "vitest";
 import type { InlineItem } from "./InlineGroup.js";
 
 beforeAll(async () => {
@@ -64,6 +64,15 @@ import {
   SubagentRunCard,
 } from "./SubagentRunCard.js";
 import { SubagentTranscriptContent } from "./SubagentTranscript.js";
+import { installPanelModules, warmMessageMdx } from "./panelModules.testing.js";
+
+// Message MDX compiles through the panel's sandbox module registry.
+beforeAll(warmMessageMdx);
+let restorePanelModules: () => void;
+beforeEach(() => {
+  restorePanelModules = installPanelModules();
+});
+afterEach(() => restorePanelModules());
 
 function makeMessage(overrides: Record<string, unknown>) {
   return {

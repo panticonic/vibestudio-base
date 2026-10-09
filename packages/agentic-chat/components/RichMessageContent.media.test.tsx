@@ -1,8 +1,17 @@
 // @vitest-environment jsdom
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { expect, it, vi } from "vitest";
+import { afterEach, beforeAll, beforeEach, expect, it, vi } from "vitest";
 import { ResponseActionsProvider } from "@workspace/ui/response";
 import { RichMessageContent } from "./RichMessageContent.js";
+import { installPanelModules, warmMessageMdx } from "./panelModules.testing";
+
+// Message MDX compiles through the panel's sandbox module registry.
+beforeAll(warmMessageMdx);
+let restorePanelModules: () => void;
+beforeEach(() => {
+  restorePanelModules = installPanelModules();
+});
+afterEach(() => restorePanelModules());
 
 it("preserves a loaded media player while the actions provider changes, and sends through the latest one", async () => {
   const content =

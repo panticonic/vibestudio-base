@@ -120,7 +120,7 @@ describe("composeSystemPrompt", () => {
       "treat visual and interactive answers as first-class: the user does not need to ask for them",
     );
     expect(VIBESTUDIO_BASE_SYSTEM_PROMPT).toContain(
-      "Use plain text for single facts, one-step answers, simple edits",
+      "Use plain text for single facts, one-step answers, a fixed calculation with one result",
     );
     expect(VIBESTUDIO_BASE_SYSTEM_PROMPT).not.toContain("Keep MDX small");
     expect(VIBESTUDIO_BASE_SYSTEM_PROMPT).not.toContain("fall back to clear Markdown");

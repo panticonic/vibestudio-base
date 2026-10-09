@@ -11,6 +11,7 @@ export type ChatMessageActionsValue = Pick<
   | "onPersistAgentModel"
   | "childTranscript"
   | "onOpenChannel"
+  | "importLoader"
 >;
 
 export type ChatComposerRuntimeValue = Pick<

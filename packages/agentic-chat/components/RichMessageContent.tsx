@@ -2,12 +2,19 @@ import React, { type ComponentType, type ReactNode, useEffect, useState } from "
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { Text } from "@radix-ui/themes";
-import * as runtime from "react/jsx-runtime";
+import { useOptionalChatMessageActions } from "../context/ChatContext";
 import {
   markdownComponents,
   mdxComponents,
   streamingMarkdownComponents,
 } from "./markdownComponents";
+import {
+  BLOCK_CODE_RE,
+  compileMessageMdx,
+  getRehypeHighlight,
+  loadedRehypeHighlight,
+  type RehypeHighlightPlugin,
+} from "./messageMdx";
 import {
   ResponseProblemFeedback,
   UiFeedbackReporter,
@@ -76,20 +83,6 @@ function MdxFailureReporter({
   );
 }
 
-let mdxModule: typeof import("@mdx-js/mdx") | null = null;
-async function getMdx() {
-  if (!mdxModule) {
-    try {
-      mdxModule = await import("@mdx-js/mdx");
-    } catch (error) {
-      throw new Error(
-        `Failed to load MDX: ${error instanceof Error ? error.message : String(error)}`
-      );
-    }
-  }
-  return mdxModule;
-}
-
 const remarkPlugins = [remarkGfm];
 
 class MdxRenderErrorBoundary extends React.Component<
@@ -123,42 +116,6 @@ function PlainTextMessageContent({ content }: { content: string }) {
   );
 }
 
-type RehypeHighlightPlugin = typeof import("rehype-highlight").default;
-let rehypeHighlightPlugin: RehypeHighlightPlugin | null = null;
-let rehypeHighlightPromise: Promise<RehypeHighlightPlugin> | null = null;
-
-function getRehypeHighlight(): Promise<RehypeHighlightPlugin> {
-  if (rehypeHighlightPlugin) return Promise.resolve(rehypeHighlightPlugin);
-  if (!rehypeHighlightPromise) {
-    rehypeHighlightPromise = import("rehype-highlight").then((module) => {
-      rehypeHighlightPlugin = module.default;
-      return rehypeHighlightPlugin;
-    });
-  }
-  return rehypeHighlightPromise;
-}
-
-async function compileMdx(
-  content: string,
-  rehypeHighlight: RehypeHighlightPlugin | null
-): Promise<ComponentType | null> {
-  const rehypePlugins = rehypeHighlight
-    ? ([[rehypeHighlight, { ignoreMissing: true }]] as [
-        RehypeHighlightPlugin,
-        { ignoreMissing: boolean },
-      ][])
-    : [];
-  const { evaluate } = await getMdx();
-  const { default: Component } = await evaluate(content, {
-    ...runtime,
-    development: false,
-    useMDXComponents: (() => mdxComponents) as never,
-    remarkPlugins,
-    rehypePlugins,
-  });
-  return Component as ComponentType;
-}
-
 // Compile MDX when a capitalized tag names a registered component (so an
 // unclosed `<Callout>` still compiles, fails, and is reported) or is shaped
 // like an element: self-closing (`<Slider ... />`) or closed (`</Slider>`), so
@@ -171,6 +128,28 @@ const REGISTERED_COMPONENTS = new Set(
   Object.keys(mdxComponents).filter((name) => /^[A-Z]/.test(name)),
 );
 
+// A message that defines its own components (`import { useState } from
+// "react"`, `export function Stepper() {…}`) is an MDX module. Only statements
+// outside fenced code count: an `import` line inside a ```ts snippet is prose.
+const FENCE_RE = /^ {0,3}(`{3,}|~{3,})/;
+const ESM_STATEMENT_RE =
+  /^(?:import\s*(?:["']|[\w$*{][^\n]*?\bfrom\s*["'])|export\s+(?:default\b|const\b|let\b|var\b|function\b|async\s+function\b|class\b|\{|\*))/;
+
+function containsEsmStatement(content: string): boolean {
+  let fence: string | null = null;
+  for (const line of content.split("\n")) {
+    const opener = FENCE_RE.exec(line)?.[1];
+    if (fence) {
+      if (opener && opener[0] === fence[0] && opener.length >= fence.length) fence = null;
+    } else if (opener) {
+      fence = opener;
+    } else if (ESM_STATEMENT_RE.test(line)) {
+      return true;
+    }
+  }
+  return false;
+}
+
 function containsJsxElement(content: string): boolean {
   for (const match of content.matchAll(JSX_OPENING_RE)) {
     const name = match[1]!;
@@ -178,10 +157,8 @@ function containsJsxElement(content: string): boolean {
     const rest = content.slice(match.index + match[0].length);
     if (rest.includes("/>") || rest.includes(`</${name}`)) return true;
   }
-  return false;
+  return containsEsmStatement(content);
 }
-
-const BLOCK_CODE_RE = /(?:^|\n)[ \t]*(?:```|~~~)|(?:^|\n)(?: {4}|\t)\S/m;
 
 export const RichMessageContent = React.memo(function RichMessageContent({
   content,
@@ -194,13 +171,15 @@ export const RichMessageContent = React.memo(function RichMessageContent({
     error: unknown;
   } | null>(null);
   const [highlightLoaded, setHighlightLoaded] = useState<RehypeHighlightPlugin | null>(
-    rehypeHighlightPlugin
+    loadedRehypeHighlight
   );
+  // The panel's import loader: message imports resolve exactly as inline UI's.
+  const loadImport = useOptionalChatMessageActions()?.importLoader;
   const hasJsx = containsJsxElement(content);
   const needsHighlight = !isStreaming && BLOCK_CODE_RE.test(content);
 
   useEffect(() => {
-    if (!needsHighlight || rehypeHighlightPlugin) return;
+    if (!needsHighlight || loadedRehypeHighlight()) return;
     void getRehypeHighlight().then(setHighlightLoaded);
   }, [needsHighlight]);
 
@@ -210,10 +189,9 @@ export const RichMessageContent = React.memo(function RichMessageContent({
       setCompileFailure(null);
       return;
     }
-    if (needsHighlight && !highlightLoaded) return;
 
     let cancelled = false;
-    compileMdx(content, highlightLoaded)
+    compileMessageMdx(content, { loadImport })
       .then((Component) => {
         if (!cancelled) {
           setCompileFailure(null);
@@ -231,7 +209,7 @@ export const RichMessageContent = React.memo(function RichMessageContent({
     return () => {
       cancelled = true;
     };
-  }, [content, hasJsx, highlightLoaded, isStreaming, needsHighlight]);
+  }, [content, hasJsx, isStreaming, loadImport]);
 
   if (MdxComponent) {
     return (

@@ -40,7 +40,7 @@ import type {
 import type { ActiveFeedback, ToolApprovalProps } from "@workspace/tool-ui";
 import type { PendingImage } from "./utils/imageUtils";
 import type { ComponentType, RefObject } from "react";
-import type { ScopeManager, ScopesApi } from "@workspace/eval";
+import type { SandboxImportLoader, ScopeManager, ScopesApi } from "@workspace/eval";
 import type { MessageTier } from "@workspace/agentic-protocol";
 import type { DefaultAgentConfig } from "@workspace/model-catalog/catalog";
 import type { AgentConfigDraft } from "./components/AgentConfigForm";
@@ -546,6 +546,14 @@ export interface ChatContextValue {
    * fall back to the relayed progress feed.
    */
   childTranscript?: ChildTranscriptConnection;
+
+  /**
+   * The panel's import loader for agent-authored UI code. Inline UI, action
+   * bars, feedback components, and MDX messages all resolve their imports
+   * through it. Absent where the host wires no build-backed loader; host
+   * modules in the panel's module map still resolve.
+   */
+  importLoader?: SandboxImportLoader;
 }
 
 /** Which await a loading message type is currently parked on. */

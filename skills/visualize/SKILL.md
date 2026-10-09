@@ -1,6 +1,6 @@
 ---
 name: visualize
-description: Proactively answer with visuals and interactive tools in chat — charts, maps, timelines, comparisons, calculators, checklists, and follow-up choices. Use to show how something works, explore what-if, compare or decide, plan, or present data; the user does not need to ask.
+description: Proactively answer with visuals and interactive tools in chat — charts, maps, timelines, comparisons, calculators, checklists, follow-up choices, and small custom widgets built on the spot. Use to show how something works, explore what-if, compare or decide, plan, or present data; the user does not need to ask.
 ---
 
 # Visual and interactive answers
@@ -19,18 +19,21 @@ Prefer visuals and interaction for:
 - procedures, packing lists, and setup steps;
 - narrowing questions and next steps the user picks from.
 
-Skip visuals for single facts, one-step answers, simple edits, and anything a
-short paragraph already makes clear. Compact notation and small code examples
+Skip visuals for single facts, one-step answers, a fixed calculation with one
+result, simple edits, and anything a short paragraph already makes clear. Compact notation and small code examples
 are not visualizations.
 
-## Two surfaces, one vocabulary
+## Three tiers, one vocabulary
 
-The same response components work in both places:
-
-| Surface | Write | Use when |
+| Tier | Write | Use when |
 | --- | --- | --- |
-| MDX in your message | `<Chart ... />` tags with JS-expression props | Presentation plus simple follow-ups. Default choice. |
-| `inline_ui` tool | TSX importing from `@workspace/react` | The UI needs its own state, logic, live data, or workspace calls, or the user will return to it. |
+| Response components in your message | `<Chart ... />` tags with JS-expression props | One fits. The default. |
+| A one-off component in your message | `import { useState } from "react"`, `export function Widget() {...}`, then `<Widget />` | Nothing in the catalog fits and the widget belongs to this answer: a stepper through a process, a mixer, a small simulation, a diagram that reacts to input. |
+| `inline_ui` tool | TSX importing from `@workspace/react` | A durable surface: refreshed under a stable id, calling workspace services or runtime APIs, or something the user returns to. |
+
+Build the one-off when it makes the idea click — don't settle for prose or a
+near-miss catalog component. See [MDX.md](../sandbox/MDX.md#one-off-components)
+for imports and an example.
 
 [COMPONENTS.md](COMPONENTS.md) documents every component and prop. Radix
 layout and text components (`Flex`, `Grid`, `Box`, `Card`, `Tabs`, `Table`,
@@ -47,7 +50,8 @@ and flow; see [MDX.md](../sandbox/MDX.md) for media.
 | see a trend or breakdown | `Chart` (+ `Stats` for headline figures) |
 | explore how a result changes as inputs vary | `Calculator` |
 | follow a procedure or prepare | `Checklist` |
-| understand a mechanism or system | a mermaid diagram, `Timeline` for phases, or a `Calculator` that exposes the cause-and-effect |
+| understand a mechanism or system | a mermaid diagram, `Timeline` for phases, or a one-off component the user can step through or play with |
+| play with something that isn't a formula — colors, motion, layouts, sequences | a one-off component |
 | decide where to go next | `Choices` or a few `ActionButton`s |
 
 Lead with one framing sentence, show the components, and keep commentary to
@@ -80,7 +84,8 @@ re-render; do not abandon the visual.
 - Close every tag; self-close components without children (`<Stats ... />`).
 - Quote string props; put numbers, arrays, objects, and functions in braces:
   `data={[{ month: "Jan", sales: 12 }]}`, `compute={(v) => [...]}`.
-- Use only documented components and props.
+- Use only documented components and props, or components you define in the
+  message.
 - Use real data. Mark estimates as estimates, and never present opening times,
   prices, or schedules as verified without a source.
 - Keep each component focused. Several small components read better than one

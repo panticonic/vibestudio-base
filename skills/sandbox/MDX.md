@@ -2,10 +2,68 @@
 
 Use MDX in assistant messages whenever a visual or interactive answer is
 clearer than plain Markdown: charts, comparisons, maps, timelines, checklists,
-calculators, and follow-up choices. MDX props accept JavaScript expressions, so
-response components can take data arrays and compute functions. Use
-`inline_ui`, `load_action_bar`, or `feedback_custom` when the UI needs its own
-state across turns, runtime calls, or workflow logic.
+calculators, follow-up choices, and small custom widgets. MDX props accept
+JavaScript expressions, and a message can import React and the UI packages and
+define its own components, including stateful ones. Use `inline_ui`,
+`load_action_bar`, or `feedback_custom` when the UI must persist and refresh
+under a stable id, call workspace services, or run a workflow.
+
+## Three tiers
+
+1. **Response components** (`Chart`, `Compare`, `Calculator`, ...): the
+   default whenever one fits.
+2. **A one-off component defined in the message**: when no catalog component
+   fits and the widget belongs to this answer — a stepper through a process, a
+   color mixer, a small simulation, a custom diagram that reacts to input.
+3. **`inline_ui`**: a durable surface — refreshed under a stable id, calling
+   workspace services or runtime APIs, or something the user returns to.
+
+## One-off components
+
+Import what you need, export a component, and use it. Imports resolve exactly
+as in `inline_ui`: `react`, `@radix-ui/themes`, `@radix-ui/react-icons`,
+`@workspace/react` (response components, `Image`, `Video`), and `@workspace/ui`
+load instantly; other packages go through the build service and are slow.
+Response and Radix tags also work without importing them.
+
+- Put `import` and `export` statements at the top level of the message, each
+  starting its own block (a blank line before and after).
+- Write plain JavaScript and JSX: no TypeScript type annotations, and no
+  relative imports.
+
+```mdx
+Drag the slider to step through the cycle.
+
+import { useState } from "react";
+import { Flex, Slider, Text } from "@radix-ui/themes";
+
+export function StrokeStepper() {
+  const strokes = [
+    ["Intake", "Piston moves down; the intake valve lets the air–fuel mix in."],
+    ["Compression", "Both valves close; the piston squeezes the mixture."],
+    ["Power", "The spark ignites it; expanding gas drives the piston down."],
+    ["Exhaust", "The exhaust valve opens; the piston pushes burned gas out."],
+  ];
+  const [i, setI] = useState(0);
+  return (
+    <Flex direction="column" gap="2" style={{ width: "100%", minWidth: 0 }}>
+      <Slider min={0} max={3} step={1} value={[i]} onValueChange={([v]) => setI(v)} />
+      <Text weight="bold">{i + 1}. {strokes[i][0]}</Text>
+      <Text as="p" size="2">{strokes[i][1]}</Text>
+    </Flex>
+  );
+}
+
+<StrokeStepper />
+```
+
+- Keep component state local; it resets when the message is reloaded. Durable
+  answers come back through `Choices` or `ActionButton`.
+- Keep it presentational and interactive: no workspace service calls, file
+  writes, or network side effects. Those belong in `inline_ui`.
+- Stay usable at a 320px width: `width: "100%"`, `minWidth: 0`, wrapping rows.
+- Inline `<svg>` driven by state works well for small simulations and custom
+  diagrams.
 
 ## Available Components
 
@@ -38,11 +96,11 @@ next-step prompts where the agent can continue from a normal chat message.
 </Flex>
 ```
 
-Do not put arbitrary `onClick` handlers in MDX messages. If the action needs
-runtime code, provider setup, browser opens, OAuth, persistence, or error
-handling, render `inline_ui` or `feedback_custom` instead.
-If the controls or status should stay pinned above the current chat history,
-use `load_action_bar` with a TSX file.
+Event handlers in a message's own components are fine for local interaction.
+If the action needs workspace services, provider setup, browser opens, OAuth,
+persistence, or error handling, render `inline_ui` or `feedback_custom`
+instead. If the controls or status should stay pinned above the current chat
+history, use `load_action_bar` with a TSX file.
 
 ## Callouts
 
@@ -79,6 +137,7 @@ Good MDX uses:
 - Checklists and step-by-step tasks
 - Follow-up `Choices` and next-step `ActionButton`s
 - Summaries with badges, callouts, tabs, and tables
+- One-off interactive widgets: steppers, simulations, mixers, explorers
 
 If the message's MDX fails to compile or render, it falls back to plain text
 and a ui-feedback note starts a repair turn when you are idle, or follows your
@@ -91,7 +150,7 @@ Use `inline_ui`, `load_action_bar`, or `feedback_custom` instead for:
 - Browser/profile import choices
 - OAuth provider setup
 - Dashboards, tables with row actions, or components the user may return to
-- Anything that needs component state or runtime API calls
+- Anything that calls workspace services or runtime APIs
 
 Prefer `load_action_bar` specifically for compact controls or status that
 should stay visible at the top of the current chat panel while the conversation

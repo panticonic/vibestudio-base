@@ -49,6 +49,7 @@ export function ChatProvider({ value, inputValue, children }: ChatProviderProps)
       onPersistAgentModel: value.onPersistAgentModel,
       childTranscript: value.childTranscript,
       onOpenChannel: value.onOpenChannel,
+      importLoader: value.importLoader,
     }),
     [
       value.editPendingMessage,
@@ -57,6 +58,7 @@ export function ChatProvider({ value, inputValue, children }: ChatProviderProps)
       value.onPersistAgentModel,
       value.childTranscript,
       value.onOpenChannel,
+      value.importLoader,
     ]
   );
   const composerRuntime = useMemo<ChatComposerRuntimeValue>(

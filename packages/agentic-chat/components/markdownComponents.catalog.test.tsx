@@ -1,13 +1,19 @@
 // @vitest-environment jsdom
 
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
-import * as runtime from "react/jsx-runtime";
-import type { ComponentType } from "react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import * as catalog from "@workspace/ui/response";
 import { mdxComponents } from "./markdownComponents";
+import { compileMessageMdx } from "./messageMdx";
+import { installPanelModules } from "./panelModules.testing";
 
 describe("MDX registry and the response catalog", () => {
+  let restoreModules: () => void;
+  beforeEach(() => {
+    restoreModules = installPanelModules();
+  });
+  afterEach(() => restoreModules());
+
   it("registers every catalog component under its export name", () => {
     const componentExports = Object.entries(catalog).filter(
       ([name, value]) => /^[A-Z]/.test(name) && typeof value === "function" && name !== "ResponseActionsProvider",
@@ -26,7 +32,6 @@ describe("MDX registry and the response catalog", () => {
   });
 
   it("renders catalog tags from MDX, including function-valued props, and sends through the provider", async () => {
-    const { evaluate } = await import("@mdx-js/mdx");
     const source = [
       '<Stats items={[{ label: "Users", value: 1200, delta: "+5%" }]} />',
       "",
@@ -34,13 +39,8 @@ describe("MDX registry and the response catalog", () => {
       "",
       '<Choices id="next" question="Next?" options={["Deploy", "Wait"]} />',
     ].join("\n");
-    const { default: Content } = await evaluate(source, {
-      ...runtime,
-      development: false,
-      useMDXComponents: (() => mdxComponents) as never,
-    });
+    const Mdx = await compileMessageMdx(source);
     const send = vi.fn().mockResolvedValue(undefined);
-    const Mdx = Content as ComponentType;
     render(
       <catalog.ResponseActionsProvider send={send}>
         <Mdx />

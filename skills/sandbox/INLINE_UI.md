@@ -6,8 +6,9 @@ self-contained workflows whose controls can call trusted helpers directly.
 ## When To Use It
 
 Use a UI instead of plain text whenever it serves the user better; they do not
-need to ask. Inline UI is the right surface when the UI needs its own state,
-logic, live data, or runtime calls, or is something the user will return to:
+need to ask. Inline UI is the right surface for a durable surface: one that
+refreshes under a stable id, loads live data, calls workspace services or
+runtime APIs, or is something the user will return to:
 
 - Tools the user operates: calculators backed by workspace data, explorers,
   filters, and editors.
@@ -17,10 +18,10 @@ logic, live data, or runtime calls, or is something the user will return to:
 - Progress, status, or retry states.
 - Tables with row actions and choices that trigger operations.
 
-For presentation that needs no state or code — charts, comparisons, maps,
-timelines, simple calculators, and follow-up choices — write the same response
-components as MDX in your message instead. See
-[visualize](../visualize/SKILL.md).
+For presentation and local interaction — charts, comparisons, maps,
+timelines, calculators, follow-up choices, and one-off widgets with their own
+state — write MDX in your message instead, defining a component there when the
+catalog has none. See [visualize](../visualize/SKILL.md).
 
 Build with the response components from `@workspace/react` (`Chart`, `Stats`,
 `Compare`, `Timeline`, `Checklist`, `PlaceMap`, `Choices`, `Calculator`,

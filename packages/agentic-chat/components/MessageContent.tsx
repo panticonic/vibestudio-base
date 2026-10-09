@@ -92,6 +92,7 @@ export const MessageContent = React.memo(
 }: MessageContentProps) {
   const needsRichRenderer =
     /<[A-Z]/.test(content) ||
+    /^(?:import|export)\s/m.test(content) ||
     MARKDOWN_SYNTAX_RE.test(content) ||
     (!isStreaming && GFM_AUTOLINK_LITERAL_RE.test(content));
   if (!needsRichRenderer) {
