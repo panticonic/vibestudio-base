@@ -1,7 +1,6 @@
 import { randomBytes } from "node:crypto";
-import { mkdir, rm, stat, unlink, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, stat, unlink, writeFile } from "node:fs/promises";
 import { createServer, type Server, type Socket } from "node:net";
-import { tmpdir } from "node:os";
 import path from "node:path";
 import type { SessionInfo } from "./types.js";
 
@@ -23,17 +22,21 @@ export interface SnugServerOptions {
   platform?: NodeJS.Platform;
 }
 
+interface OwnedListener {
+  server: Server;
+  socketPath: string;
+  connections: Set<Socket>;
+}
+
 export class SnugServer {
   private dir?: string;
   private binDir?: string;
   private readonly platform: NodeJS.Platform;
-  private readonly pending = new Map<string, { server: Server; socketPath: string }>();
-  private readonly sessions = new Map<
-    string,
-    { token: string; server: Server; socketPath: string }
-  >();
+  private readonly pending = new Map<string, OwnedListener>();
+  private readonly sessions = new Map<string, OwnedListener & { token: string }>();
   private readonly tokens = new Map<string, string>();
   private readonly notificationBuckets = new Map<string, { startedAt: number; count: number }>();
+  private readonly retirements = new Set<Promise<void>>();
 
   constructor(
     private readonly ops: SnugSessionOps,
@@ -45,20 +48,70 @@ export class SnugServer {
   async start(): Promise<void> {
     if (this.platform === "win32") return;
     if (this.dir) return;
-    this.dir = path.join(tmpdir(), `snug-${randomBytes(16).toString("hex")}`);
+    // Unix-domain socket paths have a small kernel limit. The ordinary temp
+    // root may be a long caller-owned workspace path, so keep this private
+    // IPC directory under the platform's short system temp root instead.
+    this.dir = await mkdtemp(path.join("/var/tmp", "snug-"));
     this.binDir = path.join(this.dir, "bin");
-    await mkdir(this.binDir, { recursive: true, mode: 0o700 });
-    await assertPrivateDir(this.dir, this.platform);
-    await this.writeCli();
+    try {
+      await mkdir(this.binDir, { recursive: true, mode: 0o700 });
+      await assertPrivateDir(this.dir, this.platform);
+      await this.writeCli();
+    } catch (error) {
+      let cleanupError: unknown;
+      try {
+        await rm(this.dir, { recursive: true, force: true });
+      } catch (failure) {
+        cleanupError = failure;
+      }
+      if (cleanupError !== undefined)
+        throw new AggregateError(
+          [error, cleanupError],
+          "Snug startup failed and its private directory could not be retired",
+          { cause: error },
+        );
+      this.dir = undefined;
+      this.binDir = undefined;
+      throw error;
+    }
   }
 
-  envForSession(env: NodeJS.ProcessEnv): { env: NodeJS.ProcessEnv; token: string } {
+  async envForSession(
+    env: NodeJS.ProcessEnv,
+  ): Promise<{ env: NodeJS.ProcessEnv; token: string }> {
     if (!this.dir || !this.binDir) return { env, token: "" };
     const token = randomBytes(24).toString("hex");
     const socketPath = path.join(this.dir, `${randomBytes(16).toString("hex")}.sock`);
-    const server = createServer((socket) => this.handleSocket(socket, token));
-    server.listen(socketPath);
-    this.pending.set(token, { server, socketPath });
+    const connections = new Set<Socket>();
+    const server = createServer((socket) => {
+      connections.add(socket);
+      socket.once("close", () => connections.delete(socket));
+      this.handleSocket(socket, token);
+    });
+    try {
+      await new Promise<void>((resolve, reject) => {
+        server.once("error", reject);
+        server.listen(socketPath, () => {
+          server.removeListener("error", reject);
+          resolve();
+        });
+      });
+    } catch (error) {
+      const cleanupErrors: unknown[] = [];
+      try {
+        await closeAndUnlink(server, socketPath, connections);
+      } catch (cleanupError) {
+        cleanupErrors.push(cleanupError);
+      }
+      if (cleanupErrors.length > 0)
+        throw new AggregateError(
+          [error, ...cleanupErrors],
+          "Snug listener failed to start and its resources could not be retired",
+          { cause: error },
+        );
+      throw error;
+    }
+    this.pending.set(token, { server, socketPath, connections });
     return {
       token,
       env: {
@@ -78,33 +131,54 @@ export class SnugServer {
     this.sessions.set(sessionId, { token, ...pending });
   }
 
-  discardPending(token: string): void {
+  async discardPending(token: string): Promise<void> {
     const pending = this.pending.get(token);
     if (!pending) return;
     this.pending.delete(token);
-    closeAndUnlink(pending.server, pending.socketPath);
+    await this.retire(pending);
   }
 
-  unregister(sessionId: string): void {
+  async unregister(sessionId: string): Promise<void> {
     const session = this.sessions.get(sessionId);
     if (!session) return;
     this.sessions.delete(sessionId);
     this.tokens.delete(session.token);
     this.notificationBuckets.delete(sessionId);
-    closeAndUnlink(session.server, session.socketPath);
+    await this.retire(session);
   }
 
   async dispose(): Promise<void> {
     for (const session of this.sessions.values())
-      closeAndUnlink(session.server, session.socketPath);
-    for (const pending of this.pending.values()) closeAndUnlink(pending.server, pending.socketPath);
+      this.retire(session);
+    for (const pending of this.pending.values())
+      this.retire(pending);
     this.sessions.clear();
     this.pending.clear();
     this.tokens.clear();
     this.notificationBuckets.clear();
-    if (this.dir) await rm(this.dir, { recursive: true, force: true }).catch(() => {});
+    const retired = await Promise.allSettled([...this.retirements]);
+    const failures = retired.flatMap((result) =>
+      result.status === "rejected" ? [result.reason] : [],
+    );
+    if (failures.length > 0)
+      throw new AggregateError(failures, "Could not retire every snug socket");
+    if (this.dir) await rm(this.dir, { recursive: true, force: true });
     this.dir = undefined;
     this.binDir = undefined;
+  }
+
+  private retire(listener: OwnedListener): Promise<void> {
+    const retirement = closeAndUnlink(
+      listener.server,
+      listener.socketPath,
+      listener.connections,
+    );
+    this.retirements.add(retirement);
+    void retirement.then(
+      () => this.retirements.delete(retirement),
+      () => this.retirements.delete(retirement),
+    );
+    return retirement;
   }
 
   private async writeCli(): Promise<void> {
@@ -424,8 +498,17 @@ function isReservedMetaKey(key: string): boolean {
   return key === "snugOpenUrl" || key === "snugSpawn";
 }
 
-function closeAndUnlink(server: Server, socketPath: string): void {
-  server.close(() => {
-    void unlink(socketPath).catch(() => {});
+async function closeAndUnlink(
+  server: Server,
+  socketPath: string,
+  connections: ReadonlySet<Socket>,
+): Promise<void> {
+  const closing = new Promise<void>((resolve, reject) => {
+    server.close((error) => (error ? reject(error) : resolve()));
+  });
+  for (const socket of connections) socket.destroy();
+  await closing;
+  await unlink(socketPath).catch((error: NodeJS.ErrnoException) => {
+    if (error.code !== "ENOENT") throw error;
   });
 }

@@ -6,28 +6,35 @@ import { SnugServer } from "./snugServer.js";
 
 describe("SnugServer", () => {
   it.skipIf(process.platform === "win32")("creates the socket directory with private permissions", async () => {
-    const server = new SnugServer(makeOps());
+    const server = new SnugServer(makeOps({ ownerOf: () => "owner" }));
     await server.start();
-    const { env, token } = server.envForSession({});
+    const { env, token } = await server.envForSession({});
     const socketPath = env["SNUG_SOCK"];
     if (!socketPath) throw new Error("missing SNUG_SOCK");
+    expect(socketPath.length).toBeLessThan(108);
     await waitForStat(socketPath);
+    server.register(token, "session");
+
+    await expect(sendSnug(socketPath, ["notify", "ready"])).resolves.toMatchObject({
+      ok: true,
+    });
 
     expect((await stat(dirname(socketPath))).mode & 0o777).toBe(0o700);
 
-    server.discardPending(token);
+    await server.unregister("session");
+    await waitForMissing(socketPath);
     await server.dispose();
   });
 
   it("discards pending session sockets that never register", async () => {
     const server = new SnugServer(makeOps());
     await server.start();
-    const { env, token } = server.envForSession({});
+    const { env, token } = await server.envForSession({});
     const socketPath = env["SNUG_SOCK"];
     if (!socketPath) throw new Error("missing SNUG_SOCK");
     await waitForStat(socketPath);
 
-    server.discardPending(token);
+    await server.discardPending(token);
 
     await waitForMissing(socketPath);
     await server.dispose();
@@ -38,9 +45,9 @@ describe("SnugServer", () => {
     const server = new SnugServer(makeOps(), { platform: "win32" });
 
     await server.start();
-    const result = server.envForSession(env);
+    const result = await server.envForSession(env);
     server.register(result.token, "session");
-    server.discardPending(result.token);
+    await server.discardPending(result.token);
 
     expect(result).toEqual({ env, token: "" });
     await server.dispose();
@@ -65,7 +72,7 @@ describe("SnugServer", () => {
       openUrl: async () => {},
     });
     await server.start();
-    const { env, token } = server.envForSession({});
+    const { env, token } = await server.envForSession({});
     const socketPath = env["SNUG_SOCK"];
     if (!socketPath) throw new Error("missing SNUG_SOCK");
     await waitForStat(socketPath);
@@ -84,7 +91,7 @@ describe("SnugServer", () => {
   it("rate-limits notifications per session", async () => {
     const server = new SnugServer(makeOps({ ownerOf: () => "panel:a" }));
     await server.start();
-    const { env, token } = server.envForSession({});
+    const { env, token } = await server.envForSession({});
     const socketPath = env["SNUG_SOCK"];
     if (!socketPath) throw new Error("missing SNUG_SOCK");
     await waitForStat(socketPath);

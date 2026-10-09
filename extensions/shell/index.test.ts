@@ -1,10 +1,16 @@
 import { readFile, stat, mkdtemp, mkdir, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ExtensionContext } from "@vibestudio/extension";
 import { activate } from "./index.js";
 import type { SessionInfoEvent } from "./types.js";
+
+const extensionCleanups: Array<() => Promise<void>> = [];
+
+afterEach(async () => {
+  await Promise.all(extensionCleanups.splice(0).map((cleanup) => cleanup()));
+});
 
 async function makeApi(
   approval: "allow" | "deny" | Array<"allow" | "deny"> = "allow",
@@ -32,8 +38,10 @@ async function makeApi(
   const invocationCurrent = vi.fn(() => ({
     caller: { callerId: "panel:test", callerKind: "panel" },
   }));
+  const subscriptions: Array<{ dispose(): void | Promise<void> }> = [];
   const ctx = {
     storage: { root },
+    subscriptions,
     workspace: {
       getInfo: async () => ({
         id: "ws",
@@ -61,8 +69,12 @@ async function makeApi(
     },
     log,
   } as unknown as ExtensionContext;
+  const api = await activate(ctx);
+  extensionCleanups.push(async () => {
+    await Promise.all(subscriptions.map(({ dispose }) => dispose()));
+  });
   return {
-    api: await activate(ctx),
+    api,
     root,
     log,
     ensureContextFolder,
@@ -216,6 +228,28 @@ describe("@workspace-extensions/shell", () => {
     await expect(api.get(sessionId)).rejects.toMatchObject({ code: "ENOENT" });
     await api.dispose(restarted.sessionId);
     await expect(api.dispose(restarted.sessionId)).resolves.toBeUndefined();
+  });
+
+  it("keeps another caller's Snug socket alive when disposal is denied", async () => {
+    const { api, invocationCurrent } = await makeApi("allow");
+    const { sessionId } = await api.open({
+      command: "/bin/bash",
+      args: ["-lc", "read action; snug meta set disposal survived"],
+    });
+
+    invocationCurrent.mockReturnValue({
+      caller: { callerId: "panel:other", callerKind: "panel" },
+    });
+    await expect(api.dispose(sessionId)).rejects.toMatchObject({
+      code: "EACCES",
+    });
+
+    invocationCurrent.mockReturnValue({
+      caller: { callerId: "panel:test", callerKind: "panel" },
+    });
+    await api.write(sessionId, "continue\n");
+    await api.awaitExit(sessionId);
+    await expect(api.getMeta(sessionId, "disposal")).resolves.toBe("survived");
   });
 
   it("prevents public metadata RPCs from setting host-owned handoff keys", async () => {

@@ -24,6 +24,25 @@ function error(code: string, message: string): Error {
   return Object.assign(new Error(message), { code });
 }
 
+async function discardSnugAndRethrow(
+  snug: SnugServer,
+  token: string | undefined,
+  original: unknown,
+): Promise<never> {
+  if (token) {
+    try {
+      await snug.discardPending(token);
+    } catch (cleanupError) {
+      throw new AggregateError(
+        [original, cleanupError],
+        "Shell operation failed and its pending snug socket could not be retired",
+        { cause: original },
+      );
+    }
+  }
+  throw original;
+}
+
 function resolveWithin(root: string, input?: string): string {
   const resolved = path.resolve(root, input ?? ".");
   const rel = path.relative(root, resolved);
@@ -158,14 +177,18 @@ export async function activate(ctx: ExtensionContext) {
     { contextId: string; callerId: string; expiresAt: number }
   >();
   let snug!: SnugServer;
+  const retireSnugSession = (sessionId: string) => {
+    void snug.unregister(sessionId).catch((error: unknown) => {
+      ctx.log.warn?.("Could not retire snug session socket", {
+        sessionId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    });
+  };
   const sessions = new SessionManager(
     {
-      onExit: (sessionId) => {
-        snug.unregister(sessionId);
-      },
-      onDispose: (sessionId) => {
-        snug.unregister(sessionId);
-      },
+      onExit: retireSnugSession,
+      onDispose: retireSnugSession,
     },
     {
       detectAgent,
@@ -258,7 +281,7 @@ export async function activate(ctx: ExtensionContext) {
         caller: owner.callerId,
       });
       // A split is subordinate to an already-authorized interactive session.
-      const snugEnv = snug.envForSession(cleanEnv({}).effective);
+      const snugEnv = await snug.envForSession(cleanEnv({}).effective);
       try {
         const launch = await prepareVscodeShellIntegrationLaunch({
           command,
@@ -285,8 +308,7 @@ export async function activate(ctx: ExtensionContext) {
         });
         return result.sessionId;
       } catch (err) {
-        snug.discardPending(snugEnv.token);
-        throw err;
+        return discardSnugAndRethrow(snug, snugEnv.token, err);
       }
     },
     openUrl: async (_sessionId, url) => {
@@ -308,6 +330,7 @@ export async function activate(ctx: ExtensionContext) {
     },
   });
   await snug.start();
+  ctx.subscriptions?.push({ dispose: () => snug.dispose() });
   const scratchDir = path.join(ctx.storage.root, ".snug", "scratch");
   void sweepScratch(scratchDir);
   const scratchJanitor = nodeSetInterval(
@@ -412,7 +435,7 @@ export async function activate(ctx: ExtensionContext) {
       } = parsed;
       let snugToken: string | undefined;
       try {
-        const { env, token } = snug.envForSession(
+        const { env, token } = await snug.envForSession(
           cleanEnv(parsed.env).effective,
         );
         snugToken = token;
@@ -440,13 +463,11 @@ export async function activate(ctx: ExtensionContext) {
         snug.register(token, result.sessionId);
         return result;
       } catch (err) {
-        if (snugToken) snug.discardPending(snugToken);
-        throw err;
+        return discardSnugAndRethrow(snug, snugToken, err);
       }
     },
 
     async dispose(sessionId: string) {
-      snug.unregister(sessionId);
       let session;
       try {
         session = sessions.requireOwner(sessionId, currentOwner(ctx).callerId);
@@ -454,6 +475,7 @@ export async function activate(ctx: ExtensionContext) {
         if ((err as NodeJS.ErrnoException).code === "ENOENT") return;
         throw err;
       }
+      await snug.unregister(sessionId);
       sessions.dispose(session);
     },
 
@@ -462,7 +484,7 @@ export async function activate(ctx: ExtensionContext) {
         sessionId,
         currentOwner(ctx).callerId,
       );
-      const snugEnv = snug.envForSession(cleanEnv({}).effective);
+      const snugEnv = await snug.envForSession(cleanEnv({}).effective);
       try {
         const [command, ...args] = session.command.argv;
         const launch = await prepareVscodeShellIntegrationLaunch({
@@ -480,8 +502,7 @@ export async function activate(ctx: ExtensionContext) {
         snug.register(snugEnv.token, result.sessionId);
         return result;
       } catch (err) {
-        snug.discardPending(snugEnv.token);
-        throw err;
+        return discardSnugAndRethrow(snug, snugEnv.token, err);
       }
     },
 
