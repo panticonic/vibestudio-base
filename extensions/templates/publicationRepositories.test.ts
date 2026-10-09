@@ -30,6 +30,7 @@ it("lists only writable active repositories and preserves pagination across filt
   } as never);
   const credentials = {};
   const api = await activate({
+    storage: { root: process.cwd() },
     credentials,
     log: { info: vi.fn() },
     rpc: { call: vi.fn() },

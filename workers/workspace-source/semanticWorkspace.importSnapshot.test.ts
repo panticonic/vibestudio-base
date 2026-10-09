@@ -3083,8 +3083,9 @@ it.each(["nonoverlap", "conflict", "removal"] as const)(
         ? "incoming\nsecond\nthird\n"
         : "first\nsecond\nincoming\n",
     );
+    const manifestFile = textFile("vibestudio.yml", "systemEpoch: 0\n");
     const bytes = new Map(
-      [oldFile, localFile, newFile].map((file) => [
+      [oldFile, localFile, newFile, manifestFile].map((file) => [
         file.descriptor.contentHash,
         file.bytes,
       ]),
@@ -3103,23 +3104,47 @@ it.each(["nonoverlap", "conflict", "removal"] as const)(
       commit: "a".repeat(40),
     };
     const target = { ...pin, commit: "b".repeat(40) };
+    const repository = (repoPath: string, file: ReturnType<typeof textFile>) => ({
+      repoPath,
+      files: [file.descriptor],
+      snapshot: canonicalSnapshotDigest([
+        { ...file.descriptor, mode: 0o100644, size: file.bytes.length },
+      ]),
+    });
     const tree = (
       file: ReturnType<typeof textFile>,
       source = pin,
     ): TemplateSourceTree => ({
       sources: [source],
       repositories: [
-        {
-          repoPath: "projects/example",
-          files: [file.descriptor],
-          snapshot: canonicalSnapshotDigest([
-            { ...file.descriptor, mode: 0o100644, size: file.bytes.length },
-          ]),
-        },
+        repository("projects/example", file),
+        repository("meta", manifestFile),
       ],
     });
     const finish = (result: SemanticDispatchResult): unknown => {
-      if (result.kind === "host-read")
+      if (result.kind === "host-read") {
+        if (result.request["kind"] === "read-semantic-blob") {
+          const contentHash = result.request["contentHash"] as string;
+          const content = bytes.get(contentHash);
+          if (!content)
+            throw new Error(`Missing test content ${contentHash}`);
+          return finish({
+            kind: "complete",
+            result: {
+              repositoryId: result.request["repositoryId"],
+              fileId: result.request["fileId"],
+              repoPath: result.request["repoPath"],
+              path: result.request["path"],
+              contentHash,
+              authoredChangeId: result.request["authoredChangeId"],
+              authoredByWorkUnitId: result.request["authoredByWorkUnitId"],
+              contentClass: result.request["contentClass"],
+              externalKeys: result.request["externalKeys"],
+              mode: result.request["mode"],
+              content: { kind: "text", text: new TextDecoder().decode(content) },
+            },
+          });
+        }
         return finish(
           semantic.acknowledgeHostRead({
             request: result.request,
@@ -3135,6 +3160,7 @@ it.each(["nonoverlap", "conflict", "removal"] as const)(
             ),
           }),
         );
+      }
       if (result.kind === "effects-pending") {
         if (result.effects[0]?.kind === "observe-content")
           return finish(acknowledgeImportObservation(semantic, result, bytes));
@@ -3167,6 +3193,7 @@ it.each(["nonoverlap", "conflict", "removal"] as const)(
               snapshotRevision: "local",
             },
             repositories: [
+              { repoPath: "meta", files: [manifestFile.descriptor] },
               { repoPath: "projects/example", files: [oldFile.descriptor] },
             ],
           },
@@ -3253,8 +3280,11 @@ it.each(["nonoverlap", "conflict", "removal"] as const)(
             pin.commit
             ? tree(oldFile)
             : scenario === "removal"
-              ? { sources: [target], repositories: [] }
-              : tree(newFile, target);
+              ? {
+                  sources: [target],
+                  repositories: [repository("meta", manifestFile)],
+                }
+            : tree(newFile, target);
         if (method === "runtime.createContext") {
           const contextId = (args[0] as { contextId: string }).contextId;
           return finish(

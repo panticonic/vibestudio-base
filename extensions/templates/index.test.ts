@@ -27,6 +27,7 @@ it("delegates every exact pin to the host-owned source acquisition contract", as
   };
   const call = vi.fn(async () => inspected);
   const api = await activate({
+    storage: { root: process.cwd() },
     log: { info: vi.fn() },
     rpc: { call },
   } as never);
@@ -53,6 +54,7 @@ it("prefers an instance-designated checkpoint to remote discovery", async () => 
     throw new Error(`Unexpected method: ${method}`);
   });
   const api = await activate({
+    storage: { root: process.cwd() },
     log: { info: vi.fn() },
     rpc: { call },
   } as never);
@@ -89,6 +91,7 @@ it("loads the instance registry by default", async () => {
     method === "workspaceTemplateSource.localRegistry" ? registry : null,
   );
   const api = await activate({
+    storage: { root: process.cwd() },
     log: { info: vi.fn() },
     rpc: { call },
   } as never);
@@ -111,6 +114,7 @@ it("checks every tag page using the chosen account before suggesting a version",
     .mockResolvedValueOnce(new Response(JSON.stringify([{ name: "v2.4.9" }])));
   const forAudience = vi.fn(async () => ({ fetch }));
   const api = await activate({
+    storage: { root: process.cwd() },
     log: { info: vi.fn() },
     rpc: { call: vi.fn() },
     credentials: { forAudience },
@@ -133,6 +137,7 @@ it("checks every tag page using the chosen account before suggesting a version",
 
 it("reports inaccessible tags instead of suggesting an unverified first release", async () => {
   const api = await activate({
+    storage: { root: process.cwd() },
     log: { info: vi.fn() },
     rpc: { call: vi.fn() },
     credentials: {

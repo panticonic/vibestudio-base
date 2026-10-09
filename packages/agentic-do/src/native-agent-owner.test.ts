@@ -1484,13 +1484,18 @@ describe("native Pi entity activation and release", () => {
         () => fixture.instance.open(),
         () => fixture.instance.alarm(),
         () => fixture.instance.webSocketMessage({} as WebSocket, "hello"),
-        () =>
-          fixture.instance.fetch(new Request("http://test/test-key/getState")),
       ]) {
         await expect(route()).rejects.toThrow(
           "trusted loaded-image schema descriptor",
         );
       }
+      const response = await fixture.instance.fetch(
+        new Request("http://test/test-key/getState"),
+      );
+      expect(response.status).toBe(500);
+      await expect(response.json()).resolves.toMatchObject({
+        error: expect.stringContaining("trusted loaded-image schema descriptor"),
+      });
       expect(
         fixture.sql
           .exec("SELECT name FROM sqlite_master WHERE type='table'")
