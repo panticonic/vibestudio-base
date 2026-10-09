@@ -247,12 +247,7 @@ export async function waitForNativeAnswerPublication(
         throw new Error(
           "Native answer publication changed its original entry identity",
         );
-      const settled = await harness.waitForTask(pointer.taskId, context);
-      if (settled.state.outcome.status !== "completed")
-        throw new Error(
-          "Native answer publication did not deliver its canonical debt",
-          { cause: settled.state.outcome },
-        );
+      await waitForPublicationChain(harness, task, context);
     }
     messages.push({
       messageId,
@@ -275,6 +270,46 @@ export async function waitForNativeAnswerPublication(
     publicationTaskIds: debt.tasks.map((item) => item.taskId),
     messages,
   };
+}
+
+/** Join retained predecessors too: a repair incident does not settle dependent tasks. */
+async function waitForPublicationChain(
+  harness: Harness,
+  answerTask: NonNullable<Awaited<ReturnType<Harness["getTask"]>>>,
+  context: Context,
+): Promise<void> {
+  const debt = [answerTask];
+  const seen = new Set([answerTask.id]);
+  const binding = answerTask.input as unknown as PublicationInput;
+  let current = answerTask;
+  while (current.state.status !== "terminal") {
+    const previousId = (current.input as unknown as PublicationInput).previousTask;
+    if (previousId === null) break;
+    if (seen.has(previousId))
+      throw new Error("Native publication has cyclic ordered debt");
+    seen.add(previousId);
+    const previous = await harness.getTask(previousId, context);
+    const input = previous?.input as PublicationInput | undefined;
+    if (
+      !previous ||
+      previous.kind !== answerTask.kind ||
+      previous.version !== answerTask.version ||
+      previous.conversationId !== answerTask.conversationId ||
+      input?.channelId !== binding.channelId ||
+      input.participantId !== binding.participantId
+    )
+      throw new Error("Native publication lost its ordered predecessor");
+    debt.push(previous);
+    current = previous;
+  }
+  for (const task of debt.reverse()) {
+    const settled = await harness.waitForTask(task.id, context);
+    if (settled.state.outcome.status !== "completed")
+      throw new Error(
+        "Native answer publication did not deliver its canonical debt",
+        { cause: settled.state.outcome },
+      );
+  }
 }
 
 function detached<T>(value: T): T {

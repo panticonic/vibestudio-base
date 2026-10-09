@@ -561,6 +561,70 @@ describe("exact native answer publication observation", () => {
       condition: { kind: "failure" },
     });
   });
+  it("propagates an earlier publication incident through ordered debt and permits explicit repair", async () => {
+    const original = new Error("predecessor channel acceptance failed");
+    let repaired = false;
+    const accepted: string[] = [];
+    const f = await fixture({
+      publish: async (_channel, _participant, _event, key) => {
+        if (!repaired) throw original;
+        accepted.push(key);
+        return { id: accepted.length };
+      },
+    });
+    await f.append("first answer");
+    await f.append("second answer");
+    const entry = await f.append("final owned answer");
+    const observation = expect(
+      waitForNativeAnswerPublication(
+        f.harness,
+        f.conversation.id,
+        entry.id,
+        context,
+      ),
+    ).rejects.toBe(original);
+    await f.harness.runPass(context);
+    await observation;
+    const tasks = await publicationTasks(f.harness);
+    const failed = tasks[0]!;
+    expect(tasks.slice(1).map((task) => task.state)).toMatchObject([
+      { status: "waiting", condition: { kind: "tasks" } },
+      { status: "waiting", condition: { kind: "tasks" } },
+    ]);
+    if (
+      failed.state.status !== "waiting" ||
+      failed.state.condition.kind !== "failure"
+    )
+      throw new Error("Missing retained predecessor repair incident");
+    expect(accepted).toEqual([]);
+    repaired = true;
+    expect(
+      await f.harness.retryTask(
+        failed.id,
+        failed.state.condition.incident,
+        context,
+      ),
+    ).toBe("queued");
+    await f.harness.runPass(context);
+    expect(
+      await waitForNativeAnswerPublication(
+        f.harness,
+        f.conversation.id,
+        entry.id,
+        context,
+      ),
+    ).toMatchObject({
+      messages: [{ text: "final owned answer", published: true }],
+    });
+    expect(accepted).toHaveLength(3);
+    expect(
+      (await publicationTasks(f.harness)).every(
+        (task) =>
+          task.state.status === "terminal" &&
+          task.state.outcome.status === "completed",
+      ),
+    ).toBe(true);
+  });
   it("returns actual empty provider outcome after canonical acceptance without inventing a visible chat row", async () => {
     const f = await fixture();
     f.faux.setResponses([fauxAssistantMessage("")]);
