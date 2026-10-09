@@ -17,16 +17,19 @@ import {
 import { runtimeMethods } from "@vibestudio/service-schemas/runtime";
 import { workerLogMethods } from "@vibestudio/service-schemas/workerLog";
 import { workspaceStateMethods } from "@vibestudio/service-schemas/workspaceState";
+import { canonicalJson } from "@vibestudio/content-addressing";
 import type {
   DoAlarmSchedule,
   LifecyclePrepareInput,
   LifecyclePrepareResult,
   LifecycleResumeInput,
+  LifecycleCloneInput,
 } from "@vibestudio/shared/doDispatcher";
 export type {
   LifecyclePrepareInput,
   LifecyclePrepareResult,
   LifecycleResumeInput,
+  LifecycleCloneInput,
 } from "@vibestudio/shared/doDispatcher";
 import {
   collectExposableMethods,
@@ -1304,48 +1307,67 @@ export abstract class DurableObjectBase {
       }
     }
 
-    if (method === "__lifecycle/prepare" || method === "__lifecycle/resume") {
-      return await this.withVerifiedCaller(
-        verifiedCallerFromBody,
-        async () => {
-          const denial = this.inboundHostControlDenial(
-            method,
-            authorityAcceptedAt,
+    if (
+      method === "__lifecycle/prepare" ||
+      method === "__lifecycle/resume" ||
+      method === "__lifecycle/initializeClone"
+    ) {
+      return await this.withVerifiedCaller(verifiedCallerFromBody, async () => {
+        const denial = this.inboundHostControlDenial(
+          method,
+          authorityAcceptedAt,
+        );
+        if (denial) {
+          return new Response(
+            JSON.stringify({
+              error: denial.reason,
+              errorCode: denial.code,
+              errorKind: "access",
+              errorData: { authorityFailure: denial.failure },
+            }),
+            {
+              status: 403,
+              headers: { "Content-Type": "application/json" },
+            },
           );
-          if (denial) {
-            return new Response(
-              JSON.stringify({
-                error: denial.reason,
-                errorCode: denial.code,
-                errorKind: "access",
-                errorData: { authorityFailure: denial.failure },
-              }),
-              {
-                status: 403,
-                headers: { "Content-Type": "application/json" },
-              },
-            );
-          }
-          // Live module replacement may update the class schema while this
-          // activation retains its previous schemaReady cache. Lifecycle is the
-          // generation boundary, so revalidate the one current schema here.
-          await this.ensureSchema();
-          const result =
-            method === "__lifecycle/prepare"
-              ? await (async () => {
+        }
+        // Live module replacement may update the class schema while this
+        // activation retains its previous schemaReady cache. Lifecycle is the
+        // generation boundary, so revalidate the one current schema here.
+        await this.ensureSchema();
+        const result =
+          method === "__lifecycle/prepare"
+            ? await (async () => {
+                const input = args[0] as LifecyclePrepareInput;
+                this.beginLifecycleRelease(input);
+                const failures: unknown[] = [];
+                try {
                   await this.drainAlarmRpcs();
-                  return this.releaseForLifecycle(
-                    args[0] as LifecyclePrepareInput,
+                } catch (error) {
+                  failures.push(error);
+                }
+                let released: LifecyclePrepareResult | undefined;
+                try {
+                  released = await this.releaseForLifecycle(input);
+                } catch (error) {
+                  failures.push(error);
+                }
+                if (failures.length === 1) throw failures[0];
+                if (failures.length)
+                  throw new AggregateError(
+                    failures,
+                    "Lifecycle preparation failed",
+                    { cause: failures[0] },
                   );
-                })()
-              : await this.resumeAfterRestart(
-                  args[0] as LifecycleResumeInput,
-                );
-          return new Response(JSON.stringify(result ?? null), {
-            headers: this.workReadyHeaders(),
-          });
-        },
-      );
+                return released!;
+              })()
+            : method === "__lifecycle/initializeClone"
+              ? this.initializeClone(args[0] as LifecycleCloneInput)
+              : await this.resumeAfterRestart(args[0] as LifecycleResumeInput);
+        return new Response(JSON.stringify(result ?? null), {
+          headers: this.workReadyHeaders(),
+        });
+      });
     }
 
     // Alarm endpoint — server-driven (workerd lacks SQLite/facet alarms).
@@ -1768,6 +1790,7 @@ export abstract class DurableObjectBase {
         if (
           message?.method !== "__lifecycle/prepare" &&
           message?.method !== "__lifecycle/resume" &&
+          message?.method !== "__lifecycle/initializeClone" &&
           message?.method !== "__alarm"
         ) {
           await this.flushPendingOwnTitle();
@@ -2067,6 +2090,9 @@ export abstract class DurableObjectBase {
     return new Response("WebSocket not supported", { status: 426 });
   }
 
+  /** Publish the lifecycle transition before joining any work it owns. */
+  protected beginLifecycleRelease(_input: LifecyclePrepareInput): void {}
+
   async releaseForLifecycle(
     _input: LifecyclePrepareInput,
   ): Promise<LifecyclePrepareResult> {
@@ -2076,6 +2102,54 @@ export abstract class DurableObjectBase {
   async resumeAfterRestart(_input: LifecycleResumeInput): Promise<void> {
     // No generic continuation store: event-sourced subclasses re-derive their
     // pending work from their logs on wake.
+  }
+
+  /** Synchronous receiver-local storage preparation. Outbound authority stays closed. */
+  protected initializeClonedStorage(_input: LifecycleCloneInput): void {}
+
+  private initializeClone(input: LifecycleCloneInput): void {
+    if (
+      !input ||
+      input.target.objectKey !== this.objectKey ||
+      input.source.source !== input.target.source ||
+      input.source.className !== input.target.className ||
+      input.source.objectKey === input.target.objectKey ||
+      !input.sourceContextId ||
+      !input.targetContextId ||
+      !input.authoritySessionId ||
+      !input.buildKey ||
+      !input.executionDigest ||
+      !input.provenance ||
+      input.provenance.sourceContextId !== input.sourceContextId ||
+      input.provenance.sourceEntityId !==
+        `do:${input.source.source}:${input.source.className}:${input.source.objectKey}`
+    )
+      throw new Error("Clone initialization does not match this incarnation");
+    const encoded = canonicalJson(input);
+    this.ctx.storage.transactionSync(() => {
+      const previous = this.getStateValue("__clonePreparation");
+      if (previous) {
+        const receipt = JSON.parse(previous) as LifecycleCloneInput;
+        if (receipt.target.objectKey === this.objectKey) {
+          if (previous !== encoded)
+            throw new Error(
+              `Clone initialization incarnation changed: expected ${previous}, received ${encoded}`,
+            );
+          return;
+        }
+        if (receipt.target.objectKey !== input.source.objectKey) {
+          throw new Error("Cloned storage belongs to a different source");
+        }
+      }
+      this.initializeClonedStorage(input);
+      // Readiness and worker claims belong to the source activation, not its copy.
+      this.sql
+        .exec(`DELETE FROM state WHERE key LIKE 'durable-work-ready-generation:%'
+        OR key LIKE 'durable-work-ack-generation:%'
+        OR key IN ('durable-work-active-worker', 'durable-work-active-activation')`);
+      this.setStateValue("__objectKey", this.objectKey);
+      this.setStateValue("__clonePreparation", encoded);
+    });
   }
 
   protected async registerLifecycleRelease(detail?: unknown): Promise<void> {

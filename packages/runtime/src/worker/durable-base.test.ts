@@ -200,6 +200,20 @@ class StructuredErrorDO extends TestDurableObjectBase {
   }
 }
 
+class ClonePreparationDO extends TestDurableObjectBase {
+  initialized = 0;
+  refuse = false;
+  protected createTables(): void {}
+  protected override initializeClonedStorage(): void {
+    this.setStateValue("copiedOwner", "child");
+    if (this.refuse) throw new Error("original clone preparation failure");
+    this.initialized += 1;
+  }
+  stored(key: string): string | null {
+    return this.getStateValue(key);
+  }
+}
+
 class LifecycleProbeDO extends TestDurableObjectBase {
   protected createTables(): void {}
   prepared = false;
@@ -232,6 +246,19 @@ class LifecycleProbeDO extends TestDurableObjectBase {
   })
   callerKind(): string | null {
     return this.caller?.callerKind ?? null;
+  }
+}
+
+class TerminalOrderingDO extends LifecycleProbeDO {
+  readonly order: string[] = [];
+  terminal: () => void = () => {};
+  protected override beginLifecycleRelease(): void {
+    this.order.push("begin");
+    this.terminal();
+  }
+  override async releaseForLifecycle(): Promise<{ status: "ready" }> {
+    this.order.push("release");
+    return { status: "ready" };
   }
 }
 
@@ -1082,6 +1109,111 @@ describe("DurableObjectBase request parsing", () => {
 });
 
 describe("DurableObjectBase lifecycle routing", () => {
+  it("publishes terminal preparation before draining and still releases after a drain failure", async () => {
+    const { instance } = await createTestDO(TerminalOrderingDO);
+    let reject!: (reason: Error) => void;
+    const failure = new Error("original owned alarm failure");
+    const owned = new Promise<void>((_resolve, refuse) => {
+      reject = refuse;
+    });
+    void owned.catch(() => undefined);
+    (
+      instance as unknown as { pendingAlarmRpcs: Set<Promise<void>> }
+    ).pendingAlarmRpcs.add(owned);
+    instance.terminal = () => {
+      instance.order.push("terminal");
+      reject(failure);
+    };
+    const response = await instance.fetch(
+      new Request("http://test/test-key/__lifecycle/prepare", {
+        method: "POST",
+        body: JSON.stringify({
+          args: [
+            { epoch: "retire", mode: "retire", reason: "test", deadlineMs: 0 },
+          ],
+          __instanceToken: "token",
+          __instanceId: "do:test:TerminalOrderingDO:test-key",
+          __caller: authenticatedTestCaller("__lifecycle/prepare"),
+        }),
+      }),
+    );
+    expect(response.status).toBe(500);
+    expect(await response.json()).toMatchObject({
+      error: "original owned alarm failure",
+    });
+    expect(instance.order).toEqual(["begin", "terminal", "release"]);
+    expect(
+      (instance as unknown as { pendingAlarmRpcs: Set<Promise<void>> })
+        .pendingAlarmRpcs.size,
+    ).toBe(0);
+  });
+
+  it("authenticates and atomically initializes the copied lifetime exactly once", async () => {
+    const { instance } = await createTestDO(ClonePreparationDO);
+    const witness = {
+      provenance: {
+        storage: "snapshot" as const,
+        operationContextId: "child-context",
+        sourceEntityId: "do:workers/clone:ClonePreparationDO:source",
+        sourceContextId: "source-context",
+        sourceAuthoritySessionId: "source-session",
+        sourceBuildKey: "b".repeat(64),
+        sourceExecutionDigest: "e".repeat(64),
+      },
+      source: {
+        source: "workers/clone",
+        className: "ClonePreparationDO",
+        objectKey: "source",
+      },
+      sourceContextId: "source-context",
+      target: {
+        source: "workers/clone",
+        className: "ClonePreparationDO",
+        objectKey: "test-key",
+      },
+      targetContextId: "child-context",
+      authoritySessionId: "child-session",
+      buildKey: "b".repeat(64),
+      executionDigest: "e".repeat(64),
+    };
+    const send = (input = witness, verified = true) =>
+      instance.fetch(
+        new Request("http://test/test-key/__lifecycle/initializeClone", {
+          method: "POST",
+          body: JSON.stringify({
+            args: [input],
+            ...(verified
+              ? {
+                  __instanceToken: "token",
+                  __instanceId: "do:workers/clone:ClonePreparationDO:test-key",
+                  __caller: authenticatedTestCaller(
+                    "__lifecycle/initializeClone",
+                  ),
+                }
+              : {}),
+          }),
+        }),
+      );
+    expect((await send(witness, false)).status).toBe(403);
+    instance.refuse = true;
+    const failed = await send();
+    expect(failed.status).toBe(500);
+    expect(await failed.json()).toMatchObject({
+      error: "original clone preparation failure",
+    });
+    expect(instance.stored("copiedOwner")).toBeNull();
+    expect(instance.stored("__clonePreparation")).toBeNull();
+    instance.refuse = false;
+    expect((await send()).status).toBe(200);
+    expect((await send()).status).toBe(200);
+    expect(instance.initialized).toBe(1);
+    expect(instance.stored("copiedOwner")).toBe("child");
+    expect(
+      (await send({ ...witness, authoritySessionId: "foreign" })).status,
+    ).toBe(500);
+    expect(instance.initialized).toBe(1);
+  });
+
   it.each(["__alarm", "__lifecycle/prepare", "__lifecycle/resume"])(
     "propagates original asynchronous %s failures through the structured response",
     async (method) => {

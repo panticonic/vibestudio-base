@@ -52,7 +52,13 @@ import type {
   DeleteChannelMembershipInput,
   PutChannelMembershipInput,
 } from "@vibestudio/shared/channelInvites";
-import type { DoAlarmSchedule } from "@vibestudio/shared/doDispatcher";
+import type {
+  DoAlarmSchedule,
+  LifecycleCloneInput,
+  LifecyclePrepareInput,
+  LifecyclePrepareResult,
+} from "@vibestudio/shared/doDispatcher";
+import { serializeByKey } from "@vibestudio/shared/keyedSerializer";
 import type {
   ClaimRequest,
   ClaimSettlement,
@@ -134,7 +140,6 @@ const CHANNEL_SERVICE_PROTOCOL = "vibestudio.channel.v1";
 const GAD_WORKSPACE_SERVICE_PROTOCOL = "vibestudio.gad.workspace.v1";
 /** Signal contentType for the ephemeral fork.head_changed lineage badge. */
 const FORK_HEAD_CHANGED_SIGNAL = "fork.head_changed";
-const FORK_OP_RECONCILE_MS = 5_000;
 const LINEAGE_HEAD_COALESCE_MS = 100;
 type ChannelMaintenanceKind =
   | "invite-index"
@@ -405,6 +410,9 @@ export class PubSubChannel extends DurableObjectBase {
     Promise<ChannelEvent>
   >();
   private readonly relationshipMutations = new Map<string, Promise<void>>();
+  private readonly forkAdmissions = new Map<string, Promise<unknown>>();
+  private readonly forkDrivers = new Map<string, Promise<ForkResult>>();
+  private readonly forkLifetime = new AbortController();
   private broadcastParticipantCache: BroadcastParticipant[] | null = null;
   private readonly subscriptionStreams = new Map<
     string,
@@ -451,6 +459,100 @@ export class PubSubChannel extends DurableObjectBase {
       );
       this.sql.exec(`DELETE FROM participants`);
     });
+  }
+
+  protected override initializeClonedStorage(input: LifecycleCloneInput): void {
+    this.setStateValue("contextId", input.targetContextId);
+    this.setStateValue("forkedFromContextId", input.sourceContextId);
+    // These rows describe source-owned operations, not inherited knowledge.
+    for (const table of [
+      "fork_ops",
+      "fork_projection",
+      "lineage_head_outbox",
+      "lineage_heads",
+      "channel_maintenance_queue",
+      "participants",
+      "pending_calls",
+      "provider_call_claims",
+      "invite_index_ops",
+      "channel_delivery_latency_histogram",
+      "channel_delivery_mailbox",
+      "channel_relationships",
+      "channel_receipts",
+    ])
+      this.sql.exec(`DELETE FROM ${table}`);
+    for (const key of [
+      "deliveryReadyEdgeAlarmSpins",
+      "forkSeedMarker",
+      "openingRequestResolution",
+      "openingRequestAuthor",
+      "taskParentChannelId",
+      "taskParentContextId",
+      "taskRunId",
+      "forkedFrom",
+      "forkPointId",
+      "rootChannelId",
+      "forkId",
+    ])
+      this.deleteStateValue(key);
+    this.setStateValue("conversationSeed", "{}");
+    this.setStateValue("conversationSeedInstalled", "true");
+    this.setStateValue("openingRequestOutcome", "cancel");
+    this.invalidateBroadcastParticipants();
+  }
+
+  protected override beginLifecycleRelease(input: LifecyclePrepareInput): void {
+    super.beginLifecycleRelease(input);
+    if (input.mode === "retire" && !this.forkLifetime.signal.aborted) {
+      this.forkLifetime.abort(
+        Object.assign(new Error("Channel retired during fork"), {
+          code: "ECANCELLED",
+        }),
+      );
+    }
+  }
+
+  override async releaseForLifecycle(
+    input: LifecyclePrepareInput,
+  ): Promise<LifecyclePrepareResult> {
+    this.beginLifecycleRelease(input);
+    const settled = await Promise.allSettled([
+      ...this.forkAdmissions.values(),
+      ...this.forkDrivers.values(),
+    ]);
+    const failures = settled.flatMap((result) =>
+      result.status === "rejected" &&
+      result.reason !== this.forkLifetime.signal.reason
+        ? [result.reason]
+        : [],
+    );
+    let result: LifecyclePrepareResult | undefined;
+    try {
+      result = await super.releaseForLifecycle(input);
+    } catch (error) {
+      failures.push(error);
+    }
+    if (failures.length)
+      throw new AggregateError(
+        [...new Set(failures)],
+        "Channel lifecycle release retained operation failures",
+        { cause: failures[0] },
+      );
+    return result!;
+  }
+
+  private unownedForkOps(): Record<string, unknown>[] {
+    return this.sql
+      .exec(
+        `SELECT fork_id, updated_at FROM fork_ops
+      WHERE phase NOT IN ('done', 'rolledback')`,
+      )
+      .toArray()
+      .filter(
+        (row) =>
+          !this.forkDrivers.has(String(row["fork_id"])) &&
+          !this.forkAdmissions.has(String(row["fork_id"])),
+      );
   }
 
   protected createTables(): void {
@@ -829,16 +931,7 @@ export class PubSubChannel extends DurableObjectBase {
         Number(row["deadline_at"]),
       );
     }
-    for (const row of this.sql
-      .exec(
-        `SELECT fork_id, updated_at
-           FROM fork_ops
-          WHERE phase NOT IN ('done', 'rolledback')
-            AND updated_at + ? <= ?`,
-        FORK_OP_RECONCILE_MS,
-        now,
-      )
-      .toArray()) {
+    for (const row of this.unownedForkOps()) {
       insert(
         `maintenance:fork-reconcile:${String(row["fork_id"])}`,
         "fork-reconcile",
@@ -918,22 +1011,14 @@ export class PubSubChannel extends DurableObjectBase {
         )
         .toArray().length > 0;
     if (lineageDue) return true;
-    return (
-      this.sql
-        .exec(
-          `SELECT 1 FROM fork_ops
-            WHERE phase NOT IN ('done', 'rolledback')
-              AND updated_at + ? <= ?
-              AND NOT EXISTS (
-                SELECT 1 FROM channel_maintenance_queue AS queued
-                 WHERE queued.item_id =
-                   'maintenance:fork-reconcile:' || fork_ops.fork_id
-              )
-            LIMIT 1`,
-          FORK_OP_RECONCILE_MS,
-          now,
-        )
-        .toArray().length > 0
+    return this.unownedForkOps().some(
+      (row) =>
+        this.sql
+          .exec(
+            `SELECT 1 FROM channel_maintenance_queue WHERE item_id = ?`,
+            `maintenance:fork-reconcile:${String(row["fork_id"])}`,
+          )
+          .toArray().length === 0,
     );
   }
 
@@ -1005,9 +1090,7 @@ export class PubSubChannel extends DurableObjectBase {
       await this.timeoutMethodCall(targetId, "Channel method deadline expired");
     } else if (kind === "fork-reconcile") {
       const op = this.getForkOpRow(targetId);
-      if (op?.["phase"] === "rollback-pending")
-        await this.rollbackForkOp(targetId);
-      else if (op && op["phase"] !== "done" && op["phase"] !== "rolledback") {
+      if (op && op["phase"] !== "done" && op["phase"] !== "rolledback") {
         await this.runForkOp(targetId);
       }
     } else if (kind === "lineage-head") {
@@ -5475,13 +5558,9 @@ export class PubSubChannel extends DurableObjectBase {
   }
 
   private nextForkOpReconcileAt(): number | null {
-    const oldest = this.sql
-      .exec(
-        `SELECT MIN(updated_at) AS oldest FROM fork_ops
-          WHERE phase NOT IN ('done', 'rolledback')`,
-      )
-      .toArray()[0]?.["oldest"];
-    return typeof oldest === "number" ? oldest + FORK_OP_RECONCILE_MS : null;
+    // A fresh activation has no resident owner for interrupted durable work.
+    // A live driver, however slow, remains its owner until it settles.
+    return this.unownedForkOps().length ? Date.now() : null;
   }
 
   private nextLineageHeadReportAt(): number | null {
@@ -5893,6 +5972,20 @@ export class PubSubChannel extends DurableObjectBase {
     sensitivity: "write",
   })
   async fork(request: ForkRequest): Promise<ForkResult> {
+    this.forkLifetime.signal.throwIfAborted();
+    if (
+      typeof request.operationId !== "string" ||
+      request.operationId.length < 8
+    ) {
+      throw new Error("fork requires a stable operationId");
+    }
+    return serializeByKey(this.forkAdmissions, request.operationId, () =>
+      this.forkOnce(request),
+    );
+  }
+
+  private async forkOnce(request: ForkRequest): Promise<ForkResult> {
+    this.forkLifetime.signal.throwIfAborted();
     const forkId = request.operationId;
     if (typeof forkId !== "string" || forkId.length < 8) {
       throw new Error("fork requires a stable operationId");
@@ -5903,12 +5996,6 @@ export class PubSubChannel extends DurableObjectBase {
       if (canonicalJson(recorded.request) !== canonicalJson(request)) {
         throw new Error(
           `fork operation ${forkId} was reused with different input`,
-        );
-      }
-      if (existing["phase"] === "rollback-pending") {
-        await this.rollbackForkOp(forkId);
-        throw new Error(
-          `fork operation ${forkId} failed and its cloned context was cleaned up`,
         );
       }
       if (existing["phase"] === "rolledback") {
@@ -5925,6 +6012,7 @@ export class PubSubChannel extends DurableObjectBase {
       return this.runForkOp(forkId);
     }
     const opts = await this.resolveForkRequest(request);
+    this.forkLifetime.signal.throwIfAborted();
     const now = Date.now();
     // Journal FIRST — before any host/DO call — so a crash is always recoverable.
     this.sql.exec(
@@ -5968,10 +6056,29 @@ export class PubSubChannel extends DurableObjectBase {
   /** Drive an interrupted/fresh fork op from its recorded phase to `done`,
    *  rolling back on unrecoverable failure. Idempotent under retry. */
   private async runForkOp(forkId: string): Promise<ForkResult> {
+    const existing = this.forkDrivers.get(forkId);
+    if (existing) return existing;
+    this.forkLifetime.signal.throwIfAborted();
+    const run = this.runForkOpOnce(forkId);
+    this.forkDrivers.set(forkId, run);
+    try {
+      return await run;
+    } finally {
+      if (this.forkDrivers.get(forkId) === run) this.forkDrivers.delete(forkId);
+    }
+  }
+
+  private async runForkOpOnce(forkId: string): Promise<ForkResult> {
     const row = this.getForkOpRow(forkId);
     if (!row) throw new Error(`fork op ${forkId} not found`);
     const phase = row["phase"] as string;
     const opts = JSON.parse(row["opts"] as string) as ForkOpts;
+    if (phase === "rollback-pending") {
+      await this.rollbackForkOp(forkId);
+      throw new Error(
+        `fork operation ${forkId} failed and its cloned context was cleaned up`,
+      );
+    }
 
     const sourceContextId = this.getStateValue("contextId");
     if (!sourceContextId)
@@ -6036,6 +6143,7 @@ export class PubSubChannel extends DurableObjectBase {
             },
           ],
         );
+        this.forkLifetime.signal.throwIfAborted();
         if (
           knowledge.channelId !== this.objectKey ||
           knowledge.throughSequence !== opts.forkPointPubsubId
@@ -6097,6 +6205,7 @@ export class PubSubChannel extends DurableObjectBase {
           forkedContextId,
         });
       }
+      this.forkLifetime.signal.throwIfAborted();
 
       const clonedAgents: Array<{ participantId: string } & DORef> = [];
       const clonedParticipants: string[] = [];
@@ -6120,6 +6229,7 @@ export class PubSubChannel extends DurableObjectBase {
             ...(opts.seed ? { seed: opts.seed } : {}),
           },
         ]);
+        this.forkLifetime.signal.throwIfAborted();
         for (const agent of keptAgents) {
           const ce = findClone(agent.ref);
           const clonedRef: DORef = {
@@ -6135,6 +6245,7 @@ export class PubSubChannel extends DurableObjectBase {
             entityId: ce.newId,
             channelId: forkedChannelId,
           });
+          this.forkLifetime.signal.throwIfAborted();
           if (agent.knowledge === null)
             throw new Error("Fork lost its immutable agent knowledge");
           await this.rpc.call(doTarget(clonedRef), "importChannelKnowledge", [
@@ -6146,6 +6257,7 @@ export class PubSubChannel extends DurableObjectBase {
               knowledge: agent.knowledge,
             },
           ]);
+          this.forkLifetime.signal.throwIfAborted();
           clonedParticipants.push(agent.participantId);
           clonedAgents.push({
             participantId: agent.participantId,
@@ -6173,6 +6285,7 @@ export class PubSubChannel extends DurableObjectBase {
       }
 
       // 3. SEED — append the fork opening message on the child.
+      this.forkLifetime.signal.throwIfAborted();
       let seededMessageId: string | undefined;
       if (opts.seed) {
         seededMessageId = `fork-seed:${forkId}`;
@@ -6180,12 +6293,14 @@ export class PubSubChannel extends DurableObjectBase {
           await this.rpc.call(doTarget(forkedChannelRef), "appendSeed", [
             { forkId },
           ]);
+          this.forkLifetime.signal.throwIfAborted();
         }
       }
       if (!forkPhaseReached(phase, "seeded"))
         this.setForkOpPhase(forkId, "seeded");
 
       // 4. ANNOUNCE — channel.forked on THIS (parent) log; the parent's `forks`
+      this.forkLifetime.signal.throwIfAborted();
       //    projection enumerates its direct children.
       if (!forkPhaseReached(phase, "announced")) {
         await this.appendForkEvent(forkId, opts, {
@@ -6227,15 +6342,23 @@ export class PubSubChannel extends DurableObjectBase {
         phase,
         error: err instanceof Error ? err.message : String(err),
       });
-      await this.rollbackForkOp(forkId);
-      const message = err instanceof Error ? err.message : String(err);
-      throw new Error(`Fork failed: ${message}`, { cause: err });
+      try {
+        await this.rollbackForkOp(forkId);
+      } catch (cleanupError) {
+        throw new AggregateError(
+          [err, cleanupError],
+          "Fork failed and its owned context cleanup failed",
+          { cause: err },
+        );
+      }
+      // Preserve cancellation and the original typed receiver failure unchanged.
+      throw err;
     }
   }
 
   /** Tear down a failed fork. Cleanup failure is itself durable and retryable;
    * the operation becomes terminal only after context destruction succeeds. */
-  private async rollbackForkOp(forkId: string): Promise<boolean> {
+  private async rollbackForkOp(forkId: string): Promise<void> {
     const row = this.getForkOpRow(forkId);
     const forkedContextId = row?.["forked_context_id"] as
       | string
@@ -6252,11 +6375,10 @@ export class PubSubChannel extends DurableObjectBase {
           e,
         );
         this.setForkOpPhase(forkId, "rollback-pending");
-        return false;
+        throw e;
       }
     }
     this.setForkOpPhase(forkId, "rolledback");
-    return true;
   }
 
   /** Append the durable `channel.forked` event to the parent log (this channel).
@@ -6599,7 +6721,7 @@ export class PubSubChannel extends DurableObjectBase {
       `INSERT OR REPLACE INTO state (key, value) VALUES ('__objectKey', ?)`,
       this.objectKey,
     );
-    const parentContextId = this.getStateValue("contextId");
+    const parentContextId = this.getStateValue("forkedFromContextId");
     if (parentContextId)
       this.setStateValue("forkedFromContextId", parentContextId);
     // Re-home the context (bypasses initChannel's mismatch guard by writing the
@@ -6621,17 +6743,10 @@ export class PubSubChannel extends DurableObjectBase {
         );
       }
     }
-    this.setStateValue("conversationSeed", "{}");
-    this.setStateValue("conversationSeedInstalled", "true");
-    this.setStateValue("openingRequestOutcome", "cancel");
     await this.channelLog.forkFrom(parentChannelId, forkPointId);
     this.deliveryProjection.resetForFork(forkPointId);
     // The child must NOT inherit the parent's fork journal or direct-child
     // projection. Its semantic locus index retains only the inherited prefix.
-    this.sql.exec(`DELETE FROM fork_ops`);
-    this.sql.exec(`DELETE FROM fork_projection`);
-    this.sql.exec(`DELETE FROM lineage_head_outbox`);
-    this.sql.exec(`DELETE FROM lineage_heads`);
     this.sql.exec(
       `DELETE FROM fork_message_loci WHERE first_seq > ?`,
       forkPointId,
@@ -6652,14 +6767,6 @@ export class PubSubChannel extends DurableObjectBase {
     // A cloned operation was authored for the parent's object key. Membership
     // may be inherited, but its in-flight projection must never be replayed as
     // a new pending invite for the child channel.
-    this.sql.exec(`DELETE FROM invite_index_ops`);
-    // Clear operational state + caches
-    this.sql.exec(`DELETE FROM participants`);
-    this.invalidateBroadcastParticipants();
-    this.sql.exec(`DELETE FROM pending_calls`);
-    this.sql.exec(`DELETE FROM provider_call_claims`);
-    this.sql.exec(`DELETE FROM channel_delivery_latency_histogram`);
-    this.deleteStateValue("deliveryReadyEdgeAlarmSpins");
     await this.policyHost.rebuildAfterFork();
     // Canonical history retains its original invocation identity. The child
     // gains knowledge, never ownership of those operations or their cleanup.

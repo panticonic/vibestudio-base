@@ -292,6 +292,59 @@ function messageTypeRegisteredEvent(
   };
 }
 
+async function initializeChannelClone(
+  child: TestDO<PubSubChannel>,
+  parentChannelId: string,
+  targetContextId: string,
+  sourceContextId = "source-context",
+): Promise<void> {
+  const objectKey = (child.instance as unknown as { objectKey: string })
+    .objectKey;
+  const ref = { source: "workers/pubsub-channel", className: "PubSubChannel" };
+  const response = await child.instance.fetch(
+    new Request(
+      `http://test/${encodeURIComponent(objectKey)}/__lifecycle/initializeClone`,
+      {
+        method: "POST",
+        body: JSON.stringify({
+          args: [
+            {
+              provenance: {
+                storage: "snapshot",
+                operationContextId: targetContextId,
+                sourceEntityId: `do:${ref.source}:${ref.className}:${parentChannelId}`,
+                sourceContextId,
+                sourceAuthoritySessionId: "source-session",
+                sourceBuildKey: "b".repeat(64),
+                sourceExecutionDigest: "e".repeat(64),
+              },
+              source: { ...ref, objectKey: parentChannelId },
+              sourceContextId,
+              target: { ...ref, objectKey },
+              targetContextId,
+              authoritySessionId: `clone:${objectKey}`,
+              buildKey: "b".repeat(64),
+              executionDigest: "e".repeat(64),
+            },
+          ],
+          __instanceToken: "token",
+          __instanceId: `do:${ref.source}:${ref.className}:${objectKey}`,
+          __caller: {
+            callerId: "main",
+            callerKind: "server",
+            authorization: createTestDirectAuthority({
+              callerKind: "server",
+              method: "__lifecycle/initializeClone",
+              objectKey,
+            }),
+          },
+        }),
+      },
+    ),
+  );
+  expect(response.status, await response.text()).toBe(200);
+}
+
 async function createGadBackedChannel(
   options: {
     emitted?: unknown[];
@@ -3404,6 +3457,7 @@ describe("PubSubChannel", () => {
       channelKey: "channel-fork",
       gad: parent.gad,
     });
+    await initializeChannelClone(fork, "channel-parent", "ctx-forked", "ctx-1");
     await fork.instance.postClone("channel-parent", 3, "ctx-forked");
 
     const replay = await fork.instance.getReplayAfter({ after: 0 });
@@ -3531,6 +3585,7 @@ describe("PubSubChannel", () => {
       },
     });
     try {
+      await initializeChannelClone(child, "running-source", "ctx-knowledge");
       await child.instance.postClone(
         "running-source",
         before.ready.snapshotLastSeq!,
@@ -3853,16 +3908,18 @@ describe("PubSubChannel", () => {
       now,
     );
     const internal = instance as unknown as {
-      rollbackForkOp(forkId: string): Promise<boolean>;
+      rollbackForkOp(forkId: string): Promise<void>;
     };
 
-    await expect(internal.rollbackForkOp("fork-cleanup-1")).resolves.toBe(
-      false,
+    await expect(internal.rollbackForkOp("fork-cleanup-1")).rejects.toThrow(
+      "cleanup unavailable",
     );
     expect(sql.exec(`SELECT phase FROM fork_ops`).one()["phase"]).toBe(
       "rollback-pending",
     );
-    await expect(internal.rollbackForkOp("fork-cleanup-1")).resolves.toBe(true);
+    await expect(
+      internal.rollbackForkOp("fork-cleanup-1"),
+    ).resolves.toBeUndefined();
     expect(sql.exec(`SELECT phase FROM fork_ops`).one()["phase"]).toBe(
       "rolledback",
     );
@@ -3889,6 +3946,7 @@ describe("PubSubChannel", () => {
       channelKey: "channel-ctx-fork",
       gad: parent.gad,
     });
+    await initializeChannelClone(fork, "channel-ctx-parent", "ctx-forked");
     await fork.instance.postClone("channel-ctx-parent", 2, "ctx-forked");
     expect(await fork.instance.getContextId()).toBe("ctx-forked");
 
@@ -6206,6 +6264,11 @@ describe("PubSubChannel policy folds and cache amnesia (WS2)", () => {
       channelKey: "channel-policy-fork",
       gad: parent.gad,
     });
+    await initializeChannelClone(
+      fork,
+      "channel-policy-parent",
+      "ctx-policy-fork",
+    );
     await fork.instance.postClone(
       "channel-policy-parent",
       parentState.foldedThroughSeq,
@@ -6736,6 +6799,7 @@ describe("PubSubChannel fork lineage delivery", () => {
         return undefined;
       },
     });
+    await initializeChannelClone(child, "lineage-mid", "lineage-context");
     await child.instance.postClone("lineage-mid", 1, "lineage-context", {
       forkId: "lineage-fork-1",
       rootChannelId: "lineage-root",
@@ -6819,6 +6883,7 @@ describe("PubSubChannel appendSeed fork plumbing", () => {
         return undefined;
       },
     });
+    await initializeChannelClone(child, "channel-parent", "ctx-forked");
     await child.instance.postClone("channel-parent", 2, "ctx-forked", {
       forkId: "fork-1",
       rootChannelId: "channel-parent",
@@ -7223,5 +7288,223 @@ describe("conversation image ownership", () => {
         (item) => item.kind === "message.completed",
       ),
     ).toHaveLength(1);
+  });
+});
+
+describe("channel fork lifetime ownership", () => {
+  it("initializes copied operational state before any child maintenance admission", async () => {
+    const child = await createGadBackedChannel({
+      channelKey: "initialized-child",
+    });
+    child.sql
+      .exec(`INSERT INTO state (key, value) VALUES ('contextId', 'source-context'),
+      ('forkSeedMarker', '{}'), ('openingRequestResolution', 'deliver'),
+      ('conversationSeed', '{"openingRequest":{"blocks":[]}}')`);
+    child.sql
+      .exec(`INSERT INTO fork_ops (fork_id, fork_point_id, opts, phase, created_at, updated_at)
+      VALUES ('source-operation', 0, '{}', 'journaled', 1, 1)`);
+    await initializeChannelClone(child, "source-channel", "child-context");
+    expect(child.sql.exec(`SELECT * FROM fork_ops`).toArray()).toEqual([]);
+    expect(
+      child.sql.exec(`SELECT * FROM channel_maintenance_queue`).toArray(),
+    ).toEqual([]);
+    expect(
+      child.sql
+        .exec(`SELECT value FROM state WHERE key = 'forkSeedMarker'`)
+        .toArray(),
+    ).toEqual([]);
+    expect(await child.instance.getContextId()).toBe("child-context");
+    expect(
+      child.sql
+        .exec(`SELECT value FROM state WHERE key = 'openingRequestOutcome'`)
+        .toArray(),
+    ).toEqual([{ value: "cancel" }]);
+  });
+
+  it("never starts a second fork driver because its live owner is slow", async () => {
+    let entered!: () => void;
+    let release!: () => void;
+    const admitted = new Promise<void>((resolve) => {
+      entered = resolve;
+    });
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const clone = vi.fn(async () => {
+      entered();
+      await held;
+      return {
+        contextId: "owned-context",
+        entities: [
+          {
+            sourceId: "do:workers/pubsub-channel:PubSubChannel:owner-channel",
+            newId: "do:workers/pubsub-channel:PubSubChannel:owned-child",
+            kind: "do",
+            source: "workers/pubsub-channel",
+            className: "PubSubChannel",
+            sourceKey: "owner-channel",
+            newKey: "owned-child",
+            targetId: "do:workers/pubsub-channel:PubSubChannel:owned-child",
+          },
+        ],
+      };
+    });
+    const parent = await createGadBackedChannel({
+      channelKey: "owner-channel",
+      rpcCall: (_target, method, args) => {
+        if (
+          method === "workers.resolveService" &&
+          args[0] === "vibestudio.channel.v1"
+        )
+          return {
+            source: "workers/pubsub-channel",
+            className: "PubSubChannel",
+            objectKey: args[1],
+          };
+        if (method === "runtime.cloneContext") return clone();
+        if (method === "postClone") return null;
+        return undefined;
+      },
+    });
+    setRpcCaller(parent.instance, "panel:user", "panel");
+    await parent.instance.subscribe("panel:user", {
+      contextId: "source-context",
+      name: "User",
+      type: "panel",
+    });
+    const input = {
+      operationId: "slow-owned-fork",
+      locus: { kind: "head" as const },
+      reason: "history",
+    };
+    const first = parent.instance.fork(input);
+    await admitted;
+    const second = parent.instance.fork(input);
+    const clock = vi.spyOn(Date, "now").mockReturnValue(Date.now() + 60_000);
+    const internal = parent.instance as unknown as {
+      materializeDueMaintenance(now: number): void;
+      runForkOp(id: string): ReturnType<PubSubChannel["fork"]>;
+    };
+    const recovery = internal.runForkOp(input.operationId);
+    try {
+      internal.materializeDueMaintenance(Date.now());
+      expect(
+        parent.sql
+          .exec(
+            `SELECT * FROM channel_maintenance_queue WHERE kind = 'fork-reconcile'`,
+          )
+          .toArray(),
+      ).toEqual([]);
+      expect(clone).toHaveBeenCalledOnce();
+    } finally {
+      clock.mockRestore();
+      release();
+    }
+    expect(await second).toEqual(await first);
+    expect(await recovery).toEqual(await first);
+    expect(clone).toHaveBeenCalledOnce();
+  });
+
+  it("retirement cancels and joins the driver and its rollback before superclass release", async () => {
+    let entered!: () => void;
+    let release!: () => void;
+    let cleaning!: () => void;
+    let releaseCleanup!: () => void;
+    const admitted = new Promise<void>((resolve) => {
+      entered = resolve;
+    });
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const cleanupEntered = new Promise<void>((resolve) => {
+      cleaning = resolve;
+    });
+    const cleanupHeld = new Promise<void>((resolve) => {
+      releaseCleanup = resolve;
+    });
+    const destroy = vi.fn(async () => {
+      cleaning();
+      await cleanupHeld;
+      return null;
+    });
+    const postClone = vi.fn(() => null);
+    const parent = await createGadBackedChannel({
+      channelKey: "retiring-channel",
+      rpcCall: (_target, method, args) => {
+        if (
+          method === "workers.resolveService" &&
+          args[0] === "vibestudio.channel.v1"
+        )
+          return {
+            source: "workers/pubsub-channel",
+            className: "PubSubChannel",
+            objectKey: args[1],
+          };
+        if (method === "runtime.cloneContext")
+          return (async () => {
+            entered();
+            await held;
+            return {
+              contextId: "owned-context",
+              entities: [
+                {
+                  sourceId:
+                    "do:workers/pubsub-channel:PubSubChannel:retiring-channel",
+                  newId: "do:workers/pubsub-channel:PubSubChannel:owned-child",
+                  kind: "do",
+                  source: "workers/pubsub-channel",
+                  className: "PubSubChannel",
+                  sourceKey: "retiring-channel",
+                  newKey: "owned-child",
+                  targetId:
+                    "do:workers/pubsub-channel:PubSubChannel:owned-child",
+                },
+              ],
+            };
+          })();
+        if (method === "runtime.destroyContext") return destroy();
+        if (method === "postClone") return postClone();
+        return undefined;
+      },
+    });
+    setRpcCaller(parent.instance, "panel:user", "panel");
+    await parent.instance.subscribe("panel:user", {
+      contextId: "source-context",
+      name: "User",
+      type: "panel",
+    });
+    const fork = parent.instance.fork({
+      operationId: "retired-owned-fork",
+      locus: { kind: "head" },
+      reason: "history",
+    });
+    const outcome = fork.catch((error: unknown) => error);
+    await admitted;
+    const baseRelease = vi.spyOn(
+      Object.getPrototypeOf(PubSubChannel.prototype),
+      "releaseForLifecycle",
+    );
+    const retirement = parent.instance.releaseForLifecycle({
+      epoch: "retire-owned",
+      mode: "retire",
+      reason: "entity_retire",
+      deadlineMs: 0,
+    });
+    try {
+      expect(baseRelease).not.toHaveBeenCalled();
+      release();
+      await cleanupEntered;
+      expect(baseRelease).not.toHaveBeenCalled();
+      expect(postClone).not.toHaveBeenCalled();
+      releaseCleanup();
+      await expect(outcome).resolves.toMatchObject({ code: "ECANCELLED" });
+      await expect(retirement).resolves.toEqual({ status: "ready" });
+      expect(baseRelease).toHaveBeenCalledOnce();
+      expect(destroy).toHaveBeenCalledOnce();
+    } finally {
+      release();
+      releaseCleanup();
+      baseRelease.mockRestore();
+    }
   });
 });
