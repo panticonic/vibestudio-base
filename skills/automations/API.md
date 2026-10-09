@@ -37,6 +37,7 @@ type AgentAutomationLaunch = {
   summary: string;
   action:
     | { kind: "prompt"; text: string }
+    | { kind: "tool"; tool: string; args: Record<string, unknown> }
     | {
         kind: "eval" | "watch";
         code: string;
@@ -91,8 +92,12 @@ method contract for durable pre-acquisition.
   cover those. Never declare made-up operations such as `missions.finishRun` or
   `chat.publish`.
 
-Model-facing agent tools are not eval JavaScript globals. `notify` stays a
-prompt tool and is not translated into its internal service calls. Eval actions
+Model-facing agent tools are not eval JavaScript globals. A `tool` action invokes
+the exact selected tool registration with object arguments, without a model turn;
+its registered parameter schema, replay policy, and cancellation lifecycle apply.
+The tool name is preserved exactly, including dots and hyphens. A name that is
+not selected by that agent fails rather than adding authority or tools.
+`notify` is not translated into its internal service calls. Eval actions
 import the `@workspace/runtime` APIs they use. An eval publishes its return
 value into the run conversation; returning `automation-completion.v1` also
 completes the recurring mission.
@@ -134,6 +139,7 @@ type MissionCharter = {
         image: MissionExecutionImage;
         action:
           | { kind: "prompt"; text: string }
+          | { kind: "tool"; tool: string; args: Record<string, unknown> }
           | {
               kind: "eval" | "watch";
               code: string;

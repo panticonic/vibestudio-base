@@ -696,7 +696,9 @@ export function AutomationParametersEditor({
                 ? "Eval code"
                 : execution.action.kind === "notify"
                   ? "Notification text"
-                  : "Prompt text"
+                  : execution.action.kind === "tool"
+                    ? "Tool arguments"
+                    : "Prompt text"
           }
           value={payload}
           onChange={(event) => setPayload(event.target.value)}

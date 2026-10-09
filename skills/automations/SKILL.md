@@ -33,6 +33,11 @@ current user, and the missions service checks ownership again on mutation.
   links back to. The run fails if the inbox entry cannot be written; the phone
   push is best effort.
 - Agent `prompt`: a model should reason on each run.
+- Agent `tool`: invoke one of this agent's selected tools with exact object
+  arguments, without a model turn. Use `{ kind: "tool", tool, args }` with the
+  tool's actual registered name and parameter schema. The run retains its
+  genuine result or error and follows that tool's ordinary replay and
+  cancellation contract. This adds no tools to the agent's selection.
 - Agent `watch`: a deterministic check that wakes the model only when something
   changes. It returns `{protocol: "automation-signal.v1", prompt: null}` to
   finish quietly, or a nonempty `prompt` to continue the same run in the agent.
@@ -40,8 +45,8 @@ current user, and the missions service checks ownership again on mutation.
   notification instruction. Errors fail the run; they are not quiet results.
 - Agent `eval`: a small script that runs as the same agent in its channel-bound
   EvalDO. Eval code has the normal module API. Model-facing tools such as
-  `notify` are not JavaScript globals; if a run needs an agent tool, use a
-  prompt action.
+  `notify` are not JavaScript globals. Use a `tool` action for a known tool and
+  exact arguments, or a prompt action when the agent should decide what to do.
 - Lower-level `method` charter: a reusable deterministic method on another
   Durable Object image.
 

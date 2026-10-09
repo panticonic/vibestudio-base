@@ -545,6 +545,96 @@ describe("AutomationActivity", () => {
     );
   });
 
+  it("edits object arguments for the selected native tool without changing its identity", async () => {
+    const execution = automation.charter.execution;
+    if (execution.kind !== "agent") throw new Error("Expected an agent mission");
+    const toolAutomation: MissionRecord = {
+      ...automation,
+      charter: {
+        ...automation.charter,
+        execution: {
+          ...execution,
+          action: {
+            kind: "tool",
+            tool: "vcs.status",
+            args: { contextId: "context:one" },
+          },
+        },
+      },
+    };
+    const api = client();
+    api.inspect.mockResolvedValue({
+      automation: toolAutomation,
+      recentRuns: [run],
+      totalRuns: 1,
+      activeRuns: 0,
+      issueRunsSince: 0,
+    });
+    render(
+      <Theme>
+        <AutomationActivity
+          activity={{
+            snapshot: {
+              missionId: toolAutomation.missionId,
+              runId: run.runId,
+              name: toolAutomation.name,
+              revision: toolAutomation.revision,
+              action: "tool",
+              trigger: "scheduled",
+              startedAt: run.startedAt,
+              createdAt: toolAutomation.createdAt,
+              activatedAt: toolAutomation.activatedAt,
+              schedule: { kind: "interval", everyMs: 86_400_000 },
+            },
+            status: "succeeded",
+            openedAt: new Date(run.startedAt).toISOString(),
+            closedAt: new Date(run.finishedAt!).toISOString(),
+          }}
+          automation={toolAutomation}
+          run={run}
+          client={api}
+        />
+      </Theme>,
+    );
+
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: /Inspect automation tick Daily check/,
+      }),
+    );
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Edit parameters" }),
+    );
+    const argumentsField = screen.getByLabelText("Tool arguments");
+    fireEvent.change(argumentsField, { target: { value: '["context:two"]' } });
+    fireEvent.click(screen.getByRole("button", { name: "Save and apply" }));
+    expect(
+      await screen.findByText("Agent tool arguments must be a JSON object."),
+    ).toBeTruthy();
+    expect(api.edit).not.toHaveBeenCalled();
+
+    fireEvent.change(argumentsField, {
+      target: { value: '{"contextId":"context:two","includeWorking":true}' },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save and apply" }));
+    await waitFor(() =>
+      expect(api.edit).toHaveBeenCalledWith(
+        toolAutomation.missionId,
+        expect.objectContaining({
+          charter: expect.objectContaining({
+            execution: expect.objectContaining({
+              action: {
+                kind: "tool",
+                tool: "vcs.status",
+                args: { contextId: "context:two", includeWorking: true },
+              },
+            }),
+          }),
+        }),
+      ),
+    );
+  });
+
   it("displays and edits calendar cadence, timezone, and finite-run controls together", async () => {
     const calendarAutomation: MissionRecord = {
       ...automation,
