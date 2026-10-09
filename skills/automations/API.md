@@ -353,6 +353,16 @@ its own execution identity.
 | `retire`    | `missionId`                                        | retired definition                                   |
 | `finishRun` | structured terminal result                         | `void`; executor-only                                |
 
+`overview` returns its aggregate counters in `stats`, alongside the requested
+definition page. `stats.total` counts visible automation definitions;
+`stats.active` and `stats.completed` count definitions in those states;
+`stats.running` counts runs whose phase is not terminal; and
+`stats.issueRunsLast24Hours` counts runs started in the last 24 hours with an
+`outcome` of `failed` or `completed-with-errors`. These counters cover the
+entire caller-visible ledger and do not change with `limit`, `cursor`, `filter`,
+`query`, or `missionId`. In particular, `completed` is a definition-state
+count, while `issueRunsLast24Hours` is a recent run-outcome count.
+
 The dashboard and chat inspector consume these records directly. The chat pill
 is a launch snapshot only until opened; every inspector open queries `overview`
 for the canonical definition and recent runs. They show failed child effects,

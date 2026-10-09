@@ -39,7 +39,7 @@ development](../extensiondev/SKILL.md) for trusted Node services.
 | Typed parent-child contracts                                   | [RPC.md](RPC.md)                                                     |
 | CDP/browser automation                                         | [BROWSER.md](BROWSER.md)                                             |
 | Agent tool recipes                                             | [TOOLS.md](TOOLS.md)                                                 |
-| Existing unit status, logs, and release history                | [sandbox runtime API](../sandbox/RUNTIME_API.md#current-workspace)   |
+| Current workspace, unit status, logs, and release history         | [sandbox runtime API](../sandbox/RUNTIME_API.md#current-workspace)   |
 | Icons and unit identity                                        | [references/icons.md](references/icons.md)                           |
 
 Also read [capabilities](../capabilities/SKILL.md) before adding authority,
