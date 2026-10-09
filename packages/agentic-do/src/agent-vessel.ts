@@ -116,6 +116,7 @@ import {
 import {
   type DurableObjectContext,
   type LifecyclePrepareInput,
+  type LifecycleResumeInput,
 } from "@workspace/runtime/worker/durable-base";
 
 import {
@@ -210,6 +211,7 @@ import {
 import {
   AGENT_INSPECTION_METHODS,
   isAgentInspectionMethod,
+  isParticipantInspectionMethod,
   type AgentInspectionMethod,
 } from "@vibestudio/shared/agentInspection";
 
@@ -3188,7 +3190,7 @@ export abstract class AgentVesselBase extends NativeChannelOwner<NativeProductCh
     transportCallId?: string,
   ): Promise<{ result: unknown; isError?: boolean } | null> {
     if (!this.isParticipantMethodEnabled(methodName)) return null;
-    if (isAgentInspectionMethod(methodName)) {
+    if (isParticipantInspectionMethod(methodName)) {
       return this.readStandardAgentInspection(channelId, methodName);
     }
     switch (methodName) {
@@ -4245,6 +4247,8 @@ export abstract class AgentVesselBase extends NativeChannelOwner<NativeProductCh
     // read-only inspection methods locally; all other self-calls retain the
     // normal channel semantics.
     if (targetPid === this.participantId() && isAgentInspectionMethod(method)) {
+      if (!isParticipantInspectionMethod(method))
+        throw new Error("Operational inspection requires gad.inspectAgent");
       const inspection = await this.readStandardAgentInspection(
         channelId,
         method,
@@ -6612,7 +6616,7 @@ export abstract class AgentVesselBase extends NativeChannelOwner<NativeProductCh
     };
   }
 
-  private async activationDebugState(
+  protected async activationDebugState(
     channelId?: string,
   ): Promise<Record<string, unknown>> {
     const channels = channelId ? [channelId] : this.nativeReasoningChannelIds();
@@ -6629,21 +6633,6 @@ export abstract class AgentVesselBase extends NativeChannelOwner<NativeProductCh
       retainedSubagentRuns: this.subagentRuns.listAll().length,
       liveSubagentRuns: this.subagentRuns.countLive(),
     };
-  }
-
-  @rpc({
-    website: {
-      kind: "closed",
-      reason:
-        "This receiver owns workspace orchestration or retained workspace data; websites require a reviewed bounded operation.",
-    },
-    principals: ["host", "user", "code"],
-    effect: { kind: "open" },
-    tier: "open",
-    sensitivity: "read",
-  })
-  async getDebugState(channelId?: string): Promise<Record<string, unknown>> {
-    return this.activationDebugState(channelId);
   }
 
   /**
@@ -7037,6 +7026,13 @@ export abstract class AgentVesselBase extends NativeChannelOwner<NativeProductCh
           : {}),
       },
     };
+  }
+
+  override async resumeAfterRestart(input: LifecycleResumeInput): Promise<void> {
+    await super.resumeAfterRestart(input);
+    // Finish is retained native receipt debt, not a new execution. The actual
+    // lifecycle transition authorizes retry of its original parked incident.
+    await this.nativeAutomationRuns.drain(BACKGROUND_CONTEXT);
   }
 
   protected override async releaseAgentResources(

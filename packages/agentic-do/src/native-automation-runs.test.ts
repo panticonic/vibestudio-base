@@ -685,6 +685,31 @@ describe("native automation ownership", () => {
     expect(f.finishes).toEqual([f.finishes[0], f.finishes[0]]);
     expect(f.calls()).toBe(1);
   });
+  it("delivers the original parked terminal receipt after reopening storage without executing again", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "native-automation-finish-"));
+    directories.push(directory);
+    const path = join(directory, "state.sqlite");
+    const f = await fixture(
+      { protocol: "automation-signal.v1", prompt: null },
+      await openNodeSqliteStorage(path),
+    );
+    f.fail(new Error("Original finish delivery failure"));
+    await f.runs.admitEval(
+      "channel:one", { code: "actual check" },
+      bindTool(f.evalTool, "parallel"), automation("watch"), context,
+    );
+    await f.harness().runPass(context);
+    expect(f.finishes).toHaveLength(1);
+    await f.harness().close(context);
+    f.fail(null);
+    await f.open(await openNodeSqliteStorage(path));
+    await f.runs.drain(context);
+    expect(f.finishes).toEqual([f.finishes[0], f.finishes[0]]);
+    expect(f.calls()).toBe(1);
+    expect((await f.harness().inspect(context)).tasks.filter(
+      ({ record }) => record.kind === "vibestudio.automation-finish",
+    )).toEqual([]);
+  });
   it("refuses a concurrent conflicting prompt while canonical native admission deduplicates its request", async () => {
     const f = await fixture(null);
     f.faux.setResponses([

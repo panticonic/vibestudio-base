@@ -78,7 +78,6 @@ type StandardAgentMethodName =
   | "refreshPromptArtifacts"
   | "getAgentSettings"
   | "getModelExecutionEvidence"
-  | "getDebugState"
   | "inspectMethodSuspensions";
 
 type StandardAgentMethodOptions = {
@@ -2128,10 +2127,6 @@ export abstract class AgentWorkerBase extends AgentVesselBase {
         name: "getModelExecutionEvidence",
         description:
           "Read durable provider/model routing and aggregate usage evidence for this channel",
-      },
-      {
-        name: "getDebugState",
-        description: "Read agent DO persisted and in-memory debug state",
       },
       {
         name: "inspectMethodSuspensions",

@@ -1376,13 +1376,13 @@ describe("AgentVesselBase.chatOp", () => {
     await expect(promise).rejects.toThrow(/kaboom/);
   });
 
-  it("resolves the agent's own read-only inspection call without a channel deadlock", async () => {
+  it("requires the administrative inspection path for debug state", async () => {
     const vessel = await makeVessel();
     vessel.callerIdForTest = await expectedEvalCaller();
 
     await expect(
       vessel.chatOp(CHANNEL, "callMethod", [AGENT_ID, "getDebugState", {}]),
-    ).resolves.toMatchObject({ participantId: AGENT_ID });
+    ).rejects.toThrow("gad.inspectAgent");
     expect(vessel.channelStub.calls).toHaveLength(0);
   });
 });

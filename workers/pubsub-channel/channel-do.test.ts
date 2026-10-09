@@ -3199,7 +3199,7 @@ describe("PubSubChannel", () => {
     );
   });
 
-  it("admin-inspects a DO-backed agent debug method without requiring a live roster row", async () => {
+  it("inspects a DO-backed agent debug method without requiring a live roster row", async () => {
     const targetPid =
       "do:workers/agent-worker:AiChatWorker:agent-recently-active";
     const rpcCalls: Array<{ target: string; method: string; args: unknown[] }> =
@@ -3216,7 +3216,7 @@ describe("PubSubChannel", () => {
 
     setRpcCaller(instance, "server:test", "server");
     await expect(
-      instance.adminInspectAgent({
+      instance.inspectAgent({
         participantId: targetPid,
         method: "getDebugState",
       }),
@@ -3267,7 +3267,7 @@ describe("PubSubChannel", () => {
 
     setRpcCaller(instance, "server:test", "server");
     await expect(
-      instance.adminInspectAgent({
+      instance.inspectAgent({
         participantId: targetPid,
         method: "getDebugState",
       }),
@@ -3311,7 +3311,7 @@ describe("PubSubChannel", () => {
 
     setRpcCaller(instance, "server:test", "server");
     await expect(
-      instance.adminInspectAgent({
+      instance.inspectAgent({
         participantId: targetPid,
         method: "getDebugState",
       }),
@@ -3373,7 +3373,7 @@ describe("PubSubChannel", () => {
     });
     setRpcCaller(instance, "server:test", "server");
     await expect(
-      instance.adminInspectAgent({ method: "getDebugState" }),
+      instance.inspectAgent({ method: "getDebugState" }),
     ).rejects.toThrow(/participantId is required.*no agent participant/u);
 
     const insert = (id: string) =>
@@ -3383,7 +3383,7 @@ describe("PubSubChannel", () => {
       );
     insert(targetPid);
     await expect(
-      instance.adminInspectAgent({ method: "getDebugState" }),
+      instance.inspectAgent({ method: "getDebugState" }),
     ).resolves.toMatchObject({
       participantId: targetPid,
       roster: { present: true, transport: "do" },
@@ -3392,7 +3392,7 @@ describe("PubSubChannel", () => {
 
     insert("do:workers/agent-worker:AiChatWorker:agent-second");
     await expect(
-      instance.adminInspectAgent({ method: "getDebugState" }),
+      instance.inspectAgent({ method: "getDebugState" }),
     ).rejects.toThrow(/2 agent participants/u);
   });
 
@@ -3416,7 +3416,7 @@ describe("PubSubChannel", () => {
 
     setRpcCaller(instance, "server:test", "server");
     await expect(
-      instance.adminInspectAgent({
+      instance.inspectAgent({
         participantId:
           "do:workers/agent-worker:AiChatWorker:agent-recently-active",
         method: "pause",

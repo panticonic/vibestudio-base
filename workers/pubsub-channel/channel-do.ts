@@ -5000,23 +5000,6 @@ export class PubSubChannel extends DurableObjectBase {
 
   @rpc({
     website: {
-      kind: "closed",
-      reason:
-        "This receiver owns workspace orchestration or retained workspace data; websites require a reviewed bounded operation.",
-    },
-    principals: ["host", "user"],
-    effect: { kind: "open" },
-    tier: "open",
-    sensitivity: "read",
-  })
-  async adminInspectAgent(
-    request: AgentInspectionRequest,
-  ): Promise<AgentInspectionResult> {
-    return this.inspectAgentReadOnly(request);
-  }
-
-  @rpc({
-    website: {
       kind: "eligible",
       rationale:
         "Ordinary conversation and agent operations use caller-scoped approvals; launched execution retains its authenticated authority.",
