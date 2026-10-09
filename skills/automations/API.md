@@ -57,7 +57,14 @@ ongoing conversation.
 Operations express concrete external service calls predictable at launch. Do not supply
 capability names, permission rows, grants, runtime identities, or channel IDs.
 The host compiles each operation against the live receiver-owned method contract
-for durable pre-acquisition. Include predictable service calls selected by a
+for durable pre-acquisition. `args` is the receiver's canonical service tuple,
+including arguments supplied implicitly by a JavaScript wrapper. Omitting it is
+valid only for a method that accepts no arguments. For `vcs.status()`, observe
+the project's `contextId` from `@workspace/runtime` and declare
+`args: [{ contextId }]`; never substitute an invented context ID or placeholder.
+Observing an action's service arguments does not require discovering the
+executor's build, class, object key, or channel: the native launch tool seals
+those identity facts itself. Include predictable service calls selected by a
 prompt action. The artifact is not a runtime allowlist: genuinely dynamic or
 accidentally omitted operations use ordinary prompt-capable acquisition when
 actually invoked.

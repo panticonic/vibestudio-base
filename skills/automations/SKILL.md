@@ -49,7 +49,8 @@ Use `conversation: { mode: "fresh" }` only when the automation is a genuinely se
    such as `notify` already own their internal effects; do not reverse-engineer
    them into service operations.
    Declare only external service calls made by the action. Scheduling, fresh-conversation creation, delivery of the eval result into that conversation, and the `automation-completion.v1` return are intrinsic mission behavior: do not invent `missions.finishRun`, `chat.publish`, or similar operations for them.
-3. Call `launch_automation` once with the action, trigger, conversation mode, and operations. Do not wrap it in eval and do not discover the current agent’s build, class, object key, channel, or context first; the receiver seals those facts atomically.
+   Supply the receiver's actual argument tuple, including arguments a JavaScript wrapper supplies implicitly. For a current-project `vcs.status()` read, observe `contextId` from `@workspace/runtime` in eval and declare `args: [{ contextId }]`. Copy the observed value rather than inventing a context ID or using a placeholder. These action arguments are distinct from the executor identity sealed by the launch tool.
+3. Call `launch_automation` once with the action, trigger, conversation mode, and operations. Do not invoke it through eval or discover the current agent’s build, class, object key, or channel first; the receiver seals those facts atomically. Eval may observe the explicit service arguments needed by the action and prepare the launch input.
 4. Report the active automation’s name and cadence. Point to its pill for inspection or control; do not publish a second card or ask for a second launch approval.
 
 Example:
@@ -68,10 +69,11 @@ Example:
 });
 ```
 
-For a small model-free project-status check, return the status text from eval; the run publishes that result in its conversation. Declare the status read itself:
+For a small model-free project-status check in this conversation, return the status text from the scheduled eval; the run publishes that result. First use an ordinary eval to prepare the launch input with the observed project context, then pass its returned object to the native `launch_automation` tool. This eval prepares data; it does not launch the automation:
 
 ```ts
-({
+import { contextId } from "@workspace/runtime";
+return {
   name: "Project pulse",
   summary: "Report project status every Thursday morning.",
   action: {
@@ -80,10 +82,7 @@ For a small model-free project-status check, return the status text from eval; t
       import { vcs } from "@workspace/runtime";
       const status = await vcs.status();
       if (status.clean && status.mainRelation === "at") {
-        return {
-          protocol: "automation-completion.v1",
-          response: "The project is clean and in sync.",
-        };
+        return "The project is clean and in sync.";
       }
       return "Project pulse: " + status.mainRelation;
     `,
@@ -94,9 +93,9 @@ For a small model-free project-status check, return the status text from eval; t
     expression: "5 5 * * THU",
     timezone: "America/New_York",
   },
-  conversation: { mode: "fresh" },
-  operations: [{ service: "vcs", method: "status", use: "action" }],
-});
+  conversation: { mode: "continue" },
+  operations: [{ service: "vcs", method: "status", args: [{ contextId }], use: "action" }],
+};
 ```
 
 ## Authority

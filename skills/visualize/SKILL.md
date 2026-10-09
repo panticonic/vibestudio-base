@@ -15,7 +15,7 @@ Prefer visuals and interaction for:
 - options side by side, trade-offs, and decisions;
 - numbers over time, breakdowns, and key figures;
 - schedules, itineraries, routes, and places;
-- what-if math: splits, budgets, loans, conversions, estimates;
+- what-if math with inputs to vary: budgets, loans, conversions, estimates, or alternate split scenarios;
 - procedures, packing lists, and setup steps;
 - narrowing questions and next steps the user picks from.
 
@@ -45,7 +45,7 @@ and flow; see [MDX.md](../sandbox/MDX.md) for media.
 | plan a day, trip, or event | `PlaceMap` + `Timeline`, then `Choices` to refine |
 | choose between products, plans, or approaches | `Compare`, optionally `Chart` for the numbers that matter |
 | see a trend or breakdown | `Chart` (+ `Stats` for headline figures) |
-| work out a number that depends on inputs | `Calculator` |
+| explore how a result changes as inputs vary | `Calculator` |
 | follow a procedure or prepare | `Checklist` |
 | understand a mechanism or system | a mermaid diagram, `Timeline` for phases, or a `Calculator` that exposes the cause-and-effect |
 | decide where to go next | `Choices` or a few `ActionButton`s |
