@@ -124,6 +124,9 @@ function VideoSource({
       {youtube ? (
         <iframe
           title={title}
+          // Let Chromium start the player only when its native surface can present it.
+          // YouTube otherwise keeps the tiny thumbnail selected during a hidden boot.
+          loading="lazy"
           src={`https://www.youtube-nocookie.com/embed/${youtube.id}?start=${youtube.start}`}
           allow="encrypted-media; picture-in-picture; fullscreen"
           referrerPolicy="strict-origin-when-cross-origin"

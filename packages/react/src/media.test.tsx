@@ -31,12 +31,13 @@ describe("shared conversation media", () => {
       mediaUrl("data:text/html,<script>alert(1)</script>"),
     ).toThrow();
   });
-  it("embeds YouTube immediately without autoplay, preserves a watch link, and retires playback on source change", () => {
+  it("lets Chromium defer hidden YouTube players, preserves a watch link, and retires playback on source change", () => {
     const { container, rerender } = render(
       <Video url="https://youtu.be/Pb6C4ORBOOI" title="Introduction" />,
     );
     const initialPlayer = container.querySelector("iframe")!;
     expect(initialPlayer).toBeTruthy();
+    expect(initialPlayer.getAttribute("loading")).toBe("lazy");
     expect(initialPlayer.getAttribute("allow")?.split("; ")).toContain("fullscreen");
     expect(initialPlayer.hasAttribute("allowfullscreen")).toBe(false);
     expect(new URL(initialPlayer.src).searchParams.get("autoplay")).not.toBe("1");
