@@ -1761,7 +1761,7 @@ describe("DurableObjectBase server-driven alarm durability", () => {
     }
   });
 
-  it("returns typed durable scheduling failures from inbound __rpc over HTTP", async () => {
+  it("joins pending alarm writes before returning their typed RPC failure", async () => {
     const errorData = {
       source: "test-fixture",
       detail: "first alarm persistence write failed",
@@ -1875,8 +1875,9 @@ describe("DurableObjectBase server-driven alarm durability", () => {
       expect(decodeRpcJson(body)).toMatchObject({
         message: {
           type: "response",
-          error: "RPC handler and durable alarm persistence both failed",
-          errorKind: "internal",
+          error: "Invocation authority parent is not active",
+          errorKind: "access",
+          errorCode: "INVOCATION_AUTHORITY_PARENT_NOT_ACTIVE",
           errorData,
         },
       });

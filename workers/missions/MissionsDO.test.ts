@@ -1044,6 +1044,70 @@ describe("MissionsDO", () => {
     ).toBe(false);
   });
 
+  it("dispatches an exact tool to the continuing agent without creating a separate executor or eval", async () => {
+    const harness = await createMissions();
+    harness.rpcCall.mockImplementation(
+      async (target, method, args = [], options) => {
+        harness.calls.push({ target, method, args, options });
+        if (target === "main" && method === "authority.verifyAuthorityPlan")
+          return policy();
+        if (target === "main" && method.startsWith("workspace-state.alarm"))
+          return undefined;
+        if (
+          target === "do:workers/summary:SummaryAgent:daily" &&
+          method === "runAutomationTool"
+        )
+          return undefined;
+        throw new Error(`Unexpected RPC ${target}.${method}`);
+      },
+    );
+    const charter = continuingAgentCharter();
+    if (charter.execution.kind !== "agent") throw new Error("Expected agent");
+    charter.execution.action = {
+      kind: "tool",
+      tool: "refreshNow",
+      args: { briefing: false },
+    };
+    const mission = await harness.callAs<MissionRecord>(alice, "launch", {
+      name: "Refresh News",
+      authorityPlan: policy(),
+      charter,
+    });
+    const run = await harness.callAs<MissionRunRecord>(
+      alice,
+      "runNow",
+      mission.missionId,
+    );
+    expect(run).toMatchObject({
+      phase: "executing",
+      executorId: "do:workers/summary:SummaryAgent:daily",
+    });
+    expect(
+      harness.calls.filter(({ method }) => method === "runAutomationTool"),
+    ).toEqual([
+      expect.objectContaining({
+        target: "do:workers/summary:SummaryAgent:daily",
+        args: [
+          expect.objectContaining({
+            channelId: "conversation:daily",
+            tool: "refreshNow",
+            args: { briefing: false },
+          }),
+        ],
+      }),
+    ]);
+    expect(
+      harness.calls.some(({ method }) =>
+        [
+          "runtime.createContext",
+          "runtime.createEntity",
+          "runAutomationEval",
+          "runAutomationTurn",
+        ].includes(method),
+      ),
+    ).toBe(false);
+  });
+
   it.each(["delivered", "inbox-failed", "push-failed"] as const)(
     "settles notification delivery from the inbox record: %s",
     async (delivery) => {
@@ -1313,7 +1377,7 @@ describe("MissionsDO", () => {
               nonce: `nonce:turn:${admissions}`,
             };
           }
-          if (method === "runAutomationTurn") {
+          if (method === "runAutomationTool") {
             dispatchKeys.push(
               (options as { idempotencyKey?: string }).idempotencyKey ?? "",
             );
@@ -1334,7 +1398,17 @@ describe("MissionsDO", () => {
       const mission = await harness.callAs<MissionRecord>(alice, "launch", {
         name: "Daily summary",
         authorityPlan: policy(),
-        charter: agentCharter(),
+        charter: (() => {
+          const charter = agentCharter();
+          if (charter.execution.kind !== "agent")
+            throw new Error("Expected agent");
+          charter.execution.action = {
+            kind: "tool",
+            tool: "refreshNow",
+            args: { briefing: false },
+          };
+          return charter;
+        })(),
       });
       const run = await harness.callAs<MissionRunRecord>(
         alice,
@@ -2096,7 +2170,7 @@ describe("MissionsDO cancellation ownership", () => {
     harness.rpcCall.mockImplementation(async (target, method, args = []) => {
       harness.calls.push({ target, method, args });
       if (method === "authority.verifyAuthorityPlan") return policy();
-      if (method === "runAutomationTurn") return undefined;
+      if (method === "runAutomationTool") return undefined;
       if (method === "interruptChannel") {
         interruptEntered();
         await interrupted;
@@ -2106,6 +2180,12 @@ describe("MissionsDO cancellation ownership", () => {
       throw new Error(`Unexpected RPC ${target}.${method}`);
     });
     const charter = continuingAgentCharter();
+    if (charter.execution.kind !== "agent") throw new Error("Expected agent");
+    charter.execution.action = {
+      kind: "tool",
+      tool: "refreshNow",
+      args: { briefing: false },
+    };
     charter.trigger = { kind: "schedule", everyMs: 60000 };
     const mission = await harness.callAs<MissionRecord>(alice, "launch", {
       authorityPlan: policy(),
@@ -2137,6 +2217,9 @@ describe("MissionsDO cancellation ownership", () => {
     expect(
       await harness.callAs<MissionRunRecord>(alice, "getRun", run.runId),
     ).toMatchObject({ phase: "terminal", outcome: "cancelled" });
+    expect(
+      harness.calls.filter((call) => call.method === "runAutomationTool"),
+    ).toHaveLength(1);
     expect(
       harness.calls.find((call) => call.method === "interruptChannel"),
     ).toMatchObject({

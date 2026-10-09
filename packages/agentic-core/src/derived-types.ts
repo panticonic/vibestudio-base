@@ -228,7 +228,7 @@ export interface AutomationActivitySnapshot {
   runId: string;
   name: string;
   revision: number;
-  action: "prompt" | "eval" | "watch" | "notify" | "method";
+  action: "prompt" | "eval" | "watch" | "notify" | "tool" | "method";
   trigger: "manual" | "scheduled";
   startedAt: number;
   createdAt: number;

@@ -49,7 +49,7 @@ afterEach(async () => {
   );
 });
 function automation(
-  action: "prompt" | "eval" | "watch",
+  action: "prompt" | "eval" | "watch" | "tool",
   runId = "run:one",
 ): NonNullable<AgentProductMetadata["automation"]> {
   return {
@@ -102,6 +102,21 @@ async function fixture(
       return { details: { returnValue: value } };
     },
   });
+  const toolCalls: unknown[] = [];
+  const selectedTool = defineTool({
+    name: "refreshNow",
+    version: 1,
+    replay: "safe",
+    description: "Actual selected tool executor",
+    parameters: Type.Object({ briefing: Type.Boolean() }),
+    execute: async (args) => {
+      toolCalls.push(args);
+      return {
+        content: [],
+        details: value,
+      };
+    },
+  });
   const runs = createNativeAutomationRuns({
     harness: () => harness,
     conversation: async (channelId) => {
@@ -122,7 +137,7 @@ async function fixture(
     defineExtension({
       name: "automation",
       tasks: [...runs.tasks, publication.task],
-      tools: [evalTool],
+      tools: [evalTool, selectedTool],
     }),
   );
   const options: HarnessOptions & {
@@ -164,7 +179,7 @@ async function fixture(
       { channelId: "channel:one", contextId: "context:one" },
       {
         model: { provider: "faux", modelId: "faux-1" },
-        tools: [evalTool],
+        tools: [evalTool, selectedTool],
       },
       context,
       (tx, id) =>
@@ -181,6 +196,8 @@ async function fixture(
     runs,
     faux,
     evalTool,
+    selectedTool,
+    toolCalls,
     finishes,
     events,
     open,
@@ -203,6 +220,41 @@ async function fixture(
 }
 
 describe("native automation ownership", () => {
+  it("retains a direct tool's genuine result through reopen without an eval or model turn", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "native-method-run-"));
+    directories.push(directory);
+    const path = join(directory, "state.sqlite");
+    const f = await fixture({ ok: true }, await openNodeSqliteStorage(path));
+    const original = automation("tool", "run:method");
+    const binding = bindTool(f.selectedTool, "sequential");
+    await f.runs.admitTool(
+      "channel:one",
+      { briefing: false },
+      binding,
+      original,
+      context,
+    );
+    await f.harness().runPass(context);
+    expect(
+      await f.runs.describe("channel:one", original.runId, context),
+    ).toMatchObject({
+      state: "terminal",
+      outcome: "succeeded",
+    });
+    await f.harness().close(context);
+    await f.open(await openNodeSqliteStorage(path));
+    await f.runs.admitTool(
+      "channel:one",
+      { briefing: false },
+      binding,
+      original,
+      context,
+    );
+    await f.harness().runPass(context);
+    expect(f.toolCalls).toEqual([{ briefing: false }]);
+    expect(f.calls()).toBe(0);
+    expect(f.faux.state.callCount).toBe(0);
+  });
   it.each(["prompt", "eval", "watch"] as const)(
     "publishes one %s run with public provenance and its actual terminal summary",
     async (action) => {
@@ -220,7 +272,7 @@ describe("native automation ownership", () => {
           context,
         );
       else
-        await f.runs.admitEval(
+        await f.runs.admitTool(
           "channel:one",
           { code: "actual check" },
           bindTool(f.evalTool, "sequential"),
@@ -281,7 +333,7 @@ describe("native automation ownership", () => {
               original,
               context,
             )
-          : f.runs.admitEval(
+          : f.runs.admitTool(
               "channel:one",
               { code: "actual check" },
               bindTool(f.evalTool, "sequential"),
@@ -308,7 +360,7 @@ describe("native automation ownership", () => {
     const original = automation("watch", "run:continuing");
     delete original.authoritySessionNonce;
     const binding = bindTool(f.evalTool, "sequential");
-    await f.runs.admitEval(
+    await f.runs.admitTool(
       "channel:one",
       { code: "actual check" },
       binding,
@@ -322,7 +374,7 @@ describe("native automation ownership", () => {
       state: "terminal",
       outcome: "succeeded",
     });
-    await f.runs.admitEval(
+    await f.runs.admitTool(
       "channel:one",
       { code: "actual check" },
       binding,
@@ -332,7 +384,7 @@ describe("native automation ownership", () => {
     expect(f.calls()).toBe(1);
     expect(f.faux.state.callCount).toBe(0);
     await expect(
-      f.runs.admitEval(
+      f.runs.admitTool(
         "channel:one",
         { code: "actual check" },
         binding,
@@ -345,7 +397,7 @@ describe("native automation ownership", () => {
     const f = await fixture({ protocol: "automation-signal.v1", prompt: null });
     const original = automation("watch", "opaque:signal");
     const binding = bindTool(f.evalTool, "parallel");
-    await f.runs.admitEval(
+    await f.runs.admitTool(
       "channel:one",
       { code: "actual check" },
       binding,
@@ -362,7 +414,7 @@ describe("native automation ownership", () => {
       { runId: original.runId, outcome: "succeeded" },
     ]);
     await f.runs.acknowledge("channel:one", original.runId, context);
-    await f.runs.admitEval(
+    await f.runs.admitTool(
       "channel:one",
       { code: "actual check" },
       binding,
@@ -371,7 +423,7 @@ describe("native automation ownership", () => {
     );
     expect(f.calls()).toBe(1);
     await expect(
-      f.runs.admitEval(
+      f.runs.admitTool(
         "channel:one",
         { code: "changed code" },
         binding,
@@ -390,7 +442,7 @@ describe("native automation ownership", () => {
     });
     f.faux.setResponses([fauxAssistantMessage("Actual change handled.")]);
     const original = automation("watch");
-    await f.runs.admitEval(
+    await f.runs.admitTool(
       "channel:one",
       { code: "actual check" },
       bindTool(f.evalTool, "parallel"),
@@ -419,7 +471,7 @@ describe("native automation ownership", () => {
   });
   it("fails an invalid watch signal without dispatching a model or pretending the check was quiet", async () => {
     const f = await fixture({ prompt: null });
-    await f.runs.admitEval(
+    await f.runs.admitTool(
       "channel:one",
       { code: "invalid check" },
       bindTool(f.evalTool, "parallel"),
@@ -446,7 +498,7 @@ describe("native automation ownership", () => {
     );
     const original = new Error("Missions accepted finish response lost");
     f.fail(original);
-    await f.runs.admitEval(
+    await f.runs.admitTool(
       "channel:one",
       { code: "actual check" },
       bindTool(f.evalTool, "parallel"),
@@ -481,7 +533,7 @@ describe("native automation ownership", () => {
       protocol: "automation-completion.v1",
       response: "Goal finished.",
     });
-    await f.runs.admitEval(
+    await f.runs.admitTool(
       "channel:one",
       { code: "actual evaluation" },
       bindTool(f.evalTool, "parallel"),
@@ -667,7 +719,7 @@ describe("native automation ownership", () => {
   it("joins actual finish acknowledgement debt on explicit retirement instead of dropping its failure", async () => {
     const f = await fixture({ protocol: "automation-signal.v1", prompt: null });
     f.fail(new Error("Original canonical finish failure"));
-    await f.runs.admitEval(
+    await f.runs.admitTool(
       "channel:one",
       { code: "actual check" },
       bindTool(f.evalTool, "parallel"),
@@ -686,7 +738,9 @@ describe("native automation ownership", () => {
     expect(f.calls()).toBe(1);
   });
   it("delivers the original parked terminal receipt after reopening storage without executing again", async () => {
-    const directory = await mkdtemp(join(tmpdir(), "native-automation-finish-"));
+    const directory = await mkdtemp(
+      join(tmpdir(), "native-automation-finish-"),
+    );
     directories.push(directory);
     const path = join(directory, "state.sqlite");
     const f = await fixture(
@@ -694,9 +748,12 @@ describe("native automation ownership", () => {
       await openNodeSqliteStorage(path),
     );
     f.fail(new Error("Original finish delivery failure"));
-    await f.runs.admitEval(
-      "channel:one", { code: "actual check" },
-      bindTool(f.evalTool, "parallel"), automation("watch"), context,
+    await f.runs.admitTool(
+      "channel:one",
+      { code: "actual check" },
+      bindTool(f.evalTool, "parallel"),
+      automation("watch"),
+      context,
     );
     await f.harness().runPass(context);
     expect(f.finishes).toHaveLength(1);
@@ -706,9 +763,11 @@ describe("native automation ownership", () => {
     await f.runs.drain(context);
     expect(f.finishes).toEqual([f.finishes[0], f.finishes[0]]);
     expect(f.calls()).toBe(1);
-    expect((await f.harness().inspect(context)).tasks.filter(
-      ({ record }) => record.kind === "vibestudio.automation-finish",
-    )).toEqual([]);
+    expect(
+      (await f.harness().inspect(context)).tasks.filter(
+        ({ record }) => record.kind === "vibestudio.automation-finish",
+      ),
+    ).toEqual([]);
   });
   it("refuses a concurrent conflicting prompt while canonical native admission deduplicates its request", async () => {
     const f = await fixture(null);
@@ -773,7 +832,7 @@ describe("native automation ownership", () => {
     f.faux.setResponses([
       fauxAssistantMessage("Accepted signal answered once."),
     ]);
-    await f.runs.admitEval(
+    await f.runs.admitTool(
       "channel:one",
       { code: "actual watch" },
       bindTool(f.evalTool, "parallel"),

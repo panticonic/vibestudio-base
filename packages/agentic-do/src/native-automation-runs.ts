@@ -343,8 +343,9 @@ export function createNativeAutomationRuns(host: NativeAutomationHost) {
         if (!outcome || outcome.status !== "completed") {
           const failure =
             outcome && "error" in outcome
-              ? (outcome.error?.message ?? "Automation Eval did not complete")
-              : "Automation Eval did not complete";
+              ? (outcome.error?.message ??
+                "Automation direct invocation did not complete")
+              : "Automation direct invocation did not complete";
           await runtime.commit(
             () => ({
               status: "terminal",
@@ -363,14 +364,20 @@ export function createNativeAutomationRuns(host: NativeAutomationHost) {
           context,
         );
         if (!entry?.data || entry.model !== undefined)
-          throw new Error("Automation Eval lost its genuine direct result");
+          throw new Error(
+            "Automation direct invocation lost its genuine direct result",
+          );
         const result = entry.data.result;
         if (!result || typeof result !== "object" || Array.isArray(result))
-          throw new Error("Automation Eval has no structured native result");
+          throw new Error(
+            "Automation direct invocation has no structured native result",
+          );
         const details = result["details"];
         const value =
           details && typeof details === "object" && !Array.isArray(details)
-            ? details["returnValue"]
+            ? task.input.automation.action === "tool"
+              ? details
+              : details["returnValue"]
             : undefined;
         if (task.input.automation.action === "watch" && !result["isError"]) {
           if (
@@ -698,7 +705,7 @@ export function createNativeAutomationRuns(host: NativeAutomationHost) {
       if (!admitted || admitted.inputId !== submission.id)
         throw new Error("Automation prompt lost its exact original admission");
     },
-    admitEval: async (
+    admitTool: async (
       channelId: string,
       args: JsonObject,
       tool: ToolBinding,
@@ -896,7 +903,7 @@ export function createNativeAutomationRuns(host: NativeAutomationHost) {
                 task.id,
                 "error" in task.state.outcome
                   ? (task.state.outcome.error?.message ??
-                      "Automation Eval did not complete")
+                      "Automation direct invocation did not complete")
                   : "Automation execution did not complete",
               ),
             );

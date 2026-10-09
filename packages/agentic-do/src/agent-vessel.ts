@@ -1584,6 +1584,18 @@ export abstract class AgentVesselBase extends NativeChannelOwner<NativeProductCh
             oneOf: [
               {
                 type: "object",
+                description:
+                  "Invoke one of this agent's selected tools with exact arguments, without eval or a model turn.",
+                properties: {
+                  kind: { const: "tool" },
+                  tool: { type: "string" },
+                  args: { type: "object" },
+                },
+                required: ["kind", "tool", "args"],
+                additionalProperties: false,
+              },
+              {
+                type: "object",
                 properties: {
                   kind: { const: "prompt" },
                   text: { type: "string" },
@@ -2112,7 +2124,7 @@ export abstract class AgentVesselBase extends NativeChannelOwner<NativeProductCh
     const evalTool = tools.find((tool) => tool.name === "eval");
     if (!evalTool)
       throw new Error("Automation requires an actual selected eval tool");
-    await this.nativeAutomationRuns.admitEval(
+    await this.nativeAutomationRuns.admitTool(
       input.channelId,
       {
         code: input.eval.code,
@@ -2124,6 +2136,43 @@ export abstract class AgentVesselBase extends NativeChannelOwner<NativeProductCh
         authority: { approvals: "prompt" },
       },
       bindTool(evalTool, evalTool.executionMode ?? "sequential"),
+      input.automation,
+      BACKGROUND_CONTEXT,
+    );
+  }
+
+  /** Admit one actual selected tool with exact arguments into the ordinary native lifecycle. */
+  @rpc({
+    website: { kind: "closed", reason: "Workspace automation execution." },
+    principals: ["host", "code"],
+    effect: { kind: "open" },
+    tier: "open",
+    sensitivity: "write",
+  })
+  async runAutomationTool(input: {
+    channelId: string;
+    automation: NonNullable<AgentProductMetadata["automation"]>;
+    tool: string;
+    args: Record<string, JsonValue>;
+  }): Promise<void> {
+    if (!this.subscriptions.listChannelIds().includes(input.channelId))
+      throw new Error(
+        `Automation channel ${input.channelId} is not subscribed`,
+      );
+    if (!input.automation.runId || input.automation.action !== "tool")
+      throw new Error("Automation tool requires its original provenance");
+    await this.nativeChannelConversation(input.channelId);
+    const tool = (await this.nativeProductTools(input.channelId)).find(
+      (tool) => tool.name === input.tool,
+    );
+    if (!tool)
+      throw new Error(
+        `Automation tool ${input.tool} is not selected by this agent`,
+      );
+    await this.nativeAutomationRuns.admitTool(
+      input.channelId,
+      input.args,
+      bindTool(tool, tool.executionMode ?? "sequential"),
       input.automation,
       BACKGROUND_CONTEXT,
     );
@@ -3376,8 +3425,7 @@ export abstract class AgentVesselBase extends NativeChannelOwner<NativeProductCh
         if (!isRespondPolicy(input?.policy)) {
           return {
             result: {
-              error:
-                `setRespondPolicy requires policy: ${RESPOND_POLICIES.join(", ")}`,
+              error: `setRespondPolicy requires policy: ${RESPOND_POLICIES.join(", ")}`,
             },
             isError: true,
           };
@@ -3762,7 +3810,10 @@ export abstract class AgentVesselBase extends NativeChannelOwner<NativeProductCh
       );
       this.setStateValue(intentKey, intent);
     }
-    const retainedDefinition = JSON.parse(intent) as { name: string; charter: MissionCharter };
+    const retainedDefinition = JSON.parse(intent) as {
+      name: string;
+      charter: MissionCharter;
+    };
     const mission = await createMissionsClient(this.rpc).provisionDefault(
       input.id,
       retainedDefinition,
@@ -3888,7 +3939,7 @@ export abstract class AgentVesselBase extends NativeChannelOwner<NativeProductCh
     const authorityPlan = await compileMissionAuthorityPlan(
       callerRpc,
       definition.charter.execution,
-      `automation:task-authority-plan:${sha256HexSyncText(requestIdentity)}`
+      `automation:task-authority-plan:${sha256HexSyncText(requestIdentity)}`,
     );
     if (
       definition.charter.execution.kind === "agent" &&
@@ -3901,10 +3952,12 @@ export abstract class AgentVesselBase extends NativeChannelOwner<NativeProductCh
         [{ authorityPlanDigest: authorityPlan.digest }],
         {
           idempotencyKey: `automation:task-authority:${sha256HexSyncText(requestIdentity)}`,
-        }
+        },
       );
       if (authority.denialIds.length > 0) {
-        throw new Error("Automation launch was denied required authority for this agent task");
+        throw new Error(
+          "Automation launch was denied required authority for this agent task",
+        );
       }
     }
     const target = await this.automationServiceTarget(callerRpc);
@@ -6730,7 +6783,9 @@ export abstract class AgentVesselBase extends NativeChannelOwner<NativeProductCh
     if ("approvalLevel" in patch) {
       const l = patch["approvalLevel"];
       if (!isAgentApprovalLevel(l))
-        throw new Error(`approvalLevel must be ${AGENT_APPROVAL_LEVELS.join(", ")}`);
+        throw new Error(
+          `approvalLevel must be ${AGENT_APPROVAL_LEVELS.join(", ")}`,
+        );
       next.approvalLevel = l;
     }
     if ("respondPolicy" in patch) {
@@ -7028,7 +7083,9 @@ export abstract class AgentVesselBase extends NativeChannelOwner<NativeProductCh
     };
   }
 
-  override async resumeAfterRestart(input: LifecycleResumeInput): Promise<void> {
+  override async resumeAfterRestart(
+    input: LifecycleResumeInput,
+  ): Promise<void> {
     await super.resumeAfterRestart(input);
     // Finish is retained native receipt debt, not a new execution. The actual
     // lifecycle transition authorizes retry of its original parked incident.

@@ -1878,6 +1878,20 @@ export class MissionsDO extends DurableObjectBase {
         ],
         { idempotencyKey: `${row.run_id}:dispatch`, signal },
       );
+    else if (execution.action.kind === "tool")
+      await executorRpc.call(
+        row.executor_id,
+        "runAutomationTool",
+        [
+          {
+            channelId: row.channel_id,
+            automation: activity,
+            tool: execution.action.tool,
+            args: execution.action.args,
+          },
+        ],
+        { idempotencyKey: `${row.run_id}:dispatch`, signal },
+      );
     else
       await executorRpc.call(
         row.executor_id,

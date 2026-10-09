@@ -74,7 +74,7 @@ export interface AutomationUiRpc {
 
 function effectFailureKey(effect: MissionRunEffectFailure): string {
   const source = effect.source;
-  return source.kind === 'native-tool'
+  return source.kind === "native-tool"
     ? `tool:${source.nativeTaskId}:${source.nativeEntryId}:${source.invocationId}`
     : `provider:${source.nativeTaskId}:${source.assistantEntryId}:${source.nativeEntryId}:${source.callId}`;
 }
@@ -92,7 +92,9 @@ export function createAutomationUiClient(
   const missions = createMissionsClient(rpc);
   const client: AutomationUiClient = {
     inspect: async (missionId) => {
-      const overview = await missions.overview({ missionId, limit: 1 }) as { items?: unknown[] };
+      const overview = (await missions.overview({ missionId, limit: 1 })) as {
+        items?: unknown[];
+      };
       const item = overview.items?.[0] as AutomationInspection | undefined;
       return item?.automation?.missionId === missionId ? item : null;
     },
@@ -422,6 +424,8 @@ export function AutomationParametersEditor({
     const execution = automation.charter.execution;
     if (execution.kind === "method")
       return JSON.stringify(execution.args, null, 2);
+    if (execution.action.kind === "tool")
+      return JSON.stringify(execution.action.args, null, 2);
     return "text" in execution.action
       ? execution.action.text
       : execution.action.code;
@@ -479,14 +483,34 @@ export function AutomationParametersEditor({
       nextExecution =
         execution.kind === "method"
           ? { ...execution, args: JSON.parse(payload) as unknown[] }
-          : "text" in execution.action
-            ? { ...execution, action: { ...execution.action, text: payload } }
-            : { ...execution, action: { ...execution.action, code: payload } };
+          : execution.action.kind === "tool"
+            ? {
+                ...execution,
+                action: {
+                  ...execution.action,
+                  args: JSON.parse(payload) as Record<string, unknown>,
+                },
+              }
+            : "text" in execution.action
+              ? { ...execution, action: { ...execution.action, text: payload } }
+              : {
+                  ...execution,
+                  action: { ...execution.action, code: payload },
+                };
       if (
         nextExecution.kind === "method" &&
         !Array.isArray(nextExecution.args)
       ) {
         throw new Error("Method arguments must be a JSON array.");
+      }
+      if (
+        nextExecution.kind === "agent" &&
+        nextExecution.action.kind === "tool" &&
+        (!nextExecution.action.args ||
+          typeof nextExecution.action.args !== "object" ||
+          Array.isArray(nextExecution.action.args))
+      ) {
+        throw new Error("Agent tool arguments must be a JSON object.");
       }
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause));
@@ -660,7 +684,9 @@ export function AutomationParametersEditor({
                 ? "Exact eval code"
                 : execution.action.kind === "notify"
                   ? "Notification text"
-                  : "Prompt text"}
+                  : execution.action.kind === "tool"
+                    ? "Tool arguments (JSON object)"
+                    : "Prompt text"}
         </Text>
         <TextArea
           aria-label={
@@ -948,7 +974,9 @@ function Inspector({
               ? `${execution.method}(${JSON.stringify(execution.args, null, 2)})`
               : "code" in execution.action
                 ? execution.action.code
-                : execution.action.text}
+                : execution.action.kind === "tool"
+                  ? `${execution.action.tool}(${JSON.stringify(execution.action.args, null, 2)})`
+                  : execution.action.text}
           </Text>
         </Box>
       </Box>
