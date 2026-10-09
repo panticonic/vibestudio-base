@@ -3,7 +3,11 @@ import {
   schemaRpc,
   type DurableObjectContext,
 } from "@workspace/runtime/worker/kernel";
-import type { LifecyclePrepareInput, LifecyclePrepareResult, LifecycleResumeInput } from "@workspace/runtime/worker/durable-base";
+import type {
+  LifecyclePrepareInput,
+  LifecyclePrepareResult,
+  LifecycleResumeInput,
+} from "@workspace/runtime/worker/durable-base";
 import { withExecutionAdmission } from "@vibestudio/rpc/internal";
 import { missionsMethods } from "@vibestudio/service-schemas/missions";
 import type {
@@ -36,6 +40,7 @@ import {
   validateMissionCharter,
 } from "@vibestudio/automation/mission";
 import { canonicalJson } from "@vibestudio/shared/canonicalJson";
+import { sha256HexSyncText } from "@vibestudio/content-addressing";
 import { createGadServiceClient } from "@vibestudio/shared/workspaceServiceRpc";
 import type { PutUserNotificationInput } from "@vibestudio/shared/userNotifications";
 
@@ -131,45 +136,172 @@ export class MissionsDO extends DurableObjectBase {
   private readonly runInterruptions = new Map<string, Promise<void>>();
   private ownership: Promise<void> | null = null;
   private sealed = false;
+  private readonly changeObservers = new Set<{
+    userId: string;
+    afterVersion: string;
+    changed(version: string): void;
+    close(reason: unknown): void;
+  }>();
+
+  private visibleVersion(userId: string): string {
+    const missions = this.sql
+      .exec(
+        "SELECT * FROM missions WHERE seeded=1 OR owner_user_id=? ORDER BY mission_id",
+        userId,
+      )
+      .toArray();
+    const runs = this.sql
+      .exec(
+        "SELECT r.* FROM mission_runs r JOIN missions m ON m.mission_id=r.mission_id WHERE m.seeded=1 OR m.owner_user_id=? ORDER BY r.run_id",
+        userId,
+      )
+      .toArray();
+    return sha256HexSyncText(canonicalJson({ missions, runs }));
+  }
+
+  private publishChanges(): void {
+    const versions = new Map<
+      string,
+      { version: string } | { error: unknown }
+    >();
+    for (const observer of this.changeObservers) {
+      let observed = versions.get(observer.userId);
+      if (observed === undefined) {
+        try {
+          observed = { version: this.visibleVersion(observer.userId) };
+        } catch (error) {
+          observed = { error };
+        }
+        versions.set(observer.userId, observed);
+      }
+      if ("error" in observed) observer.close(observed.error);
+      else if (observed.version !== observer.afterVersion)
+        observer.changed(observed.version);
+    }
+  }
+
+  @schemaRpc()
+  async observeChanges({
+    afterVersion,
+  }: {
+    afterVersion?: string;
+  }): Promise<{ version: string }> {
+    const userId = this.requireUser();
+    if (this.sealed)
+      throw new Error("Automation ledger is sealed for lifecycle release");
+    const signal = this.rpcAbortSignal;
+    if (signal?.aborted) throw signal.reason;
+    return new Promise((resolve, reject) => {
+      const cleanup = () => {
+        this.changeObservers.delete(observer);
+        signal?.removeEventListener("abort", aborted);
+      };
+      const observer = {
+        userId,
+        afterVersion: afterVersion ?? "",
+        changed: (version: string) => {
+          cleanup();
+          resolve({ version });
+        },
+        close: (reason: unknown) => {
+          cleanup();
+          reject(reason);
+        },
+      };
+      const aborted = () => observer.close(signal?.reason);
+      this.changeObservers.add(observer);
+      signal?.addEventListener("abort", aborted, { once: true });
+      try {
+        const current = this.visibleVersion(userId);
+        if (afterVersion !== current) observer.changed(current);
+      } catch (error) {
+        observer.close(error);
+      }
+    });
+  }
 
   private acquireRunOwnership(): Promise<void> {
-    if (this.sealed) throw new Error("Automation ledger is sealed for lifecycle release");
+    if (this.sealed)
+      throw new Error("Automation ledger is sealed for lifecycle release");
     if (!this.ownership) {
-      const acquisition = this.runDetached(() => this.registerLifecycleRelease({ owner: "mission-runs" }));
+      const acquisition = this.runDetached(() =>
+        this.registerLifecycleRelease({ owner: "mission-runs" }),
+      );
       this.ownership = acquisition;
-      void acquisition.catch(() => { if (this.ownership === acquisition) this.ownership = null; });
+      void acquisition.catch(() => {
+        if (this.ownership === acquisition) this.ownership = null;
+      });
     }
     return this.ownership;
   }
 
-  override async releaseForLifecycle(input: LifecyclePrepareInput): Promise<LifecyclePrepareResult> {
+  override async releaseForLifecycle(
+    input: LifecyclePrepareInput,
+  ): Promise<LifecyclePrepareResult> {
     this.sealed = true;
+    for (const observer of this.changeObservers)
+      observer.close(
+        new Error("Automation observation ended with ledger lifecycle release"),
+      );
     try {
       if (this.ownership) await this.ownership;
       // Accepted admissions must finish writing their durable run row before
       // release decides which work to interrupt. Admissions no longer include
       // execution itself, so this barrier cannot strand a remote dispatch.
       const admissions = await Promise.allSettled([...this.runAdmissions]);
-      const admissionFailures = admissions.flatMap((result) => result.status === "rejected" ? [result.reason] : []);
-      if (admissionFailures.length) throw new AggregateError(admissionFailures, "Automation admission release failed");
+      const admissionFailures = admissions.flatMap((result) =>
+        result.status === "rejected" ? [result.reason] : [],
+      );
+      if (admissionFailures.length)
+        throw new AggregateError(
+          admissionFailures,
+          "Automation admission release failed",
+        );
       if (input.mode === "retire") {
-        const rows = this.sql.exec("SELECT * FROM mission_runs WHERE phase!='terminal' ORDER BY started_at,run_id").toArray() as unknown as RunRow[];
+        const rows = this.sql
+          .exec(
+            "SELECT * FROM mission_runs WHERE phase!='terminal' ORDER BY started_at,run_id",
+          )
+          .toArray() as unknown as RunRow[];
         this.ctx.storage.transactionSync(() => {
-          for (const row of rows) this.setStateValue(`cancel-run:${row.run_id}`, "requested");
+          for (const row of rows)
+            this.setStateValue(`cancel-run:${row.run_id}`, "requested");
         });
-        for (const row of rows) this.runControllers.get(row.run_id)?.abort(new Error("Automation run cancelled for lifecycle retirement"));
+        for (const row of rows)
+          this.runControllers
+            .get(row.run_id)
+            ?.abort(
+              new Error("Automation run cancelled for lifecycle retirement"),
+            );
         // Persist cancellation before signaling executors. The running driver
         // observes this marker at its next boundary and cannot dispatch again.
-        const interrupted = await Promise.allSettled(rows.map((row) => this.interruptRun(row)));
-        const interruptionFailures = interrupted.flatMap((result) => result.status === "rejected" ? [result.reason] : []);
+        const interrupted = await Promise.allSettled(
+          rows.map((row) => this.interruptRun(row)),
+        );
+        const interruptionFailures = interrupted.flatMap((result) =>
+          result.status === "rejected" ? [result.reason] : [],
+        );
         if (interruptionFailures.length)
-          throw new AggregateError(interruptionFailures, "Automation cancellation signal failed");
+          throw new AggregateError(
+            interruptionFailures,
+            "Automation cancellation signal failed",
+          );
       }
       const joined = await Promise.allSettled([...this.runDrivers.values()]);
-      const failures = joined.flatMap((result) => result.status === "rejected" ? [result.reason] : []);
-      if (failures.length) throw new AggregateError(failures, "Automation advancement release failed");
+      const failures = joined.flatMap((result) =>
+        result.status === "rejected" ? [result.reason] : [],
+      );
+      if (failures.length)
+        throw new AggregateError(
+          failures,
+          "Automation advancement release failed",
+        );
       if (input.mode === "retire") {
-        const rows = this.sql.exec("SELECT * FROM mission_runs WHERE phase!='terminal' ORDER BY started_at,run_id").toArray() as unknown as RunRow[];
+        const rows = this.sql
+          .exec(
+            "SELECT * FROM mission_runs WHERE phase!='terminal' ORDER BY started_at,run_id",
+          )
+          .toArray() as unknown as RunRow[];
         for (const row of rows) await this.cancelRun(row);
         await this.reconcileEffects(true, true);
         await this.clearLifecycleRelease();
@@ -181,7 +313,9 @@ export class MissionsDO extends DurableObjectBase {
     }
   }
 
-  override async resumeAfterRestart(_input: LifecycleResumeInput): Promise<void> {
+  override async resumeAfterRestart(
+    _input: LifecycleResumeInput,
+  ): Promise<void> {
     await this.initializeSchema();
     this.sealed = false;
     await this.acquireRunOwnership();
@@ -298,6 +432,7 @@ export class MissionsDO extends DurableObjectBase {
   }
 
   protected override nextAlarmAfterRequest(): { wakeAt: number } | undefined {
+    this.publishChanges();
     const next = this.nextWakeAt();
     return next === null ? undefined : { wakeAt: next };
   }
@@ -340,6 +475,7 @@ export class MissionsDO extends DurableObjectBase {
           `scheduled:${mission.nextRunAt}`,
         );
     }
+    this.publishChanges();
     const next = this.nextWakeAt();
     return next === null ? null : { wakeAt: next };
   }
@@ -539,7 +675,11 @@ export class MissionsDO extends DurableObjectBase {
   @schemaRpc()
   async provisionDefault(
     id: string,
-    input: { name: string; charter: MissionCharter; authorityPlan: MissionAuthorityPlanReference },
+    input: {
+      name: string;
+      charter: MissionCharter;
+      authorityPlan: MissionAuthorityPlanReference;
+    },
   ): Promise<MissionRecord> {
     const existing = this.getDefault(id);
     if (existing) return existing;
@@ -600,7 +740,11 @@ export class MissionsDO extends DurableObjectBase {
   }
 
   private async launchDefinition(
-    input: { name: string; charter: MissionCharter; authorityPlan: MissionAuthorityPlanReference },
+    input: {
+      name: string;
+      charter: MissionCharter;
+      authorityPlan: MissionAuthorityPlanReference;
+    },
     launchKey: string,
   ): Promise<MissionRecord> {
     validateMissionCharter(input.charter);
@@ -648,7 +792,10 @@ export class MissionsDO extends DurableObjectBase {
     }
     const now = Date.now();
     try {
-      const authorityPlan = await this.verifyPolicy(input.charter, input.authorityPlan);
+      const authorityPlan = await this.verifyPolicy(
+        input.charter,
+        input.authorityPlan,
+      );
       const revisionDigest = missionRevisionDigest(
         input.charter,
         authorityPlan.digest,
@@ -701,7 +848,11 @@ export class MissionsDO extends DurableObjectBase {
   @schemaRpc()
   async edit(
     missionId: string,
-    input: { name?: string; charter?: MissionCharter; authorityPlan?: MissionAuthorityPlanReference },
+    input: {
+      name?: string;
+      charter?: MissionCharter;
+      authorityPlan?: MissionAuthorityPlanReference;
+    },
   ): Promise<MissionRecord> {
     const current = this.requireMission(missionId);
     const caller = this.requireOwnerCaller();
@@ -710,7 +861,10 @@ export class MissionsDO extends DurableObjectBase {
     if (current.state === "retired")
       throw denied("Retired automations cannot be edited");
     if (current.seeded) {
-      if (!input.authorityPlan) throw denied("Customizing a workspace automation requires a newly compiled plan");
+      if (!input.authorityPlan)
+        throw denied(
+          "Customizing a workspace automation requires a newly compiled plan",
+        );
       return this.launch({
         name: input.name ?? `${current.name} (custom)`,
         charter: input.charter ?? current.charter,
@@ -751,9 +905,14 @@ export class MissionsDO extends DurableObjectBase {
     }
     const charter = input.charter ?? current.charter;
     validateMissionCharter(charter);
-    const executionChanged = !sameMissionExecution(charter.execution, current.charter.execution);
+    const executionChanged = !sameMissionExecution(
+      charter.execution,
+      current.charter.execution,
+    );
     if (executionChanged && !input.authorityPlan)
-      throw denied("Changed automation execution requires a newly compiled authority plan");
+      throw denied(
+        "Changed automation execution requires a newly compiled authority plan",
+      );
     const policy = input.authorityPlan
       ? await this.verifyPolicy(charter, input.authorityPlan)
       : current.authorityPlan;
@@ -841,18 +1000,26 @@ export class MissionsDO extends DurableObjectBase {
   @schemaRpc()
   async cancel(missionId: string): Promise<MissionRecord> {
     const mission = this.requireMission(missionId);
-    const runs = this.sql.exec(
-      "SELECT run_id FROM mission_runs WHERE mission_id=? AND phase!='terminal' ORDER BY started_at,run_id",
-      missionId,
-    ).toArray();
+    const runs = this.sql
+      .exec(
+        "SELECT run_id FROM mission_runs WHERE mission_id=? AND phase!='terminal' ORDER BY started_at,run_id",
+        missionId,
+      )
+      .toArray();
     this.ctx.storage.transactionSync(() => {
-      if (mission.state === "active") this.sql.exec(
-        "UPDATE missions SET state='paused',next_run_at=NULL,updated_at=? WHERE mission_id=?",
-        Date.now(), missionId,
-      );
-      for (const run of runs) this.setStateValue(`cancel-run:${String(run["run_id"])}`, "requested");
+      if (mission.state === "active")
+        this.sql.exec(
+          "UPDATE missions SET state='paused',next_run_at=NULL,updated_at=? WHERE mission_id=?",
+          Date.now(),
+          missionId,
+        );
+      for (const run of runs)
+        this.setStateValue(`cancel-run:${String(run["run_id"])}`, "requested");
     });
-    for (const run of runs) this.runControllers.get(String(run["run_id"]))?.abort(new Error("Automation run cancelled"));
+    for (const run of runs)
+      this.runControllers
+        .get(String(run["run_id"]))
+        ?.abort(new Error("Automation run cancelled"));
     // Join preparation before stopping the resulting executor. No phase can
     // dispatch after the stop request without encountering the lifecycle gate.
     for (const run of runs) {
@@ -860,7 +1027,8 @@ export class MissionsDO extends DurableObjectBase {
       const owner = this.runDrivers.get(runId);
       if (owner) await owner;
       await this.advanceRun(runId);
-      if (this.requireRunRow(runId).phase === "terminal") this.deleteStateValue(`cancel-run:${runId}`);
+      if (this.requireRunRow(runId).phase === "terminal")
+        this.deleteStateValue(`cancel-run:${runId}`);
     }
     return this.requireMission(missionId);
   }
@@ -882,8 +1050,17 @@ export class MissionsDO extends DurableObjectBase {
     const mission = this.requireMission(missionId);
     if (mission.state !== "paused")
       throw denied("Only paused automations can resume");
-    if (this.sql.exec("SELECT run_id FROM mission_runs WHERE mission_id=? AND phase!='terminal'", missionId).toArray()
-      .some(row => this.getStateValue(`cancel-run:${String(row["run_id"])}`)))
+    if (
+      this.sql
+        .exec(
+          "SELECT run_id FROM mission_runs WHERE mission_id=? AND phase!='terminal'",
+          missionId,
+        )
+        .toArray()
+        .some((row) =>
+          this.getStateValue(`cancel-run:${String(row["run_id"])}`),
+        )
+    )
       throw denied("Cancellation must finish before scheduling resumes");
     const now = Date.now();
     const completion = this.completionBeforeRun(mission, now);
@@ -972,15 +1149,26 @@ export class MissionsDO extends DurableObjectBase {
 
   private async verifyPolicy(
     charter: MissionCharter,
-    reference: MissionAuthorityPlanReference
+    reference: MissionAuthorityPlanReference,
   ): Promise<MissionAuthorityPlanReference> {
     if (reference.schemaVersion !== 2)
-      throw denied("A new automation definition requires an author-bound authority plan");
-    const verified = await this.rpc.call<MissionAuthorityPlanReference>("main", "authority.verifyAuthorityPlan", [{
-      authorityPlanDigest: reference.digest, execution: charter.execution,
-    }]);
+      throw denied(
+        "A new automation definition requires an author-bound authority plan",
+      );
+    const verified = await this.rpc.call<MissionAuthorityPlanReference>(
+      "main",
+      "authority.verifyAuthorityPlan",
+      [
+        {
+          authorityPlanDigest: reference.digest,
+          execution: charter.execution,
+        },
+      ],
+    );
     if (canonicalJson(verified) !== canonicalJson(reference))
-      throw denied("Automation authority plan reference does not match its canonical artifact");
+      throw denied(
+        "Automation authority plan reference does not match its canonical artifact",
+      );
     return verified;
   }
 
@@ -1156,14 +1344,16 @@ export class MissionsDO extends DurableObjectBase {
     includeDeferred = false,
   ): Promise<void> {
     const now = Date.now();
-    const rows = (includeDeferred
-      ? this.sql.exec(
-          "SELECT effect_id,payload_json,attempts FROM mission_effects ORDER BY next_attempt_at,effect_id",
-        )
-      : this.sql.exec(
-          "SELECT effect_id,payload_json,attempts FROM mission_effects WHERE next_attempt_at<=? ORDER BY next_attempt_at,effect_id",
-          now,
-        )).toArray();
+    const rows = (
+      includeDeferred
+        ? this.sql.exec(
+            "SELECT effect_id,payload_json,attempts FROM mission_effects ORDER BY next_attempt_at,effect_id",
+          )
+        : this.sql.exec(
+            "SELECT effect_id,payload_json,attempts FROM mission_effects WHERE next_attempt_at<=? ORDER BY next_attempt_at,effect_id",
+            now,
+          )
+    ).toArray();
     for (const row of rows) {
       const effectId = String(row["effect_id"]);
       try {
@@ -1212,7 +1402,8 @@ export class MissionsDO extends DurableObjectBase {
     trigger: "manual" | "scheduled",
     occurrenceKey: string,
   ): Promise<MissionRunRecord> {
-    if (this.sealed) throw new Error("Automation ledger is sealed for lifecycle release");
+    if (this.sealed)
+      throw new Error("Automation ledger is sealed for lifecycle release");
     const admission = this.admitRun(mission, trigger, occurrenceKey);
     this.runAdmissions.add(admission);
     void admission.then(
@@ -1231,7 +1422,8 @@ export class MissionsDO extends DurableObjectBase {
     occurrenceKey: string,
   ): Promise<MissionRunRecord> {
     await this.acquireRunOwnership();
-    if (this.sealed) throw new Error("Automation ledger is sealed for lifecycle release");
+    if (this.sealed)
+      throw new Error("Automation ledger is sealed for lifecycle release");
     const now = Date.now();
     const completion = this.completionBeforeRun(mission, now);
     if (completion) {
@@ -1241,7 +1433,8 @@ export class MissionsDO extends DurableObjectBase {
     this.requireActive(mission);
     const subject = missionPrincipal(mission.missionId, mission.revisionDigest);
     const runId = await deterministicRunId(subject, occurrenceKey);
-    if (this.sealed) throw new Error("Automation ledger is sealed for lifecycle release");
+    if (this.sealed)
+      throw new Error("Automation ledger is sealed for lifecycle release");
     const existing = this.getRunRow(runId);
     if (existing) {
       return this.requireRun(runId);
@@ -1326,18 +1519,24 @@ export class MissionsDO extends DurableObjectBase {
     if (acquired) return acquired;
     const controller = new AbortController();
     this.runControllers.set(runId, controller);
-    const driver = this.runDetached(() => this.driveRun(runId, controller.signal));
+    const driver = this.runDetached(() =>
+      this.driveRun(runId, controller.signal),
+    );
     this.runDrivers.set(runId, driver);
-    try { await driver; }
-    finally {
+    try {
+      await driver;
+    } finally {
       if (this.runDrivers.get(runId) === driver) this.runDrivers.delete(runId);
-      if (this.runControllers.get(runId) === controller) this.runControllers.delete(runId);
+      if (this.runControllers.get(runId) === controller)
+        this.runControllers.delete(runId);
     }
   }
 
   private checkRunCancellation(runId: string): void {
     if (this.getStateValue(`cancel-run:${runId}`))
-      throw Object.assign(new Error("Automation run was cancelled"), { code: "ERUNCANCELLED" });
+      throw Object.assign(new Error("Automation run was cancelled"), {
+        code: "ERUNCANCELLED",
+      });
   }
 
   private async cancelRun(row: RunRow): Promise<void> {
@@ -1358,11 +1557,9 @@ export class MissionsDO extends DurableObjectBase {
     if (!row.executor_id || !row.channel_id) return;
     let interruption = this.runInterruptions.get(row.run_id);
     if (!interruption) {
-      interruption = this.rpc.call(
-        row.executor_id,
-        "interruptChannel",
-        [row.channel_id, true],
-      ).then(() => undefined);
+      interruption = this.rpc
+        .call(row.executor_id, "interruptChannel", [row.channel_id, true])
+        .then(() => undefined);
       this.runInterruptions.set(row.run_id, interruption);
       void interruption.catch(() => {
         if (this.runInterruptions.get(row.run_id) === interruption)
@@ -1430,6 +1627,7 @@ export class MissionsDO extends DurableObjectBase {
         this.checkRunCancellation(runId);
       }
       if (row.phase === "executor-preparing") {
+        this.publishChanges();
         const target =
           execution.kind === "agent" &&
           execution.conversation.mode === "continue"
@@ -1469,6 +1667,7 @@ export class MissionsDO extends DurableObjectBase {
         this.checkRunCancellation(runId);
       }
       if (row.phase === "execution-admitting") {
+        this.publishChanges();
         const admission = await this.admit(mission, row, signal);
         this.sql.exec(
           "UPDATE mission_runs SET phase='dispatching',progress_at=?,failure_json=NULL,authority_session_id=? WHERE run_id=? AND phase='execution-admitting'",
@@ -1484,7 +1683,12 @@ export class MissionsDO extends DurableObjectBase {
         if (admission) this.recordAdmission(runId, admission);
         this.checkRunCancellation(runId);
         if (execution.kind === "method")
-          await this.dispatchMethod(mission, row, requireAdmission(admission), signal);
+          await this.dispatchMethod(
+            mission,
+            row,
+            requireAdmission(admission),
+            signal,
+          );
         else await this.dispatchAgent(mission, row, admission, signal);
         this.checkRunCancellation(runId);
       }
@@ -1492,7 +1696,12 @@ export class MissionsDO extends DurableObjectBase {
         if (execution.kind === "method") {
           const admission = await this.admit(mission, row, signal);
           if (admission) this.recordAdmission(runId, admission);
-          await this.dispatchMethod(mission, row, requireAdmission(admission), signal);
+          await this.dispatchMethod(
+            mission,
+            row,
+            requireAdmission(admission),
+            signal,
+          );
         } else {
           await this.reconcileAgentExecution(mission, row, signal);
         }
@@ -1708,32 +1917,43 @@ export class MissionsDO extends DurableObjectBase {
   ): Promise<void> {
     const id = `automation.notify:${row.run_id}`;
     const title = action.title ?? mission.name;
-    await this.gad().callWithOptions("putUserNotification", [{
-      id,
-      userId: mission.owner.userId,
-      kind: "automation.notify",
-      title,
-      message: action.text,
-      data: {
-        missionId: mission.missionId,
-        runId: row.run_id,
-        ...(row.channel_id ? { channelId: row.channel_id } : {}),
-      },
-      createdAt: Date.now(),
-      revision: 1,
-    }], { signal });
-    try {
-      await this.rpc.call("main", "notification.pushUserInbox", [
-        mission.owner.userId,
+    await this.gad().callWithOptions(
+      "putUserNotification",
+      [
         {
-          notificationId: id,
+          id,
+          userId: mission.owner.userId,
           kind: "automation.notify",
           title,
-          body: action.text.split("\n", 1)[0],
-          priority: action.alert === "interrupt" ? "high" : "normal",
-          ...(row.channel_id ? { channelId: row.channel_id } : {}),
+          message: action.text,
+          data: {
+            missionId: mission.missionId,
+            runId: row.run_id,
+            ...(row.channel_id ? { channelId: row.channel_id } : {}),
+          },
+          createdAt: Date.now(),
+          revision: 1,
         },
-      ], { signal });
+      ],
+      { signal },
+    );
+    try {
+      await this.rpc.call(
+        "main",
+        "notification.pushUserInbox",
+        [
+          mission.owner.userId,
+          {
+            notificationId: id,
+            kind: "automation.notify",
+            title,
+            body: action.text.split("\n", 1)[0],
+            priority: action.alert === "interrupt" ? "high" : "normal",
+            ...(row.channel_id ? { channelId: row.channel_id } : {}),
+          },
+        ],
+        { signal },
+      );
     } catch {
       /* no device reached; the inbox entry remains */
     }
@@ -1890,6 +2110,7 @@ export class MissionsDO extends DurableObjectBase {
       Date.now(),
       runId,
     );
+    this.publishChanges();
   }
 
   private recordAdmission(runId: string, admission: AdmissionResult): void {
@@ -1910,6 +2131,7 @@ export class MissionsDO extends DurableObjectBase {
       ),
       row.run_id,
     );
+    this.publishChanges();
   }
 
   private terminalizeRun(
@@ -1953,6 +2175,7 @@ export class MissionsDO extends DurableObjectBase {
       if (completion) this.markCompleted(mission.missionId, completion, now);
       if (acknowledgeExecutor) this.enqueueExecutorTerminalAck(row, now);
     });
+    this.publishChanges();
   }
 
   private advanceSchedule(

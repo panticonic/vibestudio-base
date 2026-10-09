@@ -7,7 +7,6 @@ import type {
   DoAlarmDispatchResult,
   DoAlarmSchedule,
 } from "@vibestudio/shared/doDispatcher";
-import { DURABLE_WORK_READY_HEADER } from "@vibestudio/shared/durableWork";
 import initSqlJs from "sql.js";
 import { DurableObjectBase } from "./durable-base.js";
 import {
@@ -553,7 +552,7 @@ async function dispatchAlarm(instance: DurableObjectBase): Promise<{
   );
   return {
     response,
-    result: (await response.json()) as DoAlarmDispatchResult,
+    result: ((await response.json()) as { value: DoAlarmDispatchResult }).value,
   };
 }
 
@@ -859,7 +858,9 @@ describe("DurableObjectBase request parsing", () => {
       }),
     );
 
-    await expect(response.json()).resolves.toEqual([["op-1"], "shell:owner"]);
+    await expect(response.json()).resolves.toMatchObject({
+      value: [["op-1"], "shell:owner"],
+    });
   });
 
   it("carries native bytes through the RPC wire codec in both directions", async () => {
@@ -880,10 +881,10 @@ describe("DurableObjectBase request parsing", () => {
       }),
     );
 
-    expect(decodeRpcJson(await response.text())).toEqual([
-      new Uint8Array([0, 1, 255]),
-      { "\u0000bytes": "AAE=" },
-    ]);
+    expect(decodeRpcJson(await response.text())).toMatchObject({
+      value: [new Uint8Array([0, 1, 255]), { "\u0000bytes": "AAE=" }],
+      metadata: { durableWorkReady: [] },
+    });
   });
 
   it("keeps ordinary object payloads as a single argument", async () => {
@@ -1379,10 +1380,10 @@ describe("DurableObjectBase work-ready receipts", () => {
     );
 
     expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toEqual([
-      "workspace-publication",
-      "channel-delivery",
-    ]);
+    await expect(response.json()).resolves.toMatchObject({
+      value: ["workspace-publication", "channel-delivery"],
+      metadata: { durableWorkReady: [] },
+    });
   });
 
   it("re-emits one unacknowledged generation without manufacturing new work", async () => {
@@ -1405,19 +1406,21 @@ describe("DurableObjectBase work-ready receipts", () => {
       );
 
     const ordinary = await request("enqueue", []);
-    await expect(ordinary.json()).resolves.toEqual({ committed: true });
-    expect(ordinary.headers.get(DURABLE_WORK_READY_HEADER)).toBe(
-      "channel-delivery,workspace-publication",
-    );
+    await expect(ordinary.json()).resolves.toEqual({
+      value: { committed: true },
+      metadata: { durableWorkReady: ["channel-delivery", "workspace-publication"] },
+    });
 
     const firstAlarm = await request("__alarm", []);
-    expect(firstAlarm.headers.get(DURABLE_WORK_READY_HEADER)).toBe(
-      "channel-delivery,workspace-publication",
-    );
+    await expect(firstAlarm.json()).resolves.toEqual({
+      value: { nextAlarm: null },
+      metadata: { durableWorkReady: ["channel-delivery", "workspace-publication"] },
+    });
     const secondAlarm = await request("__alarm", []);
-    expect(secondAlarm.headers.get(DURABLE_WORK_READY_HEADER)).toBe(
-      "channel-delivery,workspace-publication",
-    );
+    await expect(secondAlarm.json()).resolves.toEqual({
+      value: { nextAlarm: null },
+      metadata: { durableWorkReady: ["channel-delivery", "workspace-publication"] },
+    });
     expect(
       sql
         .exec(
@@ -1434,7 +1437,10 @@ describe("DurableObjectBase work-ready receipts", () => {
     await request("drain", ["workspace-publication"]);
     await request("drain", ["channel-delivery"]);
     const drainedAlarm = await request("__alarm", []);
-    expect(drainedAlarm.headers.get(DURABLE_WORK_READY_HEADER)).toBeNull();
+    await expect(drainedAlarm.json()).resolves.toEqual({
+      value: { nextAlarm: null },
+      metadata: { durableWorkReady: [] },
+    });
 
     const resume = await request("__lifecycle/resume", [
       {
@@ -1444,7 +1450,10 @@ describe("DurableObjectBase work-ready receipts", () => {
         reason: "planned",
       },
     ]);
-    expect(resume.headers.get(DURABLE_WORK_READY_HEADER)).toBe("workspace-publication");
+    await expect(resume.json()).resolves.toEqual({
+      value: null,
+      metadata: { durableWorkReady: ["workspace-publication"] },
+    });
   });
 
   it("releases claims when a facet is reconstructed under the same host driver", async () => {
@@ -1830,7 +1839,7 @@ describe("DurableObjectBase server-driven alarm durability", () => {
         }),
       };
       const target = "do:workers/test:ObservedAlarmProbeDO:alarm";
-      let settled = false;
+      let terminalSettled = false;
       const responsePromise = instance
         .fetch(
           new Request("http://test/alarm/__rpc", {
@@ -1850,23 +1859,26 @@ describe("DurableObjectBase server-driven alarm durability", () => {
               },
             }),
           }),
-        )
-        .then((response) => {
-          settled = true;
-          return response;
-        });
+        );
+      const terminalPromise = responsePromise.then(async (response) => {
+        const body = await response.text();
+        terminalSettled = true;
+        return { response, body };
+      });
 
       await secondWriteObserved;
       await instance.alarmFailureObserved;
-      expect(settled).toBe(false);
+      expect(terminalSettled).toBe(false);
       releaseSecondWrite();
-      const response = await responsePromise;
-      expect(response.status).toBe(500);
-      await expect(response.json()).resolves.toMatchObject({
-        error: "Invocation authority parent is not active",
-        errorKind: "access",
-        errorCode: "INVOCATION_AUTHORITY_PARENT_NOT_ACTIVE",
-        errorData,
+      const { response, body } = await terminalPromise;
+      expect(response.status).toBe(200);
+      expect(decodeRpcJson(body)).toMatchObject({
+        message: {
+          type: "response",
+          error: "RPC handler and durable alarm persistence both failed",
+          errorKind: "internal",
+          errorData,
+        },
       });
     } finally {
       releaseSecondWrite();

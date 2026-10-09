@@ -47,6 +47,7 @@ import {
   type RpcEnvelope,
   type RpcEvent,
   type RpcRequest,
+  responseEnvelopeFor,
   type RpcRequestContext,
   type ResolvedRpcAuthority,
 } from "@vibestudio/rpc";
@@ -101,8 +102,6 @@ import {
   capability,
 } from "@vibestudio/shared/authorization";
 import {
-  DURABLE_WORK_READY_HEADER,
-  encodeDurableWorkReady,
   type DurableWorkQueue,
 } from "@vibestudio/shared/durableWork";
 import {
@@ -1076,6 +1075,7 @@ export abstract class DurableObjectBase {
   }
 
   private readonly pendingAlarmRpcs = new Set<Promise<void>>();
+  private readonly terminalAlarmDrainResponses = new WeakSet<Response>();
 
   private trackAlarmRpc(pending: Promise<void>): void {
     // The request may take another async turn before its fetch boundary drains
@@ -1197,10 +1197,15 @@ export abstract class DurableObjectBase {
     // request return until those durability writes have settled: a hibernation
     // or eviction immediately after the response must never lose the only wake
     // that advances an effect outbox.
-    const alarmResult = await this.drainAlarmRpcs().then(
-      () => ({ status: "fulfilled" as const, value: undefined }),
-      (reason: unknown) => ({ status: "rejected" as const, reason }),
-    );
+    const terminalOwnsAlarmDrain =
+      dispatchResult.status === "fulfilled" &&
+      this.terminalAlarmDrainResponses.has(dispatchResult.value);
+    const alarmResult = terminalOwnsAlarmDrain
+      ? ({ status: "fulfilled" as const, value: undefined } as const)
+      : await this.drainAlarmRpcs().then(
+          () => ({ status: "fulfilled" as const, value: undefined }),
+          (reason: unknown) => ({ status: "rejected" as const, reason }),
+        );
 
     if (
       dispatchResult.status === "rejected" ||
@@ -1378,8 +1383,11 @@ export abstract class DurableObjectBase {
             : method === "__lifecycle/initializeClone"
               ? this.initializeClone(args[0] as LifecycleCloneInput)
               : await this.resumeAfterRestart(args[0] as LifecycleResumeInput);
-        return new Response(encodeRpcJson(result ?? null), {
-          headers: this.workReadyHeaders(),
+        return new Response(encodeRpcJson({
+          value: result ?? null,
+          metadata: { durableWorkReady: [...(this._invocationContext.current()?.readyQueues ?? [])].sort() },
+        }), {
+          headers: { "Content-Type": "application/json" },
         });
       });
     }
@@ -1407,8 +1415,11 @@ export abstract class DurableObjectBase {
           );
         }
         const nextAlarm = await this.alarm();
-        return new Response(encodeRpcJson({ nextAlarm }), {
-          headers: this.workReadyHeaders(),
+        return new Response(encodeRpcJson({
+          value: { nextAlarm },
+          metadata: { durableWorkReady: [...(this._invocationContext.current()?.readyQueues ?? [])].sort() },
+        }), {
+          headers: { "Content-Type": "application/json" },
         });
       });
     }
@@ -1444,7 +1455,10 @@ export abstract class DurableObjectBase {
     if (responseMessage?.type === "response" && "error" in responseMessage) {
       if (responseMessage.error.startsWith('Method "')) {
         return new Response(
-          encodeRpcJson({ error: `Unknown method: ${method}` }),
+          encodeRpcJson({
+            error: `Unknown method: ${method}`,
+            metadata: { durableWorkReady: [...dispatched.readyQueues].sort() },
+          }),
           {
             status: 404,
             headers: { "Content-Type": "application/json" },
@@ -1469,6 +1483,7 @@ export abstract class DurableObjectBase {
           ...(responseMessage.errorData !== undefined
             ? { errorData: responseMessage.errorData }
             : {}),
+          metadata: { durableWorkReady: [...dispatched.readyQueues].sort() },
         }),
         {
           status,
@@ -1480,9 +1495,13 @@ export abstract class DurableObjectBase {
       responseMessage?.type === "response" && "result" in responseMessage
         ? (responseMessage.result ?? null)
         : null;
-    return new Response(encodeRpcJson(result), {
-      headers: this.workReadyHeaders(dispatched.readyQueues),
-    });
+    return new Response(
+      encodeRpcJson({
+        value: result,
+        metadata: { durableWorkReady: [...dispatched.readyQueues].sort() },
+      }),
+      { headers: { "Content-Type": "application/json" } },
+    );
   }
 
   /** Handle an `RpcEnvelope` POSTed to `__rpc`; returns a response envelope (or `{}` for events). */
@@ -1607,14 +1626,85 @@ export abstract class DurableObjectBase {
         { status: 500, headers: { "Content-Type": "application/json" } },
       );
     }
-    const dispatched = await this.dispatchInboundEnvelope(
+    let markAdmitted!: () => void;
+    const admitted = new Promise<void>((resolve) => {
+      markAdmitted = resolve;
+    });
+    const completion = this.dispatchInboundEnvelope(
       envelope,
       authorityAcceptedAt,
-    );
-    const responseEnvelope = dispatched.result;
-    return new Response(encodeRpcJson(responseEnvelope ?? {}), {
-      headers: this.workReadyHeaders(dispatched.readyQueues),
+      markAdmitted,
+    ).then(async (dispatched) => {
+      try {
+        // A handler may schedule its alarm after the outer fetch has already
+        // crossed the admission boundary. Keep that durability write inside
+        // the terminal response owner so the caller cannot observe completion
+        // before the next wake is committed.
+        await this.drainAlarmRpcs();
+      } catch (alarmFailure) {
+        const previous = dispatched.result?.message;
+        const failure =
+          previous?.type === "response" && "error" in previous
+            ? new AggregateError(
+                [new Error(previous.error), alarmFailure],
+                "RPC handler and durable alarm persistence both failed",
+                { cause: alarmFailure },
+              )
+            : alarmFailure;
+        const errorCode =
+          failure instanceof Error
+            ? (failure as Error & { code?: string }).code
+            : undefined;
+        dispatched = {
+          ...dispatched,
+          result: responseEnvelopeFor(
+            envelope,
+            { callerId: envelope.target, callerKind: "do" },
+            {
+              type: "response",
+              requestId: message.requestId,
+              error: failure instanceof Error ? failure.message : String(failure),
+              errorKind: rpcErrorKindOf(failure),
+              ...(rpcDiagnosticIdOf(failure)
+                ? { diagnosticId: rpcDiagnosticIdOf(failure) }
+                : {}),
+              ...(typeof errorCode === "string" ? { errorCode } : {}),
+              ...(rpcErrorDataOf(failure) === undefined
+                ? {}
+                : { errorData: rpcErrorDataOf(failure) }),
+            },
+          ),
+        };
+      }
+      return dispatched;
     });
+    const first = await Promise.race([
+      admitted.then(() => ({ kind: "admitted" as const })),
+      completion.then((dispatched) => ({ kind: "completed" as const, dispatched })),
+    ]);
+    if (first.kind === "completed") {
+      return new Response(encodeRpcJson(first.dispatched.result ?? {}), {
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        void completion.then(
+          (dispatched) => {
+            controller.enqueue(
+              new TextEncoder().encode(encodeRpcJson(dispatched.result ?? {})),
+            );
+            controller.close();
+          },
+          (error: unknown) => controller.error(error),
+        );
+      },
+    });
+    const terminalResponse = new Response(body, {
+      headers: { "Content-Type": "application/json" },
+    });
+    this.terminalAlarmDrainResponses.add(terminalResponse);
+    return terminalResponse;
   }
 
   /** Evaluate the method's complete declaration against fresh host mediation. */
@@ -1692,6 +1782,7 @@ export abstract class DurableObjectBase {
   private async dispatchInboundEnvelope(
     envelope: RpcEnvelope,
     authorityAcceptedAt: number,
+    onAdmitted?: () => void,
   ): Promise<{ result: RpcEnvelope | null; readyQueues: DurableWorkQueue[] }> {
     const connectionless = this.connectionlessClient();
     // An unattributed method-path call carries a synthetic empty caller; surface
@@ -1806,10 +1897,18 @@ export abstract class DurableObjectBase {
         ) {
           await this.flushPendingOwnTitle();
         }
-        return connectionless.respond(envelope);
+        const invocation = connectionless.respond(envelope);
+        onAdmitted?.();
+        return invocation.completion;
       },
     );
     const response = dispatched.result;
+    if (response?.message.type === "response" && dispatched.readyQueues.length > 0) {
+      response.message.metadata = {
+        ...response.message.metadata,
+        durableWorkReady: [...dispatched.readyQueues].sort(),
+      };
+    }
     if (
       wireMethod?.returns &&
       response?.message.type === "response" &&
@@ -1819,12 +1918,16 @@ export abstract class DurableObjectBase {
         response.message.result,
       );
       if (!parsedResult.success) {
+        const denial = this.schemaDenialResponse(
+          envelope,
+          message,
+          `Invalid result from ${method}: ${parsedResult.error.message}`,
+        );
+        if (dispatched.readyQueues.length > 0 && denial.message.type === "response") {
+          denial.message.metadata = { durableWorkReady: [...dispatched.readyQueues].sort() };
+        }
         return {
-          result: this.schemaDenialResponse(
-            envelope,
-            message,
-            `Invalid result from ${method}: ${parsedResult.error.message}`,
-          ),
+          result: denial,
           readyQueues: dispatched.readyQueues,
         };
       }
@@ -2076,15 +2179,6 @@ export abstract class DurableObjectBase {
     _previousWorkerId: string | null,
     _nextWorkerId: string,
   ): void {}
-
-  private workReadyHeaders(queues?: Iterable<DurableWorkQueue>): Headers {
-    const headers = new Headers({ "Content-Type": "application/json" });
-    const encoded = encodeDurableWorkReady(
-      queues ?? this._invocationContext.current()?.readyQueues ?? [],
-    );
-    if (encoded) headers.set(DURABLE_WORK_READY_HEADER, encoded);
-    return headers;
-  }
 
   private get activeVerifiedCaller(): AttestedCaller | null {
     const context = this.activeInvocationContext;

@@ -115,6 +115,7 @@
   },
   "dependencies": {
     "@vibestudio/automation": "workspace:*",
+    "@vibestudio/content-addressing": "workspace:*",
     "@vibestudio/rpc": "workspace:*",
     "@vibestudio/service-schemas": "workspace:*",
     "@vibestudio/shared": "workspace:*",

@@ -25,9 +25,9 @@ import {
   decodeRpcJson,
   encodeRpcJson,
   type ConnectionlessRpcClient,
+  type RpcInboundInvocation,
   type RpcClient,
   type RpcEnvelope,
-  type RpcRequest,
 } from "@vibestudio/rpc";
 import { createTypedServiceClient } from "@vibestudio/shared/typedServiceClient";
 import { canonicalEntityId } from "@vibestudio/shared/runtime/entitySpec";
@@ -323,8 +323,8 @@ function installWorkerConsoleBridge(rpc: Pick<RpcClient, "call">): void {
  * via `createHostedRuntime`) plus worker-only target extras.
  */
 export interface WorkerRuntime extends WorkspaceRuntime {
-  /** Handle an incoming RPC POST body (an `RpcEnvelope`), returning the response payload. */
-  handleRpcPost(body: unknown): Promise<unknown>;
+  /** Handle an RPC POST body through the admitted connectionless request owner. */
+  handleRpcPost(body: unknown): RpcInboundInvocation;
   destroy(): void;
 }
 
@@ -475,17 +475,12 @@ export function createWorkerRuntime(env: WorkerEnv): WorkerRuntime {
  * Dispatch an inbound `RpcEnvelope` (POSTed to `/__rpc`) through the converged
  * core: request envelopes return a response envelope; events deliver and ack.
  */
-async function handleInboundWorkerEnvelope(
+function handleInboundWorkerEnvelope(
   connectionless: ConnectionlessRpcClient,
   body: unknown,
-): Promise<unknown> {
+): RpcInboundInvocation {
   const envelope = body as RpcEnvelope;
-  const message = envelope?.message as RpcRequest | undefined;
-  if (message?.type !== "request" && message?.type !== "stream-request") {
-    connectionless.deliver(envelope);
-    return {};
-  }
-  return (await connectionless.respond(envelope)) ?? {};
+  return connectionless.respond(envelope);
 }
 
 function parseParentKind(kind: unknown): "panel" | "worker" | "do" | null {
@@ -517,8 +512,20 @@ export function handleWorkerRpc(
   if (url.pathname.endsWith("/__rpc") && request.method === "POST") {
     return (async () => {
       const body = decodeRpcJson(await request.text());
-      const result = await runtime.handleRpcPost(body);
-      return new Response(encodeRpcJson(result), {
+      const invocation = runtime.handleRpcPost(body);
+      await invocation.admitted;
+      const bodyStream = new ReadableStream<Uint8Array>({
+        start(controller) {
+          void invocation.completion.then(
+            (result) => {
+              controller.enqueue(new TextEncoder().encode(encodeRpcJson(result ?? {})));
+              controller.close();
+            },
+            (error: unknown) => controller.error(error),
+          );
+        },
+      });
+      return new Response(bodyStream, {
         headers: { "Content-Type": "application/json" },
       });
     })();
