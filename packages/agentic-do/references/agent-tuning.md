@@ -3,6 +3,18 @@
 Use this guide when changing the AI chat agent's model, provider, credential
 setup, thinking effort, approval behavior, or response policy.
 
+Native model credential use must retain the authenticated originating agent and
+task. Credentialed WebSocket upgrades use the host-owned scope opened through
+that caller's typed credential RPC; a shared executable's outbound identity
+alone does not carry the agent's authority. The scope owns pending approval,
+upgrade, and accepted socket cleanup. Cancellation must close and join that
+work, with original operation and cleanup failures preserved.
+
+Model evidence records prepared payload attempts before network dispatch. To
+diagnose a waiting request, correlate that evidence with transport milestones,
+provider events, and pending approvals; a persisted attempt alone does not
+prove the provider received the request.
+
 ## Two Tiers
 
 Cold-start choices live in `src/agent-config.ts`:
