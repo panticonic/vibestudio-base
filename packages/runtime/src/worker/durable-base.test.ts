@@ -5,6 +5,8 @@ import { createServer } from "node:http";
 import { describe, expect, it } from "vitest";
 import {
   attachRpcDiagnosticId,
+  rpcDiagnosticIdOf,
+  serializeRpcFailure,
   deserializeRpcFailure,
   decodeRpcJson,
   encodeRpcJson,
@@ -887,17 +889,18 @@ describe("DurableObjectBase request parsing", () => {
       }),
     );
 
-    await expect(response.json()).resolves.toMatchObject({
-      message: {
-        type: "response",
-        requestId: "undeclared-1",
-        errorCode: "EACCES",
-        errorKind: "access",
-        errorData: {
-          authorityFailure: {
-            reasonCode: "receiver-undeclared",
-            remediation: { kind: "declare-rpc-receiver" },
-          },
+    const envelope = await response.json() as RpcEnvelope;
+    if (envelope.message.type !== "response" || envelope.message.requestId !== "undeclared-1" || envelope.message.error === undefined)
+      throw new Error("Undeclared RPC did not return an error response");
+    const failure = deserializeRpcFailure(envelope.message.error);
+    expect(failure.message).toContain("hidden");
+    expect(failure).toMatchObject({
+      code: "EACCES",
+      errorKind: "access",
+      errorData: {
+        authorityFailure: {
+          reasonCode: "receiver-undeclared",
+          remediation: { kind: "declare-rpc-receiver" },
         },
       },
     });
@@ -2052,12 +2055,7 @@ describe("DurableObjectBase server-driven alarm durability", () => {
             type: "response",
             requestId: envelope.message.requestId,
             ...(writes === 1
-              ? {
-                  error: "Invocation authority parent is not active",
-                  errorKind: "access",
-                  errorCode: "INVOCATION_AUTHORITY_PARENT_NOT_ACTIVE",
-                  errorData,
-                }
+              ? { error: serializeRpcFailure(Object.assign(new Error("Invocation authority parent is not active"), { errorKind: "access", code: "INVOCATION_AUTHORITY_PARENT_NOT_ACTIVE", errorData })) }
               : { result: null }),
           },
         }),
@@ -2125,8 +2123,15 @@ describe("DurableObjectBase server-driven alarm durability", () => {
       releaseSecondWrite();
       const { response, body } = await terminalPromise;
       expect(response.status).toBe(200);
-      expect(decodeRpcJson(body)).toMatchObject({
-        message: { type: "response", error: { message: "Invocation authority parent is not active", errorKind: "access", code: "INVOCATION_AUTHORITY_PARENT_NOT_ACTIVE", errorData } },
+      const envelope = decodeRpcJson(body) as RpcEnvelope;
+      if (envelope.message.type !== "response" || envelope.message.requestId !== "schedule-two-wakes-with-first-failure" || envelope.message.error === undefined)
+        throw new Error("Alarm RPC did not return the first wake failure");
+      const failure = deserializeRpcFailure(envelope.message.error);
+      expect(failure.message).toBe("Invocation authority parent is not active");
+      expect(failure).toMatchObject({
+        code: "INVOCATION_AUTHORITY_PARENT_NOT_ACTIVE",
+        errorKind: "access",
+        errorData,
       });
     } finally {
       releaseSecondWrite();
@@ -2370,18 +2375,18 @@ describe("DurableObjectBase schema readiness", () => {
       }),
     );
     expect(response.status).toBe(200);
-    expect((await response.json()) as unknown).toMatchObject({
-      message: {
-        type: "response",
-        requestId: "schema-workspace-1",
-        errorKind: "service",
-        errorCode: "DO_SCHEMA_INCOMPATIBLE",
-        errorData: {
-          reason: "shape-drift",
-          source: "test",
-          className: "TestDO",
-          objectKey: "test-key",
-        },
+    const envelope = await response.json() as RpcEnvelope;
+    if (envelope.message.type !== "response" || envelope.message.requestId !== "schema-workspace-1" || envelope.message.error === undefined)
+      throw new Error("Schema readiness RPC did not return an error response");
+    const failure = deserializeRpcFailure(envelope.message.error);
+    expect(failure).toMatchObject({
+      errorKind: "service",
+      code: "DO_SCHEMA_INCOMPATIBLE",
+      errorData: {
+        reason: "shape-drift",
+        source: "test",
+        className: "TestDO",
+        objectKey: "test-key",
       },
     });
   });

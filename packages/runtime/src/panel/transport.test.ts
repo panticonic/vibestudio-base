@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { serializeRpcFailure } from "@vibestudio/rpc";
 import type { RpcEnvelope, RpcMessage } from "@vibestudio/rpc";
 import { createPanelTransport } from "./transport.js";
 
@@ -181,7 +182,7 @@ describe("createPanelTransport", () => {
     await transport.send(request);
     expect(shell.postEnvelope).toHaveBeenCalledWith(request);
     expect(handler).not.toHaveBeenCalled();
-    const reply = envelope("panel:panel-1", { type: "response", requestId: "native-1", error: { message: "denied", errorKind: "access" } });
+    const reply = envelope("panel:panel-1", { type: "response", requestId: "native-1", error: serializeRpcFailure(Object.assign(new Error("denied"), { errorKind: "access" as const })) });
     incoming(reply);
     expect(handler).toHaveBeenCalledWith(reply);
   });
