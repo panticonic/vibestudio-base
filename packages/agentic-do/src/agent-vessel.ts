@@ -860,11 +860,11 @@ export abstract class AgentVesselBase extends NativeChannelOwner<NativeProductCh
    * the parent is still subscribed to both channels. A partial failure keeps
    * retirement uncommitted; retrying is idempotent at both boundaries. */
   private async retireRetainedSubagents(): Promise<void> {
+    const runs = this.subagentRuns
+      .listAll()
+      .filter((run) => run.status !== "abandoned");
     const results = await Promise.allSettled(
-      this.subagentRuns
-        .listAll()
-        .filter((run) => run.status !== "abandoned")
-        .map(async (run) => {
+      runs.map(async (run) => {
           await this.agentRpc.call(
             run.childEntityId,
             agentRpcMethods["retireSubagentExecution"],
@@ -883,7 +883,10 @@ export abstract class AgentVesselBase extends NativeChannelOwner<NativeProductCh
           );
         }),
     );
-    this.requireResourceCleanup(results);
+    this.requireResourceCleanup(
+      results,
+      runs.map((run) => `retire-subagent:${run.runId}`),
+    );
   }
 
   // ── Subclass surface (WS1 §3.2 — names preserved where semantics survive) ─
@@ -4424,7 +4427,6 @@ export abstract class AgentVesselBase extends NativeChannelOwner<NativeProductCh
     channelId: string,
     flushDeferred: boolean,
   ): Promise<void> {
-    await this.agentSession(BACKGROUND_CONTEXT);
     const conversation =
       await this.admittedNativeChannelConversation(channelId);
     if (conversation) {
@@ -7165,17 +7167,18 @@ export abstract class AgentVesselBase extends NativeChannelOwner<NativeProductCh
     harness: Harness,
   ): Promise<void> {
     const reason = new Error("Agent activation released");
-    const cleanup: Promise<unknown>[] = [
-      this.channelMethodRelays.release(reason),
-      this.directMethodCalls.release(reason),
-      this.releaseNativeModelHelpers(reason),
-      this.nativeAutomationRuns.drain(BACKGROUND_CONTEXT),
+    const cleanup: Array<{ phase: string; operation: Promise<unknown> }> = [
+      { phase: "channel-method-relays", operation: this.channelMethodRelays.release(reason) },
+      { phase: "direct-method-calls", operation: this.directMethodCalls.release(reason) },
+      { phase: "native-model-helpers", operation: this.releaseNativeModelHelpers(reason) },
+      { phase: "native-automation-runs", operation: this.nativeAutomationRuns.drain(BACKGROUND_CONTEXT) },
     ];
     if (input.mode === "retire") {
       for (const channelId of this.subscriptions.listChannelIds()) {
         if (!this.subscriptions.ownsReasoningLoop(channelId)) continue;
-        cleanup.push(
-          (async () => {
+        cleanup.push({
+          phase: `native-channel-bootstrap:${channelId}`,
+          operation: (async () => {
             const owner = await retainedAgentExecutionOwner(
               harness,
               BACKGROUND_CONTEXT,
@@ -7192,24 +7195,26 @@ export abstract class AgentVesselBase extends NativeChannelOwner<NativeProductCh
                 background: true,
               });
           })(),
-        );
+        });
       }
     }
-    this.requireResourceCleanup(await Promise.allSettled(cleanup));
+    this.requireResourceCleanup(
+      await Promise.allSettled(cleanup.map(({ operation }) => operation)),
+      cleanup.map(({ phase }) => phase),
+    );
     if (input.mode === "retire") await this.retireRetainedSubagents();
-    // Abort handlers can create settlement/publication debt. Drain it while the
-    // original channel membership still exists; unsubscribe is the final step.
+    // All peer publications and owned tasks settle before any peer is closed.
     await this.nativeAutomationRuns.drain(BACKGROUND_CONTEXT);
     if (input.mode === "retire") {
       await this.drainNativeRetirement(harness);
+      const channels = this.subscriptions.listChannelIds();
       this.requireResourceCleanup(
         await Promise.allSettled(
-          this.subscriptions
-            .listChannelIds()
-            .map((channelId) =>
-              this.subscriptions.unsubscribeFromChannel(channelId),
-            ),
+          channels.map((channelId) =>
+            this.subscriptions.unsubscribeFromChannel(channelId),
+          ),
         ),
+        channels.map((channelId) => `unsubscribe:${channelId}`),
       );
     }
   }
@@ -7233,15 +7238,24 @@ export abstract class AgentVesselBase extends NativeChannelOwner<NativeProductCh
             await harness.waitForTask(task.id, BACKGROUND_CONTEXT);
           }),
         ),
+        tasks.map((task) => `abort-and-join-task:${task.id}`),
       );
     }
   }
 
   private requireResourceCleanup(
     results: PromiseSettledResult<unknown>[],
+    phases: string[],
   ): void {
-    const failures = results.flatMap((result) =>
-      result.status === "rejected" ? [result.reason] : [],
+    const failures = results.flatMap((result, index) =>
+      result.status === "rejected"
+        ? [
+            new Error(
+              `Agent resource cleanup phase ${phases[index] ?? index} failed`,
+              { cause: result.reason },
+            ),
+          ]
+        : [],
     );
     if (failures.length === 1) throw failures[0];
     if (failures.length)

@@ -14,7 +14,8 @@ import {
   defineExtension,
   defineTool,
 } from "@panticonic/pi-durable";
-import type { RpcClient } from "@vibestudio/rpc";
+import type { RpcClient, RpcCallOptions } from "@vibestudio/rpc";
+import { schemaRpcClient, wireClientFor } from "@vibestudio/rpc/internal";
 import type { ParticipantDescriptor } from "@workspace/harness";
 import { AgentVesselBase, type SubagentIdentity } from "./agent-vessel.js";
 import { openBoundAgentSession } from "./native-agent-session.js";
@@ -76,32 +77,29 @@ class Vessel extends AgentVesselBase {
     return this.testHarness;
   }
   protected override get rpc(): RpcClient {
-    const base = super.rpc;
-    return new Proxy(base, {
-      get: (target, property, receiver) => {
-        if (property === "call")
-          return async (
-            destination: string,
-            method: string,
-            args: unknown[],
-          ) => {
-            if (
-              destination === childId &&
-              method === "readSubagentInputSettlement"
-            ) {
-              this.reads++;
-              if (this.failRead) throw this.failRead;
-              if (!this.canonicalChild)
-                throw new Error("No original retained child");
-              this.canonicalChild.callerIdForTest = parentId;
-              return this.canonicalChild.readSubagentInputSettlement(
-                args[0] as Parameters<Vessel["readSubagentInputSettlement"]>[0],
-              );
-            }
-            throw new Error(`Unexpected host method ${destination}.${method}`);
-          };
-        const value = Reflect.get(target, property, receiver);
-        return typeof value === "function" ? value.bind(target) : value;
+    const wire = wireClientFor(super.rpc);
+    return schemaRpcClient({
+      ...wire,
+      call: async (
+        destination: string,
+        method: string,
+        args: unknown[],
+        options?: RpcCallOptions,
+      ): Promise<unknown> => {
+        if (
+          destination === childId &&
+          method === "readSubagentInputSettlement"
+        ) {
+          this.reads++;
+          if (this.failRead) throw this.failRead;
+          if (!this.canonicalChild)
+            throw new Error("No original retained child");
+          this.canonicalChild.callerIdForTest = parentId;
+          return this.canonicalChild.readSubagentInputSettlement(
+            args[0] as Parameters<Vessel["readSubagentInputSettlement"]>[0],
+          );
+        }
+        return wire.call(destination, method, args, options);
       },
     });
   }
@@ -231,6 +229,27 @@ async function fixture(failure = false) {
 }
 
 describe("native shipping subagent input settlement", () => {
+  it("retires an existing child execution after lifecycle quiescence seals new admission", async () => {
+    const f = await fixture();
+    f.child.callerIdForTest = parentId;
+    await expect(f.child.releaseForLifecycle({
+      epoch: "context-retirement",
+      phase: "quiesce",
+      mode: "retire",
+      reason: "parent context retired",
+      deadlineMs: 0,
+    })).resolves.toEqual({ status: "ready" });
+    await expect(f.child.retireSubagentExecution({
+      runId: identity.runId,
+      taskChannelId: identity.taskChannelId,
+      reason: "supervisor retired",
+    })).resolves.toEqual({ retired: true });
+    await expect(f.child.retireSubagentExecution({
+      runId: identity.runId,
+      taskChannelId: identity.taskChannelId,
+      reason: "supervisor retired",
+    })).resolves.toEqual({ retired: true });
+  });
   it("authenticates the original child and rereads an actual terminal native input before marking only that execution idle", async () => {
     const f = await fixture();
     f.parent.seedRun("running", "independent-sibling");

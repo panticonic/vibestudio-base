@@ -2,7 +2,8 @@ import { schemaRpcMock } from "@vibestudio/rpc/test-utils";
 import { describe, expect, it } from "vitest";
 import type { Context } from "@panticonic/pi-chord";
 import type { Harness } from "@panticonic/pi-durable";
-import type { RpcCaller, RpcClient } from "@vibestudio/rpc";
+import type { RpcCaller, RpcClient, RpcCallOptions } from "@vibestudio/rpc";
+import { schemaRpcClient, wireClientFor } from "@vibestudio/rpc/internal";
 import { successfulTestRpcFetch } from "@vibestudio/durable/test-utils";
 import type { ParticipantDescriptor, ChannelEvent } from "@workspace/harness";
 import { AgentVesselBase } from "./agent-vessel.js";
@@ -37,29 +38,28 @@ class ProviderVessel extends AgentVesselBase {
   effects = 0;
   openings = 0;
   protected override get rpc(): RpcClient {
-    const base = super.rpc;
-    return new Proxy(base, {
-      get(target, property, receiver) {
-        if (property === "call")
-          return async (destination: string, method: string) => {
-            // The ordinary authenticated request releases the constructor's title
-            // write. This is the external host boundary; channel claims/readback
-            // remain the real ChannelDO below.
-            if (
-              destination === "main" &&
-              [
-                "runtime.setTitle",
-                "workspace-state.alarmClear",
-                "workspace-state.alarmSet",
-              ].includes(method)
-            )
-              return undefined;
-            throw new Error(
-              `Unexpected provider host RPC ${destination}.${method}`,
-            );
-          };
-        const value = Reflect.get(target, property, receiver) as unknown;
-        return typeof value === "function" ? value.bind(target) : value;
+    const wire = wireClientFor(super.rpc);
+    return schemaRpcClient({
+      ...wire,
+      call: async (
+        destination: string,
+        method: string,
+        args: unknown[],
+        options?: RpcCallOptions,
+      ): Promise<unknown> => {
+        // The ordinary authenticated request releases the constructor's title
+        // write. This is the external host boundary; channel claims/readback
+        // remain the real ChannelDO below.
+        if (
+          destination === "main" &&
+          [
+            "runtime.setTitle",
+            "workspace-state.alarmClear",
+            "workspace-state.alarmSet",
+          ].includes(method)
+        )
+          return undefined;
+        return wire.call(destination, method, args, options);
       },
     });
   }
