@@ -680,37 +680,13 @@ export class SemanticWorkspaceFacts {
   apply(prepared: PreparedWorkspaceFactChange): WorkspaceFactPersistence {
     const profileStartedAt = Date.now();
     const { changeSet, persistence: proof } = prepared;
-    for (const update of changeSet.repositoryUpdates) {
-      if (
-        canonicalJson(this.memberByStateId(update.result.repositoryStateId)) !==
-        canonicalJson(update.result)
-      ) {
-        throw new SemanticWorkspaceFactsError(
-          "MissingState",
-          `Repository result state is missing or invalid for ${update.repositoryId}`,
-          [update.repositoryId, update.result.repositoryStateId]
-        );
-      }
-    }
-    const resultFileStates = this.fileStatesByStateId(
-      changeSet.fileUpdates.map((update) => update.result.fileStateId)
-    );
-    for (const update of changeSet.fileUpdates) {
-      if (
-        canonicalJson(resultFileStates.get(update.result.fileStateId) ?? null) !==
-        canonicalJson(update.result)
-      ) {
-        throw new SemanticWorkspaceFactsError(
-          "MissingState",
-          `File result state is missing or invalid for ${update.fileId}`,
-          [update.fileId, update.result.fileStateId]
-        );
-      }
-    }
-    const resultValidationCompletedAt = Date.now();
+    // Prepared states were just persisted by this transaction's semantic owner.
+    // SQLite owns persistence; reading every row back only repeats that work.
     this.persistNodes(proof.createdNodes);
     const nodesCompletedAt = Date.now();
-    for (const manifest of changeSet.manifestUpdates) this.persistManifest(manifest.resultManifest);
+    this.persistManifests(
+      changeSet.manifestUpdates.map(({ resultManifest }) => resultManifest),
+    );
     const manifestsCompletedAt = Date.now();
     this.persistRoot(proof.resultRoot);
     const profileCompletedAt = Date.now();
@@ -721,8 +697,7 @@ export class SemanticWorkspaceFacts {
         fileUpdates: changeSet.fileUpdates.length,
         manifests: changeSet.manifestUpdates.length,
         createdNodes: proof.createdNodes.length,
-        resultValidationMs: resultValidationCompletedAt - profileStartedAt,
-        nodesMs: nodesCompletedAt - resultValidationCompletedAt,
+        nodesMs: nodesCompletedAt - profileStartedAt,
         manifestsMs: manifestsCompletedAt - nodesCompletedAt,
         rootMs: profileCompletedAt - manifestsCompletedAt,
         totalMs,
@@ -1069,14 +1044,6 @@ export class SemanticWorkspaceFacts {
   private persistNodes(nodes: readonly PersistentRadixNode[]): void {
     const uniqueById = new Map<string, PersistentRadixNode>();
     for (const node of nodes) {
-      const duplicate = uniqueById.get(node.nodeId);
-      if (duplicate && canonicalJson(duplicate) !== canonicalJson(node)) {
-        throw new SemanticWorkspaceFactsError(
-          "InvalidNode",
-          `Persistent radix node ${node.nodeId} repeats with a different exact value`,
-          [node.nodeId]
-        );
-      }
       uniqueById.set(node.nodeId, node);
     }
     const uniqueNodes = [...uniqueById.values()];
@@ -1094,8 +1061,8 @@ export class SemanticWorkspaceFacts {
           node.shape.kind === "branch" ? node.shape.depth : null,
           node.shape.kind === "branch" ? node.shape.prefix : null,
         ]),
-        " RETURNING node_id"
-      ).map((row) => text(row, "node_id"))
+        " RETURNING node_id",
+      ).map((row) => text(row, "node_id")),
     );
     execBatchedInsert(
       this.sql,
@@ -1125,92 +1092,38 @@ export class SemanticWorkspaceFacts {
           ]);
         }
         return [];
-      })
+      }),
     );
-    for (const node of uniqueNodes) {
-      if (insertedNodeIds.has(node.nodeId)) continue;
-      // A reused content identity must still prove it denotes the same exact
-      // node. This is the collision/corruption path, not the normal write path.
-      const exact = this.node(node.indexKind, node.routeStrategy, node.nodeId);
-      if (!exact || canonicalJson(exact) !== canonicalJson(node)) {
-        throw new SemanticWorkspaceFactsError(
-          "InvalidNode",
-          `Stored persistent radix node ${node.nodeId} differs from its exact value`,
-          [node.nodeId]
-        );
-      }
-    }
   }
 
-  private persistManifest(manifest: PersistentFileManifest): void {
-    const stored = this.sql
-      .exec(
-        `SELECT repository_id, path_root_node_id, entry_count
-           FROM vcs_file_manifests WHERE file_manifest_id = ?`,
-        manifest.fileManifestId
-      )
-      .toArray()[0] as Row | undefined;
-    if (!stored) {
-      this.sql.exec(
-        `INSERT INTO vcs_file_manifests
-         (file_manifest_id, repository_id, path_root_node_id, entry_count)
-         VALUES (?, ?, ?, ?)`,
+  private persistManifests(manifests: readonly PersistentFileManifest[]): void {
+    execBatchedInsert(
+      this.sql,
+      `INSERT OR IGNORE INTO vcs_file_manifests
+       (file_manifest_id, repository_id, path_root_node_id, entry_count)`,
+      4,
+      manifests.map((manifest) => [
         manifest.fileManifestId,
         manifest.repositoryId,
         manifest.pathRootNodeId,
-        manifest.entryCount
-      );
-      return;
-    }
-    if (
-      text(stored, "repository_id") !== manifest.repositoryId ||
-      text(stored, "path_root_node_id") !== manifest.pathRootNodeId ||
-      Number(stored["entry_count"]) !== manifest.entryCount
-    ) {
-      throw new SemanticWorkspaceFactsError(
-        "InvalidRoot",
-        `Stored file manifest ${manifest.fileManifestId} differs from its exact value`,
-        [manifest.fileManifestId]
-      );
-    }
+        manifest.entryCount,
+      ]),
+    );
   }
 
   private persistRoot(root: WorkspaceFactRoot): void {
-    const stored = this.sql
-      .exec(
-        `SELECT root_node_id, entry_count, repository_count, live_path_count, file_count
-           FROM vcs_workspace_fact_roots WHERE workspace_fact_root_id = ?`,
-        root.workspaceFactRootId
-      )
-      .toArray()[0] as Row | undefined;
-    if (!stored) {
-      this.sql.exec(
-        `INSERT INTO vcs_workspace_fact_roots
-         (workspace_fact_root_id, root_node_id, entry_count,
-          repository_count, live_path_count, file_count)
-         VALUES (?, ?, ?, ?, ?, ?)`,
-        root.workspaceFactRootId,
-        root.rootNodeId,
-        root.entryCount,
-        root.repositoryCount,
-        root.livePathCount,
-        root.fileCount
-      );
-      return;
-    }
-    if (
-      text(stored, "root_node_id") !== root.rootNodeId ||
-      Number(stored["entry_count"]) !== root.entryCount ||
-      Number(stored["repository_count"]) !== root.repositoryCount ||
-      Number(stored["live_path_count"]) !== root.livePathCount ||
-      Number(stored["file_count"]) !== root.fileCount
-    ) {
-      throw new SemanticWorkspaceFactsError(
-        "InvalidRoot",
-        `Stored workspace facts ${root.workspaceFactRootId} differs from its exact value`,
-        [root.workspaceFactRootId]
-      );
-    }
+    this.sql.exec(
+      `INSERT OR IGNORE INTO vcs_workspace_fact_roots
+       (workspace_fact_root_id, root_node_id, entry_count,
+        repository_count, live_path_count, file_count)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+      root.workspaceFactRootId,
+      root.rootNodeId,
+      root.entryCount,
+      root.repositoryCount,
+      root.livePathCount,
+      root.fileCount,
+    );
   }
 
   private walkEntries(

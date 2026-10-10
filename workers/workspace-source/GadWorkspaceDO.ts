@@ -1480,7 +1480,7 @@ export class GadWorkspaceDO extends DurableObjectBase {
 
   @schemaRpc()
   async workspaceSourceInitializeExactSnapshot(
-    input: InitializeExactWorkspaceSnapshotInput
+    input: InitializeExactWorkspaceSnapshotInput,
   ): Promise<WorkspaceSourceInitializationInspection> {
     this.ensureReady();
     const requestDigest = sha256HexSyncText(
@@ -1488,37 +1488,65 @@ export class GadWorkspaceDO extends DurableObjectBase {
         pin: input.pin,
         repositories: input.repositories,
         installation: input.installation,
-      })
+      }),
     );
     const existing = this.workspaceSourceInitializationRow();
     if (existing && String(existing["command_id"]) !== input.commandId) {
       throw new Error(
-        `Workspace source was already initialized by ${String(existing["command_id"])}`
+        `Workspace source was already initialized by ${String(existing["command_id"])}`,
       );
     }
     if (existing && String(existing["request_digest"]) !== requestDigest) {
-      throw new Error(`Workspace source initialization command ${input.commandId} was reused`);
+      throw new Error(
+        `Workspace source initialization command ${input.commandId} was reused`,
+      );
     }
     if (!existing) {
       const repoPaths = new Set<string>();
       for (const repository of input.repositories) {
         if (repoPaths.has(repository.repoPath)) {
-          throw new Error(`Workspace source snapshot repeats ${repository.repoPath}`);
+          throw new Error(
+            `Workspace source snapshot repeats ${repository.repoPath}`,
+          );
         }
         repoPaths.add(repository.repoPath);
       }
       if (!repoPaths.has("meta")) {
         throw new Error("Workspace source snapshot has no meta repository");
       }
-      this.sql.exec(
-        `INSERT INTO workspace_source_initializations
-         (command_id, request_digest, phase, context_id, genesis_event_id, receipt_json, failure_json, updated_at)
-         VALUES (?, ?, 'observe', ?, NULL, NULL, NULL, ?)`,
-        input.commandId,
-        requestDigest,
-        `workspace-initialization:${this.objectKey}`,
-        nowIso()
-      );
+      this.transaction(() => {
+        const contextId = `workspace-initialization:${this.objectKey}`;
+        const store = this.semanticVcsStore();
+        const context = store.initializeWorkspace(
+          contextId,
+          `${input.commandId}:snapshot`,
+          {
+            source: {
+              sourceUri: "vibestudio://workspace/root-template",
+              snapshotRevision: input.pin.commit,
+            },
+            repositories: input.repositories,
+          },
+        );
+        store.recordInitializedRepositoryContentRoots({
+          workspaceFactRootId: context.committed.workspaceFactRootId,
+          provenanceId: `workspace-source:${input.commandId}`,
+          repositories: input.repositories.map(({ repoPath, contentRoot }) => ({
+            repoPath,
+            contentRoot,
+          })),
+        });
+        this.sql.exec(
+          `INSERT INTO workspace_source_initializations
+           (command_id, request_digest, phase, context_id, genesis_event_id, receipt_json, failure_json, updated_at)
+           VALUES (?, ?, 'publish', ?, ?, NULL, NULL, ?)`,
+          input.commandId,
+          requestDigest,
+          contextId,
+          context.committed.ref.eventId,
+          nowIso(),
+        );
+      });
     }
 
     const ready = this.workspaceSourceInitializationInspection();
@@ -1531,118 +1559,48 @@ export class GadWorkspaceDO extends DurableObjectBase {
         .find(
           (effect) =>
             effect.effectId === input.acknowledgement?.effectId &&
-            effect.payloadDigest === input.acknowledgement.payloadDigest
+            effect.payloadDigest === input.acknowledgement.payloadDigest,
         );
       if (!pending || !pending.commandId.startsWith(`${input.commandId}:`)) {
         throw new Error(
-          `Initialization acknowledgement does not match a pending effect for ${input.commandId}`
+          `Initialization acknowledgement does not match a pending effect for ${input.commandId}`,
         );
       }
-      if (pending.payload["method"] === "initialize-workspace") {
-        this.transaction(() => {
-          const row = this.workspaceSourceInitializationRow();
-          if (!row || row["phase"] !== "observe")
-            throw new Error("Snapshot observation is not pending");
-          const receipt = input.acknowledgement!.receipt;
-          if (!Array.isArray(receipt["files"]))
-            throw new Error("Snapshot observation lacks content descriptors");
-          const descriptors = new Map(
-            (receipt["files"] as JsonRecord[]).map((file) => [String(file["contentHash"]), file])
-          );
-          const store = this.semanticVcsStore();
-          const context = store.initializeWorkspace(
-            String(row["context_id"]),
-            `${input.commandId}:snapshot`,
-            {
-              source: {
-                sourceUri: "vibestudio://workspace/root-template",
-                snapshotRevision: input.pin.commit,
-              },
-              repositories: input.repositories.map((repository) => ({
-                repoPath: repository.repoPath,
-                files: repository.files.map((file) => {
-                  const descriptor = descriptors.get(file.contentHash);
-                  if (!descriptor)
-                    throw new Error(`Snapshot observation lacks ${file.contentHash}`);
-                  return {
-                    ...file,
-                    contentKind: descriptor["contentKind"] as "text" | "bytes",
-                    byteLength: descriptor["byteLength"] as number,
-                    coordinateExtent: descriptor["coordinateExtent"] as number,
-                  };
-                }),
-              })),
-            }
-          );
-          store.recordInitializedRepositoryContentRoots({
-            workspaceFactRootId: context.committed.workspaceFactRootId,
-            provenanceId: `workspace-source:${input.commandId}`,
-            repositories: input.repositories.map(({ repoPath, contentRoot }) => ({
-              repoPath,
-              contentRoot,
-            })),
-          });
-          store.acknowledgeEffect(input.acknowledgement as SemanticEffectAcknowledgement);
-          this.sql.exec(
-            `UPDATE workspace_source_initializations SET phase = 'publish', genesis_event_id = ?, updated_at = ? WHERE command_id = ?`,
-            context.committed.ref.eventId,
-            nowIso(),
-            input.commandId
-          );
-        });
-      } else {
-        const acknowledged = workspace.acknowledgeEffect(
-          input.acknowledgement as SemanticEffectAcknowledgement
+      const acknowledged = workspace.acknowledgeEffect(
+        input.acknowledgement as SemanticEffectAcknowledgement,
+      );
+      if (acknowledged.kind === "effects-pending")
+        return this.workspaceSourcePendingInspection(
+          input.commandId,
+          acknowledged.effects[0],
         );
-        if (acknowledged.kind === "effects-pending")
-          return this.workspaceSourcePendingInspection(input.commandId, acknowledged.effects[0]);
-        if (acknowledged.kind === "host-read")
-          throw new Error("Workspace initialization emitted an unsupported host read");
-      }
+      if (acknowledged.kind === "host-read")
+        throw new Error(
+          "Workspace initialization emitted an unsupported host read",
+        );
     }
 
     for (let step = 0; step < input.repositories.length + 4; step += 1) {
       const pending = workspace
         .pendingEffects()
         .find((effect) => effect.commandId.startsWith(`${input.commandId}:`));
-      if (pending) return this.workspaceSourcePendingInspection(input.commandId, pending);
+      if (pending)
+        return this.workspaceSourcePendingInspection(input.commandId, pending);
 
       const row = this.workspaceSourceInitializationRow();
-      if (!row) throw new Error("Workspace source initialization record disappeared");
+      if (!row)
+        throw new Error("Workspace source initialization record disappeared");
       const phase = String(row["phase"]);
       const contextId = String(row["context_id"]);
       const store = this.semanticVcsStore();
 
-      if (phase === "observe") {
-        const effect = this.transaction(() => {
-          const effect = store.queueEffect({
-            scopeKind: "workspace",
-            scopeId: this.objectKey,
-            commandId: `${input.commandId}:snapshot`,
-            kind: "observe-content",
-            payload: {
-              method: "initialize-workspace",
-              representation: "descriptor",
-              files: [
-                ...new Set(
-                  input.repositories.flatMap((repository) =>
-                    repository.files.map((file) => file.contentHash)
-                  )
-                ),
-              ]
-                .sort()
-                .map((contentHash) => ({ contentHash })),
-            },
-          });
-          return effect;
-        });
-        return this.workspaceSourcePendingInspection(input.commandId, effect);
-      }
-
       if (phase === "publish") {
         const pushCommandId = `${input.commandId}:publish`;
         const command = this.sql
-          .exec(`SELECT status FROM vcs_command_journal WHERE command_id = ?`, pushCommandId)
+          .exec(
+            `SELECT status FROM vcs_command_journal WHERE command_id = ?`,
+            pushCommandId,
+          )
           .toArray()[0] as JsonRecord | undefined;
         if (command?.["status"] === "complete") {
           const context = store.contextRequired(contextId);
@@ -1653,7 +1611,9 @@ export class GadWorkspaceDO extends DurableObjectBase {
             commandId: input.commandId,
             pin: input.pin,
             initializedEventId: context.committed.ref.eventId,
-            initializedStateHash: stateHashForRoot(context.committed.workspaceFactRootId),
+            initializedStateHash: stateHashForRoot(
+              context.committed.workspaceFactRootId,
+            ),
           };
           this.sql.exec(
             `UPDATE workspace_source_initializations
@@ -1661,7 +1621,7 @@ export class GadWorkspaceDO extends DurableObjectBase {
               WHERE command_id = ?`,
             canonicalJson(receipt),
             nowIso(),
-            input.commandId
+            input.commandId,
           );
           return { state: "ready", commandId: input.commandId, receipt };
         }
@@ -1680,15 +1640,21 @@ export class GadWorkspaceDO extends DurableObjectBase {
           },
         });
         if (dispatched.kind === "host-read") {
-          throw new Error("Workspace initialization emitted an unsupported host read");
+          throw new Error(
+            "Workspace initialization emitted an unsupported host read",
+          );
         }
         if (dispatched.kind === "effects-pending") {
-          return this.workspaceSourcePendingInspection(input.commandId, dispatched.effects[0]);
+          return this.workspaceSourcePendingInspection(
+            input.commandId,
+            dispatched.effects[0],
+          );
         }
         continue;
       }
 
-      if (phase === "ready") return this.workspaceSourceInitializationInspection();
+      if (phase === "ready")
+        return this.workspaceSourceInitializationInspection();
       throw new Error(`Unknown workspace source initialization phase ${phase}`);
     }
     throw new Error("Workspace source initialization made no progress");

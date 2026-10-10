@@ -17,22 +17,9 @@ function effectReceipt(
     WorkspaceSourceInitializationInspection,
     { state: "initializing" }
   >,
-  bytes: Uint8Array,
 ): Record<string, unknown> {
   const effect = inspection.pendingEffect;
   if (!effect) throw new Error("fixture expected a pending effect");
-  if (effect.kind === "observe-content") {
-    return {
-      files: (effect.payload["files"] as Array<{ contentHash: string }>).map(
-        (file) => ({
-          contentHash: file.contentHash,
-          contentKind: "text",
-          byteLength: bytes.byteLength,
-          coordinateExtent: new TextDecoder().decode(bytes).length,
-        }),
-      ),
-    };
-  }
   if (effect.kind === "materialize-context") {
     const repositories = effect.payload["repositories"] as Array<{
       repositoryId: string;
@@ -89,7 +76,16 @@ describe("WorkspaceSourceProviderV1", () => {
           subdir: "meta",
           snapshot: repositorySnapshot,
           contentRoot,
-          files: [{ path: "vibestudio.yml", contentHash, mode: 0o644 }],
+          files: [
+            {
+              path: "vibestudio.yml",
+              contentHash,
+              mode: 0o644,
+              contentKind: "text",
+              byteLength: bytes.byteLength,
+              coordinateExtent: new TextDecoder().decode(bytes).length,
+            },
+          ],
         },
         {
           repoPath: "panels/example",
@@ -105,7 +101,16 @@ describe("WorkspaceSourceProviderV1", () => {
           contentRoot: buildWorktreeManifest([
             { path: "index.tsx", contentHash, mode: 0o100644 },
           ]).stateHash as `state:${string}`,
-          files: [{ path: "index.tsx", contentHash, mode: 0o644 }],
+          files: [
+            {
+              path: "index.tsx",
+              contentHash,
+              mode: 0o644,
+              contentKind: "text",
+              byteLength: bytes.byteLength,
+              coordinateExtent: new TextDecoder().decode(bytes).length,
+            },
+          ],
         },
       ],
     };
@@ -133,14 +138,11 @@ describe("WorkspaceSourceProviderV1", () => {
         acknowledgement: {
           effectId: effect.effectId,
           payloadDigest: effect.payloadDigest,
-          receipt: effectReceipt(
-            {
-              state: "initializing",
-              commandId: input.commandId,
-              pendingEffect: effect,
-            },
-            bytes,
-          ),
+          receipt: effectReceipt({
+            state: "initializing",
+            commandId: input.commandId,
+            pendingEffect: effect,
+          }),
         },
       });
     }
@@ -167,7 +169,7 @@ describe("WorkspaceSourceProviderV1", () => {
         eventId: "unknown:event",
       }),
     ).toThrow("Unknown workspace event");
-    expect(effectKinds).toEqual(["observe-content", "publish-main"]);
+    expect(effectKinds).toEqual(["publish-main"]);
     await expect(
       instance.workspaceSourceInitializeExactSnapshot(input),
     ).resolves.toEqual(inspection);
@@ -236,6 +238,7 @@ describe("WorkspaceSourceProviderV1", () => {
         },
       ],
     };
+    base.installation = { sources: [{ pin: base.pin, manifest: "systemEpoch: 59\n" }] };
     await instance.workspaceSourceInitializeExactSnapshot(base);
     await expect(
       instance.workspaceSourceInitializeExactSnapshot({
