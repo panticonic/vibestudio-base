@@ -909,6 +909,21 @@ service, even when a runtime binding shares the name: `services.workers` is the
 `workers` service catalog, while the `workers` runtime binding is the typed
 client with `create`/`list`/`destroy` and `listSources()`.
 
+The dots in a wire method name do not describe nested proxy objects. When a
+service method itself contains a dot, access that complete method name as one
+property or use `rpc.call` with the canonical wire name. For example,
+`runtime.supervision.list` is the `supervision.list` method on the raw `runtime`
+service:
+
+```ts
+const raw = await services.runtime["supervision.list"]({});
+const canonical = await rpc.call("main", "runtime.supervision.list", [{}]);
+const live = await runtime.supervision.list(); // richer typed runtime binding
+```
+
+Prefer the public runtime binding when it provides the operation; use the raw
+service form when you specifically need the service catalog method.
+
 ```
 eval({ code: `
   const tree = await rpc.call("main", "workspace.sourceTree", []);
