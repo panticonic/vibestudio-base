@@ -1,5 +1,11 @@
 // Builtin semantic-authority tests.
 import { describe, expect, it, vi } from "vitest";
+import { sha256HexSyncText } from "@vibestudio/content-addressing";
+
+vi.mock("@vibestudio/content-addressing", async (loadOriginal) => {
+  const original = await loadOriginal<typeof import("@vibestudio/content-addressing")>();
+  return { ...original, sha256HexSyncText: vi.fn(original.sha256HexSyncText) };
+});
 import { createInMemorySql } from "@vibestudio/durable/test-utils";
 import {
   composeFileManifest,
@@ -90,11 +96,13 @@ describe("SemanticWorkspaceFacts", () => {
     const proof = facts.apply(facts.prepare(planned.changeSet));
 
     expect(proof.resultRoot.entryCount).toBe(3);
+    vi.mocked(sha256HexSyncText).mockClear();
     expect(facts.member(proof.resultRoot.workspaceFactRootId, "repo-1")).toEqual(repository);
     expect(facts.file(proof.resultRoot.workspaceFactRootId, "file-1")?.state).toEqual(file);
     expect(
       facts.fileAtPath(proof.resultRoot.workspaceFactRootId, "repo-1", "src/index.ts")?.state
     ).toEqual(file);
+    expect(sha256HexSyncText).not.toHaveBeenCalled();
     expect(() => facts.assertIndexParity(proof.resultRoot.workspaceFactRootId)).not.toThrow();
   });
 
@@ -144,7 +152,7 @@ describe("SemanticWorkspaceFacts", () => {
         repository.repositoryStateId,
         repository.repositoryId,
         repository.repoPath,
-        repository.fileManifestId,
+        repository.fileManifestId
       );
       repositoryUpdates.push({
         repositoryId: repository.repositoryId,
@@ -186,7 +194,7 @@ describe("SemanticWorkspaceFacts", () => {
           file.mode,
           file.contentKind,
           file.byteLength,
-          file.coordinateExtent,
+          file.coordinateExtent
         );
         fileUpdates.push({ fileId: file.fileId, expected: null, result: file });
       }

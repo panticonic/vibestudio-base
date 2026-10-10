@@ -9051,8 +9051,8 @@ export class SemanticWorkspace {
                 priorRepository.fileManifestId,
               ),
               path: priorFile.path,
-              readNode: (kind, route, nodeId, prefix) =>
-                this.deps.store.facts.node(kind, route, nodeId, prefix),
+              readNode: (kind, route, nodeId) =>
+                this.deps.store.facts.node(kind, route, nodeId),
             });
             if (entry?.fileId === file.fileId) manifestExpected = priorFile;
           }
@@ -9145,9 +9145,9 @@ export class SemanticWorkspace {
             : composeFileManifest({
                 basis,
                 updates: pathUpdates,
-                readNode: (kind, route, nodeId, prefix) =>
+                readNode: (kind, route, nodeId) =>
                   transient.get(nodeId) ??
-                  this.deps.store.facts.node(kind, route, nodeId, prefix),
+                  this.deps.store.facts.node(kind, route, nodeId),
               });
         proof?.createdNodes.forEach((node) => transient.set(node.nodeId, node));
         const resultManifest = proof?.resultManifest ?? basis;

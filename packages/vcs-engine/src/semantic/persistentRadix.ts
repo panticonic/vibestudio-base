@@ -1,7 +1,7 @@
 import { compareUtf16CodeUnits } from "@vibestudio/content-addressing";
 import { canonicalDigest, compactId, SEMANTIC_PROTOCOL } from "./identity.js";
 
-/** Generic, authenticated radix indices.  Routing is an explicit part of the
+/** Generic, content-addressed radix indices. Routing is an explicit part of the
  * root/node identity; index names never acquire hidden routing semantics. */
 export type PersistentRadixIndexKind = string;
 export type PersistentRadixRouteStrategy = "hashed" | "utf16";
@@ -30,11 +30,12 @@ export interface PersistentRadixNode {
   shape: PersistentRadixNodeShape;
 }
 
+/** Reads locally owned immutable records. Authenticate foreign records at ingestion,
+ * rather than rehashing them on every tree traversal. */
 export type PersistentRadixNodeReader = (
   indexKind: PersistentRadixIndexKind,
   routeStrategy: PersistentRadixRouteStrategy,
-  nodeId: string,
-  expectedPrefix: string
+  nodeId: string
 ) => PersistentRadixNode | null;
 
 export class PersistentRadixError extends Error {
@@ -266,11 +267,15 @@ function loadNode(
   }
   const node =
     composition.created.get(nodeId) ??
-    composition.readNode(indexKind, composition.routeStrategy, nodeId, expectedPrefix);
+    composition.readNode(indexKind, composition.routeStrategy, nodeId);
   if (!node) {
     throw new PersistentRadixError("MissingNode", `repository map misses node ${nodeId}`, [nodeId]);
   }
-  if (node.indexKind !== indexKind || node.routeStrategy !== composition.routeStrategy) {
+  if (
+    node.nodeId !== nodeId ||
+    node.indexKind !== indexKind ||
+    node.routeStrategy !== composition.routeStrategy
+  ) {
     throw new PersistentRadixError("InvalidNode", `repository map crosses index kinds`, [
       nodeId,
       indexKind,
@@ -278,8 +283,11 @@ function loadNode(
       node.routeStrategy,
     ]);
   }
+  if (node.shape.kind === "branch" && !node.shape.prefix.startsWith(expectedPrefix)) {
+    throw new PersistentRadixError("InvalidNode", "persistent radix branch crosses its route prefix", [nodeId]);
+  }
   if (!composition.created.has(nodeId)) composition.reused.add(nodeId);
-  return authenticatePersistentRadixNode(node, expectedPrefix);
+  return node;
 }
 
 function pointLookup(

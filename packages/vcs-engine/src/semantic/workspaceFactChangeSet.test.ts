@@ -127,7 +127,7 @@ describe("workspace fact change set", () => {
         byteLength: 8,
         coordinateExtent: 5,
       })
-    ).toThrow("workspace file state failed authentication");
+    ).toThrow("workspace file state is invalid");
   });
 
   it("rejects noncanonical change ordering instead of hashing a second representation", () => {

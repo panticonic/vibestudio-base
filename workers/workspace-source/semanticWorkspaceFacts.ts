@@ -2,11 +2,6 @@
 import { canonicalJson, compareUtf16CodeUnits } from "@vibestudio/content-addressing";
 import type { SqlStorage } from "@vibestudio/durable";
 import {
-  authenticateFileManifest,
-  authenticatePersistentRadixNode,
-  authenticateWorkspaceFileState,
-  authenticateWorkspaceFactRoot,
-  authenticateWorkspaceRepositoryMember,
   composeFileManifest,
   composeWorkspaceFacts,
   emptyFileManifest,
@@ -63,7 +58,7 @@ export interface WorkspaceFactPersistence extends WorkspaceFactMutation {
 }
 
 /**
- * One exact in-memory workspace-fact transition. Composition authenticates the
+ * One exact in-memory workspace-fact transition. Composition checks the
  * basis and derives the immutable radix proof; application persists that same
  * proof in the surrounding semantic transaction. Keeping the two together
  * prevents callers from paying to derive an identical proof twice.
@@ -79,6 +74,8 @@ export type WorkspaceAggregateIndexKind = "repository" | "live-path" | "file";
  * neutral persistent-radix node store. Full walks exist only for bounded pages
  * and explicit maintenance integrity audits. */
 export class SemanticWorkspaceFacts {
+  // This database is owned by the semantic authority. IDs are generated when
+  // records are created; ordinary reads and writes do not reauthenticate them.
   constructor(private readonly sql: SqlStorage) {}
 
   empty(): WorkspaceFactRoot {
@@ -113,15 +110,13 @@ export class SemanticWorkspaceFacts {
       livePathCount: Number(row["live_path_count"]),
       fileCount: Number(row["file_count"]),
     };
-    authenticateWorkspaceFactRoot(root);
     return root;
   }
 
   node(
     indexKind: PersistentRadixIndexKind,
     routeStrategy: PersistentRadixRouteStrategy,
-    nodeId: string,
-    expectedPrefix: string
+    nodeId: string
   ): PersistentRadixNode | null {
     const row = this.sql
       .exec(
@@ -211,15 +206,12 @@ export class SemanticWorkspaceFacts {
     } else {
       this.invalidNode(nodeId, `unknown node kind ${nodeKind}`);
     }
-    return authenticatePersistentRadixNode(
-      {
-        nodeId: text(row, "node_id"),
-        indexKind,
-        routeStrategy,
-        shape,
-      },
-      expectedPrefix
-    );
+    return {
+      nodeId: text(row, "node_id"),
+      indexKind,
+      routeStrategy,
+      shape,
+    };
   }
 
   member(workspaceFactRootId: string, repositoryId: string): WorkspaceRepositoryMember | null {
@@ -227,7 +219,7 @@ export class SemanticWorkspaceFacts {
     const entry = workspaceFactRepositoryEntryAt({
       root,
       repositoryId,
-      readNode: (kind, route, nodeId, prefix) => this.node(kind, route, nodeId, prefix),
+      readNode: (kind, route, nodeId) => this.node(kind, route, nodeId),
     });
     return entry ? this.memberByStateId(entry.repositoryStateId) : null;
   }
@@ -240,7 +232,7 @@ export class SemanticWorkspaceFacts {
     const repositoryId = workspaceFactRepositoryAtPath({
       root,
       repoPath,
-      readNode: (kind, route, nodeId, prefix) => this.node(kind, route, nodeId, prefix),
+      readNode: (kind, route, nodeId) => this.node(kind, route, nodeId),
     });
     return repositoryId ? this.member(workspaceFactRootId, repositoryId) : null;
   }
@@ -248,12 +240,15 @@ export class SemanticWorkspaceFacts {
   file(
     workspaceFactRootId: string,
     fileId: string
-  ): { repository: WorkspaceRepositoryMember; state: WorkspaceFileState } | null {
+  ): {
+    repository: WorkspaceRepositoryMember;
+    state: WorkspaceFileState;
+  } | null {
     const root = this.root(workspaceFactRootId);
     const entry = workspaceFactFileEntryAt({
       root,
       fileId,
-      readNode: (kind, route, nodeId, prefix) => this.node(kind, route, nodeId, prefix),
+      readNode: (kind, route, nodeId) => this.node(kind, route, nodeId),
     });
     if (!entry) return null;
     const state = this.fileStateById(entry.fileStateId);
@@ -288,7 +283,7 @@ export class SemanticWorkspaceFacts {
   /** Resolve many file coordinates against one immutable root.
    *
    * Atomic imports and replacements already page their repository manifest,
-   * then need the corresponding aggregate file states. Sharing authenticated
+   * then need the corresponding aggregate file states. Sharing immutable
    * radix nodes and batching the immutable state rows keeps that bounded walk
    * from degenerating into one independent SQL traversal per file. */
   fileStatesAt(
@@ -300,12 +295,11 @@ export class SemanticWorkspaceFacts {
     const readNode = (
       kind: string,
       route: PersistentRadixRouteStrategy,
-      nodeId: string,
-      prefix: string
+      nodeId: string
     ) => {
-      const cacheKey = `${kind}\0${route}\0${nodeId}\0${prefix}`;
+      const cacheKey = `${kind}\0${route}\0${nodeId}`;
       if (nodes.has(cacheKey)) return nodes.get(cacheKey) ?? null;
-      const node = this.node(kind, route, nodeId, prefix);
+      const node = this.node(kind, route, nodeId);
       nodes.set(cacheKey, node);
       return node;
     };
@@ -361,7 +355,10 @@ export class SemanticWorkspaceFacts {
     workspaceFactRootId: string,
     repositoryId: string,
     path: string
-  ): { repository: WorkspaceRepositoryMember; state: WorkspaceFileState } | null {
+  ): {
+    repository: WorkspaceRepositoryMember;
+    state: WorkspaceFileState;
+  } | null {
     const repository = this.member(workspaceFactRootId, repositoryId);
     if (!repository || repository.presence !== "present") return null;
     const manifest = this.manifest(repository.fileManifestId);
@@ -375,13 +372,13 @@ export class SemanticWorkspaceFacts {
     const entry = fileManifestEntryAt({
       manifest,
       path,
-      readNode: (kind, route, nodeId, prefix) => this.node(kind, route, nodeId, prefix),
+      readNode: (kind, route, nodeId) => this.node(kind, route, nodeId),
     });
     if (!entry) return null;
     const indexed = workspaceFactFileEntryAt({
       root: this.root(workspaceFactRootId),
       fileId: entry.fileId,
-      readNode: (kind, route, nodeId, prefix) => this.node(kind, route, nodeId, prefix),
+      readNode: (kind, route, nodeId) => this.node(kind, route, nodeId),
     });
     const state = indexed ? this.fileStateById(indexed.fileStateId) : null;
     if (
@@ -420,7 +417,6 @@ export class SemanticWorkspaceFacts {
       pathRootNodeId: text(row, "path_root_node_id"),
       entryCount: Number(row["entry_count"]),
     };
-    authenticateFileManifest(manifest);
     return manifest;
   }
 
@@ -434,22 +430,21 @@ export class SemanticWorkspaceFacts {
     }
     const basis = this.root(changeSet.basisWorkspaceFactRootId);
     // One atomic proof commonly touches many coordinates in the same radix
-    // branches. Nodes are immutable and content-addressed, so authenticate each
-    // distinct read once for this composition instead of repeating the same
+    // branches. Nodes are immutable and locally owned, so share each
+    // distinct read for this composition instead of repeating the same
     // SQLite reads for every point lookup.
     const persistedNodes = new Map<string, PersistentRadixNode | null>();
     const transientNodes = new Map<string, PersistentRadixNode>();
     const readNode = (
       kind: string,
       route: PersistentRadixRouteStrategy,
-      nodeId: string,
-      prefix: string
+      nodeId: string
     ) => {
       const transient = transientNodes.get(nodeId);
       if (transient) return transient;
-      const cacheKey = `${kind}\0${route}\0${nodeId}\0${prefix}`;
+      const cacheKey = `${kind}\0${route}\0${nodeId}`;
       if (persistedNodes.has(cacheKey)) return persistedNodes.get(cacheKey) ?? null;
-      const node = this.node(kind, route, nodeId, prefix);
+      const node = this.node(kind, route, nodeId);
       persistedNodes.set(cacheKey, node);
       return node;
     };
@@ -655,7 +650,11 @@ export class SemanticWorkspaceFacts {
     workspaceFactRootId: string,
     indexKind: WorkspaceAggregateIndexKind,
     input: { afterKey?: string; limit: number }
-  ): { values: Array<{ key: string; value: string }>; total: number; next: string | null } {
+  ): {
+    values: Array<{ key: string; value: string }>;
+    total: number;
+    next: string | null;
+  } {
     const root = this.root(workspaceFactRootId);
     const keyPrefix = `${indexKind}:`;
     const total =
@@ -681,8 +680,17 @@ export class SemanticWorkspaceFacts {
 
   pageManifest(
     fileManifestId: string,
-    input: { afterPath?: string; atOrAfterPath?: string; prefix?: string; limit: number }
-  ): { values: Array<{ path: string; fileId: string }>; total: number; next: string | null } {
+    input: {
+      afterPath?: string;
+      atOrAfterPath?: string;
+      prefix?: string;
+      limit: number;
+    }
+  ): {
+    values: Array<{ path: string; fileId: string }>;
+    total: number;
+    next: string | null;
+  } {
     if (input.afterPath !== undefined && input.atOrAfterPath !== undefined) {
       throw new SemanticWorkspaceFactsError(
         "InvalidRoot",
@@ -712,7 +720,7 @@ export class SemanticWorkspaceFacts {
 
   /** Resolve complete snapshots for several present repositories against one
    * immutable workspace root. Sharing the aggregate-file radix cache and one
-   * batched state read avoids repeating the same authenticated root traversal
+   * batched state read avoids repeating the same root traversal
    * independently for every repository during full workspace publication. */
   materializationSnapshotsAt(
     workspaceFactRootId: string,
@@ -844,7 +852,7 @@ export class SemanticWorkspaceFacts {
         const manifestEntry = fileManifestEntryAt({
           manifest: this.manifest(repository.fileManifestId),
           path: state.path,
-          readNode: (kind, route, nodeId, prefix) => this.node(kind, route, nodeId, prefix),
+          readNode: (kind, route, nodeId) => this.node(kind, route, nodeId),
         });
         if (manifestEntry?.fileId !== state.fileId) {
           throw new SemanticWorkspaceFactsError(
@@ -885,7 +893,7 @@ export class SemanticWorkspaceFacts {
             priorRepositoryStateId: text(row, "prior_repository_state_id"),
             tombstoneChangeId: text(row, "tombstone_change_id"),
           };
-    return authenticateWorkspaceRepositoryMember(member);
+    return member;
   }
 
   fileStateById(fileStateId: string): WorkspaceFileState | null {
@@ -924,7 +932,7 @@ export class SemanticWorkspaceFacts {
             priorFileStateId: text(row, "prior_file_state_id"),
             tombstoneChangeId: text(row, "tombstone_change_id"),
           };
-    return authenticateWorkspaceFileState(state);
+    return state;
   }
 
   private assertTouchedManifestStates(
@@ -959,7 +967,6 @@ export class SemanticWorkspaceFacts {
   private persistNodes(nodes: readonly PersistentRadixNode[]): void {
     const uniqueById = new Map<string, PersistentRadixNode>();
     for (const node of nodes) {
-      authenticatePersistentRadixNode(node, "");
       const duplicate = uniqueById.get(node.nodeId);
       if (duplicate && canonicalJson(duplicate) !== canonicalJson(node)) {
         throw new SemanticWorkspaceFactsError(
@@ -1022,7 +1029,7 @@ export class SemanticWorkspaceFacts {
       if (insertedNodeIds.has(node.nodeId)) continue;
       // A reused content identity must still prove it denotes the same exact
       // node. This is the collision/corruption path, not the normal write path.
-      const exact = this.node(node.indexKind, node.routeStrategy, node.nodeId, "");
+      const exact = this.node(node.indexKind, node.routeStrategy, node.nodeId);
       if (!exact || canonicalJson(exact) !== canonicalJson(node)) {
         throw new SemanticWorkspaceFactsError(
           "InvalidNode",
@@ -1034,7 +1041,6 @@ export class SemanticWorkspaceFacts {
   }
 
   private persistManifest(manifest: PersistentFileManifest): void {
-    authenticateFileManifest(manifest);
     const stored = this.sql
       .exec(
         `SELECT repository_id, path_root_node_id, entry_count
@@ -1068,7 +1074,6 @@ export class SemanticWorkspaceFacts {
   }
 
   private persistRoot(root: WorkspaceFactRoot): void {
-    authenticateWorkspaceFactRoot(root);
     const stored = this.sql
       .exec(
         `SELECT root_node_id, entry_count, repository_count, live_path_count, file_count
@@ -1118,8 +1123,11 @@ export class SemanticWorkspaceFacts {
     const walk = (nodeId: string, expectedPrefix: string): void => {
       if (visited.has(nodeId)) this.invalidNode(nodeId, `root ${rootHandle} repeats a node`);
       visited.add(nodeId);
-      const node = this.node(indexKind, routeStrategy, nodeId, expectedPrefix);
+      const node = this.node(indexKind, routeStrategy, nodeId);
       if (!node) this.invalidNode(nodeId, `root ${rootHandle} references a missing node`);
+      if (node!.shape.kind === "branch" && !node!.shape.prefix.startsWith(expectedPrefix)) {
+        this.invalidNode(nodeId, "branch crosses its route prefix");
+      }
       if (node!.shape.kind === "empty") return;
       if (node!.shape.kind === "leaf") {
         for (const entry of node!.shape.entries)
@@ -1150,8 +1158,17 @@ export class SemanticWorkspaceFacts {
     routeStrategy: PersistentRadixRouteStrategy,
     rootNodeId: string,
     total: number,
-    input: { afterKey?: string; atOrAfterKey?: string; keyPrefix?: string; limit: number }
-  ): { values: Array<{ key: string; value: string }>; total: number; next: string | null } {
+    input: {
+      afterKey?: string;
+      atOrAfterKey?: string;
+      keyPrefix?: string;
+      limit: number;
+    }
+  ): {
+    values: Array<{ key: string; value: string }>;
+    total: number;
+    next: string | null;
+  } {
     const limit = Math.max(1, Math.trunc(input.limit));
     if (input.afterKey !== undefined && input.atOrAfterKey !== undefined) {
       this.invalidNode(rootNodeId, "page cannot combine exclusive and inclusive lower bounds");
@@ -1171,8 +1188,11 @@ export class SemanticWorkspaceFacts {
       if (values.length > limit) return;
       if (visited.has(nodeId)) this.invalidNode(nodeId, "bounded page repeats a node");
       visited.add(nodeId);
-      const node = this.node(indexKind, routeStrategy, nodeId, expectedPrefix);
+      const node = this.node(indexKind, routeStrategy, nodeId);
       if (!node) this.invalidNode(nodeId, "bounded page references a missing node");
+      if (node!.shape.kind === "branch" && !node!.shape.prefix.startsWith(expectedPrefix)) {
+        this.invalidNode(nodeId, "branch crosses its route prefix");
+      }
       if (node!.shape.kind === "empty") return;
       if (node!.shape.kind === "leaf") {
         for (const entry of node!.shape.entries) {
