@@ -11,10 +11,7 @@ import {
   COMMAND_BOUND_METHOD_NAMES,
   VCS_METHOD_NAMES,
 } from "@vibestudio/service-schemas/clients/generated/runtimeClientMethods";
-import {
-  bindContextInput,
-  contextBoundMethodNames,
-} from "@vibestudio/service-schemas/clients/contextBinding";
+import { bindContextArgs } from "@vibestudio/service-schemas/clients/contextBinding";
 import { publishContext, type VcsPublishInput, type VcsPublishResult } from "./vcsPublish.js";
 
 export type * from "@vibestudio/service-schemas/vcs";
@@ -99,17 +96,16 @@ export function createVcsClient(
     async () => (await import("@vibestudio/service-schemas/vcs")).vcsMethods,
     (_service, method, args) => callMain(`vcs.${method}`, ...args)
   );
-  const contextBoundMethods = contextBoundMethodNames("vcs");
   const client = Object.fromEntries(
     Object.entries(schemaClient).map(([method, invoke]) => [
       method,
-      (input?: unknown) =>
-        (invoke as (value: unknown) => Promise<unknown>)(
-          bindCommandInput(
-            method,
-            contextBoundMethods.has(method) ? bindContextInput(input, boundContextId) : input
-          )
-        ),
+      (...args: unknown[]) => {
+        const boundArgs = bindContextArgs("vcs", method, args, boundContextId);
+        if (boundArgs.length > 0) {
+          boundArgs[0] = bindCommandInput(method, boundArgs[0]);
+        }
+        return (invoke as (...values: unknown[]) => Promise<unknown>)(...boundArgs);
+      },
     ])
   ) as Omit<VcsClient, "publish">;
   return {

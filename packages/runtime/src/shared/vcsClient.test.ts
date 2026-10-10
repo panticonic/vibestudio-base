@@ -74,6 +74,23 @@ describe("createVcsClient", () => {
     expect(call).toHaveBeenCalledWith("vcs.status", { contextId: "context:bound" });
   });
 
+  it("preserves the zero-argument mainState contract", async () => {
+    const result = { kind: "event" as const, eventId: "event:main" };
+    const call = vi.fn(async (..._args: unknown[]) => result);
+    const client = createVcsClient(
+      async <T>(method: string, ...args: unknown[]) => (await call(method, ...args)) as T,
+      "context:bound"
+    );
+
+    await expect(client.mainState()).resolves.toEqual(result);
+    expect(call).toHaveBeenCalledWith("vcs.mainState");
+
+    await expect(
+      (client.mainState as (input: unknown) => Promise<unknown>)({})
+    ).rejects.toThrow('Service "vcs" method "mainState" arguments failed schema validation');
+    expect(call).toHaveBeenCalledTimes(1);
+  });
+
   describe("publish", () => {
     const status = (overrides: Record<string, unknown>) => ({
       contextId: "context:bound",
