@@ -29,6 +29,10 @@ export interface ChannelSubscribeResult {
   channelConfig?: Record<string, unknown>;
   envelope?: ChannelReplayEnvelope;
 }
+/** Durable relationship joins always return the committed revision. */
+export interface ChannelJoinResult extends ChannelSubscribeResult {
+  revision: number;
+}
 export type ChannelDeliveryEndpoint =
   | { kind: "entity"; entityId: string; invocation: "direct" | "mailbox" }
   | { kind: "session" };
@@ -72,7 +76,7 @@ export interface ChannelForkResult {
 export interface ChannelClientRpc extends ChannelCliRpc {
   initializeConversation(contextId: string, config?: ChannelConfig): Promise<ChannelConfig>;
   getChannelPresence(): Promise<{ entries: ChannelPresenceEntry[]; generatedAt: number }>;
-  join(input: ChannelJoinInput): Promise<ChannelSubscribeResult>;
+  join(input: ChannelJoinInput): Promise<ChannelJoinResult>;
   leave(input: { participantId: string; revision: number }): Promise<void>;
   relationshipState(participantId: string): Promise<{ revision: number; active: boolean }>;
   unsubscribe(participantId: string, subscriptionId?: string): Promise<void>;

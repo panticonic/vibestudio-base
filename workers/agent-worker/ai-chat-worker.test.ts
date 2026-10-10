@@ -6,7 +6,11 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { BACKGROUND_CONTEXT } from "@panticonic/pi-chord/context";
 import { createNativeVesselTestDO as createTestDO } from "@workspace/agentic-do/testing/native-vessel";
 import { createNativeChannelProvider } from "@workspace/agentic-do/testing/native-channel-provider";
-import { rpcExposedMethodNames, rpcMethodAuthority } from "@vibestudio/rpc";
+import {
+  rpcExposedMethodNames,
+  rpcMethodAuthority,
+  type RpcClient,
+} from "@vibestudio/rpc";
 import {
   PROVIDER_CREDENTIAL_SETUPS,
   DEFAULT_MODEL,
@@ -65,10 +69,11 @@ class TestableAiChatWorker extends AiChatWorker {
     },
   );
 
-  protected override get rpc(): never {
+  protected override get rpc(): RpcClient {
     return {
-      call: this.rpcCall,
-    } as never;
+      ...super.rpc,
+      call: schemaRpcMock({ call: this.rpcCall }).call,
+    };
   }
 
   protected override callAgentHost = async <T>(

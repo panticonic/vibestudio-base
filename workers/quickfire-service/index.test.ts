@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { createTestDO } from "@workspace/runtime/worker/test-utils";
-import { schemaRpcClient, wireClientFor } from "@vibestudio/rpc/internal";
+import { schemaRpcMock } from "@vibestudio/rpc/test-utils";
 import type { RpcClient } from "@vibestudio/rpc";
 import { QuickfireSessionsDO } from "./index.js";
 import { durableObjectServiceFixture } from "@vibestudio/service-schemas/test-utils";
@@ -12,11 +12,23 @@ class TestQuickfireSessionsDO extends QuickfireSessionsDO {
 
   protected override get rpc(): RpcClient {
     const base = super.rpc;
-    const wire = wireClientFor(base);
-    return schemaRpcClient({
-      ...wire,
-      call: async (target: string, method: string, args: unknown[]) => {
-        this.calls.push({ target, method, args });
+    const mockedMethods = new Set([
+      "workers.resolveService",
+      "getSettings",
+      "workspace-state.panelTree.detail",
+      "workspace-state.entity.resolveActive",
+      "runtime.createEntity",
+      "subscribeChannel",
+      "getReplayAfter",
+      "getReplayBefore",
+      "runtime.replaceResourceBindings",
+      "runtime.releaseResourceBindings",
+      "runtime.retireEntity",
+      "interruptChannel",
+      "unsubscribeChannel",
+    ]);
+    const mockedCall = schemaRpcMock({
+      call: async (_target: string, method: string, args: unknown[]) => {
         if (method === "workers.resolveService") {
           expect(args).toEqual(["vibestudio.models.v1", null]);
           return durableObjectServiceFixture(
@@ -154,9 +166,16 @@ class TestQuickfireSessionsDO extends QuickfireSessionsDO {
         ) {
           return undefined;
         }
-        return wire.call(target, method, args);
+        throw new Error(`unexpected mocked rpc ${method}`);
       },
-    });
+    }).call;
+    const call: RpcClient["call"] = async (target, method, args, options) => {
+      this.calls.push({ target, method: method.name, args });
+      if (mockedMethods.has(method.name))
+        return mockedCall(target, method, args, options);
+      return base.call(target, method, args, options);
+    };
+    return { ...base, call };
   }
 }
 

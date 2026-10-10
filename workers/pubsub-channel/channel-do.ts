@@ -5,6 +5,7 @@ import { resolveDurableObjectService } from "@vibestudio/service-schemas/clients
 import { channelRpcMethods } from "@workspace-workers/pubsub-channel/contract";
 import { createGadServiceClient } from "@vibestudio/service-schemas/clients/durableObjectServiceClient";
 import { mainRpcMethods } from "@vibestudio/service-schemas/mainRpc";
+import type { ChannelJoinResult } from "@workspace/pubsub/rpc-contract";
 /**
  * PubSubChannel — Durable Object for pub/sub messaging.
  *
@@ -2882,7 +2883,7 @@ export class PubSubChannel
     tier: "open",
     sensitivity: "write",
   })
-  async join(input: ChannelJoinInput): Promise<SubscribeResult> {
+  async join(input: ChannelJoinInput): Promise<ChannelJoinResult> {
     return this.withRelationshipMutation(input.participantId, () =>
       this.joinUnlocked(input),
     );
@@ -2890,7 +2891,7 @@ export class PubSubChannel
 
   private async joinUnlocked(
     input: ChannelJoinInput,
-  ): Promise<SubscribeResult> {
+  ): Promise<ChannelJoinResult> {
     const { participantId } = input;
     this.assertParticipantCaller(participantId, "join");
     this.assertLockedMembership(participantId);
