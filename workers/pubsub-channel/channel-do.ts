@@ -1033,8 +1033,10 @@ export class PubSubChannel extends DurableObjectBase {
   async adoptDurableWorkWorker(
     workerId: string,
   ): Promise<{ adopted: boolean; previousWorkerId: string | null }> {
+    const signal = this.rpcAbortSignal ?? undefined;
+    signal?.throwIfAborted();
     const adoption = this.adoptDurableWorkWorkerGeneration(workerId);
-    await this.deriveDeliveries();
+    await this.deriveDeliveries(undefined, undefined, signal);
     return adoption;
   }
 
@@ -1730,7 +1732,9 @@ export class PubSubChannel extends DurableObjectBase {
   private async deriveDeliveries(
     appended?: ChannelEvent,
     deliveryStartedAt?: number,
+    signal?: AbortSignal,
   ): Promise<number> {
+    signal?.throwIfAborted();
     // The canonical resolution envelope is the completion receipt. A lost
     // append reply must not make a resolved request pending after activation
     // loss, even if the disposable delivery cursor already passed that event.
@@ -1743,12 +1747,14 @@ export class PubSubChannel extends DurableObjectBase {
           : await this.channelLog.getEventByEnvelopeId(
               "conversation-seed:resolution",
             );
+      signal?.throwIfAborted();
       if (accepted) this.setStateValue("openingRequestOutcome", resolution);
     }
     // A later relationship fold can legitimately replace the relationship
     // row that owns recovery. Drain that durable debt before the projection
     // cursor is allowed to advance to any newer canonical event.
-    let inserted = await this.resumeReattachBackfills();
+    let inserted = await this.resumeReattachBackfills(signal);
+    signal?.throwIfAborted();
     if (appended) {
       const cursor = this.deliveryProjection.cursor();
       if (appended.id <= cursor) {
@@ -1760,7 +1766,8 @@ export class PubSubChannel extends DurableObjectBase {
           appended,
           deliveryStartedAt,
         ).inserted;
-        inserted += await this.resumeReattachBackfills();
+        inserted += await this.resumeReattachBackfills(signal);
+        signal?.throwIfAborted();
         if (inserted > 0) this.markWorkReady("channel-delivery");
         return inserted;
       }
@@ -1768,14 +1775,17 @@ export class PubSubChannel extends DurableObjectBase {
       // which folds the appended event in sequence with everything missing.
     }
     for (;;) {
+      signal?.throwIfAborted();
       const events = await this.channelLog.readEvents({
         afterSeq: this.deliveryProjection.cursor(),
         limit: 500,
       });
+      signal?.throwIfAborted();
       if (events.length === 0) break;
       for (const event of events) {
+        signal?.throwIfAborted();
         inserted += this.deliveryProjection.fold(event).inserted;
-        inserted += await this.resumeReattachBackfills();
+        inserted += await this.resumeReattachBackfills(signal);
       }
       if (events.length < 500) break;
     }
@@ -1786,9 +1796,10 @@ export class PubSubChannel extends DurableObjectBase {
   /** Resume every durable detached-range recovery. Progress is stored in the
    * relationship row atomically with each derived mailbox item, so activation
    * loss at any await boundary simply resumes from the last committed event. */
-  private async resumeReattachBackfills(): Promise<number> {
+  private async resumeReattachBackfills(signal?: AbortSignal): Promise<number> {
     let inserted = 0;
     for (const recovery of this.deliveryProjection.pendingReattachBackfills()) {
+      signal?.throwIfAborted();
       if (recovery.afterSequence >= recovery.throughSequence) {
         this.deliveryProjection.completeEmptyReattachBackfill(
           recovery.participantId,
@@ -1797,10 +1808,12 @@ export class PubSubChannel extends DurableObjectBase {
       }
       let afterSeq = recovery.afterSequence;
       while (afterSeq < recovery.throughSequence) {
+        signal?.throwIfAborted();
         const events = await this.channelLog.readEvents({
           afterSeq,
           limit: 500,
         });
+        signal?.throwIfAborted();
         const gap = events.filter(
           (event) => event.id <= recovery.throughSequence,
         );
@@ -1811,6 +1824,7 @@ export class PubSubChannel extends DurableObjectBase {
           );
         }
         for (const event of gap) {
+          signal?.throwIfAborted();
           inserted += this.deliveryProjection.advanceReattachBackfill(
             event,
             recovery.participantId,

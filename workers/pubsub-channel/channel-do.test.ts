@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { rpcMethodAuthority } from "@vibestudio/rpc";
+import { encodeRpcJson, rpcMethodAuthority } from "@vibestudio/rpc";
 import {
   evaluateAuthority,
   requirementForPrincipals,
@@ -468,6 +468,114 @@ async function createGadBackedChannel(
 }
 
 describe("PubSubChannel", () => {
+  it("cancels and joins delivery adoption before returning its terminal RPC response", async () => {
+    let channel!: PubSubChannel;
+    let markReadStarted!: () => void;
+    const readStarted = new Promise<void>((resolve) => {
+      markReadStarted = resolve;
+    });
+    let markAbortObserved!: () => void;
+    const abortObserved = new Promise<void>((resolve) => {
+      markAbortObserved = resolve;
+    });
+    let finishChildCleanup!: () => void;
+    const childCleanup = new Promise<void>((resolve) => {
+      finishChildCleanup = resolve;
+    });
+    const invocation = { signal: null as AbortSignal | null };
+    const { instance } = await createGadBackedChannel({
+      rpcCall: async (target, method) => {
+        if (target.includes("GadWorkspaceDO") && method === "readLog") {
+          const signal = (
+            channel as unknown as { rpcAbortSignal: AbortSignal | null }
+          ).rpcAbortSignal;
+          expect(signal).toBeInstanceOf(AbortSignal);
+          invocation.signal = signal;
+          markReadStarted();
+          await new Promise<never>((_resolve, reject) => {
+            signal!.addEventListener(
+              "abort",
+              () => {
+                markAbortObserved();
+                void childCleanup.then(() => reject(signal!.reason));
+              },
+              { once: true },
+            );
+          });
+        }
+        return undefined;
+      },
+    });
+    channel = instance;
+    const caller = {
+      callerId: "main",
+      callerKind: "server",
+      authorization: createTestDirectAuthority({
+        callerKind: "server",
+        method: "adoptDurableWorkWorker",
+        source: "test",
+        className: "TestDO",
+        objectKey: "channel-1",
+      }),
+    };
+    const requestId = crypto.randomUUID();
+    const envelope = {
+      from: "main",
+      target: "do:test:TestDO:channel-1",
+      delivery: { caller },
+      provenance: [caller],
+      message: {
+        type: "request",
+        requestId,
+        fromId: "main",
+        method: "adoptDurableWorkWorker",
+        args: ["driver-after-restart"],
+      },
+    };
+    const fetchDo = (body: unknown) =>
+      (
+        channel as unknown as { fetch(request: Request): Promise<Response> }
+      ).fetch(
+        new Request("http://test/channel-1/__rpc", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: encodeRpcJson(body),
+        }),
+      );
+    const response = await (
+      channel as unknown as { fetch(request: Request): Promise<Response> }
+    ).fetch(
+      new Request("http://test/channel-1/__rpc", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: encodeRpcJson(envelope),
+      }),
+    );
+    expect(response.status).toBe(200);
+    let terminalSettled = false;
+    const terminal = response.text().then((value) => {
+      terminalSettled = true;
+      return value;
+    });
+    await readStarted;
+    const cancelResponse = await fetchDo({
+      ...envelope,
+      message: { type: "request-cancel", requestId, fromId: "main" },
+    });
+    expect(cancelResponse.status).toBe(200);
+    await cancelResponse.text();
+    await abortObserved;
+    expect(terminalSettled).toBe(false);
+    expect(invocation.signal?.aborted).toBe(true);
+
+    finishChildCleanup();
+    const result = JSON.parse(await terminal) as {
+      message?: { type?: string; error?: string };
+    };
+    expect(result.message?.type).toBe("response");
+    expect(result.message?.error).toEqual(expect.any(String));
+  });
+
   it.each(["headless", "agent"] as const)(
     "retains the %s channel role independently of its verified DO principal",
     async (type) => {

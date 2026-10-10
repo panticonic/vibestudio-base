@@ -1,6 +1,11 @@
 import { createServer } from "node:http";
 import { describe, expect, it } from "vitest";
-import { decodeRpcJson, encodeRpcJson, rpc } from "@vibestudio/rpc";
+import {
+  attachRpcDiagnosticId,
+  decodeRpcJson,
+  encodeRpcJson,
+  rpc,
+} from "@vibestudio/rpc";
 import { DIRECT_AUTHORITY_ACCEPTED_AT_HEADER } from "@vibestudio/rpc/internal";
 import type { AuthenticatedCaller, RpcEnvelope } from "@vibestudio/rpc";
 import type {
@@ -244,6 +249,63 @@ class LifecycleProbeDO extends TestDurableObjectBase {
   }
 }
 
+class LifecycleAlarmDrainProbeDO extends LifecycleProbeDO {
+  releaseCalls = 0;
+  private readonly alarmWriteGate: Promise<void>;
+  private startAlarmWrite!: () => void;
+  readonly alarmWriteStarted = new Promise<void>((resolve) => {
+    this.startAlarmWrite = resolve;
+  });
+  private finishAlarmWrite!: () => void;
+  readonly releaseAlarmWrite = new Promise<void>((resolve) => {
+    this.finishAlarmWrite = resolve;
+  });
+  private startLifecycle!: () => void;
+  readonly lifecycleStarted = new Promise<void>((resolve) => {
+    this.startLifecycle = resolve;
+  });
+
+  constructor(...args: ConstructorParameters<typeof LifecycleProbeDO>) {
+    super(...args);
+    this.alarmWriteGate = this.releaseAlarmWrite;
+  }
+
+  schedulePendingAlarm(): void {
+    this.setAlarmAt(Date.now() + 1_000);
+  }
+
+  @rpc({
+    website: { kind: "closed", reason: "Host-only alarm ownership fixture" },
+    principals: ["host"],
+    effect: { kind: "open" },
+    tier: "open",
+    sensitivity: "write",
+  })
+  schedulePendingAlarmRpc(): string {
+    this.schedulePendingAlarm();
+    return "scheduled";
+  }
+
+  protected override beginLifecycleRelease(): void {
+    this.startLifecycle();
+  }
+
+  protected override async persistAlarmSchedule(): Promise<void> {
+    this.startAlarmWrite();
+    await this.alarmWriteGate;
+    throw new Error("owned alarm persistence failed");
+  }
+
+  override async releaseForLifecycle(): Promise<{ status: "ready" }> {
+    this.releaseCalls += 1;
+    return { status: "ready" };
+  }
+
+  finishAlarmPersistence(): void {
+    this.finishAlarmWrite();
+  }
+}
+
 class TerminalOrderingDO extends LifecycleProbeDO {
   readonly order: string[] = [];
   terminal: () => void = () => {};
@@ -444,6 +506,30 @@ class AlarmProbeDO extends TestDurableObjectBase {
     this.setAlarmAt(wakeAt + 1);
     return "scheduled";
   }
+
+  @rpc({
+    website: {
+      kind: "eligible",
+      rationale: "Explicit receiver exposure for this test fixture.",
+    },
+    principals: ["host"],
+    effect: { kind: "open" },
+    tier: "open",
+    sensitivity: "write",
+  })
+  failAfterScheduling(): never {
+    this.setAlarmAt(Date.now() + 1_000);
+    const error = new Error("primary handler failure") as Error & {
+      code: string;
+      errorKind: "access";
+      errorData: Record<string, unknown>;
+    };
+    error.code = "PRIMARY_HANDLER_FAILED";
+    error.errorKind = "access";
+    error.errorData = { owner: "handler", detail: "preserve this payload" };
+    attachRpcDiagnosticId(error, "ca91003e-5630-479c-8c49-640c9a0fd644");
+    throw error;
+  }
 }
 
 class ObservedAlarmProbeDO extends AlarmProbeDO {
@@ -531,29 +617,83 @@ class AlarmCancelProbeDO extends TestDurableObjectBase {
   }
 }
 
+class WakeReceiptFailureProbeDO extends TestDurableObjectBase {
+  protected createTables(): void {}
+
+  @rpc({
+    website: { kind: "closed", reason: "Host-only wake receipt fixture" },
+    principals: ["host"],
+    effect: { kind: "open" },
+    tier: "open",
+    sensitivity: "read",
+  })
+  ping(): string {
+    return "pong";
+  }
+
+  protected override nextAlarmAfterRequest(): undefined {
+    throw Object.assign(new Error("wake publication failed"), {
+      code: "WAKE_FAILED",
+      errorKind: "service",
+      errorData: { owner: "test-fixture" },
+    });
+  }
+}
+
 async function dispatchAlarm(instance: DurableObjectBase): Promise<{
   response: Response;
   result: DoAlarmDispatchResult;
 }> {
+  const { response, envelope } = await requestAlarm(instance);
+  if (envelope.message.type !== "response" || "error" in envelope.message) {
+    throw new Error(
+      envelope.message.type === "response"
+        ? envelope.message.error
+        : "Alarm RPC did not return a response",
+    );
+  }
+  return { response, result: envelope.message.result as DoAlarmDispatchResult };
+}
+
+async function requestAlarm(instance: DurableObjectBase): Promise<{
+  response: Response;
+  envelope: RpcEnvelope;
+}> {
   const fetchable = instance as unknown as {
     fetch(request: Request): Promise<Response>;
   };
+  const caller = {
+    callerId: "main",
+    callerKind: "server" as const,
+    authorization: createTestDirectAuthority({
+      callerKind: "server",
+      method: "__alarm",
+      source: "test",
+      className: "TestDO",
+      objectKey: "test-key",
+    }),
+  };
+  const target = "do:test:TestDO:test-key";
   const response = await fetchable.fetch(
-    new Request("http://test/test-key/__alarm", {
+    new Request("http://test/test-key/__rpc", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        args: [],
-        __instanceToken: "token",
-        __instanceId: "do:test:AlarmProbeDO:test-key",
-        __caller: authenticatedTestCaller("__alarm"),
+      body: encodeRpcJson({
+        from: "main",
+        target,
+        delivery: { caller },
+        provenance: [caller],
+        message: {
+          type: "request",
+          requestId: crypto.randomUUID(),
+          fromId: "main",
+          method: "__alarm",
+          args: [],
+        },
       }),
     }),
   );
-  return {
-    response,
-    result: ((await response.json()) as { value: DoAlarmDispatchResult }).value,
-  };
+  return { response, envelope: decodeRpcJson(await response.text()) as RpcEnvelope };
 }
 
 /**
@@ -1239,6 +1379,15 @@ describe("DurableObjectBase lifecycle routing", () => {
     "propagates original asynchronous %s failures through the structured response",
     async (method) => {
       const { instance } = await createTestDO(AsyncBoundaryFailureDO);
+      if (method === "__alarm") {
+        const { response, envelope } = await requestAlarm(instance);
+        expect(response.status).toBe(200);
+        expect(envelope.message).toMatchObject({
+          type: "response",
+          error: "original asynchronous owner failure",
+        });
+        return;
+      }
       const response = await instance.fetch(
         new Request(`http://test/test-key/${method}`, {
           method: "POST",
@@ -1361,6 +1510,51 @@ describe("DurableObjectBase lifecycle routing", () => {
 });
 
 describe("DurableObjectBase work-ready receipts", () => {
+  it("serializes a wake-publication failure after RPC admission as the terminal response", async () => {
+    const { instance } = await createTestDO(WakeReceiptFailureProbeDO);
+    const caller = {
+      callerId: "main",
+      callerKind: "server" as const,
+      authorization: createTestDirectAuthority({
+        callerKind: "server",
+        method: "ping",
+        source: "test",
+        className: "TestDO",
+        objectKey: "test-key",
+      }),
+    };
+    const response = await instance.fetch(
+      new Request("http://test/test-key/__rpc", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: encodeRpcJson({
+          from: caller.callerId,
+          target: "do:test:TestDO:test-key",
+          delivery: { caller },
+          provenance: [],
+          message: {
+            type: "request",
+            requestId: "wake-failure-after-admission",
+            fromId: caller.callerId,
+            method: "ping",
+            args: [],
+          },
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    const terminal = decodeRpcJson(await response.text()) as RpcEnvelope;
+    expect(terminal.message).toMatchObject({
+      type: "response",
+      requestId: "wake-failure-after-admission",
+      error: "wake publication failed",
+      errorCode: "WAKE_FAILED",
+      errorKind: "service",
+      errorData: { owner: "test-fixture" },
+    });
+  });
+
   it("exposes framework @rpc capability methods on subclasses", async () => {
     const { instance } = await createTestDO(WorkReadyProbeDO);
     const fetchable = instance as unknown as {
@@ -1411,14 +1605,16 @@ describe("DurableObjectBase work-ready receipts", () => {
       metadata: { durableWorkReady: ["channel-delivery", "workspace-publication"] },
     });
 
-    const firstAlarm = await request("__alarm", []);
-    await expect(firstAlarm.json()).resolves.toEqual({
-      value: { nextAlarm: null },
+    const firstAlarm = await requestAlarm(instance);
+    expect(firstAlarm.envelope.message).toMatchObject({
+      type: "response",
+      result: { nextAlarm: null },
       metadata: { durableWorkReady: ["channel-delivery", "workspace-publication"] },
     });
-    const secondAlarm = await request("__alarm", []);
-    await expect(secondAlarm.json()).resolves.toEqual({
-      value: { nextAlarm: null },
+    const secondAlarm = await requestAlarm(instance);
+    expect(secondAlarm.envelope.message).toMatchObject({
+      type: "response",
+      result: { nextAlarm: null },
       metadata: { durableWorkReady: ["channel-delivery", "workspace-publication"] },
     });
     expect(
@@ -1436,10 +1632,10 @@ describe("DurableObjectBase work-ready receipts", () => {
 
     await request("drain", ["workspace-publication"]);
     await request("drain", ["channel-delivery"]);
-    const drainedAlarm = await request("__alarm", []);
-    await expect(drainedAlarm.json()).resolves.toEqual({
-      value: { nextAlarm: null },
-      metadata: { durableWorkReady: [] },
+    const drainedAlarm = await requestAlarm(instance);
+    expect(drainedAlarm.envelope.message).toMatchObject({
+      type: "response",
+      result: { nextAlarm: null },
     });
 
     const resume = await request("__lifecycle/resume", [
@@ -1761,6 +1957,74 @@ describe("DurableObjectBase server-driven alarm durability", () => {
     }
   });
 
+  it("preserves the handler RPC error when alarm persistence also fails", async () => {
+    const server = createServer((_request, response) => {
+      response.statusCode = 503;
+      response.end("alarm store unavailable");
+    });
+    await new Promise<void>((resolve) =>
+      server.listen(0, "127.0.0.1", resolve),
+    );
+    const address = server.address();
+    if (!address || typeof address === "string")
+      throw new Error("test server did not bind TCP");
+
+    try {
+      const { instance } = await createTestDO(AlarmProbeDO, {
+        GATEWAY_URL: `http://127.0.0.1:${address.port}`,
+      });
+      const caller = {
+        callerId: "main",
+        callerKind: "server" as const,
+        authorization: createTestDirectAuthority({
+          callerKind: "server",
+          method: "failAfterScheduling",
+          source: "test",
+          className: "TestDO",
+          objectKey: "test-key",
+        }),
+      };
+      const response = await instance.fetch(
+        new Request("http://test/test-key/__rpc", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: encodeRpcJson({
+            from: caller.callerId,
+            target: "do:test:TestDO:test-key",
+            delivery: { caller },
+            provenance: [],
+            message: {
+              type: "request",
+              requestId: "handler-and-alarm-failure",
+              fromId: caller.callerId,
+              method: "failAfterScheduling",
+              args: [],
+            },
+          }),
+        }),
+      );
+      expect(response.status).toBe(200);
+      const terminal = decodeRpcJson(await response.text()) as RpcEnvelope;
+      expect(terminal.message).toMatchObject({
+        type: "response",
+        requestId: "handler-and-alarm-failure",
+        error: expect.stringContaining("primary handler failure"),
+        errorKind: "access",
+        errorCode: "PRIMARY_HANDLER_FAILED",
+        diagnosticId: "ca91003e-5630-479c-8c49-640c9a0fd644",
+        errorData: { owner: "handler", detail: "preserve this payload" },
+      });
+      expect((terminal.message as { error?: string }).error).toContain(
+        "RPC endpoint returned HTTP 503: alarm store unavailable",
+      );
+    } finally {
+      server.closeAllConnections();
+      await new Promise<void>((resolve, reject) =>
+        server.close((error) => (error ? reject(error) : resolve())),
+      );
+    }
+  });
+
   it("joins pending alarm writes before returning their typed RPC failure", async () => {
     const errorData = {
       source: "test-fixture",
@@ -1888,6 +2152,83 @@ describe("DurableObjectBase server-driven alarm durability", () => {
         server.close((error) => (error ? reject(error) : resolve())),
       );
     }
+  });
+
+  it("releases lifecycle resources after all pending alarm writes fail", async () => {
+    const { instance } = await createTestDO(LifecycleAlarmDrainProbeDO);
+    instance.schedulePendingAlarm();
+    await instance.alarmWriteStarted;
+    const caller = {
+      callerId: "main",
+      callerKind: "server" as const,
+      authorization: createTestDirectAuthority({
+        callerKind: "server",
+        method: "__lifecycle/prepare",
+        source: "test",
+        className: "TestDO",
+        objectKey: "test-key",
+      }),
+    };
+    const responsePromise = instance.fetch(
+      new Request("http://test/test-key/__lifecycle/prepare", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          args: [{ epoch: "e1", mode: "suspend", reason: "test" }],
+          __instanceToken: "token",
+          __instanceId: "do:test:TestDO:test-key",
+          __caller: caller,
+        }),
+      }),
+    );
+
+    instance.finishAlarmPersistence();
+    const response = await responsePromise;
+    expect(instance.releaseCalls).toBe(1);
+    expect(response.status).toBe(500);
+    await expect(response.json()).resolves.toMatchObject({
+      error: "owned alarm persistence failed",
+    });
+  });
+
+  it("retains invocation alarm failure when lifecycle concurrently drains the activation", async () => {
+    const { call, instance } = await createTestDO(LifecycleAlarmDrainProbeDO);
+    const invocation = call("schedulePendingAlarmRpc");
+    await instance.alarmWriteStarted;
+
+    const caller = {
+      callerId: "main",
+      callerKind: "server" as const,
+      authorization: createTestDirectAuthority({
+        callerKind: "server",
+        method: "__lifecycle/prepare",
+        source: "test",
+        className: "TestDO",
+        objectKey: "test-key",
+      }),
+    };
+    const lifecycle = instance.fetch(
+      new Request("http://test/test-key/__lifecycle/prepare", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          args: [{ epoch: "e1", mode: "suspend", reason: "test" }],
+          __instanceToken: "token",
+          __instanceId: "do:test:TestDO:test-key",
+          __caller: caller,
+        }),
+      }),
+    );
+    await instance.lifecycleStarted;
+    instance.finishAlarmPersistence();
+
+    await expect(invocation).rejects.toThrow("owned alarm persistence failed");
+    const lifecycleResponse = await lifecycle;
+    expect(lifecycleResponse.status).toBe(500);
+    await expect(lifecycleResponse.json()).resolves.toMatchObject({
+      error: "owned alarm persistence failed",
+    });
+    expect(instance.releaseCalls).toBe(1);
   });
 });
 
