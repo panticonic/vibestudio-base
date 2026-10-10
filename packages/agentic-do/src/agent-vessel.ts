@@ -647,7 +647,7 @@ export interface AgentInitiatedTurnOptions extends AgentProductMetadata {
   steeringId?: string;
 }
 
-interface ChannelDeliveryInput {
+export interface ChannelDeliveryInput {
   deliveryId: string;
   channelId: string;
   channelRef: { source: string; className: string; objectKey: string };
@@ -658,7 +658,7 @@ interface ChannelDeliveryInput {
   agenticContext: ChannelAgenticContext;
 }
 
-interface ChannelDeliveryOutcome {
+export interface ChannelDeliveryOutcome {
   deliveryId: string;
   disposition: "processed" | "duplicate" | "declined";
   recipientExecutionStartedAt?: number;

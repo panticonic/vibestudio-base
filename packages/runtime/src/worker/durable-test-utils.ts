@@ -45,7 +45,7 @@ interface AcceptedWebSocket {
   tags: string[];
 }
 
-interface TestDOResult<T> {
+export interface TestDOResult<T> {
   instance: T;
   sql: { exec(query: string, ...bindings: unknown[]): SqlResult };
   /** The raw in-memory database. Pass it to a second `createTestDO` (via

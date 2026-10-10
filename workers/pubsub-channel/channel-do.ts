@@ -182,7 +182,7 @@ function doTarget(ref: DORef): string {
 
 /** The opening seed of an edit-/deep-dive fork. `blocks` are appended as a
  *  PRIMARY user message on the child channel by `appendSeed`. */
-interface ForkSeed {
+export interface ForkSeed {
   blocks: MessageBlockInput[];
   replaces?: { messageId: string };
 }
@@ -351,7 +351,7 @@ interface ChannelDeliveryInput {
   agenticContext: ChannelAgenticContext | null;
 }
 
-interface ChannelDeliveryOutcome {
+export interface ChannelDeliveryOutcome {
   deliveryId: string;
   disposition: "processed" | "duplicate" | "declined" | "retired";
   recipientExecutionStartedAt?: number;

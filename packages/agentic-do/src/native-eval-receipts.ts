@@ -228,7 +228,7 @@ export async function consumeEvalReceipt(
   return { accepted: true };
 }
 
-interface EvalAcknowledgementInput {
+export interface EvalAcknowledgementInput {
   route: EvalRunRoute;
   runDigest: string;
   resultDigest: string;
