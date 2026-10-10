@@ -18,12 +18,15 @@ import {
   StorageRejected,
   type Harness,
   type HarnessOptions,
+  type ConversationId,
   type EntryId,
+  type SubmissionId,
   type Storage,
   type StorageWrite,
 } from "@panticonic/pi-durable";
 import { openNodeSqliteStorage } from "@panticonic/pi-durable/storage/sqlite/node";
-import type { UiFeedbackPayload } from "@workspace/agentic-protocol";
+import type { TurnId, UiFeedbackPayload } from "@workspace/agentic-protocol";
+import { nativeTurnId } from "./native-turn-id.js";
 import {
   openBoundAgentSession,
   retireBoundAgentSession,
@@ -1976,14 +1979,14 @@ describe("ui feedback repair turns", () => {
     });
     return f;
   }
-  type Fixture = { conversation: { id: number }; storage: Storage };
+  type Fixture = { conversation: { id: ConversationId }; storage: Storage };
   function turnOf(
     f: Fixture,
-    submissionId: number,
-  ): string {
-    return `native-run:${f.conversation.id}:${submissionId}`;
+    submissionId: SubmissionId,
+  ): TurnId {
+    return nativeTurnId(f.conversation.id, submissionId);
   }
-  function failureOf(occurrenceKey: string, turnId: string): NativeChannelIntake {
+  function failureOf(occurrenceKey: string, turnId: TurnId): NativeChannelIntake {
     const intake = feedback(occurrenceKey);
     if (intake.kind !== "feedback") throw new Error("unreachable");
     return {
@@ -1991,7 +1994,7 @@ describe("ui feedback repair turns", () => {
       payload: {
         ...intake.payload,
         category: "props_invalid",
-        refs: { messageId: `message:${occurrenceKey}` as never, component: "Calculator", turnId: turnId as never },
+        refs: { messageId: `message:${occurrenceKey}` as never, component: "Calculator", turnId },
       },
     };
   }
@@ -2160,14 +2163,14 @@ describe("ui feedback repair turns", () => {
       f.harness,
       binding,
       delivery("foreign"),
-      failureOf("calc:foreign", "native-run:999999:1"),
+      failureOf("calc:foreign", nativeTurnId(999999 as ConversationId, 1 as SubmissionId)),
       context,
     );
     const unknownInput = await submitNativeChannelDelivery(
       f.harness,
       binding,
       delivery("unknown-input"),
-      failureOf("calc:unknown", turnOf(f, 987654)),
+      failureOf("calc:unknown", turnOf(f, 987654 as SubmissionId)),
       context,
     );
     expect(await submissionType(f, foreign.submissionId)).toBe("write");

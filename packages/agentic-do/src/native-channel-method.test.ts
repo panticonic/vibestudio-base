@@ -23,6 +23,7 @@ import { openNodeSqliteStorage } from "@panticonic/pi-durable/storage/sqlite/nod
 import {
   AGENTIC_EVENT_PAYLOAD_KIND,
   type AgenticEvent,
+  type TurnId,
 } from "@workspace/agentic-protocol";
 import {
   getChannelPolicy,
@@ -37,6 +38,7 @@ import {
   createNativeChannelMethodExecution,
   type NativeChannelMethodRequest,
 } from "./native-channel-method.js";
+import { nativeTurnId } from "./native-turn-id.js";
 import { durableObjectServiceFixture } from "@vibestudio/service-schemas/test-utils";
 
 const context = BACKGROUND_CONTEXT;
@@ -146,7 +148,7 @@ async function fixture(
           string,
           string,
           unknown,
-          { invocationId: string; transportCallId: string; turnId?: string },
+          { invocationId: string; transportCallId: string; turnId?: TurnId },
         ];
         if (!routes.has(callId)) {
           const route: ChannelCallDescriptor = {
@@ -353,7 +355,7 @@ describe("native channel method ownership", () => {
       target: { id: "user:one" },
       args: { path: "skills/onboarding/SetupHub.tsx" },
       // The executing participant learns the calling native turn.
-      turnId: `native-run:${f.root.id}:${f.submission.id}`,
+      turnId: nativeTurnId(f.root.id, f.submission.id),
     });
     const conversationId = f.root.id;
     await f.harness.close(context);
