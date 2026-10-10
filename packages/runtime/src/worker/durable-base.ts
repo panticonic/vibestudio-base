@@ -144,6 +144,11 @@ function directAuthorityAcceptedAt(request: Request): number {
 // Minimal types for workerd DurableObject context (cannot import cloudflare:workers in Node)
 
 export interface DurableObjectContext {
+  /** Per-object creation configuration, independent of the shared executable. */
+  props: {
+    stateArgs: Record<string, unknown> | null;
+    image: { effectiveVersion: string; sourceRef: string } | null;
+  };
   id: { toString(): string; name?: string };
   storage: {
     sql: SqlStorage;

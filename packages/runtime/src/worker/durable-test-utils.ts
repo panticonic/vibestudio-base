@@ -347,7 +347,14 @@ export async function createTestDO<DOClass extends new (ctx: any, env: any) => o
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   DOClass: DOClass,
   env?: Record<string, unknown>,
-  opts?: { db?: Database; initialize?: boolean }
+  opts?: {
+    db?: Database;
+    initialize?: boolean;
+    props?: {
+      stateArgs: Record<string, unknown> | null;
+      image: { effectiveVersion: string; sourceRef: string } | null;
+    };
+  }
 ): Promise<TestDOResult<InstanceType<DOClass>, DOClass>> {
   const SQL = await getSqlJs();
   // Reuse an existing db to simulate hibernation (fresh DO, same durable storage).
@@ -360,6 +367,7 @@ export async function createTestDO<DOClass extends new (ctx: any, env: any) => o
   const objectKey = (env?.["__objectKey"] as string) ?? "test-key";
 
   const ctx = {
+    props: structuredClone(opts?.props ?? { stateArgs: null, image: null }),
     id: { toString: () => objectKey, name: objectKey },
     storage: {
       sql: sqlProxy,

@@ -94,14 +94,24 @@ async function fixture(
     callId: string,
   ) => Promise<{ result: unknown; isError?: boolean }>,
 ) {
-  const vessel = await createNativeVesselTestDO(ProviderVessel, {
-    __objectKey: "provider",
-    RPC_FETCH: successfulTestRpcFetch,
-    WORKER_SOURCE: "workers/test",
-    WORKER_CLASS_NAME: "ProviderVessel",
-    WORKER_EFFECTIVE_VERSION: "a".repeat(64),
-    WORKER_SOURCE_REF: `state:${"b".repeat(64)}`,
-  });
+  const vessel = await createNativeVesselTestDO(
+    ProviderVessel,
+    {
+      __objectKey: "provider",
+      RPC_FETCH: successfulTestRpcFetch,
+      WORKER_SOURCE: "workers/test",
+      WORKER_CLASS_NAME: "ProviderVessel",
+    },
+    {
+      props: {
+        stateArgs: null,
+        image: {
+          effectiveVersion: "a".repeat(64),
+          sourceRef: `state:${"b".repeat(64)}`,
+        },
+      },
+    },
+  );
   let lastAdmission: NativeChannelProviderAdmission | null = null;
   const provider = await createNativeChannelProvider({
     channelId,

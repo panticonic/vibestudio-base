@@ -514,17 +514,20 @@ class SpawnVessel extends AgentVesselBase {
 async function fixture(
   options: {
     config?: unknown;
-    stateArgs?: unknown;
+    stateArgs?: Record<string, unknown>;
     tools?: ToolRegistration[];
   } = {},
 ) {
-  const result = await createNativeVesselTestDO(SpawnVessel, {
-    __objectKey: "parent",
-    WORKER_SOURCE: image.source,
-    WORKER_CLASS_NAME: image.className,
-    WORKER_EXECUTION_DIGEST: image.executionDigest,
-    STATE_ARGS: options.stateArgs,
-  });
+  const result = await createNativeVesselTestDO(
+    SpawnVessel,
+    {
+      __objectKey: "parent",
+      WORKER_SOURCE: image.source,
+      WORKER_CLASS_NAME: image.className,
+      WORKER_EXECUTION_DIGEST: image.executionDigest,
+    },
+    { props: { stateArgs: options.stateArgs ?? null, image: null } },
+  );
   databases.push(result.db);
   const vessel = result.instance;
   await vessel.membership(options.config);

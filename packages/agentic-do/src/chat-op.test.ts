@@ -117,8 +117,13 @@ const TEST_AGENT_ENV = {
   __objectKey: "agent-key",
   WORKER_SOURCE: "workers/test",
   WORKER_CLASS_NAME: "TestAgent",
-  WORKER_EFFECTIVE_VERSION: "a".repeat(64),
-  WORKER_SOURCE_REF: `state:${"b".repeat(64)}`,
+} as const;
+const TEST_AGENT_PROPS = {
+  stateArgs: null,
+  image: {
+    effectiveVersion: "a".repeat(64),
+    sourceRef: `state:${"b".repeat(64)}`,
+  },
 } as const;
 const WEATHER_TYPE = {
   typeId: "weather",
@@ -780,7 +785,9 @@ class PromptEventProbe extends TestVessel {
   }
 }
 async function makeVessel(): Promise<TestVessel> {
-  const { instance, db } = await createTestDO(TestVessel, TEST_AGENT_ENV);
+  const { instance, db } = await createTestDO(TestVessel, TEST_AGENT_ENV, {
+    props: TEST_AGENT_PROPS,
+  });
   // Register a subscription row so the card path has a participant id, without
   // admitting an execution session; transport-only methods need membership.
   await instance.registerSubscriptionForTest();
@@ -788,7 +795,11 @@ async function makeVessel(): Promise<TestVessel> {
   return instance;
 }
 async function makePromptProbe(config?: unknown): Promise<PromptEventProbe> {
-  const { instance, db } = await createTestDO(PromptEventProbe, TEST_AGENT_ENV);
+  const { instance, db } = await createTestDO(
+    PromptEventProbe,
+    TEST_AGENT_ENV,
+    { props: TEST_AGENT_PROPS },
+  );
   await instance.registerSubscriptionForTest(CHANNEL, config);
   instance.markEmptyRosterFresh(CHANNEL);
   databases.push(db);
@@ -906,7 +917,9 @@ describe("AgentVesselBase default automation authority", () => {
       },
     );
     class DefaultVessel extends TestVessel {}
-    const { instance, db } = await createTestDO(DefaultVessel, TEST_AGENT_ENV);
+    const { instance, db } = await createTestDO(DefaultVessel, TEST_AGENT_ENV, {
+      props: TEST_AGENT_PROPS,
+    });
     databases.push(db);
     instance.rpcWireMockForTest = remote;
     vi.spyOn(instance, "subscribeChannel").mockImplementation(
@@ -945,7 +958,7 @@ describe("AgentVesselBase default automation authority", () => {
     expect(first.charter.execution).toMatchObject({
       image: {
         source: TEST_AGENT_ENV.WORKER_SOURCE,
-        effectiveVersion: TEST_AGENT_ENV.WORKER_EFFECTIVE_VERSION,
+        effectiveVersion: TEST_AGENT_PROPS.image.effectiveVersion,
         objectKey: "agent-key",
       },
       conversation: {
@@ -973,7 +986,9 @@ describe("AgentVesselBase default automation authority", () => {
 
 describe("AgentVesselBase hot-path trace retention", () => {
   it("amortizes retention sweeps while keeping the durable trace bounded", async () => {
-    const { instance } = await createTestDO(TestVessel, TEST_AGENT_ENV);
+    const { instance } = await createTestDO(TestVessel, TEST_AGENT_ENV, {
+      props: TEST_AGENT_PROPS,
+    });
 
     instance.writeHotPathTracesForTest(576);
     expect(instance.hotPathTraceCountForTest()).toBe(563);
@@ -1673,7 +1688,7 @@ class SubagentSpawnProbe extends TestVessel {
           kind: "worker",
           source: {
             repoPath: "workers/agent-worker",
-            effectiveVersion: TEST_AGENT_ENV.WORKER_EFFECTIVE_VERSION,
+            effectiveVersion: TEST_AGENT_PROPS.image.effectiveVersion,
           },
           contextId: spec.contextId ?? "ctx-child",
           targetId: "do:workers/agent-worker:AiChatWorker:subagent-inv-1",
@@ -1827,6 +1842,7 @@ async function makeSubagentSpawnProbe(
   const { instance, db } = await createTestDO(
     SubagentSpawnProbe,
     TEST_AGENT_ENV,
+    { props: TEST_AGENT_PROPS },
   );
   await instance.registerSubscriptionForTest(CHANNEL, config);
   databases.push(db);

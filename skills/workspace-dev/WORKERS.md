@@ -131,6 +131,19 @@ rebuild, builds from the reserved runtime's own context
 
 ## Worker Lifecycle and Environment Bindings
 
+### Durable Object creation configuration
+
+Dynamic Durable Objects receive their creation configuration through
+`this.ctx.props.stateArgs`, a parsed object or `null`. This configuration belongs
+to the object, while `env` belongs to its shared executable. Keep instance state
+on the Durable Object instance or in its owned storage; module globals may be
+shared by several objects running the same code image. Agent behavior settings
+are seeded from `this.ctx.props.stateArgs?.agentConfig`, and child identity from
+`this.ctx.props.stateArgs?.subagent`. The exact installed source receipt lives in
+`this.ctx.props.image` (`effectiveVersion` and `sourceRef`); use it when launching
+an automation from the executing agent rather than reading object facts from
+shared environment bindings.
+
 ### Startup and dependency budgets
 
 Worker and Durable Object builds keep ESM dynamic imports as separate modules in

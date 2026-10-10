@@ -30,6 +30,15 @@ class TestAgentVessel extends AgentVesselBase {
   promptForTest(channelId = "ch-1"): Promise<string> {
     return this.composePrompt(channelId);
   }
+  automationDefinitionForTest() {
+    return this.selfAutomationDefinition("ch-1", {
+      name: "Own image",
+      summary: "Use this exact agent image.",
+      action: { kind: "prompt", text: "Check the project." },
+      conversation: { mode: "fresh" },
+      trigger: { kind: "manual" },
+    });
+  }
   readonly refreshedChannels: string[] = [];
   protected override async refreshNativeChannelConfiguration(
     channelId: string,
@@ -73,12 +82,22 @@ afterEach(() => {
 });
 
 async function makeVessel(
-  env?: Record<string, unknown>,
+  options: {
+    objectKey?: string;
+    stateArgs?: Record<string, unknown>;
+    image?: { effectiveVersion: string; sourceRef: string };
+  } = {},
 ): Promise<TestAgentVessel> {
-  const { instance, db } = await createTestDO(TestAgentVessel, {
-    __objectKey: "agent-key",
-    ...env,
-  });
+  const { instance, db } = await createTestDO(
+    TestAgentVessel,
+    { __objectKey: options.objectKey ?? "agent-key" },
+    {
+      props: {
+        stateArgs: options.stateArgs ?? null,
+        image: options.image ?? null,
+      },
+    },
+  );
   databases.push(db);
   return instance;
 }
@@ -108,8 +127,8 @@ describe("resolveRespondFromHandles", () => {
 describe("subagent participant handles", () => {
   it("uses the child object key as the handle when it is already valid", async () => {
     const vessel = await makeVessel({
-      __objectKey: "ai-chat-6cdc-3f10f1ed",
-      STATE_ARGS: {
+      objectKey: "ai-chat-6cdc-3f10f1ed",
+      stateArgs: {
         subagent: {
           runId:
             "call_pvAoQf2smkmA9mfbqmPt4i3H|fc_068771be153a5f7a016a48f4f3fb4c81978442476a01b8a1a5",
@@ -127,8 +146,8 @@ describe("subagent participant handles", () => {
 
   it("honors an explicit subscription handle for subagents", async () => {
     const vessel = await makeVessel({
-      __objectKey: "ai-chat-6cdc-3f10f1ed",
-      STATE_ARGS: {
+      objectKey: "ai-chat-6cdc-3f10f1ed",
+      stateArgs: {
         subagent: {
           runId: "run-1",
           task: "Inspect the assigned package.",
@@ -161,7 +180,7 @@ describe("subagent participant handles", () => {
 describe("subagent prompt contract", () => {
   it("keeps the immutable child contract in the stable system prompt", async () => {
     const vessel = await makeVessel({
-      STATE_ARGS: {
+      stateArgs: {
         subagent: {
           runId: "run-1",
           task: "Review the inherited implementation.",
@@ -279,10 +298,10 @@ describe("subagent prompt contract", () => {
   });
 });
 
-describe("per-agent settings seeding from STATE_ARGS.agentConfig", () => {
+describe("per-agent settings seeding from ctx.props.stateArgs.agentConfig", () => {
   it("seeds the valid settings and ignores invalid/unknown/presentation keys", async () => {
     const vessel = await makeVessel({
-      STATE_ARGS: {
+      stateArgs: {
         agentConfig: {
           model: "openai:gpt-5.3",
           thinkingLevel: "max",
@@ -317,6 +336,38 @@ describe("per-agent settings seeding from STATE_ARGS.agentConfig", () => {
     expect(settings).not.toHaveProperty("bogus");
   });
 
+  it("keeps per-object creation settings independent with the same executable environment", async () => {
+    const [first, second] = await Promise.all([
+      makeVessel({
+        objectKey: "first-agent",
+        stateArgs: {
+          agentConfig: { model: "openai:gpt-5.3", thinkingLevel: "low" },
+        },
+      }),
+      makeVessel({
+        objectKey: "second-agent",
+        stateArgs: {
+          agentConfig: {
+            model: "anthropic:claude-sonnet-4-6",
+            thinkingLevel: "high",
+          },
+        },
+      }),
+    ]);
+
+    expect(first.getAgentSettings()).toMatchObject({
+      model: "openai:gpt-5.3",
+      thinkingLevel: "low",
+    });
+    expect(second.getAgentSettings()).toMatchObject({
+      model: "anthropic:claude-sonnet-4-6",
+      thinkingLevel: "high",
+    });
+    await first.configureAgent({ thinkingLevel: "xhigh" });
+    expect(first.getAgentSettings().thinkingLevel).toBe("xhigh");
+    expect(second.getAgentSettings().thinkingLevel).toBe("high");
+  });
+
   it("falls back to defaults when no creation config is present", async () => {
     const vessel = await makeVessel();
     const settings = vessel.getAgentSettings();
@@ -327,14 +378,45 @@ describe("per-agent settings seeding from STATE_ARGS.agentConfig", () => {
 
   it("rejects an invalid model in the seed (falls back to the default model)", async () => {
     const seeded = await makeVessel({
-      STATE_ARGS: { agentConfig: { model: "openai:gpt-5.3" } },
+      stateArgs: { agentConfig: { model: "openai:gpt-5.3" } },
     });
     const bad = await makeVessel({
-      STATE_ARGS: { agentConfig: { model: 42 } },
+      stateArgs: { agentConfig: { model: 42 } },
     });
     expect(seeded.getAgentSettings().model).toBe("openai:gpt-5.3");
     expect(bad.getAgentSettings().model).not.toBe(42);
     expect(typeof bad.getAgentSettings().model).toBe("string");
+  });
+});
+
+describe("per-object exact automation image", () => {
+  it("binds each automation to its own source receipt under a shared executable", async () => {
+    const images = [
+      {
+        effectiveVersion: "a".repeat(64),
+        sourceRef: `state:${"b".repeat(64)}`,
+      },
+      {
+        effectiveVersion: "a".repeat(64),
+        sourceRef: `state:${"c".repeat(64)}`,
+      },
+    ];
+    const vessels = await Promise.all(
+      images.map((image, index) =>
+        makeVessel({ objectKey: `agent-${index}`, image }),
+      ),
+    );
+    for (const [index, vessel] of vessels.entries()) {
+      const execution = vessel.automationDefinitionForTest().charter.execution;
+      expect(execution.kind).toBe("agent");
+      if (execution.kind !== "agent")
+        throw new Error("Expected agent automation");
+      expect(execution.image).toMatchObject({
+        effectiveVersion: images[index]!.effectiveVersion,
+        ref: images[index]!.sourceRef,
+        objectKey: `agent-${index}`,
+      });
+    }
   });
 });
 

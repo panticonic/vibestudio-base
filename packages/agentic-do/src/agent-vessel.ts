@@ -1390,7 +1390,7 @@ export abstract class AgentVesselBase extends NativeChannelOwner<NativeProductCh
 
   /**
    * The agent's settings record (channel-INDEPENDENT). On first read it is
-   * seeded from the agent's creation params (`STATE_ARGS.agentConfig`) so an
+   * seeded from the agent's creation params (`ctx.props.stateArgs.agentConfig`) so an
    * invited agent starts with the config it was created with, then persisted so
    * later reads are stable and edits (updateSettings) win over the seed.
    */
@@ -1411,17 +1411,13 @@ export abstract class AgentVesselBase extends NativeChannelOwner<NativeProductCh
   }
 
   /**
-   * Initial settings from the agent's creation stateArgs (`STATE_ARGS.agentConfig`).
+   * Initial settings from the agent's creation stateArgs (`ctx.props.stateArgs.agentConfig`).
    * Picks ONLY the known settings (lenient — skips invalid/unknown keys) so the
    * persisted record stays clean even if the creation config carries presentation
    * fields (handle/systemPrompt) or junk.
    */
   private seedSettingsFromStateArgs(): StoredSettings {
-    const stateArgs = this.env["STATE_ARGS"];
-    const raw =
-      stateArgs && typeof stateArgs === "object"
-        ? (stateArgs as Record<string, unknown>)["agentConfig"]
-        : undefined;
+    const raw = this.ctx.props.stateArgs?.["agentConfig"];
     if (!raw || typeof raw !== "object") return {};
     const c = raw as Record<string, unknown>;
     const seed: StoredSettings = {};
@@ -4189,8 +4185,8 @@ export abstract class AgentVesselBase extends NativeChannelOwner<NativeProductCh
     const className = String(
       this.env["WORKER_CLASS_NAME"] ?? this.constructor.name,
     );
-    const ev = String(this.env["WORKER_EFFECTIVE_VERSION"] ?? "");
-    const ref = String(this.env["WORKER_SOURCE_REF"] ?? "");
+    const ev = this.ctx.props.image?.effectiveVersion ?? "";
+    const ref = this.ctx.props.image?.sourceRef ?? "";
     if (
       !source ||
       !className ||
@@ -5217,14 +5213,10 @@ export abstract class AgentVesselBase extends NativeChannelOwner<NativeProductCh
 
   // ── Subagents ──────────────────────────────────────────────────────────────
 
-  /** This agent's own subagent identity (set in `STATE_ARGS.subagent` at spawn),
+  /** This agent's own subagent identity (set in `ctx.props.stateArgs.subagent` at spawn),
    *  or null for a top-level agent. Drives retained collaboration and depth. */
   protected subagentIdentity(): SubagentIdentity | null {
-    const stateArgs = this.env["STATE_ARGS"];
-    const raw =
-      stateArgs && typeof stateArgs === "object"
-        ? (stateArgs as Record<string, unknown>)["subagent"]
-        : undefined;
+    const raw = this.ctx.props.stateArgs?.["subagent"];
     if (!raw || typeof raw !== "object") return null;
     const s = raw as Record<string, unknown>;
     if (
