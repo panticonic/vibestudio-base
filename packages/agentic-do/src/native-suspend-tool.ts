@@ -62,7 +62,6 @@ export function createNativeSuspendExecution(
           return { content: [] } as const;
         if (!background.live)
           return {
-            isError: true,
             content: [
               {
                 type: "text",

@@ -240,15 +240,29 @@ describe("native suspension ownership", () => {
     );
     await f.conversation.waitForIdle(context);
   });
-  it("refuses an unsupported wait and keeps the foreground request actionable", async () => {
+  it("reports completed background work as normal progress and keeps the request actionable", async () => {
     const f = await fixture({ live: false });
     expect(await f.initial.wait(context)).toMatchObject({ status: "done" });
     const entries = await f.conversation.context(context);
-    expect(
-      entries.messages.some(
-        (message) => message.role === "toolResult" && message.isError,
-      ),
-    ).toBe(true);
+    const result = entries.messages.find(
+      (message) => message.role === "toolResult",
+    );
+    expect(result).toMatchObject({
+      isError: false,
+      content: [
+        {
+          type: "text",
+          text: expect.stringContaining("subagent:one"),
+        },
+      ],
+      details: { unintegrated: ["subagent:one"] },
+    });
+    expect(entries.messages).toContainEqual(
+      expect.objectContaining({
+        role: "assistant",
+        content: [expect.objectContaining({ type: "text", text: "carried on" })],
+      }),
+    );
   });
   it("explicit cancellation settles the input wait without a timer or report", async () => {
     const f = await fixture();
