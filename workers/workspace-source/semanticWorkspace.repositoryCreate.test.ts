@@ -57,7 +57,7 @@ describe("SemanticWorkspace repository creation", () => {
         }
       },
     });
-    const initial = store.initializeWorkspace("context:test", "command:genesis");
+    const initial = store.initializeWorkspace("context:test", "command:genesis", null);
 
     const dispatch = await semantic.dispatch("edit", {
       ingress,
@@ -192,24 +192,13 @@ describe("SemanticWorkspace repository creation", () => {
       throw new Error("Deleting unit did not materialize");
     const deletion = deleted.result as typeof result;
     expect(
-      store.facts.repositoryAtPath(
-        store.stateRoot(deletion.workingHead),
-        "projects/notes",
-      ),
+      store.facts.repositoryAtPath(store.stateRoot(deletion.workingHead), "projects/notes")
     ).toBeNull();
     expect(
-      store.facts.member(
-        store.stateRoot(deletion.workingHead),
-        repository.repositoryId,
-      )?.presence,
+      store.facts.member(store.stateRoot(deletion.workingHead), repository.repositoryId)?.presence
     ).toBe("deleted");
     expect(
-      sql
-        .exec(
-          "SELECT kind FROM gad_changes WHERE work_unit_id = ?",
-          deletion.workUnitId,
-        )
-        .toArray(),
+      sql.exec("SELECT kind FROM gad_changes WHERE work_unit_id = ?", deletion.workUnitId).toArray()
     ).toEqual([{ kind: "repo-delete" }]);
   });
 });

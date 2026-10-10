@@ -19,7 +19,7 @@ describe("SemanticWorkspace causal provenance reachability", () => {
       )
     `);
     const store = new SemanticVcsStore(sql, () => timestamp);
-    const initial = store.initializeWorkspace("context:deep", "command:deep-genesis");
+    const initial = store.initializeWorkspace("context:deep", "command:deep-genesis", null);
     const genesisEventId = initial.committed.ref.eventId;
     const root = store.stateRoot(initial.committed.ref);
     const depth = 6_000;
@@ -103,7 +103,7 @@ describe("SemanticWorkspace causal provenance reachability", () => {
       )
     `);
     const store = new SemanticVcsStore(sql, () => timestamp);
-    const initial = store.initializeWorkspace("context:own", "command:genesis");
+    const initial = store.initializeWorkspace("context:own", "command:genesis", null);
     const genesisEventId = initial.committed.ref.eventId;
     const root = store.stateRoot(initial.committed.ref);
 
@@ -290,7 +290,7 @@ describe("SemanticWorkspace causal provenance reachability", () => {
     `);
 
     const store = new SemanticVcsStore(sql, () => timestamp);
-    const initial = store.initializeWorkspace("context:own", "command:genesis");
+    const initial = store.initializeWorkspace("context:own", "command:genesis", null);
     const basis = initial.working.ref;
     if (basis.kind !== "event") throw new Error("genesis did not produce an event basis");
     const root = store.stateRoot(basis);

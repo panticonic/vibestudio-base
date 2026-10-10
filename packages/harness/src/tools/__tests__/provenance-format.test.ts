@@ -50,7 +50,7 @@ describe("provenance formatting", () => {
           message: "Import project",
           createdAt: "2026-07-15T10:00:00.000Z",
           semanticProtocol: "semantic:test",
-          workspaceFactRootId: "workspace-facts:import",
+          snapshotSource: null, workspaceFactRootId: "workspace-facts:import",
         },
       },
       edges: [],

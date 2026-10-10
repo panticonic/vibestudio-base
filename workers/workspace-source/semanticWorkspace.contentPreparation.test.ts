@@ -48,7 +48,7 @@ async function fixture() {
       }
     },
   });
-  const initial = store.initializeWorkspace("context:test", "command:genesis");
+  const initial = store.initializeWorkspace("context:test", "command:genesis", null);
   const request = (
     commandId: string,
     changes: unknown[],

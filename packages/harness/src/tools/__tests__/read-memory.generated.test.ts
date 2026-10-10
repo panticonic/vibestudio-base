@@ -6,7 +6,7 @@ const HASH = "a".repeat(64);
 
 function episode(
   index: number,
-  overrides: Partial<VcsReadMemoryEpisode> = {}
+  overrides: Partial<Exclude<VcsReadMemoryEpisode, { stop: "snapshot-boundary" }>> = {}
 ): VcsReadMemoryEpisode {
   const start = index * 17;
   return {

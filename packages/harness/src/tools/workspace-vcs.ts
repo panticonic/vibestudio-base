@@ -866,26 +866,14 @@ export function createWorkspaceVcsTool(
             ...(cursor ? { cursor } : {}),
           });
           const lines = result.spans.map((span) => {
-            const changeRef = putProvenanceReference(
-              references,
-              span.change,
-              5,
-            );
-            const appliedChangeRef = putProvenanceReference(
-              references,
-              span.appliedChange,
-              5,
-            );
-            const workRef = putProvenanceReference(
-              references,
-              span.workUnit,
-              5,
-            );
-            const commandRef = putProvenanceReference(
-              references,
-              span.command,
-              5,
-            );
+            if (span.stop === "snapshot-boundary") {
+              const originRef = putProvenanceReference(references, span.origin, 5);
+              return `${span.start}..${span.end} · initial snapshot ${span.source.sourceUri} at ${span.source.snapshotRevision} · file ${originRef}`;
+            }
+            const changeRef = putProvenanceReference(references, span.change, 5);
+            const appliedChangeRef = putProvenanceReference(references, span.appliedChange, 5);
+            const workRef = putProvenanceReference(references, span.workUnit, 5);
+            const commandRef = putProvenanceReference(references, span.command, 5);
             return (
               `${span.start}..${span.end} · ${span.stop} · ${span.tier} · ` +
               `change ${changeRef} · applied ${appliedChangeRef} · ` +
@@ -986,9 +974,7 @@ async function compareWithDiagnostics(
 }
 
 function stateLabel(
-  state:
-    | { kind: "event"; eventId: string }
-    | { kind: "application"; applicationId: string },
+  state: { kind: "event"; eventId: string } | { kind: "application"; applicationId: string }
 ) {
   return state.kind === "event" ? state.eventId : state.applicationId;
 }

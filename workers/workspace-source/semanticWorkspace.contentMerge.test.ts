@@ -16,7 +16,9 @@ const ingress: SemanticDispatchRequest["ingress"] = {
 const hash = (text: string) => sha256Hex(new TextEncoder().encode(text));
 
 describe("SemanticWorkspace hunk composition", () => {
-  it("reads exact host bytes, composes disjoint edits, and maps content to both parents", async () => {
+  it.each(["authored", "snapshot"] as const)(
+    "composes disjoint edits and traces both parents from a %s origin",
+    async (origin) => {
     const sql = await createInMemorySql();
     createSemanticVcsSchema(sql);
     const store = new SemanticVcsStore(sql, () => timestamp);
@@ -75,7 +77,10 @@ describe("SemanticWorkspace hunk composition", () => {
         },
       });
     };
-    const editText = (result: SemanticDispatchResult, baseText: string): SemanticDispatchResult => {
+      const editText = (
+        result: SemanticDispatchResult,
+        baseText: string
+      ): SemanticDispatchResult => {
       if (result.kind !== "host-read") throw new Error("text edit did not request bytes");
       expect(result.request).toMatchObject({
         kind: "read-merge-content",
@@ -91,7 +96,44 @@ describe("SemanticWorkspace hunk composition", () => {
     const oursText = "ours\nmiddle\nbottom\n";
     const theirsText = "top\nmiddle\ntheirs\n";
     const composedText = "ours\nmiddle\ntheirs\n";
-    const initial = store.initializeWorkspace("context:source", "command:genesis");
+      const initial = store.initializeWorkspace(
+        "context:source",
+        "command:genesis",
+        origin === "snapshot"
+          ? {
+              source: { sourceUri: "fixture://initial", snapshotRevision: "v1" },
+              repositories: [
+                {
+                  repoPath: "packages/fixture",
+                  files: [
+                    {
+                      path: "index.ts",
+                      contentHash: hash(baseText),
+                      mode: 0o644,
+                      contentKind: "text",
+                      byteLength: new TextEncoder().encode(baseText).length,
+                      coordinateExtent: baseText.length,
+                    },
+                  ],
+                },
+              ],
+            }
+          : null
+      );
+      let base: { event: { kind: "event"; eventId: string } };
+      if (origin === "snapshot") {
+        base = { event: initial.committed.ref };
+        for (const table of [
+          "gad_changes",
+          "gad_work_units",
+          "gad_work_unit_applications",
+          "gad_applied_changes",
+          "gad_applied_change_predicates",
+          "gad_content_edges",
+        ]) {
+          expect(sql.exec(`SELECT COUNT(*) AS n FROM ${table}`).toArray()[0]?.["n"]).toBe(0);
+        }
+      } else {
     const baseDispatch = await semantic.dispatch("edit", {
       ingress,
       input: {
@@ -102,14 +144,16 @@ describe("SemanticWorkspace hunk composition", () => {
           {
             kind: "repository-create",
             repoPath: "packages/fixture",
-            files: [{ path: "index.ts", content: { kind: "text", text: baseText }, mode: 0o644 }],
+                files: [
+                  { path: "index.ts", content: { kind: "text", text: baseText }, mode: 0o644 },
+                ],
           },
         ],
       },
     });
-    const baseWorking = pending<{ workingHead: { kind: "application"; applicationId: string } }>(
-      baseDispatch
-    );
+        const baseWorking = pending<{
+          workingHead: { kind: "application"; applicationId: string };
+        }>(baseDispatch);
     acknowledgeMaterialization(baseDispatch);
     const baseCommitDispatch = await semantic.dispatch("commit", {
       ingress,
@@ -120,8 +164,9 @@ describe("SemanticWorkspace hunk composition", () => {
         message: "Base",
       },
     });
-    const base = pending<{ event: { kind: "event"; eventId: string } }>(baseCommitDispatch);
+        base = pending<{ event: { kind: "event"; eventId: string } }>(baseCommitDispatch);
     acknowledgeMaterialization(baseCommitDispatch);
+      }
     store.forkContext("context:source", "context:target");
     store.forkContext("context:source", "context:mixed");
     store.forkContext("context:source", "context:conflict");
@@ -200,8 +245,12 @@ describe("SemanticWorkspace hunk composition", () => {
         limit: 100,
       },
     });
-    if (compareRead.kind !== "host-read") throw new Error("compare did not request exact content");
-    expect(compareRead.request).toMatchObject({ kind: "read-merge-content", operation: "compare" });
+      if (compareRead.kind !== "host-read")
+        throw new Error("compare did not request exact content");
+      expect(compareRead.request).toMatchObject({
+        kind: "read-merge-content",
+        operation: "compare",
+      });
     const bytes = new Map([
       [hash(baseText), baseText],
       [hash(oursText), oursText],
@@ -264,7 +313,7 @@ describe("SemanticWorkspace hunk composition", () => {
         .exec(
           `SELECT edge.relation FROM gad_content_edges edge
           JOIN gad_applied_changes applied ON applied.applied_change_id = edge.child_applied_change_id
-         WHERE applied.application_id = ? ORDER BY edge.parent_applied_change_id`,
+         WHERE applied.application_id = ? ORDER BY json_extract(edge.parent_ref_json, '$.appliedChangeId')`,
           merged.applicationId
         )
         .toArray()
@@ -330,8 +379,8 @@ describe("SemanticWorkspace hunk composition", () => {
           attribution: { theirs: Array<{ changeId: string }> };
         }>;
       }
-    ).coordinates.find((coordinate) => coordinate.coordinate.id === file.state.fileId)?.attribution
-      .theirs;
+      ).coordinates.find((coordinate) => coordinate.coordinate.id === file.state.fileId)
+        ?.attribution.theirs;
     expect(offSpineAttribution?.map((entry) => entry.changeId)).toEqual(
       expect.arrayContaining([sourceEdit.changeIds[0], targetEdit.changeIds[0]])
     );
@@ -405,7 +454,7 @@ describe("SemanticWorkspace hunk composition", () => {
            JOIN gad_applied_changes child
              ON child.applied_change_id = edge.child_applied_change_id
            JOIN gad_applied_changes parent
-             ON parent.applied_change_id = edge.parent_applied_change_id
+             ON parent.applied_change_id = json_extract(edge.parent_ref_json, '$.appliedChangeId')
           WHERE child.application_id = ?`,
           mixedMerge.applicationId
         )
@@ -609,5 +658,6 @@ describe("SemanticWorkspace hunk composition", () => {
       path: "conflict.ts",
       contentHash: hash(localConflictText),
     });
+    }
+  );
   });
-});

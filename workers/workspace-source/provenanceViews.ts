@@ -109,12 +109,13 @@ export const PROV_CATALOG: readonly ProvRelationDescription[] = [
   },
   {
     relation: "prov_content_edges",
-    meaning: "Immediate content-coordinate lineage between applied changes.",
+    meaning:
+      "Immediate content-coordinate lineage from edits to earlier edits or initial snapshot files.",
     columns: [
       { column: "child_applied_change_id", meaning: "Later applied change." },
       {
-        column: "parent_applied_change_id",
-        meaning: "Earlier applied change.",
+        column: "parent_ref_json",
+        meaning: "Earlier edit or initial snapshot file reference.",
       },
       { column: "relation", meaning: "preserves | copies | incorporates." },
     ],
@@ -442,7 +443,7 @@ export function createProvenanceViews(sql: SqlStorage): void {
 
     CREATE VIEW IF NOT EXISTS prov_content_edges AS
       SELECT edge.child_applied_change_id AS child_applied_change_id,
-             edge.parent_applied_change_id AS parent_applied_change_id,
+             edge.parent_ref_json AS parent_ref_json,
              edge.relation AS relation
         FROM gad_content_edges edge
         JOIN gad_applied_changes child

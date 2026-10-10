@@ -55,6 +55,7 @@ function renderedRanges(
 }
 
 function salience(episode: VcsReadMemoryEpisode, readingContextId: string): number {
+  if (episode.stop === "snapshot-boundary") return 1;
   if (episode.authorContextId === readingContextId) return 4;
   if (episode.arrival) return 0;
   if (episode.stop === "import-boundary" || episode.counteractsChangeIds.length > 0) return 1;
@@ -79,6 +80,15 @@ function prepareEpisode(
   reference?: ReferenceSemanticRoot
 ): RenderableEpisode {
   const range = `● lines ${renderedRanges(content, episode, contentStart, contentStartLine)}`;
+  if (episode.stop === "snapshot-boundary")
+    return {
+      episode,
+      base: [
+        range,
+        `initial snapshot ${quoted(episode.source.sourceUri)} at ${quoted(episode.source.snapshotRevision)}`,
+        root(episode.origin, reference),
+      ],
+    };
   const work = `work unit ${root(episode.workUnit, reference)}`;
   const change = `change ${root(episode.change, reference)}`;
   const why = `${episode.intent.tier}: ${quoted(episode.intent.text)}`;

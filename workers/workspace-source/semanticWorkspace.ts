@@ -94,6 +94,7 @@ import {
   type CausalCommandRef,
   type ChangeRecord,
   type ContentEdgeRecord,
+  type ContentOriginRef,
   type IntegrationDecisionRecord,
   type SemanticEffect,
   type SemanticVcsStore,
@@ -120,6 +121,14 @@ type ContentEndpoint = {
   contentHash: string;
   coordinateKind: "utf16" | "byte";
   coordinateExtent: number;
+};
+type FileContentOrigin = {
+  ref: ContentOriginRef;
+  content: ContentEndpoint | null;
+  authoredChangeId: string | null;
+  authoredByWorkUnitId: string | null;
+  contentClass: "internal" | "external";
+  externalKeys: string[];
 };
 type LatestAppliedFileChange = {
   fileId: string;
@@ -316,7 +325,7 @@ interface MutationDraft {
   contentDerivations?: Array<{
     childChangeRef: DraftChangeRef;
     parent:
-      | { kind: "applied"; appliedChangeId: string }
+      | { kind: "origin"; origin: ContentOriginRef }
       | { kind: "change"; changeRef: DraftChangeRef };
     mappings: ContentMapping[];
   }>;
@@ -439,9 +448,8 @@ const contentDescriptor = (
         coordinateExtent: bytes.length,
       };
 
-const coordinateKindForFile = (state: {
-  contentKind: "text" | "bytes";
-}): "utf16" | "byte" => (state.contentKind === "text" ? "utf16" : "byte");
+const coordinateKindForFile = (state: { contentKind: "text" | "bytes" }): "utf16" | "byte" =>
+  state.contentKind === "text" ? "utf16" : "byte";
 
 const contentDescriptorFromEndpoint = (
   endpoint: Row,
@@ -841,9 +849,9 @@ const parseSemanticCursor = (
   }
   try {
     const payloadBytes = bytesFromBase64Url(match[2]!);
-    const payload = JSON.parse(
-      new TextDecoder("utf-8", { fatal: true }).decode(payloadBytes),
-    ) as SemanticCursorPayload | undefined;
+    const payload = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(payloadBytes)) as
+      | SemanticCursorPayload
+      | undefined;
     if (
       !payload ||
       payload.kind !== kind ||
@@ -1088,10 +1096,7 @@ export class SemanticWorkspace {
         typeof reference.value === "string"
       ) {
         const delta = this.deps.store.externalDelta(reference.value);
-        return (
-          delta !== null &&
-          this.referenceStateReachable(contextIds, delta.targetState)
-        );
+        return delta !== null && this.referenceStateReachable(contextIds, delta.targetState);
       }
       if (
         reference.kind === "node" &&
@@ -1189,21 +1194,13 @@ export class SemanticWorkspace {
         .toArray() as Row[];
       return committedBy.some((row) =>
         [...readableEventRoots].some((rootEventId) =>
-          this.deps.store.isEventAncestor(
-            String(row["event_id"]),
-            rootEventId,
-            MAX_ANCESTRY_EDGES,
-          ),
+          this.deps.store.isEventAncestor(String(row["event_id"]), rootEventId, MAX_ANCESTRY_EDGES)
         ),
       );
     }
     if (state["kind"] === "event" && typeof state["eventId"] === "string") {
       return [...readableEventRoots].some((rootEventId) =>
-        this.deps.store.isEventAncestor(
-          state["eventId"] as string,
-          rootEventId,
-          MAX_ANCESTRY_EDGES,
-        ),
+        this.deps.store.isEventAncestor(state["eventId"] as string, rootEventId, MAX_ANCESTRY_EDGES)
       );
     }
     return false;
@@ -2192,10 +2189,7 @@ export class SemanticWorkspace {
     };
   }
 
-  acknowledgeContent(input: {
-    request: Row;
-    contentHashes: string[];
-  }): SemanticDispatchResult {
+  acknowledgeContent(input: { request: Row; contentHashes: string[] }): SemanticDispatchResult {
     if (input.request["kind"] !== "prepare-semantic-content") {
       throw new SemanticVcsError(
         "InvalidReference",
@@ -2253,12 +2247,8 @@ export class SemanticWorkspace {
         asState(input.expectedWorkingHead),
       );
       const textFiles = input.changes.filter(
-        (
-          change,
-        ): change is Extract<
-          VcsEditInput["changes"][number],
-          { kind: "text-edit" }
-        > => change.kind === "text-edit",
+        (change): change is Extract<VcsEditInput["changes"][number], { kind: "text-edit" }> =>
+          change.kind === "text-edit"
       );
       if (textFiles.length > 0 && !observed) {
         const root = this.deps.store.stateRoot(
@@ -2341,12 +2331,8 @@ export class SemanticWorkspace {
       const expectedContentHashes = new Set(
         input.changes
           .filter(
-            (
-              change,
-            ): change is Extract<
-              VcsEditInput["changes"][number],
-              { kind: "text-edit" }
-            > => change.kind === "text-edit",
+            (change): change is Extract<VcsEditInput["changes"][number], { kind: "text-edit" }> =>
+              change.kind === "text-edit"
           )
           .map((change) => {
             const point = this.deps.store.facts.file(root, change.fileId);
@@ -3480,11 +3466,11 @@ export class SemanticWorkspace {
                 base64: base64FromBytes(bytes),
               });
               if (aspect.composedMappings) {
-                const oursParent = this.latestAppliedChangeForFile(
+                const oursParent = this.contentOriginForFile(
                   asState(input.expectedWorkingHead),
                   coordinate.coordinate.id,
                 );
-                const theirsParent = this.latestAppliedChangeForFile(
+                const theirsParent = this.contentOriginForFile(
                   source.kind === "event"
                     ? { kind: "event", eventId: source.eventId }
                     : this.externalDeltaState(delta!),
@@ -3493,7 +3479,7 @@ export class SemanticWorkspace {
                 if (!oursParent || !theirsParent) {
                   throw new SemanticVcsError(
                     "IntegrityFailure",
-                    `Composed file ${coordinate.coordinate.id} lacks a parent content application`,
+                    `Composed file ${coordinate.coordinate.id} lacks a parent content origin`
                   );
                 }
                 const childContentHash = String(merged["contentHash"]);
@@ -3521,8 +3507,8 @@ export class SemanticWorkspace {
                       ordinal: draft.changes.length,
                     },
                     parent: {
-                      kind: "applied",
-                      appliedChangeId: oursParent.appliedChangeId,
+                      kind: "origin",
+                      origin: oursParent.ref,
                     },
                     mappings: mapped(
                       aspect.composedMappings.ours,
@@ -3535,8 +3521,8 @@ export class SemanticWorkspace {
                       ordinal: draft.changes.length,
                     },
                     parent: {
-                      kind: "applied",
-                      appliedChangeId: theirsParent.appliedChangeId,
+                      kind: "origin",
+                      origin: theirsParent.ref,
                     },
                     mappings: mapped(
                       aspect.composedMappings.theirs,
@@ -3586,10 +3572,9 @@ export class SemanticWorkspace {
             payload: {
               mergesChangeIds: [
                 ...new Set(
-                  [
-                    ...coordinate.attribution.ours,
-                    ...coordinate.attribution.theirs,
-                  ].map((entry) => entry.changeId),
+                  [...coordinate.attribution.ours, ...coordinate.attribution.theirs].map(
+                    (entry) => entry.changeId
+                  )
                 ),
               ],
             },
@@ -3605,7 +3590,7 @@ export class SemanticWorkspace {
             resultContent.coordinateKind === sourceContent.coordinateKind &&
             resultContent.coordinateExtent === sourceContent.coordinateExtent
           ) {
-            const sourceParent = this.latestAppliedChangeForFile(
+            const sourceParent = this.contentOriginForFile(
               source.kind === "event"
                 ? { kind: "event", eventId: source.eventId }
                 : this.externalDeltaState(delta!),
@@ -3614,12 +3599,10 @@ export class SemanticWorkspace {
             if (!sourceParent) {
               throw new SemanticVcsError(
                 "IntegrityFailure",
-                `Merged file ${coordinate.coordinate.id} lacks its source content application`,
+                `Merged file ${coordinate.coordinate.id} lacks its source content origin`
               );
             }
-            const parentContent = this.appliedContentEndpoint(
-              sourceParent.appliedChangeId,
-            );
+            const parentContent = sourceParent.content;
             if (
               !parentContent ||
               parentContent.contentHash !== sourceContent.contentHash ||
@@ -3634,8 +3617,8 @@ export class SemanticWorkspace {
             contentDerivations.push({
               childChangeRef: changeRef,
               parent: {
-                kind: "applied",
-                appliedChangeId: sourceParent.appliedChangeId,
+                kind: "origin",
+                origin: sourceParent.ref,
               },
               mappings: [
                 mappingForWholeFile({
@@ -5855,11 +5838,7 @@ export class SemanticWorkspace {
       coordinate: { ...coordinate.coordinate, paths: coordinate.paths },
       status: coordinate.status,
       aspects: coordinate.aspects.map(
-        ({
-          composedText: _composedText,
-          composedMappings: _composedMappings,
-          ...aspect
-        }) => aspect,
+        ({ composedText: _composedText, composedMappings: _composedMappings, ...aspect }) => aspect
       ),
       attribution: coordinate.attribution,
       ...(coordinate.group ? { group: coordinate.group } : {}),
@@ -6169,16 +6148,14 @@ export class SemanticWorkspace {
       };
     }
     const coordinateKind = coordinateKindForFile(point.state);
-    const terminal = this.latestAppliedChangeForFile(
-      asState(input.state),
+    const terminal = this.contentOriginsForFiles(asState(input.state), [input.fileId]).get(
       input.fileId,
     );
-    if (!terminal) {
+    if (!terminal)
       throw new SemanticVcsError(
         "IntegrityFailure",
-        `Placed file ${input.fileId} has no originating applied change`,
+        `Placed file ${input.fileId} has no content origin`
       );
-    }
     const cursorBasis = {
       state: input.state,
       repositoryId: input.repositoryId,
@@ -6187,7 +6164,7 @@ export class SemanticWorkspace {
     };
     const traceStart = parseBlameCursor(input.cursor, input.range, cursorBasis);
     const spans = this.traceBlameRange(
-      terminal.appliedChangeId,
+      terminal.ref,
       {
         rootStart: traceStart,
         rootEnd: input.range.end,
@@ -6205,6 +6182,7 @@ export class SemanticWorkspace {
         Number(left["end"]) - Number(right["end"]),
     );
     const page = ordered.slice(0, input.limit).map((span) => {
+      if (span["stop"] === "snapshot-boundary") return span;
       const workUnitId = String((span["workUnit"] as Row)["workUnitId"]);
       return {
         ...span,
@@ -7540,9 +7518,12 @@ export class SemanticWorkspace {
       }
     >();
     for (const span of rawSpans) {
-      const change = span["change"] as Row;
-      const appliedChange = span["appliedChange"] as Row;
-      const key = `${String(change["changeId"])}\u0000${String(appliedChange["appliedChangeId"])}`;
+      const change = span["change"] as Row | undefined;
+      const appliedChange = span["appliedChange"] as Row | undefined;
+      const key =
+        span["stop"] === "snapshot-boundary"
+          ? canonicalJson(span["origin"])
+          : `${String(change!["changeId"])}\u0000${String(appliedChange!["appliedChangeId"])}`;
       const existing = grouped.get(key);
       const range = { start: Number(span["start"]), end: Number(span["end"]) };
       if (existing) existing.ranges.push(range);
@@ -7660,6 +7641,15 @@ export class SemanticWorkspace {
     ranges: Array<{ start: number; end: number }>,
     contextId: string,
   ): Row {
+    if (span["stop"] === "snapshot-boundary")
+      return {
+        ranges,
+        stop: "snapshot-boundary",
+        origin: span["origin"],
+        source: span["source"],
+        command: span["command"],
+        createdAt: span["createdAt"],
+      };
     const changeRef = span["change"] as Row;
     const appliedChangeRef = span["appliedChange"] as Row;
     const workUnitRef = span["workUnit"] as Row;
@@ -7766,7 +7756,7 @@ export class SemanticWorkspace {
                     ) THEN 'source' ELSE 'current' END AS role
                FROM gad_content_edges edge
                JOIN gad_applied_changes parent
-                 ON parent.applied_change_id = edge.parent_applied_change_id
+                 ON parent.applied_change_id = json_extract(edge.parent_ref_json, '$.appliedChangeId')
                JOIN gad_changes change ON change.change_id = parent.change_id
               WHERE edge.child_applied_change_id = ? AND edge.relation = 'incorporates'
               ORDER BY role DESC, change.work_unit_id LIMIT 2`,
@@ -7985,67 +7975,59 @@ export class SemanticWorkspace {
     string,
     {
       authoredChangeId: null;
-      authoredByWorkUnitId: string;
+      authoredByWorkUnitId: string | null;
       contentClass: "internal" | "external";
       externalKeys: string[];
     }
   > {
-    if (repositoryIds.length === 0) return new Map();
     const rows = this.deps.sql
       .exec(
-        `SELECT repository.repository_id, repository.created_work_unit_id,
-                work.content_class, work.external_lineage_json
-           FROM vcs_repositories repository
-           JOIN gad_work_units work
-             ON work.work_unit_id = repository.created_work_unit_id
-           JOIN json_each(?) selected
-             ON CAST(selected.value AS TEXT) = repository.repository_id`,
-        canonicalJson([...new Set(repositoryIds)]),
+        `SELECT repository.repository_id, work.work_unit_id, work.content_class, work.external_lineage_json, event.snapshot_json
+      FROM vcs_repositories repository JOIN json_each(?) selected ON selected.value = repository.repository_id
+      LEFT JOIN gad_work_unit_applications application ON repository.created_state_kind = 'application' AND application.application_id = repository.created_state_id
+      LEFT JOIN gad_work_units work ON work.work_unit_id = application.work_unit_id
+      LEFT JOIN gad_workspace_events event ON repository.created_state_kind = 'event' AND event.event_id = repository.created_state_id`,
+        canonicalJson([...new Set(repositoryIds)])
       )
       .toArray() as Row[];
-    const result = new Map<
+    return new Map<
       string,
       {
         authoredChangeId: null;
-        authoredByWorkUnitId: string;
+        authoredByWorkUnitId: string | null;
         contentClass: "internal" | "external";
         externalKeys: string[];
       }
-    >();
-    for (const row of rows) {
-      const repositoryId = String(row["repository_id"]);
-      const contentClass = row["content_class"];
-      const externalKeys = JSON.parse(String(row["external_lineage_json"]));
-      if (
-        (contentClass !== "internal" && contentClass !== "external") ||
-        !Array.isArray(externalKeys) ||
-        !externalKeys.every((key) => typeof key === "string")
-      ) {
-        throw new SemanticVcsError(
-          "IntegrityFailure",
-          `Repository ${repositoryId} has invalid persisted authoring lineage`,
-        );
-      }
-      result.set(repositoryId, {
-        authoredChangeId: null,
-        authoredByWorkUnitId: String(row["created_work_unit_id"]),
-        contentClass,
-        externalKeys,
-      });
-    }
-    return result;
+    >(
+      rows.map((row) => {
+        if (row["snapshot_json"] != null) {
+          const source = JSON.parse(String(row["snapshot_json"])) as {
+            sourceUri: string;
+            snapshotRevision: string;
+          };
+          return [
+            String(row["repository_id"]),
+            {
+              authoredChangeId: null,
+              authoredByWorkUnitId: null,
+              contentClass: "external",
+              externalKeys: [`repo:${source.sourceUri}@${source.snapshotRevision}`],
+            },
+          ] as const;
+        }
+        return [
+          String(row["repository_id"]),
+          {
+            authoredChangeId: null,
+            authoredByWorkUnitId: String(row["work_unit_id"]),
+            contentClass: row["content_class"] as "internal" | "external",
+            externalKeys: JSON.parse(String(row["external_lineage_json"])) as string[],
+          },
+        ] as const;
+      })
+    );
   }
 
-  /**
-   * Return only names visible at one directory boundary.
-   *
-   * Repository paths come from the workspace's lexical live-path index. File
-   * names come from the repository manifest radix. When a manifest child is a
-   * directory, the first live file below that child is its exact existence
-   * witness and the radix cursor jumps to the lexical successor of the whole
-   * subtree. Consequently listing a directory performs work proportional to
-   * visible children, never to descendant files.
-   */
   private listDirectory(input: VcsListDirectoryInput): VcsListDirectoryResult {
     const state = asState(input.state);
     const root = this.deps.store.stateRoot(state);
@@ -8274,17 +8256,14 @@ export class SemanticWorkspace {
     state: StateNodeRef,
     fileId: string,
   ): {
-    authoredChangeId: string;
-    authoredByWorkUnitId: string;
+    authoredChangeId: string | null;
+    authoredByWorkUnitId: string | null;
     contentClass: "internal" | "external";
     externalKeys: string[];
   } {
     const lineage = this.fileLineagesAt(state, [fileId]).get(fileId);
     if (!lineage) {
-      throw new SemanticVcsError(
-        "IntegrityFailure",
-        `File ${fileId} has no authoring work unit`,
-      );
+      throw new SemanticVcsError("IntegrityFailure", `File ${fileId} has no content origin`);
     }
     return lineage;
   }
@@ -8292,35 +8271,78 @@ export class SemanticWorkspace {
   /** Resolve page provenance through the shared batched ancestry projection. */
   private fileLineagesAt(
     state: StateNodeRef,
-    fileIds: readonly string[],
-  ): Map<
-    string,
-    {
-      authoredChangeId: string;
-      authoredByWorkUnitId: string;
-      contentClass: "internal" | "external";
-      externalKeys: string[];
-    }
-  > {
-    const result = new Map<
-      string,
-      {
-        authoredChangeId: string;
-        authoredByWorkUnitId: string;
-        contentClass: "internal" | "external";
-        externalKeys: string[];
-      }
-    >();
-    for (const [fileId, latest] of this.latestAppliedChangesForFiles(
-      state,
-      fileIds,
-    )) {
+    fileIds: readonly string[]
+  ): Map<string, Omit<FileContentOrigin, "ref" | "content">> {
+    return new Map(
+      [...this.contentOriginsForFiles(state, fileIds)].map(
+        ([fileId, { ref: _ref, content: _content, ...lineage }]) => [fileId, lineage]
+      )
+    );
+  }
+
+  private contentOriginForFile(state: StateNodeRef, fileId: string): FileContentOrigin | null {
+    return this.contentOriginsForFiles(state, [fileId]).get(fileId) ?? null;
+  }
+
+  private contentOriginsForFiles(
+    state: StateNodeRef,
+    fileIds: readonly string[]
+  ): Map<string, FileContentOrigin> {
+    const result = new Map<string, FileContentOrigin>();
+    for (const [fileId, latest] of this.latestAppliedChangesForFiles(state, fileIds)) {
       result.set(fileId, {
+        ref: { kind: "applied-change", appliedChangeId: latest.appliedChangeId },
+        content: latest.content,
         authoredChangeId: latest.changeId,
         authoredByWorkUnitId: latest.workUnitId,
         contentClass: latest.contentClass,
         externalKeys: latest.externalKeys,
       });
+    }
+    const missing = [...new Set(fileIds)].filter((id) => !result.has(id));
+    if (!missing.length) return result;
+    const rows = this.deps.sql
+      .exec(
+        `SELECT file.file_id, file.created_state_id AS event_id, event.result_workspace_fact_root_id, event.snapshot_json
+      FROM vcs_files file JOIN json_each(?) selected ON selected.value = file.file_id
+      JOIN gad_workspace_events event ON event.event_id = file.created_state_id
+      WHERE file.created_state_kind = 'event'`,
+        canonicalJson(missing)
+      )
+      .toArray() as Row[];
+    const byEvent = new Map<string, Row[]>();
+    for (const row of rows) {
+      const id = String(row["event_id"]);
+      const group = byEvent.get(id) ?? [];
+      group.push(row);
+      byEvent.set(id, group);
+    }
+    for (const [eventId, rows] of byEvent) {
+      const source = JSON.parse(String(rows[0]!["snapshot_json"])) as {
+        sourceUri: string;
+        snapshotRevision: string;
+      };
+      const files = this.deps.store.facts.fileStatesAt(
+        String(rows[0]!["result_workspace_fact_root_id"]),
+        rows.map((row) => String(row["file_id"]))
+      );
+      for (const [fileId, file] of files) {
+        if (file.presence !== "placed")
+          throw new SemanticVcsError("IntegrityFailure", "Initial snapshot contains a tombstone");
+        result.set(fileId, {
+          ref: {
+            kind: "file",
+            state: { kind: "event", eventId },
+            repositoryId: file.repositoryId,
+            fileId,
+          },
+          content: this.contentEndpoint({ kind: "file", ...file }),
+          authoredChangeId: null,
+          authoredByWorkUnitId: null,
+          contentClass: "external",
+          externalKeys: [`repo:${source.sourceUri}@${source.snapshotRevision}`],
+        });
+      }
     }
     return result;
   }
@@ -8364,7 +8386,7 @@ export class SemanticWorkspace {
       if (!lineage) {
         throw new SemanticVcsError(
           "IntegrityFailure",
-          `File ${state.fileId} has no authoring work unit`,
+          `File ${state.fileId} has no content origin`
         );
       }
       return {
@@ -8395,15 +8417,12 @@ export class SemanticWorkspace {
   ): {
     class: "internal" | "external";
     externalKeys: string[];
-    latestFileChanges: Map<string, LatestAppliedFileChange>;
+    contentOrigins: Map<string, FileContentOrigin>;
   } {
     const externalKeys = new Set<string>();
     const workUnitIds = new Set<string>();
-    const latestFileChanges = new Map<string, LatestAppliedFileChange>();
-    const filesByState = new Map<
-      string,
-      { state: StateNodeRef; fileIds: Set<string> }
-    >();
+    const contentOrigins = new Map<string, FileContentOrigin>();
+    const filesByState = new Map<string, { state: StateNodeRef; fileIds: Set<string> }>();
     const includeFile = (state: StateNodeRef, fileId: unknown): void => {
       if (typeof fileId !== "string" || fileId.length === 0) return;
       const key = stateNodeKey(state);
@@ -8420,12 +8439,11 @@ export class SemanticWorkspace {
         includeFile(asState(change.source.state), change.source.fileId);
     }
     for (const selection of filesByState.values()) {
-      for (const [fileId, source] of this.latestAppliedChangesForFiles(
-        selection.state,
-        [...selection.fileIds],
-      )) {
-        latestFileChanges.set(stateFileKey(selection.state, fileId), source);
-        workUnitIds.add(source.workUnitId);
+      for (const [fileId, source] of this.contentOriginsForFiles(selection.state, [
+        ...selection.fileIds,
+      ])) {
+        contentOrigins.set(stateFileKey(selection.state, fileId), source);
+        for (const key of source.externalKeys) externalKeys.add(key);
       }
     }
     for (const changeId of draft.incorporatedChangeIds) {
@@ -8490,7 +8508,7 @@ export class SemanticWorkspace {
     return {
       class: sorted.length > 0 ? "external" : "internal",
       externalKeys: sorted,
-      latestFileChanges,
+      contentOrigins,
     };
   }
 
@@ -8702,25 +8720,19 @@ export class SemanticWorkspace {
         selectContentParent(basis, child.fileId);
       }
     }
-    const contentParents = new Map(contentIntegrity.latestFileChanges);
+    const contentParents = new Map(contentIntegrity.contentOrigins);
     for (const selection of contentParentsByState.values()) {
       const missingFileIds = [...selection.fileIds].filter(
         (fileId) => !contentParents.has(stateFileKey(selection.state, fileId)),
       );
-      for (const [fileId, parent] of this.latestAppliedChangesForFiles(
-        selection.state,
-        missingFileIds,
-      )) {
+      for (const [fileId, parent] of this.contentOriginsForFiles(selection.state, missingFileIds)) {
         contentParents.set(stateFileKey(selection.state, fileId), parent);
       }
     }
-    const derivedContentEdges = appliedChanges.flatMap(
-      (appliedChange, ordinal) => {
+    const derivedContentEdges = appliedChanges.flatMap((appliedChange, ordinal) => {
         const change = appliedChangeSources[ordinal];
         if (!change) return [];
-        const child =
-          this.contentEndpoint(change.result) ??
-          this.contentEndpoint(change.base);
+      const child = this.contentEndpoint(change.result) ?? this.contentEndpoint(change.base);
         if (!child) {
           if (change.kind === "file-copy") {
             throw new SemanticVcsError(
@@ -8737,20 +8749,15 @@ export class SemanticWorkspace {
             `Copy change ${change.changeId} has no exact source coordinate`,
           );
         }
-        if (
-          change.kind !== "file-copy" &&
-          newFileChangeIds.has(change.changeId)
-        )
-          return [];
+      if (change.kind !== "file-copy" && newFileChangeIds.has(change.changeId)) return [];
         const parentState = copySource ? copySource.state : basis;
         const parentFileId = copySource ? copySource.fileId : child.fileId;
-        const parent =
-          contentParents.get(stateFileKey(parentState, parentFileId)) ?? null;
+      const parent = contentParents.get(stateFileKey(parentState, parentFileId)) ?? null;
         if (!parent) {
           if (copySource) {
             throw new SemanticVcsError(
               "IntegrityFailure",
-              `Copy change ${change.changeId} reaches no applied source change`,
+            `Copy change ${change.changeId} reaches no source content origin`
             );
           }
           return [];
@@ -8819,11 +8826,7 @@ export class SemanticWorkspace {
           const counteractedChangeIds = this.counteractedChangeIds(change);
           mappings =
             counteractedChangeIds.length > 0
-              ? this.invertedCounteractionMappings(
-                  counteractedChangeIds,
-                  child,
-                  parentEndpoint,
-                )
+            ? this.invertedCounteractionMappings(counteractedChangeIds, child, parentEndpoint)
               : mappingsForTextEdits({
                   childContentHash: child.contentHash,
                   childExtent: child.coordinateExtent,
@@ -8836,7 +8839,7 @@ export class SemanticWorkspace {
         }
         const withoutIdentity: Omit<ContentEdgeRecord, "contentEdgeId"> = {
           childAppliedChangeId: appliedChange.appliedChangeId,
-          parentAppliedChangeId: parent.appliedChangeId,
+        parent: parent.ref,
           relation,
           mappings,
         };
@@ -8846,39 +8849,33 @@ export class SemanticWorkspace {
             contentEdgeId: contentEdgeIdentity(withoutIdentity),
           },
         ];
-      },
-    );
-    const composedContentEdges = (draft.contentDerivations ?? []).map(
-      (derivation) => {
+    });
+    const composedContentEdges = (draft.contentDerivations ?? []).map((derivation) => {
         const childChangeId = changeIdFor(derivation.childChangeRef);
-        const child = appliedChanges.find(
-          (applied) => applied.changeId === childChangeId,
-        );
+      const child = appliedChanges.find((applied) => applied.changeId === childChangeId);
         if (!child) {
           throw new SemanticVcsError(
             "IntegrityFailure",
             `Composed content child ${childChangeId} was not applied`,
           );
         }
-        const parentAppliedChangeId =
-          derivation.parent.kind === "applied"
-            ? derivation.parent.appliedChangeId
+      const parentOrigin: ContentOriginRef =
+        derivation.parent.kind === "origin"
+          ? derivation.parent.origin
             : (() => {
                 const parentChangeId = changeIdFor(derivation.parent.changeRef);
-                const parent = appliedChanges.find(
-                  (applied) => applied.changeId === parentChangeId,
-                );
+              const parent = appliedChanges.find((applied) => applied.changeId === parentChangeId);
                 if (!parent) {
                   throw new SemanticVcsError(
                     "IntegrityFailure",
                     `Composed content parent ${parentChangeId} was not applied`,
                   );
                 }
-                return parent.appliedChangeId;
+              return { kind: "applied-change", appliedChangeId: parent.appliedChangeId };
               })();
         const withoutIdentity: Omit<ContentEdgeRecord, "contentEdgeId"> = {
           childAppliedChangeId: child.appliedChangeId,
-          parentAppliedChangeId,
+        parent: parentOrigin,
           relation: "incorporates",
           mappings: derivation.mappings,
         };
@@ -8886,8 +8883,7 @@ export class SemanticWorkspace {
           ...withoutIdentity,
           contentEdgeId: contentEdgeIdentity(withoutIdentity),
         };
-      },
-    );
+    });
     const contentEdges = [
       ...(draft.contentEdges ?? []),
       ...derivedContentEdges,
@@ -9276,12 +9272,8 @@ export class SemanticWorkspace {
         .sort(compareUtf16CodeUnits)
         .map((repositoryId) => this.deps.store.facts.member(root, repositoryId))
         .filter(
-          (
-            repository,
-          ): repository is Extract<
-            WorkspaceRepositoryMember,
-            { presence: "present" }
-          > => repository?.presence === "present",
+          (repository): repository is Extract<WorkspaceRepositoryMember, { presence: "present" }> =>
+            repository?.presence === "present"
         );
       const contentRoots = new Map(
         present.flatMap((repository) => {
@@ -9711,10 +9703,7 @@ export class SemanticWorkspace {
         ? ["presence", "content", "placement", "mode"]
         : ["presence", "path"];
     return aspects.every((aspect) =>
-      this.sameValue(
-        this.aspectValue(left, aspect),
-        this.aspectValue(right, aspect),
-      ),
+      this.sameValue(this.aspectValue(left, aspect), this.aspectValue(right, aspect))
     );
   }
 
@@ -9946,9 +9935,7 @@ export class SemanticWorkspace {
     );
     const fileStates = this.deps.store.facts.fileStatesAt(root, fileIds);
     const repositoryIds = new Set(
-      coordinates.flatMap((coordinate) =>
-        coordinate.kind === "repository" ? [coordinate.id] : [],
-      ),
+      coordinates.flatMap((coordinate) => (coordinate.kind === "repository" ? [coordinate.id] : []))
     );
     for (const state of fileStates.values()) {
       if (state.presence === "placed") repositoryIds.add(state.repositoryId);
@@ -10030,12 +10017,8 @@ export class SemanticWorkspace {
     const kind = endpoint["kind"];
     if (aspect === "presence") {
       if (kind === "file") return "present";
-      if (kind === "missing")
-        return endpoint["presence"] === "absent" ? "absent" : "deleted";
-      return (
-        endpoint["presence"] ??
-        (endpoint["repoPath"] == null ? "deleted" : "present")
-      );
+      if (kind === "missing") return endpoint["presence"] === "absent" ? "absent" : "deleted";
+      return endpoint["presence"] ?? (endpoint["repoPath"] == null ? "deleted" : "present");
     }
     const present =
       kind === "file" ||
@@ -10937,10 +10920,7 @@ export class SemanticWorkspace {
     const keyFor = (coordinate: MergeCoordinate) =>
       `${coordinate.kind}:${coordinate.id}`;
     const touched = new Map(
-      coordinates.map((coordinate) => [
-        keyFor(coordinate.coordinate),
-        coordinate,
-      ]),
+      coordinates.map((coordinate) => [keyFor(coordinate.coordinate), coordinate])
     );
     // Structural validity depends on the touched coordinates, their destination
     // occupants, and their repository containers—not on every coordinate in
@@ -11916,6 +11896,7 @@ export class SemanticWorkspace {
             commandId: event.commandId,
             kind: event.kind,
             workspaceFactRootId: event.resultWorkspaceFactRootId,
+            snapshotSource: event.snapshotSource,
             parentEventIds: event.parentEventIds,
             externalDeltaIds: event.externalDeltaIds ?? [],
             applicationIds: event.applicationIds,
@@ -12365,20 +12346,13 @@ export class SemanticWorkspace {
         const payload = payloadRow
           ? (JSON.parse(String(payloadRow["payload_ref_json"])) as Row)
           : {};
-        const eventActor = payloadRow
-          ? JSON.parse(String(payloadRow["actor_json"]))
-          : null;
-        const senderRef = trajectorySenderRef(
-          payload["senderRef"] ?? eventActor,
-        );
-        const textBlocks = (
-          Array.isArray(payload["blocks"]) ? payload["blocks"] : []
-        ).flatMap((value, index) => {
-          if (!value || typeof value !== "object" || Array.isArray(value))
-            return [];
+        const eventActor = payloadRow ? JSON.parse(String(payloadRow["actor_json"])) : null;
+        const senderRef = trajectorySenderRef(payload["senderRef"] ?? eventActor);
+        const textBlocks = (Array.isArray(payload["blocks"]) ? payload["blocks"] : []).flatMap(
+          (value, index) => {
+            if (!value || typeof value !== "object" || Array.isArray(value)) return [];
           const block = value as Row;
-          if (block["type"] !== "text" || typeof block["content"] !== "string")
-            return [];
+            if (block["type"] !== "text" || typeof block["content"] !== "string") return [];
           return [
             {
               blockId:
@@ -12388,7 +12362,8 @@ export class SemanticWorkspace {
               content: block["content"],
             },
           ];
-        });
+          }
+        );
         return {
           kind: "trajectory-message",
           value: {
@@ -12786,12 +12761,12 @@ export class SemanticWorkspace {
     }
     const rows = this.deps.sql
       .exec(
-        `SELECT edge_group, sort_key, edge_kind, source_id, target_id FROM (
+        `SELECT edge_group, sort_key, edge_kind, source_id, target_id, target_ref_json FROM (
            SELECT 0 AS edge_group, '' AS sort_key, 'applies-change' AS edge_kind,
-                  application_id AS source_id, applied_change_id AS target_id
+                  application_id AS source_id, applied_change_id AS target_id, NULL AS target_ref_json
              FROM gad_applied_changes WHERE applied_change_id = ?
            UNION ALL
-           SELECT 1, '', 'realizes-change', applied_change_id, change_id
+           SELECT 1, '', 'realizes-change', applied_change_id, change_id, NULL
              FROM gad_applied_changes WHERE applied_change_id = ?
            UNION ALL
            SELECT 2, content_edge_id,
@@ -12800,9 +12775,9 @@ export class SemanticWorkspace {
                     WHEN 'copies' THEN 'copies-content'
                     ELSE 'preserves-content'
                   END,
-                  child_applied_change_id, parent_applied_change_id
+                  child_applied_change_id, json_extract(parent_ref_json, '$.appliedChangeId'), parent_ref_json
              FROM gad_content_edges
-            WHERE child_applied_change_id = ? OR parent_applied_change_id = ?
+            WHERE child_applied_change_id = ? OR json_extract(parent_ref_json, '$.appliedChangeId') = ?
          ) adjacency
          WHERE edge_group > ?
             OR (edge_group = ? AND (? IS NULL OR sort_key > ?))
@@ -12844,7 +12819,7 @@ export class SemanticWorkspace {
               : {
                   kind: edgeKind,
                   from: { kind: "applied-change", appliedChangeId: sourceId },
-                  to: { kind: "applied-change", appliedChangeId: targetId },
+                  to: JSON.parse(String(row["target_ref_json"])),
                 },
       };
     });
@@ -13726,40 +13701,42 @@ export class SemanticWorkspace {
           edge: { kind: "places-file", from: state, to: file },
         });
       }
-      if (edges.length >= limit || after.phase > 1) return edges;
-      const [stateKind, stateId] =
-        state.kind === "event"
-          ? (["event", state.eventId] as const)
-          : (["application", state.applicationId] as const);
+      if (edges.length >= limit || after.phase > 2) return edges;
       const rows = this.deps.sql
         .exec(
-          `SELECT change_id AS sort_key, change_id
-             FROM gad_changes
-            WHERE source_json IS NOT NULL
+          `SELECT phase, sort_key, edge_kind, source_id FROM (
+        SELECT 1 AS phase, change_id AS sort_key, 'authored-copy-source' AS edge_kind, change_id AS source_id
+          FROM gad_changes WHERE source_json IS NOT NULL
               AND json_extract(source_json, '$.state.kind') = ?
-              AND coalesce(
-                    json_extract(source_json, '$.state.eventId'),
-                    json_extract(source_json, '$.state.applicationId')
-                  ) = ?
-              AND json_extract(source_json, '$.repositoryId') = ?
-              AND json_extract(source_json, '$.fileId') = ?
-              AND (? IS NULL OR change_id > ?)
-            ORDER BY sort_key, change_id LIMIT ?`,
-          stateKind,
-          stateId,
+          AND coalesce(json_extract(source_json, '$.state.eventId'), json_extract(source_json, '$.state.applicationId')) = ?
+          AND json_extract(source_json, '$.repositoryId') = ? AND json_extract(source_json, '$.fileId') = ?
+        UNION ALL
+        SELECT 2, content_edge_id,
+          CASE relation WHEN 'copies' THEN 'copies-content' WHEN 'incorporates' THEN 'incorporates-content' ELSE 'preserves-content' END,
+          child_applied_change_id FROM gad_content_edges WHERE parent_ref_json = ?
+      ) adjacency WHERE phase > ? OR (phase = ? AND (? IS NULL OR sort_key > ?))
+      ORDER BY phase, sort_key LIMIT ?`,
+          state.kind,
+          state.kind === "event" ? state.eventId : state.applicationId,
           repositoryId,
           fileId,
-          after.phase === 1 ? after.key : null,
-          after.phase === 1 ? after.key : null,
+          canonicalJson(file),
+          after.phase,
+          after.phase,
+          after.key,
+          after.key,
           limit - edges.length,
         )
         .toArray() as Row[];
       edges.push(
         ...rows.map((row) => ({
-          position: { phase: 1, key: String(row["sort_key"]) },
+          position: { phase: Number(row["phase"]), key: String(row["sort_key"]) },
           edge: {
-            kind: "authored-copy-source",
-            from: { kind: "change", changeId: String(row["change_id"]) },
+            kind: String(row["edge_kind"]),
+            from:
+              Number(row["phase"]) === 1
+                ? { kind: "change", changeId: String(row["source_id"]) }
+                : { kind: "applied-change", appliedChangeId: String(row["source_id"]) },
             to: file,
           },
         })),
@@ -14015,7 +13992,7 @@ export class SemanticWorkspace {
   }
 
   private traceBlameRange(
-    appliedChangeId: string,
+    origin: ContentOriginRef,
     segment: {
       rootStart: number;
       rootEnd: number;
@@ -14025,39 +14002,55 @@ export class SemanticWorkspace {
       path: Row[];
       visited: Set<string>;
     },
-    maximumSpans: number,
+    maximumSpans: number
   ): Row[] {
     if (maximumSpans <= 0) return [];
     if (segment.path.length >= 200) {
-      throw new SemanticVcsError(
-        "ScopeTooLarge",
-        "Blame lineage exceeds its edge bound",
-        {
-          maximum: 200,
-        },
-      );
+      throw new SemanticVcsError("ScopeTooLarge", "Blame lineage exceeds its edge bound", {
+        maximum: 200,
+      });
     }
+    if (origin.kind === "file") {
+      const event = this.deps.sql
+        .exec(
+          `SELECT command_id, snapshot_json, created_at FROM gad_workspace_events WHERE event_id = ? AND kind = 'genesis'`,
+          origin.state.eventId
+        )
+        .toArray()[0] as Row | undefined;
+      if (!event || event["snapshot_json"] == null)
+        throw new SemanticVcsError("IntegrityFailure", "Content origin is not an initial snapshot");
+      return [
+        {
+          start: segment.rootStart,
+          end: segment.rootEnd,
+          origin,
+          source: JSON.parse(String(event["snapshot_json"])),
+          command: { kind: "command", commandId: String(event["command_id"]) },
+          createdAt: String(event["created_at"]),
+          path: segment.path,
+          stop: "snapshot-boundary",
+        },
+      ];
+    }
+    const appliedChangeId = origin.appliedChangeId;
     const visit = `${appliedChangeId}:${segment.currentStart}:${segment.currentEnd}`;
     if (segment.visited.has(visit)) {
-      throw new SemanticVcsError(
-        "IntegrityFailure",
-        "Content lineage contains a cycle",
-      );
+      throw new SemanticVcsError("IntegrityFailure", "Content lineage contains a cycle");
     }
     const visited = new Set(segment.visited).add(visit);
     const current = this.appliedChangeMetadata(appliedChangeId);
     const routes: Array<{
       relation: "preserves-content" | "copies-content" | "incorporates-content";
-      parentAppliedChangeId: string;
+      parent: ContentOriginRef;
       mappings: ContentMapping[];
     }> = [];
     const contentEdges = this.deps.sql
       .exec(
-        `SELECT content_edge_id, parent_applied_change_id, relation
+        `SELECT content_edge_id, parent_ref_json, relation
            FROM gad_content_edges
           WHERE child_applied_change_id = ?
           ORDER BY content_edge_id`,
-        appliedChangeId,
+        appliedChangeId
       )
       .toArray() as Row[];
     for (const edge of contentEdges) {
@@ -14068,7 +14061,7 @@ export class SemanticWorkspace {
             : edge["relation"] === "copies"
               ? "copies-content"
               : "preserves-content",
-        parentAppliedChangeId: String(edge["parent_applied_change_id"]),
+        parent: JSON.parse(String(edge["parent_ref_json"])) as ContentOriginRef,
         mappings: this.contentMappings(String(edge["content_edge_id"])),
       });
     }
@@ -14085,23 +14078,19 @@ export class SemanticWorkspace {
         if (mapping.coordinateKind !== segment.coordinateKind) {
           throw new SemanticVcsError(
             "IntegrityFailure",
-            `Content mapping ${mapping.digest} uses the wrong coordinate space`,
+            `Content mapping ${mapping.digest} uses the wrong coordinate space`
           );
         }
         const childStart = Math.max(segment.currentStart, mapping.childStart);
         const childEnd = Math.min(segment.currentEnd, mapping.childEnd);
         if (childStart >= childEnd) continue;
-        if (
-          mapping.childEnd - mapping.childStart !==
-          mapping.parentEnd - mapping.parentStart
-        ) {
+        if (mapping.childEnd - mapping.childStart !== mapping.parentEnd - mapping.parentStart) {
           throw new SemanticVcsError(
             "IntegrityFailure",
-            `Content mapping ${mapping.digest} changes coordinate length`,
+            `Content mapping ${mapping.digest} changes coordinate length`
           );
         }
-        const parentStart =
-          mapping.parentStart + childStart - mapping.childStart;
+        const parentStart = mapping.parentStart + childStart - mapping.childStart;
         routed.push({
           childStart,
           childEnd,
@@ -14112,14 +14101,13 @@ export class SemanticWorkspace {
       }
     }
     routed.sort(
-      (left, right) =>
-        left.childStart - right.childStart || left.childEnd - right.childEnd,
+      (left, right) => left.childStart - right.childStart || left.childEnd - right.childEnd
     );
     for (let index = 1; index < routed.length; index += 1) {
       if (routed[index]!.childStart < routed[index - 1]!.childEnd) {
         throw new SemanticVcsError(
           "IntegrityFailure",
-          `Applied change ${appliedChangeId} has overlapping blame routes`,
+          `Applied change ${appliedChangeId} has overlapping blame routes`
         );
       }
     }
@@ -14137,8 +14125,7 @@ export class SemanticWorkspace {
       path: segment.path,
       stop: importTerminal ? "import-boundary" : "authored",
     });
-    if (routed.length === 0)
-      return [terminal(segment.currentStart, segment.currentEnd)];
+    if (routed.length === 0) return [terminal(segment.currentStart, segment.currentEnd)];
     const result: Row[] = [];
     let cursor = segment.currentStart;
     for (const route of routed) {
@@ -14146,14 +14133,10 @@ export class SemanticWorkspace {
         result.push(terminal(cursor, route.childStart));
         if (result.length >= maximumSpans) return result;
       }
-      const parent = this.appliedChangeMetadata(
-        route.route.parentAppliedChangeId,
-      );
-      const rootStart =
-        segment.rootStart + route.childStart - segment.currentStart;
+      const rootStart = segment.rootStart + route.childStart - segment.currentStart;
       result.push(
         ...this.traceBlameRange(
-          route.route.parentAppliedChangeId,
+          route.route.parent,
           {
             rootStart,
             rootEnd: rootStart + route.childEnd - route.childStart,
@@ -14168,16 +14151,13 @@ export class SemanticWorkspace {
                   kind: "applied-change",
                   appliedChangeId: current.appliedChangeId,
                 },
-                to: {
-                  kind: "applied-change",
-                  appliedChangeId: parent.appliedChangeId,
-                },
+                to: route.route.parent,
               },
             ],
             visited,
           },
-          maximumSpans - result.length,
-        ),
+          maximumSpans - result.length
+        )
       );
       if (result.length >= maximumSpans) return result;
       cursor = route.childEnd;
@@ -14240,33 +14220,6 @@ export class SemanticWorkspace {
       coordinateKind: endpoint["contentKind"] === "text" ? "utf16" : "byte",
       coordinateExtent: endpoint["coordinateExtent"],
     };
-  }
-
-  private appliedContentEndpoint(
-    appliedChangeId: string,
-  ): ContentEndpoint | null {
-    const row = this.deps.sql
-      .exec(
-        `SELECT applied_base_json, applied_result_json
-           FROM gad_applied_changes WHERE applied_change_id = ?`,
-        appliedChangeId,
-      )
-      .toArray()[0] as Row | undefined;
-    if (!row) {
-      throw new SemanticVcsError(
-        "IntegrityFailure",
-        `Missing applied change ${appliedChangeId} while deriving content lineage`,
-      );
-    }
-    const result =
-      row["applied_result_json"] == null
-        ? null
-        : (JSON.parse(String(row["applied_result_json"])) as Row);
-    const base =
-      row["applied_base_json"] == null
-        ? null
-        : (JSON.parse(String(row["applied_base_json"])) as Row);
-    return this.contentEndpoint(result) ?? this.contentEndpoint(base);
   }
 
   private contentMappings(contentEdgeId: string): ContentMapping[] {
@@ -14474,9 +14427,7 @@ export class SemanticWorkspace {
     state: StateNodeRef,
     fileId: string,
   ): LatestAppliedFileChange | null {
-    return (
-      this.latestAppliedChangesForFiles(state, [fileId]).get(fileId) ?? null
-    );
+    return this.latestAppliedChangesForFiles(state, [fileId]).get(fileId) ?? null;
   }
 }
 

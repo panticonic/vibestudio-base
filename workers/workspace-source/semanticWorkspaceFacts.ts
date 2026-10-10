@@ -3,6 +3,11 @@ import { canonicalJson, compareUtf16CodeUnits } from "@vibestudio/content-addres
 import type { SqlStorage } from "@vibestudio/durable";
 import {
   composeFileManifest,
+  compactId,
+  workspaceFileStateIdentity,
+  planWorkspaceFactChangeSet,
+  workspaceRepositoryStateIdentity,
+  type ContentDescriptor,
   composeWorkspaceFacts,
   emptyFileManifest,
   emptyWorkspaceFactRoot,
@@ -83,6 +88,103 @@ export class SemanticWorkspaceFacts {
     this.persistNodes(nodes);
     this.persistRoot(root);
     return root;
+  }
+
+  /** Build the initial flat snapshot once, without manufacturing file edits. */
+  prepareSnapshot(
+    commandId: string,
+    repositories: readonly {
+      repoPath: string;
+      files: readonly ({ path: string; contentHash: string; mode: number } & ContentDescriptor)[];
+    }[]
+  ): PreparedWorkspaceFactChange {
+    const basis = this.empty();
+    const created = new Map<string, PersistentRadixNode>();
+    const readNode = (_kind: string, _route: PersistentRadixRouteStrategy, id: string) =>
+      created.get(id) ?? null;
+    const changeSet: WorkspaceFactChangeSet = {
+      basisWorkspaceFactRootId: basis.workspaceFactRootId,
+      repositoryUpdates: [],
+      manifestUpdates: [],
+      fileUpdates: [],
+    };
+    const repositoryUpdates: WorkspaceFactChangeSet["repositoryUpdates"][number][] = [];
+    const manifestUpdates: WorkspaceFactChangeSet["manifestUpdates"][number][] = [];
+    const fileUpdates: WorkspaceFactChangeSet["fileUpdates"][number][] = [];
+    const manifestProofs: FileManifestMutationProof[] = [];
+    for (const repository of repositories) {
+      const repositoryId = compactId("repository", { commandId, repoPath: repository.repoPath });
+      const empty = emptyFileManifest(repositoryId);
+      created.set(empty.node.nodeId, empty.node);
+      const files = repository.files.map((file) => {
+        const fileId = compactId("file", { commandId, repositoryId, path: file.path });
+        const result = workspaceFileStateIdentity({
+          ...file,
+          fileId,
+          repositoryId,
+          presence: "placed",
+        });
+        fileUpdates.push({ fileId, expected: null, result });
+        return { fileId, expectedPath: null, resultPath: file.path };
+      });
+      const proof = files.length
+        ? composeFileManifest({ basis: empty.manifest, updates: files, readNode })
+        : null;
+      if (proof) {
+        for (const node of proof.createdNodes) created.set(node.nodeId, node);
+        manifestProofs.push(proof);
+      }
+      const resultManifest = proof?.resultManifest ?? empty.manifest;
+      manifestUpdates.push({
+        repositoryId,
+        expectedFileManifestId: null,
+        resultManifest,
+        pathUpdates: proof?.updates ?? [],
+      });
+      const result = workspaceRepositoryStateIdentity({
+        repositoryId,
+        presence: "present",
+        repoPath: repository.repoPath,
+        fileManifestId: resultManifest.fileManifestId,
+      });
+      repositoryUpdates.push({ repositoryId, expected: null, result });
+    }
+    const planned = planWorkspaceFactChangeSet({
+      ...changeSet,
+      repositoryUpdates,
+      manifestUpdates,
+      fileUpdates,
+    });
+    if (planned.kind === "refused")
+      throw new SemanticWorkspaceFactsError(
+        "InvalidRoot",
+        planned.failure.message,
+        planned.failure.handles
+      );
+    const snapshotChangeSet = planned.changeSet;
+    const mutation = composeWorkspaceFacts({
+      basis,
+      update: {
+        repositoryUpdates: repositoryUpdates.map(({ repositoryId, result }) => ({
+          repositoryId,
+          expectedRepositoryStateId: null,
+          resultRepositoryStateId: result.repositoryStateId,
+          expectedRepoPath: null,
+          resultRepoPath: result.presence === "present" ? result.repoPath : null,
+        })),
+        fileUpdates: fileUpdates.map(({ fileId, result }) => ({
+          fileId,
+          expectedFileStateId: null,
+          resultFileStateId: result.fileStateId,
+        })),
+      },
+      readNode: (kind, route, id) => created.get(id) ?? this.node(kind, route, id),
+    });
+    for (const node of mutation.createdNodes) created.set(node.nodeId, node);
+    return {
+      changeSet: snapshotChangeSet,
+      persistence: { ...mutation, createdNodes: [...created.values()], manifestProofs },
+    };
   }
 
   root(workspaceFactRootId: string): WorkspaceFactRoot {

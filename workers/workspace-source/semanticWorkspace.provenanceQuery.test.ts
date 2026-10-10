@@ -12,11 +12,12 @@ import {
   type VcsSearchResult,
   type VcsWalkResult,
 } from "@vibestudio/service-schemas/vcs";
+import { createSemanticVcsSchema, createTrajectoryMirrorSchema } from "./semanticVcsSchema.js";
 import {
-  createSemanticVcsSchema,
-  createTrajectoryMirrorSchema,
-} from "./semanticVcsSchema.js";
-import { nativeInvocationId, nativeInvocationIdentity, type NativeInvocationSource } from "@vibestudio/service-schemas/nativeInvocation";
+  nativeInvocationId,
+  nativeInvocationIdentity,
+  type NativeInvocationSource,
+} from "@vibestudio/service-schemas/nativeInvocation";
 import { PROV_CATALOG } from "./provenanceViews.js";
 import {
   SemanticWorkspace,
@@ -174,7 +175,7 @@ async function fixture(nativeInput = false) {
     }
   };
 
-  const initial = store.initializeWorkspace("context:test", "command:genesis");
+  const initial = store.initializeWorkspace("context:test", "command:genesis", null);
   const createDispatch = await semantic.dispatch("edit", {
     ingress: taskIngress,
     input: {
@@ -338,9 +339,15 @@ describe("provenance walks", () => {
     expect(memory.status).toBe("attached");
     if (memory.status !== "attached") throw new Error("Native memory was not attached");
     expect(memory.episodes.length).toBeGreaterThan(0);
-    expect(memory.episodes[0]?.cause).toMatchObject({
-      nativeInvocation: nativeInvocationIdentity(f.nativeSource), originatingInput: f.originatingInput, turn: null,
-      triggerText: "Cap the retry backoff at 30 seconds", sender: { kind: "user", id: "user:alice" },
+    const episode = memory.episodes[0];
+    if (!episode || episode.stop === "snapshot-boundary")
+      throw new Error("Authored edit has no native episode");
+    expect(episode.cause).toMatchObject({
+      nativeInvocation: nativeInvocationIdentity(f.nativeSource),
+      originatingInput: f.originatingInput,
+      turn: null,
+      triggerText: "Cap the retry backoff at 30 seconds",
+      sender: { kind: "user", id: "user:alice" },
     });
     const source = { kind: "trajectory-invocation", logId: "trajectory:test", head: "main", invocationId: nativeInvocationId(f.nativeSource) };
     const target = { kind: "trajectory-message", logId: "input-channel", head: "main", messageId: "message:trigger" };

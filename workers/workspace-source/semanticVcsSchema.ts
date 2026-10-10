@@ -64,14 +64,16 @@ export function createSemanticVcsSchema(sql: SqlStorage): void {
   sql.exec(`
     CREATE TABLE IF NOT EXISTS vcs_repositories (
       repository_id TEXT PRIMARY KEY,
-      created_work_unit_id TEXT NOT NULL,
+      created_state_kind TEXT NOT NULL CHECK (created_state_kind IN ('event', 'application')),
+      created_state_id TEXT NOT NULL,
       created_at TEXT NOT NULL
     );
 
     CREATE TABLE IF NOT EXISTS vcs_files (
       file_id TEXT PRIMARY KEY,
       created_repository_id TEXT NOT NULL,
-      created_change_id TEXT NOT NULL,
+      created_state_kind TEXT NOT NULL CHECK (created_state_kind IN ('event', 'application')),
+      created_state_id TEXT NOT NULL,
       created_at TEXT NOT NULL
     );
     CREATE INDEX IF NOT EXISTS idx_vcs_files_repository
@@ -221,6 +223,7 @@ export function createSemanticVcsSchema(sql: SqlStorage): void {
       command_id TEXT NOT NULL,
       kind TEXT NOT NULL CHECK (kind IN ('genesis', 'commit', 'integration-commit')),
       result_workspace_fact_root_id TEXT NOT NULL,
+      snapshot_json TEXT,
       message TEXT,
       created_at TEXT NOT NULL
     );
@@ -432,17 +435,19 @@ export function createSemanticVcsSchema(sql: SqlStorage): void {
     CREATE INDEX IF NOT EXISTS idx_gad_applied_change_predicates_digest
       ON gad_applied_change_predicates(predicate_digest, applied_change_id);
 
-    -- Applied changes form the one transitive content-coordinate graph used by
+    -- Initial snapshot files and applied changes form the content graph used by
     -- preservation, copies, integration, history, and blame.
     CREATE TABLE IF NOT EXISTS gad_content_edges (
       content_edge_id TEXT PRIMARY KEY,
       child_applied_change_id TEXT NOT NULL,
-      parent_applied_change_id TEXT NOT NULL,
+      parent_ref_json TEXT NOT NULL CHECK (json_valid(parent_ref_json)),
       relation TEXT NOT NULL CHECK (relation IN ('preserves', 'copies', 'incorporates')),
-      UNIQUE (child_applied_change_id, parent_applied_change_id, relation)
+      UNIQUE (child_applied_change_id, parent_ref_json, relation)
     );
+    CREATE INDEX IF NOT EXISTS idx_gad_content_edges_origin
+      ON gad_content_edges(parent_ref_json, content_edge_id);
     CREATE INDEX IF NOT EXISTS idx_gad_content_edges_parent
-      ON gad_content_edges(parent_applied_change_id, child_applied_change_id);
+      ON gad_content_edges(json_extract(parent_ref_json, '$.appliedChangeId'), child_applied_change_id);
 
     CREATE TABLE IF NOT EXISTS gad_content_edge_mappings (
       content_edge_id TEXT NOT NULL,
