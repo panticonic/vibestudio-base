@@ -374,6 +374,94 @@ export function createNativeChannelBootstrap(options: {
       }
     },
   });
+  async function observeOpening(
+    harness: Harness,
+    binding: NativeChannelBinding,
+    context: Context,
+  ): Promise<Conversation> {
+    const conversation = await lookupNativeChannelConversation(
+      harness,
+      binding,
+      context,
+    );
+    if (!conversation) throw new Error("Channel bootstrap was not admitted");
+    let revision = 0;
+    let wake: (() => void) | undefined;
+    let closed: Error | undefined;
+    let failed: unknown;
+    let failureReported = false;
+    let settled = false;
+    const changed = () => {
+      revision++;
+      wake?.();
+    };
+    const unsubscribe = harness.subscribeCommits(changed);
+    const unsubscribeClose = harness.subscribeClose(() => {
+      closed = new Error("Native readiness observation session closed");
+      changed();
+    });
+    const abort = () => changed();
+    const controller = new AbortController();
+    let taskObservation: Promise<void> | undefined;
+    context.abortSignal?.addEventListener("abort", abort, { once: true });
+    try {
+      for (;;) {
+        context.abortSignal?.throwIfAborted();
+        if (closed) throw closed;
+        const before = revision;
+        const opening = await harness.snapshot(
+          NativeChannelOpening,
+          conversation.id,
+          context,
+        );
+        // Configuration readiness is an actual committed fact. Activation
+        // may itself need the cached readiness promise to admit its input.
+        if (!opening || opening.status === "ready") return conversation;
+        if (opening.taskId === null)
+          throw new Error("Channel bootstrap has no native task owner");
+        if (!taskObservation) {
+          const signal = context.abortSignal
+            ? AbortSignal.any([context.abortSignal, controller.signal])
+            : controller.signal;
+          taskObservation = harness
+            .waitForTask(opening.taskId, { ...context, abortSignal: signal })
+            .then(
+              () => {
+                settled = true;
+                changed();
+              },
+              (error) => {
+                if (!controller.signal.aborted) {
+                  failed = error;
+                  failureReported = true;
+                }
+                changed();
+              },
+            );
+        }
+        if (failureReported) throw failed;
+        if (settled)
+          throw new Error(
+            "Channel bootstrap settled without committing readiness",
+          );
+        await new Promise<void>((resolve) => {
+          wake = resolve;
+          if (revision !== before || closed || context.abortSignal?.aborted)
+            resolve();
+        });
+        wake = undefined;
+      }
+    } finally {
+      // Retire and join only these observers. The bootstrap task keeps its
+      // original activation/repair debt and cannot be abandoned by a viewer.
+      controller.abort();
+      unsubscribe();
+      unsubscribeClose();
+      context.abortSignal?.removeEventListener("abort", abort);
+      wake = undefined;
+      await taskObservation;
+    }
+  }
   return {
     task,
     /** Recover the original request before consulting mutable membership state. */
@@ -489,94 +577,15 @@ export function createNativeChannelBootstrap(options: {
       }, context);
       return requireConversation(harness, id, context);
     },
-    /** Await only the actual retained opening task; no timer or guessed readiness. */
-    async ready(
-      harness: Harness,
-      binding: NativeChannelBinding,
-      context: Context,
-    ): Promise<Conversation> {
-      const conversation = await lookupNativeChannelConversation(
-        harness,
-        binding,
-        context,
-      );
-      if (!conversation) throw new Error("Channel bootstrap was not admitted");
-      let revision = 0;
-      let wake: (() => void) | undefined;
-      let closed: Error | undefined;
-      let failed: unknown;
-      let failureReported = false;
-      let settled = false;
-      const changed = () => {
-        revision++;
-        wake?.();
-      };
-      const unsubscribe = harness.subscribeCommits(changed);
-      const unsubscribeClose = harness.subscribeClose(() => {
-        closed = new Error("Native readiness observation session closed");
-        changed();
-      });
-      const abort = () => changed();
-      const controller = new AbortController();
-      let taskObservation: Promise<void> | undefined;
-      context.abortSignal?.addEventListener("abort", abort, { once: true });
-      try {
-        for (;;) {
-          context.abortSignal?.throwIfAborted();
-          if (closed) throw closed;
-          const before = revision;
-          const opening = await harness.snapshot(
-            NativeChannelOpening,
-            conversation.id,
-            context,
-          );
-          // Configuration readiness is an actual committed fact. Activation
-          // may itself need the cached readiness promise to admit its input.
-          if (!opening || opening.status === "ready") return conversation;
-          if (opening.taskId === null)
-            throw new Error("Channel bootstrap has no native task owner");
-          if (!taskObservation) {
-            const signal = context.abortSignal
-              ? AbortSignal.any([context.abortSignal, controller.signal])
-              : controller.signal;
-            taskObservation = harness
-              .waitForTask(opening.taskId, { ...context, abortSignal: signal })
-              .then(
-                () => {
-                  settled = true;
-                  changed();
-                },
-                (error) => {
-                  if (!controller.signal.aborted) {
-                    failed = error;
-                    failureReported = true;
-                  }
-                  changed();
-                },
-              );
-          }
-          if (failureReported) throw failed;
-          if (settled)
-            throw new Error(
-              "Channel bootstrap settled without committing readiness",
-            );
-          await new Promise<void>((resolve) => {
-            wake = resolve;
-            if (revision !== before || closed || context.abortSignal?.aborted)
-              resolve();
-          });
-          wake = undefined;
-        }
-      } finally {
-        // Retire and join only these observers. The bootstrap task keeps its
-        // original activation/repair debt and cannot be abandoned by a viewer.
-        controller.abort();
-        unsubscribe();
-        unsubscribeClose();
-        context.abortSignal?.removeEventListener("abort", abort);
-        wake = undefined;
-        await taskObservation;
-      }
+    /** The launch contract: retain one intent and return only after complete
+     * history, instructions, model policy and executable tools are committed. */
+    async initialize(harness: Harness, binding: NativeChannelBinding, intent: JsonValue, context: Context) {
+      await this.open(harness, binding, intent, context);
+      return observeOpening(harness, binding, context);
+    },
+    /** Model input waits for the complete retained history and configuration. */
+    ready(harness: Harness, binding: NativeChannelBinding, context: Context) {
+      return observeOpening(harness, binding, context);
     },
     /** Drain/join opening before the product withdraws the exact membership. */
     async cancel(

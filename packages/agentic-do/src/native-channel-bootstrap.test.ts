@@ -175,6 +175,67 @@ async function history(
     .sort((a, b) => a.id - b.id);
 }
 describe("native subscription bootstrap readiness", () => {
+  it("keeps the launch receipt and native input behind complete configuration", async () => {
+    const configuring = gate();
+    const release = gate();
+    const f = await fixture({
+      prepareConfiguration: async () => {
+        configuring.resolve();
+        await release.promise;
+        return async (tx, id) => {
+          await configure(tx, id, { instructions: "Complete" });
+        };
+      },
+    });
+    const conversation = await f.bootstrap.open(
+      f.harness,
+      binding,
+      intent,
+      context,
+    );
+    const pass = f.harness.runPass(context);
+    await configuring.promise;
+    let ready = false;
+    const execution = f.bootstrap
+      .initialize(f.harness, binding, intent, context)
+      .then(() => {
+        ready = true;
+      });
+    try {
+      expect(ready).toBe(false);
+      expect(f.joins).toHaveBeenCalledTimes(1);
+      await expect(
+        conversation.submit(
+          {
+            type: "input",
+            requestId: "before-configuration",
+            content: async (tx, id) => {
+              await recordNativeChannelInputAdmission(tx, conversation.id, id);
+              return "new input";
+            },
+          },
+          context,
+        ),
+      ).rejects.toThrow("initialization has not completed");
+    } finally {
+      release.resolve();
+      await pass;
+      await execution;
+    }
+    expect(ready).toBe(true);
+    expect(await history(conversation)).toHaveLength(2);
+  });
+  it("does not acknowledge membership before the join commits and propagates its original failure", async () => {
+    const original = new Error("Membership refused");
+    const f = await fixture({
+      join: async () => {
+        throw original;
+      },
+    });
+    await f.bootstrap.open(f.harness, binding, intent, context);
+    const observed = f.bootstrap.initialize(f.harness, binding, intent, context);
+    await expect(observed).rejects.toThrow("Membership refused");
+  });
   it("retains one actual opening before join; concurrent replay cannot select another intent or prompt against partial context", async () => {
     const held = gate();
     const begun = gate();

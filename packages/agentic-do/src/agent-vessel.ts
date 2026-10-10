@@ -2007,6 +2007,13 @@ export abstract class AgentVesselBase extends NativeChannelOwner<NativeProductCh
         const intent =
           retained ?? copyJson(requested, { omitUndefinedProperties: true });
         completedPhase("intent-prepared");
+        await this.nativeChannelBootstrap.initialize(
+          harness,
+          binding,
+          intent,
+          context,
+        );
+        completedPhase("initialized");
         const original = intent as unknown as PreparedChannelSubscription;
         if (original.relationshipJson === requested.relationshipJson) {
           result = { ok: true, participantId: original.input.participantId };
