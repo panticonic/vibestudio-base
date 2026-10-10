@@ -2502,6 +2502,11 @@ export class PubSubChannel
     }
     for (;;) {
       signal?.throwIfAborted();
+      if (
+        this.deliveryProjection.cursor() ===
+        this.channelLog.ledger.headSequence()
+      )
+        break;
       const events = await this.channelLog.readEvents({
         afterSeq: this.deliveryProjection.cursor(),
         limit: 500,

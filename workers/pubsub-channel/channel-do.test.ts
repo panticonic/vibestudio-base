@@ -7729,6 +7729,62 @@ describe("PubSubChannel policy folds and cache amnesia (WS2)", () => {
     };
   }
 
+  it("avoids empty policy scans at the exact owner head and still rebuilds a missing or stale cache", async () => {
+    const { instance, sql } = await createGadBackedChannel();
+    const log = (instance as unknown as { channelLog: ChannelLog }).channelLog;
+    const read = vi.spyOn(log, "read");
+    const empty = await instance.getPolicyState();
+    expect(empty.foldedThroughSeq).toBe(0);
+    expect(read).not.toHaveBeenCalled();
+
+    await log.append({
+      type: AGENTIC_EVENT_PAYLOAD_KIND,
+      payload: agentCompleted("uncached-policy-event"),
+      senderId: "agent:one",
+      contentClass: "internal",
+      externalKeys: [],
+    });
+    const caughtUp = await instance.getPolicyState();
+    expect(caughtUp.foldedThroughSeq).toBe(log.ledger.headSequence());
+    expect(read).toHaveBeenCalledTimes(1);
+    read.mockClear();
+    expect(await instance.getPolicyState()).toEqual(caughtUp);
+    expect(read).not.toHaveBeenCalled();
+
+    sql.exec("DELETE FROM state WHERE key LIKE 'policy_state:%'");
+    expect(await instance.getPolicyState()).toEqual(caughtUp);
+    expect(read).toHaveBeenCalledTimes(1);
+  });
+
+  it("avoids empty delivery scans at the exact owner head and catches up a stale projection", async () => {
+    const { instance, sql } = await createGadBackedChannel();
+    const participantId = "do:workers/agent-worker:AiChatWorker:exact-head";
+    await joinEntity(instance, participantId);
+    const log = (instance as unknown as { channelLog: ChannelLog }).channelLog;
+    const read = vi.spyOn(log, "readEvents");
+    expect(await instance.relationshipState(participantId)).toEqual({
+      revision: 1,
+      active: true,
+    });
+    expect(read).not.toHaveBeenCalled();
+
+    sql.exec(
+      "UPDATE channel_delivery_projection_cursor SET log_sequence = ? WHERE singleton = 1",
+      log.ledger.headSequence() - 1,
+    );
+    expect(await instance.relationshipState(participantId)).toEqual({
+      revision: 1,
+      active: true,
+    });
+    expect(read).toHaveBeenCalledTimes(1);
+    read.mockClear();
+    expect(await instance.relationshipState(participantId)).toEqual({
+      revision: 1,
+      active: true,
+    });
+    expect(read).not.toHaveBeenCalled();
+  });
+
   it("stamps agentHops into annotations without mutating the payload", async () => {
     const { instance } = await createGadBackedChannel();
     setRpcCaller(instance, "agent:one", "server");

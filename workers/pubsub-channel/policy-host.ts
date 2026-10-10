@@ -125,6 +125,7 @@ export class PolicyHost {
     let foldedThroughSeq = cached?.foldedThroughSeq ?? 0;
     let advanced = false;
     for (;;) {
+      if (foldedThroughSeq === this.deps.log.ledger.headSequence()) break;
       const page = await this.deps.log.read({
         afterSeq: foldedThroughSeq,
         limit: FOLD_PAGE_LIMIT,
