@@ -1,3 +1,4 @@
+import { assertChannelDeliverySource } from "@vibestudio/shared/residentSession";
 import { createRpcMethodCaller } from "@vibestudio/shared/rpcMethods";
 import { localModelEntrySchema } from "@workspace/model-catalog/localModels";
 import {
@@ -690,7 +691,6 @@ interface NativeProductChannelConfiguration extends NativeChannelConfiguration {
 }
 
 export abstract class AgentVesselBase extends NativeChannelOwner<NativeProductChannelConfiguration> {
-  static override schemaVersion = 1;
 
   protected readonly identity: DOIdentity;
   protected readonly subscriptions: SubscriptionManager;
@@ -751,8 +751,6 @@ export abstract class AgentVesselBase extends NativeChannelOwner<NativeProductCh
     });
   }
 
-  protected override afterSchemaReady(): void {}
-
   protected override createAgentTables(): void {
     DOIdentity.createTables(this.sql);
     SubscriptionManager.createTables(this.sql);
@@ -783,6 +781,7 @@ export abstract class AgentVesselBase extends NativeChannelOwner<NativeProductCh
     phase: string,
     input: {
       startedAt?: number;
+      durationMs?: number;
       source?: string;
       itemId?: string;
       generation?: number;
@@ -802,7 +801,8 @@ export abstract class AgentVesselBase extends NativeChannelOwner<NativeProductCh
       input.itemId ?? null,
       input.generation ?? null,
       startedAt,
-      input.startedAt === undefined ? null : Math.max(0, now - startedAt),
+      input.durationMs ??
+        (input.startedAt === undefined ? null : Math.max(0, now - startedAt)),
       JSON.stringify(input.details ?? {}),
     );
     const insertsSinceSweep =
@@ -1050,9 +1050,11 @@ export abstract class AgentVesselBase extends NativeChannelOwner<NativeProductCh
   /** Final system prompt text for a channel (blob-spilled; its hash rides every
    *  model request descriptor). Keep run-specific volatile instructions out of
    *  this path so provider prompt-cache keys stay stable. */
+  private readonly bootstrapPromptResources = new Map<string, Promise<AgentPromptResources>>();
+
   protected async composePrompt(channelId: string): Promise<string> {
     const startedAt = Date.now();
-    const resources = await this.loadPromptResources(channelId);
+    const resources = await (this.bootstrapPromptResources.get(channelId) ?? this.loadPromptResources(channelId));
     this.traceHotPath(channelId, "configuration.prompt-resources", {
       startedAt,
     });
@@ -1128,7 +1130,7 @@ export abstract class AgentVesselBase extends NativeChannelOwner<NativeProductCh
     const source: ChannelObservationInput["source"] = {
       channelId,
       envelopeId: event.messageId,
-      ...(Number.isFinite(event.id) ? { sequence: event.id } : {}),
+      ...(typeof event.id === "number" && Number.isFinite(event.id) ? { sequence: event.id } : {}),
       payloadKind: event.type,
       timestamp: event.ts,
       sender: participantRefFromMetadata(event.senderId, event.senderMetadata),
@@ -1958,6 +1960,10 @@ export abstract class AgentVesselBase extends NativeChannelOwner<NativeProductCh
       abortSignal: this.rpcAbortSignal ?? undefined,
     };
     const subscriptionStartedAt = Date.now();
+    const schemaTiming = this.activationSchemaTiming;
+    if (schemaTiming) {
+      this.traceHotPath(opts.channelId, "activation.schema", schemaTiming);
+    }
     this.traceHotPath(opts.channelId, "subscription.started");
     let phaseStartedAt = subscriptionStartedAt;
     const completedPhase = (phase: string): void => {
@@ -2288,7 +2294,7 @@ export abstract class AgentVesselBase extends NativeChannelOwner<NativeProductCh
       reason:
         "This receiver owns workspace orchestration or retained workspace data; websites require a reviewed bounded operation.",
     },
-    principals: ["host"],
+    principals: ["host", "code"],
     effect: { kind: "open" },
     tier: "open",
     sensitivity: "write",
@@ -2298,8 +2304,10 @@ export abstract class AgentVesselBase extends NativeChannelOwner<NativeProductCh
   ): Promise<ChannelDeliveryOutcome> {
     const recipientExecutionStartedAt = Date.now();
     this.ensureIdentity();
-    if (delivery.channelRef.objectKey !== delivery.channelId)
-      throw new Error("acceptChannelDelivery: channel identity mismatch");
+    const expectedChannelTargetId = this.rpcCallerKind === "server" || this.rpcCallerKind === "shell"
+      ? null
+      : await this.createChannelClient(delivery.channelId).resolveTarget();
+    assertChannelDeliverySource({ id: this.rpcCallerId, kind: this.rpcCallerKind }, delivery, expectedChannelTargetId);
     const providerEnvelope = delivery.envelope as RpcChannelMessage;
     if (
       delivery.participantId === this.participantId() &&
@@ -2330,6 +2338,7 @@ export abstract class AgentVesselBase extends NativeChannelOwner<NativeProductCh
       harness,
       delivery,
       BACKGROUND_CONTEXT,
+
     );
     if (replay) {
       this.reconcileNativeDeliveryProjection(delivery);
@@ -2776,13 +2785,11 @@ export abstract class AgentVesselBase extends NativeChannelOwner<NativeProductCh
         agentStreakHops = conversation.agentStreak;
       }
       lastCompletedSender =
-        conversation.lastCompletedSeq != null &&
-        conversation.lastCompletedSeq === event.id
+        conversation.lastCompletedMessageId === agentic.causality?.messageId
           ? conversation.previousCompletedSender
           : conversation.lastCompletedSender;
       lastCompletedMessageId =
-        conversation.lastCompletedSeq != null &&
-        conversation.lastCompletedSeq === event.id
+        conversation.lastCompletedMessageId === agentic.causality?.messageId
           ? (conversation.previousCompletedMessageId ?? null)
           : (conversation.lastCompletedMessageId ?? null);
       if (
@@ -6388,6 +6395,8 @@ export abstract class AgentVesselBase extends NativeChannelOwner<NativeProductCh
     const channel = this.createChannelClient(run.parentChannelId, rpc);
     const key = "subagent-terminal:" + run.runId + ":" + operationId;
     const canonicalStatus = (canonical: ChannelEvent | null) => {
+      // A supervisor receipt settles only after actual channel retention; live
+      // acceptance must still retry/join the same immutable publication.
       if (!canonical) return null;
       if (
         canonical.type !== AGENTIC_EVENT_PAYLOAD_KIND ||
@@ -6843,6 +6852,14 @@ export abstract class AgentVesselBase extends NativeChannelOwner<NativeProductCh
   }
 
   private readonly nativeChannelBootstrap = createNativeChannelBootstrap({
+    prepareResources: async (binding) => {
+      const resources = Promise.resolve(this.loadPromptResources(binding.channelId));
+      this.bootstrapPromptResources.set(binding.channelId, resources);
+      await resources;
+    },
+    releaseResources: (binding) => {
+      this.bootstrapPromptResources.delete(binding.channelId);
+    },
     join: (binding, intent) =>
       this.runDetached(async () => {
         const prepared = intent as unknown as PreparedChannelSubscription;

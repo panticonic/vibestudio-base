@@ -277,7 +277,7 @@ describe("genuine provider ownership", () => {
         "join",
         {
           participantId: providerId,
-          revision: 2,
+          operationId: "provider-addressed-membership",
           contextId: "ctx-1",
           metadata: { name: "Native provider", type: "agent" },
           delivery: "addressed",

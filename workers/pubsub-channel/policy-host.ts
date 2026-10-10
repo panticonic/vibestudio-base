@@ -152,7 +152,7 @@ export class PolicyHost {
   ): Promise<Record<string, unknown> | null> {
     let merged: Record<string, unknown> | null = null;
     for (const policy of this.policies()) {
-      const { state } = await this.getState(policy.name);
+      const state = (await this.getState(policy.name)).state;
       const annotations = policy.annotate(state, draft);
       if (annotations) merged = { ...(merged ?? {}), ...annotations };
     }
@@ -165,7 +165,7 @@ export class PolicyHost {
    * `getState` catch-up — a crash between the durable append and this fold is
    * cache amnesia by construction.
    */
-  foldAppended(view: PolicyEnvelopeView): void {
+  foldAppended(view: PolicyEnvelopeView & { seq: number }): void {
     for (const policy of this.policies()) {
       const cached = this.loadCache(policy);
       if (!cached) continue; // next getState rebuilds from scratch

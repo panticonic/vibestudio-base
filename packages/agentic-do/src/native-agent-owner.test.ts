@@ -1,3 +1,4 @@
+import { bindNativeChannelConversation } from "./native-channel-session.js";
 import { mainRpcMethods } from "@vibestudio/service-schemas/mainRpc";
 import { retainNativeToolInvocation } from "./native-invocation-source.js";
 import { createServer } from "node:http";
@@ -143,12 +144,22 @@ class Owner extends NativeAgentOwner {
     sensitivity: "read",
   })
   async inspectNativeExecutionAdmission() {
-    return this.agentExecutionRpc.call("main", mainRpcMethods["credentials.resolveCredential"], [{ url: "https://provider.test/v1" }], this.ownerCallOptions);
+    return this.agentExecutionRpc.call(
+      "main",
+      mainRpcMethods["credentials.resolveCredential"],
+      [{ url: "https://provider.test/v1" }],
+      this.ownerCallOptions,
+    );
   }
   probeCallerAdmission(url: string) {
-    return this.rpc.call("main", mainRpcMethods["credentials.resolveCredential"], [{ url }], {
-      authorityAcquisition: "return",
-    });
+    return this.rpc.call(
+      "main",
+      mainRpcMethods["credentials.resolveCredential"],
+      [{ url }],
+      {
+        authorityAcquisition: "return",
+      },
+    );
   }
   authorityProbe() {
     return this.authorization;
@@ -176,7 +187,12 @@ class Owner extends NativeAgentOwner {
   ): Promise<void> {
     return this.productRelease(input, harness);
   }
-  hostCall<K extends keyof typeof mainRpcMethods & string>(method: K, args: import("@vibestudio/shared/rpcMethods").RpcMethodArgs<(typeof mainRpcMethods)[K]>) {
+  hostCall<K extends keyof typeof mainRpcMethods & string>(
+    method: K,
+    args: import("@vibestudio/shared/rpcMethods").RpcMethodArgs<
+      (typeof mainRpcMethods)[K]
+    >,
+  ) {
     return this.callAgentHost(method, args);
   }
   open() {
@@ -312,9 +328,24 @@ async function host() {
       onResolve();
       await hold;
       result = active;
-    } else if (method === "workspace-state.alarmSourceRegister")
-      result = incarnation;
-    else if (method === "workspace-state.alarmSourcePublish")
+    } else if (method === "workspace-state.alarmSourceRegister") {
+      onResolve();
+      await hold;
+      const key = envelope.message.args[0] as { executionDigest: string };
+      const entity = active as {
+        status: string;
+        activeExecutionDigest: string;
+      } | null;
+      if (
+        !entity ||
+        entity.status !== "active" ||
+        entity.activeExecutionDigest !== key.executionDigest
+      )
+        error = new Error(
+          "Wake source does not match its active execution image",
+        );
+      else result = { incarnation, entity: active };
+    } else if (method === "workspace-state.alarmSourcePublish")
       result = "accepted";
     else if (method === "authority.outstandingAcquisitions")
       result = { receipts: [], next: null };
@@ -631,6 +662,14 @@ async function authorityOwner(
   const root = await session.root(BACKGROUND_CONTEXT, {
     agent: { model: { provider: "faux", modelId: "faux-1" } },
   });
+  await session.commit(
+    (tx) =>
+      bindNativeChannelConversation(tx, root.id, {
+        channelId: "channel:owner",
+        contextId: "context:owner",
+      }),
+    BACKGROUND_CONTEXT,
+  );
   return {
     fixture,
     session,
@@ -649,7 +688,7 @@ async function authorityOwner(
   };
 }
 
-async function ordinaryAuthorityOwner(waiting: boolean) {
+async function ordinaryAuthorityOwner(waiting: boolean, attachLocator = false) {
   const h = await host();
   const authority = authorityHost(h);
   h.setActive({
@@ -721,6 +760,7 @@ async function ordinaryAuthorityOwner(waiting: boolean) {
               logId: trajectory.logId,
               head: trajectory.head,
               invocationId: id,
+              ...(attachLocator ? { nativeInvocation } : {}),
             },
           })),
         }),
@@ -756,6 +796,14 @@ async function ordinaryAuthorityOwner(waiting: boolean) {
       tools: [tool],
     },
   });
+  await session.commit(
+    (tx) =>
+      bindNativeChannelConversation(tx, root.id, {
+        channelId: "channel:owner",
+        contextId: "context:owner",
+      }),
+    BACKGROUND_CONTEXT,
+  );
   faux.setResponses([
     fauxAssistantMessage(
       [fauxToolCall("ordinary", {}, { id: "ordinary-call" })],
@@ -798,6 +846,38 @@ describe("native Pi entity activation and release", () => {
     ).toEqual({ state: "closed", reason: "operation-ended" });
     await f.fixture.instance.alarm();
     expect(f.authority.withdrawals).toHaveLength(1);
+  });
+
+  it("preserves exact receipt authority with a native task locator and rejects contradictory locator metadata", async () => {
+    const f = await ordinaryAuthorityOwner(false, true);
+    await f.submission.wait(BACKGROUND_CONTEXT);
+    const original = f.authority.current()!;
+    f.authority.replace(
+      authorityAcquisitionReceiptSchema.parse({
+        ...original,
+        invocations: original.invocations.map((invocation) => ({
+          ...invocation,
+          causalParent: {
+            ...invocation.causalParent!,
+            nativeInvocation: {
+              ...invocation.nativeInvocation!,
+              task: {
+                ...invocation.nativeInvocation!.task,
+                taskId: invocation.nativeInvocation!.task.taskId + 1,
+              },
+            },
+          },
+        })),
+      }),
+    );
+    await expect(f.fixture.instance.alarm()).rejects.toThrow(
+      "conflicts with its original native source",
+    );
+    expect(f.authority.withdrawals).toEqual([]);
+    f.authority.replace(original);
+    await f.fixture.instance.alarm();
+    expect(f.authority.withdrawals).toHaveLength(1);
+    expect(f.authority.acknowledgements).toHaveLength(1);
   });
 
   it("retains ordinary exact closure failure for original terminal task recovery", async () => {
@@ -1261,7 +1341,7 @@ describe("native Pi entity activation and release", () => {
     expect(faux.state.callCount).toBe(1);
     expect(
       h.calls.filter(
-        (method) => method === "workspace-state.entity.resolveActive",
+        (method) => method === "workspace-state.alarmSourceRegister",
       ),
     ).toHaveLength(2);
   });
@@ -1398,7 +1478,6 @@ describe("native Pi entity activation and release", () => {
             objectKey: "test-key",
             executionDigest: image.WORKER_EXECUTION_DIGEST,
           },
-          (method, args) => first.instance.hostCall(method, args),
           context,
         );
         retained = {
@@ -1436,6 +1515,14 @@ describe("native Pi entity activation and release", () => {
         tools: [tool],
       },
     });
+    await session.commit(
+      (tx) =>
+        bindNativeChannelConversation(tx, root.id, {
+          channelId: "channel:lookup",
+          contextId: "context:owner",
+        }),
+      BACKGROUND_CONTEXT,
+    );
     faux.setResponses([
       fauxAssistantMessage(
         [fauxToolCall("retained", {}, { id: "retained-call" })],
@@ -1504,7 +1591,11 @@ describe("native Pi entity activation and release", () => {
       );
       expect(response.status).toBe(500);
       await expect(response.json()).resolves.toMatchObject({
-        error: { message: expect.stringContaining("trusted loaded-image schema descriptor") },
+        error: {
+          message: expect.stringContaining(
+            "trusted loaded-image schema descriptor",
+          ),
+        },
       });
       expect(
         fixture.sql
@@ -1554,7 +1645,7 @@ describe("native Pi entity activation and release", () => {
   it("probes the entire composition without opening an execution owner", async () => {
     expect(await probe()).toMatchObject({
       className: "Owner",
-      version: 1,
+      version: 4,
       freshSchemaFingerprint: expect.stringContaining("product_value"),
     });
   });
@@ -1591,13 +1682,10 @@ describe("native Pi entity activation and release", () => {
       fixture.instance.open(),
     ]);
     expect(first).toBe(second);
-    expect(h.calls.slice(0, 3)).toEqual([
-      "workspace-state.entity.resolveActive",
-      "workspace-state.alarmSourceRegister",
-      "workspace-state.lifecycleLeaseUpsert",
-    ]);
+    expect(h.calls[0]).toBe("workspace-state.alarmSourceRegister");
+    expect(h.calls).not.toContain("workspace-state.lifecycleLeaseUpsert");
     expect(
-      h.calls.filter((m) => m === "workspace-state.entity.resolveActive"),
+      h.calls.filter((m) => m === "workspace-state.alarmSourceRegister"),
     ).toHaveLength(1);
     await first.root(BACKGROUND_CONTEXT);
     expect(await lifecycleRelease(fixture.instance, releaseInput)).toEqual({
@@ -1614,12 +1702,12 @@ describe("native Pi entity activation and release", () => {
     const before = fixture.db.export();
     h.setActive(null);
     await expect(fixture.instance.open()).rejects.toThrow(
-      "active platform owner",
+      "Wake source does not match its active execution image",
     );
     expect(fixture.db.export()).toEqual(before);
-    expect(h.calls).toEqual(["workspace-state.entity.resolveActive"]);
+    expect(h.calls).toEqual(["workspace-state.alarmSourceRegister"]);
     expectLifecycleFailure(await lifecycleRelease(fixture.instance, releaseInput),
-      "Agent image does not match its active platform owner",
+      "Wake source does not match its active execution image",
     );
     expect(h.calls).not.toContain("workspace-state.lifecycleLeaseClear");
   });
@@ -1761,7 +1849,7 @@ describe("native Pi entity activation and release", () => {
       h.calls.filter((m) => m === "workspace-state.lifecycleLeaseClear"),
     ).toHaveLength(2);
     expect(
-      h.calls.filter((m) => m === "workspace-state.entity.resolveActive"),
+      h.calls.filter((m) => m === "workspace-state.alarmSourceRegister"),
     ).toHaveLength(1);
   });
 
@@ -1950,7 +2038,11 @@ describe("native Pi entity activation and release", () => {
         status: "accepted",
       });
     }, BACKGROUND_CONTEXT);
-    const result = { success: false, console: "", error: "cancelled" };
+    const result = {
+      success: false,
+      console: "",
+      error: serializeRpcFailure(new Error("cancelled")),
+    };
     h.setReceipt({
       runId,
       runDigest: "a".repeat(64),
@@ -1981,26 +2073,40 @@ describe("native Pi entity activation and release", () => {
       ...releaseInput,
       mode: "retire",
     });
-    await reached;
-    expect(h.calls).not.toContain("workspace-state.lifecycleLeaseClear");
-    await expect(fixture.instance.open()).rejects.toThrow("sealed");
-    await expect(
-      fixture.callAs(
-        { callerId: evalRuntimeId(runtimeId, "default"), callerKind: "do" },
-        "onEvalComplete",
-        { runId },
-      ),
-    ).resolves.toEqual({ accepted: true });
-    expect(await release).toEqual({ status: "ready" });
-    expect(h.calls.at(-1)).toBe("workspace-state.lifecycleLeaseClear");
+    try {
+      await reached;
+      expect(h.calls).not.toContain("workspace-state.lifecycleLeaseClear");
+      await expect(fixture.instance.open()).rejects.toThrow("sealed");
+      await expect(
+        fixture.callAs(
+          { callerId: evalRuntimeId(runtimeId, "default"), callerKind: "do" },
+          "onEvalComplete",
+          { runId },
+        ),
+      ).resolves.toEqual({ accepted: true });
+      expect(await release).toEqual({ status: "ready" });
+      expect(h.calls.at(-1)).toBe("workspace-state.lifecycleLeaseClear");
+    } finally {
+      completed();
+      await release;
+    }
   });
 
   it("retains its lease and retries the owner's cleanup after a domain refusal", async () => {
     const h = await host();
     const fixture = await owner(h);
     await fixture.instance.open();
+    const operationFailure = Object.assign(
+      new Error("channel relay release failed"),
+      { code: "CHANNEL_RELEASE_FAILED", errorKind: "service" as const },
+    );
+    const cleanupFailure = new AggregateError(
+      [operationFailure],
+      "domain cleanup remains pending",
+      { cause: operationFailure },
+    );
     fixture.instance.productRelease = async () => {
-      throw new Error("domain cleanup remains pending");
+      throw cleanupFailure;
     };
     const released = await lifecycleRelease(fixture.instance, {
       ...releaseInput,

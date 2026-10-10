@@ -1,3 +1,5 @@
+import { bindNativeChannelConversation } from "./native-channel-session.js";
+import { createNativeChannelPublication } from "./native-channel-publication.js";
 import { createMainRpcCaller } from "@vibestudio/service-schemas/mainRpc";
 import { schemaRpcClientMock } from "@vibestudio/rpc/test-utils";
 import { RemoteRpcError, serializeRpcFailure } from "@vibestudio/rpc";
@@ -27,7 +29,7 @@ import {
 } from "./native-eval-receipts.js";
 import { bindNativeToolInvocation } from "./native-invocation-boundary.js";
 import {
-  openBoundAgentSession,
+  openPlatformAgentSession,
   type AgentHostCall,
 } from "./native-agent-session.js";
 const context = BACKGROUND_CONTEXT;
@@ -180,13 +182,17 @@ async function fixture(
     owner.runtimeId,
   );
   const callHost: AgentHostCall = createMainRpcCaller(
-    schemaRpcClientMock({ call: async () => entity }, owner.runtimeId),
+    schemaRpcClientMock({ call: async (_target, method) => method === "workspace-state.alarmSourceRegister" ? { entity, incarnation: owner.incarnation } : "accepted" }, owner.runtimeId),
   );
   const call = createMainRpcCaller(rpc);
   const acknowledgements = createNativeEvalAcknowledgements(
     (method, args, context) =>
       call(method, args, { signal: context.abortSignal }),
   );
+  const channelPublication = createNativeChannelPublication({ publish: async (_channel, _participant, event) => {
+    publications.push(event);
+    return { id: 17 };
+  } });
   const execution = createNativeEvalExecution({
     harness: () => harness,
     acknowledgements,
@@ -201,12 +207,8 @@ async function fixture(
         {
           harness,
           image,
-          callHost,
           rpc,
-          publishStart: async (_channel, event) => {
-            publications.push(event);
-            return { id: 17 };
-          },
+          enqueueStart: channelPublication.enqueueStart,
         },
         api,
         ctx,
@@ -218,13 +220,14 @@ async function fixture(
     defineExtension({
       name: "native-eval",
       tools: [evalTool],
-      tasks: [acknowledgements.task],
+      tasks: [acknowledgements.task, channelPublication.task],
     }),
   );
-  harness = await openBoundAgentSession(
-    new MemoryStorage(),
-    owner,
-    { models, registry, publishWake: async () => {} },
+  harness = await openPlatformAgentSession(
+    async () => new MemoryStorage(),
+    image,
+    callHost,
+    { models, registry },
     context,
   );
   sessions.push(harness);
@@ -234,6 +237,7 @@ async function fixture(
       tools: [evalTool],
     },
   });
+  await harness.commit(tx => bindNativeChannelConversation(tx, root.id, { channelId: "channel:one", contextId: owner.contextId }), context);
   scopes.set(root.id, "channel:one");
   faux.setResponses([
     fauxAssistantMessage(
@@ -396,6 +400,7 @@ describe("protected native Eval tool", () => {
       },
       context,
     );
+    await f.harness.commit(tx => bindNativeChannelConversation(tx, second.id, { channelId: "channel:two", contextId: owner.contextId }), context);
     f.scopes.set(second.id, "channel:two");
     f.faux.setResponses([
       fauxAssistantMessage(

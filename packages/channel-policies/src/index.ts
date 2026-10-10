@@ -9,7 +9,7 @@ import { conversationV1Policy } from "./conversation-v1.js";
 /** Minimal durable-envelope view a policy folds over. Pure data. */
 export interface PolicyEnvelopeView {
   envelopeId: string;
-  seq: number;
+  seq: number | null;
   payloadKind: string;
   /** Hydration NOT guaranteed; policies must not depend on blob-spilled fields. */
   payload: unknown;

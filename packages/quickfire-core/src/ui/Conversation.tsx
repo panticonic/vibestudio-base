@@ -293,7 +293,7 @@ export function ConversationBody({
               {compose.connecting ? <Spinner tone="accent" /> : null}
               <Text tone="muted">
                 {compose.connecting
-                  ? compose.kind === "conversation"
+                  ? compose.kind === "conversation" || compose.resume
                     ? "Opening the conversation…"
                     : "Starting a conversation about this panel…"
                   : compose.hint}

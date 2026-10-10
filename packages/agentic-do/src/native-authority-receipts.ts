@@ -258,6 +258,26 @@ function retainOutcome(
   admission.outcome = outcome;
 }
 
+function assertAdmissionOwner(
+  admission: { owner: JsonValue; image: JsonValue },
+  owner: AgentExecutionOwner,
+  image: LoadedAgentImage,
+): void {
+  const original = admission.image;
+  if (
+    canonicalJson(owner) !== canonicalJson(admission.owner) ||
+    !original ||
+    typeof original !== "object" ||
+    Array.isArray(original) ||
+    original["runtimeId"] !== owner.runtimeId ||
+    original["runtimeId"] !== image.runtimeId ||
+    original["source"] !== image.source ||
+    original["className"] !== image.className ||
+    original["objectKey"] !== image.objectKey
+  )
+    throw new Error("Authority receipt belongs to a different execution owner");
+}
+
 async function consumeObserved(
   harness: Harness,
   commit: Pick<Harness, "commit">,
@@ -275,11 +295,7 @@ async function consumeObserved(
   );
   if (!admission?.binding)
     throw new Error("Authority receipt has no retained domain admission");
-  if (
-    canonicalJson(owner) !== canonicalJson(admission.owner) ||
-    canonicalJson(image) !== canonicalJson(admission.image)
-  )
-    throw new Error("Authority receipt belongs to a different owner or image");
+  assertAdmissionOwner(admission, owner, image);
   assertCanonicalAdmission(admission, receipt);
   if (receipt.state === "pending") {
     const request = admission.request;
@@ -374,13 +390,7 @@ export async function withdrawFailedModelRequestAuthorities(
       canonicalJson(admission.request) !== canonicalJson(request)
     )
       continue;
-    if (
-      canonicalJson(admission.owner) !== canonicalJson(owner) ||
-      canonicalJson(admission.image) !== canonicalJson(image)
-    )
-      throw new Error(
-        "Authority receipt belongs to a different owner or image",
-      );
+    assertAdmissionOwner(admission, owner, image);
     assertCanonicalAdmission(admission, receipt);
     if (receipt.state !== "pending") continue;
     await api.commit(async (tx) => {
@@ -448,11 +458,7 @@ export async function consumeAuthorityReceipt(
   if (!admission?.binding)
     throw new Error("Authority receipt has no retained domain admission");
   const owner = await retainedAgentExecutionOwner(harness, context);
-  if (
-    canonicalJson(owner) !== canonicalJson(admission.owner) ||
-    canonicalJson(image) !== canonicalJson(admission.image)
-  )
-    throw new Error("Authority receipt belongs to a different owner or image");
+  assertAdmissionOwner(admission, owner, image);
   const observed = await call("authority.acquisitionReceipt", [
     { acquisitionId },
   ]);
@@ -479,9 +485,6 @@ export async function reconcileAuthorityReceipts(
   context: Context,
 ): Promise<void> {
   const owner = await retainedAgentExecutionOwner(harness, context);
-  let sourceOwner:
-    | Awaited<ReturnType<typeof nativeInvocationOwner>>
-    | undefined;
   for await (const receipt of outstandingAuthorityReceipts(call)) {
     if (
       !(
@@ -508,10 +511,10 @@ export async function reconcileAuthorityReceipts(
         (task.state.status !== "terminal" && task.state.status !== "completing")
       )
         continue;
-      sourceOwner ??= await nativeInvocationOwner(
+      const sourceOwner = await nativeInvocationOwner(
         harness,
         image,
-        call,
+        task.conversationId!,
         context,
       );
       assertNativeReceipt(receipt, sourceOwner, image, task, identity);
@@ -546,7 +549,7 @@ export async function withdrawNativeToolAuthorities(
   const sourceOwner = await nativeInvocationOwner(
     harness,
     image,
-    call,
+    api.conversationId,
     context,
   );
   const owner = await retainedAgentExecutionOwner(harness, context);
@@ -668,6 +671,8 @@ function assertNativeReceipt(
     head: trajectory.head,
     invocationId: nativeInvocationId(identity),
   };
+  // The receipt binds trajectory coordinates and native identity separately.
+  // A transport locator must agree with that identity without changing it.
   if (
     receipt.admission.ownerRuntimeId !== owner.runtimeId ||
     receipt.admission.sessionId !== owner.authoritySessionId ||
@@ -677,7 +682,13 @@ function assertNativeReceipt(
         invocation.sessionId !== owner.authoritySessionId ||
         invocation.code?.repoPath !== image.source ||
         invocation.code.executionDigest !== image.executionDigest ||
-        canonicalJson(invocation.causalParent) !== canonicalJson(parent) ||
+        invocation.causalParent?.kind !== parent.kind ||
+        invocation.causalParent.logId !== parent.logId ||
+        invocation.causalParent.head !== parent.head ||
+        invocation.causalParent.invocationId !== parent.invocationId ||
+        (invocation.causalParent.nativeInvocation !== undefined &&
+          canonicalJson(invocation.causalParent.nativeInvocation) !==
+            canonicalJson(identity)) ||
         canonicalJson(invocation.nativeInvocation) !== canonicalJson(identity),
     )
   )
@@ -729,9 +740,7 @@ async function* outstandingAuthorityReceipts(
   let after: { createdAt: number; acquisitionId: string } | undefined;
   for (;;) {
     const page = authorityMethods.outstandingAcquisitions.returns.parse(
-      await call("authority.outstandingAcquisitions", [
-        after ? { after } : {},
-      ]),
+      await call("authority.outstandingAcquisitions", [after ? { after } : {}]),
     );
     for (const receipt of page.receipts) yield receipt;
     if (page.next === null) return;

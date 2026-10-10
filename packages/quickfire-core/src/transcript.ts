@@ -143,7 +143,7 @@ export function projectTranscript(
 
   // A turn that is open but has produced nothing yet is the case the overlay
   // most needed and least had: the user pressed Enter and the card sat blank.
-  const activity = currentActivity(state, awaitingResponse);
+  const activity = currentActivity(state, merged, awaitingResponse);
   if (activity) projected.push(activity);
 
   // Truncate before reordering: the bound is on WHICH entries are kept (the
@@ -170,6 +170,19 @@ function projectChatMessage(
   }
 
   if (contentType === "invocation" && message.invocation) {
+    if (message.invocation.nativeSource?.operation.kind === "model") {
+      const execution = message.invocation.execution;
+      if (execution.status !== "error" && execution.status !== "cancelled" && execution.status !== "abandoned")
+        return null;
+      return {
+        kind: "notice",
+        id: message.id,
+        severity: execution.status === "cancelled" ? "info" : "error",
+        title: execution.status === "error" ? "Model request failed" : `Model request ${execution.status}`,
+        detail: execution.result === undefined ? execution.description : formatDetail(execution.result),
+        ...when,
+      };
+    }
     const call = toolCalls.byId.get(message.invocation.id);
     return call ? { kind: "tool", id: message.id, call } : null;
   }
@@ -432,7 +445,7 @@ function projectToolCalls(
 ): ToolCallProjection {
   const byId = new Map<string, QuickfireToolCall>();
   for (const invocation of Object.values(state.invocations)) {
-    if (!invocation.turnId) continue;
+    if (invocation.nativeSource?.operation.kind === "model") continue;
     if (typeof invocation.name !== "string" || invocation.name.length === 0)
       continue;
     const progress = invocation.progress
@@ -502,6 +515,7 @@ function projectToolCalls(
 
 function currentActivity(
   state: ChannelViewState,
+  messages: readonly ChatMessage[],
   awaitingResponse: boolean,
 ): QuickfireTranscriptEntry | null {
   const turns = Object.values(state.turns).sort(
@@ -515,12 +529,11 @@ function currentActivity(
   // turns that one entry into the compact activity shape; adding another here
   // would render the same wait twice.
   if (activeTurn?.status === "waiting") return null;
-  const orphanedRunningInvocation = Object.values(state.invocations).find(
+  const runningInvocations = Object.values(state.invocations).filter(
     (invocation) =>
       invocation.status === "running" || invocation.status === "started",
   );
-  const turnId = activeTurn?.turnId ?? orphanedRunningInvocation?.turnId;
-  if (!turnId) {
+  if (!activeTurn && runningInvocations.length === 0) {
     return awaitingResponse
       ? {
           kind: "activity",
@@ -532,22 +545,18 @@ function currentActivity(
       : null;
   }
 
-  const hasRunningTool = Object.values(state.invocations).some(
+  const hasRunningTool = runningInvocations.some(
     (invocation) =>
-      invocation.turnId === turnId &&
-      (invocation.status === "running" || invocation.status === "started"),
+      invocation.nativeSource?.operation.kind !== "model",
   );
-  const turnMessages = Object.values(state.messages).filter(
+  // The canonical merge includes native model observations as well as durable
+  // answer messages. Neither tool work nor live model text needs a turn ID.
+  const hasResponse = messages.some(
     (message) =>
-      message.turnId === turnId &&
-      message.status !== "completed" &&
-      message.status !== "failed",
-  );
-  const hasResponse = turnMessages.some((message) =>
-    (message.blocks ?? []).some(
-      (block) =>
-        block.type === "text" && "content" in block && Boolean(block.content),
-    ),
+      message.complete === false &&
+      message.kind === "message" &&
+      !message.contentType &&
+      Boolean(message.content),
   );
   const phase = hasRunningTool
     ? "using-tools"
@@ -556,7 +565,7 @@ function currentActivity(
       : "thinking";
   return {
     kind: "activity",
-    id: `activity:${turnId}`,
+    id: `activity:${activeTurn?.turnId ?? runningInvocations[0]!.invocationId}`,
     state: "working",
     phase,
     label:

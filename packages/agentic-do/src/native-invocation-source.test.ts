@@ -44,7 +44,7 @@ import {
   recordNativeProductInput,
 } from "./native-product-context.js";
 import {
-  openBoundAgentSession,
+  openPlatformAgentSession,
   type AgentHostCall,
 } from "./native-agent-session.js";
 import {
@@ -85,13 +85,15 @@ const entity = {
   createdAt: 1,
   cleanupComplete: false,
 };
+const hostMethods: string[] = [];
 function hostCaller(activeEntity: typeof entity = entity): AgentHostCall {
   return createMainRpcCaller(
     schemaRpcMock({
       call: async (_target: string, method: string) => {
-        if (method !== "workspace-state.entity.resolveActive")
-          throw new Error(`Unexpected main RPC ${method}`);
-        return JSON.parse(JSON.stringify(activeEntity));
+        hostMethods.push(method);
+        if (method === "workspace-state.alarmSourceRegister") return { incarnation: owner.incarnation, entity: JSON.parse(JSON.stringify(activeEntity)) };
+        if (method === "workspace-state.alarmSourcePublish") return "accepted";
+        throw new Error(`Unexpected main RPC ${method}`);
       },
     }),
   );
@@ -116,22 +118,22 @@ async function open(
   state: ReturnType<typeof setup>,
   modelRequests?: ModelRequestPort,
   storage: Storage = new MemoryStorage(),
+  executable = image,
+  activeCall = call,
 ) {
-  const harness = await openBoundAgentSession(
-    storage,
-    owner,
+  const harness = await openPlatformAgentSession(
+    async () => storage,
+    executable,
+    activeCall,
     {
       models: state.models,
       registry: state.registry,
-      publishWake: async () => {},
       ...(modelRequests ? { modelRequests } : {}),
     },
     context,
   );
   sessions.push(harness);
-  const root = await harness.root(context, {
-    agent: { model: { provider: "faux", modelId: state.faux.getModel().id } },
-  });
+  const root = await openNativeChannelConversation(harness, { channelId: "channel:one", contextId: owner.contextId }, { model: { provider: "faux", modelId: state.faux.getModel().id } }, context);
   return { harness, root };
 }
 
@@ -213,14 +215,12 @@ describe("native invocation source", () => {
           harness,
           api,
           image,
-          call,
           ctx,
         );
         const inspected = await inspectNativeInvocationSource(
           harness,
           { taskId: api.taskId, invocationId: nativeInvocationId(actual) },
           image,
-          call,
           ctx,
         );
         expected.push(inspected?.originatingInput);
@@ -228,14 +228,14 @@ describe("native invocation source", () => {
       },
     });
     state.registry.install(defineExtension({ name: "origin", tools: [tool] }));
-    harness = await openBoundAgentSession(
-      new MemoryStorage(),
-      owner,
+    harness = await openPlatformAgentSession(
+      async () => new MemoryStorage(),
+      image,
+      call,
       {
         models: state.models,
         registry: state.registry,
-        publishWake: async () => {},
-        prepareCommit: async (tx, staged) => {
+          prepareCommit: async (tx, staged) => {
           await prepareNativeChannelReadReceipts(
             tx,
             staged.submissions,
@@ -249,7 +249,6 @@ describe("native invocation source", () => {
             request,
             api,
             image,
-            call,
             ctx,
           );
           return ready
@@ -314,7 +313,6 @@ describe("native invocation source", () => {
           invocationId: nativeInvocationId(source),
         },
         image,
-        call,
         context,
       )
     )?.originatingInput;
@@ -354,7 +352,6 @@ describe("native invocation source", () => {
             invocationId: nativeInvocationId(source),
           },
           image,
-          call,
           context,
         )
       )?.originatingInput,
@@ -385,14 +382,14 @@ describe("native invocation source", () => {
     const state = setup();
     let harness!: Harness;
     let source!: NativeInvocationSource;
-    harness = await openBoundAgentSession(
-      new MemoryStorage(),
-      owner,
+    harness = await openPlatformAgentSession(
+      async () => new MemoryStorage(),
+      image,
+      call,
       {
         models: state.models,
         registry: state.registry,
-        publishWake: async () => {},
-        prepareCommit: async (tx, staged) => {
+          prepareCommit: async (tx, staged) => {
           await prepareNativeChannelReadReceipts(
             tx,
             staged.submissions,
@@ -406,7 +403,6 @@ describe("native invocation source", () => {
             request,
             api,
             image,
-            call,
             ctx,
           );
           return {
@@ -474,7 +470,6 @@ describe("native invocation source", () => {
             invocationId: nativeInvocationId(source),
           },
           image,
-          call,
           context,
         )
       )?.originatingInput,
@@ -495,7 +490,6 @@ describe("native invocation source", () => {
           harness,
           api,
           image,
-          call,
           ctx,
         );
         expect(source.operation).toMatchObject({
@@ -508,7 +502,6 @@ describe("native invocation source", () => {
             harness,
             { taskId: api.taskId, invocationId: nativeInvocationId(source) },
             image,
-            call,
             ctx,
           ),
         ).toMatchObject({ source, status: "running" });
@@ -527,7 +520,6 @@ describe("native invocation source", () => {
           harness,
           api,
           image,
-          call,
           ctx,
         );
         return {};
@@ -559,25 +551,25 @@ describe("native invocation source", () => {
         harness,
         { taskId: id, invocationId: nativeInvocationId(source) },
         image,
-        call,
         context,
       ),
     ).toBeNull();
   });
-  it("reopens exact task-owned source facts from SQLite and reuses the original model round after readiness", async () => {
+  it("reopens actual pending work under a new executable image while preserving its original task attribution", async () => {
     const directory = await mkdtemp(join(tmpdir(), "native-source-"));
     const state = setup();
     let harness!: Harness;
     let source!: NativeInvocationSource;
     let ready = false;
     const sources: NativeInvocationSource[] = [];
+    let executable = image;
+    let activeCall = call;
     const port: ModelRequestPort = async (request, api, ctx) => {
       source = await retainNativeModelInvocation(
         harness,
         request,
         api,
-        image,
-        call,
+        executable,
         ctx,
       );
       sources.push(source);
@@ -622,10 +614,14 @@ describe("native invocation source", () => {
       unsubscribe();
       const original = source;
       await harness.close(context);
+      executable = { ...image, executionDigest: "c".repeat(64) };
+      activeCall = hostCaller({ ...entity, activeExecutionDigest: executable.executionDigest, source: { ...entity.source, effectiveVersion: "state:replacement" } });
       opened = await open(
         state,
         port,
         await openNodeSqliteStorage(join(directory, "owner.sqlite")),
+        executable,
+        activeCall,
       );
       harness = opened.harness;
       expect(
@@ -635,12 +631,12 @@ describe("native invocation source", () => {
             taskId: original.task.taskId,
             invocationId: nativeInvocationId(original),
           },
-          image,
-          call,
+          executable,
           context,
         ),
       ).toEqual({
         source: original,
+        executor: { ...original.owner, executionDigest: executable.executionDigest, effectiveVersion: "state:replacement" },
         status: "waiting",
         abortRequested: false,
         originatingInput: null,
@@ -667,8 +663,7 @@ describe("native invocation source", () => {
             taskId: original.task.taskId,
             invocationId: nativeInvocationId(original),
           },
-          image,
-          call,
+          executable,
           context,
         ),
       ).toBeNull();
@@ -690,7 +685,6 @@ describe("native invocation source", () => {
         request,
         api,
         image,
-        call,
         ctx,
       );
       expect(source.task).toEqual({
@@ -705,7 +699,6 @@ describe("native invocation source", () => {
           request,
           api,
           image,
-          call,
           ctx,
         ),
       ).toEqual(source);
@@ -714,7 +707,6 @@ describe("native invocation source", () => {
           harness,
           { taskId: request.taskId, invocationId: nativeInvocationId(source) },
           image,
-          call,
           ctx,
         ),
       ).toMatchObject({ source, status: "running", abortRequested: false });
@@ -724,7 +716,6 @@ describe("native invocation source", () => {
           { ...request, messages: [] },
           api,
           image,
-          call,
           ctx,
         ),
       ).rejects.toThrow("conflicts with its immutable source");
@@ -746,7 +737,6 @@ describe("native invocation source", () => {
           invocationId: nativeInvocationId(source),
         },
         image,
-        call,
         context,
       ),
     ).toBeNull();
@@ -775,7 +765,6 @@ describe("native invocation source", () => {
                 harness,
                 api,
                 image,
-                call,
                 ctx,
               );
               expect(source.operation).toMatchObject({
@@ -792,7 +781,6 @@ describe("native invocation source", () => {
                   harness,
                   api,
                   image,
-                  call,
                   ctx,
                 ),
               ).toEqual(source);
@@ -801,7 +789,6 @@ describe("native invocation source", () => {
                   harness,
                   { ...api, callId: "fabricated-call" },
                   image,
-                  call,
                   ctx,
                 ),
               ).rejects.toThrow("does not match its committed invocation");
@@ -812,7 +799,6 @@ describe("native invocation source", () => {
                   invocationId: nativeInvocationId(source),
                 },
                 image,
-                call,
                 ctx,
               );
               expect(inspect).toMatchObject({ source, status: "running" });
@@ -846,12 +832,11 @@ describe("native invocation source", () => {
           invocationId: nativeInvocationId(source),
         },
         image,
-        call,
         context,
       ),
     ).toBeNull();
     await expect(
-      retainNativeToolInvocation(harness, apiAfter, image, call, context),
+      retainNativeToolInvocation(harness, apiAfter, image, context),
     ).rejects.toThrow();
   });
 
@@ -878,7 +863,6 @@ describe("native invocation source", () => {
                 harness,
                 api,
                 image,
-                call,
                 ctx,
               );
               await api.commit(
@@ -901,7 +885,6 @@ describe("native invocation source", () => {
                   harness,
                   api,
                   image,
-                  call,
                   ctx,
                 ),
               ).toEqual(source);
@@ -913,7 +896,6 @@ describe("native invocation source", () => {
                     invocationId: nativeInvocationId(source),
                   },
                   image,
-                  call,
                   ctx,
                 ),
               ).toMatchObject({ source, abortRequested: true });
@@ -945,7 +927,6 @@ describe("native invocation source", () => {
           invocationId: nativeInvocationId(source),
         },
         image,
-        call,
         context,
       ),
     ).toBeNull();
@@ -953,36 +934,21 @@ describe("native invocation source", () => {
 
   it("does not admit invented source facts on inspection and propagates the original host failure", async () => {
     const state = setup();
+    const before = hostMethods.length;
     const { harness } = await open(state);
+    expect(hostMethods.slice(before).filter(method => method === "workspace-state.alarmSourceRegister")).toHaveLength(1);
     expect(
       await inspectNativeInvocationSource(
         harness,
         { taskId: 999, invocationId: "fabricated" },
         image,
-        call,
         context,
       ),
     ).toBeNull();
+    expect(hostMethods.slice(before).filter(method => method === "workspace-state.entity.resolveActive")).toHaveLength(0);
     const original = new Error("host disconnected");
-    await expect(
-      inspectNativeInvocationSource(
-        harness,
-        { taskId: 999, invocationId: "fabricated" },
-        image,
-        async () => {
-          throw original;
-        },
-        context,
-      ),
-    ).rejects.toBe(original);
-    await expect(
-      inspectNativeInvocationSource(
-        harness,
-        { taskId: 999, invocationId: "fabricated" },
-        image,
-        hostCaller({ ...entity, authoritySessionId: "retired" }),
-        context,
-      ),
-    ).rejects.toThrow("current host-bound owner");
+    await expect(openPlatformAgentSession(async () => new MemoryStorage(), image, async () => { throw original; }, { models: state.models, registry: state.registry }, context)).rejects.toBe(original);
+    await expect(openPlatformAgentSession(async () => new MemoryStorage(), image, hostCaller({ ...entity, activeExecutionDigest: "b".repeat(64) }), { models: state.models, registry: state.registry }, context)).rejects.toThrow("active platform owner");
+
   });
 });

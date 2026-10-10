@@ -1,3 +1,5 @@
+import { registryMutationFromLogEnvelope, isAgenticLogKind } from "@workspace/agentic-protocol";
+import { prepareLogEvent, agenticLogCausality as agenticCausality, type PreparedLogEvent, type LogAppendEventInput } from "@workspace/agentic-protocol";
 import { rpcFailureSchema } from "@vibestudio/service-schemas/rpcFailure";
 import {
   EnvelopeLineageSchema,
@@ -13,7 +15,7 @@ import { durableWorkOwnerMethods } from "@vibestudio/service-schemas/durableWork
  * The host recognizes only the workspace-source protocol and seals this
  * worker's receiver authority into the exact activated build.
  */
-import { rpc, schemaRpc } from "@vibestudio/rpc";
+import { rpc, schemaRpc, deserializeRpcFailure } from "@vibestudio/rpc";
 import type { MethodSchema } from "@vibestudio/shared/typedServiceClient";
 import type { DoAlarmSchedule } from "@vibestudio/shared/doDispatcher";
 import type {
@@ -25,7 +27,6 @@ import type {
 } from "@vibestudio/shared/durableWork";
 import {
   gadWireMethods,
-  StoredRegistryMutationInputSchema,
 } from "@vibestudio/service-schemas/workspaceSource";
 import {
   logIdForChannel,
@@ -117,25 +118,16 @@ import {
   isAgenticLogEventKind,
   eventKindSchemas,
   GENESIS_EVENT_HASH,
-  assertAgenticEventStoredValuesEncoded,
   brandId,
   collectStoredValueRefs,
-  isStoredValueRef,
   publicActorRef,
-  publicParticipantMetadata,
-  publicParticipantRef,
-  sanitizeAgenticEventParticipantRefs,
-  storedAgenticEventSchema,
   type ActorRef,
-  type AgenticEvent,
   type ChannelEnvelope,
   type ChannelId,
   type EnvelopeId,
   type LogEnvelope,
   type LogEventCausality,
   type LogKind,
-  type ParticipantRef,
-  type ParticipantSelector,
   type TrajectoryEvent,
 } from "@workspace/agentic-protocol";
 import {
@@ -186,10 +178,8 @@ type ChannelRosterRow = ChannelRosterInspection["rows"][number];
 type StorageDiagnostic = AgentHealthInspection["storage"]["rows"][number];
 
 /** First supported production schema for the semantic workspace authority. */
-const GAD_WORKSPACE_SCHEMA_VERSION = 65;
+const GAD_WORKSPACE_SCHEMA_VERSION = 66;
 
-const PUBLICATION_RETRY_BASE_MS = 250;
-const PUBLICATION_RETRY_MAX_MS = 30_000;
 
 const utf8Bytes = (value: string): number =>
   new TextEncoder().encode(value).byteLength;
@@ -219,25 +209,37 @@ function createPublicationDeliveryOutbox(sql: {
   exec(query: string, ...bindings: SqlBinding[]): unknown;
 }): void {
   sql.exec(`
+    CREATE TABLE IF NOT EXISTS publication_intents (
+      intent_order INTEGER PRIMARY KEY AUTOINCREMENT,
+      channel_id TEXT NOT NULL,
+      envelope_id TEXT NOT NULL,
+      origin_log_id TEXT NOT NULL,
+      origin_head TEXT NOT NULL,
+      origin_envelope_id TEXT NOT NULL,
+      intent_json TEXT NOT NULL CHECK (json_valid(intent_json) = 1),
+      UNIQUE(channel_id, envelope_id)
+    )
+  `);
+  sql.exec(`
     CREATE TABLE IF NOT EXISTS publication_delivery_outbox (
       item_id TEXT PRIMARY KEY,
       channel_id TEXT NOT NULL,
       envelope_id TEXT NOT NULL,
       idempotency_key TEXT NOT NULL UNIQUE,
       attempts INTEGER NOT NULL DEFAULT 0,
-      next_attempt_at INTEGER NOT NULL,
       lease_owner TEXT,
       lease_generation INTEGER NOT NULL DEFAULT 0,
       created_at INTEGER NOT NULL,
       last_attempt_at INTEGER,
       disposition TEXT NOT NULL DEFAULT 'ready'
-        CHECK (disposition IN ('ready', 'leased', 'retrying')),
+        CHECK (disposition IN ('ready', 'leased', 'failed')),
+      failure_json TEXT CHECK (failure_json IS NULL OR json_valid(failure_json) = 1),
       UNIQUE(channel_id, envelope_id)
     )
   `);
   sql.exec(
     `CREATE INDEX IF NOT EXISTS idx_publication_delivery_claim
-       ON publication_delivery_outbox(disposition, next_attempt_at, created_at)`,
+       ON publication_delivery_outbox(disposition, created_at)`,
   );
 }
 
@@ -375,20 +377,6 @@ function existingMemoryIndexMode(sql: {
 
 /** Valid log/event actor kinds. Actor provenance can be semantic participants
  *  (`agent`, `user`) or runtime principals (`do`, `worker`, `server`, etc.). */
-const ACTOR_KINDS = new Set([
-  "user",
-  "agent",
-  "system",
-  "external",
-  "panel",
-  "app",
-  "worker",
-  "do",
-  "shell",
-  "server",
-  "extension",
-]);
-
 /** Tables that must exist before a schema version is recorded as ready
  *  (validated by DurableObjectBase after every createTables()). Lazily
  *  created tables (memory index) are deliberately absent. */
@@ -414,6 +402,7 @@ const GAD_REQUIRED_TABLES = [
   "agent_directory",
   "gad_blobs",
   "workspace_source_initializations",
+  "publication_intents",
   "publication_delivery_outbox",
   ...SEMANTIC_VCS_REQUIRED_TABLES,
 ] as const;
@@ -421,7 +410,6 @@ const GAD_REQUIRED_TABLES = [
 /** Log kinds whose events are full agentic trajectory events (validated and
  *  projected). `log_kind` stays metadata for append/fork/replay/integrity —
  *  this set only gates content validation and projection dispatch. */
-const AGENTIC_LOG_KINDS = new Set<string>(["trajectory", "channel"]);
 
 const TERMINAL_INVOCATION_KINDS = new Set([
   "invocation.completed",
@@ -430,19 +418,7 @@ const TERMINAL_INVOCATION_KINDS = new Set([
   "invocation.abandoned",
 ]);
 
-export interface LogAppendEventInput {
-  envelopeId?: string | null;
-  actor: ActorRef;
-  to?: ParticipantRef[] | ParticipantSelector | null;
-  payloadKind: string;
-  payload: unknown;
-  causality?: LogEventCausality | null;
-  annotations?: Record<string, unknown> | null;
-  appendedAt?: string | null;
-  publish?: {
-    channels: Array<{ channelId: string; audience?: unknown }>;
-  } | null;
-}
+export type { LogAppendEventInput } from "@workspace/agentic-protocol";
 
 export interface AppendLogEventInput {
   logId: string;
@@ -701,38 +677,6 @@ function summarizeJsonForInspection(value: unknown, depth = 0): GadJsonValue {
   return String(value);
 }
 
-function isActorRefLike(value: unknown): value is ActorRef {
-  const kind =
-    !!value && typeof value === "object" && !Array.isArray(value)
-      ? (value as Record<string, unknown>)["kind"]
-      : undefined;
-  return (
-    !!value &&
-    typeof value === "object" &&
-    !Array.isArray(value) &&
-    ACTOR_KINDS.has(String(kind)) &&
-    typeof (value as Record<string, unknown>)["id"] === "string"
-  );
-}
-
-function sanitizeRegistryMutation(
-  mutation: StoredRegistryMutationInput,
-): StoredRegistryMutationInput {
-  if (mutation.kind !== "upsertMessageType") return mutation;
-  const registeredBy = mutation.row.registeredBy;
-  return StoredRegistryMutationInputSchema.parse({
-    ...mutation,
-    row: {
-      ...mutation.row,
-      ...(isActorRefLike(registeredBy)
-        ? { registeredBy: publicActorRef(registeredBy) }
-        : registeredBy !== undefined
-          ? { registeredBy: publicParticipantMetadata(registeredBy) }
-          : {}),
-    },
-  });
-}
-
 function findPrivateParticipantMetadataPath(
   value: unknown,
   path = "$",
@@ -775,97 +719,6 @@ function findPrivateParticipantMetadataPath(
   return null;
 }
 
-function sanitizeRosterMethodSummaries(methods: unknown): unknown[] {
-  const publicMethods = publicParticipantMetadata({ methods })?.methods;
-  return publicMethods ?? [];
-}
-
-function sanitizeRosterSnapshotPayload(payload: unknown): unknown {
-  if (!payload || typeof payload !== "object" || Array.isArray(payload))
-    return payload;
-  const record = payload as Record<string, unknown>;
-  const details = record["details"];
-  if (!details || typeof details !== "object" || Array.isArray(details))
-    return payload;
-  const detailsRecord = details as Record<string, unknown>;
-  if (
-    detailsRecord["kind"] !== "roster.snapshot" &&
-    record["kind"] !== "roster.snapshot"
-  ) {
-    return payload;
-  }
-  const roster = detailsRecord["roster"];
-  if (!roster || typeof roster !== "object" || Array.isArray(roster))
-    return payload;
-  const rosterRecord = roster as Record<string, unknown>;
-  if (!Array.isArray(rosterRecord["participants"])) return payload;
-
-  return {
-    ...record,
-    details: {
-      ...detailsRecord,
-      roster: {
-        ...rosterRecord,
-        participants: rosterRecord["participants"].map((participant) => {
-          if (
-            !participant ||
-            typeof participant !== "object" ||
-            Array.isArray(participant)
-          ) {
-            return participant;
-          }
-          const participantRecord = participant as Record<string, unknown>;
-          const ref = participantRecord["ref"];
-          return {
-            ...participantRecord,
-            ...(ref && typeof ref === "object" && !Array.isArray(ref)
-              ? { ref: publicParticipantRef(ref as ParticipantRef) }
-              : {}),
-            methods: sanitizeRosterMethodSummaries(
-              participantRecord["methods"],
-            ),
-          };
-        }),
-      },
-    },
-  };
-}
-
-function sanitizeAudience(
-  audience: ParticipantRef[] | ParticipantSelector | null | undefined,
-): ParticipantRef[] | ParticipantSelector | undefined {
-  if (audience == null) return undefined;
-  if (!Array.isArray(audience)) return audience;
-  return audience.map((participant) => publicParticipantRef(participant));
-}
-
-function isAgenticEventPayload(payload: unknown): payload is AgenticEvent {
-  return (
-    !!payload &&
-    typeof payload === "object" &&
-    !Array.isArray(payload) &&
-    typeof (payload as Record<string, unknown>)["kind"] === "string" &&
-    typeof (payload as Record<string, unknown>)["actor"] === "object" &&
-    typeof (payload as Record<string, unknown>)["createdAt"] === "string"
-  );
-}
-
-/** Strip cross-log/turn keys so the remaining causality matches the agentic
- *  trajectory causality shape. */
-function agenticCausality(
-  causality: LogEventCausality | null | undefined,
-): Record<string, unknown> | undefined {
-  if (!causality) return undefined;
-  const {
-    originLogId: _originLogId,
-    originHead: _originHead,
-    originEnvelopeId: _originEnvelopeId,
-    turnId: _turnId,
-    ...rest
-  } = causality as Record<string, unknown>;
-  return Object.keys(rest).length > 0 ? rest : undefined;
-}
-
 function terminalInvocationSignatureFromEnvelope(
   envelope: LogEnvelope,
 ): string {
@@ -881,21 +734,6 @@ function terminalInvocationSignatureFromEnvelope(
     },
     payload: envelope.payload,
   });
-}
-
-interface PreparedLogEvent {
-  envelopeId: string;
-  /** Whether the caller supplied appendedAt (idempotent replays of implicit-
-   *  timestamp appends compare against the stored timestamp instead). */
-  appendedAtExplicit: boolean;
-  actor: ActorRef;
-  to?: ParticipantRef[] | ParticipantSelector;
-  payloadKind: string;
-  payload: unknown;
-  annotations?: Record<string, unknown>;
-  causality?: LogEventCausality;
-  appendedAt: string;
-  publish: Array<{ channelId: string; audience?: unknown }>;
 }
 
 interface LineageSegment {
@@ -940,9 +778,7 @@ export class GadWorkspaceDO extends DurableObjectBase {
     return GAD_REQUIRED_TABLES;
   }
 
-  protected override durableWorkQueues(): readonly DurableWorkQueue[] {
-    return ["workspace-publication"];
-  }
+  static override readonly durableWorkQueues: readonly DurableWorkQueue[] = ["workspace-publication"];
 
   protected override releaseDurableWorkClaims(
     previousWorkerId: string | null,
@@ -951,46 +787,104 @@ export class GadWorkspaceDO extends DurableObjectBase {
     if (!previousWorkerId) return;
     this.sql.exec(
       `UPDATE publication_delivery_outbox
-          SET disposition = 'ready', lease_owner = NULL, next_attempt_at = ?
+          SET disposition = 'ready', lease_owner = NULL
         WHERE disposition = 'leased' AND lease_owner = ?`,
-      Date.now(),
       previousWorkerId,
     );
   }
 
-  private hasReadyPublicationDelivery(now: number): boolean {
-    return (
-      this.sql
-        .exec(
-          `SELECT 1 FROM publication_delivery_outbox
-            WHERE disposition IN ('ready', 'retrying') AND next_attempt_at <= ?
-            LIMIT 1`,
-          now,
-        )
-        .toArray().length > 0
-    );
-  }
-
-  private nextPublicationRecoveryAt(): number | null {
-    const value = this.sql
-      .exec(
-        `SELECT MIN(next_attempt_at) AS due
-           FROM publication_delivery_outbox
-          WHERE disposition = 'retrying'`,
-      )
-      .toArray()[0]?.["due"];
-    return typeof value === "number" ? value : null;
+  private hasReadyPublicationDelivery(): boolean {
+    return this.sql.exec(
+      `SELECT 1 FROM publication_delivery_outbox current
+       JOIN publication_intents intent USING (channel_id, envelope_id)
+       WHERE current.disposition = 'ready' AND NOT EXISTS (
+         SELECT 1 FROM publication_delivery_outbox predecessor
+         JOIN publication_intents earlier USING (channel_id, envelope_id)
+         WHERE predecessor.channel_id = current.channel_id AND earlier.intent_order < intent.intent_order
+       ) LIMIT 1`,
+    ).toArray().length > 0;
   }
 
   override async alarm(): Promise<DoAlarmSchedule | null> {
     await super.alarm();
-    if (this.hasReadyPublicationDelivery(Date.now())) {
-      this.markWorkReady("workspace-publication");
+    if (this.hasReadyPublicationDelivery()) this.markWorkReady("workspace-publication");
+    return null;
+  }
+
+  private readonly publicationWaiters = new Set<{
+    items: Set<string>;
+    resolve: () => void;
+    reject: (error: unknown) => void;
+  }>();
+  private publicationAdmissionClosed = false;
+
+  protected override beginLifecycleRelease(input: import("@vibestudio/shared/doDispatcher").LifecyclePrepareInput): void {
+    this.publicationAdmissionClosed = true;
+    super.beginLifecycleRelease(input);
+  }
+
+  protected override async cancelLifecyclePreparation(input: import("@vibestudio/shared/doDispatcher").LifecyclePrepareInput): Promise<void> {
+    await super.cancelLifecyclePreparation(input);
+    this.publicationAdmissionClosed = false;
+    this.publicationReleaseBarrier = null;
+  }
+
+  private publicationReleaseBarrier: { items: string[] } | null = null;
+
+  @rpc({ principals: ["host"], website: { kind: "closed", reason: "The host captures retained publication obligations before releasing their owner." }, effect: { kind: "open" }, tier: "open", sensitivity: "write" })
+  override async prepareDurableWorkRelease(stage: import("@vibestudio/shared/durableWork").DurableWorkReleaseStage): Promise<{ queues: DurableWorkQueue[]; barrier: JsonValue }> {
+    if (stage === "owner") return { queues: [], barrier: null };
+    this.publicationAdmissionClosed = true;
+    const items = this.sql.exec(`SELECT item_id FROM publication_delivery_outbox ORDER BY item_id`).toArray().map((row) => String(row["item_id"]));
+    this.publicationReleaseBarrier = { items };
+    return { queues: items.length > 0 ? ["workspace-publication"] : [], barrier: {items:[...items]} };
+  }
+
+  @rpc({ principals: ["host"], website: { kind: "closed", reason: "The host joins the exact captured publication obligations through their normal driver." }, effect: { kind: "open" }, tier: "open", sensitivity: "read" })
+  override async waitDurableWorkRelease(stage: import("@vibestudio/shared/durableWork").DurableWorkReleaseStage, barrier: JsonValue): Promise<void> {
+    if (stage === "owner") {
+      if (barrier !== null) throw new Error("Workspace owner release requires its empty barrier");
+      return;
     }
-    const recoveryAt = this.nextPublicationRecoveryAt();
-    return recoveryAt === null
-      ? null
-      : { wakeAt: Math.max(recoveryAt, Date.now() + 100) };
+    if (!this.publicationReleaseBarrier || canonicalJson(barrier) !== canonicalJson(this.publicationReleaseBarrier)) {
+      throw new Error("Workspace publication release barrier is not owned by this activation");
+    }
+    const items = this.publicationReleaseBarrier.items;
+    if (items.length === 0) return;
+    const signal = this.rpcAbortSignal;
+    signal?.throwIfAborted();
+    let waiter!: { items: Set<string>; resolve: () => void; reject: (error: unknown) => void };
+    const waiting = new Promise<void>((resolve, reject) => {
+      waiter = { items: new Set(items), resolve, reject };
+      this.publicationWaiters.add(waiter);
+    });
+    const abort = () => { this.publicationWaiters.delete(waiter); waiter.reject(signal!.reason); };
+    signal?.addEventListener("abort", abort, { once: true });
+    this.settlePublicationWaiters();
+    try { await waiting; }
+    finally { signal?.removeEventListener("abort", abort); this.publicationWaiters.delete(waiter); }
+  }
+
+  override async resumeAfterRestart(input: import("@vibestudio/shared/doDispatcher").LifecycleResumeInput): Promise<void> {
+    await super.resumeAfterRestart(input);
+    this.publicationAdmissionClosed = false;
+    this.publicationReleaseBarrier = null;
+  }
+
+  private settlePublicationWaiters(): void {
+    for (const waiter of [...this.publicationWaiters]) {
+      let failure: unknown;
+      for (const item of [...waiter.items]) {
+        const row = this.sql.exec(`SELECT disposition, failure_json FROM publication_delivery_outbox WHERE item_id = ?`, item).toArray()[0];
+        if (!row) waiter.items.delete(item);
+        else if (row["disposition"] === "failed") {
+          failure = deserializeRpcFailure(JSON.parse(String(row["failure_json"])));
+          break;
+        }
+      }
+      if (failure !== undefined) { this.publicationWaiters.delete(waiter); waiter.reject(failure); }
+      else if (waiter.items.size === 0) { this.publicationWaiters.delete(waiter); waiter.resolve(); }
+    }
   }
 
   @rpc({
@@ -1031,11 +925,16 @@ export class GadWorkspaceDO extends DurableObjectBase {
     const claims = this.ctx.storage.transactionSync(() => {
       const rows = this.sql
         .exec(
-          `SELECT * FROM publication_delivery_outbox
-            WHERE disposition IN ('ready', 'retrying') AND next_attempt_at <= ?
-            ORDER BY created_at, item_id
+          `SELECT o.*, i.intent_json FROM publication_delivery_outbox o
+             JOIN publication_intents i USING (channel_id, envelope_id)
+            WHERE o.disposition = 'ready'
+              AND NOT EXISTS (
+                SELECT 1 FROM publication_delivery_outbox predecessor
+                JOIN publication_intents earlier USING (channel_id, envelope_id)
+                WHERE predecessor.channel_id = o.channel_id AND earlier.intent_order < i.intent_order
+              )
+            ORDER BY i.intent_order
             LIMIT ?`,
-          input.now,
           input.limit,
         )
         .toArray();
@@ -1066,12 +965,12 @@ export class GadWorkspaceDO extends DurableObjectBase {
               className: "PubSubChannel",
               objectKey: channelId,
             },
-            envelopeIds: [String(row["envelope_id"])],
+            intents: [JSON.parse(String(row["intent_json"]))],
           },
         } satisfies WorkClaim;
       });
     });
-    if (!this.hasReadyPublicationDelivery(input.now)) {
+    if (!this.hasReadyPublicationDelivery()) {
       this.acknowledgeDurableWorkReady("workspace-publication");
     }
     return claims;
@@ -1090,10 +989,10 @@ export class GadWorkspaceDO extends DurableObjectBase {
   })
   settleReadyWork(
     queue: DurableWorkQueue,
-    request: SettleRequest<{ broadcasted: number }>,
+    request: SettleRequest<{ admitted: number; discarded?: never } | { discarded: number; admitted?: never }>,
   ): ClaimSettlement {
     if (queue !== "workspace-publication") return "stale";
-    return this.ctx.storage.transactionSync(() => {
+    const result = this.ctx.storage.transactionSync(() => {
       const row = this.sql
         .exec(
           `SELECT lease_owner, lease_generation, disposition
@@ -1109,9 +1008,9 @@ export class GadWorkspaceDO extends DurableObjectBase {
       ) {
         return "stale";
       }
-      if (!request.outcome || request.outcome.broadcasted !== 1) {
+      if (!request.outcome || !((request.outcome.admitted === 1 && request.outcome.discarded === undefined) || (request.outcome.discarded === 1 && request.outcome.admitted === undefined))) {
         throw new Error(
-          "settleReadyWork: publication was not broadcast exactly once",
+          "settleReadyWork: publication was not admitted exactly once",
         );
       }
       this.sql.exec(
@@ -1120,6 +1019,8 @@ export class GadWorkspaceDO extends DurableObjectBase {
       );
       return "accepted";
     });
+    this.settlePublicationWaiters();
+    return result;
   }
 
   @rpc({
@@ -1135,42 +1036,20 @@ export class GadWorkspaceDO extends DurableObjectBase {
   })
   failReadyWork(
     queue: DurableWorkQueue,
-    request: { workerId: string; itemId: string; generation: number },
-  ): { retryAt: number } | "stale" {
+    request: { workerId: string; itemId: string; generation: number; error: import("@vibestudio/rpc").RpcFailure },
+  ): { failed: true } | "stale" {
     if (queue !== "workspace-publication") return "stale";
-    const result = this.ctx.storage.transactionSync(() => {
-      const row = this.sql
-        .exec(
-          `SELECT attempts FROM publication_delivery_outbox
-            WHERE item_id = ? AND lease_owner = ? AND lease_generation = ?
-              AND disposition = 'leased'`,
-          request.itemId,
-          request.workerId,
-          request.generation,
-        )
-        .toArray()[0];
-      if (!row) return "stale";
-      const attempts = Number(row["attempts"] ?? 0) + 1;
-      const retryAt =
-        Date.now() +
-        Math.min(
-          PUBLICATION_RETRY_BASE_MS * 2 ** Math.min(attempts - 1, 7),
-          PUBLICATION_RETRY_MAX_MS,
-        );
-      this.sql.exec(
-        `UPDATE publication_delivery_outbox
-            SET attempts = ?, disposition = 'retrying', next_attempt_at = ?, lease_owner = NULL
-          WHERE item_id = ? AND lease_owner = ? AND lease_generation = ?`,
-        attempts,
-        retryAt,
-        request.itemId,
-        request.workerId,
-        request.generation,
-      );
-      return { retryAt };
-    });
-    if (result !== "stale") this.setAlarmAt(result.retryAt);
-    return result;
+    const changed = this.sql.exec(
+      `UPDATE publication_delivery_outbox
+          SET disposition = 'failed', failure_json = ?, lease_owner = NULL
+        WHERE item_id = ? AND lease_owner = ? AND lease_generation = ? AND disposition = 'leased'
+        RETURNING item_id`,
+      JSON.stringify(rpcFailureSchema.parse(request.error)),
+      request.itemId, request.workerId, request.generation,
+    ).toArray().length;
+    if (!changed) return "stale";
+    this.settlePublicationWaiters();
+    return { failed: true };
   }
 
   @rpc({
@@ -1188,11 +1067,10 @@ export class GadWorkspaceDO extends DurableObjectBase {
     readyQueues: DurableWorkQueue[];
     nextRecoveryAt: number | null;
   } {
-    const now = Date.now();
-    const ready = this.hasReadyPublicationDelivery(now);
+    const ready = this.hasReadyPublicationDelivery();
     return {
       readyQueues: ready ? ["workspace-publication"] : [],
-      nextRecoveryAt: this.nextPublicationRecoveryAt(),
+      nextRecoveryAt: null,
     };
   }
 
@@ -1911,6 +1789,11 @@ export class GadWorkspaceDO extends DurableObjectBase {
   @schemaRpc()
   vcsResolveRepository(request: SemanticDispatchRequest): Promise<unknown> {
     return this.vcsSemantic("resolveRepository", request);
+  }
+
+  @schemaRpc()
+  vcsReadFiles(request: SemanticDispatchRequest): Promise<unknown> {
+    return this.vcsSemantic("readFiles", request);
   }
 
   @schemaRpc()
@@ -2634,13 +2517,31 @@ export class GadWorkspaceDO extends DurableObjectBase {
   }
 
   @schemaRpc()
+  initializeLogHead(input: { logId: string; head: string; logKind: string }): { seq: 0; hash: string } {
+    this.ensureReady();
+    return this.transaction(() => {
+      const existing = this.logHeadRow(input.logId, input.head);
+      if (existing) {
+        if (existing["log_kind"] !== input.logKind || existing["parent_log_id"] !== null)
+          throw new Error("Log initialization changed its canonical root identity");
+      } else {
+        this.sql.exec(`INSERT INTO log_heads (log_id, head, log_kind, owner_json, created_at) VALUES (?, ?, ?, ?, ?)`, input.logId, input.head, input.logKind, json(null), nowIso());
+      }
+      return { seq: 0, hash: GENESIS_EVENT_HASH };
+    });
+  }
+
+  @schemaRpc()
   async appendLogEvent(
     input: AppendLogEventInput,
   ): Promise<AppendLogEventResult> {
     this.ensureReady();
-    const publicationWasReady = this.hasReadyPublicationDelivery(Date.now());
+    if (this.publicationAdmissionClosed && input.events.some((event) => event.publish?.channels.length)) {
+      throw new Error("Workspace publication admission is closed for lifecycle release");
+    }
+    const publicationWasReady = this.hasReadyPublicationDelivery();
     const result = this.transaction(() => this.appendLogEventInTxn(input));
-    if (!publicationWasReady && this.hasReadyPublicationDelivery(Date.now())) {
+    if (!publicationWasReady && this.hasReadyPublicationDelivery()) {
       this.markWorkReady("workspace-publication");
     }
     return result;
@@ -2822,7 +2723,7 @@ export class GadWorkspaceDO extends DurableObjectBase {
     let prevHash = pointer.hash;
     for (const event of remaining) {
       if (
-        AGENTIC_LOG_KINDS.has(logKind) &&
+        isAgenticLogKind(logKind) &&
         event.payloadKind === "turn.opened" &&
         event.causality?.turnId
       ) {
@@ -2868,27 +2769,32 @@ export class GadWorkspaceDO extends DurableObjectBase {
 
       for (const target of event.publish) {
         const pubEnvelopeId = `pub:${event.envelopeId}:${target.channelId}`;
-        const result = this.appendLogEventInTxn({
-          logId: target.channelId,
-          head: CHANNEL_LOG_HEAD,
-          logKind: "channel",
-          events: [
-            {
-              envelopeId: pubEnvelopeId,
-              actor: event.actor,
-              to: (target.audience ?? null) as LogAppendEventInput["to"],
-              payloadKind: AGENTIC_EVENT_PAYLOAD_KIND,
-              payload: agenticEventFromLogEnvelope(envelope),
-              causality: {
-                originLogId: input.logId,
-                originHead: input.head,
-                originEnvelopeId: event.envelopeId,
-              },
-              appendedAt: event.appendedAt,
-            },
-          ],
-        });
-        void result;
+        const intent: LogAppendEventInput = {
+          envelopeId: pubEnvelopeId,
+          actor: event.actor,
+          to: (target.audience ?? null) as LogAppendEventInput["to"],
+          payloadKind: AGENTIC_EVENT_PAYLOAD_KIND,
+          payload: agenticEventFromLogEnvelope(envelope),
+          annotations: { contentClass: "internal", externalKeys: [] },
+          causality: {
+            originLogId: input.logId,
+            originHead: input.head,
+            originEnvelopeId: event.envelopeId,
+          },
+          appendedAt: event.appendedAt,
+        };
+        this.sql.exec(
+          `INSERT INTO publication_intents (
+             channel_id, envelope_id, origin_log_id, origin_head,
+             origin_envelope_id, intent_json
+           ) VALUES (?, ?, ?, ?, ?, ?)`,
+          target.channelId,
+          pubEnvelopeId,
+          input.logId,
+          input.head,
+          event.envelopeId,
+          JSON.stringify(intent),
+        );
         published.push({
           originEnvelopeId: event.envelopeId,
           channelId: target.channelId,
@@ -2899,13 +2805,12 @@ export class GadWorkspaceDO extends DurableObjectBase {
         this.sql.exec(
           `INSERT OR IGNORE INTO publication_delivery_outbox (
              item_id, channel_id, envelope_id, idempotency_key, attempts,
-             next_attempt_at, lease_generation, created_at, disposition
-           ) VALUES (?, ?, ?, ?, 0, ?, 0, ?, 'ready')`,
+             lease_generation, created_at, disposition
+           ) VALUES (?, ?, ?, ?, 0, 0, ?, 'ready')`,
           itemId,
           target.channelId,
           pubEnvelopeId,
           `workspace-publication:${target.channelId}:${pubEnvelopeId}`,
-          createdAt,
           createdAt,
         );
       }
@@ -2950,9 +2855,9 @@ export class GadWorkspaceDO extends DurableObjectBase {
   ): AppendLogEventResult["published"] {
     const rows = this.sql
       .exec(
-        `SELECT log_id, envelope_id FROM log_events
+        `SELECT channel_id, envelope_id FROM publication_intents
          WHERE origin_log_id = ? AND origin_head = ? AND origin_envelope_id = ?
-         ORDER BY log_id ASC, seq ASC`,
+         ORDER BY channel_id ASC, envelope_id ASC`,
         originLogId,
         originHead,
         originEnvelopeId,
@@ -2960,7 +2865,7 @@ export class GadWorkspaceDO extends DurableObjectBase {
       .toArray() as JsonRecord[];
     return rows.map((row) => ({
       originEnvelopeId,
-      channelId: String(row["log_id"]),
+      channelId: String(row["channel_id"]),
       envelopeId: String(row["envelope_id"]),
     }));
   }
@@ -3002,98 +2907,8 @@ export class GadWorkspaceDO extends DurableObjectBase {
   }
 
   /** Validate + sanitize one append input into its storable form. */
-  private prepareLogEvent(
-    logKind: string,
-    input: LogAppendEventInput,
-  ): PreparedLogEvent {
-    if (!input.payloadKind)
-      throw new Error("appendLogEvent requires payloadKind");
-    const envelopeId = input.envelopeId ?? crypto.randomUUID();
-    let appendedAtExplicit = input.appendedAt != null;
-    let appendedAt = input.appendedAt ?? nowIso();
-    const actor = publicActorRef(input.actor) as ActorRef;
-    const to = sanitizeAudience(input.to ?? undefined);
-    let payload = input.payload;
-    let causality = input.causality ?? undefined;
-    let payloadKind = input.payloadKind;
-    let annotations = input.annotations ?? undefined;
-    if (
-      annotations &&
-      "metadata" in annotations &&
-      annotations["metadata"] != null
-    ) {
-      annotations = {
-        ...annotations,
-        metadata: publicParticipantMetadata(
-          annotations["metadata"] as Record<string, unknown>,
-        ),
-      };
-    }
-
-    const agenticKind =
-      AGENTIC_LOG_KINDS.has(logKind) &&
-      isAgenticLogEventKind(input.payloadKind);
-    if (agenticKind) {
-      const causalityForEvent = agenticCausality(causality);
-      const reconstructed = storedAgenticEventSchema.parse({
-        kind: input.payloadKind,
-        actor: input.actor,
-        ...(causality?.turnId ? { turnId: causality.turnId } : {}),
-        ...(causalityForEvent ? { causality: causalityForEvent } : {}),
-        payload,
-        createdAt: appendedAt,
-      }) as AgenticEvent;
-      const sanitized = sanitizeAgenticEventParticipantRefs(reconstructed);
-      assertAgenticEventStoredValuesEncoded(sanitized);
-      payload = sanitizeRosterSnapshotPayload(sanitized.payload);
-    } else if (input.payloadKind === AGENTIC_EVENT_PAYLOAD_KIND) {
-      if (!isAgenticEventPayload(payload)) {
-        throw new Error(
-          "agentic channel payload must be a stored agentic event",
-        );
-      }
-      const parsed = storedAgenticEventSchema.parse(payload) as AgenticEvent;
-      const sanitized = sanitizeAgenticEventParticipantRefs(parsed);
-      assertAgenticEventStoredValuesEncoded(sanitized);
-      // Channel transport carries an AgenticEvent; the journal stores its
-      // semantic fields exactly like any other agentic log. There is no
-      // second trajectory or separately acknowledged projection.
-      payloadKind = sanitized.kind;
-      payload = sanitizeRosterSnapshotPayload(sanitized.payload);
-      const eventCausality = {
-        ...sanitized.causality,
-        ...(sanitized.turnId ? { turnId: sanitized.turnId } : {}),
-      };
-      for (const [key, value] of Object.entries(eventCausality)) {
-        const presented = (causality as Record<string, unknown> | undefined)?.[
-          key
-        ];
-        if (
-          presented !== undefined &&
-          canonicalJson(presented) !== canonicalJson(value)
-        )
-          throw new Error(
-            `Channel event conflicts with envelope causality: ${key}`,
-          );
-      }
-      causality = { ...causality, ...eventCausality };
-      if (Object.keys(causality).length === 0) causality = undefined;
-      appendedAt = sanitized.createdAt;
-      appendedAtExplicit = true;
-    }
-
-    return {
-      envelopeId,
-      appendedAtExplicit,
-      actor,
-      ...(to !== undefined ? { to } : {}),
-      payloadKind,
-      payload,
-      ...(annotations !== undefined ? { annotations } : {}),
-      ...(causality !== undefined ? { causality } : {}),
-      appendedAt,
-      publish: input.publish?.channels ?? [],
-    };
+  private prepareLogEvent(logKind: string, input: LogAppendEventInput): PreparedLogEvent {
+    return prepareLogEvent(logKind, input, { envelopeId: input.envelopeId ?? crypto.randomUUID(), appendedAt: input.appendedAt ?? nowIso() });
   }
 
   private insertLogEvent(envelope: LogEnvelope): void {
@@ -3385,7 +3200,7 @@ export class GadWorkspaceDO extends DurableObjectBase {
       return;
     }
     if (
-      !AGENTIC_LOG_KINDS.has(logKind) ||
+      !isAgenticLogKind(logKind) ||
       !isAgenticLogEventKind(envelope.payloadKind)
     )
       return;
@@ -3837,8 +3652,8 @@ export class GadWorkspaceDO extends DurableObjectBase {
   private static readonly ROSTER_BACKFILL_MARKER =
     "roster-projection:subscription-facts:v1";
 
-  protected override afterSchemaReady(): void {
-    super.afterSchemaReady();
+  protected override restoreActivationState(): undefined {
+    super.restoreActivationState();
     if (this.getStateValue(GadWorkspaceDO.ROSTER_BACKFILL_MARKER)) return;
     const rows = this.sql
       .exec(
@@ -5297,88 +5112,8 @@ export class GadWorkspaceDO extends DurableObjectBase {
    *  `Invalid registry payload` throw). Idempotent under fork-seed/replay via
    *  the monotone seq guards in applyRegistryMutation. */
   private projectMessageTypeEvent(envelope: LogEnvelope): void {
-    const event = agenticEventFromLogEnvelope(envelope);
-    const kind = envelope.payloadKind;
-    if (kind !== "messageType.registered" && kind !== "messageType.cleared")
-      return;
-    const payload =
-      event["payload"] &&
-      typeof event["payload"] === "object" &&
-      !Array.isArray(event["payload"])
-        ? (event["payload"] as Record<string, unknown>)
-        : {};
-    const typeId = asString(payload["typeId"]);
-    if (!typeId) {
-      throw new Error(
-        `${kind} payload invalid: typeId must be a non-empty string`,
-      );
-    }
-    if (kind === "messageType.cleared") {
-      this.applyRegistryMutation(envelope.logId, envelope.seq, {
-        kind: "clearMessageType",
-        typeId,
-      });
-      return;
-    }
-    const displayMode = payload["displayMode"];
-    if (displayMode !== "inline" && displayMode !== "row") {
-      throw new Error(
-        `messageType.registered payload invalid: displayMode must be "inline" or "row"`,
-      );
-    }
-    const source = payload["source"];
-    if (!isStoredValueRef(source)) {
-      throw new Error(`messageType.registered payload invalid: source must be stored by reference`);
-    }
-    if (payload["imports"] !== undefined && !isStoredValueRef(payload["imports"])) {
-      throw new Error(
-        `messageType.registered payload invalid: imports must be stored by reference`,
-      );
-    }
-    for (const field of ["stateSchema", "updateSchema"] as const) {
-      const value = payload[field];
-      if (
-        value !== undefined &&
-        (typeof value !== "object" || Array.isArray(value))
-      ) {
-        throw new Error(
-          `messageType.registered payload invalid: ${field} must be an object`,
-        );
-      }
-    }
-    const registeredBy = payload["registeredBy"] ?? event["actor"];
-    this.applyRegistryMutation(
-      envelope.logId,
-      envelope.seq,
-      sanitizeRegistryMutation(
-        StoredRegistryMutationInputSchema.parse({
-          kind: "upsertMessageType",
-          typeId,
-          row: {
-            displayMode: displayMode as "inline" | "row",
-            source,
-            ...(payload["imports"] ? { imports: payload["imports"] } : {}),
-            ...(payload["stateSchema"]
-              ? {
-                  stateSchema: payload["stateSchema"] as Record<
-                    string,
-                    unknown
-                  >,
-                }
-              : {}),
-            ...(payload["updateSchema"]
-              ? {
-                  updateSchema: payload["updateSchema"] as Record<
-                    string,
-                    unknown
-                  >,
-                }
-              : {}),
-            ...(registeredBy ? { registeredBy } : {}),
-          },
-        }),
-      ),
-    );
+    const mutation = registryMutationFromLogEnvelope(envelope);
+    if (mutation) this.applyRegistryMutation(envelope.logId, envelope.seq, mutation);
   }
 
   private applyRegistryMutation(

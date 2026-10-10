@@ -2,7 +2,6 @@ import { resolveDurableObjectService } from "@vibestudio/service-schemas/clients
 import { modelSettingsRpcMethods } from "@workspace/model-catalog/rpc-contract";
 import { agentRpcMethods } from "@workspace/agentic-do/rpc-contract";
 import { mainRpcMethods } from "@vibestudio/service-schemas/mainRpc";
-import { channelClientRpcMethods } from "@workspace/pubsub/rpc-contract";
 import {
   DurableObjectBase,
   doTargetId,
@@ -11,6 +10,7 @@ import {
 import { launchAgentIntoChannel } from "@workspace/agentic-core/agent-launch";
 import { quickfireAgentConfig } from "@workspace/quickfire-core/agent";
 import { MODEL_SETTINGS_SERVICE_PROTOCOL } from "@workspace/model-catalog/catalog";
+
 import type { QuickfireSession } from "@workspace/quickfire-core/service";
 
 const CHANNEL_SOURCE = "workers/pubsub-channel";
@@ -41,6 +41,14 @@ interface SessionRow {
   agent_key: string;
   created_at: number;
   promoted_at: number | null;
+}
+
+interface PanelTreeDetail {
+  slot?: {
+    parent_slot_id?: string | null;
+    current_entity_title?: string | null;
+  };
+  currentHistory?: { context_id?: string; source?: string };
 }
 
 export class QuickfireSessionsDO extends DurableObjectBase {
@@ -80,7 +88,7 @@ export class QuickfireSessionsDO extends DurableObjectBase {
       "main",
       mainRpcMethods["workspace-state.panelTree.detail"],
       [slotId],
-    ));
+    )) as PanelTreeDetail | null;
     const contextId = detail?.currentHistory?.context_id;
     const source = detail?.currentHistory?.source;
     if (!contextId || !source)
@@ -98,7 +106,7 @@ export class QuickfireSessionsDO extends DurableObjectBase {
       "main",
       mainRpcMethods["workspace-state.entity.resolveActive"],
       [row.agent_entity_id],
-    ));
+    )) as { status?: string } | null;
     return record?.status === "active";
   }
 
@@ -123,39 +131,10 @@ export class QuickfireSessionsDO extends DurableObjectBase {
     ]);
   }
 
-  private async activity(row: SessionRow): Promise<{
-    messageCount: number | null;
-    lastActivityAt: number | null;
-  }> {
-    try {
-      const target = `do:${CHANNEL_SOURCE}:${CHANNEL_CLASS}:${row.channel_id}`;
-      const envelope = await this.rpc.call(
-        target,
-        channelClientRpcMethods["getReplayAfter"],
-        [{ after: 0, limit: 1 }],
-      );
-      const messageCount = envelope.ready?.snapshotLastSeq ?? null;
-      if (!messageCount) return { messageCount, lastActivityAt: null };
-      const tail = await this.rpc.call(
-        target,
-        channelClientRpcMethods["getReplayBefore"],
-        [messageCount + 1, 1],
-      );
-      const events = tail.logEvents;
-      return { messageCount, lastActivityAt: events.at(-1)?.ts ?? null };
-    } catch {
-      return { messageCount: null, lastActivityAt: null };
-    }
-  }
-
-  private async present(
+  private present(
     row: SessionRow,
     state: QuickfireSession["state"],
-  ): Promise<QuickfireSession> {
-    const activity =
-      state === "fresh"
-        ? { messageCount: 0, lastActivityAt: null }
-        : await this.activity(row);
+  ): QuickfireSession {
     return {
       slotId: row.slot_id,
       channelId: row.channel_id,
@@ -167,7 +146,10 @@ export class QuickfireSessionsDO extends DurableObjectBase {
       contextId: row.context_id,
       agentEntityId: row.agent_entity_id,
       state,
-      ...activity,
+      // Session discovery owns identity; the channel subscription owns history.
+      // A channel sequence counts events, not conversation messages.
+      messageCount: state === "fresh" ? 0 : null,
+      lastActivityAt: null,
       createdAt: row.created_at,
       promotedAt: row.promoted_at,
     };
@@ -230,17 +212,6 @@ export class QuickfireSessionsDO extends DurableObjectBase {
     }
     if (existing && input.fresh !== true) {
       await this.panelFor(input.slotId);
-      if (existing.promoted_at === null) {
-        // Resource bindings are lifecycle state, not immutable launch state.
-        // Reconcile them when an older durable Quickfire conversation resumes
-        // so newly added built-in grants apply without replacing the agent.
-        await this.rpc.call("main", mainRpcMethods["runtime.replaceResourceBindings"], [
-          {
-            id: existing.agent_entity_id,
-            bindings: agentResourceBindings(input.slotId, existing.channel_id),
-          },
-        ]);
-      }
       return this.present(
         existing,
         existing.promoted_at === null ? "resumed" : "promoted",
@@ -254,16 +225,13 @@ export class QuickfireSessionsDO extends DurableObjectBase {
       );
     }
 
-    const panel = await this.panelFor(input.slotId);
-    const modelSettings = await resolveDurableObjectService(
-      this.rpc,
-      MODEL_SETTINGS_SERVICE_PROTOCOL,
-    );
-    const settings = await this.rpc.call(
-      doTargetId(modelSettings),
-      modelSettingsRpcMethods["getSettings"],
-      [],
-    );
+    const [panel, settings] = await Promise.all([
+      this.panelFor(input.slotId),
+      (async () => {
+        const modelSettings = await resolveDurableObjectService(this.rpc, MODEL_SETTINGS_SERVICE_PROTOCOL);
+        return this.rpc.call(doTargetId(modelSettings), modelSettingsRpcMethods["getSettings"], []);
+      })(),
+    ]);
     const suffix = crypto.randomUUID().slice(0, 12);
     const channelId = `quickfire-${suffix}`;
     const agentKey = `quickfire-agent-${suffix}`;
@@ -280,7 +248,6 @@ export class QuickfireSessionsDO extends DurableObjectBase {
       ),
       resourceBindings: agentResourceBindings(input.slotId, channelId),
       replay: true,
-      retireEntityOnSubscribeFailure: true,
     });
     if (!launched.handle.id)
       throw new Error("Quickfire agent has no runtime entity id");
@@ -372,10 +339,8 @@ export class QuickfireSessionsDO extends DurableObjectBase {
     const rows = this.sql
       .exec(`SELECT * FROM quickfire_sessions ORDER BY created_at`)
       .toArray() as unknown as SessionRow[];
-    return Promise.all(
-      rows.map((row) =>
-        this.present(row, row.promoted_at === null ? "resumed" : "promoted"),
-      ),
+    return rows.map((row) =>
+      this.present(row, row.promoted_at === null ? "resumed" : "promoted"),
     );
   }
 }

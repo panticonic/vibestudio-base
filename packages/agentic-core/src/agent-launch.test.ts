@@ -21,7 +21,7 @@ function makeRpc(
     if (impl) return impl(target, method, args);
     if (target === "main" && method === "runtime.createEntity") {
       const spec = args[0] as { contextId?: string };
-      return { id: "entity-1", kind: "do", source: { repoPath: "workers/agent-worker", effectiveVersion: "test" }, targetId: "target-1", contextId: spec.contextId ?? "ctx-minted" };
+      return { id: "entity-1", kind: "do", source: { repoPath: "workers/agent-worker", effectiveVersion: "test" }, targetId: "target-1", contextId: spec.contextId ?? "ctx-minted", agentInitialization: { ok: true, participantId: "participant-1" } };
     }
     return { ok: true, participantId: "participant-1" };
   });
@@ -77,7 +77,7 @@ describe("agent launch primitive", () => {
     expect(CreateEntitySpecSchema.parse(spec)).toEqual(spec);
   });
 
-  it("launches by creating before subscribing, stripping behavior settings from subscription config", async () => {
+  it("launches with one complete initialization intent and one admission receipt", async () => {
     const rpc = makeRpc();
 
     const out = await launchAgentIntoChannel(rpc, {
@@ -103,7 +103,11 @@ describe("agent launch primitive", () => {
     });
     expect(rpc.wireCall).toHaveBeenNthCalledWith(1, "main", "runtime.createEntity", [
       expect.objectContaining({
-        agentChannelId: "ch-1",
+        agentInitialization: {
+          channelId: "ch-1",
+          config: { handle: "agent", systemPrompt: "be direct", deterministicResponse: true },
+          replay: true,
+        },
         stateArgs: expect.objectContaining({
           agentConfig: expect.objectContaining({
             model: "openai:gpt-5.3",
@@ -112,40 +116,17 @@ describe("agent launch primitive", () => {
         }),
       }),
     ]);
-    expect(rpc.wireCall).toHaveBeenNthCalledWith(2, "target-1", "subscribeChannel", [
-      {
-        channelId: "ch-1",
-        contextId: "ctx-1",
-        config: {
-          handle: "agent",
-          systemPrompt: "be direct",
-          deterministicResponse: true,
-        },
-        replay: true,
-      },
-    ]);
+    expect(rpc.wireCall).toHaveBeenCalledTimes(1);
+    const spec = rpc.wireCall.mock.calls[0]![2][0] as { stateArgs: { agentConfig: unknown } };
+    expect(spec.stateArgs.agentConfig).toEqual({ model: "openai:gpt-5.3", approvalLevel: 1 });
   });
 
-  it("retires an isolated entity when subscribe fails after creation", async () => {
-    const rpc = makeRpc(async (_target, method) => {
-      if (method === "runtime.createEntity") {
-        return { id: "entity-1", kind: "do", source: { repoPath: "workers/agent-worker", effectiveVersion: "test" }, targetId: "target-1", contextId: "ctx-1" };
-      }
-      if (method === "subscribeChannel") throw new Error("subscribe failed");
-      return undefined;
-    });
-
-    await expect(
-      launchAgentIntoChannel(rpc, {
-        source: "workers/agent-worker",
-        className: "AiChatWorker",
-        key: "agent-1",
-        channelId: "ch-1",
-        retireEntityOnSubscribeFailure: true,
-      })
-    ).rejects.toThrow("subscribe failed");
-
-    expect(rpc.wireCall).toHaveBeenLastCalledWith("main", "runtime.retireEntity", [{ id: "entity-1" }]);
+  it("propagates initialization failures from the owning runtime without a second cleanup path", async () => {
+    const rpc = makeRpc(async () => { throw new Error("subscribe failed"); });
+    await expect(launchAgentIntoChannel(rpc, {
+      source: "workers/agent-worker", className: "AiChatWorker", key: "agent-1", channelId: "ch-1",
+    })).rejects.toThrow("subscribe failed");
+    expect(rpc.wireCall).toHaveBeenCalledTimes(1);
   });
 
   it("refuses to subscribe an existing active agent into a different channel context", async () => {

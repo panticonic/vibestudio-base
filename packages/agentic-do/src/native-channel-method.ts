@@ -52,6 +52,8 @@ export type NativeChannelMethodOutcome = {
   protocol: "native-channel-method-outcome.v1";
   invocationId: string;
   transportCallId: string;
+  /** Logical terminal identity is available before retention. */
+  envelopeId: string;
   eventId: number;
   kind:
     | "invocation.completed"
@@ -84,7 +86,7 @@ export function nativeChannelMethodReceiptKey(
   const match = /^(.+:channel-method):[a-f0-9]{64}$/.exec(id);
   return match?.[1] ?? null;
 }
-const MethodAdmission = defineDocFamily<
+type MethodAdmissionData =
   {
     binding: string;
     taskId: number;
@@ -93,11 +95,13 @@ const MethodAdmission = defineDocFamily<
     request: NativeChannelMethodRequest | null;
     calls: MethodCall[];
     winner: NativeChannelMethodOutcome | null;
-  },
+  };
+const MethodAdmission = defineDocFamily<MethodAdmissionData,
   null
 >({
   kind: "vibestudio.channel-method-admission",
-  version: 1,
+  version: 2,
+
   scope: "session",
   family: true,
   initial: () => ({
@@ -167,9 +171,8 @@ function validateOutcome(value: JsonValue): NativeChannelMethodOutcome {
     !outcome["invocationId"] ||
     typeof outcome["transportCallId"] !== "string" ||
     !outcome["transportCallId"] ||
-    typeof eventId !== "number" ||
-    !Number.isSafeInteger(eventId) ||
-    eventId <= 0 ||
+    outcome["envelopeId"] !== `terminal:${outcome["transportCallId"]}` ||
+    (typeof eventId !== "number" || !Number.isSafeInteger(eventId) || eventId <= 0) ||
     (kind !== "invocation.completed" &&
       kind !== "invocation.failed" &&
       kind !== "invocation.cancelled" &&
@@ -181,12 +184,17 @@ function validateOutcome(value: JsonValue): NativeChannelMethodOutcome {
     );
   return {
     protocol: "native-channel-method-outcome.v1",
+    envelopeId: outcome["envelopeId"] as string,
     invocationId: outcome["invocationId"] as string,
     transportCallId: outcome["transportCallId"] as string,
     eventId,
     kind,
     value: outcome["value"]!,
   };
+}
+
+function canonicalOutcomeIdentity(outcome: NativeChannelMethodOutcome): string {
+  return canonicalJson(outcome);
 }
 
 function result(
@@ -273,6 +281,7 @@ async function terminal(
     protocol: "native-channel-method-outcome.v1",
     invocationId: call.invocationId,
     transportCallId: call.callId,
+    envelopeId: envelope.messageId,
     eventId: envelope.id,
     kind,
     value: copyJson(value ?? null),
@@ -508,14 +517,15 @@ export async function consumeNativeChannelMethodReceipt(
 ): Promise<{ accepted: boolean }> {
   const admission = await harness.snapshot(MethodAdmission, key, context);
   if (!admission?.binding || !admission.request) return { accepted: false };
+  const request = admission.request;
   const observed: NativeChannelMethodOutcome[] = [];
   for (const call of admission.calls) {
     // A fast answer may arrive during partial fan-out admission. The executing
     // native continuation reads again after the complete audience is admitted.
-    const started = await originalStart(client, admission.request, call);
+    const started = await originalStart(client, request, call);
     const outcome = await readCanonicalChannelMethodOutcome(
       client,
-      admission.request,
+      request,
       call,
     );
     if (!started && !outcome) return { accepted: false };
@@ -526,7 +536,7 @@ export async function consumeNativeChannelMethodReceipt(
   if (!candidate) return { accepted: false };
   if (
     !observed.some(
-      (outcome) => canonicalJson(outcome) === canonicalJson(candidate),
+      (outcome) => canonicalOutcomeIdentity(outcome) === canonicalOutcomeIdentity(candidate),
     )
   )
     throw new Error("Channel method winner lost its canonical terminal");
@@ -540,7 +550,6 @@ export async function consumeNativeChannelMethodReceipt(
     retained.winner ??= candidate;
     winner = validateOutcome(retained.winner);
   }, context);
-  const request = admission.request;
   await joinMethodCleanup(
     admission.calls.map(async (call) => {
       const outcome = await readCanonicalChannelMethodOutcome(
@@ -548,7 +557,7 @@ export async function consumeNativeChannelMethodReceipt(
         request,
         call,
       );
-      if (outcome?.eventId === winner.eventId) return;
+      if (outcome?.envelopeId === winner.envelopeId) return;
       await client.cancelCall(
         request.callerId,
         call.callId,
@@ -564,7 +573,7 @@ export async function consumeNativeChannelMethodReceipt(
     const retained = await tx.doc(MethodAdmission, key, null);
     if (
       retained.binding !== admission.binding ||
-      canonicalJson(retained.winner) !== canonicalJson(winner)
+      (!retained.winner || canonicalOutcomeIdentity(retained.winner) !== canonicalOutcomeIdentity(winner))
     )
       throw new Error(
         "Channel method receipt conflicts with its retained winner",
@@ -668,10 +677,10 @@ export function createNativeChannelMethodExecution(
         },
         context,
       );
+      const client = host.channelClient(request.channelId, execution);
       const consumed = await harness.snapshot(ReceiptDoc, key, context);
       if (consumed?.result !== undefined)
         return result(validateOutcome(consumed.result));
-      const client = host.channelClient(request.channelId, execution);
       for (const call of calls) {
         // Verify an existing canonical route before any dispatch redrive.
         await originalStart(client, request, call);

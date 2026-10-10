@@ -202,8 +202,7 @@ export async function retainedNativeConversationChannel(
   return { channelId: binding.channelId, contextId: binding.contextId };
 }
 
-const DeliveryAdmission = defineDocFamily<
-  {
+type DeliveryAdmissionData = {
     identity: string;
     sourceIdentity: string;
     intake: JsonValue | null;
@@ -213,11 +212,11 @@ const DeliveryAdmission = defineDocFamily<
     conversationId: ConversationId | null;
     submissionId: SubmissionId | null;
     feedbackOccurrenceKeys: string[];
-  },
-  null
->({
+  };
+const DeliveryAdmission = defineDocFamily<DeliveryAdmissionData, null>({
   kind: "vibestudio.channel-input-admission",
-  version: 1,
+  version: 2,
+
   scope: "session",
   family: true,
   initial: () => ({
@@ -235,12 +234,11 @@ const DeliveryAdmission = defineDocFamily<
 });
 
 // Source-event identity survives a relationship revision without creating a second input.
-const SourceEventAdmission = defineDocFamily<
-  { identity: string; deliveryId: string },
-  null
->({
+type SourceEventAdmissionData = { identity: string; deliveryId: string };
+const SourceEventAdmission = defineDocFamily<SourceEventAdmissionData, null>({
   kind: "vibestudio.channel-source-admission",
-  version: 1,
+  version: 2,
+
   scope: "session",
   family: true,
   initial: () => ({ identity: "", deliveryId: "" }),
@@ -249,9 +247,9 @@ const SourceEventAdmission = defineDocFamily<
 export type NativeChannelFeedbackFrontier = {
   channelRef: { source: string; className: string; objectKey: string };
   sequence: number;
+  envelopeId?: string;
 };
-const SourceMessage = defineDocFamily<
-  {
+type SourceMessageData = {
     author: string;
     conversationId: ConversationId | null;
     submissionId: SubmissionId | null;
@@ -259,10 +257,12 @@ const SourceMessage = defineDocFamily<
     channelId: string;
     participantId: string;
     messageId: string;
-    sequence: number;
-    originalSequence: number;
+    sequence: number | null;
+    latestEnvelopeId: string | null;
+    latestObservedEnvelopeId: string | null;
+    originalSequence: number | null;
     originalEnvelopeId: string;
-    contentSequence: number;
+    contentSequence: number | null;
     placedContentSequence: number | null;
     feedbackFrontiers: NativeChannelFeedbackFrontier[];
     placedFeedbackFrontiers: NativeChannelFeedbackFrontier[] | null;
@@ -270,11 +270,11 @@ const SourceMessage = defineDocFamily<
     readProjected: boolean;
     diagnosticPrefix: string;
     retracted: boolean;
-  },
-  null
->({
+  };
+const SourceMessage = defineDocFamily<SourceMessageData, null>({
   kind: "vibestudio.channel-source-message",
-  version: 1,
+  version: 2,
+
   scope: "session",
   family: true,
   initial: () => ({
@@ -285,10 +285,12 @@ const SourceMessage = defineDocFamily<
     channelId: "",
     participantId: "",
     messageId: "",
-    sequence: -1,
-    originalSequence: -1,
+    sequence: null,
+    latestEnvelopeId: null,
+    latestObservedEnvelopeId: null,
+    originalSequence: null,
     originalEnvelopeId: "",
-    contentSequence: -1,
+    contentSequence: null,
     placedContentSequence: null,
     feedbackFrontiers: [],
     placedFeedbackFrontiers: null,
@@ -307,6 +309,12 @@ const SubmissionSource = defineDocFamily<{ sourceKey: string }, null>({
   initial: () => ({ sourceKey: "" }),
   checkpointWhen: () => true,
 });
+/** Transport phase changes across replay; the owner-local envelope does not. */
+function immutableDelivery(delivery: NativeChannelDelivery): Record<string, unknown> {
+  const { phase: _phase, ...envelope } = delivery.envelope as Record<string, unknown>;
+  return { ...delivery, envelope };
+}
+
 function logEvent(
   delivery: NativeChannelDelivery,
 ): Record<string, unknown> | null {
@@ -335,8 +343,7 @@ function sourceEvent(
       canonicalJson({
         channelRef: delivery.channelRef,
         participantId: delivery.participantId,
-        eventSequence: delivery.eventSequence,
-        envelope: delivery.envelope,
+        envelope: immutableDelivery(delivery)["envelope"],
         agenticContext: delivery.agenticContext,
       }),
     ),
@@ -377,6 +384,7 @@ async function bindSourceMessage(
     throw new Error(
       "Native input message has no original channel envelope identity",
     );
+  const sequence = delivery.eventSequence;
   const message = await tx.doc(SourceMessage, key, null);
   if (message.submissionId !== null)
     throw new Error("Native source message already owns an input");
@@ -388,10 +396,12 @@ async function bindSourceMessage(
     channelId: delivery.channelId,
     participantId: delivery.participantId,
     messageId,
-    sequence: delivery.eventSequence,
-    originalSequence: delivery.eventSequence,
+    sequence,
+    latestEnvelopeId: envelopeId,
+    latestObservedEnvelopeId: envelopeId,
+    originalSequence: sequence,
     originalEnvelopeId: envelopeId,
-    contentSequence: delivery.eventSequence,
+    contentSequence: sequence,
   });
   if (submissionType === "input")
     (await tx.doc(SubmissionSource, String(submissionId), null)).sourceKey =
@@ -427,7 +437,9 @@ async function reviseSourceMessage(
     else if (actor !== source.author || participantKey(payload.by) !== actor)
       result = "unauthorized";
     else if (source.retracted) result = "settled";
-    else if (delivery.eventSequence < source.sequence) result = "stale";
+    else if (
+      source.sequence !== null && delivery.eventSequence < source.sequence
+    ) result = "stale";
     else {
       result = await tx.reviseQueuedInput(
         source.submissionId,
@@ -440,12 +452,19 @@ async function reviseSourceMessage(
       );
       if (result === "not_found")
         throw new Error("Native source message lost its canonical submission");
+      const envelopeId = logEvent(delivery)?.["messageId"];
+      if (typeof envelopeId !== "string") throw new Error("Native correction has no envelope identity");
       source.sequence = delivery.eventSequence;
-      if (result === "updated")
+      source.latestObservedEnvelopeId = envelopeId;
+      if (result === "updated") {
+        source.latestEnvelopeId = envelopeId;
+        const retainedSequence = delivery.eventSequence;
         source.contentSequence = Math.max(
-          source.contentSequence,
-          delivery.eventSequence,
+          retainedSequence,
+          ...source.feedbackFrontiers.filter(frontier => canonicalJson(frontier.channelRef) === canonicalJson(delivery.channelRef))
+            .map(frontier => frontier.sequence ?? 0),
         );
+      }
       if (result === "withdrawn") source.retracted = true;
     }
   }
@@ -514,6 +533,7 @@ export async function prepareNativeChannelReadReceipts(
       (frontier) => ({
         channelRef: { ...frontier.channelRef },
         sequence: frontier.sequence,
+        ...(frontier.envelopeId ? { envelopeId: frontier.envelopeId } : {}),
       }),
     );
     if (source.readProjected) continue;
@@ -567,7 +587,7 @@ export async function retainedNativeChannelOriginatingInput(
     );
   const conversationId = record.conversationId;
   if (record.entry === undefined) return null;
-  if (source.entryId !== record.entry || source.placedContentSequence === null)
+  if (source.entryId !== record.entry)
     throw new Error(
       "Native originating input has no exact committed placement",
     );
@@ -1058,6 +1078,7 @@ export async function retainedNativeChannelDelivery(
 }
 
 function validateDelivery(incoming: NativeChannelDelivery): void {
+  const event = logEvent(incoming);
   if (
     !incoming.deliveryId ||
     !incoming.channelId ||
@@ -1067,8 +1088,8 @@ function validateDelivery(incoming: NativeChannelDelivery): void {
     !incoming.participantId ||
     !Number.isSafeInteger(incoming.subscriptionRevision) ||
     incoming.subscriptionRevision < 0 ||
-    !Number.isSafeInteger(incoming.eventSequence) ||
-    incoming.eventSequence < 0
+    !Number.isSafeInteger(incoming.eventSequence) || incoming.eventSequence < 0 ||
+    (event !== null && event["id"] !== incoming.eventSequence)
   )
     throw new Error(
       "Native channel delivery has an invalid immutable routing identity",
@@ -1083,7 +1104,7 @@ export async function verifyNativeChannelDeliveryReplay(
 ): Promise<NativeChannelAdmission | null> {
   const incoming = JSON.parse(canonicalJson(delivery)) as NativeChannelDelivery;
   validateDelivery(incoming);
-  const sourceIdentity = sha256HexSyncText(canonicalJson(incoming));
+  const sourceIdentity = sha256HexSyncText(canonicalJson(immutableDelivery(incoming)));
   const admitted = await retainedNativeChannelDelivery(
     harness,
     incoming.deliveryId,
@@ -1148,7 +1169,7 @@ export async function verifyNativeChannelDeliveryReplay(
   if (
     admitted.identity !==
       sha256HexSyncText(
-        canonicalJson({ binding, delivery: incoming, intake: admitted.intake }),
+        canonicalJson({ binding, delivery: immutableDelivery(incoming), intake: admitted.intake }),
       ) ||
     (await channelConversationId(harness, binding, context)) !==
       admitted.conversationId
@@ -1187,9 +1208,9 @@ export async function submitNativeChannelDelivery(
       "Native feedback requires its immutable occurrence identity",
     );
   const identity = sha256HexSyncText(
-    canonicalJson({ binding: bound, ...immutable }),
+    canonicalJson({ binding: bound, delivery: immutableDelivery(incoming), intake: prepared }),
   );
-  const sourceIdentity = sha256HexSyncText(canonicalJson(incoming));
+  const sourceIdentity = sha256HexSyncText(canonicalJson(immutableDelivery(incoming)));
   const conversationId = await channelConversationId(harness, bound, context);
   const conversation = await harness.conversation(conversationId, context);
   if (!conversation)
@@ -1327,16 +1348,15 @@ export async function submitNativeChannelDelivery(
                   source.feedbackFrontiers = consumed.map((item) => ({
                     channelRef: { ...item.frontier.channelRef },
                     sequence: item.frontier.sequence,
+                    ...(item.frontier.envelopeId ? { envelopeId: item.frontier.envelopeId } : {}),
                   }));
                   for (const frontier of source.feedbackFrontiers)
                     if (
                       canonicalJson(frontier.channelRef) ===
                       canonicalJson(incoming.channelRef)
                     )
-                      source.contentSequence = Math.max(
-                        source.contentSequence,
-                        frontier.sequence,
-                      );
+                      if (frontier.sequence !== null)
+                        source.contentSequence = Math.max(source.contentSequence ?? 0, frontier.sequence);
                 }
                 return withDiagnostics(prepared.content, diagnostic);
               },
@@ -1440,10 +1460,10 @@ export async function submitNativeChannelDelivery(
                     frontier: {
                       channelRef: { ...incoming.channelRef },
                       sequence: incoming.eventSequence,
+                      envelopeId: String(logEvent(incoming)?.["messageId"] ?? ""),
                     },
                   });
-                  feedback.pending =
-                    feedback.pending.slice(-MAX_PENDING_FEEDBACK);
+                  feedback.pending = feedback.pending.slice(-MAX_PENDING_FEEDBACK);
                 }
                 return {
                   kind: "vibestudio.ui-feedback",

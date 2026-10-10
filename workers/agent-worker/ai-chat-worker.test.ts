@@ -1,5 +1,8 @@
 import { schemaRpcMock } from "@vibestudio/rpc/test-utils";
-import { createRpcMethodCaller, type RpcMethodArgs } from "@vibestudio/shared/rpcMethods";
+import {
+  createRpcMethodCaller,
+  type RpcMethodArgs,
+} from "@vibestudio/shared/rpcMethods";
 import { gadRpcMethods } from "@vibestudio/service-schemas/clients/durableObjectServiceClient";
 import { gadWireMethods } from "@vibestudio/service-schemas/workspaceSource";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -16,8 +19,24 @@ import {
   DEFAULT_MODEL,
 } from "@workspace/agentic-do";
 import type { ChannelReplayEnvelope } from "@workspace/pubsub";
+import type {
+  LifecyclePrepareInput,
+  LifecyclePrepareResult,
+} from "@workspace/runtime/worker/durable-base";
 
 import { AiChatWorker } from "./ai-chat-worker.js";
+
+async function releaseAcrossPhases(
+  instance: TestableAiChatWorker,
+  input: Omit<LifecyclePrepareInput, "phase">,
+): Promise<LifecyclePrepareResult> {
+  let result: LifecyclePrepareResult = { status: "ready" };
+  for (const phase of ["quiesce", "peer-obligations", "release"] as const) {
+    result = await instance.releaseForLifecycle({ ...input, phase });
+    if (result.status === "failed") return result;
+  }
+  return result;
+}
 
 class TestableAiChatWorker extends AiChatWorker {
   // The fixture routes actual ChannelDO provider deliveries as host RPC.
@@ -48,11 +67,11 @@ class TestableAiChatWorker extends AiChatWorker {
 
   readonly rpcCall = vi.fn(
     async (target: string, method: string, args: unknown[]) => {
-      if (target === "main" && method === "workspace.getAgentsMd") {
-        return this.workspaceAgentsMd;
-      }
-      if (target === "main" && method === "workspace.listSkills") {
-        return this.workspaceSkills;
+      if (target === "main" && method === "workspace.getAgentResources") {
+        return {
+          workspacePrompt: this.workspaceAgentsMd,
+          skills: this.workspaceSkills,
+        };
       }
       if (
         target === "main" &&
@@ -81,27 +100,28 @@ class TestableAiChatWorker extends AiChatWorker {
     _args: unknown[],
   ): Promise<T> => {
     const image = this.loadedImage();
+    const entity = {
+      id: image.runtimeId,
+      kind: "do",
+      authoritySessionId: "actual-ai-test-owner",
+      source: {
+        kind: "workspace",
+        repoPath: image.source,
+        effectiveVersion: "test-ai-image",
+      },
+      activeExecutionDigest: image.executionDigest,
+      className: image.className,
+      key: image.objectKey,
+      contextId: "ctx-1",
+      createdAt: 1,
+      status: "active",
+      cleanupComplete: false,
+    };
     const value =
       method === "workspace-state.entity.resolveActive"
-        ? {
-            id: image.runtimeId,
-            kind: "do",
-            authoritySessionId: "actual-ai-test-owner",
-            source: {
-              kind: "workspace",
-              repoPath: image.source,
-              effectiveVersion: "test-ai-image",
-            },
-            activeExecutionDigest: image.executionDigest,
-            className: image.className,
-            key: image.objectKey,
-            contextId: "ctx-1",
-            createdAt: 1,
-            status: "active",
-            cleanupComplete: false,
-          }
+        ? entity
         : method === "workspace-state.alarmSourceRegister"
-          ? "actual-ai-storage-incarnation"
+          ? { incarnation: "actual-ai-storage-incarnation", entity }
           : method === "workspace-state.alarmSourcePublish"
             ? "accepted"
             : method === "authority.outstandingAcquisitions"
@@ -123,24 +143,35 @@ class TestableAiChatWorker extends AiChatWorker {
     ...args: RpcMethodArgs<(typeof gadRpcMethods)[K]>
   ) {
     if (method !== "appendLogEvent") return super.callGad(method, ...args);
-    return createRpcMethodCaller(schemaRpcMock({ call: async (_target, _method, inputArgs) => {
-      const [input] = gadWireMethods.appendLogEvent.args.parse(inputArgs);
-      return {
-        logId: input.logId,
-        head: input.head,
-        headSeq: input.events.length,
-        headHash: "test-head-hash",
-        envelopes: input.events.map((event, index) => ({
-          logId: input.logId, head: input.head, seq: index + 1,
-          envelopeId: event.envelopeId ?? `test-envelope:${index}`,
-          actor: event.actor, payloadKind: event.payloadKind, payload: event.payload,
-          ...(event.causality ? { causality: event.causality } : {}),
-          appendedAt: event.appendedAt ?? new Date().toISOString(),
-          prevHash: "test-previous-hash", hash: `test-hash:${index}`,
-        })),
-        published: [],
-      };
-    } }), "test-gad", gadRpcMethods)(method, args);
+    return createRpcMethodCaller(
+      schemaRpcMock({
+        call: async (_target, _method, inputArgs) => {
+          const [input] = gadWireMethods.appendLogEvent.args.parse(inputArgs);
+          return {
+            logId: input.logId,
+            head: input.head,
+            headSeq: input.events.length,
+            headHash: "test-head-hash",
+            envelopes: input.events.map((event, index) => ({
+              logId: input.logId,
+              head: input.head,
+              seq: index + 1,
+              envelopeId: event.envelopeId ?? `test-envelope:${index}`,
+              actor: event.actor,
+              payloadKind: event.payloadKind,
+              payload: event.payload,
+              ...(event.causality ? { causality: event.causality } : {}),
+              appendedAt: event.appendedAt ?? new Date().toISOString(),
+              prevHash: "test-previous-hash",
+              hash: `test-hash:${index}`,
+            })),
+            published: [],
+          };
+        },
+      }),
+      "test-gad",
+      gadRpcMethods,
+    )(method, args);
   }
 
   private readonly methodChannels = new Map<
@@ -188,11 +219,10 @@ class TestableAiChatWorker extends AiChatWorker {
         this.published.push({ participantId, event, opts });
         return { id: this.published.length };
       },
-      relationshipState: async () => ({ revision: 0, active: false }),
-      join: async (input: { participantId: string; revision: number }) => ({
+      join: async (input: { participantId: string; operationId: string }) => ({
         ok: true,
         participantId: input.participantId,
-        revision: input.revision,
+        revision: 1,
         channelConfig: undefined,
         envelope: this.subscribeEnvelope,
       }),
@@ -250,9 +280,7 @@ class TestableAiChatWorker extends AiChatWorker {
     return agent.instructions;
   }
 
-  promptResourceCallCount(
-    method: "workspace.getAgentsMd" | "workspace.listSkills",
-  ) {
+  promptResourceCallCount(method: "workspace.getAgentResources") {
     return this.rpcCall.mock.calls.filter(
       (call) => call[0] === "main" && call[1] === method,
     ).length;
@@ -267,7 +295,7 @@ afterEach(async () => {
   try {
     const releases = await Promise.allSettled(
       resources.map(({ instance }) =>
-        instance.releaseForLifecycle({
+        releaseAcrossPhases(instance, {
           epoch: "test-end",
           mode: "suspend",
           reason: "test",
@@ -316,7 +344,7 @@ describe("AiChatWorker", () => {
         reason:
           "This receiver owns workspace orchestration or retained workspace data; websites require a reviewed bounded operation.",
       } as const,
-      principals: ["host"],
+      principals: ["host", "code"],
       effect: { kind: "open" },
       tier: "open",
       sensitivity: "write",
@@ -335,7 +363,7 @@ describe("AiChatWorker", () => {
     resources.push(first);
     expect(
       (
-        await first.instance.releaseForLifecycle({
+        await releaseAcrossPhases(first.instance, {
           epoch: "replacement",
           mode: "suspend",
           reason: "test",
@@ -395,16 +423,24 @@ describe("AiChatWorker", () => {
     );
   });
 
-  it("caches workspace prompt resources and refreshes them on request", async () => {
+  it("reads the shared semantic prompt snapshot for each configuration and refresh", async () => {
     const worker = await makeWorker();
     worker.seedSubscriptionConfig("ch-1", {});
 
-    await worker.materializedPrompt("ch-1");
-    await worker.materializedPrompt("ch-1");
-    expect(worker.promptResourceCallCount("workspace.getAgentsMd")).toBe(1);
-    expect(worker.promptResourceCallCount("workspace.listSkills")).toBe(1);
-
+    await expect(worker.materializedPrompt("ch-1")).resolves.toContain(
+      "WORKSPACE AGENTS",
+    );
+    const originalReads = worker.promptResourceCallCount(
+      "workspace.getAgentResources",
+    );
     worker.workspaceAgentsMd = "UPDATED WORKSPACE AGENTS";
+    await expect(worker.materializedPrompt("ch-1")).resolves.toContain(
+      "UPDATED WORKSPACE AGENTS",
+    );
+    expect(
+      worker.promptResourceCallCount("workspace.getAgentResources"),
+    ).toBeGreaterThan(originalReads);
+    worker.workspaceAgentsMd = "EXPLICITLY REFRESHED WORKSPACE AGENTS";
     const refresh = await worker.deliveredMethod(
       "ch-1",
       "tc-refresh",
@@ -413,10 +449,8 @@ describe("AiChatWorker", () => {
     );
 
     expect(refresh).toMatchObject({ result: { refreshed: true } });
-    expect(worker.promptResourceCallCount("workspace.getAgentsMd")).toBe(2);
-    expect(worker.promptResourceCallCount("workspace.listSkills")).toBe(2);
     await expect(worker.materializedPrompt("ch-1")).resolves.toContain(
-      "UPDATED WORKSPACE AGENTS",
+      "EXPLICITLY REFRESHED WORKSPACE AGENTS",
     );
   });
 
@@ -426,14 +460,14 @@ describe("AiChatWorker", () => {
     worker.workspaceSkills = { not: "a skill list" };
 
     await expect(worker.materializedPrompt("ch-1")).rejects.toThrow(
-      "workspace.listSkills returned invalid resource shape",
+      'Service "workspace" method "getAgentResources" return value failed schema validation.',
     );
 
     // Native preparation owns admission failure; this resource helper cannot publish an answer.
     expect(worker.published).toHaveLength(0);
 
     await expect(worker.materializedPrompt("ch-1")).rejects.toThrow(
-      "workspace.listSkills returned invalid resource shape",
+      'Service "workspace" method "getAgentResources" return value failed schema validation.',
     );
     expect(worker.published).toHaveLength(0);
   });

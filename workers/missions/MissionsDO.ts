@@ -1,4 +1,5 @@
 import { dispatchRpcCall } from "@vibestudio/rpc/internal";
+import { serializeRpcFailure } from "@vibestudio/rpc";
 import { GadJsonRecordSchema } from "@vibestudio/service-schemas/workspaceSource";
 import { agentRpcMethods } from "@workspace/agentic-do/rpc-contract";
 import { mainRpcMethods } from "@vibestudio/service-schemas/mainRpc";
@@ -300,7 +301,7 @@ export class MissionsDO extends DurableObjectBase {
       // Suspend retains the ledger's durable lease for host restart recovery.
       return { status: "ready" };
     } catch (error) {
-      return { status: "failed", detail: describeError(error) };
+      return { status: "failed", failure: serializeRpcFailure(error) };
     }
   }
 

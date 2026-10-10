@@ -4,7 +4,7 @@ import {
   AGENTIC_EVENT_PAYLOAD_KIND,
   eventKindSchemas,
 } from "@workspace/agentic-protocol";
-import type { ChannelEvent } from "@workspace/pubsub";
+import type { ServerLogEvent } from "@workspace/pubsub";
 import { ChannelMethodRelays } from "./channel-method-relays.js";
 import {
   channelMethodOriginalRequest,
@@ -53,7 +53,7 @@ function fixture(
     args: request.args,
     createdAt: "2026-10-02T00:00:00.000Z",
   };
-  const events = new Map<string, ChannelEvent>();
+  const events = new Map<string, ServerLogEvent>();
   const caller = new AbortController(),
     dispatchController = new AbortController();
   const dispatched = deferred(),
@@ -64,10 +64,10 @@ function fixture(
   let seq = 0,
     cancellations = 0;
   const calls: unknown[] = [];
-  const append = (id: string, payload: unknown): ChannelEvent => {
+  const append = (id: string, payload: unknown): ServerLogEvent => {
     const previous = events.get(id);
     if (previous) return previous;
-    const event: ChannelEvent = {
+    const event: ServerLogEvent = {
       id: ++seq,
       messageId: id,
       type: AGENTIC_EVENT_PAYLOAD_KIND,
@@ -175,7 +175,7 @@ describe("finite channel method relay ownership", () => {
     const f = fixture(),
       completion = f.run();
     await f.dispatched.promise;
-    const forged: ChannelEvent = {
+    const forged: ServerLogEvent = {
       id: 999,
       messageId: "fake",
       type: AGENTIC_EVENT_PAYLOAD_KIND,

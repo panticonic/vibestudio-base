@@ -1,3 +1,4 @@
+import { schemaRpcMock } from "@vibestudio/rpc/test-utils";
 /**
  * Panel-rpc harness: drives createAndSubscribeAgent against a mocked
  * `@workspace/runtime` rpc and asserts the per-agent config seeds into the
@@ -18,14 +19,14 @@ const mocks = vi.hoisted(() => ({
     if (method === "runtime.createEntity") {
       const spec = args[0] as { key: string; contextId?: string };
       const id = `do:workers/agent-worker:AiChatWorker:${spec.key}`;
-      return { id, targetId: id, contextId: spec.contextId };
+      return { id, kind: "do", source: { repoPath: "workers/agent-worker", effectiveVersion: "test" }, targetId: id, contextId: spec.contextId, agentInitialization: { ok: true, participantId: "p-1" } };
     }
     return { ok: true, participantId: "p-1" };
   }),
 }));
 
-vi.mock("@workspace/runtime", () => ({
-  rpc: { call: mocks.call },
+vi.mock("@workspace/runtime", async () => ({
+  rpc: (await import("@vibestudio/rpc/test-utils")).schemaRpcMock({ call: mocks.call }),
   panel: { stateArgs: { get: mocks.getStateArgs, patch: mocks.patchStateArgs } },
 }));
 vi.mock("@workspace/pubsub", () => ({
@@ -61,7 +62,7 @@ describe("createAndSubscribeAgent (panel-rpc harness)", () => {
     });
     expect(result).toEqual({ ok: true, participantId: "p-1" });
 
-    // createEntity seeds the FULL config (vessel sanitizes to the 7) under stateArgs.
+    // Behavior and channel presentation each occur once in the launch intent.
     const createSpec = callsFor("runtime.createEntity")[0]![0] as {
       kind: string;
       stateArgs: { agentConfig: Record<string, unknown> };
@@ -74,8 +75,8 @@ describe("createAndSubscribeAgent (panel-rpc harness)", () => {
     });
 
     // The subscription carries presentation only — no behavior settings leak.
-    const subConfig = (callsFor("subscribeChannel")[0]![0] as { config: Record<string, unknown> })
-      .config;
+    const subConfig = (callsFor("runtime.createEntity")[0]![0] as { agentInitialization: { config: Record<string, unknown> } })
+      .agentInitialization.config;
     expect(subConfig).toEqual({ handle: "bot", systemPrompt: "be terse" });
     expect(subConfig).not.toHaveProperty("model");
     expect(subConfig).not.toHaveProperty("approvalLevel");
@@ -97,8 +98,8 @@ describe("createAndSubscribeAgent (panel-rpc harness)", () => {
         handle: "test-agent",
       },
     });
-    const subConfig = (callsFor("subscribeChannel")[0]![0] as { config: Record<string, unknown> })
-      .config;
+    const subConfig = (callsFor("runtime.createEntity")[0]![0] as { agentInitialization: { config: Record<string, unknown> } })
+      .agentInitialization.config;
     expect(subConfig).toEqual({
       deterministicResponse: true,
       responseText: "hi",
@@ -113,7 +114,7 @@ describe("createAndSubscribeAgent (panel-rpc harness)", () => {
     expect(createSpec.stateArgs.agentConfig).toMatchObject({ model: "openai:gpt-5.3" });
   });
 
-  it("creates the entity before subscribing, on the channel's context", async () => {
+  it("creates and initializes in one admission on the channel's context", async () => {
     await createAndSubscribeAgent({
       source: "workers/agent-worker",
       className: "AiChatWorker",
@@ -122,19 +123,14 @@ describe("createAndSubscribeAgent (panel-rpc harness)", () => {
       channelContextId: "ctx-1",
     });
     const order = mocks.call.mock.calls.map((c) => c[1]);
-    expect(order).toEqual(["runtime.createEntity", "subscribeChannel"]);
+    expect(order).toEqual(["runtime.createEntity"]);
     const createSpec = callsFor("runtime.createEntity")[0]![0] as { contextId: string };
     expect(createSpec.contextId).toBe("ctx-1");
   });
 
   it("keeps activation pending across the exact workspace review", async () => {
     let subscriptionAttempts = 0;
-    mocks.call.mockImplementation(async (_target: string, method: string, args: unknown[]) => {
-      if (method === "runtime.createEntity") {
-        const spec = args[0] as { key: string; contextId?: string };
-        const id = `do:workers/agent-worker:AiChatWorker:${spec.key}`;
-        return { id, targetId: id, contextId: spec.contextId };
-      }
+    mocks.call.mockImplementation(async (_target: string, _method: string, args: unknown[]) => {
       subscriptionAttempts += 1;
       if (subscriptionAttempts === 1) {
         throw Object.assign(new Error("Waiting for workspace review"), {
@@ -151,7 +147,9 @@ describe("createAndSubscribeAgent (panel-rpc harness)", () => {
           },
         });
       }
-      return { ok: true, participantId: "p-1" };
+      const spec = args[0] as { key: string; contextId?: string };
+      const id = `do:workers/agent-worker:AiChatWorker:${spec.key}`;
+      return { id, kind: "do", source: { repoPath: "workers/agent-worker", effectiveVersion: "test" }, targetId: id, contextId: spec.contextId, agentInitialization: { ok: true, participantId: "p-1" } };
     });
 
     await expect(
@@ -165,7 +163,7 @@ describe("createAndSubscribeAgent (panel-rpc harness)", () => {
     ).resolves.toEqual({ ok: true, participantId: "p-1" });
 
     expect(mocks.waitForApprovalResolution).toHaveBeenCalledWith(
-      expect.objectContaining({ call: mocks.call }),
+      expect.objectContaining({ call: expect.any(Function) }),
       "review-welcome"
     );
     expect(subscriptionAttempts).toBe(2);
@@ -198,18 +196,19 @@ function provisionalIntent(model: string): ProvisionalAgentIntent {
   };
 }
 
-function lifecycleRpc(): AgentLaunchRpc & { call: ReturnType<typeof vi.fn> } {
+function lifecycleRpc(): AgentLaunchRpc & { wireCall: ReturnType<typeof vi.fn> } {
   const rpc = {
     call: vi.fn(async (_target: string, method: string, args: unknown[]) => {
       if (method === "runtime.createEntity") {
         const spec = args[0] as { key: string; contextId: string };
         const id = `do:workers/agent-worker:AiChatWorker:${spec.key}`;
-        return { id, targetId: id, contextId: spec.contextId };
+        return { id, kind: "do", source: { repoPath: "workers/agent-worker", effectiveVersion: "test" }, targetId: id, contextId: spec.contextId, agentInitialization: { ok: true, participantId: "p-1" } };
       }
+      if (method === "runtime.retireEntity") return undefined;
       return { ok: true, participantId: "participant-1" };
     }),
   };
-  return rpc as unknown as AgentLaunchRpc & { call: typeof rpc.call };
+  return { ...schemaRpcMock({ call: (target, method, args) => rpc.call(target, method, args) }), wireCall: rpc.call };
 }
 
 describe("ProvisionalAgentLifecycle", () => {
@@ -220,11 +219,11 @@ describe("ProvisionalAgentLifecycle", () => {
     const intent = provisionalIntent("openai:gpt-5.3");
 
     await lifecycle.prepare(intent);
-    expect(rpc.call.mock.calls.map((call) => call[1])).toEqual(["runtime.createEntity"]);
+    expect(rpc.wireCall.mock.calls.map((call) => call[1])).toEqual(["runtime.createEntity"]);
 
     const claimed = await lifecycle.claim(intent);
 
-    expect(rpc.call.mock.calls.map((call) => call[1])).toEqual([
+    expect(rpc.wireCall.mock.calls.map((call) => call[1])).toEqual([
       "runtime.createEntity",
       "subscribeChannel",
     ]);
@@ -233,7 +232,7 @@ describe("ProvisionalAgentLifecycle", () => {
       handle: "ai-chat-aaaa",
       persistedConfig: { model: "openai:gpt-5.3", approvalLevel: 2 },
     });
-    expect(rpc.call).toHaveBeenLastCalledWith(
+    expect(rpc.wireCall).toHaveBeenLastCalledWith(
       "do:workers/agent-worker:AiChatWorker:ai-chat-aaaa-bbbb2222",
       "subscribeChannel",
       [
@@ -249,11 +248,11 @@ describe("ProvisionalAgentLifecycle", () => {
   it("waits for an open review instead of failing the provisional claim", async () => {
     const rpc = lifecycleRpc();
     let attempts = 0;
-    rpc.call.mockImplementation(async (_target, method, args) => {
+    rpc.wireCall.mockImplementation(async (_target, method, args) => {
       if (method === "runtime.createEntity") {
         const spec = args[0] as { key: string; contextId: string };
         const id = `do:workers/agent-worker:AiChatWorker:${spec.key}`;
-        return { id, targetId: id, contextId: spec.contextId };
+        return { id, kind: "do", source: { repoPath: "workers/agent-worker", effectiveVersion: "test" }, targetId: id, contextId: spec.contextId, agentInitialization: { ok: true, participantId: "p-1" } };
       }
       attempts += 1;
       if (attempts === 1) {
@@ -291,17 +290,17 @@ describe("ProvisionalAgentLifecycle", () => {
     await lifecycle.prepare(provisionalIntent("openai:gpt-5.3"));
     await lifecycle.prepare(provisionalIntent("anthropic:claude-sonnet-4-6"));
 
-    expect(rpc.call.mock.calls.map((call) => call[1])).toEqual([
+    expect(rpc.wireCall.mock.calls.map((call) => call[1])).toEqual([
       "runtime.createEntity",
       "runtime.retireEntity",
       "runtime.createEntity",
     ]);
-    expect(rpc.call.mock.calls[1]).toEqual([
+    expect(rpc.wireCall.mock.calls[1]).toEqual([
       "main",
       "runtime.retireEntity",
       [{ id: "do:workers/agent-worker:AiChatWorker:ai-chat-aaaa-bbbb2222" }],
     ]);
-    const replacementSpec = rpc.call.mock.calls[2]?.[2]?.[0] as {
+    const replacementSpec = rpc.wireCall.mock.calls[2]?.[2]?.[0] as {
       stateArgs: { agentConfig: Record<string, unknown> };
     };
     expect(replacementSpec.stateArgs.agentConfig).toMatchObject({
@@ -318,7 +317,7 @@ describe("ProvisionalAgentLifecycle", () => {
     await lifecycle.prepare(provisionalIntent("openai:gpt-5.3"));
     await lifecycle.dispose();
 
-    expect(rpc.call.mock.calls.map((call) => call[1])).toEqual([
+    expect(rpc.wireCall.mock.calls.map((call) => call[1])).toEqual([
       "runtime.createEntity",
       "runtime.retireEntity",
     ]);

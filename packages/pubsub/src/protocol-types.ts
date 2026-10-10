@@ -259,6 +259,8 @@ export interface IncomingBase {
   attachments?: Attachment[];
   /** Server-assigned ID for checkpointing */
   pubsubId?: number;
+  /** Stable channel envelope identity, including before persistence. */
+  envelopeId?: string;
   /** Sender metadata snapshot (if available) */
   senderMetadata?: {
     name?: string;
@@ -296,23 +298,7 @@ export type PresenceAction = "join" | "leave" | "update";
  * An incoming presence event (join/leave/update).
  * These events are persisted and replayed to reconstruct participant history.
  */
-export interface IncomingPresenceEvent {
-  /** Transport stream that produced the event. */
-  delivery: "log" | "signal";
-  /** Log phase, present only for durable log events. */
-  phase?: "replay" | "live";
-  /** ID of the participant */
-  senderId: string;
-  /** Timestamp */
-  ts: number;
-  /** Server-assigned ID for checkpointing */
-  pubsubId?: number;
-  /** Sender metadata snapshot (if available) */
-  senderMetadata?: {
-    name?: string;
-    type?: string;
-    handle?: string;
-  };
+export interface IncomingPresenceEvent extends IncomingBase {
   /** The action */
   action: PresenceAction;
   /** Reason for leave (only present when action === "leave") */
@@ -324,23 +310,7 @@ export interface IncomingPresenceEvent {
 /**
  * An incoming invocation call (for providers).
  */
-export interface IncomingInvocationCall {
-  /** Transport stream that produced the event. */
-  delivery: "log" | "signal";
-  /** Log phase, present only for durable log events. */
-  phase?: "replay" | "live";
-  /** ID of the caller */
-  senderId: string;
-  /** Timestamp */
-  ts: number;
-  /** Server-assigned ID for checkpointing */
-  pubsubId?: number;
-  /** Sender metadata snapshot (if available) */
-  senderMetadata?: {
-    name?: string;
-    type?: string;
-    handle?: string;
-  };
+export interface IncomingInvocationCall extends IncomingBase {
   /** Unique call ID for correlation */
   callId: string;
   /** Canonical invocation ID for transcript/provenance correlation */

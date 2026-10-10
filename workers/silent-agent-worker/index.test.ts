@@ -15,6 +15,7 @@ describe("SilentAgentWorker", () => {
       try {
         const released = await resource.instance.releaseForLifecycle({
           epoch: "test-end",
+          phase: "release",
           mode: "suspend",
           reason: "test",
           deadlineMs: 0,

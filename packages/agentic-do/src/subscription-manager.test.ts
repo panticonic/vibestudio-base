@@ -42,7 +42,7 @@ describe("SubscriptionManager finite relationships", () => {
     expect(manager.listAll()).toEqual([]);
   });
 
-  it("retains prepared join revision across external acceptance and local materialization loss", async () => {
+  it("retains prepared join operation across external acceptance and local materialization loss", async () => {
     const original = new Error("Join response lost");
     let lose = true;
     const join = vi.fn(async (input) => {
@@ -53,7 +53,7 @@ describe("SubscriptionManager finite relationships", () => {
       return {
         ok: true,
         participantId: input.participantId,
-        revision: input.revision,
+        revision: 1,
       };
     });
     const manager = await makeManager({
@@ -70,15 +70,17 @@ describe("SubscriptionManager finite relationships", () => {
     await expect(manager.joinPrepared(prepared)).rejects.toBe(original);
     expect(manager.count()).toBe(0);
     await manager.joinPrepared(JSON.parse(JSON.stringify(prepared)));
-    expect(join.mock.calls.map(([input]) => input.revision)).toEqual([1, 1]);
+    expect(join.mock.calls[0]![0].operationId).toBe(
+      join.mock.calls[1]![0].operationId,
+    );
     expect(manager.getContextId("ch-1")).toBe("ctx-1");
   });
 
   it("keeps an identical retry at the same relationship revision", async () => {
-    const join = vi.fn().mockImplementation(async (input) => ({
+    const join = vi.fn().mockImplementation(async () => ({
       ok: true,
       participantId: "agent-1",
-      revision: input.revision,
+      revision: 1,
     }));
     const manager = await makeManager({
       join,
@@ -89,15 +91,17 @@ describe("SubscriptionManager finite relationships", () => {
     await manager.subscribe(input);
     await manager.subscribe(input);
 
-    expect(join.mock.calls.map(([arg]) => arg.revision)).toEqual([1, 1]);
+    expect(join.mock.calls[0]![0].operationId).toBe(
+      join.mock.calls[1]![0].operationId,
+    );
     expect(manager.count()).toBe(1);
   });
 
-  it("increments the revision when relationship semantics change", async () => {
-    const join = vi.fn().mockImplementation(async (input) => ({
+  it("creates a new operation when relationship semantics change", async () => {
+    const join = vi.fn().mockImplementation(async () => ({
       ok: true,
       participantId: "agent-1",
-      revision: input.revision,
+      revision: 1,
     }));
     const manager = await makeManager({
       join,
@@ -116,15 +120,17 @@ describe("SubscriptionManager finite relationships", () => {
       config: { wakePolicy: "turn-final" },
     });
 
-    expect(join.mock.calls.map(([arg]) => arg.revision)).toEqual([1, 2]);
+    expect(join.mock.calls[0]![0].operationId).not.toBe(
+      join.mock.calls[1]![0].operationId,
+    );
     expect(manager.getContextId("ch-1")).toBe("ctx-2");
   });
 
-  it("continues the channel's monotonic revision after a prior leave", async () => {
-    const join = vi.fn().mockImplementation(async (input) => ({
+  it("accepts the channel-owned revision without a relationship preflight", async () => {
+    const join = vi.fn().mockImplementation(async () => ({
       ok: true,
       participantId: "agent-1",
-      revision: input.revision,
+      revision: 9,
     }));
     const relationshipState = vi
       .fn()
@@ -137,16 +143,19 @@ describe("SubscriptionManager finite relationships", () => {
       descriptor,
     });
 
-    expect(join).toHaveBeenCalledWith(expect.objectContaining({ revision: 9 }));
+    expect(relationshipState).not.toHaveBeenCalled();
+    expect(join.mock.calls[0]![0]).not.toHaveProperty("revision");
+    // The actual allocated revision is retained locally for the later leave.
+    expect(manager.listStored()[0]!.revision).toBe(9);
   });
 
   it("deletes local membership only after finite leave is acknowledged", async () => {
     const leave = vi.fn().mockResolvedValue(undefined);
     const manager = await makeManager({
-      join: vi.fn().mockImplementation(async (input) => ({
+      join: vi.fn().mockImplementation(async () => ({
         ok: true,
         participantId: "agent-1",
-        revision: input.revision,
+        revision: 1,
       })),
       leave,
       relationshipState: vi.fn().mockResolvedValue(null),
@@ -164,10 +173,10 @@ describe("SubscriptionManager finite relationships", () => {
   });
 
   it("distinguishes reasoning memberships from addressed-only supervision", async () => {
-    const join = vi.fn().mockImplementation(async (input) => ({
+    const join = vi.fn().mockImplementation(async () => ({
       ok: true,
       participantId: "agent-1",
-      revision: input.revision,
+      revision: 1,
     }));
     const manager = await makeManager({
       join,

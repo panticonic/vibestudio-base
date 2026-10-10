@@ -93,7 +93,7 @@ export function Transcript({
     filtered.flatMap((card) =>
       card.details.map((detail) => [
         `${card.id}:${detail.id}`,
-        (card.kind === "thinking" && card.busy) || detail.id === "error",
+        detail.id === "error",
       ]),
     ),
   );
@@ -227,12 +227,10 @@ export function TranscriptCard({
       {/* A speaker's name is a label; a thought is a sentence, and setting one
           in small caps makes it unreadable at exactly the size it is shown. */}
       <Text
-        variant={
-          card.kind === "thinking" && !headerIsDisclosure ? "caption" : "strong"
-        }
+        variant={card.kind === "thinking" ? "caption" : "strong"}
         tone={answer ? presentationTone : speech ? "muted" : card.tone}
       >
-        {headerIsDisclosure ? "Reasoning" : card.title}
+        {card.title}
       </Text>
       {card.badges.map((badge) => (
         <Pill key={badge.id} tone={badge.tone}>
@@ -258,7 +256,7 @@ export function TranscriptCard({
         answer ? "answer" : supportingSpeech || !speech ? "rail" : "card"
       }
       tone={answer ? presentationTone : card.tone}
-      pad={answer ? "md" : "sm"}
+      pad={card.kind === "thinking" ? "xs" : answer ? "md" : "sm"}
       full={card.kind !== "thinking"}
       fit={card.kind === "thinking"}
       gap="sm"
@@ -291,20 +289,11 @@ export function TranscriptCard({
           tone={card.tone}
           {...(headerIsDisclosure
             ? {
-                summary: (
-                  <Box grow gap="xs">
-                    {header}
-                    <Text variant="caption" tone="muted">
-                      {card.title}
-                    </Text>
-                  </Box>
-                ),
+                summary: <Box grow>{header}</Box>,
                 label: `Reasoning: ${card.title}`,
               }
             : {})}
-          defaultOpen={
-            (card.kind === "thinking" && card.busy) || detail.id === "error"
-          }
+          defaultOpen={detail.id === "error"}
           extra={
             card.kind === "thinking" && card.actions.length > 0 ? (
               <CardActions card={card} {...(onAction ? { onAction } : {})} />

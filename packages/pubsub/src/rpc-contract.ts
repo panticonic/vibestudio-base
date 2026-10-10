@@ -1,3 +1,4 @@
+import type { ChannelEvent } from "./types.js";
 import { createReceiverRpcMethods } from "@vibestudio/shared/rpcMethods";
 import { channelClientRpcMethods as channelCliRpcMethods } from "@vibestudio/service-schemas/channel";
 import type { ChannelCliRpc } from "@vibestudio/service-schemas/channel";
@@ -12,7 +13,6 @@ import type {
   MessageBlockInput,
 } from "@workspace/agentic-protocol";
 import type {
-  ChannelEvent,
   ChannelInvite,
   ChannelMember,
   ChannelPresenceEntry,
@@ -38,7 +38,7 @@ export type ChannelDeliveryEndpoint =
   | { kind: "session" };
 export interface ChannelJoinInput {
   participantId: string;
-  revision: number;
+  operationId: string;
   contextId: string;
   metadata: Record<string, unknown>;
   delivery: "all" | "addressed" | "none";
@@ -90,7 +90,7 @@ export interface ChannelClientRpc extends ChannelCliRpc {
   getEnvelope(envelopeId: string): Promise<ChannelEvent | null>;
   error(participantId: string, messageId: string, errorMessage: string, code?: string): Promise<void>;
   sendSignal(participantId: string, content: string, contentType?: string): Promise<void>;
-  broadcastStoredEnvelopes(envelopeIds: string[]): Promise<{ broadcasted: number }>;
+  admitPublishedEnvelopes(intents: import("@workspace/agentic-protocol").LogAppendEventInput[]): Promise<{ admitted: number }>;
   getMessageSender(participantId: string, messageId: string): Promise<string | null>;
   getPolicyState(name?: string): Promise<{
     policy: string;
@@ -143,7 +143,7 @@ export interface ChannelClientRpc extends ChannelCliRpc {
 const channelPrivateRpcMethods = createReceiverRpcMethods<Omit<ChannelClientRpc, keyof ChannelCliRpc>>([
   "initializeConversation", "getChannelPresence", "join", "leave", "relationshipState",
   "unsubscribe", "publish", "recordReceipt",
-  "getEnvelope", "error", "sendSignal", "broadcastStoredEnvelopes", "getMessageSender",
+  "getEnvelope", "error", "sendSignal", "admitPublishedEnvelopes", "getMessageSender",
   "getPolicyState", "recordTaskProvenance", "resolveOpeningRequest", "updateMetadata", "setTypingState", "addMember",
   "removeMember", "listMembers", "listInvitesForMe", "acknowledgeInvite", "getContextId",
   "getConfig", "updateConfig", "getReplayBefore", "getMessageTypes", "getMessageType",

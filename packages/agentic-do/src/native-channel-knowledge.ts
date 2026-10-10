@@ -96,23 +96,25 @@ function entryId(value: unknown): EntryId | null {
     ? (value as EntryId)
     : null;
 }
-/** Only immutable canonical event fields identify knowledge; replay annotations are projections. */
+function immutableKnowledgeEvent(event: ChannelEvent) {
+  return {
+    messageId: event.messageId,
+    type: event.type,
+    senderId: event.senderId,
+    payload: event.payload,
+    ...(event.senderMetadata ? { senderMetadata: event.senderMetadata } : {}),
+    ...(event.contentClass === undefined
+      ? {}
+      : { contentClass: event.contentClass }),
+    ...(event.externalKeys === undefined
+      ? {}
+      : { externalKeys: event.externalKeys }),
+  };
+}
+/** Knowledge is an exact retained prefix; its anchors include the owner-local channel cursor. */
 export function nativeChannelKnowledgeEventDigest(event: ChannelEvent): string {
   return sha256HexSyncText(
-    canonicalJson({
-      id: event.id,
-      messageId: event.messageId,
-      type: event.type,
-      senderId: event.senderId,
-      payload: event.payload,
-      ...(event.senderMetadata ? { senderMetadata: event.senderMetadata } : {}),
-      ...(event.contentClass === undefined
-        ? {}
-        : { contentClass: event.contentClass }),
-      ...(event.externalKeys === undefined
-        ? {}
-        : { externalKeys: event.externalKeys }),
-    }),
+    canonicalJson({ id: event.id, ...immutableKnowledgeEvent(event) }),
   );
 }
 export interface NativeChannelKnowledgeSource {
@@ -211,7 +213,15 @@ export async function exportNativeChannelKnowledge(
   );
   // The finite membership bootstrap writes genuine passive model/context-edit
   // entries. They carry canonical source knowledge, not submitted input authority.
-  const passive = new Map<string, NativeChannelKnowledgeAnchor>();
+  const passive = new Map<
+    string,
+    {
+      envelopeId: string;
+      sequence: number;
+      eventDigest: string;
+      entryId: EntryId;
+    }
+  >();
   let cursor: Parameters<Conversation["entries"]>[2];
   for (;;) {
     const entries = await source.conversation.entries({}, 100, cursor, context);
@@ -229,8 +239,7 @@ export async function exportNativeChannelKnowledge(
       const event = entry.data["event"] as unknown as ChannelEvent;
       if (
         typeof event.messageId !== "string" ||
-        !Number.isSafeInteger(event.id) ||
-        event.id < 0
+        (!Number.isSafeInteger(event.id) || event.id < 0)
       )
         throw new Error(
           "Native passive knowledge has no exact canonical source event",
@@ -294,7 +303,14 @@ export async function exportNativeChannelKnowledge(
           throw new Error(
             "Native passive knowledge changed its canonical source event",
           );
-        anchors.push(detached(passiveAnchor));
+        anchors.push(
+          detached({
+            envelopeId: passiveAnchor.envelopeId,
+            sequence: envelope.id,
+            eventDigest: digest,
+            entryId: passiveAnchor.entryId,
+          }),
+        );
         at =
           at === null
             ? passiveAnchor.entryId
@@ -326,6 +342,7 @@ export async function exportNativeChannelKnowledge(
             (frontier) =>
               canonicalJson(frontier.channelRef) ===
                 canonicalJson(source.channelRef) &&
+              frontier.sequence !== null &&
               frontier.sequence <= request.throughSequence,
           )
         ) {

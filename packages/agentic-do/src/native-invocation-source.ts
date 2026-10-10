@@ -17,15 +17,13 @@ import {
   type NativeInvocationInspection,
   type NativeInvocationSource,
 } from "@vibestudio/service-schemas/nativeInvocation";
-import { workspaceStateMethods } from "@vibestudio/service-schemas/workspaceState";
 import { canonicalJson } from "@vibestudio/shared/canonicalJson";
 import {
-  retainedAgentExecutionOwner,
-  type AgentHostCall,
+  admittedAgentExecutor,
   type LoadedAgentImage,
 } from "./native-agent-session.js";
 import { nativeTaskProductContext } from "./native-product-context.js";
-import { retainedNativeChannelOriginatingInput } from "./native-channel-session.js";
+import { retainedNativeConversationChannel, retainedNativeChannelOriginatingInput } from "./native-channel-session.js";
 
 const NativeSource = defineDocFamily<{ source: JsonValue }, null>({
   kind: "vibestudio.native-invocation-source",
@@ -39,42 +37,28 @@ const NativeSource = defineDocFamily<{ source: JsonValue }, null>({
 export async function nativeInvocationOwner(
   harness: Harness,
   image: LoadedAgentImage,
-  call: AgentHostCall,
+  conversationId: import("@panticonic/pi-durable").ConversationId,
   context: Context,
 ): Promise<NativeInvocationSource["owner"]> {
-  const owner = await retainedAgentExecutionOwner(harness, context);
-  const entity = workspaceStateMethods["entity.resolveActive"].returns.parse(
-    await call("workspace-state.entity.resolveActive", [
-      image.runtimeId,
-    ]),
-  );
-  if (
-    !entity ||
-    entity.kind !== "do" ||
-    entity.status !== "active" ||
-    entity.id !== image.runtimeId ||
-    owner.runtimeId !== image.runtimeId ||
-    entity.authoritySessionId !== owner.authoritySessionId ||
-    entity.contextId !== owner.contextId ||
-    entity.source.repoPath !== image.source ||
-    entity.className !== image.className ||
-    entity.key !== image.objectKey ||
-    entity.activeExecutionDigest !== image.executionDigest ||
-    entity.agentBinding?.entityId !== image.runtimeId ||
-    entity.agentBinding.contextId !== owner.contextId
-  )
-    throw new Error(
-      "Native invocation requires its current host-bound owner and image",
-    );
+  const executor = await admittedAgentExecutor(harness, image, context);
+  const binding = await retainedNativeConversationChannel(harness, conversationId, context);
   return {
-    ...owner,
-    channelId: entity.agentBinding.channelId,
-    source: image.source,
-    effectiveVersion: entity.source.effectiveVersion,
-    className: image.className,
-    objectKey: image.objectKey,
-    executionDigest: image.executionDigest,
+    ...executor.owner,
+    channelId: binding.channelId,
+    source: executor.source,
+    effectiveVersion: executor.effectiveVersion,
+    className: executor.className,
+    objectKey: executor.objectKey,
+    executionDigest: executor.executionDigest,
   };
+}
+
+
+/** Executable replacement preserves the original task attribution and intent.
+ * Current execution is independently admitted against its loaded image. */
+function nativeTaskIntent(source: NativeInvocationSource): string {
+  const { incarnation: _incarnation, effectiveVersion: _version, executionDigest: _digest, channelId: _channel, ...owner } = source.owner;
+  return canonicalJson({ owner, task: source.task, operation: source.operation });
 }
 
 async function retain(
@@ -89,11 +73,12 @@ async function retain(
     id,
     null,
   );
-  if (
-    retained.source !== null &&
-    canonicalJson(retained.source) !== canonicalJson(checked)
-  )
-    throw new Error("Native invocation conflicts with its immutable source");
+  if (retained.source !== null) {
+    const original = nativeInvocationSourceSchema.parse(retained.source);
+    if (nativeTaskIntent(original) !== nativeTaskIntent(checked))
+      throw new Error("Native invocation conflicts with its immutable source");
+    return original;
+  }
   retained.source = copyJson(checked);
   return checked;
 }
@@ -104,10 +89,9 @@ export async function retainNativeModelInvocation(
   request: ModelRequestTarget,
   api: ModelRequestApi,
   image: LoadedAgentImage,
-  call: AgentHostCall,
   context: Context,
 ): Promise<NativeInvocationSource> {
-  const owner = await nativeInvocationOwner(harness, image, call, context);
+  const owner = await nativeInvocationOwner(harness, image, request.conversationId, context);
   const {
     operation: _operation,
     options: _options,
@@ -149,10 +133,9 @@ export async function retainNativeToolInvocation(
   harness: Harness,
   api: ToolExecutionApi,
   image: LoadedAgentImage,
-  call: AgentHostCall,
   context: Context,
 ): Promise<NativeInvocationSource> {
-  const owner = await nativeInvocationOwner(harness, image, call, context);
+  const owner = await nativeInvocationOwner(harness, image, api.conversationId, context);
   return api.commit(async (tx) => {
     const task = await tx.task(api.taskId);
     if (
@@ -238,22 +221,15 @@ export async function retainNativeToolInvocation(
   }, context);
 }
 
-/** Host inspection reads a real retained source and its current owning task; it creates no admission. */
-export async function inspectNativeInvocationSource(
+/** Resolve source from its actual task-owned document and current owner. */
+async function readNativeTaskSource(
   harness: Harness,
   input: { taskId: number; invocationId: string },
-  image: LoadedAgentImage,
-  call: AgentHostCall,
+  owner: NativeInvocationSource["owner"],
   context: Context,
-): Promise<NativeInvocationInspection | null> {
-  const owner = await nativeInvocationOwner(harness, image, call, context);
+) {
   const task = await harness.getTask(input.taskId as TaskId, context);
-  if (
-    !task ||
-    task.state.status === "terminal" ||
-    task.state.status === "completing"
-  )
-    return null;
+  if (!task) return null;
   const retained = await harness.snapshot(
     NativeSource,
     task.id,
@@ -264,7 +240,12 @@ export async function inspectNativeInvocationSource(
   const source = nativeInvocationSourceSchema.parse(retained.source);
   if (
     nativeInvocationId(source) !== input.invocationId ||
-    canonicalJson(owner) !== canonicalJson(source.owner) ||
+    source.owner.runtimeId !== owner.runtimeId ||
+    source.owner.authoritySessionId !== owner.authoritySessionId ||
+    source.owner.contextId !== owner.contextId ||
+    source.owner.source !== owner.source ||
+    source.owner.className !== owner.className ||
+    source.owner.objectKey !== owner.objectKey ||
     source.task.taskId !== task.id ||
     source.task.conversationId !== task.conversationId ||
     source.task.kind !== task.kind ||
@@ -273,6 +254,34 @@ export async function inspectNativeInvocationSource(
     throw new Error(
       "Native invocation belongs to a different task, owner, lifetime or image",
     );
+  return { source, task };
+}
+
+export async function readRetainedNativeInvocationSource(
+  harness: Harness,
+  input: { taskId: number; invocationId: string },
+  image: LoadedAgentImage,
+  context: Context,
+): Promise<NativeInvocationSource | null> {
+  const task = await harness.getTask(input.taskId as TaskId, context);
+  if (!task) return null;
+  const executor = await nativeInvocationOwner(harness, image, task.conversationId, context);
+  return (await readNativeTaskSource(harness, input, executor, context))?.source ?? null;
+}
+
+/** Host inspection reads the exact current task and admitted image. */
+export async function inspectNativeInvocationSource(
+  harness: Harness,
+  input: { taskId: number; invocationId: string },
+  image: LoadedAgentImage,
+  context: Context,
+): Promise<NativeInvocationInspection | null> {
+  const actual = await harness.getTask(input.taskId as TaskId, context);
+  if (!actual) return null;
+  const owner = await nativeInvocationOwner(harness, image, actual.conversationId, context);
+  const original = await readNativeTaskSource(harness, input, owner, context);
+  if (!original || original.task.state.status === "terminal" || original.task.state.status === "completing") return null;
+  const { source, task } = original;
   if (!isObject(task.state.checkpoint))
     throw new Error("Native invocation has no committed execution intent");
   if (source.operation.kind !== "model") {
@@ -315,6 +324,7 @@ export async function inspectNativeInvocationSource(
   const originatingInput = await retainedNativeInvocationOriginatingInput(harness, task.id, context);
   return {
     source,
+    executor: owner,
     status: task.state.status,
     abortRequested: task.abortRequested,
     originatingInput,

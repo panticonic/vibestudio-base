@@ -88,7 +88,7 @@ export type ChannelDeliveryEndpoint =
 
 export interface ChannelJoinInput {
   participantId: string;
-  revision: number;
+  operationId: string;
   contextId: string;
   metadata: Record<string, unknown>;
   delivery: "all" | "addressed" | "none";
@@ -307,12 +307,10 @@ export class ChannelClient {
       { idempotencyKey },
     );
   }
-  async broadcastStoredEnvelopes(
-    envelopeIds: string[],
-  ): Promise<{ broadcasted: number }> {
-    return this.call("broadcastStoredEnvelopes", envelopeIds) as Promise<{
-      broadcasted: number;
-    }>;
+  async admitPublishedEnvelopes(
+    intents: import("@workspace/agentic-protocol").LogAppendEventInput[],
+  ): Promise<{ admitted: number }> {
+    return this.call("admitPublishedEnvelopes", intents);
   }
   async updateMetadata(
     participantId: string,
@@ -411,7 +409,7 @@ export class ChannelClient {
       request,
     );
   }
-  /** Look up one durable channel envelope by its stable id. */
+  /** Look up one accepted or retained channel envelope by its stable id. */
   async getEnvelope(envelopeId: string): Promise<ChannelEvent | null> {
     return this.call("getEnvelope", envelopeId);
   }

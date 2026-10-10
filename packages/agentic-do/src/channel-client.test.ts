@@ -151,6 +151,7 @@ describe("ChannelClient finite relationships", () => {
           return {
             ok: true,
             participantId: (args[0] as { participantId: string }).participantId,
+            revision: 1,
           };
         }
         return undefined;
@@ -161,7 +162,7 @@ describe("ChannelClient finite relationships", () => {
     await expect(
       client.join({
         participantId: "agent-1",
-        revision: 1,
+        operationId: "agent-membership",
         contextId: "ctx-1",
         metadata: { type: "agent" },
         delivery: "all",

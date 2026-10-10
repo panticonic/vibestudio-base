@@ -15,7 +15,10 @@ import type {
   ChannelProtocolParticipantRef,
   ChannelProtocolReplayReady,
 } from "@vibestudio/service-schemas/channel";
-export type { ChannelReplayAfterRequest, ChannelReplayEnvelope } from "@vibestudio/service-schemas/channel";
+export type {
+  ChannelReplayAfterRequest,
+  ChannelReplayEnvelope,
+} from "@vibestudio/service-schemas/channel";
 export type { ChannelConfig } from "@vibestudio/service-schemas/channel";
 
 /** Authored initial content, installed only when the channel is created. */
@@ -90,7 +93,7 @@ export interface StoredChannelAttachment {
 
 export type ServerLogEvent<T = unknown> = ChannelProtocolEvent<T>;
 
-/** Canonical durable channel event shared by the service and agent runtime. */
+/** Live delivery and replay expose the same locally committed canonical cursor. */
 export type ChannelEvent<T = unknown> = ServerLogEvent<T>;
 
 /** Options accepted by the Durable Object channel publication boundary. */
@@ -222,6 +225,8 @@ export interface PubSubMessage<T = unknown> {
   phase?: "replay" | "live";
   /** Message ID (only present for durable log messages) */
   id?: number;
+  /** Stable envelope identity shared by live acceptance and durable replay. */
+  messageId?: string;
   /** User-defined message type */
   type: string;
   /** Message payload (JSON-serializable value) */

@@ -38,11 +38,10 @@ class TestAgentVessel extends AgentVesselBase {
   }
   protected override createChannelClient(): ChannelClient {
     return {
-      relationshipState: async () => ({ revision: 0, active: false }),
-      join: async (input: { participantId: string; revision: number }) => ({
+      join: async (input: { participantId: string; operationId: string }) => ({
         ok: true,
         participantId: input.participantId,
-        revision: input.revision,
+        revision: 1,
         channelConfig: {},
         envelope: { logEvents: [], ready: { totalCount: 0, envelopeCount: 0 } },
       }),

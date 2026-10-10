@@ -1145,6 +1145,7 @@ it("observes default changes and settles pending observations on owner retiremen
     const rejected = expect(waiting).rejects.toThrow("retired");
     await fixture.instance.releaseForLifecycle({
       epoch: "suspend",
+      phase: "release",
       mode: "suspend",
       reason: "restart",
       deadlineMs: 0,
@@ -1360,6 +1361,7 @@ it("cancels and joins the required initial credential read on retirement", async
     await Promise.resolve();
     await fixture.instance.releaseForLifecycle({
       epoch: "suspend",
+      phase: "release",
       mode: "suspend",
       reason: "restart",
       deadlineMs: 0,

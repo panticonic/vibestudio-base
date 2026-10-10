@@ -56,6 +56,11 @@ export class SubscriptionManager {
 
   static createTables(sql: SqlStorage): void {
     sql.exec(`
+      CREATE TABLE IF NOT EXISTS subscription_intents (
+        channel_id TEXT PRIMARY KEY,
+        operation_id TEXT NOT NULL,
+        relationship_json TEXT NOT NULL
+      );
       CREATE TABLE IF NOT EXISTS subscriptions (
         channel_id TEXT PRIMARY KEY,
         context_id TEXT NOT NULL,
@@ -81,7 +86,6 @@ export class SubscriptionManager {
     opts: ChannelSubscriptionOptions,
   ): Promise<PreparedChannelSubscription> {
     const participantId = this.buildParticipantId();
-    const current = this.getStored(opts.channelId);
     const metadata: Record<string, unknown> = {
       name: opts.descriptor.name,
       handle: opts.descriptor.handle,
@@ -109,20 +113,31 @@ export class SubscriptionManager {
         config === null ? null : { version: 1 as const, value: config },
     };
     const relationshipJson = canonicalJson(relationship);
-    const channel = this.channelFactory(opts.channelId);
-    const remote = current
-      ? null
-      : await channel.relationshipState(participantId);
-    const revision = current
-      ? current.relationshipJson === relationshipJson
-        ? current.revision
-        : current.revision + 1
-      : (remote?.revision ?? 0) + 1;
+    const intentJson = canonicalJson({
+      relationship,
+      replay: opts.replay !== false,
+    });
+    const retained = this.sql
+      .exec(
+        `SELECT operation_id, relationship_json FROM subscription_intents WHERE channel_id = ?`,
+        opts.channelId,
+      )
+      .toArray()[0];
+    const operationId =
+      retained?.["relationship_json"] === intentJson
+        ? String(retained["operation_id"])
+        : crypto.randomUUID();
+    this.sql.exec(
+      `INSERT OR REPLACE INTO subscription_intents (channel_id, operation_id, relationship_json) VALUES (?, ?, ?)`,
+      opts.channelId,
+      operationId,
+      intentJson,
+    );
     return {
       channelId: opts.channelId,
       input: {
         participantId,
-        revision,
+        operationId,
         ...relationship,
         replay: opts.replay !== false,
       },
@@ -130,7 +145,7 @@ export class SubscriptionManager {
     };
   }
 
-  /** An exact lost-response retry cannot silently choose a different revision. */
+  /** An exact lost-response retry retains its channel-owned operation identity. */
   async joinPrepared(
     prepared: PreparedChannelSubscription,
   ): Promise<ChannelJoinResult> {
@@ -141,7 +156,7 @@ export class SubscriptionManager {
     const { replay: _replay, ...relationship } = prepared.input;
     const {
       participantId: _participantId,
-      revision: _revision,
+      operationId: _operationId,
       ...semanticRelationship
     } = relationship;
     if (canonicalJson(semanticRelationship) !== prepared.relationshipJson)
@@ -151,8 +166,8 @@ export class SubscriptionManager {
     const result = await this.channelFactory(prepared.channelId).join(
       prepared.input,
     );
-    if (result.revision !== prepared.input.revision)
-      throw new Error("Channel join changed its exact relationship revision");
+    if (!Number.isSafeInteger(result.revision) || result.revision < 1)
+      throw new Error("Channel join returned an invalid relationship revision");
     this.sql.exec(
       `INSERT OR REPLACE INTO subscriptions
          (channel_id, context_id, revision, subscribed_at, config, relationship_json, participant_id)
@@ -173,26 +188,7 @@ export class SubscriptionManager {
   async subscribe(
     opts: ChannelSubscriptionOptions,
   ): Promise<ChannelJoinResult> {
-    let prepared = await this.prepareSubscription(opts);
-    try {
-      return await this.joinPrepared(prepared);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      if (
-        !/relationship revision|already names different relationship data/.test(
-          message,
-        )
-      )
-        throw error;
-      const authoritative = await this.channelFactory(
-        opts.channelId,
-      ).relationshipState(prepared.input.participantId);
-      prepared = {
-        ...prepared,
-        input: { ...prepared.input, revision: authoritative.revision + 1 },
-      };
-      return this.joinPrepared(prepared);
-    }
+    return this.joinPrepared(await this.prepareSubscription(opts));
   }
 
   async unsubscribeFromChannel(channelId: string): Promise<void> {
@@ -212,6 +208,10 @@ export class SubscriptionManager {
       }
     }
     this.deleteSubscription(channelId);
+    this.sql.exec(
+      `DELETE FROM subscription_intents WHERE channel_id = ?`,
+      channelId,
+    );
   }
 
   getParticipantId(channelId: string): string | null {
@@ -290,6 +290,11 @@ export class SubscriptionManager {
   ): void {
     if (!newContextId)
       throw new Error("SubscriptionManager.rename requires newContextId");
+    this.sql.exec(
+      `DELETE FROM subscription_intents WHERE channel_id IN (?, ?)`,
+      oldChannelId,
+      newChannelId,
+    );
     this.sql.exec(
       `UPDATE subscriptions SET channel_id = ?, context_id = ?, participant_id = ? WHERE channel_id = ?`,
       newChannelId,

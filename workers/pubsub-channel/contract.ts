@@ -15,6 +15,9 @@ void clientContractCheck;
 type WorkerOnlyRpc = Pick<
   PubSubChannel,
   | "executeChannelMaintenanceClaim"
+  | "executeChannelObservationClaim"
+  | "prepareChannelObservationClaim"
+  | "waitObservedThrough"
   | "detach"
   | "adminUnsubscribeParticipant"
   | "adminUpdateParticipantMetadata"
@@ -34,6 +37,9 @@ type WorkerOnlyRpc = Pick<
 >;
 const workerOnlyRpcMethods = createReceiverRpcMethods<WorkerOnlyRpc>([
   "executeChannelMaintenanceClaim",
+  "executeChannelObservationClaim",
+  "prepareChannelObservationClaim",
+  "waitObservedThrough",
   "detach",
   "adminUnsubscribeParticipant",
   "adminUpdateParticipantMetadata",

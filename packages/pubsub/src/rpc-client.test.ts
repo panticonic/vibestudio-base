@@ -446,7 +446,10 @@ describe("connectViaRpc", () => {
 
   describe("subscribe + ready flow", () => {
     it("opens subscribe as the long-lived channel resource", async () => {
-      const client = connectViaRpc({ rpc: publicRpcMock(mockRpc), channel: CHANNEL });
+      const client = connectViaRpc({
+        rpc: publicRpcMock(mockRpc),
+        channel: CHANNEL,
+      });
       await subscribeStarted;
 
       expect(mockRpc.stream).toHaveBeenCalledWith(
@@ -485,6 +488,96 @@ describe("connectViaRpc", () => {
         expect.anything(),
       );
       await client.close();
+    });
+
+    it("retries an unacknowledged resident join with the same admitted operation identity", async () => {
+      let recover!: () => Promise<void>;
+      const attempts: Array<{
+        operationId: string;
+        metadata: Record<string, unknown>;
+      }> = [];
+      const unregister = vi.fn();
+      const rpc = {
+        selfId: SELF_ID,
+        stream: vi.fn(),
+        registerResidentSession: vi.fn(() => ({
+          transport: {
+            call: <Args extends unknown[], Result>(
+              target: string,
+              method: RpcMethod<Args, Result>,
+              args: Args,
+            ) => publicRpcMock(rpc).call(target, method, args),
+          },
+          close: unregister,
+        })),
+        call: vi.fn(
+          async (_target: string, method: string, args: unknown[]) => {
+            if (method === "join") {
+              attempts.push(args[0] as (typeof attempts)[number]);
+              if (attempts.length === 1)
+                throw new RpcBoundaryError(
+                  "Opening reply lost after commit",
+                  "transport",
+                  "CONNECTION_LOST",
+                );
+              return {
+                ok: true,
+                participantId: SELF_ID,
+                revision: attempts.length + 5,
+                envelope: {
+                  mode: "initial",
+                  logEvents: [],
+                  snapshots: [],
+                  ready: { totalCount: 0, envelopeCount: 0 },
+                },
+              };
+            }
+            if (method === "leave") return { ok: true };
+            throw new Error(`Unexpected resident RPC ${method}`);
+          },
+        ),
+      };
+      const client = connectViaRpc({
+        rpc: publicRpcMock(rpc),
+        channel: CHANNEL,
+        channelTargetId: DO_TARGET,
+        deliveryMode: "resident",
+        recoveryCoordinator: {
+          run: async () => {
+            await recover();
+          },
+          registerResubscribeHandler: (
+            _id: string,
+            handler: () => Promise<void>,
+          ) => {
+            recover = handler;
+            return vi.fn();
+          },
+          registerColdRecoverHandler: () => vi.fn(),
+        },
+      });
+      try {
+        await vi.waitFor(() => expect(unregister).toHaveBeenCalledOnce());
+        await recover();
+        await client.ready();
+        expect(attempts).toHaveLength(2);
+        expect(attempts[1]).toEqual(attempts[0]);
+        expect(attempts[0]!.operationId).toEqual(expect.any(String));
+        expect(attempts[0]!.metadata).not.toHaveProperty("sinceId");
+        expect(attempts[0]!.metadata).not.toHaveProperty("replay");
+        await recover();
+        expect(attempts[2]!.operationId).not.toBe(attempts[0]!.operationId);
+        expect(rpc.stream).not.toHaveBeenCalled();
+        await client.close();
+        expect(
+          rpc.call.mock.calls.some((call) => call[1] === "relationshipState"),
+        ).toBe(false);
+        expect(
+          rpc.call.mock.calls.find((call) => call[1] === "leave")?.[2],
+        ).toEqual([{ participantId: SELF_ID, revision: 9 }]);
+      } finally {
+        await client.close();
+      }
     });
 
     it("routes finite resident delivery through the injected owner registrar", async () => {
@@ -623,9 +716,38 @@ describe("connectViaRpc", () => {
         expect(residentEventHandler).toHaveBeenCalledOnce(),
       );
       expect(deliverySettled).toBe(false);
+      const pendingEvent = residentEventHandler.mock.calls[0]![0];
+      expect(pendingEvent.pubsubId).toBe(1);
+      const overlap = Promise.resolve(
+        receiver!({
+          channelId: CHANNEL,
+          message: {
+            kind: "log",
+            phase: "live",
+            event: {
+              id: 1,
+              messageId: "invocation-1",
+              type: AGENTIC_EVENT_PAYLOAD_KIND,
+              payload: invocation("invocation.started", CALL_ID_1, {
+                name: "inspect",
+                request: { value: "hydrated" },
+                transport: { kind: "local", awaiterId: "resident-call" },
+              }),
+              senderId: "agent-1",
+              contentClass: "internal",
+              externalKeys: [],
+              ts: Date.now(),
+            },
+          },
+        }),
+      );
+      await Promise.resolve();
+      expect(residentEventHandler).toHaveBeenCalledOnce();
       releaseHandler!();
-      await delivery;
+      await Promise.all([delivery, overlap]);
       expect(deliverySettled).toBe(true);
+      expect(residentEventHandler).toHaveBeenCalledOnce();
+      expect(pendingEvent.pubsubId).toBe(1);
 
       await receiver!({
         channelId: CHANNEL,
@@ -650,9 +772,12 @@ describe("connectViaRpc", () => {
 
       await client.close();
       expect(unregister).toHaveBeenCalledOnce();
-      expect(rpc.call).toHaveBeenCalledWith(DO_TARGET, "leave", [
-        { participantId: SELF_ID, revision: 2 },
-      ], undefined);
+      expect(rpc.call).toHaveBeenCalledWith(
+        DO_TARGET,
+        "leave",
+        [{ participantId: SELF_ID, revision: 2 }],
+        undefined,
+      );
     });
 
     it("preserves non-recoverable structured RPC errors through the subscription boundary", async () => {
@@ -678,7 +803,10 @@ describe("connectViaRpc", () => {
         stream: vi.fn(),
       };
       const errors: Error[] = [];
-      const client = connectViaRpc({ rpc: publicRpcMock(rpc), channel: CHANNEL });
+      const client = connectViaRpc({
+        rpc: publicRpcMock(rpc),
+        channel: CHANNEL,
+      });
       client.onError((error) => errors.push(error));
 
       await expect(client.ready()).rejects.toMatchObject({
@@ -724,7 +852,10 @@ describe("connectViaRpc", () => {
         },
       );
       const errors: Error[] = [];
-      const client = connectViaRpc({ rpc: publicRpcMock(mockRpc), channel: CHANNEL });
+      const client = connectViaRpc({
+        rpc: publicRpcMock(mockRpc),
+        channel: CHANNEL,
+      });
       client.onError((error) => errors.push(error));
       let ready = false;
       void client.ready().then(() => {
@@ -894,7 +1025,10 @@ describe("connectViaRpc", () => {
           return undefined;
         },
       );
-      const client = connectViaRpc({ rpc: publicRpcMock(mockRpc), channel: CHANNEL });
+      const client = connectViaRpc({
+        rpc: publicRpcMock(mockRpc),
+        channel: CHANNEL,
+      });
       await emitReplayAndReady(emit, []);
       await client.ready();
 
@@ -903,10 +1037,12 @@ describe("connectViaRpc", () => {
         settled = true;
       });
       await vi.waitFor(() => {
-        expect(mockRpc.call).toHaveBeenCalledWith(DO_TARGET, "unsubscribe", [
-          SELF_ID,
-          expect.any(String),
-        ], undefined);
+        expect(mockRpc.call).toHaveBeenCalledWith(
+          DO_TARGET,
+          "unsubscribe",
+          [SELF_ID, expect.any(String)],
+          undefined,
+        );
       });
       expect(settled).toBe(false);
 
@@ -933,7 +1069,10 @@ describe("connectViaRpc", () => {
           return undefined;
         },
       );
-      const client = connectViaRpc({ rpc: publicRpcMock(mockRpc), channel: CHANNEL });
+      const client = connectViaRpc({
+        rpc: publicRpcMock(mockRpc),
+        channel: CHANNEL,
+      });
       await emitReplayAndReady(emit, []);
       await client.ready();
       const closing = client.close();
@@ -950,7 +1089,10 @@ describe("connectViaRpc", () => {
 
     it("does not create a parallel PubSub heartbeat loop", async () => {
       const setIntervalSpy = vi.spyOn(globalThis, "setInterval");
-      const client = connectViaRpc({ rpc: publicRpcMock(mockRpc), channel: CHANNEL });
+      const client = connectViaRpc({
+        rpc: publicRpcMock(mockRpc),
+        channel: CHANNEL,
+      });
       try {
         await emitReplayAndReady(emit, []);
         await client.ready();
@@ -965,7 +1107,10 @@ describe("connectViaRpc", () => {
     });
 
     it("resolves ready() after replay + ready events", async () => {
-      const client = connectViaRpc({ rpc: publicRpcMock(mockRpc), channel: CHANNEL });
+      const client = connectViaRpc({
+        rpc: publicRpcMock(mockRpc),
+        channel: CHANNEL,
+      });
 
       // Emit replay participants and ready
       await emitReplayAndReady(emit, [
@@ -1050,18 +1195,20 @@ describe("connectViaRpc", () => {
       await client.ready();
       expect(client.clientId).toBe("user:usr_alice");
       await client.publish("test", { ok: true });
-      expect(mockRpc.call).toHaveBeenCalledWith(DO_TARGET, "publish", [
-        "user:usr_alice",
-        "test",
-        { ok: true },
-        expect.any(Object),
-      ], undefined);
+      expect(mockRpc.call).toHaveBeenCalledWith(
+        DO_TARGET,
+        "publish",
+        ["user:usr_alice", "test", { ok: true }, expect.any(Object)],
+        undefined,
+      );
 
       await client.close();
-      expect(mockRpc.call).toHaveBeenCalledWith(DO_TARGET, "unsubscribe", [
-        "user:usr_alice",
-        expect.any(String),
-      ], undefined);
+      expect(mockRpc.call).toHaveBeenCalledWith(
+        DO_TARGET,
+        "unsubscribe",
+        ["user:usr_alice", expect.any(String)],
+        undefined,
+      );
     });
 
     it("resolves ready() from the subscribe acknowledgment after applying fallback replay", async () => {
@@ -1120,7 +1267,10 @@ describe("connectViaRpc", () => {
         },
       );
 
-      const client = connectViaRpc({ rpc: publicRpcMock(mockRpc), channel: CHANNEL });
+      const client = connectViaRpc({
+        rpc: publicRpcMock(mockRpc),
+        channel: CHANNEL,
+      });
       const events = client.events({ includeReplay: true });
       const readyHandler = vi.fn();
       client.onReady(readyHandler);
@@ -1248,7 +1398,10 @@ describe("connectViaRpc", () => {
     });
 
     it("joins a returned event subscription while its first read awaits readiness", async () => {
-      const client = connectViaRpc({ rpc: publicRpcMock(mockRpc), channel: CHANNEL });
+      const client = connectViaRpc({
+        rpc: publicRpcMock(mockRpc),
+        channel: CHANNEL,
+      });
       const iterator = client.events({ includeReplay: true });
       const pending = iterator.next();
       const observed = pending.catch((error) => error);
@@ -1287,7 +1440,10 @@ describe("connectViaRpc", () => {
           this.controller.abort();
         }
       };
-      const client = connectViaRpc({ rpc: publicRpcMock(mockRpc), channel: CHANNEL });
+      const client = connectViaRpc({
+        rpc: publicRpcMock(mockRpc),
+        channel: CHANNEL,
+      });
       vi.stubGlobal("AbortController", LegacyController);
       const iterator = client.events({ includeReplay: true });
       const pending = iterator.next();
@@ -1304,7 +1460,10 @@ describe("connectViaRpc", () => {
     });
 
     it("propagates event cancellation without closing the shared channel client", async () => {
-      const client = connectViaRpc({ rpc: publicRpcMock(mockRpc), channel: CHANNEL });
+      const client = connectViaRpc({
+        rpc: publicRpcMock(mockRpc),
+        channel: CHANNEL,
+      });
       const caller = new AbortController();
       const iterator = client.events({
         includeReplay: true,
@@ -1331,7 +1490,10 @@ describe("connectViaRpc", () => {
     });
 
     it("seeds late event subscribers with streamed replay after ready", async () => {
-      const client = connectViaRpc({ rpc: publicRpcMock(mockRpc), channel: CHANNEL });
+      const client = connectViaRpc({
+        rpc: publicRpcMock(mockRpc),
+        channel: CHANNEL,
+      });
       emit({
         stream: "log",
         phase: "replay",
@@ -1369,7 +1531,10 @@ describe("connectViaRpc", () => {
     });
 
     it("delivers buffered streamed replay to subscribers that are already listening before ready", async () => {
-      const client = connectViaRpc({ rpc: publicRpcMock(mockRpc), channel: CHANNEL });
+      const client = connectViaRpc({
+        rpc: publicRpcMock(mockRpc),
+        channel: CHANNEL,
+      });
       const iter = client.events({ includeReplay: true });
       const next = iter.next();
 
@@ -1409,7 +1574,10 @@ describe("connectViaRpc", () => {
     });
 
     it("does not deliver buffered streamed replay to subscribers that opt out of replay", async () => {
-      const client = connectViaRpc({ rpc: publicRpcMock(mockRpc), channel: CHANNEL });
+      const client = connectViaRpc({
+        rpc: publicRpcMock(mockRpc),
+        channel: CHANNEL,
+      });
       const iter = client.events();
       const next = iter.next();
 
@@ -1462,7 +1630,10 @@ describe("connectViaRpc", () => {
     });
 
     it("fires onRoster handlers during replay", async () => {
-      const client = connectViaRpc({ rpc: publicRpcMock(mockRpc), channel: CHANNEL });
+      const client = connectViaRpc({
+        rpc: publicRpcMock(mockRpc),
+        channel: CHANNEL,
+      });
       const rosterUpdates: Array<{ participantId: string; action: string }> =
         [];
       client.onRoster((update) => {
@@ -1512,12 +1683,17 @@ describe("connectViaRpc", () => {
       });
 
       expect(pubsubId).toBe(42);
-      expect(mockRpc.call).toHaveBeenCalledWith(DO_TARGET, "publish", [
-        SELF_ID,
-        "custom.event",
-        { id: "m1", content: "hello" },
-        expect.objectContaining({}),
-      ], undefined);
+      expect(mockRpc.call).toHaveBeenCalledWith(
+        DO_TARGET,
+        "publish",
+        [
+          SELF_ID,
+          "custom.event",
+          { id: "m1", content: "hello" },
+          expect.objectContaining({}),
+        ],
+        undefined,
+      );
     });
 
     it("send() returns the owner-accepted message identity on retries", async () => {
@@ -1589,14 +1765,19 @@ describe("connectViaRpc", () => {
 
       expect(result.pubsubId).toBe(42);
       expect(result.messageId).toMatch(/^[0-9a-f-]{36}$/);
-      expect(mockRpc.call).toHaveBeenCalledWith(DO_TARGET, "publish", [
-        SELF_ID,
-        AGENTIC_EVENT_PAYLOAD_KIND,
-        expect.objectContaining({
-          kind: "message.completed",
-        }),
-        expect.objectContaining({ idempotencyKey: "send-1" }),
-      ], undefined);
+      expect(mockRpc.call).toHaveBeenCalledWith(
+        DO_TARGET,
+        "publish",
+        [
+          SELF_ID,
+          AGENTIC_EVENT_PAYLOAD_KIND,
+          expect.objectContaining({
+            kind: "message.completed",
+          }),
+          expect.objectContaining({ idempotencyKey: "send-1" }),
+        ],
+        undefined,
+      );
 
       const [, , args] = mockRpc.call.mock.calls[0]!;
       const payload = (args as unknown[])[2];
@@ -2870,6 +3051,78 @@ describe("connectViaRpc", () => {
       }
     });
 
+    it("rejects a provisional live packet instead of admitting input without its durable cursor", async () => {
+      const mock = createMockRpc();
+      const client = connectViaRpc({
+        rpc: publicRpcMock(mock.rpc),
+        channel: CHANNEL,
+      });
+      const errors: Error[] = [];
+      client.onError((error) => errors.push(error));
+      await emitReplayAndReady(mock.emit, []);
+      await client.ready();
+      mock.emit({
+        kind: "log",
+        phase: "live",
+        event: {
+          id: null,
+          messageId: "uncommitted-envelope",
+          type: AGENTIC_EVENT_PAYLOAD_KIND,
+          payload: messageEvent("uncommitted", "missing cursor"),
+          senderId: "agent-1",
+          ts: 100,
+          contentClass: "internal",
+          externalKeys: [],
+        },
+      });
+      await vi.waitFor(() => expect(errors).toHaveLength(1));
+      expect(errors[0]?.message).toBe(
+        "Channel log delivery requires its locally committed numeric cursor",
+      );
+      await client.close();
+    });
+
+    it("processes one canonical numeric envelope once across live and replay delivery", async () => {
+      const mock = createMockRpc();
+      const client = connectViaRpc({
+        rpc: publicRpcMock(mock.rpc),
+        channel: CHANNEL,
+      });
+      await emitReplayAndReady(mock.emit, []);
+      await client.ready();
+      const events = client.events({ includeReplay: true });
+      const firstEnvelope = {
+        id: 1,
+        messageId: "canonical-envelope",
+        type: AGENTIC_EVENT_PAYLOAD_KIND,
+        payload: messageEvent("live-message", "locally committed"),
+        senderId: "agent-1",
+        ts: 100,
+        contentClass: "internal",
+        externalKeys: [],
+      };
+      mock.emit({ kind: "log", phase: "live", event: firstEnvelope });
+      const first = (await events.next()).value!;
+      expect(first.pubsubId).toBe(1);
+      expect(first.envelopeId).toBe("canonical-envelope");
+      mock.emit({ kind: "log", phase: "live", event: firstEnvelope });
+      mock.emit({ kind: "log", phase: "replay", event: firstEnvelope });
+      mock.emit({
+        stream: "log",
+        phase: "live",
+        id: 2,
+        type: AGENTIC_EVENT_PAYLOAD_KIND,
+        payload: messageEvent("next-message", "next"),
+        senderId: "agent-1",
+        ts: 101,
+      });
+      const second = (await events.next()).value!;
+      expect(second.pubsubId).toBe(2);
+      expect(first.pubsubId).toBe(1);
+      await client.close();
+      await events.return?.();
+    });
+
     it("never regresses the durable replay cursor when an overlapping reader replays an older event", async () => {
       const coordinator = createRecoveryCoordinator();
       const mock = createMockRpc();
@@ -3270,7 +3523,10 @@ describe("connectViaRpc", () => {
     });
 
     it("unwraps the typed channel management responses", async () => {
-      const client = connectViaRpc({ rpc: publicRpcMock(mockRpc), channel: CHANNEL });
+      const client = connectViaRpc({
+        rpc: publicRpcMock(mockRpc),
+        channel: CHANNEL,
+      });
       await Promise.resolve();
       await Promise.resolve();
       mockRpc.call.mockClear();
@@ -3327,12 +3583,18 @@ describe("connectViaRpc", () => {
         generatedAt: 2,
       });
 
-      expect(mockRpc.call).toHaveBeenCalledWith(DO_TARGET, "addMember", [
-        { userId: "usr_bob" },
-      ], undefined);
-      expect(mockRpc.call).toHaveBeenCalledWith(DO_TARGET, "removeMember", [
-        { userId: "usr_bob" },
-      ], undefined);
+      expect(mockRpc.call).toHaveBeenCalledWith(
+        DO_TARGET,
+        "addMember",
+        [{ userId: "usr_bob" }],
+        undefined,
+      );
+      expect(mockRpc.call).toHaveBeenCalledWith(
+        DO_TARGET,
+        "removeMember",
+        [{ userId: "usr_bob" }],
+        undefined,
+      );
       expect(mockRpc.call).toHaveBeenCalledWith(
         DO_TARGET,
         "listInvitesForMe",
@@ -3353,7 +3615,10 @@ describe("connectViaRpc", () => {
 
   describe("close", () => {
     it("leaves the subscription resource and fires disconnect handlers", async () => {
-      const client = connectViaRpc({ rpc: publicRpcMock(mockRpc), channel: CHANNEL });
+      const client = connectViaRpc({
+        rpc: publicRpcMock(mockRpc),
+        channel: CHANNEL,
+      });
       await emitReplayAndReady(emit, []);
       await client.ready();
       mockRpc.call.mockClear();
@@ -3371,10 +3636,12 @@ describe("connectViaRpc", () => {
 
       await client.close();
 
-      expect(mockRpc.call).toHaveBeenCalledWith(DO_TARGET, "unsubscribe", [
-        SELF_ID,
-        expect.any(String),
-      ], undefined);
+      expect(mockRpc.call).toHaveBeenCalledWith(
+        DO_TARGET,
+        "unsubscribe",
+        [SELF_ID, expect.any(String)],
+        undefined,
+      );
 
       // Verify disconnect handler fired
       expect(disconnectFn).toHaveBeenCalledTimes(1);
@@ -3391,7 +3658,10 @@ describe("connectViaRpc", () => {
 
   describe("method cancel propagation", () => {
     it("does not publish a method call when the caller signal is already aborted", async () => {
-      const client = connectViaRpc({ rpc: publicRpcMock(mockRpc), channel: CHANNEL });
+      const client = connectViaRpc({
+        rpc: publicRpcMock(mockRpc),
+        channel: CHANNEL,
+      });
       await emitReplayAndReady(emit, []);
       await client.ready();
       mockRpc.call.mockClear();
@@ -3413,7 +3683,10 @@ describe("connectViaRpc", () => {
     });
 
     it("cancels an in-flight method call when the caller signal aborts", async () => {
-      const client = connectViaRpc({ rpc: publicRpcMock(mockRpc), channel: CHANNEL });
+      const client = connectViaRpc({
+        rpc: publicRpcMock(mockRpc),
+        channel: CHANNEL,
+      });
       await emitReplayAndReady(emit, []);
       await client.ready();
       mockRpc.call.mockClear();
@@ -3436,31 +3709,41 @@ describe("connectViaRpc", () => {
       await Promise.resolve();
       await Promise.resolve();
 
-      expect(mockRpc.call).toHaveBeenCalledWith(DO_TARGET, "callMethod", [
-        SELF_ID,
-        "provider-1",
-        handle.callId,
-        "slowWork",
-        {},
-        {
-          invocationId: handle.invocationId,
-          transportCallId: handle.transportCallId,
-        },
-      ], undefined);
+      expect(mockRpc.call).toHaveBeenCalledWith(
+        DO_TARGET,
+        "callMethod",
+        [
+          SELF_ID,
+          "provider-1",
+          handle.callId,
+          "slowWork",
+          {},
+          {
+            invocationId: handle.invocationId,
+            transportCallId: handle.transportCallId,
+          },
+        ],
+        undefined,
+      );
 
       controller.abort();
 
       await expect(handle.result).rejects.toMatchObject({ code: "cancelled" });
-      expect(mockRpc.call).toHaveBeenCalledWith(DO_TARGET, "cancelMethodCall", [
-        SELF_ID,
-        handle.callId,
-      ], undefined);
+      expect(mockRpc.call).toHaveBeenCalledWith(
+        DO_TARGET,
+        "cancelMethodCall",
+        [SELF_ID, handle.callId],
+        undefined,
+      );
 
       await client.close();
     });
 
     it("awaits cancelMethodCall for explicit cancellation", async () => {
-      const client = connectViaRpc({ rpc: publicRpcMock(mockRpc), channel: CHANNEL });
+      const client = connectViaRpc({
+        rpc: publicRpcMock(mockRpc),
+        channel: CHANNEL,
+      });
       await emitReplayAndReady(emit, []);
       await client.ready();
       mockRpc.call.mockClear();
@@ -3486,10 +3769,12 @@ describe("connectViaRpc", () => {
 
       await Promise.resolve();
       expect(settled).toBe(false);
-      expect(mockRpc.call).toHaveBeenCalledWith(DO_TARGET, "cancelMethodCall", [
-        SELF_ID,
-        handle.callId,
-      ], undefined);
+      expect(mockRpc.call).toHaveBeenCalledWith(
+        DO_TARGET,
+        "cancelMethodCall",
+        [SELF_ID, handle.callId],
+        undefined,
+      );
 
       resolveCancel();
       await cancelPromise;
@@ -3499,7 +3784,10 @@ describe("connectViaRpc", () => {
     });
 
     it("keeps pause calls on normal method transport until the provider result arrives", async () => {
-      const client = connectViaRpc({ rpc: publicRpcMock(mockRpc), channel: CHANNEL });
+      const client = connectViaRpc({
+        rpc: publicRpcMock(mockRpc),
+        channel: CHANNEL,
+      });
       await emitReplayAndReady(emit, []);
       await client.ready();
       mockRpc.call.mockClear();
@@ -3518,17 +3806,22 @@ describe("connectViaRpc", () => {
 
       await Promise.resolve();
       expect(handle.complete).toBe(false);
-      expect(mockRpc.call).toHaveBeenCalledWith(DO_TARGET, "callMethod", [
-        SELF_ID,
-        "agent-1",
-        handle.callId,
-        "pause",
-        { reason: "User interrupted execution" },
-        {
-          invocationId: handle.invocationId,
-          transportCallId: handle.transportCallId,
-        },
-      ], undefined);
+      expect(mockRpc.call).toHaveBeenCalledWith(
+        DO_TARGET,
+        "callMethod",
+        [
+          SELF_ID,
+          "agent-1",
+          handle.callId,
+          "pause",
+          { reason: "User interrupted execution" },
+          {
+            invocationId: handle.invocationId,
+            transportCallId: handle.transportCallId,
+          },
+        ],
+        undefined,
+      );
 
       emit({
         stream: "log",
@@ -3555,7 +3848,10 @@ describe("connectViaRpc", () => {
 
     it("re-drives ambiguous method-start acknowledgements with the exact same identity", async () => {
       vi.useFakeTimers();
-      const client = connectViaRpc({ rpc: publicRpcMock(mockRpc), channel: CHANNEL });
+      const client = connectViaRpc({
+        rpc: publicRpcMock(mockRpc),
+        channel: CHANNEL,
+      });
       try {
         await emitReplayAndReady(emit, []);
         await client.ready();
@@ -3618,7 +3914,10 @@ describe("connectViaRpc", () => {
 
     it("accepts a durable terminal after an ambiguous start ACK without waiting for redrive", async () => {
       vi.useFakeTimers();
-      const client = connectViaRpc({ rpc: publicRpcMock(mockRpc), channel: CHANNEL });
+      const client = connectViaRpc({
+        rpc: publicRpcMock(mockRpc),
+        channel: CHANNEL,
+      });
       try {
         await emitReplayAndReady(emit, []);
         await client.ready();
@@ -3669,7 +3968,10 @@ describe("connectViaRpc", () => {
     });
 
     it("rejects a method start that the channel definitively refuses", async () => {
-      const client = connectViaRpc({ rpc: publicRpcMock(mockRpc), channel: CHANNEL });
+      const client = connectViaRpc({
+        rpc: publicRpcMock(mockRpc),
+        channel: CHANNEL,
+      });
       await emitReplayAndReady(emit, []);
       await client.ready();
       mockRpc.call.mockClear();
@@ -4173,7 +4475,10 @@ describe("connectViaRpc", () => {
     });
 
     it("abortExecutingMethod returns false when no execution matches the call id", async () => {
-      const client = connectViaRpc({ rpc: publicRpcMock(mockRpc), channel: CHANNEL });
+      const client = connectViaRpc({
+        rpc: publicRpcMock(mockRpc),
+        channel: CHANNEL,
+      });
       await emitReplayAndReady(emit, []);
       await client.ready();
       expect(client.abortExecutingMethod(TRANSPORT_ID_1)).toBe(false);

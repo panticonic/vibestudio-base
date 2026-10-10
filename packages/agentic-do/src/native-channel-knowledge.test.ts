@@ -8,6 +8,7 @@ import {
   fauxAssistantMessage,
   Type,
 } from "@panticonic/pi-ai";
+import { copyJson, type JsonValue } from "@panticonic/pi-chord";
 import { BACKGROUND_CONTEXT } from "@panticonic/pi-chord/context";
 import {
   createRegistry,
@@ -26,7 +27,7 @@ import {
   AGENTIC_PROTOCOL_VERSION,
   type AgenticEvent,
 } from "@workspace/agentic-protocol";
-import type { ChannelEvent } from "@workspace/pubsub";
+import type { ServerLogEvent as ChannelEvent } from "@workspace/pubsub";
 import type { NativeChannelKnowledge } from "@workspace/agentic-core/native-channel-knowledge";
 import { createNativeChannelBootstrap } from "./native-channel-bootstrap.js";
 import { openBoundAgentSession } from "./native-agent-session.js";
@@ -39,6 +40,7 @@ import {
 } from "./native-channel-session.js";
 import {
   exportNativeChannelKnowledge,
+  nativeChannelKnowledgeEventDigest,
   importNativeChannelKnowledge,
   retainedNativeChannelKnowledgeConfiguration,
   type NativeChannelKnowledgeSource,
@@ -461,6 +463,55 @@ describe("native channel knowledge transfer", () => {
     expect(await nextInput.wait(context)).toMatchObject({ status: "done" });
     expect(executed).toBe(1);
     await conversation.abort(context);
+  });
+
+  it("exports passive knowledge against its exact owner-local canonical anchor", async () => {
+    const source = await fixture("early-passive");
+    const conversation = await source.open();
+    const retained: ChannelEvent = {
+      id: 1,
+      messageId: "early-passive:envelope",
+      type: AGENTIC_EVENT_PAYLOAD_KIND,
+      senderId: "user:one",
+      ts: 1,
+      payload: {
+        kind: "message.completed",
+        actor: { kind: "user", id: "one", participantId: "user:one" },
+        causality: { messageId: "early-passive:message" },
+        createdAt: "2026-10-02T00:00:00Z",
+        payload: {
+          protocol: AGENTIC_PROTOCOL_VERSION,
+          role: "user",
+          outcome: "completed",
+          blocks: [{ type: "text", blockId: "early-passive:block", content: "Early passive context" }],
+        },
+      },
+    };
+    const accepted = retained;
+    await conversation.commit(async (tx) => {
+      await tx.appendEntry(conversation.id, {
+        kind: "vibestudio.channel-history",
+        data: copyJson({ channelId: source.binding.channelId, event: accepted }, { omitUndefinedProperties: true }) as JsonValue,
+        model: [{ role: "user", timestamp: retained.ts, content: "Early passive context" }],
+      });
+    }, context);
+    source.events.push(retained);
+    const knowledge = await exportNativeChannelKnowledge(source.source(conversation), {
+      operationId: "early-passive:export",
+      channelId: source.binding.channelId,
+      throughSequence: 1,
+    }, context);
+    expect(knowledge.anchors).toEqual([expect.objectContaining({
+      envelopeId: retained.messageId,
+      sequence: retained.id,
+      eventDigest: nativeChannelKnowledgeEventDigest(retained),
+    })]);
+    expect(knowledge.anchors[0]!.eventDigest).not.toBe(nativeChannelKnowledgeEventDigest({ ...retained, id: 2 }));
+    expect(nativeChannelKnowledgeEventDigest(accepted)).toBe(nativeChannelKnowledgeEventDigest(retained));
+    const receiver = await fixture("early-passive:receiver");
+    const imported = await importNativeChannelKnowledge(receiver.harness, importInput(knowledge, receiver), {}, context);
+    expect((await imported.context(context)).messages.filter((message) => message.role === "user").map((message) => message.content)).toEqual(["Early passive context"]);
+    expect((await receiver.harness.inspect(context)).submissions).toEqual([]);
   });
 
   it("exports genuine passive bootstrap context and exact committed corrections", async () => {

@@ -325,7 +325,7 @@ export async function appendTrajectoryEventsAndBroadcast(
     }),
   );
   await harness.channel.call(
-    "broadcastStoredEnvelopes",
+    "admitPublishedEnvelopes",
     result.published.map((publication) => publication.envelopeId),
   );
   return result;

@@ -1,3 +1,5 @@
+import { openNativeChannelConversation } from "./native-channel-session.js";
+import { createNativeChannelPublication } from "./native-channel-publication.js";
 import { createMainRpcCaller } from "@vibestudio/service-schemas/mainRpc";
 import { schemaRpcMock } from "@vibestudio/rpc/test-utils";
 import { z } from "zod";
@@ -12,6 +14,7 @@ import {
 import { BACKGROUND_CONTEXT } from "@panticonic/pi-chord/context";
 import {
   createRegistry,
+  defineExtension,
   MemoryStorage,
   type Harness,
   type TaskId,
@@ -19,10 +22,9 @@ import {
 import type { RpcClient, RpcCallOptions } from "@vibestudio/rpc";
 import {
   eventKindSchemas,
-  type AgenticEvent,
 } from "@workspace/agentic-protocol";
 import {
-  openBoundAgentSession,
+  openPlatformAgentSession,
   type AgentHostCall,
 } from "./native-agent-session.js";
 import {
@@ -76,7 +78,7 @@ const entity = {
   cleanupComplete: false,
 };
 const callHost: AgentHostCall = createMainRpcCaller(
-  schemaRpcMock({ call: async () => entity }),
+  schemaRpcMock({ call: async (_target, method) => method === "workspace-state.alarmSourceRegister" ? { incarnation: owner.incarnation, entity } : "accepted" }),
 );
 const sessions: Harness[] = [];
 afterEach(async () => {
@@ -89,7 +91,7 @@ async function fixture(options: { failStart?: boolean } = {}) {
   const faux = fauxProvider();
   const models = createModels();
   models.setProvider(faux.provider);
-  const starts: { event: AgenticEvent<"invocation.started">; key: string }[] =
+  const starts: { event: ReturnType<(typeof eventKindSchemas)["invocation.started"]["parse"]>; key: string }[] =
     [];
   const protectedCalls: RpcCallOptions[] = [];
   const rpc: RpcClient = schemaRpcClientMock(
@@ -112,27 +114,29 @@ async function fixture(options: { failStart?: boolean } = {}) {
   let harness!: Harness;
   let ready = false;
   let taskId!: TaskId;
-  harness = await openBoundAgentSession(
-    new MemoryStorage(),
-    owner,
+  const publication = createNativeChannelPublication({ publish: async (_channel, _participant, event, key) => {
+    if (event.kind !== "invocation.started") throw new Error("Unexpected boundary event");
+    starts.push({ event: eventKindSchemas["invocation.started"].parse(event), key });
+    return { id: 17 };
+  } });
+  const registry = createRegistry();
+  registry.install(defineExtension({ name: "publication", tasks: [publication.task] }));
+  harness = await openPlatformAgentSession(
+    async () => new MemoryStorage(),
+    image,
+        callHost,
     {
       models,
-      registry: createRegistry(),
-      publishWake: async () => {},
+      registry,
       modelRequests: async (request, api, ctx) => {
         taskId = request.taskId;
         const execution = await bindNativeModelInvocation(
           {
             harness,
             image,
-            callHost,
+
             rpc,
-            publishStart: async (_channel, event, key) => {
-              starts.push({ event, key });
-              if (options.failStart)
-                throw new Error("channel publication failed");
-              return { id: 17 };
-            },
+            enqueueStart: options.failStart ? async () => { throw new Error("publication admission failed"); } : publication.enqueueStart,
           },
           request,
           api,
@@ -155,9 +159,7 @@ async function fixture(options: { failStart?: boolean } = {}) {
     context,
   );
   sessions.push(harness);
-  const conversation = await harness.root(context, {
-    agent: { model: { provider: "faux", modelId: faux.getModel().id } },
-  });
+  const conversation = await openNativeChannelConversation(harness, { channelId: "channel:one", contextId: owner.contextId }, { model: { provider: "faux", modelId: faux.getModel().id } }, context);
   faux.setResponses([fauxAssistantMessage("answer")]);
   await conversation.submit({ type: "input", content: "go" }, context);
   await harness.runPass(context);
@@ -179,7 +181,7 @@ async function fixture(options: { failStart?: boolean } = {}) {
 }
 
 describe("native invocation publication boundary", () => {
-  it("publishes one actual source before protected execution and reuses it after a native wait", async () => {
+  it("admits one actual source publication before protected execution and reuses it after a native wait", async () => {
     const state = await fixture();
     expect(state.starts).toHaveLength(1);
     expect(state.protectedCalls).toHaveLength(0);
@@ -233,7 +235,7 @@ describe("native invocation publication boundary", () => {
     expect(publications).toHaveLength(1);
   });
 
-  it("retains the exact owed start when channel acceptance fails and grants no protected caller", async () => {
+  it("rejects failed publication admission atomically and grants no protected caller", async () => {
     const state = await fixture({ failStart: true });
     expect(state.protectedCalls).toHaveLength(0);
     const terminal = await state.harness.commit(
@@ -253,10 +255,10 @@ describe("native invocation publication boundary", () => {
         ),
       context,
     );
-    expect(publications).toHaveLength(1);
-    expect(publications[0]!.start).toEqual(state.starts[0]!.event);
-    expect(publications[0]!.startIdempotencyKey).toBe(state.starts[0]!.key);
-    expect(publications[0]!.outcome.status).toBe("faulted");
+    expect(publications).toHaveLength(0);
+    expect(state.starts).toHaveLength(0);
+    if (terminal?.state.status !== "terminal") throw new Error("Missing original failure");
+    expect(terminal.state.outcome.status).toBe("faulted");
   });
 
   it("rolls back removal if atomic publication admission fails, leaving the exact outcome retryable", async () => {

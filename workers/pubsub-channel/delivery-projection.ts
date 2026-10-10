@@ -3,7 +3,7 @@ import {
   sha256HexSyncText,
 } from "@vibestudio/content-addressing";
 import type { SqlStorage } from "@workspace/runtime/worker";
-import type { ChannelEvent } from "@workspace/pubsub";
+import type { ServerLogEvent as ChannelEvent } from "@workspace/pubsub";
 import { captureChannelMethodOffers } from "@workspace/pubsub";
 import type { ChannelAgenticContext, ChannelConfig } from "@workspace/pubsub";
 import type { AgenticEvent } from "@workspace/agentic-protocol";
@@ -14,7 +14,7 @@ import {
 } from "@workspace/channel-policies";
 import type { ChannelRelationshipPayload } from "./types.js";
 
-export const CHANNEL_DELIVERY_PROJECTION_VERSION = 14;
+export const CHANNEL_DELIVERY_PROJECTION_VERSION = 17;
 export const CHANNEL_RELATIONSHIP_EVENT_TYPES = new Set([
   "channel.subscription.opened",
   "channel.subscription.revised",
@@ -73,7 +73,8 @@ export class ChannelDeliveryProjection {
         next_attempt_at INTEGER NOT NULL,
         created_at INTEGER NOT NULL,
         last_attempt_at INTEGER,
-        terminal_outcome_json TEXT
+        terminal_outcome_json TEXT,
+        last_failure_json TEXT
       );
       CREATE UNIQUE INDEX IF NOT EXISTS idx_channel_delivery_event_recipient
         ON channel_delivery_mailbox(event_id, participant_id, subscription_revision);
@@ -86,6 +87,17 @@ export class ChannelDeliveryProjection {
 
   static createTables(sql: SqlStorage): void {
     sql.exec(`
+      CREATE TABLE IF NOT EXISTS channel_event_identities (
+        envelope_id TEXT PRIMARY KEY
+      );
+      CREATE TABLE IF NOT EXISTS channel_relationship_operations (
+        participant_id TEXT NOT NULL,
+        operation_id TEXT NOT NULL,
+        operation_json TEXT NOT NULL,
+        revision INTEGER NOT NULL,
+        opened_sequence INTEGER NOT NULL,
+        PRIMARY KEY (participant_id, operation_id)
+      );
       CREATE TABLE IF NOT EXISTS channel_relationships (
         participant_id TEXT PRIMARY KEY,
         revision INTEGER NOT NULL CHECK (revision > 0),
@@ -213,11 +225,14 @@ export class ChannelDeliveryProjection {
       return;
     this.transaction(() => {
       this.sql.exec(`DELETE FROM channel_relationships`);
+      this.sql.exec(`DELETE FROM channel_relationship_operations`);
+      this.sql.exec(`DELETE FROM channel_event_identities`);
       // The mailbox is a disposable reference projection; canonical payloads
       // stay in the log, and deterministic delivery IDs preserve replay identity.
       this.sql.exec(`DROP TABLE IF EXISTS channel_delivery_mailbox`);
       ChannelDeliveryProjection.createMailbox(this.sql);
-      this.sql.exec(`DELETE FROM channel_delivery_event_context`);
+      // Original acceptance contexts and stored CAS receipts survive projection
+      // upgrades. Re-derivation must use the receiver's original exact scope.
       this.sql.exec(`DELETE FROM channel_receipts`);
       this.sql.exec(`DELETE FROM channel_delivery_message_senders`);
       this.sql.exec(
@@ -242,9 +257,14 @@ export class ChannelDeliveryProjection {
   /** Pure lifecycle projection of accepted, child-local agent relationships. */
   hasHadAgent(): boolean {
     this.ensureProjectionVersion();
-    return this.sql.exec(`SELECT 1 FROM channel_delivery_context
-      WHERE singleton = 1 AND json_extract(current_config_json, '$.initialization.firstAgentPending') = 0`)
-      .toArray().length > 0;
+    return (
+      this.sql
+        .exec(
+          `SELECT 1 FROM channel_delivery_context
+      WHERE singleton = 1 AND json_extract(current_config_json, '$.initialization.firstAgentPending') = 0`,
+        )
+        .toArray().length > 0
+    );
   }
 
   relationship(participantId: string): RelationshipRow | null {
@@ -312,6 +332,10 @@ export class ChannelDeliveryProjection {
       let inserted = 0;
       let relationshipChanged = false;
       this.foldDecisionContext(event);
+      this.sql.exec(
+        `INSERT OR IGNORE INTO channel_event_identities (envelope_id) VALUES (?)`,
+        event.messageId,
+      );
       const boundaryRow = this.sql
         .exec(
           `SELECT fork_boundary_sequence FROM channel_delivery_projection_cursor WHERE singleton = 1`,
@@ -360,6 +384,8 @@ export class ChannelDeliveryProjection {
   resetForFork(forkPointSequence: number): void {
     this.transaction(() => {
       this.sql.exec(`DELETE FROM channel_relationships`);
+      this.sql.exec(`DELETE FROM channel_relationship_operations`);
+      this.sql.exec(`DELETE FROM channel_event_identities`);
       // The mailbox is a disposable reference projection; canonical payloads
       // stay in the log, and deterministic delivery IDs preserve replay identity.
       this.sql.exec(`DROP TABLE IF EXISTS channel_delivery_mailbox`);
@@ -388,6 +414,11 @@ export class ChannelDeliveryProjection {
 
   private foldRelationship(event: ChannelEvent): void {
     const payload = this.requireRelationshipPayload(event.payload);
+    if (
+      payload.operationId !== undefined &&
+      (!payload.operationId || typeof payload.operationJson !== "string")
+    )
+      throw new Error("Relationship operation lacks its exact retained intent");
     const current = this.relationship(payload.participantId);
     if (event.type === "channel.subscription.detached") {
       if (
@@ -524,6 +555,22 @@ export class ChannelDeliveryProjection {
       reattachAfterSequence,
       reattachThroughSequence,
     );
+    if (payload.operationId !== undefined) {
+      if (!payload.operationId || typeof payload.operationJson !== "string")
+        throw new Error(
+          "Relationship operation lacks its exact retained intent",
+        );
+      this.sql.exec(
+        `INSERT INTO channel_relationship_operations
+          (participant_id, operation_id, operation_json, revision, opened_sequence)
+         VALUES (?, ?, ?, ?, ?)`,
+        payload.participantId,
+        payload.operationId,
+        payload.operationJson!,
+        payload.revision,
+        event.id,
+      );
+    }
     if (payload.metadata["type"] === "agent") {
       this.sql.exec(`UPDATE channel_delivery_context
         SET current_config_json = json_set(current_config_json, '$.initialization.firstAgentPending', json('false'))
@@ -649,6 +696,68 @@ export class ChannelDeliveryProjection {
     return this.transaction(
       () => this.deriveEvent(event, participantId, true) > 0,
     );
+  }
+
+  hasEnvelope(envelopeId: string): boolean {
+    return (
+      this.sql
+        .exec(
+          `SELECT 1 FROM channel_event_identities WHERE envelope_id = ?`,
+          envelopeId,
+        )
+        .toArray().length > 0
+    );
+  }
+
+  committedRecipients(
+    event: Pick<ChannelEvent, "messageId" | "type" | "payload" | "senderId">,
+  ): Array<{
+    deliveryId: string;
+    participantId: string;
+    revision: number;
+    target: string;
+    invocation: "direct" | "mailbox";
+  }> {
+    return this.sql
+      .exec(
+        `SELECT relationship.participant_id, relationship.revision, relationship.delivery,
+                relationship.endpoint_entity_id, relationship.invocation_route
+         FROM channel_relationships AS relationship
+         JOIN channel_delivery_mailbox AS delivery
+           ON delivery.participant_id = relationship.participant_id
+          AND delivery.subscription_revision = relationship.revision
+          AND delivery.event_id = ?
+         WHERE relationship.active = 1 AND relationship.attached = 1
+          AND relationship.delivery != 'none' AND relationship.endpoint_kind = 'entity'
+         ORDER BY relationship.participant_id`, event.messageId,
+      )
+      .toArray()
+      .flatMap((row) => {
+        const participantId = String(row["participant_id"]);
+        const audience = this.audienceFor(event, participantId);
+        if (
+          (participantId === event.senderId && !audience.explicitParticipant) ||
+          (row["delivery"] === "addressed" && !audience.addressed)
+        )
+          return [];
+        const revision = Number(row["revision"]);
+        return [
+          {
+            deliveryId: sha256HexSyncText(
+              canonicalJson([
+                this.channelId,
+                event.messageId,
+                participantId,
+                revision,
+              ]),
+            ),
+            participantId,
+            revision,
+            target: String(row["endpoint_entity_id"]),
+            invocation: String(row["invocation_route"]) as "direct" | "mailbox",
+          },
+        ];
+      });
   }
 
   private deriveEvent(
@@ -781,7 +890,9 @@ export class ChannelDeliveryProjection {
     return inserted;
   }
 
-  private agenticContextJson(event: ChannelEvent): string {
+  private agenticContextJson(
+    event: Pick<ChannelEvent, "messageId" | "type" | "payload" | "senderId">,
+  ): string {
     const contextRow = this.sql
       .exec(
         `SELECT current_config_json, conversation_state_json
@@ -862,13 +973,21 @@ export class ChannelDeliveryProjection {
     const currentConversation = JSON.parse(
       String(row["conversation_state_json"]),
     ) as ConversationStateV1;
-    const suppliedConfig = event.type === "config-update" && event.payload &&
-      typeof event.payload === "object" ? event.payload as ChannelConfig : currentConfig;
+    const suppliedConfig =
+      event.type === "config-update" &&
+      event.payload &&
+      typeof event.payload === "object"
+        ? (event.payload as ChannelConfig)
+        : currentConfig;
     // Configuration events carry a presentation snapshot, not authority to
     // rewrite initialization. A fork prefix also never imports parent joins.
-    const { initialization: _suppliedInitialization, ...mutableConfig } = suppliedConfig;
-    const nextConfig = { ...mutableConfig,
-      ...(currentConfig.initialization ? { initialization: currentConfig.initialization } : {}),
+    const { initialization: _suppliedInitialization, ...mutableConfig } =
+      suppliedConfig;
+    const nextConfig = {
+      ...mutableConfig,
+      ...(currentConfig.initialization
+        ? { initialization: currentConfig.initialization }
+        : {}),
     };
     const actorKind = ((event.payload as { actor?: { kind?: string } } | null)
       ?.actor?.kind ?? "unknown") as string;
@@ -905,7 +1024,9 @@ export class ChannelDeliveryProjection {
     }
   }
 
-  private replyToMessageId(event: ChannelEvent): string | null {
+  private replyToMessageId(
+    event: Pick<ChannelEvent, "type" | "payload">,
+  ): string | null {
     if (event.type !== "agentic.trajectory.v1/event") return null;
     const payload = (
       event.payload as { payload?: { replyTo?: unknown } } | null
@@ -1120,7 +1241,7 @@ export class ChannelDeliveryProjection {
   }
 
   private audienceFor(
-    event: ChannelEvent,
+    event: Pick<ChannelEvent, "type" | "payload">,
     participantId: string,
   ): { addressed: boolean; explicitParticipant: boolean } {
     if (

@@ -7,6 +7,7 @@ import {
 import type { RuntimeEntityCreateSpec } from "@vibestudio/shared/runtime/entitySpec";
 import { doTargetId } from "@vibestudio/shared/workspaceServiceRpc";
 import {
+  AGENT_SETTING_KEYS,
   toSubscriptionConfig,
   type AgentSubscriptionConfig,
   type ChannelSubscriptionConfig,
@@ -25,6 +26,7 @@ export interface AgentEntityHandle {
   id?: string;
   targetId: string;
   contextId?: string;
+  agentInitialization?: AgentSubscriptionResult;
 }
 
 /** A successful reasoning membership has its complete native initialization
@@ -49,6 +51,7 @@ export interface AgentEntityCreateInput {
   }>;
   /** Host derives the self entity/context coordinates and binds this agent to the channel. */
   agentChannelId?: string;
+  agentInitialization?: { channelId: string; config?: Record<string, unknown>; replay?: boolean };
 }
 
 export interface AgentChannelSubscriptionInput {
@@ -69,12 +72,7 @@ export interface LaunchAgentIntoChannelInput extends AgentEntityCreateInput {
   channelId: string;
   replay?: boolean;
   missingContextErrorMessage?: string;
-  /**
-   * Headless/isolated launches should retire the entity if the subscribe step
-   * fails. Panel and subagent launches generally keep this false because
-   * createEntity may have reactivated an existing durable entity.
-   */
-  retireEntityOnSubscribeFailure?: boolean;
+
 }
 
 export interface LaunchAgentIntoChannelResult {
@@ -139,7 +137,12 @@ export function buildAgentEntityCreateSpec(
 ): AgentEntityCreateSpec {
   const stateArgs = {
     ...(input.stateArgs ?? {}),
-    ...(input.config !== undefined ? { agentConfig: input.config } : {}),
+    ...(input.config !== undefined ? {
+      agentConfig: input.agentInitialization
+        ? Object.fromEntries(Object.entries(input.config).filter(([key]) =>
+            (AGENT_SETTING_KEYS as readonly string[]).includes(key)))
+        : input.config,
+    } : {}),
   };
   return {
     kind: "do",
@@ -156,6 +159,7 @@ export function buildAgentEntityCreateSpec(
       ? { resourceBindings: input.resourceBindings }
       : {}),
     ...(input.agentChannelId ? { agentChannelId: input.agentChannelId } : {}),
+    ...(input.agentInitialization ? { agentInitialization: input.agentInitialization } : {}),
   };
 }
 
@@ -221,45 +225,23 @@ export async function launchAgentIntoChannel(
 ): Promise<LaunchAgentIntoChannelResult> {
   const handle = await createAgentEntity(rpc, {
     ...input,
-    agentChannelId: input.channelId,
+    agentInitialization: {
+      channelId: input.channelId,
+      config: toSubscriptionConfig(input.config),
+      replay: input.replay,
+    },
   });
-  if (
-    input.contextId &&
-    handle.contextId &&
-    handle.contextId !== input.contextId
-  ) {
-    if (input.retireEntityOnSubscribeFailure && handle.id) {
-      await retireAgentEntity(rpc, handle.id).catch(() => undefined);
-    }
+  if (input.contextId && handle.contextId && handle.contextId !== input.contextId) {
     throw new Error(
       `runtime.createEntity returned existing agent ${handle.id ?? handle.targetId} in context ` +
         `${handle.contextId}, but channel ${input.channelId} is in context ${input.contextId}`,
     );
   }
   const contextId = input.contextId ?? handle.contextId;
-  if (!contextId) {
-    if (input.retireEntityOnSubscribeFailure && handle.id) {
-      await retireAgentEntity(rpc, handle.id).catch(() => undefined);
-    }
-    throw new Error(
-      input.missingContextErrorMessage ??
-        "runtime.createEntity did not return a contextId for agent subscription",
-    );
-  }
-  try {
-    const subscription = await subscribeAgentToChannel(rpc, handle, {
-      channelId: input.channelId,
-      contextId,
-      config: input.config,
-      replay: input.replay,
-    });
-    return { handle, subscription, contextId };
-  } catch (err) {
-    if (input.retireEntityOnSubscribeFailure && handle.id) {
-      await retireAgentEntity(rpc, handle.id).catch(() => undefined);
-    }
-    throw err;
-  }
+  if (!contextId) throw new Error(input.missingContextErrorMessage ??
+    "runtime.createEntity did not return a contextId for agent initialization");
+  const subscription = requireAgentSubscriptionResult("subscribeChannel", handle.agentInitialization);
+  return { handle, subscription, contextId };
 }
 
 export async function createSubagentContext(

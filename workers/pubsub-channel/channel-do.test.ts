@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
-import { encodeRpcJson, rpcMethodAuthority } from "@vibestudio/rpc";
+import { sha256HexSyncText } from "@vibestudio/content-addressing";
+import { rpcMethodAuthority, serializeRpcFailure } from "@vibestudio/rpc";
 import {
   evaluateAuthority,
   requirementForPrincipals,
@@ -23,6 +24,7 @@ import {
 } from "@workspace/agentic-protocol";
 import { GadWorkspaceDO } from "@workspace-workers/workspace-source";
 import { PubSubChannel } from "./channel-do.js";
+import type { ChannelLog } from "./log-store.js";
 import { durableObjectServiceFixture } from "@vibestudio/service-schemas/test-utils";
 import { EntityRecordSchema } from "@vibestudio/service-schemas/workspaceState";
 import { accountProfileSchema } from "@vibestudio/service-schemas/account";
@@ -58,53 +60,33 @@ function profileFixture(userId: string) {
     role: "member",
   });
 }
-function canonicalAgenticEvents(
-  gad: TestDO<typeof GadWorkspaceDO>,
-  channelId = "channel-1",
-): AgenticEvent[] {
-  return gad.instance
-    .readLog({ logId: channelId, head: "main" })
-    .filter((envelope) => isAgenticLogEventKind(envelope.payloadKind))
-    .map(
-      (envelope) =>
-        agenticEventSchema.parse(
-          agenticEventFromLogEnvelope(envelope),
-        ) as AgenticEvent,
-    );
+function canonicalLedger(instance: PubSubChannel) {
+  return (instance as unknown as { channelLog: ChannelLog }).channelLog.ledger;
 }
-
-function canonicalAgenticEvent(
-  gad: TestDO<typeof GadWorkspaceDO>,
-  envelopeId: string,
-  channelId = "channel-1",
-): AgenticEvent {
-  const envelope = gad.instance.getLogEvent({
-    logId: channelId,
-    head: "main",
-    envelopeId,
-  });
+function canonicalAgenticEvents(instance: PubSubChannel): AgenticEvent[] {
+  return canonicalLedger(instance).read({ limit: Number.MAX_SAFE_INTEGER })
+    .filter((envelope) => isAgenticLogEventKind(envelope.payloadKind))
+    .map((envelope) => agenticEventSchema.parse(agenticEventFromLogEnvelope(envelope)) as AgenticEvent);
+}
+function canonicalAgenticEvent(instance: PubSubChannel, envelopeId: string): AgenticEvent {
+  const envelope = canonicalLedger(instance).envelope(envelopeId);
   if (!envelope || !isAgenticLogEventKind(envelope.payloadKind))
     throw new Error(`Missing canonical agentic envelope ${envelopeId}`);
-  return agenticEventSchema.parse(
-    agenticEventFromLogEnvelope(envelope),
-  ) as AgenticEvent;
+  return agenticEventSchema.parse(agenticEventFromLogEnvelope(envelope)) as AgenticEvent;
 }
 
-async function appendOpaqueJournalPage(
-  gad: TestDO<typeof GadWorkspaceDO>,
-  channelId = "channel-1",
-): Promise<void> {
-  await gad.instance.appendLogEvent({
-    logId: channelId,
-    head: "main",
-    logKind: "channel",
-    events: Array.from({ length: 501 }, (_, index) => ({
-      envelopeId: `opaque:${channelId}:${index}`,
-      actor: { kind: "system" as const, id: "journal-test" },
-      payloadKind: "test.opaque",
+async function appendOpaqueChannelPage(channel: TestDO<typeof PubSubChannel>): Promise<void> {
+  const log = (channel.instance as unknown as { channelLog: ChannelLog }).channelLog;
+  for (let index = 0; index < 501; index++) {
+    await log.append({
+      messageId: `opaque:${index}`,
+      type: "test.opaque",
       payload: { index },
-    })),
-  });
+      senderId: "system:journal-test",
+      contentClass: "internal",
+      externalKeys: [],
+    });
+  }
 }
 
 const sessionWrappedInstances = new WeakSet<object>();
@@ -255,7 +237,7 @@ async function joinEntity(
   setRpcCaller(instance, participantId, "durable-object");
   await instance.join({
     participantId,
-    revision: 1,
+    operationId: "join-1",
     contextId,
     metadata,
     delivery: "all",
@@ -277,7 +259,7 @@ async function joinResidentSession(
   setRpcCaller(instance, participantId, "durable-object");
   await instance.join({
     participantId,
-    revision: 1,
+    operationId: "join-1",
     contextId,
     metadata,
     delivery: "all",
@@ -378,6 +360,16 @@ async function initializeChannelClone(
   expect(response.status, await response.text()).toBe(200);
 }
 
+/** Copy the actual owner-local SQLite snapshot, as runtime.cloneContext does. */
+function clonedChannelDatabase(parent: TestDO<typeof PubSubChannel>) {
+  const Database = parent.db.constructor as new (
+    data: Uint8Array,
+  ) => TestDO<typeof PubSubChannel>["db"];
+  return new Database(parent.db.export());
+}
+
+const workspaceBlobs = new WeakMap<object, Map<string, string>>();
+
 async function createGadBackedChannel(
   options: {
     emitted?: unknown[];
@@ -414,7 +406,8 @@ async function createGadBackedChannel(
     emittedTargets: options.emittedTargets,
   });
   const gadTarget = "do:workers/workspace-source:GadWorkspaceDO:workspace";
-  const blobs = new Map<string, string>();
+  const blobs = workspaceBlobs.get(gad.instance) ?? new Map<string, string>();
+  workspaceBlobs.set(gad.instance, blobs);
   // Initialize the real connectionless responder so calls through createTestDO
   // exercise receiver dispatch. Only replace its outbound client operations.
   const mockClient = {
@@ -467,7 +460,7 @@ async function createGadBackedChannel(
           const blob = options.blobstorePutText
             ? await options.blobstorePutText(value)
             : {
-                digest: `${String(blobs.size + 1).padStart(64, "0")}`,
+                digest: sha256HexSyncText(value),
                 size: value.length,
               };
           blobs.set(blob.digest, value);
@@ -502,121 +495,429 @@ async function createGadBackedChannel(
 }
 
 describe("PubSubChannel", () => {
-  it("cancels and joins delivery adoption before returning its terminal RPC response", async () => {
-    let channel!: PubSubChannel;
-    let markReadStarted!: () => void;
-    const readStarted = new Promise<void>((resolve) => {
-      markReadStarted = resolve;
+  it("admits workspace publication intents into canonical owner history before graph observation", async () => {
+    const emitted: unknown[] = [];
+    const channel = await createGadBackedChannel({emitted});
+    setRpcCaller(channel.instance,"panel:watcher","panel");
+    await channel.instance.subscribe("panel:watcher",{contextId:"ctx-1",type:"panel"});
+    emitted.length=0;
+    const source = await channel.gad.instance.appendLogEvent({
+      logId:"trajectory:publisher",head:"main",logKind:"trajectory",events:[{
+        envelopeId:"source-publication",actor:{kind:"agent",id:"original-agent"},payloadKind:AGENTIC_EVENT_PAYLOAD_KIND,
+        payload:{...agenticEvent(),actor:{kind:"agent",id:"original-agent"}},appendedAt:"2026-10-10T00:00:00.000Z",
+        publish:{channels:[{channelId:"channel-1"}]},
+      }],
     });
-    let markAbortObserved!: () => void;
-    const abortObserved = new Promise<void>((resolve) => {
-      markAbortObserved = resolve;
-    });
-    let finishChildCleanup!: () => void;
-    const childCleanup = new Promise<void>((resolve) => {
-      finishChildCleanup = resolve;
-    });
-    const invocation = { signal: null as AbortSignal | null };
-    const { instance } = await createGadBackedChannel({
-      rpcCall: async (target, method) => {
-        if (target.includes("GadWorkspaceDO") && method === "readLog") {
-          const signal = (
-            channel as unknown as { rpcAbortSignal: AbortSignal | null }
-          ).rpcAbortSignal;
-          expect(signal).toBeInstanceOf(AbortSignal);
-          invocation.signal = signal;
-          markReadStarted();
-          await new Promise<never>((_resolve, reject) => {
-            signal!.addEventListener(
-              "abort",
-              () => {
-                markAbortObserved();
-                void childCleanup.then(() => reject(signal!.reason));
-              },
-              { once: true },
-            );
-          });
-        }
-        return undefined;
-      },
-    });
-    channel = instance;
-    const caller = {
-      callerId: "main",
-      callerKind: "server",
-      authorization: createTestDirectAuthority({
-        callerKind: "server",
-        method: "adoptDurableWorkWorker",
-        source: "test",
-        className: "TestDO",
-        objectKey: "channel-1",
-      }),
-    };
-    const requestId = crypto.randomUUID();
-    const envelope = {
-      from: "main",
-      target: "do:test:TestDO:channel-1",
-      delivery: { caller },
-      provenance: [caller],
-      message: {
-        type: "request",
-        requestId,
-        fromId: "main",
-        method: "adoptDurableWorkWorker",
-        args: ["driver-after-restart"],
-      },
-    };
-    const fetchDo = (body: unknown) =>
-      (
-        channel as unknown as { fetch(request: Request): Promise<Response> }
-      ).fetch(
-        new Request("http://test/channel-1/__rpc", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: encodeRpcJson(body),
-        }),
-      );
-    const response = await (
-      channel as unknown as { fetch(request: Request): Promise<Response> }
-    ).fetch(
-      new Request("http://test/channel-1/__rpc", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: encodeRpcJson(envelope),
-      }),
-    );
-    expect(response.status).toBe(200);
-    let terminalSettled = false;
-    const terminal = response.text().then((value) => {
-      terminalSettled = true;
-      return value;
-    });
-    await readStarted;
-    const cancelResponse = await fetchDo({
-      ...envelope,
-      message: { type: "request-cancel", requestId, fromId: "main" },
-    });
-    expect(cancelResponse.status).toBe(200);
-    await cancelResponse.text();
-    await abortObserved;
-    expect(terminalSettled).toBe(false);
-    expect(invocation.signal?.aborted).toBe(true);
+    expect(source.published).toHaveLength(1);
+    expect(channel.gad.instance.readLog({logId:"channel-1",head:"main"})).toEqual([]);
+    const [claim]=channel.gad.instance.claimReadyWork("workspace-publication",{workerId:"driver-publisher",now:Date.now(),limit:1});
+    const intents=(claim!.payload as {intents:import("@workspace/agentic-protocol").LogAppendEventInput[]}).intents;
+    await expect(channel.call("admitPublishedEnvelopes",intents)).resolves.toEqual({admitted:1});
+    const event=await channel.instance.getEnvelope("pub:source-publication:channel-1");
+    expect(event).toMatchObject({id:2,senderId:"original-agent",payload:{actor:{kind:"agent",id:"original-agent"}}});
+    expect(canonicalLedger(channel.instance).envelope("pub:source-publication:channel-1")).toMatchObject({appendedAt:source.envelopes[0]!.appendedAt,causality:{originLogId:"trajectory:publisher",originEnvelopeId:"source-publication"}});
+    expect(emitted).toHaveLength(1);
+    await expect(channel.call("admitPublishedEnvelopes",intents)).resolves.toEqual({admitted:1});
+    expect(canonicalLedger(channel.instance).headSequence()).toBe(2);
+    expect(emitted).toHaveLength(1);
+    const changed=structuredClone(intents);
+    changed[0]!.payload={...(changed[0]!.payload as AgenticEvent),createdAt:"2026-10-11T00:00:00.000Z"};
+    await expect(channel.call("admitPublishedEnvelopes",changed)).rejects.toThrow("different canonical content");
+    expect(canonicalLedger(channel.instance).headSequence()).toBe(2);
+    expect(emitted).toHaveLength(1);
+    expect(channel.gad.instance.readLog({logId:"channel-1",head:"main"})).toEqual([]);
+  });
 
-    finishChildCleanup();
-    const result = JSON.parse(await terminal) as {
-      message?: { type?: string; error?: { code?: string; message?: string } };
+  it.each(["direct acknowledgement", "overlapping host claim", "activation loss"] as const)(
+    "settles direct delivery through its canonical mailbox after %s", async (mode) => {
+      const entered=deferred<void>(); const release=deferred<void>();
+      let delivered: {deliveryId:string} | undefined;
+      const channel=await createGadBackedChannel({rpcCall:async (_target,method,args)=>{
+        if(method !== "acceptChannelDelivery") return undefined;
+        delivered=args[0] as typeof delivered; entered.resolve(); await release.promise;
+        return {deliveryId:delivered!.deliveryId,disposition:"processed"};
+      }});
+      await joinEntity(channel.instance,"do:workers/agent-worker:AiChatWorker:direct-ack");
+      setRpcCaller(channel.instance,"panel:user","panel");
+      await channel.instance.subscribe("panel:user",{contextId:"ctx-1",type:"panel"});
+      try {
+        const receipt=await channel.instance.publish("panel:user","direct.test",{value:mode});
+        await entered.promise;
+        expect(channel.sql.exec(`SELECT state FROM channel_delivery_mailbox WHERE event_id = ?`,receipt.messageId).toArray()).toEqual([{state:"ready"}]);
+        let claim: ReturnType<PubSubChannel["claimReadyWork"]>[number] | undefined;
+        if(mode === "overlapping host claim") [claim]=channel.instance.claimReadyWork("channel-delivery",{workerId:"driver-overlap",now:Date.now(),limit:1});
+        const reopened=mode === "activation loss" ? await createGadBackedChannel({gad:channel.gad,db:clonedChannelDatabase(channel)}) : null;
+        release.resolve();
+        await (channel.instance as unknown as {publicationQueue:{drain():Promise<void>}}).publicationQueue.drain();
+        if(claim) {
+          expect(channel.sql.exec(`SELECT state FROM channel_delivery_mailbox WHERE event_id = ?`,receipt.messageId).toArray()).toEqual([{state:"leased"}]);
+          expect(channel.instance.settleReadyWork("channel-delivery",{workerId:"driver-overlap",itemId:claim.itemId,generation:claim.generation,outcome:{deliveryId:delivered!.deliveryId,disposition:"processed"}})).toBe("accepted");
+        }
+        expect(channel.instance.claimReadyWork("channel-delivery",{workerId:"driver-post-ack",now:Date.now(),limit:1})).toEqual([]);
+        if(reopened) {
+          const [recovered]=reopened.instance.claimReadyWork("channel-delivery",{workerId:"driver-recovered",now:Date.now(),limit:1});
+          expect((recovered!.payload as {delivery:{deliveryId:string;eventSequence:number}}).delivery).toMatchObject({deliveryId:delivered!.deliveryId,eventSequence:receipt.id});
+        }
+      } finally { release.resolve(); await (channel.instance as unknown as {publicationQueue:{drain():Promise<void>}}).publicationQueue.drain(); }
+    },
+  );
+
+  it("keeps an empty root observation immutable while a local append advances history", async () => {
+    const entered=deferred<void>(); const release=deferred<void>();
+    const channel=await createGadBackedChannel({rpcCall:async (_target,method)=>{if(method === "initializeLogHead"){entered.resolve();await release.promise;}return undefined;}});
+    const waiting=channel.instance.waitObservedThrough(0);
+    let settled=false;void waiting.then(()=>{settled=true;});
+    const [root]=channel.instance.claimReadyWork("channel-observation",{workerId:"driver-empty-root",now:Date.now(),limit:1});
+    expect(root!.payload).toMatchObject({observation:{kind:"root"}});
+    await expect(channel.instance.prepareChannelObservationClaim({itemId:root!.itemId,generation:root!.generation})).rejects.toThrow("no longer owns its claim");
+    const observing=channel.instance.executeChannelObservationClaim({itemId:root!.itemId,generation:root!.generation});
+    try {
+      await entered.promise;
+      setRpcCaller(channel.instance,"panel:user","panel");
+      await channel.instance.subscribe("panel:user",{contextId:"ctx-1",type:"panel"});
+      expect(settled).toBe(false);expect(canonicalLedger(channel.instance).headSequence()).toBe(1);
+      release.resolve();
+      const outcome=await observing;
+      expect(channel.instance.settleReadyWork("channel-observation",{workerId:"driver-empty-root",itemId:root!.itemId,generation:root!.generation,outcome})).toBe("accepted");
+      await expect(waiting).resolves.toMatchObject({observedSequence:0});
+      const [next]=channel.instance.claimReadyWork("channel-observation",{workerId:"driver-empty-root",now:Date.now(),limit:1});
+      expect(next).toBeDefined();
+      expect(next!.payload).toMatchObject({observation:{kind:"append"}});
+      await expect(channel.instance.prepareChannelObservationClaim({itemId:next!.itemId,generation:next!.generation})).rejects.toThrow("no longer owns its claim");
+      expect(canonicalLedger(channel.instance).observedSequence()).toBe(0);
+      expect(canonicalLedger(channel.instance).peekObservation()).toMatchObject({kind:"append",sequence:1});
+    } finally {release.resolve();await Promise.allSettled([observing,waiting]);}
+  });
+
+  it("retains the empty root claim identity across worker replacement and a local append", async () => {
+    const channel=await createGadBackedChannel();
+    const [old]=channel.instance.claimReadyWork("channel-observation",{workerId:"driver-root-old",now:Date.now(),limit:1});
+    setRpcCaller(channel.instance,"panel:user","panel");
+    await channel.instance.subscribe("panel:user",{contextId:"ctx-1",type:"panel"});
+    await channel.instance.adoptDurableWorkWorker("driver-root-new");
+    const [reclaimed]=channel.instance.claimReadyWork("channel-observation",{workerId:"driver-root-new",now:Date.now(),limit:1});
+    expect(reclaimed!.itemId).toBe(old!.itemId);
+    const receipt=await channel.instance.executeChannelObservationClaim({itemId:reclaimed!.itemId,generation:reclaimed!.generation});
+    expect(receipt.observedSequence).toBe(0);
+    expect(channel.instance.settleReadyWork("channel-observation",{workerId:"driver-root-old",itemId:old!.itemId,generation:old!.generation,outcome:receipt})).toBe("stale");
+    expect(channel.instance.settleReadyWork("channel-observation",{workerId:"driver-root-new",itemId:reclaimed!.itemId,generation:reclaimed!.generation,outcome:receipt})).toBe("accepted");
+    expect(canonicalLedger(channel.instance).hasObservedRoot()).toBe(true);
+    expect(canonicalLedger(channel.instance).observedSequence()).toBe(0);
+    expect(canonicalLedger(channel.instance).peekObservation()).toMatchObject({kind:"append",sequence:1});
+  });
+
+  it.each(["observed prefix", "original failure"] as const)("prepares only the exact leased fork prerequisite through its %s", async (mode) => {
+    const parent=await createGadBackedChannel({channelKey:"observation-parent"});
+    setRpcCaller(parent.instance,"panel:user","panel");
+    await parent.instance.subscribe("panel:user",{contextId:"ctx-1",type:"panel"});
+    const parentHead=canonicalLedger(parent.instance).headSequence();
+    const boundary=canonicalLedger(parent.instance).at(parentHead)!;
+    const entered=deferred<void>();
+    const original=Object.assign(new Error("parent observation refused"),{code:"PARENT_OBSERVATION_REFUSED",cause:new Error("original storage failure")});
+    let prerequisiteCalls=0;
+    const child=await createGadBackedChannel({channelKey:"observation-child",gad:parent.gad,db:clonedChannelDatabase(parent),rpcCall:async(target,method,args)=>{
+      if(target==="main" && method==="workers.resolveService" && args[1]==="observation-parent")
+        return durableObjectServiceFixture("do:workers/pubsub-channel:PubSubChannel:observation-parent",{source:"workers/pubsub-channel",className:"PubSubChannel",objectKey:"observation-parent"});
+      if(target==="do:workers/pubsub-channel:PubSubChannel:observation-parent" && method==="waitObservedThrough") {
+        prerequisiteCalls++;entered.resolve();
+        if(mode==="original failure")throw original;
+        return parent.instance.waitObservedThrough(Number(args[0]));
+      }
+      return undefined;
+    }});
+    await initializeChannelClone(child,"observation-parent","fork-context");
+    await child.instance.postClone("observation-parent",parentHead,"fork-context");
+    const [old]=child.instance.claimReadyWork("channel-observation",{workerId:"fork-old",now:Date.now(),limit:1});
+    expect(old!.payload).toMatchObject({observation:{kind:"fork"}});
+    await child.instance.adoptDurableWorkWorker("fork-new");
+    const [claim]=child.instance.claimReadyWork("channel-observation",{workerId:"fork-new",now:Date.now(),limit:1});
+    await expect(child.instance.prepareChannelObservationClaim({itemId:old!.itemId,generation:old!.generation})).rejects.toThrow("no longer owns its claim");
+    expect(prerequisiteCalls).toBe(0);
+    const preparing=child.instance.prepareChannelObservationClaim({itemId:claim!.itemId,generation:claim!.generation});
+    const result=preparing.then(()=>undefined,(error:unknown)=>error);
+    await entered.promise;
+    if(mode==="original failure") {
+      expect(await result).toBe(original);
+      expect(canonicalLedger(child.instance).peekObservation()).toMatchObject({kind:"fork",throughSequence:parentHead,expectedParentHash:boundary.hash});
+      expect(child.sql.exec(`SELECT disposition,generation FROM channel_observation_claim WHERE singleton=1`).toArray()).toEqual([{disposition:"leased",generation:claim!.generation}]);
+    } else {
+      let settled=false;void preparing.then(()=>{settled=true;});
+      expect(settled).toBe(false);
+      await parent.instance.publish("panel:user","after.fork",{value:1});
+      const workerId="parent-observer";
+      const [parentClaim]=parent.instance.claimReadyWork("channel-observation",{workerId,now:Date.now(),limit:1});
+      const outcome=await parent.instance.executeChannelObservationClaim({itemId:parentClaim!.itemId,generation:parentClaim!.generation});
+      expect(parent.instance.settleReadyWork("channel-observation",{workerId,itemId:parentClaim!.itemId,generation:parentClaim!.generation,outcome})).toBe("accepted");
+      await expect(preparing).resolves.toBeUndefined();
+      const fork=await child.instance.executeChannelObservationClaim({itemId:claim!.itemId,generation:claim!.generation});
+      expect(fork).toEqual({observedSequence:parentHead,hash:boundary.hash});
+      expect(child.instance.settleReadyWork("channel-observation",{workerId:"fork-new",itemId:claim!.itemId,generation:claim!.generation,outcome:fork})).toBe("accepted");
+    }
+    expect(prerequisiteCalls).toBe(1);
+  });
+
+  it("drains a retained workspace publication before capturing the receiving channel release frontier", async () => {
+    const channel=await createGadBackedChannel();
+    expect(await channel.instance.prepareDurableWorkRelease("peer-obligations")).toEqual({queues:[],barrier:null});
+    setRpcCaller(channel.instance,"panel:watcher","panel");
+    await channel.instance.subscribe("panel:watcher",{contextId:"ctx-1",type:"panel"});
+    await channel.gad.instance.appendLogEvent({logId:"trajectory:retirement",head:"main",logKind:"trajectory",events:[{
+      envelopeId:"owed-before-retirement",actor:{kind:"agent",id:"publisher"},payloadKind:AGENTIC_EVENT_PAYLOAD_KIND,
+      payload:agenticEvent(),publish:{channels:[{channelId:"channel-1"}]},
+    }]});
+    const workerId="driver-retirement";
+    const [publication]=channel.gad.instance.claimReadyWork("workspace-publication",{workerId,now:Date.now(),limit:1});
+    const peer=await channel.gad.instance.prepareDurableWorkRelease("peer-obligations");
+    const peerWaiting=channel.gad.instance.waitDurableWorkRelease("peer-obligations",peer.barrier);
+    let peerSettled=false;void peerWaiting.then(()=>{peerSettled=true;},()=>{peerSettled=true;});
+    const entered=deferred<void>();const release=deferred<void>();
+    const log=(channel.instance as unknown as {channelLog:ChannelLog}).channelLog;
+    const append=log.appendPrepared.bind(log);
+    log.appendPrepared=async(input)=>{entered.resolve();await release.promise;return append(input);};
+    const intents=(publication!.payload as {intents:import("@workspace/agentic-protocol").LogAppendEventInput[]}).intents;
+    const admitting=channel.instance.admitPublishedEnvelopes(intents);
+    try {
+      await entered.promise;
+      expect(peerSettled).toBe(false);
+      expect(canonicalLedger(channel.instance).headSequence()).toBe(1);
+      release.resolve();
+      const outcome=await admitting;
+      expect(channel.gad.instance.settleReadyWork("workspace-publication",{workerId,itemId:publication!.itemId,generation:publication!.generation,outcome})).toBe("accepted");
+      await peerWaiting;
+      const receiver=await channel.instance.prepareDurableWorkRelease("owner");
+      await expect(channel.instance.waitDurableWorkRelease("owner",{foreign:true})).rejects.toThrow("does not own");
+      const receiverWaiting=channel.instance.waitDurableWorkRelease("owner",receiver.barrier);
+      expect(canonicalLedger(channel.instance).headSequence()).toBe(2);
+      while(canonicalLedger(channel.instance).observedSequence() < 2) {
+        const [claim]=channel.instance.claimReadyWork("channel-observation",{workerId,now:Date.now(),limit:1});
+        expect(claim).toBeDefined();
+        const observed=await channel.instance.executeChannelObservationClaim({itemId:claim!.itemId,generation:claim!.generation});
+        expect(channel.instance.settleReadyWork("channel-observation",{workerId,itemId:claim!.itemId,generation:claim!.generation,outcome:observed})).toBe("accepted");
+      }
+      await receiverWaiting;
+      await expect(channel.instance.waitDurableWorkRelease("owner",receiver.barrier)).resolves.toBeUndefined();
+      await expect(channel.instance.getEnvelope("pub:owed-before-retirement:channel-1")).resolves.toMatchObject({id:2});
+      await expect(channel.instance.admitPublishedEnvelopes(intents)).rejects.toThrow("publication owner is closing");
+    } finally {
+      release.resolve();
+      const [admission]=await Promise.allSettled([admitting]);
+      if(admission.status === "fulfilled") channel.gad.instance.settleReadyWork("workspace-publication",{workerId,itemId:publication!.itemId,generation:publication!.generation,outcome:admission.value});
+      else channel.gad.instance.failReadyWork("workspace-publication",{workerId,itemId:publication!.itemId,generation:publication!.generation,error:serializeRpcFailure(admission.reason)});
+      await Promise.allSettled([peerWaiting]);
+      log.appendPrepared=append;
+    }
+  });
+
+  it("observes one frozen prefix while later appends remain independent canonical debt", async () => {
+    const entered=deferred<void>();const release=deferred<void>();
+    let held=true;
+    const requests: {events:{envelopeId:string}[]}[]=[];
+    const channel=await createGadBackedChannel({rpcCall:async(_target,method,args)=>{
+      if(method === "appendLogEvent") {
+        requests.push(args[0] as {events:{envelopeId:string}[]});
+        if(held) {entered.resolve();await release.promise;}
+      }
+      return undefined;
+    }});
+    setRpcCaller(channel.instance,"panel:user","panel");
+    await channel.instance.subscribe("panel:user",{contextId:"ctx-1",type:"panel"});
+    await channel.instance.publish("panel:user","batch.first",{value:1});
+    const workerId="driver-batched";
+    const [first]=channel.instance.claimReadyWork("channel-observation",{workerId,now:Date.now(),limit:1});
+    const observing=channel.instance.executeChannelObservationClaim({itemId:first!.itemId,generation:first!.generation});
+    try {
+      await entered.promise;
+      const later=await channel.instance.publish("panel:user","batch.later",{value:2});
+      expect(requests[0]!.events).toHaveLength(2);
+      const prefix=canonicalLedger(channel.instance).at(1)!;
+      expect(()=>channel.instance.settleReadyWork("channel-observation",{workerId,itemId:first!.itemId,generation:first!.generation,outcome:{observedSequence:1,envelopeId:String(prefix.envelopeId),hash:prefix.hash}})).toThrow("changed its canonical event");
+      expect(canonicalLedger(channel.instance).observedSequence()).toBe(0);
+      release.resolve();held=false;
+      const firstOutcome=await observing;
+      expect(firstOutcome.observedSequence).toBe(2);
+      expect(channel.instance.settleReadyWork("channel-observation",{workerId,itemId:first!.itemId,generation:first!.generation,outcome:firstOutcome})).toBe("accepted");
+      expect(channel.instance.settleReadyWork("channel-observation",{workerId,itemId:first!.itemId,generation:first!.generation,outcome:firstOutcome})).toBe("duplicate");
+      expect(canonicalLedger(channel.instance).observedSequence()).toBe(2);
+      expect((await channel.instance.getReplayAfter({after:0})).logEvents).toHaveLength(3);
+      const [next]=channel.instance.claimReadyWork("channel-observation",{workerId,now:Date.now(),limit:1});
+      expect(channel.instance.settleReadyWork("channel-observation",{workerId,itemId:first!.itemId,generation:first!.generation,outcome:firstOutcome})).toBe("stale");
+      const nextOutcome=await channel.instance.executeChannelObservationClaim({itemId:next!.itemId,generation:next!.generation});
+      expect(nextOutcome.observedSequence).toBe(later.id);
+      expect(channel.instance.settleReadyWork("channel-observation",{workerId,itemId:next!.itemId,generation:next!.generation,outcome:nextOutcome})).toBe("accepted");
+      expect(requests[1]!.events).toHaveLength(1);
+      expect(channel.gad.instance.readLog({logId:"channel-1",head:"main"})).toHaveLength(3);
+    } finally {release.resolve();await Promise.allSettled([observing]);}
+  });
+
+  it("reclaims the same frozen observation prefix after worker ownership changes", async () => {
+    const channel=await createGadBackedChannel();
+    setRpcCaller(channel.instance,"panel:user","panel");
+    await channel.instance.subscribe("panel:user",{contextId:"ctx-1",type:"panel"});
+    await channel.instance.publish("panel:user","batch.before",{value:1});
+    const [old]=channel.instance.claimReadyWork("channel-observation",{workerId:"driver-old-batch",now:Date.now(),limit:1});
+    await channel.instance.publish("panel:user","batch.after",{value:2});
+    await channel.instance.adoptDurableWorkWorker("driver-new-batch");
+    const [reclaimed]=channel.instance.claimReadyWork("channel-observation",{workerId:"driver-new-batch",now:Date.now(),limit:1});
+    expect(reclaimed!.itemId).toBe(old!.itemId);
+    expect(reclaimed!.generation).toBeGreaterThan(old!.generation);
+    const receipt=await channel.instance.executeChannelObservationClaim({itemId:reclaimed!.itemId,generation:reclaimed!.generation});
+    expect(receipt.observedSequence).toBe(2);
+    expect(channel.instance.settleReadyWork("channel-observation",{workerId:"driver-old-batch",itemId:old!.itemId,generation:old!.generation,outcome:receipt})).toBe("stale");
+    expect(canonicalLedger(channel.instance).observedSequence()).toBe(0);
+    expect(channel.instance.settleReadyWork("channel-observation",{workerId:"driver-new-batch",itemId:reclaimed!.itemId,generation:reclaimed!.generation,outcome:receipt})).toBe("accepted");
+    expect(canonicalLedger(channel.instance).peekObservation()).toMatchObject({kind:"append",sequence:3});
+  });
+
+  it.each(["same channel","cross channel"] as const)("joins held nested direct publications before owner sealing on the %s", async (mode) => {
+    const outerEntered=deferred<void>();const releaseOuter=deferred<void>();
+    const innerEntered=deferred<void>();const releaseInner=deferred<void>();
+    let destination!: PubSubChannel;
+    const receive=async (_target:string,method:string,args:unknown[])=>{
+      if(method!=="acceptChannelDelivery")return undefined;
+      const delivery=args[0] as {deliveryId:string;envelope:{event:{type:string}}};
+      if(delivery.envelope.event.type === "nested.outer") {
+        outerEntered.resolve();await releaseOuter.promise;
+        setRpcCaller(destination,"panel:user","panel");
+        await destination.publish("panel:user","nested.inner",{value:2});
+      } else if(delivery.envelope.event.type === "nested.inner") {
+        innerEntered.resolve();await releaseInner.promise;
+      }
+      return {deliveryId:delivery.deliveryId,disposition:"processed"};
     };
-    expect(result.message?.type).toBe("response");
-    expect(result.message?.error).toMatchObject({
-      code: "RPC_ABORTED",
-      message: "RPC call aborted by caller",
-    });
+    const source=await createGadBackedChannel({channelKey:"nested-source",rpcCall:receive});
+    const target=mode === "same channel" ? source : await createGadBackedChannel({channelKey:"nested-target",gad:source.gad,rpcCall:receive});
+    destination=target.instance;
+    for(const channel of new Set([source,target])) {
+      await joinEntity(channel.instance,`do:workers/agent-worker:AiChatWorker:${channel === source ? "outer" : "inner"}`);
+      setRpcCaller(channel.instance,"panel:user","panel");
+      await channel.instance.subscribe("panel:user",{contextId:"ctx-1",type:"panel"});
+    }
+    const oldTarget=await target.instance.prepareDurableWorkRelease("delivery");
+    await source.instance.publish("panel:user","nested.outer",{value:1});
+    await outerEntered.promise;
+    const sourceCapture=await source.instance.prepareDurableWorkRelease("delivery");
+    let sourceDone=false;
+    const sourceWaiting=source.instance.waitDurableWorkRelease("delivery",sourceCapture.barrier).then(()=>{sourceDone=true;});
+    try {
+      expect(sourceDone).toBe(false);
+      releaseOuter.resolve();await innerEntered.promise;
+      const targetCapture=await target.instance.prepareDurableWorkRelease("delivery");
+      expect(targetCapture.barrier).not.toEqual(oldTarget.barrier);
+      let targetDone=false;
+      const targetWaiting=target.instance.waitDurableWorkRelease("delivery",targetCapture.barrier).then(()=>{targetDone=true;});
+      expect(targetDone).toBe(false);
+      releaseInner.resolve();await Promise.all([sourceWaiting,targetWaiting]);
+      const owner=await target.instance.prepareDurableWorkRelease("owner");
+      expect((owner.barrier as {headSequence:number}).headSequence).toBe(canonicalLedger(target.instance).headSequence());
+      expect(target.sql.exec(`SELECT delivery_id FROM channel_delivery_mailbox WHERE state IN ('ready','leased','retrying')`).toArray()).toEqual([]);
+    } finally {
+      releaseOuter.resolve();releaseInner.resolve();
+      await Promise.allSettled([sourceWaiting]);
+      await Promise.all([...new Set([source,target])].map((channel)=>(channel.instance as unknown as {publicationQueue:{drain():Promise<void>}}).publicationQueue.drain()));
+    }
+  });
+
+  it("preserves an owed delivery failure across activation and clears it only on genuine recovery acknowledgement", async () => {
+    const original=Object.assign(new Error("direct receiver refused",{cause:new Error("original provider cause")}),{code:"RECEIVER_REFUSED"});
+    const channel=await createGadBackedChannel({rpcCall:(_target,method)=>{if(method === "acceptChannelDelivery")throw original;return undefined;}});
+    await joinEntity(channel.instance,"do:workers/agent-worker:AiChatWorker:failure-owner");
+    setRpcCaller(channel.instance,"panel:user","panel");
+    await channel.instance.subscribe("panel:user",{contextId:"ctx-1",type:"panel"});
+    await channel.instance.publish("panel:user","failure.owed",{value:1});
+    const capture=await channel.instance.prepareDurableWorkRelease("delivery");
+    await expect(channel.instance.waitDurableWorkRelease("delivery",capture.barrier)).rejects.toMatchObject({message:original.message,code:"RECEIVER_REFUSED",cause:expect.objectContaining({message:"original provider cause"})});
+    const reopened=await createGadBackedChannel({gad:channel.gad,db:channel.db});
+    const recoveredCapture=await reopened.instance.prepareDurableWorkRelease("delivery");
+    await expect(reopened.instance.waitDurableWorkRelease("delivery",recoveredCapture.barrier)).rejects.toMatchObject({message:original.message,code:"RECEIVER_REFUSED",cause:expect.objectContaining({message:"original provider cause"})});
+    const workerId="driver-failure-recovery";
+    const [claim]=reopened.instance.claimReadyWork("channel-delivery",{workerId,now:Date.now(),limit:1});
+    expect(claim).toBeDefined();
+    expect(reopened.instance.settleReadyWork("channel-delivery",{workerId,itemId:claim!.itemId,generation:claim!.generation,outcome:{deliveryId:claim!.itemId,disposition:"processed"}})).toBe("accepted");
+    await expect(reopened.instance.waitDurableWorkRelease("delivery",recoveredCapture.barrier)).resolves.toBeUndefined();
+    await expect(channel.instance.waitDurableWorkRelease("delivery",capture.barrier)).resolves.toBeUndefined();
+    expect(reopened.sql.exec(`SELECT last_failure_json FROM channel_delivery_mailbox WHERE delivery_id = ?`,claim!.itemId).toArray()).toEqual([{last_failure_json:null}]);
+    await expect(reopened.instance.prepareDurableWorkRelease("owner")).resolves.toMatchObject({queues:["channel-observation"]});
+  });
+
+  it("cancels delivery completion observation while a direct callback remains independently owned", async () => {
+    const entered=deferred<void>();const release=deferred<void>();
+    let callbackCompleted=false;
+    const channel=await createGadBackedChannel({rpcCall:async(_target,method,args)=>{
+      if(method!=="acceptChannelDelivery")return undefined;
+      const delivery=args[0] as {deliveryId:string};
+      entered.resolve();await release.promise;callbackCompleted=true;
+      return {deliveryId:delivery.deliveryId,disposition:"processed"};
+    }});
+    await joinEntity(channel.instance,"do:workers/agent-worker:AiChatWorker:held-cancelled-closure");
+    setRpcCaller(channel.instance,"panel:user","panel");
+    await channel.instance.subscribe("panel:user",{contextId:"ctx-1",type:"panel"});
+    const event=await channel.instance.publish("panel:user","held.closure",{value:1});
+    await entered.promise;
+    const capture=await channel.instance.prepareDurableWorkRelease("delivery");
+    const controller=new AbortController();
+    const owner=channel.instance as unknown as {_invocationContext:{run<T>(context:unknown,operation:()=>T):T};deliveryWaiters:Set<unknown>;publicationQueue:{drain():Promise<void>;completionObservers:Set<unknown>;completions:Set<unknown>}};
+    const registered=deferred<void>();
+    const observers=owner.publicationQueue.completionObservers;
+    const add=observers.add.bind(observers);
+    observers.add=(observer)=>{const added=add(observer);registered.resolve();return added;};
+    const original=Object.assign(new Error("release observation cancelled"),{code:"ECANCELLED"});
+    const waiting=owner._invocationContext.run({authorityActive:true,requestSignal:controller.signal,requestId:"held-direct-closure",callerId:"main",callerKind:"server"},()=>channel.instance.waitDurableWorkRelease("delivery",capture.barrier));
+    try {
+      await registered.promise;
+      expect(observers.size).toBe(1);
+      controller.abort(original);
+      await expect(waiting).rejects.toBe(original);
+      expect(callbackCompleted).toBe(false);
+      expect(observers.size).toBe(0);
+      expect(owner.publicationQueue.completions.size).toBeGreaterThan(0);
+      expect(owner.deliveryWaiters.size).toBe(0);
+      expect(channel.sql.exec(`SELECT state FROM channel_delivery_mailbox WHERE event_id = ?`,event.messageId).toArray()).toEqual([{state:"ready"}]);
+      release.resolve();await owner.publicationQueue.drain();
+      expect(callbackCompleted).toBe(true);
+      expect(channel.sql.exec(`SELECT state FROM channel_delivery_mailbox WHERE event_id = ?`,event.messageId).toArray()).toEqual([{state:"terminal-completed"}]);
+      const next=await channel.instance.prepareDurableWorkRelease("delivery");
+      await expect(channel.instance.waitDurableWorkRelease("delivery",next.barrier)).resolves.toBeUndefined();
+      await expect(channel.instance.prepareDurableWorkRelease("owner")).resolves.toMatchObject({queues:["channel-observation"]});
+    } finally {controller.abort(original);release.resolve();await Promise.allSettled([waiting]);observers.add=add;await owner.publicationQueue.drain();}
+  });
+
+  it("cancels a delivery horizon waiter without deleting the held mailbox debt", async () => {
+    const channel=await createGadBackedChannel();
+    await joinResidentSession(channel.instance,"do:vibestudio/internal:EvalDO:cancel-delivery");
+    setRpcCaller(channel.instance,"panel:user","panel");
+    await channel.instance.subscribe("panel:user",{contextId:"ctx-1",type:"panel"});
+    await channel.instance.publish("panel:user","cancel.owed",{value:1});
+    const workerId="driver-cancel-delivery";
+    const [claim]=channel.instance.claimReadyWork("channel-delivery",{workerId,now:Date.now(),limit:1});
+    const capture=await channel.instance.prepareDurableWorkRelease("delivery");
+    const controller=new AbortController();const entered=deferred<void>();
+    const owner=channel.instance as unknown as {waitDeliveryThrough(sequence:number):Promise<void>;deliveryWaiters:Set<unknown>;_invocationContext:{run<T>(context:unknown,operation:()=>T):T}};
+    const wait=owner.waitDeliveryThrough.bind(channel.instance);
+    owner.waitDeliveryThrough=(sequence)=>{const pending=wait(sequence);entered.resolve();return pending;};
+    const original=new Error("caller cancelled delivery closure");
+    const waiting=owner._invocationContext.run({authorityActive:true,requestSignal:controller.signal,requestId:"cancel-delivery-closure",callerId:"main",callerKind:"server"},()=>channel.instance.waitDurableWorkRelease("delivery",capture.barrier));
+    try {
+      await entered.promise;controller.abort(original);
+      await expect(waiting).rejects.toBe(original);
+      expect(owner.deliveryWaiters.size).toBe(0);
+      expect(channel.sql.exec(`SELECT state FROM channel_delivery_mailbox WHERE delivery_id = ?`,claim!.itemId).toArray()).toEqual([{state:"leased"}]);
+      expect(channel.instance.settleReadyWork("channel-delivery",{workerId,itemId:claim!.itemId,generation:claim!.generation,outcome:{deliveryId:claim!.itemId,disposition:"processed"}})).toBe("accepted");
+      await expect(channel.instance.waitDurableWorkRelease("delivery",capture.barrier)).resolves.toBeUndefined();
+    } finally {controller.abort(original);await Promise.allSettled([waiting]);owner.waitDeliveryThrough=wait;}
+  });
+
+  it("adopts delivery work from canonical local history without a global read", async () => {
+    const methods: string[] = [];
+    const { instance } = await createGadBackedChannel({rpcCall:(_target,method)=>{methods.push(method);return undefined;}});
+    await instance.adoptDurableWorkWorker("driver-after-restart");
+    expect(methods).not.toContain("readLog");
+    expect(methods).not.toContain("appendLogEvent");
   });
 
   it.each(["headless", "agent"] as const)(
     "retains the %s channel role independently of its verified DO principal",
     async (type) => {
-      const { instance, gad } = await createGadBackedChannel();
+      const { instance } = await createGadBackedChannel();
       const senderId = "do:vibestudio/internal:EvalDO:input-client";
       await joinResidentSession(instance, senderId, {
         name: "Programmatic participant",
@@ -631,7 +932,7 @@ describe("PubSubChannel", () => {
           idempotencyKey: "principal-role-input",
         },
       );
-      const completed = canonicalAgenticEvents(gad).find(
+      const completed = canonicalAgenticEvents(instance).find(
         (event) => event.kind === "message.completed",
       )!;
       expect(completed.actor).toMatchObject({
@@ -877,7 +1178,7 @@ describe("PubSubChannel", () => {
   });
 
   it("stores durable publishes with canonical event kind and payload headers", async () => {
-    const { instance, gad } = await createGadBackedChannel();
+    const { instance } = await createGadBackedChannel();
     setRpcCaller(instance, "panel:user", "panel");
 
     await instance.subscribe("panel:user", {
@@ -895,22 +1196,17 @@ describe("PubSubChannel", () => {
     );
 
     expect(result.id).toBe(2);
-    const rows = gad.sql
-      .exec(
-        `SELECT seq, envelope_id, payload_kind, payload_ref_json, annotations_json
-       FROM log_events ORDER BY seq ASC`,
-      )
-      .toArray();
+    const rows = canonicalLedger(instance).read({limit:100});
     expect(rows.length).toBeGreaterThan(1);
     expect(rows[1]).toMatchObject({
       seq: 2,
-      payload_kind: "message.completed",
+      payloadKind: "message.completed",
     });
-    expect(JSON.parse(rows[1]!["payload_ref_json"] as string)).toMatchObject({
+    expect(rows[1]!.payload).toMatchObject({
       protocol: AGENTIC_PROTOCOL_VERSION,
       role: "user",
     });
-    expect(JSON.parse(rows[1]!["annotations_json"] as string)).toMatchObject({
+    expect(rows[1]!.annotations).toMatchObject({
       metadata: { name: "User" },
     });
   });
@@ -945,7 +1241,7 @@ describe("PubSubChannel", () => {
   });
 
   it("admits human participant operations without admitting provider settlement", async () => {
-    const { instance, gad, callAs } = await createGadBackedChannel();
+    const { instance, callAs } = await createGadBackedChannel();
     setRpcCaller(instance, "shell:alice", "shell", null, "usr_alice");
     await instance.subscribe("shell:alice", {
       contextId: "ctx-1",
@@ -966,13 +1262,8 @@ describe("PubSubChannel", () => {
         agenticEvent(),
       ),
     ).resolves.toMatchObject({ id: expect.any(Number) });
-    const published = await gad.instance.readChannelEnvelopes({
-      channelId: "channel-1",
-    });
-    expect(published.items.at(-1)).toMatchObject({
-      from: { id: "user:usr_alice" },
-      payloadKind: AGENTIC_EVENT_PAYLOAD_KIND,
-    });
+    const published = await instance.getReplayAfter({after:0});
+    expect(published.logEvents.at(-1)).toMatchObject({senderId:"user:usr_alice",type:AGENTIC_EVENT_PAYLOAD_KIND});
     setRpcCaller(instance, "shell:bob", "shell", null, "usr_bob");
     await expect(
       instance.publish(
@@ -1174,6 +1465,7 @@ describe("PubSubChannel", () => {
       },
     );
     await Promise.resolve();
+    // The remaining delivery receives one canonically retained live envelope.
     expect(emittedTargets).toEqual(["panel:slot-a"]);
 
     await closeTestSubscription(instance, "user:usr_alice", "panel:slot-a");
@@ -1387,7 +1679,7 @@ describe("PubSubChannel", () => {
 
   it("retries a lost workspace invite-index write through a host-held claim", async () => {
     let failFirstPut = true;
-    const { instance, gad, sql } = await createGadBackedChannel({
+    const { instance, sql , gad} = await createGadBackedChannel({
       rpcCall: (target, method, args) => {
         if (method === "account.isMember") return args[0] === "usr_bob";
         if (method === "account.resolveProfiles")
@@ -1452,7 +1744,7 @@ describe("PubSubChannel", () => {
     let isWorkspaceMember = true;
     let putAttempts = 0;
     let deleteAttempts = 0;
-    const { instance, gad, sql } = await createGadBackedChannel({
+    const { instance, sql , gad} = await createGadBackedChannel({
       rpcCall: (target, method, args) => {
         if (method === "account.isMember")
           return isWorkspaceMember && args[0] === "usr_bob";
@@ -1621,7 +1913,7 @@ describe("PubSubChannel", () => {
   });
 
   it("sendAsCaller ignores an agent-supplied display handle", async () => {
-    const { instance, gad } = await createGadBackedChannel();
+    const { instance } = await createGadBackedChannel();
     setRpcCaller(instance, "agent:session-1", "agent");
     const caller = (
       instance as unknown as {
@@ -1637,14 +1929,8 @@ describe("PubSubChannel", () => {
 
     await instance.sendAsCaller("hello", { handle: "Alice" });
 
-    const rows = gad.sql
-      .exec(
-        `SELECT annotations_json FROM log_events WHERE payload_kind = ? ORDER BY seq DESC`,
-        "message.completed",
-      )
-      .toArray();
-    const annotations = JSON.parse(String(rows[0]!["annotations_json"]));
-    expect(annotations.metadata).toMatchObject({
+    const annotations = canonicalLedger(instance).read({limit:100}).filter((event)=>event.payloadKind === "message.completed").at(-1)!.annotations as Record<string, unknown>;
+    expect(annotations["metadata"]).toMatchObject({
       name: "agent:session-1",
       handle: "agent:session-1",
       kind: "agent",
@@ -1670,7 +1956,7 @@ describe("PubSubChannel", () => {
     await expect(
       instance.join({
         participantId: arbitraryLabel,
-        revision: 1,
+        operationId: "join-1",
         contextId: "ctx-1",
         metadata: { name: "Eval client", type: "client" },
         delivery: "all",
@@ -1716,7 +2002,7 @@ describe("PubSubChannel", () => {
     await expect(
       instance.join({
         participantId,
-        revision: 1,
+        operationId: "join-1",
         contextId: "ctx-1",
         metadata: { name: "Retired eval", type: "headless" },
         delivery: "all",
@@ -1738,29 +2024,13 @@ describe("PubSubChannel", () => {
     const releaseAppend = deferred();
     let appendCalls = 0;
     let blockAppend = false;
-    const gad = await createTestDO(GadWorkspaceDO, {
-      __objectKey: "workspace",
-    });
-    const { instance } = await createGadBackedChannel({
-      gad,
-      rpcCall: async (target, method, args) => {
-        if (
-          target === "do:workers/workspace-source:GadWorkspaceDO:workspace" &&
-          method === "appendLogEvent" &&
-          blockAppend
-        ) {
-          appendCalls += 1;
-          appendEntered.resolve();
-          await releaseAppend.promise;
-          const callable = gad.instance as unknown as Record<
-            string,
-            (...methodArgs: unknown[]) => unknown
-          >;
-          return await callable[method]!(...args);
-        }
-        return undefined;
-      },
-    });
+    const { instance } = await createGadBackedChannel();
+    const log = (instance as unknown as {channelLog:ChannelLog}).channelLog;
+    const append = log.append.bind(log);
+    log.append = async (input) => {
+      if (blockAppend) { appendCalls += 1; appendEntered.resolve(); await releaseAppend.promise; }
+      return append(input);
+    };
     setRpcCaller(instance, "panel:user", "panel");
     await instance.subscribe("panel:user", {
       contextId: "ctx-1",
@@ -1802,19 +2072,28 @@ describe("PubSubChannel", () => {
     });
     expect(receipts[1]).toEqual(receipts[0]);
 
-    const rows = gad.sql
-      .exec(`SELECT seq FROM log_events ORDER BY seq ASC`)
-      .toArray();
-    expect(rows.length).toBeGreaterThan(1);
+    expect(canonicalLedger(instance).read({limit:100})).toHaveLength(2);
+  });
+
+  it("joins a fresh relationship without retaining an unobserved receiver snapshot or rereading its committed append", async () => {
+    const methods: string[] = [];
+    const { instance } = await createGadBackedChannel({
+      rpcCall: (_target, method) => { methods.push(method); return undefined; },
+    });
+    await joinEntity(instance, "do:workers/agent-worker:AiChatWorker:fresh-snapshot");
+    expect(methods).not.toContain("blobstore.putText");
+    expect(canonicalLedger(instance).headSequence()).toBe(1);
+    expect(methods).not.toContain("appendLogEvent");
+    expect(methods).not.toContain("readLog");
   });
 
   it("replays the committed join horizon after a lost response while later events remain live mailbox work", async () => {
-    const { instance, gad } = await createGadBackedChannel();
+    const { instance } = await createGadBackedChannel();
     const participantId = "do:workers/agent-worker:AiChatWorker:bootstrap-test";
     setRpcCaller(instance, participantId, "durable-object");
     const input = {
       participantId,
-      revision: 1,
+      operationId: "join-1",
       contextId: "ctx-1",
       metadata: { name: "Agent", type: "agent" },
       delivery: "all" as const,
@@ -1837,13 +2116,7 @@ describe("PubSubChannel", () => {
     expect(
       repeated.envelope!.logEvents.every((event) => event.id <= cutoff),
     ).toBe(true);
-    expect(
-      gad.sql
-        .exec(
-          `SELECT COUNT(*) AS count FROM log_events WHERE payload_kind = 'channel.subscription.opened'`,
-        )
-        .toArray(),
-    ).toEqual([{ count: 1 }]);
+    expect(canonicalLedger(instance).read({limit:100}).filter((event)=>event.payloadKind === "channel.subscription.opened")).toHaveLength(1);
     const deliveries = (
       instance as unknown as {
         sql: {
@@ -1863,8 +2136,56 @@ describe("PubSubChannel", () => {
     expect(deliveries.length).toBeGreaterThan(0);
   });
 
+  it("replays an exact operation after a newer relationship without undoing the newer membership", async () => {
+    const channel = await createGadBackedChannel();
+    const participantId =
+      "do:workers/agent-worker:AiChatWorker:ordered-intents";
+    setRpcCaller(channel.instance, participantId, "durable-object");
+    const first = {
+      participantId,
+      operationId: "first",
+      contextId: "ctx-1",
+      metadata: { name: "First", type: "agent" },
+      delivery: "all" as const,
+      endpoint: {
+        kind: "entity" as const,
+        entityId: participantId,
+        invocation: "direct" as const,
+      },
+      applicationConfig: null,
+      replay: true,
+    };
+    const original = await channel.instance.join(first);
+    const newer = await channel.instance.join({
+      ...first,
+      operationId: "second",
+      metadata: { name: "Second", type: "agent" },
+    });
+    expect(newer.revision).toBe(original.revision! + 1);
+    const reopened = await createGadBackedChannel({
+      db: channel.db,
+      gad: channel.gad,
+    });
+    setRpcCaller(reopened.instance, participantId, "durable-object");
+    const retry = await reopened.instance.join(first);
+    expect(retry.revision).toBe(original.revision);
+    expect(retry.envelope!.ready.snapshotLastSeq).toBe(
+      original.envelope!.ready.snapshotLastSeq,
+    );
+    expect(await reopened.instance.relationshipState(participantId)).toEqual({
+      revision: newer.revision,
+      active: true,
+    });
+    await expect(
+      reopened.instance.join({
+        ...first,
+        metadata: { name: "Changed", type: "agent" },
+      }),
+    ).rejects.toThrow("operationId already names different relationship data");
+  });
+
   it("keeps identity summaries compact while retaining exact executable offers at a relationship revision", async () => {
-    const { instance, gad } = await createGadBackedChannel();
+    const { instance , gad} = await createGadBackedChannel();
     const participantId = "do:workers/agent-worker:AiChatWorker:metadata-test";
     const metadata = {
       name: "Agent",
@@ -1892,22 +2213,11 @@ describe("PubSubChannel", () => {
           },
         ],
       }),
-    ).rejects.toThrow("revision 1 already names different relationship data");
-    const rows = gad.sql
-      .exec(
-        "SELECT payload_ref_json FROM log_events WHERE payload_kind = ?",
-        "channel.subscription.opened",
-      )
-      .toArray();
+    ).rejects.toThrow("operationId already names different relationship data");
+    const rows = canonicalLedger(instance).read({limit:100}).filter((envelope)=>envelope.payloadKind === "channel.subscription.opened");
     expect(rows).toHaveLength(1);
-    expect(JSON.parse(String(rows[0]!["payload_ref_json"])).metadata).toEqual({
-      name: "Agent",
-      type: "agent",
-      methods: [{ name: "pause" }],
-    });
-    expect(
-      JSON.parse(String(rows[0]!["payload_ref_json"])).methodOffers,
-    ).toEqual(metadata.methods);
+    expect((rows[0]!.payload as Record<string,unknown>)["metadata"]).toEqual({name:"Agent",type:"agent",methods:[{name:"pause"}]});
+    expect((rows[0]!.payload as Record<string,unknown>)["methodOffers"]).toEqual(metadata.methods);
     const integrity = await gad.call("checkGadIntegrity", {});
     expect(
       integrity.errors.filter((error) => error.type === "log-event-shape"),
@@ -1915,7 +2225,7 @@ describe("PubSubChannel", () => {
   });
 
   it("retains schemas once as method offers without embedding them in participant references", async () => {
-    const { instance, gad } = await createGadBackedChannel();
+    const { instance } = await createGadBackedChannel();
     setRpcCaller(instance, "panel:user", "panel");
 
     await instance.subscribe("panel:user", {
@@ -1946,17 +2256,12 @@ describe("PubSubChannel", () => {
       },
     );
 
-    const rows = gad.sql
-      .exec(
-        `SELECT actor_json, payload_ref_json, annotations_json
-         FROM log_events ORDER BY seq ASC`,
-      )
-      .toArray();
+    const rows = canonicalLedger(instance).read({limit:100});
     const identityJson = JSON.stringify(
       rows.map((row) => ({
-        actor: JSON.parse(String(row["actor_json"])),
-        annotations: JSON.parse(String(row["annotations_json"])),
-        metadata: JSON.parse(String(row["payload_ref_json"])).metadata,
+        actor: row.actor,
+        annotations: row.annotations,
+        metadata: (row.payload as Record<string,unknown>)["metadata"],
       })),
     );
     expect(identityJson).not.toContain("properties");
@@ -1964,7 +2269,7 @@ describe("PubSubChannel", () => {
     expect(identityJson).not.toContain("description");
     expect(identityJson).not.toContain("yyyy");
     expect(
-      JSON.parse(String(rows[0]!["payload_ref_json"])).methodOffers,
+      (rows[0]!.payload as Record<string,unknown>)["methodOffers"],
     ).toMatchObject([
       {
         name: "eval",
@@ -1973,19 +2278,92 @@ describe("PubSubChannel", () => {
         returns: { description: "z".repeat(4096) },
       },
     ]);
-    expect(JSON.parse(rows[0]!["payload_ref_json"] as string)).toMatchObject({
+    expect(rows[0]!.payload).toMatchObject({
       metadata: { methods: [{ name: "eval" }] },
     });
-    expect(JSON.parse(rows[1]!["annotations_json"] as string)).toMatchObject({
+    expect(rows[1]!.annotations).toMatchObject({
       metadata: { methods: [{ name: "eval" }] },
     });
+  });
+
+  it("commits owner history and forwards subscribers before global observation, retaining exact mailbox identity", async () => {
+    const started = deferred<void>();
+    const release = deferred<void>();
+    const receiverRelease = deferred<void>();
+    let held = false;
+    let channelContext: {current(): {verifiedCaller?: {authorization?: {nonce?:string}}}|undefined;run<T>(value:unknown,operation:()=>T):T};
+    const nonces:unknown[]=[];
+    const emitted:unknown[]=[];
+    const deliveries:any[]=[];
+    const channel=await createGadBackedChannel({emitted,rpcCall:async (_target,method,args)=>{
+      if(method === "appendLogEvent" && held){started.resolve(undefined);await release.promise;}
+      if(method === "acceptChannelDelivery"){
+        const delivery=args[0] as any;deliveries.push(delivery);
+        if(delivery.envelope.event.type === "custom.live"){
+          nonces.push(channelContext.current()?.verifiedCaller?.authorization?.nonce);
+          await receiverRelease.promise;
+          nonces.push(channelContext.current()?.verifiedCaller?.authorization?.nonce);
+        }
+        return {deliveryId:delivery.deliveryId,disposition:"processed"};
+      }
+      return undefined;
+    }});
+    channelContext=(channel.instance as unknown as {_invocationContext:typeof channelContext})._invocationContext;
+    await joinEntity(channel.instance,"do:workers/agent-worker:AiChatWorker:live-recipient");
+    setRpcCaller(channel.instance,"panel:user","panel");
+    await channel.instance.subscribe("panel:user",{contextId:"ctx-1",name:"User",type:"panel"});
+    emitted.length=0;deliveries.length=0;
+    held=true;
+    const parent={authorityActive:true,callerId:"panel:user",callerKind:"panel",verifiedCaller:{callerId:"panel:user",callerKind:"panel",authorization:{nonce:"publisher:request:nonce"}},requestId:"publisher:request",idempotencyKey:null,readyQueues:new Set()};
+    const receipt=await channelContext.run(parent,()=>channel.instance.publish("panel:user","custom.live",{value:"go"}));
+    parent.authorityActive=false;
+    expect(receipt.id).toEqual(expect.any(Number));
+    expect(deliveries).toHaveLength(1);
+    expect(deliveries[0]).toMatchObject({eventSequence:receipt.id,envelope:{kind:"log",event:{id:receipt.id,type:"custom.live"}}});
+    expect(emitted).toEqual([expect.objectContaining({message:expect.objectContaining({kind:"log",event:expect.objectContaining({id:receipt.id,type:"custom.live"})})})]);
+    await expect(channel.instance.getEnvelope(receipt.messageId)).resolves.toEqual(deliveries[0].envelope.event);
+    expect(nonces).toEqual([undefined]);
+    expect(channel.gad.instance.getLogHead({logId:"channel-1",head:"main"})).toBeNull();
+    const [observation]=channel.instance.claimReadyWork("channel-observation",{workerId:"live-check",now:Date.now(),limit:1});
+    const observing=channel.instance.executeChannelObservationClaim({itemId:observation!.itemId,generation:observation!.generation});
+    await started.promise;
+    const replay=await channel.instance.getReplayAfter({after:0});
+    expect(replay.logEvents.some((event)=>event.messageId===receipt.messageId)).toBe(true);
+    release.resolve(undefined);
+    const observed=await observing;
+    expect(channel.instance.settleReadyWork("channel-observation",{workerId:"live-check",itemId:observation!.itemId,generation:observation!.generation,outcome:observed})).toBe("accepted");
+    const [claim]=channel.instance.claimReadyWork("channel-delivery",{workerId:"live-check",now:Date.now(),limit:1});
+    expect((claim!.payload as any).delivery).toMatchObject({deliveryId:deliveries[0].deliveryId,envelopeId:receipt.messageId,eventSequence:receipt.id});
+    expect((claim!.payload as any).delivery.agenticContext).toEqual(deliveries[0].agenticContext);
+    receiverRelease.resolve(undefined);
+    await Promise.resolve();
+    expect(nonces).toEqual([undefined,undefined]);
+
+  });
+
+  it("keeps valid local membership and history when graph observation fails, with original debt visible across activation", async()=>{
+    const failure=Object.assign(new Error("Graph unavailable"),{cause:new Error("Original service failure"),code:"GRAPH_DOWN"});
+    const channel=await createGadBackedChannel({rpcCall:(_target,method)=>{if(method==="appendLogEvent")throw failure;}});
+    setRpcCaller(channel.instance,"panel:user","panel");
+    await channel.instance.subscribe("panel:user",{contextId:"ctx-1",type:"panel"});
+    const receipt=await channel.instance.publish("panel:user","custom.valid",{value:1});
+    const [claim]=channel.instance.claimReadyWork("channel-observation",{workerId:"graph-failure",now:Date.now(),limit:1});
+    await expect(channel.instance.executeChannelObservationClaim({itemId:claim!.itemId,generation:claim!.generation})).rejects.toBe(failure);
+    expect(await channel.instance.failReadyWork("channel-observation",{workerId:"graph-failure",itemId:claim!.itemId,generation:claim!.generation,error:serializeRpcFailure(failure)})).toEqual({failed:true});
+    await expect(channel.instance.waitObservedThrough(receipt.id!)).rejects.toMatchObject({message:"Graph unavailable",code:"GRAPH_DOWN",cause:expect.objectContaining({message:"Original service failure"})});
+    await expect(channel.instance.getEnvelope(receipt.messageId)).resolves.toMatchObject({id:receipt.id});
+    const reopened=await createGadBackedChannel({db:channel.db,gad:channel.gad});
+    expect(reopened.instance.claimReadyWork("channel-observation",{workerId:"new-generation",now:Date.now(),limit:1})).toEqual([]);
+    await expect(reopened.instance.waitObservedThrough(receipt.id!)).rejects.toMatchObject({message:"Graph unavailable",code:"GRAPH_DOWN"});
+    const replay=await reopened.instance.getReplayAfter({after:0});
+    expect(replay.logEvents.some((event)=>event.messageId===receipt.messageId)).toBe(true);
   });
 
   it("fails durable publishes when blobstore storage fails", async () => {
     const { instance } = await createGadBackedChannel({
       blobstorePutText: async (value) => {
         if (!value.includes("must be stored")) {
-          return { digest: "0".repeat(64), size: value.length };
+          return { digest: sha256HexSyncText(value), size: value.length };
         }
         throw new Error("blobstore unavailable");
       },
@@ -2013,7 +2391,7 @@ describe("PubSubChannel", () => {
     const blobs = new Map<string, string>();
     const { instance } = await createGadBackedChannel({
       blobstorePutText: async (value) => {
-        const digest = `${String(blobs.size + 1).padStart(64, "0")}`;
+        const digest = sha256HexSyncText(value);
         blobs.set(digest, value);
         return { digest, size: value.length };
       },
@@ -2155,7 +2533,7 @@ describe("PubSubChannel", () => {
     setRpcCaller(instance, agentId, "durable-object");
     await instance.join({
       participantId: agentId,
-      revision: 1,
+      operationId: "join-1",
       contextId: "ctx-1",
       metadata: { name: "Denied agent", type: "agent" },
       delivery: "all",
@@ -2189,6 +2567,7 @@ describe("PubSubChannel", () => {
       workerId: "driver-1",
       itemId: claim!.itemId,
       generation: claim!.generation,
+      error: serializeRpcFailure(new Error("held recipient refused")),
     });
     expect(failed).toEqual({ retryAt: expect.any(Number) });
     expect(instance.durableWorkStatus().nextRecoveryAt).toEqual(
@@ -2212,8 +2591,8 @@ describe("PubSubChannel", () => {
     ).toEqual([]);
     const retryAt = (failed as { retryAt: number }).retryAt;
     expect(instance.durableWorkStatus()).toMatchObject({
-      readyQueues: [],
-      nextRecoveryAt: retryAt,
+      readyQueues: ["channel-observation"],
+      nextRecoveryAt: expect.any(Number),
     });
 
     const [retry] = instance.claimReadyWork("channel-delivery", {
@@ -2260,7 +2639,7 @@ describe("PubSubChannel", () => {
     setRpcCaller(instance, residentId, "durable-object");
     await instance.join({
       participantId: residentId,
-      revision: 2,
+      operationId: "join-2",
       contextId: "ctx-1",
       metadata: { name: "Replacement resident", type: "client" },
       delivery: "all",
@@ -2274,9 +2653,10 @@ describe("PubSubChannel", () => {
         workerId: "old-driver",
         itemId: oldClaim!.itemId,
         generation: oldClaim!.generation,
-        error: Object.assign(new Error("old receiver disappeared"), {
+        error: serializeRpcFailure(Object.assign(new Error("old receiver disappeared"), {
           code: "ResidentSessionUnavailable",
-        }),
+          errorKind: "transport" as const,
+        })),
       }),
     ).resolves.toEqual({ retryAt: expect.any(Number) });
     expect(
@@ -2337,9 +2717,10 @@ describe("PubSubChannel", () => {
         workerId: "driver-poison",
         itemId: poison!.itemId,
         generation: poison!.generation,
-        error: Object.assign(new Error("malformed durable envelope"), {
+        error: serializeRpcFailure(Object.assign(new Error("malformed durable envelope"), {
           code: "PermanentChannelDelivery",
-        }),
+          errorKind: "application" as const,
+        })),
       }),
     ).resolves.toEqual({ retryAt: expect.any(Number) });
     expect(
@@ -2375,7 +2756,7 @@ describe("PubSubChannel", () => {
     setRpcCaller(instance, agentId, "durable-object");
     await instance.join({
       participantId: agentId,
-      revision: 1,
+      operationId: "join-1",
       contextId: "ctx-1",
       metadata: { name: "Agent", type: "agent" },
       delivery: "all",
@@ -2461,7 +2842,7 @@ describe("PubSubChannel", () => {
     setRpcCaller(instance, agentDoId, "durable-object");
     await instance.join({
       participantId: agentDoId,
-      revision: 1,
+      operationId: "join-1",
       contextId: "ctx-1",
       metadata: { name: "Agent", type: "agent" },
       delivery: "all",
@@ -2472,7 +2853,7 @@ describe("PubSubChannel", () => {
     setRpcCaller(instance, clientDoId, "durable-object");
     await instance.join({
       participantId: clientDoId,
-      revision: 1,
+      operationId: "join-1",
       contextId: "ctx-1",
       metadata: { name: "Eval client", type: "client" },
       delivery: "all",
@@ -2537,7 +2918,7 @@ describe("PubSubChannel", () => {
     setRpcCaller(instance, supervisorId, "durable-object");
     await instance.join({
       participantId: supervisorId,
-      revision: 1,
+      operationId: "join-1",
       contextId: "ctx-task",
       metadata: { name: "Supervisor", type: "agent" },
       delivery: "addressed",
@@ -2552,7 +2933,7 @@ describe("PubSubChannel", () => {
     setRpcCaller(instance, childId, "durable-object");
     await instance.join({
       participantId: childId,
-      revision: 1,
+      operationId: "join-1",
       contextId: "ctx-task",
       metadata: { name: "Child", type: "agent" },
       delivery: "all",
@@ -2602,7 +2983,7 @@ describe("PubSubChannel", () => {
       "do:workers/agent-worker:AiChatWorker:receipt-b",
       "do:workers/agent-worker:AiChatWorker:receipt-c",
     ];
-    const { instance, gad, sql } = await createGadBackedChannel();
+    const { instance, sql } = await createGadBackedChannel();
     for (const agentId of agents) await joinEntity(instance, agentId);
     setRpcCaller(instance, "panel:user", "panel");
     await instance.subscribe("panel:user", {
@@ -2617,9 +2998,7 @@ describe("PubSubChannel", () => {
     );
 
     const logCountBefore = Number(
-      gad.sql.exec(`SELECT COUNT(*) AS count FROM log_events`).toArray()[0]![
-        "count"
-      ],
+      canonicalLedger(instance).headSequence(),
     );
     const mailboxCountBefore = Number(
       sql
@@ -2635,9 +3014,7 @@ describe("PubSubChannel", () => {
 
     expect(
       Number(
-        gad.sql.exec(`SELECT COUNT(*) AS count FROM log_events`).toArray()[0]![
-          "count"
-        ],
+        canonicalLedger(instance).headSequence(),
       ),
     ).toBe(logCountBefore);
     expect(
@@ -2765,7 +3142,7 @@ describe("PubSubChannel", () => {
         return undefined;
       },
     });
-    const { instance, gad } = channel;
+    const { instance } = channel;
 
     setRpcCaller(instance, "panel:user", "panel");
     await instance.subscribe("panel:user", {
@@ -2804,7 +3181,7 @@ describe("PubSubChannel", () => {
     ]);
     await new Promise((resolve) => setTimeout(resolve, 0));
 
-    const events = canonicalAgenticEvents(gad);
+    const events = canonicalAgenticEvents(instance);
     expect(events).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -2829,7 +3206,7 @@ describe("PubSubChannel", () => {
   it("routes resident-session method calls through the durable event path", async () => {
     const evalPid = "do:vibestudio/internal:EvalDO:eval-1";
     const rpcCalls: Array<{ target: string; method: string }> = [];
-    const { instance, gad, sql } = await createGadBackedChannel({
+    const { instance, sql } = await createGadBackedChannel({
       rpcCall: (target, method, args) => {
         if (
           target === "main" &&
@@ -2966,7 +3343,7 @@ describe("PubSubChannel", () => {
       },
     );
 
-    const events = canonicalAgenticEvents(gad);
+    const events = canonicalAgenticEvents(instance);
     expect(events).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -3065,7 +3442,7 @@ describe("PubSubChannel", () => {
           return undefined;
         },
       });
-      const { instance, gad, sql } = channel;
+      const { instance, sql } = channel;
       setRpcCaller(instance, "panel:matrix-caller", "panel");
       await instance.subscribe("panel:matrix-caller", {
         contextId: "ctx-1",
@@ -3083,7 +3460,7 @@ describe("PubSubChannel", () => {
         setRpcCaller(instance, row.target, "durable-object");
         await instance.join({
           participantId: row.target,
-          revision: 1,
+          operationId: "join-1",
           contextId: "ctx-1",
           metadata: { name: row.name, type: "client" },
           delivery: "all",
@@ -3138,23 +3515,13 @@ describe("PubSubChannel", () => {
       await cancellation;
 
       expect(
-        gad.sql
-          .exec(
-            `SELECT 1 FROM log_events WHERE envelope_id = ?`,
-            options.invocationId,
-          )
-          .toArray(),
+        [canonicalLedger(instance).envelope(options.invocationId)].filter(Boolean),
       ).toHaveLength(1);
       expect(
-        gad.sql
-          .exec(
-            `SELECT 1 FROM log_events WHERE envelope_id = ?`,
-            `terminal:${options.transportCallId}`,
-          )
-          .toArray(),
+        [canonicalLedger(instance).envelope(`terminal:${options.transportCallId}`)].filter(Boolean),
       ).toHaveLength(1);
       expect([
-        canonicalAgenticEvent(gad, `terminal:${options.transportCallId}`),
+        canonicalAgenticEvent(instance, `terminal:${options.transportCallId}`),
       ]).toEqual([
         expect.objectContaining({
           kind: "invocation.cancelled",
@@ -3244,7 +3611,7 @@ describe("PubSubChannel", () => {
   });
 
   it("atomically replaces a human delivery stream without abandoning pending calls", async () => {
-    const { instance, gad, sql } = await createGadBackedChannel();
+    const { instance, sql } = await createGadBackedChannel();
     const userParticipantId = "user:usr_alice";
 
     setRpcCaller(
@@ -3294,10 +3661,7 @@ describe("PubSubChannel", () => {
       sinceId: 10_000,
     });
 
-    const lifecycle = gad.instance.readLog({
-      logId: "channel-1",
-      head: "main",
-    });
+    const lifecycle = canonicalLedger(instance).read({limit:100});
     expect(
       lifecycle.some(
         (entry) =>
@@ -3648,18 +4012,31 @@ describe("PubSubChannel", () => {
       causality: { messageId: "msg-2" },
     });
 
+    // A later append may land before the storage snapshot is copied. The
+    // child owns only the explicitly selected prefix, not the copied tail.
+    await parent.instance.publish("panel:user", AGENTIC_EVENT_PAYLOAD_KIND, {
+      ...agenticEvent("message.completed"),
+      causality: { messageId: "msg-parent-tail" },
+    });
+    const parentPrefix = await parent.instance.getReplayAfter({
+      after: 0,
+      throughSeq: 3,
+    });
+
     const fork = await createGadBackedChannel({
       channelKey: "channel-fork",
       gad: parent.gad,
+      db: clonedChannelDatabase(parent),
     });
     await initializeChannelClone(fork, "channel-parent", "ctx-forked", "ctx-1");
     await fork.instance.postClone("channel-parent", 3, "ctx-forked");
 
     const replay = await fork.instance.getReplayAfter({ after: 0 });
-    // No-copy fork: the child sees the parent prefix verbatim, including the
+    // The cloned ledger retains the parent prefix verbatim, including the
     // relationship and message facts with their original sequence numbers;
     // presence is intentionally an activation-local signal.
     expect(replay.logEvents.map((event) => event.id)).toEqual([1, 2, 3]);
+    expect(replay.logEvents).toEqual(parentPrefix.logEvents);
     const messages = replay.logEvents.filter(
       (event) => event.type === AGENTIC_EVENT_PAYLOAD_KIND,
     );
@@ -3683,6 +4060,17 @@ describe("PubSubChannel", () => {
     });
     const afterForkAppend = await fork.instance.getReplayAfter({ after: 3 });
     expect(afterForkAppend.logEvents.map((event) => event.id)).toEqual([4]);
+    // A lost initialization reply can be re-driven after child work starts.
+    // The operation receipt must not truncate that independently owned tail.
+    await fork.instance.postClone("channel-parent", 3, "ctx-forked");
+    expect((await fork.instance.getReplayAfter({ after: 3 })).logEvents)
+      .toEqual(afterForkAppend.logEvents);
+    const parentTail = await parent.instance.getReplayAfter({ after: 3 });
+    expect(parentTail.logEvents).toHaveLength(1);
+    expect(
+      (parentTail.logEvents[0]!.payload as { causality: { messageId: string } })
+        .causality.messageId,
+    ).toBe("msg-parent-tail");
   });
 
   it("forks invocation history without executing or cancelling its source-owned operation", async () => {
@@ -3703,7 +4091,7 @@ describe("PubSubChannel", () => {
     let parent!: Awaited<ReturnType<typeof createGadBackedChannel>>;
     parent = await createGadBackedChannel({
       channelKey: "running-source",
-      rpcCall: async (target, method, args) => {
+      rpcCall: async (target, method) => {
         if (target === targetPid && method === "onChannelEnvelope") return null;
         if (target === targetPid && method === "onMethodCall") {
           providerCalls.push(method);
@@ -3714,30 +4102,15 @@ describe("PubSubChannel", () => {
           providerCalls.push(method);
           return null;
         }
-        if (
-          target === "do:workers/workspace-source:GadWorkspaceDO:workspace" &&
-          method === "appendLogEvent"
-        ) {
-          const result = await parent.gad.callAs(
-            {
-              callerId:
-                "do:workers/pubsub-channel:PubSubChannel:running-source",
-              callerKind: "do",
-            },
-            method,
-            ...args,
-          );
-          const request = args[0] as { events: Array<{ envelopeId: string }> };
-          if (
-            request.events.some(
-              (event) => event.envelopeId === "terminal:owned-call",
-            )
-          )
-            sourceSettled();
-          return result;
-        }
         return undefined;
       },
+    });
+    const sourceLog = (parent.instance as unknown as { channelLog: ChannelLog }).channelLog;
+    const appendSource = sourceLog.append.bind(sourceLog);
+    vi.spyOn(sourceLog, "append").mockImplementation(async (input) => {
+      const result = await appendSource(input);
+      if (input.messageId === "terminal:owned-call") sourceSettled();
+      return result;
     });
     setRpcCaller(parent.instance, "panel:caller", "panel");
     await parent.instance.subscribe("panel:caller", {
@@ -3768,6 +4141,7 @@ describe("PubSubChannel", () => {
     const child = await createGadBackedChannel({
       channelKey: "knowledge-child",
       gad: parent.gad,
+      db: clonedChannelDatabase(parent),
       rpcCall: (target, method) => {
         if (
           target === targetPid &&
@@ -3938,7 +4312,7 @@ describe("PubSubChannel", () => {
     setRpcCaller(parent.instance, agentTarget, "durable-object");
     await parent.instance.join({
       participantId: agentTarget,
-      revision: 1,
+      operationId: "join-1",
       contextId: "ctx-lf",
       metadata: { name: "Agent", type: "agent" },
       delivery: "all",
@@ -4146,6 +4520,7 @@ describe("PubSubChannel", () => {
     const fork = await createGadBackedChannel({
       channelKey: "channel-ctx-fork",
       gad: parent.gad,
+      db: clonedChannelDatabase(parent),
     });
     await initializeChannelClone(fork, "channel-ctx-parent", "ctx-forked");
     await fork.instance.postClone("channel-ctx-parent", 2, "ctx-forked");
@@ -4169,7 +4544,7 @@ describe("PubSubChannel", () => {
   });
 
   it("routes by transport id but publishes terminal events under the canonical invocation id", async () => {
-    const { instance, gad } = await createGadBackedChannel();
+    const { instance } = await createGadBackedChannel();
 
     setRpcCaller(instance, "panel:caller", "panel");
     await instance.subscribe("panel:caller", {
@@ -4200,7 +4575,7 @@ describe("PubSubChannel", () => {
 
     await instance.cancelMethodCall("panel:caller", "transport-1");
 
-    const events = canonicalAgenticEvents(gad);
+    const events = canonicalAgenticEvents(instance);
     const started = events.find(
       (event: { kind?: string }) => event.kind === "invocation.started",
     );
@@ -4226,7 +4601,7 @@ describe("PubSubChannel", () => {
   });
 
   it("lets a DO participant cancel its own call but rejects cancellation by another participant", async () => {
-    const { instance, gad } = await createGadBackedChannel({
+    const { instance } = await createGadBackedChannel({
       rpcCall: (target, method, args) => {
         if (
           target === "main" &&
@@ -4272,28 +4647,18 @@ describe("PubSubChannel", () => {
       instance.cancelMethodCall("panel:other", "transport-owned-by-do"),
     ).rejects.toThrow(/did not initiate method call/);
     expect(
-      gad.sql
-        .exec(
-          `SELECT 1 FROM log_events WHERE envelope_id = ?`,
-          "terminal:transport-owned-by-do",
-        )
-        .toArray(),
+      canonicalLedger(instance).read({ limit: Number.MAX_SAFE_INTEGER }).filter((event) => event.envelopeId === "terminal:transport-owned-by-do"),
     ).toHaveLength(0);
 
     setRpcCaller(instance, caller, "do");
     await instance.cancelMethodCall(caller, "transport-owned-by-do");
     expect(
-      gad.sql
-        .exec(
-          `SELECT 1 FROM log_events WHERE envelope_id = ?`,
-          "terminal:transport-owned-by-do",
-        )
-        .toArray(),
+      canonicalLedger(instance).read({ limit: Number.MAX_SAFE_INTEGER }).filter((event) => event.envelopeId === "terminal:transport-owned-by-do"),
     ).toHaveLength(1);
   });
 
   it("retains an authenticated cancellation before admission without fabricating a started event", async () => {
-    const { instance, sql, gad } = await createGadBackedChannel();
+    const { instance, sql } = await createGadBackedChannel();
     setRpcCaller(instance, "panel:caller", "panel");
     await instance.subscribe("panel:caller", {
       contextId: "ctx-1",
@@ -4357,12 +4722,7 @@ describe("PubSubChannel", () => {
       original,
     );
     expect(
-      gad.sql
-        .exec(
-          "SELECT 1 FROM log_events WHERE envelope_id = ?",
-          `terminal:${original.transportCallId}`,
-        )
-        .toArray(),
+      canonicalLedger(instance).read({ limit: Number.MAX_SAFE_INTEGER }).filter((event) => event.envelopeId === `terminal:${original.transportCallId}`),
     ).toHaveLength(1);
     setRpcCaller(instance, "panel:foreign", "panel");
     await instance.subscribe("panel:foreign", {
@@ -4387,39 +4747,18 @@ describe("PubSubChannel", () => {
       RPC_FETCH: channelTestRpcFetch,
     });
     let loseReply = true;
-    const { instance } = await createGadBackedChannel({
-      gad,
-      rpcCall: async (target, method, args) => {
-        const payload = (
-          args[0] as
-            | {
-                events?: Array<{
-                  payload?: { payload?: { admission?: unknown } };
-                }>;
-              }
-            | undefined
-        )?.events?.[0]?.payload;
-        if (
-          target.includes("GadWorkspaceDO") &&
-          method === "appendLogEvent" &&
-          payload?.payload?.admission &&
-          loseReply
-        ) {
-          loseReply = false;
-          appending.resolve();
-          await append.promise;
-          await gad.callAs(
-            {
-              callerId: "do:workers/pubsub-channel:PubSubChannel:channel-1",
-              callerKind: "do",
-            },
-            method,
-            ...args,
-          );
-          throw originalFailure;
-        }
-        return undefined;
-      },
+    const { instance } = await createGadBackedChannel({ gad });
+    const log = (instance as unknown as { channelLog: ChannelLog }).channelLog;
+    const appendOwned = log.append.bind(log);
+    vi.spyOn(log, "append").mockImplementation(async (input) => {
+      if ((input.payload as { payload?: { admission?: unknown } }).payload?.admission && loseReply) {
+        loseReply = false;
+        appending.resolve();
+        await append.promise;
+        await appendOwned(input);
+        throw originalFailure;
+      }
+      return appendOwned(input);
     });
     setRpcCaller(instance, "panel:caller", "panel");
     await instance.subscribe("panel:caller", {
@@ -4579,7 +4918,7 @@ describe("PubSubChannel", () => {
     const original = new Error("original provider cleanup failure");
     const executions: unknown[][] = [];
     const cancellations: unknown[][] = [];
-    const { instance, sql, gad } = await createGadBackedChannel({
+    const { instance, sql } = await createGadBackedChannel({
       rpcCall: (_target, method, args) => {
         if (method === "workspace-state.entity.resolveActive")
           return activeEntityFixture(args[0]);
@@ -4643,12 +4982,7 @@ describe("PubSubChannel", () => {
         .toArray(),
     ).toHaveLength(0);
     expect(
-      gad.sql
-        .exec(
-          "SELECT 1 FROM log_events WHERE envelope_id = ?",
-          "terminal:call-cleanup",
-        )
-        .toArray(),
+      canonicalLedger(instance).read({ limit: Number.MAX_SAFE_INTEGER }).filter((event) => event.envelopeId === "terminal:call-cleanup"),
     ).toHaveLength(1);
     setRpcCaller(instance, "panel:other", "panel");
     await expect(
@@ -4672,17 +5006,12 @@ describe("PubSubChannel", () => {
     ]);
     expect(executions).toHaveLength(1);
     expect(
-      gad.sql
-        .exec(
-          "SELECT 1 FROM log_events WHERE envelope_id = ?",
-          "terminal:call-cleanup",
-        )
-        .toArray(),
+      canonicalLedger(instance).read({ limit: Number.MAX_SAFE_INTEGER }).filter((event) => event.envelopeId === "terminal:call-cleanup"),
     ).toHaveLength(1);
   });
 
   it("reconstructs pending_calls during cancelMethodCall before dropping (cache-cold)", async () => {
-    const { instance, sql, gad } = await createGadBackedChannel();
+    const { instance, sql } = await createGadBackedChannel();
 
     setRpcCaller(instance, "panel:caller", "panel");
     await instance.subscribe("panel:caller", {
@@ -4720,17 +5049,12 @@ describe("PubSubChannel", () => {
 
     await instance.cancelMethodCall("panel:caller", "transport-cancel-cold");
 
-    const cancelled = gad.sql
-      .exec(
-        `SELECT envelope_id FROM log_events WHERE envelope_id = ?`,
-        "terminal:transport-cancel-cold",
-      )
-      .toArray();
+    const cancelled = canonicalLedger(instance).read({ limit: Number.MAX_SAFE_INTEGER }).filter((event) => event.envelopeId === "terminal:transport-cancel-cold");
     expect(cancelled).toHaveLength(1);
   });
 
   it("settles an expired timed call through a host-held deadline claim", async () => {
-    const { instance, sql, gad } = await createGadBackedChannel();
+    const { instance, sql } = await createGadBackedChannel();
 
     setRpcCaller(instance, "panel:caller", "panel");
     await instance.subscribe("panel:caller", {
@@ -4802,12 +5126,7 @@ describe("PubSubChannel", () => {
         .toArray(),
     ).toEqual([]);
     expect(
-      gad.sql
-        .exec(
-          `SELECT 1 FROM log_events WHERE envelope_id = ?`,
-          "terminal:transport-timed",
-        )
-        .toArray(),
+      canonicalLedger(instance).read({ limit: Number.MAX_SAFE_INTEGER }).filter((event) => event.envelopeId === "terminal:transport-timed"),
     ).toHaveLength(1);
   });
 
@@ -5052,7 +5371,7 @@ describe("PubSubChannel", () => {
   });
 
   it("reconstructs pending_calls during submitMethodResult before dropping a result", async () => {
-    const { instance, sql, gad } = await createGadBackedChannel();
+    const { instance, sql } = await createGadBackedChannel();
 
     setRpcCaller(instance, "panel:caller", "panel");
     await instance.subscribe("panel:caller", {
@@ -5108,17 +5427,12 @@ describe("PubSubChannel", () => {
         )
         .toArray(),
     ).toHaveLength(0);
-    const terminals = gad.sql
-      .exec(
-        `SELECT envelope_id FROM log_events WHERE envelope_id = ?`,
-        "terminal:transport-cache-race",
-      )
-      .toArray();
+    const terminals = canonicalLedger(instance).read({ limit: Number.MAX_SAFE_INTEGER }).filter((event) => event.envelopeId === "terminal:transport-cache-race");
     expect(terminals).toHaveLength(1);
   });
 
   it("reconstructs agent-loop channel calls whose transport id lives in payload.transport", async () => {
-    const { instance, sql, gad } = await createGadBackedChannel();
+    const { instance, sql } = await createGadBackedChannel();
 
     setRpcCaller(instance, "do:agent", "durable-object");
     await instance.subscribe("do:agent", {
@@ -5133,12 +5447,8 @@ describe("PubSubChannel", () => {
       type: "headless",
     });
 
-    await gad.instance.appendLogEvent({
-      logId: "channel-1",
-      head: "main",
-      logKind: "channel",
-      events: [
-        {
+    await (instance as unknown as { channelLog: ChannelLog }).channelLog.appendPrepared({
+          appendedAt: "2026-10-10T00:00:00.000Z",
           envelopeId: "invocation-agent-loop",
           actor: { kind: "agent", id: "do:agent", participantId: "do:agent" },
           payloadKind: "invocation.started",
@@ -5171,8 +5481,7 @@ describe("PubSubChannel", () => {
             },
             userVisible: true,
           },
-        },
-      ],
+
     });
 
     const { inserted } = await instance.reconcilePendingCalls(true);
@@ -5209,26 +5518,16 @@ describe("PubSubChannel", () => {
 
     expect(result).toEqual({ id: expect.any(Number) });
     expect(
-      gad.sql
-        .exec(
-          `SELECT envelope_id FROM log_events WHERE envelope_id = ?`,
-          "invocation-agent-loop",
-        )
-        .toArray(),
+      canonicalLedger(instance).read({ limit: Number.MAX_SAFE_INTEGER }).filter((event) => event.envelopeId === "invocation-agent-loop"),
     ).toHaveLength(1);
     expect(
-      gad.sql
-        .exec(
-          `SELECT envelope_id FROM log_events WHERE envelope_id = ?`,
-          "terminal:transport-agent-loop",
-        )
-        .toArray(),
+      canonicalLedger(instance).read({ limit: Number.MAX_SAFE_INTEGER }).filter((event) => event.envelopeId === "terminal:transport-agent-loop"),
     ).toHaveLength(1);
   });
 
   it("recovers a lost call: appends a terminal when a result has no pending row and no started", async () => {
     const emitted: unknown[] = [];
-    const { instance, gad } = await createGadBackedChannel({ emitted });
+    const { instance } = await createGadBackedChannel({ emitted });
 
     setRpcCaller(instance, "panel:provider", "panel");
     await instance.subscribe("panel:provider", {
@@ -5262,15 +5561,10 @@ describe("PubSubChannel", () => {
 
     // A durable terminal event now exists, keyed on the transportCallId and
     // carrying the caller's invocationId (what routeInvocationTerminal matches).
-    const terminalRow = gad.sql
-      .exec(
-        `SELECT payload_ref_json FROM log_events WHERE envelope_id = ?`,
-        "terminal:transport-lost-record",
-      )
-      .toArray();
+    const terminalRow = canonicalLedger(instance).read({ limit: Number.MAX_SAFE_INTEGER }).filter((event) => event.envelopeId === "terminal:transport-lost-record");
     expect(terminalRow).toHaveLength(1);
     expect(
-      canonicalAgenticEvent(gad, "terminal:transport-lost-record"),
+      canonicalAgenticEvent(instance, "terminal:transport-lost-record"),
     ).toMatchObject({
       kind: "invocation.completed",
       causality: {
@@ -5282,12 +5576,7 @@ describe("PubSubChannel", () => {
 
     // No synthetic `started` is appended: the lost request's method and args
     // are unavailable, so inventing an admission would corrupt the log.
-    const rootRow = gad.sql
-      .exec(
-        `SELECT payload_ref_json FROM log_events WHERE envelope_id = ?`,
-        "invocation-lost-record",
-      )
-      .toArray();
+    const rootRow = canonicalLedger(instance).read({ limit: Number.MAX_SAFE_INTEGER }).filter((event) => event.envelopeId === "invocation-lost-record");
     expect(rootRow).toHaveLength(0);
 
     // The terminal is broadcast so subscribers (the caller) actually receive it.
@@ -5318,7 +5607,7 @@ describe("PubSubChannel", () => {
   });
 
   it("recovers a lost call as invocation.failed when the submission isError", async () => {
-    const { instance, gad } = await createGadBackedChannel();
+    const { instance } = await createGadBackedChannel();
 
     setRpcCaller(instance, "panel:provider", "panel");
     await instance.subscribe("panel:provider", {
@@ -5341,15 +5630,10 @@ describe("PubSubChannel", () => {
       recovered: true,
     });
 
-    const terminal = gad.sql
-      .exec(
-        `SELECT payload_ref_json FROM log_events WHERE envelope_id = ?`,
-        "terminal:transport-lost-error",
-      )
-      .toArray();
+    const terminal = canonicalLedger(instance).read({ limit: Number.MAX_SAFE_INTEGER }).filter((event) => event.envelopeId === "terminal:transport-lost-error");
     expect(terminal).toHaveLength(1);
     expect(
-      canonicalAgenticEvent(gad, "terminal:transport-lost-error"),
+      canonicalAgenticEvent(instance, "terminal:transport-lost-error"),
     ).toMatchObject({
       kind: "invocation.failed",
       causality: { invocationId: "invocation-lost-error" },
@@ -5375,27 +5659,15 @@ describe("PubSubChannel", () => {
     const gad = await createTestDO(GadWorkspaceDO, {
       __objectKey: "workspace",
     });
-    const { instance } = await createGadBackedChannel({
-      gad,
-      rpcCall: async (target, method, args) => {
-        if (
-          target === "do:workers/workspace-source:GadWorkspaceDO:workspace" &&
-          method === "appendLogEvent"
-        ) {
-          const event = (
-            args[0] as {
-              events?: Array<{ payloadKind?: string; payload?: unknown }>;
-            }
-          )?.events?.[0];
-          if (!blockedOnce && event?.payloadKind === "invocation.started") {
-            blockedOnce = true;
-            // Hold the started append open, then let the real append proceed
-            // (returning undefined falls through to the default gad handler).
-            await blockStarted.promise;
-          }
-        }
-        return undefined;
-      },
+    const { instance } = await createGadBackedChannel({ gad });
+    const log = (instance as unknown as { channelLog: ChannelLog }).channelLog;
+    const appendOwned = log.append.bind(log);
+    vi.spyOn(log, "append").mockImplementation(async (input) => {
+      if (!blockedOnce && (input.payload as { kind?: string }).kind === "invocation.started") {
+        blockedOnce = true;
+        await blockStarted.promise;
+      }
+      return appendOwned(input);
     });
 
     setRpcCaller(instance, "panel:caller", "panel");
@@ -5449,26 +5721,16 @@ describe("PubSubChannel", () => {
 
     // Exactly one canonical started (envelopeId = invocationId) and one
     // terminal; no synthetic root was appended.
-    const started = gad.sql
-      .exec(
-        `SELECT envelope_id FROM log_events WHERE envelope_id = ?`,
-        "invocation-start-race",
-      )
-      .toArray();
+    const started = canonicalLedger(instance).read({ limit: Number.MAX_SAFE_INTEGER }).filter((event) => event.envelopeId === "invocation-start-race");
     expect(started).toHaveLength(1);
-    const startedEvents = canonicalAgenticEvents(gad);
+    const startedEvents = canonicalAgenticEvents(instance);
     expect(
       startedEvents.filter((e) => e.kind === "invocation.started"),
     ).toHaveLength(1);
     expect(
       startedEvents.filter((e) => e.kind === "invocation.completed"),
     ).toHaveLength(1);
-    const terminal = gad.sql
-      .exec(
-        `SELECT envelope_id FROM log_events WHERE envelope_id = ?`,
-        "terminal:transport-start-race",
-      )
-      .toArray();
+    const terminal = canonicalLedger(instance).read({ limit: Number.MAX_SAFE_INTEGER }).filter((event) => event.envelopeId === "terminal:transport-start-race");
     expect(terminal).toHaveLength(1);
 
     // The cache row is consumed.
@@ -5488,7 +5750,7 @@ describe("PubSubChannel", () => {
 
   it("appends a durable invocation.completed terminal (no method-result envelope)", async () => {
     const emitted: unknown[] = [];
-    const { instance, gad } = await createGadBackedChannel({ emitted });
+    const { instance } = await createGadBackedChannel({ emitted });
 
     setRpcCaller(instance, "panel:caller", "panel");
     await instance.subscribe("panel:caller", {
@@ -5546,30 +5808,26 @@ describe("PubSubChannel", () => {
 
     // The canonical terminal is a durable invocation.completed log event,
     // carrying the result and the attachment on the envelope.
-    const envelopes = gad.sql
-      .exec(
-        `SELECT envelope_id, payload_kind, annotations_json FROM log_events ORDER BY seq ASC`,
-      )
-      .toArray();
+    const envelopes = canonicalLedger(instance).read({ limit: Number.MAX_SAFE_INTEGER });
     const completed = envelopes.find(
-      (row) => row["payload_kind"] === "invocation.completed",
+      (row) => row.payloadKind === "invocation.completed",
     );
     expect(completed).toBeDefined();
     expect(
-      canonicalAgenticEvent(gad, String(completed!["envelope_id"])),
+      canonicalAgenticEvent(instance, completed!.envelopeId),
     ).toMatchObject({
       kind: "invocation.completed",
       causality: { transportCallId: "transport-envelope" },
       payload: { result: 2, terminalOutcome: "success" },
     });
-    expect(JSON.parse(completed!["annotations_json"] as string)).toMatchObject({
+    expect(completed!.annotations).toMatchObject({
       attachments: [{ id: "att-1", mimeType: "text/plain" }],
     });
   });
 
   it("appends a durable invocation.cancelled on cancel and drops late submits", async () => {
     const emitted: unknown[] = [];
-    const { instance, gad } = await createGadBackedChannel({ emitted });
+    const { instance } = await createGadBackedChannel({ emitted });
 
     setRpcCaller(instance, "panel:caller", "panel");
     await instance.subscribe("panel:caller", {
@@ -5615,7 +5873,7 @@ describe("PubSubChannel", () => {
     expect(methodEnvelope).toBeUndefined();
 
     // Durable invocation.cancelled terminal.
-    const cancelled = canonicalAgenticEvents(gad).find(
+    const cancelled = canonicalAgenticEvents(instance).find(
       (ev) => ev.kind === "invocation.cancelled",
     );
     expect(cancelled).toMatchObject({
@@ -5627,11 +5885,7 @@ describe("PubSubChannel", () => {
     // The call is consumed: a late terminal is idempotently acknowledged with
     // the existing terminal id, and late progress is a no-op.
     setRpcCaller(instance, "panel:provider", "panel");
-    const terminalCountBefore = gad.sql
-      .exec(
-        `SELECT COUNT(*) AS cnt FROM log_events WHERE envelope_id LIKE 'terminal:%'`,
-      )
-      .toArray()[0]?.["cnt"];
+    const terminalCountBefore = canonicalLedger(instance).read({ limit: Number.MAX_SAFE_INTEGER }).filter((event) => event.envelopeId.startsWith("terminal:")).length;
     await expect(
       instance.submitMethodResult(
         "panel:provider",
@@ -5641,11 +5895,7 @@ describe("PubSubChannel", () => {
       ),
     ).resolves.toEqual({ id: expect.any(Number) });
     expect(
-      gad.sql
-        .exec(
-          `SELECT COUNT(*) AS cnt FROM log_events WHERE envelope_id LIKE 'terminal:%'`,
-        )
-        .toArray()[0]?.["cnt"],
+      canonicalLedger(instance).read({ limit: Number.MAX_SAFE_INTEGER }).filter((event) => event.envelopeId.startsWith("terminal:")).length,
     ).toBe(terminalCountBefore);
     await expect(
       instance.submitMethodProgress(
@@ -5657,7 +5907,7 @@ describe("PubSubChannel", () => {
   });
 
   it("appends a durable invocation.output for a pending call and no-ops once consumed", async () => {
-    const { instance, gad } = await createGadBackedChannel();
+    const { instance } = await createGadBackedChannel();
 
     setRpcCaller(instance, "panel:caller", "panel");
     await instance.subscribe("panel:caller", {
@@ -5693,7 +5943,7 @@ describe("PubSubChannel", () => {
       "chunk-1",
     );
 
-    const output = canonicalAgenticEvents(gad).find(
+    const output = canonicalAgenticEvents(instance).find(
       (ev) => ev.kind === "invocation.output",
     );
     // Progress chunks are class-REFERENCE (storage classes: fold-opaque
@@ -5720,7 +5970,7 @@ describe("PubSubChannel", () => {
         "chunk-2",
       ),
     ).resolves.toBeUndefined();
-    const outputs = canonicalAgenticEvents(gad).filter(
+    const outputs = canonicalAgenticEvents(instance).filter(
       (ev) => ev.kind === "invocation.output",
     );
     expect(outputs).toHaveLength(1);
@@ -5797,7 +6047,7 @@ describe("PubSubChannel", () => {
   // A terminal with no live pending call (already consumed / unknown) is dropped:
   // the canonical terminal is already in the durable log from the original settle.
   it("drops a method result with no live pending call", async () => {
-    const { instance, gad } = await createGadBackedChannel();
+    const { instance } = await createGadBackedChannel();
     const worker = instance as unknown as {
       handleMethodResult(
         callId: string,
@@ -5817,7 +6067,7 @@ describe("PubSubChannel", () => {
     expect(id).toBeUndefined();
 
     // No invocation.* terminal is appended for an unknown call.
-    const orphan = canonicalAgenticEvents(gad).find(
+    const orphan = canonicalAgenticEvents(instance).find(
       (ev) => ev.causality?.transportCallId === "transport-orphan",
     );
     expect(orphan).toBeUndefined();
@@ -5826,7 +6076,7 @@ describe("PubSubChannel", () => {
   // A target leaving appends a durable invocation.abandoned terminal so a
   // hibernated caller recovers the outcome from replay instead of hanging.
   it("appends a durable invocation.abandoned terminal when the target leaves", async () => {
-    const { instance, gad } = await createGadBackedChannel();
+    const { instance } = await createGadBackedChannel();
     setRpcCaller(instance, "panel:caller", "panel");
     await instance.subscribe("panel:caller", {
       contextId: "ctx-1",
@@ -5862,7 +6112,7 @@ describe("PubSubChannel", () => {
     };
     await worker.failPendingCallsTargeting("panel:provider", "disconnect");
 
-    const abandoned = canonicalAgenticEvents(gad).find(
+    const abandoned = canonicalAgenticEvents(instance).find(
       (ev) =>
         ev.kind === "invocation.abandoned" &&
         ev.causality?.transportCallId === "transport-left",
@@ -6055,7 +6305,7 @@ describe("PubSubChannel", () => {
         return undefined;
       },
     });
-    const { instance, gad } = channel;
+    const { instance } = channel;
 
     setRpcCaller(instance, "panel:caller", "panel");
     await instance.subscribe("panel:caller", {
@@ -6110,7 +6360,7 @@ describe("PubSubChannel", () => {
       await cancellation;
     }
 
-    const events = canonicalAgenticEvents(gad);
+    const events = canonicalAgenticEvents(instance);
     expect(events).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -6141,7 +6391,7 @@ describe("PubSubChannel", () => {
   });
 
   it("persists method terminal events even when the caller participant has left", async () => {
-    const { instance, gad } = await createGadBackedChannel();
+    const { instance } = await createGadBackedChannel();
 
     setRpcCaller(instance, "panel:caller", "panel");
     await instance.subscribe("panel:caller", {
@@ -6178,7 +6428,7 @@ describe("PubSubChannel", () => {
     );
 
     expect(resultId).toBeTypeOf("number");
-    const events = canonicalAgenticEvents(gad);
+    const events = canonicalAgenticEvents(instance);
     expect(events).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -6206,7 +6456,7 @@ describe("PubSubChannel", () => {
   });
 
   it("spills oversized method results to a blob ref on the durable terminal", async () => {
-    const { instance, gad, blobs } = await createGadBackedChannel();
+    const { instance, blobs } = await createGadBackedChannel();
 
     setRpcCaller(instance, "panel:caller", "panel");
     await instance.subscribe("panel:caller", {
@@ -6241,7 +6491,7 @@ describe("PubSubChannel", () => {
       false,
     );
 
-    const events = canonicalAgenticEvents(gad);
+    const events = canonicalAgenticEvents(instance);
     const completed = events.find(
       (event: { kind?: string; causality?: { invocationId?: string } }) =>
         event.kind === "invocation.completed" &&
@@ -6262,8 +6512,8 @@ describe("PubSubChannel", () => {
     expect(JSON.stringify(completed).length).toBeLessThan(1_000);
   });
 
-  it("reads message types directly from GAD", async () => {
-    const { instance, gad } = await createGadBackedChannel();
+  it("reads canonical local message types before global observation", async () => {
+    const { instance , gad} = await createGadBackedChannel();
     setRpcCaller(instance, "panel:user", "panel");
     await instance.subscribe("panel:user", {
       contextId: "ctx-1",
@@ -6292,10 +6542,11 @@ describe("PubSubChannel", () => {
       ),
     );
 
-    const storedWeather = await gad.call("getMessageType", {
+    await expect(gad.call("getMessageType", {
       channelId: "channel-1",
       typeId: "weather",
-    });
+    })).resolves.toBeNull();
+    const storedWeather=canonicalLedger(instance).registryEvents().map((event)=>event.payload as Record<string,unknown>).find((payload)=>payload["typeId"] === "weather");
     expect(storedWeather).toMatchObject({
       source: { protocol: "vibestudio.blob-ref.v1", encoding: "json" },
       imports: { protocol: "vibestudio.blob-ref.v1", encoding: "json" },
@@ -6315,7 +6566,7 @@ describe("PubSubChannel", () => {
   });
 
   it("rejects malformed message type registry events instead of persisting plain log rows", async () => {
-    const { instance, gad } = await createGadBackedChannel();
+    const { instance } = await createGadBackedChannel();
     setRpcCaller(instance, "panel:user", "panel");
     await instance.subscribe("panel:user", {
       contextId: "ctx-1",
@@ -6341,7 +6592,7 @@ describe("PubSubChannel", () => {
     ).rejects.toThrow(/payload invalid/u);
 
     expect(
-      canonicalAgenticEvents(gad).map((event) => event.kind),
+      canonicalAgenticEvents(instance).map((event) => event.kind),
     ).not.toContain("messageType.registered");
   });
 });
@@ -6368,7 +6619,7 @@ describe("PubSubChannel policy folds and cache amnesia (WS2)", () => {
   }
 
   it("stamps agentHops into annotations without mutating the payload", async () => {
-    const { instance, gad } = await createGadBackedChannel();
+    const { instance } = await createGadBackedChannel();
     setRpcCaller(instance, "agent:one", "server");
     await instance.subscribe("agent:one", {
       contextId: "ctx-1",
@@ -6387,24 +6638,18 @@ describe("PubSubChannel policy folds and cache amnesia (WS2)", () => {
       agentCompleted("msg-a2"),
     );
 
-    const rows = gad.sql
-      .exec(
-        `SELECT payload_ref_json, annotations_json FROM log_events
-         WHERE payload_kind = ? ORDER BY seq ASC`,
-        "message.completed",
-      )
-      .toArray();
+    const rows = canonicalLedger(instance).read({ limit: Number.MAX_SAFE_INTEGER }).filter((event) => event.payloadKind === "message.completed");
     expect(rows).toHaveLength(2);
-    expect(JSON.parse(rows[0]!["annotations_json"] as string)).toMatchObject({
+    expect(rows[0]!.annotations).toMatchObject({
       agentHops: 1,
     });
     // agent:one's 2nd consecutive message (same author, one turn) is NOT a new hop → still 1.
-    expect(JSON.parse(rows[1]!["annotations_json"] as string)).toMatchObject({
+    expect(rows[1]!.annotations).toMatchObject({
       agentHops: 1,
     });
     // the payload itself is never mutated by the transport
     for (const row of rows) {
-      const payload = JSON.parse(row["payload_ref_json"] as string) as {
+      const payload = row.payload as {
         causality?: { agentHops?: number };
       };
       expect(payload.causality?.agentHops).toBeUndefined();
@@ -6416,14 +6661,9 @@ describe("PubSubChannel policy folds and cache amnesia (WS2)", () => {
       AGENTIC_EVENT_PAYLOAD_KIND,
       agentCompleted("msg-a3", { agentHops: 9 }),
     );
-    const explicit = gad.sql
-      .exec(
-        `SELECT annotations_json FROM log_events WHERE payload_kind = ? ORDER BY seq DESC LIMIT 1`,
-        "message.completed",
-      )
-      .toArray();
+    const explicit = canonicalLedger(instance).read({ limit: Number.MAX_SAFE_INTEGER }).filter((event) => event.payloadKind === "message.completed").slice(-1);
     expect(
-      JSON.parse(explicit[0]!["annotations_json"] as string),
+      explicit[0]!.annotations,
     ).toMatchObject({ agentHops: 9 });
   });
 
@@ -6431,7 +6671,7 @@ describe("PubSubChannel policy folds and cache amnesia (WS2)", () => {
     const parent = await createGadBackedChannel({
       channelKey: "channel-policy-parent",
     });
-    await appendOpaqueJournalPage(parent.gad, "channel-policy-parent");
+    await appendOpaqueChannelPage(parent);
     setRpcCaller(parent.instance, "agent:one", "server");
     await parent.instance.subscribe("agent:one", {
       contextId: "ctx-1",
@@ -6457,6 +6697,7 @@ describe("PubSubChannel policy folds and cache amnesia (WS2)", () => {
     const fork = await createGadBackedChannel({
       channelKey: "channel-policy-fork",
       gad: parent.gad,
+      db: clonedChannelDatabase(parent),
     });
     await initializeChannelClone(
       fork,
@@ -6487,15 +6728,11 @@ describe("PubSubChannel policy folds and cache amnesia (WS2)", () => {
       AGENTIC_EVENT_PAYLOAD_KIND,
       agentCompleted("msg-f1"),
     );
-    const stamped = parent.gad.sql
-      .exec(
-        `SELECT annotations_json FROM log_events
-         WHERE log_id = 'channel-policy-fork' AND payload_kind = ? ORDER BY seq DESC LIMIT 1`,
-        "message.completed",
-      )
-      .toArray();
+    const stamped = (fork.instance as unknown as { channelLog: ChannelLog }).channelLog.ledger.read({
+      afterSeq: 0, limit: 1000, payloadKind: "message.completed",
+    }).at(-1)!;
     // msg-f1 is agent:one again (same author across the fork) → still 1 hop, not 3.
-    expect(JSON.parse(stamped[0]!["annotations_json"] as string)).toMatchObject(
+    expect(stamped.annotations).toMatchObject(
       { agentHops: 1 },
     );
   });
@@ -6548,13 +6785,9 @@ describe("PubSubChannel policy folds and cache amnesia (WS2)", () => {
         },
       });
     }
-    const rows = gad.sql
-      .exec(
-        `SELECT envelope_id FROM log_events WHERE envelope_id = ?`,
-        "ik:durable-key-1",
-      )
-      .toArray();
-    expect(rows).toHaveLength(1);
+    expect(canonicalLedger(instance).read({ limit: 1000 }).filter(
+      (event) => event.envelopeId === "ik:durable-key-1",
+    )).toHaveLength(1);
   });
 
   it("returns the accepted message identity when a caller retries through sendAsCaller", async () => {
@@ -6638,18 +6871,13 @@ describe("PubSubChannel policy folds and cache amnesia (WS2)", () => {
         "Idempotency key belongs to another participant or payload type",
       );
     }
-    expect(
-      gad.sql
-        .exec(
-          "SELECT envelope_id FROM log_events WHERE envelope_id = ?",
-          "ik:private-key",
-        )
-        .toArray(),
-    ).toHaveLength(1);
+    expect(canonicalLedger(instance).read({ limit: 1000 }).filter(
+      (event) => event.envelopeId === "ik:private-key",
+    )).toHaveLength(1);
   });
 
   it("treats duplicate pending callMethod as a durable redrive", async () => {
-    const { instance, gad, sql } = await createGadBackedChannel();
+    const { instance, sql } = await createGadBackedChannel();
     setRpcCaller(instance, "panel:caller", "panel");
     await instance.subscribe("panel:caller", {
       contextId: "ctx-1",
@@ -6689,13 +6917,9 @@ describe("PubSubChannel policy folds and cache amnesia (WS2)", () => {
       },
     );
 
-    const starts = gad.sql
-      .exec(
-        `SELECT envelope_id FROM log_events WHERE envelope_id = ?`,
-        "inv-redrive",
-      )
-      .toArray();
-    expect(starts).toHaveLength(1);
+    expect(canonicalLedger(instance).read({ limit: 1000 }).filter(
+      (event) => event.envelopeId === "inv-redrive",
+    )).toHaveLength(1);
 
     const pending = sql
       .exec(
@@ -6707,8 +6931,9 @@ describe("PubSubChannel policy folds and cache amnesia (WS2)", () => {
   });
 
   it("reconstructs pending_calls from the log after cache amnesia", async () => {
-    const { instance, sql, gad } = await createGadBackedChannel();
-    await appendOpaqueJournalPage(gad);
+    const channel = await createGadBackedChannel();
+    const { instance, sql } = channel;
+    await appendOpaqueChannelPage(channel);
     setRpcCaller(instance, "panel:caller", "panel");
     await instance.subscribe("panel:caller", {
       contextId: "ctx-1",
@@ -6782,12 +7007,9 @@ describe("PubSubChannel policy folds and cache amnesia (WS2)", () => {
       { ok: 1 },
       false,
     );
-    const terminals = gad.sql
-      .exec(
-        `SELECT envelope_id FROM log_events WHERE envelope_id LIKE 'terminal:%'`,
-      )
-      .toArray();
-    expect(terminals.map((row) => row["envelope_id"])).toEqual(
+    const terminals = canonicalLedger(instance).read({ limit: 1000 })
+      .filter((event) => String(event.envelopeId).startsWith("terminal:"));
+    expect(terminals.map((event) => event.envelopeId)).toEqual(
       expect.arrayContaining(["terminal:call-settle", "terminal:call-keep"]),
     );
     expect(
@@ -6932,9 +7154,7 @@ describe("PubSubChannel policy folds and cache amnesia (WS2)", () => {
 
 describe("PubSubChannel fork lineage delivery", () => {
   it("owns live lineage subscriptions through their response stream", async () => {
-    const { instance } = await createGadBackedChannel({
-      channelKey: "lineage-root",
-    });
+    const { instance } = await createGadBackedChannel({ channelKey: "lineage-root" });
     setRpcCaller(instance, "panel:viewer", "panel");
     const response = await instance.subscribeLineage("panel:viewer");
     const reader = response.body!.getReader();
@@ -6980,6 +7200,7 @@ describe("PubSubChannel fork lineage delivery", () => {
     const child = await createGadBackedChannel({
       channelKey: "lineage-leaf",
       gad: parent.gad,
+      db: clonedChannelDatabase(parent),
       rpcCall: (target, method, args) => {
         if (
           target === "main" &&
@@ -7072,6 +7293,7 @@ describe("PubSubChannel appendSeed fork plumbing", () => {
     const child = await createGadBackedChannel({
       channelKey: "channel-child",
       gad: parent.gad,
+      db: clonedChannelDatabase(parent),
       rpcCall: (target, method, args) => {
         if (
           target === "main" &&
@@ -7226,7 +7448,7 @@ describe("PubSubChannel appendSeed fork plumbing", () => {
 
 describe("conversation creation seed", () => {
   it("uses the same creation seed for locked channels without exposing membership initialization to ordinary callers", async () => {
-    const { instance, gad } = await createGadBackedChannel();
+    const { instance } = await createGadBackedChannel();
     const config = {
       membershipPolicy: {
         kind: "locked" as const,
@@ -7240,7 +7462,7 @@ describe("conversation creation seed", () => {
     await instance.initializeLockedChannel("ctx-locked", config);
     await instance.initializeLockedChannel("ctx-locked", config);
     expect(
-      canonicalAgenticEvents(gad).filter(
+      canonicalAgenticEvents(instance).filter(
         (event) => event.kind === "message.completed",
       ),
     ).toHaveLength(1);
@@ -7271,7 +7493,7 @@ describe("conversation creation seed", () => {
       channelConfig: { seed },
     });
     expect(
-      canonicalAgenticEvents(channel.gad).filter(
+      canonicalAgenticEvents(channel.instance).filter(
         (event) => event.kind === "message.completed",
       ),
     ).toHaveLength(1);
@@ -7308,7 +7530,7 @@ describe("conversation creation seed", () => {
       contextId: "ctx-1",
       type: "panel",
     });
-    const messages = canonicalAgenticEvents(channel.gad).filter(
+    const messages = canonicalAgenticEvents(channel.instance).filter(
       (event) => event.kind === "message.completed",
     );
     expect(messages).toHaveLength(1);
@@ -7321,7 +7543,7 @@ describe("conversation creation seed", () => {
     ).rejects.toThrow("subscribed agent");
   });
   it("delivers the opening request once after an agent subscribes, including concurrent retries", async () => {
-    const { instance, gad } = await createGadBackedChannel();
+    const { instance } = await createGadBackedChannel();
     setRpcCaller(instance, "panel:user", "panel");
     await instance.subscribe("panel:user", {
       contextId: "ctx-1",
@@ -7339,7 +7561,7 @@ describe("conversation creation seed", () => {
       instance.resolveOpeningRequest("panel:user", "deliver"),
     ]);
     await instance.resolveOpeningRequest("panel:user", "deliver");
-    const messages = canonicalAgenticEvents(gad).filter(
+    const messages = canonicalAgenticEvents(instance).filter(
       (event) => event.kind === "message.completed",
     );
     expect(messages).toHaveLength(2);
@@ -7359,18 +7581,15 @@ describe("conversation creation seed", () => {
     "keeps a failed %s resolution retryable through its durable config notification",
     async (outcome) => {
       let failConfig = false;
-      const channel = await createGadBackedChannel({
-        rpcCall: (_target, method, args) => {
-          const input = args[0] as { events?: Array<{ payloadKind?: string }> };
-          if (
-            failConfig &&
-            method === "appendLogEvent" &&
-            input.events?.some((event) => event.payloadKind === "config-update")
-          ) {
-            failConfig = false;
-            throw new Error("Config publication failed");
-          }
-        },
+      const channel = await createGadBackedChannel();
+      const log = (channel.instance as unknown as { channelLog: ChannelLog }).channelLog;
+      const append = log.append.bind(log);
+      vi.spyOn(log, "append").mockImplementation(async (input) => {
+        if (failConfig && input.type === "config-update") {
+          failConfig = false;
+          throw new Error("Config publication failed");
+        }
+        return append(input);
       });
       setRpcCaller(channel.instance, "panel:user", "panel");
       await channel.instance.subscribe("panel:user", {
@@ -7407,15 +7626,11 @@ describe("conversation creation seed", () => {
       expect(
         (await restored.instance.getConfig())?.initialization?.openingRequest,
       ).toBeUndefined();
-      const log = channel.gad.instance.readLog({
-        logId: "channel-1",
-        head: "main",
-      });
-      expect(
-        log.filter((event) => event.payloadKind === "config-update"),
+      expect(canonicalLedger(restored.instance).read({ limit: 1000 })
+        .filter((event) => event.payloadKind === "config-update"),
       ).toHaveLength(1);
       expect(
-        canonicalAgenticEvents(channel.gad).filter(
+        canonicalAgenticEvents(channel.instance).filter(
           (event) => event.kind === "message.completed",
         ),
       ).toHaveLength(outcome === "deliver" ? 2 : 1);
@@ -7430,29 +7645,16 @@ describe("conversation creation seed", () => {
         RPC_FETCH: channelTestRpcFetch,
       });
       let loseReply = false;
-      const channel = await createGadBackedChannel({
-        gad,
-        rpcCall: async (_target, method, args) => {
-          const input = args[0] as { events?: Array<{ envelopeId?: string }> };
-          if (
-            loseReply &&
-            method === "appendLogEvent" &&
-            input.events?.some(
-              (event) => event.envelopeId === `conversation-seed:${phase}`,
-            )
-          ) {
-            loseReply = false;
-            await gad.callAs(
-              {
-                callerId: "do:workers/pubsub-channel:PubSubChannel:channel-1",
-                callerKind: "do",
-              },
-              method,
-              ...args,
-            );
-            throw new Error("Accepted append reply lost");
-          }
-        },
+      const channel = await createGadBackedChannel({ gad });
+      const log = (channel.instance as unknown as { channelLog: ChannelLog }).channelLog;
+      const append = log.append.bind(log);
+      vi.spyOn(log, "append").mockImplementation(async (input) => {
+        const event = await append(input);
+        if (loseReply && input.messageId === `conversation-seed:${phase}`) {
+          loseReply = false;
+          throw new Error("Accepted append reply lost");
+        }
+        return event;
       });
       setRpcCaller(channel.instance, "panel:user", "panel");
       await channel.instance.subscribe("panel:user", {
@@ -7486,15 +7688,13 @@ describe("conversation creation seed", () => {
       expect(
         (await restored.instance.getConfig())?.initialization?.openingRequest,
       ).toBeUndefined();
-      const messages = canonicalAgenticEvents(gad).filter(
+      const messages = canonicalAgenticEvents(restored.instance).filter(
         (event) => event.kind === "message.completed",
       );
       expect(messages).toHaveLength(2);
       expect(messages[1]!.actor.id).toBe("panel:user");
-      expect(
-        gad.instance
-          .readLog({ logId: "channel-1", head: "main" })
-          .filter((event) => event.payloadKind === "config-update"),
+      expect(canonicalLedger(restored.instance).read({ limit: 1000 })
+        .filter((event) => event.payloadKind === "config-update"),
       ).toHaveLength(1);
     },
   );
@@ -7505,7 +7705,7 @@ describe("conversation creation seed", () => {
     await joinEntity(channel.instance, id);
     await channel.instance.join({
       participantId: id,
-      revision: 2,
+      operationId: "join-2",
       contextId: "ctx-1",
       metadata: { type: "headless" },
       delivery: "all",
@@ -7528,7 +7728,7 @@ describe("conversation creation seed", () => {
     ).toBe(false);
   });
   it("persists explicit cancellation and rejects mutable seed configuration", async () => {
-    const { instance, gad } = await createGadBackedChannel();
+    const { instance } = await createGadBackedChannel();
     setRpcCaller(instance, "panel:user", "panel");
     await instance.subscribe("panel:user", {
       contextId: "ctx-1",
@@ -7538,7 +7738,7 @@ describe("conversation creation seed", () => {
     await instance.resolveOpeningRequest("panel:user", "cancel");
     await instance.resolveOpeningRequest("panel:user", "deliver");
     expect(
-      canonicalAgenticEvents(gad).filter(
+      canonicalAgenticEvents(instance).filter(
         (event) => event.kind === "message.completed",
       ),
     ).toHaveLength(1);
@@ -7554,7 +7754,7 @@ describe("conversation creation seed", () => {
 describe("conversation image ownership", () => {
   it("retains generated originals before accepting their reference and rejects missing assets", async () => {
     const retained: unknown[] = [];
-    const { instance, gad } = await createGadBackedChannel({
+    const { instance } = await createGadBackedChannel({
       rpcCall: async (target, method, args) => {
         if (
           target === "main" &&
@@ -7594,7 +7794,7 @@ describe("conversation image ownership", () => {
     expect(retained).toEqual([
       { assetId: "image-one", owner: "conversation:ctx-images:channel-1" },
     ]);
-    const accepted = canonicalAgenticEvents(gad).filter(
+    const accepted = canonicalAgenticEvents(instance).filter(
       (item) => item.kind === "message.completed",
     );
     expect(accepted).toHaveLength(1);
@@ -7603,7 +7803,7 @@ describe("conversation image ownership", () => {
       instance.publish("panel:user", AGENTIC_EVENT_PAYLOAD_KIND, event),
     ).rejects.toThrow("Unknown image asset");
     expect(
-      canonicalAgenticEvents(gad).filter(
+      canonicalAgenticEvents(instance).filter(
         (item) => item.kind === "message.completed",
       ),
     ).toHaveLength(1);

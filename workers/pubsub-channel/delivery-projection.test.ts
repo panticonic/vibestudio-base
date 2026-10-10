@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { createInMemorySql } from "@workspace/runtime/worker/test-utils";
 import type { SqlStorage } from "@workspace/runtime/worker";
-import type { ChannelEvent } from "@workspace/pubsub";
+import type { ServerLogEvent as ChannelEvent } from "@workspace/pubsub";
 import type { ChannelAgenticContext } from "@workspace/pubsub";
 import {
   CHANNEL_DELIVERY_PROJECTION_VERSION,
@@ -487,6 +487,24 @@ describe("ChannelDeliveryProjection", () => {
       agentHopLimit: 4,
       initialization: { firstAgentPending: false },
     });
+  });
+
+  it("rebuilds current terminal delivery without changing its accepted context or identity", () => {
+    const opening = relationship(1, 1);
+    const delivered = message(2);
+    projection.fold(opening);
+    projection.fold(delivered);
+    const original = sql.exec(`SELECT delivery_id FROM channel_delivery_mailbox`).toArray()[0]!;
+    const accepted = sql.exec(`SELECT agentic_context_json FROM channel_delivery_event_context`).toArray()[0]!["agentic_context_json"];
+    sql.exec(`UPDATE channel_delivery_mailbox SET state = 'terminal-completed', agentic_context_json = NULL`);
+    sql.exec(`DELETE FROM channel_delivery_projection_cursor`);
+    expect(projection.cursor()).toBe(0);
+    projection.fold(opening);
+    projection.fold(delivered);
+    projection.fold(relationship(3, 2, "channel.subscription.revised"));
+    expect(sql.exec(`SELECT delivery_id FROM channel_delivery_mailbox`).toArray()[0]!["delivery_id"]).toBe(original["delivery_id"]);
+    expect(sql.exec(`SELECT agentic_context_json FROM channel_delivery_event_context`).toArray()[0]!["agentic_context_json"]).toBe(accepted);
+    expect(projection.relationship(AGENT_ID)?.revision).toBe(2);
   });
 
   it("restores the durable fork boundary when a projection version changes", () => {

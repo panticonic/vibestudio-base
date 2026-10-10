@@ -1,16 +1,8 @@
+import type { StoredChannelMessageTypeDefinition } from "@vibestudio/service-schemas/workspaceSource";
 import { mainRpcMethods } from "@vibestudio/service-schemas/mainRpc";
-/**
- * Channel log access on the unified-log core (WS2 §2).
- *
- * Appends and forks target the Stage-0 core surface (`appendLogEvent`,
- * `forkLog`, `getLogEvent`) directly; replay windows ride the lineage-aware
- * `readChannelEnvelopes` read (server-side windowing over `log_events` —
- * one round trip per page instead of N). Blob spill/hydrate stays here; all
- * schema validation and participant sanitization happens inside the GAD
- * append txn.
- */
+/** Canonical channel-owner history; global graph observation is trailing debt. */
 
-import type { ChannelEvent } from "@workspace/pubsub";
+import type { ServerLogEvent as ChannelEvent } from "@workspace/pubsub";
 
 import {
   collectChannelEnvelopePages,
@@ -18,7 +10,8 @@ import {
   type ChannelEnvelopePageInfo,
   type ChannelEnvelopeWindow,
 } from "@vibestudio/shared/channelEnvelopePaging";
-import { createGadServiceClient } from "@workspace/runtime/workerd-client";
+import { ChannelLedger } from "./channel-ledger.js";
+import type { SqlStorage } from "@workspace/runtime/worker";
 import {
   DEFAULT_CHANNEL_REPLAY_PAGE_LIMIT,
   MAX_CHANNEL_REPLAY_PAGE_LIMIT,
@@ -30,7 +23,9 @@ import {
   type MessageTypeDefinition,
 } from "@workspace/pubsub";
 import {
+  registryMutationFromLogEnvelope,
   encodeChannelPayloadStoredValues,
+  prepareChannelLogEvent,
   isAgenticLogEventKind,
   agenticEventFromLogEnvelope,
   AGENTIC_EVENT_PAYLOAD_KIND,
@@ -39,6 +34,7 @@ import {
   publicParticipantMetadata,
   type AppendIdempotency,
   type LogEnvelope,
+  type LogAppendEventInput,
 } from "@workspace/agentic-protocol";
 import type { StoredAttachment } from "./types.js";
 import { buildChannelEvent } from "./broadcast.js";
@@ -46,6 +42,7 @@ import { buildChannelEvent } from "./broadcast.js";
 export const CHANNEL_LOG_HEAD = "main";
 
 export interface ChannelAppendInput {
+  appendedAt?: string;
   /** payloadKind: "agentic.trajectory.v1/event" | "presence" | "error" | ... */
   type: string;
   payload: unknown;
@@ -76,7 +73,7 @@ interface RpcCallerLike {
   call: import("@vibestudio/rpc").RpcCaller["call"];
 }
 
-type GadReplayPage = ChannelEnvelopePage<GadChannelEnvelopeView>;
+type OwnerReplayPage = ChannelEnvelopePage<OwnerChannelEnvelopeView>;
 type ReplayWindowPageInfo = Pick<
   ChannelEnvelopePageInfo,
   | "totalCount"
@@ -88,13 +85,13 @@ type ReplayWindowPageInfo = Pick<
   | "hasMoreBefore"
   | "hasMoreAfter"
 >;
-interface GadReplayWindow {
-  items: GadChannelEnvelopeView[];
+interface OwnerReplayWindow {
+  items: OwnerChannelEnvelopeView[];
   pageInfo: ReplayWindowPageInfo;
 }
 
-/** The ChannelEnvelope view shape the gad replay-window read returns. */
-interface GadChannelEnvelopeView {
+/** The public channel envelope view derived from canonical owner history. */
+interface OwnerChannelEnvelopeView {
   envelopeId: string;
   channelId: string;
   seq: number;
@@ -110,6 +107,7 @@ interface GadChannelEnvelopeView {
   contentClass: "internal" | "external";
   externalKeys: string[];
   publishedAt: string;
+  annotations?: Record<string, unknown>;
 }
 
 /** annotations minus the metadata/attachments carriers. */
@@ -149,12 +147,15 @@ function contentIntegrityFromAnnotations(
 }
 
 export class ChannelLog {
-  private readonly gad: ReturnType<typeof createGadServiceClient>;
+  readonly ledger: ChannelLedger;
+  private registryCache?: { head: number; types: Map<string, StoredChannelMessageTypeDefinition> };
   constructor(
     private readonly rpc: RpcCallerLike,
     private readonly channelId: string,
+    sql: SqlStorage,
+    transaction: <T>(operation: () => T) => T,
   ) {
-    this.gad = createGadServiceClient(rpc);
+    this.ledger = new ChannelLedger(sql, transaction, channelId);
   }
 
   async append(input: ChannelAppendInput): Promise<ChannelEvent> {
@@ -168,31 +169,29 @@ export class ChannelLog {
       annotations["attachments"] = input.attachments;
     annotations["contentClass"] = input.contentClass;
     annotations["externalKeys"] = [...input.externalKeys];
-    // Idempotency intent is the STORE's contract now (no error-string
-    // matching here): "idempotent-by-id" callers get the journaled original
-    // back as a replayed envelope; everyone else gets hard typed errors.
-    const result = await this.gad.call(
-      "appendLogEvent",
-      {
-        logId: this.channelId,
-        head: CHANNEL_LOG_HEAD,
-        logKind: "channel",
-        ...(input.idempotency ? { idempotency: input.idempotency } : {}),
-        events: [
-          {
-            envelopeId: input.messageId ?? null,
-            actor: participantRefFromMetadata(
-              input.senderId,
-              input.senderMetadata,
-            ),
-            payloadKind: input.type,
-            payload,
-            ...(Object.keys(annotations).length > 0 ? { annotations } : {}),
-          },
-        ],
-      },
-    );
-    const envelope = result.envelopes[result.envelopes.length - 1]!;
+    const previous = input.messageId ? this.ledger.envelope(input.messageId) : null;
+    const prepared = prepareChannelLogEvent({
+      envelopeId: input.messageId ?? crypto.randomUUID(),
+      appendedAt: input.appendedAt ?? previous?.appendedAt ?? new Date().toISOString(),
+      actor: participantRefFromMetadata(input.senderId, input.senderMetadata),
+      payloadKind: input.type,
+      payload,
+      annotations,
+    });
+    const { publish: _publish, appendedAtExplicit: _explicit, ...semantic } = prepared;
+    const envelope = this.ledger.append(semantic, input.idempotency ?? "exact");
+    return this.eventFromLogEnvelope(await this.hydrate(envelope));
+  }
+
+  /** Admit an immutable workspace publication using its original actor and causality. */
+  async appendPrepared(input: LogAppendEventInput): Promise<ChannelEvent> {
+    if (typeof input.envelopeId !== "string" || !input.envelopeId || typeof input.appendedAt !== "string" || !input.appendedAt) throw new Error("Publication intent requires its immutable identity and timestamp");
+    const prepared = prepareChannelLogEvent({ ...input, envelopeId: input.envelopeId, appendedAt: input.appendedAt });
+    if (prepared.publish.length > 0) {
+      throw new Error("Channel publication intent cannot publish to other channels");
+    }
+    const { publish: _publish, appendedAtExplicit: _explicit, ...semantic } = prepared;
+    const envelope = this.ledger.append(semantic, "exact");
     return this.eventFromLogEnvelope(await this.hydrate(envelope));
   }
 
@@ -200,76 +199,47 @@ export class ChannelLog {
     parentChannelId: string,
     throughSeq: number | null,
   ): Promise<void> {
-    await this.gad.call("forkLog", {
-      fromLogId: parentChannelId,
-      fromHead: CHANNEL_LOG_HEAD,
-      toLogId: this.channelId,
-      toHead: CHANNEL_LOG_HEAD,
-      atSeq: throughSeq,
-    });
+    this.ledger.forkFrom(parentChannelId, throughSeq);
   }
 
   async headSeq(): Promise<number> {
-    const head = await this.gad.call("getLogHead", {
-      logId: this.channelId,
-      head: CHANNEL_LOG_HEAD,
-    });
-    return head?.seq ?? 0;
+    return this.ledger.headSequence();
+  }
+
+  private messageTypes(): Map<string, StoredChannelMessageTypeDefinition> {
+    const head = this.ledger.registrySequence();
+    if (this.registryCache?.head === head) return this.registryCache.types;
+    const types = new Map<string, StoredChannelMessageTypeDefinition>();
+    for (const envelope of this.ledger.registryEvents()) {
+      const mutation = registryMutationFromLogEnvelope(envelope)!;
+      if (mutation.kind === "clearMessageType") types.delete(mutation.typeId);
+      else types.set(mutation.typeId, { ...mutation.row, typeId: mutation.typeId, updatedAtSeq: envelope.seq });
+    }
+    this.registryCache = { head, types };
+    return types;
   }
 
   async listMessageTypes(): Promise<MessageTypeDefinition[]> {
-    const rows = await this.gad.call("listMessageTypes", {
-      channelId: this.channelId,
-    });
-    return Promise.all(
-      rows.map(async (row) =>
-        MessageTypeDefinitionSchema.parse(await this.hydrate(row)),
-      ),
-    );
+    const rows = [...this.messageTypes().values()].sort((a, b) => a.typeId < b.typeId ? -1 : a.typeId > b.typeId ? 1 : 0);
+    return Promise.all(rows.map(async (row) => MessageTypeDefinitionSchema.parse(await this.hydrate(structuredClone(row)))));
   }
 
   async getMessageType(typeId: string): Promise<MessageTypeDefinition | null> {
-    const row = await this.gad.call("getMessageType", {
-      channelId: this.channelId,
-      typeId,
-    });
-    return row
-      ? MessageTypeDefinitionSchema.parse(await this.hydrate(row))
-      : null;
+    const row = this.messageTypes().get(typeId);
+    return row ? MessageTypeDefinitionSchema.parse(await this.hydrate(structuredClone(row))) : null;
   }
 
   async hasEnvelope(envelopeId: string): Promise<boolean> {
-    const envelope = await this.gad.call("getLogEvent", {
-      logId: this.channelId,
-      head: CHANNEL_LOG_HEAD,
-      envelopeId,
-    });
-    return envelope != null;
+    return this.ledger.envelope(envelopeId) !== null;
   }
 
   async hasEnvelopes(envelopeIds: string[]): Promise<Set<string>> {
-    const uniqueIds = Array.from(
-      new Set(
-        envelopeIds.filter((id) => typeof id === "string" && id.length > 0),
-      ),
-    );
-    if (uniqueIds.length === 0) return new Set();
-    const present = await this.gad.call("hasLogEvents", {
-      logId: this.channelId,
-      head: CHANNEL_LOG_HEAD,
-      envelopeIds: uniqueIds,
-    });
-    return new Set(present);
+    return new Set(envelopeIds.filter((id) => this.ledger.envelope(id) !== null));
   }
 
   async getEventByEnvelopeId(envelopeId: string): Promise<ChannelEvent | null> {
-    const envelope = await this.gad.call("getLogEvent", {
-      logId: this.channelId,
-      head: CHANNEL_LOG_HEAD,
-      envelopeId,
-    });
-    if (!envelope) return null;
-    return this.eventFromLogEnvelope(await this.hydrate(envelope));
+    const envelope = this.ledger.envelope(envelopeId);
+    return envelope ? this.eventFromLogEnvelope(await this.hydrate(envelope)) : null;
   }
 
   /** Lineage-aware ascending page over durable envelopes (policy folds,
@@ -281,14 +251,7 @@ export class ChannelLog {
     limit?: number;
     payloadKind?: string;
   }): Promise<LogEnvelope[]> {
-    return this.gad.call("readLog", {
-      logId: this.channelId,
-      head: CHANNEL_LOG_HEAD,
-      afterSeq: opts.afterSeq ?? 0,
-      beforeSeq: opts.beforeSeq ?? null,
-      limit: opts.limit ?? 500,
-      payloadKind: opts.payloadKind ?? null,
-    });
+    return this.ledger.read(opts);
   }
 
   /** Hydrated ascending events for deterministic local projection folds. */
@@ -405,11 +368,7 @@ export class ChannelLog {
   async inspectEnvelope(
     envelopeId: string,
   ): Promise<Record<string, unknown>[]> {
-    const envelope = await this.gad.call("getLogEvent", {
-      logId: this.channelId,
-      head: CHANNEL_LOG_HEAD,
-      envelopeId,
-    });
+    const envelope = this.ledger.envelope(envelopeId);
     if (!envelope) return [];
     const contentIntegrity = contentIntegrityFromAnnotations(
       envelope.annotations ?? {},
@@ -419,7 +378,7 @@ export class ChannelLog {
         envelopeId: String(envelope.envelopeId),
         channelId: this.channelId,
         seq: envelope.seq,
-        from: envelope.actor as GadChannelEnvelopeView["from"],
+        from: envelope.actor as OwnerChannelEnvelopeView["from"],
         payload: isAgenticLogEventKind(envelope.payloadKind)
           ? agenticEventFromLogEnvelope(envelope)
           : envelope.payload,
@@ -438,8 +397,22 @@ export class ChannelLog {
     ];
   }
 
+  private channelView(envelope: LogEnvelope): OwnerChannelEnvelopeView {
+    return {
+      envelopeId: String(envelope.envelopeId), channelId: this.channelId,
+      seq: envelope.seq, from: envelope.actor,
+      payload: isAgenticLogEventKind(envelope.payloadKind) ? agenticEventFromLogEnvelope(envelope) : envelope.payload,
+      payloadKind: isAgenticLogEventKind(envelope.payloadKind) ? AGENTIC_EVENT_PAYLOAD_KIND : envelope.payloadKind,
+      metadata: envelope.annotations?.["metadata"] as Record<string, unknown> | undefined,
+      attachments: envelope.annotations?.["attachments"] as unknown[] | undefined,
+      ...contentIntegrityFromAnnotations(envelope.annotations ?? {}),
+      publishedAt: envelope.appendedAt,
+      annotations: envelope.annotations,
+    };
+  }
+
   private inspectionRow(
-    envelope: GadChannelEnvelopeView,
+    envelope: OwnerChannelEnvelopeView,
   ): Record<string, unknown> {
     return {
       seq: envelope.seq,
@@ -459,7 +432,7 @@ export class ChannelLog {
 
   private replayFromWindow(
     mode: ChannelReplayEnvelope["mode"],
-    window: GadReplayWindow,
+    window: OwnerReplayWindow,
     context: ChannelReplayContext,
   ): ChannelReplayEnvelope {
     return {
@@ -483,7 +456,7 @@ export class ChannelLog {
     };
   }
 
-  private eventFromChannelView(envelope: GadChannelEnvelopeView): ChannelEvent {
+  private eventFromChannelView(envelope: OwnerChannelEnvelopeView): ChannelEvent {
     return buildChannelEvent(
       envelope.seq,
       envelope.envelopeId,
@@ -530,17 +503,13 @@ export class ChannelLog {
   private async encodePayload(payload: unknown): Promise<unknown> {
     return encodeChannelPayloadStoredValues(payload, {
       putText: (value) =>
-        this.rpc.call(
-          "main",
-          mainRpcMethods["blobstore.putText"],
-          [value],
-        ),
+        this.rpc.call("main", mainRpcMethods["blobstore.putText"], [value]),
     });
   }
 
   private async hydrateReplayPage(
-    window: GadReplayPage,
-  ): Promise<GadReplayPage> {
+    window: OwnerReplayPage,
+  ): Promise<OwnerReplayPage> {
     return {
       ...window,
       items: await Promise.all(
@@ -553,15 +522,13 @@ export class ChannelLog {
     window: ChannelEnvelopeWindow,
     maximumItems: number | "all",
     hydrate: boolean,
-  ): Promise<GadReplayWindow> {
+  ): Promise<OwnerReplayWindow> {
     const pages = await collectChannelEnvelopePages(
       { channelId: this.channelId, window },
       { maximumItems },
       async (request) => {
-        const page = await this.gad.call(
-          "readChannelEnvelopes",
-          request,
-        );
+        const local = this.ledger.page(request);
+        const page: OwnerReplayPage = { ...local, items: local.items.map((envelope) => this.channelView(envelope)) };
         return hydrate ? this.hydrateReplayPage(page) : page;
       },
     );

@@ -2,7 +2,7 @@ import { z } from "zod";
 import { createRpcMethods } from "@vibestudio/shared/rpcMethods";
 import { mainRpcMethods } from "@vibestudio/service-schemas/mainRpc";
 import { createServer } from "node:http";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   attachRpcDiagnosticId,
   rpcDiagnosticIdOf,
@@ -234,6 +234,9 @@ class ClonePreparationDO extends TestDurableObjectBase {
 }
 
 class LifecycleProbeDO extends TestDurableObjectBase {
+  admissionOpen = true;
+  protected override beginLifecycleRelease(): void { this.admissionOpen = false; }
+  protected override async cancelLifecyclePreparation(): Promise<void> { this.admissionOpen = true; }
   protected createTables(): void {}
   prepared = false;
   resumed = false;
@@ -357,12 +360,7 @@ class AsyncBoundaryFailureDO extends LifecycleProbeDO {
 class WorkReadyProbeDO extends TestDurableObjectBase {
   protected createTables(): void {}
 
-  protected override durableWorkQueues(): readonly [
-    "workspace-publication",
-    "channel-delivery",
-  ] {
-    return ["workspace-publication", "channel-delivery"];
-  }
+  static override readonly durableWorkQueues = ["workspace-publication", "channel-delivery"] as const;
 
   @rpc({
     website: {
@@ -651,11 +649,7 @@ class WakeReceiptFailureProbeDO extends TestDurableObjectBase {
   }
 
   protected override nextAlarmAfterRequest(): undefined {
-    throw Object.assign(new Error("wake publication failed"), {
-      code: "WAKE_FAILED",
-      errorKind: "service",
-      errorData: { owner: "test-fixture" },
-    });
+    throw Object.assign(new Error("wake publication failed"), { code: "WAKE_FAILED", errorKind: "service", errorData: { owner: "test-fixture" } });
   }
 }
 
@@ -742,6 +736,17 @@ class RuntimeRenamedSchemaProbeDO extends TestDurableObjectBase {
   protected createTables(): void {
     this.sql.exec("CREATE TABLE probe_items (id TEXT PRIMARY KEY)");
   }
+}
+
+class ComposedSchemaProbeDO extends TestDurableObjectBase {
+  protected createTables(): void {
+    this.sql.exec("CREATE TABLE component_one (id TEXT PRIMARY KEY)");
+    this.sql.exec("CREATE TABLE component_two (id TEXT PRIMARY KEY)");
+  }
+  protected override requiredTables(): readonly string[] {
+    return ["component_two", "component_one", "component_two"];
+  }
+  validateForTest(): void { this.validateSchema(); }
 }
 
 describe("DurableObjectBase request parsing", () => {
@@ -901,7 +906,7 @@ describe("DurableObjectBase request parsing", () => {
     );
 
     const envelope = await response.json() as RpcEnvelope;
-    if (envelope.message.type !== "response" || envelope.message.requestId !== "undeclared-1" || envelope.message.error === undefined)
+    if (envelope.message.type !== "response" || envelope.message.requestId !== "undeclared-1" || !("error" in envelope.message))
       throw new Error("Undeclared RPC did not return an error response");
     const failure = deserializeRpcFailure(envelope.message.error);
     expect(failure.message).toContain("hidden");
@@ -957,16 +962,12 @@ describe("DurableObjectBase request parsing", () => {
     );
 
     expect(response.status).toBe(403);
-    await expect(response.json()).resolves.toMatchObject({
-      errorCode: "EACCES",
-      errorKind: "access",
-      errorData: {
+    await expect(response.json()).resolves.toMatchObject({ error: { code: "EACCES", errorKind: "access", errorData: {
         authorityFailure: {
           reasonCode: "receiver-undeclared",
           remediation: { kind: "declare-rpc-receiver" },
         },
-      },
-    });
+      } } });
   });
 
   it("returns a streaming RPC method's raw response body from __rpc", async () => {
@@ -1254,15 +1255,11 @@ describe("DurableObjectBase request parsing", () => {
     );
 
     expect(response.status).toBe(500);
-    await expect(response.json()).resolves.toMatchObject({
-      error: "revision does not resolve",
-      errorKind: "application",
-      errorData: {
+    await expect(response.json()).resolves.toMatchObject({ error: { message: "revision does not resolve", errorKind: "application", errorData: {
         code: "InvalidReference",
         message: "revision does not resolve",
         referenceKind: "head",
-      },
-    });
+      } } });
   });
 
   it("preserves an AggregateError message from a user method across HTTP", async () => {
@@ -1281,14 +1278,12 @@ describe("DurableObjectBase request parsing", () => {
     );
 
     expect(response.status).toBe(500);
-    await expect(response.json()).resolves.toMatchObject({
-      error: "authored domain failure",
-    });
+    await expect(response.json()).resolves.toMatchObject({ error: { message: "authored domain failure" } });
   });
 });
 
 describe("DurableObjectBase lifecycle routing", () => {
-  it("publishes terminal preparation before draining and still releases after a drain failure", async () => {
+  it("publishes quiescence before draining and refuses failed preparation", async () => {
     const { instance } = await createTestDO(TerminalOrderingDO);
     let reject!: (reason: Error) => void;
     const failure = new Error("original owned alarm failure");
@@ -1317,10 +1312,8 @@ describe("DurableObjectBase lifecycle routing", () => {
       }),
     );
     expect(response.status).toBe(500);
-    expect(await response.json()).toMatchObject({
-      error: "original owned alarm failure",
-    });
-    expect(instance.order).toEqual(["begin", "terminal", "release"]);
+    expect(await response.json()).toMatchObject({ error: { message: "original owned alarm failure" } });
+    expect(instance.order).toEqual(["begin", "terminal"]);
     expect(
       (instance as unknown as { pendingAlarmRpcs: Set<Promise<void>> })
         .pendingAlarmRpcs.size,
@@ -1377,9 +1370,7 @@ describe("DurableObjectBase lifecycle routing", () => {
     instance.refuse = true;
     const failed = await send();
     expect(failed.status).toBe(500);
-    expect(await failed.json()).toMatchObject({
-      error: "original clone preparation failure",
-    });
+    expect(await failed.json()).toMatchObject({ error: { message: "original clone preparation failure" } });
     expect(instance.stored("copiedOwner")).toBeNull();
     expect(instance.stored("__clonePreparation")).toBeNull();
     instance.refuse = false;
@@ -1400,10 +1391,7 @@ describe("DurableObjectBase lifecycle routing", () => {
       if (method === "__alarm") {
         const { response, envelope } = await requestAlarm(instance);
         expect(response.status).toBe(200);
-        expect(envelope.message).toMatchObject({
-          type: "response",
-          error: "original asynchronous owner failure",
-        });
+        expect(envelope.message).toMatchObject({ type: "response", error: { message: "original asynchronous owner failure" } });
         return;
       }
       const response = await instance.fetch(
@@ -1418,11 +1406,26 @@ describe("DurableObjectBase lifecycle routing", () => {
         }),
       );
       expect(response.status).toBe(500);
-      expect(await response.json()).toMatchObject({
-        error: "original asynchronous owner failure",
-      });
+      expect(await response.json()).toMatchObject({ error: { message: "original asynchronous owner failure" } });
     },
   );
+
+  it("keeps admission closed for foreign cancellation and reopens only its owned preparation", async () => {
+    const { instance } = await createTestDO(LifecycleProbeDO);
+    expect((await lifecyclePhase(instance, "quiesce")).status).toBe(200);
+    expect(instance.admissionOpen).toBe(false);
+    const foreign = await lifecyclePhase(instance, "cancel", "foreign");
+    expect(foreign.status).toBe(500);
+    expect(await foreign.json()).toMatchObject({error:{message:"Lifecycle phase does not own the active preparation epoch"}});
+    expect(instance.admissionOpen).toBe(false);
+    expect((await lifecyclePhase(instance, "cancel")).status).toBe(200);
+    expect(instance.admissionOpen).toBe(true);
+    expect((await lifecyclePhase(instance, "quiesce", "next")).status).toBe(200);
+    expect((await lifecyclePhase(instance, "release", "next")).status).toBe(200);
+    const released = await lifecyclePhase(instance, "cancel", "next");
+    expect(released.status).toBe(500);
+    expect(instance.admissionOpen).toBe(false);
+  });
 
   it("accepts lifecycle calls only from the verified server envelope caller", async () => {
     const { instance } = await createTestDO(LifecycleProbeDO);
@@ -1536,17 +1539,12 @@ describe("DurableObjectBase lifecycle routing", () => {
     );
 
     expect(response.status).toBe(403);
-    await expect(response.json()).resolves.toMatchObject({
-      errorCode: "EACCES",
-      errorKind: "access",
-      error: expect.stringMatching(/host attestation required/),
-      errorData: {
+    await expect(response.json()).resolves.toMatchObject({ error: { code: "EACCES", errorKind: "access", message: expect.stringMatching(/host attestation required/), errorData: {
         authorityFailure: {
           reasonCode: "attestation-invalid",
           remediation: { kind: "retry-through-host" },
         },
-      },
-    });
+      } } });
   });
 });
 
@@ -1743,17 +1741,12 @@ describe("DurableObjectBase durable replay protection", () => {
     });
     const replay = await dispatch(reconstructed.instance);
     expect(replay.status).toBe(403);
-    await expect(replay.json()).resolves.toMatchObject({
-      errorCode: "EACCES",
-      errorKind: "access",
-      error: expect.stringMatching(/replayed/),
-      errorData: {
+    await expect(replay.json()).resolves.toMatchObject({ error: { code: "EACCES", errorKind: "access", message: expect.stringMatching(/replayed/), errorData: {
         authorityFailure: {
           reasonCode: "attestation-invalid",
           remediation: { kind: "retry-through-host" },
         },
-      },
-    });
+      } } });
   });
 });
 
@@ -2167,7 +2160,7 @@ describe("DurableObjectBase server-driven alarm durability", () => {
       const { response, body } = await terminalPromise;
       expect(response.status).toBe(200);
       const envelope = decodeRpcJson(body) as RpcEnvelope;
-      if (envelope.message.type !== "response" || envelope.message.requestId !== "schedule-two-wakes-with-first-failure" || envelope.message.error === undefined)
+      if (envelope.message.type !== "response" || envelope.message.requestId !== "schedule-two-wakes-with-first-failure" || !("error" in envelope.message))
         throw new Error("Alarm RPC did not return the first wake failure");
       const failure = deserializeRpcFailure(envelope.message.error);
       expect(failure.message).toBe("Invocation authority parent is not active");
@@ -2185,7 +2178,7 @@ describe("DurableObjectBase server-driven alarm durability", () => {
     }
   });
 
-  it("releases lifecycle resources after all pending alarm writes fail", async () => {
+  it("does not release lifecycle resources when quiescence cannot join alarm writes", async () => {
     const { instance } = await createTestDO(LifecycleAlarmDrainProbeDO);
     instance.schedulePendingAlarm();
     await instance.alarmWriteStarted;
@@ -2215,11 +2208,9 @@ describe("DurableObjectBase server-driven alarm durability", () => {
 
     instance.finishAlarmPersistence();
     const response = await responsePromise;
-    expect(instance.releaseCalls).toBe(1);
+    expect(instance.releaseCalls).toBe(0);
     expect(response.status).toBe(500);
-    await expect(response.json()).resolves.toMatchObject({
-      error: "owned alarm persistence failed",
-    });
+    await expect(response.json()).resolves.toMatchObject({ error: { message: "owned alarm persistence failed" } });
   });
 
   it("retains invocation alarm failure when lifecycle concurrently drains the activation", async () => {
@@ -2256,10 +2247,8 @@ describe("DurableObjectBase server-driven alarm durability", () => {
     await expect(invocation).rejects.toThrow("owned alarm persistence failed");
     const lifecycleResponse = await lifecycle;
     expect(lifecycleResponse.status).toBe(500);
-    await expect(lifecycleResponse.json()).resolves.toMatchObject({
-      error: "owned alarm persistence failed",
-    });
-    expect(instance.releaseCalls).toBe(1);
+    await expect(lifecycleResponse.json()).resolves.toMatchObject({ error: { message: "owned alarm persistence failed" } });
+    expect(instance.releaseCalls).toBe(0);
   });
 });
 
@@ -2334,7 +2323,7 @@ describe("DurableObjectBase causal child RPC lifetime", () => {
         });
         const child = await childObserved;
 
-        expect(settled).toBe(false);
+        expect(settled, JSON.stringify(child.message)).toBe(false);
         expect(
           (child.message as { authorityParentNonce?: string })
             .authorityParentNonce,
@@ -2367,6 +2356,19 @@ describe("DurableObjectBase causal child RPC lifetime", () => {
 });
 
 describe("DurableObjectBase schema readiness", () => {
+  it("validates composed required tables from one exact catalog read and preserves missing-table diagnostics", async () => {
+    const {instance,sql}=await createTestDO(ComposedSchemaProbeDO);
+    const catalog=vi.spyOn(sql,"exec");
+    try {
+      instance.validateForTest();
+      expect(catalog.mock.calls.filter(([query])=>query.includes("sqlite_master"))).toHaveLength(1);
+      sql.exec("DROP TABLE component_one");
+      sql.exec("DROP TABLE component_two");
+      catalog.mockClear();
+      expect(()=>instance.validateForTest()).toThrow("missing table(s): component_two, component_one, component_two");
+      expect(catalog.mock.calls.filter(([query])=>query.includes("sqlite_master"))).toHaveLength(1);
+    } finally { catalog.mockRestore(); }
+  });
   it("rejects pre-engine metadata instead of rebuilding it", async () => {
     const SQL = await initSqlJs();
     const db = new SQL.Database();
@@ -2419,7 +2421,7 @@ describe("DurableObjectBase schema readiness", () => {
     );
     expect(response.status).toBe(200);
     const envelope = await response.json() as RpcEnvelope;
-    if (envelope.message.type !== "response" || envelope.message.requestId !== "schema-workspace-1" || envelope.message.error === undefined)
+    if (envelope.message.type !== "response" || envelope.message.requestId !== "schema-workspace-1" || !("error" in envelope.message))
       throw new Error("Schema readiness RPC did not return an error response");
     const failure = deserializeRpcFailure(envelope.message.error);
     expect(failure).toMatchObject({

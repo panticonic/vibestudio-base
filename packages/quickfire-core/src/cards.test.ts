@@ -241,6 +241,7 @@ describe("transcript cards", () => {
       },
     ]);
     expect(card?.meta).toBe("Opus 5 · 2h ago");
+    expect(card?.details).toEqual([]);
   });
 });
 

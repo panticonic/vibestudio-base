@@ -22,8 +22,8 @@ import {
 import { openNodeSqliteStorage } from "@panticonic/pi-durable/storage/sqlite/node";
 import {
   AGENTIC_EVENT_PAYLOAD_KIND,
-  type AgenticEvent,
   type TurnId,
+  type AgenticEvent,
 } from "@workspace/agentic-protocol";
 import {
   getChannelPolicy,
@@ -38,8 +38,8 @@ import {
   createNativeChannelMethodExecution,
   type NativeChannelMethodRequest,
 } from "./native-channel-method.js";
-import { nativeTurnId } from "./native-turn-id.js";
 import { durableObjectServiceFixture } from "@vibestudio/service-schemas/test-utils";
+import { nativeTurnId } from "./native-turn-id.js";
 
 const context = BACKGROUND_CONTEXT;
 const sessions: Harness[] = [];
@@ -100,14 +100,10 @@ async function fixture(
   function append(id: string, payload: AgenticEvent) {
     const existing = events.get(id);
     if (existing) return existing;
-    const event: ChannelEvent = {
-      id: ++seq,
-      messageId: id,
-      type: AGENTIC_EVENT_PAYLOAD_KIND,
-      payload,
-      senderId: request.callerId,
-      ts: seq,
-    };
+    const ordinal = ++seq;
+    const content = { messageId: id, type: AGENTIC_EVENT_PAYLOAD_KIND, payload,
+      senderId: request.callerId, ts: ordinal };
+    const event: ChannelEvent = { ...content, id: ordinal };
     events.set(id, event);
     return event;
   }
@@ -408,6 +404,21 @@ describe("native channel method ownership", () => {
       kind: "invocation.failed",
       value: { error: "Original inline component compilation failed" },
     });
+  });
+  it("completes from the first canonical terminal and preserves its winner on replay", async () => {
+    const f = await fixture({ targets: ["user:one", "user:two"] });
+    f.complete(f.starts[1]!.transportCallId, "first accepted answer");
+    f.complete(f.starts[0]!.transportCallId, "second accepted answer");
+    expect(await consumeNativeChannelMethodReceipt(f.harness, f.harness, f.key(), f.client, context)).toEqual({ accepted: true });
+    expect(await f.submission.wait(context)).toMatchObject({ status: "done" });
+    expect((await f.harness.snapshot(ReceiptDoc, f.key(), context))?.result).toMatchObject({
+      envelopeId: `terminal:${f.starts[1]!.transportCallId}`, eventId: expect.any(Number), value: "first accepted answer",
+    });
+    expect(await consumeNativeChannelMethodReceipt(f.harness, f.harness, f.key(), f.client, context)).toEqual({ accepted: true });
+    expect((await f.harness.snapshot(ReceiptDoc, f.key(), context))?.result).toMatchObject({
+      envelopeId: `terminal:${f.starts[1]!.transportCallId}`, value: "first accepted answer",
+    });
+    expect(f.selections()).toBe(1);
   });
   it("parks on a real receipt and retains immutable target and arguments after configuration changes", async () => {
     const f = await fixture();

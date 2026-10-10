@@ -94,7 +94,7 @@ export interface VersionedApplicationConfig {
 
 export interface ChannelJoinInput {
   participantId: string;
-  revision: number;
+  operationId: string;
   contextId: string;
   metadata: Record<string, unknown>;
   delivery: "all" | "addressed" | "none";
@@ -104,6 +104,8 @@ export interface ChannelJoinInput {
 }
 
 export interface ChannelRelationshipPayload {
+  operationId?: string;
+  operationJson?: string;
   participantId: string;
   revision: number;
   delivery?: "all" | "addressed" | "none";

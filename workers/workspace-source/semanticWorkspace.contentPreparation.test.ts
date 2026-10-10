@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { sha256Hex } from "@vibestudio/content-addressing";
 import { createInMemorySql } from "@vibestudio/durable/test-utils";
 import { createSemanticVcsSchema } from "./semanticVcsSchema.js";
@@ -18,9 +18,15 @@ async function fixture() {
   const sql = {
     exec(
       query: string,
-      ...values: Parameters<typeof raw.exec> extends [string, ...infer B] ? B : never
+      ...values: Parameters<typeof raw.exec> extends [string, ...infer B]
+        ? B
+        : never
     ) {
-      if (values.some((value) => typeof value === "string" && value.length > 1_000_000)) {
+      if (
+        values.some(
+          (value) => typeof value === "string" && value.length > 1_000_000,
+        )
+      ) {
         throw new Error("SQLITE_TOOBIG: oversized durable cell");
       }
       return raw.exec(query, ...values);
@@ -52,7 +58,7 @@ async function fixture() {
   const request = (
     commandId: string,
     changes: unknown[],
-    expectedWorkingHead = initial.working.ref
+    expectedWorkingHead = initial.working.ref,
   ): SemanticDispatchRequest => ({
     ingress,
     input: {
@@ -63,15 +69,16 @@ async function fixture() {
     },
   });
   const prepare = (result: SemanticDispatchResult) => {
-    if (result.kind !== "host-content") throw new Error(`expected preparation, got ${result.kind}`);
+    if (result.kind !== "host-content")
+      throw new Error(`expected preparation, got ${result.kind}`);
     const blobs = result.request["blobs"] as Array<{
       contentHash: string;
       base64: string;
     }>;
     for (const blob of blobs)
-      expect(sha256Hex(Uint8Array.from(atob(blob.base64), (c) => c.charCodeAt(0)))).toBe(
-        blob.contentHash
-      );
+      expect(
+        sha256Hex(Uint8Array.from(atob(blob.base64), (c) => c.charCodeAt(0))),
+      ).toBe(blob.contentHash);
     return {
       request: result.request,
       contentHashes: blobs.map((b) => b.contentHash),
@@ -96,70 +103,215 @@ async function fixture() {
 }
 
 describe("semantic authored content preparation", () => {
+  it("reads a mixed batch at one retained state with exact order, absence and repository ownership", async () => {
+    const f = await fixture();
+    f.semantic.acknowledgeContent(
+      f.prepare(
+        await f.semantic.dispatch(
+          "edit",
+          f.request("command:batch-seed", f.create(btoa("bytes"))),
+        ),
+      ),
+    );
+    const state = f.store.context("context:test")!.working.ref;
+    const repository = f.store.facts.repositoryAtPath(
+      f.store.stateRoot(state),
+      "projects/art",
+    )!;
+    const selected = {
+      repositoryId: repository.repositoryId,
+      file: { kind: "path" as const, path: "story.txt" },
+    };
+    const single = await f.semantic.dispatch("readFile", {
+      ingress,
+      input: { state, ...selected },
+    });
+    expect(single.kind).toBe("host-read");
+    const sqlRead = vi.spyOn(f.sql, "exec");
+    sqlRead.mockClear();
+    const batch = await f.semantic.dispatch("readFiles", {
+      ingress,
+      input: {
+        state,
+        files: [
+          selected,
+          {
+            repositoryId: repository.repositoryId,
+            file: { kind: "path", path: "absent" },
+          },
+          {
+            repositoryId: "repository:wrong",
+            file: { kind: "path", path: "story.txt" },
+          },
+          selected,
+        ],
+      },
+    });
+    expect(batch).toEqual({
+      kind: "host-read",
+      request: {
+        kind: "read-semantic-blobs",
+        files: [
+          single.kind === "host-read" ? single.request : undefined,
+          null,
+          null,
+          single.kind === "host-read" ? single.request : undefined,
+        ],
+      },
+    });
+    expect(
+      sqlRead.mock.calls.filter(([query]) =>
+        query.includes("WITH selected_applications AS"),
+      ),
+    ).toHaveLength(1);
+    sqlRead.mockRestore();
+    expect(f.store.context("context:test")!.working.ref).toEqual(state);
+    await expect(
+      f.semantic.dispatch("readFiles", {
+        ingress,
+        input: {
+          state,
+          files: Array.from({ length: 501 }, () => selected),
+        },
+      }),
+    ).rejects.toThrow();
+  });
   it("preserves explicit content coordinates and replaces bytes with editable text atomically", async () => {
     const f = await fixture();
     const text = "\uFEFFa😀éz";
     const bytes = new TextEncoder().encode(text);
     const base64 = btoa(String.fromCharCode(...bytes));
-    f.semantic.acknowledgeContent(f.prepare(await f.semantic.dispatch("edit",
-      f.request("command:seed", f.create(base64)))));
+    f.semantic.acknowledgeContent(
+      f.prepare(
+        await f.semantic.dispatch(
+          "edit",
+          f.request("command:seed", f.create(base64)),
+        ),
+      ),
+    );
     const head = () => f.store.context("context:test")!.working.ref;
-    const repository = f.store.facts.repositoryAtPath(f.store.stateRoot(head()), "projects/art")!;
-    const file = () => f.store.facts.fileAtPath(f.store.stateRoot(head()), repository.repositoryId, "scene.png")!;
-    const read = await f.semantic.dispatch("readFile", { ingress, input: {
-      state: head(), repositoryId: repository.repositoryId, file: { kind: "id", fileId: file().state.fileId },
-    }});
-    expect(read).toMatchObject({ kind: "host-read", request: {
-      contentKind: "bytes", byteLength: bytes.length, coordinateExtent: bytes.length,
-    }});
-    const edit = { kind: "text-edit", repositoryId: repository.repositoryId, fileId: file().state.fileId,
-      edits: [{ start: 2, end: 4, text: "moon" }] };
-    await expect(f.semantic.dispatch("edit", f.request("command:invalid-text", [edit], head())))
-      .rejects.toMatchObject({ code: "InvalidReference", errorData: { referenceKind: "text-file" } });
+    const repository = f.store.facts.repositoryAtPath(
+      f.store.stateRoot(head()),
+      "projects/art",
+    )!;
+    const file = () =>
+      f.store.facts.fileAtPath(
+        f.store.stateRoot(head()),
+        repository.repositoryId,
+        "scene.png",
+      )!;
+    const read = await f.semantic.dispatch("readFile", {
+      ingress,
+      input: {
+        state: head(),
+        repositoryId: repository.repositoryId,
+        file: { kind: "id", fileId: file().state.fileId },
+      },
+    });
+    expect(read).toMatchObject({
+      kind: "host-read",
+      request: {
+        contentKind: "bytes",
+        byteLength: bytes.length,
+        coordinateExtent: bytes.length,
+      },
+    });
+    const edit = {
+      kind: "text-edit",
+      repositoryId: repository.repositoryId,
+      fileId: file().state.fileId,
+      edits: [{ start: 2, end: 4, text: "moon" }],
+    };
+    await expect(
+      f.semantic.dispatch(
+        "edit",
+        f.request("command:invalid-text", [edit], head()),
+      ),
+    ).rejects.toMatchObject({
+      code: "InvalidReference",
+      errorData: { referenceKind: "text-file" },
+    });
     expect(f.store.command("command:invalid-text")).toBeNull();
-    f.semantic.acknowledgeContent(f.prepare(await f.semantic.dispatch("edit",
-      f.request("command:replace", [{ kind: "content-replace", repositoryId: repository.repositoryId,
-        fileId: file().state.fileId, content: { kind: "text", text } }], head()))));
-    expect(file().state).toMatchObject({ contentKind: "text", byteLength: bytes.length, coordinateExtent: text.length });
-    const observation = await f.semantic.dispatch("edit", f.request("command:text", [edit], head()));
-    if (observation.kind !== "host-read") throw new Error("expected text observation");
-    f.semantic.acknowledgeContent(f.prepare(f.semantic.acknowledgeHostRead({
-      request: observation.request, files: [{ contentHash: sha256Hex(bytes), text }],
-    })));
+    f.semantic.acknowledgeContent(
+      f.prepare(
+        await f.semantic.dispatch(
+          "edit",
+          f.request(
+            "command:replace",
+            [
+              {
+                kind: "content-replace",
+                repositoryId: repository.repositoryId,
+                fileId: file().state.fileId,
+                content: { kind: "text", text },
+              },
+            ],
+            head(),
+          ),
+        ),
+      ),
+    );
+    expect(file().state).toMatchObject({
+      contentKind: "text",
+      byteLength: bytes.length,
+      coordinateExtent: text.length,
+    });
+    const observation = await f.semantic.dispatch(
+      "edit",
+      f.request("command:text", [edit], head()),
+    );
+    if (observation.kind !== "host-read")
+      throw new Error("expected text observation");
+    f.semantic.acknowledgeContent(
+      f.prepare(
+        f.semantic.acknowledgeHostRead({
+          request: observation.request,
+          files: [{ contentHash: sha256Hex(bytes), text }],
+        }),
+      ),
+    );
     const after = "\uFEFFamoonéz";
-    expect(file().state).toMatchObject({ contentKind: "text", coordinateExtent: after.length,
-      contentHash: sha256Hex(new TextEncoder().encode(after)) });
+    expect(file().state).toMatchObject({
+      contentKind: "text",
+      coordinateExtent: after.length,
+      contentHash: sha256Hex(new TextEncoder().encode(after)),
+    });
   });
   it("persists large binary content before advancing semantic state and keeps bytes out of durable cells", async () => {
     const f = await fixture();
     const command = f.request("command:paint", f.create());
     const prepared = f.prepare(await f.semantic.dispatch("edit", command));
     expect(f.store.command("command:paint")).toBeNull();
-    expect(f.store.context("context:test")?.working.ref).toEqual(f.initial.working.ref);
+    expect(f.store.context("context:test")?.working.ref).toEqual(
+      f.initial.working.ref,
+    );
     expect(f.store.pendingEffects()).toEqual([]);
     const committed = f.semantic.acknowledgeContent(prepared);
     expect(committed.kind).toBe("effects-pending");
     expect(JSON.stringify(f.store.pendingEffects())).not.toContain("base64");
-    expect(JSON.stringify(f.store.pendingEffects()).length).toBeLessThan(10_000);
+    expect(JSON.stringify(f.store.pendingEffects()).length).toBeLessThan(
+      10_000,
+    );
     expect(await f.semantic.dispatch("edit", command)).toEqual(committed);
     expect(f.semantic.acknowledgeContent(prepared)).toEqual(committed);
     const roots = f.semantic.contentGcRoots();
-    for (const digest of prepared.contentHashes) expect(roots.contentHashes).toContain(digest);
+    for (const digest of prepared.contentHashes)
+      expect(roots.contentHashes).toContain(digest);
   });
 
   it("refuses mismatched or duplicate content receipts without recording a command", async () => {
     const f = await fixture();
     const prepared = f.prepare(
-      await f.semantic.dispatch("edit", f.request("command:paint", f.create()))
+      await f.semantic.dispatch("edit", f.request("command:paint", f.create())),
     );
-    expect(() => f.semantic.acknowledgeContent({ ...prepared, contentHashes: [] })).toThrow(
-      "Prepared content"
-    );
+    expect(() =>
+      f.semantic.acknowledgeContent({ ...prepared, contentHashes: [] }),
+    ).toThrow("Prepared content");
     expect(() =>
       f.semantic.acknowledgeContent({
         ...prepared,
         contentHashes: [...prepared.contentHashes, prepared.contentHashes[0]!],
-      })
+      }),
     ).toThrow("Prepared content");
     expect(f.store.command("command:paint")).toBeNull();
   });
@@ -167,10 +319,13 @@ describe("semantic authored content preparation", () => {
   it("rejects a stale preparation after another command advances the head", async () => {
     const f = await fixture();
     const prepared = f.prepare(
-      await f.semantic.dispatch("edit", f.request("command:paint", f.create()))
+      await f.semantic.dispatch("edit", f.request("command:paint", f.create())),
     );
     const other = f.prepare(
-      await f.semantic.dispatch("edit", f.request("command:other", f.create(btoa("other"))))
+      await f.semantic.dispatch(
+        "edit",
+        f.request("command:other", f.create(btoa("other"))),
+      ),
     );
     f.semantic.acknowledgeContent(other);
     expect(() => f.semantic.acknowledgeContent(prepared)).toThrow();
@@ -178,47 +333,103 @@ describe("semantic authored content preparation", () => {
   });
   it("prepares mixed large text and binary edits without journaling request bodies", async () => {
     const f = await fixture();
-    f.semantic.acknowledgeContent(f.prepare(await f.semantic.dispatch("edit", f.request("command:seed", f.create(btoa("initial"))))));
+    f.semantic.acknowledgeContent(
+      f.prepare(
+        await f.semantic.dispatch(
+          "edit",
+          f.request("command:seed", f.create(btoa("initial"))),
+        ),
+      ),
+    );
     const head = f.store.context("context:test")!.working.ref;
     const root = f.store.stateRoot(head);
     const repository = f.store.facts.repositoryAtPath(root, "projects/art")!;
-    const textFile = f.store.facts.fileAtPath(root, repository.repositoryId, "story.txt")!;
-    const binaryFile = f.store.facts.fileAtPath(root, repository.repositoryId, "scene.png")!;
+    const textFile = f.store.facts.fileAtPath(
+      root,
+      repository.repositoryId,
+      "story.txt",
+    )!;
+    const binaryFile = f.store.facts.fileAtPath(
+      root,
+      repository.repositoryId,
+      "scene.png",
+    )!;
     const inserted = "stars ".repeat(400_000);
-    const command = f.request("command:mixed", [
-      { kind: "text-edit", repositoryId: repository.repositoryId, fileId: textFile.state.fileId,
-        edits: [{ start: 0, end: 4, text: inserted }] },
-      { kind: "content-replace", repositoryId: repository.repositoryId, fileId: binaryFile.state.fileId, content: { kind: "bytes", base64: f.large } },
-    ], head);
+    const command = f.request(
+      "command:mixed",
+      [
+        {
+          kind: "text-edit",
+          repositoryId: repository.repositoryId,
+          fileId: textFile.state.fileId,
+          edits: [{ start: 0, end: 4, text: inserted }],
+        },
+        {
+          kind: "content-replace",
+          repositoryId: repository.repositoryId,
+          fileId: binaryFile.state.fileId,
+          content: { kind: "bytes", base64: f.large },
+        },
+      ],
+      head,
+    );
     const observation = await f.semantic.dispatch("edit", command);
     expect(observation.kind).toBe("host-read");
-    if (observation.kind !== "host-read") throw new Error("expected transient observation");
+    if (observation.kind !== "host-read")
+      throw new Error("expected transient observation");
     expect(f.store.command("command:mixed")).toBeNull();
-    const prepared = f.prepare(f.semantic.acknowledgeHostRead({ request: observation.request,
-      files: [{ contentHash: sha256Hex(new TextEncoder().encode("moon gate\n")), text: "moon gate\n" }],
-    }));
+    const prepared = f.prepare(
+      f.semantic.acknowledgeHostRead({
+        request: observation.request,
+        files: [
+          {
+            contentHash: sha256Hex(new TextEncoder().encode("moon gate\n")),
+            text: "moon gate\n",
+          },
+        ],
+      }),
+    );
     expect(f.store.command("command:mixed")).toBeNull();
     const committed = f.semantic.acknowledgeContent(prepared);
     expect(committed.kind).toBe("effects-pending");
-    const payloads = f.sql.exec("SELECT payload_json FROM gad_changes WHERE kind = 'text'").toArray();
+    const payloads = f.sql
+      .exec("SELECT payload_json FROM gad_changes WHERE kind = 'text'")
+      .toArray();
     expect(payloads).toHaveLength(1);
-    expect(JSON.parse(String(payloads[0]!["payload_json"]))).toEqual({ edits: [{ start: 0, end: 4, insertedExtent: inserted.length }] });
+    expect(JSON.parse(String(payloads[0]!["payload_json"]))).toEqual({
+      edits: [{ start: 0, end: 4, insertedExtent: inserted.length }],
+    });
     expect(JSON.stringify(f.store.pendingEffects())).not.toContain("base64");
     expect(JSON.stringify(f.store.pendingEffects())).not.toContain(inserted);
-    expect(f.sql.exec("SELECT count(*) AS n FROM gad_content_edges").toArray()[0]!["n"]).toBeGreaterThan(0);
+    expect(
+      f.sql.exec("SELECT count(*) AS n FROM gad_content_edges").toArray()[0]![
+        "n"
+      ],
+    ).toBeGreaterThan(0);
   });
 
   it("keeps semantic-only content durable without creating a projection effect", async () => {
     const f = await fixture();
-    const coordinate = f.semantic.ensureContextCoordinate({ contextId: "context:semantic", commandId: "command:semantic" }, ingress);
+    const coordinate = f.semantic.ensureContextCoordinate(
+      { contextId: "context:semantic", commandId: "command:semantic" },
+      ingress,
+    );
     expect(coordinate.kind).toBe("complete");
     const head = f.store.context("context:semantic")!.working.ref;
-    const request = { ingress, input: { contextId: "context:semantic", commandId: "command:semantic-paint", expectedWorkingHead: head, changes: f.create() } };
+    const request = {
+      ingress,
+      input: {
+        contextId: "context:semantic",
+        commandId: "command:semantic-paint",
+        expectedWorkingHead: head,
+        changes: f.create(),
+      },
+    };
     const prepared = f.prepare(await f.semantic.dispatch("edit", request));
     const committed = f.semantic.acknowledgeContent(prepared);
     expect(committed.kind).toBe("complete");
     expect(f.store.pendingEffects()).toEqual([]);
-    for (const digest of prepared.contentHashes) expect(f.semantic.contentGcRoots().contentHashes).toContain(digest);
+    for (const digest of prepared.contentHashes)
+      expect(f.semantic.contentGcRoots().contentHashes).toContain(digest);
   });
-
 });

@@ -422,20 +422,20 @@ export abstract class NativeChannelOwner<
     return client;
   }
 
+  protected enqueueNativeInvocationStart(
+    tx: Parameters<typeof this.nativePublications.enqueueStart>[0],
+    publication: Parameters<typeof this.nativePublications.enqueueStart>[1],
+  ): ReturnType<typeof this.nativePublications.enqueueStart> {
+    return this.nativePublications.enqueueStart(tx, publication);
+  }
+
   private invocationBoundary(harness: Harness): NativeInvocationBoundary {
     return {
       harness,
       image: this.loadedImage(),
-      callHost: this.callAgentHost,
+
       rpc: this.agentExecutionRpc,
-      publishStart: async (channelId, event, idempotencyKey) =>
-        this.runDetached(() =>
-          this.nativeChannelClient(channelId).publishAgenticEvent(
-            this.rpcSelfId,
-            event,
-            { idempotencyKey },
-          ),
-        ),
+      enqueueStart: (tx, publication) => this.enqueueNativeInvocationStart(tx, publication),
     };
   }
 

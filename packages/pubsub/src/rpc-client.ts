@@ -1,6 +1,11 @@
-import { createRpcMethodCaller, type RpcMethodArgs, type RpcMethodResult } from "@vibestudio/shared/rpcMethods";
+import {
+  createRpcMethodCaller,
+  type RpcMethodArgs,
+  type RpcMethodResult,
+} from "@vibestudio/shared/rpcMethods";
 import { channelClientRpcMethods } from "@workspace/pubsub/rpc-contract";
 import { mainRpcMethods } from "@vibestudio/service-schemas/mainRpc";
+import { canonicalJson } from "@vibestudio/shared/canonicalJson";
 /**
  * RPC-based PubSub client.
  *
@@ -190,6 +195,7 @@ interface ClientIngressMessage {
   phase?: "replay" | "live";
   controlType?: "ready";
   id?: number;
+  messageId?: string;
   type?: string;
   payload?: unknown;
   senderId?: string;
@@ -215,8 +221,6 @@ interface SubscribeResult {
   channelConfig?: ChannelConfig;
   envelope?: ChannelReplayEnvelope;
 }
-
-
 
 export interface RpcChannelTargetOptions {
   /** Transport used for the context-bound service resolution call. */
@@ -293,10 +297,15 @@ function eventToClientIngress(
   event: ServerLogEvent,
   phase: "replay" | "live",
 ): ClientIngressMessage {
+  if (!Number.isSafeInteger(event.id) || event.id < 0)
+    throw new Error(
+      "Channel log delivery requires its locally committed numeric cursor",
+    );
   return {
     stream: "log",
     phase,
     id: event.id,
+    messageId: event.messageId,
     type: event.type,
     payload: event.payload,
     senderId: event.senderId,
@@ -401,17 +410,24 @@ export function connectViaRpc<
     });
     return request;
   };
-  const callChannel = async <K extends keyof typeof channelClientRpcMethods & string>(method: K, ...args: RpcMethodArgs<(typeof channelClientRpcMethods)[K]>): Promise<RpcMethodResult<(typeof channelClientRpcMethods)[K]>> =>
-    createRpcMethodCaller(sessionTransport(), await getDoTarget(), channelClientRpcMethods)(method, args);
-
+  const callChannel = async <
+    K extends keyof typeof channelClientRpcMethods & string,
+  >(
+    method: K,
+    ...args: RpcMethodArgs<(typeof channelClientRpcMethods)[K]>
+  ): Promise<RpcMethodResult<(typeof channelClientRpcMethods)[K]>> =>
+    createRpcMethodCaller(
+      sessionTransport(),
+      await getDoTarget(),
+      channelClientRpcMethods,
+    )(method, args);
 
   async function forEachReplayAfterPage(
     request: ChannelReplayAfterRequest,
     visit: (page: ChannelReplayEnvelope) => void | Promise<void>,
   ): Promise<void> {
     for await (const page of iterateChannelReplayAfterPages(
-      (pageRequest) =>
-        callChannel("getReplayAfter", pageRequest),
+      (pageRequest) => callChannel("getReplayAfter", pageRequest),
       request,
     )) {
       await visit(page);
@@ -829,7 +845,9 @@ export function connectViaRpc<
   }
 
   function replayDedupeKey(msg: ClientIngressMessage): string | null {
-    if (msg.stream !== "log" || msg.phase !== "replay") return null;
+    if (msg.stream !== "log") return null;
+    if (msg.messageId) return `envelope:${msg.messageId}`;
+    if (msg.phase !== "replay") return null;
     if (msg.id !== undefined) {
       return `${msg.id}:${msg.type ?? ""}:${msg.senderId ?? ""}`;
     }
@@ -858,7 +876,30 @@ export function connectViaRpc<
     }
   }
 
+  const processingLogMessages = new Map<string, Promise<void>>();
+
   async function handleServerMessage(
+    msg: ClientIngressMessage,
+    providerSubscriptionGeneration?: number,
+  ): Promise<void> {
+    const key = replayDedupeKey(msg);
+    if (!key || replayMessageWasHandled(msg))
+      return processServerMessage(msg, providerSubscriptionGeneration);
+    const existing = processingLogMessages.get(key);
+    if (existing) return existing;
+    // Register before invoking handlers, including synchronous reentrant delivery.
+    // Overlapping readers join one canonical envelope's completed processing.
+    const completion = Promise.resolve()
+      .then(() => processServerMessage(msg, providerSubscriptionGeneration))
+      .finally(() => {
+        if (processingLogMessages.get(key) === completion)
+          processingLogMessages.delete(key);
+      });
+    processingLogMessages.set(key, completion);
+    return completion;
+  }
+
+  async function processServerMessage(
     msg: ClientIngressMessage,
     providerSubscriptionGeneration?: number,
   ): Promise<void> {
@@ -1033,6 +1074,7 @@ export function connectViaRpc<
           delivery: msg.stream,
           phase: msg.phase,
           id: msg.id,
+          messageId: msg.messageId,
           type: msg.type!,
           payload: msg.payload,
           senderId: msg.senderId!,
@@ -1045,6 +1087,7 @@ export function connectViaRpc<
 
         const event = parseIncoming(pubsubMsg);
         if (event) {
+          event.envelopeId = msg.messageId;
           if (opts.deliveryMode === "resident" && opts.residentEventHandler) {
             await opts.residentEventHandler(event);
           }
@@ -1378,7 +1421,13 @@ export function connectViaRpc<
     opts?: {
       callerId?: string;
       turnId?: string;
-      terminalOutcome?: "abandoned" | "cancelled" | "infrastructure_error" | "stale_dispatch" | "success" | "tool_error";
+      terminalOutcome?:
+        | "abandoned"
+        | "cancelled"
+        | "infrastructure_error"
+        | "stale_dispatch"
+        | "success"
+        | "tool_error";
       terminalReasonCode?: string;
       attachments?: AttachmentInput[];
       providerClaimGeneration?: number;
@@ -2052,7 +2101,9 @@ export function connectViaRpc<
   let recovering = false;
   let recoveryRequested = false;
   let recoveryRunScheduled = false;
-  let residentRelationshipRevision = 0;
+  let pendingResidentJoin: { operationId: string; intent: string } | null =
+    null;
+  let residentRelationshipRevision: number | null = null;
 
   function requestSubscriptionRecovery(): void {
     if (closed || !opts.recoveryCoordinator) return;
@@ -2140,27 +2191,45 @@ export function connectViaRpc<
           const registration = residentRegistration;
           ownedResidentRegistration = registration;
           unregisterResident = () => registration.close();
-          const state = await callChannel(
-            "relationshipState",
-            deliveryId,
-          );
-          residentRelationshipRevision = state.revision + 1;
-          const result = await callChannel("join", {
+          const relationshipMetadata = { ...metadata };
+          delete relationshipMetadata["sinceId"];
+          delete relationshipMetadata["replay"];
+          const joinIntent = {
             participantId: deliveryId,
-            revision: residentRelationshipRevision,
             contextId: String(opts.contextId ?? ""),
-            metadata,
-            delivery: "all",
+            metadata: relationshipMetadata,
+            delivery: "all" as const,
             endpoint: {
-              kind: "entity",
+              kind: "entity" as const,
               entityId: deliveryId,
-              invocation: "mailbox",
+              invocation: "mailbox" as const,
             },
             applicationConfig: null,
             replay: replayMode !== "skip",
+          };
+          const intent = canonicalJson(joinIntent);
+          // A lost opening response retries the same admitted relationship.
+          // An acknowledged replacement or a changed intent owns a new join.
+          if (pendingResidentJoin?.intent !== intent) {
+            pendingResidentJoin = { operationId: crypto.randomUUID(), intent };
+          }
+          const admission = pendingResidentJoin;
+          const result = await callChannel("join", {
+            ...joinIntent,
+            operationId: admission.operationId,
           });
-          residentRelationshipRevision =
-            result.revision ?? residentRelationshipRevision;
+          const revision = result.revision;
+          if (
+            typeof revision !== "number" ||
+            !Number.isSafeInteger(revision) ||
+            revision < 1
+          ) {
+            throw new Error(
+              "Channel join returned an invalid relationship revision",
+            );
+          }
+          residentRelationshipRevision = revision;
+          if (pendingResidentJoin === admission) pendingResidentJoin = null;
           acknowledged = true;
           subscription.acknowledged = true;
           // The join itself is the ACK. Settle its promise before replay
@@ -2379,18 +2448,12 @@ export function connectViaRpc<
     if (closed) throw new PubSubError("not connected", "connection");
     const { attachments, idempotencyKey } = publishOptions;
 
-    const result = await callChannel(
-      "publish",
-      pid,
-      type,
-      payload,
-      {
-        ref: undefined,
-        senderMetadata: undefined,
-        attachments: attachments ? toStoredAttachments(attachments) : undefined,
-        idempotencyKey,
-      },
-    );
+    const result = await callChannel("publish", pid, type, payload, {
+      ref: undefined,
+      senderMetadata: undefined,
+      attachments: attachments ? toStoredAttachments(attachments) : undefined,
+      idempotencyKey,
+    });
     if (
       !result ||
       !Number.isSafeInteger(result.id) ||
@@ -2469,9 +2532,7 @@ export function connectViaRpc<
   }
 
   async function listMembers(): Promise<ChannelMember[]> {
-    const result = await callChannel(
-      "listMembers",
-    );
+    const result = await callChannel("listMembers");
     return result.members;
   }
 
@@ -2482,16 +2543,12 @@ export function connectViaRpc<
   }
 
   async function listInvitesForMe(): Promise<ChannelInvite[]> {
-    const result = await callChannel(
-      "listInvitesForMe",
-    );
+    const result = await callChannel("listInvitesForMe");
     return result.invites;
   }
 
   async function acknowledgeInvite(): Promise<boolean> {
-    const result = await callChannel(
-      "acknowledgeInvite",
-    );
+    const result = await callChannel("acknowledgeInvite");
     return result.acknowledged;
   }
 
@@ -2550,8 +2607,7 @@ export function connectViaRpc<
             type: "attachment" as const,
             metadata: {
               mimeType: attachment.mimeType,
-              ...("filename" in attachment &&
-              attachment.filename !== undefined
+              ...("filename" in attachment && attachment.filename !== undefined
                 ? { filename: attachment.filename }
                 : {}),
             },
@@ -2963,21 +3019,21 @@ export function connectViaRpc<
         // anchor and closing the response stream.
         if (subscription?.acknowledged) {
           if (opts.deliveryMode === "resident") {
-            const relationship = await callChannel("relationshipState", pid);
-            if (!relationship.active) {
-              await residentRegistration?.relationshipEnded?.();
-              return;
-            }
+            if (residentRelationshipRevision === null)
+              throw new Error(
+                "Acknowledged resident membership has no retained revision",
+              );
             await callChannel("leave", {
               participantId: pid,
-              revision: relationship.revision + 1,
+              revision: residentRelationshipRevision + 1,
             });
             await residentRegistration?.relationshipEnded?.();
           } else {
-            await rpc.call(await getDoTarget(), channelClientRpcMethods["unsubscribe"], [
-              pid,
-              subscription.subscriptionId,
-            ]);
+            await rpc.call(
+              await getDoTarget(),
+              channelClientRpcMethods["unsubscribe"],
+              [pid, subscription.subscriptionId],
+            );
           }
         }
       } catch (error) {
@@ -3199,11 +3255,7 @@ export function connectViaRpc<
     },
     updateChannelConfig,
     async resolveOpeningRequest(outcome: "deliver" | "cancel") {
-      const cfg = await callChannel(
-        "resolveOpeningRequest",
-        pid,
-        outcome,
-      );
+      const cfg = await callChannel("resolveOpeningRequest", pid, outcome);
       serverChannelConfig = cfg;
       configChangeHandlers.forEach((handler) => handler(cfg));
       return cfg;
@@ -3236,11 +3288,7 @@ export function connectViaRpc<
       return serverHasMoreBefore;
     },
     async getReplayBefore(beforeSeq: number, limit = 100) {
-      return callChannel(
-        "getReplayBefore",
-        beforeSeq,
-        limit,
-      );
+      return callChannel("getReplayBefore", beforeSeq, limit);
     },
     async getReplayAfter(request: ChannelReplayAfterRequest) {
       return callChannel("getReplayAfter", request);

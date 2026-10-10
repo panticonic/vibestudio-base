@@ -79,7 +79,7 @@ describe("useChatCore conversation seed", () => {
       [
         {
           participantId: agentId,
-          revision: 1,
+          operationId: "seed-agent-membership",
           contextId: "ctx-seed",
           metadata: { type: "agent", name: "Agent", handle: "agent" },
           delivery: "all",

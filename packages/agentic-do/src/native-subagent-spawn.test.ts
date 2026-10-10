@@ -1,4 +1,5 @@
 import { createMainRpcCaller } from "@vibestudio/service-schemas/mainRpc";
+import { schemaRpcMock } from "@vibestudio/rpc/test-utils";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   createModels,
@@ -29,7 +30,8 @@ import {
 } from "@panticonic/pi-durable";
 import type { RpcClient, RpcCallOptions } from "@vibestudio/rpc";
 import { wireClientFor } from "@vibestudio/rpc/internal";
-import type { ParticipantDescriptor, ChannelEvent } from "@workspace/harness";
+import type { ParticipantDescriptor } from "@workspace/harness";
+import type { ServerLogEvent as ChannelEvent } from "@workspace/pubsub";
 import {
   AGENTIC_EVENT_PAYLOAD_KIND,
   AGENTIC_PROTOCOL_VERSION,
@@ -38,7 +40,7 @@ import {
 } from "@workspace/agentic-protocol";
 import { contextIdForTargetKey } from "@vibestudio/shared/runtime/contextIdentity";
 import { AgentVesselBase } from "./agent-vessel.js";
-import { openBoundAgentSession } from "./native-agent-session.js";
+import { openPlatformAgentSession, retireBoundAgentSession } from "./native-agent-session.js";
 import {
   bindNativeToolInvocation,
   type NativeInvocationExecution,
@@ -101,6 +103,9 @@ afterEach(async () => {
     if (result.status === "rejected") throw result.reason;
 });
 class SpawnVessel extends AgentVesselBase {
+  // This harness models delivery by the trusted host mailbox driver.
+  protected override get rpcCallerId(): string { return "server"; }
+  protected override get rpcCallerKind(): string { return "server"; }
   testHarness: Harness | null = null;
   activeEntity: JsonRepresentation<typeof entity> = detached(entity);
   readonly events = new Map<string, ChannelEvent[]>();
@@ -173,14 +178,8 @@ class SpawnVessel extends AgentVesselBase {
       {
         harness: this.admittedAgentSession(),
         image: this.loadedImage(),
-        callHost: createMainRpcCaller(this.rpc),
         rpc: this.rpc,
-        publishStart: (id, event, key) =>
-          this.createChannelClient(id).publishAgenticEvent(
-            owner.runtimeId,
-            event,
-            { idempotencyKey: key },
-          ),
+        enqueueStart: (tx, publication) => this.enqueueNativeInvocationStart(tx, publication),
       },
       api,
       ctx,
@@ -312,11 +311,10 @@ class SpawnVessel extends AgentVesselBase {
       };
     };
     return {
-      relationshipState: async () => ({ revision: 0, active: false }),
-      join: async (input: { participantId: string; revision: number }) => ({
+      join: async (input: { participantId: string; operationId: string }) => ({
         ok: true,
         participantId: input.participantId,
-        revision: input.revision,
+        revision: 1,
         channelConfig: {},
         envelope: { logEvents: [], ready: { totalCount: 0, envelopeCount: 0 } },
       }),
@@ -536,13 +534,13 @@ async function fixture(
       tools: [tool, cancellation, ...(options.tools ?? [])],
     }),
   );
-  const harness = await openBoundAgentSession(
-    new MemoryStorage(),
-    owner,
+  const harness = await openPlatformAgentSession(
+    async () => new MemoryStorage(),
+    image,
+    createMainRpcCaller(schemaRpcMock({ call: async (_target, method) => method === "workspace-state.alarmSourceRegister" ? { entity: vessel.activeEntity, incarnation: owner.incarnation } : "accepted" })),
     {
       models,
       registry,
-      publishWake: async () => {},
       prepareCommit: publication.prepareCommit,
       settings: { followUpMode: "one-at-a-time" },
     },
@@ -728,9 +726,9 @@ describe("native shipping subagent launch", () => {
     expect(f.vessel.created.size).toBe(0);
     expect(f.vessel.runs()).toEqual([]);
   });
-  it("refuses a changed host owner context before publishing authority or creating child resources", async () => {
+  it("refuses an authoritatively retired execution owner before publishing authority or creating child resources", async () => {
     const f = await fixture();
-    f.vessel.activeEntity = { ...entity, contextId: "foreign-context" };
+    await retireBoundAgentSession(f.harness, context);
     await expect(f.terminal(await f.spawn())).resolves.toMatchObject({
       state: {
         status: "terminal",
@@ -738,7 +736,7 @@ describe("native shipping subagent launch", () => {
           status: "failed",
           error: {
             message: expect.stringContaining(
-              "current host-bound owner and image",
+              "existing host-bound owner",
             ),
           },
         },

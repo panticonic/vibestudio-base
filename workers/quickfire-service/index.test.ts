@@ -19,8 +19,6 @@ class TestQuickfireSessionsDO extends QuickfireSessionsDO {
       "workspace-state.entity.resolveActive",
       "runtime.createEntity",
       "subscribeChannel",
-      "getReplayAfter",
-      "getReplayBefore",
       "runtime.replaceResourceBindings",
       "runtime.releaseResourceBindings",
       "runtime.retireEntity",
@@ -122,6 +120,7 @@ class TestQuickfireSessionsDO extends QuickfireSessionsDO {
                 repoPath: spec.source ?? "workers/agent-worker",
                 effectiveVersion: "test",
               },
+              agentInitialization: { ok: true, participantId: "agent:quickfire" },
               targetId: `do:workers/agent-worker:AiChatWorker:${spec.key}`,
               contextId: spec.resourceBindings
                 ? "ctx-panel"
@@ -143,20 +142,6 @@ class TestQuickfireSessionsDO extends QuickfireSessionsDO {
         }
         if (method === "subscribeChannel")
           return { ok: true, participantId: "agent:quickfire" };
-        if (method === "getReplayAfter")
-          return {
-            mode: "after",
-            logEvents: [],
-            snapshots: [],
-            ready: { totalCount: 0, envelopeCount: 0, snapshotLastSeq: 0 },
-          };
-        if (method === "getReplayBefore")
-          return {
-            mode: "before",
-            logEvents: [],
-            snapshots: [],
-            ready: { totalCount: 0, envelopeCount: 0 },
-          };
         if (
           method === "runtime.replaceResourceBindings" ||
           method === "runtime.releaseResourceBindings" ||
@@ -184,8 +169,12 @@ describe("QuickfireSessionsDO", () => {
     const { instance } = await createTestDO(TestQuickfireSessionsDO);
     const failure = new Error("Model settings service disconnected");
     instance.modelSettingsFailure = failure;
-    await expect(instance.sessionFor({ slotId: "slot-a" })).rejects.toBe(failure);
-    expect(instance.calls.some(({ method }) => method === "runtime.createEntity")).toBe(false);
+    await expect(instance.sessionFor({ slotId: "slot-a" })).rejects.toBe(
+      failure,
+    );
+    expect(
+      instance.calls.some(({ method }) => method === "runtime.createEntity"),
+    ).toBe(false);
   });
 
   it("launches an ordinary AI chat agent with declarative prompt, tools, and panel binding", async () => {
@@ -198,6 +187,7 @@ describe("QuickfireSessionsDO", () => {
     );
     const spec = create?.args[0] as {
       stateArgs: { agentConfig: Record<string, unknown> };
+      agentInitialization: { config: Record<string, unknown> };
       resourceBindings: unknown[];
     };
     const channelCreate = instance.calls.find(
@@ -216,16 +206,18 @@ describe("QuickfireSessionsDO", () => {
       model: "anthropic:connected-model",
       thinkingLevel: "low",
       approvalLevel: 1,
+    });
+    expect(spec.agentInitialization.config).toMatchObject({
       systemPromptMode: "append",
       features: {
         resources: { subject: { kind: "panel-slot", id: "slot-a" } },
         tools: expect.arrayContaining([{ kind: "standard" }]),
       },
     });
-    expect(spec.stateArgs.agentConfig["systemPrompt"]).toContain(
+    expect(spec.agentInitialization.config["systemPrompt"]).toContain(
       "<initial-panel-context>",
     );
-    expect(spec.stateArgs.agentConfig["systemPrompt"]).toContain(
+    expect(spec.agentInitialization.config["systemPrompt"]).toContain(
       "title: Build log",
     );
     expect(spec.stateArgs.agentConfig["approvalLevel"]).toBe(1);
@@ -271,27 +263,25 @@ describe("QuickfireSessionsDO", () => {
           (args[0] as { className?: string }).className === "AiChatWorker",
       ),
     ).toHaveLength(1);
-    expect(instance.calls).toContainEqual({
-      target: "main",
-      method: "runtime.replaceResourceBindings",
-      args: [
-        {
-          id: resumed.agentEntityId,
-          bindings: [
-            {
-              resource: { kind: "panel-slot", id: "slot-a" },
-              capabilities: ["panel.inspect"],
-              scope: { kind: "agent-channel", channelId: first.channelId },
-            },
-            {
-              resource: { kind: "workspace-diagnostics", id: "server-logs" },
-              capabilities: ["server-logs.read"],
-              scope: { kind: "agent-channel", channelId: first.channelId },
-            },
-          ],
-        },
-      ],
-    });
+    expect(
+      instance.calls.some(
+        ({ method }) => method === "runtime.replaceResourceBindings",
+      ),
+    ).toBe(false);
+  });
+
+  it("discovers session identities without reading channel history or inventing message counts", async () => {
+    const { instance } = await createTestDO(TestQuickfireSessionsDO);
+    const fresh = await instance.sessionFor({ slotId: "slot-a" });
+    expect(fresh.messageCount).toBe(0);
+    instance.calls.length = 0;
+
+    const resumed = await instance.sessionFor({ slotId: "slot-a" });
+    const listed = await instance.list();
+
+    expect(resumed).toMatchObject({ messageCount: null, lastActivityAt: null });
+    expect(listed).toEqual([resumed]);
+    expect(instance.calls.every(({ target }) => target === "main")).toBe(true);
   });
 
   it("promotion detaches the panel relationship and keeps the same ordinary agent/channel", async () => {
@@ -323,7 +313,7 @@ describe("QuickfireSessionsDO", () => {
     );
     expect(
       instance.calls.filter(({ method }) => method === "subscribeChannel"),
-    ).toHaveLength(1);
+    ).toHaveLength(0);
     expect(
       instance.calls.some(({ method }) => method === "runtime.retireEntity"),
     ).toBe(false);

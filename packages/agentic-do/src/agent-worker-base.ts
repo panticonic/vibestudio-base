@@ -195,7 +195,6 @@ function requireBoundMutationInvocation(): never {
 }
 
 export abstract class AgentWorkerBase extends AgentVesselBase {
-  private promptResourceCache: AgentPromptResources | null = null;
   private promptResourceLoad: Promise<AgentPromptResources> | null = null;
 
   constructor(ctx: DurableObjectContext, env: unknown) {
@@ -231,7 +230,6 @@ export abstract class AgentWorkerBase extends AgentVesselBase {
   protected override async loadPromptResources(
     _channelId: string,
   ): Promise<AgentPromptResources> {
-    if (this.promptResourceCache) return this.promptResourceCache;
     if (this.promptResourceLoad) return this.promptResourceLoad;
 
     const load = import("@workspace/harness/resource-loader")
@@ -244,10 +242,6 @@ export abstract class AgentWorkerBase extends AgentVesselBase {
           skillIndex: resources.skillIndex,
         }),
       )
-      .then((value) => {
-        if (this.promptResourceLoad === load) this.promptResourceCache = value;
-        return value;
-      })
       .finally(() => {
         if (this.promptResourceLoad === load) this.promptResourceLoad = null;
       });
@@ -256,7 +250,6 @@ export abstract class AgentWorkerBase extends AgentVesselBase {
   }
 
   protected override invalidatePromptResources(_channelId?: string): void {
-    this.promptResourceCache = null;
     this.promptResourceLoad = null;
   }
 

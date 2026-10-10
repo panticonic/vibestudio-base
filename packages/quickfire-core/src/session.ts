@@ -307,7 +307,7 @@ function sourceKey(source: QuickfireSessionSource | null): string {
 /**
  * Resolve and drive the conversation bound to `source`.
  *
- * Passing `null` (surface closed, or not in quickfire mode) tears the connection
+ * Passing `null` (the binding is released) tears the connection
  * down. The durable conversation is untouched by that — only clear, slot close,
  * and promotion end a slot conversation; a `conversation` source is never ended
  * from here.
@@ -392,11 +392,11 @@ export function useQuickfireSessionCore(
       transcript: projection.entries,
       olderCount: projection.olderCount,
       expandable: projection.olderCount > 0 || hasMoreHistoryRef.current,
-      // A waiting turn needs an interaction, not a stop spinner. Only an
-      // actively executing turn is presented as streaming.
-      streaming:
-        awaitingResponseRef.current !== null ||
-        Object.values(state.turns).some((turn) => turn.status === "open"),
+      // The transcript owns activity presentation, including native work that
+      // has no containing turn. Waiting requires interaction rather than Stop.
+      streaming: projection.entries.some(
+        (entry) => entry.kind === "activity" && entry.state === "working",
+      ),
       credentialRequest: credentialRequest
         ? {
             providerId: credentialRequest.providerId,
@@ -541,7 +541,10 @@ export function useQuickfireSessionCore(
         selfKeyRef.current = client.clientId ?? null;
         void (async () => {
           try {
-            for await (const event of client.events({ includeReplay: true })) {
+            for await (const event of client.events({
+              includeReplay: true,
+              includeSignals: true,
+            })) {
               if (!live()) return;
               // A wire event is NOT the envelope the reducer consumes. Feeding
               // one straight in (behind a cast) misses every branch and returns
@@ -632,6 +635,8 @@ export function useQuickfireSessionCore(
     void bind(bound, generation, false);
     return () => {
       generationRef.current += 1;
+      queuedRef.current = [];
+      awaitingResponseRef.current = null;
       closeClient();
     };
     // `key` is the identity of the binding; `source` is its (memoized) value.
@@ -666,26 +671,26 @@ export function useQuickfireSessionCore(
   );
 
   const stop = useCallback(async () => {
+    queuedRef.current = [];
     awaitingResponseRef.current = null;
     flush();
     const client = clientRef.current;
     if (!client) return;
-    const agents = Object.values(stateRef.current.roster).filter(
-      (entry) =>
-        entry.leftAt === undefined && entry.participant.kind === "agent",
+    // Participant presence belongs to the channel control plane, not the
+    // trajectory reducer. Native trajectories do not populate state.roster.
+    const participants = await client.getParticipants();
+    const agents = participants.filter(
+      (entry) => entry.metadata?.["type"] === "agent",
     );
-    for (const agent of agents) {
-      const participantId =
-        agent.participant.participantId ?? agent.participant.id;
-      try {
-        await client.callMethod(participantId, "pause", {
+    if (!agents.length)
+      throw new Error("No connected agent is available to stop.");
+    await Promise.all(
+      agents.map(async (agent) => {
+        await client.callMethod(agent.participantId, "pause", {
           reason: "User interrupted quickfire",
         }).result;
-      } catch {
-        // Pausing is advisory: a vessel that is already idle rejects, and that
-        // is not a failure the user needs to see.
-      }
-    }
+      }),
+    );
   }, [flush]);
 
   const loadModels = useCallback(async () => {

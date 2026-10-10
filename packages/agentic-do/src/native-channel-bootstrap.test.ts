@@ -175,6 +175,57 @@ async function history(
     .sort((a, b) => a.id - b.id);
 }
 describe("native subscription bootstrap readiness", () => {
+  it("starts independent resources and membership together and joins both before configuration", async () => {
+    const joined = gate();
+    const resources = gate();
+    const releaseJoin = gate();
+    const releaseResources = gate();
+    const released = vi.fn();
+    const f = await fixture({
+      join: async () => {
+        joined.resolve();
+        await releaseJoin.promise;
+        return page([]);
+      },
+      prepareResources: async () => {
+        resources.resolve();
+        await releaseResources.promise;
+      },
+      releaseResources: released,
+    });
+    await f.bootstrap.open(f.harness, binding, intent, context);
+    const pass = f.harness.runPass(context);
+    await Promise.all([joined.promise, resources.promise]);
+    expect(f.prepare).not.toHaveBeenCalled();
+    releaseJoin.resolve();
+    await Promise.resolve();
+    expect(f.prepare).not.toHaveBeenCalled();
+    releaseResources.resolve();
+    await pass;
+    await f.bootstrap.initialize(f.harness, binding, intent, context);
+    expect(f.prepare).toHaveBeenCalledTimes(1);
+    expect(released).toHaveBeenCalledWith(binding);
+  });
+
+  it("does not persist channel controls again when the joined history has no model context", async () => {
+    const controls = page([1, 2]);
+    for (const event of controls.logEvents)
+      event.type = "channel.subscription.opened";
+    const f = await fixture({
+      join: async () => controls,
+      contextForEvent: () => [],
+    });
+    const conversation = await f.bootstrap.initialize(
+      f.harness,
+      binding,
+      intent,
+      context,
+    );
+    expect(await history(conversation)).toEqual([]);
+    expect(f.replay).not.toHaveBeenCalled();
+    expect(f.prepare).toHaveBeenCalledTimes(1);
+  });
+
   it("keeps the launch receipt and native input behind complete configuration", async () => {
     const configuring = gate();
     const release = gate();
@@ -233,7 +284,12 @@ describe("native subscription bootstrap readiness", () => {
       },
     });
     await f.bootstrap.open(f.harness, binding, intent, context);
-    const observed = f.bootstrap.initialize(f.harness, binding, intent, context);
+    const observed = f.bootstrap.initialize(
+      f.harness,
+      binding,
+      intent,
+      context,
+    );
     await expect(observed).rejects.toThrow("Membership refused");
   });
   it("retains one actual opening before join; concurrent replay cannot select another intent or prompt against partial context", async () => {

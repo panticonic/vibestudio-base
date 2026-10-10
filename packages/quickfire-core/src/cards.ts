@@ -286,19 +286,6 @@ function messageCard(
     });
   }
 
-  const facts = [
-    entry.modelLabel ? `Model: ${entry.modelLabel}` : null,
-    entry.at === undefined ? null : `Sent: ${new Date(entry.at).toISOString()}`,
-    entry.edited ? "This message was edited." : null,
-  ].filter(Boolean);
-  if (facts.length)
-    details.push({
-      id: "metadata",
-      label: "Message details",
-      format: "text",
-      text: facts.join("\n"),
-    });
-
   const meta = joinMeta([
     entry.escalation?.title ?? null,
     entry.modelLabel ?? null,
@@ -379,8 +366,7 @@ function thinkingCard(
     meta: null,
     badges: [],
     body: null,
-    // Reasoning is detail by definition: it opens on demand, and while it is
-    // streaming the renderer opens it so the user can watch.
+    // Reasoning stays compact while streaming; the full text opens on demand.
     details: complete
       ? []
       : [

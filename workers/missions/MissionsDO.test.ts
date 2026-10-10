@@ -382,6 +382,7 @@ describe("MissionsDO", () => {
     await Promise.resolve();
     await harness.instance.releaseForLifecycle({
       epoch: "suspend",
+      phase: "release",
       mode: "suspend",
       reason: "restart",
       deadlineMs: 0,
@@ -451,6 +452,7 @@ describe("MissionsDO", () => {
       expect(
         await original.instance.releaseForLifecycle({
           epoch: "suspend",
+          phase: "release",
           mode: "suspend",
           reason: "restart",
           deadlineMs: 0,
@@ -1786,6 +1788,7 @@ describe("MissionsDO cancellation ownership", () => {
     const release = harness.instance
       .releaseForLifecycle({
         epoch: "suspend",
+        phase: "release",
         mode: "suspend",
         reason: "restart",
         deadlineMs: 0,
@@ -1853,6 +1856,7 @@ describe("MissionsDO cancellation ownership", () => {
 
     const release = harness.instance.releaseForLifecycle({
       epoch: "retire",
+      phase: "release",
       mode: "retire",
       reason: "delete",
       deadlineMs: 0,
@@ -1930,6 +1934,7 @@ describe("MissionsDO cancellation ownership", () => {
         expect(
           await harness.instance.releaseForLifecycle({
             epoch: "retire-method",
+            phase: "release",
             mode: "retire",
             reason: "delete",
             deadlineMs: 0,

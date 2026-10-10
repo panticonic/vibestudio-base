@@ -1,4 +1,8 @@
-import { copyJson, type Context, type JsonValue } from "@panticonic/pi-chord";
+import {
+  copyJson,
+  type Context,
+  type JsonValue,
+} from "@panticonic/pi-chord";
 import { sha256HexSyncText } from "@vibestudio/content-addressing";
 import { canonicalJson } from "@vibestudio/shared/canonicalJson";
 import {
@@ -19,6 +23,7 @@ import {
 } from "@vibestudio/rpc";
 import {
   nativeInvocationId,
+  nativeInvocationIdentity,
   nativeInvocationSourceSchema,
   nativeOriginatingInputSchema,
   type NativeOriginatingInput,
@@ -33,7 +38,6 @@ import {
   type AgenticEvent,
 } from "@workspace/agentic-protocol";
 import type {
-  AgentHostCall,
   LoadedAgentImage,
 } from "./native-agent-session.js";
 import {
@@ -50,11 +54,11 @@ interface InvocationPublication extends JsonObject {
   request: JsonValue | null;
   originatingInput: JsonValue | null;
   createdAt: string;
-  startedEventSequence: number | null;
 }
 const InvocationPublications = defineDoc<{ pending: InvocationPublication[] }>({
   kind: "vibestudio.native-invocation-publications",
-  version: 2,
+  version: 3,
+
   scope: "conversation",
   history: "latest",
   fork: "initial",
@@ -65,15 +69,13 @@ const InvocationPublications = defineDoc<{ pending: InvocationPublication[] }>({
 export interface NativeInvocationBoundary {
   readonly harness: Harness;
   readonly image: LoadedAgentImage;
-  readonly callHost: AgentHostCall;
   readonly rpc: RpcClient;
-  /** Must use the supplied immutable idempotency key at the canonical channel receiver. */
-  readonly publishStart: (
-    channelId: string,
-    event: AgenticEvent<"invocation.started">,
-    idempotencyKey: string,
-    context: Context,
-  ) => Promise<{ id?: number }>;
+  /** Admission joins the existing ordered publication task chain in this Tx. */
+  readonly enqueueStart: (
+    tx: Tx,
+    publication: NativeInvocationStartPublication,
+  ) => Promise<TaskId>;
+
 }
 
 import type { AgentProductMetadata } from "@workspace/agentic-core/agent-product-metadata";
@@ -119,7 +121,7 @@ function startEvent(
   };
 }
 
-/** Admission precedes publication, and canonical publication precedes protected execution. */
+/** The actual task and its ordered publication debt are admitted atomically. */
 async function openInvocation(
   boundary: NativeInvocationBoundary,
   source: NativeInvocationSource,
@@ -130,7 +132,7 @@ async function openInvocation(
   const originatingInput = await retainedNativeInvocationOriginatingInput(
     boundary.harness, source.task.taskId as TaskId, context,
   );
-  const publication = await api.commit(async (tx) => {
+  await api.commit(async (tx) => {
     const task = await tx.task(source.task.taskId as TaskId);
     if (
       !task ||
@@ -173,7 +175,7 @@ async function openInvocation(
     if (retained) {
       if (retained.taskId !== task.id)
         throw new Error("Native invocation publication changed its owner");
-      return { ...retained, source: copyJson(retained.source) };
+      return;
     }
     const candidate = {
       taskId: task.id,
@@ -182,48 +184,14 @@ async function openInvocation(
       request,
       originatingInput: copyJson(originatingInput),
       createdAt: new Date().toISOString(),
-      startedEventSequence: null,
     };
+    await boundary.enqueueStart(tx, {
+      source,
+      start: startEvent(source, invocationId, candidate.createdAt, request, originatingInput),
+      startIdempotencyKey: `${invocationId}:started`,
+    });
     publications.pending.push(candidate);
-    return candidate;
   }, context);
-  if (publication.startedEventSequence === null) {
-    const accepted = await boundary.publishStart(
-      source.owner.channelId,
-      startEvent(
-        source,
-        invocationId,
-        publication.createdAt,
-        publication.request,
-        publication.originatingInput === null ? null : nativeOriginatingInputSchema.parse(publication.originatingInput),
-      ),
-      `${invocationId}:started`,
-      context,
-    );
-    if (!Number.isSafeInteger(accepted.id) || (accepted.id ?? -1) < 0)
-      throw new Error(
-        "Native invocation start lacks canonical channel acceptance",
-      );
-    await api.commit(async (tx) => {
-      const publications = await tx.doc(
-        InvocationPublications,
-        source.task.conversationId as ToolExecutionApi["conversationId"],
-      );
-      const retained = publications.pending.find(
-        (item) => item.invocationId === invocationId,
-      );
-      if (!retained || retained.taskId !== source.task.taskId)
-        throw new Error("Native invocation lost its publication obligation");
-      if (
-        retained.startedEventSequence !== null &&
-        retained.startedEventSequence !== accepted.id
-      )
-        throw new Error(
-          "Native invocation start changed its canonical acceptance",
-        );
-      retained.startedEventSequence = accepted.id!;
-    }, context);
-  }
   context.abortSignal?.throwIfAborted();
   if (!context.abortSignal)
     throw new Error("Native invocation requires its owned cancellation signal");
@@ -240,6 +208,7 @@ async function openInvocation(
         logId: trajectory.logId,
         head: trajectory.head,
         invocationId,
+        nativeInvocation: nativeInvocationIdentity(source),
       }),
       context.abortSignal,
     ),
@@ -255,7 +224,6 @@ export async function bindNativeToolInvocation(
     boundary.harness,
     api,
     boundary.image,
-    boundary.callHost,
     context,
   );
   return openInvocation(boundary, source, api, context);
@@ -272,16 +240,18 @@ export async function bindNativeModelInvocation(
     request,
     api,
     boundary.image,
-    boundary.callHost,
     context,
   );
   return openInvocation(boundary, source, api, context);
 }
 
-export interface NativeInvocationTerminalPublication {
+export interface NativeInvocationStartPublication {
   readonly source: NativeInvocationSource;
   readonly start: AgenticEvent<"invocation.started">;
   readonly startIdempotencyKey: string;
+}
+
+export interface NativeInvocationTerminalPublication extends NativeInvocationStartPublication {
   readonly terminalIdempotencyKey: string;
   readonly outcome: Extract<
     TaskRecord<JsonValue, JsonValue, JsonValue>["state"],

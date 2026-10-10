@@ -49,6 +49,7 @@ import {
   type NativeChannelIntake,
 } from "./native-channel-session.js";
 
+
 const context = BACKGROUND_CONTEXT;
 const binding = { channelId: "channel:one", contextId: "context:one" };
 const owner = {
@@ -198,6 +199,7 @@ function messageDelivery(
 function delivery(
   id: string,
   channelId = binding.channelId,
+  sequence = 4,
 ): NativeChannelDelivery {
   return {
     deliveryId: id,
@@ -209,10 +211,11 @@ function delivery(
     },
     participantId: "participant:agent",
     subscriptionRevision: 3,
-    eventSequence: 4,
+    eventSequence: sequence,
     envelope: {
       kind: "log",
       event: {
+        id: sequence,
         messageId: `event:${id}`,
         senderId: "participant:user",
         type: "agentic",
@@ -859,7 +862,7 @@ describe("native product channel admission", () => {
         { ...source, eventSequence: 999 },
         context,
       ),
-    ).rejects.toThrow("immutable admission");
+    ).rejects.toThrow("immutable routing identity");
     expect(
       (await f.storage.scanSubmissions({}, 10, undefined, context)).items,
     ).toHaveLength(1);
@@ -924,7 +927,7 @@ describe("native product channel admission", () => {
       if (field === "envelope")
         changed = {
           ...changed,
-          envelope: { kind: "log", event: { payload: "different" } },
+          envelope: { kind: "log", event: { ...(first.envelope as { event: object }).event, payload: "different" } },
         };
       if (field === "sequence") changed = { ...changed, eventSequence: 5 };
       if (field === "context")
@@ -936,7 +939,7 @@ describe("native product channel admission", () => {
       }
       await expect(
         submitNativeChannelDelivery(f.harness, bound, changed, intake, context),
-      ).rejects.toThrow("immutable admission");
+      ).rejects.toThrow(field === "sequence" ? "immutable routing identity" : "immutable admission");
       expect(
         (await f.storage.scanSubmissions({}, 10, undefined, context)).items,
       ).toHaveLength(1);
@@ -975,7 +978,7 @@ describe("native product channel admission", () => {
       {
         reason: {
           message:
-            "Native channel delivery conflicts with its immutable admission",
+            "Native channel delivery has an invalid immutable routing identity",
         },
       },
     ]);
@@ -1285,7 +1288,7 @@ describe("native product channel admission", () => {
         { ...reattached, eventSequence: 999 },
         context,
       ),
-    ).rejects.toThrow(/source event conflicts/);
+    ).rejects.toThrow(/immutable routing identity/);
     await expect(
       verifyNativeChannelDeliveryReplay(
         f.harness,
@@ -1868,14 +1871,8 @@ describe("native product channel admission", () => {
       context,
     );
     await f.harness.runPass(context);
-    const ownFeedback = {
-      ...delivery("feedback-frontier-own"),
-      eventSequence: 20,
-    };
-    const foreignFeedback = {
-      ...delivery("feedback-frontier-other", "channel:other"),
-      eventSequence: 99,
-    };
+    const ownFeedback = delivery("feedback-frontier-own", binding.channelId, 20);
+    const foreignFeedback = delivery("feedback-frontier-other", "channel:other", 99);
     await submitNativeChannelDelivery(
       f.harness,
       binding,
@@ -2261,5 +2258,68 @@ describe("ui feedback repair turns", () => {
       context,
     );
     expect(await submissionType(f, repairFailure.submissionId)).toBe("write");
+  });
+});
+
+
+describe("native canonical channel admission", () => {
+  it("retains a stopped input across process restart and replays without restarting its submission", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "native-live-replay-"));
+    const path = join(directory, "agent.sqlite");
+    const preparation: Partial<HarnessOptions> = {
+      prepareCommit: (tx, staged) => prepareNativeChannelReadReceipts(tx, staged.submissions, async () => {}),
+    };
+    try {
+      const f = await fixture(await openNodeSqliteStorage(path), preparation);
+      const retained = messageDelivery("live-stop-reopen");
+      const live = retained;
+      const original = await submitNativeChannelDelivery(f.harness, binding, live, { kind: "input", content: "original" }, context);
+      await f.harness.runPass(context);
+      const source = await retainedNativeChannelSourceMessage(f.harness, live, "message:one", context);
+      expect(source?.entryId).not.toBeNull();
+      await f.conversation.abort(context, { background: true });
+      await f.harness.close(context);
+      sessions.splice(sessions.indexOf(f.harness), 1);
+      const reopened = await fixture(await openNodeSqliteStorage(path), preparation);
+      expect(reopened.conversation.id).toBe(f.conversation.id);
+      expect(await retainedNativeChannelOriginatingInput(reopened.harness, original.submissionId, context)).toMatchObject({ eventSequence: 10 });
+      const retainedReplay = { ...retained, deliveryId: "reattached-after-stop", subscriptionRevision: 4,
+        envelope: { ...(retained.envelope as object), phase: "replay" } };
+      expect(await submitNativeChannelDelivery(reopened.harness, binding, retainedReplay, { kind: "input", content: "must not restart" }, context)).toMatchObject({
+        submissionId: original.submissionId, conversationId: original.conversationId, disposition: "duplicate",
+      });
+      const recovered = await retainedNativeChannelSourceMessage(reopened.harness, retainedReplay, "message:one", context);
+      expect(recovered).toMatchObject({ entryId: source!.entryId, submissionId: original.submissionId, originalSequence: 10 });
+      expect(await retainedNativeChannelOriginatingInput(reopened.harness, original.submissionId, context)).toMatchObject({ eventSequence: 10 });
+      expect((await reopened.storage.scanSubmissions({}, 10, undefined, context)).items).toHaveLength(1);
+      await reopened.harness.runPass(context);
+      expect(reopened.faux.state.callCount).toBe(0);
+    } finally {
+      await Promise.all(sessions.splice(0).map(session => session.close(context)));
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+  it("rejects mismatched canonical cursors before admitting input", async () => {
+    const f = await fixture();
+    const retained = messageDelivery("invalid-canonical-cursor");
+    const envelope = retained.envelope as { event: Record<string, unknown> };
+    for (const id of [-1, 999, 1.5]) {
+      await expect(submitNativeChannelDelivery(f.harness, binding, {
+        ...retained, envelope: { kind: "log", phase: "live", event: { ...envelope.event, id } },
+      }, { kind: "input", content: "must not be admitted" }, context)).rejects.toThrow(/immutable routing identity/);
+    }
+    expect((await f.storage.scanSubmissions({}, 10, undefined, context)).items).toHaveLength(0);
+  });
+
+  it("rejects a changed cursor for an already admitted immutable envelope", async () => {
+    const f = await fixture();
+    const original = messageDelivery("canonical-cursor-conflict");
+    await submitNativeChannelDelivery(f.harness, binding, original, { kind: "input", content: "original" }, context);
+    const envelope = original.envelope as { event: Record<string, unknown> };
+    await expect(submitNativeChannelDelivery(f.harness, binding, {
+      ...original, eventSequence: 11,
+      envelope: { kind: "log", phase: "replay", event: { ...envelope.event, id: 11 } },
+    }, { kind: "input", content: "must not be admitted" }, context)).rejects.toThrow(/immutable|changed/);
+    expect((await f.storage.scanSubmissions({}, 10, undefined, context)).items).toHaveLength(1);
   });
 });

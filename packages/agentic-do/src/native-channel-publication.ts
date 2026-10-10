@@ -40,6 +40,7 @@ import {
 import {
   prepareNativeInvocationTerminals,
   type NativeInvocationTerminalPublication,
+  type NativeInvocationStartPublication,
 } from "./native-invocation-boundary.js";
 
 export interface NativeChannelProjection {
@@ -87,37 +88,16 @@ function missingOrderedPredecessor(
 }
 type NativeChannelProjectionState = JsonObject & {
   binding: JsonValue;
-  /** Original mixed-destination chain retained while destinations acquire their own tails. */
-  inheritedFrontier: TaskId | null;
   /** Latest task for each actual channel/participant destination. */
   tails: Record<string, TaskId | null>;
 }
 const Projection = defineDoc<NativeChannelProjectionState>({
   kind: "vibestudio.native-channel-projection",
-  version: 2,
+  version: 3,
   scope: "conversation",
   history: "latest",
   fork: "initial",
-  initial: () => ({ binding: null, inheritedFrontier: null, tails: {} }),
-  migrate: (value, fromVersion) => {
-    if (fromVersion !== 1)
-      throw new Error("Unsupported native channel projection version");
-    const legacyTail = value["tail"];
-    if (
-      legacyTail !== null &&
-      (typeof legacyTail !== "number" ||
-        !Number.isSafeInteger(legacyTail) ||
-        legacyTail < 1)
-    )
-      throw new Error("Native channel projection has an invalid legacy tail");
-    if (!("binding" in value))
-      throw new Error("Native channel projection lost its binding");
-    return {
-      binding: value["binding"],
-      inheritedFrontier: legacyTail as TaskId | null,
-      tails: {},
-    };
-  },
+  initial: () => ({ binding: null, tails: {} }),
   checkpointWhen: () => true,
 });
 // Publication cursor only. pi.live.run remains the sole owner of execution.
@@ -133,15 +113,6 @@ const RunPublication = defineDoc<{
   history: "latest",
   fork: "initial",
   initial: () => ({ input: null, wait: null, revision: 0 }),
-  migrate: (value, fromVersion) => {
-    if (fromVersion !== 1)
-      throw new Error("Unsupported native run publication version");
-    return {
-      input: value["input"] as SubmissionId | null,
-      wait: null,
-      revision: 0,
-    };
-  },
   checkpointWhen: () => true,
 });
 const AutomationPublication = defineDocFamily<
@@ -637,9 +608,7 @@ export function createNativeChannelPublication(options: {
       destination.channelId,
       destination.participantId,
     ]);
-    const previousTask = Object.hasOwn(tails, destinationKey)
-      ? tails[destinationKey] ?? null
-      : state.inheritedFrontier;
+    const previousTask = tails[destinationKey] ?? null;
     const id = await tx.createTask(
       task,
       {
@@ -660,6 +629,15 @@ export function createNativeChannelPublication(options: {
   }
   return {
     task,
+    async enqueueStart(tx: Tx, publication: NativeInvocationStartPublication): Promise<TaskId> {
+      const conversationId = publication.source.task.conversationId as ConversationId;
+      return enqueue(tx, conversationId, {
+        channelId: publication.source.owner.channelId,
+        participantId: publication.source.owner.runtimeId,
+        actor: publication.start.actor,
+        policy: "all",
+      }, [{ event: detached(publication.start) as unknown as JsonValue, key: publication.startIdempotencyKey }]);
+    },
     async bind(
       tx: Tx,
       conversationId: ConversationId,
@@ -745,12 +723,7 @@ export function createNativeChannelPublication(options: {
               channelId: publication.source.owner.channelId,
               participantId: publication.source.owner.runtimeId,
             },
-            [
-              {
-                event: detached(publication.start) as unknown as JsonValue,
-                key: publication.startIdempotencyKey,
-              },
-            ],
+            [],
             publication,
           );
         },

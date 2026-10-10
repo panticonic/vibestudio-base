@@ -26,7 +26,7 @@ import {
   type ParticipantRef,
   type ChannelMethodOriginalRequest,
 } from "@workspace/agentic-protocol";
-import type { ChannelEvent } from "@workspace/pubsub";
+import type { ServerLogEvent as ChannelEvent } from "@workspace/pubsub";
 import type { SqlStorage } from "@workspace/runtime/worker";
 import type { ChannelCallEventBuilders } from "@workspace/channel-policies";
 import type { StoredAttachment } from "./types.js";

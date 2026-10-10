@@ -9,11 +9,14 @@
  */
 
 import type { SqlStorage } from "@workspace/runtime/worker";
-import type { ChannelEvent } from "@workspace/pubsub";
+import type { ChannelEvent, ServerLogEvent } from "@workspace/pubsub";
 import type { BroadcastEnvelope } from "./types.js";
 import type { RpcChannelMessage, RpcSignalMessage } from "@workspace/pubsub";
 
-export type StructuredDeliveryEnvelope = Extract<RpcChannelMessage, { kind: "log" | "signal" }>;
+export type StructuredDeliveryEnvelope = Extract<
+  RpcChannelMessage,
+  { kind: "log" | "signal" }
+>;
 
 export interface BroadcastParticipant {
   id: string;
@@ -22,7 +25,10 @@ export interface BroadcastParticipant {
 export interface BroadcastDeps {
   objectKey: string;
   participants(): readonly BroadcastParticipant[];
-  deliverParticipant(participantId: string, payload: unknown): Promise<void> | void;
+  deliverParticipant(
+    participantId: string,
+    payload: unknown,
+  ): Promise<void> | void;
 }
 
 /**
@@ -31,7 +37,9 @@ export interface BroadcastDeps {
  * changes, avoiding a SQL scan and repeated metadata JSON parsing for every
  * token-delta signal and durable chat event.
  */
-export function loadBroadcastParticipants(sql: SqlStorage): BroadcastParticipant[] {
+export function loadBroadcastParticipants(
+  sql: SqlStorage,
+): BroadcastParticipant[] {
   return sql
     .exec(`SELECT id FROM participants`)
     .toArray()
@@ -49,12 +57,11 @@ export function broadcast(
   event: ChannelEvent,
   envelope: BroadcastEnvelope,
   senderId: string,
-  structuredPublisherId = senderId
+  structuredPublisherId = senderId,
 ): void {
-  const msg =
-    envelope.kind === "log"
-      ? channelEventToRpcLog(event, envelope.phase ?? "live", envelope.ref)
-      : channelEventToRpcSignal(event, envelope.ref);
+  const msg = envelope.kind === "log"
+    ? channelEventToRpcLog(event, envelope.phase ?? "live", envelope.ref)
+    : channelEventToRpcSignal(event, envelope.ref);
   for (const participant of deps.participants()) {
     const pid = participant.id;
     const data =
@@ -92,8 +99,8 @@ export function buildChannelEvent(
   contentIntegrity: {
     contentClass: "internal" | "external";
     externalKeys: string[];
-  } = { contentClass: "internal", externalKeys: [] }
-): ChannelEvent {
+  } = { contentClass: "internal", externalKeys: [] },
+): ServerLogEvent {
   let parsedPayload: unknown;
   try {
     parsedPayload = JSON.parse(payloadJson);
@@ -130,7 +137,9 @@ export function buildChannelEvent(
     ...(mappedAttachments && mappedAttachments.length > 0
       ? { attachments: mappedAttachments }
       : {}),
-    ...(annotations && Object.keys(annotations).length > 0 ? { annotations } : {}),
+    ...(annotations && Object.keys(annotations).length > 0
+      ? { annotations }
+      : {}),
   };
 }
 
@@ -139,17 +148,20 @@ export function buildChannelEvent(
 export function channelEventToRpcLog(
   event: ChannelEvent,
   phase: "replay" | "live",
-  ref?: number
+  ref?: number,
 ): RpcChannelMessage {
   return {
     kind: "log",
     phase,
     event,
     ...(ref !== undefined ? { ref } : {}),
-  };
+  } as RpcChannelMessage;
 }
 
-export function channelEventToRpcSignal(event: ChannelEvent, ref?: number): RpcSignalMessage {
+export function channelEventToRpcSignal(
+  event: ChannelEvent,
+  ref?: number,
+): RpcSignalMessage {
   return {
     kind: "signal",
     messageId: event.messageId,

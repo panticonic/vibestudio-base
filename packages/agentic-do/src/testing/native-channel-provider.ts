@@ -156,7 +156,7 @@ export async function createNativeChannelProvider(options: {
   try {
     await channel.callAs(provider, "join", {
       participantId: options.participantId,
-      revision: 1,
+      operationId: "native-provider-initial-membership",
       contextId: "ctx-1",
       metadata: { name: "Native method provider", type: "agent" },
       delivery: "all",

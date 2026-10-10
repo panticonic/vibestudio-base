@@ -11,12 +11,9 @@ import type {
 
 // ── Event messages (channel events with transport metadata) ──────────────
 
-export interface RpcLogMessage {
-  kind: "log";
-  phase: "replay" | "live";
-  event: ServerLogEvent;
-  ref?: number;
-}
+export type RpcLogMessage =
+  | { kind: "log"; phase: "replay"; event: ServerLogEvent; ref?: number }
+  | { kind: "log"; phase: "live"; event: ServerLogEvent; ref?: number };
 
 export interface RpcRosterSnapshotMessage {
   kind: "control";

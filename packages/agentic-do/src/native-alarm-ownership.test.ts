@@ -4,6 +4,10 @@ import { BACKGROUND_CONTEXT } from "@panticonic/pi-chord/context";
 import { createRegistry, WakeDoc } from "@panticonic/pi-durable";
 import { rpc, serializeRpcFailure, type RpcEnvelope } from "@vibestudio/rpc";
 import type { ParticipantDescriptor } from "@workspace/harness";
+import type {
+  LifecyclePrepareInput,
+  LifecyclePrepareResult,
+} from "@workspace/runtime/worker/durable-base";
 import { AgentVesselBase } from "./agent-vessel.js";
 import type { NativeAgentOptions } from "./native-agent-owner.js";
 import { createNativeVesselTestDO } from "./testing/native-vessel.js";
@@ -11,6 +15,18 @@ import {
   lookupNativeChannelConversation,
   openNativeChannelConversation,
 } from "./native-channel-session.js";
+
+async function releaseAcrossPhases(
+  instance: AlarmOwnershipVessel,
+  input: Omit<LifecyclePrepareInput, "phase">,
+): Promise<LifecyclePrepareResult> {
+  let result: LifecyclePrepareResult = { status: "ready" };
+  for (const phase of ["quiesce", "peer-obligations", "release"] as const) {
+    result = await instance.releaseForLifecycle({ ...input, phase });
+    if (result.status === "failed") return result;
+  }
+  return result;
+}
 
 class AlarmOwnershipVessel extends AgentVesselBase {
   readonly models = createModels();
@@ -52,7 +68,7 @@ class AlarmOwnershipVessel extends AgentVesselBase {
 }
 
 describe("native vessel alarm ownership", () => {
-  it("replays the committed source schedule after ordinary reads without a second unversioned alarm owner", async () => {
+  it("publishes changed schedules once, retains failed acknowledgements, and replays on cold activation", async () => {
     const source = "workers/alarm-ownership";
     const className = "AlarmOwnershipVessel";
     const objectKey = "test-key";
@@ -68,23 +84,30 @@ describe("native vessel alarm ownership", () => {
       methods.push(method);
       let result: unknown;
       let error: string | undefined;
-      if (method === "workspace-state.entity.resolveActive") {
-        result = {
-          id: `do:${source}:${className}:${objectKey}`,
-          authoritySessionId: "authority:alarm-ownership",
-          kind: "do",
-          source: { repoPath: source, effectiveVersion: "test" },
-          activeExecutionDigest: executionDigest,
-          contextId: "context:alarm-ownership",
+      if (method === "workspace-state.alarmSourceRegister") {
+        expect(args[0]).toEqual({
+          source,
           className,
-          key: objectKey,
-          createdAt: 1,
-          status: "active",
-          cleanupComplete: false,
+          objectKey,
+          executionDigest,
+        });
+        result = {
+          incarnation: "storage:alarm-ownership",
+          entity: {
+            id: `do:${source}:${className}:${objectKey}`,
+            authoritySessionId: "authority:alarm-ownership",
+            kind: "do",
+            source: { repoPath: source, effectiveVersion: "test" },
+            activeExecutionDigest: executionDigest,
+            contextId: "context:alarm-ownership",
+            className,
+            key: objectKey,
+            createdAt: 1,
+            status: "active",
+            cleanupComplete: false,
+          },
         };
-      } else if (method === "workspace-state.alarmSourceRegister")
-        result = "storage:alarm-ownership";
-      else if (method === "workspace-state.alarmSourcePublish") {
+      } else if (method === "workspace-state.alarmSourcePublish") {
         if (publicationFailure) error = publicationFailure;
         else {
           publications.push(
@@ -113,7 +136,9 @@ describe("native vessel alarm ownership", () => {
           message: {
             type: "response",
             requestId,
-            ...(error ? { error: serializeRpcFailure(new Error(error)) } : { result }),
+            ...(error
+              ? { error: serializeRpcFailure(new Error(error)) }
+              : { result }),
           },
         } satisfies RpcEnvelope),
         { headers: { "Content-Type": "application/json" } },
@@ -135,6 +160,7 @@ describe("native vessel alarm ownership", () => {
     try {
       await expect(fixture.call("inspectPassiveState")).resolves.toBe("ready");
       expect(methods).not.toContain("workspace-state.entity.resolveActive");
+      expect(methods).not.toContain("workspace-state.alarmSourceRegister");
       expect(publications).toEqual([]);
 
       const faux = fauxProvider();
@@ -160,9 +186,15 @@ describe("native vessel alarm ownership", () => {
       const committed = await session.snapshot(WakeDoc, BACKGROUND_CONTEXT);
       expect(committed).toMatchObject({ wakeAt: 0 });
       expect(committed!.publishedRevision).toBe(committed!.revision);
+      // Join the submitted schedule before measuring an ordinary request replay.
+      await session.flushWake(BACKGROUND_CONTEXT);
+      expect(publications.at(-1)).toMatchObject({
+        revision: committed!.revision,
+        wakeAt: committed!.wakeAt,
+      });
       const beforeRead = publications.length;
       await expect(fixture.call("inspectPassiveState")).resolves.toBe("ready");
-      expect(publications).toHaveLength(beforeRead + 1);
+      expect(publications).toHaveLength(beforeRead);
       expect(publications.at(-1)).toMatchObject({
         revision: committed!.revision,
         wakeAt: 0,
@@ -171,18 +203,7 @@ describe("native vessel alarm ownership", () => {
       expect(methods).not.toContain("workspace-state.alarmClear");
       expect(faux.state.callCount).toBe(0);
 
-      publicationFailure = "original host source publication failure";
-      await expect(fixture.call("inspectPassiveState")).rejects.toThrow(
-        publicationFailure,
-      );
-      publicationFailure = undefined;
-      await expect(fixture.call("inspectPassiveState")).resolves.toBe("ready");
-      expect(publications.at(-1)).toMatchObject({
-        revision: committed!.revision,
-        wakeAt: 0,
-      });
-
-      await fixture.instance.releaseForLifecycle({
+      await releaseAcrossPhases(fixture.instance, {
         epoch: "cold-alarm-restart",
         mode: "suspend",
         reason: "restore retained pending cancellation",
@@ -194,12 +215,26 @@ describe("native vessel alarm ownership", () => {
         { db: fixture.db },
       );
       current.instance.models.setProvider(faux.provider);
+      await current.instance.open();
+      publicationFailure = "original host source publication failure";
+      await expect(current.call("inspectPassiveState")).rejects.toThrow(
+        publicationFailure,
+      );
+      publicationFailure = undefined;
+      await expect(current.call("inspectPassiveState")).resolves.toBe("ready");
+      expect(publications.at(-1)).toMatchObject({
+        revision: committed!.revision,
+        wakeAt: committed!.wakeAt,
+      });
+      const afterColdReplay = publications.length;
+      await expect(current.call("inspectPassiveState")).resolves.toBe("ready");
+      expect(publications).toHaveLength(afterColdReplay);
       const beforeCancel = methods.length;
       await expect(
         current.call("interruptChannel", binding.channelId),
       ).resolves.toEqual({ interrupted: true });
-      expect(methods.slice(beforeCancel)).toContain(
-        "workspace-state.entity.resolveActive",
+      expect(methods.slice(beforeCancel)).not.toContain(
+        "workspace-state.alarmSourceRegister",
       );
       const reopened = await current.instance.open();
       expect(
@@ -236,7 +271,7 @@ describe("native vessel alarm ownership", () => {
     } finally {
       publicationFailure = undefined;
       try {
-        await current.instance.releaseForLifecycle({
+        await releaseAcrossPhases(current.instance, {
           epoch: "alarm-test-release",
           mode: "suspend",
           reason: "test complete",

@@ -561,7 +561,7 @@ describe("${className}", () => {
     } finally {
       try {
         const released = await instance.releaseForLifecycle({
-          epoch: "test-end", mode: "suspend", reason: "test", deadlineMs: 0,
+          epoch: "test-end", phase: "release", mode: "suspend", reason: "test", deadlineMs: 0,
         });
         expect(released.status).toBe("ready");
       } finally {

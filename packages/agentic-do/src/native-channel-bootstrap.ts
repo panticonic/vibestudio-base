@@ -75,6 +75,12 @@ const HistoryMessages = defineDoc<{
  * Join must replay the exact committed relationship horizon on a lost response.
  */
 export function createNativeChannelBootstrap(options: {
+  /** Independent finite resource preparation overlaps remote membership. */
+  readonly prepareResources?: (
+    binding: NativeChannelBinding,
+    context: Context,
+  ) => Promise<void>;
+  readonly releaseResources?: (binding: NativeChannelBinding) => void;
   readonly join: (
     binding: NativeChannelBinding,
     intent: JsonValue,
@@ -112,11 +118,24 @@ export function createNativeChannelBootstrap(options: {
       case "join": {
         let next: OpeningCheckpoint | null = null;
         try {
-          const page = await options.join(
-            current.input.binding,
-            current.input.intent,
-            context,
-          );
+          const work = await Promise.allSettled([
+            options.join(current.input.binding, current.input.intent, context),
+            options.prepareResources?.(current.input.binding, context),
+          ]);
+          const failed = work.find((result) => result.status === "rejected");
+          if (failed?.status === "rejected") throw failed.reason;
+          const page = (
+            work[0] as PromiseFulfilledResult<ChannelReplayEnvelope | undefined>
+          ).value;
+          if (
+            page?.ready.contextId !== undefined &&
+            page.ready.contextId !== current.input.binding.contextId
+          )
+            throw new Error(
+              "Channel bootstrap replay changed its authoritative context",
+            );
+          // Canonical channel controls remain audited in the channel log. They
+          // are not model history and need no second native persistence phase.
           const retained =
             page === undefined
               ? null
@@ -124,7 +143,15 @@ export function createNativeChannelBootstrap(options: {
                   omitUndefinedProperties: true,
                 }) as JsonValue);
           next =
-            current.input.history.kind === "native-import"
+            current.input.history.kind === "native-import" ||
+            (page !== undefined &&
+              !page.ready.hasMoreAfter &&
+              !page.logEvents.some(
+                (event) =>
+                  event.type === "agentic.trajectory.v1/event" ||
+                  options.contextForEvent(current.input.binding, event).length >
+                    0,
+              ))
               ? { phase: "configure" }
               : {
                   phase: "history",
@@ -138,6 +165,7 @@ export function createNativeChannelBootstrap(options: {
           );
         } catch (error) {
           next = null;
+          options.releaseResources?.(current.input.binding);
           await rt.parkFailure(error, context);
         }
         return next;
@@ -286,6 +314,7 @@ export function createNativeChannelBootstrap(options: {
           }, context);
         } catch (error) {
           nextCheckpoint = null;
+          options.releaseResources?.(current.input.binding);
           await rt.parkFailure(error, context);
         }
         return nextCheckpoint;
@@ -340,6 +369,8 @@ export function createNativeChannelBootstrap(options: {
         } catch (error) {
           await rt.parkFailure(error, context);
           return null;
+        } finally {
+          options.releaseResources?.(current.input.binding);
         }
         return options.afterConfiguration ? { phase: "activate" } : null;
       }
@@ -579,7 +610,12 @@ export function createNativeChannelBootstrap(options: {
     },
     /** The launch contract: retain one intent and return only after complete
      * history, instructions, model policy and executable tools are committed. */
-    async initialize(harness: Harness, binding: NativeChannelBinding, intent: JsonValue, context: Context) {
+    async initialize(
+      harness: Harness,
+      binding: NativeChannelBinding,
+      intent: JsonValue,
+      context: Context,
+    ) {
       await this.open(harness, binding, intent, context);
       return observeOpening(harness, binding, context);
     },

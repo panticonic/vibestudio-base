@@ -13,6 +13,7 @@ import {
 } from "@workspace/agentic-protocol";
 import { sha256HexSyncText } from "@vibestudio/content-addressing";
 import type { ChannelEvent, ParticipantDescriptor } from "@workspace/harness";
+import type { ServerLogEvent } from "@workspace/pubsub";
 import type {
   VcsCompareResult,
   VcsStatusResult,
@@ -626,9 +627,8 @@ class TestVessel extends AgentVesselBase {
         },
       ),
       recordTaskProvenance: vi.fn(async () => undefined),
-      relationshipState: vi.fn(async () => ({ revision: 0, active: false })),
       join: vi.fn(
-        async (input: { participantId: string; revision: number }) => {
+        async (input: { participantId: string; operationId: string }) => {
           operationLog.push(`channel:${channelId}:join`);
           stub.subscriptions.push({
             channelId,
@@ -642,7 +642,7 @@ class TestVessel extends AgentVesselBase {
               ready: { totalCount: 0, envelopeCount: 0 },
             },
             participantId: input.participantId,
-            revision: input.revision,
+            revision: 1,
           };
         },
       ),
@@ -785,8 +785,8 @@ async function makePromptProbe(config?: unknown): Promise<PromptEventProbe> {
 }
 function customChannelEvent(
   type: string,
-  overrides: Partial<ChannelEvent> = {},
-): ChannelEvent {
+  overrides: Partial<ServerLogEvent> = {},
+): ServerLogEvent {
   return {
     id: 17,
     messageId: "custom-envelope-17",

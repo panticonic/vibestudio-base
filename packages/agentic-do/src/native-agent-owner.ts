@@ -76,7 +76,7 @@ interface RetainedModelConnection {
  * ports. No old vessel, loop driver or executor participates in this owner.
  */
 export abstract class NativeAgentOwner extends PanelDurableObjectBase {
-  static override schemaVersion = 1;
+  static override schemaVersion = 4;
 
   private opening: Promise<Harness> | null = null;
   private harness: Harness | null = null;
@@ -154,6 +154,12 @@ export abstract class NativeAgentOwner extends PanelDurableObjectBase {
   protected override beginLifecycleRelease(input: LifecyclePrepareInput): void {
     super.beginLifecycleRelease(input);
     if (input.phase === "quiesce") this.sealed = true;
+  }
+
+  protected override async cancelLifecyclePreparation(input: LifecyclePrepareInput): Promise<void> {
+    await super.cancelLifecyclePreparation(input);
+    this.settlementSealed = false;
+    this.sealed = false;
   }
 
   /** Failed cleanup retains the exact connection and request for the domain owner. */
@@ -305,6 +311,12 @@ export abstract class NativeAgentOwner extends PanelDurableObjectBase {
   }
 
   /** Every framework route, including alarms and hibernation, crosses this gate. */
+  private tracedSchemaInitialization: Promise<void> | null = null;
+
+  private traceOwnerStartup(phase: string, startedAt: number): void {
+    console.info("[NativeAgentOwner] startup", JSON.stringify({ runtimeId: this.rpcSelfId, phase, startedAt, durationMs: Date.now() - startedAt }));
+  }
+
   protected override initializeSchema(): Promise<void> {
     if (this.env["VIBESTUDIO_SCHEMA_PROBE"] !== true) {
       const descriptor = this.env["VIBESTUDIO_SCHEMA_DESCRIPTOR"] as
@@ -322,7 +334,15 @@ export abstract class NativeAgentOwner extends PanelDurableObjectBase {
         );
       }
     }
-    return super.initializeSchema();
+    const startedAt = Date.now();
+    const initialization = super.initializeSchema();
+    if (!this.tracedSchemaInitialization) {
+      this.tracedSchemaInitialization = initialization;
+      void initialization.then(() => this.traceOwnerStartup("schema", startedAt), () => {
+        if (this.tracedSchemaInitialization === initialization) this.tracedSchemaInitialization = null;
+      });
+    }
+    return initialization;
   }
 
   protected callAgentHost: AgentHostCall = (method, args, options) =>
@@ -398,7 +418,9 @@ export abstract class NativeAgentOwner extends PanelDurableObjectBase {
 
   private async openAgent(): Promise<Harness> {
     try {
+      let phaseStartedAt = Date.now();
       await this.prepareAgentRegistry();
+      this.traceOwnerStartup("registry", phaseStartedAt);
       const options = this.agentOptions();
       options.registry.install(
         defineExtension({
@@ -411,16 +433,20 @@ export abstract class NativeAgentOwner extends PanelDurableObjectBase {
           "Pi product owner requires its protected model request port",
         );
       }
+      phaseStartedAt = Date.now();
       const harness = await openPlatformAgentSession(
         async () => {
-          await this.registerLifecycleRelease({ owner: "pi" });
+          // Native owner admission atomically declared this release lease.
           this.leaseRegistered = true;
           const database = new NativeDatabase(this.native);
           this.connectionReleased = false;
           try {
             // The owning schema gate already committed and validated the whole
             // store. SqliteStorage consumes that gate, never a second installer.
-            return await SqliteStorage.open(database, () => Promise.resolve());
+            const sqliteStartedAt = Date.now();
+            const storage = await SqliteStorage.open(database, () => Promise.resolve());
+            this.traceOwnerStartup("sqlite-open", sqliteStartedAt);
+            return storage;
           } catch (error) {
             try {
               await database.close();
@@ -436,7 +462,12 @@ export abstract class NativeAgentOwner extends PanelDurableObjectBase {
           }
         },
         this.loadedImage(),
-        this.callAgentHost,
+        async (method, args, options) => {
+          const startedAt = Date.now();
+          const result = await this.callAgentHost(method, args, options);
+          if (method === "workspace-state.alarmSourceRegister") this.traceOwnerStartup("owner-admission", startedAt);
+          return result;
+        },
         {
           ...options,
           onReport: (error) => {
@@ -447,6 +478,7 @@ export abstract class NativeAgentOwner extends PanelDurableObjectBase {
         },
         BACKGROUND_CONTEXT,
       );
+      this.traceOwnerStartup("session-open", phaseStartedAt);
       this.harness = harness;
       return harness;
     } catch (error) {
@@ -524,12 +556,11 @@ export abstract class NativeAgentOwner extends PanelDurableObjectBase {
     // Provenance belongs to durable tasks, not to this activation's connection
     // cache. Restore the same host-bound Session before reading its task; the
     // bound open rejects a different owner/image and never submits new work.
-    const harness = this.existingAgentSession() ?? (await this.agentSession());
+    const harness = this.existingAgentSession() ?? (await this.restoreAgentSession());
     return inspectNativeInvocationSource(
       harness,
       checked,
       this.loadedImage(),
-      this.callAgentHost,
       BACKGROUND_CONTEXT,
     );
   }
@@ -554,12 +585,7 @@ export abstract class NativeAgentOwner extends PanelDurableObjectBase {
           "Authority receipt hints require the verified host server",
         );
       authorityMethods.acquisitionReceipt.args.parse([{ acquisitionId }]);
-      const harness = this.sealed
-        ? (this.harness ??
-          (() => {
-            throw new Error("Pi owner has no admitted Session for settlement");
-          })())
-        : await this.agentSession();
+      const harness = await this.restoreAgentSession();
       return consumeAuthorityReceipt(
         harness,
         acquisitionId,
@@ -592,12 +618,7 @@ export abstract class NativeAgentOwner extends PanelDurableObjectBase {
       const { runId } = evalGetArgsSchema.parse({ runId: payload?.runId });
       // Existing-domain settlement remains serviceable while new admission is
       // sealed and the resource owner awaits its cleanup receipt.
-      const harness = this.sealed
-        ? (this.harness ??
-          (() => {
-            throw new Error("Pi owner has no admitted Session for settlement");
-          })())
-        : await this.agentSession();
+      const harness = await this.restoreAgentSession();
       const route = await retainedEvalRunRoute(
         harness,
         runId,

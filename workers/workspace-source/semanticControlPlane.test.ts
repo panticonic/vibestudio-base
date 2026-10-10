@@ -1,3 +1,10 @@
+import { schemaRpcMock } from "@vibestudio/rpc/test-utils";
+import { durableObjectServiceFixture } from "@vibestudio/service-schemas/test-utils";
+import { PubSubChannel } from "../pubsub-channel/channel-do.js";
+import { prepareChannelLogEvent } from "@workspace/agentic-protocol";
+import type { ChannelLog } from "../pubsub-channel/log-store.js";
+import { observeChannelEvent } from "../pubsub-channel/channel-observation.js";
+import { serializeRpcFailure } from "@vibestudio/rpc";
 import { notificationMethods } from "@vibestudio/service-schemas/notification";
 // Builtin semantic-authority tests.
 import { describe, expect, it } from "vitest";
@@ -35,6 +42,29 @@ const createTestDO: typeof createBaseTestDO = (DOClass, env, opts) =>
     { RPC_FETCH: notificationRpcFetch, ...env },
     opts,
   );
+
+/** These graph-query tests explicitly join the actual owner-local observation
+ * boundary; publication source commits alone do not imply global visibility. */
+async function observePublicationIntents(
+  gad: Awaited<ReturnType<typeof createTestDO<typeof GadWorkspaceDO>>>,
+  channelId: string,
+): Promise<void> {
+  const channel = await createTestDO(PubSubChannel, {__objectKey:channelId});
+  const ledger=(channel.instance as unknown as {channelLog:ChannelLog}).channelLog.ledger;
+  const target="do:workers/workspace-source:GadWorkspaceDO:workspace";
+  const rpc=schemaRpcMock({call:async(destination,method,args)=>{
+    if(destination === "main" && method === "workers.resolveService") return durableObjectServiceFixture(target,{source:"workers/workspace-source",className:"GadWorkspaceDO",objectKey:"workspace"});
+    if(destination === target) return gad.callAs(channelCaller(channelId),method,...args);
+    throw new Error(`Unexpected publication observer ${destination}.${method}`);
+  }});
+  for(const row of gad.sql.exec(`SELECT intent_json FROM publication_intents WHERE channel_id = ? ORDER BY intent_order`,channelId).toArray()) {
+    const prepared=prepareChannelLogEvent(JSON.parse(String(row["intent_json"])));
+    const {publish:_publish,appendedAtExplicit:_explicit,...semantic}=prepared;
+    const envelope=ledger.append(semantic,"exact");
+    const receipt=await observeChannelEvent(rpc,channelId,{kind:"append",sequence:envelope.seq,envelopes:[envelope]});
+    ledger.markObservedThrough(envelope.seq,receipt.observedSequence,receipt.envelopeId);
+  }
+}
 
 const owner = { kind: "agent" as const, id: "agent-1" };
 const GENESIS = GENESIS_EVENT_HASH;
@@ -759,101 +789,96 @@ describe("GadWorkspaceDO unified log and semantic VCS schema", () => {
 });
 
 describe("appendLogEvent core (§3.2)", () => {
-  it("retains publication delivery across failure, retry, and stale settlement", async () => {
+  it("owns one immutable publication intent per canonical destination and rejects conflicting audiences before commit", async () => {
     const { call, sql } = await createTestDO(GadWorkspaceDO);
-    await appendTrajectoryEvents(call, {
-      trajectoryId: "trajectory:publication-retry",
-      branchId: "main",
-      owner,
-      events: [
-        {
-          eventId: "event:publication-retry",
-          event: event("system.event", {
-            payload: {
-              protocol: AGENTIC_PROTOCOL_VERSION,
-              kind: "publication-retry-test",
-              details: { text: "hello" },
-            },
-          }),
-          publish: { channelIds: ["channel-retry"] },
-        },
-      ],
-    });
+    const input = { logId: "publication-destinations", head: "main", logKind: "trajectory", events: [{ envelopeId: "duplicate-destination", actor: owner, payloadKind: "system.event", payload: { protocol: AGENTIC_PROTOCOL_VERSION, kind: "test" }, publish: { channels: [{ channelId: "destination" }, { channelId: "destination" }] } }] };
+    const result = await call("appendLogEvent", input);
+    expect(result.published).toHaveLength(1);
+    expect(sql.exec("SELECT COUNT(*) AS total FROM publication_intents").one()["total"]).toBe(1);
+    expect(sql.exec("SELECT COUNT(*) AS total FROM publication_delivery_outbox").one()["total"]).toBe(1);
+    await expect(call("appendLogEvent", { ...input, events: [{ ...input.events[0]!, envelopeId: "conflict", publish: { channels: [{ channelId: "destination", audience: [{ kind: "agent", id: "one" }] }, { channelId: "destination", audience: [{ kind: "agent", id: "two" }] }] } }] })).rejects.toThrow("different canonical audiences");
+    expect((await call("readLog", { logId: input.logId, head: input.head })).length).toBe(1);
+  });
 
-    const workerId = "driver-publication-1";
-    const [first] = await call(
-      "claimReadyWork",
-      "workspace-publication",
-      {
-        workerId,
-        now: Date.now(),
-        limit: 10,
-      },
-    );
-    expect(first).toMatchObject({
-      generation: 1,
-      attempt: 1,
-      payload: {
-        laneKey: "channel-retry",
-        target: {
-          source: "workers/pubsub-channel",
-          className: "PubSubChannel",
-          objectKey: "channel-retry",
-        },
-      },
-    });
+  it("commits an empty root without events and preserves its exact identity on replay", async () => {
+    const { call } = await createTestDO(GadWorkspaceDO);
+    const root = { logId: "channel:empty-root", head: "main", logKind: "channel" };
+    await expect(call("initializeLogHead", root)).resolves.toEqual({ seq: 0, hash: GENESIS });
+    await expect(call("initializeLogHead", root)).resolves.toEqual({ seq: 0, hash: GENESIS });
+    await expect(call("initializeLogHead", { ...root, logKind: "trajectory" })).rejects.toThrow("root identity");
+    const fork = await call("forkLog", { fromLogId: root.logId, fromHead: "main", toLogId: "channel:empty-child", toHead: "main", atSeq: 0 });
+    expect(fork).toMatchObject({ forkSeq: 0, forkHash: GENESIS });
+    await expect(call("initializeLogHead", { ...root, logId: "channel:empty-child" })).rejects.toThrow("root identity");
+    const rows = await call("readLog", { logId: root.logId, head: "main" });
+    expect(rows).toEqual([]);
+  });
 
-    const failed = await call(
-      "failReadyWork",
-      "workspace-publication",
-      {
-        workerId,
-        itemId: first!.itemId,
-        generation: first!.generation,
-      },
-    );
-    if (failed === "stale") throw new Error("Expected the claimed work item to fail");
-    expect(failed.retryAt).toBeGreaterThan(Date.now());
-    await expect(
-      call("claimReadyWork", "workspace-publication", {
-        workerId,
-        now: failed.retryAt - 1,
-        limit: 10,
-      }),
-    ).resolves.toEqual([]);
+  it("retains immutable publication intents and joins original terminal failures without retries", async () => {
+    const { instance, call, sql } = await createTestDO(GadWorkspaceDO);
+    const request = {
+      trajectoryId: "trajectory:publication", branchId: "main", owner,
+      events: [{eventId:"event:publication", event:event("system.event", {
+        payload:{protocol:AGENTIC_PROTOCOL_VERSION,kind:"publication-test",details:{text:"hello"}},
+      }), publish:{channelIds:["channel-target"]}}],
+    };
+    const appended = await appendTrajectoryEvents(call, request);
+    const workerId = "driver-publication";
+    const [claim] = await call("claimReadyWork", "workspace-publication", {workerId,now:Date.now(),limit:10});
+    expect(claim).toMatchObject({generation:1,payload:{laneKey:"channel-target",intents:[{
+      envelopeId:"pub:event:publication:channel-target",causality:{originLogId:"trajectory:publication",originEnvelopeId:"event:publication"},
+    }]}});
+    expect(await call("readLog",{logId:"channel-target",head:"main"})).toEqual([]);
+    const release = await instance.prepareDurableWorkRelease("peer-obligations");
+    expect(release.queues).toEqual(["workspace-publication"]);
+    const waiting = instance.waitDurableWorkRelease("peer-obligations", release.barrier);
+    let settled = false;
+    void waiting.then(()=>{settled=true;},()=>{settled=true;});
+    await Promise.resolve();
+    expect(settled).toBe(false);
+    const original = new Error("destination local commit refused");
+    await call("failReadyWork", "workspace-publication", {workerId,itemId:claim!.itemId,generation:claim!.generation,error:serializeRpcFailure(original)});
+    await expect(waiting).rejects.toThrow(original.message);
+    await expect(call("claimReadyWork", "workspace-publication", {workerId,now:Date.now()+100000,limit:10})).resolves.toEqual([]);
+    expect(sql.exec(`SELECT disposition FROM publication_delivery_outbox`).toArray()).toEqual([{disposition:"failed"}]);
+    const replayed = await appendTrajectoryEvents(call, {...request, events: request.events.map(({publish:_publish,...rest})=>rest)});
+    expect(replayed.published).toEqual(appended.published);
+  });
 
-    const [retry] = await call(
-      "claimReadyWork",
-      "workspace-publication",
-      {
-        workerId,
-        now: failed.retryAt,
-        limit: 10,
-      },
-    );
-    expect(retry).toMatchObject({ generation: 2, attempt: 2 });
-    await expect(
-      call("settleReadyWork", "workspace-publication", {
-        workerId,
-        itemId: retry!.itemId,
-        generation: first!.generation,
-        outcome: { broadcasted: 1 },
-      }),
-    ).resolves.toBe("stale");
-    await expect(
-      call("settleReadyWork", "workspace-publication", {
-        workerId,
-        itemId: retry!.itemId,
-        generation: retry!.generation,
-        outcome: { broadcasted: 1 },
-      }),
-    ).resolves.toBe("accepted");
+  it("joins canonical destination admission and retains replay receipts after settlement", async () => {
+    const { instance, call, sql } = await createTestDO(GadWorkspaceDO);
+    const request = {trajectoryId:"trajectory:settle",branchId:"main",owner,events:[{
+      eventId:"event:settle",event:event("system.event",{payload:{protocol:AGENTIC_PROTOCOL_VERSION,kind:"settle",details:{}}}),
+      publish:{channelIds:["destination"]},
+    }]};
+    const original = await appendTrajectoryEvents(call,request);
+    const [claim] = await call("claimReadyWork","workspace-publication",{workerId:"driver-settlement",now:Date.now(),limit:1});
+    const release = await instance.prepareDurableWorkRelease("peer-obligations");
+    expect(release.queues).toEqual(["workspace-publication"]);
+    const waiting = instance.waitDurableWorkRelease("peer-obligations", release.barrier);
+    await expect(call("settleReadyWork","workspace-publication",{workerId:"driver-settlement",itemId:claim!.itemId,generation:claim!.generation+1,outcome:{admitted:1}})).resolves.toBe("stale");
+    await expect(call("settleReadyWork","workspace-publication",{workerId:"driver-settlement",itemId:claim!.itemId,generation:claim!.generation,outcome:{admitted:1}})).resolves.toBe("accepted");
+    await expect(waiting).resolves.toBeUndefined();
+    expect(sql.exec(`SELECT item_id FROM publication_delivery_outbox`).toArray()).toEqual([]);
+    expect(sql.exec(`SELECT envelope_id FROM publication_intents`).toArray()).toHaveLength(1);
+    const replayed = await appendTrajectoryEvents(call,{...request,events:request.events.map(({publish:_publish,...rest})=>rest)});
+    expect(replayed.published).toEqual(original.published);
+  });
 
-    const remaining = await querySql<{ rows: unknown[] }>(
-      sql,
-      "SELECT item_id FROM publication_delivery_outbox",
-    );
-    expect(remaining.rows).toEqual([]);
+  it("claims one canonical publication head per destination and preserves source commit order", async () => {
+    const {call} = await createTestDO(GadWorkspaceDO);
+    await appendTrajectoryEvents(call,{trajectoryId:"trajectory:ordered",branchId:"main",owner,events:[
+      {eventId:"z-first",event:event("system.event",{payload:{protocol:AGENTIC_PROTOCOL_VERSION,kind:"first",details:{}}}),publish:{channelIds:["same","other"]}},
+      {eventId:"a-second",event:event("system.event",{payload:{protocol:AGENTIC_PROTOCOL_VERSION,kind:"second",details:{}}}),publish:{channelIds:["same"]}},
+    ]});
+    const workerId="driver-ordered";
+    const claims=await call("claimReadyWork","workspace-publication",{workerId,now:Date.now(),limit:10});
+    expect(claims).toHaveLength(2);
+    const same=claims.find((claim)=>(claim.payload as {laneKey:string}).laneKey === "same")!;
+    expect((same.payload as {intents:{envelopeId:string}[]}).intents[0]!.envelopeId).toBe("pub:z-first:same");
+    await expect(call("claimReadyWork","workspace-publication",{workerId,now:Date.now(),limit:10})).resolves.toEqual([]);
+    await call("settleReadyWork","workspace-publication",{workerId,itemId:same.itemId,generation:same.generation,outcome:{admitted:1}});
+    const [next]=await call("claimReadyWork","workspace-publication",{workerId,now:Date.now(),limit:10});
+    expect((next!.payload as {intents:{envelopeId:string}[]}).intents[0]!.envelopeId).toBe("pub:a-second:same");
   });
 
   it("reuses the transactional head snapshot instead of re-reading every fresh append", async () => {
@@ -992,45 +1017,13 @@ describe("appendLogEvent core (§3.2)", () => {
     );
     expect(synthesized.rows[0]?.cnt).toBe(0);
 
-    // channel log got the published envelope in the same call
-    const channelEnvelopes = await call("readLog", {
-      logId: "chan-core",
-      head: "main",
-    });
-    expect(channelEnvelopes).toHaveLength(1);
-    expect(channelEnvelopes[0]).toMatchObject({
-      logId: "chan-core",
-      head: "main",
-      seq: 1,
-      envelopeId: "pub:evt-2:chan-core",
-      payloadKind: "message.completed",
-      payload: textMessagePayload(
-        "msg-1",
-        "assistant",
-        "hello from the unified log",
-      ),
-      causality: {
-        turnId: "turn-1",
-        originLogId: "traj-core",
-        originHead: "main",
-        originEnvelopeId: "evt-2",
-      },
-    });
-    const channelHead = await call("getLogHead", {
-      logId: "chan-core",
-      head: "main",
-    });
-    expect(channelHead).toMatchObject({ logKind: "channel", seq: 1 });
-
-    // denormalized causality columns
-    const denorm = await querySql<{ rows: Array<Record<string, unknown>> }>(
-      sql,
-      "SELECT origin_log_id, origin_envelope_id FROM log_events WHERE log_id = ? AND envelope_id = ?",
-      ["chan-core", "pub:evt-2:chan-core"],
-    );
-    expect(denorm.rows[0]).toMatchObject({
-      origin_log_id: "traj-core",
-      origin_envelope_id: "evt-2",
+    // The source commit retains an exact publication intent. The channel owner
+    // assigns its canonical cursor when the host delivers that intent.
+    expect(await call("readLog", {logId:"chan-core",head:"main"})).toEqual([]);
+    const intents = sql.exec(`SELECT intent_json FROM publication_intents WHERE channel_id = ?`,"chan-core").toArray();
+    expect(JSON.parse(String(intents[0]!["intent_json"]))).toMatchObject({
+      envelopeId:"pub:evt-2:chan-core",payloadKind:AGENTIC_EVENT_PAYLOAD_KIND,
+      causality:{originLogId:"traj-core",originHead:"main",originEnvelopeId:"evt-2"},
     });
 
     // projections keyed (log_id, head)
@@ -1598,12 +1591,8 @@ describe("trajectory projection invariants", () => {
     expect(
       await countRows(sql, "envelope_id = ?", ["event-message-idempotent"]),
     ).toBe(1);
-    // the deterministic publication envelope also stays single
-    expect(
-      await countRows(sql, "envelope_id = ?", [
-        "pub:event-message-idempotent:channel-1",
-      ]),
-    ).toBe(1);
+    expect(sql.exec(`SELECT envelope_id FROM publication_intents WHERE envelope_id = ?`, "pub:event-message-idempotent:channel-1").toArray()).toHaveLength(1);
+    expect(await countRows(sql, "envelope_id = ?", ["pub:event-message-idempotent:channel-1"])).toBe(0);
   });
 
   it("continues trajectory append replay from an already-applied prefix", async () => {
@@ -3831,7 +3820,8 @@ describe("stored-value refs (§3.14)", () => {
 
 describe("lineage queries over causality edges (§3.15)", () => {
   it("links trajectory events to deterministic channel publications and back", async () => {
-    const { call } = await createTestDO(GadWorkspaceDO);
+    const gad = await createTestDO(GadWorkspaceDO);
+    const {call}=gad;
     const result = await appendTrajectoryEvents(call, {
       trajectoryId: "traj-1",
       branchId: "main",
@@ -3860,6 +3850,7 @@ describe("lineage queries over causality edges (§3.15)", () => {
       }),
     ]);
 
+    await observePublicationIntents(gad,"channel-1");
     const envelopes = (
       await call("readChannelEnvelopes", {
         channelId: "channel-1",
@@ -3997,7 +3988,8 @@ describe("lineage queries over causality edges (§3.15)", () => {
   });
 
   it("keeps side trajectory events private while joining a published summary back to downstream consumers", async () => {
-    const { call } = await createTestDO(GadWorkspaceDO);
+    const gad = await createTestDO(GadWorkspaceDO);
+    const {call}=gad;
     await appendTrajectoryEvents(call, {
       trajectoryId: "traj-main",
       branchId: "side-task",
@@ -4033,6 +4025,7 @@ describe("lineage queries over causality edges (§3.15)", () => {
       ],
     });
 
+    await observePublicationIntents(gad,"main-channel");
     const sideEnvelopes = await call("getEnvelopesForTrajectory", {
       branchId: "side-task",
     });

@@ -33,6 +33,7 @@ import {
   type VcsSearchInput,
   type VcsWalkInput,
   type VcsReadFileInput,
+  type VcsReadFilesInput,
   type VcsReadMemoryInput,
   type VcsResolveRepositoryInput,
   type VcsResolveRepositoryResult,
@@ -1545,6 +1546,8 @@ export class SemanticWorkspace {
           kind: "complete",
           result: this.resolveRepository(parsed as VcsResolveRepositoryInput),
         };
+      case "readFiles":
+        return this.readFiles(parsed as VcsReadFilesInput);
       case "readFile":
         return this.readFile(parsed as VcsReadFileInput);
       case "listDirectory":
@@ -2061,6 +2064,7 @@ export class SemanticWorkspace {
       readMemory: true,
       resolveRepository: true,
       readFile: true,
+      readFiles: true,
       listDirectory: true,
       listFiles: true,
     };
@@ -4180,13 +4184,10 @@ export class SemanticWorkspace {
       );
       const integrationSourceEventIds = derivedSources;
       for (const sourceEventId of integrationSourceEventIds) {
-        const comparison = this.mergeComparison(
-          workingHead,
-          {
-            kind: "event",
-            eventId: sourceEventId,
-          },
-        );
+        const comparison = this.mergeComparison(workingHead, {
+          kind: "event",
+          eventId: sourceEventId,
+        });
         const remaining = comparison.coordinates
           .filter(
             (coordinate) =>
@@ -7912,35 +7913,65 @@ export class SemanticWorkspace {
     };
   }
 
-  private readFile(input: VcsReadFileInput): SemanticDispatchResult {
-    const root = this.deps.store.stateRoot(asState(input.state));
-    const point =
-      input.file.kind === "id"
-        ? this.deps.store.facts.file(root, input.file.fileId)
-        : this.deps.store.facts.fileAtPath(
-            root,
-            input.repositoryId,
-            input.file.path,
-          );
-    if (
-      !point ||
-      point.state.presence !== "placed" ||
-      point.state.repositoryId !== input.repositoryId ||
-      point.repository.presence !== "present" ||
-      point.repository.repositoryId !== input.repositoryId
-    ) {
-      return { kind: "complete", result: null };
-    }
-    const lineage = this.fileLineageAt(
-      asState(input.state),
-      point.state.fileId,
-    );
+  private readFiles(input: VcsReadFilesInput): SemanticDispatchResult {
     return {
       kind: "host-read",
       request: {
+        kind: "read-semantic-blobs",
+        files: this.fileReadRequests(input),
+      },
+    };
+  }
+
+  private readFile(input: VcsReadFileInput): SemanticDispatchResult {
+    const request = this.fileReadRequests({
+      state: input.state,
+      files: [{ repositoryId: input.repositoryId, file: input.file }],
+    })[0];
+    return request === null
+      ? { kind: "complete", result: null }
+      : { kind: "host-read", request: request! };
+  }
+
+  /** Resolve the exact state and authored lineage once for the entire read,
+   * retaining selector order, absence and repository ownership. */
+  private fileReadRequests(input: VcsReadFilesInput): Array<Row | null> {
+    const state = asState(input.state);
+    const root = this.deps.store.stateRoot(state);
+    const points = input.files.map((selector) => {
+      const point =
+        selector.file.kind === "id"
+          ? this.deps.store.facts.file(root, selector.file.fileId)
+          : this.deps.store.facts.fileAtPath(
+              root,
+              selector.repositoryId,
+              selector.file.path,
+            );
+      return point &&
+        point.state.presence === "placed" &&
+        point.state.repositoryId === selector.repositoryId &&
+        point.repository.presence === "present" &&
+        point.repository.repositoryId === selector.repositoryId
+        ? { state: point.state, repository: point.repository }
+        : null;
+    });
+    const lineages = this.fileLineagesAt(state, [
+      ...new Set(
+        points.flatMap((point) => (point ? [point.state.fileId] : [])),
+      ),
+    ]);
+    return points.map((point) => {
+      if (!point) return null;
+      const lineage = lineages.get(point.state.fileId);
+      if (!lineage)
+        throw new SemanticVcsError(
+          "IntegrityFailure",
+          `File ${point.state.fileId} has no authoring work unit`,
+        );
+      return {
         kind: "read-semantic-blob",
         state: input.state,
-        repositoryId: input.repositoryId,
+        repositoryId: point.state.repositoryId,
         fileId: point.state.fileId,
         repoPath: point.repository.repoPath,
         path: point.state.path,
@@ -7950,8 +7981,8 @@ export class SemanticWorkspace {
         coordinateExtent: point.state.coordinateExtent,
         ...lineage,
         mode: point.state.mode,
-      },
-    };
+      };
+    });
   }
 
   private repositoryLineages(repositoryIds: readonly string[]): Map<
@@ -8233,22 +8264,6 @@ export class SemanticWorkspace {
             })
           : null,
     };
-  }
-
-  private fileLineageAt(
-    state: StateNodeRef,
-    fileId: string,
-  ): {
-    authoredChangeId: string | null;
-    authoredByWorkUnitId: string | null;
-    contentClass: "internal" | "external";
-    externalKeys: string[];
-  } {
-    const lineage = this.fileLineagesAt(state, [fileId]).get(fileId);
-    if (!lineage) {
-      throw new SemanticVcsError("IntegrityFailure", `File ${fileId} has no content origin`);
-    }
-    return lineage;
   }
 
   /** Resolve page provenance through the shared batched ancestry projection. */
