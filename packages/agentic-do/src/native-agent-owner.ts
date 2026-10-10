@@ -21,7 +21,7 @@ import {
   SqliteStorage,
 } from "@panticonic/pi-durable/storage/sqlite";
 import type { DurableObjectSchemaDescriptor } from "@vibestudio/durable/schema";
-import { rpc, withRpcContext, type RpcClient, type AcquisitionInfo, type RpcCaller } from "@vibestudio/rpc";
+import { rpc, serializeRpcFailure, withRpcContext, type RpcClient, type AcquisitionInfo, type RpcCaller } from "@vibestudio/rpc";
 import { mergeRpcOptions } from "@vibestudio/rpc/internal";
 import { evalRuntimeId } from "@vibestudio/shared/evalRuntimeIdentity";
 import { evalGetArgsSchema } from "@vibestudio/service-schemas/eval";
@@ -80,7 +80,10 @@ export abstract class NativeAgentOwner extends PanelDurableObjectBase {
 
   private opening: Promise<Harness> | null = null;
   private harness: Harness | null = null;
-  private release: Promise<LifecyclePrepareResult> | null = null;
+  private readonly releasePhases = new Map<
+    string,
+    Promise<LifecyclePrepareResult>
+  >();
   private sealed = false;
   private leaseRegistered = false;
   private connectionReleased = true;
@@ -147,6 +150,11 @@ export abstract class NativeAgentOwner extends PanelDurableObjectBase {
     input: LifecyclePrepareInput,
     harness: Harness,
   ): Promise<void>;
+
+  protected override beginLifecycleRelease(input: LifecyclePrepareInput): void {
+    super.beginLifecycleRelease(input);
+    if (input.phase === "quiesce") this.sealed = true;
+  }
 
   /** Failed cleanup retains the exact connection and request for the domain owner. */
   protected retainedModelConnections(): readonly RetainedModelConnection[] {
@@ -351,9 +359,22 @@ export abstract class NativeAgentOwner extends PanelDurableObjectBase {
   ): Promise<Harness> {
     if (this.sealed)
       throw new Error("Pi activation is sealed for lifecycle release");
-    await this.initializeSchema();
+    const harness = await this.restoreAgentSession(context);
     if (this.sealed)
       throw new Error("Pi activation is sealed for lifecycle release");
+    return harness;
+  }
+
+  /** Restore this host-bound owner without admitting input or running a turn.
+   * Retained peer obligations remain serviceable through the global peer barrier. */
+  protected async restoreAgentSession(
+    context: Context = BACKGROUND_CONTEXT,
+  ): Promise<Harness> {
+    if (this.settlementSealed)
+      throw new Error("Pi settlement admission is sealed");
+    await this.initializeSchema();
+    if (this.settlementSealed)
+      throw new Error("Pi settlement admission is sealed");
     if (!this.opening) {
       this.opening = this.runDetached(() => this.openAgent());
       const flight = this.opening;
@@ -370,8 +391,8 @@ export abstract class NativeAgentOwner extends PanelDurableObjectBase {
     }
     const harness = await this.opening;
     context.abortSignal?.throwIfAborted();
-    if (this.sealed)
-      throw new Error("Pi activation is sealed for lifecycle release");
+    if (this.settlementSealed)
+      throw new Error("Pi settlement admission is sealed");
     return harness;
   }
 
@@ -605,21 +626,17 @@ export abstract class NativeAgentOwner extends PanelDurableObjectBase {
   override releaseForLifecycle(
     input: LifecyclePrepareInput,
   ): Promise<LifecyclePrepareResult> {
-    // Seal before awaiting an in-flight open or any resource release.
-    this.sealed = true;
-    this.release ??= this.runDetached(() => this.releaseAgent(input));
-    const flight = this.release;
+    const key = `${input.epoch}:${input.phase}`;
+    const existing = this.releasePhases.get(key);
+    if (existing) return existing;
+    if (input.phase === "quiesce") this.sealed = true;
+    const flight = this.runDetached(() => this.releaseAgent(input));
+    this.releasePhases.set(key, flight);
     void flight.then((result) => {
-      if (
-        result.status === "failed" &&
-        !this.cleanupFailure &&
-        this.modelCleanupFailures.size === 0 &&
-        this.release === flight
-      ) {
-        this.release = null;
-      }
+      if (result.status === "failed" && this.releasePhases.get(key) === flight)
+        this.releasePhases.delete(key);
     });
-    return this.release;
+    return flight;
   }
 
   private async releaseAgent(
@@ -627,17 +644,26 @@ export abstract class NativeAgentOwner extends PanelDurableObjectBase {
   ): Promise<LifecyclePrepareResult> {
     try {
       if (this.opening) await this.opening.catch(() => {});
+      if (input.phase === "quiesce") return { status: "ready" };
       if (this.cleanupFailure) throw this.cleanupFailure;
-      if (this.harness && !this.connectionReleased) {
-        await this.releaseAgentResources(input, this.harness);
-        await this.reconcileAgentAuthority();
-        if (input.mode === "retire") {
-          await this.drainEvalAcknowledgements(this.harness);
-          await retireBoundAgentSession(this.harness, BACKGROUND_CONTEXT);
+      if (input.phase === "peer-obligations") {
+        // A fresh activation has no connection cache; its committed execution
+        // and domain obligations still belong to this exact host-bound owner.
+        if (!this.opening) await this.restoreAgentSession();
+        if (this.harness && !this.connectionReleased) {
+          await this.releaseAgentResources(input, this.harness);
+          await this.reconcileAgentAuthority();
+          if (input.mode === "retire") {
+            await this.drainEvalAcknowledgements(this.harness);
+          }
         }
-        this.settlementSealed = true;
-        await Promise.all([...this.settlementOperations]);
+        return { status: "ready" };
+      }
+      this.settlementSealed = true;
+      await Promise.all([...this.settlementOperations]);
+      if (this.harness && !this.connectionReleased) {
         try {
+          if (input.mode === "retire") await retireBoundAgentSession(this.harness, BACKGROUND_CONTEXT);
           await this.harness.close(BACKGROUND_CONTEXT);
         } catch (error) {
           this.cleanupFailure = error;
@@ -645,19 +671,12 @@ export abstract class NativeAgentOwner extends PanelDurableObjectBase {
         }
         this.connectionReleased = true;
       }
-      // A joined invocation may have faulted after connection.close rejected.
-      // Closing SQLite is not evidence that its external resource was retired.
-      if (this.modelCleanupFailures.size === 1)
-        throw [...this.modelCleanupFailures][0];
-      if (this.modelCleanupFailures.size > 1)
-        throw new AggregateError(
-          [...this.modelCleanupFailures],
-          "Pi model resource release is unconfirmed",
-        );
-      if (this.modelConnections.size > 0)
-        throw new Error("Pi model resource release is unconfirmed");
       if (!this.connectionReleased)
         throw new Error("Pi connection release is unconfirmed");
+      // Harness.close seals and joins its active invocations while preserving
+      // their durable task records. Model-provider close receipts settle there;
+      // inspect them before acknowledging the local lifecycle lease release.
+      this.assertModelResourcesReleased();
       if (this.leaseRegistered) {
         await this.clearLifecycleRelease();
         this.leaseRegistered = false;
@@ -666,9 +685,23 @@ export abstract class NativeAgentOwner extends PanelDurableObjectBase {
     } catch (error) {
       return {
         status: "failed",
-        detail: error instanceof Error ? error.message : String(error),
+        failure: serializeRpcFailure(error),
       };
     }
+  }
+
+  private assertModelResourcesReleased(): void {
+    // Harness.close joins active invocations but leaves these receipts intact;
+    // inspect them before acknowledging local lease release.
+    if (this.modelCleanupFailures.size === 1)
+      throw [...this.modelCleanupFailures][0];
+    if (this.modelCleanupFailures.size > 1)
+      throw new AggregateError(
+        [...this.modelCleanupFailures],
+        "Pi model resource release is unconfirmed",
+      );
+    if (this.modelConnections.size > 0)
+      throw new Error("Pi model resource release is unconfirmed");
   }
 
   private async drainEvalAcknowledgements(harness: Harness): Promise<void> {

@@ -7815,8 +7815,16 @@ describe("channel fork lifetime ownership", () => {
       Object.getPrototypeOf(PubSubChannel.prototype),
       "releaseForLifecycle",
     );
+    await parent.instance.releaseForLifecycle({
+      epoch: "retire-owned",
+      phase: "quiesce",
+      mode: "retire",
+      reason: "entity_retire",
+      deadlineMs: 0,
+    });
     const retirement = parent.instance.releaseForLifecycle({
       epoch: "retire-owned",
+      phase: "release",
       mode: "retire",
       reason: "entity_retire",
       deadlineMs: 0,

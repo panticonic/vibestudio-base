@@ -10,6 +10,7 @@ import { createTypedRpcServiceClient } from "@vibestudio/shared/typedRpcServiceC
  * in @workspace/agentic-do — composable modules that extend this base.
  */
 
+import { parseLifecyclePrepareInput } from "@vibestudio/shared/doDispatcher";
 import { type MethodSchema, type ServiceMethodSchemas, type TypedServiceClient } from "@vibestudio/shared/typedServiceClient";
 import { runtimeMethods } from "@vibestudio/service-schemas/runtime";
 import { workerLogMethods } from "@vibestudio/service-schemas/workerLog";
@@ -1312,19 +1313,23 @@ export abstract class DurableObjectBase {
         const result =
           method === "__lifecycle/prepare"
             ? await (async () => {
-                const input = args[0] as LifecyclePrepareInput;
-                this.beginLifecycleRelease(input);
+                const input = parseLifecyclePrepareInput(args[0]);
+                if (input.phase === "quiesce") this.beginLifecycleRelease(input);
                 const failures: unknown[] = [];
-                try {
-                  await this.drainAlarmRpcs();
-                } catch (error) {
-                  failures.push(error);
+                if (input.phase === "quiesce") {
+                  try {
+                    await this.drainAlarmRpcs();
+                  } catch (error) {
+                    failures.push(error);
+                  }
                 }
                 let released: LifecyclePrepareResult | undefined;
-                try {
-                  released = await this.releaseForLifecycle(input);
-                } catch (error) {
-                  failures.push(error);
+                if (failures.length === 0) {
+                  try {
+                    released = await this.releaseForLifecycle(input);
+                  } catch (error) {
+                    failures.push(error);
+                  }
                 }
                 if (failures.length === 1) throw failures[0];
                 if (failures.length)

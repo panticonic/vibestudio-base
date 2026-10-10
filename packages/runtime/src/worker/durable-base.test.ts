@@ -41,6 +41,17 @@ function authenticatedTestCaller(
   };
 }
 
+async function lifecyclePhase(instance: DurableObjectBase, phase: import("@vibestudio/shared/doDispatcher").LifecyclePrepareInput["phase"], epoch = "e1"): Promise<Response> {
+  return instance.fetch(new Request("http://test/test-key/__lifecycle/prepare", {
+    method: "POST",
+    body: JSON.stringify({
+      args: [{ epoch, phase, mode: "suspend", reason: "test", deadlineMs: 0 }],
+      __instanceToken: "token", __instanceId: "do:internal/WorkspaceDO:test-key",
+      __caller: authenticatedTestCaller("__lifecycle/prepare"),
+    }),
+  }));
+}
+
 class EchoDO extends TestDurableObjectBase {
   protected createTables(): void {}
 
@@ -1297,7 +1308,7 @@ describe("DurableObjectBase lifecycle routing", () => {
         method: "POST",
         body: JSON.stringify({
           args: [
-            { epoch: "retire", mode: "retire", reason: "test", deadlineMs: 0 },
+            { epoch: "retire", phase: "quiesce", mode: "retire", reason: "test", deadlineMs: 0 },
           ],
           __instanceToken: "token",
           __instanceId: "do:test:TerminalOrderingDO:test-key",
@@ -1399,7 +1410,7 @@ describe("DurableObjectBase lifecycle routing", () => {
         new Request(`http://test/test-key/${method}`, {
           method: "POST",
           body: JSON.stringify({
-            args: [{ epoch: "e1", mode: "suspend", reason: "test" }],
+            args: [{ epoch: "e1", phase: "quiesce", mode: "suspend", reason: "test", deadlineMs: 0 }],
             __instanceToken: "token",
             __instanceId: "do:test:AsyncBoundaryFailureDO:test-key",
             __caller: authenticatedTestCaller(method),
@@ -1424,14 +1435,35 @@ describe("DurableObjectBase lifecycle routing", () => {
         method: "POST",
         body: JSON.stringify({
           args: [
-            { epoch: "e1", mode: "suspend", reason: "test", deadlineMs: 1 },
+            { epoch: "e1", phase: "release", mode: "suspend", reason: "test", deadlineMs: 1 },
           ],
         }),
       }),
     );
     expect(rejected.status).toBe(403);
 
+    expect((await lifecyclePhase(instance, "quiesce")).status).toBe(200);
     const accepted = await fetchable.fetch(
+      new Request("http://test/test-key/__lifecycle/prepare", {
+        method: "POST",
+        body: JSON.stringify({
+          args: [
+            { epoch: "e1", phase: "release", mode: "suspend", reason: "test", deadlineMs: 1 },
+          ],
+          __instanceToken: "token",
+          __instanceId: "do:internal/WorkspaceDO:test-key",
+          __caller: authenticatedTestCaller("__lifecycle/prepare"),
+        }),
+      }),
+    );
+    expect(accepted.status).toBe(200);
+    expect(instance.prepared).toBe(true);
+    expect(instance.scheduleProjectionCalls).toBe(0);
+  });
+
+  it("rejects lifecycle RPC input with no phase before releasing resources", async () => {
+    const { instance } = await createTestDO(LifecycleProbeDO);
+    const response = await instance.fetch(
       new Request("http://test/test-key/__lifecycle/prepare", {
         method: "POST",
         body: JSON.stringify({
@@ -1444,9 +1476,11 @@ describe("DurableObjectBase lifecycle routing", () => {
         }),
       }),
     );
-    expect(accepted.status).toBe(200);
-    expect(instance.prepared).toBe(true);
-    expect(instance.scheduleProjectionCalls).toBe(0);
+    expect(response.status).toBe(500);
+    await expect(response.json()).resolves.toMatchObject({
+      error: { message: "Lifecycle prepare requires a valid phase" },
+    });
+    expect(instance.prepared).toBe(false);
   });
 
   it("does not leak verified lifecycle caller into later ordinary calls", async () => {
@@ -1492,7 +1526,7 @@ describe("DurableObjectBase lifecycle routing", () => {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           args: [
-            { epoch: "e1", mode: "suspend", reason: "test", deadlineMs: 1 },
+            { epoch: "e1", phase: "quiesce", mode: "suspend", reason: "test", deadlineMs: 1 },
           ],
           __instanceToken: "token",
           __instanceId: "do:internal/WorkspaceDO:test-key",
@@ -2005,10 +2039,19 @@ describe("DurableObjectBase server-driven alarm durability", () => {
       );
       expect(response.status).toBe(200);
       const terminal = decodeRpcJson(await response.text()) as RpcEnvelope;
-      expect(terminal.message).toMatchObject({ type: "response", requestId: "handler-and-alarm-failure", error: { message: expect.stringContaining("primary handler failure"), errorKind: "access", code: "PRIMARY_HANDLER_FAILED", diagnosticId: "ca91003e-5630-479c-8c49-640c9a0fd644", errorData: { owner: "handler", detail: "preserve this payload" } } });
-      expect((terminal.message as { error?: string }).error).toContain(
-        "RPC endpoint returned HTTP 503: alarm store unavailable",
-      );
+      expect(terminal.message).toMatchObject({ type: "response", requestId: "handler-and-alarm-failure" });
+      const failure = deserializeRpcFailure((terminal.message as { error: unknown }).error);
+      expect(failure).toBeInstanceOf(AggregateError);
+      expect(failure.message).toBe("RPC handler and durable alarm persistence failed");
+      expect(failure.cause).toMatchObject({
+        code: "PRIMARY_HANDLER_FAILED", errorKind: "access",
+        errorData: { owner: "handler", detail: "preserve this payload" },
+      });
+      expect((failure.cause as Error).message).toBe("primary handler failure");
+      expect(rpcDiagnosticIdOf(failure.cause)).toBe("ca91003e-5630-479c-8c49-640c9a0fd644");
+      const errors = (failure as AggregateError).errors as Error[];
+      expect(errors[0]).toBe(failure.cause);
+      expect(errors.some((error) => error.message.includes("RPC endpoint returned HTTP 503: alarm store unavailable"))).toBe(true);
     } finally {
       server.closeAllConnections();
       await new Promise<void>((resolve, reject) =>
@@ -2162,7 +2205,7 @@ describe("DurableObjectBase server-driven alarm durability", () => {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          args: [{ epoch: "e1", mode: "suspend", reason: "test" }],
+          args: [{ epoch: "e1", phase: "quiesce", mode: "suspend", reason: "test", deadlineMs: 0 }],
           __instanceToken: "token",
           __instanceId: "do:test:TestDO:test-key",
           __caller: caller,
@@ -2200,7 +2243,7 @@ describe("DurableObjectBase server-driven alarm durability", () => {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          args: [{ epoch: "e1", mode: "suspend", reason: "test" }],
+          args: [{ epoch: "e1", phase: "quiesce", mode: "suspend", reason: "test", deadlineMs: 0 }],
           __instanceToken: "token",
           __instanceId: "do:test:TestDO:test-key",
           __caller: caller,

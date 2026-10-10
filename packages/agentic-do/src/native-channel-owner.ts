@@ -174,7 +174,7 @@ export abstract class NativeChannelOwner<
   protected async admittedNativeChannelConversation(
     channelId: string,
   ): Promise<Conversation | null> {
-    const harness = this.existingAgentSession() ?? (await this.agentSession());
+    const harness = this.existingAgentSession() ?? (await this.restoreAgentSession());
     const owner = await retainedAgentExecutionOwner(
       harness,
       BACKGROUND_CONTEXT,

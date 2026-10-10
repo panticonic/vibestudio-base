@@ -503,7 +503,11 @@ export class PubSubChannel
   override async releaseForLifecycle(
     input: LifecyclePrepareInput,
   ): Promise<LifecyclePrepareResult> {
-    this.beginLifecycleRelease(input);
+    if (input.phase === "quiesce") {
+      this.beginLifecycleRelease(input);
+      return { status: "ready" };
+    }
+    if (input.phase !== "release") return super.releaseForLifecycle(input);
     const settled = await Promise.allSettled([
       ...this.forkAdmissions.values(),
       ...this.forkDrivers.values(),

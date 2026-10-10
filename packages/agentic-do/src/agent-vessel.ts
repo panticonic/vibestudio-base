@@ -3166,7 +3166,7 @@ export abstract class AgentVesselBase extends NativeChannelOwner<NativeProductCh
   async getModelExecutionEvidence(channelId: string): Promise<unknown> {
     // This endpoint reads retained execution truth, not activation-local health.
     // Opening the same bound Session restores its journal without dispatching work.
-    const harness = this.existingAgentSession() ?? (await this.agentSession());
+    const harness = this.existingAgentSession() ?? (await this.restoreAgentSession());
     const conversation =
       await this.admittedNativeChannelConversation(channelId);
     if (!conversation)
