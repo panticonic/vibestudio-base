@@ -111,7 +111,7 @@ async function authorityFixture() {
       },
     });
   const semantic = createSemantic();
-  const initial = store.initializeWorkspace("context:test", "command:genesis");
+  const initial = store.initializeWorkspace("context:test", "command:genesis", null);
   return { semantic, restart: createSemantic, sql, store, initial };
 }
 
@@ -2251,10 +2251,7 @@ describe("SemanticWorkspace snapshot import", () => {
     });
 
     await expect(
-      semantic.dispatch(
-        "importSnapshot",
-        requestFor("command:reserved-path", ".git/config"),
-      ),
+      semantic.dispatch("importSnapshot", requestFor("command:reserved-path", ".git/config"))
     ).rejects.toThrow(/admissible canonical repository-relative file path/u);
     expect(store.pendingEffects()).toEqual([]);
 
@@ -2395,6 +2392,7 @@ describe("SemanticWorkspace snapshot import", () => {
     const target = store.initializeWorkspace(
       "context:integration-target",
       "command:integration-target-genesis",
+      null
     );
     const compared = await semantic.dispatch("compare", {
       ingress,
@@ -2692,10 +2690,7 @@ describe("SemanticWorkspace snapshot import", () => {
     );
     expect(replayedEnsure).toMatchObject({ kind: "complete" });
     expect(
-      semantic.contextMaterializationCommand(
-        "context:fresh",
-        ensurePayload.targetState,
-      ),
+      semantic.contextMaterializationCommand("context:fresh", ensurePayload.targetState)
     ).toMatchObject({
       mode: "replace",
       previousState: ensurePayload.targetState,
@@ -3303,10 +3298,7 @@ it.each(["nonoverlap", "conflict", "removal"] as const)(
         if (method === "runtime.createContext") {
           const contextId = (args[0] as { contextId: string }).contextId;
           return finish(
-            semantic.ensureContext(
-              { contextId, commandId: `ensure:${contextId}` },
-              ingress,
-            ),
+            semantic.ensureContext({ contextId, commandId: `ensure:${contextId}` }, ingress)
           );
         }
         if (method === "vcs.push") pushRequests.push(args);

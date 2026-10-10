@@ -116,7 +116,6 @@ export function authenticateWorkspaceFactRoot(root: WorkspaceFactRoot): void {
 }
 
 export function workspaceFactRadixRoot(root: WorkspaceFactRoot): PersistentRadixRoot {
-  authenticateWorkspaceFactRoot(root);
   return persistentRadixRootIdentity({
     indexKind: WORKSPACE_FACT_INDEX,
     routeStrategy: "utf16",
@@ -198,7 +197,6 @@ export function composeWorkspaceFacts(input: {
   update: WorkspaceFactIndexUpdate;
   readNode: PersistentRadixNodeReader;
 }): WorkspaceFactMutation {
-  authenticateWorkspaceFactRoot(input.basis);
   const repositoryUpdates = canonicalRepositoryUpdates(input.update.repositoryUpdates);
   const fileUpdates = canonicalFileUpdates(input.update.fileUpdates);
   if (
@@ -362,7 +360,6 @@ export function authenticateFileManifest(manifest: PersistentFileManifest): void
 }
 
 function manifestRoot(manifest: PersistentFileManifest): PersistentRadixRoot {
-  authenticateFileManifest(manifest);
   return persistentRadixRootIdentity({
     indexKind: MANIFEST_PATH_INDEX,
     routeStrategy: "utf16",
@@ -437,7 +434,6 @@ export function composeFileManifest(input: {
   updates: readonly FileManifestPathUpdate[];
   readNode: PersistentRadixNodeReader;
 }): FileManifestMutationProof {
-  authenticateFileManifest(input.basis);
   const updates = canonicalManifestUpdates(input.updates);
   if (updates.length === 0) {
     throw new WorkspaceFactError("InvalidUpdate", "file manifest update is empty");

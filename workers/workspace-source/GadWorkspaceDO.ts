@@ -138,7 +138,6 @@ import {
   type LogEnvelopeSemanticInput,
 } from "@workspace/agentic-protocol";
 import {
-  buildWorktreeManifest,
   sha256HexSyncText,
   sortForCanonicalJson,
   canonicalJson,
@@ -196,12 +195,9 @@ function createWorkspaceSourceInitializationTable(sql: {
     CREATE TABLE IF NOT EXISTS workspace_source_initializations (
       command_id TEXT PRIMARY KEY,
       request_digest TEXT NOT NULL,
-      pin_json TEXT NOT NULL CHECK (json_valid(pin_json) = 1),
-      repositories_json TEXT NOT NULL CHECK (json_valid(repositories_json) = 1),
       phase TEXT NOT NULL CHECK (
-        phase IN ('context', 'imports', 'publish', 'ready', 'failed')
+        phase IN ('observe', 'publish', 'ready', 'failed')
       ),
-      next_repository INTEGER NOT NULL CHECK (next_repository >= 0),
       context_id TEXT NOT NULL,
       genesis_event_id TEXT,
       receipt_json TEXT CHECK (receipt_json IS NULL OR json_valid(receipt_json) = 1),
@@ -1459,9 +1455,7 @@ export class GadWorkspaceDO extends DurableObjectBase {
   @schemaRpc()
   workspaceSourceTemplateInstallation(input: {
     eventId: string;
-  }):
-    | import("@vibestudio/workspace-contracts/types").WorkspaceTemplateInstallation
-    | null {
+  }): import("@vibestudio/workspace-contracts/types").WorkspaceTemplateInstallation | null {
     this.ensureReady();
     if (!this.semanticVcsStore().event(input.eventId))
       throw new Error(`Unknown workspace event ${input.eventId}`);
@@ -1516,37 +1510,43 @@ export class GadWorkspaceDO extends DurableObjectBase {
           );
         }
         repoPaths.add(repository.repoPath);
-        const contentRoot = buildWorktreeManifest(
-          repository.files.map((file) => ({
-            path: file.path,
-            contentHash: file.contentHash,
-            mode:
-              file.mode === 0o755 || file.mode === 0o100755
-                ? 0o100755
-                : 0o100644,
-          })),
-        ).stateHash;
-        if (contentRoot !== repository.contentRoot) {
-          throw new Error(
-            `Workspace source content root for ${repository.repoPath} does not match its exact snapshot`,
-          );
-        }
       }
       if (!repoPaths.has("meta")) {
         throw new Error("Workspace source snapshot has no meta repository");
       }
-      this.sql.exec(
-        `INSERT INTO workspace_source_initializations
-         (command_id, request_digest, pin_json, repositories_json, phase,
-          next_repository, context_id, genesis_event_id, receipt_json, failure_json, updated_at)
-         VALUES (?, ?, ?, ?, 'context', 0, ?, NULL, NULL, NULL, ?)`,
-        input.commandId,
-        requestDigest,
-        canonicalJson(input.pin),
-        canonicalJson(input.repositories),
-        `workspace-initialization:${this.objectKey}`,
-        nowIso(),
-      );
+      this.transaction(() => {
+        const contextId = `workspace-initialization:${this.objectKey}`;
+        const store = this.semanticVcsStore();
+        const context = store.initializeWorkspace(
+          contextId,
+          `${input.commandId}:snapshot`,
+          {
+            source: {
+              sourceUri: "vibestudio://workspace/root-template",
+              snapshotRevision: input.pin.commit,
+            },
+            repositories: input.repositories,
+          },
+        );
+        store.recordInitializedRepositoryContentRoots({
+          workspaceFactRootId: context.committed.workspaceFactRootId,
+          provenanceId: `workspace-source:${input.commandId}`,
+          repositories: input.repositories.map(({ repoPath, contentRoot }) => ({
+            repoPath,
+            contentRoot,
+          })),
+        });
+        this.sql.exec(
+          `INSERT INTO workspace_source_initializations
+           (command_id, request_digest, phase, context_id, genesis_event_id, receipt_json, failure_json, updated_at)
+           VALUES (?, ?, 'publish', ?, ?, NULL, NULL, ?)`,
+          input.commandId,
+          requestDigest,
+          contextId,
+          context.committed.ref.eventId,
+          nowIso(),
+        );
+      });
     }
 
     const ready = this.workspaceSourceInitializationInspection();
@@ -1569,17 +1569,15 @@ export class GadWorkspaceDO extends DurableObjectBase {
       const acknowledged = workspace.acknowledgeEffect(
         input.acknowledgement as SemanticEffectAcknowledgement,
       );
-      if (acknowledged.kind === "effects-pending") {
+      if (acknowledged.kind === "effects-pending")
         return this.workspaceSourcePendingInspection(
           input.commandId,
           acknowledged.effects[0],
         );
-      }
-      if (acknowledged.kind === "host-read") {
+      if (acknowledged.kind === "host-read")
         throw new Error(
           "Workspace initialization emitted an unsupported host read",
         );
-      }
     }
 
     for (let step = 0; step < input.repositories.length + 4; step += 1) {
@@ -1595,110 +1593,6 @@ export class GadWorkspaceDO extends DurableObjectBase {
       const phase = String(row["phase"]);
       const contextId = String(row["context_id"]);
       const store = this.semanticVcsStore();
-
-      if (phase === "context") {
-        // This context is private staging for one immediate protected-main
-        // publication. The exact checkout already exists at the workspace
-        // root, so initialization needs the semantic coordinate, not a second
-        // disposable filesystem projection of the same snapshot.
-        const ensured = workspace.ensureContextCoordinate(
-          {
-            contextId,
-            commandId: `${input.commandId}:context`,
-          },
-          {
-            causalParent: null,
-          },
-        );
-        if (ensured.kind !== "complete") {
-          if (ensured.kind === "host-read" || ensured.kind === "host-content") {
-            throw new Error(
-              "Workspace initialization emitted unsupported transient preparation",
-            );
-          }
-          return this.workspaceSourcePendingInspection(
-            input.commandId,
-            ensured.effects[0],
-          );
-        }
-        const context = store.contextRequired(contextId);
-        if (context.committed.ref.kind !== "event") {
-          throw new Error(
-            "Workspace source initialization context is not at an event",
-          );
-        }
-        this.sql.exec(
-          `UPDATE workspace_source_initializations
-              SET phase = 'imports', genesis_event_id = ?, updated_at = ?
-            WHERE command_id = ?`,
-          context.committed.ref.eventId,
-          nowIso(),
-          input.commandId,
-        );
-        continue;
-      }
-
-      if (phase === "imports") {
-        const importCommandId = `${input.commandId}:import`;
-        const command = this.sql
-          .exec(
-            `SELECT status FROM vcs_command_journal WHERE command_id = ?`,
-            importCommandId,
-          )
-          .toArray()[0] as JsonRecord | undefined;
-        if (command?.["status"] === "complete") {
-          const context = store.contextRequired(contextId);
-          store.recordInitializedRepositoryContentRoots({
-            workspaceFactRootId: context.committed.workspaceFactRootId,
-            provenanceId: `workspace-source:${input.commandId}`,
-            repositories: input.repositories.map((repository) => ({
-              repoPath: repository.repoPath,
-              contentRoot: repository.contentRoot,
-            })),
-          });
-          this.sql.exec(
-            `UPDATE workspace_source_initializations
-                SET phase = 'publish', updated_at = ? WHERE command_id = ?`,
-            nowIso(),
-            input.commandId,
-          );
-          continue;
-        }
-        const context = store.contextRequired(contextId);
-        const dispatched = workspace.importSnapshotCoordinate(
-          {
-            contextId,
-            commandId: importCommandId,
-            expectedWorkingHead: context.working.ref,
-            intentSummary: "Initialize the exact semantic workspace source",
-            source: {
-              kind: "generated",
-              uri: "vibestudio://workspace/root-template",
-              snapshotRevision: input.pin.commit,
-            },
-            repositories: input.repositories.map((repository) => ({
-              repoPath: repository.repoPath,
-              files: repository.files.map((file) => ({ ...file })),
-            })),
-            message: "Initialize exact workspace source",
-          },
-          {
-            causalParent: null,
-          },
-        );
-        if (dispatched.kind === "host-read") {
-          throw new Error(
-            "Workspace initialization emitted an unsupported host read",
-          );
-        }
-        if (dispatched.kind === "effects-pending") {
-          return this.workspaceSourcePendingInspection(
-            input.commandId,
-            dispatched.effects[0],
-          );
-        }
-        continue;
-      }
 
       if (phase === "publish") {
         const pushCommandId = `${input.commandId}:publish`;
@@ -1809,8 +1703,8 @@ export class GadWorkspaceDO extends DurableObjectBase {
   private workspaceSourceInitializationRow(): JsonRecord | undefined {
     return this.sql
       .exec(
-        `SELECT command_id, request_digest, pin_json, repositories_json, phase,
-                next_repository, context_id, genesis_event_id, receipt_json,
+        `SELECT command_id, request_digest, phase,
+                context_id, genesis_event_id, receipt_json,
                 failure_json, updated_at
            FROM workspace_source_initializations
           ORDER BY updated_at DESC LIMIT 1`,
@@ -2027,9 +1921,7 @@ export class GadWorkspaceDO extends DurableObjectBase {
   }
 
   @schemaRpc()
-  vcsSemanticEffectAck(input: {
-    acknowledgement: SemanticEffectAcknowledgement;
-  }): unknown {
+  vcsSemanticEffectAck(input: { acknowledgement: SemanticEffectAcknowledgement }): unknown {
     this.ensureReady();
     return this.semanticWorkspace().acknowledgeEffect(input.acknowledgement);
   }
@@ -2502,10 +2394,7 @@ export class GadWorkspaceDO extends DurableObjectBase {
 
   private logEventWhereForSegment(
     segment: LineageSegment,
-    input: Pick<
-      LogReadQuery,
-      "afterSeq" | "beforeSeq" | "payloadKind" | "payloadKinds"
-    >,
+    input: Pick<LogReadQuery, "afterSeq" | "beforeSeq" | "payloadKind" | "payloadKinds">
   ): { where: string; bindings: SqlBinding[] } {
     const clauses = ["log_id = ?", "head = ?", "seq > ?"];
     const bindings: SqlBinding[] = [
@@ -2623,22 +2512,14 @@ export class GadWorkspaceDO extends DurableObjectBase {
   }
 
   @schemaRpc()
-  getLogEvent(input: {
-    logId: string;
-    head: string;
-    envelopeId: string;
-  }): LogEnvelope | null {
+  getLogEvent(input: { logId: string; head: string; envelopeId: string }): LogEnvelope | null {
     this.ensureReady();
     const row = this.lineageEventRow(input.logId, input.head, input.envelopeId);
     return row ? this.mapLogEnvelope(row) : null;
   }
 
   @schemaRpc()
-  hasLogEvents(input: {
-    logId: string;
-    head: string;
-    envelopeIds: string[];
-  }): string[] {
+  hasLogEvents(input: { logId: string; head: string; envelopeIds: string[] }): string[] {
     this.ensureReady();
     const requested = Array.from(
       new Set(
@@ -2901,10 +2782,7 @@ export class GadWorkspaceDO extends DurableObjectBase {
       (input.expectedHeadHash ?? GENESIS_EVENT_HASH) !== pointer.hash
     ) {
       throw new Error(
-        gadAppendErrorMessage(
-          "head-conflict",
-          `log head conflict for ${input.logId}:${input.head}`,
-        ),
+        gadAppendErrorMessage("head-conflict", `log head conflict for ${input.logId}:${input.head}`)
       );
     }
     if (remaining.length > 0 && replayed.length > 0) {
@@ -5026,10 +4904,7 @@ export class GadWorkspaceDO extends DurableObjectBase {
   }
 
   @schemaRpc()
-  listTrajectoryInvocations(input: {
-    branchId: string;
-    limit?: number | null;
-  }): JsonRecord[] {
+  listTrajectoryInvocations(input: { branchId: string; limit?: number | null }): JsonRecord[] {
     this.ensureReady();
     const limit = Math.min(Math.max(input.limit ?? 200, 1), 1000);
     return this.sql
@@ -5107,10 +4982,7 @@ export class GadWorkspaceDO extends DurableObjectBase {
   }
 
   @schemaRpc()
-  getTrajectoryBranchHead(input: {
-    trajectoryId: string;
-    branchId: string;
-  }): JsonRecord | null {
+  getTrajectoryBranchHead(input: { trajectoryId: string; branchId: string }): JsonRecord | null {
     this.ensureReady();
     const row = this.logHeadRow(input.trajectoryId, input.branchId);
     if (!row) return null;
@@ -5377,9 +5249,7 @@ export class GadWorkspaceDO extends DurableObjectBase {
   }
 
   @schemaRpc()
-  listMessageTypes(input: {
-    channelId: string;
-  }): StoredChannelMessageTypeDefinition[] {
+  listMessageTypes(input: { channelId: string }): StoredChannelMessageTypeDefinition[] {
     this.ensureReady();
     const rows = this.sql
       .exec(
@@ -5450,14 +5320,9 @@ export class GadWorkspaceDO extends DurableObjectBase {
     }
     const source = payload["source"];
     if (!isStoredValueRef(source)) {
-      throw new Error(
-        `messageType.registered payload invalid: source must be stored by reference`,
-      );
+      throw new Error(`messageType.registered payload invalid: source must be stored by reference`);
     }
-    if (
-      payload["imports"] !== undefined &&
-      !isStoredValueRef(payload["imports"])
-    ) {
+    if (payload["imports"] !== undefined && !isStoredValueRef(payload["imports"])) {
       throw new Error(
         `messageType.registered payload invalid: imports must be stored by reference`,
       );
@@ -5634,9 +5499,7 @@ export class GadWorkspaceDO extends DurableObjectBase {
   }
 
   @schemaRpc()
-  getTrajectoryForEnvelope(input: {
-    envelopeId: string;
-  }): EnvelopeLineage | null {
+  getTrajectoryForEnvelope(input: { envelopeId: string }): EnvelopeLineage | null {
     this.ensureReady();
     const channelRow = this.sql
       .exec(
@@ -5776,10 +5639,7 @@ export class GadWorkspaceDO extends DurableObjectBase {
   }
 
   @schemaRpc()
-  getDownstreamConsumers(input: {
-    envelopeId: string;
-    limit?: number | null;
-  }): TrajectoryEvent[] {
+  getDownstreamConsumers(input: { envelopeId: string; limit?: number | null }): TrajectoryEvent[] {
     this.ensureReady();
     const needle = input.envelopeId;
     const rows = this.sql
@@ -6131,10 +5991,8 @@ export class GadWorkspaceDO extends DurableObjectBase {
             } = effect as JsonRecord;
             return {
               ...identity,
-              payload:
-                payloadJson == null ? null : parseJson(String(payloadJson)),
-              receipt:
-                receiptJson == null ? null : parseJson(String(receiptJson)),
+            payload: payloadJson == null ? null : parseJson(String(payloadJson)),
+            receipt: receiptJson == null ? null : parseJson(String(receiptJson)),
             };
           }) as CommandDiagnostic["effects"];
         if (effects.length > effectLimit) effectsTruncated = true;
@@ -7197,9 +7055,7 @@ export class GadWorkspaceDO extends DurableObjectBase {
 
   /** Server-only durable plan used by the child revocation cascade. */
   @schemaRpc()
-  listChannelMembershipsForUser(input: {
-    userId: string;
-  }): ChannelMembershipCleanupPlan {
+  listChannelMembershipsForUser(input: { userId: string }): ChannelMembershipCleanupPlan {
     this.ensureReady();
     const userId = this.requireInviteUserId(
       input?.userId,
@@ -7218,9 +7074,7 @@ export class GadWorkspaceDO extends DurableObjectBase {
 
   /** Final idempotent scrub after every indexed channel acknowledged removal. */
   @schemaRpc()
-  async purgeRevokedUserChannelIndexes(input: {
-    userId: string;
-  }): Promise<void> {
+  async purgeRevokedUserChannelIndexes(input: { userId: string }): Promise<void> {
     this.ensureReady();
     const userId = this.requireInviteUserId(
       input?.userId,

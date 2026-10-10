@@ -1,3 +1,4 @@
+import { snapshotContentRelations } from "./semanticWorkspace.genesis.fixture.js";
 // Builtin semantic-authority tests.
 import { describe, expect, it, vi } from "vitest";
 import { sha256Hex } from "@vibestudio/content-addressing";
@@ -202,7 +203,7 @@ describe("SemanticWorkspace repository counteractions", () => {
         },
       });
     };
-    const initial = store.initializeWorkspace("context:test", "command:genesis");
+    const initial = store.initializeWorkspace("context:test", "command:genesis", null);
 
     const importRequest = {
       ingress,
@@ -658,7 +659,11 @@ describe("SemanticWorkspace repository counteractions", () => {
       deletedCommitDispatch
     );
     acknowledgeMaterialization(deletedCommitDispatch);
-    const emptyTarget = store.initializeWorkspace("context:empty-target", "command:target-genesis");
+    const emptyTarget = store.initializeWorkspace(
+      "context:empty-target",
+      "command:target-genesis",
+      null
+    );
     const deletedComparisonDispatch = await semantic.dispatch("compare", {
       ingress,
       input: {
@@ -775,7 +780,7 @@ describe("SemanticWorkspace repository counteractions", () => {
     if (!copiedFileId) throw new Error("copy did not create a file identity");
     const copyLineage = sql
       .exec(
-        `SELECT edge.child_applied_change_id, edge.parent_applied_change_id, edge.relation,
+        `SELECT edge.child_applied_change_id, json_extract(edge.parent_ref_json, '$.appliedChangeId') AS parent_applied_change_id, edge.relation,
                 mapping.coordinate_kind, mapping.child_start, mapping.child_end,
                 mapping.parent_start, mapping.parent_end
            FROM gad_content_edges edge
@@ -1155,6 +1160,8 @@ describe("SemanticWorkspace repository counteractions", () => {
     });
     const editedBlame = vcsBlameResultSchema.parse(editedBlameDispatch.result);
     for (const span of editedBlame.spans) {
+      if (span.stop === "snapshot-boundary")
+        throw new Error("Authored import unexpectedly became workspace genesis");
       expect(span.appliedChange.appliedChangeId).toMatch(/^applied-change:/);
       const inspectedApplied = await inspect(span.appliedChange);
       expect(inspectedApplied.node).toMatchObject({
@@ -1576,6 +1583,23 @@ describe("SemanticWorkspace repository counteractions", () => {
         expect(adjacency.get(nodeKey(edge.from)), serialized).toContain(serialized);
         expect(adjacency.get(nodeKey(edge.to)), serialized).toContain(serialized);
       }
+    }
+    // Initial snapshots contribute the three content relations whose parent is
+    // an exact file coordinate rather than an authored edit.
+    const genesis = await snapshotContentRelations();
+    const snapshotNeighbors = await genesis.semantic.dispatch("neighbors", {
+      ingress,
+      input: { root: genesis.origin, limit: 20 },
+    });
+    if (snapshotNeighbors.kind !== "complete") throw new Error("Snapshot neighbors incomplete");
+    for (const edge of vcsNeighborsResultSchema.parse(snapshotNeighbors.result).edges) {
+      observedRelations.add(`${edge.kind}:${edge.from.kind}:${edge.to.kind}`);
+      const reverse = await genesis.semantic.dispatch("neighbors", {
+        ingress,
+        input: { root: edge.from, limit: 20 },
+      });
+      if (reverse.kind !== "complete") throw new Error("Snapshot reverse neighbors incomplete");
+      expect(vcsNeighborsResultSchema.parse(reverse.result).edges).toContainEqual(edge);
     }
     const normalizedRelations = Object.entries(vcsProvenanceRelationRegistry).flatMap(
       ([kind, variants]) => variants.map((variant) => `${kind}:${variant.from}:${variant.to}`)

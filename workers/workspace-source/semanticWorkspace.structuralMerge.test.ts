@@ -75,7 +75,7 @@ describe("SemanticWorkspace structural merge planning", () => {
       });
     };
 
-    const initial = store.initializeWorkspace("context:source", "command:genesis");
+    const initial = store.initializeWorkspace("context:source", "command:genesis", null);
     store.forkContext("context:source", "context:target");
     const authoredDispatch = await semantic.dispatch("edit", {
       ingress,
@@ -242,7 +242,7 @@ describe("SemanticWorkspace structural merge planning", () => {
       });
     };
 
-    const initial = store.initializeWorkspace("context:swap-source", "command:swap-genesis");
+    const initial = store.initializeWorkspace("context:swap-source", "command:swap-genesis", null);
     const createDispatch = await semantic.dispatch("edit", {
       ingress,
       input: {

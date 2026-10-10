@@ -33,20 +33,14 @@ export function workspaceRepositoryStateIdentity(
     repositoryStateId: compactId("workspace-repository-state", input),
     ...input,
   } as WorkspaceRepositoryMember;
-  authenticateWorkspaceRepositoryMember(value);
+  if (!validRepositoryPayload(value)) throw new Error("workspace repository state is invalid");
   return value;
 }
 
 export function authenticateWorkspaceRepositoryMember(
   member: WorkspaceRepositoryMember
 ): WorkspaceRepositoryMember {
-  if (
-    !member.repositoryId ||
-    repositoryStateId(member) !== member.repositoryStateId ||
-    (member.presence === "present"
-      ? !validPath(member.repoPath) || !member.fileManifestId
-      : !member.priorRepositoryStateId || !member.tombstoneChangeId)
-  ) {
+  if (!validRepositoryPayload(member) || repositoryStateId(member) !== member.repositoryStateId) {
     throw new Error("workspace repository state failed authentication");
   }
   return { ...member };
@@ -91,28 +85,15 @@ export function workspaceFileStateIdentity(
     fileStateId: compactId("workspace-file-state", input),
     ...input,
   } as WorkspaceFileState;
-  authenticateWorkspaceFileState(value);
+  if (!validFilePayload(value)) throw new Error("workspace file state is invalid");
   return value;
 }
 
 export function authenticateWorkspaceFileState(state: WorkspaceFileState): WorkspaceFileState {
   const { fileStateId: _identity, ...payload } = state;
   if (
-    !state.fileId ||
-    compactId("workspace-file-state", payload) !== state.fileStateId ||
-    (state.presence === "placed"
-      ? !state.repositoryId ||
-        !validPath(state.path) ||
-        !state.contentHash ||
-        !Number.isSafeInteger(state.mode) ||
-        state.mode < 0 ||
-        (state.contentKind !== "text" && state.contentKind !== "bytes") ||
-        !Number.isSafeInteger(state.byteLength) ||
-        state.byteLength < 0 ||
-        !Number.isSafeInteger(state.coordinateExtent) ||
-        state.coordinateExtent < 0 ||
-        (state.contentKind === "bytes" && state.coordinateExtent !== state.byteLength)
-      : !state.priorFileStateId || !state.tombstoneChangeId)
+    !validFilePayload(state) ||
+    compactId("workspace-file-state", payload) !== state.fileStateId
   ) {
     throw new Error("workspace file state failed authentication");
   }
@@ -201,25 +182,39 @@ const refusal = (
   },
 });
 
-const validRepository = (member: WorkspaceRepositoryMember | null): boolean => {
-  if (!member) return true;
-  try {
-    authenticateWorkspaceRepositoryMember(member);
-    return true;
-  } catch {
-    return false;
-  }
-};
+// Local mutations validate payloads, not identities we just generated or read
+// from our own store. Explicit authentication remains available for foreign records.
+const validRepositoryPayload = (member: WorkspaceRepositoryMember): boolean =>
+  Boolean(
+    member.repositoryId &&
+    (member.presence === "present"
+      ? validPath(member.repoPath) && member.fileManifestId
+      : member.priorRepositoryStateId && member.tombstoneChangeId)
+  );
 
-const validFile = (state: WorkspaceFileState | null): boolean => {
-  if (!state) return true;
-  try {
-    authenticateWorkspaceFileState(state);
-    return true;
-  } catch {
-    return false;
-  }
-};
+const validFilePayload = (state: WorkspaceFileState): boolean =>
+  Boolean(
+    state.fileId &&
+    (state.presence === "placed"
+      ? state.repositoryId &&
+        validPath(state.path) &&
+        state.contentHash &&
+        Number.isSafeInteger(state.mode) &&
+        state.mode >= 0 &&
+        (state.contentKind === "text" || state.contentKind === "bytes") &&
+        Number.isSafeInteger(state.byteLength) &&
+        state.byteLength >= 0 &&
+        Number.isSafeInteger(state.coordinateExtent) &&
+        state.coordinateExtent >= 0 &&
+        (state.contentKind !== "bytes" || state.coordinateExtent === state.byteLength)
+      : state.priorFileStateId && state.tombstoneChangeId)
+  );
+
+const validRepository = (member: WorkspaceRepositoryMember | null): boolean =>
+  member === null || Boolean(member.repositoryStateId && validRepositoryPayload(member));
+
+const validFile = (state: WorkspaceFileState | null): boolean =>
+  state === null || Boolean(state.fileStateId && validFilePayload(state));
 
 const canonicalRepositories = (
   updates: readonly WorkspaceRepositoryChange[]

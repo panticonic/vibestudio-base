@@ -108,10 +108,10 @@ describe("SemanticVcsStore reduced spine", () => {
     const sql = await createInMemorySql();
     createSemanticVcsSchema(sql);
     const store = new SemanticVcsStore(sql, () => timestamp);
-    store.initializeWorkspace("main", "command:main");
-    store.initializeWorkspace("template-composer-operation-z", "command:z");
-    store.initializeWorkspace("template-composer-operation-a", "command:a");
-    store.initializeWorkspace("system:other", "command:other");
+    store.initializeWorkspace("main", "command:main", null);
+    store.initializeWorkspace("template-composer-operation-z", "command:z", null);
+    store.initializeWorkspace("template-composer-operation-a", "command:a", null);
+    store.initializeWorkspace("system:other", "command:other", null);
 
     expect(store.listContexts("template-composer-operation-")).toEqual([
       "template-composer-operation-a",
@@ -129,7 +129,7 @@ describe("SemanticVcsStore reduced spine", () => {
     const sql = await createInMemorySql();
     createSemanticVcsSchema(sql);
     const store = new SemanticVcsStore(sql, () => timestamp);
-    const initial = store.initializeWorkspace("context:lineage", "command:genesis");
+    const initial = store.initializeWorkspace("context:lineage", "command:genesis", null);
     const genesis = initial.committed.ref;
     const root = store.stateRoot(genesis);
     sql.exec(
@@ -182,7 +182,7 @@ describe("SemanticVcsStore reduced spine", () => {
     const sql = await createInMemorySql();
     createSemanticVcsSchema(sql);
     const store = new SemanticVcsStore(sql, () => timestamp);
-    const initial = store.initializeWorkspace("context:diamonds", "command:genesis");
+    const initial = store.initializeWorkspace("context:diamonds", "command:genesis", null);
     const genesis = initial.committed.ref.eventId;
     const root = store.stateRoot(initial.committed.ref);
     let previous = genesis;
@@ -292,15 +292,15 @@ describe("SemanticVcsStore reduced spine", () => {
     ).toContain("coordinate_kind");
     sql.exec(
       `INSERT INTO gad_content_edges
-       (content_edge_id, child_applied_change_id, parent_applied_change_id, relation)
-       VALUES ('content-edge:copies', 'applied-change:child', 'applied-change:parent', 'copies')`
+       (content_edge_id, child_applied_change_id, parent_ref_json, relation)
+       VALUES ('content-edge:copies', 'applied-change:child', '{"kind":"applied-change","appliedChangeId":"applied-change:parent"}', 'copies')`
     );
     expect(() =>
       sql.exec(
         `INSERT INTO gad_content_edges
-         (content_edge_id, child_applied_change_id, parent_applied_change_id, relation)
+         (content_edge_id, child_applied_change_id, parent_ref_json, relation)
          VALUES ('content-edge:legacy', 'applied-change:child',
-                 'applied-change:parent', 'derived-from')`
+                 '{"kind":"applied-change","appliedChangeId":"applied-change:parent"}', 'derived-from')`
       )
     ).toThrow();
     sql.exec(
@@ -359,7 +359,7 @@ describe("SemanticVcsStore reduced spine", () => {
     const sql = await createInMemorySql();
     createSemanticVcsSchema(sql);
     const store = new SemanticVcsStore(sql, () => timestamp);
-    const initial = store.initializeWorkspace("context:one", "command:genesis");
+    const initial = store.initializeWorkspace("context:one", "command:genesis", null);
     const externalSnapshot = {
       sourceKind: "git" as const,
       sourceUri: "https://example.invalid/repository.git",
@@ -432,7 +432,7 @@ describe("SemanticVcsStore reduced spine", () => {
     const sql = await createInMemorySql();
     createSemanticVcsSchema(sql);
     const store = new SemanticVcsStore(sql, () => timestamp);
-    const initial = store.initializeWorkspace("context:one", "command:genesis");
+    const initial = store.initializeWorkspace("context:one", "command:genesis", null);
 
     const first = noEffectApplication({
       contextId: initial.contextId,
@@ -478,9 +478,9 @@ describe("SemanticVcsStore reduced spine", () => {
     const sql = await createInMemorySql();
     createSemanticVcsSchema(sql);
     const store = new SemanticVcsStore(sql, () => timestamp);
-    const initial = store.initializeWorkspace("context:root", "command:root-genesis");
+    const initial = store.initializeWorkspace("context:root", "command:root-genesis", null);
     for (let index = 0; index < 20; index++) {
-      store.initializeWorkspace(`context:shared-${index}`, `command:shared-${index}`);
+      store.initializeWorkspace(`context:shared-${index}`, `command:shared-${index}`, null);
     }
     const parity = vi.spyOn(store.facts, "assertIndexParity");
     store.assertIntegrity();
@@ -495,9 +495,9 @@ describe("SemanticVcsStore reduced spine", () => {
     const sql = await createInMemorySql();
     createSemanticVcsSchema(sql);
     const store = new SemanticVcsStore(sql, () => timestamp);
-    const target = store.initializeWorkspace("context:target", "command:target-genesis");
-    const left = store.initializeWorkspace("context:left", "command:left-genesis");
-    const right = store.initializeWorkspace("context:right", "command:right-genesis");
+    const target = store.initializeWorkspace("context:target", "command:target-genesis", null);
+    const left = store.initializeWorkspace("context:left", "command:left-genesis", null);
+    const right = store.initializeWorkspace("context:right", "command:right-genesis", null);
 
     const local = noEffectApplication({
       contextId: target.contextId,
@@ -528,7 +528,7 @@ describe("SemanticVcsStore reduced spine", () => {
     const sql = await createInMemorySql();
     createSemanticVcsSchema(sql);
     const store = new SemanticVcsStore(sql, () => timestamp);
-    const initial = store.initializeWorkspace("context:one", "command:genesis");
+    const initial = store.initializeWorkspace("context:one", "command:genesis", null);
     const cause = {
       parent: { logId: "trajectory:one", head: "main", invocationId: "invocation:tool" },
     };
@@ -591,7 +591,7 @@ describe("SemanticVcsStore reduced spine", () => {
     const sql = await createInMemorySql();
     createSemanticVcsSchema(sql);
     const store = new SemanticVcsStore(sql, () => timestamp);
-    const initial = store.initializeWorkspace("context:one", "command:genesis");
+    const initial = store.initializeWorkspace("context:one", "command:genesis", null);
     expect(
       store.beginCommand({
         scopeKind: "context",
@@ -648,7 +648,7 @@ describe("SemanticVcsStore reduced spine", () => {
     const sql = await createInMemorySql();
     createSemanticVcsSchema(sql);
     const store = new SemanticVcsStore(sql, () => timestamp);
-    store.initializeWorkspace("context:one", "command:genesis");
+    store.initializeWorkspace("context:one", "command:genesis", null);
     store.beginCommand({
       scopeKind: "context",
       scopeId: "context:one",
@@ -699,7 +699,7 @@ describe("SemanticVcsStore reduced spine", () => {
     const sql = await createInMemorySql();
     createSemanticVcsSchema(sql);
     const store = new SemanticVcsStore(sql, () => timestamp);
-    const initial = store.initializeWorkspace("context:one", "command:genesis");
+    const initial = store.initializeWorkspace("context:one", "command:genesis", null);
     const workspaceFactRootId = initial.working.workspaceFactRootId;
     store.beginCommand({
       scopeKind: "context",

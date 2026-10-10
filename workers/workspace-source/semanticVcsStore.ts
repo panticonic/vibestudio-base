@@ -5,6 +5,7 @@ import {
   canonicalDigest,
   compactId,
   type ContentMapping,
+  type ContentDescriptor,
   type StateNodeRef,
   type WorkspaceFactChangeSet,
 } from "@workspace/vcs-engine";
@@ -115,6 +116,7 @@ export interface WorkspaceEventRecord {
   externalDeltaIds?: readonly string[];
   applicationIds: readonly string[];
   resultWorkspaceFactRootId: string;
+  snapshotSource: WorkspaceGenesisSnapshot["source"] | null;
   message: string | null;
   createdAt: string;
 }
@@ -207,10 +209,27 @@ export interface ApplicationRecord {
   semanticProtocol: string;
 }
 
+export type ContentOriginRef =
+  | { kind: "applied-change"; appliedChangeId: string }
+  | {
+      kind: "file";
+      state: { kind: "event"; eventId: string };
+      repositoryId: string;
+      fileId: string;
+    };
+
+export interface WorkspaceGenesisSnapshot {
+  source: { sourceUri: string; snapshotRevision: string };
+  repositories: readonly {
+    repoPath: string;
+    files: readonly ({ path: string; contentHash: string; mode: number } & ContentDescriptor)[];
+  }[];
+}
+
 export interface ContentEdgeRecord {
   contentEdgeId: string;
   childAppliedChangeId: string;
-  parentAppliedChangeId: string;
+  parent: ContentOriginRef;
   relation: "preserves" | "copies" | "incorporates";
   mappings: readonly ContentMapping[];
 }
@@ -365,10 +384,17 @@ export class SemanticVcsStore {
     }
   }
 
-  initializeWorkspace(contextId: string, commandId: string): ContextRecord {
+  initializeWorkspace(
+    contextId: string,
+    commandId: string,
+    snapshot: WorkspaceGenesisSnapshot | null
+  ): ContextRecord {
     const existing = this.context(contextId);
     if (existing) return existing;
-    const root = this.facts.empty();
+    const profileStartedAt = Date.now();
+    const prepared = snapshot ? this.facts.prepareSnapshot(commandId, snapshot.repositories) : null;
+    const preparedAt = Date.now();
+    const root = prepared?.persistence.resultRoot ?? this.facts.empty();
     let genesis = this.sql
       .exec(`SELECT event_id FROM gad_workspace_events WHERE kind = 'genesis' LIMIT 2`)
       .toArray() as Row[];
@@ -385,16 +411,52 @@ export class SemanticVcsStore {
         resultWorkspaceFactRootId: root.workspaceFactRootId,
         message: null,
         createdAt,
+        snapshot: snapshot?.source ?? null,
       });
       this.sql.exec(
         `INSERT INTO gad_workspace_events
-         (event_id, command_id, kind, result_workspace_fact_root_id, message, created_at)
-         VALUES (?, ?, 'genesis', ?, NULL, ?)`,
+         (event_id, command_id, kind, result_workspace_fact_root_id, snapshot_json, message, created_at)
+         VALUES (?, ?, 'genesis', ?, ?, NULL, ?)`,
         eventId,
         commandId,
         root.workspaceFactRootId,
+        snapshot ? canonicalJson(snapshot.source) : null,
         createdAt
       );
+      if (prepared) {
+        execBatchedInsert(
+          this.sql,
+          `INSERT INTO vcs_repositories (repository_id, created_state_kind, created_state_id, created_at)`,
+          4,
+          prepared.changeSet.repositoryUpdates.map(({ repositoryId }) => [
+            repositoryId,
+            "event",
+            eventId,
+            createdAt,
+          ])
+        );
+        execBatchedInsert(
+          this.sql,
+          `INSERT INTO vcs_files (file_id, created_repository_id, created_state_kind, created_state_id, created_at)`,
+          5,
+          prepared.changeSet.fileUpdates.map(({ fileId, result }) => [
+            fileId,
+            result.presence === "placed" ? result.repositoryId : null,
+            "event",
+            eventId,
+            createdAt,
+          ])
+        );
+        this.persistResultStates(prepared.changeSet);
+        this.facts.apply(prepared);
+        console.info("[VcsProfile] workspace genesis", {
+          repositories: prepared.changeSet.repositoryUpdates.length,
+          files: prepared.changeSet.fileUpdates.length,
+          prepareMs: preparedAt - profileStartedAt,
+          persistMs: Date.now() - preparedAt,
+          totalMs: Date.now() - profileStartedAt,
+        });
+      }
       this.sql.exec(
         `INSERT OR IGNORE INTO vcs_workspace_heads (head, event_id, updated_at)
          VALUES ('main', ?, ?)`,
@@ -440,7 +502,7 @@ export class SemanticVcsStore {
     const current = this.context(contextId);
     if (current) return current;
     const main = this.mainEventId();
-    if (!main) return this.initializeWorkspace(contextId, commandId);
+    if (!main) return this.initializeWorkspace(contextId, commandId, null);
     this.sql.exec(
       `INSERT INTO vcs_contexts
        (context_id, committed_event_id, working_head_application_id, updated_at)
@@ -639,6 +701,10 @@ export class SemanticVcsStore {
       eventId,
       commandId: text(row, "command_id"),
       kind: text(row, "kind") as WorkspaceEventRecord["kind"],
+      snapshotSource:
+        row["snapshot_json"] == null
+          ? null
+          : parse<WorkspaceGenesisSnapshot["source"]>(row["snapshot_json"]),
       parentEventIds: (
         this.sql
           .exec(
@@ -842,22 +908,24 @@ export class SemanticVcsStore {
     const validationCompletedAt = Date.now();
     execBatchedInsert(
       this.sql,
-      `INSERT INTO vcs_repositories (repository_id, created_work_unit_id, created_at)`,
-      3,
+      `INSERT INTO vcs_repositories (repository_id, created_state_kind, created_state_id, created_at)`,
+      4,
       plan.newRepositories.map((repository) => [
         repository.repositoryId,
-        plan.workUnit.workUnitId,
+        "application",
+        plan.application.applicationId,
         plan.workUnit.createdAt,
       ])
     );
     execBatchedInsert(
       this.sql,
-      `INSERT INTO vcs_files (file_id, created_repository_id, created_change_id, created_at)`,
-      4,
+      `INSERT INTO vcs_files (file_id, created_repository_id, created_state_kind, created_state_id, created_at)`,
+      5,
       plan.newFiles.map((file) => [
         file.fileId,
         file.repositoryId,
-        file.changeId,
+        "application",
+        plan.application.applicationId,
         plan.workUnit.createdAt,
       ])
     );
@@ -1860,11 +1928,11 @@ export class SemanticVcsStore {
   private persistContentEdge(value: ContentEdgeRecord): void {
     this.sql.exec(
       `INSERT INTO gad_content_edges
-       (content_edge_id, child_applied_change_id, parent_applied_change_id, relation)
+       (content_edge_id, child_applied_change_id, parent_ref_json, relation)
        VALUES (?, ?, ?, ?)`,
       value.contentEdgeId,
       value.childAppliedChangeId,
-      value.parentAppliedChangeId,
+      canonicalJson(value.parent),
       value.relation
     );
     this.persistMappings(value.contentEdgeId, value.mappings);

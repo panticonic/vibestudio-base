@@ -77,7 +77,11 @@ describe("SemanticWorkspace net-effect merge", () => {
       }
     };
 
-    const sourceInitial = store.initializeWorkspace("context:source", "command:source-genesis");
+    const sourceInitial = store.initializeWorkspace(
+      "context:source",
+      "command:source-genesis",
+      null
+    );
     const baseEditDispatch = await semantic.dispatch("edit", {
       ingress,
       input: {
@@ -110,7 +114,7 @@ describe("SemanticWorkspace net-effect merge", () => {
     const baseCommit = pending<{ event: { kind: "event"; eventId: string } }>(baseCommitDispatch);
     acknowledge(baseCommitDispatch);
 
-    store.initializeWorkspace("context:target", "command:target-genesis");
+    store.initializeWorkspace("context:target", "command:target-genesis", null);
     sql.exec(
       `UPDATE vcs_contexts SET committed_event_id = ?, working_head_application_id = NULL
         WHERE context_id = 'context:target'`,
@@ -481,7 +485,7 @@ describe("SemanticWorkspace net-effect merge", () => {
       }
     };
 
-    const initial = store.initializeWorkspace("context:source-zero", "command:zero-genesis");
+    const initial = store.initializeWorkspace("context:source-zero", "command:zero-genesis", null);
     const createdDispatch = await semantic.dispatch("edit", {
       ingress,
       input: {

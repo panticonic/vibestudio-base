@@ -49,7 +49,7 @@ function eventInspection(eventId: string, applicationId = "application:1") {
         workspaceId: "workspace:test",
         commandId: `command:${eventId}`,
         kind: "commit" as const,
-        workspaceFactRootId: `facts:${eventId}`,
+        snapshotSource: null, workspaceFactRootId: `facts:${eventId}`,
         parentEventIds: ["event:parent"],
         applicationIds: [applicationId],
         decisionIds: [],

@@ -72,9 +72,7 @@ describe("SemanticWorkspace shared merge attribution", () => {
         repositoryId: string;
         repoPath: string;
         presence: "present" | "deleted";
-        source:
-          | { kind: "content-root"; contentRoot: string }
-          | { kind: "delta" | "snapshot" };
+        source: { kind: "content-root"; contentRoot: string } | { kind: "delta" | "snapshot" };
       }>;
       semantic.acknowledgeEffect({
         effectId: effect.effectId,
@@ -114,10 +112,7 @@ describe("SemanticWorkspace shared merge attribution", () => {
       return result.event;
     };
 
-    const initial = store.initializeWorkspace(
-      "context:source",
-      "command:genesis",
-    );
+    const initial = store.initializeWorkspace("context:source", "command:genesis", null);
     const createdDispatch = await semantic.dispatch("edit", {
       ingress,
       input: {
