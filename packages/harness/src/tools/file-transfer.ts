@@ -306,7 +306,10 @@ export function createMoveFileTool(
   vcs: ToolFileTransferVcs,
   context: ToolMutationContext,
   fs?: Pick<RuntimeFs, "copyFile" | "rename">,
-) {
+): ToolRegistration<
+  typeof fileTransferSchema,
+  JsonRepresentation<FileTransferToolDetails>
+> {
   return createFileTransferTool("move", cwd, vcs, context, fs);
 }
 
@@ -315,6 +318,9 @@ export function createCopyFileTool(
   vcs: ToolFileTransferVcs,
   context: ToolMutationContext,
   fs?: Pick<RuntimeFs, "copyFile" | "rename">,
-) {
+): ToolRegistration<
+  typeof fileTransferSchema,
+  JsonRepresentation<FileTransferToolDetails>
+> {
   return createFileTransferTool("copy", cwd, vcs, context, fs);
 }
