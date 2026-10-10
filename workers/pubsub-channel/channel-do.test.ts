@@ -2855,6 +2855,54 @@ describe("PubSubChannel", () => {
     });
   });
 
+  it.each(["direct", "mailbox"] as const)(
+    "preserves the %s entity route when participant metadata revises its relationship",
+    async (invocation) => {
+      const participantId =
+        "do:workers/agent-worker:AiChatWorker:metadata-route";
+      const { instance, sql } = await createGadBackedChannel();
+      setRpcCaller(instance, participantId, "do");
+      await instance.join({
+        participantId,
+        operationId: "join-metadata-route",
+        contextId: "ctx-1",
+        metadata: { name: "Before", type: "agent" },
+        delivery: "all",
+        endpoint: { kind: "entity", entityId: participantId, invocation },
+        applicationConfig: null,
+        replay: false,
+      });
+
+      await instance.adminUpdateParticipantMetadata(participantId, {
+        name: "After",
+        type: "agent",
+      });
+
+      expect(
+        sql
+          .exec(
+            `SELECT revision, endpoint_kind, endpoint_entity_id, invocation_route,
+                    metadata_json
+               FROM channel_relationships WHERE participant_id = ?`,
+            participantId,
+          )
+          .toArray()[0],
+      ).toEqual({
+        revision: 2,
+        endpoint_kind: "entity",
+        endpoint_entity_id: participantId,
+        invocation_route: invocation,
+        metadata_json: JSON.stringify({ name: "After", type: "agent" }),
+      });
+
+      await instance.leave({ participantId, revision: 2 });
+      expect(await instance.relationshipState(participantId)).toEqual({
+        active: false,
+        revision: 3,
+      });
+    },
+  );
+
   it("dedupes concurrent publishes with the same idempotency key before append settles", async () => {
     const appendEntered = deferred();
     const releaseAppend = deferred();

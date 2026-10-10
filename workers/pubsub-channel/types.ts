@@ -13,9 +13,10 @@ import { MAX_CHANNEL_REPLAY_PAGE_LIMIT } from "@workspace/pubsub";
 
 export const conversationSeedSchema = z
   .object({
-    messages: z.array(
+    messages: z
+      .array(
         z
-  .object({ content: z.string().min(1), author: z.string().min(1) })
+          .object({ content: z.string().min(1), author: z.string().min(1) })
           .strict(),
       )
       .optional(),
@@ -86,6 +87,38 @@ export interface SubscribeResult {
 export type DeliveryEndpoint =
   | { kind: "entity"; entityId: string; invocation: "direct" | "mailbox" }
   | { kind: "session" };
+
+/** Decode the complete persisted address. Entity invocation is part of the
+ * address and must survive every relationship revision. */
+export function deliveryEndpointFromStorage(
+  endpointKind: unknown,
+  endpointEntityId: unknown,
+  invocationRoute: unknown,
+): DeliveryEndpoint {
+  if (endpointKind === "entity") {
+    if (
+      typeof endpointEntityId !== "string" ||
+      (invocationRoute !== "direct" && invocationRoute !== "mailbox")
+    ) {
+      throw new Error(
+        "Entity channel relationship has an invalid delivery endpoint",
+      );
+    }
+    return {
+      kind: "entity",
+      entityId: endpointEntityId,
+      invocation: invocationRoute,
+    };
+  }
+  if (
+    endpointKind === "session" &&
+    endpointEntityId === null &&
+    invocationRoute === null
+  ) {
+    return { kind: "session" };
+  }
+  throw new Error("Channel relationship has an invalid delivery endpoint");
+}
 
 export interface VersionedApplicationConfig {
   version: number;

@@ -12,7 +12,11 @@ import {
   type ConversationStateV1,
   type PolicyEnvelopeView,
 } from "@workspace/channel-policies";
-import type { ChannelRelationshipPayload } from "./types.js";
+import {
+  deliveryEndpointFromStorage,
+  type ChannelRelationshipPayload,
+  type DeliveryEndpoint,
+} from "./types.js";
 
 export const CHANNEL_DELIVERY_PROJECTION_VERSION = 17;
 export const CHANNEL_RELATIONSHIP_EVENT_TYPES = new Set([
@@ -36,6 +40,32 @@ interface RelationshipRow {
   detachedAtSequence: number | null;
   reattachAfterSequence: number | null;
   reattachThroughSequence: number | null;
+}
+
+function deliveryInterestFromStorage(value: unknown): DeliveryInterest {
+  if (value === "all" || value === "addressed" || value === "none")
+    return value;
+  throw new Error("Channel relationship has an invalid delivery interest");
+}
+
+function endpointKindFromStorage(value: unknown): "entity" | "session" {
+  if (value === "entity" || value === "session") return value;
+  throw new Error("Channel relationship has an invalid endpoint kind");
+}
+
+function entityEndpointFromStorage(
+  endpointKind: unknown,
+  endpointEntityId: unknown,
+  invocationRoute: unknown,
+): Extract<DeliveryEndpoint, { kind: "entity" }> {
+  const endpoint = deliveryEndpointFromStorage(
+    endpointKind,
+    endpointEntityId,
+    invocationRoute,
+  );
+  if (endpoint.kind !== "entity")
+    throw new Error("Entity channel relationship has a session endpoint");
+  return endpoint;
 }
 
 export class ChannelDeliveryProjection {
@@ -278,20 +308,18 @@ export class ChannelDeliveryProjection {
       )
       .toArray()[0];
     if (!row) return null;
+    const endpoint = deliveryEndpointFromStorage(
+      row["endpoint_kind"],
+      row["endpoint_entity_id"],
+      row["invocation_route"],
+    );
     return {
       participantId: String(row["participant_id"]),
       revision: Number(row["revision"]),
-      delivery: String(row["delivery"]) as DeliveryInterest,
-      endpointEntityId:
-        typeof row["endpoint_entity_id"] === "string"
-          ? row["endpoint_entity_id"]
-          : null,
-      endpointKind: String(row["endpoint_kind"]) as "entity" | "session",
-      invocationRoute:
-        row["invocation_route"] === "direct" ||
-        row["invocation_route"] === "mailbox"
-          ? row["invocation_route"]
-          : null,
+      delivery: deliveryInterestFromStorage(row["delivery"]),
+      endpointEntityId: endpoint.kind === "entity" ? endpoint.entityId : null,
+      endpointKind: endpoint.kind,
+      invocationRoute: endpoint.kind === "entity" ? endpoint.invocation : null,
       active: Number(row["active"]) === 1,
       attached: Number(row["attached"]) === 1,
       detachedAtSequence:
@@ -729,7 +757,8 @@ export class ChannelDeliveryProjection {
           AND delivery.event_id = ?
          WHERE relationship.active = 1 AND relationship.attached = 1
           AND relationship.delivery != 'none' AND relationship.endpoint_kind = 'entity'
-         ORDER BY relationship.participant_id`, event.messageId,
+         ORDER BY relationship.participant_id`,
+        event.messageId,
       )
       .toArray()
       .flatMap((row) => {
@@ -741,6 +770,11 @@ export class ChannelDeliveryProjection {
         )
           return [];
         const revision = Number(row["revision"]);
+        const endpoint = entityEndpointFromStorage(
+          "entity",
+          row["endpoint_entity_id"],
+          row["invocation_route"],
+        );
         return [
           {
             deliveryId: sha256HexSyncText(
@@ -753,8 +787,8 @@ export class ChannelDeliveryProjection {
             ),
             participantId,
             revision,
-            target: String(row["endpoint_entity_id"]),
-            invocation: String(row["invocation_route"]) as "direct" | "mailbox",
+            target: endpoint.entityId,
+            invocation: endpoint.invocation,
           },
         ];
       });
@@ -794,7 +828,7 @@ export class ChannelDeliveryProjection {
     for (const row of relationships) {
       const participantId = String(row["participant_id"]);
       if (onlyParticipantId && participantId !== onlyParticipantId) continue;
-      const delivery = String(row["delivery"]) as DeliveryInterest;
+      const delivery = deliveryInterestFromStorage(row["delivery"]);
       const audience = this.audienceFor(event, participantId);
       // Ordinary self-publication is already locally known. Explicitly
       // addressed facts still create recipient work, including when the
@@ -803,8 +837,13 @@ export class ChannelDeliveryProjection {
         continue;
       if (delivery === "addressed" && !audience.addressed) continue;
       const revision = Number(row["revision"]);
-      const endpointEntityId = String(row["endpoint_entity_id"]);
-      const invocationRoute = String(row["invocation_route"]);
+      const endpoint = entityEndpointFromStorage(
+        "entity",
+        row["endpoint_entity_id"],
+        row["invocation_route"],
+      );
+      const endpointEntityId = endpoint.entityId;
+      const invocationRoute = endpoint.invocation;
       if (invocationRoute === "direct" && agenticContextJson === null) {
         const retained = this.sql
           .exec(
@@ -1140,8 +1179,8 @@ export class ChannelDeliveryProjection {
         .toArray()
         .map((row) => ({
           active: Number(row["active"]) === 1,
-          endpointKind: String(row["endpoint_kind"]) as "entity" | "session",
-          delivery: String(row["delivery"]) as DeliveryInterest,
+          endpointKind: endpointKindFromStorage(row["endpoint_kind"]),
+          delivery: deliveryInterestFromStorage(row["delivery"]),
           count: Number(row["count"]),
         })),
       mailbox: this.sql

@@ -114,6 +114,7 @@ import {
 import {
   participantMetadataSchema,
   conversationSeedSchema,
+  deliveryEndpointFromStorage,
   type SubscribeResult,
   type ChannelJoinInput,
   type ChannelRelationshipPayload,
@@ -4992,7 +4993,8 @@ export class PubSubChannel
     if (relationship?.active) {
       const row = this.sql
         .exec(
-          `SELECT delivery, endpoint_kind, endpoint_entity_id, application_config_json
+          `SELECT delivery, endpoint_kind, endpoint_entity_id, invocation_route,
+                application_config_json
              FROM channel_relationships WHERE participant_id = ?`,
           participantId,
         )
@@ -5004,10 +5006,11 @@ export class PubSubChannel
           participantId,
           revision,
           delivery: row["delivery"],
-          endpoint:
-            row["endpoint_kind"] === "entity"
-              ? { kind: "entity", entityId: String(row["endpoint_entity_id"]) }
-              : { kind: "session" },
+          endpoint: deliveryEndpointFromStorage(
+            row["endpoint_kind"],
+            row["endpoint_entity_id"],
+            row["invocation_route"],
+          ),
           metadata: stored,
           applicationConfig:
             row["application_config_json"] === null
