@@ -666,6 +666,7 @@ async function authorityOwner(
     (tx) =>
       bindNativeChannelConversation(tx, root.id, {
         channelId: "channel:owner",
+          channelRef: { source: "workers/channel", className: "ChannelDO", objectKey: "channel:owner" },
         contextId: "context:owner",
       }),
     BACKGROUND_CONTEXT,
@@ -800,6 +801,7 @@ async function ordinaryAuthorityOwner(waiting: boolean, attachLocator = false) {
     (tx) =>
       bindNativeChannelConversation(tx, root.id, {
         channelId: "channel:owner",
+          channelRef: { source: "workers/channel", className: "ChannelDO", objectKey: "channel:owner" },
         contextId: "context:owner",
       }),
     BACKGROUND_CONTEXT,
@@ -1519,6 +1521,7 @@ describe("native Pi entity activation and release", () => {
       (tx) =>
         bindNativeChannelConversation(tx, root.id, {
           channelId: "channel:lookup",
+          channelRef: { source: "workers/channel", className: "ChannelDO", objectKey: "channel:lookup" },
           contextId: "context:owner",
         }),
       BACKGROUND_CONTEXT,
@@ -1645,7 +1648,7 @@ describe("native Pi entity activation and release", () => {
   it("probes the entire composition without opening an execution owner", async () => {
     expect(await probe()).toMatchObject({
       className: "Owner",
-      version: 4,
+      version: 5,
       freshSchemaFingerprint: expect.stringContaining("product_value"),
     });
   });

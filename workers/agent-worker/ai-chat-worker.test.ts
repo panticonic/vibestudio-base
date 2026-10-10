@@ -248,9 +248,14 @@ class TestableAiChatWorker extends AiChatWorker {
   seedSubscriptionConfig(channelId: string, config: Record<string, unknown>) {
     this.sql.exec(
       `INSERT OR REPLACE INTO subscriptions
-         (channel_id, context_id, revision, subscribed_at, config, relationship_json, participant_id)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+         (channel_id, channel_ref_json, context_id, revision, subscribed_at, config, relationship_json, participant_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
       channelId,
+      JSON.stringify({
+        source: "workers/pubsub-channel",
+        className: "PubSubChannel",
+        objectKey: channelId,
+      }),
       "ctx-1",
       1,
       Date.now(),
@@ -265,6 +270,11 @@ class TestableAiChatWorker extends AiChatWorker {
     if (!(await this.admittedNativeChannelConversation(channelId))) {
       await this.subscribeChannel({
         channelId,
+        channelRef: {
+          source: "workers/pubsub-channel",
+          className: "PubSubChannel",
+          objectKey: channelId,
+        },
         contextId: "ctx-1",
         config: this.subscriptions.getConfig(channelId),
         replay: false,
@@ -290,6 +300,7 @@ class TestableAiChatWorker extends AiChatWorker {
 const resources: Array<{
   instance: TestableAiChatWorker;
   db: { close(): void };
+  expectedReleaseFailure?: string;
 }> = [];
 afterEach(async () => {
   try {
@@ -304,9 +315,13 @@ afterEach(async () => {
       ),
     );
     for (const { instance } of resources) await instance.closeMethodChannels();
-    for (const release of releases) {
+    for (const [index, release] of releases.entries()) {
       if (release.status === "rejected") throw release.reason;
-      expect(release.value.status).toBe("ready");
+      const expected = resources[index]!.expectedReleaseFailure;
+      if (expected) {
+        expect(release.value.status).toBe("failed");
+        expect(JSON.stringify(release.value)).toContain(JSON.stringify(expected).slice(1, -1));
+      } else expect(release.value.status).toBe("ready");
     }
   } finally {
     for (const db of new Set(
@@ -470,6 +485,10 @@ describe("AiChatWorker", () => {
       'Service "workspace" method "getAgentResources" return value failed schema validation.',
     );
     expect(worker.published).toHaveLength(0);
+    // Failed bootstrap remains owned through release; cleanup must expose that
+    // original admission failure rather than report a healthy ready receipt.
+    resources.find(resource => resource.instance === worker)!.expectedReleaseFailure =
+      'Service "workspace" method "getAgentResources" return value failed schema validation.';
   });
 
   it("persists live setting changes through the standard agent methods", async () => {

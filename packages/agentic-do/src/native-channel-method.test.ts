@@ -101,8 +101,13 @@ async function fixture(
     const existing = events.get(id);
     if (existing) return existing;
     const ordinal = ++seq;
-    const content = { messageId: id, type: AGENTIC_EVENT_PAYLOAD_KIND, payload,
-      senderId: request.callerId, ts: ordinal };
+    const content = {
+      messageId: id,
+      type: AGENTIC_EVENT_PAYLOAD_KIND,
+      payload,
+      senderId: request.callerId,
+      ts: ordinal,
+    };
     const event: ChannelEvent = { ...content, id: ordinal };
     events.set(id, event);
     return event;
@@ -177,6 +182,11 @@ async function fixture(
               );
             }
           }
+          if (failStart) {
+            failStart = false;
+            throw startFailure;
+          }
+          return undefined;
         }
         if (method === "cancelMethodCall") {
           const [callerId, callId] = args as [string, string];
@@ -202,41 +212,16 @@ async function fixture(
             throw cancelFailure;
           return undefined;
         }
-        return undefined;
-      }
-      if (method === "cancelMethodCall") {
-        const [callerId, callId] = args as [string, string];
-        expect(callerId).toBe("agent:one");
-        cancels.push(callId);
-        const route = routes.get(callId);
-        if (!route) throw Error("Cancellation manufactured an unstarted call");
-        append(
-          `terminal:${callId}`,
-          builders.cancelled({
-            descriptor: route,
-            actor: { kind: "system", id: "system" as never },
+        throw Error(`Unexpected channel method ${method}`);
+      },
+    },
     "agent:one",
   );
   const client = new ChannelClient(rpc, {
     source: "workers/pubsub-channel",
     className: "PubSubChannel",
     objectKey: "channel:one",
-            reason: "cancelled",
-            createdAt: new Date().toISOString(),
-          }),
-        );
-        if (
-          failCancel &&
-          (!options.failCancelTarget ||
-            route.target.id === options.failCancelTarget)
-        )
-          throw cancelFailure;
-        return undefined;
-      }
-      throw Error(`Unexpected channel method ${method}`);
-    },
   });
-  const client = new ChannelClient(rpc, "channel:one");
   const execution = createNativeChannelMethodExecution({
     harness: () => harness,
     channelClient: (channelId) => {
@@ -437,14 +422,37 @@ describe("native channel method ownership", () => {
     const f = await fixture({ targets: ["user:one", "user:two"] });
     f.complete(f.starts[1]!.transportCallId, "first accepted answer");
     f.complete(f.starts[0]!.transportCallId, "second accepted answer");
-    expect(await consumeNativeChannelMethodReceipt(f.harness, f.harness, f.key(), f.client, context)).toEqual({ accepted: true });
+    expect(
+      await consumeNativeChannelMethodReceipt(
+        f.harness,
+        f.harness,
+        f.key(),
+        f.client,
+        context,
+      ),
+    ).toEqual({ accepted: true });
     expect(await f.submission.wait(context)).toMatchObject({ status: "done" });
-    expect((await f.harness.snapshot(ReceiptDoc, f.key(), context))?.result).toMatchObject({
-      envelopeId: `terminal:${f.starts[1]!.transportCallId}`, eventId: expect.any(Number), value: "first accepted answer",
+    expect(
+      (await f.harness.snapshot(ReceiptDoc, f.key(), context))?.result,
+    ).toMatchObject({
+      envelopeId: `terminal:${f.starts[1]!.transportCallId}`,
+      eventId: expect.any(Number),
+      value: "first accepted answer",
     });
-    expect(await consumeNativeChannelMethodReceipt(f.harness, f.harness, f.key(), f.client, context)).toEqual({ accepted: true });
-    expect((await f.harness.snapshot(ReceiptDoc, f.key(), context))?.result).toMatchObject({
-      envelopeId: `terminal:${f.starts[1]!.transportCallId}`, value: "first accepted answer",
+    expect(
+      await consumeNativeChannelMethodReceipt(
+        f.harness,
+        f.harness,
+        f.key(),
+        f.client,
+        context,
+      ),
+    ).toEqual({ accepted: true });
+    expect(
+      (await f.harness.snapshot(ReceiptDoc, f.key(), context))?.result,
+    ).toMatchObject({
+      envelopeId: `terminal:${f.starts[1]!.transportCallId}`,
+      value: "first accepted answer",
     });
     expect(f.selections()).toBe(1);
   });

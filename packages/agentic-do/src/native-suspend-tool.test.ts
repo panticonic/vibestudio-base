@@ -50,7 +50,13 @@ async function fixture(
   const publication = createNativeChannelPublication({
     publish: async (_channel, _participant, event) => {
       agenticEventSchema.parse(event);
-      if (event.kind === "turn.opened" && events.some((prior) => prior.kind === "turn.opened" && prior.turnId === event.turnId))
+      if (
+        event.kind === "turn.opened" &&
+        events.some(
+          (prior) =>
+            prior.kind === "turn.opened" && prior.turnId === event.turnId,
+        )
+      )
         throw new Error(`duplicate turn.opened for turn ${event.turnId}`);
       events.push(event);
       return event.kind === "message.read"
@@ -103,7 +109,15 @@ async function fixture(
   sessions.push(harness);
   const conversation = await openNativeChannelConversation(
     harness,
-    { channelId: "channel:one", contextId: "context:one" },
+    {
+      channelId: "channel:one",
+      contextId: "context:one",
+      channelRef: {
+        source: "workers/channel",
+        className: "ChannelDO",
+        objectKey: "channel:one",
+      },
+    },
     {
       model: { provider: "faux", modelId: faux.getModel().id },
       tools: [tool],
@@ -260,7 +274,9 @@ describe("native suspension ownership", () => {
     expect(entries.messages).toContainEqual(
       expect.objectContaining({
         role: "assistant",
-        content: [expect.objectContaining({ type: "text", text: "carried on" })],
+        content: [
+          expect.objectContaining({ type: "text", text: "carried on" }),
+        ],
       }),
     );
   });

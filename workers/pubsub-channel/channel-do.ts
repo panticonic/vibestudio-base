@@ -32,14 +32,19 @@ import {
   type DurableObjectContext,
 } from "@workspace/runtime/worker/kernel";
 import { createImagesClient } from "@workspace/runtime/images";
-import {
-  canonicalJson,
-} from "@vibestudio/content-addressing";
+import { canonicalJson } from "@vibestudio/content-addressing";
 import { MAX_CHANNEL_REPLAY_PAGE_LIMIT } from "@workspace/pubsub";
 import { PublicationQueue } from "./publication-queue.js";
 import { ChannelLedger } from "./channel-ledger.js";
-import { observeChannelEvent, type ChannelObservationOutcome } from "./channel-observation.js";
-import { deserializeRpcFailure, serializeRpcFailure, type RpcFailure } from "@vibestudio/rpc";
+import {
+  observeChannelEvent,
+  type ChannelObservationOutcome,
+} from "./channel-observation.js";
+import {
+  deserializeRpcFailure,
+  serializeRpcFailure,
+  type RpcFailure,
+} from "@vibestudio/rpc";
 import type {
   ServerLogEvent as ChannelEvent,
   PublishReceipt,
@@ -61,7 +66,7 @@ import type {
   ServerLogEvent,
 } from "@workspace/pubsub";
 
-const PUBSUB_CHANNEL_SCHEMA_BASELINE = 124;
+const PUBSUB_CHANNEL_SCHEMA_BASELINE = 125;
 const STRUCTURED_DELIVERY_RETRY_MS = 1_000;
 const STRUCTURED_DELIVERY_MAX_RETRY_MS = 30_000;
 import type {
@@ -368,8 +373,9 @@ interface ChannelDeliveryInput {
   agenticContext: ChannelAgenticContext | null;
 }
 
-
-type ChannelObservationReceipt=ChannelObservationOutcome|{observedSequence:number;hash:string};
+type ChannelObservationReceipt =
+  | ChannelObservationOutcome
+  | { observedSequence: number; hash: string };
 
 export interface ChannelDeliveryOutcome {
   deliveryId: string;
@@ -523,12 +529,15 @@ export class PubSubChannel
     }
   }
 
-  protected override async cancelLifecyclePreparation(input:LifecyclePrepareInput):Promise<void> {
+  protected override async cancelLifecyclePreparation(
+    input: LifecyclePrepareInput,
+  ): Promise<void> {
     await super.cancelLifecyclePreparation(input);
     await this.joinForkPreparations();
-    if (this.forkLifetime.signal.aborted) this.forkLifetime = new AbortController();
+    if (this.forkLifetime.signal.aborted)
+      this.forkLifetime = new AbortController();
     this.publicationQueue.resume();
-    this.observationReleaseBarrier=null;
+    this.observationReleaseBarrier = null;
   }
 
   private async joinForkPreparations(): Promise<void> {
@@ -538,59 +547,133 @@ export class PubSubChannel
       ...this.forkDrivers.values(),
     ]);
     const failures = results.flatMap((result) =>
-      result.status === "rejected" && result.reason !== abortReason ? [result.reason] : [],
+      result.status === "rejected" && result.reason !== abortReason
+        ? [result.reason]
+        : [],
     );
     if (failures.length === 1) throw failures[0];
-    if (failures.length) throw new AggregateError(failures, "Channel fork preparation failed", { cause: failures[0] });
+    if (failures.length)
+      throw new AggregateError(failures, "Channel fork preparation failed", {
+        cause: failures[0],
+      });
   }
 
-  private observationReleaseBarrier: {channelId:string;headSequence:number;headHash:string}|null=null;
+  private observationReleaseBarrier: {
+    channelId: string;
+    headSequence: number;
+    headHash: string;
+  } | null = null;
 
-  @rpc({ principals:["host"], website:{kind:"closed",reason:"The host captures canonical observation before sealing owner RPC admission."},
-    effect:{kind:"open"},tier:"open",sensitivity:"write" })
-  override async prepareDurableWorkRelease(stage:DurableWorkReleaseStage):Promise<DurableWorkReleaseReceipt> {
-    if(stage === "peer-obligations") return super.prepareDurableWorkRelease(stage);
-    if(stage === "delivery") {
+  @rpc({
+    principals: ["host"],
+    website: {
+      kind: "closed",
+      reason:
+        "The host captures canonical observation before sealing owner RPC admission.",
+    },
+    effect: { kind: "open" },
+    tier: "open",
+    sensitivity: "write",
+  })
+  override async prepareDurableWorkRelease(
+    stage: DurableWorkReleaseStage,
+  ): Promise<DurableWorkReleaseReceipt> {
+    if (stage === "peer-obligations")
+      return super.prepareDurableWorkRelease(stage);
+    if (stage === "delivery") {
       await this.publicationQueue.commitBarrier(this.rpcAbortSignal);
-      const headSequence=this.channelLog.ledger.headSequence();
-      const headHash=headSequence===0 ? LOG_GENESIS_HASH : this.channelLog.ledger.at(headSequence)?.hash;
-      if(!headHash) throw new Error("Channel delivery release lost its canonical boundary");
-      return {queues:["channel-delivery"],barrier:{channelId:this.objectKey,headSequence,headHash,admissionRevision:this.publicationQueue.admissionRevision}};
+      const headSequence = this.channelLog.ledger.headSequence();
+      const headHash =
+        headSequence === 0
+          ? LOG_GENESIS_HASH
+          : this.channelLog.ledger.at(headSequence)?.hash;
+      if (!headHash)
+        throw new Error("Channel delivery release lost its canonical boundary");
+      return {
+        queues: ["channel-delivery"],
+        barrier: {
+          channelId: this.objectKey,
+          headSequence,
+          headHash,
+          admissionRevision: this.publicationQueue.admissionRevision,
+        },
+      };
     }
     await this.joinForkPreparations();
     this.publicationQueue.seal();
     await this.publicationQueue.commitBarrier(this.rpcAbortSignal);
-    const headSequence=this.channelLog.ledger.headSequence();
-    const headHash=headSequence===0 ? LOG_GENESIS_HASH : this.channelLog.ledger.at(headSequence)?.hash;
-    if(!headHash) throw new Error("Channel release lost its canonical retained boundary");
-    this.observationReleaseBarrier={channelId:this.objectKey,headSequence,headHash};
-    return {queues:["channel-observation"],barrier:this.observationReleaseBarrier};
+    const headSequence = this.channelLog.ledger.headSequence();
+    const headHash =
+      headSequence === 0
+        ? LOG_GENESIS_HASH
+        : this.channelLog.ledger.at(headSequence)?.hash;
+    if (!headHash)
+      throw new Error("Channel release lost its canonical retained boundary");
+    this.observationReleaseBarrier = {
+      channelId: this.objectKey,
+      headSequence,
+      headHash,
+    };
+    return {
+      queues: ["channel-observation"],
+      barrier: this.observationReleaseBarrier,
+    };
   }
 
-  @rpc({ principals:["host"], website:{kind:"closed",reason:"The host joins the owner's exact captured graph observation frontier."},
-    effect:{kind:"open"},tier:"open",sensitivity:"read" })
-  override async waitDurableWorkRelease(stage:DurableWorkReleaseStage,barrier:DurableWorkReleaseReceipt["barrier"]):Promise<void> {
-    if(stage === "peer-obligations") return super.waitDurableWorkRelease(stage,barrier);
-    if(stage === "delivery") {
-      if(!barrier || Array.isArray(barrier) || typeof barrier!=="object" || barrier["channelId"]!==this.objectKey
-        || !Number.isSafeInteger(barrier["headSequence"]) || Number(barrier["headSequence"])<0
-        || !Number.isSafeInteger(barrier["admissionRevision"]) || Number(barrier["admissionRevision"])<0
-        || Number(barrier["admissionRevision"])>this.publicationQueue.admissionRevision)
+  @rpc({
+    principals: ["host"],
+    website: {
+      kind: "closed",
+      reason:
+        "The host joins the owner's exact captured graph observation frontier.",
+    },
+    effect: { kind: "open" },
+    tier: "open",
+    sensitivity: "read",
+  })
+  override async waitDurableWorkRelease(
+    stage: DurableWorkReleaseStage,
+    barrier: DurableWorkReleaseReceipt["barrier"],
+  ): Promise<void> {
+    if (stage === "peer-obligations")
+      return super.waitDurableWorkRelease(stage, barrier);
+    if (stage === "delivery") {
+      if (
+        !barrier ||
+        Array.isArray(barrier) ||
+        typeof barrier !== "object" ||
+        barrier["channelId"] !== this.objectKey ||
+        !Number.isSafeInteger(barrier["headSequence"]) ||
+        Number(barrier["headSequence"]) < 0 ||
+        !Number.isSafeInteger(barrier["admissionRevision"]) ||
+        Number(barrier["admissionRevision"]) < 0 ||
+        Number(barrier["admissionRevision"]) >
+          this.publicationQueue.admissionRevision
+      )
         throw new Error("Channel release does not own this delivery boundary");
-      const sequence=Number(barrier["headSequence"]);
-      const hash=sequence===0?LOG_GENESIS_HASH:this.channelLog.ledger.at(sequence)?.hash;
-      if(!hash || hash!==barrier["headHash"]) throw new Error("Channel delivery release changed its canonical boundary");
+      const sequence = Number(barrier["headSequence"]);
+      const hash =
+        sequence === 0
+          ? LOG_GENESIS_HASH
+          : this.channelLog.ledger.at(sequence)?.hash;
+      if (!hash || hash !== barrier["headHash"])
+        throw new Error(
+          "Channel delivery release changed its canonical boundary",
+        );
       // Join owned direct effects before installing a mailbox horizon waiter;
       // a direct failure must not leave an abandoned waiter behind.
       await this.publicationQueue.drain(this.rpcAbortSignal);
       await this.waitDeliveryThrough(sequence);
       return;
     }
-    const owned=this.observationReleaseBarrier;
-    if(!owned || canonicalJson(owned)!==canonicalJson(barrier))
+    const owned = this.observationReleaseBarrier;
+    if (!owned || canonicalJson(owned) !== canonicalJson(barrier))
       throw new Error("Channel release does not own this observation boundary");
-    const observed=await this.waitObservedThrough(owned.headSequence);
-    if(observed.hash!==owned.headHash)throw new Error("Channel release observation changed its retained boundary");
+    const observed = await this.waitObservedThrough(owned.headSequence);
+    if (observed.hash !== owned.headHash)
+      throw new Error(
+        "Channel release observation changed its retained boundary",
+      );
   }
 
   override async releaseForLifecycle(
@@ -601,12 +684,20 @@ export class PubSubChannel
       return { status: "ready" };
     }
     if (input.phase !== "release") return super.releaseForLifecycle(input);
-    for (const waiter of this.observationWaiters) waiter.reject(new Error("Channel observation owner is closing"));
+    for (const waiter of this.observationWaiters)
+      waiter.reject(new Error("Channel observation owner is closing"));
     this.observationWaiters.clear();
-    const observationFailure = this.sql.exec(`SELECT error_json FROM channel_observation_claim WHERE singleton=1 AND disposition='failed'`).toArray()[0];
+    const observationFailure = this.sql
+      .exec(
+        `SELECT error_json FROM channel_observation_claim WHERE singleton=1 AND disposition='failed'`,
+      )
+      .toArray()[0];
     this.publicationQueue.seal();
-    this.publicationLifetime.abort(new Error("Channel publication owner is closing"));
-    for(const waiter of this.deliveryWaiters) waiter.reject(this.publicationLifetime.signal.reason);
+    this.publicationLifetime.abort(
+      new Error("Channel publication owner is closing"),
+    );
+    for (const waiter of this.deliveryWaiters)
+      waiter.reject(this.publicationLifetime.signal.reason);
     this.deliveryWaiters.clear();
     const settled = await Promise.allSettled([
       ...this.forkAdmissions.values(),
@@ -620,7 +711,12 @@ export class PubSubChannel
         ? [result.reason]
         : [],
     );
-    if (observationFailure) failures.push(deserializeRpcFailure(JSON.parse(String(observationFailure["error_json"]))));
+    if (observationFailure)
+      failures.push(
+        deserializeRpcFailure(
+          JSON.parse(String(observationFailure["error_json"])),
+        ),
+      );
     let result: LifecyclePrepareResult | undefined;
     try {
       result = await super.releaseForLifecycle(input);
@@ -922,7 +1018,9 @@ export class PubSubChannel
       "channel_delivery_context",
       "channel_delivery_message_senders",
       "channel_receipts",
-      "channel_ledger_events", "channel_ledger_chunks", "channel_ledger_state",
+      "channel_ledger_events",
+      "channel_ledger_chunks",
+      "channel_ledger_state",
       "channel_observation_claim",
     ];
   }
@@ -946,7 +1044,8 @@ export class PubSubChannel
   }
 
   static override readonly durableWorkQueues: readonly DurableWorkQueue[] = [
-    "channel-delivery", "channel-observation",
+    "channel-delivery",
+    "channel-observation",
   ];
 
   protected override releaseDurableWorkClaims(
@@ -954,8 +1053,11 @@ export class PubSubChannel
     _nextWorkerId: string,
   ): void {
     if (!previousWorkerId) return;
-    this.sql.exec(`UPDATE channel_observation_claim SET disposition = 'ready', lease_owner = NULL
-      WHERE disposition = 'leased' AND lease_owner = ?`, previousWorkerId);
+    this.sql.exec(
+      `UPDATE channel_observation_claim SET disposition = 'ready', lease_owner = NULL
+      WHERE disposition = 'leased' AND lease_owner = ?`,
+      previousWorkerId,
+    );
     const now = Date.now();
     for (const table of [
       "channel_delivery_mailbox",
@@ -1321,7 +1423,18 @@ export class PubSubChannel
             `UPDATE channel_delivery_mailbox
                 SET state = 'terminal-integrity', claimed_by = NULL, last_failure_json = ?
               WHERE delivery_id = ?`,
-            JSON.stringify(serializeRpcFailure(Object.assign(new Error(directContextMissing ? 'Canonical channel delivery lost its recipient context' : 'Canonical channel delivery has an invalid endpoint'),{code:'PermanentChannelDelivery'}))),
+            JSON.stringify(
+              serializeRpcFailure(
+                Object.assign(
+                  new Error(
+                    directContextMissing
+                      ? "Canonical channel delivery lost its recipient context"
+                      : "Canonical channel delivery has an invalid endpoint",
+                  ),
+                  { code: "PermanentChannelDelivery" },
+                ),
+              ),
+            ),
             deliveryId,
           );
           continue;
@@ -1404,124 +1517,127 @@ export class PubSubChannel
     >,
   ): ClaimSettlement {
     try {
-    if (queue === "channel-observation") return this.settleObservation(request);
-    if (queue !== "channel-delivery") return "stale";
-    if (request.itemId.startsWith("maintenance:")) {
+      if (queue === "channel-observation")
+        return this.settleObservation(request);
+      if (queue !== "channel-delivery") return "stale";
+      if (request.itemId.startsWith("maintenance:")) {
+        return this.ctx.storage.transactionSync(() => {
+          const row = this.sql
+            .exec(
+              `SELECT lease_owner, lease_generation, disposition
+               FROM channel_maintenance_queue
+              WHERE item_id = ?`,
+              request.itemId,
+            )
+            .toArray()[0];
+          if (!row) return "duplicate";
+          if (
+            row["lease_owner"] !== request.workerId ||
+            Number(row["lease_generation"]) !== request.generation ||
+            row["disposition"] !== "leased"
+          ) {
+            return "stale";
+          }
+          this.sql.exec(
+            `DELETE FROM channel_maintenance_queue WHERE item_id = ?`,
+            request.itemId,
+          );
+          return "accepted";
+        });
+      }
+      const acknowledged = request.outcome as
+        | ChannelDeliveryOutcome
+        | { processed: true; recipientExecutionStartedAt?: number }
+        | null;
+      const outcome: ChannelDeliveryOutcome =
+        acknowledged !== null &&
+        typeof acknowledged === "object" &&
+        "processed" in acknowledged &&
+        acknowledged.processed === true
+          ? {
+              deliveryId: request.itemId,
+              disposition: "processed",
+              ...(typeof acknowledged.recipientExecutionStartedAt === "number"
+                ? {
+                    recipientExecutionStartedAt:
+                      acknowledged.recipientExecutionStartedAt,
+                  }
+                : {}),
+            }
+          : (acknowledged as ChannelDeliveryOutcome);
+      if (
+        !outcome ||
+        outcome.deliveryId !== request.itemId ||
+        !["processed", "duplicate", "declined", "retired"].includes(
+          outcome.disposition,
+        )
+      ) {
+        throw new Error("settleReadyWork: invalid channel delivery outcome");
+      }
       return this.ctx.storage.transactionSync(() => {
         const row = this.sql
           .exec(
-            `SELECT lease_owner, lease_generation, disposition
-               FROM channel_maintenance_queue
-              WHERE item_id = ?`,
+            `SELECT claimed_by, claim_generation, state, created_at, event_kind
+             FROM channel_delivery_mailbox
+            WHERE delivery_id = ?`,
             request.itemId,
           )
           .toArray()[0];
         if (!row) return "duplicate";
         if (
-          row["lease_owner"] !== request.workerId ||
-          Number(row["lease_generation"]) !== request.generation ||
-          row["disposition"] !== "leased"
+          row["claimed_by"] !== request.workerId ||
+          Number(row["claim_generation"]) !== request.generation ||
+          row["state"] !== "leased"
         ) {
-          return "stale";
+          return String(row["state"]).startsWith("terminal-")
+            ? "duplicate"
+            : "stale";
+        }
+        if (outcome.disposition === "declined") {
+          this.deliveryProjection.recordDeclined(request.itemId);
+        }
+        if (typeof outcome.recipientExecutionStartedAt === "number") {
+          this.recordDeliveryLatency(
+            "publish-to-recipient-execution",
+            Math.max(
+              0,
+              outcome.recipientExecutionStartedAt - Number(row["created_at"]),
+            ),
+          );
+        }
+        const kind = row["event_kind"];
+        if (
+          kind === "invocation.completed" ||
+          kind === "invocation.failed" ||
+          kind === "invocation.cancelled" ||
+          kind === "invocation.abandoned"
+        ) {
+          this.recordDeliveryLatency(
+            "result-to-caller-settlement",
+            Math.max(0, Date.now() - Number(row["created_at"])),
+          );
         }
         this.sql.exec(
-          `DELETE FROM channel_maintenance_queue WHERE item_id = ?`,
-          request.itemId,
-        );
-        return "accepted";
-      });
-    }
-    const acknowledged = request.outcome as
-      | ChannelDeliveryOutcome
-      | { processed: true; recipientExecutionStartedAt?: number }
-      | null;
-    const outcome: ChannelDeliveryOutcome =
-      acknowledged !== null &&
-      typeof acknowledged === "object" &&
-      "processed" in acknowledged &&
-      acknowledged.processed === true
-        ? {
-            deliveryId: request.itemId,
-            disposition: "processed",
-            ...(typeof acknowledged.recipientExecutionStartedAt === "number"
-              ? {
-                  recipientExecutionStartedAt:
-                    acknowledged.recipientExecutionStartedAt,
-                }
-              : {}),
-          }
-        : (acknowledged as ChannelDeliveryOutcome);
-    if (
-      !outcome ||
-      outcome.deliveryId !== request.itemId ||
-      !["processed", "duplicate", "declined", "retired"].includes(
-        outcome.disposition,
-      )
-    ) {
-      throw new Error("settleReadyWork: invalid channel delivery outcome");
-    }
-    return this.ctx.storage.transactionSync(() => {
-      const row = this.sql
-        .exec(
-          `SELECT claimed_by, claim_generation, state, created_at, event_kind
-             FROM channel_delivery_mailbox
-            WHERE delivery_id = ?`,
-          request.itemId,
-        )
-        .toArray()[0];
-      if (!row) return "duplicate";
-      if (
-        row["claimed_by"] !== request.workerId ||
-        Number(row["claim_generation"]) !== request.generation ||
-        row["state"] !== "leased"
-      ) {
-        return String(row["state"]).startsWith("terminal-")
-          ? "duplicate"
-          : "stale";
-      }
-      if (outcome.disposition === "declined") {
-        this.deliveryProjection.recordDeclined(request.itemId);
-      }
-      if (typeof outcome.recipientExecutionStartedAt === "number") {
-        this.recordDeliveryLatency(
-          "publish-to-recipient-execution",
-          Math.max(
-            0,
-            outcome.recipientExecutionStartedAt - Number(row["created_at"]),
-          ),
-        );
-      }
-      const kind = row["event_kind"];
-      if (
-        kind === "invocation.completed" ||
-        kind === "invocation.failed" ||
-        kind === "invocation.cancelled" ||
-        kind === "invocation.abandoned"
-      ) {
-        this.recordDeliveryLatency(
-          "result-to-caller-settlement",
-          Math.max(0, Date.now() - Number(row["created_at"])),
-        );
-      }
-      this.sql.exec(
-        `UPDATE channel_delivery_mailbox
+          `UPDATE channel_delivery_mailbox
             SET state = ?, claimed_by = NULL,
                 agentic_context_json = NULL,
                 terminal_outcome_json = ?, last_failure_json = NULL
           WHERE delivery_id = ?
             AND claimed_by = ?
             AND claim_generation = ?`,
-        outcome.disposition === "retired"
-          ? "terminal-retired"
-          : "terminal-completed",
-        JSON.stringify(outcome),
-        request.itemId,
-        request.workerId,
-        request.generation,
-      );
-      return "accepted";
-    });
-    } finally { this.settleDeliveryWaiters(); }
+          outcome.disposition === "retired"
+            ? "terminal-retired"
+            : "terminal-completed",
+          JSON.stringify(outcome),
+          request.itemId,
+          request.workerId,
+          request.generation,
+        );
+        return "accepted";
+      });
+    } finally {
+      this.settleDeliveryWaiters();
+    }
   }
 
   @rpc({
@@ -1545,33 +1661,33 @@ export class PubSubChannel
     },
   ): Promise<{ retryAt: number } | { failed: true } | "stale"> {
     try {
-    if (queue === "channel-observation") return this.failObservation(request);
-    if (queue !== "channel-delivery") return "stale";
-    if (request.itemId.startsWith("maintenance:")) {
-      return this.ctx.storage.transactionSync(() => {
-        const row = this.sql
-          .exec(
-            `SELECT attempts
+      if (queue === "channel-observation") return this.failObservation(request);
+      if (queue !== "channel-delivery") return "stale";
+      if (request.itemId.startsWith("maintenance:")) {
+        return this.ctx.storage.transactionSync(() => {
+          const row = this.sql
+            .exec(
+              `SELECT attempts
                FROM channel_maintenance_queue
               WHERE item_id = ?
                 AND lease_owner = ?
                 AND lease_generation = ?
                 AND disposition = 'leased'`,
-            request.itemId,
-            request.workerId,
-            request.generation,
-          )
-          .toArray()[0];
-        if (!row) return "stale";
-        const attempts = Number(row["attempts"] ?? 0) + 1;
-        const retryAt =
-          Date.now() +
-          Math.min(
-            STRUCTURED_DELIVERY_RETRY_MS * 2 ** Math.min(attempts - 1, 5),
-            STRUCTURED_DELIVERY_MAX_RETRY_MS,
-          );
-        this.sql.exec(
-          `UPDATE channel_maintenance_queue
+              request.itemId,
+              request.workerId,
+              request.generation,
+            )
+            .toArray()[0];
+          if (!row) return "stale";
+          const attempts = Number(row["attempts"] ?? 0) + 1;
+          const retryAt =
+            Date.now() +
+            Math.min(
+              STRUCTURED_DELIVERY_RETRY_MS * 2 ** Math.min(attempts - 1, 5),
+              STRUCTURED_DELIVERY_MAX_RETRY_MS,
+            );
+          this.sql.exec(
+            `UPDATE channel_maintenance_queue
               SET attempts = ?,
                   disposition = 'retrying',
                   next_attempt_at = ?,
@@ -1579,116 +1695,118 @@ export class PubSubChannel
             WHERE item_id = ?
               AND lease_owner = ?
               AND lease_generation = ?`,
-          attempts,
-          retryAt,
-          request.itemId,
-          request.workerId,
-          request.generation,
-        );
-        return { retryAt };
-      });
-    }
-    const errorCode =
-      request.error && typeof request.error === "object"
-        ? (request.error as { code?: unknown }).code
-        : undefined;
-    if (errorCode === "PermanentChannelDelivery") {
-      return this.ctx.storage.transactionSync(() => {
-        const updated = this.sql.exec(
-          `UPDATE channel_delivery_mailbox
+            attempts,
+            retryAt,
+            request.itemId,
+            request.workerId,
+            request.generation,
+          );
+          return { retryAt };
+        });
+      }
+      const errorCode =
+        request.error && typeof request.error === "object"
+          ? (request.error as { code?: unknown }).code
+          : undefined;
+      if (errorCode === "PermanentChannelDelivery") {
+        return this.ctx.storage.transactionSync(() => {
+          const updated = this.sql.exec(
+            `UPDATE channel_delivery_mailbox
               SET state = 'terminal-integrity', claimed_by = NULL, last_failure_json = ?,
                   terminal_outcome_json = ?
             WHERE delivery_id = ? AND claimed_by = ? AND claim_generation = ? AND state = 'leased'
             RETURNING delivery_id`,
-          JSON.stringify(request.error),
-          JSON.stringify({
-            disposition: "integrity-error",
-            error: request.error,
-          }),
-          request.itemId,
-          request.workerId,
-          request.generation,
-        );
-        return updated.toArray().length > 0 ? { retryAt: Date.now() } : "stale";
-      });
-    }
-    if (errorCode === "ResidentSessionUnavailable") {
-      const claimed = this.sql
-        .exec(
-          `SELECT participant_id
+            JSON.stringify(request.error),
+            JSON.stringify({
+              disposition: "integrity-error",
+              error: request.error,
+            }),
+            request.itemId,
+            request.workerId,
+            request.generation,
+          );
+          return updated.toArray().length > 0
+            ? { retryAt: Date.now() }
+            : "stale";
+        });
+      }
+      if (errorCode === "ResidentSessionUnavailable") {
+        const claimed = this.sql
+          .exec(
+            `SELECT participant_id
              FROM channel_delivery_mailbox
             WHERE delivery_id = ? AND claimed_by = ? AND claim_generation = ? AND state = 'leased'`,
-          request.itemId,
-          request.workerId,
-          request.generation,
-        )
-        .toArray()[0];
-      if (!claimed) return "stale";
-      const participantId = String(claimed["participant_id"]);
-      return await this.withRelationshipMutation(participantId, async () => {
-        const current = this.sql
-          .exec(
-            `SELECT mailbox.event_sequence, mailbox.claimed_relationship_revision,
+            request.itemId,
+            request.workerId,
+            request.generation,
+          )
+          .toArray()[0];
+        if (!claimed) return "stale";
+        const participantId = String(claimed["participant_id"]);
+        return await this.withRelationshipMutation(participantId, async () => {
+          const current = this.sql
+            .exec(
+              `SELECT mailbox.event_sequence, mailbox.claimed_relationship_revision,
                     relationship.revision AS active_relationship_revision
                FROM channel_delivery_mailbox AS mailbox
                LEFT JOIN channel_relationships AS relationship
                  ON relationship.participant_id = mailbox.participant_id
               WHERE mailbox.delivery_id = ? AND mailbox.claimed_by = ?
                 AND mailbox.claim_generation = ? AND mailbox.state = 'leased'`,
-            request.itemId,
-            request.workerId,
-            request.generation,
-          )
-          .toArray()[0];
-        if (!current) return "stale" as const;
-        if (
-          Number(current["claimed_relationship_revision"]) !==
-          Number(current["active_relationship_revision"])
-        ) {
-          const now = Date.now();
-          this.sql.exec(
-            `UPDATE channel_delivery_mailbox
+              request.itemId,
+              request.workerId,
+              request.generation,
+            )
+            .toArray()[0];
+          if (!current) return "stale" as const;
+          if (
+            Number(current["claimed_relationship_revision"]) !==
+            Number(current["active_relationship_revision"])
+          ) {
+            const now = Date.now();
+            this.sql.exec(
+              `UPDATE channel_delivery_mailbox
                 SET state = 'ready', claimed_by = NULL, next_attempt_at = ?,
                     claimed_relationship_revision = NULL
               WHERE delivery_id = ? AND claimed_by = ? AND claim_generation = ? AND state = 'leased'`,
-            now,
-            request.itemId,
-            request.workerId,
-            request.generation,
+              now,
+              request.itemId,
+              request.workerId,
+              request.generation,
+            );
+            this.markWorkReady("channel-delivery");
+            return { retryAt: now };
+          }
+          await this.detachParticipantUnlocked(
+            participantId,
+            Math.max(0, Number(current["event_sequence"]) - 1),
           );
-          this.markWorkReady("channel-delivery");
-          return { retryAt: now };
-        }
-        await this.detachParticipantUnlocked(
-          participantId,
-          Math.max(0, Number(current["event_sequence"]) - 1),
-        );
-        return { retryAt: Date.now() };
-      });
-    }
-    return this.ctx.storage.transactionSync(() => {
-      const row = this.sql
-        .exec(
-          `SELECT attempts
+          return { retryAt: Date.now() };
+        });
+      }
+      return this.ctx.storage.transactionSync(() => {
+        const row = this.sql
+          .exec(
+            `SELECT attempts
              FROM channel_delivery_mailbox
             WHERE delivery_id = ?
               AND claimed_by = ?
               AND claim_generation = ?
               AND state = 'leased'`,
-          request.itemId,
-          request.workerId,
-          request.generation,
-        )
-        .toArray()[0];
-      if (!row) return "stale";
-      const attempts = Number(row["attempts"] ?? 0) + 1;
-      const delay = Math.min(
-        STRUCTURED_DELIVERY_RETRY_MS * 2 ** Math.min(attempts - 1, 5),
-        STRUCTURED_DELIVERY_MAX_RETRY_MS,
-      );
-      const retryAt = Date.now() + delay;
-      this.sql.exec(
-        `UPDATE channel_delivery_mailbox
+            request.itemId,
+            request.workerId,
+            request.generation,
+          )
+          .toArray()[0];
+        if (!row) return "stale";
+        const attempts = Number(row["attempts"] ?? 0) + 1;
+        const delay = Math.min(
+          STRUCTURED_DELIVERY_RETRY_MS * 2 ** Math.min(attempts - 1, 5),
+          STRUCTURED_DELIVERY_MAX_RETRY_MS,
+        );
+        const retryAt = Date.now() + delay;
+        this.sql.exec(
+          `UPDATE channel_delivery_mailbox
             SET attempts = ?,
                 state = 'retrying',
                 next_attempt_at = ?,
@@ -1697,16 +1815,18 @@ export class PubSubChannel
           WHERE delivery_id = ?
             AND claimed_by = ?
             AND claim_generation = ?`,
-        attempts,
-        retryAt,
-        JSON.stringify(request.error),
-        request.itemId,
-        request.workerId,
-        request.generation,
-      );
-      return { retryAt };
-    });
-    } finally { this.settleDeliveryWaiters(); }
+          attempts,
+          retryAt,
+          JSON.stringify(request.error),
+          request.itemId,
+          request.workerId,
+          request.generation,
+        );
+        return { retryAt };
+      });
+    } finally {
+      this.settleDeliveryWaiters();
+    }
   }
 
   private async detachParticipant(
@@ -1828,108 +1948,274 @@ export class PubSubChannel
     };
   }
 
-  private readonly deliveryWaiters=new Set<{sequence:number;resolve:()=>void;reject:(error:unknown)=>void}>();
+  private readonly deliveryWaiters = new Set<{
+    sequence: number;
+    resolve: () => void;
+    reject: (error: unknown) => void;
+  }>();
 
-  private settleDeliveryWaiters():void {
-    if(this.deliveryWaiters.size===0) return;
-    for(const waiter of [...this.deliveryWaiters]) {
-      const failure=this.sql.exec(`SELECT last_failure_json FROM channel_delivery_mailbox
+  private settleDeliveryWaiters(): void {
+    if (this.deliveryWaiters.size === 0) return;
+    for (const waiter of [...this.deliveryWaiters]) {
+      const failure = this.sql
+        .exec(
+          `SELECT last_failure_json FROM channel_delivery_mailbox
         WHERE event_sequence<=? AND ((state IN ('ready','retrying') AND last_failure_json IS NOT NULL) OR state='terminal-integrity')
-        ORDER BY event_sequence,delivery_id LIMIT 1`,waiter.sequence).toArray()[0];
-      if(failure) {
-        if(typeof failure["last_failure_json"]!=="string")
-          waiter.reject(new Error("Canonical channel delivery lost its original failure receipt"));
-        else waiter.reject(deserializeRpcFailure(JSON.parse(String(failure["last_failure_json"]))));
+        ORDER BY event_sequence,delivery_id LIMIT 1`,
+          waiter.sequence,
+        )
+        .toArray()[0];
+      if (failure) {
+        if (typeof failure["last_failure_json"] !== "string")
+          waiter.reject(
+            new Error(
+              "Canonical channel delivery lost its original failure receipt",
+            ),
+          );
+        else
+          waiter.reject(
+            deserializeRpcFailure(
+              JSON.parse(String(failure["last_failure_json"])),
+            ),
+          );
       } else {
-        const pending=this.sql.exec(`SELECT 1 FROM channel_delivery_mailbox
-          WHERE event_sequence<=? AND state IN ('ready','leased','retrying') LIMIT 1`,waiter.sequence).toArray()[0];
-        if(pending) continue;
+        const pending = this.sql
+          .exec(
+            `SELECT 1 FROM channel_delivery_mailbox
+          WHERE event_sequence<=? AND state IN ('ready','leased','retrying') LIMIT 1`,
+            waiter.sequence,
+          )
+          .toArray()[0];
+        if (pending) continue;
         waiter.resolve();
       }
       this.deliveryWaiters.delete(waiter);
     }
   }
 
-  private async waitDeliveryThrough(sequence:number):Promise<void> {
-    const signal=this.rpcAbortSignal;
+  private async waitDeliveryThrough(sequence: number): Promise<void> {
+    const signal = this.rpcAbortSignal;
     signal?.throwIfAborted();
-    let waiter!:{sequence:number;resolve:()=>void;reject:(error:unknown)=>void};
-    const waiting=new Promise<void>((resolve,reject)=>{waiter={sequence,resolve,reject};this.deliveryWaiters.add(waiter);});
-    const abort=()=>{this.deliveryWaiters.delete(waiter);waiter.reject(signal?.reason);};
-    signal?.addEventListener("abort",abort,{once:true});
+    let waiter!: {
+      sequence: number;
+      resolve: () => void;
+      reject: (error: unknown) => void;
+    };
+    const waiting = new Promise<void>((resolve, reject) => {
+      waiter = { sequence, resolve, reject };
+      this.deliveryWaiters.add(waiter);
+    });
+    const abort = () => {
+      this.deliveryWaiters.delete(waiter);
+      waiter.reject(signal?.reason);
+    };
+    signal?.addEventListener("abort", abort, { once: true });
     this.settleDeliveryWaiters();
-    try {await waiting;} finally {signal?.removeEventListener("abort",abort);this.deliveryWaiters.delete(waiter);}
+    try {
+      await waiting;
+    } finally {
+      signal?.removeEventListener("abort", abort);
+      this.deliveryWaiters.delete(waiter);
+    }
   }
 
   private readonly observationWaiters = new Set<{
-    sequence: number; resolve: (value: { observedSequence: number; hash: string }) => void;
+    sequence: number;
+    resolve: (value: { observedSequence: number; hash: string }) => void;
     reject: (error: unknown) => void;
   }>();
 
   private observationReady(): boolean {
-    const row = this.sql.exec(`SELECT disposition FROM channel_observation_claim WHERE singleton = 1`).toArray()[0];
-    return (!row || row["disposition"] === "ready") && this.channelLog.ledger.peekObservation() !== null;
+    const row = this.sql
+      .exec(
+        `SELECT disposition FROM channel_observation_claim WHERE singleton = 1`,
+      )
+      .toArray()[0];
+    return (
+      (!row || row["disposition"] === "ready") &&
+      this.channelLog.ledger.peekObservation() !== null
+    );
   }
 
   private claimObservation(input: ClaimRequest): WorkClaim[] {
-    if (!input.workerId || input.limit < 1) throw new Error("Channel observation has an invalid claim request");
+    if (!input.workerId || input.limit < 1)
+      throw new Error("Channel observation has an invalid claim request");
     this.adoptDurableWorkWorkerGeneration(input.workerId);
     return this.ctx.storage.transactionSync(() => {
       if (!this.observationReady()) return [];
-      const existing = this.sql.exec(`SELECT generation, created_at, through_sequence, observation_kind FROM channel_observation_claim WHERE singleton = 1`).toArray()[0];
-      const observation = existing?.["observation_kind"] === "root" ? {kind:"root" as const} : this.channelLog.ledger.peekObservation()!;
-      const itemId = observation.kind === "fork" ? "observation:fork" : observation.kind === "root" ? "observation:root" : `observation:${observation.sequence}`;
+      const existing = this.sql
+        .exec(
+          `SELECT generation, created_at, through_sequence, observation_kind FROM channel_observation_claim WHERE singleton = 1`,
+        )
+        .toArray()[0];
+      const observation =
+        existing?.["observation_kind"] === "root"
+          ? { kind: "root" as const }
+          : this.channelLog.ledger.peekObservation()!;
+      const itemId =
+        observation.kind === "fork"
+          ? "observation:fork"
+          : observation.kind === "root"
+            ? "observation:root"
+            : `observation:${observation.sequence}`;
       // A recovered exact claim keeps its frozen prefix even if newer events arrive.
-      const throughSequence = existing ? Number(existing["through_sequence"]) : observation.kind === "append"
-        ? Math.min(this.channelLog.ledger.headSequence(), observation.sequence + MAX_CHANNEL_REPLAY_PAGE_LIMIT - 1)
-        : observation.kind === "fork" ? observation.throughSequence : 0;
+      const throughSequence = existing
+        ? Number(existing["through_sequence"])
+        : observation.kind === "append"
+          ? Math.min(
+              this.channelLog.ledger.headSequence(),
+              observation.sequence + MAX_CHANNEL_REPLAY_PAGE_LIMIT - 1,
+            )
+          : observation.kind === "fork"
+            ? observation.throughSequence
+            : 0;
       const generation = Number(existing?.["generation"] ?? 0) + 1;
       const createdAt = Number(existing?.["created_at"] ?? input.now);
-      this.sql.exec(`INSERT INTO channel_observation_claim (singleton,item_id,observation_kind,generation,through_sequence,disposition,lease_owner,created_at)
+      this.sql.exec(
+        `INSERT INTO channel_observation_claim (singleton,item_id,observation_kind,generation,through_sequence,disposition,lease_owner,created_at)
         VALUES (1,?,?,?,?,'leased',?,?) ON CONFLICT(singleton) DO UPDATE SET item_id=excluded.item_id,
         observation_kind=excluded.observation_kind, generation=excluded.generation, through_sequence=excluded.through_sequence, disposition='leased', lease_owner=excluded.lease_owner, error_json=NULL`,
-        itemId,observation.kind,generation,throughSequence,input.workerId,createdAt);
-      return [{ itemId,generation,idempotencyKey:`channel-observation:${this.objectKey}:${itemId}`,
-        createdAt,attempt:generation,payload:{laneKey:`channel-observation:${this.objectKey}`,observation:{kind:observation.kind}} satisfies ChannelObservationClaimPayload }];
+        itemId,
+        observation.kind,
+        generation,
+        throughSequence,
+        input.workerId,
+        createdAt,
+      );
+      return [
+        {
+          itemId,
+          generation,
+          idempotencyKey: `channel-observation:${this.objectKey}:${itemId}`,
+          createdAt,
+          attempt: generation,
+          payload: {
+            laneKey: `channel-observation:${this.objectKey}`,
+            observation: { kind: observation.kind },
+          } satisfies ChannelObservationClaimPayload,
+        },
+      ];
     });
   }
 
-  @rpc({ principals: ["host"], website: {kind: "closed", reason: "The channel owner observes its canonical retained events."},
-    effect: {kind:"open"}, tier:"open", sensitivity:"write" })
-  async executeChannelObservationClaim(input: {itemId:string;generation:number}): Promise<ChannelObservationReceipt> {
-    const row = this.sql.exec(`SELECT item_id,observation_kind,generation,through_sequence,disposition FROM channel_observation_claim WHERE singleton=1`).toArray()[0];
-    if (!row || row["item_id"] !== input.itemId || Number(row["generation"]) !== input.generation || row["disposition"] !== "leased")
+  @rpc({
+    principals: ["host"],
+    website: {
+      kind: "closed",
+      reason: "The channel owner observes its canonical retained events.",
+    },
+    effect: { kind: "open" },
+    tier: "open",
+    sensitivity: "write",
+  })
+  async executeChannelObservationClaim(input: {
+    itemId: string;
+    generation: number;
+  }): Promise<ChannelObservationReceipt> {
+    const row = this.sql
+      .exec(
+        `SELECT item_id,observation_kind,generation,through_sequence,disposition FROM channel_observation_claim WHERE singleton=1`,
+      )
+      .toArray()[0];
+    if (
+      !row ||
+      row["item_id"] !== input.itemId ||
+      Number(row["generation"]) !== input.generation ||
+      row["disposition"] !== "leased"
+    )
       throw new Error("Channel observation no longer owns its claim");
-    const observation = row["observation_kind"] === "root" ? {kind:"root" as const} : this.channelLog.ledger.peekObservation();
-    if (!observation) throw new Error("Channel observation lost its canonical debt");
+    const observation =
+      row["observation_kind"] === "root"
+        ? { kind: "root" as const }
+        : this.channelLog.ledger.peekObservation();
+    if (!observation)
+      throw new Error("Channel observation lost its canonical debt");
     if (observation.kind === "fork") return this.observeFork(observation);
     if (observation.kind === "root") {
-      const signal=this.rpcAbortSignal ?? undefined;
-      const receipt=await this.runDetached(()=>this.inviteIndex.callWithOptions("initializeLogHead",[{logId:this.objectKey,head:"main",logKind:"channel"}],{signal}));
-      if(receipt.seq!==0 || receipt.hash!==LOG_GENESIS_HASH) throw new Error("Channel root observation changed its canonical genesis");
-      return {observedSequence:0,hash:receipt.hash};
+      const signal = this.rpcAbortSignal ?? undefined;
+      const receipt = await this.runDetached(() =>
+        this.inviteIndex.callWithOptions(
+          "initializeLogHead",
+          [{ logId: this.objectKey, head: "main", logKind: "channel" }],
+          { signal },
+        ),
+      );
+      if (receipt.seq !== 0 || receipt.hash !== LOG_GENESIS_HASH)
+        throw new Error(
+          "Channel root observation changed its canonical genesis",
+        );
+      return { observedSequence: 0, hash: receipt.hash };
     }
     const signal = this.rpcAbortSignal ?? undefined;
-    const throughSequence=Number(row["through_sequence"]);
-    const envelopes=this.channelLog.ledger.read({afterSeq:observation.sequence-1,beforeSeq:throughSequence+1,limit:MAX_CHANNEL_REPLAY_PAGE_LIMIT});
-    if(envelopes.length!==throughSequence-observation.sequence+1) throw new Error("Channel observation lost its frozen canonical prefix");
-    return this.runDetached(() => observeChannelEvent(this.rpc,this.objectKey,{kind:"append",sequence:observation.sequence,envelopes},signal));
+    const throughSequence = Number(row["through_sequence"]);
+    const envelopes = this.channelLog.ledger.read({
+      afterSeq: observation.sequence - 1,
+      beforeSeq: throughSequence + 1,
+      limit: MAX_CHANNEL_REPLAY_PAGE_LIMIT,
+    });
+    if (envelopes.length !== throughSequence - observation.sequence + 1)
+      throw new Error("Channel observation lost its frozen canonical prefix");
+    return this.runDetached(() =>
+      observeChannelEvent(
+        this.rpc,
+        this.objectKey,
+        { kind: "append", sequence: observation.sequence, envelopes },
+        signal,
+      ),
+    );
   }
 
-  @rpc({ principals:["host"], website:{kind:"closed",reason:"The durable-work scheduler resolves exact observation prerequisites."},
-    effect:{kind:"open"},tier:"open",sensitivity:"read" })
-  async prepareChannelObservationClaim(input:{itemId:string;generation:number}):Promise<void> {
-    const row=this.sql.exec(`SELECT item_id,observation_kind,generation,through_sequence,disposition FROM channel_observation_claim WHERE singleton=1`).toArray()[0];
-    if(!row || row["item_id"]!==input.itemId || Number(row["generation"])!==input.generation || row["disposition"]!=="leased" || row["observation_kind"]!=="fork")
-      throw new Error("Channel observation prerequisite no longer owns its claim");
-    const observation=this.channelLog.ledger.peekObservation();
-    if(!observation || observation.kind!=="fork") throw new Error("Channel observation prerequisite lost its fork debt");
-    const signal=this.rpcAbortSignal ?? undefined;
-    const parentRef=await this.resolveChannelRef(observation.parentChannelId);
+  @rpc({
+    principals: ["host"],
+    website: {
+      kind: "closed",
+      reason:
+        "The durable-work scheduler resolves exact observation prerequisites.",
+    },
+    effect: { kind: "open" },
+    tier: "open",
+    sensitivity: "read",
+  })
+  async prepareChannelObservationClaim(input: {
+    itemId: string;
+    generation: number;
+  }): Promise<void> {
+    const row = this.sql
+      .exec(
+        `SELECT item_id,observation_kind,generation,through_sequence,disposition FROM channel_observation_claim WHERE singleton=1`,
+      )
+      .toArray()[0];
+    if (
+      !row ||
+      row["item_id"] !== input.itemId ||
+      Number(row["generation"]) !== input.generation ||
+      row["disposition"] !== "leased" ||
+      row["observation_kind"] !== "fork"
+    )
+      throw new Error(
+        "Channel observation prerequisite no longer owns its claim",
+      );
+    const observation = this.channelLog.ledger.peekObservation();
+    if (!observation || observation.kind !== "fork")
+      throw new Error("Channel observation prerequisite lost its fork debt");
+    const signal = this.rpcAbortSignal ?? undefined;
+    const parentRef = await this.resolveChannelRef(observation.parentChannelId);
     signal?.throwIfAborted();
-    const receipt=await this.runDetached(()=>this.rpc.call(doTarget(parentRef),channelRpcMethods["waitObservedThrough"],[observation.throughSequence],{signal}));
-    if(receipt.observedSequence!==observation.throughSequence || receipt.hash!==observation.expectedParentHash)
-      throw new Error("Channel fork observation changed its original parent prefix");
+    const receipt = await this.runDetached(() =>
+      this.rpc.call(
+        doTarget(parentRef),
+        channelRpcMethods["waitObservedThrough"],
+        [observation.throughSequence],
+        { signal },
+      ),
+    );
+    if (
+      receipt.observedSequence !== observation.throughSequence ||
+      receipt.hash !== observation.expectedParentHash
+    )
+      throw new Error(
+        "Channel fork observation changed its original parent prefix",
+      );
   }
 
   private async observeFork(input: {
@@ -1940,39 +2226,90 @@ export class PubSubChannel
   }): Promise<{ observedSequence: number; hash: string }> {
     const signal = this.rpcAbortSignal ?? undefined;
     return this.runDetached(async () => {
-      const fork = await this.inviteIndex.callWithOptions("forkLog", [{
-        fromLogId: input.parentChannelId,
-        fromHead: "main",
-        toLogId: this.objectKey,
-        toHead: "main",
-        atSeq: input.throughSequence,
-      }], { signal });
-      if (fork.forkSeq !== input.throughSequence ||
-          fork.forkHash !== input.expectedParentHash)
-        throw new Error("Channel fork observation acknowledgement changed its canonical prefix");
+      const fork = await this.inviteIndex.callWithOptions(
+        "forkLog",
+        [
+          {
+            fromLogId: input.parentChannelId,
+            fromHead: "main",
+            toLogId: this.objectKey,
+            toHead: "main",
+            atSeq: input.throughSequence,
+          },
+        ],
+        { signal },
+      );
+      if (
+        fork.forkSeq !== input.throughSequence ||
+        fork.forkHash !== input.expectedParentHash
+      )
+        throw new Error(
+          "Channel fork observation acknowledgement changed its canonical prefix",
+        );
       return { observedSequence: fork.forkSeq, hash: fork.forkHash };
     });
   }
 
   private settleObservation(request: SettleRequest): ClaimSettlement {
     const result = this.ctx.storage.transactionSync(() => {
-      const row = this.sql.exec(`SELECT * FROM channel_observation_claim WHERE singleton=1`).toArray()[0];
+      const row = this.sql
+        .exec(`SELECT * FROM channel_observation_claim WHERE singleton=1`)
+        .toArray()[0];
       if (!row) return "duplicate" as const;
-      if (row["item_id"] !== request.itemId || row["lease_owner"] !== request.workerId || Number(row["generation"]) !== request.generation || row["disposition"] !== "leased") return "stale" as const;
-      const next = row["observation_kind"] === "root" ? {kind:"root" as const} : this.channelLog.ledger.peekObservation();
-      const outcome = request.outcome as {observedSequence?:unknown;envelopeId?:unknown;hash?:unknown};
-      if (!next) throw new Error("Channel observation receipt has no owned event");
-      if(next.kind === "root") {
-        if(outcome.observedSequence!==0 || outcome.hash!==LOG_GENESIS_HASH) throw new Error("Channel root observation receipt changed its genesis");
+      if (
+        row["item_id"] !== request.itemId ||
+        row["lease_owner"] !== request.workerId ||
+        Number(row["generation"]) !== request.generation ||
+        row["disposition"] !== "leased"
+      )
+        return "stale" as const;
+      const next =
+        row["observation_kind"] === "root"
+          ? { kind: "root" as const }
+          : this.channelLog.ledger.peekObservation();
+      const outcome = request.outcome as {
+        observedSequence?: unknown;
+        envelopeId?: unknown;
+        hash?: unknown;
+      };
+      if (!next)
+        throw new Error("Channel observation receipt has no owned event");
+      if (next.kind === "root") {
+        if (outcome.observedSequence !== 0 || outcome.hash !== LOG_GENESIS_HASH)
+          throw new Error(
+            "Channel root observation receipt changed its genesis",
+          );
         this.channelLog.ledger.markRootObserved();
       } else if (next.kind === "fork") {
-        if (outcome.observedSequence !== next.throughSequence || outcome.hash !== next.expectedParentHash) throw new Error("Channel fork observation receipt changed its canonical prefix");
-        this.channelLog.ledger.markForkObserved(next.parentChannelId,next.throughSequence,next.expectedParentHash);
+        if (
+          outcome.observedSequence !== next.throughSequence ||
+          outcome.hash !== next.expectedParentHash
+        )
+          throw new Error(
+            "Channel fork observation receipt changed its canonical prefix",
+          );
+        this.channelLog.ledger.markForkObserved(
+          next.parentChannelId,
+          next.throughSequence,
+          next.expectedParentHash,
+        );
       } else {
-        const throughSequence=Number(row["through_sequence"]);
-        const last=this.channelLog.ledger.at(throughSequence);
-        if (!last || outcome.observedSequence !== throughSequence || outcome.envelopeId !== last.envelopeId || outcome.hash !== last.hash) throw new Error("Channel observation receipt changed its canonical event");
-        this.channelLog.ledger.markObservedThrough(next.sequence,throughSequence,String(last.envelopeId));
+        const throughSequence = Number(row["through_sequence"]);
+        const last = this.channelLog.ledger.at(throughSequence);
+        if (
+          !last ||
+          outcome.observedSequence !== throughSequence ||
+          outcome.envelopeId !== last.envelopeId ||
+          outcome.hash !== last.hash
+        )
+          throw new Error(
+            "Channel observation receipt changed its canonical event",
+          );
+        this.channelLog.ledger.markObservedThrough(
+          next.sequence,
+          throughSequence,
+          String(last.envelopeId),
+        );
       }
       this.sql.exec(`DELETE FROM channel_observation_claim WHERE singleton=1`);
       return "accepted" as const;
@@ -1983,43 +2320,103 @@ export class PubSubChannel
     return result;
   }
 
-  private failObservation(request: {workerId:string;itemId:string;generation:number;error:RpcFailure}): {failed:true}|"stale" {
-    const changed = this.sql.exec(`UPDATE channel_observation_claim SET disposition='failed',lease_owner=NULL,error_json=?
+  private failObservation(request: {
+    workerId: string;
+    itemId: string;
+    generation: number;
+    error: RpcFailure;
+  }): { failed: true } | "stale" {
+    const changed = this.sql
+      .exec(
+        `UPDATE channel_observation_claim SET disposition='failed',lease_owner=NULL,error_json=?
       WHERE singleton=1 AND item_id=? AND generation=? AND lease_owner=? AND disposition='leased' RETURNING singleton`,
-      JSON.stringify(request.error),request.itemId,request.generation,request.workerId).toArray().length;
+        JSON.stringify(request.error),
+        request.itemId,
+        request.generation,
+        request.workerId,
+      )
+      .toArray().length;
     if (!changed) return "stale";
     this.acknowledgeDurableWorkReady("channel-observation");
     this.settleObservationWaiters();
-    return {failed:true};
+    return { failed: true };
   }
 
   private settleObservationWaiters(): void {
-    const failure = this.sql.exec(`SELECT error_json FROM channel_observation_claim WHERE disposition='failed' AND singleton=1`).toArray()[0];
+    const failure = this.sql
+      .exec(
+        `SELECT error_json FROM channel_observation_claim WHERE disposition='failed' AND singleton=1`,
+      )
+      .toArray()[0];
     const observed = this.channelLog.ledger.observedSequence();
     for (const waiter of [...this.observationWaiters]) {
-      if (this.channelLog.ledger.hasObservedRoot() && observed >= waiter.sequence) {
-        const hash = waiter.sequence === 0 ? LOG_GENESIS_HASH : this.channelLog.ledger.at(waiter.sequence)?.hash;
-        if (!hash) waiter.reject(new Error("Channel observation lost its retained boundary"));
-        else waiter.resolve({observedSequence:waiter.sequence,hash});
-      } else if (failure) waiter.reject(deserializeRpcFailure(JSON.parse(String(failure["error_json"]))));
+      if (
+        this.channelLog.ledger.hasObservedRoot() &&
+        observed >= waiter.sequence
+      ) {
+        const hash =
+          waiter.sequence === 0
+            ? LOG_GENESIS_HASH
+            : this.channelLog.ledger.at(waiter.sequence)?.hash;
+        if (!hash)
+          waiter.reject(
+            new Error("Channel observation lost its retained boundary"),
+          );
+        else waiter.resolve({ observedSequence: waiter.sequence, hash });
+      } else if (failure)
+        waiter.reject(
+          deserializeRpcFailure(JSON.parse(String(failure["error_json"]))),
+        );
       else continue;
       this.observationWaiters.delete(waiter);
     }
   }
 
-  @rpc({ principals:["code","host"], website:{kind:"closed",reason:"The channel owner exposes its exact graph observation boundary."},
-    effect:{kind:"open"},tier:"open",sensitivity:"read" })
-  async waitObservedThrough(sequence:number): Promise<{observedSequence:number;hash:string}> {
-    if (!Number.isSafeInteger(sequence) || sequence < 0 || sequence > this.channelLog.ledger.headSequence()) throw new Error("Channel observation boundary is not owned");
+  @rpc({
+    principals: ["code", "host"],
+    website: {
+      kind: "closed",
+      reason: "The channel owner exposes its exact graph observation boundary.",
+    },
+    effect: { kind: "open" },
+    tier: "open",
+    sensitivity: "read",
+  })
+  async waitObservedThrough(
+    sequence: number,
+  ): Promise<{ observedSequence: number; hash: string }> {
+    if (
+      !Number.isSafeInteger(sequence) ||
+      sequence < 0 ||
+      sequence > this.channelLog.ledger.headSequence()
+    )
+      throw new Error("Channel observation boundary is not owned");
     const signal = this.rpcAbortSignal;
     signal?.throwIfAborted();
-    let waiter!: {sequence:number;resolve:(value:{observedSequence:number;hash:string})=>void;reject:(error:unknown)=>void};
-    const promise = new Promise<{observedSequence:number;hash:string}>((resolve,reject) => {waiter={sequence,resolve,reject};this.observationWaiters.add(waiter);});
-    const abort = () => {this.observationWaiters.delete(waiter);waiter.reject(signal?.reason);};
-    signal?.addEventListener("abort",abort,{once:true});
+    let waiter!: {
+      sequence: number;
+      resolve: (value: { observedSequence: number; hash: string }) => void;
+      reject: (error: unknown) => void;
+    };
+    const promise = new Promise<{ observedSequence: number; hash: string }>(
+      (resolve, reject) => {
+        waiter = { sequence, resolve, reject };
+        this.observationWaiters.add(waiter);
+      },
+    );
+    const abort = () => {
+      this.observationWaiters.delete(waiter);
+      waiter.reject(signal?.reason);
+    };
+    signal?.addEventListener("abort", abort, { once: true });
     this.settleObservationWaiters();
-    if(this.observationReady()) this.markWorkReady("channel-observation");
-    try { return await promise; } finally {signal?.removeEventListener("abort",abort);this.observationWaiters.delete(waiter);}
+    if (this.observationReady()) this.markWorkReady("channel-observation");
+    try {
+      return await promise;
+    } finally {
+      signal?.removeEventListener("abort", abort);
+      this.observationWaiters.delete(waiter);
+    }
   }
 
   private get channelLog(): ChannelLog {
@@ -2350,8 +2747,10 @@ export class PubSubChannel
       () => this.commitPublication(input),
       async (prepared) => prepared.event,
       async (prepared) => {
-        const failed=(await prepared.forwarded).find((result)=>result.status==="rejected");
-        if(failed?.status==="rejected") throw failed.reason;
+        const failed = (await prepared.forwarded).find(
+          (result) => result.status === "rejected",
+        );
+        if (failed?.status === "rejected") throw failed.reason;
       },
     );
   }
@@ -2373,7 +2772,10 @@ export class PubSubChannel
       : null;
     if (existing) this.assertPublishOwner(existing, input.senderId, input.type);
     if (existing && input.idempotency === "idempotent-by-id") {
-      return { event: existing, forwarded: Promise.resolve([] as PromiseSettledResult<unknown>[]) };
+      return {
+        event: existing,
+        forwarded: Promise.resolve([] as PromiseSettledResult<unknown>[]),
+      };
     }
     const deliveryStartedAt = input.deliveryStartedAt ?? Date.now();
     if (
@@ -2424,12 +2826,13 @@ export class PubSubChannel
       ((payloadRecord?.["actor"] as { kind?: string } | undefined)?.kind as
         | string
         | undefined) ?? "unknown";
-    let annotations = (await this.policyHost.annotate({
-      payloadKind: input.type,
-      payload: input.payload,
-      senderId: input.senderId,
-      senderKind,
-    })) ?? undefined;
+    let annotations =
+      (await this.policyHost.annotate({
+        payloadKind: input.type,
+        payload: input.payload,
+        senderId: input.senderId,
+        senderKind,
+      })) ?? undefined;
     const assetIds =
       input.type === AGENTIC_EVENT_PAYLOAD_KIND &&
       (input.payload as AgenticEvent).kind === "message.completed"
@@ -2459,86 +2862,195 @@ export class PubSubChannel
     }
     const messageId = input.messageId ?? crypto.randomUUID();
     const event = await this.channelLog.append({
-      ...input, messageId, ...(annotations ? { annotations } : {}), ...contentIntegrity,
+      ...input,
+      messageId,
+      ...(annotations ? { annotations } : {}),
+      ...contentIntegrity,
     });
-    if (existing) return { event, forwarded: Promise.resolve([] as PromiseSettledResult<unknown>[]) };
-    const appendedKind = input.type === AGENTIC_EVENT_PAYLOAD_KIND
-      ? (input.payload as { kind?: unknown } | null)?.kind : undefined;
-    this.noteLineageHeadAdvance(event.id,
-      appendedKind === "channel.forked" || appendedKind === "channel.fork_renamed" || appendedKind === "channel.fork_archived");
+    if (existing)
+      return {
+        event,
+        forwarded: Promise.resolve([] as PromiseSettledResult<unknown>[]),
+      };
+    const appendedKind =
+      input.type === AGENTIC_EVENT_PAYLOAD_KIND
+        ? (input.payload as { kind?: unknown } | null)?.kind
+        : undefined;
+    this.noteLineageHeadAdvance(
+      event.id,
+      appendedKind === "channel.forked" ||
+        appendedKind === "channel.fork_renamed" ||
+        appendedKind === "channel.fork_archived",
+    );
     return this.finishCommittedPublication(event, deliveryStartedAt);
   }
 
-  private async finishCommittedPublication(event: ChannelEvent, deliveryStartedAt?: number) {
+  private async finishCommittedPublication(
+    event: ChannelEvent,
+    deliveryStartedAt?: number,
+  ) {
     this.policyHost.foldAppended(this.policyViewFromChannelEvent(event));
     await this.deriveDeliveries(event, deliveryStartedAt);
     this.settleDeliveryWaiters();
     this.markWorkReady("channel-observation");
-    const deliveries = this.deliveryProjection.committedRecipients(event).map((recipient) => {
-      const contextRow = this.sql.exec(`SELECT agentic_context_json FROM channel_delivery_event_context WHERE event_id = ?`, event.messageId).toArray()[0];
-      if (recipient.invocation === "direct" && typeof contextRow?.["agentic_context_json"] !== "string")
-        throw new Error("Committed channel delivery lost its canonical context");
-      const delivery: ChannelDeliveryInput = {
-        deliveryId: recipient.deliveryId, channelId: this.objectKey,
-        channelRef: { source: String(this.env["WORKER_SOURCE"]), className: String(this.env["WORKER_CLASS_NAME"]), objectKey: this.objectKey },
-        participantId: recipient.participantId, subscriptionRevision: recipient.revision,
-        eventSequence: event.id, envelope: { kind: "log", phase: "live", event },
-        agenticContext: recipient.invocation === "direct" ? JSON.parse(String(contextRow!["agentic_context_json"])) as ChannelAgenticContext : null,
-      };
-      return this.runDetached(async () => {
-        try {
-          const acknowledged=await this.rpc.call(recipient.target,
-            durableRpcMethods["acceptChannelDelivery"], [delivery], { signal: this.publicationLifetime.signal });
-          this.settleOwnedDelivery(delivery,acknowledged);
-          return acknowledged;
-        } catch(error) {
-          if(!this.publicationLifetime.signal.aborted || error!==this.publicationLifetime.signal.reason)
-            this.recordOwnedDeliveryFailure(delivery,error);
-          // The failed attempt is now owned by the canonical mailbox. Only a
-          // failure to record it may fault activation-wide completion cleanup.
-          return;
-        }
+    const deliveries = this.deliveryProjection
+      .committedRecipients(event)
+      .map((recipient) => {
+        const contextRow = this.sql
+          .exec(
+            `SELECT agentic_context_json FROM channel_delivery_event_context WHERE event_id = ?`,
+            event.messageId,
+          )
+          .toArray()[0];
+        if (
+          recipient.invocation === "direct" &&
+          typeof contextRow?.["agentic_context_json"] !== "string"
+        )
+          throw new Error(
+            "Committed channel delivery lost its canonical context",
+          );
+        const delivery: ChannelDeliveryInput = {
+          deliveryId: recipient.deliveryId,
+          channelId: this.objectKey,
+          channelRef: {
+            source: String(this.env["WORKER_SOURCE"]),
+            className: String(this.env["WORKER_CLASS_NAME"]),
+            objectKey: this.objectKey,
+          },
+          participantId: recipient.participantId,
+          subscriptionRevision: recipient.revision,
+          eventSequence: event.id,
+          envelope: { kind: "log", phase: "live", event },
+          agenticContext:
+            recipient.invocation === "direct"
+              ? (JSON.parse(
+                  String(contextRow!["agentic_context_json"]),
+                ) as ChannelAgenticContext)
+              : null,
+        };
+        return this.runDetached(async () => {
+          try {
+            const acknowledged = await this.rpc.call(
+              recipient.target,
+              durableRpcMethods["acceptChannelDelivery"],
+              [delivery],
+              { signal: this.publicationLifetime.signal },
+            );
+            this.settleOwnedDelivery(delivery, acknowledged);
+            return acknowledged;
+          } catch (error) {
+            if (
+              !this.publicationLifetime.signal.aborted ||
+              error !== this.publicationLifetime.signal.reason
+            )
+              this.recordOwnedDeliveryFailure(delivery, error);
+            // The failed attempt is now owned by the canonical mailbox. Only a
+            // failure to record it may fault activation-wide completion cleanup.
+            return;
+          }
+        });
       });
-    });
     return { event, forwarded: Promise.allSettled(deliveries) };
   }
 
   /** A failed direct attempt belongs to its canonical delivery, not the
    * activation. Genuine acknowledgement or retirement can settle that debt. */
-  private recordOwnedDeliveryFailure(delivery:ChannelDeliveryInput,error:unknown):void {
-    if(delivery.envelope.kind!=="log") throw new Error("Canonical delivery failure has no event identity",{cause:error});
-    this.sql.exec(`UPDATE channel_delivery_mailbox SET last_failure_json=COALESCE(last_failure_json,?)
+  private recordOwnedDeliveryFailure(
+    delivery: ChannelDeliveryInput,
+    error: unknown,
+  ): void {
+    if (delivery.envelope.kind !== "log")
+      throw new Error("Canonical delivery failure has no event identity", {
+        cause: error,
+      });
+    this.sql.exec(
+      `UPDATE channel_delivery_mailbox SET last_failure_json=COALESCE(last_failure_json,?)
       WHERE delivery_id=? AND event_id=? AND event_sequence=? AND subscription_revision=?
-        AND state IN ('ready','leased','retrying')`,JSON.stringify(serializeRpcFailure(error)),
-      delivery.deliveryId,delivery.envelope.event.messageId,delivery.eventSequence,delivery.subscriptionRevision);
+        AND state IN ('ready','leased','retrying')`,
+      JSON.stringify(serializeRpcFailure(error)),
+      delivery.deliveryId,
+      delivery.envelope.event.messageId,
+      delivery.eventSequence,
+      delivery.subscriptionRevision,
+    );
     this.settleDeliveryWaiters();
   }
 
   /** A recipient's exact live acknowledgement completes the same canonical
    * mailbox debt. A held host claim retains its own generation authority. */
-  private settleOwnedDelivery(delivery:ChannelDeliveryInput,acknowledged:unknown):void {
-    const outcome:ChannelDeliveryOutcome=acknowledged!==null && typeof acknowledged === "object"
-      && "processed" in acknowledged && acknowledged.processed===true
-      ? {deliveryId:delivery.deliveryId,disposition:"processed",
-          ...("recipientExecutionStartedAt" in acknowledged && typeof acknowledged.recipientExecutionStartedAt === "number"
-            ? {recipientExecutionStartedAt:acknowledged.recipientExecutionStartedAt}: {})}
-      : acknowledged as ChannelDeliveryOutcome;
-    if(!outcome || outcome.deliveryId!==delivery.deliveryId ||
-      !["processed","duplicate","declined","retired"].includes(outcome.disposition))
-      throw new Error("Channel live acknowledgement changed its canonical delivery identity");
-    this.ctx.storage.transactionSync(()=>{
-      const changed=this.sql.exec(`UPDATE channel_delivery_mailbox
+  private settleOwnedDelivery(
+    delivery: ChannelDeliveryInput,
+    acknowledged: unknown,
+  ): void {
+    const outcome: ChannelDeliveryOutcome =
+      acknowledged !== null &&
+      typeof acknowledged === "object" &&
+      "processed" in acknowledged &&
+      acknowledged.processed === true
+        ? {
+            deliveryId: delivery.deliveryId,
+            disposition: "processed",
+            ...("recipientExecutionStartedAt" in acknowledged &&
+            typeof acknowledged.recipientExecutionStartedAt === "number"
+              ? {
+                  recipientExecutionStartedAt:
+                    acknowledged.recipientExecutionStartedAt,
+                }
+              : {}),
+          }
+        : (acknowledged as ChannelDeliveryOutcome);
+    if (
+      !outcome ||
+      outcome.deliveryId !== delivery.deliveryId ||
+      !["processed", "duplicate", "declined", "retired"].includes(
+        outcome.disposition,
+      )
+    )
+      throw new Error(
+        "Channel live acknowledgement changed its canonical delivery identity",
+      );
+    this.ctx.storage.transactionSync(() => {
+      const changed = this.sql
+        .exec(
+          `UPDATE channel_delivery_mailbox
         SET state=?,claimed_by=NULL,agentic_context_json=NULL,terminal_outcome_json=?,last_failure_json=NULL
         WHERE delivery_id=? AND event_id=? AND event_sequence=? AND subscription_revision=? AND state='ready'
-        RETURNING created_at,event_kind`,outcome.disposition==="retired"?"terminal-retired":"terminal-completed",
-        JSON.stringify(outcome),delivery.deliveryId,delivery.envelope.kind === "log" ? delivery.envelope.event.messageId : "",
-        delivery.eventSequence,delivery.subscriptionRevision).toArray()[0];
-      if(!changed)return;
-      if(outcome.disposition === "declined")this.deliveryProjection.recordDeclined(delivery.deliveryId);
-      if(typeof outcome.recipientExecutionStartedAt === "number")
-        this.recordDeliveryLatency("publish-to-recipient-execution",Math.max(0,outcome.recipientExecutionStartedAt-Number(changed["created_at"])));
-      if(["invocation.completed","invocation.failed","invocation.cancelled","invocation.abandoned"].includes(String(changed["event_kind"])))
-        this.recordDeliveryLatency("result-to-caller-settlement",Math.max(0,Date.now()-Number(changed["created_at"])));
+        RETURNING created_at,event_kind`,
+          outcome.disposition === "retired"
+            ? "terminal-retired"
+            : "terminal-completed",
+          JSON.stringify(outcome),
+          delivery.deliveryId,
+          delivery.envelope.kind === "log"
+            ? delivery.envelope.event.messageId
+            : "",
+          delivery.eventSequence,
+          delivery.subscriptionRevision,
+        )
+        .toArray()[0];
+      if (!changed) return;
+      if (outcome.disposition === "declined")
+        this.deliveryProjection.recordDeclined(delivery.deliveryId);
+      if (typeof outcome.recipientExecutionStartedAt === "number")
+        this.recordDeliveryLatency(
+          "publish-to-recipient-execution",
+          Math.max(
+            0,
+            outcome.recipientExecutionStartedAt - Number(changed["created_at"]),
+          ),
+        );
+      if (
+        [
+          "invocation.completed",
+          "invocation.failed",
+          "invocation.cancelled",
+          "invocation.abandoned",
+        ].includes(String(changed["event_kind"]))
+      )
+        this.recordDeliveryLatency(
+          "result-to-caller-settlement",
+          Math.max(0, Date.now() - Number(changed["created_at"])),
+        );
     });
     this.settleDeliveryWaiters();
   }
@@ -3355,20 +3867,9 @@ export class PubSubChannel
     const entity = parseDOParticipantId(input.endpoint.entityId);
     if (!entity)
       throw new Error("join: entity endpoint is not a Durable Object identity");
-    const active = (await this.rpc.call(
-      "main",
-      mainRpcMethods["workspace-state.entity.resolveActive"],
-      [input.endpoint.entityId],
-    )) as { id?: unknown; kind?: unknown } | null;
-    if (
-      !active ||
-      active.id !== input.endpoint.entityId ||
-      active.kind !== "do"
-    ) {
-      throw new Error(
-        `join: Durable Object participant ${participantId} is not active`,
-      );
-    }
+    // Stateless RPC admission already verifies this exact object against the
+    // host's live entity mirror. Re-reading its liveness across another RPC
+    // cannot strengthen the retained relationship and needlessly blocks join.
     if (input.contextId) this.initChannel(input.contextId);
     await this.installConversationSeed();
     await this.deriveDeliveries();
@@ -3479,30 +3980,41 @@ export class PubSubChannel
     revision: number;
   }): Promise<void> {
     this.assertParticipantCaller(input.participantId, "leave");
-    await this.deriveDeliveries();
-    const current = this.deliveryProjection.relationship(input.participantId);
-    if (!current || !current.active) return;
-    if (input.revision !== current.revision + 1) {
-      throw new Error(
-        `leave: expected relationship revision ${current.revision + 1}`,
+    if (!Number.isSafeInteger(input.revision) || input.revision < 1)
+      throw new Error("leave: requires the owned join revision");
+    return this.withRelationshipMutation(input.participantId, async () => {
+      await this.deriveDeliveries();
+      const current = this.deliveryProjection.relationship(input.participantId);
+      if (!current || !current.active) return;
+      // A newer opening authoritatively superseded this owner's relationship.
+      // Closing the old owner must never end its replacement.
+      if (input.revision < current.revision) return;
+      if (input.revision > current.revision)
+        throw new Error("leave: join revision was not admitted");
+      const endedRevision = current.revision + 1;
+      const metadata = this.getSenderMetadata(input.participantId) ?? {};
+      await this.appendDurable({
+        type: "channel.subscription.ended",
+        payload: {
+          participantId: input.participantId,
+          revision: endedRevision,
+        },
+        senderId: input.participantId,
+        senderMetadata: metadata,
+        messageId: `channel-subscription:${input.participantId}:${endedRevision}`,
+        idempotency: "idempotent-by-id",
+      });
+      await this.calls.failPendingCallsTargeting(
+        input.participantId,
+        "graceful",
       );
-    }
-    const metadata = this.getSenderMetadata(input.participantId) ?? {};
-    await this.appendDurable({
-      type: "channel.subscription.ended",
-      payload: { participantId: input.participantId, revision: input.revision },
-      senderId: input.participantId,
-      senderMetadata: metadata,
-      messageId: `channel-subscription:${input.participantId}:${input.revision}`,
-      idempotency: "idempotent-by-id",
+      this.broadcastPresenceSignal(
+        input.participantId,
+        "leave",
+        metadata,
+        "graceful",
+      );
     });
-    await this.calls.failPendingCallsTargeting(input.participantId, "graceful");
-    this.broadcastPresenceSignal(
-      input.participantId,
-      "leave",
-      metadata,
-      "graceful",
-    );
   }
 
   @rpc({
@@ -4278,16 +4790,28 @@ export class PubSubChannel
     for (const intent of intents) {
       await this.publicationQueue.enqueue(
         async () => {
-          const previous = intent.envelopeId ? this.channelLog.ledger.envelope(intent.envelopeId) : null;
+          const previous = intent.envelopeId
+            ? this.channelLog.ledger.envelope(intent.envelopeId)
+            : null;
           const event = await this.channelLog.appendPrepared(intent);
           const committed = await this.finishCommittedPublication(event);
-          if (!previous) broadcast(this.broadcastDeps, event, {kind:"log",phase:"live"}, event.senderId);
+          if (!previous)
+            broadcast(
+              this.broadcastDeps,
+              event,
+              { kind: "log", phase: "live" },
+              event.senderId,
+            );
           return committed;
         },
-        async () => { admitted += 1; },
+        async () => {
+          admitted += 1;
+        },
         async (prepared) => {
-          const failed=(await prepared.forwarded).find((result)=>result.status==="rejected");
-          if(failed?.status==="rejected") throw failed.reason;
+          const failed = (await prepared.forwarded).find(
+            (result) => result.status === "rejected",
+          );
+          if (failed?.status === "rejected") throw failed.reason;
         },
       );
     }
@@ -4367,7 +4891,9 @@ export class PubSubChannel
     tier: "open",
     sensitivity: "read",
   })
-  async getEnvelope(envelopeId: string): Promise<import("@workspace/pubsub").ChannelEvent | null> {
+  async getEnvelope(
+    envelopeId: string,
+  ): Promise<import("@workspace/pubsub").ChannelEvent | null> {
     return this.channelLog.getEventByEnvelopeId(envelopeId);
   }
 
@@ -5291,14 +5817,22 @@ export class PubSubChannel
           .toArray(),
       }));
     });
-    const head=this.channelLog.ledger.headSequence();
-    const observed=this.channelLog.ledger.observedSequence();
-    const count=Number(this.sql.exec(`SELECT COUNT(*) AS count FROM channel_ledger_events`).toArray()[0]?.["count"] ?? 0);
+    const head = this.channelLog.ledger.headSequence();
+    const observed = this.channelLog.ledger.observedSequence();
+    const count = Number(
+      this.sql
+        .exec(`SELECT COUNT(*) AS count FROM channel_ledger_events`)
+        .toArray()[0]?.["count"] ?? 0,
+    );
     return {
-      tables, indexes,
+      tables,
+      indexes,
       invariants: [
-        {name:"canonical-channel-owner-history",ok:count===head},
-        {name:"graph-observation-within-owner-history",ok:observed>=0 && observed<=head},
+        { name: "canonical-channel-owner-history", ok: count === head },
+        {
+          name: "graph-observation-within-owner-history",
+          ok: observed >= 0 && observed <= head,
+        },
       ],
     };
   }
@@ -6665,6 +7199,11 @@ export class PubSubChannel
                 operationId: `fork:${forkId}:${agent.participantId}`,
                 parentChannelId: this.objectKey,
                 channelId: forkedChannelId,
+                channelRef: {
+                  source: String(this.env["WORKER_SOURCE"]),
+                  className: String(this.env["WORKER_CLASS_NAME"]),
+                  objectKey: forkedChannelId,
+                },
                 contextId: forkedContextId,
                 knowledge: agent.knowledge,
               },
@@ -7132,16 +7671,28 @@ export class PubSubChannel
     },
   ): Promise<void> {
     if (!newContextId) throw new Error("postClone requires newContextId");
-    const intent = canonicalJson({ parentChannelId, forkPointId, newContextId,
-      ...(forkInit ? { forkInit } : {}) });
+    const intent = canonicalJson({
+      parentChannelId,
+      forkPointId,
+      newContextId,
+      ...(forkInit ? { forkInit } : {}),
+    });
     const previousInitialization = this.getStateValue("forkInitialization");
     if (previousInitialization) {
-      const receipt = JSON.parse(previousInitialization) as { intent: string; complete: boolean };
+      const receipt = JSON.parse(previousInitialization) as {
+        intent: string;
+        complete: boolean;
+      };
       if (receipt.intent !== intent)
-        throw new Error("Channel fork initialization changed its immutable intent");
+        throw new Error(
+          "Channel fork initialization changed its immutable intent",
+        );
       if (receipt.complete) return;
     } else {
-      this.setStateValue("forkInitialization", JSON.stringify({ intent, complete: false }));
+      this.setStateValue(
+        "forkInitialization",
+        JSON.stringify({ intent, complete: false }),
+      );
     }
     // Fix identity: cloneDO copies parent's __objectKey; overwrite with our actual key
     this.sql.exec(
@@ -7198,7 +7749,10 @@ export class PubSubChannel
     // Canonical history retains its original invocation identity. The child
     // gains knowledge, never ownership of those operations or their cleanup.
     await this.calls.abandonInheritedCalls();
-    this.setStateValue("forkInitialization", JSON.stringify({ intent, complete: true }));
+    this.setStateValue(
+      "forkInitialization",
+      JSON.stringify({ intent, complete: true }),
+    );
     this.markWorkReady("channel-observation");
   }
 

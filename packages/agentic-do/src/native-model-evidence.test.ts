@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -151,7 +151,7 @@ describe("native model execution evidence", () => {
     let opens = 0;
     const reader = {
       existingAgentSession: () => undefined,
-      agentSession: async () => {
+      restoreAgentSession: async () => {
         opens++;
         return replacement.harness;
       },
@@ -193,11 +193,14 @@ describe("native model execution evidence", () => {
       context,
     );
     await f.harness.runPass(context);
+    const inspect=vi.spyOn(f.harness,"inspect").mockRejectedValue(new Error("An owner-wide scheduling scan is not model evidence"));
     const evidence = await readNativeModelExecutionEvidence(
       f.harness,
       f.conversation.id,
       context,
     );
+    expect(inspect).not.toHaveBeenCalled();
+    inspect.mockRestore();
     expect(evidence.totalCalls).toBe(1);
     expect(evidence.truncated).toBe(false);
     expect(evidence.calls).toEqual([

@@ -73,7 +73,7 @@ async function fixture(storage: Storage = new MemoryStorage()) {
     sessions.push(harness);
     conversation = await openNativeChannelConversation(
       harness,
-      { channelId: "channel:one", contextId: "context:one" },
+      { channelId: "channel:one", contextId: "context:one", channelRef: { source: "workers/channel", className: "ChannelDO", objectKey: "channel:one" } },
       { model: { provider: "openai-codex", modelId: "faux-1" } },
       context,
     );

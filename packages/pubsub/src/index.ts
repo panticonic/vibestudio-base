@@ -29,15 +29,26 @@
  */
 
 export * from "./types.js";
-export { captureChannelMethodOffers, assertValidChannelMethodSchema } from "./method-offers.js";
+export {
+  captureChannelMethodOffers,
+  assertValidChannelMethodSchema,
+} from "./method-offers.js";
 export type { PubSubClient } from "./client.js";
-export { connectViaRpc, resolveRpcChannelTarget,
+export {
+  connectViaRpc,
+  resolveRpcChannelTarget,
   initializeConversation,
 } from "./rpc-client.js";
-export type { RpcChannelTargetOptions, RpcConnectOptions } from "./rpc-client.js";
+export type {
+  RpcChannelTargetOptions,
+  RpcConnectOptions,
+} from "./rpc-client.js";
 export { waitForApprovalResolution } from "./review-readiness.js";
 export { draft7MetaSchema } from "./json-schema-draft-07.js";
-export { iterateChannelReplayAfterPages, type ChannelReplayPageReader } from "./channel-replay.js";
+export {
+  iterateChannelReplayAfterPages,
+  type ChannelReplayPageReader,
+} from "./channel-replay.js";
 export {
   CHANNEL_SUBSCRIPTION_BUFFER_BYTES,
   channelSubscriptionQueuingStrategy,
@@ -61,7 +72,10 @@ export * from "./protocol-types.js";
 export * from "./tracker-types.js";
 
 // Tracker factory functions
-export { createThinkingTracker, createActionTracker } from "./tracker-factories.js";
+export {
+  createThinkingTracker,
+  createActionTracker,
+} from "./tracker-factories.js";
 
 // Tool name utilities
 export * from "./tool-name-utils.js";
@@ -70,7 +84,11 @@ export * from "./tool-name-utils.js";
 export * from "./context-tracker.js";
 
 // TODO list types and code generation
-export { type TodoItem, getTodoListCode, getCachedTodoListCode } from "./todo-types.js";
+export {
+  type TodoItem,
+  getTodoListCode,
+  getCachedTodoListCode,
+} from "./todo-types.js";
 
 // Protocol message schemas (Zod)
 export * from "./protocol.js";
@@ -95,7 +113,11 @@ export {
 } from "./protocol-schemas.js";
 
 // JSON Schema to Zod conversion (canonical home: agentic-protocol)
-export { jsonSchemaToZod, jsonSchemaToZodRawShape, isRecord } from "@workspace/agentic-protocol";
+export {
+  jsonSchemaToZod,
+  jsonSchemaToZodRawShape,
+  isRecord,
+} from "@workspace/agentic-protocol";
 
 // Image processing utilities
 export {
@@ -123,3 +145,9 @@ export {
 
 // Async utilities
 export { AsyncQueue, createFanout } from "./async-queue.js";
+
+export {
+  resolveChannelEndpoint,
+  CHANNEL_SERVICE_PROTOCOL,
+  type ChannelEndpoint,
+} from "./channel-endpoint.js";

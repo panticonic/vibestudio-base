@@ -1,3 +1,5 @@
+import { resolveChannelEndpoint } from "./channel-endpoint.js";
+import { doTargetId } from "@vibestudio/shared/workspaceServiceRpc";
 import {
   createRpcMethodCaller,
   type RpcMethodArgs,
@@ -251,23 +253,19 @@ export async function resolveRpcChannelTarget({
 }: RpcChannelTargetOptions): Promise<string> {
   while (true) {
     try {
-      const service = await rpc.call(
-        "main",
-        mainRpcMethods["workers.resolveService"],
-        [protocol, channel],
-        {
-          ...(signal ? { signal } : {}),
-          ...(resolutionTimeoutMs !== undefined
-            ? { timeoutMs: resolutionTimeoutMs }
-            : {}),
-        },
+      return doTargetId(
+        await resolveChannelEndpoint(
+          rpc,
+          channel,
+          {
+            ...(signal ? { signal } : {}),
+            ...(resolutionTimeoutMs !== undefined
+              ? { timeoutMs: resolutionTimeoutMs }
+              : {}),
+          },
+          protocol,
+        ),
       );
-      if (service.kind !== "durable-object" || !service.targetId) {
-        throw new Error(
-          "Channel service must resolve to a Durable Object service",
-        );
-      }
-      return service.targetId;
     } catch (error) {
       const review = pendingReviewNotice(error);
       if (!review) throw error;
@@ -2094,6 +2092,8 @@ export function connectViaRpc<
     controller: AbortController;
     terminal: Promise<void>;
     acknowledged: boolean;
+    acknowledgement: Promise<void>;
+    residentJoin: Promise<unknown> | null;
   }
 
   let subscriptionGeneration = 0;
@@ -2155,6 +2155,8 @@ export function connectViaRpc<
       controller,
       terminal: Promise.resolve(),
       acknowledged: false,
+      acknowledgement: ack,
+      residentJoin: null,
     };
     const terminal = (async () => {
       let unregisterResident: (() => void | Promise<void>) | null = null;
@@ -2163,6 +2165,7 @@ export function connectViaRpc<
         if (opts.deliveryMode === "resident") {
           previous?.controller.abort();
           await previous?.terminal.catch(() => undefined);
+          controller.signal.throwIfAborted();
           if (!rpc.registerResidentSession) {
             throw new Error(
               "Resident channel delivery requires the owning Durable Object registrar",
@@ -2181,6 +2184,7 @@ export function connectViaRpc<
               abortExecutingMethod(callId);
           };
           const channelTargetId = await getDoTarget(controller.signal);
+          controller.signal.throwIfAborted();
           residentRegistration = rpc.registerResidentSession(
             channel,
             residentReceiver,
@@ -2214,10 +2218,12 @@ export function connectViaRpc<
             pendingResidentJoin = { operationId: crypto.randomUUID(), intent };
           }
           const admission = pendingResidentJoin;
-          const result = await callChannel("join", {
+          const joining = callChannel("join", {
             ...joinIntent,
             operationId: admission.operationId,
           });
+          subscription.residentJoin = joining;
+          const result = await joining;
           const revision = result.revision;
           if (
             typeof revision !== "number" ||
@@ -3011,13 +3017,27 @@ export function connectViaRpc<
     const subscription = activeSubscription;
     closePromise = (async () => {
       let leaveError: unknown;
+      let openingError: unknown;
+      if (opts.deliveryMode === "resident" && subscription) {
+        if (subscription.residentJoin === null) subscription.controller.abort();
+        // Closing owns the finite join too: obtain its admitted revision before
+        // releasing membership. The subscription terminal waits for close, so
+        // only its finite acknowledgement belongs in this dependency.
+        try {
+          await subscription.acknowledgement;
+        } catch (error) {
+          if (subscription.residentJoin) openingError = error;
+        }
+      }
       try {
-        // Before the subscribe ACK there is no admitted participant to leave;
-        // cancelling that pending resource is complete cleanup. After the ACK,
-        // self-leave is the one cooperative terminal: the channel drains the
-        // participant's accepted delivery lane before removing its authority
-        // anchor and closing the response stream.
-        if (subscription?.acknowledged) {
+        // Response-owned streams cancel before admission; finite resident
+        // openings are joined above and leave their exact admitted receipt.
+        // A failed replacement still owns the previous acknowledged receipt.
+        if (
+          subscription?.acknowledged ||
+          (opts.deliveryMode === "resident" &&
+            residentRelationshipRevision !== null)
+        ) {
           if (opts.deliveryMode === "resident") {
             if (residentRelationshipRevision === null)
               throw new Error(
@@ -3025,10 +3045,10 @@ export function connectViaRpc<
               );
             await callChannel("leave", {
               participantId: pid,
-              revision: residentRelationshipRevision + 1,
+              revision: residentRelationshipRevision,
             });
             await residentRegistration?.relationshipEnded?.();
-          } else {
+          } else if (subscription?.acknowledged) {
             await rpc.call(
               await getDoTarget(),
               channelClientRpcMethods["unsubscribe"],
@@ -3043,6 +3063,12 @@ export function connectViaRpc<
         await subscription?.terminal.catch(() => undefined);
         if (activeSubscription === subscription) activeSubscription = null;
       }
+      if (openingError !== undefined && leaveError !== undefined)
+        throw new AggregateError(
+          [openingError, leaveError],
+          "Channel closure failed during opening and leave",
+        );
+      if (openingError !== undefined) throw openingError;
       if (leaveError !== undefined) throw leaveError;
     })();
     return closePromise;

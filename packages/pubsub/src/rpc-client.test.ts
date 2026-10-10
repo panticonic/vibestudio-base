@@ -574,10 +574,154 @@ describe("connectViaRpc", () => {
         ).toBe(false);
         expect(
           rpc.call.mock.calls.find((call) => call[1] === "leave")?.[2],
-        ).toEqual([{ participantId: SELF_ID, revision: 9 }]);
+        ).toEqual([{ participantId: SELF_ID, revision: 8 }]);
       } finally {
         await client.close();
       }
+    });
+
+    it("cancels and joins unresolved resident selection without admitting membership", async () => {
+      let enter!: () => void;
+      const entered = new Promise<void>((resolve) => {
+        enter = resolve;
+      });
+      const registrar = vi.fn();
+      const rpc = {
+        selfId: SELF_ID,
+        stream: vi.fn(),
+        registerResidentSession: registrar,
+        call: vi.fn(
+          async (
+            _target: string,
+            method: string,
+            _args: unknown[],
+            options?: { signal?: AbortSignal },
+          ) => {
+            if (method !== "workers.resolveService")
+              throw new Error(`Unexpected pre-admission operation ${method}`);
+            enter();
+            const signal = options?.signal;
+            if (!signal)
+              throw new Error(
+                "Unresolved selection lost its owning cancellation",
+              );
+            await new Promise<void>((_resolve, reject) => {
+              if (signal.aborted) reject(signal.reason);
+              else
+                signal.addEventListener("abort", () => reject(signal.reason), {
+                  once: true,
+                });
+            });
+          },
+        ),
+      };
+      const client = connectViaRpc({
+        rpc: publicRpcMock(rpc),
+        channel: CHANNEL,
+        deliveryMode: "resident",
+      });
+      await entered;
+      await client.close();
+      expect(registrar).not.toHaveBeenCalled();
+      expect(rpc.call.mock.calls.map(([, method]) => method)).toEqual([
+        "workers.resolveService",
+      ]);
+      await expect(client.ready()).rejects.toThrow(
+        "connection closed before ready",
+      );
+    });
+
+    it("joins a held replacement acknowledgement before closing its exact membership", async () => {
+      let recover!: () => Promise<void>;
+      let release!: () => void;
+      let entered!: () => void;
+      const entering = new Promise<void>((resolve) => {
+        entered = resolve;
+      });
+      const held = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      let joins = 0;
+      const closedRegistrations = vi.fn();
+      const rpc = {
+        selfId: SELF_ID,
+        stream: vi.fn(),
+        registerResidentSession: vi.fn(() => ({
+          transport: {
+            call: <Args extends unknown[], Result>(
+              target: string,
+              method: RpcMethod<Args, Result>,
+              args: Args,
+            ) => publicRpcMock(rpc).call(target, method, args),
+          },
+          close: closedRegistrations,
+        })),
+        call: vi.fn(async (_target: string, method: string) => {
+          if (method === "join") {
+            joins++;
+            if (joins === 2) {
+              entered();
+              await held;
+            }
+            return {
+              ok: true,
+              participantId: SELF_ID,
+              revision: joins,
+              envelope: {
+                mode: "initial",
+                logEvents: [],
+                snapshots: [],
+                ready: { totalCount: 0, envelopeCount: 0 },
+              },
+            };
+          }
+          if (method === "leave") return undefined;
+          throw new Error(`Unexpected resident RPC ${method}`);
+        }),
+      };
+      const client = connectViaRpc({
+        rpc: publicRpcMock(rpc),
+        channel: CHANNEL,
+        channelTargetId: DO_TARGET,
+        deliveryMode: "resident",
+        recoveryCoordinator: {
+          registerResubscribeHandler: (
+            _id: string,
+            handler: () => Promise<void>,
+          ) => {
+            recover = handler;
+            return vi.fn();
+          },
+          registerColdRecoverHandler: () => vi.fn(),
+        },
+      });
+      await client.ready();
+      const replacing = recover();
+      await entering;
+      const closing = client.close();
+      let finished = false;
+      void closing.then(() => {
+        finished = true;
+      });
+      await Promise.resolve();
+      expect(finished).toBe(false);
+      expect(rpc.call.mock.calls.some(([, method]) => method === "leave")).toBe(
+        false,
+      );
+      release();
+      await Promise.all([replacing, closing]);
+      expect(rpc.call).toHaveBeenCalledWith(
+        DO_TARGET,
+        "leave",
+        [{ participantId: SELF_ID, revision: 2 }],
+        undefined,
+      );
+      expect(
+        rpc.call.mock.calls.some(
+          ([, method]) => method === "relationshipState",
+        ),
+      ).toBe(false);
+      expect(closedRegistrations).toHaveBeenCalledTimes(2);
     });
 
     it("routes finite resident delivery through the injected owner registrar", async () => {
@@ -775,7 +919,7 @@ describe("connectViaRpc", () => {
       expect(rpc.call).toHaveBeenCalledWith(
         DO_TARGET,
         "leave",
-        [{ participantId: SELF_ID, revision: 2 }],
+        [{ participantId: SELF_ID, revision: 1 }],
         undefined,
       );
     });

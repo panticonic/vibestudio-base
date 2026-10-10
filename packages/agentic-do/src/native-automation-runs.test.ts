@@ -176,7 +176,7 @@ async function fixture(
     sessions.push(harness);
     conversation = await openNativeChannelConversation(
       harness,
-      { channelId: "channel:one", contextId: "context:one" },
+      { channelId: "channel:one", contextId: "context:one", channelRef: { source: "workers/channel", className: "ChannelDO", objectKey: "channel:one" } },
       {
         model: { provider: "faux", modelId: "faux-1" },
         tools: [evalTool, selectedTool],

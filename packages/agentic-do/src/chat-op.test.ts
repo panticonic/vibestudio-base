@@ -188,6 +188,12 @@ function automationRecord(
   };
 }
 class TestVessel extends AgentVesselBase {
+  resetChannelTransportForTest(): void {
+    this.resetRpcClients();
+  }
+  resolvedChannelClientForTest(channelId: string): ChannelClient {
+    return super.createChannelClient(channelId);
+  }
   rpcWireMockForTest:
     | ((
         target: string,
@@ -446,6 +452,11 @@ class TestVessel extends AgentVesselBase {
     this.ensureIdentity();
     await this.subscriptions.subscribe({
       channelId,
+      channelRef: {
+        source: "workers/pubsub-channel",
+        className: "PubSubChannel",
+        objectKey: channelId,
+      },
       contextId: "ctx-1",
       descriptor: this.getParticipantInfo(),
       config,
@@ -807,6 +818,55 @@ async function expectedEvalCaller(): Promise<string> {
   const key = sha256HexSyncText(`${AGENT_ID}\0${CHANNEL}`).slice(0, 40);
   return `do:vibestudio/internal:EvalDO:${key}`;
 }
+describe("canonical channel endpoint admission", () => {
+  it.each(["before", "after"] as const)(
+    "preserves next authoritative admission when failed selection settles %s it",
+    async (ordering) => {
+      const vessel = await makeVessel();
+      const selected = "explicit-next-admission";
+      const original = new Error("Original selected provider failed");
+      let rejectSelection!: (error: Error) => void;
+      let enter!: () => void;
+      const entered = new Promise<void>((resolve) => {
+        enter = resolve;
+      });
+      const resolver = vi.fn(async (_target: string, method: string) => {
+        if (method !== "workers.resolveService")
+          throw new Error(`Unexpected endpoint operation ${method}`);
+        enter();
+        return new Promise<never>((_resolve, reject) => {
+          rejectSelection = reject;
+        });
+      });
+      vessel.rpcWireMockForTest = resolver;
+      const oldClient = vessel.resolvedChannelClientForTest(selected);
+      const failed = expect(oldClient.resolveTarget()).rejects.toBe(original);
+      await entered;
+      if (ordering === "after")
+        await vessel.registerSubscriptionForTest(selected);
+      rejectSelection(original);
+      await failed;
+      if (ordering === "before")
+        await vessel.registerSubscriptionForTest(selected);
+      const currentClient = vessel.resolvedChannelClientForTest(selected);
+      expect(currentClient).not.toBe(oldClient);
+      await expect(currentClient.resolveTarget()).resolves.toBe(
+        `do:workers/pubsub-channel:PubSubChannel:${selected}`,
+      );
+      expect(vessel.resolvedChannelClientForTest(selected)).toBe(currentClient);
+      expect(resolver).toHaveBeenCalledOnce();
+      vessel.resetChannelTransportForTest();
+      const replacement = vessel.resolvedChannelClientForTest(selected);
+      expect(replacement).not.toBe(currentClient);
+      await expect(replacement.resolveTarget()).resolves.toBe(
+        `do:workers/pubsub-channel:PubSubChannel:${selected}`,
+      );
+      expect(vessel.resolvedChannelClientForTest(selected)).toBe(replacement);
+      await expect(oldClient.resolveTarget()).rejects.toBe(original);
+    },
+  );
+});
+
 describe("AgentVesselBase default automation authority", () => {
   it("compiles the creator's exact retained execution and reuses an installed default without recompiling", async () => {
     const authorityPlan = {
@@ -824,14 +884,14 @@ describe("AgentVesselBase default automation authority", () => {
         if (method === "getDefault") return installed;
         if (method === "runtime.createEntity")
           return {
-            id: "do:workers/pubsub-channel:PubSubChannel:channel",
+            id: `do:workers/pubsub-channel:PubSubChannel:${(args[0] as { key: string }).key}`,
             kind: "do",
             source: {
               repoPath: "workers/pubsub-channel",
               effectiveVersion: "test",
             },
             contextId: "ctx-1",
-            targetId: "do:workers/pubsub-channel:PubSubChannel:channel",
+            targetId: `do:workers/pubsub-channel:PubSubChannel:${(args[0] as { key: string }).key}`,
           };
         if (method === "authority.compileAuthorityPlan") return authorityPlan;
         if (method === "provisionDefault") {

@@ -168,6 +168,7 @@ describe("native vessel alarm ownership", () => {
       const session = await fixture.instance.open();
       const binding = {
         channelId: "channel:alarm-ownership",
+        channelRef: { source: "workers/channel", className: "ChannelDO", objectKey: "channel:alarm-ownership" },
         contextId: "context:alarm-ownership",
       };
       const root = await openNativeChannelConversation(
@@ -257,7 +258,7 @@ describe("native vessel alarm ownership", () => {
       expect(faux.state.callCount).toBe(0);
       expect(methods).not.toContain("workspace-state.alarmSet");
       expect(methods).not.toContain("workspace-state.alarmClear");
-      const missing = { ...binding, channelId: "channel:missing" };
+      const missing = { ...binding, channelId: "channel:missing", channelRef: { ...binding.channelRef, objectKey: "channel:missing" } };
       await expect(
         current.call("interruptChannel", missing.channelId),
       ).resolves.toEqual({ interrupted: true });

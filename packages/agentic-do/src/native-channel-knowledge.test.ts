@@ -68,7 +68,15 @@ async function fixture(name: string, storage: Storage = new MemoryStorage()) {
     incarnation: `storage:${name}`,
     authoritySessionId: `authority:${name}`,
   };
-  const binding = { channelId: `channel:${name}`, contextId: owner.contextId };
+  const binding = {
+    channelId: `channel:${name}`,
+    contextId: owner.contextId,
+    channelRef: {
+      source: "workers/channel",
+      className: "ChannelDO",
+      objectKey: `channel:${name}`,
+    },
+  };
   const events: ChannelEvent[] = [];
   const models = createModels();
   const faux = fauxProvider();
@@ -261,6 +269,7 @@ function importInput(
     operationId,
     parentChannelId: knowledge.channelId,
     channelId: receiver.binding.channelId,
+    channelRef: receiver.binding.channelRef,
     contextId: receiver.binding.contextId,
     knowledge,
   };
@@ -483,7 +492,13 @@ describe("native channel knowledge transfer", () => {
           protocol: AGENTIC_PROTOCOL_VERSION,
           role: "user",
           outcome: "completed",
-          blocks: [{ type: "text", blockId: "early-passive:block", content: "Early passive context" }],
+          blocks: [
+            {
+              type: "text",
+              blockId: "early-passive:block",
+              content: "Early passive context",
+            },
+          ],
         },
       },
     };
@@ -491,26 +506,54 @@ describe("native channel knowledge transfer", () => {
     await conversation.commit(async (tx) => {
       await tx.appendEntry(conversation.id, {
         kind: "vibestudio.channel-history",
-        data: copyJson({ channelId: source.binding.channelId, event: accepted }, { omitUndefinedProperties: true }) as JsonValue,
-        model: [{ role: "user", timestamp: retained.ts, content: "Early passive context" }],
+        data: copyJson(
+          { channelId: source.binding.channelId, event: accepted },
+          { omitUndefinedProperties: true },
+        ) as JsonValue,
+        model: [
+          {
+            role: "user",
+            timestamp: retained.ts,
+            content: "Early passive context",
+          },
+        ],
       });
     }, context);
     source.events.push(retained);
-    const knowledge = await exportNativeChannelKnowledge(source.source(conversation), {
-      operationId: "early-passive:export",
-      channelId: source.binding.channelId,
-      throughSequence: 1,
-    }, context);
-    expect(knowledge.anchors).toEqual([expect.objectContaining({
-      envelopeId: retained.messageId,
-      sequence: retained.id,
-      eventDigest: nativeChannelKnowledgeEventDigest(retained),
-    })]);
-    expect(knowledge.anchors[0]!.eventDigest).not.toBe(nativeChannelKnowledgeEventDigest({ ...retained, id: 2 }));
-    expect(nativeChannelKnowledgeEventDigest(accepted)).toBe(nativeChannelKnowledgeEventDigest(retained));
+    const knowledge = await exportNativeChannelKnowledge(
+      source.source(conversation),
+      {
+        operationId: "early-passive:export",
+        channelId: source.binding.channelId,
+        throughSequence: 1,
+      },
+      context,
+    );
+    expect(knowledge.anchors).toEqual([
+      expect.objectContaining({
+        envelopeId: retained.messageId,
+        sequence: retained.id,
+        eventDigest: nativeChannelKnowledgeEventDigest(retained),
+      }),
+    ]);
+    expect(knowledge.anchors[0]!.eventDigest).not.toBe(
+      nativeChannelKnowledgeEventDigest({ ...retained, id: 2 }),
+    );
+    expect(nativeChannelKnowledgeEventDigest(accepted)).toBe(
+      nativeChannelKnowledgeEventDigest(retained),
+    );
     const receiver = await fixture("early-passive:receiver");
-    const imported = await importNativeChannelKnowledge(receiver.harness, importInput(knowledge, receiver), {}, context);
-    expect((await imported.context(context)).messages.filter((message) => message.role === "user").map((message) => message.content)).toEqual(["Early passive context"]);
+    const imported = await importNativeChannelKnowledge(
+      receiver.harness,
+      importInput(knowledge, receiver),
+      {},
+      context,
+    );
+    expect(
+      (await imported.context(context)).messages
+        .filter((message) => message.role === "user")
+        .map((message) => message.content),
+    ).toEqual(["Early passive context"]);
     expect((await receiver.harness.inspect(context)).submissions).toEqual([]);
   });
 

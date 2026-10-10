@@ -6,13 +6,16 @@ import type { ImportChannelKnowledgeInput } from "./native-channel-knowledge.js"
 export interface AgentRpcClientMethods {
   subscribeChannel(input: {
     channelId: string;
+    channelRef: import("@vibestudio/shared/workspaceServiceRpc").DORefParam;
     contextId: string;
     config?: unknown;
     replay?: boolean;
     delivery?: "all" | "addressed";
   }): Promise<AgentSubscriptionResult>;
   unsubscribeChannel(channelId: string): Promise<{ ok: boolean }>;
-  importChannelKnowledge(input: ImportChannelKnowledgeInput): Promise<AgentSubscriptionResult>;
+  importChannelKnowledge(
+    input: ImportChannelKnowledgeInput,
+  ): Promise<AgentSubscriptionResult>;
 }
 
 export const agentRpcMethods = createReceiverRpcMethods<AgentRpcClientMethods>([

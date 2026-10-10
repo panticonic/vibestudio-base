@@ -1,3 +1,4 @@
+import { resolveChannelEndpoint } from "@workspace/pubsub";
 import { agentRpcMethods } from "./rpc-contract.js";
 import { mainRpcMethods } from "@vibestudio/service-schemas/mainRpc";
 import {
@@ -51,7 +52,11 @@ export interface AgentEntityCreateInput {
   }>;
   /** Host derives the self entity/context coordinates and binds this agent to the channel. */
   agentChannelId?: string;
-  agentInitialization?: { channelId: string; config?: Record<string, unknown>; replay?: boolean };
+  agentInitialization?: {
+    channelId: string;
+    config?: Record<string, unknown>;
+    replay?: boolean;
+  };
 }
 
 export interface AgentChannelSubscriptionInput {
@@ -72,7 +77,6 @@ export interface LaunchAgentIntoChannelInput extends AgentEntityCreateInput {
   channelId: string;
   replay?: boolean;
   missingContextErrorMessage?: string;
-
 }
 
 export interface LaunchAgentIntoChannelResult {
@@ -108,7 +112,9 @@ export interface AgentTaskSeedChannel {
   ): Promise<{ id?: number }>;
 }
 
-export function targetIdFor(handleOrTargetId: AgentEntityHandle | string): string {
+export function targetIdFor(
+  handleOrTargetId: AgentEntityHandle | string,
+): string {
   return typeof handleOrTargetId === "string"
     ? handleOrTargetId
     : handleOrTargetId.targetId;
@@ -137,12 +143,17 @@ export function buildAgentEntityCreateSpec(
 ): AgentEntityCreateSpec {
   const stateArgs = {
     ...(input.stateArgs ?? {}),
-    ...(input.config !== undefined ? {
-      agentConfig: input.agentInitialization
-        ? Object.fromEntries(Object.entries(input.config).filter(([key]) =>
-            (AGENT_SETTING_KEYS as readonly string[]).includes(key)))
-        : input.config,
-    } : {}),
+    ...(input.config !== undefined
+      ? {
+          agentConfig: input.agentInitialization
+            ? Object.fromEntries(
+                Object.entries(input.config).filter(([key]) =>
+                  (AGENT_SETTING_KEYS as readonly string[]).includes(key),
+                ),
+              )
+            : input.config,
+        }
+      : {}),
   };
   return {
     kind: "do",
@@ -159,7 +170,9 @@ export function buildAgentEntityCreateSpec(
       ? { resourceBindings: input.resourceBindings }
       : {}),
     ...(input.agentChannelId ? { agentChannelId: input.agentChannelId } : {}),
-    ...(input.agentInitialization ? { agentInitialization: input.agentInitialization } : {}),
+    ...(input.agentInitialization
+      ? { agentInitialization: input.agentInitialization }
+      : {}),
   };
 }
 
@@ -184,16 +197,22 @@ export async function subscribeAgentToChannel(
   handleOrTargetId: AgentEntityHandle | string,
   input: AgentChannelSubscriptionInput,
 ): Promise<AgentSubscriptionResult> {
+  const channelRef = await resolveChannelEndpoint(rpc, input.channelId);
   return requireAgentSubscriptionResult(
     "subscribeChannel",
-    await rpc.call(targetIdFor(handleOrTargetId), agentRpcMethods["subscribeChannel"], [
-      {
-        channelId: input.channelId,
-        contextId: input.contextId,
-        config: toSubscriptionConfig(input.config),
-        replay: input.replay,
-      },
-    ]),
+    await rpc.call(
+      targetIdFor(handleOrTargetId),
+      agentRpcMethods["subscribeChannel"],
+      [
+        {
+          channelId: input.channelId,
+          channelRef,
+          contextId: input.contextId,
+          config: toSubscriptionConfig(input.config),
+          replay: input.replay,
+        },
+      ],
+    ),
   );
 }
 
@@ -231,16 +250,26 @@ export async function launchAgentIntoChannel(
       replay: input.replay,
     },
   });
-  if (input.contextId && handle.contextId && handle.contextId !== input.contextId) {
+  if (
+    input.contextId &&
+    handle.contextId &&
+    handle.contextId !== input.contextId
+  ) {
     throw new Error(
       `runtime.createEntity returned existing agent ${handle.id ?? handle.targetId} in context ` +
         `${handle.contextId}, but channel ${input.channelId} is in context ${input.contextId}`,
     );
   }
   const contextId = input.contextId ?? handle.contextId;
-  if (!contextId) throw new Error(input.missingContextErrorMessage ??
-    "runtime.createEntity did not return a contextId for agent initialization");
-  const subscription = requireAgentSubscriptionResult("subscribeChannel", handle.agentInitialization);
+  if (!contextId)
+    throw new Error(
+      input.missingContextErrorMessage ??
+        "runtime.createEntity did not return a contextId for agent initialization",
+    );
+  const subscription = requireAgentSubscriptionResult(
+    "subscribeChannel",
+    handle.agentInitialization,
+  );
   return { handle, subscription, contextId };
 }
 
@@ -248,11 +277,9 @@ export async function createSubagentContext(
   rpc: AgentLaunchRpc,
   input: CreateSubagentContextInput,
 ): Promise<{ contextId: string }> {
-  return rpc.call(
-    "main",
-    mainRpcMethods["runtime.createSubagentContext"],
-    [input],
-  );
+  return rpc.call("main", mainRpcMethods["runtime.createSubagentContext"], [
+    input,
+  ]);
 }
 
 export function buildAgentTaskSeedEvent(

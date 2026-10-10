@@ -159,7 +159,7 @@ async function fixture(options: { failStart?: boolean } = {}) {
     context,
   );
   sessions.push(harness);
-  const conversation = await openNativeChannelConversation(harness, { channelId: "channel:one", contextId: owner.contextId }, { model: { provider: "faux", modelId: faux.getModel().id } }, context);
+  const conversation = await openNativeChannelConversation(harness, { channelId: "channel:one", contextId: owner.contextId, channelRef: { source: "workers/channel", className: "ChannelDO", objectKey: "channel:one" } }, { model: { provider: "faux", modelId: faux.getModel().id } }, context);
   faux.setResponses([fauxAssistantMessage("answer")]);
   await conversation.submit({ type: "input", content: "go" }, context);
   await harness.runPass(context);

@@ -1,6 +1,13 @@
 import { channelClientRpcMethods } from "@workspace/pubsub/rpc-contract";
-import { createRpcMethodCaller, type RpcMethodArgs, type RpcMethodResult } from "@vibestudio/shared/rpcMethods";
-import { mainRpcMethods } from "@vibestudio/service-schemas/mainRpc";
+import {
+  createRpcMethodCaller,
+  type RpcMethodArgs,
+  type RpcMethodResult,
+} from "@vibestudio/shared/rpcMethods";
+import {
+  doTargetId,
+  type DORefParam,
+} from "@vibestudio/shared/workspaceServiceRpc";
 /**
  * ChannelClient — Typed wrapper for channel DO operations.
  *
@@ -79,8 +86,6 @@ function base64ByteLength(base64: string): number {
   const padding = base64.endsWith("==") ? 2 : base64.endsWith("=") ? 1 : 0;
   return Math.floor((base64.length * 3) / 4) - padding;
 }
-const DEFAULT_CHANNEL_SERVICE_PROTOCOL = "vibestudio.channel.v1";
-
 
 export type ChannelDeliveryEndpoint =
   | { kind: "entity"; entityId: string; invocation: "direct" | "mailbox" }
@@ -106,36 +111,30 @@ export interface ChannelJoinResult {
 }
 
 export class ChannelClient {
-  private targetPromise: Promise<string> | null = null;
+  private readonly targetPromise: Promise<string>;
   constructor(
     private rpc: RpcCaller,
-    private channelId: string,
-    private protocol: string = DEFAULT_CHANNEL_SERVICE_PROTOCOL,
+    endpoint: DORefParam | Promise<DORefParam>,
     private readonly callOptions?: RpcCallOptions,
-  ) {}
-  async resolveTarget(): Promise<string> {
-    this.targetPromise ??= this.rpc
-      .call(
-        "main",
-        mainRpcMethods["workers.resolveService"],
-        [this.protocol, this.channelId],
-        this.callOptions,
-      )
-      .then((service) => {
-        if (service.kind !== "durable-object" || !service.targetId) {
-          throw new Error(
-            "Channel service must resolve to a Durable Object service",
-          );
-        }
-        return service.targetId;
-      });
+  ) {
+    this.targetPromise = Promise.resolve(endpoint).then((ref) => {
+      if (!ref.source || !ref.className || !ref.objectKey)
+        throw new Error("Channel client requires its admitted endpoint");
+      return doTargetId(ref);
+    });
+  }
+  resolveTarget(): Promise<string> {
     return this.targetPromise;
   }
   private async call<K extends keyof typeof channelClientRpcMethods & string>(
     method: K,
     ...args: RpcMethodArgs<(typeof channelClientRpcMethods)[K]>
   ): Promise<RpcMethodResult<(typeof channelClientRpcMethods)[K]>> {
-    return createRpcMethodCaller(this.rpc, await this.resolveTarget(), channelClientRpcMethods)(method, args, this.callOptions);
+    return createRpcMethodCaller(
+      this.rpc,
+      await this.resolveTarget(),
+      channelClientRpcMethods,
+    )(method, args, this.callOptions);
   }
   async send(
     participantId: string,
@@ -254,15 +253,9 @@ export class ChannelClient {
     messageId: string,
     turnId?: string,
   ): Promise<{ recorded: true }> {
-    return this.call(
-      "recordReceipt",
-      participantId,
-      messageId,
-      "read",
-      {
-        ...(turnId ? { turnId } : {}),
-      },
-    );
+    return this.call("recordReceipt", participantId, messageId, "read", {
+      ...(turnId ? { turnId } : {}),
+    });
   }
   async error(
     participantId: string,
@@ -325,6 +318,7 @@ export class ChannelClient {
     return this.call("join", input) as Promise<ChannelJoinResult>;
   }
 
+  /** Close only the exact relationship revision returned by join. */
   async leave(participantId: string, revision: number): Promise<void> {
     await this.call("leave", { participantId, revision });
   }

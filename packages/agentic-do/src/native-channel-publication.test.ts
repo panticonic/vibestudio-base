@@ -1302,7 +1302,7 @@ describe("native channel publication ownership", () => {
           model: { provider: "faux", modelId: faux.getModel().id },
         },
       });
-      await harness.commit(tx => bindNativeChannelConversation(tx, conversation.id, { channelId: "channel:secondary", contextId: owner.contextId }), context);
+      await harness.commit(tx => bindNativeChannelConversation(tx, conversation.id, { channelId: "channel:secondary", contextId: owner.contextId, channelRef: { source: "workers/channel", className: "ChannelDO", objectKey: "channel:secondary" } }), context);
       await conversation.commit(
         (tx) =>
           publication.bind(tx, conversation.id, {
@@ -1534,7 +1534,7 @@ describe("native channel publication ownership", () => {
       const conversation = await harness.root(context, {
         agent: { model: { provider: "faux", modelId: faux.getModel().id } },
       });
-      await harness.commit(tx => bindNativeChannelConversation(tx, conversation.id, { channelId: "channel:secondary", contextId: owner.contextId }), context);
+      await harness.commit(tx => bindNativeChannelConversation(tx, conversation.id, { channelId: "channel:secondary", contextId: owner.contextId, channelRef: { source: "workers/channel", className: "ChannelDO", objectKey: "channel:secondary" } }), context);
       await conversation.commit(
         (tx) =>
           publication.bind(tx, conversation.id, {
@@ -1701,6 +1701,7 @@ describe("native channel publication ownership", () => {
     sessions.push(harness);
     const target = {
       channelId: "channel:response",
+      channelRef: { source: "workers/channel", className: "ChannelDO", objectKey: "channel:response" },
       contextId: owner.contextId,
     };
     const conversation = await openNativeChannelConversation(

@@ -77,6 +77,7 @@ export interface ChannelClientRpc extends ChannelCliRpc {
   initializeConversation(contextId: string, config?: ChannelConfig): Promise<ChannelConfig>;
   getChannelPresence(): Promise<{ entries: ChannelPresenceEntry[]; generatedAt: number }>;
   join(input: ChannelJoinInput): Promise<ChannelJoinResult>;
+  /** Revision is the exact opening receipt being closed, never the next mutation revision. */
   leave(input: { participantId: string; revision: number }): Promise<void>;
   relationshipState(participantId: string): Promise<{ revision: number; active: boolean }>;
   unsubscribe(participantId: string, subscriptionId?: string): Promise<void>;

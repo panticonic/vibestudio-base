@@ -52,9 +52,15 @@ class Vessel extends AgentVesselBase {
   canonicalChild: Vessel | null = null;
   failRead: Error | null = null;
   reads = 0;
-  terminalReports: Array<{ outcome: string; text: string; operationId: string }> = [];
+  terminalReports: Array<{
+    outcome: string;
+    text: string;
+    operationId: string;
+  }> = [];
   terminalFailure: Error | null = null;
-  protected override async settleSubagentTerminal(...args: Parameters<AgentVesselBase["settleSubagentTerminal"]>): Promise<void> {
+  protected override async settleSubagentTerminal(
+    ...args: Parameters<AgentVesselBase["settleSubagentTerminal"]>
+  ): Promise<void> {
     const [run, outcome, text, , , , operationId] = args;
     if (this.terminalFailure) throw this.terminalFailure;
     this.terminalReports.push({ outcome, text, operationId: operationId! });
@@ -151,9 +157,14 @@ async function fixture(failure = false) {
   const models = createModels(),
     faux = fauxProvider();
   models.setProvider(faux.provider);
-  faux.setResponses([failure
-    ? fauxAssistantMessage("", { stopReason: "error", errorMessage: "Original child provider failure" })
-    : fauxAssistantMessage("Actual settled child answer")]);
+  faux.setResponses([
+    failure
+      ? fauxAssistantMessage("", {
+          stopReason: "error",
+          errorMessage: "Original child provider failure",
+        })
+      : fauxAssistantMessage("Actual settled child answer"),
+  ]);
   const registry = createRegistry();
   let signalCommitted!: () => void;
   const blockedEntered = new Promise<void>((resolve) => {
@@ -199,7 +210,15 @@ async function fixture(failure = false) {
   parent.seedRun();
   const conversation = await openNativeChannelConversation(
     harness,
-    { channelId: identity.taskChannelId, contextId: "child-context" },
+    {
+      channelId: identity.taskChannelId,
+      channelRef: {
+        source: "workers/pubsub-channel",
+        className: "PubSubChannel",
+        objectKey: identity.taskChannelId,
+      },
+      contextId: "child-context",
+    },
     { model: { provider: "faux", modelId: "faux-1" }, tools: [blocked] },
     context,
   );
@@ -232,23 +251,29 @@ describe("native shipping subagent input settlement", () => {
   it("retires an existing child execution after lifecycle quiescence seals new admission", async () => {
     const f = await fixture();
     f.child.callerIdForTest = parentId;
-    await expect(f.child.releaseForLifecycle({
-      epoch: "context-retirement",
-      phase: "quiesce",
-      mode: "retire",
-      reason: "parent context retired",
-      deadlineMs: 0,
-    })).resolves.toEqual({ status: "ready" });
-    await expect(f.child.retireSubagentExecution({
-      runId: identity.runId,
-      taskChannelId: identity.taskChannelId,
-      reason: "supervisor retired",
-    })).resolves.toEqual({ retired: true });
-    await expect(f.child.retireSubagentExecution({
-      runId: identity.runId,
-      taskChannelId: identity.taskChannelId,
-      reason: "supervisor retired",
-    })).resolves.toEqual({ retired: true });
+    await expect(
+      f.child.releaseForLifecycle({
+        epoch: "context-retirement",
+        phase: "quiesce",
+        mode: "retire",
+        reason: "parent context retired",
+        deadlineMs: 0,
+      }),
+    ).resolves.toEqual({ status: "ready" });
+    await expect(
+      f.child.retireSubagentExecution({
+        runId: identity.runId,
+        taskChannelId: identity.taskChannelId,
+        reason: "supervisor retired",
+      }),
+    ).resolves.toEqual({ retired: true });
+    await expect(
+      f.child.retireSubagentExecution({
+        runId: identity.runId,
+        taskChannelId: identity.taskChannelId,
+        reason: "supervisor retired",
+      }),
+    ).resolves.toEqual({ retired: true });
   });
   it("authenticates the original child and rereads an actual terminal native input before marking only that execution idle", async () => {
     const f = await fixture();
@@ -272,7 +297,13 @@ describe("native shipping subagent input settlement", () => {
     const f = await fixture(true);
     await f.parent.onSubagentInputSettled(f.input);
     expect(f.parent.status()).toBe("failed");
-    expect(f.parent.terminalReports).toEqual([{ outcome: "failed", text: "Original child provider failure", operationId: `native-input:${f.input.submissionId}` }]);
+    expect(f.parent.terminalReports).toEqual([
+      {
+        outcome: "failed",
+        text: "Original child provider failure",
+        operationId: `native-input:${f.input.submissionId}`,
+      },
+    ]);
     await f.parent.onSubagentInputSettled(f.input);
     expect(f.parent.terminalReports).toHaveLength(1);
   });
@@ -280,11 +311,15 @@ describe("native shipping subagent input settlement", () => {
     const f = await fixture(true);
     const original = new Error("Original terminal publication failed");
     f.parent.terminalFailure = original;
-    await expect(f.parent.onSubagentInputSettled(f.input)).rejects.toBe(original);
+    await expect(f.parent.onSubagentInputSettled(f.input)).rejects.toBe(
+      original,
+    );
     expect(f.parent.status()).toBe("running");
     f.parent.terminalFailure = null;
     await f.parent.onSubagentInputSettled(f.input);
-    expect(f.parent.terminalReports[0]?.operationId).toBe(`native-input:${f.input.submissionId}`);
+    expect(f.parent.terminalReports[0]?.operationId).toBe(
+      `native-input:${f.input.submissionId}`,
+    );
     expect(f.parent.status()).toBe("failed");
   });
   it("does not infer idle from an older settled input while newer genuine child work remains active", async () => {

@@ -37,7 +37,16 @@ describe("SubscriptionManager finite relationships", () => {
     });
 
     await expect(
-      manager.subscribe({ channelId: "ch-1", contextId: "ctx-1", descriptor }),
+      manager.subscribe({
+        channelId: "ch-1",
+        channelRef: {
+          source: "workers/pubsub-channel",
+          className: "PubSubChannel",
+          objectKey: "ch-1",
+        },
+        contextId: "ctx-1",
+        descriptor,
+      }),
     ).rejects.toThrow("join rejected");
     expect(manager.listAll()).toEqual([]);
   });
@@ -62,6 +71,11 @@ describe("SubscriptionManager finite relationships", () => {
     });
     const prepared = await manager.prepareSubscription({
       channelId: "ch-1",
+      channelRef: {
+        source: "workers/pubsub-channel",
+        className: "PubSubChannel",
+        objectKey: "ch-1",
+      },
       contextId: "ctx-1",
       descriptor,
     });
@@ -87,7 +101,16 @@ describe("SubscriptionManager finite relationships", () => {
       relationshipState: vi.fn().mockResolvedValue(null),
     });
 
-    const input = { channelId: "ch-1", contextId: "ctx-1", descriptor };
+    const input = {
+      channelId: "ch-1",
+      channelRef: {
+        source: "workers/pubsub-channel",
+        className: "PubSubChannel",
+        objectKey: "ch-1",
+      },
+      contextId: "ctx-1",
+      descriptor,
+    };
     await manager.subscribe(input);
     await manager.subscribe(input);
 
@@ -110,11 +133,21 @@ describe("SubscriptionManager finite relationships", () => {
 
     await manager.subscribe({
       channelId: "ch-1",
+      channelRef: {
+        source: "workers/pubsub-channel",
+        className: "PubSubChannel",
+        objectKey: "ch-1",
+      },
       contextId: "ctx-1",
       descriptor,
     });
     await manager.subscribe({
       channelId: "ch-1",
+      channelRef: {
+        source: "workers/pubsub-channel",
+        className: "PubSubChannel",
+        objectKey: "ch-1",
+      },
       contextId: "ctx-2",
       descriptor,
       config: { wakePolicy: "turn-final" },
@@ -139,6 +172,11 @@ describe("SubscriptionManager finite relationships", () => {
 
     await manager.subscribe({
       channelId: "ch-1",
+      channelRef: {
+        source: "workers/pubsub-channel",
+        className: "PubSubChannel",
+        objectKey: "ch-1",
+      },
       contextId: "ctx-1",
       descriptor,
     });
@@ -162,14 +200,61 @@ describe("SubscriptionManager finite relationships", () => {
     });
     await manager.subscribe({
       channelId: "ch-1",
+      channelRef: {
+        source: "workers/pubsub-channel",
+        className: "PubSubChannel",
+        objectKey: "ch-1",
+      },
       contextId: "ctx-1",
       descriptor,
     });
 
     await manager.unsubscribeFromChannel("ch-1");
 
-    expect(leave).toHaveBeenCalledWith(expect.stringContaining("agent-1"), 2);
+    expect(leave).toHaveBeenCalledWith(expect.stringContaining("agent-1"), 1);
     expect(manager.listAll()).toEqual([]);
+  });
+
+  it("preserves a newer acknowledged opening when an older owner's close finishes", async () => {
+    let finishLeave!: () => void;
+    let enteredLeave!: () => void;
+    const entered = new Promise<void>((resolve) => {
+      enteredLeave = resolve;
+    });
+    const leave = vi.fn(async () => {
+      enteredLeave();
+      await new Promise<void>((resolve) => {
+        finishLeave = resolve;
+      });
+    });
+    let revision = 0;
+    const manager = await makeManager({
+      join: vi.fn(async () => ({
+        ok: true,
+        participantId: "agent-1",
+        revision: ++revision,
+      })),
+      leave,
+    });
+    const input = {
+      channelId: "ch-1",
+      channelRef: {
+        source: "workers/pubsub-channel",
+        className: "PubSubChannel",
+        objectKey: "ch-1",
+      },
+      contextId: "ctx-1",
+      descriptor,
+    };
+    await manager.subscribe(input);
+    const closing = manager.unsubscribeFromChannel("ch-1");
+    await entered;
+    await manager.subscribe({ ...input, config: { handle: "replacement" } });
+    finishLeave();
+    await closing;
+    expect(leave).toHaveBeenCalledWith(expect.any(String), 1);
+    expect(manager.listStored()[0]!.revision).toBe(2);
+    expect(manager.getConfig("ch-1")).toEqual({ handle: "replacement" });
   });
 
   it("distinguishes reasoning memberships from addressed-only supervision", async () => {
@@ -185,12 +270,22 @@ describe("SubscriptionManager finite relationships", () => {
 
     await manager.subscribe({
       channelId: "work",
+      channelRef: {
+        source: "workers/pubsub-channel",
+        className: "PubSubChannel",
+        objectKey: "work",
+      },
       contextId: "ctx-1",
       descriptor,
       delivery: "all",
     });
     await manager.subscribe({
       channelId: "supervised-task",
+      channelRef: {
+        source: "workers/pubsub-channel",
+        className: "PubSubChannel",
+        objectKey: "supervised-task",
+      },
       contextId: "ctx-2",
       descriptor,
       delivery: "addressed",

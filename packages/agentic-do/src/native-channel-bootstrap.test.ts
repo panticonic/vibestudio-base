@@ -25,7 +25,15 @@ import {
 } from "./native-channel-session.js";
 
 const context = BACKGROUND_CONTEXT;
-const binding = { channelId: "channel:one", contextId: "context:one" };
+const binding = {
+  channelId: "channel:one",
+  contextId: "context:one",
+  channelRef: {
+    source: "workers/channel",
+    className: "ChannelDO",
+    objectKey: "channel:one",
+  },
+};
 const owner = {
   runtimeId: "do:workers/native:Agent:one",
   contextId: binding.contextId,

@@ -64,19 +64,33 @@ function canonicalLedger(instance: PubSubChannel) {
   return (instance as unknown as { channelLog: ChannelLog }).channelLog.ledger;
 }
 function canonicalAgenticEvents(instance: PubSubChannel): AgenticEvent[] {
-  return canonicalLedger(instance).read({ limit: Number.MAX_SAFE_INTEGER })
+  return canonicalLedger(instance)
+    .read({ limit: Number.MAX_SAFE_INTEGER })
     .filter((envelope) => isAgenticLogEventKind(envelope.payloadKind))
-    .map((envelope) => agenticEventSchema.parse(agenticEventFromLogEnvelope(envelope)) as AgenticEvent);
+    .map(
+      (envelope) =>
+        agenticEventSchema.parse(
+          agenticEventFromLogEnvelope(envelope),
+        ) as AgenticEvent,
+    );
 }
-function canonicalAgenticEvent(instance: PubSubChannel, envelopeId: string): AgenticEvent {
+function canonicalAgenticEvent(
+  instance: PubSubChannel,
+  envelopeId: string,
+): AgenticEvent {
   const envelope = canonicalLedger(instance).envelope(envelopeId);
   if (!envelope || !isAgenticLogEventKind(envelope.payloadKind))
     throw new Error(`Missing canonical agentic envelope ${envelopeId}`);
-  return agenticEventSchema.parse(agenticEventFromLogEnvelope(envelope)) as AgenticEvent;
+  return agenticEventSchema.parse(
+    agenticEventFromLogEnvelope(envelope),
+  ) as AgenticEvent;
 }
 
-async function appendOpaqueChannelPage(channel: TestDO<typeof PubSubChannel>): Promise<void> {
-  const log = (channel.instance as unknown as { channelLog: ChannelLog }).channelLog;
+async function appendOpaqueChannelPage(
+  channel: TestDO<typeof PubSubChannel>,
+): Promise<void> {
+  const log = (channel.instance as unknown as { channelLog: ChannelLog })
+    .channelLog;
   for (let index = 0; index < 501; index++) {
     await log.append({
       messageId: `opaque:${index}`,
@@ -497,371 +511,1036 @@ async function createGadBackedChannel(
 describe("PubSubChannel", () => {
   it("admits workspace publication intents into canonical owner history before graph observation", async () => {
     const emitted: unknown[] = [];
-    const channel = await createGadBackedChannel({emitted});
-    setRpcCaller(channel.instance,"panel:watcher","panel");
-    await channel.instance.subscribe("panel:watcher",{contextId:"ctx-1",type:"panel"});
-    emitted.length=0;
+    const channel = await createGadBackedChannel({ emitted });
+    setRpcCaller(channel.instance, "panel:watcher", "panel");
+    await channel.instance.subscribe("panel:watcher", {
+      contextId: "ctx-1",
+      type: "panel",
+    });
+    emitted.length = 0;
     const source = await channel.gad.instance.appendLogEvent({
-      logId:"trajectory:publisher",head:"main",logKind:"trajectory",events:[{
-        envelopeId:"source-publication",actor:{kind:"agent",id:"original-agent"},payloadKind:AGENTIC_EVENT_PAYLOAD_KIND,
-        payload:{...agenticEvent(),actor:{kind:"agent",id:"original-agent"}},appendedAt:"2026-10-10T00:00:00.000Z",
-        publish:{channels:[{channelId:"channel-1"}]},
-      }],
+      logId: "trajectory:publisher",
+      head: "main",
+      logKind: "trajectory",
+      events: [
+        {
+          envelopeId: "source-publication",
+          actor: { kind: "agent", id: "original-agent" },
+          payloadKind: AGENTIC_EVENT_PAYLOAD_KIND,
+          payload: {
+            ...agenticEvent(),
+            actor: { kind: "agent", id: "original-agent" },
+          },
+          appendedAt: "2026-10-10T00:00:00.000Z",
+          publish: { channels: [{ channelId: "channel-1" }] },
+        },
+      ],
     });
     expect(source.published).toHaveLength(1);
-    expect(channel.gad.instance.readLog({logId:"channel-1",head:"main"})).toEqual([]);
-    const [claim]=channel.gad.instance.claimReadyWork("workspace-publication",{workerId:"driver-publisher",now:Date.now(),limit:1});
-    const intents=(claim!.payload as {intents:import("@workspace/agentic-protocol").LogAppendEventInput[]}).intents;
-    await expect(channel.call("admitPublishedEnvelopes",intents)).resolves.toEqual({admitted:1});
-    const event=await channel.instance.getEnvelope("pub:source-publication:channel-1");
-    expect(event).toMatchObject({id:2,senderId:"original-agent",payload:{actor:{kind:"agent",id:"original-agent"}}});
-    expect(canonicalLedger(channel.instance).envelope("pub:source-publication:channel-1")).toMatchObject({appendedAt:source.envelopes[0]!.appendedAt,causality:{originLogId:"trajectory:publisher",originEnvelopeId:"source-publication"}});
+    expect(
+      channel.gad.instance.readLog({ logId: "channel-1", head: "main" }),
+    ).toEqual([]);
+    const [claim] = channel.gad.instance.claimReadyWork(
+      "workspace-publication",
+      { workerId: "driver-publisher", now: Date.now(), limit: 1 },
+    );
+    const intents = (
+      claim!.payload as {
+        intents: import("@workspace/agentic-protocol").LogAppendEventInput[];
+      }
+    ).intents;
+    await expect(
+      channel.call("admitPublishedEnvelopes", intents),
+    ).resolves.toEqual({ admitted: 1 });
+    const event = await channel.instance.getEnvelope(
+      "pub:source-publication:channel-1",
+    );
+    expect(event).toMatchObject({
+      id: 2,
+      senderId: "original-agent",
+      payload: { actor: { kind: "agent", id: "original-agent" } },
+    });
+    expect(
+      canonicalLedger(channel.instance).envelope(
+        "pub:source-publication:channel-1",
+      ),
+    ).toMatchObject({
+      appendedAt: source.envelopes[0]!.appendedAt,
+      causality: {
+        originLogId: "trajectory:publisher",
+        originEnvelopeId: "source-publication",
+      },
+    });
     expect(emitted).toHaveLength(1);
-    await expect(channel.call("admitPublishedEnvelopes",intents)).resolves.toEqual({admitted:1});
+    await expect(
+      channel.call("admitPublishedEnvelopes", intents),
+    ).resolves.toEqual({ admitted: 1 });
     expect(canonicalLedger(channel.instance).headSequence()).toBe(2);
     expect(emitted).toHaveLength(1);
-    const changed=structuredClone(intents);
-    changed[0]!.payload={...(changed[0]!.payload as AgenticEvent),createdAt:"2026-10-11T00:00:00.000Z"};
-    await expect(channel.call("admitPublishedEnvelopes",changed)).rejects.toThrow("different canonical content");
+    const changed = structuredClone(intents);
+    changed[0]!.payload = {
+      ...(changed[0]!.payload as AgenticEvent),
+      createdAt: "2026-10-11T00:00:00.000Z",
+    };
+    await expect(
+      channel.call("admitPublishedEnvelopes", changed),
+    ).rejects.toThrow("different canonical content");
     expect(canonicalLedger(channel.instance).headSequence()).toBe(2);
     expect(emitted).toHaveLength(1);
-    expect(channel.gad.instance.readLog({logId:"channel-1",head:"main"})).toEqual([]);
+    expect(
+      channel.gad.instance.readLog({ logId: "channel-1", head: "main" }),
+    ).toEqual([]);
   });
 
-  it.each(["direct acknowledgement", "overlapping host claim", "activation loss"] as const)(
-    "settles direct delivery through its canonical mailbox after %s", async (mode) => {
-      const entered=deferred<void>(); const release=deferred<void>();
-      let delivered: {deliveryId:string} | undefined;
-      const channel=await createGadBackedChannel({rpcCall:async (_target,method,args)=>{
-        if(method !== "acceptChannelDelivery") return undefined;
-        delivered=args[0] as typeof delivered; entered.resolve(); await release.promise;
-        return {deliveryId:delivered!.deliveryId,disposition:"processed"};
-      }});
-      await joinEntity(channel.instance,"do:workers/agent-worker:AiChatWorker:direct-ack");
-      setRpcCaller(channel.instance,"panel:user","panel");
-      await channel.instance.subscribe("panel:user",{contextId:"ctx-1",type:"panel"});
+  it.each([
+    "direct acknowledgement",
+    "overlapping host claim",
+    "activation loss",
+  ] as const)(
+    "settles direct delivery through its canonical mailbox after %s",
+    async (mode) => {
+      const entered = deferred<void>();
+      const release = deferred<void>();
+      let delivered: { deliveryId: string } | undefined;
+      const channel = await createGadBackedChannel({
+        rpcCall: async (_target, method, args) => {
+          if (method !== "acceptChannelDelivery") return undefined;
+          delivered = args[0] as typeof delivered;
+          entered.resolve();
+          await release.promise;
+          return {
+            deliveryId: delivered!.deliveryId,
+            disposition: "processed",
+          };
+        },
+      });
+      await joinEntity(
+        channel.instance,
+        "do:workers/agent-worker:AiChatWorker:direct-ack",
+      );
+      setRpcCaller(channel.instance, "panel:user", "panel");
+      await channel.instance.subscribe("panel:user", {
+        contextId: "ctx-1",
+        type: "panel",
+      });
       try {
-        const receipt=await channel.instance.publish("panel:user","direct.test",{value:mode});
+        const receipt = await channel.instance.publish(
+          "panel:user",
+          "direct.test",
+          { value: mode },
+        );
         await entered.promise;
-        expect(channel.sql.exec(`SELECT state FROM channel_delivery_mailbox WHERE event_id = ?`,receipt.messageId).toArray()).toEqual([{state:"ready"}]);
-        let claim: ReturnType<PubSubChannel["claimReadyWork"]>[number] | undefined;
-        if(mode === "overlapping host claim") [claim]=channel.instance.claimReadyWork("channel-delivery",{workerId:"driver-overlap",now:Date.now(),limit:1});
-        const reopened=mode === "activation loss" ? await createGadBackedChannel({gad:channel.gad,db:clonedChannelDatabase(channel)}) : null;
+        expect(
+          channel.sql
+            .exec(
+              `SELECT state FROM channel_delivery_mailbox WHERE event_id = ?`,
+              receipt.messageId,
+            )
+            .toArray(),
+        ).toEqual([{ state: "ready" }]);
+        let claim:
+          | ReturnType<PubSubChannel["claimReadyWork"]>[number]
+          | undefined;
+        if (mode === "overlapping host claim")
+          [claim] = channel.instance.claimReadyWork("channel-delivery", {
+            workerId: "driver-overlap",
+            now: Date.now(),
+            limit: 1,
+          });
+        const reopened =
+          mode === "activation loss"
+            ? await createGadBackedChannel({
+                gad: channel.gad,
+                db: clonedChannelDatabase(channel),
+              })
+            : null;
         release.resolve();
-        await (channel.instance as unknown as {publicationQueue:{drain():Promise<void>}}).publicationQueue.drain();
-        if(claim) {
-          expect(channel.sql.exec(`SELECT state FROM channel_delivery_mailbox WHERE event_id = ?`,receipt.messageId).toArray()).toEqual([{state:"leased"}]);
-          expect(channel.instance.settleReadyWork("channel-delivery",{workerId:"driver-overlap",itemId:claim.itemId,generation:claim.generation,outcome:{deliveryId:delivered!.deliveryId,disposition:"processed"}})).toBe("accepted");
+        await (
+          channel.instance as unknown as {
+            publicationQueue: { drain(): Promise<void> };
+          }
+        ).publicationQueue.drain();
+        if (claim) {
+          expect(
+            channel.sql
+              .exec(
+                `SELECT state FROM channel_delivery_mailbox WHERE event_id = ?`,
+                receipt.messageId,
+              )
+              .toArray(),
+          ).toEqual([{ state: "leased" }]);
+          expect(
+            channel.instance.settleReadyWork("channel-delivery", {
+              workerId: "driver-overlap",
+              itemId: claim.itemId,
+              generation: claim.generation,
+              outcome: {
+                deliveryId: delivered!.deliveryId,
+                disposition: "processed",
+              },
+            }),
+          ).toBe("accepted");
         }
-        expect(channel.instance.claimReadyWork("channel-delivery",{workerId:"driver-post-ack",now:Date.now(),limit:1})).toEqual([]);
-        if(reopened) {
-          const [recovered]=reopened.instance.claimReadyWork("channel-delivery",{workerId:"driver-recovered",now:Date.now(),limit:1});
-          expect((recovered!.payload as {delivery:{deliveryId:string;eventSequence:number}}).delivery).toMatchObject({deliveryId:delivered!.deliveryId,eventSequence:receipt.id});
+        expect(
+          channel.instance.claimReadyWork("channel-delivery", {
+            workerId: "driver-post-ack",
+            now: Date.now(),
+            limit: 1,
+          }),
+        ).toEqual([]);
+        if (reopened) {
+          const [recovered] = reopened.instance.claimReadyWork(
+            "channel-delivery",
+            { workerId: "driver-recovered", now: Date.now(), limit: 1 },
+          );
+          expect(
+            (
+              recovered!.payload as {
+                delivery: { deliveryId: string; eventSequence: number };
+              }
+            ).delivery,
+          ).toMatchObject({
+            deliveryId: delivered!.deliveryId,
+            eventSequence: receipt.id,
+          });
         }
-      } finally { release.resolve(); await (channel.instance as unknown as {publicationQueue:{drain():Promise<void>}}).publicationQueue.drain(); }
+      } finally {
+        release.resolve();
+        await (
+          channel.instance as unknown as {
+            publicationQueue: { drain(): Promise<void> };
+          }
+        ).publicationQueue.drain();
+      }
     },
   );
 
   it("keeps an empty root observation immutable while a local append advances history", async () => {
-    const entered=deferred<void>(); const release=deferred<void>();
-    const channel=await createGadBackedChannel({rpcCall:async (_target,method)=>{if(method === "initializeLogHead"){entered.resolve();await release.promise;}return undefined;}});
-    const waiting=channel.instance.waitObservedThrough(0);
-    let settled=false;void waiting.then(()=>{settled=true;});
-    const [root]=channel.instance.claimReadyWork("channel-observation",{workerId:"driver-empty-root",now:Date.now(),limit:1});
-    expect(root!.payload).toMatchObject({observation:{kind:"root"}});
-    await expect(channel.instance.prepareChannelObservationClaim({itemId:root!.itemId,generation:root!.generation})).rejects.toThrow("no longer owns its claim");
-    const observing=channel.instance.executeChannelObservationClaim({itemId:root!.itemId,generation:root!.generation});
+    const entered = deferred<void>();
+    const release = deferred<void>();
+    const channel = await createGadBackedChannel({
+      rpcCall: async (_target, method) => {
+        if (method === "initializeLogHead") {
+          entered.resolve();
+          await release.promise;
+        }
+        return undefined;
+      },
+    });
+    const waiting = channel.instance.waitObservedThrough(0);
+    let settled = false;
+    void waiting.then(() => {
+      settled = true;
+    });
+    const [root] = channel.instance.claimReadyWork("channel-observation", {
+      workerId: "driver-empty-root",
+      now: Date.now(),
+      limit: 1,
+    });
+    expect(root!.payload).toMatchObject({ observation: { kind: "root" } });
+    await expect(
+      channel.instance.prepareChannelObservationClaim({
+        itemId: root!.itemId,
+        generation: root!.generation,
+      }),
+    ).rejects.toThrow("no longer owns its claim");
+    const observing = channel.instance.executeChannelObservationClaim({
+      itemId: root!.itemId,
+      generation: root!.generation,
+    });
     try {
       await entered.promise;
-      setRpcCaller(channel.instance,"panel:user","panel");
-      await channel.instance.subscribe("panel:user",{contextId:"ctx-1",type:"panel"});
-      expect(settled).toBe(false);expect(canonicalLedger(channel.instance).headSequence()).toBe(1);
+      setRpcCaller(channel.instance, "panel:user", "panel");
+      await channel.instance.subscribe("panel:user", {
+        contextId: "ctx-1",
+        type: "panel",
+      });
+      expect(settled).toBe(false);
+      expect(canonicalLedger(channel.instance).headSequence()).toBe(1);
       release.resolve();
-      const outcome=await observing;
-      expect(channel.instance.settleReadyWork("channel-observation",{workerId:"driver-empty-root",itemId:root!.itemId,generation:root!.generation,outcome})).toBe("accepted");
-      await expect(waiting).resolves.toMatchObject({observedSequence:0});
-      const [next]=channel.instance.claimReadyWork("channel-observation",{workerId:"driver-empty-root",now:Date.now(),limit:1});
+      const outcome = await observing;
+      expect(
+        channel.instance.settleReadyWork("channel-observation", {
+          workerId: "driver-empty-root",
+          itemId: root!.itemId,
+          generation: root!.generation,
+          outcome,
+        }),
+      ).toBe("accepted");
+      await expect(waiting).resolves.toMatchObject({ observedSequence: 0 });
+      const [next] = channel.instance.claimReadyWork("channel-observation", {
+        workerId: "driver-empty-root",
+        now: Date.now(),
+        limit: 1,
+      });
       expect(next).toBeDefined();
-      expect(next!.payload).toMatchObject({observation:{kind:"append"}});
-      await expect(channel.instance.prepareChannelObservationClaim({itemId:next!.itemId,generation:next!.generation})).rejects.toThrow("no longer owns its claim");
+      expect(next!.payload).toMatchObject({ observation: { kind: "append" } });
+      await expect(
+        channel.instance.prepareChannelObservationClaim({
+          itemId: next!.itemId,
+          generation: next!.generation,
+        }),
+      ).rejects.toThrow("no longer owns its claim");
       expect(canonicalLedger(channel.instance).observedSequence()).toBe(0);
-      expect(canonicalLedger(channel.instance).peekObservation()).toMatchObject({kind:"append",sequence:1});
-    } finally {release.resolve();await Promise.allSettled([observing,waiting]);}
+      expect(canonicalLedger(channel.instance).peekObservation()).toMatchObject(
+        { kind: "append", sequence: 1 },
+      );
+    } finally {
+      release.resolve();
+      await Promise.allSettled([observing, waiting]);
+    }
   });
 
   it("retains the empty root claim identity across worker replacement and a local append", async () => {
-    const channel=await createGadBackedChannel();
-    const [old]=channel.instance.claimReadyWork("channel-observation",{workerId:"driver-root-old",now:Date.now(),limit:1});
-    setRpcCaller(channel.instance,"panel:user","panel");
-    await channel.instance.subscribe("panel:user",{contextId:"ctx-1",type:"panel"});
+    const channel = await createGadBackedChannel();
+    const [old] = channel.instance.claimReadyWork("channel-observation", {
+      workerId: "driver-root-old",
+      now: Date.now(),
+      limit: 1,
+    });
+    setRpcCaller(channel.instance, "panel:user", "panel");
+    await channel.instance.subscribe("panel:user", {
+      contextId: "ctx-1",
+      type: "panel",
+    });
     await channel.instance.adoptDurableWorkWorker("driver-root-new");
-    const [reclaimed]=channel.instance.claimReadyWork("channel-observation",{workerId:"driver-root-new",now:Date.now(),limit:1});
+    const [reclaimed] = channel.instance.claimReadyWork("channel-observation", {
+      workerId: "driver-root-new",
+      now: Date.now(),
+      limit: 1,
+    });
     expect(reclaimed!.itemId).toBe(old!.itemId);
-    const receipt=await channel.instance.executeChannelObservationClaim({itemId:reclaimed!.itemId,generation:reclaimed!.generation});
+    const receipt = await channel.instance.executeChannelObservationClaim({
+      itemId: reclaimed!.itemId,
+      generation: reclaimed!.generation,
+    });
     expect(receipt.observedSequence).toBe(0);
-    expect(channel.instance.settleReadyWork("channel-observation",{workerId:"driver-root-old",itemId:old!.itemId,generation:old!.generation,outcome:receipt})).toBe("stale");
-    expect(channel.instance.settleReadyWork("channel-observation",{workerId:"driver-root-new",itemId:reclaimed!.itemId,generation:reclaimed!.generation,outcome:receipt})).toBe("accepted");
+    expect(
+      channel.instance.settleReadyWork("channel-observation", {
+        workerId: "driver-root-old",
+        itemId: old!.itemId,
+        generation: old!.generation,
+        outcome: receipt,
+      }),
+    ).toBe("stale");
+    expect(
+      channel.instance.settleReadyWork("channel-observation", {
+        workerId: "driver-root-new",
+        itemId: reclaimed!.itemId,
+        generation: reclaimed!.generation,
+        outcome: receipt,
+      }),
+    ).toBe("accepted");
     expect(canonicalLedger(channel.instance).hasObservedRoot()).toBe(true);
     expect(canonicalLedger(channel.instance).observedSequence()).toBe(0);
-    expect(canonicalLedger(channel.instance).peekObservation()).toMatchObject({kind:"append",sequence:1});
+    expect(canonicalLedger(channel.instance).peekObservation()).toMatchObject({
+      kind: "append",
+      sequence: 1,
+    });
   });
 
-  it.each(["observed prefix", "original failure"] as const)("prepares only the exact leased fork prerequisite through its %s", async (mode) => {
-    const parent=await createGadBackedChannel({channelKey:"observation-parent"});
-    setRpcCaller(parent.instance,"panel:user","panel");
-    await parent.instance.subscribe("panel:user",{contextId:"ctx-1",type:"panel"});
-    const parentHead=canonicalLedger(parent.instance).headSequence();
-    const boundary=canonicalLedger(parent.instance).at(parentHead)!;
-    const entered=deferred<void>();
-    const original=Object.assign(new Error("parent observation refused"),{code:"PARENT_OBSERVATION_REFUSED",cause:new Error("original storage failure")});
-    let prerequisiteCalls=0;
-    const child=await createGadBackedChannel({channelKey:"observation-child",gad:parent.gad,db:clonedChannelDatabase(parent),rpcCall:async(target,method,args)=>{
-      if(target==="main" && method==="workers.resolveService" && args[1]==="observation-parent")
-        return durableObjectServiceFixture("do:workers/pubsub-channel:PubSubChannel:observation-parent",{source:"workers/pubsub-channel",className:"PubSubChannel",objectKey:"observation-parent"});
-      if(target==="do:workers/pubsub-channel:PubSubChannel:observation-parent" && method==="waitObservedThrough") {
-        prerequisiteCalls++;entered.resolve();
-        if(mode==="original failure")throw original;
-        return parent.instance.waitObservedThrough(Number(args[0]));
+  it.each(["observed prefix", "original failure"] as const)(
+    "prepares only the exact leased fork prerequisite through its %s",
+    async (mode) => {
+      const parent = await createGadBackedChannel({
+        channelKey: "observation-parent",
+      });
+      setRpcCaller(parent.instance, "panel:user", "panel");
+      await parent.instance.subscribe("panel:user", {
+        contextId: "ctx-1",
+        type: "panel",
+      });
+      const parentHead = canonicalLedger(parent.instance).headSequence();
+      const boundary = canonicalLedger(parent.instance).at(parentHead)!;
+      const entered = deferred<void>();
+      const original = Object.assign(new Error("parent observation refused"), {
+        code: "PARENT_OBSERVATION_REFUSED",
+        cause: new Error("original storage failure"),
+      });
+      let prerequisiteCalls = 0;
+      const child = await createGadBackedChannel({
+        channelKey: "observation-child",
+        gad: parent.gad,
+        db: clonedChannelDatabase(parent),
+        rpcCall: async (target, method, args) => {
+          if (
+            target === "main" &&
+            method === "workers.resolveService" &&
+            args[1] === "observation-parent"
+          )
+            return durableObjectServiceFixture(
+              "do:workers/pubsub-channel:PubSubChannel:observation-parent",
+              {
+                source: "workers/pubsub-channel",
+                className: "PubSubChannel",
+                objectKey: "observation-parent",
+              },
+            );
+          if (
+            target ===
+              "do:workers/pubsub-channel:PubSubChannel:observation-parent" &&
+            method === "waitObservedThrough"
+          ) {
+            prerequisiteCalls++;
+            entered.resolve();
+            if (mode === "original failure") throw original;
+            return parent.instance.waitObservedThrough(Number(args[0]));
+          }
+          return undefined;
+        },
+      });
+      await initializeChannelClone(child, "observation-parent", "fork-context");
+      await child.instance.postClone(
+        "observation-parent",
+        parentHead,
+        "fork-context",
+      );
+      const [old] = child.instance.claimReadyWork("channel-observation", {
+        workerId: "fork-old",
+        now: Date.now(),
+        limit: 1,
+      });
+      expect(old!.payload).toMatchObject({ observation: { kind: "fork" } });
+      await child.instance.adoptDurableWorkWorker("fork-new");
+      const [claim] = child.instance.claimReadyWork("channel-observation", {
+        workerId: "fork-new",
+        now: Date.now(),
+        limit: 1,
+      });
+      await expect(
+        child.instance.prepareChannelObservationClaim({
+          itemId: old!.itemId,
+          generation: old!.generation,
+        }),
+      ).rejects.toThrow("no longer owns its claim");
+      expect(prerequisiteCalls).toBe(0);
+      const preparing = child.instance.prepareChannelObservationClaim({
+        itemId: claim!.itemId,
+        generation: claim!.generation,
+      });
+      const result = preparing.then(
+        () => undefined,
+        (error: unknown) => error,
+      );
+      await entered.promise;
+      if (mode === "original failure") {
+        expect(await result).toBe(original);
+        expect(canonicalLedger(child.instance).peekObservation()).toMatchObject(
+          {
+            kind: "fork",
+            throughSequence: parentHead,
+            expectedParentHash: boundary.hash,
+          },
+        );
+        expect(
+          child.sql
+            .exec(
+              `SELECT disposition,generation FROM channel_observation_claim WHERE singleton=1`,
+            )
+            .toArray(),
+        ).toEqual([{ disposition: "leased", generation: claim!.generation }]);
+      } else {
+        let settled = false;
+        void preparing.then(() => {
+          settled = true;
+        });
+        expect(settled).toBe(false);
+        await parent.instance.publish("panel:user", "after.fork", { value: 1 });
+        const workerId = "parent-observer";
+        const [parentClaim] = parent.instance.claimReadyWork(
+          "channel-observation",
+          { workerId, now: Date.now(), limit: 1 },
+        );
+        const outcome = await parent.instance.executeChannelObservationClaim({
+          itemId: parentClaim!.itemId,
+          generation: parentClaim!.generation,
+        });
+        expect(
+          parent.instance.settleReadyWork("channel-observation", {
+            workerId,
+            itemId: parentClaim!.itemId,
+            generation: parentClaim!.generation,
+            outcome,
+          }),
+        ).toBe("accepted");
+        await expect(preparing).resolves.toBeUndefined();
+        const fork = await child.instance.executeChannelObservationClaim({
+          itemId: claim!.itemId,
+          generation: claim!.generation,
+        });
+        expect(fork).toEqual({
+          observedSequence: parentHead,
+          hash: boundary.hash,
+        });
+        expect(
+          child.instance.settleReadyWork("channel-observation", {
+            workerId: "fork-new",
+            itemId: claim!.itemId,
+            generation: claim!.generation,
+            outcome: fork,
+          }),
+        ).toBe("accepted");
       }
-      return undefined;
-    }});
-    await initializeChannelClone(child,"observation-parent","fork-context");
-    await child.instance.postClone("observation-parent",parentHead,"fork-context");
-    const [old]=child.instance.claimReadyWork("channel-observation",{workerId:"fork-old",now:Date.now(),limit:1});
-    expect(old!.payload).toMatchObject({observation:{kind:"fork"}});
-    await child.instance.adoptDurableWorkWorker("fork-new");
-    const [claim]=child.instance.claimReadyWork("channel-observation",{workerId:"fork-new",now:Date.now(),limit:1});
-    await expect(child.instance.prepareChannelObservationClaim({itemId:old!.itemId,generation:old!.generation})).rejects.toThrow("no longer owns its claim");
-    expect(prerequisiteCalls).toBe(0);
-    const preparing=child.instance.prepareChannelObservationClaim({itemId:claim!.itemId,generation:claim!.generation});
-    const result=preparing.then(()=>undefined,(error:unknown)=>error);
-    await entered.promise;
-    if(mode==="original failure") {
-      expect(await result).toBe(original);
-      expect(canonicalLedger(child.instance).peekObservation()).toMatchObject({kind:"fork",throughSequence:parentHead,expectedParentHash:boundary.hash});
-      expect(child.sql.exec(`SELECT disposition,generation FROM channel_observation_claim WHERE singleton=1`).toArray()).toEqual([{disposition:"leased",generation:claim!.generation}]);
-    } else {
-      let settled=false;void preparing.then(()=>{settled=true;});
-      expect(settled).toBe(false);
-      await parent.instance.publish("panel:user","after.fork",{value:1});
-      const workerId="parent-observer";
-      const [parentClaim]=parent.instance.claimReadyWork("channel-observation",{workerId,now:Date.now(),limit:1});
-      const outcome=await parent.instance.executeChannelObservationClaim({itemId:parentClaim!.itemId,generation:parentClaim!.generation});
-      expect(parent.instance.settleReadyWork("channel-observation",{workerId,itemId:parentClaim!.itemId,generation:parentClaim!.generation,outcome})).toBe("accepted");
-      await expect(preparing).resolves.toBeUndefined();
-      const fork=await child.instance.executeChannelObservationClaim({itemId:claim!.itemId,generation:claim!.generation});
-      expect(fork).toEqual({observedSequence:parentHead,hash:boundary.hash});
-      expect(child.instance.settleReadyWork("channel-observation",{workerId:"fork-new",itemId:claim!.itemId,generation:claim!.generation,outcome:fork})).toBe("accepted");
-    }
-    expect(prerequisiteCalls).toBe(1);
-  });
+      expect(prerequisiteCalls).toBe(1);
+    },
+  );
 
   it("drains a retained workspace publication before capturing the receiving channel release frontier", async () => {
-    const channel=await createGadBackedChannel();
-    expect(await channel.instance.prepareDurableWorkRelease("peer-obligations")).toEqual({queues:[],barrier:null});
-    setRpcCaller(channel.instance,"panel:watcher","panel");
-    await channel.instance.subscribe("panel:watcher",{contextId:"ctx-1",type:"panel"});
-    await channel.gad.instance.appendLogEvent({logId:"trajectory:retirement",head:"main",logKind:"trajectory",events:[{
-      envelopeId:"owed-before-retirement",actor:{kind:"agent",id:"publisher"},payloadKind:AGENTIC_EVENT_PAYLOAD_KIND,
-      payload:agenticEvent(),publish:{channels:[{channelId:"channel-1"}]},
-    }]});
-    const workerId="driver-retirement";
-    const [publication]=channel.gad.instance.claimReadyWork("workspace-publication",{workerId,now:Date.now(),limit:1});
-    const peer=await channel.gad.instance.prepareDurableWorkRelease("peer-obligations");
-    const peerWaiting=channel.gad.instance.waitDurableWorkRelease("peer-obligations",peer.barrier);
-    let peerSettled=false;void peerWaiting.then(()=>{peerSettled=true;},()=>{peerSettled=true;});
-    const entered=deferred<void>();const release=deferred<void>();
-    const log=(channel.instance as unknown as {channelLog:ChannelLog}).channelLog;
-    const append=log.appendPrepared.bind(log);
-    log.appendPrepared=async(input)=>{entered.resolve();await release.promise;return append(input);};
-    const intents=(publication!.payload as {intents:import("@workspace/agentic-protocol").LogAppendEventInput[]}).intents;
-    const admitting=channel.instance.admitPublishedEnvelopes(intents);
+    const channel = await createGadBackedChannel();
+    expect(
+      await channel.instance.prepareDurableWorkRelease("peer-obligations"),
+    ).toEqual({ queues: [], barrier: null });
+    setRpcCaller(channel.instance, "panel:watcher", "panel");
+    await channel.instance.subscribe("panel:watcher", {
+      contextId: "ctx-1",
+      type: "panel",
+    });
+    await channel.gad.instance.appendLogEvent({
+      logId: "trajectory:retirement",
+      head: "main",
+      logKind: "trajectory",
+      events: [
+        {
+          envelopeId: "owed-before-retirement",
+          actor: { kind: "agent", id: "publisher" },
+          payloadKind: AGENTIC_EVENT_PAYLOAD_KIND,
+          payload: agenticEvent(),
+          publish: { channels: [{ channelId: "channel-1" }] },
+        },
+      ],
+    });
+    const workerId = "driver-retirement";
+    const [publication] = channel.gad.instance.claimReadyWork(
+      "workspace-publication",
+      { workerId, now: Date.now(), limit: 1 },
+    );
+    const peer =
+      await channel.gad.instance.prepareDurableWorkRelease("peer-obligations");
+    const peerWaiting = channel.gad.instance.waitDurableWorkRelease(
+      "peer-obligations",
+      peer.barrier,
+    );
+    let peerSettled = false;
+    void peerWaiting.then(
+      () => {
+        peerSettled = true;
+      },
+      () => {
+        peerSettled = true;
+      },
+    );
+    const entered = deferred<void>();
+    const release = deferred<void>();
+    const log = (channel.instance as unknown as { channelLog: ChannelLog })
+      .channelLog;
+    const append = log.appendPrepared.bind(log);
+    log.appendPrepared = async (input) => {
+      entered.resolve();
+      await release.promise;
+      return append(input);
+    };
+    const intents = (
+      publication!.payload as {
+        intents: import("@workspace/agentic-protocol").LogAppendEventInput[];
+      }
+    ).intents;
+    const admitting = channel.instance.admitPublishedEnvelopes(intents);
     try {
       await entered.promise;
       expect(peerSettled).toBe(false);
       expect(canonicalLedger(channel.instance).headSequence()).toBe(1);
       release.resolve();
-      const outcome=await admitting;
-      expect(channel.gad.instance.settleReadyWork("workspace-publication",{workerId,itemId:publication!.itemId,generation:publication!.generation,outcome})).toBe("accepted");
+      const outcome = await admitting;
+      expect(
+        channel.gad.instance.settleReadyWork("workspace-publication", {
+          workerId,
+          itemId: publication!.itemId,
+          generation: publication!.generation,
+          outcome,
+        }),
+      ).toBe("accepted");
       await peerWaiting;
-      const receiver=await channel.instance.prepareDurableWorkRelease("owner");
-      await expect(channel.instance.waitDurableWorkRelease("owner",{foreign:true})).rejects.toThrow("does not own");
-      const receiverWaiting=channel.instance.waitDurableWorkRelease("owner",receiver.barrier);
+      const receiver =
+        await channel.instance.prepareDurableWorkRelease("owner");
+      await expect(
+        channel.instance.waitDurableWorkRelease("owner", { foreign: true }),
+      ).rejects.toThrow("does not own");
+      const receiverWaiting = channel.instance.waitDurableWorkRelease(
+        "owner",
+        receiver.barrier,
+      );
       expect(canonicalLedger(channel.instance).headSequence()).toBe(2);
-      while(canonicalLedger(channel.instance).observedSequence() < 2) {
-        const [claim]=channel.instance.claimReadyWork("channel-observation",{workerId,now:Date.now(),limit:1});
+      while (canonicalLedger(channel.instance).observedSequence() < 2) {
+        const [claim] = channel.instance.claimReadyWork("channel-observation", {
+          workerId,
+          now: Date.now(),
+          limit: 1,
+        });
         expect(claim).toBeDefined();
-        const observed=await channel.instance.executeChannelObservationClaim({itemId:claim!.itemId,generation:claim!.generation});
-        expect(channel.instance.settleReadyWork("channel-observation",{workerId,itemId:claim!.itemId,generation:claim!.generation,outcome:observed})).toBe("accepted");
+        const observed = await channel.instance.executeChannelObservationClaim({
+          itemId: claim!.itemId,
+          generation: claim!.generation,
+        });
+        expect(
+          channel.instance.settleReadyWork("channel-observation", {
+            workerId,
+            itemId: claim!.itemId,
+            generation: claim!.generation,
+            outcome: observed,
+          }),
+        ).toBe("accepted");
       }
       await receiverWaiting;
-      await expect(channel.instance.waitDurableWorkRelease("owner",receiver.barrier)).resolves.toBeUndefined();
-      await expect(channel.instance.getEnvelope("pub:owed-before-retirement:channel-1")).resolves.toMatchObject({id:2});
-      await expect(channel.instance.admitPublishedEnvelopes(intents)).rejects.toThrow("publication owner is closing");
+      await expect(
+        channel.instance.waitDurableWorkRelease("owner", receiver.barrier),
+      ).resolves.toBeUndefined();
+      await expect(
+        channel.instance.getEnvelope("pub:owed-before-retirement:channel-1"),
+      ).resolves.toMatchObject({ id: 2 });
+      await expect(
+        channel.instance.admitPublishedEnvelopes(intents),
+      ).rejects.toThrow("publication owner is closing");
     } finally {
       release.resolve();
-      const [admission]=await Promise.allSettled([admitting]);
-      if(admission.status === "fulfilled") channel.gad.instance.settleReadyWork("workspace-publication",{workerId,itemId:publication!.itemId,generation:publication!.generation,outcome:admission.value});
-      else channel.gad.instance.failReadyWork("workspace-publication",{workerId,itemId:publication!.itemId,generation:publication!.generation,error:serializeRpcFailure(admission.reason)});
+      const [admission] = await Promise.allSettled([admitting]);
+      if (admission.status === "fulfilled")
+        channel.gad.instance.settleReadyWork("workspace-publication", {
+          workerId,
+          itemId: publication!.itemId,
+          generation: publication!.generation,
+          outcome: admission.value,
+        });
+      else
+        channel.gad.instance.failReadyWork("workspace-publication", {
+          workerId,
+          itemId: publication!.itemId,
+          generation: publication!.generation,
+          error: serializeRpcFailure(admission.reason),
+        });
       await Promise.allSettled([peerWaiting]);
-      log.appendPrepared=append;
+      log.appendPrepared = append;
     }
   });
 
   it("observes one frozen prefix while later appends remain independent canonical debt", async () => {
-    const entered=deferred<void>();const release=deferred<void>();
-    let held=true;
-    const requests: {events:{envelopeId:string}[]}[]=[];
-    const channel=await createGadBackedChannel({rpcCall:async(_target,method,args)=>{
-      if(method === "appendLogEvent") {
-        requests.push(args[0] as {events:{envelopeId:string}[]});
-        if(held) {entered.resolve();await release.promise;}
-      }
-      return undefined;
-    }});
-    setRpcCaller(channel.instance,"panel:user","panel");
-    await channel.instance.subscribe("panel:user",{contextId:"ctx-1",type:"panel"});
-    await channel.instance.publish("panel:user","batch.first",{value:1});
-    const workerId="driver-batched";
-    const [first]=channel.instance.claimReadyWork("channel-observation",{workerId,now:Date.now(),limit:1});
-    const observing=channel.instance.executeChannelObservationClaim({itemId:first!.itemId,generation:first!.generation});
+    const entered = deferred<void>();
+    const release = deferred<void>();
+    let held = true;
+    const requests: { events: { envelopeId: string }[] }[] = [];
+    const channel = await createGadBackedChannel({
+      rpcCall: async (_target, method, args) => {
+        if (method === "appendLogEvent") {
+          requests.push(args[0] as { events: { envelopeId: string }[] });
+          if (held) {
+            entered.resolve();
+            await release.promise;
+          }
+        }
+        return undefined;
+      },
+    });
+    setRpcCaller(channel.instance, "panel:user", "panel");
+    await channel.instance.subscribe("panel:user", {
+      contextId: "ctx-1",
+      type: "panel",
+    });
+    await channel.instance.publish("panel:user", "batch.first", { value: 1 });
+    const workerId = "driver-batched";
+    const [first] = channel.instance.claimReadyWork("channel-observation", {
+      workerId,
+      now: Date.now(),
+      limit: 1,
+    });
+    const observing = channel.instance.executeChannelObservationClaim({
+      itemId: first!.itemId,
+      generation: first!.generation,
+    });
     try {
       await entered.promise;
-      const later=await channel.instance.publish("panel:user","batch.later",{value:2});
+      const later = await channel.instance.publish(
+        "panel:user",
+        "batch.later",
+        { value: 2 },
+      );
       expect(requests[0]!.events).toHaveLength(2);
-      const prefix=canonicalLedger(channel.instance).at(1)!;
-      expect(()=>channel.instance.settleReadyWork("channel-observation",{workerId,itemId:first!.itemId,generation:first!.generation,outcome:{observedSequence:1,envelopeId:String(prefix.envelopeId),hash:prefix.hash}})).toThrow("changed its canonical event");
+      const prefix = canonicalLedger(channel.instance).at(1)!;
+      expect(() =>
+        channel.instance.settleReadyWork("channel-observation", {
+          workerId,
+          itemId: first!.itemId,
+          generation: first!.generation,
+          outcome: {
+            observedSequence: 1,
+            envelopeId: String(prefix.envelopeId),
+            hash: prefix.hash,
+          },
+        }),
+      ).toThrow("changed its canonical event");
       expect(canonicalLedger(channel.instance).observedSequence()).toBe(0);
-      release.resolve();held=false;
-      const firstOutcome=await observing;
+      release.resolve();
+      held = false;
+      const firstOutcome = await observing;
       expect(firstOutcome.observedSequence).toBe(2);
-      expect(channel.instance.settleReadyWork("channel-observation",{workerId,itemId:first!.itemId,generation:first!.generation,outcome:firstOutcome})).toBe("accepted");
-      expect(channel.instance.settleReadyWork("channel-observation",{workerId,itemId:first!.itemId,generation:first!.generation,outcome:firstOutcome})).toBe("duplicate");
+      expect(
+        channel.instance.settleReadyWork("channel-observation", {
+          workerId,
+          itemId: first!.itemId,
+          generation: first!.generation,
+          outcome: firstOutcome,
+        }),
+      ).toBe("accepted");
+      expect(
+        channel.instance.settleReadyWork("channel-observation", {
+          workerId,
+          itemId: first!.itemId,
+          generation: first!.generation,
+          outcome: firstOutcome,
+        }),
+      ).toBe("duplicate");
       expect(canonicalLedger(channel.instance).observedSequence()).toBe(2);
-      expect((await channel.instance.getReplayAfter({after:0})).logEvents).toHaveLength(3);
-      const [next]=channel.instance.claimReadyWork("channel-observation",{workerId,now:Date.now(),limit:1});
-      expect(channel.instance.settleReadyWork("channel-observation",{workerId,itemId:first!.itemId,generation:first!.generation,outcome:firstOutcome})).toBe("stale");
-      const nextOutcome=await channel.instance.executeChannelObservationClaim({itemId:next!.itemId,generation:next!.generation});
+      expect(
+        (await channel.instance.getReplayAfter({ after: 0 })).logEvents,
+      ).toHaveLength(3);
+      const [next] = channel.instance.claimReadyWork("channel-observation", {
+        workerId,
+        now: Date.now(),
+        limit: 1,
+      });
+      expect(
+        channel.instance.settleReadyWork("channel-observation", {
+          workerId,
+          itemId: first!.itemId,
+          generation: first!.generation,
+          outcome: firstOutcome,
+        }),
+      ).toBe("stale");
+      const nextOutcome = await channel.instance.executeChannelObservationClaim(
+        { itemId: next!.itemId, generation: next!.generation },
+      );
       expect(nextOutcome.observedSequence).toBe(later.id);
-      expect(channel.instance.settleReadyWork("channel-observation",{workerId,itemId:next!.itemId,generation:next!.generation,outcome:nextOutcome})).toBe("accepted");
+      expect(
+        channel.instance.settleReadyWork("channel-observation", {
+          workerId,
+          itemId: next!.itemId,
+          generation: next!.generation,
+          outcome: nextOutcome,
+        }),
+      ).toBe("accepted");
       expect(requests[1]!.events).toHaveLength(1);
-      expect(channel.gad.instance.readLog({logId:"channel-1",head:"main"})).toHaveLength(3);
-    } finally {release.resolve();await Promise.allSettled([observing]);}
+      expect(
+        channel.gad.instance.readLog({ logId: "channel-1", head: "main" }),
+      ).toHaveLength(3);
+    } finally {
+      release.resolve();
+      await Promise.allSettled([observing]);
+    }
   });
 
   it("reclaims the same frozen observation prefix after worker ownership changes", async () => {
-    const channel=await createGadBackedChannel();
-    setRpcCaller(channel.instance,"panel:user","panel");
-    await channel.instance.subscribe("panel:user",{contextId:"ctx-1",type:"panel"});
-    await channel.instance.publish("panel:user","batch.before",{value:1});
-    const [old]=channel.instance.claimReadyWork("channel-observation",{workerId:"driver-old-batch",now:Date.now(),limit:1});
-    await channel.instance.publish("panel:user","batch.after",{value:2});
+    const channel = await createGadBackedChannel();
+    setRpcCaller(channel.instance, "panel:user", "panel");
+    await channel.instance.subscribe("panel:user", {
+      contextId: "ctx-1",
+      type: "panel",
+    });
+    await channel.instance.publish("panel:user", "batch.before", { value: 1 });
+    const [old] = channel.instance.claimReadyWork("channel-observation", {
+      workerId: "driver-old-batch",
+      now: Date.now(),
+      limit: 1,
+    });
+    await channel.instance.publish("panel:user", "batch.after", { value: 2 });
     await channel.instance.adoptDurableWorkWorker("driver-new-batch");
-    const [reclaimed]=channel.instance.claimReadyWork("channel-observation",{workerId:"driver-new-batch",now:Date.now(),limit:1});
+    const [reclaimed] = channel.instance.claimReadyWork("channel-observation", {
+      workerId: "driver-new-batch",
+      now: Date.now(),
+      limit: 1,
+    });
     expect(reclaimed!.itemId).toBe(old!.itemId);
     expect(reclaimed!.generation).toBeGreaterThan(old!.generation);
-    const receipt=await channel.instance.executeChannelObservationClaim({itemId:reclaimed!.itemId,generation:reclaimed!.generation});
+    const receipt = await channel.instance.executeChannelObservationClaim({
+      itemId: reclaimed!.itemId,
+      generation: reclaimed!.generation,
+    });
     expect(receipt.observedSequence).toBe(2);
-    expect(channel.instance.settleReadyWork("channel-observation",{workerId:"driver-old-batch",itemId:old!.itemId,generation:old!.generation,outcome:receipt})).toBe("stale");
+    expect(
+      channel.instance.settleReadyWork("channel-observation", {
+        workerId: "driver-old-batch",
+        itemId: old!.itemId,
+        generation: old!.generation,
+        outcome: receipt,
+      }),
+    ).toBe("stale");
     expect(canonicalLedger(channel.instance).observedSequence()).toBe(0);
-    expect(channel.instance.settleReadyWork("channel-observation",{workerId:"driver-new-batch",itemId:reclaimed!.itemId,generation:reclaimed!.generation,outcome:receipt})).toBe("accepted");
-    expect(canonicalLedger(channel.instance).peekObservation()).toMatchObject({kind:"append",sequence:3});
+    expect(
+      channel.instance.settleReadyWork("channel-observation", {
+        workerId: "driver-new-batch",
+        itemId: reclaimed!.itemId,
+        generation: reclaimed!.generation,
+        outcome: receipt,
+      }),
+    ).toBe("accepted");
+    expect(canonicalLedger(channel.instance).peekObservation()).toMatchObject({
+      kind: "append",
+      sequence: 3,
+    });
   });
 
-  it.each(["same channel","cross channel"] as const)("joins held nested direct publications before owner sealing on the %s", async (mode) => {
-    const outerEntered=deferred<void>();const releaseOuter=deferred<void>();
-    const innerEntered=deferred<void>();const releaseInner=deferred<void>();
-    let destination!: PubSubChannel;
-    const receive=async (_target:string,method:string,args:unknown[])=>{
-      if(method!=="acceptChannelDelivery")return undefined;
-      const delivery=args[0] as {deliveryId:string;envelope:{event:{type:string}}};
-      if(delivery.envelope.event.type === "nested.outer") {
-        outerEntered.resolve();await releaseOuter.promise;
-        setRpcCaller(destination,"panel:user","panel");
-        await destination.publish("panel:user","nested.inner",{value:2});
-      } else if(delivery.envelope.event.type === "nested.inner") {
-        innerEntered.resolve();await releaseInner.promise;
+  it.each(["same channel", "cross channel"] as const)(
+    "joins held nested direct publications before owner sealing on the %s",
+    async (mode) => {
+      const outerEntered = deferred<void>();
+      const releaseOuter = deferred<void>();
+      const innerEntered = deferred<void>();
+      const releaseInner = deferred<void>();
+      let destination!: PubSubChannel;
+      const receive = async (
+        _target: string,
+        method: string,
+        args: unknown[],
+      ) => {
+        if (method !== "acceptChannelDelivery") return undefined;
+        const delivery = args[0] as {
+          deliveryId: string;
+          envelope: { event: { type: string } };
+        };
+        if (delivery.envelope.event.type === "nested.outer") {
+          outerEntered.resolve();
+          await releaseOuter.promise;
+          setRpcCaller(destination, "panel:user", "panel");
+          await destination.publish("panel:user", "nested.inner", { value: 2 });
+        } else if (delivery.envelope.event.type === "nested.inner") {
+          innerEntered.resolve();
+          await releaseInner.promise;
+        }
+        return { deliveryId: delivery.deliveryId, disposition: "processed" };
+      };
+      const source = await createGadBackedChannel({
+        channelKey: "nested-source",
+        rpcCall: receive,
+      });
+      const target =
+        mode === "same channel"
+          ? source
+          : await createGadBackedChannel({
+              channelKey: "nested-target",
+              gad: source.gad,
+              rpcCall: receive,
+            });
+      destination = target.instance;
+      for (const channel of new Set([source, target])) {
+        await joinEntity(
+          channel.instance,
+          `do:workers/agent-worker:AiChatWorker:${channel === source ? "outer" : "inner"}`,
+        );
+        setRpcCaller(channel.instance, "panel:user", "panel");
+        await channel.instance.subscribe("panel:user", {
+          contextId: "ctx-1",
+          type: "panel",
+        });
       }
-      return {deliveryId:delivery.deliveryId,disposition:"processed"};
-    };
-    const source=await createGadBackedChannel({channelKey:"nested-source",rpcCall:receive});
-    const target=mode === "same channel" ? source : await createGadBackedChannel({channelKey:"nested-target",gad:source.gad,rpcCall:receive});
-    destination=target.instance;
-    for(const channel of new Set([source,target])) {
-      await joinEntity(channel.instance,`do:workers/agent-worker:AiChatWorker:${channel === source ? "outer" : "inner"}`);
-      setRpcCaller(channel.instance,"panel:user","panel");
-      await channel.instance.subscribe("panel:user",{contextId:"ctx-1",type:"panel"});
-    }
-    const oldTarget=await target.instance.prepareDurableWorkRelease("delivery");
-    await source.instance.publish("panel:user","nested.outer",{value:1});
-    await outerEntered.promise;
-    const sourceCapture=await source.instance.prepareDurableWorkRelease("delivery");
-    let sourceDone=false;
-    const sourceWaiting=source.instance.waitDurableWorkRelease("delivery",sourceCapture.barrier).then(()=>{sourceDone=true;});
-    try {
-      expect(sourceDone).toBe(false);
-      releaseOuter.resolve();await innerEntered.promise;
-      const targetCapture=await target.instance.prepareDurableWorkRelease("delivery");
-      expect(targetCapture.barrier).not.toEqual(oldTarget.barrier);
-      let targetDone=false;
-      const targetWaiting=target.instance.waitDurableWorkRelease("delivery",targetCapture.barrier).then(()=>{targetDone=true;});
-      expect(targetDone).toBe(false);
-      releaseInner.resolve();await Promise.all([sourceWaiting,targetWaiting]);
-      const owner=await target.instance.prepareDurableWorkRelease("owner");
-      expect((owner.barrier as {headSequence:number}).headSequence).toBe(canonicalLedger(target.instance).headSequence());
-      expect(target.sql.exec(`SELECT delivery_id FROM channel_delivery_mailbox WHERE state IN ('ready','leased','retrying')`).toArray()).toEqual([]);
-    } finally {
-      releaseOuter.resolve();releaseInner.resolve();
-      await Promise.allSettled([sourceWaiting]);
-      await Promise.all([...new Set([source,target])].map((channel)=>(channel.instance as unknown as {publicationQueue:{drain():Promise<void>}}).publicationQueue.drain()));
-    }
-  });
+      const oldTarget =
+        await target.instance.prepareDurableWorkRelease("delivery");
+      await source.instance.publish("panel:user", "nested.outer", { value: 1 });
+      await outerEntered.promise;
+      const sourceCapture =
+        await source.instance.prepareDurableWorkRelease("delivery");
+      let sourceDone = false;
+      const sourceWaiting = source.instance
+        .waitDurableWorkRelease("delivery", sourceCapture.barrier)
+        .then(() => {
+          sourceDone = true;
+        });
+      try {
+        expect(sourceDone).toBe(false);
+        releaseOuter.resolve();
+        await innerEntered.promise;
+        const targetCapture =
+          await target.instance.prepareDurableWorkRelease("delivery");
+        expect(targetCapture.barrier).not.toEqual(oldTarget.barrier);
+        let targetDone = false;
+        const targetWaiting = target.instance
+          .waitDurableWorkRelease("delivery", targetCapture.barrier)
+          .then(() => {
+            targetDone = true;
+          });
+        expect(targetDone).toBe(false);
+        releaseInner.resolve();
+        await Promise.all([sourceWaiting, targetWaiting]);
+        const owner = await target.instance.prepareDurableWorkRelease("owner");
+        expect((owner.barrier as { headSequence: number }).headSequence).toBe(
+          canonicalLedger(target.instance).headSequence(),
+        );
+        expect(
+          target.sql
+            .exec(
+              `SELECT delivery_id FROM channel_delivery_mailbox WHERE state IN ('ready','leased','retrying')`,
+            )
+            .toArray(),
+        ).toEqual([]);
+      } finally {
+        releaseOuter.resolve();
+        releaseInner.resolve();
+        await Promise.allSettled([sourceWaiting]);
+        await Promise.all(
+          [...new Set([source, target])].map((channel) =>
+            (
+              channel.instance as unknown as {
+                publicationQueue: { drain(): Promise<void> };
+              }
+            ).publicationQueue.drain(),
+          ),
+        );
+      }
+    },
+  );
 
   it("preserves an owed delivery failure across activation and clears it only on genuine recovery acknowledgement", async () => {
-    const original=Object.assign(new Error("direct receiver refused",{cause:new Error("original provider cause")}),{code:"RECEIVER_REFUSED"});
-    const channel=await createGadBackedChannel({rpcCall:(_target,method)=>{if(method === "acceptChannelDelivery")throw original;return undefined;}});
-    await joinEntity(channel.instance,"do:workers/agent-worker:AiChatWorker:failure-owner");
-    setRpcCaller(channel.instance,"panel:user","panel");
-    await channel.instance.subscribe("panel:user",{contextId:"ctx-1",type:"panel"});
-    await channel.instance.publish("panel:user","failure.owed",{value:1});
-    const capture=await channel.instance.prepareDurableWorkRelease("delivery");
-    await expect(channel.instance.waitDurableWorkRelease("delivery",capture.barrier)).rejects.toMatchObject({message:original.message,code:"RECEIVER_REFUSED",cause:expect.objectContaining({message:"original provider cause"})});
-    const reopened=await createGadBackedChannel({gad:channel.gad,db:channel.db});
-    const recoveredCapture=await reopened.instance.prepareDurableWorkRelease("delivery");
-    await expect(reopened.instance.waitDurableWorkRelease("delivery",recoveredCapture.barrier)).rejects.toMatchObject({message:original.message,code:"RECEIVER_REFUSED",cause:expect.objectContaining({message:"original provider cause"})});
-    const workerId="driver-failure-recovery";
-    const [claim]=reopened.instance.claimReadyWork("channel-delivery",{workerId,now:Date.now(),limit:1});
+    const original = Object.assign(
+      new Error("direct receiver refused", {
+        cause: new Error("original provider cause"),
+      }),
+      { code: "RECEIVER_REFUSED" },
+    );
+    const channel = await createGadBackedChannel({
+      rpcCall: (_target, method) => {
+        if (method === "acceptChannelDelivery") throw original;
+        return undefined;
+      },
+    });
+    await joinEntity(
+      channel.instance,
+      "do:workers/agent-worker:AiChatWorker:failure-owner",
+    );
+    setRpcCaller(channel.instance, "panel:user", "panel");
+    await channel.instance.subscribe("panel:user", {
+      contextId: "ctx-1",
+      type: "panel",
+    });
+    await channel.instance.publish("panel:user", "failure.owed", { value: 1 });
+    const capture =
+      await channel.instance.prepareDurableWorkRelease("delivery");
+    await expect(
+      channel.instance.waitDurableWorkRelease("delivery", capture.barrier),
+    ).rejects.toMatchObject({
+      message: original.message,
+      code: "RECEIVER_REFUSED",
+      cause: expect.objectContaining({ message: "original provider cause" }),
+    });
+    const reopened = await createGadBackedChannel({
+      gad: channel.gad,
+      db: channel.db,
+    });
+    const recoveredCapture =
+      await reopened.instance.prepareDurableWorkRelease("delivery");
+    await expect(
+      reopened.instance.waitDurableWorkRelease(
+        "delivery",
+        recoveredCapture.barrier,
+      ),
+    ).rejects.toMatchObject({
+      message: original.message,
+      code: "RECEIVER_REFUSED",
+      cause: expect.objectContaining({ message: "original provider cause" }),
+    });
+    const workerId = "driver-failure-recovery";
+    const [claim] = reopened.instance.claimReadyWork("channel-delivery", {
+      workerId,
+      now: Date.now(),
+      limit: 1,
+    });
     expect(claim).toBeDefined();
-    expect(reopened.instance.settleReadyWork("channel-delivery",{workerId,itemId:claim!.itemId,generation:claim!.generation,outcome:{deliveryId:claim!.itemId,disposition:"processed"}})).toBe("accepted");
-    await expect(reopened.instance.waitDurableWorkRelease("delivery",recoveredCapture.barrier)).resolves.toBeUndefined();
-    await expect(channel.instance.waitDurableWorkRelease("delivery",capture.barrier)).resolves.toBeUndefined();
-    expect(reopened.sql.exec(`SELECT last_failure_json FROM channel_delivery_mailbox WHERE delivery_id = ?`,claim!.itemId).toArray()).toEqual([{last_failure_json:null}]);
-    await expect(reopened.instance.prepareDurableWorkRelease("owner")).resolves.toMatchObject({queues:["channel-observation"]});
+    expect(
+      reopened.instance.settleReadyWork("channel-delivery", {
+        workerId,
+        itemId: claim!.itemId,
+        generation: claim!.generation,
+        outcome: { deliveryId: claim!.itemId, disposition: "processed" },
+      }),
+    ).toBe("accepted");
+    await expect(
+      reopened.instance.waitDurableWorkRelease(
+        "delivery",
+        recoveredCapture.barrier,
+      ),
+    ).resolves.toBeUndefined();
+    await expect(
+      channel.instance.waitDurableWorkRelease("delivery", capture.barrier),
+    ).resolves.toBeUndefined();
+    expect(
+      reopened.sql
+        .exec(
+          `SELECT last_failure_json FROM channel_delivery_mailbox WHERE delivery_id = ?`,
+          claim!.itemId,
+        )
+        .toArray(),
+    ).toEqual([{ last_failure_json: null }]);
+    await expect(
+      reopened.instance.prepareDurableWorkRelease("owner"),
+    ).resolves.toMatchObject({ queues: ["channel-observation"] });
   });
 
   it("cancels delivery completion observation while a direct callback remains independently owned", async () => {
-    const entered=deferred<void>();const release=deferred<void>();
-    let callbackCompleted=false;
-    const channel=await createGadBackedChannel({rpcCall:async(_target,method,args)=>{
-      if(method!=="acceptChannelDelivery")return undefined;
-      const delivery=args[0] as {deliveryId:string};
-      entered.resolve();await release.promise;callbackCompleted=true;
-      return {deliveryId:delivery.deliveryId,disposition:"processed"};
-    }});
-    await joinEntity(channel.instance,"do:workers/agent-worker:AiChatWorker:held-cancelled-closure");
-    setRpcCaller(channel.instance,"panel:user","panel");
-    await channel.instance.subscribe("panel:user",{contextId:"ctx-1",type:"panel"});
-    const event=await channel.instance.publish("panel:user","held.closure",{value:1});
+    const entered = deferred<void>();
+    const release = deferred<void>();
+    let callbackCompleted = false;
+    const channel = await createGadBackedChannel({
+      rpcCall: async (_target, method, args) => {
+        if (method !== "acceptChannelDelivery") return undefined;
+        const delivery = args[0] as { deliveryId: string };
+        entered.resolve();
+        await release.promise;
+        callbackCompleted = true;
+        return { deliveryId: delivery.deliveryId, disposition: "processed" };
+      },
+    });
+    await joinEntity(
+      channel.instance,
+      "do:workers/agent-worker:AiChatWorker:held-cancelled-closure",
+    );
+    setRpcCaller(channel.instance, "panel:user", "panel");
+    await channel.instance.subscribe("panel:user", {
+      contextId: "ctx-1",
+      type: "panel",
+    });
+    const event = await channel.instance.publish("panel:user", "held.closure", {
+      value: 1,
+    });
     await entered.promise;
-    const capture=await channel.instance.prepareDurableWorkRelease("delivery");
-    const controller=new AbortController();
-    const owner=channel.instance as unknown as {_invocationContext:{run<T>(context:unknown,operation:()=>T):T};deliveryWaiters:Set<unknown>;publicationQueue:{drain():Promise<void>;completionObservers:Set<unknown>;completions:Set<unknown>}};
-    const registered=deferred<void>();
-    const observers=owner.publicationQueue.completionObservers;
-    const add=observers.add.bind(observers);
-    observers.add=(observer)=>{const added=add(observer);registered.resolve();return added;};
-    const original=Object.assign(new Error("release observation cancelled"),{code:"ECANCELLED"});
-    const waiting=owner._invocationContext.run({authorityActive:true,requestSignal:controller.signal,requestId:"held-direct-closure",callerId:"main",callerKind:"server"},()=>channel.instance.waitDurableWorkRelease("delivery",capture.barrier));
+    const capture =
+      await channel.instance.prepareDurableWorkRelease("delivery");
+    const controller = new AbortController();
+    const owner = channel.instance as unknown as {
+      _invocationContext: { run<T>(context: unknown, operation: () => T): T };
+      deliveryWaiters: Set<unknown>;
+      publicationQueue: {
+        drain(): Promise<void>;
+        completionObservers: Set<unknown>;
+        completions: Set<unknown>;
+      };
+    };
+    const registered = deferred<void>();
+    const observers = owner.publicationQueue.completionObservers;
+    const add = observers.add.bind(observers);
+    observers.add = (observer) => {
+      const added = add(observer);
+      registered.resolve();
+      return added;
+    };
+    const original = Object.assign(new Error("release observation cancelled"), {
+      code: "ECANCELLED",
+    });
+    const waiting = owner._invocationContext.run(
+      {
+        authorityActive: true,
+        requestSignal: controller.signal,
+        requestId: "held-direct-closure",
+        callerId: "main",
+        callerKind: "server",
+      },
+      () =>
+        channel.instance.waitDurableWorkRelease("delivery", capture.barrier),
+    );
     try {
       await registered.promise;
       expect(observers.size).toBe(1);
@@ -871,44 +1550,125 @@ describe("PubSubChannel", () => {
       expect(observers.size).toBe(0);
       expect(owner.publicationQueue.completions.size).toBeGreaterThan(0);
       expect(owner.deliveryWaiters.size).toBe(0);
-      expect(channel.sql.exec(`SELECT state FROM channel_delivery_mailbox WHERE event_id = ?`,event.messageId).toArray()).toEqual([{state:"ready"}]);
-      release.resolve();await owner.publicationQueue.drain();
+      expect(
+        channel.sql
+          .exec(
+            `SELECT state FROM channel_delivery_mailbox WHERE event_id = ?`,
+            event.messageId,
+          )
+          .toArray(),
+      ).toEqual([{ state: "ready" }]);
+      release.resolve();
+      await owner.publicationQueue.drain();
       expect(callbackCompleted).toBe(true);
-      expect(channel.sql.exec(`SELECT state FROM channel_delivery_mailbox WHERE event_id = ?`,event.messageId).toArray()).toEqual([{state:"terminal-completed"}]);
-      const next=await channel.instance.prepareDurableWorkRelease("delivery");
-      await expect(channel.instance.waitDurableWorkRelease("delivery",next.barrier)).resolves.toBeUndefined();
-      await expect(channel.instance.prepareDurableWorkRelease("owner")).resolves.toMatchObject({queues:["channel-observation"]});
-    } finally {controller.abort(original);release.resolve();await Promise.allSettled([waiting]);observers.add=add;await owner.publicationQueue.drain();}
+      expect(
+        channel.sql
+          .exec(
+            `SELECT state FROM channel_delivery_mailbox WHERE event_id = ?`,
+            event.messageId,
+          )
+          .toArray(),
+      ).toEqual([{ state: "terminal-completed" }]);
+      const next = await channel.instance.prepareDurableWorkRelease("delivery");
+      await expect(
+        channel.instance.waitDurableWorkRelease("delivery", next.barrier),
+      ).resolves.toBeUndefined();
+      await expect(
+        channel.instance.prepareDurableWorkRelease("owner"),
+      ).resolves.toMatchObject({ queues: ["channel-observation"] });
+    } finally {
+      controller.abort(original);
+      release.resolve();
+      await Promise.allSettled([waiting]);
+      observers.add = add;
+      await owner.publicationQueue.drain();
+    }
   });
 
   it("cancels a delivery horizon waiter without deleting the held mailbox debt", async () => {
-    const channel=await createGadBackedChannel();
-    await joinResidentSession(channel.instance,"do:vibestudio/internal:EvalDO:cancel-delivery");
-    setRpcCaller(channel.instance,"panel:user","panel");
-    await channel.instance.subscribe("panel:user",{contextId:"ctx-1",type:"panel"});
-    await channel.instance.publish("panel:user","cancel.owed",{value:1});
-    const workerId="driver-cancel-delivery";
-    const [claim]=channel.instance.claimReadyWork("channel-delivery",{workerId,now:Date.now(),limit:1});
-    const capture=await channel.instance.prepareDurableWorkRelease("delivery");
-    const controller=new AbortController();const entered=deferred<void>();
-    const owner=channel.instance as unknown as {waitDeliveryThrough(sequence:number):Promise<void>;deliveryWaiters:Set<unknown>;_invocationContext:{run<T>(context:unknown,operation:()=>T):T}};
-    const wait=owner.waitDeliveryThrough.bind(channel.instance);
-    owner.waitDeliveryThrough=(sequence)=>{const pending=wait(sequence);entered.resolve();return pending;};
-    const original=new Error("caller cancelled delivery closure");
-    const waiting=owner._invocationContext.run({authorityActive:true,requestSignal:controller.signal,requestId:"cancel-delivery-closure",callerId:"main",callerKind:"server"},()=>channel.instance.waitDurableWorkRelease("delivery",capture.barrier));
+    const channel = await createGadBackedChannel();
+    await joinResidentSession(
+      channel.instance,
+      "do:vibestudio/internal:EvalDO:cancel-delivery",
+    );
+    setRpcCaller(channel.instance, "panel:user", "panel");
+    await channel.instance.subscribe("panel:user", {
+      contextId: "ctx-1",
+      type: "panel",
+    });
+    await channel.instance.publish("panel:user", "cancel.owed", { value: 1 });
+    const workerId = "driver-cancel-delivery";
+    const [claim] = channel.instance.claimReadyWork("channel-delivery", {
+      workerId,
+      now: Date.now(),
+      limit: 1,
+    });
+    const capture =
+      await channel.instance.prepareDurableWorkRelease("delivery");
+    const controller = new AbortController();
+    const entered = deferred<void>();
+    const owner = channel.instance as unknown as {
+      waitDeliveryThrough(sequence: number): Promise<void>;
+      deliveryWaiters: Set<unknown>;
+      _invocationContext: { run<T>(context: unknown, operation: () => T): T };
+    };
+    const wait = owner.waitDeliveryThrough.bind(channel.instance);
+    owner.waitDeliveryThrough = (sequence) => {
+      const pending = wait(sequence);
+      entered.resolve();
+      return pending;
+    };
+    const original = new Error("caller cancelled delivery closure");
+    const waiting = owner._invocationContext.run(
+      {
+        authorityActive: true,
+        requestSignal: controller.signal,
+        requestId: "cancel-delivery-closure",
+        callerId: "main",
+        callerKind: "server",
+      },
+      () =>
+        channel.instance.waitDurableWorkRelease("delivery", capture.barrier),
+    );
     try {
-      await entered.promise;controller.abort(original);
+      await entered.promise;
+      controller.abort(original);
       await expect(waiting).rejects.toBe(original);
       expect(owner.deliveryWaiters.size).toBe(0);
-      expect(channel.sql.exec(`SELECT state FROM channel_delivery_mailbox WHERE delivery_id = ?`,claim!.itemId).toArray()).toEqual([{state:"leased"}]);
-      expect(channel.instance.settleReadyWork("channel-delivery",{workerId,itemId:claim!.itemId,generation:claim!.generation,outcome:{deliveryId:claim!.itemId,disposition:"processed"}})).toBe("accepted");
-      await expect(channel.instance.waitDurableWorkRelease("delivery",capture.barrier)).resolves.toBeUndefined();
-    } finally {controller.abort(original);await Promise.allSettled([waiting]);owner.waitDeliveryThrough=wait;}
+      expect(
+        channel.sql
+          .exec(
+            `SELECT state FROM channel_delivery_mailbox WHERE delivery_id = ?`,
+            claim!.itemId,
+          )
+          .toArray(),
+      ).toEqual([{ state: "leased" }]);
+      expect(
+        channel.instance.settleReadyWork("channel-delivery", {
+          workerId,
+          itemId: claim!.itemId,
+          generation: claim!.generation,
+          outcome: { deliveryId: claim!.itemId, disposition: "processed" },
+        }),
+      ).toBe("accepted");
+      await expect(
+        channel.instance.waitDurableWorkRelease("delivery", capture.barrier),
+      ).resolves.toBeUndefined();
+    } finally {
+      controller.abort(original);
+      await Promise.allSettled([waiting]);
+      owner.waitDeliveryThrough = wait;
+    }
   });
 
   it("adopts delivery work from canonical local history without a global read", async () => {
     const methods: string[] = [];
-    const { instance } = await createGadBackedChannel({rpcCall:(_target,method)=>{methods.push(method);return undefined;}});
+    const { instance } = await createGadBackedChannel({
+      rpcCall: (_target, method) => {
+        methods.push(method);
+        return undefined;
+      },
+    });
     await instance.adoptDurableWorkWorker("driver-after-restart");
     expect(methods).not.toContain("readLog");
     expect(methods).not.toContain("appendLogEvent");
@@ -1196,7 +1956,7 @@ describe("PubSubChannel", () => {
     );
 
     expect(result.id).toBe(2);
-    const rows = canonicalLedger(instance).read({limit:100});
+    const rows = canonicalLedger(instance).read({ limit: 100 });
     expect(rows.length).toBeGreaterThan(1);
     expect(rows[1]).toMatchObject({
       seq: 2,
@@ -1262,8 +2022,11 @@ describe("PubSubChannel", () => {
         agenticEvent(),
       ),
     ).resolves.toMatchObject({ id: expect.any(Number) });
-    const published = await instance.getReplayAfter({after:0});
-    expect(published.logEvents.at(-1)).toMatchObject({senderId:"user:usr_alice",type:AGENTIC_EVENT_PAYLOAD_KIND});
+    const published = await instance.getReplayAfter({ after: 0 });
+    expect(published.logEvents.at(-1)).toMatchObject({
+      senderId: "user:usr_alice",
+      type: AGENTIC_EVENT_PAYLOAD_KIND,
+    });
     setRpcCaller(instance, "shell:bob", "shell", null, "usr_bob");
     await expect(
       instance.publish(
@@ -1679,7 +2442,7 @@ describe("PubSubChannel", () => {
 
   it("retries a lost workspace invite-index write through a host-held claim", async () => {
     let failFirstPut = true;
-    const { instance, sql , gad} = await createGadBackedChannel({
+    const { instance, sql, gad } = await createGadBackedChannel({
       rpcCall: (target, method, args) => {
         if (method === "account.isMember") return args[0] === "usr_bob";
         if (method === "account.resolveProfiles")
@@ -1744,7 +2507,7 @@ describe("PubSubChannel", () => {
     let isWorkspaceMember = true;
     let putAttempts = 0;
     let deleteAttempts = 0;
-    const { instance, sql , gad} = await createGadBackedChannel({
+    const { instance, sql, gad } = await createGadBackedChannel({
       rpcCall: (target, method, args) => {
         if (method === "account.isMember")
           return isWorkspaceMember && args[0] === "usr_bob";
@@ -1929,7 +2692,10 @@ describe("PubSubChannel", () => {
 
     await instance.sendAsCaller("hello", { handle: "Alice" });
 
-    const annotations = canonicalLedger(instance).read({limit:100}).filter((event)=>event.payloadKind === "message.completed").at(-1)!.annotations as Record<string, unknown>;
+    const annotations = canonicalLedger(instance)
+      .read({ limit: 100 })
+      .filter((event) => event.payloadKind === "message.completed")
+      .at(-1)!.annotations as Record<string, unknown>;
     expect(annotations["metadata"]).toMatchObject({
       name: "agent:session-1",
       handle: "agent:session-1",
@@ -1985,38 +2751,108 @@ describe("PubSubChannel", () => {
     ).resolves.toBeUndefined();
   });
 
-  it("rejects a Durable Object participant that is not an active runtime entity", async () => {
-    const participantId = "do:vibestudio/internal:EvalDO:retired-eval";
+  it("establishes exact admitted self-membership without another entity lookup", async () => {
+    const participantId = "do:vibestudio/internal:EvalDO:admitted-eval";
+    const lookups: unknown[][] = [];
     const { instance } = await createGadBackedChannel({
-      rpcCall: (target, method) => {
+      rpcCall: (target, method, args) => {
         if (
           target === "main" &&
           method === "workspace-state.entity.resolveActive"
-        )
-          return null;
+        ) {
+          lookups.push(args);
+          throw new Error(
+            "Self-membership must use its existing ingress admission",
+          );
+        }
         return undefined;
       },
     });
     setRpcCaller(instance, participantId, "do");
-
+    const input = {
+      participantId,
+      operationId: "join-1",
+      contextId: "ctx-1",
+      metadata: { name: "Admitted eval", type: "headless" },
+      delivery: "all" as const,
+      endpoint: {
+        kind: "entity" as const,
+        entityId: participantId,
+        invocation: "direct" as const,
+      },
+      applicationConfig: null,
+      replay: true,
+    };
+    const first = await instance.join(input);
+    expect(first).toMatchObject({ ok: true, participantId, revision: 1 });
+    const retry = await instance.join(input);
+    expect(retry).toMatchObject({ participantId, revision: first.revision });
+    expect(retry.envelope?.logEvents).toEqual(first.envelope?.logEvents);
+    expect(retry.envelope?.ready.snapshotLastSeq).toBe(
+      first.envelope?.ready.snapshotLastSeq,
+    );
+    expect(lookups).toEqual([]);
     await expect(
       instance.join({
-        participantId,
-        operationId: "join-1",
-        contextId: "ctx-1",
-        metadata: { name: "Retired eval", type: "headless" },
-        delivery: "all",
+        ...input,
         endpoint: {
-          kind: "entity",
-          entityId: participantId,
-          invocation: "direct",
+          ...input.endpoint,
+          entityId: "do:vibestudio/internal:EvalDO:other",
         },
-        applicationConfig: null,
-        replay: true,
       }),
     ).rejects.toThrow(
-      `join: Durable Object participant ${participantId} is not active`,
+      "delivery endpoint must be owned by the stable participant entity",
     );
+  });
+
+  it("closes its owned join once and never closes a concurrently replaced membership", async () => {
+    const { instance } = await createGadBackedChannel();
+    const participantId = "do:vibestudio/internal:EvalDO:finite-owner";
+    setRpcCaller(instance, participantId, "do");
+    const input = {
+      participantId,
+      operationId: "opening-1",
+      contextId: "ctx-1",
+      metadata: { type: "headless" },
+      delivery: "all" as const,
+      endpoint: {
+        kind: "entity" as const,
+        entityId: participantId,
+        invocation: "mailbox" as const,
+      },
+      applicationConfig: null,
+      replay: false,
+    };
+    const original = await instance.join(input);
+    const replacement = await instance.join({
+      ...input,
+      operationId: "opening-2",
+    });
+    await instance.leave({ participantId, revision: original.revision });
+    expect(await instance.relationshipState(participantId)).toEqual({
+      active: true,
+      revision: replacement.revision,
+    });
+    await expect(
+      instance.leave({ participantId, revision: replacement.revision + 1 }),
+    ).rejects.toThrow("join revision was not admitted");
+    await Promise.all([
+      instance.leave({ participantId, revision: replacement.revision }),
+      instance.leave({ participantId, revision: replacement.revision }),
+    ]);
+    expect(await instance.relationshipState(participantId)).toEqual({
+      active: false,
+      revision: replacement.revision + 1,
+    });
+    const reopened = await instance.join({
+      ...input,
+      operationId: "opening-3",
+    });
+    await instance.leave({ participantId, revision: replacement.revision });
+    expect(await instance.relationshipState(participantId)).toEqual({
+      active: true,
+      revision: reopened.revision,
+    });
   });
 
   it("dedupes concurrent publishes with the same idempotency key before append settles", async () => {
@@ -2025,10 +2861,14 @@ describe("PubSubChannel", () => {
     let appendCalls = 0;
     let blockAppend = false;
     const { instance } = await createGadBackedChannel();
-    const log = (instance as unknown as {channelLog:ChannelLog}).channelLog;
+    const log = (instance as unknown as { channelLog: ChannelLog }).channelLog;
     const append = log.append.bind(log);
     log.append = async (input) => {
-      if (blockAppend) { appendCalls += 1; appendEntered.resolve(); await releaseAppend.promise; }
+      if (blockAppend) {
+        appendCalls += 1;
+        appendEntered.resolve();
+        await releaseAppend.promise;
+      }
       return append(input);
     };
     setRpcCaller(instance, "panel:user", "panel");
@@ -2072,15 +2912,21 @@ describe("PubSubChannel", () => {
     });
     expect(receipts[1]).toEqual(receipts[0]);
 
-    expect(canonicalLedger(instance).read({limit:100})).toHaveLength(2);
+    expect(canonicalLedger(instance).read({ limit: 100 })).toHaveLength(2);
   });
 
   it("joins a fresh relationship without retaining an unobserved receiver snapshot or rereading its committed append", async () => {
     const methods: string[] = [];
     const { instance } = await createGadBackedChannel({
-      rpcCall: (_target, method) => { methods.push(method); return undefined; },
+      rpcCall: (_target, method) => {
+        methods.push(method);
+        return undefined;
+      },
     });
-    await joinEntity(instance, "do:workers/agent-worker:AiChatWorker:fresh-snapshot");
+    await joinEntity(
+      instance,
+      "do:workers/agent-worker:AiChatWorker:fresh-snapshot",
+    );
     expect(methods).not.toContain("blobstore.putText");
     expect(canonicalLedger(instance).headSequence()).toBe(1);
     expect(methods).not.toContain("appendLogEvent");
@@ -2116,7 +2962,11 @@ describe("PubSubChannel", () => {
     expect(
       repeated.envelope!.logEvents.every((event) => event.id <= cutoff),
     ).toBe(true);
-    expect(canonicalLedger(instance).read({limit:100}).filter((event)=>event.payloadKind === "channel.subscription.opened")).toHaveLength(1);
+    expect(
+      canonicalLedger(instance)
+        .read({ limit: 100 })
+        .filter((event) => event.payloadKind === "channel.subscription.opened"),
+    ).toHaveLength(1);
     const deliveries = (
       instance as unknown as {
         sql: {
@@ -2185,7 +3035,7 @@ describe("PubSubChannel", () => {
   });
 
   it("keeps identity summaries compact while retaining exact executable offers at a relationship revision", async () => {
-    const { instance , gad} = await createGadBackedChannel();
+    const { instance, gad } = await createGadBackedChannel();
     const participantId = "do:workers/agent-worker:AiChatWorker:metadata-test";
     const metadata = {
       name: "Agent",
@@ -2214,10 +3064,20 @@ describe("PubSubChannel", () => {
         ],
       }),
     ).rejects.toThrow("operationId already names different relationship data");
-    const rows = canonicalLedger(instance).read({limit:100}).filter((envelope)=>envelope.payloadKind === "channel.subscription.opened");
+    const rows = canonicalLedger(instance)
+      .read({ limit: 100 })
+      .filter(
+        (envelope) => envelope.payloadKind === "channel.subscription.opened",
+      );
     expect(rows).toHaveLength(1);
-    expect((rows[0]!.payload as Record<string,unknown>)["metadata"]).toEqual({name:"Agent",type:"agent",methods:[{name:"pause"}]});
-    expect((rows[0]!.payload as Record<string,unknown>)["methodOffers"]).toEqual(metadata.methods);
+    expect((rows[0]!.payload as Record<string, unknown>)["metadata"]).toEqual({
+      name: "Agent",
+      type: "agent",
+      methods: [{ name: "pause" }],
+    });
+    expect(
+      (rows[0]!.payload as Record<string, unknown>)["methodOffers"],
+    ).toEqual(metadata.methods);
     const integrity = await gad.call("checkGadIntegrity", {});
     expect(
       integrity.errors.filter((error) => error.type === "log-event-shape"),
@@ -2256,12 +3116,12 @@ describe("PubSubChannel", () => {
       },
     );
 
-    const rows = canonicalLedger(instance).read({limit:100});
+    const rows = canonicalLedger(instance).read({ limit: 100 });
     const identityJson = JSON.stringify(
       rows.map((row) => ({
         actor: row.actor,
         annotations: row.annotations,
-        metadata: (row.payload as Record<string,unknown>)["metadata"],
+        metadata: (row.payload as Record<string, unknown>)["metadata"],
       })),
     );
     expect(identityJson).not.toContain("properties");
@@ -2269,7 +3129,7 @@ describe("PubSubChannel", () => {
     expect(identityJson).not.toContain("description");
     expect(identityJson).not.toContain("yyyy");
     expect(
-      (rows[0]!.payload as Record<string,unknown>)["methodOffers"],
+      (rows[0]!.payload as Record<string, unknown>)["methodOffers"],
     ).toMatchObject([
       {
         name: "eval",
@@ -2291,72 +3151,209 @@ describe("PubSubChannel", () => {
     const release = deferred<void>();
     const receiverRelease = deferred<void>();
     let held = false;
-    let channelContext: {current(): {verifiedCaller?: {authorization?: {nonce?:string}}}|undefined;run<T>(value:unknown,operation:()=>T):T};
-    const nonces:unknown[]=[];
-    const emitted:unknown[]=[];
-    const deliveries:any[]=[];
-    const channel=await createGadBackedChannel({emitted,rpcCall:async (_target,method,args)=>{
-      if(method === "appendLogEvent" && held){started.resolve(undefined);await release.promise;}
-      if(method === "acceptChannelDelivery"){
-        const delivery=args[0] as any;deliveries.push(delivery);
-        if(delivery.envelope.event.type === "custom.live"){
-          nonces.push(channelContext.current()?.verifiedCaller?.authorization?.nonce);
-          await receiverRelease.promise;
-          nonces.push(channelContext.current()?.verifiedCaller?.authorization?.nonce);
+    let channelContext: {
+      current():
+        | { verifiedCaller?: { authorization?: { nonce?: string } } }
+        | undefined;
+      run<T>(value: unknown, operation: () => T): T;
+    };
+    const nonces: unknown[] = [];
+    const emitted: unknown[] = [];
+    const deliveries: any[] = [];
+    const channel = await createGadBackedChannel({
+      emitted,
+      rpcCall: async (_target, method, args) => {
+        if (method === "appendLogEvent" && held) {
+          started.resolve(undefined);
+          await release.promise;
         }
-        return {deliveryId:delivery.deliveryId,disposition:"processed"};
+        if (method === "acceptChannelDelivery") {
+          const delivery = args[0] as any;
+          deliveries.push(delivery);
+          if (delivery.envelope.event.type === "custom.live") {
+            nonces.push(
+              channelContext.current()?.verifiedCaller?.authorization?.nonce,
+            );
+            await receiverRelease.promise;
+            nonces.push(
+              channelContext.current()?.verifiedCaller?.authorization?.nonce,
+            );
+          }
+          return { deliveryId: delivery.deliveryId, disposition: "processed" };
+        }
+        return undefined;
+      },
+    });
+    channelContext = (
+      channel.instance as unknown as {
+        _invocationContext: typeof channelContext;
       }
-      return undefined;
-    }});
-    channelContext=(channel.instance as unknown as {_invocationContext:typeof channelContext})._invocationContext;
-    await joinEntity(channel.instance,"do:workers/agent-worker:AiChatWorker:live-recipient");
-    setRpcCaller(channel.instance,"panel:user","panel");
-    await channel.instance.subscribe("panel:user",{contextId:"ctx-1",name:"User",type:"panel"});
-    emitted.length=0;deliveries.length=0;
-    held=true;
-    const parent={authorityActive:true,callerId:"panel:user",callerKind:"panel",verifiedCaller:{callerId:"panel:user",callerKind:"panel",authorization:{nonce:"publisher:request:nonce"}},requestId:"publisher:request",idempotencyKey:null,readyQueues:new Set()};
-    const receipt=await channelContext.run(parent,()=>channel.instance.publish("panel:user","custom.live",{value:"go"}));
-    parent.authorityActive=false;
+    )._invocationContext;
+    await joinEntity(
+      channel.instance,
+      "do:workers/agent-worker:AiChatWorker:live-recipient",
+    );
+    setRpcCaller(channel.instance, "panel:user", "panel");
+    await channel.instance.subscribe("panel:user", {
+      contextId: "ctx-1",
+      name: "User",
+      type: "panel",
+    });
+    emitted.length = 0;
+    deliveries.length = 0;
+    held = true;
+    const parent = {
+      authorityActive: true,
+      callerId: "panel:user",
+      callerKind: "panel",
+      verifiedCaller: {
+        callerId: "panel:user",
+        callerKind: "panel",
+        authorization: { nonce: "publisher:request:nonce" },
+      },
+      requestId: "publisher:request",
+      idempotencyKey: null,
+      readyQueues: new Set(),
+    };
+    const receipt = await channelContext.run(parent, () =>
+      channel.instance.publish("panel:user", "custom.live", { value: "go" }),
+    );
+    parent.authorityActive = false;
     expect(receipt.id).toEqual(expect.any(Number));
     expect(deliveries).toHaveLength(1);
-    expect(deliveries[0]).toMatchObject({eventSequence:receipt.id,envelope:{kind:"log",event:{id:receipt.id,type:"custom.live"}}});
-    expect(emitted).toEqual([expect.objectContaining({message:expect.objectContaining({kind:"log",event:expect.objectContaining({id:receipt.id,type:"custom.live"})})})]);
-    await expect(channel.instance.getEnvelope(receipt.messageId)).resolves.toEqual(deliveries[0].envelope.event);
+    expect(deliveries[0]).toMatchObject({
+      eventSequence: receipt.id,
+      envelope: { kind: "log", event: { id: receipt.id, type: "custom.live" } },
+    });
+    expect(emitted).toEqual([
+      expect.objectContaining({
+        message: expect.objectContaining({
+          kind: "log",
+          event: expect.objectContaining({
+            id: receipt.id,
+            type: "custom.live",
+          }),
+        }),
+      }),
+    ]);
+    await expect(
+      channel.instance.getEnvelope(receipt.messageId),
+    ).resolves.toEqual(deliveries[0].envelope.event);
     expect(nonces).toEqual([undefined]);
-    expect(channel.gad.instance.getLogHead({logId:"channel-1",head:"main"})).toBeNull();
-    const [observation]=channel.instance.claimReadyWork("channel-observation",{workerId:"live-check",now:Date.now(),limit:1});
-    const observing=channel.instance.executeChannelObservationClaim({itemId:observation!.itemId,generation:observation!.generation});
+    expect(
+      channel.gad.instance.getLogHead({ logId: "channel-1", head: "main" }),
+    ).toBeNull();
+    const [observation] = channel.instance.claimReadyWork(
+      "channel-observation",
+      { workerId: "live-check", now: Date.now(), limit: 1 },
+    );
+    const observing = channel.instance.executeChannelObservationClaim({
+      itemId: observation!.itemId,
+      generation: observation!.generation,
+    });
     await started.promise;
-    const replay=await channel.instance.getReplayAfter({after:0});
-    expect(replay.logEvents.some((event)=>event.messageId===receipt.messageId)).toBe(true);
+    const replay = await channel.instance.getReplayAfter({ after: 0 });
+    expect(
+      replay.logEvents.some((event) => event.messageId === receipt.messageId),
+    ).toBe(true);
     release.resolve(undefined);
-    const observed=await observing;
-    expect(channel.instance.settleReadyWork("channel-observation",{workerId:"live-check",itemId:observation!.itemId,generation:observation!.generation,outcome:observed})).toBe("accepted");
-    const [claim]=channel.instance.claimReadyWork("channel-delivery",{workerId:"live-check",now:Date.now(),limit:1});
-    expect((claim!.payload as any).delivery).toMatchObject({deliveryId:deliveries[0].deliveryId,envelopeId:receipt.messageId,eventSequence:receipt.id});
-    expect((claim!.payload as any).delivery.agenticContext).toEqual(deliveries[0].agenticContext);
+    const observed = await observing;
+    expect(
+      channel.instance.settleReadyWork("channel-observation", {
+        workerId: "live-check",
+        itemId: observation!.itemId,
+        generation: observation!.generation,
+        outcome: observed,
+      }),
+    ).toBe("accepted");
+    const [claim] = channel.instance.claimReadyWork("channel-delivery", {
+      workerId: "live-check",
+      now: Date.now(),
+      limit: 1,
+    });
+    expect((claim!.payload as any).delivery).toMatchObject({
+      deliveryId: deliveries[0].deliveryId,
+      envelopeId: receipt.messageId,
+      eventSequence: receipt.id,
+    });
+    expect((claim!.payload as any).delivery.agenticContext).toEqual(
+      deliveries[0].agenticContext,
+    );
     receiverRelease.resolve(undefined);
     await Promise.resolve();
-    expect(nonces).toEqual([undefined,undefined]);
-
+    expect(nonces).toEqual([undefined, undefined]);
   });
 
-  it("keeps valid local membership and history when graph observation fails, with original debt visible across activation", async()=>{
-    const failure=Object.assign(new Error("Graph unavailable"),{cause:new Error("Original service failure"),code:"GRAPH_DOWN"});
-    const channel=await createGadBackedChannel({rpcCall:(_target,method)=>{if(method==="appendLogEvent")throw failure;}});
-    setRpcCaller(channel.instance,"panel:user","panel");
-    await channel.instance.subscribe("panel:user",{contextId:"ctx-1",type:"panel"});
-    const receipt=await channel.instance.publish("panel:user","custom.valid",{value:1});
-    const [claim]=channel.instance.claimReadyWork("channel-observation",{workerId:"graph-failure",now:Date.now(),limit:1});
-    await expect(channel.instance.executeChannelObservationClaim({itemId:claim!.itemId,generation:claim!.generation})).rejects.toBe(failure);
-    expect(await channel.instance.failReadyWork("channel-observation",{workerId:"graph-failure",itemId:claim!.itemId,generation:claim!.generation,error:serializeRpcFailure(failure)})).toEqual({failed:true});
-    await expect(channel.instance.waitObservedThrough(receipt.id!)).rejects.toMatchObject({message:"Graph unavailable",code:"GRAPH_DOWN",cause:expect.objectContaining({message:"Original service failure"})});
-    await expect(channel.instance.getEnvelope(receipt.messageId)).resolves.toMatchObject({id:receipt.id});
-    const reopened=await createGadBackedChannel({db:channel.db,gad:channel.gad});
-    expect(reopened.instance.claimReadyWork("channel-observation",{workerId:"new-generation",now:Date.now(),limit:1})).toEqual([]);
-    await expect(reopened.instance.waitObservedThrough(receipt.id!)).rejects.toMatchObject({message:"Graph unavailable",code:"GRAPH_DOWN"});
-    const replay=await reopened.instance.getReplayAfter({after:0});
-    expect(replay.logEvents.some((event)=>event.messageId===receipt.messageId)).toBe(true);
+  it("keeps valid local membership and history when graph observation fails, with original debt visible across activation", async () => {
+    const failure = Object.assign(new Error("Graph unavailable"), {
+      cause: new Error("Original service failure"),
+      code: "GRAPH_DOWN",
+    });
+    const channel = await createGadBackedChannel({
+      rpcCall: (_target, method) => {
+        if (method === "appendLogEvent") throw failure;
+      },
+    });
+    setRpcCaller(channel.instance, "panel:user", "panel");
+    await channel.instance.subscribe("panel:user", {
+      contextId: "ctx-1",
+      type: "panel",
+    });
+    const receipt = await channel.instance.publish(
+      "panel:user",
+      "custom.valid",
+      { value: 1 },
+    );
+    const [claim] = channel.instance.claimReadyWork("channel-observation", {
+      workerId: "graph-failure",
+      now: Date.now(),
+      limit: 1,
+    });
+    await expect(
+      channel.instance.executeChannelObservationClaim({
+        itemId: claim!.itemId,
+        generation: claim!.generation,
+      }),
+    ).rejects.toBe(failure);
+    expect(
+      await channel.instance.failReadyWork("channel-observation", {
+        workerId: "graph-failure",
+        itemId: claim!.itemId,
+        generation: claim!.generation,
+        error: serializeRpcFailure(failure),
+      }),
+    ).toEqual({ failed: true });
+    await expect(
+      channel.instance.waitObservedThrough(receipt.id!),
+    ).rejects.toMatchObject({
+      message: "Graph unavailable",
+      code: "GRAPH_DOWN",
+      cause: expect.objectContaining({ message: "Original service failure" }),
+    });
+    await expect(
+      channel.instance.getEnvelope(receipt.messageId),
+    ).resolves.toMatchObject({ id: receipt.id });
+    const reopened = await createGadBackedChannel({
+      db: channel.db,
+      gad: channel.gad,
+    });
+    expect(
+      reopened.instance.claimReadyWork("channel-observation", {
+        workerId: "new-generation",
+        now: Date.now(),
+        limit: 1,
+      }),
+    ).toEqual([]);
+    await expect(
+      reopened.instance.waitObservedThrough(receipt.id!),
+    ).rejects.toMatchObject({
+      message: "Graph unavailable",
+      code: "GRAPH_DOWN",
+    });
+    const replay = await reopened.instance.getReplayAfter({ after: 0 });
+    expect(
+      replay.logEvents.some((event) => event.messageId === receipt.messageId),
+    ).toBe(true);
   });
 
   it("fails durable publishes when blobstore storage fails", async () => {
@@ -2653,10 +3650,12 @@ describe("PubSubChannel", () => {
         workerId: "old-driver",
         itemId: oldClaim!.itemId,
         generation: oldClaim!.generation,
-        error: serializeRpcFailure(Object.assign(new Error("old receiver disappeared"), {
-          code: "ResidentSessionUnavailable",
-          errorKind: "transport" as const,
-        })),
+        error: serializeRpcFailure(
+          Object.assign(new Error("old receiver disappeared"), {
+            code: "ResidentSessionUnavailable",
+            errorKind: "transport" as const,
+          }),
+        ),
       }),
     ).resolves.toEqual({ retryAt: expect.any(Number) });
     expect(
@@ -2717,10 +3716,12 @@ describe("PubSubChannel", () => {
         workerId: "driver-poison",
         itemId: poison!.itemId,
         generation: poison!.generation,
-        error: serializeRpcFailure(Object.assign(new Error("malformed durable envelope"), {
-          code: "PermanentChannelDelivery",
-          errorKind: "application" as const,
-        })),
+        error: serializeRpcFailure(
+          Object.assign(new Error("malformed durable envelope"), {
+            code: "PermanentChannelDelivery",
+            errorKind: "application" as const,
+          }),
+        ),
       }),
     ).resolves.toEqual({ retryAt: expect.any(Number) });
     expect(
@@ -2997,9 +3998,7 @@ describe("PubSubChannel", () => {
       agenticEvent(),
     );
 
-    const logCountBefore = Number(
-      canonicalLedger(instance).headSequence(),
-    );
+    const logCountBefore = Number(canonicalLedger(instance).headSequence());
     const mailboxCountBefore = Number(
       sql
         .exec(`SELECT COUNT(*) AS count FROM channel_delivery_mailbox`)
@@ -3012,11 +4011,9 @@ describe("PubSubChannel", () => {
       });
     }
 
-    expect(
-      Number(
-        canonicalLedger(instance).headSequence(),
-      ),
-    ).toBe(logCountBefore);
+    expect(Number(canonicalLedger(instance).headSequence())).toBe(
+      logCountBefore,
+    );
     expect(
       Number(
         sql
@@ -3515,10 +4512,16 @@ describe("PubSubChannel", () => {
       await cancellation;
 
       expect(
-        [canonicalLedger(instance).envelope(options.invocationId)].filter(Boolean),
+        [canonicalLedger(instance).envelope(options.invocationId)].filter(
+          Boolean,
+        ),
       ).toHaveLength(1);
       expect(
-        [canonicalLedger(instance).envelope(`terminal:${options.transportCallId}`)].filter(Boolean),
+        [
+          canonicalLedger(instance).envelope(
+            `terminal:${options.transportCallId}`,
+          ),
+        ].filter(Boolean),
       ).toHaveLength(1);
       expect([
         canonicalAgenticEvent(instance, `terminal:${options.transportCallId}`),
@@ -3661,7 +4664,7 @@ describe("PubSubChannel", () => {
       sinceId: 10_000,
     });
 
-    const lifecycle = canonicalLedger(instance).read({limit:100});
+    const lifecycle = canonicalLedger(instance).read({ limit: 100 });
     expect(
       lifecycle.some(
         (entry) =>
@@ -4063,8 +5066,9 @@ describe("PubSubChannel", () => {
     // A lost initialization reply can be re-driven after child work starts.
     // The operation receipt must not truncate that independently owned tail.
     await fork.instance.postClone("channel-parent", 3, "ctx-forked");
-    expect((await fork.instance.getReplayAfter({ after: 3 })).logEvents)
-      .toEqual(afterForkAppend.logEvents);
+    expect(
+      (await fork.instance.getReplayAfter({ after: 3 })).logEvents,
+    ).toEqual(afterForkAppend.logEvents);
     const parentTail = await parent.instance.getReplayAfter({ after: 3 });
     expect(parentTail.logEvents).toHaveLength(1);
     expect(
@@ -4105,7 +5109,8 @@ describe("PubSubChannel", () => {
         return undefined;
       },
     });
-    const sourceLog = (parent.instance as unknown as { channelLog: ChannelLog }).channelLog;
+    const sourceLog = (parent.instance as unknown as { channelLog: ChannelLog })
+      .channelLog;
     const appendSource = sourceLog.append.bind(sourceLog);
     vi.spyOn(sourceLog, "append").mockImplementation(async (input) => {
       const result = await appendSource(input);
@@ -4647,13 +5652,21 @@ describe("PubSubChannel", () => {
       instance.cancelMethodCall("panel:other", "transport-owned-by-do"),
     ).rejects.toThrow(/did not initiate method call/);
     expect(
-      canonicalLedger(instance).read({ limit: Number.MAX_SAFE_INTEGER }).filter((event) => event.envelopeId === "terminal:transport-owned-by-do"),
+      canonicalLedger(instance)
+        .read({ limit: Number.MAX_SAFE_INTEGER })
+        .filter(
+          (event) => event.envelopeId === "terminal:transport-owned-by-do",
+        ),
     ).toHaveLength(0);
 
     setRpcCaller(instance, caller, "do");
     await instance.cancelMethodCall(caller, "transport-owned-by-do");
     expect(
-      canonicalLedger(instance).read({ limit: Number.MAX_SAFE_INTEGER }).filter((event) => event.envelopeId === "terminal:transport-owned-by-do"),
+      canonicalLedger(instance)
+        .read({ limit: Number.MAX_SAFE_INTEGER })
+        .filter(
+          (event) => event.envelopeId === "terminal:transport-owned-by-do",
+        ),
     ).toHaveLength(1);
   });
 
@@ -4722,7 +5735,12 @@ describe("PubSubChannel", () => {
       original,
     );
     expect(
-      canonicalLedger(instance).read({ limit: Number.MAX_SAFE_INTEGER }).filter((event) => event.envelopeId === `terminal:${original.transportCallId}`),
+      canonicalLedger(instance)
+        .read({ limit: Number.MAX_SAFE_INTEGER })
+        .filter(
+          (event) =>
+            event.envelopeId === `terminal:${original.transportCallId}`,
+        ),
     ).toHaveLength(1);
     setRpcCaller(instance, "panel:foreign", "panel");
     await instance.subscribe("panel:foreign", {
@@ -4751,7 +5769,11 @@ describe("PubSubChannel", () => {
     const log = (instance as unknown as { channelLog: ChannelLog }).channelLog;
     const appendOwned = log.append.bind(log);
     vi.spyOn(log, "append").mockImplementation(async (input) => {
-      if ((input.payload as { payload?: { admission?: unknown } }).payload?.admission && loseReply) {
+      if (
+        (input.payload as { payload?: { admission?: unknown } }).payload
+          ?.admission &&
+        loseReply
+      ) {
         loseReply = false;
         appending.resolve();
         await append.promise;
@@ -4982,7 +6004,9 @@ describe("PubSubChannel", () => {
         .toArray(),
     ).toHaveLength(0);
     expect(
-      canonicalLedger(instance).read({ limit: Number.MAX_SAFE_INTEGER }).filter((event) => event.envelopeId === "terminal:call-cleanup"),
+      canonicalLedger(instance)
+        .read({ limit: Number.MAX_SAFE_INTEGER })
+        .filter((event) => event.envelopeId === "terminal:call-cleanup"),
     ).toHaveLength(1);
     setRpcCaller(instance, "panel:other", "panel");
     await expect(
@@ -5006,7 +6030,9 @@ describe("PubSubChannel", () => {
     ]);
     expect(executions).toHaveLength(1);
     expect(
-      canonicalLedger(instance).read({ limit: Number.MAX_SAFE_INTEGER }).filter((event) => event.envelopeId === "terminal:call-cleanup"),
+      canonicalLedger(instance)
+        .read({ limit: Number.MAX_SAFE_INTEGER })
+        .filter((event) => event.envelopeId === "terminal:call-cleanup"),
     ).toHaveLength(1);
   });
 
@@ -5049,7 +6075,9 @@ describe("PubSubChannel", () => {
 
     await instance.cancelMethodCall("panel:caller", "transport-cancel-cold");
 
-    const cancelled = canonicalLedger(instance).read({ limit: Number.MAX_SAFE_INTEGER }).filter((event) => event.envelopeId === "terminal:transport-cancel-cold");
+    const cancelled = canonicalLedger(instance)
+      .read({ limit: Number.MAX_SAFE_INTEGER })
+      .filter((event) => event.envelopeId === "terminal:transport-cancel-cold");
     expect(cancelled).toHaveLength(1);
   });
 
@@ -5126,7 +6154,9 @@ describe("PubSubChannel", () => {
         .toArray(),
     ).toEqual([]);
     expect(
-      canonicalLedger(instance).read({ limit: Number.MAX_SAFE_INTEGER }).filter((event) => event.envelopeId === "terminal:transport-timed"),
+      canonicalLedger(instance)
+        .read({ limit: Number.MAX_SAFE_INTEGER })
+        .filter((event) => event.envelopeId === "terminal:transport-timed"),
     ).toHaveLength(1);
   });
 
@@ -5427,7 +6457,9 @@ describe("PubSubChannel", () => {
         )
         .toArray(),
     ).toHaveLength(0);
-    const terminals = canonicalLedger(instance).read({ limit: Number.MAX_SAFE_INTEGER }).filter((event) => event.envelopeId === "terminal:transport-cache-race");
+    const terminals = canonicalLedger(instance)
+      .read({ limit: Number.MAX_SAFE_INTEGER })
+      .filter((event) => event.envelopeId === "terminal:transport-cache-race");
     expect(terminals).toHaveLength(1);
   });
 
@@ -5447,41 +6479,42 @@ describe("PubSubChannel", () => {
       type: "headless",
     });
 
-    await (instance as unknown as { channelLog: ChannelLog }).channelLog.appendPrepared({
-          appendedAt: "2026-10-10T00:00:00.000Z",
-          envelopeId: "invocation-agent-loop",
-          actor: { kind: "agent", id: "do:agent", participantId: "do:agent" },
-          payloadKind: "invocation.started",
-          annotations: { contentClass: "internal", externalKeys: [] },
-          causality: {
-            turnId: "turn-agent-loop",
-            invocationId: "invocation-agent-loop" as InvocationId,
-            modelToolCallId: "invocation-agent-loop",
+    await (
+      instance as unknown as { channelLog: ChannelLog }
+    ).channelLog.appendPrepared({
+      appendedAt: "2026-10-10T00:00:00.000Z",
+      envelopeId: "invocation-agent-loop",
+      actor: { kind: "agent", id: "do:agent", participantId: "do:agent" },
+      payloadKind: "invocation.started",
+      annotations: { contentClass: "internal", externalKeys: [] },
+      causality: {
+        turnId: "turn-agent-loop",
+        invocationId: "invocation-agent-loop" as InvocationId,
+        modelToolCallId: "invocation-agent-loop",
+      },
+      payload: {
+        protocol: AGENTIC_PROTOCOL_VERSION,
+        name: "set_title",
+        invocationType: "panel",
+        request: {
+          protocol: "vibestudio.blob-ref.v1",
+          digest: "a".repeat(64),
+          size: 35,
+          encoding: "json",
+          originalBytes: 35,
+        },
+        transport: {
+          kind: "channel",
+          channelId: "channel-1",
+          target: {
+            kind: "user",
+            id: "do:eval",
+            participantId: "do:eval",
           },
-          payload: {
-            protocol: AGENTIC_PROTOCOL_VERSION,
-            name: "set_title",
-            invocationType: "panel",
-            request: {
-              protocol: "vibestudio.blob-ref.v1",
-              digest: "a".repeat(64),
-              size: 35,
-              encoding: "json",
-              originalBytes: 35,
-            },
-            transport: {
-              kind: "channel",
-              channelId: "channel-1",
-              target: {
-                kind: "user",
-                id: "do:eval",
-                participantId: "do:eval",
-              },
-              transportCallId: "transport-agent-loop",
-            },
-            userVisible: true,
-          },
-
+          transportCallId: "transport-agent-loop",
+        },
+        userVisible: true,
+      },
     });
 
     const { inserted } = await instance.reconcilePendingCalls(true);
@@ -5518,10 +6551,16 @@ describe("PubSubChannel", () => {
 
     expect(result).toEqual({ id: expect.any(Number) });
     expect(
-      canonicalLedger(instance).read({ limit: Number.MAX_SAFE_INTEGER }).filter((event) => event.envelopeId === "invocation-agent-loop"),
+      canonicalLedger(instance)
+        .read({ limit: Number.MAX_SAFE_INTEGER })
+        .filter((event) => event.envelopeId === "invocation-agent-loop"),
     ).toHaveLength(1);
     expect(
-      canonicalLedger(instance).read({ limit: Number.MAX_SAFE_INTEGER }).filter((event) => event.envelopeId === "terminal:transport-agent-loop"),
+      canonicalLedger(instance)
+        .read({ limit: Number.MAX_SAFE_INTEGER })
+        .filter(
+          (event) => event.envelopeId === "terminal:transport-agent-loop",
+        ),
     ).toHaveLength(1);
   });
 
@@ -5561,7 +6600,9 @@ describe("PubSubChannel", () => {
 
     // A durable terminal event now exists, keyed on the transportCallId and
     // carrying the caller's invocationId (what routeInvocationTerminal matches).
-    const terminalRow = canonicalLedger(instance).read({ limit: Number.MAX_SAFE_INTEGER }).filter((event) => event.envelopeId === "terminal:transport-lost-record");
+    const terminalRow = canonicalLedger(instance)
+      .read({ limit: Number.MAX_SAFE_INTEGER })
+      .filter((event) => event.envelopeId === "terminal:transport-lost-record");
     expect(terminalRow).toHaveLength(1);
     expect(
       canonicalAgenticEvent(instance, "terminal:transport-lost-record"),
@@ -5576,7 +6617,9 @@ describe("PubSubChannel", () => {
 
     // No synthetic `started` is appended: the lost request's method and args
     // are unavailable, so inventing an admission would corrupt the log.
-    const rootRow = canonicalLedger(instance).read({ limit: Number.MAX_SAFE_INTEGER }).filter((event) => event.envelopeId === "invocation-lost-record");
+    const rootRow = canonicalLedger(instance)
+      .read({ limit: Number.MAX_SAFE_INTEGER })
+      .filter((event) => event.envelopeId === "invocation-lost-record");
     expect(rootRow).toHaveLength(0);
 
     // The terminal is broadcast so subscribers (the caller) actually receive it.
@@ -5630,7 +6673,9 @@ describe("PubSubChannel", () => {
       recovered: true,
     });
 
-    const terminal = canonicalLedger(instance).read({ limit: Number.MAX_SAFE_INTEGER }).filter((event) => event.envelopeId === "terminal:transport-lost-error");
+    const terminal = canonicalLedger(instance)
+      .read({ limit: Number.MAX_SAFE_INTEGER })
+      .filter((event) => event.envelopeId === "terminal:transport-lost-error");
     expect(terminal).toHaveLength(1);
     expect(
       canonicalAgenticEvent(instance, "terminal:transport-lost-error"),
@@ -5663,7 +6708,10 @@ describe("PubSubChannel", () => {
     const log = (instance as unknown as { channelLog: ChannelLog }).channelLog;
     const appendOwned = log.append.bind(log);
     vi.spyOn(log, "append").mockImplementation(async (input) => {
-      if (!blockedOnce && (input.payload as { kind?: string }).kind === "invocation.started") {
+      if (
+        !blockedOnce &&
+        (input.payload as { kind?: string }).kind === "invocation.started"
+      ) {
         blockedOnce = true;
         await blockStarted.promise;
       }
@@ -5721,7 +6769,9 @@ describe("PubSubChannel", () => {
 
     // Exactly one canonical started (envelopeId = invocationId) and one
     // terminal; no synthetic root was appended.
-    const started = canonicalLedger(instance).read({ limit: Number.MAX_SAFE_INTEGER }).filter((event) => event.envelopeId === "invocation-start-race");
+    const started = canonicalLedger(instance)
+      .read({ limit: Number.MAX_SAFE_INTEGER })
+      .filter((event) => event.envelopeId === "invocation-start-race");
     expect(started).toHaveLength(1);
     const startedEvents = canonicalAgenticEvents(instance);
     expect(
@@ -5730,7 +6780,9 @@ describe("PubSubChannel", () => {
     expect(
       startedEvents.filter((e) => e.kind === "invocation.completed"),
     ).toHaveLength(1);
-    const terminal = canonicalLedger(instance).read({ limit: Number.MAX_SAFE_INTEGER }).filter((event) => event.envelopeId === "terminal:transport-start-race");
+    const terminal = canonicalLedger(instance)
+      .read({ limit: Number.MAX_SAFE_INTEGER })
+      .filter((event) => event.envelopeId === "terminal:transport-start-race");
     expect(terminal).toHaveLength(1);
 
     // The cache row is consumed.
@@ -5808,7 +6860,9 @@ describe("PubSubChannel", () => {
 
     // The canonical terminal is a durable invocation.completed log event,
     // carrying the result and the attachment on the envelope.
-    const envelopes = canonicalLedger(instance).read({ limit: Number.MAX_SAFE_INTEGER });
+    const envelopes = canonicalLedger(instance).read({
+      limit: Number.MAX_SAFE_INTEGER,
+    });
     const completed = envelopes.find(
       (row) => row.payloadKind === "invocation.completed",
     );
@@ -5885,7 +6939,9 @@ describe("PubSubChannel", () => {
     // The call is consumed: a late terminal is idempotently acknowledged with
     // the existing terminal id, and late progress is a no-op.
     setRpcCaller(instance, "panel:provider", "panel");
-    const terminalCountBefore = canonicalLedger(instance).read({ limit: Number.MAX_SAFE_INTEGER }).filter((event) => event.envelopeId.startsWith("terminal:")).length;
+    const terminalCountBefore = canonicalLedger(instance)
+      .read({ limit: Number.MAX_SAFE_INTEGER })
+      .filter((event) => event.envelopeId.startsWith("terminal:")).length;
     await expect(
       instance.submitMethodResult(
         "panel:provider",
@@ -5895,7 +6951,9 @@ describe("PubSubChannel", () => {
       ),
     ).resolves.toEqual({ id: expect.any(Number) });
     expect(
-      canonicalLedger(instance).read({ limit: Number.MAX_SAFE_INTEGER }).filter((event) => event.envelopeId.startsWith("terminal:")).length,
+      canonicalLedger(instance)
+        .read({ limit: Number.MAX_SAFE_INTEGER })
+        .filter((event) => event.envelopeId.startsWith("terminal:")).length,
     ).toBe(terminalCountBefore);
     await expect(
       instance.submitMethodProgress(
@@ -6513,7 +7571,7 @@ describe("PubSubChannel", () => {
   });
 
   it("reads canonical local message types before global observation", async () => {
-    const { instance , gad} = await createGadBackedChannel();
+    const { instance, gad } = await createGadBackedChannel();
     setRpcCaller(instance, "panel:user", "panel");
     await instance.subscribe("panel:user", {
       contextId: "ctx-1",
@@ -6542,11 +7600,16 @@ describe("PubSubChannel", () => {
       ),
     );
 
-    await expect(gad.call("getMessageType", {
-      channelId: "channel-1",
-      typeId: "weather",
-    })).resolves.toBeNull();
-    const storedWeather=canonicalLedger(instance).registryEvents().map((event)=>event.payload as Record<string,unknown>).find((payload)=>payload["typeId"] === "weather");
+    await expect(
+      gad.call("getMessageType", {
+        channelId: "channel-1",
+        typeId: "weather",
+      }),
+    ).resolves.toBeNull();
+    const storedWeather = canonicalLedger(instance)
+      .registryEvents()
+      .map((event) => event.payload as Record<string, unknown>)
+      .find((payload) => payload["typeId"] === "weather");
     expect(storedWeather).toMatchObject({
       source: { protocol: "vibestudio.blob-ref.v1", encoding: "json" },
       imports: { protocol: "vibestudio.blob-ref.v1", encoding: "json" },
@@ -6638,7 +7701,9 @@ describe("PubSubChannel policy folds and cache amnesia (WS2)", () => {
       agentCompleted("msg-a2"),
     );
 
-    const rows = canonicalLedger(instance).read({ limit: Number.MAX_SAFE_INTEGER }).filter((event) => event.payloadKind === "message.completed");
+    const rows = canonicalLedger(instance)
+      .read({ limit: Number.MAX_SAFE_INTEGER })
+      .filter((event) => event.payloadKind === "message.completed");
     expect(rows).toHaveLength(2);
     expect(rows[0]!.annotations).toMatchObject({
       agentHops: 1,
@@ -6661,10 +7726,11 @@ describe("PubSubChannel policy folds and cache amnesia (WS2)", () => {
       AGENTIC_EVENT_PAYLOAD_KIND,
       agentCompleted("msg-a3", { agentHops: 9 }),
     );
-    const explicit = canonicalLedger(instance).read({ limit: Number.MAX_SAFE_INTEGER }).filter((event) => event.payloadKind === "message.completed").slice(-1);
-    expect(
-      explicit[0]!.annotations,
-    ).toMatchObject({ agentHops: 9 });
+    const explicit = canonicalLedger(instance)
+      .read({ limit: Number.MAX_SAFE_INTEGER })
+      .filter((event) => event.payloadKind === "message.completed")
+      .slice(-1);
+    expect(explicit[0]!.annotations).toMatchObject({ agentHops: 9 });
   });
 
   it("rebuilds conversation policy state across a fork (the fork-wipe bug fix)", async () => {
@@ -6728,13 +7794,17 @@ describe("PubSubChannel policy folds and cache amnesia (WS2)", () => {
       AGENTIC_EVENT_PAYLOAD_KIND,
       agentCompleted("msg-f1"),
     );
-    const stamped = (fork.instance as unknown as { channelLog: ChannelLog }).channelLog.ledger.read({
-      afterSeq: 0, limit: 1000, payloadKind: "message.completed",
-    }).at(-1)!;
+    const stamped = (
+      fork.instance as unknown as { channelLog: ChannelLog }
+    ).channelLog.ledger
+      .read({
+        afterSeq: 0,
+        limit: 1000,
+        payloadKind: "message.completed",
+      })
+      .at(-1)!;
     // msg-f1 is agent:one again (same author across the fork) → still 1 hop, not 3.
-    expect(stamped.annotations).toMatchObject(
-      { agentHops: 1 },
-    );
+    expect(stamped.annotations).toMatchObject({ agentHops: 1 });
   });
 
   it("returns the original accepted payload on idempotent retries and owner restart", async () => {
@@ -6785,9 +7855,11 @@ describe("PubSubChannel policy folds and cache amnesia (WS2)", () => {
         },
       });
     }
-    expect(canonicalLedger(instance).read({ limit: 1000 }).filter(
-      (event) => event.envelopeId === "ik:durable-key-1",
-    )).toHaveLength(1);
+    expect(
+      canonicalLedger(instance)
+        .read({ limit: 1000 })
+        .filter((event) => event.envelopeId === "ik:durable-key-1"),
+    ).toHaveLength(1);
   });
 
   it("returns the accepted message identity when a caller retries through sendAsCaller", async () => {
@@ -6871,9 +7943,11 @@ describe("PubSubChannel policy folds and cache amnesia (WS2)", () => {
         "Idempotency key belongs to another participant or payload type",
       );
     }
-    expect(canonicalLedger(instance).read({ limit: 1000 }).filter(
-      (event) => event.envelopeId === "ik:private-key",
-    )).toHaveLength(1);
+    expect(
+      canonicalLedger(instance)
+        .read({ limit: 1000 })
+        .filter((event) => event.envelopeId === "ik:private-key"),
+    ).toHaveLength(1);
   });
 
   it("treats duplicate pending callMethod as a durable redrive", async () => {
@@ -6917,9 +7991,11 @@ describe("PubSubChannel policy folds and cache amnesia (WS2)", () => {
       },
     );
 
-    expect(canonicalLedger(instance).read({ limit: 1000 }).filter(
-      (event) => event.envelopeId === "inv-redrive",
-    )).toHaveLength(1);
+    expect(
+      canonicalLedger(instance)
+        .read({ limit: 1000 })
+        .filter((event) => event.envelopeId === "inv-redrive"),
+    ).toHaveLength(1);
 
     const pending = sql
       .exec(
@@ -7007,7 +8083,8 @@ describe("PubSubChannel policy folds and cache amnesia (WS2)", () => {
       { ok: 1 },
       false,
     );
-    const terminals = canonicalLedger(instance).read({ limit: 1000 })
+    const terminals = canonicalLedger(instance)
+      .read({ limit: 1000 })
       .filter((event) => String(event.envelopeId).startsWith("terminal:"));
     expect(terminals.map((event) => event.envelopeId)).toEqual(
       expect.arrayContaining(["terminal:call-settle", "terminal:call-keep"]),
@@ -7154,7 +8231,9 @@ describe("PubSubChannel policy folds and cache amnesia (WS2)", () => {
 
 describe("PubSubChannel fork lineage delivery", () => {
   it("owns live lineage subscriptions through their response stream", async () => {
-    const { instance } = await createGadBackedChannel({ channelKey: "lineage-root" });
+    const { instance } = await createGadBackedChannel({
+      channelKey: "lineage-root",
+    });
     setRpcCaller(instance, "panel:viewer", "panel");
     const response = await instance.subscribeLineage("panel:viewer");
     const reader = response.body!.getReader();
@@ -7582,7 +8661,8 @@ describe("conversation creation seed", () => {
     async (outcome) => {
       let failConfig = false;
       const channel = await createGadBackedChannel();
-      const log = (channel.instance as unknown as { channelLog: ChannelLog }).channelLog;
+      const log = (channel.instance as unknown as { channelLog: ChannelLog })
+        .channelLog;
       const append = log.append.bind(log);
       vi.spyOn(log, "append").mockImplementation(async (input) => {
         if (failConfig && input.type === "config-update") {
@@ -7613,7 +8693,7 @@ describe("conversation creation seed", () => {
       // Finishing an accepted publication must not require its original receiver
       // to still be present. The opposite requested outcome cannot rewrite it.
       setRpcCaller(channel.instance, agentId, "do");
-      await channel.instance.leave({ participantId: agentId, revision: 2 });
+      await channel.instance.leave({ participantId: agentId, revision: 1 });
       const restored = await createGadBackedChannel({
         db: channel.db,
         gad: channel.gad,
@@ -7626,8 +8706,10 @@ describe("conversation creation seed", () => {
       expect(
         (await restored.instance.getConfig())?.initialization?.openingRequest,
       ).toBeUndefined();
-      expect(canonicalLedger(restored.instance).read({ limit: 1000 })
-        .filter((event) => event.payloadKind === "config-update"),
+      expect(
+        canonicalLedger(restored.instance)
+          .read({ limit: 1000 })
+          .filter((event) => event.payloadKind === "config-update"),
       ).toHaveLength(1);
       expect(
         canonicalAgenticEvents(channel.instance).filter(
@@ -7646,7 +8728,8 @@ describe("conversation creation seed", () => {
       });
       let loseReply = false;
       const channel = await createGadBackedChannel({ gad });
-      const log = (channel.instance as unknown as { channelLog: ChannelLog }).channelLog;
+      const log = (channel.instance as unknown as { channelLog: ChannelLog })
+        .channelLog;
       const append = log.append.bind(log);
       vi.spyOn(log, "append").mockImplementation(async (input) => {
         const event = await append(input);
@@ -7677,7 +8760,7 @@ describe("conversation creation seed", () => {
         (await reopened.instance.getConfig())?.initialization?.openingRequest,
       ).toBe(phase === "resolution" ? undefined : seed.openingRequest);
       setRpcCaller(channel.instance, agentId, "do");
-      await channel.instance.leave({ participantId: agentId, revision: 2 });
+      await channel.instance.leave({ participantId: agentId, revision: 1 });
       const restored = await createGadBackedChannel({ db: channel.db, gad });
       setRpcCaller(restored.instance, "panel:another", "panel");
       await restored.instance.subscribe("panel:another", {
@@ -7693,8 +8776,10 @@ describe("conversation creation seed", () => {
       );
       expect(messages).toHaveLength(2);
       expect(messages[1]!.actor.id).toBe("panel:user");
-      expect(canonicalLedger(restored.instance).read({ limit: 1000 })
-        .filter((event) => event.payloadKind === "config-update"),
+      expect(
+        canonicalLedger(restored.instance)
+          .read({ limit: 1000 })
+          .filter((event) => event.payloadKind === "config-update"),
       ).toHaveLength(1);
     },
   );

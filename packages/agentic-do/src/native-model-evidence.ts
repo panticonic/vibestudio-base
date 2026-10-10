@@ -236,11 +236,11 @@ export async function readNativeModelExecutionEvidence(
   conversationId: ConversationId,
   context: Context,
 ) {
-  const inspection = await readNativeChannelInspection(
-    harness,
-    conversationId,
-    context,
-  );
+  if (!(await harness.conversation(conversationId, context)))
+    throw new Error("Native inspection has no conversation");
+  const usage = await harness.snapshot(UsageDoc, conversationId, context);
+  if (!usage)
+    throw new Error("Native inspection lost initialized conversation state");
   const evidence = await harness.snapshot(
     ModelEvidence,
     conversationId,
@@ -294,6 +294,6 @@ export async function readNativeModelExecutionEvidence(
     totalCalls: evidence?.totalCalls ?? 0,
     truncated: (evidence?.totalCalls ?? 0) > calls.length,
     calls,
-    usage: inspection.usage,
+    usage,
   };
 }

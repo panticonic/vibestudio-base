@@ -1,3 +1,4 @@
+import { resolveChannelEndpoint } from "@workspace/pubsub";
 import { dispatchRpcCall } from "@vibestudio/rpc/internal";
 import { serializeRpcFailure } from "@vibestudio/rpc";
 import { GadJsonRecordSchema } from "@vibestudio/service-schemas/workspaceSource";
@@ -16,7 +17,20 @@ import type {
 } from "@workspace/runtime/worker/durable-base";
 import { withExecutionAdmission } from "@vibestudio/rpc/internal";
 import { missionsMethods } from "@vibestudio/service-schemas/missions";
-import type { MissionAuthorityProjection, MissionCharter, MissionCompletionReason, MissionExecution, MissionAuthorityPlanReference, MissionRecord, MissionRunEffectFailure, MissionRunFailure, MissionRunOutcome, MissionRunPhase, MissionRunRecord, MissionState } from "@vibestudio/automation/mission";
+import type {
+  MissionAuthorityProjection,
+  MissionCharter,
+  MissionCompletionReason,
+  MissionExecution,
+  MissionAuthorityPlanReference,
+  MissionRecord,
+  MissionRunEffectFailure,
+  MissionRunFailure,
+  MissionRunOutcome,
+  MissionRunPhase,
+  MissionRunRecord,
+  MissionState,
+} from "@vibestudio/automation/mission";
 
 // Local schedules are opportunities, not a durable backlog. A small delivery
 // window absorbs ordinary timer jitter while ensuring an occurrence missed
@@ -1553,7 +1567,10 @@ export class MissionsDO extends DurableObjectBase {
     let interruption = this.runInterruptions.get(row.run_id);
     if (!interruption) {
       interruption = this.rpc
-        .call(row.executor_id, agentRpcMethods["interruptChannel"], [row.channel_id, true])
+        .call(row.executor_id, agentRpcMethods["interruptChannel"], [
+          row.channel_id,
+          true,
+        ])
         .then(() => undefined);
       this.runInterruptions.set(row.run_id, interruption);
       void interruption.catch(() => {
@@ -1649,13 +1666,21 @@ export class MissionsDO extends DurableObjectBase {
           execution.kind === "agent" &&
           execution.conversation.mode === "fresh"
         ) {
-          if (!row.channel_id || !row.context_id) throw new Error("Prepared automation run has no conversation context");
+          if (!row.channel_id || !row.context_id)
+            throw new Error(
+              "Prepared automation run has no conversation context",
+            );
           await this.rpc.call(
             target.targetId,
             agentRpcMethods["subscribeChannel"],
             [
               {
                 channelId: row.channel_id,
+                channelRef: await resolveChannelEndpoint(
+                  this.rpc,
+                  row.channel_id,
+                  { signal },
+                ),
                 contextId: row.context_id,
                 replay: false,
                 delivery: "all",
@@ -1817,10 +1842,16 @@ export class MissionsDO extends DurableObjectBase {
       throw new Error("Expected prepared method executor");
     this.setPhase(row.run_id, "executing");
     try {
-      const result = await dispatchRpcCall(withExecutionAdmission(this.rpc, admission.nonce), row.executor_id, execution.method, [...execution.args], {
-        idempotencyKey: `${row.run_id}:dispatch`,
-        signal,
-      });
+      const result = await dispatchRpcCall(
+        withExecutionAdmission(this.rpc, admission.nonce),
+        row.executor_id,
+        execution.method,
+        [...execution.args],
+        {
+          idempotencyKey: `${row.run_id}:dispatch`,
+          signal,
+        },
+      );
       this.checkRunCancellation(row.run_id);
       const completion = missionCompletionResponse(result);
       await this.closeAdmission(this.requireRunRow(row.run_id));
@@ -2463,7 +2494,12 @@ async function deterministicRunId(
   const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", bytes));
   return `run_${[...digest].map((value) => value.toString(16).padStart(2, "0")).join("")}`;
 }
-function automationActivity(mission: MissionRecord, run: MissionRunRecord): import("@vibestudio/shared/rpcMethods").RpcMethodArgs<typeof agentRpcMethods.runAutomationTurn>[0]["automation"] {
+function automationActivity(
+  mission: MissionRecord,
+  run: MissionRunRecord,
+): import("@vibestudio/shared/rpcMethods").RpcMethodArgs<
+  typeof agentRpcMethods.runAutomationTurn
+>[0]["automation"] {
   const trigger = mission.charter.trigger;
   return {
     missionId: mission.missionId,

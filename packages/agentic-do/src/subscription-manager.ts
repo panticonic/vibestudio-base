@@ -8,7 +8,6 @@
 import type { SqlStorage } from "@workspace/runtime/worker";
 import type { ChannelSubscriptionConfig } from "@workspace/agentic-core";
 import type { ParticipantDescriptor } from "@workspace/harness";
-import type { ChannelReplayEnvelope } from "@workspace/pubsub";
 import type { DOIdentity } from "./identity.js";
 import type {
   ChannelClient,
@@ -17,14 +16,9 @@ import type {
 } from "./channel-client.js";
 import { canonicalJson } from "@vibestudio/content-addressing";
 
-export interface RecoveredChannelSubscription {
-  channelId: string;
-  config?: unknown;
-  envelope?: ChannelReplayEnvelope;
-}
-
 interface StoredSubscription {
   channelId: string;
+  channelRef: import("@workspace/pubsub").ChannelEndpoint;
   contextId: string;
   revision: number;
   participantId: string;
@@ -35,11 +29,13 @@ interface StoredSubscription {
 /** Exact relationship request retained by native bootstrap before remote admission. */
 export interface PreparedChannelSubscription {
   channelId: string;
+  channelRef: import("@workspace/pubsub").ChannelEndpoint;
   input: ChannelJoinInput;
   relationshipJson: string;
 }
 export interface ChannelSubscriptionOptions {
   channelId: string;
+  channelRef: import("@workspace/pubsub").ChannelEndpoint;
   contextId: string;
   config?: unknown;
   descriptor: ParticipantDescriptor;
@@ -50,7 +46,10 @@ export interface ChannelSubscriptionOptions {
 export class SubscriptionManager {
   constructor(
     private sql: SqlStorage,
-    private channelFactory: (channelId: string) => ChannelClient,
+    private channelFactory: (
+      channelId: string,
+      channelRef: import("@workspace/pubsub").ChannelEndpoint,
+    ) => ChannelClient,
     private identity: DOIdentity,
   ) {}
 
@@ -64,6 +63,7 @@ export class SubscriptionManager {
       CREATE TABLE IF NOT EXISTS subscriptions (
         channel_id TEXT PRIMARY KEY,
         context_id TEXT NOT NULL,
+        channel_ref_json TEXT NOT NULL,
         revision INTEGER NOT NULL CHECK (revision > 0),
         subscribed_at INTEGER NOT NULL,
         config TEXT,
@@ -85,6 +85,12 @@ export class SubscriptionManager {
   async prepareSubscription(
     opts: ChannelSubscriptionOptions,
   ): Promise<PreparedChannelSubscription> {
+    if (
+      !opts.channelRef.source ||
+      !opts.channelRef.className ||
+      opts.channelRef.objectKey !== opts.channelId
+    )
+      throw new Error("Subscription endpoint belongs to another channel");
     const participantId = this.buildParticipantId();
     const metadata: Record<string, unknown> = {
       name: opts.descriptor.name,
@@ -115,6 +121,7 @@ export class SubscriptionManager {
     const relationshipJson = canonicalJson(relationship);
     const intentJson = canonicalJson({
       relationship,
+      channelRef: opts.channelRef,
       replay: opts.replay !== false,
     });
     const retained = this.sql
@@ -135,6 +142,7 @@ export class SubscriptionManager {
     );
     return {
       channelId: opts.channelId,
+      channelRef: { ...opts.channelRef },
       input: {
         participantId,
         operationId,
@@ -163,17 +171,25 @@ export class SubscriptionManager {
       throw new Error(
         "Prepared channel relationship changed its retained request",
       );
-    const result = await this.channelFactory(prepared.channelId).join(
-      prepared.input,
-    );
+    const result = await this.channelFactory(
+      prepared.channelId,
+      prepared.channelRef,
+    ).join(prepared.input);
     if (!Number.isSafeInteger(result.revision) || result.revision < 1)
       throw new Error("Channel join returned an invalid relationship revision");
     this.sql.exec(
-      `INSERT OR REPLACE INTO subscriptions
-         (channel_id, context_id, revision, subscribed_at, config, relationship_json, participant_id)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO subscriptions
+         (channel_id, context_id, channel_ref_json, revision, subscribed_at, config, relationship_json, participant_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(channel_id) DO UPDATE SET
+         context_id=excluded.context_id, channel_ref_json=excluded.channel_ref_json,
+         revision=excluded.revision, subscribed_at=excluded.subscribed_at,
+         config=excluded.config, relationship_json=excluded.relationship_json,
+         participant_id=excluded.participant_id
+       WHERE excluded.revision >= subscriptions.revision`,
       prepared.channelId,
       prepared.input.contextId,
+      JSON.stringify(prepared.channelRef),
       result.revision,
       Date.now(),
       prepared.input.applicationConfig === null
@@ -194,24 +210,31 @@ export class SubscriptionManager {
   async unsubscribeFromChannel(channelId: string): Promise<void> {
     const stored = this.getStored(channelId);
     if (!stored) return;
-    const channel = this.channelFactory(channelId);
-    try {
-      await channel.leave(stored.participantId, stored.revision + 1);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      if (!/relationship revision/.test(message)) throw error;
-      const authoritative = await channel.relationshipState(
-        stored.participantId,
-      );
-      if (authoritative.active) {
-        await channel.leave(stored.participantId, authoritative.revision + 1);
-      }
-    }
-    this.deleteSubscription(channelId);
+    const operation = this.sql
+      .exec(
+        `SELECT operation_id FROM subscription_intents WHERE channel_id = ?`,
+        channelId,
+      )
+      .toArray()[0]?.["operation_id"];
+    const channel = this.channelFactory(channelId, stored.channelRef);
+    await channel.leave(stored.participantId, stored.revision);
     this.sql.exec(
-      `DELETE FROM subscription_intents WHERE channel_id = ?`,
+      `DELETE FROM subscriptions WHERE channel_id = ? AND revision = ?`,
       channelId,
+      stored.revision,
     );
+    if (typeof operation === "string")
+      this.sql.exec(
+        `DELETE FROM subscription_intents WHERE channel_id = ? AND operation_id = ?`,
+        channelId,
+        operation,
+      );
+  }
+
+  getEndpoint(
+    channelId: string,
+  ): import("@workspace/pubsub").ChannelEndpoint | null {
+    return this.getStored(channelId)?.channelRef ?? null;
   }
 
   getParticipantId(channelId: string): string | null {
@@ -253,11 +276,12 @@ export class SubscriptionManager {
   listStored(): StoredSubscription[] {
     return this.sql
       .exec(
-        `SELECT channel_id, context_id, revision, config, relationship_json, participant_id FROM subscriptions ORDER BY channel_id`,
+        `SELECT channel_id, context_id, channel_ref_json, revision, config, relationship_json, participant_id FROM subscriptions ORDER BY channel_id`,
       )
       .toArray()
       .map((row) => ({
         channelId: String(row["channel_id"]),
+        channelRef: JSON.parse(String(row["channel_ref_json"])),
         contextId: String(row["context_id"]),
         revision: Number(row["revision"]),
         participantId: String(row["participant_id"]),
@@ -290,14 +314,18 @@ export class SubscriptionManager {
   ): void {
     if (!newContextId)
       throw new Error("SubscriptionManager.rename requires newContextId");
+    const stored = this.getStored(oldChannelId);
+    if (!stored)
+      throw new Error("Subscription rename requires its original endpoint");
     this.sql.exec(
       `DELETE FROM subscription_intents WHERE channel_id IN (?, ?)`,
       oldChannelId,
       newChannelId,
     );
     this.sql.exec(
-      `UPDATE subscriptions SET channel_id = ?, context_id = ?, participant_id = ? WHERE channel_id = ?`,
+      `UPDATE subscriptions SET channel_id = ?, channel_ref_json = ?, context_id = ?, participant_id = ? WHERE channel_id = ?`,
       newChannelId,
+      JSON.stringify({ ...stored.channelRef, objectKey: newChannelId }),
       newContextId,
       this.buildParticipantId(),
       oldChannelId,
@@ -307,13 +335,14 @@ export class SubscriptionManager {
   private getStored(channelId: string): StoredSubscription | null {
     const row = this.sql
       .exec(
-        `SELECT channel_id, context_id, revision, config, relationship_json, participant_id FROM subscriptions WHERE channel_id = ?`,
+        `SELECT channel_id, context_id, channel_ref_json, revision, config, relationship_json, participant_id FROM subscriptions WHERE channel_id = ?`,
         channelId,
       )
       .toArray()[0];
     if (!row) return null;
     return {
       channelId: String(row["channel_id"]),
+      channelRef: JSON.parse(String(row["channel_ref_json"])),
       contextId: String(row["context_id"]),
       revision: Number(row["revision"]),
       participantId: String(row["participant_id"]),

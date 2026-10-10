@@ -11,7 +11,11 @@ import { createTypedRpcServiceClient } from "@vibestudio/shared/typedRpcServiceC
  * in @workspace/agentic-do — composable modules that extend this base.
  */
 
-import { type MethodSchema, type ServiceMethodSchemas, type TypedServiceClient } from "@vibestudio/shared/typedServiceClient";
+import {
+  type MethodSchema,
+  type ServiceMethodSchemas,
+  type TypedServiceClient,
+} from "@vibestudio/shared/typedServiceClient";
 import { parseLifecyclePrepareInput } from "@vibestudio/shared/doDispatcher";
 import { runtimeMethods } from "@vibestudio/service-schemas/runtime";
 import { workspaceStateMethods } from "@vibestudio/service-schemas/workspaceState";
@@ -29,7 +33,23 @@ export type {
   LifecycleResumeInput,
   LifecycleCloneInput,
 } from "@vibestudio/shared/doDispatcher";
-import { collectExposableMethods, decodeRpcJson, encodeRpcJson, envelopeFromMessage, rpcExposedMethodNames, rpcMethodAuthority, rpc, type RpcClient, type RpcEnvelope, type RpcEvent, type RpcRequest, responseEnvelopeFor, type RpcRequestContext, type ResolvedRpcAuthority, type WebsiteMethodPolicy } from "@vibestudio/rpc";
+import {
+  collectExposableMethods,
+  decodeRpcJson,
+  encodeRpcJson,
+  envelopeFromMessage,
+  rpcExposedMethodNames,
+  rpcMethodAuthority,
+  rpc,
+  type RpcClient,
+  type RpcEnvelope,
+  type RpcEvent,
+  type RpcRequest,
+  responseEnvelopeFor,
+  type RpcRequestContext,
+  type ResolvedRpcAuthority,
+  type WebsiteMethodPolicy,
+} from "@vibestudio/rpc";
 import type { AuthorizationContext } from "@vibestudio/rpc";
 import {
   DurableDirectRpcNonceLedger,
@@ -365,11 +385,15 @@ export abstract class DurableObjectBase {
     const requiredTables = this.requiredTables();
     const existingTables = new Set(
       requiredTables.length
-        ? this.sql.exec(`SELECT name FROM sqlite_master WHERE type = 'table'`)
-            .toArray().map((row) => String(row["name"]))
+        ? this.sql
+            .exec(`SELECT name FROM sqlite_master WHERE type = 'table'`)
+            .toArray()
+            .map((row) => String(row["name"]))
         : [],
     );
-    const missing = requiredTables.filter((table) => !existingTables.has(table));
+    const missing = requiredTables.filter(
+      (table) => !existingTables.has(table),
+    );
     if (missing.length > 0) {
       throw new Error(
         `${this.constructor.name} schema validation failed: missing table(s): ${missing.join(", ")}`,
@@ -377,11 +401,7 @@ export abstract class DurableObjectBase {
     }
     const indexes = this.schemaIndexDefinitions();
     if (indexes)
-      validateDurableObjectSchemaIndexes(
-        this.sql,
-        requiredTables,
-        indexes,
-      );
+      validateDurableObjectSchemaIndexes(this.sql, requiredTables, indexes);
   }
 
   /**
@@ -450,9 +470,11 @@ export abstract class DurableObjectBase {
         "Schema descriptor does not match the admitted runtime image",
       );
     }
-    if (descriptor) validateDurableObjectExecutableCapabilities(
-      descriptor, (this.constructor as typeof DurableObjectBase).durableWorkQueues
-    );
+    if (descriptor)
+      validateDurableObjectExecutableCapabilities(
+        descriptor,
+        (this.constructor as typeof DurableObjectBase).durableWorkQueues,
+      );
     await installDurableObjectSchema({
       className: String(this.env["WORKER_CLASS_NAME"] ?? this.constructor.name),
       version,
@@ -467,16 +489,19 @@ export abstract class DurableObjectBase {
 
   private schemaDescriptorResponse(): Response {
     return Response.json(
-      durableObjectExecutableDescriptor({
-        className: String(
-          this.env["WORKER_CLASS_NAME"] ?? this.constructor.name,
-        ),
-        version: (this.constructor as typeof DurableObjectBase).schemaVersion,
-        storage: this.ctx.storage,
-        schemaTables: this.schemaTables(),
-        createSchema: () => this.createTables(),
-        validateSchema: () => this.validateSchema(),
-      }, (this.constructor as typeof DurableObjectBase).durableWorkQueues),
+      durableObjectExecutableDescriptor(
+        {
+          className: String(
+            this.env["WORKER_CLASS_NAME"] ?? this.constructor.name,
+          ),
+          version: (this.constructor as typeof DurableObjectBase).schemaVersion,
+          storage: this.ctx.storage,
+          schemaTables: this.schemaTables(),
+          createSchema: () => this.createTables(),
+          validateSchema: () => this.validateSchema(),
+        },
+        (this.constructor as typeof DurableObjectBase).durableWorkQueues,
+      ),
     );
   }
 
@@ -670,13 +695,16 @@ export abstract class DurableObjectBase {
             (this.constructor as typeof DurableObjectBase).rpcMethods?.[name],
           );
           if (!policy)
-            throw new Error(`RPC method ${name} lacks an authority declaration`);
+            throw new Error(
+              `RPC method ${name} lacks an authority declaration`,
+            );
           return [name, policy.website];
         }),
       ) as Record<string, WebsiteMethodPolicy>;
       exposedWebsites["__alarm"] = {
         kind: "closed",
-        reason: "Alarm delivery is reserved for the authenticated host scheduler.",
+        reason:
+          "Alarm delivery is reserved for the authenticated host scheduler.",
       };
       connectionless.client.exposeAll(
         // The framework base itself contains intentionally public, @rpc-marked
@@ -687,7 +715,6 @@ export abstract class DurableObjectBase {
         exposedWebsites,
       );
       this._connectionless = connectionless;
-
     }
     return this._connectionless;
   }
@@ -913,7 +940,11 @@ export abstract class DurableObjectBase {
     const isTestSentinel =
       gatewayUrl.includes("test-server.invalid") ||
       gatewayUrl.includes(".test/");
-    const runtimeService = createTypedRpcServiceClient(bridge, { targetId: "main", namespace: "runtime" }, runtimeMethods);
+    const runtimeService = createTypedRpcServiceClient(
+      bridge,
+      { targetId: "main", namespace: "runtime" },
+      runtimeMethods,
+    );
     try {
       await runtimeService.setTitle(effective, { explicit });
     } catch (err) {
@@ -1063,7 +1094,11 @@ export abstract class DurableObjectBase {
   private get workspaceStateService(): TypedServiceClient<
     typeof workspaceStateMethods
   > {
-    return (this._workspaceStateService ??= createTypedRpcServiceClient(this.rpc, { targetId: "main", namespace: "workspace-state" }, workspaceStateMethods));
+    return (this._workspaceStateService ??= createTypedRpcServiceClient(
+      this.rpc,
+      { targetId: "main", namespace: "workspace-state" },
+      workspaceStateMethods,
+    ));
   }
 
   /** Override in subclasses for timed callbacks. Return the one exact next wake. */
@@ -1141,13 +1176,20 @@ export abstract class DurableObjectBase {
       alarmResult.status === "rejected"
     ) {
       const failures = [
-        ...(dispatchResult.status === "rejected" ? [dispatchResult.reason] : []),
+        ...(dispatchResult.status === "rejected"
+          ? [dispatchResult.reason]
+          : []),
         ...(alarmResult.status === "rejected" ? [alarmResult.reason] : []),
       ];
       const uniqueFailures = [...new Set(failures)];
-      const failure = uniqueFailures.length === 1 ? uniqueFailures[0] : new AggregateError(
-        uniqueFailures, "Durable Object request and alarm persistence failed", { cause: failures[0] }
-      );
+      const failure =
+        uniqueFailures.length === 1
+          ? uniqueFailures[0]
+          : new AggregateError(
+              uniqueFailures,
+              "Durable Object request and alarm persistence failed",
+              { cause: failures[0] },
+            );
       return new Response(
         encodeRpcJson({
           error: serializeRpcFailure(failure),
@@ -1229,7 +1271,12 @@ export abstract class DurableObjectBase {
         if (denial) {
           return new Response(
             encodeRpcJson({
-              error: { message: denial.reason, code: denial.code, errorKind: "access", errorData: { authorityFailure: denial.failure } },
+              error: {
+                message: denial.reason,
+                code: denial.code,
+                errorKind: "access",
+                errorData: { authorityFailure: denial.failure },
+              },
             }),
             {
               status: 403,
@@ -1245,13 +1292,14 @@ export abstract class DurableObjectBase {
           method === "__lifecycle/prepare"
             ? await (async () => {
                 const input = parseLifecyclePrepareInput(args[0]);
-                  this.lifecyclePreparation.advance(input);
-                  if (input.phase === "cancel") {
-                    await this.cancelLifecyclePreparation(input);
-                    this.lifecyclePreparation.cancelled(input);
-                    return { status: "ready" } satisfies LifecyclePrepareResult;
-                  }
-                if (input.phase === "quiesce") this.beginLifecycleRelease(input);
+                this.lifecyclePreparation.advance(input);
+                if (input.phase === "cancel") {
+                  await this.cancelLifecyclePreparation(input);
+                  this.lifecyclePreparation.cancelled(input);
+                  return { status: "ready" } satisfies LifecyclePrepareResult;
+                }
+                if (input.phase === "quiesce")
+                  this.beginLifecycleRelease(input);
                 const failures: unknown[] = [];
                 if (input.phase === "quiesce") {
                   try {
@@ -1279,13 +1327,25 @@ export abstract class DurableObjectBase {
               })()
             : method === "__lifecycle/initializeClone"
               ? this.initializeClone(args[0] as LifecycleCloneInput)
-              : await (async () => { await this.resumeAfterRestart(args[0] as LifecycleResumeInput); this.lifecyclePreparation.resumed(); })();
-        return new Response(encodeRpcJson({
-          value: result ?? null,
-          metadata: { durableWorkReady: [...(this._invocationContext.current()?.readyQueues ?? [])].sort() },
-        }), {
-          headers: { "Content-Type": "application/json" },
-        });
+              : await (async () => {
+                  await this.resumeAfterRestart(
+                    args[0] as LifecycleResumeInput,
+                  );
+                  this.lifecyclePreparation.resumed();
+                })();
+        return new Response(
+          encodeRpcJson({
+            value: result ?? null,
+            metadata: {
+              durableWorkReady: [
+                ...(this._invocationContext.current()?.readyQueues ?? []),
+              ].sort(),
+            },
+          }),
+          {
+            headers: { "Content-Type": "application/json" },
+          },
+        );
       });
     }
 
@@ -1394,7 +1454,12 @@ export abstract class DurableObjectBase {
       if (denial) {
         return new Response(
           encodeRpcJson({
-            error: { message: denial.reason, code: denial.code, errorKind: "access", errorData: { authorityFailure: denial.failure } },
+            error: {
+              message: denial.reason,
+              code: denial.code,
+              errorKind: "access",
+              errorData: { authorityFailure: denial.failure },
+            },
           }),
           {
             status: 403,
@@ -1416,9 +1481,14 @@ export abstract class DurableObjectBase {
           "the receiver's retention bound";
         return new Response(
           encodeRpcJson({
-            error: { message: reason, code: "EACCES", errorKind: "access", errorData: {
-              authorityFailure: directRpcInvalidAttestationFailure(reason),
-            } },
+            error: {
+              message: reason,
+              code: "EACCES",
+              errorKind: "access",
+              errorData: {
+                authorityFailure: directRpcInvalidAttestationFailure(reason),
+              },
+            },
           }),
           { status: 403, headers: { "Content-Type": "application/json" } },
         );
@@ -1449,7 +1519,11 @@ export abstract class DurableObjectBase {
           return responseMessage.result;
         return new Response(
           encodeRpcJson({
-            error: serializeRpcFailure(new Error(`Streaming method ${message.method} did not return a Response`)),
+            error: serializeRpcFailure(
+              new Error(
+                `Streaming method ${message.method} did not return a Response`,
+              ),
+            ),
           }),
           { status: 500, headers: { "Content-Type": "application/json" } },
         );
@@ -1463,14 +1537,17 @@ export abstract class DurableObjectBase {
         return new Response(
           encodeRpcJson({
             error: responseMessage.error,
-
           }),
           { status, headers: { "Content-Type": "application/json" } },
         );
       }
       return new Response(
         encodeRpcJson({
-          error: serializeRpcFailure(new Error(`Streaming method ${message.method} did not produce a response`)),
+          error: serializeRpcFailure(
+            new Error(
+              `Streaming method ${message.method} did not produce a response`,
+            ),
+          ),
         }),
         { status: 500, headers: { "Content-Type": "application/json" } },
       );
@@ -1487,29 +1564,39 @@ export abstract class DurableObjectBase {
       ownedAlarmRpcs,
     )
       .then(async (dispatched) => {
-      try {
-        // A handler may schedule its alarm after the outer fetch has already
-        // crossed the admission boundary. Keep that durability write inside
-        // the terminal response owner so the caller cannot observe completion
-        // before the next wake is committed.
-        await this.drainOwnedAlarmRpcs(ownedAlarmRpcs);
-      } catch (alarmFailure) {
-        const previous = dispatched.result?.message;
-        const previousIsError =
-          previous?.type === "response" && "error" in previous;
-        const previousFailure = previousIsError ? deserializeRpcFailure(previous.error) : undefined;
-        const failure = previousFailure ? new AggregateError(
-          [previousFailure, alarmFailure], "RPC handler and durable alarm persistence failed", { cause: previousFailure }
-        ) : alarmFailure;
-        dispatched = {
-          ...dispatched,
-          result: responseEnvelopeFor(
-            envelope,
-            { callerId: envelope.target, callerKind: "do" },
-            { type: "response", requestId: message.requestId, error: serializeRpcFailure(failure) },
-          ),
-        };
-      }
+        try {
+          // A handler may schedule its alarm after the outer fetch has already
+          // crossed the admission boundary. Keep that durability write inside
+          // the terminal response owner so the caller cannot observe completion
+          // before the next wake is committed.
+          await this.drainOwnedAlarmRpcs(ownedAlarmRpcs);
+        } catch (alarmFailure) {
+          const previous = dispatched.result?.message;
+          const previousIsError =
+            previous?.type === "response" && "error" in previous;
+          const previousFailure = previousIsError
+            ? deserializeRpcFailure(previous.error)
+            : undefined;
+          const failure = previousFailure
+            ? new AggregateError(
+                [previousFailure, alarmFailure],
+                "RPC handler and durable alarm persistence failed",
+                { cause: previousFailure },
+              )
+            : alarmFailure;
+          dispatched = {
+            ...dispatched,
+            result: responseEnvelopeFor(
+              envelope,
+              { callerId: envelope.target, callerKind: "do" },
+              {
+                type: "response",
+                requestId: message.requestId,
+                error: serializeRpcFailure(failure),
+              },
+            ),
+          };
+        }
         return dispatched;
       })
       .catch(async (primary: unknown) => {
@@ -1527,14 +1614,21 @@ export abstract class DurableObjectBase {
           result: responseEnvelopeFor(
             envelope,
             { callerId: this.rpcSelfId, callerKind: "do" },
-            { type: "response", requestId: message.requestId, error: serializeRpcFailure(failure) },
+            {
+              type: "response",
+              requestId: message.requestId,
+              error: serializeRpcFailure(failure),
+            },
           ),
           readyQueues: [],
         };
       });
     const first = await Promise.race([
       admitted.then(() => ({ kind: "admitted" as const })),
-      completion.then((dispatched) => ({ kind: "completed" as const, dispatched })),
+      completion.then((dispatched) => ({
+        kind: "completed" as const,
+        dispatched,
+      })),
     ]);
     if (first.kind === "completed") {
       return new Response(encodeRpcJson(first.dispatched.result ?? {}), {
@@ -1694,7 +1788,16 @@ export abstract class DurableObjectBase {
             caller: caller ?? { callerId: "", callerKind: "unknown" },
           },
           provenance: envelope.provenance ?? [],
-          message: { type: "response", requestId: message?.requestId ?? "", error: { message: denial.reason, code: denial.code, errorKind: "access", errorData: { authorityFailure: denial.failure } } },
+          message: {
+            type: "response",
+            requestId: message?.requestId ?? "",
+            error: {
+              message: denial.reason,
+              code: denial.code,
+              errorKind: "access",
+              errorData: { authorityFailure: denial.failure },
+            },
+          },
         } as RpcEnvelope,
         readyQueues: [],
       };
@@ -1720,9 +1823,18 @@ export abstract class DurableObjectBase {
             caller: caller ?? { callerId: "", callerKind: "unknown" },
           },
           provenance: envelope.provenance ?? [],
-          message: { type: "response", requestId: message?.requestId ?? "", error: { message: reason, code: "EACCES", errorKind: "access", errorData: {
-              authorityFailure: directRpcInvalidAttestationFailure(reason),
-            } } },
+          message: {
+            type: "response",
+            requestId: message?.requestId ?? "",
+            error: {
+              message: reason,
+              code: "EACCES",
+              errorKind: "access",
+              errorData: {
+                authorityFailure: directRpcInvalidAttestationFailure(reason),
+              },
+            },
+          },
         } as RpcEnvelope,
         readyQueues: [],
       };
@@ -1750,7 +1862,10 @@ export abstract class DurableObjectBase {
       },
     );
     const response = dispatched.result;
-    if (response?.message.type === "response" && dispatched.readyQueues.length > 0) {
+    if (
+      response?.message.type === "response" &&
+      dispatched.readyQueues.length > 0
+    ) {
       response.message.metadata = {
         ...response.message.metadata,
         durableWorkReady: [...dispatched.readyQueues].sort(),
@@ -1770,8 +1885,13 @@ export abstract class DurableObjectBase {
           message,
           `Invalid result from ${method}: ${parsedResult.error.message}`,
         );
-        if (dispatched.readyQueues.length > 0 && denial.message.type === "response") {
-          denial.message.metadata = { durableWorkReady: [...dispatched.readyQueues].sort() };
+        if (
+          dispatched.readyQueues.length > 0 &&
+          denial.message.type === "response"
+        ) {
+          denial.message.metadata = {
+            durableWorkReady: [...dispatched.readyQueues].sort(),
+          };
         }
         return {
           result: denial,
@@ -1793,7 +1913,11 @@ export abstract class DurableObjectBase {
       target: envelope.from,
       delivery: envelope.delivery,
       provenance: envelope.provenance ?? [],
-      message: { type: "response", requestId: message.requestId, error: { message: reason, code: "EINVAL", errorKind: "protocol" } },
+      message: {
+        type: "response",
+        requestId: message.requestId,
+        error: { message: reason, code: "EINVAL", errorKind: "protocol" },
+      },
     };
   }
 
@@ -1891,7 +2015,9 @@ export abstract class DurableObjectBase {
   }
 
   private pendingDurableWorkReadyQueues(): DurableWorkQueue[] {
-    return this._durableWorkReadiness.pendingQueues((this.constructor as typeof DurableObjectBase).durableWorkQueues);
+    return this._durableWorkReadiness.pendingQueues(
+      (this.constructor as typeof DurableObjectBase).durableWorkQueues,
+    );
   }
 
   protected acknowledgeDurableWorkReady(queue: DurableWorkQueue): void {
@@ -1899,9 +2025,10 @@ export abstract class DurableObjectBase {
   }
 
   protected durableWorkReadinessDiagnostics() {
-    return this._durableWorkReadiness.diagnostics((this.constructor as typeof DurableObjectBase).durableWorkQueues);
+    return this._durableWorkReadiness.diagnostics(
+      (this.constructor as typeof DurableObjectBase).durableWorkQueues,
+    );
   }
-
 
   @rpc({
     website: {
@@ -1915,7 +2042,9 @@ export abstract class DurableObjectBase {
     sensitivity: "read",
   })
   durableWorkCapabilities(): DurableWorkQueue[] {
-    return [...(this.constructor as typeof DurableObjectBase).durableWorkQueues];
+    return [
+      ...(this.constructor as typeof DurableObjectBase).durableWorkQueues,
+    ];
   }
 
   /** Finite delivery into an explicitly resident in-memory operation. The
@@ -1935,8 +2064,11 @@ export abstract class DurableObjectBase {
   async acceptChannelDelivery(
     input: ResidentChannelDeliveryInput,
   ): Promise<unknown> {
-    assertChannelDeliverySource({ id: this.rpcCallerId, kind: this.rpcCallerKind }, input,
-      this.residentSessions.target(input.channelId));
+    assertChannelDeliverySource(
+      { id: this.rpcCallerId, kind: this.rpcCallerKind },
+      input,
+      this.residentSessions.target(input.channelId),
+    );
     return this.residentSessions.acceptDelivery(input);
   }
 
@@ -1977,14 +2109,38 @@ export abstract class DurableObjectBase {
   /** The host calls this after quiescence and before sealing RPC admission.
    * Owners with asynchronous durable obligations override it to join their
    * captured frontier through their normal work driver. */
-  @rpc({ principals: ["host"], website: { kind: "closed", reason: "The host joins owner work before lifecycle release." }, effect: { kind: "open" }, tier: "open", sensitivity: "write" })
-  async prepareDurableWorkRelease(_stage: DurableWorkReleaseStage): Promise<DurableWorkReleaseReceipt> {
+  @rpc({
+    principals: ["host"],
+    website: {
+      kind: "closed",
+      reason: "The host joins owner work before lifecycle release.",
+    },
+    effect: { kind: "open" },
+    tier: "open",
+    sensitivity: "write",
+  })
+  async prepareDurableWorkRelease(
+    _stage: DurableWorkReleaseStage,
+  ): Promise<DurableWorkReleaseReceipt> {
     return { queues: [], barrier: null };
   }
 
-  @rpc({ principals: ["host"], website: { kind: "closed", reason: "The host joins owner work before lifecycle release." }, effect: { kind: "open" }, tier: "open", sensitivity: "read" })
-  async waitDurableWorkRelease(_stage: DurableWorkReleaseStage, barrier: DurableWorkReleaseReceipt["barrier"]): Promise<void> {
-    if (barrier !== null) throw new Error("This owner has no durable-work release frontier");
+  @rpc({
+    principals: ["host"],
+    website: {
+      kind: "closed",
+      reason: "The host joins owner work before lifecycle release.",
+    },
+    effect: { kind: "open" },
+    tier: "open",
+    sensitivity: "read",
+  })
+  async waitDurableWorkRelease(
+    _stage: DurableWorkReleaseStage,
+    barrier: DurableWorkReleaseReceipt["barrier"],
+  ): Promise<void> {
+    if (barrier !== null)
+      throw new Error("This owner has no durable-work release frontier");
   }
 
   /** Explicit owner-local registration capability for workspace Durable
@@ -2044,7 +2200,9 @@ export abstract class DurableObjectBase {
   /** Publish the lifecycle transition before joining any work it owns. */
   protected beginLifecycleRelease(_input: LifecyclePrepareInput): void {}
 
-  protected async cancelLifecyclePreparation(_input: LifecyclePrepareInput): Promise<void> {}
+  protected async cancelLifecyclePreparation(
+    _input: LifecyclePrepareInput,
+  ): Promise<void> {}
 
   async releaseForLifecycle(
     _input: LifecyclePrepareInput,

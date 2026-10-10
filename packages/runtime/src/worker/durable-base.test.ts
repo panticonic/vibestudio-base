@@ -12,7 +12,10 @@ import {
   encodeRpcJson,
   rpc,
 } from "@vibestudio/rpc";
-import { DIRECT_AUTHORITY_ACCEPTED_AT_HEADER } from "@vibestudio/rpc/internal";
+import {
+  DIRECT_AUTHORITY_ACCEPTED_AT_HEADER,
+  withExecutionAdmission,
+} from "@vibestudio/rpc/internal";
 import type { AuthenticatedCaller, RpcEnvelope } from "@vibestudio/rpc";
 import type {
   DoAlarmDispatchResult,
@@ -25,9 +28,28 @@ import {
   createTestDirectAuthority,
 } from "./durable-test-utils.js";
 
-const testRpcMethods = createRpcMethods("test", { "probe.after-wake": { website: { kind: "closed", reason: "Test receiver" } as const, args: z.tuple([]), returns: z.unknown() } }, "");
+const testRpcMethods = createRpcMethods(
+  "test",
+  {
+    "probe.after-wake": {
+      website: { kind: "closed", reason: "Test receiver" } as const,
+      args: z.tuple([]),
+      returns: z.unknown(),
+    },
+  },
+  "",
+);
 
 abstract class TestDurableObjectBase extends DurableObjectBase {}
+class RpcFacadeProbeDO extends TestDurableObjectBase {
+  protected createTables(): void {}
+  facadeForTest() {
+    return this.rpc;
+  }
+  resetForTest() {
+    this.resetRpcClients();
+  }
+}
 
 function authenticatedTestCaller(
   method: string,
@@ -41,15 +63,24 @@ function authenticatedTestCaller(
   };
 }
 
-async function lifecyclePhase(instance: DurableObjectBase, phase: import("@vibestudio/shared/doDispatcher").LifecyclePrepareInput["phase"], epoch = "e1"): Promise<Response> {
-  return instance.fetch(new Request("http://test/test-key/__lifecycle/prepare", {
-    method: "POST",
-    body: JSON.stringify({
-      args: [{ epoch, phase, mode: "suspend", reason: "test", deadlineMs: 0 }],
-      __instanceToken: "token", __instanceId: "do:internal/WorkspaceDO:test-key",
-      __caller: authenticatedTestCaller("__lifecycle/prepare"),
+async function lifecyclePhase(
+  instance: DurableObjectBase,
+  phase: import("@vibestudio/shared/doDispatcher").LifecyclePrepareInput["phase"],
+  epoch = "e1",
+): Promise<Response> {
+  return instance.fetch(
+    new Request("http://test/test-key/__lifecycle/prepare", {
+      method: "POST",
+      body: JSON.stringify({
+        args: [
+          { epoch, phase, mode: "suspend", reason: "test", deadlineMs: 0 },
+        ],
+        __instanceToken: "token",
+        __instanceId: "do:internal/WorkspaceDO:test-key",
+        __caller: authenticatedTestCaller("__lifecycle/prepare"),
+      }),
     }),
-  }));
+  );
 }
 
 class EchoDO extends TestDurableObjectBase {
@@ -126,7 +157,9 @@ class DetachedRpcProbeDO extends TestDurableObjectBase {
     sensitivity: "write",
   })
   startDetached(throwAfterStart = false): string {
-    void this.rpc.call("main", mainRpcMethods["notification.signalUserInbox"], ["usr_test"]);
+    void this.rpc.call("main", mainRpcMethods["notification.signalUserInbox"], [
+      "usr_test",
+    ]);
     if (throwAfterStart) throw new Error("parent failed after starting child");
     return "started";
   }
@@ -235,8 +268,12 @@ class ClonePreparationDO extends TestDurableObjectBase {
 
 class LifecycleProbeDO extends TestDurableObjectBase {
   admissionOpen = true;
-  protected override beginLifecycleRelease(): void { this.admissionOpen = false; }
-  protected override async cancelLifecyclePreparation(): Promise<void> { this.admissionOpen = true; }
+  protected override beginLifecycleRelease(): void {
+    this.admissionOpen = false;
+  }
+  protected override async cancelLifecyclePreparation(): Promise<void> {
+    this.admissionOpen = true;
+  }
   protected createTables(): void {}
   prepared = false;
   resumed = false;
@@ -360,7 +397,10 @@ class AsyncBoundaryFailureDO extends LifecycleProbeDO {
 class WorkReadyProbeDO extends TestDurableObjectBase {
   protected createTables(): void {}
 
-  static override readonly durableWorkQueues = ["workspace-publication", "channel-delivery"] as const;
+  static override readonly durableWorkQueues = [
+    "workspace-publication",
+    "channel-delivery",
+  ] as const;
 
   @rpc({
     website: {
@@ -373,7 +413,11 @@ class WorkReadyProbeDO extends TestDurableObjectBase {
     sensitivity: "write",
   })
   enqueue(): { committed: true } {
-    this.markWorkReady("workspace-publication", "workspace-publication", "channel-delivery");
+    this.markWorkReady(
+      "workspace-publication",
+      "workspace-publication",
+      "channel-delivery",
+    );
     return { committed: true };
   }
 
@@ -387,7 +431,9 @@ class WorkReadyProbeDO extends TestDurableObjectBase {
     tier: "open",
     sensitivity: "write",
   })
-  drain(queue: "workspace-publication" | "channel-delivery"): { drained: true } {
+  drain(queue: "workspace-publication" | "channel-delivery"): {
+    drained: true;
+  } {
     this.acknowledgeDurableWorkReady(queue);
     return { drained: true };
   }
@@ -649,7 +695,11 @@ class WakeReceiptFailureProbeDO extends TestDurableObjectBase {
   }
 
   protected override nextAlarmAfterRequest(): undefined {
-    throw Object.assign(new Error("wake publication failed"), { code: "WAKE_FAILED", errorKind: "service", errorData: { owner: "test-fixture" } });
+    throw Object.assign(new Error("wake publication failed"), {
+      code: "WAKE_FAILED",
+      errorKind: "service",
+      errorData: { owner: "test-fixture" },
+    });
   }
 }
 
@@ -704,7 +754,10 @@ async function requestAlarm(instance: DurableObjectBase): Promise<{
       }),
     }),
   );
-  return { response, envelope: decodeRpcJson(await response.text()) as RpcEnvelope };
+  return {
+    response,
+    envelope: decodeRpcJson(await response.text()) as RpcEnvelope,
+  };
 }
 
 /**
@@ -746,10 +799,30 @@ class ComposedSchemaProbeDO extends TestDurableObjectBase {
   protected override requiredTables(): readonly string[] {
     return ["component_two", "component_one", "component_two"];
   }
-  validateForTest(): void { this.validateSchema(); }
+  validateForTest(): void {
+    this.validateSchema();
+  }
 }
 
 describe("DurableObjectBase request parsing", () => {
+  it("shares one public facade per owned wire and recreates it after resetting that wire", async () => {
+    const { instance } = await createTestDO(RpcFacadeProbeDO, {
+      WORKER_SOURCE: "workers/test",
+      WORKER_CLASS_NAME: "RpcFacadeProbeDO",
+      __objectKey: "rpc-owner",
+    });
+    const original = instance.facadeForTest();
+    expect(instance.facadeForTest()).toBe(original);
+    const scoped = withExecutionAdmission(original, "actual-scoped-admission");
+    expect(scoped).not.toBe(original);
+    expect(instance.facadeForTest()).toBe(original);
+    instance.resetForTest();
+    const replacement = instance.facadeForTest();
+    expect(replacement).not.toBe(original);
+    expect(replacement.selfId).toBe(original.selfId);
+    expect(instance.facadeForTest()).toBe(replacement);
+  });
+
   it("propagates exact request cancellation to owned observations without cancelling sibling requests", async () => {
     const { instance } = await createTestDO(ObservationSignalProbeDO, {
       WORKER_SOURCE: "workers/test",
@@ -905,8 +978,12 @@ describe("DurableObjectBase request parsing", () => {
       }),
     );
 
-    const envelope = await response.json() as RpcEnvelope;
-    if (envelope.message.type !== "response" || envelope.message.requestId !== "undeclared-1" || !("error" in envelope.message))
+    const envelope = (await response.json()) as RpcEnvelope;
+    if (
+      envelope.message.type !== "response" ||
+      envelope.message.requestId !== "undeclared-1" ||
+      !("error" in envelope.message)
+    )
       throw new Error("Undeclared RPC did not return an error response");
     const failure = deserializeRpcFailure(envelope.message.error);
     expect(failure.message).toContain("hidden");
@@ -962,12 +1039,18 @@ describe("DurableObjectBase request parsing", () => {
     );
 
     expect(response.status).toBe(403);
-    await expect(response.json()).resolves.toMatchObject({ error: { code: "EACCES", errorKind: "access", errorData: {
-        authorityFailure: {
-          reasonCode: "receiver-undeclared",
-          remediation: { kind: "declare-rpc-receiver" },
+    await expect(response.json()).resolves.toMatchObject({
+      error: {
+        code: "EACCES",
+        errorKind: "access",
+        errorData: {
+          authorityFailure: {
+            reasonCode: "receiver-undeclared",
+            remediation: { kind: "declare-rpc-receiver" },
+          },
         },
-      } } });
+      },
+    });
   });
 
   it("returns a streaming RPC method's raw response body from __rpc", async () => {
@@ -1255,11 +1338,17 @@ describe("DurableObjectBase request parsing", () => {
     );
 
     expect(response.status).toBe(500);
-    await expect(response.json()).resolves.toMatchObject({ error: { message: "revision does not resolve", errorKind: "application", errorData: {
-        code: "InvalidReference",
+    await expect(response.json()).resolves.toMatchObject({
+      error: {
         message: "revision does not resolve",
-        referenceKind: "head",
-      } } });
+        errorKind: "application",
+        errorData: {
+          code: "InvalidReference",
+          message: "revision does not resolve",
+          referenceKind: "head",
+        },
+      },
+    });
   });
 
   it("preserves an AggregateError message from a user method across HTTP", async () => {
@@ -1278,7 +1367,9 @@ describe("DurableObjectBase request parsing", () => {
     );
 
     expect(response.status).toBe(500);
-    await expect(response.json()).resolves.toMatchObject({ error: { message: "authored domain failure" } });
+    await expect(response.json()).resolves.toMatchObject({
+      error: { message: "authored domain failure" },
+    });
   });
 });
 
@@ -1303,7 +1394,13 @@ describe("DurableObjectBase lifecycle routing", () => {
         method: "POST",
         body: JSON.stringify({
           args: [
-            { epoch: "retire", phase: "quiesce", mode: "retire", reason: "test", deadlineMs: 0 },
+            {
+              epoch: "retire",
+              phase: "quiesce",
+              mode: "retire",
+              reason: "test",
+              deadlineMs: 0,
+            },
           ],
           __instanceToken: "token",
           __instanceId: "do:test:TerminalOrderingDO:test-key",
@@ -1312,7 +1409,9 @@ describe("DurableObjectBase lifecycle routing", () => {
       }),
     );
     expect(response.status).toBe(500);
-    expect(await response.json()).toMatchObject({ error: { message: "original owned alarm failure" } });
+    expect(await response.json()).toMatchObject({
+      error: { message: "original owned alarm failure" },
+    });
     expect(instance.order).toEqual(["begin", "terminal"]);
     expect(
       (instance as unknown as { pendingAlarmRpcs: Set<Promise<void>> })
@@ -1370,7 +1469,9 @@ describe("DurableObjectBase lifecycle routing", () => {
     instance.refuse = true;
     const failed = await send();
     expect(failed.status).toBe(500);
-    expect(await failed.json()).toMatchObject({ error: { message: "original clone preparation failure" } });
+    expect(await failed.json()).toMatchObject({
+      error: { message: "original clone preparation failure" },
+    });
     expect(instance.stored("copiedOwner")).toBeNull();
     expect(instance.stored("__clonePreparation")).toBeNull();
     instance.refuse = false;
@@ -1391,14 +1492,25 @@ describe("DurableObjectBase lifecycle routing", () => {
       if (method === "__alarm") {
         const { response, envelope } = await requestAlarm(instance);
         expect(response.status).toBe(200);
-        expect(envelope.message).toMatchObject({ type: "response", error: { message: "original asynchronous owner failure" } });
+        expect(envelope.message).toMatchObject({
+          type: "response",
+          error: { message: "original asynchronous owner failure" },
+        });
         return;
       }
       const response = await instance.fetch(
         new Request(`http://test/test-key/${method}`, {
           method: "POST",
           body: JSON.stringify({
-            args: [{ epoch: "e1", phase: "quiesce", mode: "suspend", reason: "test", deadlineMs: 0 }],
+            args: [
+              {
+                epoch: "e1",
+                phase: "quiesce",
+                mode: "suspend",
+                reason: "test",
+                deadlineMs: 0,
+              },
+            ],
             __instanceToken: "token",
             __instanceId: "do:test:AsyncBoundaryFailureDO:test-key",
             __caller: authenticatedTestCaller(method),
@@ -1406,7 +1518,9 @@ describe("DurableObjectBase lifecycle routing", () => {
         }),
       );
       expect(response.status).toBe(500);
-      expect(await response.json()).toMatchObject({ error: { message: "original asynchronous owner failure" } });
+      expect(await response.json()).toMatchObject({
+        error: { message: "original asynchronous owner failure" },
+      });
     },
   );
 
@@ -1416,12 +1530,20 @@ describe("DurableObjectBase lifecycle routing", () => {
     expect(instance.admissionOpen).toBe(false);
     const foreign = await lifecyclePhase(instance, "cancel", "foreign");
     expect(foreign.status).toBe(500);
-    expect(await foreign.json()).toMatchObject({error:{message:"Lifecycle phase does not own the active preparation epoch"}});
+    expect(await foreign.json()).toMatchObject({
+      error: {
+        message: "Lifecycle phase does not own the active preparation epoch",
+      },
+    });
     expect(instance.admissionOpen).toBe(false);
     expect((await lifecyclePhase(instance, "cancel")).status).toBe(200);
     expect(instance.admissionOpen).toBe(true);
-    expect((await lifecyclePhase(instance, "quiesce", "next")).status).toBe(200);
-    expect((await lifecyclePhase(instance, "release", "next")).status).toBe(200);
+    expect((await lifecyclePhase(instance, "quiesce", "next")).status).toBe(
+      200,
+    );
+    expect((await lifecyclePhase(instance, "release", "next")).status).toBe(
+      200,
+    );
     const released = await lifecyclePhase(instance, "cancel", "next");
     expect(released.status).toBe(500);
     expect(instance.admissionOpen).toBe(false);
@@ -1438,7 +1560,13 @@ describe("DurableObjectBase lifecycle routing", () => {
         method: "POST",
         body: JSON.stringify({
           args: [
-            { epoch: "e1", phase: "release", mode: "suspend", reason: "test", deadlineMs: 1 },
+            {
+              epoch: "e1",
+              phase: "release",
+              mode: "suspend",
+              reason: "test",
+              deadlineMs: 1,
+            },
           ],
         }),
       }),
@@ -1451,7 +1579,13 @@ describe("DurableObjectBase lifecycle routing", () => {
         method: "POST",
         body: JSON.stringify({
           args: [
-            { epoch: "e1", phase: "release", mode: "suspend", reason: "test", deadlineMs: 1 },
+            {
+              epoch: "e1",
+              phase: "release",
+              mode: "suspend",
+              reason: "test",
+              deadlineMs: 1,
+            },
           ],
           __instanceToken: "token",
           __instanceId: "do:internal/WorkspaceDO:test-key",
@@ -1529,7 +1663,13 @@ describe("DurableObjectBase lifecycle routing", () => {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           args: [
-            { epoch: "e1", phase: "quiesce", mode: "suspend", reason: "test", deadlineMs: 1 },
+            {
+              epoch: "e1",
+              phase: "quiesce",
+              mode: "suspend",
+              reason: "test",
+              deadlineMs: 1,
+            },
           ],
           __instanceToken: "token",
           __instanceId: "do:internal/WorkspaceDO:test-key",
@@ -1539,12 +1679,19 @@ describe("DurableObjectBase lifecycle routing", () => {
     );
 
     expect(response.status).toBe(403);
-    await expect(response.json()).resolves.toMatchObject({ error: { code: "EACCES", errorKind: "access", message: expect.stringMatching(/host attestation required/), errorData: {
-        authorityFailure: {
-          reasonCode: "attestation-invalid",
-          remediation: { kind: "retry-through-host" },
+    await expect(response.json()).resolves.toMatchObject({
+      error: {
+        code: "EACCES",
+        errorKind: "access",
+        message: expect.stringMatching(/host attestation required/),
+        errorData: {
+          authorityFailure: {
+            reasonCode: "attestation-invalid",
+            remediation: { kind: "retry-through-host" },
+          },
         },
-      } } });
+      },
+    });
   });
 });
 
@@ -1584,7 +1731,16 @@ describe("DurableObjectBase work-ready receipts", () => {
 
     expect(response.status).toBe(200);
     const terminal = decodeRpcJson(await response.text()) as RpcEnvelope;
-    expect(terminal.message).toMatchObject({ type: "response", requestId: "wake-failure-after-admission", error: { message: "wake publication failed", code: "WAKE_FAILED", errorKind: "service", errorData: { owner: "test-fixture" } } });
+    expect(terminal.message).toMatchObject({
+      type: "response",
+      requestId: "wake-failure-after-admission",
+      error: {
+        message: "wake publication failed",
+        code: "WAKE_FAILED",
+        errorKind: "service",
+        errorData: { owner: "test-fixture" },
+      },
+    });
   });
 
   it("exposes framework @rpc capability methods on subclasses", async () => {
@@ -1634,20 +1790,26 @@ describe("DurableObjectBase work-ready receipts", () => {
     const ordinary = await request("enqueue", []);
     await expect(ordinary.json()).resolves.toEqual({
       value: { committed: true },
-      metadata: { durableWorkReady: ["channel-delivery", "workspace-publication"] },
+      metadata: {
+        durableWorkReady: ["channel-delivery", "workspace-publication"],
+      },
     });
 
     const firstAlarm = await requestAlarm(instance);
     expect(firstAlarm.envelope.message).toMatchObject({
       type: "response",
       result: { nextAlarm: null },
-      metadata: { durableWorkReady: ["channel-delivery", "workspace-publication"] },
+      metadata: {
+        durableWorkReady: ["channel-delivery", "workspace-publication"],
+      },
     });
     const secondAlarm = await requestAlarm(instance);
     expect(secondAlarm.envelope.message).toMatchObject({
       type: "response",
       result: { nextAlarm: null },
-      metadata: { durableWorkReady: ["channel-delivery", "workspace-publication"] },
+      metadata: {
+        durableWorkReady: ["channel-delivery", "workspace-publication"],
+      },
     });
     expect(
       sql
@@ -1659,7 +1821,10 @@ describe("DurableObjectBase work-ready receipts", () => {
         .toArray(),
     ).toEqual([
       { key: "durable-work-ready-generation:channel-delivery", value: "1" },
-      { key: "durable-work-ready-generation:workspace-publication", value: "1" },
+      {
+        key: "durable-work-ready-generation:workspace-publication",
+        value: "1",
+      },
     ]);
 
     await request("drain", ["workspace-publication"]);
@@ -1741,12 +1906,19 @@ describe("DurableObjectBase durable replay protection", () => {
     });
     const replay = await dispatch(reconstructed.instance);
     expect(replay.status).toBe(403);
-    await expect(replay.json()).resolves.toMatchObject({ error: { code: "EACCES", errorKind: "access", message: expect.stringMatching(/replayed/), errorData: {
-        authorityFailure: {
-          reasonCode: "attestation-invalid",
-          remediation: { kind: "retry-through-host" },
+    await expect(replay.json()).resolves.toMatchObject({
+      error: {
+        code: "EACCES",
+        errorKind: "access",
+        message: expect.stringMatching(/replayed/),
+        errorData: {
+          authorityFailure: {
+            reasonCode: "attestation-invalid",
+            remediation: { kind: "retry-through-host" },
+          },
         },
-      } } });
+      },
+    });
   });
 });
 
@@ -2032,19 +2204,35 @@ describe("DurableObjectBase server-driven alarm durability", () => {
       );
       expect(response.status).toBe(200);
       const terminal = decodeRpcJson(await response.text()) as RpcEnvelope;
-      expect(terminal.message).toMatchObject({ type: "response", requestId: "handler-and-alarm-failure" });
-      const failure = deserializeRpcFailure((terminal.message as { error: unknown }).error);
+      expect(terminal.message).toMatchObject({
+        type: "response",
+        requestId: "handler-and-alarm-failure",
+      });
+      const failure = deserializeRpcFailure(
+        (terminal.message as { error: unknown }).error,
+      );
       expect(failure).toBeInstanceOf(AggregateError);
-      expect(failure.message).toBe("RPC handler and durable alarm persistence failed");
+      expect(failure.message).toBe(
+        "RPC handler and durable alarm persistence failed",
+      );
       expect(failure.cause).toMatchObject({
-        code: "PRIMARY_HANDLER_FAILED", errorKind: "access",
+        code: "PRIMARY_HANDLER_FAILED",
+        errorKind: "access",
         errorData: { owner: "handler", detail: "preserve this payload" },
       });
       expect((failure.cause as Error).message).toBe("primary handler failure");
-      expect(rpcDiagnosticIdOf(failure.cause)).toBe("ca91003e-5630-479c-8c49-640c9a0fd644");
+      expect(rpcDiagnosticIdOf(failure.cause)).toBe(
+        "ca91003e-5630-479c-8c49-640c9a0fd644",
+      );
       const errors = (failure as AggregateError).errors as Error[];
       expect(errors[0]).toBe(failure.cause);
-      expect(errors.some((error) => error.message.includes("RPC endpoint returned HTTP 503: alarm store unavailable"))).toBe(true);
+      expect(
+        errors.some((error) =>
+          error.message.includes(
+            "RPC endpoint returned HTTP 503: alarm store unavailable",
+          ),
+        ),
+      ).toBe(true);
     } finally {
       server.closeAllConnections();
       await new Promise<void>((resolve, reject) =>
@@ -2091,7 +2279,18 @@ describe("DurableObjectBase server-driven alarm durability", () => {
             type: "response",
             requestId: envelope.message.requestId,
             ...(writes === 1
-              ? { error: serializeRpcFailure(Object.assign(new Error("Invocation authority parent is not active"), { errorKind: "access", code: "INVOCATION_AUTHORITY_PARENT_NOT_ACTIVE", errorData })) }
+              ? {
+                  error: serializeRpcFailure(
+                    Object.assign(
+                      new Error("Invocation authority parent is not active"),
+                      {
+                        errorKind: "access",
+                        code: "INVOCATION_AUTHORITY_PARENT_NOT_ACTIVE",
+                        errorData,
+                      },
+                    ),
+                  ),
+                }
               : { result: null }),
           },
         }),
@@ -2127,26 +2326,25 @@ describe("DurableObjectBase server-driven alarm durability", () => {
       };
       const target = "do:workers/test:ObservedAlarmProbeDO:alarm";
       let terminalSettled = false;
-      const responsePromise = instance
-        .fetch(
-          new Request("http://test/alarm/__rpc", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              from: caller.callerId,
-              target,
-              delivery: { caller },
-              provenance: [],
-              message: {
-                type: "request",
-                requestId: "schedule-two-wakes-with-first-failure",
-                fromId: caller.callerId,
-                method: "scheduleTwoWakes",
-                args: [Date.now() + 1_000],
-              },
-            }),
+      const responsePromise = instance.fetch(
+        new Request("http://test/alarm/__rpc", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            from: caller.callerId,
+            target,
+            delivery: { caller },
+            provenance: [],
+            message: {
+              type: "request",
+              requestId: "schedule-two-wakes-with-first-failure",
+              fromId: caller.callerId,
+              method: "scheduleTwoWakes",
+              args: [Date.now() + 1_000],
+            },
           }),
-        );
+        }),
+      );
       const terminalPromise = responsePromise.then(async (response) => {
         const body = await response.text();
         terminalSettled = true;
@@ -2160,7 +2358,12 @@ describe("DurableObjectBase server-driven alarm durability", () => {
       const { response, body } = await terminalPromise;
       expect(response.status).toBe(200);
       const envelope = decodeRpcJson(body) as RpcEnvelope;
-      if (envelope.message.type !== "response" || envelope.message.requestId !== "schedule-two-wakes-with-first-failure" || !("error" in envelope.message))
+      if (
+        envelope.message.type !== "response" ||
+        envelope.message.requestId !==
+          "schedule-two-wakes-with-first-failure" ||
+        !("error" in envelope.message)
+      )
         throw new Error("Alarm RPC did not return the first wake failure");
       const failure = deserializeRpcFailure(envelope.message.error);
       expect(failure.message).toBe("Invocation authority parent is not active");
@@ -2198,7 +2401,15 @@ describe("DurableObjectBase server-driven alarm durability", () => {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          args: [{ epoch: "e1", phase: "quiesce", mode: "suspend", reason: "test", deadlineMs: 0 }],
+          args: [
+            {
+              epoch: "e1",
+              phase: "quiesce",
+              mode: "suspend",
+              reason: "test",
+              deadlineMs: 0,
+            },
+          ],
           __instanceToken: "token",
           __instanceId: "do:test:TestDO:test-key",
           __caller: caller,
@@ -2210,7 +2421,9 @@ describe("DurableObjectBase server-driven alarm durability", () => {
     const response = await responsePromise;
     expect(instance.releaseCalls).toBe(0);
     expect(response.status).toBe(500);
-    await expect(response.json()).resolves.toMatchObject({ error: { message: "owned alarm persistence failed" } });
+    await expect(response.json()).resolves.toMatchObject({
+      error: { message: "owned alarm persistence failed" },
+    });
   });
 
   it("retains invocation alarm failure when lifecycle concurrently drains the activation", async () => {
@@ -2234,7 +2447,15 @@ describe("DurableObjectBase server-driven alarm durability", () => {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          args: [{ epoch: "e1", phase: "quiesce", mode: "suspend", reason: "test", deadlineMs: 0 }],
+          args: [
+            {
+              epoch: "e1",
+              phase: "quiesce",
+              mode: "suspend",
+              reason: "test",
+              deadlineMs: 0,
+            },
+          ],
           __instanceToken: "token",
           __instanceId: "do:test:TestDO:test-key",
           __caller: caller,
@@ -2247,7 +2468,9 @@ describe("DurableObjectBase server-driven alarm durability", () => {
     await expect(invocation).rejects.toThrow("owned alarm persistence failed");
     const lifecycleResponse = await lifecycle;
     expect(lifecycleResponse.status).toBe(500);
-    await expect(lifecycleResponse.json()).resolves.toMatchObject({ error: { message: "owned alarm persistence failed" } });
+    await expect(lifecycleResponse.json()).resolves.toMatchObject({
+      error: { message: "owned alarm persistence failed" },
+    });
     expect(instance.releaseCalls).toBe(0);
   });
 });
@@ -2357,17 +2580,25 @@ describe("DurableObjectBase causal child RPC lifetime", () => {
 
 describe("DurableObjectBase schema readiness", () => {
   it("validates composed required tables from one exact catalog read and preserves missing-table diagnostics", async () => {
-    const {instance,sql}=await createTestDO(ComposedSchemaProbeDO);
-    const catalog=vi.spyOn(sql,"exec");
+    const { instance, sql } = await createTestDO(ComposedSchemaProbeDO);
+    const catalog = vi.spyOn(sql, "exec");
     try {
       instance.validateForTest();
-      expect(catalog.mock.calls.filter(([query])=>query.includes("sqlite_master"))).toHaveLength(1);
+      expect(
+        catalog.mock.calls.filter(([query]) => query.includes("sqlite_master")),
+      ).toHaveLength(1);
       sql.exec("DROP TABLE component_one");
       sql.exec("DROP TABLE component_two");
       catalog.mockClear();
-      expect(()=>instance.validateForTest()).toThrow("missing table(s): component_two, component_one, component_two");
-      expect(catalog.mock.calls.filter(([query])=>query.includes("sqlite_master"))).toHaveLength(1);
-    } finally { catalog.mockRestore(); }
+      expect(() => instance.validateForTest()).toThrow(
+        "missing table(s): component_two, component_one, component_two",
+      );
+      expect(
+        catalog.mock.calls.filter(([query]) => query.includes("sqlite_master")),
+      ).toHaveLength(1);
+    } finally {
+      catalog.mockRestore();
+    }
   });
   it("rejects pre-engine metadata instead of rebuilding it", async () => {
     const SQL = await initSqlJs();
@@ -2420,8 +2651,12 @@ describe("DurableObjectBase schema readiness", () => {
       }),
     );
     expect(response.status).toBe(200);
-    const envelope = await response.json() as RpcEnvelope;
-    if (envelope.message.type !== "response" || envelope.message.requestId !== "schema-workspace-1" || !("error" in envelope.message))
+    const envelope = (await response.json()) as RpcEnvelope;
+    if (
+      envelope.message.type !== "response" ||
+      envelope.message.requestId !== "schema-workspace-1" ||
+      !("error" in envelope.message)
+    )
       throw new Error("Schema readiness RPC did not return an error response");
     const failure = deserializeRpcFailure(envelope.message.error);
     expect(failure).toMatchObject({

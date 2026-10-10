@@ -1,3 +1,4 @@
+import { resolveChannelEndpoint } from "@workspace/pubsub";
 import { schemaRpcMock } from "@vibestudio/rpc/test-utils";
 import type { RpcCaller, RpcCallOptions } from "@vibestudio/rpc";
 import { describe, expect, it, vi } from "vitest";
@@ -15,6 +16,11 @@ interface Captured {
   publishOpts?: { attachments?: Array<Record<string, unknown>> };
 }
 
+const endpoint = {
+  source: "workers/pubsub-channel",
+  className: "ChannelDO",
+  objectKey: "chan-1",
+};
 function resolvedChannelTarget() {
   return durableObjectServiceFixture("chan-do", {
     origin: "workspace",
@@ -44,7 +50,7 @@ function makeClient(captured: Captured): ChannelClient {
       return undefined;
     },
   });
-  return new ChannelClient(rpc as never, "chan-1");
+  return new ChannelClient(rpc as never, endpoint);
 }
 
 describe("ChannelClient.send tier", () => {
@@ -65,7 +71,7 @@ describe("ChannelClient.send tier", () => {
         return undefined;
       }),
     });
-    const publish = new ChannelClient(rpc as never, "chan-1").publish(
+    const publish = new ChannelClient(rpc as never, endpoint).publish(
       "agent:1",
       "vibestudio.test",
       { ok: true },
@@ -158,7 +164,7 @@ describe("ChannelClient finite relationships", () => {
       }),
       stream,
     });
-    const client = new ChannelClient(rpc as never, "chan-1");
+    const client = new ChannelClient(rpc as never, endpoint);
     await expect(
       client.join({
         participantId: "agent-1",
@@ -190,13 +196,13 @@ describe("ChannelClient finite relationships", () => {
         return undefined;
       }),
     });
-    const client = new ChannelClient(rpc as never, "chan-1");
+    const client = new ChannelClient(rpc as never, endpoint);
 
     let settled = false;
     const leaving = client.leave("agent-1", 2).then(() => {
       settled = true;
     });
-    await vi.waitFor(() => expect(rpc.call).toHaveBeenCalledTimes(2));
+    await vi.waitFor(() => expect(rpc.call).toHaveBeenCalledTimes(1));
     expect(settled).toBe(false);
 
     acknowledgeLeave();
@@ -244,15 +250,21 @@ describe("ChannelClient finite observation lifetime", () => {
             });
           }
           if (method === "workers.resolveService")
-            return { ...resolvedChannelTarget(), targetId: "actual-channel" };
+            return {
+              ...resolvedChannelTarget(),
+              targetId:
+                "do:workers/pubsub-channel:ChannelDO:actual-channel-key",
+              objectKey: "actual-channel-key",
+            };
           return undefined;
         },
         stream: async () => new Response(),
       });
       const sending = new ChannelClient(
         caller,
-        "actual-channel-key",
-        undefined,
+        resolveChannelEndpoint(caller, "actual-channel-key", {
+          signal: controller.signal,
+        }),
         { signal: controller.signal },
       ).sendSignalEvent("actual-participant", "vibestudio.agentic.v1", {
         kind: "actual observation",

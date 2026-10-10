@@ -54,6 +54,11 @@ class TestAgentVessel extends AgentVesselBase {
     this.ensureIdentity();
     await this.subscriptions.subscribe({
       channelId,
+      channelRef: {
+        source: "workers/pubsub-channel",
+        className: "PubSubChannel",
+        objectKey: channelId,
+      },
       contextId: "ctx-one",
       descriptor: this.getParticipantInfo(),
       delivery,

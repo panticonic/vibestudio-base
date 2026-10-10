@@ -237,7 +237,7 @@ async function fixture(
       tools: [evalTool],
     },
   });
-  await harness.commit(tx => bindNativeChannelConversation(tx, root.id, { channelId: "channel:one", contextId: owner.contextId }), context);
+  await harness.commit(tx => bindNativeChannelConversation(tx, root.id, { channelId: "channel:one", contextId: owner.contextId, channelRef: { source: "workers/channel", className: "ChannelDO", objectKey: "channel:one" } }), context);
   scopes.set(root.id, "channel:one");
   faux.setResponses([
     fauxAssistantMessage(
@@ -400,7 +400,7 @@ describe("protected native Eval tool", () => {
       },
       context,
     );
-    await f.harness.commit(tx => bindNativeChannelConversation(tx, second.id, { channelId: "channel:two", contextId: owner.contextId }), context);
+    await f.harness.commit(tx => bindNativeChannelConversation(tx, second.id, { channelId: "channel:two", contextId: owner.contextId, channelRef: { source: "workers/channel", className: "ChannelDO", objectKey: "channel:two" } }), context);
     f.scopes.set(second.id, "channel:two");
     f.faux.setResponses([
       fauxAssistantMessage(

@@ -1,3 +1,4 @@
+import { durableObjectServiceFixture } from "@vibestudio/service-schemas/test-utils";
 import { schemaRpcMock } from "@vibestudio/rpc/test-utils";
 import { describe, expect, it, vi } from "vitest";
 import { CreateEntitySpecSchema } from "@vibestudio/service-schemas/runtime";
@@ -15,17 +16,49 @@ import { importAgentChannelKnowledge } from "./native-channel-knowledge.js";
 import type { ConversationId } from "@panticonic/pi-durable";
 
 function makeRpc(
-  impl?: (target: string, method: string, args: unknown[]) => Promise<unknown>
+  impl?: (target: string, method: string, args: unknown[]) => Promise<unknown>,
 ): AgentLaunchRpc & { wireCall: ReturnType<typeof vi.fn> } {
-  const wireCall = vi.fn(async (target: string, method: string, args: unknown[]) => {
-    if (impl) return impl(target, method, args);
-    if (target === "main" && method === "runtime.createEntity") {
-      const spec = args[0] as { contextId?: string };
-      return { id: "entity-1", kind: "do", source: { repoPath: "workers/agent-worker", effectiveVersion: "test" }, targetId: "target-1", contextId: spec.contextId ?? "ctx-minted", agentInitialization: { ok: true, participantId: "participant-1" } };
-    }
-    return { ok: true, participantId: "participant-1" };
-  });
-  return { ...schemaRpcMock({ call: (target, method, args) => wireCall(target, method, args) }), wireCall };
+  const wireCall = vi.fn(
+    async (target: string, method: string, args: unknown[]) => {
+      if (method === "workers.resolveService")
+        return durableObjectServiceFixture(
+          `do:workers/pubsub-channel:PubSubChannel:${args[1]}`,
+          {
+            origin: "workspace",
+            source: "workers/pubsub-channel",
+            name: "channel",
+            action: "provide",
+            presentation: { domain: "web", verb: "see" },
+            authority: { principals: ["code"] },
+            protocols: ["vibestudio.channel.v1"],
+            className: "PubSubChannel",
+            objectKey: String(args[1]),
+          },
+        );
+      if (impl) return impl(target, method, args);
+      if (target === "main" && method === "runtime.createEntity") {
+        const spec = args[0] as { contextId?: string };
+        return {
+          id: "entity-1",
+          kind: "do",
+          source: {
+            repoPath: "workers/agent-worker",
+            effectiveVersion: "test",
+          },
+          targetId: "target-1",
+          contextId: spec.contextId ?? "ctx-minted",
+          agentInitialization: { ok: true, participantId: "participant-1" },
+        };
+      }
+      return { ok: true, participantId: "participant-1" };
+    },
+  );
+  return {
+    ...schemaRpcMock({
+      call: (target, method, args) => wireCall(target, method, args),
+    }),
+    wireCall,
+  };
 }
 
 describe("agent launch primitive", () => {
@@ -42,7 +75,7 @@ describe("agent launch primitive", () => {
           handle: "agent",
         },
         stateArgs: { subagent: { runId: "run-1" } },
-      })
+      }),
     ).toEqual({
       kind: "do",
       execution: {
@@ -101,38 +134,68 @@ describe("agent launch primitive", () => {
       subscription: { ok: true, participantId: "participant-1" },
       contextId: "ctx-1",
     });
-    expect(rpc.wireCall).toHaveBeenNthCalledWith(1, "main", "runtime.createEntity", [
-      expect.objectContaining({
-        agentInitialization: {
-          channelId: "ch-1",
-          config: { handle: "agent", systemPrompt: "be direct", deterministicResponse: true },
-          replay: true,
-        },
-        stateArgs: expect.objectContaining({
-          agentConfig: expect.objectContaining({
-            model: "openai:gpt-5.3",
-            approvalLevel: 1,
+    expect(rpc.wireCall).toHaveBeenNthCalledWith(
+      1,
+      "main",
+      "runtime.createEntity",
+      [
+        expect.objectContaining({
+          agentInitialization: {
+            channelId: "ch-1",
+            config: {
+              handle: "agent",
+              systemPrompt: "be direct",
+              deterministicResponse: true,
+            },
+            replay: true,
+          },
+          stateArgs: expect.objectContaining({
+            agentConfig: expect.objectContaining({
+              model: "openai:gpt-5.3",
+              approvalLevel: 1,
+            }),
           }),
         }),
-      }),
-    ]);
+      ],
+    );
     expect(rpc.wireCall).toHaveBeenCalledTimes(1);
-    const spec = rpc.wireCall.mock.calls[0]![2][0] as { stateArgs: { agentConfig: unknown } };
-    expect(spec.stateArgs.agentConfig).toEqual({ model: "openai:gpt-5.3", approvalLevel: 1 });
+    const spec = rpc.wireCall.mock.calls[0]![2][0] as {
+      stateArgs: { agentConfig: unknown };
+    };
+    expect(spec.stateArgs.agentConfig).toEqual({
+      model: "openai:gpt-5.3",
+      approvalLevel: 1,
+    });
   });
 
   it("propagates initialization failures from the owning runtime without a second cleanup path", async () => {
-    const rpc = makeRpc(async () => { throw new Error("subscribe failed"); });
-    await expect(launchAgentIntoChannel(rpc, {
-      source: "workers/agent-worker", className: "AiChatWorker", key: "agent-1", channelId: "ch-1",
-    })).rejects.toThrow("subscribe failed");
+    const rpc = makeRpc(async () => {
+      throw new Error("subscribe failed");
+    });
+    await expect(
+      launchAgentIntoChannel(rpc, {
+        source: "workers/agent-worker",
+        className: "AiChatWorker",
+        key: "agent-1",
+        channelId: "ch-1",
+      }),
+    ).rejects.toThrow("subscribe failed");
     expect(rpc.wireCall).toHaveBeenCalledTimes(1);
   });
 
   it("refuses to subscribe an existing active agent into a different channel context", async () => {
     const rpc = makeRpc(async (_target, method) => {
       if (method === "runtime.createEntity") {
-        return { id: "entity-1", kind: "do", source: { repoPath: "workers/agent-worker", effectiveVersion: "test" }, targetId: "target-1", contextId: "ctx-original" };
+        return {
+          id: "entity-1",
+          kind: "do",
+          source: {
+            repoPath: "workers/agent-worker",
+            effectiveVersion: "test",
+          },
+          targetId: "target-1",
+          contextId: "ctx-original",
+        };
       }
       return { ok: true, participantId: "participant-1" };
     });
@@ -144,8 +207,10 @@ describe("agent launch primitive", () => {
         key: "agent-1",
         channelId: "ch-fork",
         contextId: "ctx-fork",
-      })
-    ).rejects.toThrow(/existing agent entity-1 in context ctx-original.*channel ch-fork.*ctx-fork/);
+      }),
+    ).rejects.toThrow(
+      /existing agent entity-1 in context ctx-original.*channel ch-fork.*ctx-fork/,
+    );
 
     expect(rpc.wireCall).toHaveBeenCalledTimes(1);
   });
@@ -153,8 +218,16 @@ describe("agent launch primitive", () => {
   it("imports native knowledge through the same stripped subscription config contract", async () => {
     const rpc = makeRpc();
 
-    const knowledge = { channelId: "parent", throughSequence: 42,
-      history: { source: { conversationId: 1 as ConversationId, at: null }, agent: {}, entries: [] }, anchors: [] };
+    const knowledge = {
+      channelId: "parent",
+      throughSequence: 42,
+      history: {
+        source: { conversationId: 1 as ConversationId, at: null },
+        agent: {},
+        entries: [],
+      },
+      anchors: [],
+    };
     await importAgentChannelKnowledge(rpc, "target-1", {
       operationId: "native-fork-1",
       parentChannelId: "parent",
@@ -168,16 +241,25 @@ describe("agent launch primitive", () => {
       },
     });
 
-    expect(rpc.wireCall).toHaveBeenCalledWith("target-1", "importChannelKnowledge", [
-      {
-        operationId: "native-fork-1",
-        parentChannelId: "parent",
-        channelId: "task-1",
-        contextId: "ctx-child",
-        knowledge,
-        config: { handle: "child", wakePolicy: "explicit" },
-      },
-    ]);
+    expect(rpc.wireCall).toHaveBeenCalledWith(
+      "target-1",
+      "importChannelKnowledge",
+      [
+        {
+          operationId: "native-fork-1",
+          parentChannelId: "parent",
+          channelId: "task-1",
+          channelRef: {
+            source: "workers/pubsub-channel",
+            className: "PubSubChannel",
+            objectKey: "task-1",
+          },
+          contextId: "ctx-child",
+          knowledge,
+          config: { handle: "child", wakePolicy: "explicit" },
+        },
+      ],
+    );
   });
 
   it.each([
@@ -190,7 +272,7 @@ describe("agent launch primitive", () => {
           {
             channelId: "ch-1",
             contextId: "ctx-1",
-          }
+          },
         ),
     ],
     [
@@ -204,14 +286,27 @@ describe("agent launch primitive", () => {
             parentChannelId: "parent",
             channelId: "task-1",
             contextId: "ctx-child",
-            knowledge: { channelId: "parent", throughSequence: 42,
-              history: { source: { conversationId: 1 as ConversationId, at: null }, agent: {}, entries: [] }, anchors: [] },
-          }
+            knowledge: {
+              channelId: "parent",
+              throughSequence: 42,
+              history: {
+                source: { conversationId: 1 as ConversationId, at: null },
+                agent: {},
+                entries: [],
+              },
+              anchors: [],
+            },
+          },
         ),
     ],
-  ])("rejects %s results without a participant identity", async (operation, invoke) => {
-    await expect(invoke()).rejects.toThrow(`${operation} returned no participant identity`);
-  });
+  ])(
+    "rejects %s results without a participant identity",
+    async (operation, invoke) => {
+      await expect(invoke()).rejects.toThrow(
+        `${operation} returned no participant identity`,
+      );
+    },
+  );
 
   it("unsubscribes through the deterministic target without resolving or reactivating it", async () => {
     const rpc = makeRpc();
@@ -222,19 +317,19 @@ describe("agent launch primitive", () => {
         className: "AiChatWorker",
         key: "agent-1",
         channelId: "ch-1",
-      })
+      }),
     ).resolves.toEqual({ ok: true, participantId: "participant-1" });
 
     expect(rpc.wireCall).toHaveBeenCalledOnce();
     expect(rpc.wireCall).toHaveBeenCalledWith(
       "do:workers/agent-worker:AiChatWorker:agent-1",
       "unsubscribeChannel",
-      ["ch-1"]
+      ["ch-1"],
     );
     expect(rpc.wireCall).not.toHaveBeenCalledWith(
       "main",
       "workers.resolveDurableObject",
-      expect.anything()
+      expect.anything(),
     );
   });
 
@@ -246,16 +341,20 @@ describe("agent launch primitive", () => {
         parentContextId: "ctx-parent",
         ownerEntityId: "do:agent:parent",
         targetKey: "subagent:run-1",
-      })
+      }),
     ).resolves.toEqual({ contextId: "ctx-child" });
 
-    expect(rpc.wireCall).toHaveBeenCalledWith("main", "runtime.createSubagentContext", [
-      {
-        parentContextId: "ctx-parent",
-        ownerEntityId: "do:agent:parent",
-        targetKey: "subagent:run-1",
-      },
-    ]);
+    expect(rpc.wireCall).toHaveBeenCalledWith(
+      "main",
+      "runtime.createSubagentContext",
+      [
+        {
+          parentContextId: "ctx-parent",
+          ownerEntityId: "do:agent:parent",
+          targetKey: "subagent:run-1",
+        },
+      ],
+    );
   });
 
   it("builds and publishes addressed user-style task seeds", async () => {
@@ -270,7 +369,11 @@ describe("agent launch primitive", () => {
 
     expect(event).toMatchObject({
       kind: "message.completed",
-      actor: { kind: "user", id: "parent-participant", displayName: "Subagent task" },
+      actor: {
+        kind: "user",
+        id: "parent-participant",
+        displayName: "Subagent task",
+      },
       payload: {
         role: "user",
         blocks: [{ type: "text", content: "audit this" }],
@@ -290,13 +393,17 @@ describe("agent launch primitive", () => {
         task: "audit this",
         senderMetadata: { type: "headless", name: "Subagent task" },
         createdAt: "2026-01-01T00:00:00.000Z",
-      })
+      }),
     ).resolves.toEqual({ id: 7 });
 
-    expect(channel.publishAgenticEvent).toHaveBeenCalledWith("parent-participant", event, {
-      idempotencyKey: "subagent-seed:run-1",
-      senderMetadata: { type: "headless", name: "Subagent task" },
-    });
+    expect(channel.publishAgenticEvent).toHaveBeenCalledWith(
+      "parent-participant",
+      event,
+      {
+        idempotencyKey: "subagent-seed:run-1",
+        senderMetadata: { type: "headless", name: "Subagent task" },
+      },
+    );
   });
 
   it("refuses to build an unaddressed agent task seed", () => {
@@ -306,7 +413,7 @@ describe("agent launch primitive", () => {
         childParticipantId: "",
         messageId: "subagent-seed:run-1",
         task: "audit this",
-      })
+      }),
     ).toThrow("Agent task seed requires a child participant identity");
   });
 
@@ -320,12 +427,17 @@ describe("agent launch primitive", () => {
         channelId: "ch-1",
         contextId: "ctx-1",
         config: { model: "openai:gpt-5.3", handle: "agent" },
-      }
+      },
     );
 
     expect(rpc.wireCall).toHaveBeenCalledWith("target-1", "subscribeChannel", [
       {
         channelId: "ch-1",
+        channelRef: {
+          source: "workers/pubsub-channel",
+          className: "PubSubChannel",
+          objectKey: "ch-1",
+        },
         contextId: "ctx-1",
         config: { handle: "agent" },
         replay: undefined,

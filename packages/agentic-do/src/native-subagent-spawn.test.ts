@@ -1,3 +1,4 @@
+import { durableObjectServiceFixture } from "@vibestudio/service-schemas/test-utils";
 import { createMainRpcCaller } from "@vibestudio/service-schemas/mainRpc";
 import { schemaRpcMock } from "@vibestudio/rpc/test-utils";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -40,7 +41,10 @@ import {
 } from "@workspace/agentic-protocol";
 import { contextIdForTargetKey } from "@vibestudio/shared/runtime/contextIdentity";
 import { AgentVesselBase } from "./agent-vessel.js";
-import { openPlatformAgentSession, retireBoundAgentSession } from "./native-agent-session.js";
+import {
+  openPlatformAgentSession,
+  retireBoundAgentSession,
+} from "./native-agent-session.js";
 import {
   bindNativeToolInvocation,
   type NativeInvocationExecution,
@@ -104,8 +108,12 @@ afterEach(async () => {
 });
 class SpawnVessel extends AgentVesselBase {
   // This harness models delivery by the trusted host mailbox driver.
-  protected override get rpcCallerId(): string { return "server"; }
-  protected override get rpcCallerKind(): string { return "server"; }
+  protected override get rpcCallerId(): string {
+    return "server";
+  }
+  protected override get rpcCallerKind(): string {
+    return "server";
+  }
   testHarness: Harness | null = null;
   activeEntity: JsonRepresentation<typeof entity> = detached(entity);
   readonly events = new Map<string, ChannelEvent[]>();
@@ -179,7 +187,8 @@ class SpawnVessel extends AgentVesselBase {
         harness: this.admittedAgentSession(),
         image: this.loadedImage(),
         rpc: this.rpc,
-        enqueueStart: (tx, publication) => this.enqueueNativeInvocationStart(tx, publication),
+        enqueueStart: (tx, publication) =>
+          this.enqueueNativeInvocationStart(tx, publication),
       },
       api,
       ctx,
@@ -225,6 +234,24 @@ class SpawnVessel extends AgentVesselBase {
           return {
             contextId: this.changedContext ? "foreign-context" : contextId,
           };
+        }
+        if (destination === "main" && method === "workers.resolveService") {
+          expect(args[0]).toBe("vibestudio.channel.v1");
+          const channel = String(args[1]);
+          return durableObjectServiceFixture(
+            `do:workers/pubsub-channel:PubSubChannel:${channel}`,
+            {
+              origin: "workspace",
+              source: "workers/pubsub-channel",
+              name: "pubsub-channel",
+              action: "provide",
+              presentation: { domain: "web", verb: "see" },
+              authority: { principals: ["code"] },
+              protocols: ["vibestudio.channel.v1"],
+              className: "PubSubChannel",
+              objectKey: channel,
+            },
+          );
         }
         if (destination === "main" && method === "runtime.createEntity") {
           const input = args[0] as {
@@ -436,6 +463,11 @@ class SpawnVessel extends AgentVesselBase {
     this.ensureIdentity();
     await this.subscriptions.subscribe({
       channelId,
+      channelRef: {
+        source: "workers/pubsub-channel",
+        className: "PubSubChannel",
+        objectKey: channelId,
+      },
       contextId: owner.contextId,
       descriptor: this.getParticipantInfo(),
       config,
@@ -537,7 +569,14 @@ async function fixture(
   const harness = await openPlatformAgentSession(
     async () => new MemoryStorage(),
     image,
-    createMainRpcCaller(schemaRpcMock({ call: async (_target, method) => method === "workspace-state.alarmSourceRegister" ? { entity: vessel.activeEntity, incarnation: owner.incarnation } : "accepted" })),
+    createMainRpcCaller(
+      schemaRpcMock({
+        call: async (_target, method) =>
+          method === "workspace-state.alarmSourceRegister"
+            ? { entity: vessel.activeEntity, incarnation: owner.incarnation }
+            : "accepted",
+      }),
+    ),
     {
       models,
       registry,
@@ -550,7 +589,15 @@ async function fixture(
   vessel.testHarness = harness;
   const conversation = await openNativeChannelConversation(
     harness,
-    { channelId, contextId: owner.contextId },
+    {
+      channelId,
+      channelRef: {
+        source: "workers/pubsub-channel",
+        className: "PubSubChannel",
+        objectKey: channelId,
+      },
+      contextId: owner.contextId,
+    },
     {
       model: { provider: "faux", modelId: "faux-1" },
       tools: [tool, cancellation, ...(options.tools ?? [])],
@@ -735,9 +782,7 @@ describe("native shipping subagent launch", () => {
         outcome: {
           status: "failed",
           error: {
-            message: expect.stringContaining(
-              "existing host-bound owner",
-            ),
+            message: expect.stringContaining("existing host-bound owner"),
           },
         },
       },
@@ -897,8 +942,8 @@ describe("native shipping subagent launch", () => {
     f.vessel.testHarness = null;
     const admission = vi
       .spyOn(
-        f.vessel as unknown as { agentSession(): Promise<Harness> },
-        "agentSession",
+        f.vessel as unknown as { restoreAgentSession(): Promise<Harness> },
+        "restoreAgentSession",
       )
       .mockImplementation(async () => {
         f.vessel.testHarness = f.harness;
@@ -922,8 +967,8 @@ describe("native shipping subagent launch", () => {
     );
     const admission = vi
       .spyOn(
-        f.vessel as unknown as { agentSession(): Promise<Harness> },
-        "agentSession",
+        f.vessel as unknown as { restoreAgentSession(): Promise<Harness> },
+        "restoreAgentSession",
       )
       .mockRejectedValue(original);
     try {
@@ -1428,7 +1473,15 @@ describe("native shipping subagent launch", () => {
     ]);
     const admitted = await submitNativeChannelDelivery(
       f.harness,
-      { channelId, contextId: owner.contextId },
+      {
+        channelId,
+        channelRef: {
+          source: "workers/pubsub-channel",
+          className: "PubSubChannel",
+          objectKey: channelId,
+        },
+        contextId: owner.contextId,
+      },
       {
         deliveryId: "parent-input-delivery",
         channelId,

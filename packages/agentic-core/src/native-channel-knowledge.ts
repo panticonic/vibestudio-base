@@ -1,3 +1,7 @@
+import {
+  resolveChannelEndpoint,
+  type ChannelEndpoint,
+} from "@workspace/pubsub";
 import { agentRpcMethods } from "./rpc-contract.js";
 import type { JsonValue } from "@panticonic/pi-chord";
 import type { ConversationHistory, EntryId } from "@panticonic/pi-durable";
@@ -41,6 +45,7 @@ export interface ImportChannelKnowledgeInput {
   readonly operationId: string;
   readonly parentChannelId: string;
   readonly channelId: string;
+  readonly channelRef: ChannelEndpoint;
   readonly contextId: string;
   readonly knowledge: NativeChannelKnowledge;
   readonly config?: AgentSubscriptionConfig | Record<string, unknown>;
@@ -49,8 +54,9 @@ export interface ImportChannelKnowledgeInput {
 export async function importAgentChannelKnowledge(
   rpc: AgentLaunchRpc,
   handleOrTargetId: AgentEntityHandle | string,
-  input: ImportChannelKnowledgeInput,
+  input: Omit<ImportChannelKnowledgeInput, "channelRef">,
 ): Promise<AgentSubscriptionResult> {
+  const channelRef = await resolveChannelEndpoint(rpc, input.channelId);
   return requireAgentSubscriptionResult(
     "importChannelKnowledge",
     await rpc.call(
@@ -59,6 +65,7 @@ export async function importAgentChannelKnowledge(
       [
         {
           ...input,
+          channelRef,
           config: toSubscriptionConfig(input.config),
         },
       ],

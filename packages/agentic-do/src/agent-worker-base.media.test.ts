@@ -17,7 +17,11 @@ class MediaAgent extends AgentWorkerBase {
     return { channelId: "chat", roster: [] };
   }
   protected override createChannelClient() {
-    const client = new ChannelClient(this.rpc, "chat");
+    const client = new ChannelClient(this.rpc, {
+      source: "workers/pubsub-channel",
+      className: "PubSubChannel",
+      objectKey: "chat",
+    });
     client.send = this.send;
     return client;
   }

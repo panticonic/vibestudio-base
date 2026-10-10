@@ -76,7 +76,7 @@ interface RetainedModelConnection {
  * ports. No old vessel, loop driver or executor participates in this owner.
  */
 export abstract class NativeAgentOwner extends PanelDurableObjectBase {
-  static override schemaVersion = 4;
+  static override schemaVersion = 5;
 
   private opening: Promise<Harness> | null = null;
   private harness: Harness | null = null;

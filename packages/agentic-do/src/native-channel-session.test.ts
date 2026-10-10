@@ -49,9 +49,16 @@ import {
   type NativeChannelIntake,
 } from "./native-channel-session.js";
 
-
 const context = BACKGROUND_CONTEXT;
-const binding = { channelId: "channel:one", contextId: "context:one" };
+const binding = {
+  channelId: "channel:one",
+  contextId: "context:one",
+  channelRef: {
+    source: "workers/channel",
+    className: "ChannelDO",
+    objectKey: "channel:one",
+  },
+};
 const owner = {
   runtimeId: "do:workers/agent:Agent:one",
   contextId: binding.contextId,
@@ -519,7 +526,11 @@ describe("native product channel admission", () => {
       Array.from({ length: 8 }, () =>
         openNativeChannelConversation(
           f.harness,
-          { ...binding, channelId: "channel:two" },
+          {
+            ...binding,
+            channelId: "channel:two",
+            channelRef: { ...binding.channelRef, objectKey: "channel:two" },
+          },
           f.agent,
           context,
         ),
@@ -548,7 +559,11 @@ describe("native product channel admission", () => {
 
   it("looks up only retained native conversation/channel bindings without creating or admitting work", async () => {
     const f = await fixture();
-    const absent = { ...binding, channelId: "channel:absent" };
+    const absent = {
+      ...binding,
+      channelId: "channel:absent",
+      channelRef: { ...binding.channelRef, objectKey: "channel:absent" },
+    };
     expect(
       await lookupNativeChannelConversation(f.harness, absent, context),
     ).toBeNull();
@@ -611,7 +626,14 @@ describe("native product channel admission", () => {
         )
       ).disposition,
     ).toBe("duplicate");
-    const target = { ...binding, channelId: "channel:other-owner-thread" };
+    const target = {
+      ...binding,
+      channelId: "channel:other-owner-thread",
+      channelRef: {
+        ...binding.channelRef,
+        objectKey: "channel:other-owner-thread",
+      },
+    };
     await openNativeChannelConversation(f.harness, target, f.agent, context);
     await expect(
       submitNativeChannelDelivery(
@@ -720,7 +742,15 @@ describe("native product channel admission", () => {
     await expect(
       openNativeChannelConversation(
         f.harness,
-        { channelId: "channel:foreign", contextId: "context:foreign" },
+        {
+          channelId: "channel:foreign",
+          contextId: "context:foreign",
+          channelRef: {
+            source: "workers/channel",
+            className: "ChannelDO",
+            objectKey: "channel:foreign",
+          },
+        },
         f.agent,
         context,
       ),
@@ -737,7 +767,11 @@ describe("native product channel admission", () => {
   it("rolls back both the channel directory and native creation/configuration on definitive rejection", async () => {
     const f = await fixture();
     f.storage.rejectConversation = true;
-    const second = { ...binding, channelId: "channel:two" };
+    const second = {
+      ...binding,
+      channelId: "channel:two",
+      channelRef: { ...binding.channelRef, objectKey: "channel:two" },
+    };
     await expect(
       openNativeChannelConversation(f.harness, second, f.agent, context),
     ).rejects.toBe(f.storage.original);
@@ -927,19 +961,33 @@ describe("native product channel admission", () => {
       if (field === "envelope")
         changed = {
           ...changed,
-          envelope: { kind: "log", event: { ...(first.envelope as { event: object }).event, payload: "different" } },
+          envelope: {
+            kind: "log",
+            event: {
+              ...(first.envelope as { event: object }).event,
+              payload: "different",
+            },
+          },
         };
       if (field === "sequence") changed = { ...changed, eventSequence: 5 };
       if (field === "context")
         changed.agenticContext.channelConfig.title = "different";
       if (field === "channel") {
-        bound = { ...binding, channelId: "channel:two" };
+        bound = {
+          ...binding,
+          channelId: "channel:two",
+          channelRef: { ...binding.channelRef, objectKey: "channel:two" },
+        };
         await openNativeChannelConversation(f.harness, bound, f.agent, context);
         changed = delivery("immutable", bound.channelId);
       }
       await expect(
         submitNativeChannelDelivery(f.harness, bound, changed, intake, context),
-      ).rejects.toThrow(field === "sequence" ? "immutable routing identity" : "immutable admission");
+      ).rejects.toThrow(
+        field === "sequence"
+          ? "immutable routing identity"
+          : "immutable admission",
+      );
       expect(
         (await f.storage.scanSubmissions({}, 10, undefined, context)).items,
       ).toHaveLength(1);
@@ -1653,7 +1701,11 @@ describe("native product channel admission", () => {
   });
   it("binds a genuinely staged ownerless history conversation atomically and rejects foreign or conflicting directories", async () => {
     const f = await fixture();
-    const target = { ...binding, channelId: "channel:history" };
+    const target = {
+      ...binding,
+      channelId: "channel:history",
+      channelRef: { ...binding.channelRef, objectKey: "channel:history" },
+    };
     const id = await f.harness.commit(async (tx) => {
       const fork = await tx.createConversation({
         ownership: { kind: "ownerless" },
@@ -1689,6 +1741,7 @@ describe("native product channel admission", () => {
           bindNativeChannelConversation(tx, id, {
             ...binding,
             channelId: "channel:other",
+            channelRef: { ...binding.channelRef, objectKey: "channel:other" },
           }),
         context,
       ),
@@ -1871,8 +1924,16 @@ describe("native product channel admission", () => {
       context,
     );
     await f.harness.runPass(context);
-    const ownFeedback = delivery("feedback-frontier-own", binding.channelId, 20);
-    const foreignFeedback = delivery("feedback-frontier-other", "channel:other", 99);
+    const ownFeedback = delivery(
+      "feedback-frontier-own",
+      binding.channelId,
+      20,
+    );
+    const foreignFeedback = delivery(
+      "feedback-frontier-other",
+      "channel:other",
+      99,
+    );
     await submitNativeChannelDelivery(
       f.harness,
       binding,
@@ -1977,13 +2038,13 @@ describe("ui feedback repair turns", () => {
     return f;
   }
   type Fixture = { conversation: { id: ConversationId }; storage: Storage };
-  function turnOf(
-    f: Fixture,
-    submissionId: SubmissionId,
-  ): TurnId {
+  function turnOf(f: Fixture, submissionId: SubmissionId): TurnId {
     return nativeTurnId(f.conversation.id, submissionId);
   }
-  function failureOf(occurrenceKey: string, turnId: TurnId): NativeChannelIntake {
+  function failureOf(
+    occurrenceKey: string,
+    turnId: TurnId,
+  ): NativeChannelIntake {
     const intake = feedback(occurrenceKey);
     if (intake.kind !== "feedback") throw new Error("unreachable");
     return {
@@ -1991,23 +2052,21 @@ describe("ui feedback repair turns", () => {
       payload: {
         ...intake.payload,
         category: "props_invalid",
-        refs: { messageId: `message:${occurrenceKey}` as never, component: "Calculator", turnId },
+        refs: {
+          messageId: `message:${occurrenceKey}` as never,
+          component: "Calculator",
+          turnId,
+        },
       },
     };
   }
-  async function placedText(
-    f: Fixture,
-    submissionId: number,
-  ): Promise<string> {
+  async function placedText(f: Fixture, submissionId: number): Promise<string> {
     const record = await f.storage.submission(submissionId as never, context);
     const content = (await f.storage.entry(record!.entry!, context))?.entry
       .model?.[0]?.content;
     return typeof content === "string" ? content : JSON.stringify(content);
   }
-  async function submissionType(
-    f: Fixture,
-    submissionId: number,
-  ) {
+  async function submissionType(f: Fixture, submissionId: number) {
     return (await f.storage.submission(submissionId as never, context))?.type;
   }
 
@@ -2039,8 +2098,12 @@ describe("ui feedback repair turns", () => {
     await f.harness.runPass(context);
     expect(f.faux.state.callCount).toBe(2);
     const notice = await placedText(f, woken.submissionId);
-    expect(notice).toContain("[ui-feedback] Automatic notice from the chat panel");
-    expect(notice).toContain("Calculator in message message:calc:one rejected props");
+    expect(notice).toContain(
+      "[ui-feedback] Automatic notice from the chat panel",
+    );
+    expect(notice).toContain(
+      "Calculator in message message:calc:one rejected props",
+    );
     expect(
       (await retainedNativeChannelDelivery(f.harness, "failure", context))
         ?.feedbackOccurrenceKeys,
@@ -2160,7 +2223,10 @@ describe("ui feedback repair turns", () => {
       f.harness,
       binding,
       delivery("foreign"),
-      failureOf("calc:foreign", nativeTurnId(999999 as ConversationId, 1 as SubmissionId)),
+      failureOf(
+        "calc:foreign",
+        nativeTurnId(999999 as ConversationId, 1 as SubmissionId),
+      ),
       context,
     );
     const unknownInput = await submitNativeChannelDelivery(
@@ -2200,7 +2266,11 @@ describe("ui feedback repair turns", () => {
     );
     expect(await submissionType(f, first.submissionId)).toBe("input");
     expect(await submissionType(f, second.submissionId)).toBe("write");
-    const inbox = await f.harness.snapshot(InboxDoc, f.conversation.id, context);
+    const inbox = await f.harness.snapshot(
+      InboxDoc,
+      f.conversation.id,
+      context,
+    );
     const inputs = inbox!.items.filter((item) => item.mode !== "write");
     expect(inputs).toEqual([
       expect.objectContaining({ id: first.submissionId, mode: "followUp" }),
@@ -2241,7 +2311,11 @@ describe("ui feedback repair turns", () => {
       context,
     );
     expect(await submissionType(f, joined.submissionId)).toBe("input");
-    const inbox = await f.harness.snapshot(InboxDoc, f.conversation.id, context);
+    const inbox = await f.harness.snapshot(
+      InboxDoc,
+      f.conversation.id,
+      context,
+    );
     expect(inbox?.items.filter((item) => item.mode !== "write")).toEqual([
       expect.objectContaining({
         id: joined.submissionId,
@@ -2261,41 +2335,99 @@ describe("ui feedback repair turns", () => {
   });
 });
 
-
 describe("native canonical channel admission", () => {
   it("retains a stopped input across process restart and replays without restarting its submission", async () => {
     const directory = await mkdtemp(join(tmpdir(), "native-live-replay-"));
     const path = join(directory, "agent.sqlite");
     const preparation: Partial<HarnessOptions> = {
-      prepareCommit: (tx, staged) => prepareNativeChannelReadReceipts(tx, staged.submissions, async () => {}),
+      prepareCommit: (tx, staged) =>
+        prepareNativeChannelReadReceipts(
+          tx,
+          staged.submissions,
+          async () => {},
+        ),
     };
     try {
       const f = await fixture(await openNodeSqliteStorage(path), preparation);
       const retained = messageDelivery("live-stop-reopen");
       const live = retained;
-      const original = await submitNativeChannelDelivery(f.harness, binding, live, { kind: "input", content: "original" }, context);
+      const original = await submitNativeChannelDelivery(
+        f.harness,
+        binding,
+        live,
+        { kind: "input", content: "original" },
+        context,
+      );
       await f.harness.runPass(context);
-      const source = await retainedNativeChannelSourceMessage(f.harness, live, "message:one", context);
+      const source = await retainedNativeChannelSourceMessage(
+        f.harness,
+        live,
+        "message:one",
+        context,
+      );
       expect(source?.entryId).not.toBeNull();
       await f.conversation.abort(context, { background: true });
       await f.harness.close(context);
       sessions.splice(sessions.indexOf(f.harness), 1);
-      const reopened = await fixture(await openNodeSqliteStorage(path), preparation);
+      const reopened = await fixture(
+        await openNodeSqliteStorage(path),
+        preparation,
+      );
       expect(reopened.conversation.id).toBe(f.conversation.id);
-      expect(await retainedNativeChannelOriginatingInput(reopened.harness, original.submissionId, context)).toMatchObject({ eventSequence: 10 });
-      const retainedReplay = { ...retained, deliveryId: "reattached-after-stop", subscriptionRevision: 4,
-        envelope: { ...(retained.envelope as object), phase: "replay" } };
-      expect(await submitNativeChannelDelivery(reopened.harness, binding, retainedReplay, { kind: "input", content: "must not restart" }, context)).toMatchObject({
-        submissionId: original.submissionId, conversationId: original.conversationId, disposition: "duplicate",
+      expect(
+        await retainedNativeChannelOriginatingInput(
+          reopened.harness,
+          original.submissionId,
+          context,
+        ),
+      ).toMatchObject({ eventSequence: 10 });
+      const retainedReplay = {
+        ...retained,
+        deliveryId: "reattached-after-stop",
+        subscriptionRevision: 4,
+        envelope: { ...(retained.envelope as object), phase: "replay" },
+      };
+      expect(
+        await submitNativeChannelDelivery(
+          reopened.harness,
+          binding,
+          retainedReplay,
+          { kind: "input", content: "must not restart" },
+          context,
+        ),
+      ).toMatchObject({
+        submissionId: original.submissionId,
+        conversationId: original.conversationId,
+        disposition: "duplicate",
       });
-      const recovered = await retainedNativeChannelSourceMessage(reopened.harness, retainedReplay, "message:one", context);
-      expect(recovered).toMatchObject({ entryId: source!.entryId, submissionId: original.submissionId, originalSequence: 10 });
-      expect(await retainedNativeChannelOriginatingInput(reopened.harness, original.submissionId, context)).toMatchObject({ eventSequence: 10 });
-      expect((await reopened.storage.scanSubmissions({}, 10, undefined, context)).items).toHaveLength(1);
+      const recovered = await retainedNativeChannelSourceMessage(
+        reopened.harness,
+        retainedReplay,
+        "message:one",
+        context,
+      );
+      expect(recovered).toMatchObject({
+        entryId: source!.entryId,
+        submissionId: original.submissionId,
+        originalSequence: 10,
+      });
+      expect(
+        await retainedNativeChannelOriginatingInput(
+          reopened.harness,
+          original.submissionId,
+          context,
+        ),
+      ).toMatchObject({ eventSequence: 10 });
+      expect(
+        (await reopened.storage.scanSubmissions({}, 10, undefined, context))
+          .items,
+      ).toHaveLength(1);
       await reopened.harness.runPass(context);
       expect(reopened.faux.state.callCount).toBe(0);
     } finally {
-      await Promise.all(sessions.splice(0).map(session => session.close(context)));
+      await Promise.all(
+        sessions.splice(0).map((session) => session.close(context)),
+      );
       await rm(directory, { recursive: true, force: true });
     }
   });
@@ -2304,22 +2436,58 @@ describe("native canonical channel admission", () => {
     const retained = messageDelivery("invalid-canonical-cursor");
     const envelope = retained.envelope as { event: Record<string, unknown> };
     for (const id of [-1, 999, 1.5]) {
-      await expect(submitNativeChannelDelivery(f.harness, binding, {
-        ...retained, envelope: { kind: "log", phase: "live", event: { ...envelope.event, id } },
-      }, { kind: "input", content: "must not be admitted" }, context)).rejects.toThrow(/immutable routing identity/);
+      await expect(
+        submitNativeChannelDelivery(
+          f.harness,
+          binding,
+          {
+            ...retained,
+            envelope: {
+              kind: "log",
+              phase: "live",
+              event: { ...envelope.event, id },
+            },
+          },
+          { kind: "input", content: "must not be admitted" },
+          context,
+        ),
+      ).rejects.toThrow(/immutable routing identity/);
     }
-    expect((await f.storage.scanSubmissions({}, 10, undefined, context)).items).toHaveLength(0);
+    expect(
+      (await f.storage.scanSubmissions({}, 10, undefined, context)).items,
+    ).toHaveLength(0);
   });
 
   it("rejects a changed cursor for an already admitted immutable envelope", async () => {
     const f = await fixture();
     const original = messageDelivery("canonical-cursor-conflict");
-    await submitNativeChannelDelivery(f.harness, binding, original, { kind: "input", content: "original" }, context);
+    await submitNativeChannelDelivery(
+      f.harness,
+      binding,
+      original,
+      { kind: "input", content: "original" },
+      context,
+    );
     const envelope = original.envelope as { event: Record<string, unknown> };
-    await expect(submitNativeChannelDelivery(f.harness, binding, {
-      ...original, eventSequence: 11,
-      envelope: { kind: "log", phase: "replay", event: { ...envelope.event, id: 11 } },
-    }, { kind: "input", content: "must not be admitted" }, context)).rejects.toThrow(/immutable|changed/);
-    expect((await f.storage.scanSubmissions({}, 10, undefined, context)).items).toHaveLength(1);
+    await expect(
+      submitNativeChannelDelivery(
+        f.harness,
+        binding,
+        {
+          ...original,
+          eventSequence: 11,
+          envelope: {
+            kind: "log",
+            phase: "replay",
+            event: { ...envelope.event, id: 11 },
+          },
+        },
+        { kind: "input", content: "must not be admitted" },
+        context,
+      ),
+    ).rejects.toThrow(/immutable|changed/);
+    expect(
+      (await f.storage.scanSubmissions({}, 10, undefined, context)).items,
+    ).toHaveLength(1);
   });
 });

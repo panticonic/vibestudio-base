@@ -1,3 +1,5 @@
+import type { RpcCaller } from "@vibestudio/rpc";
+import type { ChannelEndpoint } from "@workspace/pubsub";
 import {
   AGENTIC_EVENT_PAYLOAD_KIND,
   AGENTIC_PROTOCOL_VERSION,
@@ -77,7 +79,14 @@ export abstract class NativeChannelOwner<
   private readonly nativeModelRegistry = createProtectedNativeModels();
   private readonly nativeDefinitions = new Map<string, Configuration>();
   private readonly nativeChannels = new Map<string, Promise<Conversation>>();
-  private readonly nativeChannelClients = new Map<string, ChannelClient>();
+  private readonly nativeChannelClients = new Map<
+    string,
+    {
+      endpoint: Promise<ChannelEndpoint>;
+      client: ChannelClient;
+      rpc: RpcCaller;
+    }
+  >();
   private readonly nativePublications = createNativeChannelPublication({
     onSuccessfulAnswer: (modelRef) =>
       this.runDetached(() => this.onNativeSuccessfulAnswer(modelRef)),
@@ -110,6 +119,10 @@ export abstract class NativeChannelOwner<
 
   /** Membership is product truth; addressed supervision channels do not execute here. */
   protected abstract nativeReasoningChannelIds(): readonly string[];
+
+  protected abstract channelEndpoint(
+    channelId: string,
+  ): Promise<import("@workspace/pubsub").ChannelEndpoint>;
 
   /** Product facts join Pi's original admission and settlement transaction. */
   protected async prepareNativeProductCommit(
@@ -174,14 +187,18 @@ export abstract class NativeChannelOwner<
   protected async admittedNativeChannelConversation(
     channelId: string,
   ): Promise<Conversation | null> {
-    const harness = this.existingAgentSession() ?? (await this.restoreAgentSession());
+    const harness =
+      this.existingAgentSession() ?? (await this.restoreAgentSession());
     const owner = await retainedAgentExecutionOwner(
       harness,
       BACKGROUND_CONTEXT,
     );
     return lookupNativeChannelConversation(
       harness,
-      { channelId, contextId: owner.contextId },
+      {
+        channelId,
+        contextId: owner.contextId,
+      },
       BACKGROUND_CONTEXT,
     );
   }
@@ -378,9 +395,13 @@ export abstract class NativeChannelOwner<
               connection: observed,
               send: (data, ctx) =>
                 this.runDetached(() =>
-                  new ChannelClient(this.agentRpc, channelId, undefined, {
-                    signal: ctx.abortSignal,
-                  }).sendSignalEvent(
+                  new ChannelClient(
+                    this.agentRpc,
+                    this.channelEndpoint(channelId),
+                    {
+                      signal: ctx.abortSignal,
+                    },
+                  ).sendSignalEvent(
                     this.rpcSelfId,
                     AGENTIC_EVENT_PAYLOAD_KIND,
                     {
@@ -413,12 +434,22 @@ export abstract class NativeChannelOwner<
     };
   }
 
+  protected invalidateChannelClientEndpoint(
+    channelId: string,
+    endpoint: Promise<ChannelEndpoint>,
+  ): void {
+    if (this.nativeChannelClients.get(channelId)?.endpoint === endpoint)
+      this.nativeChannelClients.delete(channelId);
+  }
+
   private nativeChannelClient(channelId: string): ChannelClient {
-    let client = this.nativeChannelClients.get(channelId);
-    if (!client) {
-      client = new ChannelClient(this.agentRpc, channelId);
-      this.nativeChannelClients.set(channelId, client);
-    }
+    const endpoint = this.channelEndpoint(channelId);
+    const rpc = this.agentRpc;
+    const current = this.nativeChannelClients.get(channelId);
+    if (current?.endpoint === endpoint && current.rpc === rpc)
+      return current.client;
+    const client = new ChannelClient(rpc, endpoint);
+    this.nativeChannelClients.set(channelId, { endpoint, client, rpc });
     return client;
   }
 
@@ -435,7 +466,8 @@ export abstract class NativeChannelOwner<
       image: this.loadedImage(),
 
       rpc: this.agentExecutionRpc,
-      enqueueStart: (tx, publication) => this.enqueueNativeInvocationStart(tx, publication),
+      enqueueStart: (tx, publication) =>
+        this.enqueueNativeInvocationStart(tx, publication),
     };
   }
 
@@ -486,7 +518,10 @@ export abstract class NativeChannelOwner<
         const owner = await retainedAgentExecutionOwner(harness, context);
         const existing = await lookupNativeChannelConversation(
           harness,
-          { channelId, contextId: owner.contextId },
+          {
+            channelId,
+            contextId: owner.contextId,
+          },
           context,
         );
         if (existing)
@@ -508,7 +543,11 @@ export abstract class NativeChannelOwner<
           throw new Error("Native channel lost its executable definition");
         const conversation = await openNativeChannelConversation(
           harness,
-          { channelId, contextId: owner.contextId },
+          {
+            channelId,
+            channelRef: await this.channelEndpoint(channelId),
+            contextId: owner.contextId,
+          },
           {
             ...definition.agent,
             extensions: [...(definition.agent.extensions ?? []), extension],
@@ -556,7 +595,11 @@ export abstract class NativeChannelOwner<
     const owner = await retainedAgentExecutionOwner(harness, context);
     return submitNativeChannelDelivery(
       harness,
-      { channelId: targetChannelId, contextId: owner.contextId },
+      {
+        channelId: targetChannelId,
+        channelRef: await this.channelEndpoint(targetChannelId),
+        contextId: owner.contextId,
+      },
       delivery,
       intake,
       context,

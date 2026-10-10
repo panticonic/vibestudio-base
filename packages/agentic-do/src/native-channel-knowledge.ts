@@ -239,7 +239,8 @@ export async function exportNativeChannelKnowledge(
       const event = entry.data["event"] as unknown as ChannelEvent;
       if (
         typeof event.messageId !== "string" ||
-        (!Number.isSafeInteger(event.id) || event.id < 0)
+        !Number.isSafeInteger(event.id) ||
+        event.id < 0
       )
         throw new Error(
           "Native passive knowledge has no exact canonical source event",
@@ -594,6 +595,7 @@ export async function importNativeChannelKnowledge(
           }
           await bindNativeChannelConversation(tx, conversationId, {
             channelId: request.channelId,
+            channelRef: request.channelRef,
             contextId: request.contextId,
           });
           const anchors = request.knowledge.anchors.map((anchor) => {

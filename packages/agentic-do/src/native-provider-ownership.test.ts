@@ -131,7 +131,11 @@ async function fixture(
   });
   const caller = { callerId: providerId, callerKind: "do" as const };
   const rpc: RpcCaller = schemaRpcMock({
-    async call(target: string, method: string, args: unknown[]): Promise<unknown> {
+    async call(
+      target: string,
+      method: string,
+      args: unknown[],
+    ): Promise<unknown> {
       if (target === "main" && method === "workers.resolveService")
         return durableObjectServiceFixture(channelCaller.callerId);
       if (target !== channelCaller.callerId)
@@ -142,7 +146,11 @@ async function fixture(
       throw Error("Finite provider fixture cannot stream");
     },
   });
-  vessel.instance.client = new ChannelClient(rpc, channelId);
+  vessel.instance.client = new ChannelClient(rpc, {
+    source: "workers/pubsub-channel",
+    className: "PubSubChannel",
+    objectKey: channelId,
+  });
   return {
     vessel,
     provider,

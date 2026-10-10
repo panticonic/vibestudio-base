@@ -133,7 +133,7 @@ async function open(
     context,
   );
   sessions.push(harness);
-  const root = await openNativeChannelConversation(harness, { channelId: "channel:one", contextId: owner.contextId }, { model: { provider: "faux", modelId: state.faux.getModel().id } }, context);
+  const root = await openNativeChannelConversation(harness, { channelId: "channel:one", contextId: owner.contextId, channelRef: { source: "workers/channel", className: "ChannelDO", objectKey: "channel:one" } }, { model: { provider: "faux", modelId: state.faux.getModel().id } }, context);
   return { harness, root };
 }
 
@@ -267,7 +267,7 @@ describe("native invocation source", () => {
       context,
     );
     sessions.push(harness);
-    const binding = { channelId: "channel:one", contextId: owner.contextId };
+    const binding = { channelId: "channel:one", contextId: owner.contextId, channelRef: { source: "workers/channel", className: "ChannelDO", objectKey: "channel:one" } };
     const conversation = await openNativeChannelConversation(
       harness,
       binding,
@@ -419,7 +419,7 @@ describe("native invocation source", () => {
       context,
     );
     sessions.push(harness);
-    const binding = { channelId: "channel:one", contextId: owner.contextId };
+    const binding = { channelId: "channel:one", contextId: owner.contextId, channelRef: { source: "workers/channel", className: "ChannelDO", objectKey: "channel:one" } };
     const conversation = await openNativeChannelConversation(
       harness,
       binding,
