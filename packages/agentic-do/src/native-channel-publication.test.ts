@@ -13,6 +13,7 @@ import {
   type AssistantMessage,
 } from "@panticonic/pi-ai";
 import { BACKGROUND_CONTEXT } from "@panticonic/pi-chord/context";
+import type { JsonValue } from "@panticonic/pi-chord";
 import {
   createRegistry,
   defineExtension,
@@ -22,14 +23,18 @@ import {
   Harness,
   MemoryStorage,
   StorageRejected,
+  defineDoc,
+  type JsonObject,
   type Storage,
   type StorageWrite,
+  type TaskId,
 } from "@panticonic/pi-durable";
 import { openNodeSqliteStorage } from "@panticonic/pi-durable/storage/sqlite/node";
 import {
   agenticEventSchema,
   eventKindSchemas,
   type AgenticEvent,
+  type TurnId,
 } from "@workspace/agentic-protocol";
 import {
   createNativeChannelPublication,
@@ -196,6 +201,25 @@ async function publicationTasks(harness: Harness) {
     await harness.commit((tx) => tx.scanTasks({}, 100), context)
   ).items.filter((task) => task.kind === "vibestudio.channel-publication");
 }
+
+const legacyProjectionDocument = defineDoc<JsonObject>({
+  kind: "vibestudio.native-channel-projection",
+  version: 1,
+  scope: "conversation",
+  history: "latest",
+  fork: "initial",
+  initial: () => ({ binding: null, tail: null }),
+  checkpointWhen: () => true,
+});
+const projectionV2Document = defineDoc<JsonObject>({
+  kind: "vibestudio.native-channel-projection",
+  version: 2,
+  scope: "conversation",
+  history: "latest",
+  fork: "initial",
+  initial: () => ({ binding: null, inheritedFrontier: null, tails: {} }),
+  checkpointWhen: () => true,
+});
 
 describe("native run activity publication", () => {
   it("opens before the provider produces text and remains interruptible until provider cancellation joins", async () => {
@@ -802,6 +826,140 @@ describe("exact native answer publication observation", () => {
 });
 
 describe("native channel publication ownership", () => {
+  it("partitions a persisted legacy publication chain by destination and rejects missing legacy debt", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "native-publication-legacy-"));
+    directories.push(directory);
+    const databasePath = join(directory, "legacy.sqlite");
+    const oldStorage = await openNodeSqliteStorage(databasePath);
+    const oldPublication = createNativeChannelPublication({
+      publish: async () => ({ id: 1 }),
+    });
+    const oldModels = createModels();
+    const oldFaux = fauxProvider();
+    oldModels.setProvider(oldFaux.provider);
+    const oldRegistry = createRegistry();
+    const oldExtension = defineExtension({
+      name: "legacy-publication",
+      tasks: [oldPublication.task],
+    });
+    oldRegistry.install(oldExtension);
+    const oldHarness = await Harness.open(
+      oldStorage,
+      { models: oldModels, registry: oldRegistry, publishWake: async () => {} },
+      context,
+    );
+    const oldConversation = await oldHarness.root(context, {
+      agent: {
+        model: { provider: "faux", modelId: oldFaux.getModel().id },
+        extensions: [oldExtension],
+      },
+    });
+    const first = {
+      kind: "turn.opened" as const,
+      actor: binding.actor,
+      turnId: "turn:legacy-first" as TurnId,
+      payload: { protocol: "agentic.trajectory.v1" as const },
+      createdAt: "2026-10-01T00:00:00.000Z",
+    };
+    const second = {
+      ...first,
+      turnId: "turn:legacy-second" as TurnId,
+    };
+    const firstJson = JSON.parse(JSON.stringify(first)) as JsonValue;
+    const secondJson = JSON.parse(JSON.stringify(second)) as JsonValue;
+    const [a1, b1] = await oldConversation.commit(async (tx) => {
+      const state = await tx.doc(
+        legacyProjectionDocument,
+        oldConversation.id,
+      );
+      state["binding"] = JSON.parse(JSON.stringify(binding)) as JsonValue;
+      const a = await tx.createTask(
+        oldPublication.task,
+        {
+          channelId: "channel:one",
+          participantId: "participant:one",
+          previousTask: null,
+          events: [{ event: firstJson, key: "legacy:a1" }],
+          terminal: null,
+          terminalCreatedAt: null,
+        },
+        {
+          conversationId: oldConversation.id,
+          ownership: { kind: "conversation" },
+          background: true,
+        },
+      );
+      const b = await tx.createTask(
+        oldPublication.task,
+        {
+          channelId: "channel:other",
+          participantId: "participant:other",
+          previousTask: a,
+          events: [{ event: secondJson, key: "legacy:b1" }],
+          terminal: null,
+          terminalCreatedAt: null,
+        },
+        {
+          conversationId: oldConversation.id,
+          ownership: { kind: "conversation" },
+          background: true,
+        },
+      );
+      state["tail"] = b;
+      return [a, b] as const;
+    }, context);
+    await oldHarness.runPass(context);
+    await oldHarness.runPass(context);
+    expect((await oldHarness.getTask(a1, context))?.state.status).toBe("terminal");
+    expect((await oldHarness.getTask(b1, context))?.state.status).toBe("terminal");
+    await oldHarness.close(context);
+
+    const storage = await openNodeSqliteStorage(databasePath);
+    const f = await fixture({ storage, policy: "all" });
+    const answer = await f.append("legacy tail migration");
+    const a2 = (await publicationTasks(f.harness)).find(
+      (task) =>
+        task.id !== a1 &&
+        (task.input as { channelId?: string }).channelId === "channel:one" &&
+        (task.input as { events?: { event?: { kind?: string } }[] }).events?.some(
+          (item) => item.event?.kind === "message.completed",
+        ),
+    );
+    expect(a2?.input).toMatchObject({ previousTask: b1 });
+    expect(answer.id).toBeGreaterThan(0);
+    await f.harness.runPass(context);
+    expect((await f.harness.getTask(a2!.id, context))?.state.outcome).toMatchObject({
+      status: "completed",
+    });
+    const migrated = await f.harness.commit(async (tx) =>
+      JSON.parse(
+        JSON.stringify(await tx.doc(projectionV2Document, f.conversation.id)),
+      ) as JsonObject,
+    context);
+    expect(migrated["inheritedFrontier"]).toBe(b1);
+    expect(migrated["tails"]).toMatchObject({
+      [JSON.stringify(["channel:one", "participant:one"])]: a2?.id,
+    });
+
+    await f.harness.commit(async (tx) => {
+      const state = await tx.doc(projectionV2Document, f.conversation.id);
+      state["inheritedFrontier"] =
+        999999 as TaskId;
+      const tails = state["tails"] as Record<string, JsonValue>;
+      delete tails[JSON.stringify(["channel:one", "participant:one"])];
+    }, context);
+    await f.append("must reject lost legacy debt");
+    await f.harness.runPass(context);
+    const broken = (await publicationTasks(f.harness)).at(-1)!;
+    expect(broken.state).toMatchObject({
+      status: "waiting",
+      condition: { kind: "failure" },
+    });
+    await expect(f.harness.waitForTask(broken.id, context)).rejects.toThrow(
+      "Native publication lost its ordered predecessor",
+    );
+  });
+
   it("addresses a child's actual final report to its retained supervisor without forwarding tool progress", async () => {
     const f = await fixture({ reportTo: "supervisor:one" });
     await f.append("Checking the files", { stopReason: "toolUse" });
@@ -1708,7 +1866,7 @@ describe("native channel publication ownership", () => {
         publication.bind(tx, id, {
           ...binding,
           channelId: target.channelId,
-          policy: "notify-only",
+          policy: "all",
         }),
     );
     const original: NativeChannelDelivery = {
@@ -1813,8 +1971,10 @@ describe("native channel publication ownership", () => {
       ),
     ).toMatchObject({ entryId: record?.entry, readProjected: true });
     await harness.runPass(context);
-    expect(accepted).toHaveLength(1);
-    expect(accepted[0]).toMatchObject({
+    const sourceReads = () =>
+      accepted.filter((item) => item.event.kind === "message.read");
+    expect(sourceReads()).toHaveLength(1);
+    expect(sourceReads()[0]).toMatchObject({
       channelId: "channel:source",
       participantId: original.participantId,
       event: {
@@ -1824,6 +1984,13 @@ describe("native channel publication ownership", () => {
       },
     });
     expect(agenticEventSchema.safeParse(accepted[0]!.event).success).toBe(true);
+    const responseTask = (await publicationTasks(harness)).find(
+      (task) =>
+        (task.input as { channelId?: string }).channelId ===
+        "channel:response",
+    );
+    expect(responseTask?.input).toMatchObject({ previousTask: null });
+    expect(accepted.some((item) => item.channelId === "channel:response")).toBe(true);
     const failed = (await publicationTasks(harness))[0]!;
     expect(failed.state).toMatchObject({
       status: "waiting",
@@ -1838,7 +2005,7 @@ describe("native channel publication ownership", () => {
     )
       throw new Error("No retained read repair incident");
     await harness.runPass(context);
-    expect(accepted).toHaveLength(1);
+    expect(sourceReads()).toHaveLength(1);
     expect(
       await harness.retryTask(
         failed.id,
@@ -1847,8 +2014,8 @@ describe("native channel publication ownership", () => {
       ),
     ).toBe("queued");
     await harness.runPass(context);
-    expect(accepted).toHaveLength(2);
-    expect(accepted[1]).toEqual(accepted[0]);
+    expect(sourceReads()).toHaveLength(2);
+    expect(sourceReads()[1]).toEqual(sourceReads()[0]);
     await submitNativeChannelDelivery(
       harness,
       target,
@@ -1857,7 +2024,7 @@ describe("native channel publication ownership", () => {
       context,
     );
     await harness.runPass(context);
-    expect(accepted).toHaveLength(2);
+    expect(sourceReads()).toHaveLength(2);
     expect(conversation.id).toBe(admitted.conversationId);
   });
 });

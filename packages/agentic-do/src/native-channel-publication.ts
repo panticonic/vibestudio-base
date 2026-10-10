@@ -13,6 +13,7 @@ import {
   type EntryId,
   type Harness,
   type HarnessOptions,
+  type JsonObject,
   type RunningTask,
   type TaskId,
   type TaskRuntime,
@@ -70,13 +71,53 @@ interface PublicationCheckpoint {
   index: number;
   events: { event: JsonValue; key: string }[] | null;
 }
-const Projection = defineDoc<{ binding: JsonValue; tail: TaskId | null }>({
+function missingOrderedPredecessor(
+  task: {
+    id: TaskId;
+    conversationId: ConversationId;
+    kind: string;
+    version: number;
+    input: Pick<PublicationInput, "channelId" | "participantId">;
+  },
+  previousTask: TaskId,
+): Error {
+  return new Error(
+    `Native publication lost its ordered predecessor: task ${task.id} (${task.kind}@${task.version}) in conversation ${task.conversationId} for channel ${task.input.channelId} participant ${task.input.participantId} references task ${previousTask}`,
+  );
+}
+type NativeChannelProjectionState = JsonObject & {
+  binding: JsonValue;
+  /** Original mixed-destination chain retained while destinations acquire their own tails. */
+  inheritedFrontier: TaskId | null;
+  /** Latest task for each actual channel/participant destination. */
+  tails: Record<string, TaskId | null>;
+}
+const Projection = defineDoc<NativeChannelProjectionState>({
   kind: "vibestudio.native-channel-projection",
-  version: 1,
+  version: 2,
   scope: "conversation",
   history: "latest",
   fork: "initial",
-  initial: () => ({ binding: null, tail: null }),
+  initial: () => ({ binding: null, inheritedFrontier: null, tails: {} }),
+  migrate: (value, fromVersion) => {
+    if (fromVersion !== 1)
+      throw new Error("Unsupported native channel projection version");
+    const legacyTail = value["tail"];
+    if (
+      legacyTail !== null &&
+      (typeof legacyTail !== "number" ||
+        !Number.isSafeInteger(legacyTail) ||
+        legacyTail < 1)
+    )
+      throw new Error("Native channel projection has an invalid legacy tail");
+    if (!("binding" in value))
+      throw new Error("Native channel projection lost its binding");
+    return {
+      binding: value["binding"],
+      inheritedFrontier: legacyTail as TaskId | null,
+      tails: {},
+    };
+  },
   checkpointWhen: () => true,
 });
 // Publication cursor only. pi.live.run remains the sole owner of execution.
@@ -290,11 +331,18 @@ async function waitForPublicationChain(
       previous.kind !== answerTask.kind ||
       previous.version !== answerTask.version ||
       previous.conversationId !== answerTask.conversationId ||
-      input?.channelId !== binding.channelId ||
-      input.participantId !== binding.participantId
+      typeof input?.channelId !== "string" ||
+      typeof input.participantId !== "string"
     )
-      throw new Error("Native publication lost its ordered predecessor");
-    debt.push(previous);
+      throw missingOrderedPredecessor(
+        { ...current, input: current.input as unknown as PublicationInput },
+        previousId,
+      );
+    if (
+      input.channelId === binding.channelId &&
+      input.participantId === binding.participantId
+    )
+      debt.push(previous);
     current = previous;
   }
   for (const task of debt.reverse()) {
@@ -305,6 +353,57 @@ async function waitForPublicationChain(
         { cause: settled.state.outcome },
       );
   }
+}
+
+async function latestPublicationTaskForDestination<
+  T extends {
+    id: TaskId;
+    kind: string;
+    version: number;
+    conversationId: ConversationId;
+    input: unknown;
+  },
+>(
+  getTask: (id: TaskId) => Promise<T | undefined>,
+  firstId: TaskId | null,
+  expected: {
+    kind: string;
+    version: number;
+    conversationId: ConversationId;
+    channelId: string;
+    participantId: string;
+  },
+  missing: (id: TaskId) => Error,
+): Promise<T | undefined> {
+  const seen = new Set<TaskId>();
+  let currentId = firstId;
+  while (currentId !== null) {
+    if (seen.has(currentId))
+      throw new Error("Native publication has cyclic ordered debt");
+    seen.add(currentId);
+    const current = await getTask(currentId);
+    const input = current?.input as PublicationInput | undefined;
+    if (
+      !current ||
+      current.kind !== expected.kind ||
+      current.version !== expected.version ||
+      current.conversationId !== expected.conversationId ||
+      typeof input?.channelId !== "string" ||
+      typeof input.participantId !== "string" ||
+      (input.previousTask !== null &&
+        (typeof input.previousTask !== "number" ||
+          !Number.isSafeInteger(input.previousTask) ||
+          input.previousTask < 1))
+    )
+      throw missing(currentId);
+    if (
+      input.channelId === expected.channelId &&
+      input.participantId === expected.participantId
+    )
+      return current;
+    currentId = input.previousTask;
+  }
+  return undefined;
 }
 
 function detached<T>(value: T): T {
@@ -348,15 +447,24 @@ export function createNativeChannelPublication(options: {
     abort: boolean,
   ): Promise<void> {
     try {
-      const previousId = task.input.previousTask;
-      if (previousId !== null) {
-        let previous = await rt.getTask(previousId, context);
-        if (!previous)
-          throw new Error("Native publication lost its ordered predecessor");
-        if (previous.state.status !== "terminal") {
+      const previous = await latestPublicationTaskForDestination(
+        (id) => rt.getTask(id, context),
+        task.input.previousTask,
+        {
+          kind: task.kind,
+          version: task.version,
+          conversationId: task.conversationId,
+          channelId: task.input.channelId,
+          participantId: task.input.participantId,
+        },
+        (id) => missingOrderedPredecessor(task, id),
+      );
+      if (previous) {
+        let predecessor = previous;
+        if (predecessor.state.status !== "terminal") {
           if (abort) {
-            await waitForPublicationChain(rt, previous, context);
-            previous = await rt.waitForTask(previousId, context);
+            await waitForPublicationChain(rt, predecessor, context);
+            predecessor = await rt.waitForTask(previous.id, context);
           }
           else {
             await rt.commit(
@@ -365,7 +473,7 @@ export function createNativeChannelPublication(options: {
                 checkpoint: task.state.checkpoint,
                 condition: {
                   kind: "tasks",
-                  on: [previousId],
+                  on: [previous.id],
                   policy: "allSettled",
                 },
               }),
@@ -375,12 +483,12 @@ export function createNativeChannelPublication(options: {
           }
         }
         if (
-          previous.state.status !== "terminal" ||
-          previous.state.outcome.status !== "completed"
+          predecessor.state.status !== "terminal" ||
+          predecessor.state.outcome.status !== "completed"
         )
           throw new Error(
             "Native publication predecessor did not deliver its debt",
-            { cause: previous.state },
+            { cause: predecessor.state },
           );
       }
       let events = task.state.checkpoint.events;
@@ -520,12 +628,24 @@ export function createNativeChannelPublication(options: {
     terminal: NativeInvocationTerminalPublication | null = null,
   ): Promise<TaskId> {
     const state = await tx.doc(Projection, conversationId);
+    const tails = state.tails;
+    const destination = {
+      channelId: binding.channelId,
+      participantId: binding.participantId,
+    };
+    const destinationKey = canonicalJson([
+      destination.channelId,
+      destination.participantId,
+    ]);
+    const previousTask = Object.hasOwn(tails, destinationKey)
+      ? tails[destinationKey] ?? null
+      : state.inheritedFrontier;
     const id = await tx.createTask(
       task,
       {
         channelId: binding.channelId,
         participantId: binding.participantId,
-        previousTask: state.tail,
+        previousTask,
         events,
         terminalCreatedAt: terminal === null ? null : new Date().toISOString(),
         terminal:
@@ -535,7 +655,7 @@ export function createNativeChannelPublication(options: {
       },
       { conversationId, ownership: { kind: "conversation" }, background: true },
     );
-    state.tail = id;
+    tails[destinationKey] = id;
     return id;
   }
   return {
