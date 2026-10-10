@@ -20,6 +20,25 @@ import type {
 import type { ExtensionContextLike } from "./context.js";
 
 export const META_REPOSITORY = "meta";
+async function authoringStep<T>(
+  ctx: ExtensionContextLike,
+  step: string,
+  operation: () => Promise<T>,
+): Promise<T> {
+  ctx.log.info("Template authoring metadata step started", { step });
+  try {
+    const result = await operation();
+    ctx.log.info("Template authoring metadata step completed", { step });
+    return result;
+  } catch (error) {
+    ctx.log.warn?.("Template authoring metadata step failed", {
+      step,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    throw error;
+  }
+}
+
 export interface SemanticWorkspaceObservation {
   mainEventId: string;
   mainState: VcsStateNodeRef;
@@ -39,15 +58,16 @@ async function listDirectory(
   const entries: NonNullable<VcsListDirectoryResult>["entries"] = [];
   let cursor: string | undefined;
   do {
-    const page = await ctx.rpc.call<VcsListDirectoryResult>(
-      "main",
-      "vcs.listDirectory",
-      {
-        state,
-        path: directory,
-        ...(cursor ? { cursor } : {}),
-        limit: 500,
-      },
+    const page = await authoringStep(
+      ctx,
+      `listDirectory:${directory || "."}`,
+      () =>
+        ctx.rpc.call<VcsListDirectoryResult>("main", "vcs.listDirectory", {
+          state,
+          path: directory,
+          ...(cursor ? { cursor } : {}),
+          limit: 500,
+        }),
     );
     if (!page) break;
     entries.push(...page.entries);
@@ -71,47 +91,62 @@ async function repositoryPaths(
 export async function observeWorkspace(
   ctx: ExtensionContextLike,
 ): Promise<SemanticWorkspaceObservation> {
-  const mainState = await ctx.rpc.call<
-    Extract<VcsStateNodeRef, { kind: "event" }>
-  >("main", "vcs.mainState");
-  const info = await ctx.workspace.getInfo();
+  ctx.log.info("Template authoring metadata observation started");
+  const mainState = await authoringStep(ctx, "mainState", () =>
+    ctx.rpc.call<Extract<VcsStateNodeRef, { kind: "event" }>>(
+      "main",
+      "vcs.mainState",
+    ),
+  );
+  const info = await authoringStep(ctx, "workspaceInfo", () =>
+    ctx.workspace.getInfo(),
+  );
   if (!info.config)
     throw new Error("Workspace info did not expose its resolved configuration");
-  const metaRepository = await ctx.rpc.call<VcsResolveRepositoryResult>(
-    "main",
-    "vcs.resolveRepository",
-    { state: mainState, repoPath: META_REPOSITORY },
+  const metaRepository = await authoringStep(ctx, "resolveMetaRepository", () =>
+    ctx.rpc.call<VcsResolveRepositoryResult>("main", "vcs.resolveRepository", {
+      state: mainState,
+      repoPath: META_REPOSITORY,
+    }),
   );
   if (!metaRepository) throw new Error("Workspace meta repository disappeared");
-  const meta = await ctx.rpc.call<VcsReadFileResult>("main", "vcs.readFile", {
-    state: mainState,
-    repositoryId: metaRepository.repositoryId,
-    file: { kind: "path", path: "vibestudio.yml" },
-  });
+  const meta = await authoringStep(ctx, "readMetaManifest", () =>
+    ctx.rpc.call<VcsReadFileResult>("main", "vcs.readFile", {
+      state: mainState,
+      repositoryId: metaRepository.repositoryId,
+      file: { kind: "path", path: "vibestudio.yml" },
+    }),
+  );
   if (!meta) throw new Error("Workspace meta/vibestudio.yml disappeared");
   const content =
     meta.content.kind === "text"
       ? meta.content.text
       : Buffer.from(meta.content.base64, "base64").toString("utf8");
+  ctx.log.info("Template authoring metadata step started", {
+    step: "readWorkspaceConfig",
+  });
   const config = await readWorkspaceConfig(
     {
       readText: async (filePath) => {
         if (filePath === "meta/vibestudio.yml") return content;
         const repoPath = filePath.slice(0, -"/package.json".length);
-        const repo = await ctx.rpc.call<VcsResolveRepositoryResult>(
-          "main",
-          "vcs.resolveRepository",
-          { state: mainState, repoPath },
+        const repo = await authoringStep(
+          ctx,
+          `resolveRepository:${repoPath}`,
+          () =>
+            ctx.rpc.call<VcsResolveRepositoryResult>(
+              "main",
+              "vcs.resolveRepository",
+              { state: mainState, repoPath },
+            ),
         );
         if (!repo) return null;
-        const file = await ctx.rpc.call<VcsReadFileResult>(
-          "main",
-          "vcs.readFile",
-          {
+        const file = await authoringStep(ctx, `readPackage:${repoPath}`, () =>
+          ctx.rpc.call<VcsReadFileResult>("main", "vcs.readFile", {
             state: mainState,
             repositoryId: repo.repositoryId,
             file: { kind: "path", path: "package.json" },
-          },
+          }),
         );
         return !file
           ? null
@@ -122,15 +157,20 @@ export async function observeWorkspace(
     },
     info.id,
   );
+  ctx.log.info("Template authoring metadata step completed", {
+    step: "readWorkspaceConfig",
+  });
   const { id: _id, ...runtimeTop } = config;
   const manifest = parseTemplateManifestContent(
     content,
     runtimeTop.systemEpoch,
   );
-  const installation = await ctx.rpc.call<WorkspaceTemplateInstallation | null>(
-    "main",
-    "workspaceTemplateSource.readInstallation",
-    { eventId: mainState.eventId },
+  const installation = await authoringStep(ctx, "readInstallation", () =>
+    ctx.rpc.call<WorkspaceTemplateInstallation | null>(
+      "main",
+      "workspaceTemplateSource.readInstallation",
+      { eventId: mainState.eventId },
+    ),
   );
   const sources = installation?.sources ?? [];
   const templateSources = installedDependencyLayers(manifest, installation).map(
@@ -142,14 +182,21 @@ export async function observeWorkspace(
     },
   );
   if (installation?.upstream) templateSources.push(installation.upstream);
-  return {
+  const observation: SemanticWorkspaceObservation = {
     mainEventId: mainState.eventId,
     mainState,
     runtimeTop,
     manifest,
     installation,
-    localRepoPaths: await repositoryPaths(ctx, mainState),
+    localRepoPaths: await authoringStep(ctx, "repositoryPaths", () =>
+      repositoryPaths(ctx, mainState),
+    ),
     templateDependencies: manifest.dependencies,
     templateSources,
   };
+  ctx.log.info("Template authoring metadata observation completed", {
+    templateSources: observation.templateSources.length,
+    repositories: observation.localRepoPaths.size,
+  });
+  return observation;
 }

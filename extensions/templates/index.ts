@@ -65,28 +65,48 @@ async function inheritedInventory(
     throw new Error(
       "This workspace has no installed ownership declarations. Reopen it using the template picker.",
     );
+  const dependencyLayers = installedDependencyLayers(
+    observation.manifest,
+    observation.installation,
+  );
+  ctx.log.info("Template authoring inherited inventory started", {
+    layers: dependencyLayers.length,
+  });
   const layers = await Promise.all(
-    installedDependencyLayers(
-      observation.manifest,
-      observation.installation,
-    ).map(async (layer) => {
+    dependencyLayers.map(async (layer) => {
       const source = installation.sources.find(
         (source) => source.pin.url === layer.label,
       );
       if (!source)
         throw new Error(`Installed dependency ${layer.label} disappeared`);
-      const inspected = await inspect(ctx, { pin: source.pin });
+      const step = `inspectInstalledLayer:${layer.label}`;
+      ctx.log.info("Template authoring metadata step started", { step });
+      let inspected: TemplateInspection;
+      try {
+        inspected = await inspect(ctx, { pin: source.pin });
+      } catch (error) {
+        ctx.log.warn?.("Template authoring metadata step failed", {
+          step,
+          error: error instanceof Error ? error.message : String(error),
+        });
+        throw error;
+      }
+      ctx.log.info("Template authoring metadata step completed", { step });
       return { ...layer, repositories: inspected.repositories };
     }),
   );
   const owners = templateRepositoryOwners(layers);
   owners.delete("meta");
-  return {
+  const inventory = {
     repositories: [...owners.keys()],
     owners: new Map(
       [...owners].map(([repoPath, layer]) => [repoPath, layer.label]),
     ),
   };
+  ctx.log.info("Template authoring inherited inventory completed", {
+    repositories: inventory.repositories.length,
+  });
+  return inventory;
 }
 
 async function inspect(ctx: ExtensionContextLike, locator: TemplateLocator) {
@@ -247,11 +267,21 @@ export async function activate(ctx: ExtensionContextLike) {
       return { observation, plan };
     }),
     authoringSetup: async () => {
-      const observation = await observeWorkspace(ctx);
-      return templateAuthoringSetup(
-        observation,
-        (await inheritedInventory(ctx, observation)).owners,
-      );
+      ctx.log.info("Template authoring setup started");
+      try {
+        const observation = await observeWorkspace(ctx);
+        const inventory = await inheritedInventory(ctx, observation);
+        const setup = templateAuthoringSetup(observation, inventory.owners);
+        ctx.log.info("Template authoring setup completed", {
+          repositories: inventory.repositories.length,
+        });
+        return setup;
+      } catch (error) {
+        ctx.log.warn?.("Template authoring setup failed", {
+          error: error instanceof Error ? error.message : String(error),
+        });
+        throw error;
+      }
     },
     publicationVersion: async ({
       owner,

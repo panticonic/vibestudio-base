@@ -56,6 +56,7 @@ describe("template workspace observation", () => {
       },
     );
     const ctx = {
+      log: { info: vi.fn(), warn: vi.fn() },
       rpc: { call },
       workspace: {
         getInfo: async () => ({
