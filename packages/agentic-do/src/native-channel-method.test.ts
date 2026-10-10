@@ -1,4 +1,4 @@
-import { schemaRpcMock } from "@vibestudio/rpc/test-utils";
+import { schemaRpcClientMock } from "@vibestudio/rpc/test-utils";
 import { afterEach, describe, expect, it } from "vitest";
 import { mkdtemp, rm } from "node:fs/promises";
 import { join } from "node:path";
@@ -124,61 +124,83 @@ async function fixture(
       }),
     );
   }
-  const rpc = schemaRpcMock({
-    stream: async () => {
-      throw new Error("Method receipt fixture cannot stream");
-    },
-    call: async (
-      _target: string,
-      method: string,
-      args: unknown[],
-    ): Promise<unknown> => {
-      if (method === "workers.resolveService")
-        return durableObjectServiceFixture("channel-do");
-      if (method === "getEnvelope")
-        return events.get(args[0] as string) ?? null;
-      if (method === "callMethod") {
-        const [callerId, targetId, callId, name, input, opts] = args as [
-          string,
-          string,
-          string,
-          string,
-          unknown,
-          { invocationId: string; transportCallId: string; turnId?: TurnId },
-        ];
-        if (!routes.has(callId)) {
-          const route: ChannelCallDescriptor = {
-            channelId: "channel:one",
-            caller: { kind: "agent", id: callerId as never },
-            target: { kind: "user", id: targetId as never },
-            method: name,
-            args: input,
-            invocationId: opts.invocationId,
-            transportCallId: opts.transportCallId,
-            ...(opts.turnId ? { turnId: opts.turnId } : {}),
-            createdAt: new Date().toISOString(),
-          };
-          routes.set(callId, route);
-          starts.push(route);
-          append(route.invocationId, builders.started(route));
-          if (options.fast && starts.length === 1) {
-            complete(callId);
-            partialHints.push(
-              (
-                await consumeNativeChannelMethodReceipt(
-                  harness,
-                  harness,
-                  key,
-                  client,
-                  context,
-                )
-              ).accepted,
-            );
+  const rpc = schemaRpcClientMock(
+    {
+      stream: async () => {
+        throw new Error("Method receipt fixture cannot stream");
+      },
+      call: async (
+        _target: string,
+        method: string,
+        args: unknown[],
+      ): Promise<unknown> => {
+        if (method === "workers.resolveService")
+          return durableObjectServiceFixture("channel-do");
+        if (method === "getEnvelope")
+          return events.get(args[0] as string) ?? null;
+        if (method === "callMethod") {
+          const [callerId, targetId, callId, name, input, opts] = args as [
+            string,
+            string,
+            string,
+            string,
+            unknown,
+            { invocationId: string; transportCallId: string; turnId?: TurnId },
+          ];
+          if (!routes.has(callId)) {
+            const route: ChannelCallDescriptor = {
+              channelId: "channel:one",
+              caller: { kind: "agent", id: callerId as never },
+              target: { kind: "user", id: targetId as never },
+              method: name,
+              args: input,
+              invocationId: opts.invocationId,
+              transportCallId: opts.transportCallId,
+              ...(opts.turnId ? { turnId: opts.turnId } : {}),
+              createdAt: new Date().toISOString(),
+            };
+            routes.set(callId, route);
+            starts.push(route);
+            append(route.invocationId, builders.started(route));
+            if (options.fast && starts.length === 1) {
+              complete(callId);
+              partialHints.push(
+                (
+                  await consumeNativeChannelMethodReceipt(
+                    harness,
+                    harness,
+                    key,
+                    client,
+                    context,
+                  )
+                ).accepted,
+              );
+            }
           }
         }
-        if (failStart) {
-          failStart = false;
-          throw startFailure;
+        if (method === "cancelMethodCall") {
+          const [callerId, callId] = args as [string, string];
+          expect(callerId).toBe("agent:one");
+          cancels.push(callId);
+          const route = routes.get(callId);
+          if (!route)
+            throw Error("Cancellation manufactured an unstarted call");
+          append(
+            `terminal:${callId}`,
+            builders.cancelled({
+              descriptor: route,
+              actor: { kind: "system", id: "system" as never },
+              reason: "cancelled",
+              createdAt: new Date().toISOString(),
+            }),
+          );
+          if (
+            failCancel &&
+            (!options.failCancelTarget ||
+              route.target.id === options.failCancelTarget)
+          )
+            throw cancelFailure;
+          return undefined;
         }
         return undefined;
       }
@@ -193,6 +215,12 @@ async function fixture(
           builders.cancelled({
             descriptor: route,
             actor: { kind: "system", id: "system" as never },
+    "agent:one",
+  );
+  const client = new ChannelClient(rpc, {
+    source: "workers/pubsub-channel",
+    className: "PubSubChannel",
+    objectKey: "channel:one",
             reason: "cancelled",
             createdAt: new Date().toISOString(),
           }),
@@ -219,7 +247,7 @@ async function fixture(
       taskId = api.taskId;
       const invocationId = `native-task:${api.taskId}`;
       key = `${invocationId}:channel-method`;
-      return { invocationId, commandId: invocationId, rpc: rpc as never };
+      return { invocationId, commandId: invocationId, rpc, cleanupRpc: rpc };
     },
   });
   const offeredTool = (targetId: string) =>

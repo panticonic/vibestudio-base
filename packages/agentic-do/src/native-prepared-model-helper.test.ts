@@ -40,6 +40,7 @@ function fixture() {
     .mockResolvedValue(new Response("actual response"));
   const host: NativePreparedModelHelperHost = {
     rpc,
+    cleanupRpc: rpc,
     egressFetch: egress,
     own: (connection) => {
       owned.add(connection);

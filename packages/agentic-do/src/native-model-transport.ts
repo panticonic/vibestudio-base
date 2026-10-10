@@ -8,6 +8,8 @@ import type {
 import type { RpcCaller } from "@vibestudio/rpc";
 import { resolveProviderModelBaseUrl } from "@vibestudio/shared/providerConnect";
 import { EGRESS_CREDENTIAL_HEADER } from "@vibestudio/shared/runtime/egressCredential";
+import { EGRESS_WEBSOCKET_SCOPE_HEADER } from "@vibestudio/shared/runtime/egressCredential";
+import { createMainRpcCaller } from "@vibestudio/service-schemas/mainRpc";
 import {
   createCredentialClient,
   type StoredCredentialSummary,
@@ -129,6 +131,7 @@ export function createCredentialedModelConnection(
     readonly model: ModelTransportTarget;
     readonly credential: StoredCredentialSummary;
     readonly rpc: RpcCaller;
+    readonly cleanupRpc: RpcCaller;
     readonly egressFetch: typeof fetch;
     readonly onDiagnostic?: (event: NativeModelTransportDiagnostic) => void;
   },
@@ -160,6 +163,7 @@ type ModelTransportInput = {
       readonly kind: "credential";
       readonly credential: StoredCredentialSummary;
       readonly rpc: RpcCaller;
+      readonly cleanupRpc: RpcCaller;
     }
   | {
       readonly kind: "loopback";
@@ -211,6 +215,7 @@ function createModelConnection(
       ? {
           kind: "credential" as const,
           credentialId: input.credential.id,
+          cleanupRpc: input.cleanupRpc,
           client: createCredentialClient(input.rpc),
         }
       : { kind: "loopback" as const, apiKey: input.apiKey };
@@ -262,6 +267,44 @@ function createModelConnection(
   const resources = new Set<OwnedResource>();
   const pending = new Set<Promise<unknown>>();
   const cleanupFailures = new Set<unknown>();
+  const webSocketScopes = new Map<string, Promise<void> | null>();
+  const acceptedWebSocketScopes = new Set<string>();
+  const scopeOpenings = new Set<Promise<unknown>>();
+  async function closeWebSocketScope(scopeId: string): Promise<void> {
+    if (input.kind !== "credential")
+      throw new Error("Credentialed WebSocket scope has no originating caller");
+    let closing = webSocketScopes.get(scopeId);
+    if (closing === undefined) return;
+    if (closing === null) {
+      closing = createMainRpcCaller(input.cleanupRpc)(
+        "credentials.closeWebSocketScope",
+        [{ scopeId }],
+      ).then(() => {
+        webSocketScopes.delete(scopeId);
+        acceptedWebSocketScopes.delete(scopeId);
+      });
+      webSocketScopes.set(scopeId, closing);
+    }
+    await closing;
+  }
+  function closeWebSocketScopes(): void {
+    for (const scopeId of webSocketScopes.keys()) {
+      if (acceptedWebSocketScopes.has(scopeId)) continue;
+      void closeWebSocketScope(scopeId).catch((error) => {
+        cleanupFailures.add(error);
+      });
+    }
+  }
+
+  async function joinWebSocketScopeClosures(
+    scopeIds: Iterable<string>,
+  ): Promise<void> {
+    const results = await Promise.allSettled(
+      [...scopeIds].map((scopeId) => closeWebSocketScope(scopeId)),
+    );
+    for (const result of results)
+      if (result.status === "rejected") cleanupFailures.add(result.reason);
+  }
   let sealed = false;
   let closing: Promise<void> | undefined;
 
@@ -278,6 +321,7 @@ function createModelConnection(
   }
 
   function abortResources(): void {
+    closeWebSocketScopes();
     for (const resource of resources)
       void stop(resource, controller.signal.reason).catch(() => {});
   }
@@ -670,6 +714,7 @@ function createModelConnection(
       },
       connectWebSocket: (rawUrl, options) =>
         invoke(async () => {
+          let webSocketScopeId: string | undefined;
           try {
             const signal = AbortSignal.any([
               controller.signal,
@@ -681,16 +726,40 @@ function createModelConnection(
             prepareModelRequestHeaders(url, headers, true);
             const proxyUrl = prepareModelWebSocketUrl(url, headers);
             headers.set("upgrade", "websocket");
-            if (transport.kind === "credential")
+            if (transport.kind === "credential") {
+              const opening = createMainRpcCaller(transport.cleanupRpc)(
+                "credentials.openWebSocketScope",
+                [{ url: url.href, credentialId: transport.credentialId }],
+              );
+              scopeOpenings.add(opening);
+              let scopeId: string;
+              try {
+                ({ scopeId } = await opening);
+              } finally {
+                scopeOpenings.delete(opening);
+              }
+              webSocketScopes.set(scopeId, null);
+              webSocketScopeId = scopeId;
+              if (signal.aborted) {
+                await closeWebSocketScope(scopeId);
+                signal.throwIfAborted();
+              }
+              headers.set(EGRESS_WEBSOCKET_SCOPE_HEADER, scopeId);
               headers.set(EGRESS_CREDENTIAL_HEADER, transport.credentialId);
-            else headers.set("authorization", `Bearer ${transport.apiKey}`);
+            } else headers.set("authorization", `Bearer ${transport.apiKey}`);
             report({ milestone: "upgrade_requested" });
             // Fetch owns cancellation only while the upgrade head is pending.
             // After headers, the accepted socket owns its protocol Close and
             // actual terminal event. Aborting the settled fetch would destroy
             // that socket before its Close handshake can be joined in Workers.
             const headController = new AbortController();
-            const abortHead = () => headController.abort(signal.reason);
+            const abortHead = () => {
+              headController.abort(signal.reason);
+              if (webSocketScopeId)
+                void closeWebSocketScope(webSocketScopeId).catch((error) =>
+                  cleanupFailures.add(error),
+                );
+            };
             signal.addEventListener("abort", abortHead, { once: true });
             let response: Response;
             try {
@@ -727,9 +796,21 @@ function createModelConnection(
                 `Model WebSocket upgrade returned unexpected status ${response.status}`,
               );
             }
+            if (webSocketScopeId) acceptedWebSocketScopes.add(webSocketScopeId);
             return socket;
           } catch (error) {
             report({ milestone: "operation_error" });
+            if (webSocketScopeId) {
+              try {
+                await closeWebSocketScope(webSocketScopeId);
+              } catch (cleanup) {
+                throw new AggregateError(
+                  [error, cleanup],
+                  "Model WebSocket upgrade and scope release failed",
+                  { cause: error },
+                );
+              }
+            }
             throw error;
           }
         }),
@@ -739,6 +820,12 @@ function createModelConnection(
         sealed = true;
         controller.abort(new Error("Model invocation closed"));
         closing = (async () => {
+          await Promise.allSettled([...scopeOpenings]);
+          await joinWebSocketScopeClosures(
+            [...webSocketScopes.keys()].filter(
+              (id) => !acceptedWebSocketScopes.has(id),
+            ),
+          );
           // Late heads/upgrades become resources before their invocation
           // settles. Seal admission, join those invocations, then join every
           // retained resource, including cancellation already in progress.
@@ -748,6 +835,7 @@ function createModelConnection(
               stop(resource, controller.signal.reason),
             ),
           );
+          await joinWebSocketScopeClosures([...webSocketScopes.keys()]);
           context.abortSignal?.removeEventListener("abort", abort);
           if (cleanupFailures.size === 1) throw [...cleanupFailures][0];
           if (cleanupFailures.size > 1)

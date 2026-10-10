@@ -17,6 +17,7 @@ import {
 /** The real one-shot method/tool caller owns admission and cancellation. This helper does not manufacture a native model task. */
 export interface NativePreparedModelHelperHost {
   rpc: RpcCaller;
+  cleanupRpc: RpcCaller;
   egressFetch: typeof fetch;
   credentialMissing?(model: Model<Api>, context: Context): Promise<void>;
   own?(connection: CredentialedModelConnection): void;
@@ -109,7 +110,13 @@ export async function withPreparedNativeModel<T>(
     };
     context.abortSignal?.throwIfAborted();
     connection = createCredentialedModelConnection(
-      { model, credential, rpc: host.rpc, egressFetch: host.egressFetch },
+      {
+        model,
+        credential,
+        rpc: host.rpc,
+        cleanupRpc: host.cleanupRpc,
+        egressFetch: host.egressFetch,
+      },
       context,
     );
   }

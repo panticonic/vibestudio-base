@@ -314,7 +314,7 @@ export abstract class NativeChannelOwner<
               request,
               api,
               context,
-            )).rpc,
+            )),
           egressFetch: fetch,
           waitForAuthority: (request, api, info, invocation, context) =>
             this.waitForAgentAuthority(request, api, info, invocation, context),

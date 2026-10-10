@@ -80,7 +80,9 @@ export interface NativeModelProviderHost {
     request: ModelRequestTarget,
     api: ModelRequestApi,
     context: Context,
-  ) => RpcCaller | Promise<RpcCaller>;
+  ) =>
+    | { rpc: RpcCaller; cleanupRpc: RpcCaller }
+    | Promise<{ rpc: RpcCaller; cleanupRpc: RpcCaller }>;
   readonly egressFetch: typeof fetch;
   readonly waitForAuthority: (
     request: ModelRequestTarget,
@@ -111,7 +113,7 @@ export function createProtectedModelProvider(
         operation: request.operation,
         ...event,
       });
-    const rpc = await host.rpcForRequest(request, api, context);
+    const { rpc, cleanupRpc } = await host.rpcForRequest(request, api, context);
     context.abortSignal?.throwIfAborted();
     async function invoke(
       service: string,
@@ -121,11 +123,16 @@ export function createProtectedModelProvider(
       const invocation = { service, method, args };
       try {
         return {
-          value: await rpc.call("main", mainRpcMethod(`${service}.${method}`), args, {
-            authorityAcquisition: "return",
-            idempotencyKey: `model:${sha256HexSyncText(canonicalJson({ request, invocation }))}`,
-            signal: context.abortSignal,
-          }),
+          value: await rpc.call(
+            "main",
+            mainRpcMethod(`${service}.${method}`),
+            args,
+            {
+              authorityAcquisition: "return",
+              idempotencyKey: `model:${sha256HexSyncText(canonicalJson({ request, invocation }))}`,
+              signal: context.abortSignal,
+            },
+          ),
         };
       } catch (error) {
         const acquisition = acquisitionInfo(error);
@@ -264,6 +271,7 @@ export function createProtectedModelProvider(
         model: prepared.model,
         credential,
         rpc,
+        cleanupRpc,
         egressFetch: host.egressFetch,
         onDiagnostic,
       },

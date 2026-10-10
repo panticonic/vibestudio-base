@@ -4906,6 +4906,7 @@ export abstract class AgentVesselBase extends NativeChannelOwner<NativeProductCh
       kind: "eligible",
       rationale:
         "Ordinary conversation and agent operations use caller-scoped approvals; launched execution retains its authenticated authority.",
+          cleanupRpc: rpc,
     },
     principals: ["host", "code", "website"],
     effect: { kind: "open" },
@@ -7657,6 +7658,9 @@ export abstract class AgentVesselBase extends NativeChannelOwner<NativeProductCh
   }): Promise<{ submission: SettledSubmissionRecord; active: boolean }> {
     const child = this.subagentIdentity();
     if (
+      cleanupRpc: nonce
+        ? withExecutionAdmission(execution.cleanupRpc, nonce)
+        : execution.cleanupRpc,
       !child ||
       child.runId !== input.runId ||
       child.taskChannelId !== input.taskChannelId ||

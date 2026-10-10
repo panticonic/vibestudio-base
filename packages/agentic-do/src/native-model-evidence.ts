@@ -76,7 +76,7 @@ function route(
   };
 }
 
-/** Observe actual provider payload dispatch, after existing payload preparation succeeds. */
+/** Observe prepared provider payloads before transport; this is not a network receipt. */
 export async function observeNativeModelConnection(
   request: ModelRequestTarget,
   api: ModelRequestApi,

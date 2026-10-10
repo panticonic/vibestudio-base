@@ -8,11 +8,11 @@ import type {
 import type { PanelContextSnapshot } from "@vibestudio/service-schemas/panelContext";
 import { AiChatWorker } from "./ai-chat-worker.js";
 import { formatPanelContext } from "./panel-describe-tool.js";
-import type { AgentToolExecutionContext } from "@workspace/agentic-do";
 import type { Context } from "@panticonic/pi-chord";
 import type { ToolExecutionApi } from "@panticonic/pi-durable";
 import type { RpcCallOptions } from "@vibestudio/rpc";
 import { executeTool } from "@workspace/harness/testing/native-tool";
+import type { NativeInvocationExecution } from "../../packages/agentic-do/src/native-invocation-boundary.js";
 
 const databases = new Set<{ close(): void }>();
 afterEach(() => {
@@ -86,7 +86,7 @@ class TestConfiguredAgent extends AiChatWorker {
   protected override async bindNativeToolExecution(
     api: ToolExecutionApi,
     context: Context,
-  ): Promise<AgentToolExecutionContext> {
+  ): Promise<NativeInvocationExecution> {
     const rpc = {
       ...this.rpc,
       call: schemaRpcMock({
@@ -106,6 +106,7 @@ class TestConfiguredAgent extends AiChatWorker {
       invocationId: `native:${api.callId}`,
       commandId: `command:${api.callId}`,
       rpc,
+      cleanupRpc: this.rpc,
     };
   }
   protected override get rpcCallerKind(): string | null {
@@ -135,9 +136,14 @@ class TestConfiguredAgent extends AiChatWorker {
   configure(features: unknown = FOCUSED_FEATURES): void {
     this.sql.exec(
       `INSERT OR REPLACE INTO subscriptions
-         (channel_id, context_id, revision, subscribed_at, config, relationship_json, participant_id)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+         (channel_id, channel_ref_json, context_id, revision, subscribed_at, config, relationship_json, participant_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
       "channel-1",
+      JSON.stringify({
+        source: "workers/pubsub-channel",
+        className: "PubSubChannel",
+        objectKey: "channel-1",
+      }),
       "ctx-1",
       1,
       Date.now(),

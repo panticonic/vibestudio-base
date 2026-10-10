@@ -1,8 +1,4 @@
-import {
-  copyJson,
-  type Context,
-  type JsonValue,
-} from "@panticonic/pi-chord";
+import { copyJson, type Context, type JsonValue } from "@panticonic/pi-chord";
 import { sha256HexSyncText } from "@vibestudio/content-addressing";
 import { canonicalJson } from "@vibestudio/shared/canonicalJson";
 import {
@@ -37,9 +33,7 @@ import {
   AGENTIC_PROTOCOL_VERSION,
   type AgenticEvent,
 } from "@workspace/agentic-protocol";
-import type {
-  LoadedAgentImage,
-} from "./native-agent-session.js";
+import type { LoadedAgentImage } from "./native-agent-session.js";
 import {
   retainNativeModelInvocation,
   retainNativeToolInvocation,
@@ -75,7 +69,6 @@ export interface NativeInvocationBoundary {
     tx: Tx,
     publication: NativeInvocationStartPublication,
   ) => Promise<TaskId>;
-
 }
 
 import type { AgentProductMetadata } from "@workspace/agentic-core/agent-product-metadata";
@@ -85,6 +78,7 @@ export interface NativeInvocationExecution {
   readonly invocationId: string;
   readonly commandId: string;
   readonly rpc: RpcClient;
+  readonly cleanupRpc: RpcClient;
 }
 
 type CommitPort = Pick<ToolExecutionApi, "commit">;
@@ -130,7 +124,9 @@ async function openInvocation(
 ): Promise<NativeInvocationExecution> {
   const invocationId = nativeInvocationId(source);
   const originatingInput = await retainedNativeInvocationOriginatingInput(
-    boundary.harness, source.task.taskId as TaskId, context,
+    boundary.harness,
+    source.task.taskId as TaskId,
+    context,
   );
   await api.commit(async (tx) => {
     const task = await tx.task(source.task.taskId as TaskId);
@@ -187,7 +183,13 @@ async function openInvocation(
     };
     await boundary.enqueueStart(tx, {
       source,
-      start: startEvent(source, invocationId, candidate.createdAt, request, originatingInput),
+      start: startEvent(
+        source,
+        invocationId,
+        candidate.createdAt,
+        request,
+        originatingInput,
+      ),
       startIdempotencyKey: `${invocationId}:started`,
     });
     publications.pending.push(candidate);
@@ -196,22 +198,21 @@ async function openInvocation(
   if (!context.abortSignal)
     throw new Error("Native invocation requires its owned cancellation signal");
   const trajectory = channelTrajectoryFor(source.owner.channelId);
+  const cleanupRpc = withCausalParent(boundary.rpc, {
+    kind: "trajectory-invocation",
+    logId: trajectory.logId,
+    head: trajectory.head,
+    invocationId,
+    nativeInvocation: nativeInvocationIdentity(source),
+  });
   return Object.freeze({
     invocationId,
     commandId: commandIdForTrajectoryInvocation({
       ...trajectory,
       invocationId,
     }),
-    rpc: withRpcAbortSignal(
-      withCausalParent(boundary.rpc, {
-        kind: "trajectory-invocation",
-        logId: trajectory.logId,
-        head: trajectory.head,
-        invocationId,
-        nativeInvocation: nativeInvocationIdentity(source),
-      }),
-      context.abortSignal,
-    ),
+    cleanupRpc,
+    rpc: withRpcAbortSignal(cleanupRpc, context.abortSignal),
   });
 }
 
@@ -290,7 +291,9 @@ export async function prepareNativeInvocationTerminals(
           publication.invocationId,
           publication.createdAt,
           publication.request,
-          publication.originatingInput === null ? null : nativeOriginatingInputSchema.parse(publication.originatingInput),
+          publication.originatingInput === null
+            ? null
+            : nativeOriginatingInputSchema.parse(publication.originatingInput),
         ),
         startIdempotencyKey: `${publication.invocationId}:started`,
         terminalIdempotencyKey: `${publication.invocationId}:terminal`,

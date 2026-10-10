@@ -124,7 +124,7 @@ function setup(provider = "faux", baseUrl = "https://provider.test/v1") {
   );
   const egressFetch = vi.fn<typeof fetch>();
   const port = createProtectedModelProvider({
-    rpcForRequest: () => boundRpc,
+    rpcForRequest: () => ({ rpc: boundRpc, cleanupRpc: boundRpc }),
     egressFetch,
     waitForAuthority,
   });

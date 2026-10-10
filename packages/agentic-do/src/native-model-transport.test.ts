@@ -1,13 +1,16 @@
 import { describe, expect, it, vi } from "vitest";
 import { BACKGROUND_CONTEXT } from "@panticonic/pi-chord/context";
+import type { Context } from "@panticonic/pi-chord";
 import type { Model } from "@panticonic/pi-ai";
 import { stream } from "@panticonic/pi-ai/api/openai-codex-responses";
 import { normalizeContext } from "@panticonic/pi-ai/utils/transcript";
 import type { RpcCaller } from "@vibestudio/rpc";
+import { schemaRpcMock } from "@vibestudio/rpc/test-utils";
+import type { RpcWireCaller } from "@vibestudio/rpc/internal";
 import type { StoredCredentialSummary } from "@workspace/runtime/credentials";
 import { EGRESS_CREDENTIAL_HEADER } from "@vibestudio/shared/runtime/egressCredential";
 import {
-  createCredentialedModelConnection,
+  createCredentialedModelConnection as openCredentialedModelConnection,
   createLoopbackModelConnection,
 } from "./native-model-transport.js";
 import { isModelCredentialSentinel } from "./model-credential.js";
@@ -58,16 +61,37 @@ function latch<T>() {
   return { promise, resolve, reject };
 }
 
+function createCredentialedModelConnection(
+  input: Omit<
+    Parameters<typeof openCredentialedModelConnection>[0],
+    "cleanupRpc"
+  > & { cleanupRpc?: RpcCaller },
+  context: Context,
+) {
+  // This fake caller is not abort-bound, so reuse it to model cleanup through
+  // the same owner while keeping close operations uncancelled.
+  const cleanupRpc = input.cleanupRpc ?? input.rpc;
+  return openCredentialedModelConnection({ ...input, cleanupRpc }, context);
+}
+
 function rpcFixture(
   response: () => Promise<Response> = async () => new Response("ok"),
+  options: { closeScopeFailure?: Error } = {},
 ) {
-  const rpc = {
-    call: async () => {
+  const wire = {
+    call: vi.fn<RpcWireCaller["call"]>(async (_target, method) => {
+      if (method === "credentials.openWebSocketScope")
+        return { scopeId: crypto.randomUUID() };
+      if (method === "credentials.closeWebSocketScope") {
+        if (options.closeScopeFailure) throw options.closeScopeFailure;
+        return null;
+      }
       throw new Error("Unexpected unary admission in a transport");
-    },
-    stream: vi.fn<RpcCaller["stream"]>(response),
-  } satisfies RpcCaller;
-  return rpc;
+    }),
+    stream: vi.fn<RpcWireCaller["stream"]>(async () => response()),
+  };
+  const rpc = schemaRpcMock(wire);
+  return Object.assign(rpc, { wire });
 }
 
 class Socket {
@@ -255,10 +279,10 @@ describe("credentialed model transport ownership", () => {
         c2.options.fetch(`${model.baseUrl}/responses`),
       ]);
       await Promise.all(responses.map((r) => r.text()));
-      expect(a.stream.mock.calls[0]?.[2][0]).toMatchObject({
+      expect(a.wire.stream.mock.calls[0]?.[2][0]).toMatchObject({
         credentialId: "credential-a",
       });
-      expect(b.stream.mock.calls[0]?.[2][0]).toMatchObject({
+      expect(b.wire.stream.mock.calls[0]?.[2][0]).toMatchObject({
         credentialId: "credential-b",
       });
       expect(globalThis.fetch).toBe(original);
@@ -293,9 +317,9 @@ describe("credentialed model transport ownership", () => {
         ),
       );
       expect(await response.text()).toBe("ok");
-      expect(rpc.stream.mock.calls[0]?.slice(0, 3)).toEqual([
+      expect(rpc.wire.stream.mock.calls[0]?.slice(0, 3)).toEqual([
         "main",
-        expect.objectContaining({ name: "credentials.proxyFetch" }),
+        "credentials.proxyFetch",
         [
           {
             url: `${model.baseUrl}/responses?keep=yes`,
@@ -330,7 +354,7 @@ describe("credentialed model transport ownership", () => {
       await expect(connection.options.fetch(url)).rejects.toThrow(
         "committed endpoint",
       );
-      expect(rpc.stream).not.toHaveBeenCalled();
+      expect(rpc.wire.stream).not.toHaveBeenCalled();
     } finally {
       await connection.close(BACKGROUND_CONTEXT);
     }
@@ -363,7 +387,7 @@ describe("credentialed model transport ownership", () => {
         BACKGROUND_CONTEXT,
       ),
     ).toThrow("committed model endpoint");
-    expect(rpc.stream).not.toHaveBeenCalled();
+    expect(rpc.wire.stream).not.toHaveBeenCalled();
   });
 
   it("preserves committed query parameters without allowing duplicate overrides", async () => {
@@ -385,12 +409,12 @@ describe("credentialed model transport ownership", () => {
         await expect(
           connection.options.fetch(`${model.baseUrl}/responses${suffix}`),
         ).rejects.toThrow("committed endpoint parameters");
-      expect(rpc.stream).not.toHaveBeenCalled();
+      expect(rpc.wire.stream).not.toHaveBeenCalled();
       const response = await connection.options.fetch(
         `${model.baseUrl}/responses?deployment=chosen&request=extra`,
       );
       await response.text();
-      expect(rpc.stream.mock.calls[0]?.[2][0]).toMatchObject({
+      expect(rpc.wire.stream.mock.calls[0]?.[2][0]).toMatchObject({
         url: `${model.baseUrl}/responses?deployment=chosen&request=extra`,
       });
     } finally {
@@ -415,13 +439,13 @@ describe("credentialed model transport ownership", () => {
       await expect(connection.options.fetch(original)).rejects.toThrow(
         "already been consumed",
       );
-      expect(rpc.stream).not.toHaveBeenCalled();
+      expect(rpc.wire.stream).not.toHaveBeenCalled();
       const response = await connection.options.fetch(original, {
         body: data,
         headers: { "x-replacement": "yes" },
       });
       await response.text();
-      const invocation = rpc.stream.mock.calls[0]?.[2][0];
+      const invocation = rpc.wire.stream.mock.calls[0]?.[2][0];
       const encoded = JSON.stringify(invocation);
       const request = JSON.parse(encoded) as {
         headers: Record<string, string>;
@@ -471,7 +495,7 @@ describe("credentialed model transport ownership", () => {
           headers: { authorization: "Bearer caller-secret" },
         }),
       ).rejects.toThrow("caller-supplied credential");
-      expect(rpc.stream).not.toHaveBeenCalled();
+      expect(rpc.wire.stream).not.toHaveBeenCalled();
     } finally {
       await connection.close(BACKGROUND_CONTEXT);
     }
@@ -540,19 +564,24 @@ describe("credentialed model transport ownership", () => {
     await cancelStarted.promise;
     await rejected;
     expect(released).toBe(false);
-    expect(rpc.stream).not.toHaveBeenCalled();
+    expect(rpc.wire.stream).not.toHaveBeenCalled();
     cancelFinished.resolve();
     await closing;
   });
 
   it("joins a late HTTP response head and its cleanup after close", async () => {
     const head = latch<Response>();
-    const rpc = rpcFixture(() => head.promise);
+    const headEntered = latch<void>();
+    const rpc = rpcFixture(() => {
+      headEntered.resolve();
+      return head.promise;
+    });
     const connection = createCredentialedModelConnection(
       { model, credential: credential(), rpc, egressFetch: fetch },
       BACKGROUND_CONTEXT,
     );
     const pending = connection.options.fetch(`${model.baseUrl}/responses`);
+    await headEntered.promise;
     const rejected = expect(pending).rejects.toThrow("Model invocation closed");
     let released = false;
     const closing = connection.close(BACKGROUND_CONTEXT).then(() => {
@@ -599,7 +628,7 @@ describe("credentialed model transport ownership", () => {
     await expect(
       connection.options.fetch(`${model.baseUrl}/responses`),
     ).rejects.toThrow("closed");
-    expect(rpc.stream).toHaveBeenCalledOnce();
+    expect(rpc.wire.stream).toHaveBeenCalledOnce();
   });
 
   it("does not cancel a response already consumed to EOF", async () => {
@@ -717,8 +746,31 @@ describe("credentialed model transport ownership", () => {
     expect(socket.listeners.get("close")?.size).toBe(0);
   });
 
+  it("preserves an accepted WebSocket scope close failure in connection cleanup", async () => {
+    const socket = new Socket();
+    const scopeFailure = new Error("WebSocket scope release failed");
+    const connection = createCredentialedModelConnection(
+      {
+        model: codex,
+        credential: credential(),
+        rpc: rpcFixture(undefined, { closeScopeFailure: scopeFailure }),
+        egressFetch: async () => upgraded(socket),
+      },
+      BACKGROUND_CONTEXT,
+    );
+    await connection.options.connectWebSocket(
+      `${codex.baseUrl}/codex/responses`,
+      { headers: new Headers() },
+    );
+
+    await expect(connection.close(BACKGROUND_CONTEXT)).rejects.toBe(
+      scopeFailure,
+    );
+  });
+
   it("joins a late socket without sending on it after cancellation", async () => {
     const head = latch<Response>();
+    const headEntered = latch<void>();
     const socket = new Socket();
     socket.onClose = () => {};
     let headSignal: AbortSignal | null | undefined;
@@ -729,6 +781,7 @@ describe("credentialed model transport ownership", () => {
         rpc: rpcFixture(),
         egressFetch: (_url, options) => {
           headSignal = options?.signal;
+          headEntered.resolve();
           return head.promise;
         },
       },
@@ -738,6 +791,7 @@ describe("credentialed model transport ownership", () => {
       `${codex.baseUrl}/codex/responses`,
       { headers: new Headers() },
     );
+    await headEntered.promise;
     const rejected = expect(pending).rejects.toThrow("Model invocation closed");
     let released = false;
     const closing = connection.close(BACKGROUND_CONTEXT).then(() => {
@@ -902,7 +956,7 @@ describe("credentialed model transport ownership", () => {
     }
     expect((await events.result()).stopReason).toBe("stop");
     expect(socket.sent).toHaveLength(1);
-    expect(rpc.stream).not.toHaveBeenCalled();
+    expect(rpc.wire.stream).not.toHaveBeenCalled();
     let released = false;
     const closing = connection.close(BACKGROUND_CONTEXT).then(() => {
       released = true;
@@ -1068,31 +1122,49 @@ describe("credentialed model transport ownership", () => {
   it("joins a retired socket after the actual Codex provider completes its HTTP fallback", async () => {
     const socket = new Socket();
     const original = new Error("Network connection lost.");
-    socket.onSend = () => queueMicrotask(() => {
-      socket.readyState = 3;
-      socket.emit("error", { error: original });
-    });
+    socket.onSend = () =>
+      queueMicrotask(() => {
+        socket.readyState = 3;
+        socket.emit("error", { error: original });
+      });
     const completed = {
       type: "response.completed",
-      response: { id: "response-fallback", status: "completed", output: [],
-        usage: { input_tokens: 0, output_tokens: 0, total_tokens: 0 } },
+      response: {
+        id: "response-fallback",
+        status: "completed",
+        output: [],
+        usage: { input_tokens: 0, output_tokens: 0, total_tokens: 0 },
+      },
     };
-    const rpc = rpcFixture(async () => new Response(
-      `data: ${JSON.stringify(completed)}\n\n`,
-      { headers: { "content-type": "text/event-stream" } },
-    ));
-    const connection = createCredentialedModelConnection({ model: codex,
-      credential: credential(), rpc, egressFetch: async () => upgraded(socket) },
-      BACKGROUND_CONTEXT);
+    const rpc = rpcFixture(
+      async () =>
+        new Response(`data: ${JSON.stringify(completed)}\n\n`, {
+          headers: { "content-type": "text/event-stream" },
+        }),
+    );
+    const connection = createCredentialedModelConnection(
+      {
+        model: codex,
+        credential: credential(),
+        rpc,
+        egressFetch: async () => upgraded(socket),
+      },
+      BACKGROUND_CONTEXT,
+    );
     try {
       const events = stream(codex, normalizeContext({ messages: [] }), {
-        ...connection.options, transport: "auto",
+        ...connection.options,
+        transport: "auto",
       });
-      for await (const _event of events) { /* Join the installed provider. */ }
+      for await (const _event of events) {
+        /* Join the installed provider. */
+      }
       expect((await events.result()).stopReason).toBe("stop");
-      expect(rpc.stream).toHaveBeenCalledOnce();
+      expect(rpc.wire.stream).toHaveBeenCalledOnce();
       await connection.close(BACKGROUND_CONTEXT);
-      expect([...socket.listeners.values()].every((listeners) => !listeners.size)).toBe(true);
+      expect(
+        [...socket.listeners.values()].every((listeners) => !listeners.size),
+      ).toBe(true);
     } finally {
       await connection.close(BACKGROUND_CONTEXT);
     }
@@ -1281,7 +1353,14 @@ describe("credentialed model transport ownership", () => {
             contentCharacters: 0,
             encryptedItems: 1,
           },
-          providerOutput: { messages: 2, textCharacters: 17, reasoning: 1, summaryCharacters: 15, toolCalls: 0, other: 0 },
+          providerOutput: {
+            messages: 2,
+            textCharacters: 17,
+            reasoning: 1,
+            summaryCharacters: 15,
+            toolCalls: 0,
+            other: 0,
+          },
         });
       } finally {
         await connection.close(BACKGROUND_CONTEXT);
@@ -1338,7 +1417,7 @@ describe("credentialed model transport ownership", () => {
       });
       expect(egressFetch).toHaveBeenCalledOnce();
       expect(socket.sent).toHaveLength(1);
-      expect(rpc.stream).not.toHaveBeenCalled();
+      expect(rpc.wire.stream).not.toHaveBeenCalled();
       const headers = egressFetch.mock.calls[0]![1]?.headers as Headers;
       expect(headers.get(EGRESS_CREDENTIAL_HEADER)).toBe("credential-a");
       expect(headers.has("authorization")).toBe(false);
@@ -1479,6 +1558,7 @@ describe("protected upgrade ownership transfer", () => {
   it("cancels and joins a pending upgrade with the original caller cancellation", async () => {
     const caller = new AbortController();
     const head = latch<Response>();
+    const headEntered = latch<void>();
     let signal: AbortSignal | null | undefined;
     const connection = createCredentialedModelConnection(
       {
@@ -1487,6 +1567,7 @@ describe("protected upgrade ownership transfer", () => {
         rpc: rpcFixture(),
         egressFetch: (_url, options) => {
           signal = options?.signal;
+          headEntered.resolve();
           signal?.addEventListener("abort", () => head.reject(signal?.reason), {
             once: true,
           });
@@ -1499,12 +1580,136 @@ describe("protected upgrade ownership transfer", () => {
       `${codex.baseUrl}/codex/responses`,
       { headers: new Headers() },
     );
+    await headEntered.promise;
     const failure = new Error("original invocation cancellation");
     const rejected = expect(opening).rejects.toBe(failure);
     caller.abort(failure);
     expect(signal?.aborted).toBe(true);
     await rejected;
     await connection.close(BACKGROUND_CONTEXT);
+  });
+
+  it("preserves an upgrade failure that races caller cancellation", async () => {
+    const caller = new AbortController();
+    const head = latch<Response>();
+    const entered = latch<void>();
+    const original = new Error("upstream upgrade failed");
+    const connection = createCredentialedModelConnection(
+      {
+        model: codex,
+        credential: credential(),
+        rpc: rpcFixture(),
+        egressFetch: () => {
+          entered.resolve();
+          return head.promise;
+        },
+      },
+      { ...BACKGROUND_CONTEXT, abortSignal: caller.signal },
+    );
+    const opening = connection.options.connectWebSocket(
+      `${codex.baseUrl}/codex/responses`,
+      { headers: new Headers() },
+    );
+    await entered.promise;
+    const rejected = expect(opening).rejects.toBe(original);
+    caller.abort(new Error("caller cancelled"));
+    head.reject(original);
+
+    await rejected;
+    await connection.close(BACKGROUND_CONTEXT);
+  });
+
+  it("closes the host scope before joining an upgrade whose fetch ignores cancellation", async () => {
+    const caller = new AbortController();
+    const entered = latch<void>();
+    const head = latch<Response>();
+    const rpc = rpcFixture();
+    const cleanupRpc = rpcFixture();
+    const original = new Error("native task canceled");
+    let released = false;
+    cleanupRpc.wire.call.mockImplementation(async (_target, method) => {
+      if (method === "credentials.openWebSocketScope")
+        return { scopeId: "owned-scope" };
+      if (method === "credentials.closeWebSocketScope") {
+        head.reject(original);
+        return null;
+      }
+      throw new Error("Unexpected cleanup operation");
+    });
+    const connection = createCredentialedModelConnection(
+      {
+        model: codex,
+        credential: credential(),
+        rpc,
+        cleanupRpc,
+        egressFetch: () => {
+          entered.resolve();
+          return head.promise;
+        },
+      },
+      BACKGROUND_CONTEXT,
+    );
+    const opening = connection.options.connectWebSocket(
+      `${codex.baseUrl}/codex/responses`,
+      { headers: new Headers(), signal: caller.signal },
+    );
+    const rejected = expect(opening).rejects.toBe(original);
+    await entered.promise;
+    rpc.wire.call.mockRejectedValue(original);
+    caller.abort(original);
+    await rejected;
+    await connection.close(BACKGROUND_CONTEXT).then(() => {
+      released = true;
+    });
+    expect(released).toBe(true);
+    expect(cleanupRpc.wire.call.mock.calls.map((call) => call[1])).toEqual([
+      "credentials.openWebSocketScope",
+      "credentials.closeWebSocketScope",
+    ]);
+    expect(rpc.wire.call).not.toHaveBeenCalled();
+  });
+
+  it("joins scope admission and closes its receipt when cancellation precedes the response", async () => {
+    const openingScope = latch<{ scopeId: string }>();
+    const entered = latch<void>();
+    const caller = new AbortController();
+    const cleanupRpc = rpcFixture();
+    cleanupRpc.wire.call.mockImplementation(async (_target, method) => {
+      if (method === "credentials.openWebSocketScope") {
+        entered.resolve();
+        return await openingScope.promise;
+      }
+      if (method === "credentials.closeWebSocketScope") return null;
+      throw new Error("Unexpected cleanup operation");
+    });
+    const egressFetch = vi.fn<typeof fetch>();
+    const connection = createCredentialedModelConnection(
+      {
+        model: codex,
+        credential: credential(),
+        rpc: rpcFixture(),
+        cleanupRpc,
+        egressFetch,
+      },
+      { ...BACKGROUND_CONTEXT, abortSignal: caller.signal },
+    );
+    const opening = connection.options.connectWebSocket(
+      `${codex.baseUrl}/codex/responses`,
+      { headers: new Headers() },
+    );
+    const original = new Error("Canceled before scope response");
+    const rejected = expect(opening).rejects.toBe(original);
+    await entered.promise;
+    caller.abort(original);
+    const closing = connection.close(BACKGROUND_CONTEXT);
+    openingScope.resolve({ scopeId: "late-scope" });
+    await rejected;
+    await closing;
+    expect(egressFetch).not.toHaveBeenCalled();
+    expect(cleanupRpc.wire.call.mock.calls.map((call) => call[1])).toEqual([
+      "credentials.openWebSocketScope",
+      "credentials.closeWebSocketScope",
+    ]);
   });
 
   it("bounds provider event metadata and counts without copying untrusted event strings", async () => {
@@ -1525,7 +1730,18 @@ describe("protected upgrade ownership transfer", () => {
       codex,
     );
     await connection.options.onProviderStreamEvent?.(
-      { type: "response.completed", response: { secret: "not metadata", output: [{ type: "unsupported-private-output", secret: "must not be logged" }] } },
+      {
+        type: "response.completed",
+        response: {
+          secret: "not metadata",
+          output: [
+            {
+              type: "unsupported-private-output",
+              secret: "must not be logged",
+            },
+          ],
+        },
+      },
       codex,
     );
     expect(events).toEqual([
@@ -1554,7 +1770,14 @@ describe("protected upgrade ownership transfer", () => {
           contentCharacters: 0,
           encryptedItems: 0,
         },
-        providerOutput: { messages: 0, textCharacters: 0, reasoning: 0, summaryCharacters: 0, toolCalls: 0, other: 1 },
+        providerOutput: {
+          messages: 0,
+          textCharacters: 0,
+          reasoning: 0,
+          summaryCharacters: 0,
+          toolCalls: 0,
+          other: 1,
+        },
       },
     ]);
     await connection.close(BACKGROUND_CONTEXT);
