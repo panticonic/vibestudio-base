@@ -8,11 +8,11 @@ import type {
 import {
   installedDependencyLayers,
   parseTemplateManifestContent,
+  rootRuntimeFromTemplateManifest,
   type ParsedTemplateManifest,
 } from "@vibestudio/workspace/templateManifest";
-import { readWorkspaceConfig } from "@vibestudio/workspace/configParser";
+import { parseWorkspaceSystemEpochEnvelope } from "@vibestudio/workspace/configParser";
 import type {
-  WorkspaceConfig,
   WorkspaceTemplatePin,
   WorkspaceTemplateDependency,
   WorkspaceTemplateInstallation,
@@ -42,7 +42,7 @@ async function authoringStep<T>(
 export interface SemanticWorkspaceObservation {
   mainEventId: string;
   mainState: VcsStateNodeRef;
-  runtimeTop: Omit<WorkspaceConfig, "id">;
+  runtimeTop: ReturnType<typeof rootRuntimeFromTemplateManifest>;
   manifest: ParsedTemplateManifest;
   installation: WorkspaceTemplateInstallation | null;
   localRepoPaths: Set<string>;
@@ -80,12 +80,18 @@ async function repositoryPaths(
   state: VcsStateNodeRef,
 ) {
   const result = new Set<string>();
-  for (const root of await listDirectory(ctx, state, "")) {
+  const roots = await listDirectory(ctx, state, "");
+  for (const root of roots) {
     if (root.repositoryRoot) result.add(root.path);
-    if (root.kind !== "directory" || root.repositoryRoot) continue;
-    for (const child of await listDirectory(ctx, state, root.path))
-      if (child.repositoryRoot) result.add(child.path);
   }
+  const nestedEntries = await Promise.all(
+    roots
+      .filter((root) => root.kind === "directory" && !root.repositoryRoot)
+      .map((root) => listDirectory(ctx, state, root.path)),
+  );
+  for (const entries of nestedEntries)
+    for (const entry of entries)
+      if (entry.repositoryRoot) result.add(entry.path);
   return result;
 }
 export async function observeWorkspace(
@@ -98,11 +104,6 @@ export async function observeWorkspace(
       "vcs.mainState",
     ),
   );
-  const info = await authoringStep(ctx, "workspaceInfo", () =>
-    ctx.workspace.getInfo(),
-  );
-  if (!info.config)
-    throw new Error("Workspace info did not expose its resolved configuration");
   const metaRepository = await authoringStep(ctx, "resolveMetaRepository", () =>
     ctx.rpc.call<VcsResolveRepositoryResult>("main", "vcs.resolveRepository", {
       state: mainState,
@@ -122,49 +123,11 @@ export async function observeWorkspace(
     meta.content.kind === "text"
       ? meta.content.text
       : Buffer.from(meta.content.base64, "base64").toString("utf8");
-  ctx.log.info("Template authoring metadata step started", {
-    step: "readWorkspaceConfig",
-  });
-  const config = await readWorkspaceConfig(
-    {
-      readText: async (filePath) => {
-        if (filePath === "meta/vibestudio.yml") return content;
-        const repoPath = filePath.slice(0, -"/package.json".length);
-        const repo = await authoringStep(
-          ctx,
-          `resolveRepository:${repoPath}`,
-          () =>
-            ctx.rpc.call<VcsResolveRepositoryResult>(
-              "main",
-              "vcs.resolveRepository",
-              { state: mainState, repoPath },
-            ),
-        );
-        if (!repo) return null;
-        const file = await authoringStep(ctx, `readPackage:${repoPath}`, () =>
-          ctx.rpc.call<VcsReadFileResult>("main", "vcs.readFile", {
-            state: mainState,
-            repositoryId: repo.repositoryId,
-            file: { kind: "path", path: "package.json" },
-          }),
-        );
-        return !file
-          ? null
-          : file.content.kind === "text"
-            ? file.content.text
-            : Buffer.from(file.content.base64, "base64").toString("utf8");
-      },
-    },
-    info.id,
-  );
-  ctx.log.info("Template authoring metadata step completed", {
-    step: "readWorkspaceConfig",
-  });
-  const { id: _id, ...runtimeTop } = config;
   const manifest = parseTemplateManifestContent(
     content,
-    runtimeTop.systemEpoch,
+    parseWorkspaceSystemEpochEnvelope(content),
   );
+  const runtimeTop = rootRuntimeFromTemplateManifest(manifest);
   const installation = await authoringStep(ctx, "readInstallation", () =>
     ctx.rpc.call<WorkspaceTemplateInstallation | null>(
       "main",

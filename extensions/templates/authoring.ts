@@ -17,8 +17,10 @@ import type {
 import { normalizeWorkspaceRepoPath } from "@vibestudio/workspace/remotes";
 import { WorkspaceConfigTopLayerSchema } from "@vibestudio/workspace-contracts/workspaceConfigSchema";
 import { WORKSPACE_PACKAGE_SCOPES } from "@vibestudio/workspace-contracts/sourceDirs";
-import type { WorkspaceConfig } from "@vibestudio/workspace-contracts/types";
-import { authoredTemplateManifest } from "@vibestudio/workspace/templateManifest";
+import {
+  authoredTemplateManifest,
+  rootRuntimeFromTemplateManifest,
+} from "@vibestudio/workspace/templateManifest";
 import { resolveTemplateClosure } from "@vibestudio/workspace/templateClosure";
 import type { ExtensionContextLike } from "./context.js";
 import type { SemanticWorkspaceObservation } from "./workspace.js";
@@ -234,7 +236,15 @@ function parsePackageMetadata(
 }
 
 function runtimeReferences(
-  config: WorkspaceConfig,
+  config: Pick<
+    ReturnType<typeof rootRuntimeFromTemplateManifest>,
+    | "defaultAutomations"
+    | "initPanels"
+    | "singletonObjects"
+    | "services"
+    | "routes"
+    | "hostTargets"
+  >,
 ): Array<[owner: string, target: string]> {
   const refs: Array<[string, string]> = [];
   const add = (owner: string | null, target: string | null) => {
@@ -350,7 +360,7 @@ export async function inspectTemplateAuthoring(
   // repository supplies its declared companion files. Binding meta into the
   // same protected-main receipt prevents a publication from mixing those files
   // across workspace revisions.
-  const runtime = runtimeReferences(observation.runtimeTop as WorkspaceConfig);
+  const runtime = runtimeReferences(observation.runtimeTop);
   // Resolve the closure over this workspace's reviewed VCS state. Inherited
   // repositories terminate the walk because the published manifest reacquires
   // them through its dependencies.
