@@ -498,7 +498,6 @@ export const MessageCard = React.memo(function MessageCard({
             author={{ kind: senderType, id: msg.senderId }}
             compiledComponent={compiled?.Component}
             compilationError={compiled?.error}
-            compilationErrorStack={compiled?.errorStack}
             runtime={compiled?.runtime}
           />
         </Box>
@@ -999,12 +998,16 @@ export const MessageCard = React.memo(function MessageCard({
                           Fork from here
                         </DropdownMenu.Item>
                         {isUnreadOutbox ? (
-                          <DropdownMenu.Item onSelect={() => openEdit("outbox")}>
+                          <DropdownMenu.Item
+                            onSelect={() => openEdit("outbox")}
+                          >
                             Edit
                           </DropdownMenu.Item>
                         ) : (
                           <DropdownMenu.Item onSelect={() => openEdit("fork")}>
-                            {isSelfAuthored ? "Edit & fork" : "Edit & fork (steer)"}
+                            {isSelfAuthored
+                              ? "Edit & fork"
+                              : "Edit & fork (steer)"}
                           </DropdownMenu.Item>
                         )}
                       </>

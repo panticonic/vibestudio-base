@@ -1,6 +1,6 @@
 import { createMainRpcCaller } from "@vibestudio/service-schemas/mainRpc";
 import { schemaRpcClientMock } from "@vibestudio/rpc/test-utils";
-import { RemoteRpcError } from "@vibestudio/rpc";
+import { RemoteRpcError, serializeRpcFailure } from "@vibestudio/rpc";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   createModels,
@@ -103,7 +103,7 @@ async function fixture(
           success: false,
           console: "",
           failureKind: "cancelled",
-          error: "actual canonical cancellation",
+          error: serializeRpcFailure(new Error("actual canonical cancellation")),
         }
       : {
           success: true,

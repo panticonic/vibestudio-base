@@ -16,8 +16,10 @@ the control-flow contract:
 - `data` preserves the bounded typed service detail.
 
 `invocation.failed.payload.failure` is durable trajectory evidence. Tool
-protocol content and eval `errorData` are presentations of the same failure,
-not separate error channels. Render human guidance with
+protocol content and `EvalRunResult.error` are presentations of the same
+failure graph. Eval recovery metadata belongs to `error.errorData`; do not copy
+it into a sibling field. Decode serialized RPC failures with
+`deserializeRpcFailure` before rendering, then render human guidance with
 `renderAgentToolFailure`; branch with the typed fields.
 
 Normalize errors at the boundary that first knows the operation and stage:

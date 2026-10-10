@@ -12,6 +12,7 @@
  */
 
 import type { ComponentType } from "react";
+import { serializeRpcFailure, type RpcFailure } from "@vibestudio/rpc";
 import type { BuildBundleResult } from "@vibestudio/service-schemas/build";
 import {
   EVAL_OPERATION_JOURNAL_MAX_ENTRIES,
@@ -136,14 +137,12 @@ export interface SandboxResult {
   returnValue?: unknown;
   /** Exported values */
   exports?: Record<string, unknown>;
-  /** Error message (if failed) */
-  error?: string;
+  /** Complete serialized failure graph (if failed). */
+  error?: RpcFailure;
   /** Stable failure domain used by durable callers to choose terminal policy. */
   failureKind?: SandboxFailureKind;
   /** Stable machine-readable diagnostic; never inferred from error copy. */
   failureCode?: string;
-  /** Structured guest/service failure data preserved for agent-facing diagnostics. */
-  errorData?: unknown;
   /** Agent-facing native operation summary, when panel runtime journaling was active. */
   operationJournalFooter?: string;
   operationJournal?: EvalOperationJournal;
@@ -260,16 +259,8 @@ export interface CompileResult<T> {
   Component?: T;
   /** Cache key for cleanup */
   cacheKey?: string;
-  /** Error message (if failed) */
-  error?: string;
-  /** Developer-facing stack for the source-loading/compilation boundary. */
-  errorStack?: string;
-  /** Structured boundary category preserved from source/import RPC failures. */
-  errorKind?: string;
-  /** Structured boundary code preserved for retry and recovery policy. */
-  code?: string;
-  /** Structured boundary details preserved without parsing error copy. */
-  errorData?: unknown;
+  /** Complete source-loading or compilation failure graph. */
+  error?: RpcFailure;
   /** Runtime diagnostics scoped to this compiled component instance. */
   runtime?: { console: ReturnType<typeof createConsoleCapture> };
 }
@@ -280,15 +271,8 @@ export interface CompileModuleResult<
   success: boolean;
   module?: T;
   cacheKey?: string;
-  error?: string;
-  /** Developer-facing stack for the source-loading/compilation boundary. */
-  errorStack?: string;
-  /** Structured boundary category preserved from source/import RPC failures. */
-  errorKind?: string;
-  /** Structured boundary code preserved for retry and recovery policy. */
-  code?: string;
-  /** Structured boundary details preserved without parsing error copy. */
-  errorData?: unknown;
+  /** Complete source-loading or compilation failure graph. */
+  error?: RpcFailure;
 }
 
 export interface CompileComponentOptions {
@@ -1722,7 +1706,11 @@ export async function executeSandbox(
       return {
         success: false,
         consoleOutput: "",
-        error: "__vibestudioRequire__ not available. Build may be outdated.",
+        error: serializeRpcFailure(
+          new Error(
+            "__vibestudioRequire__ not available. Build may be outdated.",
+          ),
+        ),
         failureKind: "infrastructure",
         failureCode: "module_runtime_unavailable",
       };
@@ -1779,7 +1767,9 @@ export async function executeSandbox(
         return {
           success: false,
           consoleOutput: "",
-          error: unavailableModuleMessage(missing),
+          error: serializeRpcFailure(
+            new Error(unavailableModuleMessage(missing)),
+          ),
           failureKind: "user-code",
           failureCode: "unsupported_node_module",
         };
@@ -1812,7 +1802,11 @@ export async function executeSandbox(
       return {
         success: false,
         consoleOutput: "",
-        error: `Module "${missing}" not available.${packageHint} For npm packages, add the imports parameter:\n  imports: ${JSON.stringify(suggestedImports)}\nCurrently loaded: ${available.join(", ")}`,
+        error: serializeRpcFailure(
+          new Error(
+            `Module "${missing}" not available.${packageHint} For npm packages, add the imports parameter:\n  imports: ${JSON.stringify(suggestedImports)}\nCurrently loaded: ${available.join(", ")}`,
+          ),
+        ),
         failureKind: "user-code",
         failureCode: "module_not_available",
       };
@@ -1903,7 +1897,6 @@ export async function executeSandbox(
         : {}),
     };
   } catch (err) {
-    const errorMessage = err instanceof Error ? err.message : String(err);
     const errorStack = err instanceof Error ? err.stack : undefined;
     const errorData = structuredFailureData(err);
     const failureKind = structuredFailureKind(err);
@@ -1919,7 +1912,7 @@ export async function executeSandbox(
     return {
       success: false,
       consoleOutput: formatConsoleOutput(consoleEntries) + debugInfo,
-      error: errorMessage,
+      error: serializeRpcFailure(err),
       failureKind:
         err instanceof SandboxInfrastructureError
           ? "infrastructure"
@@ -1936,7 +1929,6 @@ export async function executeSandbox(
             : signal?.aborted
               ? "eval_cancelled"
               : guestFailureCode(err),
-      ...(errorData === undefined ? {} : { errorData }),
       ...(runtimeJournal
         ? { operationJournal: captureOperationJournal(runtimeJournal) }
         : {}),
@@ -2039,7 +2031,9 @@ async function prepareModule(
   const syntax = options.syntax ?? "tsx";
   if (options.imports && Object.keys(options.imports).length > 0) {
     if (!options.loadImport) {
-      throw new Error("loadImport callback required when imports are specified");
+      throw new Error(
+        "loadImport callback required when imports are specified",
+      );
     }
     await loadImports(options.imports, options.loadImport);
   }
@@ -2074,26 +2068,9 @@ async function prepareModule(
 
 /** Structured failure fields for a compile entry point's result. */
 function compileFailure(err: unknown) {
-  const errorKind =
-    err &&
-    typeof err === "object" &&
-    typeof (err as { errorKind?: unknown }).errorKind === "string"
-      ? (err as { errorKind: string }).errorKind
-      : undefined;
-  const code =
-    err &&
-    typeof err === "object" &&
-    typeof (err as { code?: unknown }).code === "string"
-      ? (err as { code: string }).code
-      : undefined;
-  const errorData = structuredFailureData(err);
   return {
     success: false as const,
-    error: err instanceof Error ? err.message : String(err),
-    ...(err instanceof Error && err.stack ? { errorStack: err.stack } : {}),
-    ...(errorKind ? { errorKind } : {}),
-    ...(code ? { code } : {}),
-    ...(errorData === undefined ? {} : { errorData }),
+    error: serializeRpcFailure(err),
   };
 }
 

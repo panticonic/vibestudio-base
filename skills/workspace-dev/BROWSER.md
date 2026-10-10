@@ -530,7 +530,7 @@ diagnosing a stale generation.
 
 The eval result shows this expected-versus-observed packet in model-facing text
 as well as in tool details. A truncated text preview is marked as such; the full
-packet stays in `details.errorData`. `status: "unavailable"` records why
+packet stays in `details.error.errorData`. `status: "unavailable"` records why
 observation failed and keeps the original error. Evidence is observed after the
 failure; it does not claim the DOM was unchanged during the wait or the
 collection. A failed interaction postcondition carries evidence for the expected

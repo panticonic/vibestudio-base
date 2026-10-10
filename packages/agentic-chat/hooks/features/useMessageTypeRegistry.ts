@@ -7,6 +7,7 @@ import {
 } from "@workspace/agentic-core";
 import type { LoadSourceFile, SandboxOptions } from "@workspace/eval";
 import type { MessageTypeComponentEntry, MessageTypeLoadingStage } from "../../types";
+import { deserializeRpcFailure, formatRpcFailure } from "@vibestudio/rpc";
 
 interface UseMessageTypeRegistryOptions {
   client: PubSubClient | null;
@@ -192,7 +193,9 @@ export function useMessageTypeRegistry({
         } else {
           setError(
             definition.typeId,
-            result.error ?? `Failed to compile message type ${definition.typeId}`,
+          result.error
+            ? formatRpcFailure(deserializeRpcFailure(result.error))
+            : `Failed to compile message type ${definition.typeId}`,
             definition.updatedAtSeq,
             definition
           );

@@ -1,4 +1,5 @@
 import vm from "node:vm";
+import { deserializeRpcFailure, formatRpcFailure } from "@vibestudio/rpc";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { tameRealmCodegen } from "@vibestudio/shared/evalConfinement";
 import { executeSandbox } from "./sandbox";
@@ -50,7 +51,8 @@ describe("executeSandbox", () => {
         entries: [{ type: "interaction", id: "panel:test", receipt }],
         truncated: false,
       });
-      if (failLater) expect(result.error).toBe("later statement failed");
+      if (failLater)
+        expect(result.error?.message).toBe("later statement failed");
       else expect(result.returnValue).toEqual(receipt.effect);
     },
   );
@@ -227,7 +229,7 @@ describe("executeSandbox", () => {
       ),
     ).resolves.toMatchObject({
       success: false,
-      error: "terminal eval failure",
+      error: expect.objectContaining({ message: "terminal eval failure" }),
     });
   });
 
@@ -266,7 +268,7 @@ describe("executeSandbox", () => {
 
     await expect(pending).resolves.toMatchObject({
       success: false,
-      error: "User interrupted execution",
+      error: expect.objectContaining({ message: "User interrupted execution" }),
     });
   });
 
@@ -288,7 +290,14 @@ describe("executeSandbox", () => {
 
     await expect(pending).resolves.toMatchObject({
       success: false,
-      error: "callback failed",
+      error: expect.objectContaining({
+        message: "callback failed",
+        errorData: expect.objectContaining({
+          code: "guest_callback_error",
+          failureKind: "user-code",
+          message: "callback failed",
+        }),
+      }),
       failureKind: "user-code",
       failureCode: "guest_callback_error",
     });
@@ -419,7 +428,9 @@ return undefined;`,
 
     expect(result).toMatchObject({
       success: false,
-      error: `eval timed out after ${timeoutMs}ms`,
+      error: expect.objectContaining({
+        message: `eval timed out after ${timeoutMs}ms`,
+      }),
     });
   });
 
@@ -435,7 +446,9 @@ return undefined;`,
 
     expect(result).toMatchObject({
       success: false,
-      error: `eval timed out after ${timeoutMs}ms`,
+      error: expect.objectContaining({
+        message: `eval timed out after ${timeoutMs}ms`,
+      }),
     });
   });
 
@@ -596,7 +609,12 @@ return undefined;`,
       },
     );
 
-    expect(result.success, result.error).toBe(true);
+    expect(
+      result.success,
+      result.error
+        ? formatRpcFailure(deserializeRpcFailure(result.error))
+        : undefined,
+    ).toBe(true);
     expect(result.returnValue).toEqual({ text: "hello", gone: true });
   });
 
@@ -633,7 +651,12 @@ return fs.readFileSync("/tmp/link");`,
       },
     );
 
-    expect(result.success, result.error).toBe(true);
+    expect(
+      result.success,
+      result.error
+        ? formatRpcFailure(deserializeRpcFailure(result.error))
+        : undefined,
+    ).toBe(true);
     expect(result.returnValue).toBe("ok");
   });
 
@@ -655,7 +678,12 @@ return typeof write;`,
       },
     );
 
-    expect(result.success, result.error).toBe(true);
+    expect(
+      result.success,
+      result.error
+        ? formatRpcFailure(deserializeRpcFailure(result.error))
+        : undefined,
+    ).toBe(true);
     expect(result.returnValue).toBe("function");
   });
 
@@ -681,7 +709,12 @@ return fs.readFileSync("/tmp/a");`,
       },
     );
 
-    expect(result.success, result.error).toBe(true);
+    expect(
+      result.success,
+      result.error
+        ? formatRpcFailure(deserializeRpcFailure(result.error))
+        : undefined,
+    ).toBe(true);
     expect(result.returnValue).toBe("ok");
   });
 
@@ -703,11 +736,11 @@ return fs.readFileSync("/tmp/a");`,
     );
 
     expect(result.success).toBe(false);
-    expect(result.error).toContain(
+    expect(result.error?.message).toContain(
       'Node built-in module "node:child_process" is not available',
     );
-    expect(result.error).toContain("@workspace/runtime");
-    expect(result.error).not.toContain("npm:latest");
+    expect(result.error?.message).toContain("@workspace/runtime");
+    expect(result.error?.message).not.toContain("npm:latest");
     expect(result).toMatchObject({
       failureKind: "user-code",
       failureCode: "unsupported_node_module",
@@ -728,7 +761,9 @@ return fs.readFileSync("/tmp/a");`,
 
     expect(result).toMatchObject({
       success: false,
-      error: "worker export uses an unsupported module feature",
+      error: expect.objectContaining({
+        message: "worker export uses an unsupported module feature",
+      }),
       failureKind: "infrastructure",
       failureCode: "package_load_failed",
     });
@@ -755,13 +790,15 @@ return fs.readFileSync("/tmp/a");`,
 
     expect(result).toMatchObject({
       success: false,
-      error: "Invalid build ref",
+      error: expect.objectContaining({
+        message: "Invalid build ref",
+        errorData: expect.objectContaining({
+          code: "invalid_build_ref",
+          ref: "./packages/example/src/index.ts",
+        }),
+      }),
       failureKind: "user-code",
       failureCode: "invalid_build_ref",
-      errorData: {
-        code: "invalid_build_ref",
-        ref: "./packages/example/src/index.ts",
-      },
     });
   });
 
@@ -789,7 +826,9 @@ return fs.readFileSync("/tmp/a");`,
 
     expect(result).toMatchObject({
       success: false,
-      error: "Unexpected authority prompt in system test",
+      error: expect.objectContaining({
+        message: "Unexpected authority prompt in system test",
+      }),
       failureKind: "infrastructure",
       failureCode: "EUNEXPECTEDTESTPROMPT",
     });
@@ -822,14 +861,16 @@ return fs.readFileSync("/tmp/a");`,
 
     expect(result).toMatchObject({
       success: false,
-      error: "Module is retained at another execution",
+      error: expect.objectContaining({
+        message: "Module is retained at another execution",
+        errorData: expect.objectContaining({
+          code: "eval_module_execution_conflict",
+          moduleSpecifier: "@workspace/example",
+          failureKind: "user-code",
+        }),
+      }),
       failureKind: "user-code",
       failureCode: "eval_module_execution_conflict",
-      errorData: {
-        code: "eval_module_execution_conflict",
-        moduleSpecifier: "@workspace/example",
-        failureKind: "user-code",
-      },
     });
   });
 
@@ -982,7 +1023,7 @@ return fs.readFileSync("/tmp/a");`,
     });
     expect(result).toMatchObject({
       success: false,
-      error: failure.message,
+      error: expect.objectContaining({ message: failure.message }),
       failureKind: "infrastructure",
       failureCode: "package_load_failed",
     });
@@ -1042,7 +1083,9 @@ return fs.readFileSync("/tmp/a");`,
     });
     expect(result).toMatchObject({
       success: false,
-      error: "Private module missing: react",
+      error: expect.objectContaining({
+        message: "Private module missing: react",
+      }),
     });
     expect(loadReact).not.toHaveBeenCalled();
     expect(moduleMap).toEqual({});
@@ -1116,7 +1159,9 @@ return fs.readFileSync("/tmp/a");`,
 
     expect(result).toMatchObject({
       success: false,
-      error: "exposed module chunk failed",
+      error: expect.objectContaining({
+        message: "exposed module chunk failed",
+      }),
       failureKind: "infrastructure",
       failureCode: "package_load_failed",
     });
@@ -1140,8 +1185,10 @@ return fs.readFileSync("/tmp/a");`,
 
     expect(result).toMatchObject({
       success: false,
-      error:
-        "This package requires a panel runtime global that is unavailable here",
+      error: expect.objectContaining({
+        message:
+          "This package requires a panel runtime global that is unavailable here",
+      }),
       failureKind: "user-code",
       failureCode: "guest_execution_failed",
     });
@@ -1171,7 +1218,15 @@ return fs.readFileSync("/tmp/a");`,
 
     expect(result).toMatchObject({
       success: false,
-      error: "No export ./panel found for @workspace/runtime",
+      error: expect.objectContaining({
+        message: "No export ./panel found for @workspace/runtime",
+        errorData: expect.objectContaining({
+          code: "package_export_not_found",
+          packageName: "@workspace/runtime",
+          subpath: "./panel",
+          conditions: ["worker", "workerd", "default"],
+        }),
+      }),
       failureKind: "user-code",
       failureCode: "package_export_not_found",
     });
@@ -1214,7 +1269,7 @@ return fs.readFileSync("/tmp/a");`,
 
     expect(result).toMatchObject({
       success: false,
-      error: "authored boom",
+      error: expect.objectContaining({ message: "authored boom" }),
       failureKind: "user-code",
       failureCode: "guest_execution_failed",
     });
@@ -1230,7 +1285,9 @@ return fs.readFileSync("/tmp/a");`,
 
     expect(result).toMatchObject({
       success: false,
-      error: expect.stringContaining("is not a function"),
+      error: expect.objectContaining({
+        message: expect.stringContaining("is not a function"),
+      }),
       failureKind: "user-code",
       failureCode: "guest_type_error",
     });
@@ -1276,11 +1333,13 @@ return fs.readFileSync("/tmp/a");`,
       success: false,
       failureKind: "infrastructure",
       failureCode: "DO_SCHEMA_INCOMPATIBLE",
-      errorData: {
-        reason: "migration-missing",
-        persistedVersion: 1,
-        targetVersion: 2,
-      },
+      error: expect.objectContaining({
+        errorData: expect.objectContaining({
+          reason: "migration-missing",
+          persistedVersion: 1,
+          targetVersion: 2,
+        }),
+      }),
     });
   });
 
@@ -1299,15 +1358,17 @@ return fs.readFileSync("/tmp/a");`,
 
     expect(result).toMatchObject({
       success: false,
-      error: "publication failed",
+      error: expect.objectContaining({
+        message: "publication failed",
+        errorData: expect.objectContaining({
+          code: "candidate_verification_failed",
+          stage: "push",
+          committedEventId: "event:committed",
+          published: false,
+        }),
+      }),
       failureKind: "user-code",
       failureCode: "candidate_verification_failed",
-      errorData: {
-        code: "candidate_verification_failed",
-        stage: "push",
-        committedEventId: "event:committed",
-        published: false,
-      },
     });
     expect(result.consoleOutput).not.toContain("[eval] Error stack:");
   });
@@ -1336,9 +1397,14 @@ return fs.readFileSync("/tmp/a");`,
       success: false,
       failureKind: "infrastructure",
       failureCode: "cdp_target_closed",
-      errorData: {
-        recovery: { action: "reacquire-handle", instruction: "Reacquire the page." },
-      },
+      error: expect.objectContaining({
+        errorData: expect.objectContaining({
+          recovery: {
+            action: "reacquire-handle",
+            instruction: "Reacquire the page.",
+          },
+        }),
+      }),
     });
   });
 
@@ -1410,8 +1476,8 @@ return fs.readFileSync("/tmp/a");`,
     );
 
     expect(result.success).toBe(false);
-    expect(result.error).toContain('Module "left-pad" not available');
-    expect(result.error).toContain('"left-pad":"npm:latest"');
+    expect(result.error?.message).toContain('Module "left-pad" not available');
+    expect(result.error?.message).toContain('"left-pad":"npm:latest"');
     expect(result).toMatchObject({
       failureKind: "user-code",
       failureCode: "module_not_available",

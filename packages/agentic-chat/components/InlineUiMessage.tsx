@@ -17,6 +17,11 @@ import {
 } from "react";
 import { Box, Callout, Flex, Spinner, Text } from "@radix-ui/themes";
 import { ExclamationTriangleIcon } from "@radix-ui/react-icons";
+import {
+  deserializeRpcFailure,
+  formatRpcFailure,
+  type RpcFailure,
+} from "@vibestudio/rpc";
 import { EventErrorBoundary } from "@workspace/tool-ui/components/EventErrorBoundary";
 import { InlineUiSurface } from "./InlineUiSurface";
 import { CopyButton } from "./shared/CopyButton";
@@ -280,7 +285,9 @@ export function InlineUiErrorCallout({
           author={report.author}
           category={phase === "compile" ? "compile_failed" : "render_failed"}
           refs={{
-            ...(surface === "action_bar" ? { actionBarId: componentId } : { inlineUiId: componentId }),
+            ...(surface === "action_bar"
+              ? { actionBarId: componentId }
+              : { inlineUiId: componentId }),
             ...(report.turnId ? { turnId: report.turnId as never } : {}),
           }}
           errorMessage={error.message || "Unknown error"}
@@ -365,8 +372,7 @@ interface InlineUiMessageProps {
     scopes: Record<string, unknown>;
     inlineUi?: { id: string; renderedAt?: string };
   }>;
-  compilationError?: string;
-  compilationErrorStack?: string;
+  compilationError?: RpcFailure;
   runtime?: { console: ConsoleCapture };
 }
 
@@ -383,7 +389,6 @@ export function InlineUiMessage({
   author,
   compiledComponent: CompiledComponent,
   compilationError,
-  compilationErrorStack,
   runtime,
 }: InlineUiMessageProps) {
   const {
@@ -522,9 +527,7 @@ export function InlineUiMessage({
     return (
       <Box data-inline-ui-id={data.id} data-message-id={messageId}>
         <InlineUiErrorCallout
-          error={Object.assign(new Error(compilationError), {
-            ...(compilationErrorStack ? { stack: compilationErrorStack } : {}),
-          })}
+          error={deserializeRpcFailure(compilationError)}
           phase="compile"
           componentId={data.id}
           messageId={messageId}
@@ -532,7 +535,10 @@ export function InlineUiMessage({
             data.source.type === "file" ? data.source.path : "inline code"
           }
           chat={chat}
-          report={reportFor("compile", compilationError)}
+          report={reportFor(
+            "compile",
+            formatRpcFailure(deserializeRpcFailure(compilationError)),
+          )}
         />
         <InlineUiConsole
           runtime={runtime}

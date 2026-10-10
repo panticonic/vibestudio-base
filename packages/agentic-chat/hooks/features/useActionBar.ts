@@ -6,8 +6,13 @@
  */
 
 import { useEffect, useMemo, useState } from "react";
+import { serializeRpcFailure } from "@vibestudio/rpc";
 import type { LoadSourceFile, SandboxOptions } from "@workspace/eval";
-import type { ActionBarData, ActionBarState, InlineUiComponentEntry } from "../../types";
+import type {
+  ActionBarData,
+  ActionBarState,
+  InlineUiComponentEntry,
+} from "../../types";
 import { scheduleBackgroundWork } from "../../utils/scheduleBackgroundWork";
 
 interface UseActionBarOptions {
@@ -29,9 +34,17 @@ export function parseActionBarData(value: unknown): ActionBarData | null {
   if (typeof value["id"] !== "string") return null;
   const source = value["source"];
   let parsedSource: ActionBarData["source"] | null = null;
-  if (isRecord(source) && source["type"] === "code" && typeof source["code"] === "string") {
+  if (
+    isRecord(source) &&
+    source["type"] === "code" &&
+    typeof source["code"] === "string"
+  ) {
     parsedSource = { type: "code", code: source["code"] };
-  } else if (isRecord(source) && source["type"] === "file" && typeof source["path"] === "string") {
+  } else if (
+    isRecord(source) &&
+    source["type"] === "file" &&
+    typeof source["path"] === "string"
+  ) {
     parsedSource = { type: "file", path: source["path"] };
   } else if (typeof value["code"] === "string") {
     parsedSource = { type: "code", code: value["code"] };
@@ -46,13 +59,14 @@ export function parseActionBarData(value: unknown): ActionBarData | null {
     imports: isRecord(value["imports"])
       ? Object.fromEntries(
           Object.entries(value["imports"]).filter(
-            (entry): entry is [string, string] => typeof entry[1] === "string"
-          )
+            (entry): entry is [string, string] => typeof entry[1] === "string",
+          ),
         )
       : undefined,
     props: isRecord(value["props"]) ? value["props"] : undefined,
     maxHeight:
-      typeof value["maxHeight"] === "number" && Number.isFinite(value["maxHeight"])
+      typeof value["maxHeight"] === "number" &&
+      Number.isFinite(value["maxHeight"])
         ? value["maxHeight"]
         : undefined,
   };
@@ -63,7 +77,9 @@ export function useActionBar({
   loadSourceFile,
   loadImport,
 }: UseActionBarOptions): ActionBarHookState {
-  const [component, setComponent] = useState<InlineUiComponentEntry | undefined>(undefined);
+  const [component, setComponent] = useState<
+    InlineUiComponentEntry | undefined
+  >(undefined);
 
   useEffect(() => {
     let cancelled = false;
@@ -84,21 +100,25 @@ export function useActionBar({
             data.source.type === "file"
               ? await loadSourceFile?.(data.source.path)
               : data.source.code;
-          if (!sourceCode) throw new Error(`Unable to load action bar source for ${data.id}`);
-          const sourcePath = data.source.type === "file" ? data.source.path : undefined;
+          if (!sourceCode)
+            throw new Error(`Unable to load action bar source for ${data.id}`);
+          const sourcePath =
+            data.source.type === "file" ? data.source.path : undefined;
           const { compileComponent } = await import("@workspace/eval/sandbox");
-          const result = await compileComponent<NonNullable<InlineUiComponentEntry["Component"]>>(
-            sourceCode,
-            {
-              imports: data.imports,
-              sourcePath,
-              loadSourceFile,
-              loadImport,
-            }
-          );
+          const result = await compileComponent<
+            NonNullable<InlineUiComponentEntry["Component"]>
+          >(sourceCode, {
+            imports: data.imports,
+            sourcePath,
+            loadSourceFile,
+            loadImport,
+          });
           if (cancelled) return;
           if (result.success) {
-            setComponent({ Component: result.Component!, cacheKey: result.cacheKey! });
+            setComponent({
+              Component: result.Component!,
+              cacheKey: result.cacheKey!,
+            });
           } else {
             setComponent({ cacheKey: sourceCode, error: result.error });
           }
@@ -106,7 +126,7 @@ export function useActionBar({
           if (cancelled) return;
           setComponent({
             cacheKey: data.id,
-            error: err instanceof Error ? err.message : String(err),
+            error: serializeRpcFailure(err),
           });
         }
       })();
@@ -118,7 +138,10 @@ export function useActionBar({
     };
   }, [data?.id, data?.source, loadSourceFile, loadImport]);
 
-  const actionBar = useMemo(() => (data ? { data, component } : null), [data, component]);
+  const actionBar = useMemo(
+    () => (data ? { data, component } : null),
+    [data, component],
+  );
 
   return { actionBar };
 }

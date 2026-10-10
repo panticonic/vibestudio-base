@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { deserializeRpcFailure } from "@vibestudio/rpc";
 import remarkGfm from "remark-gfm";
 import type { SandboxImportLoader } from "@workspace/eval";
 import { mdxComponents } from "./markdownComponents";
@@ -64,7 +65,9 @@ export interface CompileMessageMdxOptions {
 
 // MDX's compiled `MDXContent`: without a provider import source it calls no
 // hooks, so it may be invoked as a plain function.
-type MdxContent = (props: { components?: Record<string, unknown> }) => ReactNode;
+type MdxContent = (props: {
+  components?: Record<string, unknown>;
+}) => ReactNode;
 
 /**
  * A compiled message: a hook-free render function, usable as a component.
@@ -105,9 +108,9 @@ export async function compileMessageMdx(
     loadImport: options.loadImport,
   });
   if (!result.success) {
-    const error = new Error(result.error ?? "MDX module failed to load");
-    if (result.errorStack) error.stack = result.errorStack;
-    throw error;
+    throw result.error
+      ? deserializeRpcFailure(result.error)
+      : new Error("MDX module failed to load");
   }
   const Content = result.Component!;
   return function MessageMdx() {

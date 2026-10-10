@@ -1,10 +1,25 @@
-import { Suspense, useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
+import {
+  Suspense,
+  useCallback,
+  useEffect,
+  useMemo,
+  useReducer,
+  useRef,
+  useState,
+} from "react";
+import { deserializeRpcFailure, formatRpcFailure } from "@vibestudio/rpc";
 import type { KeyboardEvent, PointerEvent } from "react";
 import { Box, Spinner } from "@radix-ui/themes";
 import { EventErrorBoundary } from "@workspace/tool-ui/components/EventErrorBoundary";
 import { useChatContext } from "../context/ChatContext";
-import { wrapChatForErrorReporting, wrapScopesForErrorReporting } from "../utils/wrapSandboxApis";
-import { InlineUiErrorCallout, type InlineUiFailureReport } from "./InlineUiMessage";
+import {
+  wrapChatForErrorReporting,
+  wrapScopesForErrorReporting,
+} from "../utils/wrapSandboxApis";
+import {
+  InlineUiErrorCallout,
+  type InlineUiFailureReport,
+} from "./InlineUiMessage";
 import { ResponseProblemFeedback } from "./UiFeedbackReporter";
 import type { ActionBarState } from "../types";
 
@@ -18,7 +33,8 @@ function clampMaxHeight(value: number | undefined): number {
 }
 
 function ChatActionBarContent({ actionBar }: { actionBar: ActionBarState }) {
-  const { chat, scope, scopes, scopeManager, onActionBarMaxHeightChange } = useChatContext();
+  const { chat, scope, scopes, scopeManager, onActionBarMaxHeightChange } =
+    useChatContext();
   const { data, component } = actionBar;
   const CompiledComponent = component?.Component;
   const componentProps = useMemo(() => data.props ?? {}, [data.props]);
@@ -26,17 +42,21 @@ function ChatActionBarContent({ actionBar }: { actionBar: ActionBarState }) {
   const [asyncError, setAsyncError] = useState<Error | null>(null);
   const [isAtLimit, setIsAtLimit] = useState(false);
   const contentRef = useRef<HTMLDivElement | null>(null);
-  const dragRef = useRef<{ startY: number; startHeight: number; nextHeight: number } | null>(null);
+  const dragRef = useRef<{
+    startY: number;
+    startHeight: number;
+    nextHeight: number;
+  } | null>(null);
 
   const onAsyncError = useCallback(
     (err: Error) => {
       console.error(
         `[ChatActionBar] Component "${data.id}" failed (${data.source.type === "file" ? data.source.path : "inline code"}):`,
-        err
+        err,
       );
       setAsyncError(err);
     },
-    [data.id, data.source]
+    [data.id, data.source],
   );
   const wrappedChat = useMemo(
     () => wrapChatForErrorReporting(chat, onAsyncError),
@@ -49,14 +69,20 @@ function ChatActionBarContent({ actionBar }: { actionBar: ActionBarState }) {
 
   const onInteraction = useCallback(() => {
     void scopeManager.persist().catch((err) => {
-      console.warn("[ChatActionBar] Scope persist after interaction failed:", err);
+      console.warn(
+        "[ChatActionBar] Scope persist after interaction failed:",
+        err,
+      );
     });
   }, [scopeManager]);
 
   useEffect(() => scopeManager.onChange(forceUpdate), [scopeManager]);
 
   const resetKey = `${data.id}:${JSON.stringify(data.props ?? {})}`;
-  const reportFor = (phase: "compile" | "render" | "interaction", message: string): InlineUiFailureReport | undefined =>
+  const reportFor = (
+    phase: "compile" | "render" | "interaction",
+    message: string,
+  ): InlineUiFailureReport | undefined =>
     data.author
       ? {
           author: data.author,
@@ -64,7 +90,9 @@ function ChatActionBarContent({ actionBar }: { actionBar: ActionBarState }) {
           occurrenceKey: ["action_bar", phase, data.id, message].join(":"),
         }
       : undefined;
-  useEffect(() => { setAsyncError(null); }, [resetKey]);
+  useEffect(() => {
+    setAsyncError(null);
+  }, [resetKey]);
 
   const maxHeight = clampMaxHeight(data.maxHeight);
   const showResizeHandle = isAtLimit || data.maxHeight !== undefined;
@@ -83,40 +111,58 @@ function ChatActionBarContent({ actionBar }: { actionBar: ActionBarState }) {
     return () => observer.disconnect();
   }, [maxHeight, resetKey]);
 
-  const onResizePointerDown = useCallback((event: PointerEvent<HTMLDivElement>) => {
-    event.preventDefault();
-    event.currentTarget.setPointerCapture(event.pointerId);
-    dragRef.current = { startY: event.clientY, startHeight: maxHeight, nextHeight: maxHeight };
-  }, [maxHeight]);
+  const onResizePointerDown = useCallback(
+    (event: PointerEvent<HTMLDivElement>) => {
+      event.preventDefault();
+      event.currentTarget.setPointerCapture(event.pointerId);
+      dragRef.current = {
+        startY: event.clientY,
+        startHeight: maxHeight,
+        nextHeight: maxHeight,
+      };
+    },
+    [maxHeight],
+  );
 
-  const onResizePointerMove = useCallback((event: PointerEvent<HTMLDivElement>) => {
-    if (!dragRef.current) return;
-    const next = clampMaxHeight(dragRef.current.startHeight + event.clientY - dragRef.current.startY);
-    dragRef.current.nextHeight = next;
-    onActionBarMaxHeightChange?.(next, { saveState: false });
-  }, [onActionBarMaxHeightChange]);
+  const onResizePointerMove = useCallback(
+    (event: PointerEvent<HTMLDivElement>) => {
+      if (!dragRef.current) return;
+      const next = clampMaxHeight(
+        dragRef.current.startHeight + event.clientY - dragRef.current.startY,
+      );
+      dragRef.current.nextHeight = next;
+      onActionBarMaxHeightChange?.(next, { saveState: false });
+    },
+    [onActionBarMaxHeightChange],
+  );
 
-  const onResizePointerEnd = useCallback((event: PointerEvent<HTMLDivElement>) => {
-    if (!dragRef.current) return;
-    const next = dragRef.current.nextHeight;
-    dragRef.current = null;
-    onActionBarMaxHeightChange?.(next);
-    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
-      event.currentTarget.releasePointerCapture(event.pointerId);
-    }
-  }, [onActionBarMaxHeightChange]);
+  const onResizePointerEnd = useCallback(
+    (event: PointerEvent<HTMLDivElement>) => {
+      if (!dragRef.current) return;
+      const next = dragRef.current.nextHeight;
+      dragRef.current = null;
+      onActionBarMaxHeightChange?.(next);
+      if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+        event.currentTarget.releasePointerCapture(event.pointerId);
+      }
+    },
+    [onActionBarMaxHeightChange],
+  );
 
-  const onResizeKeyDown = useCallback((event: KeyboardEvent<HTMLDivElement>) => {
-    const step = event.shiftKey ? 24 : 12;
-    let next: number | null = null;
-    if (event.key === "ArrowUp") next = clampMaxHeight(maxHeight - step);
-    if (event.key === "ArrowDown") next = clampMaxHeight(maxHeight + step);
-    if (event.key === "Home") next = MIN_MAX_HEIGHT;
-    if (event.key === "End") next = MAX_MAX_HEIGHT;
-    if (next === null) return;
-    event.preventDefault();
-    onActionBarMaxHeightChange?.(next);
-  }, [maxHeight, onActionBarMaxHeightChange]);
+  const onResizeKeyDown = useCallback(
+    (event: KeyboardEvent<HTMLDivElement>) => {
+      const step = event.shiftKey ? 24 : 12;
+      let next: number | null = null;
+      if (event.key === "ArrowUp") next = clampMaxHeight(maxHeight - step);
+      if (event.key === "ArrowDown") next = clampMaxHeight(maxHeight + step);
+      if (event.key === "Home") next = MIN_MAX_HEIGHT;
+      if (event.key === "End") next = MAX_MAX_HEIGHT;
+      if (next === null) return;
+      event.preventDefault();
+      onActionBarMaxHeightChange?.(next);
+    },
+    [maxHeight, onActionBarMaxHeightChange],
+  );
 
   return (
     <Box
@@ -135,20 +181,27 @@ function ChatActionBarContent({ actionBar }: { actionBar: ActionBarState }) {
           <InlineUiErrorCallout
             error={asyncError}
             componentId={data.id}
-            source={data.source.type === "file" ? data.source.path : "inline code"}
+            source={
+              data.source.type === "file" ? data.source.path : "inline code"
+            }
             chat={chat}
             surface="action_bar"
             report={reportFor("interaction", asyncError.message)}
           />
         ) : component?.error ? (
           <InlineUiErrorCallout
-            error={new Error(component.error)}
+            error={deserializeRpcFailure(component.error)}
             phase="compile"
             componentId={data.id}
-            source={data.source.type === "file" ? data.source.path : "inline code"}
+            source={
+              data.source.type === "file" ? data.source.path : "inline code"
+            }
             chat={chat}
             surface="action_bar"
-            report={reportFor("compile", component.error)}
+            report={reportFor(
+              "compile",
+              formatRpcFailure(deserializeRpcFailure(component.error)),
+            )}
           />
         ) : !CompiledComponent ? (
           <Spinner size="1" />
@@ -161,7 +214,9 @@ function ChatActionBarContent({ actionBar }: { actionBar: ActionBarState }) {
                 error={error}
                 phase="render"
                 componentId={data.id}
-                source={data.source.type === "file" ? data.source.path : "inline code"}
+                source={
+                  data.source.type === "file" ? data.source.path : "inline code"
+                }
                 chat={chat}
                 surface="action_bar"
                 report={reportFor("render", error.message)}

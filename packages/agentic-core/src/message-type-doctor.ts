@@ -28,6 +28,7 @@ import {
 import { messageTypeDefinitionsFromChannelView } from "./channel-chat-merge.js";
 import { compileMessageTypeModule } from "./custom-message-types.js";
 import { DEFAULT_HOST_MODULES, lintRendererSource } from "./renderer-lint.js";
+import { deserializeRpcFailure, formatRpcFailure } from "@vibestudio/rpc";
 
 export interface MessageTypeDoctorSpec {
   typeId: string;
@@ -154,7 +155,7 @@ export async function runMessageTypeDoctor(
       issues.push({
         typeId: spec.typeId,
         stage: "compile",
-        message: result.error ?? "compile failed",
+        message: result.error ? formatRpcFailure(deserializeRpcFailure(result.error)) : "compile failed",
       });
     } else if (typeof result.module?.["default"] !== "function") {
       issues.push({

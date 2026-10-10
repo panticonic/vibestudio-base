@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { serializeRpcFailure } from "@vibestudio/rpc";
 import type {
   SandboxOptions,
   SandboxResult,
@@ -163,9 +164,12 @@ describe("client_eval", () => {
       executeSandbox: vi.fn(async () => ({
         success: false,
         consoleOutput: "",
-        error: "callMain is not defined",
+        error: serializeRpcFailure(
+          Object.assign(new Error("callMain is not defined"), {
+            errorData: { operation: "callMain" },
+          }),
+        ),
         failureKind: "user-code" as const,
-        errorData: { operation: "callMain" },
       })),
     });
 
@@ -179,7 +183,9 @@ describe("client_eval", () => {
         details: {
           success: false,
           failureKind: "user-code",
-          errorData: { operation: "callMain" },
+          error: expect.objectContaining({
+            errorData: { operation: "callMain" },
+          }),
         },
       },
       isError: true,

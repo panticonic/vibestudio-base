@@ -473,7 +473,7 @@ describe("sandbox source hooks", () => {
       });
       const entry = state.inlineUiComponents.get("repairable-card");
       const Component = entry?.Component;
-      if (entry?.error) return <div>{entry.error}</div>;
+      if (entry?.error) return <div>{entry.error.message}</div>;
       return Component ? (
         <Component props={{}} chat={{}} scope={{}} scopes={{}} />
       ) : (

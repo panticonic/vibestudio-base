@@ -46,7 +46,10 @@ sees the runtime differently from the user's panel:
     : await openPanel("about/new", { parentId: null });
   const root = inherited ?? ownedRoot!;
   // openPanel resolves once the child is ready under `root`.
-  const child = await openPanel("about/new", { parentId: root.id, focus: true });
+  const child = await openPanel("about/new", {
+    parentId: root.id,
+    focus: true,
+  });
   ```
 
   For a headless workflow that spans several cells, keep the root in `scope`
@@ -473,16 +476,17 @@ The most recent defined return value is also kept as `scope.$lastReturn` for a
 follow-up eval. Small values keep their structure; oversized values are stored
 as a bounded JSON/text string. A large return is also kept in
 `scope.$lastLargeReturn`, which, unlike `$lastReturn`, is not overwritten by the
-small results of follow-up inspection cells. Large console and error text go to
-`$lastLargeConsole` and `$lastLargeError` in the same way. Each slot holds only
-the latest large value of its kind, so you can page through it without output
-piling up. `$lastLargeReturn` is JSON/text, not the original object: slice or
+small results of follow-up inspection cells. Large console text goes to
+`$lastLargeConsole` in the same way. `$lastLargeReturn` is JSON/text, not the original object: slice or
 search the text, or call `JSON.parse(scope.$lastLargeReturn)` before accessing
 properties if the original was JSON-serializable.
 
-Eval results are always bounded, so a huge return cannot leave the turn stuck
-in `eval:pending`. For large data, return a compact summary and keep the full
-value in `scope`, `db`, or `blobstore` for later paging or grep.
+Eval bounds console and return previews so a huge value cannot leave the turn
+stuck in `eval:pending`. The failure graph remains complete in `result.error`,
+including nested causes, aggregate children, and structured recovery metadata;
+it is not shortened to fit the result preview budget. For large successful
+data, return a compact summary and keep the full value in `scope`, `db`, or
+`blobstore` for later paging or grep.
 
 ## Imports
 
@@ -569,8 +573,13 @@ authority policy before calling either function: preparation never adds missing
 requests and never publishes. Review and verify the candidate, then commit and
 push through VCS. See [workspace scaffolding](../workspace-dev/PROJECTS.md).
 
-When a guest or service exception carries structured `errorData`, the eval
-result keeps it in its details and shows a bounded preview. If preparation or
+An Eval result's `error` is the serialized `RpcFailure` graph. Its
+`error.errorData` carries the structured recovery metadata. Trusted TypeScript
+callers should decode it with `deserializeRpcFailure(result.error)` before
+formatting it with `formatRpcFailure`; decoding also restores shared cause and
+aggregate-child identity. Do not flatten the graph to a message string before
+the caller that owns presentation. Agent-facing tools may show a bounded
+preview of `error.errorData` while retaining the complete graph in `details.error`. If preparation or
 a later publication fails, recover with the usual typed VCS status and
 receipts; there is no scaffold-specific publication or recovery API. After an
 edit with an uncertain outcome, inspect the current state instead of preparing
@@ -947,7 +956,11 @@ service:
 ```ts
 const catalogResult = await services.runtime["supervision.list"]({});
 import { mainRpcMethods } from "@vibestudio/service-schemas/mainRpc";
-const canonical = await rpc.call("main", mainRpcMethods["runtime.supervision.list"], [{}]);
+const canonical = await rpc.call(
+  "main",
+  mainRpcMethods["runtime.supervision.list"],
+  [{}],
+);
 const live = await runtime.supervision.list(); // richer typed runtime binding
 ```
 
@@ -1098,12 +1111,13 @@ dumps, or full GAD payloads from `eval`. Large values are stored as blob refs
 in trajectory/channel storage on purpose; broad hydrated reads pull them back
 into the transcript and bury the useful part of the report.
 
-As a safety net, eval windows large console, error, and return data before it
-is stored or delivered. The tool result then points to
-`scope.$lastLargeConsole`, `scope.$lastLargeError`, or `scope.$lastLargeReturn`
-when a bounded copy was saved. These slots are not overwritten by small
-follow-up results, so you can read them over several calls. Keep each page you
-return small, because it goes through the same bounded eval result:
+As a safety net, eval windows large console and return data before it is
+delivered. The tool result then points to `scope.$lastLargeConsole` or
+`scope.$lastLargeReturn` when a bounded copy was saved. The complete serialized
+failure graph stays in `result.error`; it is never redirected to a scope slot.
+The output slots are not overwritten by small follow-up results, so you can
+read them over several calls. Keep each page you return small, because it goes
+through the same bounded eval result:
 
 ```ts
 return {
@@ -1125,13 +1139,17 @@ import { mainRpcMethods } from "@vibestudio/service-schemas/mainRpc";
 return await rpc.call("main", mainRpcMethods["gad.inspectChannelEnvelopes"], [
   { channelId, limit: 50 },
 ]);
-return await rpc.call("main", mainRpcMethods["gad.inspectTurnState"], [{ branchId }]);
+return await rpc.call("main", mainRpcMethods["gad.inspectTurnState"], [
+  { branchId },
+]);
 return await rpc.call("main", mainRpcMethods["gad.inspectInvocationState"], [
   { transportCallId },
 ]);
-return await rpc.call("main", mainRpcMethods["gad.inspectPublicationIntegrity"], [
-  { channelId },
-]);
+return await rpc.call(
+  "main",
+  mainRpcMethods["gad.inspectPublicationIntegrity"],
+  [{ channelId }],
+);
 return await services.serverLog.query({
   level: "warn",
   contains: "BuildV2",

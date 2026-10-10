@@ -1,11 +1,19 @@
 import { z } from "zod";
+import {
+  deserializeRpcFailure,
+  formatRpcFailure,
+  type RpcFailure,
+} from "@vibestudio/rpc";
 import type {
   SandboxImportLoader,
   SandboxOptions,
   SandboxResult,
   ScopeManager,
 } from "@workspace/eval";
-import type { MethodDefinition, MethodExecutionContext } from "@workspace/pubsub";
+import type {
+  MethodDefinition,
+  MethodExecutionContext,
+} from "@workspace/pubsub";
 import type { ChatSandboxValue } from "../../types";
 
 const MAX_RESULT_CHARS = 100_000;
@@ -15,7 +23,10 @@ const LAST_CONSOLE_KEY = "$lastClientEvalConsole";
 
 export interface ClientEvalDependencies {
   importLoader?: SandboxImportLoader;
-  executeSandbox: (code: string, options?: SandboxOptions) => Promise<SandboxResult>;
+  executeSandbox: (
+    code: string,
+    options?: SandboxOptions,
+  ) => Promise<SandboxResult>;
   loadSourceFile: (path: string) => Promise<string>;
   getChat: () => ChatSandboxValue;
   scopeManager: ScopeManager;
@@ -27,7 +38,7 @@ interface ClientEvalMethodResult {
     success: boolean;
     failureKind?: SandboxResult["failureKind"];
     failureCode?: string;
-    errorData?: unknown;
+    error?: RpcFailure;
   };
 }
 
@@ -36,12 +47,14 @@ const clientEvalParameters = z
     code: z
       .string()
       .optional()
-      .describe("Inline TypeScript or JavaScript. Provide exactly one of code or path."),
+      .describe(
+        "Inline TypeScript or JavaScript. Provide exactly one of code or path.",
+      ),
     path: z
       .string()
       .optional()
       .describe(
-        "Context-relative TypeScript/JavaScript file to execute in this panel. Relative imports resolve from the file."
+        "Context-relative TypeScript/JavaScript file to execute in this panel. Relative imports resolve from the file.",
       ),
     sourcePath: z
       .string()
@@ -52,7 +65,7 @@ const clientEvalParameters = z
       .record(z.string(), z.string())
       .optional()
       .describe(
-        'On-demand packages. Workspace packages auto-resolve; npm packages use "npm:<version>".'
+        'On-demand packages. Workspace packages auto-resolve; npm packages use "npm:<version>".',
       ),
     timeoutMs: z
       .number()
@@ -86,7 +99,9 @@ function runtimeHelp(topic?: string): unknown {
       | Record<string, unknown>
       | undefined) ?? {};
   if (topic) {
-    const runtimeModule = moduleMap["@workspace/runtime"] as Record<string, unknown> | undefined;
+    const runtimeModule = moduleMap["@workspace/runtime"] as
+      | Record<string, unknown>
+      | undefined;
     const segments = topic.split(".");
     let value: unknown = moduleMap[topic] ?? runtimeModule?.[segments[0]!];
     for (const segment of segments.slice(1)) {
@@ -98,7 +113,8 @@ function runtimeHelp(topic?: string): unknown {
     return value && (typeof value === "object" || typeof value === "function")
       ? {
           module: topic,
-          surface: moduleMap[topic] === value ? "loaded-module" : "runtime-export",
+          surface:
+            moduleMap[topic] === value ? "loaded-module" : "runtime-export",
           kind: typeof value,
           exports: Object.keys(value),
         }
@@ -127,7 +143,7 @@ function bounded(
   text: string,
   scope: Record<string, unknown>,
   scopeKey: string,
-  original: unknown
+  original: unknown,
 ): string {
   if (text.length <= MAX_RESULT_CHARS) return text;
   scope[scopeKey] = original;
@@ -141,7 +157,9 @@ function bounded(
 }
 
 function errorHint(error: string): string {
-  const missingRuntimeBinding = error.match(/^([A-Za-z_$][\w$]*) is not defined\b/);
+  const missingRuntimeBinding = error.match(
+    /^([A-Za-z_$][\w$]*) is not defined\b/,
+  );
   const runtimeExports = new Set([
     "callMain",
     "contextId",
@@ -161,7 +179,7 @@ function errorHint(error: string): string {
 
 function executionSignal(
   parent: AbortSignal,
-  timeoutMs: number | undefined
+  timeoutMs: number | undefined,
 ): { signal: AbortSignal; dispose: () => void } {
   if (!timeoutMs) return { signal: parent, dispose: () => undefined };
   const controller = new AbortController();
@@ -169,8 +187,9 @@ function executionSignal(
   if (parent.aborted) abortFromParent();
   else parent.addEventListener("abort", abortFromParent, { once: true });
   const timer = setTimeout(
-    () => controller.abort(new Error(`client_eval timed out after ${timeoutMs}ms`)),
-    timeoutMs
+    () =>
+      controller.abort(new Error(`client_eval timed out after ${timeoutMs}ms`)),
+    timeoutMs,
   );
   return {
     signal: controller.signal,
@@ -182,7 +201,7 @@ function executionSignal(
 }
 
 export function buildClientEvalMethod(
-  dependencies: ClientEvalDependencies
+  dependencies: ClientEvalDependencies,
 ): MethodDefinition<typeof clientEvalParameters, ClientEvalMethodResult> {
   return {
     description: `Execute TypeScript/JavaScript inside the panel that invited you.
@@ -203,7 +222,9 @@ APIs and workspace packages with static imports. \`return\` sends a value back;
       const path = args.path?.trim();
       let code: string;
       try {
-        code = path ? await dependencies.loadSourceFile(path) : (args.code ?? "");
+        code = path
+          ? await dependencies.loadSourceFile(path)
+          : (args.code ?? "");
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         return {
@@ -227,12 +248,20 @@ APIs and workspace packages with static imports. \`return\` sends a value back;
           syntax: args.syntax,
           signal: timeout.signal,
           ...(args.timeoutMs
-            ? { deadline: { atMs: Date.now() + args.timeoutMs, timeoutMs: args.timeoutMs } }
+            ? {
+                deadline: {
+                  atMs: Date.now() + args.timeoutMs,
+                  timeoutMs: args.timeoutMs,
+                },
+              }
             : {}),
           imports: args.imports,
-          ...(dependencies.importLoader ? { loadImport: dependencies.importLoader } : {}),
+          ...(dependencies.importLoader
+            ? { loadImport: dependencies.importLoader }
+            : {}),
           sourcePath: path ?? args.sourcePath,
-          loadSourceFile: path || args.sourcePath ? dependencies.loadSourceFile : undefined,
+          loadSourceFile:
+            path || args.sourcePath ? dependencies.loadSourceFile : undefined,
           bindings: {
             chat: dependencies.getChat(),
             scope,
@@ -242,7 +271,9 @@ APIs and workspace packages with static imports. \`return\` sends a value back;
           onConsole: (formatted) => {
             void context
               .stream({ type: "console", content: formatted })
-              .catch((error) => console.warn("[client_eval] console stream failed", error));
+              .catch((error) =>
+                console.warn("[client_eval] console stream failed", error),
+              );
           },
         });
 
@@ -250,12 +281,12 @@ APIs and workspace packages with static imports. \`return\` sends a value back;
         if (!result.success) {
           parts.push({
             type: "text",
-            text: `[client_eval] Error: ${errorHint(result.error ?? "unknown error")}`,
+            text: `[client_eval] Error: ${errorHint(result.error ? formatRpcFailure(deserializeRpcFailure(result.error)) : "unknown error")}`,
           });
-          if (result.errorData !== undefined) {
+          if (result.error?.errorData !== undefined) {
             parts.push({
               type: "text",
-              text: `[client_eval] Failure data:\n${printable(result.errorData)}`,
+              text: `[client_eval] Failure data:\n${printable(result.error.errorData)}`,
             });
           }
         }
@@ -267,7 +298,7 @@ APIs and workspace packages with static imports. \`return\` sends a value back;
               result.consoleOutput,
               scope,
               LAST_CONSOLE_KEY,
-              result.consoleOutput
+              result.consoleOutput,
             )}`,
           });
         }
@@ -280,7 +311,7 @@ APIs and workspace packages with static imports. \`return\` sends a value back;
               formatted,
               scope,
               LAST_RETURN_KEY,
-              result.returnValue
+              result.returnValue,
             )}`,
           });
         }
@@ -303,10 +334,12 @@ APIs and workspace packages with static imports. \`return\` sends a value back;
             success: result.success,
             ...(result.failureKind ? { failureKind: result.failureKind } : {}),
             ...(result.failureCode ? { failureCode: result.failureCode } : {}),
-            ...(result.errorData !== undefined ? { errorData: result.errorData } : {}),
+            ...(result.error ? { error: result.error } : {}),
           },
         };
-        return result.success ? content : context.result(content, { isError: true });
+        return result.success
+          ? content
+          : context.result(content, { isError: true });
       } finally {
         timeout.dispose();
         await scopeManager.exitEval();

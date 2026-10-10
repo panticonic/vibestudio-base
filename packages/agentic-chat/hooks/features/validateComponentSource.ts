@@ -1,8 +1,9 @@
 import type { SandboxImportLoader } from "@workspace/eval/sandbox";
+import type { RpcFailure } from "@vibestudio/rpc";
 
 export type ComponentSourceValidation =
   | { ok: true }
-  | { ok: false; error: string; errorKind?: string; code?: string; errorData?: unknown };
+  | { ok: false; error: RpcFailure };
 
 /**
  * Compile a component source exactly as the panel renders it (`compileComponent`
@@ -28,9 +29,9 @@ export async function validateComponentSource(
   if (result.success) return { ok: true };
   return {
     ok: false,
-    error: result.error ?? "Component failed to compile",
-    ...(result.errorKind ? { errorKind: result.errorKind } : {}),
-    ...(result.code ? { code: result.code } : {}),
-    ...(result.errorData === undefined ? {} : { errorData: result.errorData }),
+    error: result.error ?? {
+      message: "Component failed to compile",
+      errorKind: "application",
+    },
   };
 }

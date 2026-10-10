@@ -1,4 +1,8 @@
-import { executeTool, nativeToolApi, nativeToolContext } from "../testing/native-tool.js";
+import {
+  executeTool,
+  nativeToolApi,
+  nativeToolContext,
+} from "../testing/native-tool.js";
 import { Value } from "typebox/value";
 import { describe, expect, it, vi } from "vitest";
 import {
@@ -9,8 +13,16 @@ import {
   type EvalRunResult,
 } from "./eval.js";
 
+const rpcFailure = (message: string, errorData?: unknown) => ({
+  message,
+  errorKind: "application" as const,
+  ...(errorData !== undefined ? { errorData } : {}),
+});
+
 /** Join the text parts of a formatted tool result. */
-function textOf(out: Pick<Awaited<ReturnType<typeof formatEvalResult>>, "content">): string {
+function textOf(
+  out: Pick<Awaited<ReturnType<typeof formatEvalResult>>, "content">,
+): string {
   return (out.content ?? [])
     .map((c) => (c as { type: string; text?: string }).text ?? "")
     .join("\n");
@@ -46,7 +58,7 @@ describe("formatEvalResult (shared by the eval tool's execute + the agent's defe
     const result = await formatEvalResult({
       success: false,
       console: "",
-      error: "later statement failed",
+      error: rpcFailure("later statement failed"),
       operationJournal,
     });
     expect(result.isError).toBe(true);
@@ -133,7 +145,7 @@ describe("formatEvalResult (shared by the eval tool's execute + the agent's defe
       await formatEvalResult({
         success: false,
         console: "",
-        error: "scope backend unavailable",
+        error: rpcFailure("scope backend unavailable"),
         kernel: {
           incarnationId: "kernel-2",
           startedAt: 2,
@@ -350,11 +362,23 @@ describe("formatEvalResult (shared by the eval tool's execute + the agent's defe
   });
 
   it("settles text-decoded binary at the artifact boundary before any model image is delivered", async () => {
-    const artifact = { protocol: "eval-image-artifact.v1", digest: "a".repeat(64), size: 24, mimeType: "image/png" };
-    const result = await formatEvalResult({ success: true, console: "", returnValue: artifact }, async () => "\uFFFDPNG\r\n\u001a\n");
+    const artifact = {
+      protocol: "eval-image-artifact.v1",
+      digest: "a".repeat(64),
+      size: 24,
+      mimeType: "image/png",
+    };
+    const result = await formatEvalResult(
+      { success: true, console: "", returnValue: artifact },
+      async () => "\uFFFDPNG\r\n\u001a\n",
+    );
     expect(result.isError).toBe(true);
     expect(result.content?.some((block) => block.type === "image")).toBe(false);
-    expect(result.details).toMatchObject({ failureKind: "infrastructure", failureCode: "eval_artifact_unavailable", returnValue: artifact });
+    expect(result.details).toMatchObject({
+      failureKind: "infrastructure",
+      failureCode: "eval_artifact_unavailable",
+      returnValue: artifact,
+    });
   });
 
   it("attaches nested images and retains checks, deduplicating repeated artifacts", async () => {
@@ -391,7 +415,9 @@ describe("formatEvalResult (shared by the eval tool's execute + the agent's defe
       },
     });
     expect(textOf(out)).toContain('"passed": true');
-    expect(JSON.stringify(out.details)).not.toContain("iVBORw0KGgoAAAANSUhEUgAAAAEAAAAB");
+    expect(JSON.stringify(out.details)).not.toContain(
+      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAAB",
+    );
   });
 
   it("fails explicitly if any nested artifact is missing, without partially delivering images", async () => {
@@ -403,7 +429,8 @@ describe("formatEvalResult (shared by the eval tool's execute + the agent's defe
     }));
     const out = await formatEvalResult(
       { success: true, console: "", returnValue: { screenshots } },
-      async (digest) => (digest.startsWith("a") ? "iVBORw0KGgoAAAANSUhEUgAAAAEAAAAB" : null),
+      async (digest) =>
+        digest.startsWith("a") ? "iVBORw0KGgoAAAANSUhEUgAAAAEAAAAB" : null,
     );
     expect(out.isError).toBe(true);
     expect((out.content ?? []).every((part) => part.type === "text")).toBe(
@@ -450,7 +477,7 @@ describe("formatEvalResult (shared by the eval tool's execute + the agent's defe
     const out = await formatEvalResult({
       success: false,
       console: "",
-      error: "boom",
+      error: rpcFailure("boom"),
     });
     const text = textOf(out);
     expect(text).toContain("[eval] Error: boom");
@@ -463,13 +490,12 @@ describe("formatEvalResult (shared by the eval tool's execute + the agent's defe
     const result: EvalRunResult = {
       success: false,
       console: "",
-      error: "publication failed",
-      failureCode: "candidate_verification_failed",
-      errorData: {
+      error: rpcFailure("publication failed", {
         code: "candidate_verification_failed",
         committedEventId: "event:committed",
         published: false,
-      },
+      }),
+      failureCode: "candidate_verification_failed",
     };
     const out = await formatEvalResult(result);
     const text = textOf(out);
@@ -486,28 +512,33 @@ describe("formatEvalResult (shared by the eval tool's execute + the agent's defe
     const failure: EvalRunResult = {
       success: false,
       console: "",
-      error:
+      error: rpcFailure(
         'Readiness budget exhausted after 100 observations: getByRole("button", { name: "Create new", exact: true })',
+        {
+          observations: 100,
+          maxObservations: 100,
+          locator: 'getByRole("button", { name: "Create new", exact: true })',
+          evidence: {
+            status: "captured",
+            matchCount: 0,
+            snapshot: { text: "＋ Create new", truncated: false },
+          },
+        },
+      ),
       failureKind: "user-code",
       failureCode: "cdp_locator_not_actionable",
-      errorData: {
-        observations: 100,
-        maxObservations: 100,
-        locator: 'getByRole("button", { name: "Create new", exact: true })',
-        evidence: {
-          status: "captured",
-          matchCount: 0,
-          snapshot: { text: "＋ Create new", truncated: false },
-        },
-      },
     };
     const tool = factory({
       execute: async () => formatEvalResult(failure),
       cancel: async () => ({ content: [] }),
     });
-    const result = await executeTool(tool, {
-      code: "await page.getByRole('button', { name: 'Create new' }).click()",
-    }, { callId: "missing-button" });
+    const result = await executeTool(
+      tool,
+      {
+        code: "await page.getByRole('button', { name: 'Create new' }).click()",
+      },
+      { callId: "missing-button" },
+    );
     expect(result.isError).toBe(true);
     expect(result.details).toEqual(failure);
     expect(textOf(result)).toContain("cdp_locator_not_actionable");
@@ -521,9 +552,7 @@ describe("formatEvalResult (shared by the eval tool's execute + the agent's defe
     const result: EvalRunResult = {
       success: false,
       console: "",
-      error: "Expected 1 task left, no match",
-      failureCode: "cdp_locator_state_mismatch",
-      errorData: {
+      error: rpcFailure("Expected 1 task left, no match", {
         locator: 'getByText("1 task left")',
         state: "attached",
         evidence: {
@@ -531,7 +560,8 @@ describe("formatEvalResult (shared by the eval tool's execute + the agent's defe
           matchCount: 0,
           snapshot: { text: "0 tasks left", truncated: false },
         },
-      },
+      }),
+      failureCode: "cdp_locator_state_mismatch",
       operationJournal: {
         protocol: "workspace-operations.v1",
         entries: [],
@@ -548,18 +578,20 @@ describe("formatEvalResult (shared by the eval tool's execute + the agent's defe
     expect(out.details).not.toBe(result);
     const unavailable = await formatEvalResult({
       ...result,
-      errorData: {
+      error: rpcFailure("Expected 1 task left, no match", {
         evidence: { status: "unavailable", reason: "target closed" },
-      },
+      }),
     });
     expect(textOf(unavailable)).toContain("target closed");
     const oversized = await formatEvalResult({
       ...result,
-      errorData: { evidence: { snapshot: { text: "x".repeat(50000) } } },
+      error: rpcFailure("Expected 1 task left, no match", {
+        evidence: { snapshot: { text: "x".repeat(50000) } },
+      }),
     });
     expect(textOf(oversized)).toContain("evidence preview truncated");
     expect(textOf(oversized).length).toBeLessThan(20000);
-    expect(oversized.details?.errorData).toEqual({
+    expect(oversized.details?.error?.errorData).toEqual({
       evidence: { snapshot: { text: "x".repeat(50000) } },
     });
   });
@@ -576,7 +608,7 @@ describe("formatEvalResult (shared by the eval tool's execute + the agent's defe
       await formatEvalResult({
         success: false,
         console: "",
-        error: "x",
+        error: rpcFailure("x"),
         returnValue: 42,
       }),
     );

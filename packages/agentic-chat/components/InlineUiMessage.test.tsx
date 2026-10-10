@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 
 import React from "react";
+import { serializeRpcFailure } from "@vibestudio/rpc";
 import { fireEvent, render, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createConsoleCapture } from "@workspace/eval";
@@ -294,7 +295,7 @@ describe("InlineUiMessage", () => {
           data={{ ...data, id: "fb-turn", turnId: "native-run:7:9" }}
           messageId="inline-ui:agent:author:fb-turn"
           author={author}
-          compilationError="Unexpected token"
+          compilationError={serializeRpcFailure(new Error("Unexpected token"))}
         />,
       );
       await waitFor(() =>
@@ -317,7 +318,7 @@ describe("InlineUiMessage", () => {
           data={data}
           messageId="inline-ui:agent:author:fb-card"
           author={author}
-          compilationError="Unexpected token"
+          compilationError={serializeRpcFailure(new Error("Unexpected token"))}
         />,
       );
       await waitFor(() =>
@@ -347,7 +348,7 @@ describe("InlineUiMessage", () => {
           data={data}
           messageId="inline-ui:agent:author:fb-card"
           author={author}
-          compilationError="Unexpected token"
+          compilationError={serializeRpcFailure(new Error("Unexpected token"))}
         />,
       );
       expect(chatContext.chat.publish).toHaveBeenCalledTimes(1);
@@ -367,14 +368,16 @@ describe("InlineUiMessage", () => {
           compiledComponent={Broken}
         />,
       );
-      await waitFor(() =>
-        expect(chatContext.chat.publish).toHaveBeenCalled(),
-      );
+      await waitFor(() => expect(chatContext.chat.publish).toHaveBeenCalled());
       const keys = new Set(
         chatContext.chat.publish.mock.calls.map(
           (call) =>
-            (call as unknown as [string, { payload: { occurrenceKey: string } }])[1]
-              .payload.occurrenceKey,
+            (
+              call as unknown as [
+                string,
+                { payload: { occurrenceKey: string } },
+              ]
+            )[1].payload.occurrenceKey,
         ),
       );
       expect(keys.size).toBe(1);

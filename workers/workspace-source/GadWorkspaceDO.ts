@@ -1,3 +1,4 @@
+import { rpcFailureSchema } from "@vibestudio/service-schemas/rpcFailure";
 import {
   EnvelopeLineageSchema,
   PrivateLineageForPublishedEnvelopeSchema,
@@ -1740,10 +1741,7 @@ export class GadWorkspaceDO extends DurableObjectBase {
       return {
         state: "failed",
         commandId,
-        failure: JSON.parse(String(row["failure_json"])) as {
-          message: string;
-          retryable: boolean;
-        },
+        failure: rpcFailureSchema.parse(JSON.parse(String(row["failure_json"]))),
       };
     }
     const pending = this.semanticWorkspace()

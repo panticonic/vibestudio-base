@@ -7,7 +7,11 @@
 
 import { useState, useEffect, useRef } from "react";
 import { CONTENT_TYPE_INLINE_UI, type PubSubClient } from "@workspace/pubsub";
-import { isRpcConnectionLost } from "@vibestudio/rpc";
+import {
+  deserializeRpcFailure,
+  isRpcConnectionLost,
+  serializeRpcFailure,
+} from "@vibestudio/rpc";
 import type { LoadSourceFile, SandboxOptions } from "@workspace/eval";
 import { parseInlineUiData } from "../../components/InlineUiMessage";
 import type { ChatMessage, InlineUiComponentEntry } from "../../types";
@@ -158,17 +162,22 @@ export function useInlineUi({
             cacheKey: result.cacheKey!,
             runtime: result.runtime,
           });
-        } else if (!isRpcConnectionLost(result)) {
+        } else if (
+          !isRpcConnectionLost(
+            result.error ? deserializeRpcFailure(result.error) : result,
+          )
+        ) {
           compiledSourcesRef.current.delete(data.id);
           console.error(
             `[InlineUiMessage] Component "${data.id}" compilation failed` +
               (data.source.type === "file" ? ` (${data.source.path})` : ""),
-            result.errorStack ?? result.error,
+            result.error
+              ? deserializeRpcFailure(result.error)
+              : "Compilation failed",
           );
           publishEntry(data.id, {
             cacheKey: sourceKey,
             error: result.error,
-            errorStack: result.errorStack,
             runtime: result.runtime,
           });
         }
@@ -188,10 +197,7 @@ export function useInlineUi({
         );
         publishEntry(data.id, {
           cacheKey: revision,
-          error: err instanceof Error ? err.message : String(err),
-          ...(err instanceof Error && err.stack
-            ? { errorStack: err.stack }
-            : {}),
+          error: serializeRpcFailure(err),
         });
       }
     };

@@ -16,6 +16,12 @@ import type {
 import { toolDetails } from "./native-tool-json.js";
 import type { ImageContent } from "@panticonic/pi-ai";
 import {
+  deserializeRpcFailure,
+  formatRpcFailure,
+  serializeRpcFailure,
+  type RpcFailure,
+} from "@vibestudio/rpc";
+import {
   evalImageArtifactSchema,
   mapEvalResultLeaves,
   type EvalStartInput,
@@ -170,10 +176,9 @@ export interface EvalRunResult {
   success: boolean;
   console: string;
   returnValue?: unknown;
-  error?: string;
+  error?: RpcFailure;
   failureKind?: "user-code" | "infrastructure" | "cancelled";
   failureCode?: string;
-  errorData?: unknown;
   scopeKeys?: string[];
   operationJournal?: import("@vibestudio/service-schemas/eval").EvalOperationJournal;
   panelResources?: {
@@ -291,16 +296,28 @@ export async function formatEvalResult(
     images.clear();
     // The code's artifact receipt remains inspectable. Delivery failure must
     // still settle the invocation explicitly, including deferred delivery.
+    const artifactFailure = serializeRpcFailure(
+      new AggregateError(
+        [...(result.error ? [deserializeRpcFailure(result.error)] : []), error],
+        "Eval artifact storage failed",
+      ),
+    );
     result = {
       ...result,
       success: false,
-      error: error instanceof Error ? error.message : String(error),
+      error: {
+        ...artifactFailure,
+        errorData: {
+          ...(artifactFailure.errorData &&
+          typeof artifactFailure.errorData === "object"
+            ? (artifactFailure.errorData as Record<string, unknown>)
+            : {}),
+          code: "eval_artifact_unavailable",
+          artifact: result.returnValue,
+        },
+      },
       failureKind: "infrastructure",
       failureCode: "eval_artifact_unavailable",
-      errorData: {
-        code: "eval_artifact_unavailable",
-        artifact: result.returnValue,
-      },
     };
   }
   const rootArtifact = evalImageArtifactSchema.safeParse(result.returnValue);
@@ -328,16 +345,18 @@ export async function formatEvalResult(
     }
   }
   if (!result.success)
-    parts.push(`[eval] Error: ${result.error ?? "unknown error"}`);
-  if (!result.success && result.errorData !== undefined) {
+    parts.push(
+      `[eval] Error: ${result.error ? formatRpcFailure(deserializeRpcFailure(result.error)) : "unknown error"}`,
+    );
+  if (!result.success && result.error?.errorData !== undefined) {
     parts.push(
       `[eval] Structured failure${result.failureCode ? `: ${result.failureCode}` : ""}. ` +
-        "See details.errorData for the typed recovery data.",
+        "See details.error.errorData for the typed recovery data.",
     );
     // Tool details are retained for inspection, but model-facing content must
     // carry failure observations too; do not make the agent probe again merely
     // to discover the state already captured by the browser client.
-    const data = result.errorData as Record<string, unknown> | null;
+    const data = result.error.errorData as Record<string, unknown> | null;
     if (data && typeof data === "object" && data["evidence"] !== undefined) {
       const packet = safeStringify({
         locator: data["locator"],
@@ -349,7 +368,7 @@ export async function formatEvalResult(
       parts.push(
         `[eval] Browser failure evidence:\n${packet.slice(0, MAX_EVIDENCE_CHARS)}` +
           (packet.length > MAX_EVIDENCE_CHARS
-            ? "\n[evidence preview truncated; full packet retained in details.errorData]"
+            ? "\n[evidence preview truncated; full packet retained in details.error.errorData]"
             : ""),
       );
     }

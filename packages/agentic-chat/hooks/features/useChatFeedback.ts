@@ -27,6 +27,7 @@ import { AGENTIC_EVENT_PAYLOAD_KIND, type AgenticEvent } from "@workspace/agenti
 import { type ChatSandboxValue } from "@workspace/agentic-core";
 
 import { fsMethods } from "@vibestudio/service-schemas/fs";
+import { deserializeRpcFailure, formatRpcFailure, serializeRpcFailure } from "@vibestudio/rpc";
 interface UseChatFeedbackOptions {
   chat: ChatSandboxValue;
   loadImport?: SandboxOptions["loadImport"];
@@ -126,11 +127,13 @@ export function useChatFeedback({
           }
         );
       } catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
-        compiled = { success: false, error: message };
+        compiled = { success: false, error: serializeRpcFailure(err) };
       }
       if (!compiled.success) {
-        const errorMessage = compiled.error ?? "Unknown compile error";
+        const failure = compiled.error;
+        const errorMessage = failure
+          ? formatRpcFailure(deserializeRpcFailure(failure))
+          : "Unknown compile error";
         // Surface the compile failure to the user as a dismissable schema
         // feedback card. Without this, a bad TSX from the agent renders
         // nothing on screen and the method result error flows past the user
@@ -154,7 +157,7 @@ export function useChatFeedback({
           };
           addFeedback(feedback);
         });
-        throw new Error(errorMessage);
+        throw failure ? deserializeRpcFailure(failure) : new Error(errorMessage);
       }
       const cacheKey = compiled.cacheKey!;
       return new Promise<FeedbackResult>((resolve) => {
