@@ -1,3 +1,4 @@
+import type {} from "@vibestudio/extension";
 import { spawn } from "node:child_process";
 import { createInterface } from "node:readline";
 import { createRequire } from "node:module";
