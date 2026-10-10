@@ -19,7 +19,7 @@ const ingress: SemanticDispatchRequest["ingress"] = {
 };
 
 describe("SemanticWorkspace repository creation", () => {
-  it("authors the repository identity and all initial files in one lifecycle work unit", async () => {
+  it("authors repository work from host causal ingress before the trajectory mirror catches up", async () => {
     const sql = await createInMemorySql();
     createSemanticVcsSchema(sql);
     sql.exec(`
@@ -30,12 +30,6 @@ describe("SemanticWorkspace repository creation", () => {
       )
     `);
     createTrajectoryMirrorSchema(sql);
-    sql.exec(
-      `INSERT INTO trajectory_invocations
-       (log_id, head, invocation_id, status, updated_at)
-       VALUES ('trajectory:test', 'main', 'invocation:test', 'active', ?)`,
-      timestamp
-    );
     const store = new SemanticVcsStore(sql, () => timestamp);
     let transactionOrdinal = 0;
     const semantic = new SemanticWorkspace({

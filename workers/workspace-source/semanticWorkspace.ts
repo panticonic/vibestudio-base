@@ -2073,23 +2073,6 @@ export class SemanticWorkspace {
   ): SemanticDispatchResult | null {
     const requestDigest = compactId(`${method}-request`, input);
     const cause = causalCommandRef(request.ingress);
-    if (cause.parent) {
-      const invocation = this.deps.sql
-        .exec(
-          `SELECT 1 FROM trajectory_invocations
-            WHERE log_id = ? AND head = ? AND invocation_id = ? LIMIT 1`,
-          cause.parent.logId,
-          cause.parent.head,
-          cause.parent.invocationId,
-        )
-        .toArray()[0];
-      if (!invocation) {
-        throw new SemanticVcsError(
-          "InvalidReference",
-          "Semantic mutation cause is not an exact trajectory invocation",
-        );
-      }
-    }
     const existing = this.deps.store.beginCommand({
       scopeKind: "context",
       scopeId: input.contextId,
