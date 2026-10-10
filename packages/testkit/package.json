@@ -17,10 +17,12 @@
   },
   "exports": {
     ".": "./src/index.ts",
+    "./driver-contract": "./src/driver-contract.ts",
     "./suites": "./src/suites/index.ts",
     "./profiling": "./src/profile-core.ts"
   },
   "dependencies": {
+    "@vibestudio/shared": "workspace:*",
     "@vibestudio/service-schemas": "workspace:*",
     "@workspace/runtime": "workspace:*",
     "@workspace/cdp-client": "workspace:*"

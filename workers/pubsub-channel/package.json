@@ -199,6 +199,7 @@
     ]
   },
   "dependencies": {
+    "@workspace/agentic-do": "workspace:*",
     "@workspace/agentic-core": "workspace:*",
     "@vibestudio/content-addressing": "workspace:*",
     "@vibestudio/rpc": "workspace:*",
@@ -214,5 +215,9 @@
     "@workspace-workers/workspace-source": "workspace:*",
     "@panticonic/builtin": "workspace:*",
     "vitest": "^3.2.7"
+  },
+  "exports": {
+    "./contract": "./contract.ts",
+    ".": "./index.ts"
   }
 }

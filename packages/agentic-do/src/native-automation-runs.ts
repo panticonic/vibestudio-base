@@ -192,7 +192,7 @@ export interface NativeAutomationHost {
   /** Resolves one existing, genuinely owned channel conversation; never manufactures a binding. */
   conversation(channelId: string, context: Context): Promise<Conversation>;
   /** Calls the canonical admitted MissionsDO using this executor's attributed caller. */
-  finishRun(input: unknown, context: Context): Promise<void>;
+  finishRun(input: import("zod").z.input<typeof missionsMethods.finishRun.args>[0], context: Context): Promise<void>;
 }
 
 /** Product run association and acknowledgement debt; every operation executes in the actual native scheduler. */

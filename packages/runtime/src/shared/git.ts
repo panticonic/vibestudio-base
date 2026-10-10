@@ -1,3 +1,4 @@
+import { mainRpcMethods } from "@vibestudio/service-schemas/mainRpc";
 /**
  * Canonical external Git client for panel, worker, and eval runtimes.
  *
@@ -42,6 +43,6 @@ export function createGitClient(rpc: RpcCaller): GitClient {
     GIT_INTEROP_METHOD_NAMES,
     async () => (await import("@vibestudio/service-schemas/gitInterop")).gitInteropMethods,
     (_service, method, args) =>
-      rpc.call("main", "extensions.invokeProvider", ["gitInterop", method, args])
+      rpc.call("main", mainRpcMethods["extensions.invokeProvider"], ["gitInterop", method, args])
   );
 }

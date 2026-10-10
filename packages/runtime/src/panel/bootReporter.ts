@@ -1,3 +1,4 @@
+import { mainRpcMethods } from "@vibestudio/service-schemas/mainRpc";
 import type { RpcClient } from "@vibestudio/rpc";
 import type { PanelRendererViewReport } from "@vibestudio/service-schemas/panelRuntime";
 import type { PanelBootObservation } from "@vibestudio/shared/panel/observation";
@@ -21,7 +22,7 @@ export interface PanelBootReporter {
  */
 export function createPanelBootReporter(options: {
   rpc: Pick<RpcClient, "status" | "onStatusChange"> & {
-    call(targetId: string, method: string, args: unknown[]): Promise<PanelBootReportResult>;
+    call: import("@vibestudio/rpc").RpcCaller["call"];
   };
   observeView: (
     boot: PanelBootObservation
@@ -43,7 +44,7 @@ export function createPanelBootReporter(options: {
     const publicationDisconnectRevision = disconnectRevision;
     publishing = true;
     void options.rpc
-      .call("main", "panelRuntime.reportOwnView", [publication.observation])
+      .call("main", mainRpcMethods["panelRuntime.reportOwnView"], [publication.observation])
       .then((result) => {
         if (result === "stale") {
           // This document no longer owns the exact coordinator lease. It must

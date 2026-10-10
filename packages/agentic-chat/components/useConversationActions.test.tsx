@@ -65,7 +65,15 @@ describe("shared conversation action model", () => {
       },
     } as unknown as Record<string, never>;
     const accountProfiles = new Map<string, AccountProfile>([
-      ["user:one", { userId: "one", handle: "current-human", displayName: "Current Human" }],
+      [
+        "user:one",
+        {
+          userId: "one",
+          handle: "current-human",
+          displayName: "Current Human",
+          role: "member",
+        },
+      ],
     ]);
 
     render(
@@ -74,7 +82,7 @@ describe("shared conversation action model", () => {
         accountProfiles={accountProfiles}
         onRemoveAgent={onRemoveAgent}
         onDebugConsoleChange={onDebugConsoleChange}
-      />
+      />,
     );
 
     expect(controller?.participants.map(({ handle }) => handle)).toEqual([

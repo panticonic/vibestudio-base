@@ -8,7 +8,7 @@ workspace.
 - All file paths are **relative to your working directory** (e.g., `panels/my-app/index.tsx`).
 - **NEVER** use host absolute paths (e.g., `/home/.../workspace/panels/...`). Runtime `fs.*` also accepts context-root absolute paths like `/panels/my-app/index.tsx`, but prefer `panels/my-app/index.tsx` in examples and source edits.
 - **NEVER** use `Bash` for git operations, file listing, or file creation. Use the structured tools.
-- In eval, `rpc`, `services`, `fs`, `ctx`, `scope`, `scopes`, `db`, `help` (and, in agent eval, `chat`) are **injected free variables**; do **not** import them. Raw service catalog calls work as `rpc.call("<svc>.<method>", [args])` or the shorthand `services.<svc>.<method>(...)`; `services.<svc>` is always the raw service, even when a runtime binding shares the name. Import workspace/npm **packages** in each invocation that uses them (`import { prepareProjects } from "@workspace-skills/workspace-dev"`). Static imports and literal dynamic imports use the same per-owner loader; see the [import contract](../sandbox/EVAL.md#imports).
+- In eval, `rpc`, `services`, `fs`, `ctx`, `scope`, `scopes`, `db`, `help` (and, in agent eval, `chat`) are **injected free variables**; do **not** import them. Prefer the typed `services.<svc>.<method>(...)` clients. A direct public `rpc.call` requires a receiver-owned descriptor; for host methods, import `mainRpcMethods` from `@vibestudio/service-schemas/mainRpc`. `services.<svc>` is the service client, even when a runtime binding shares the name. Import workspace/npm **packages** in each invocation that uses them (`import { prepareProjects } from "@workspace-skills/workspace-dev"`). Static imports and literal dynamic imports use the same per-owner loader; see the [import contract](../sandbox/EVAL.md#imports).
 
 ---
 
@@ -214,10 +214,13 @@ execution or cancellation is in progress and for 30 minutes of inactivity
 afterwards; every cell renews this idle lease. After an unavoidable restart,
 `[kernel] Restarted` lists which scope keys were restored and which were lost.
 In eval, `rpc`, `services`, `fs`, `ctx`, `scope`, `scopes`, `db`, `help` (and,
-in agent eval, `chat`) are injected free variables. Call raw service catalog
-methods with `rpc.call("<svc>.<method>", [args])`, and use the rich runtime
-bindings (`workers`, `vcs`, `fs`, etc.) directly for workspace operations.
-`services.<svc>.<method>(...)` is the same raw service call. Do **not** import the injected names from
+in agent eval, `chat`) are injected free variables. Public `rpc.call` requires
+the receiver-owned method descriptor and argument tuple. For host methods,
+import `mainRpcMethods` from `@vibestudio/service-schemas/mainRpc`; use the
+validating `mainRpcMethod(name)` lookup for a dynamically selected host method,
+which returns `unknown`. Prefer the rich runtime bindings (`workers`, `vcs`,
+`fs`, etc.) for workspace operations. `services.<svc>.<method>(...)` is the
+typed service-client form. Do **not** import the injected names from
 `@workspace/runtime`.
 
 **IMPORTANT:**
@@ -275,10 +278,11 @@ working state: it runs the caller's code as of the fork, and later edits in the
 caller's context do not reach it. Pass `ref: "main"` to run protected main
 deliberately.
 
-In **eval**, `rpc` has the same shape as in panels and workers:
-`rpc.call(target, method, args)`. Raw server services use the target `"main"`,
-for example `rpc.call("main", "build.getBuild", ["panels/my-app"])` or
-`chat.rpc.call("main", "build.recompute", [])`.
+In **eval**, `rpc` has the same typed shape as in panels and workers:
+`rpc.call(target, methodDescriptor, args)`. Host methods use the target `"main"`
+and the canonical descriptors from `@vibestudio/service-schemas/mainRpc`, for
+example `rpc.call("main", mainRpcMethods["build.getBuild"], ["panels/my-app"])` or
+`chat.rpc.call("main", mainRpcMethods["build.recompute"], [])`.
 
 `await workspace.projects()` lists the `projects/*` repository roots, and
 `await workspace.projectForPath(path)` returns the project containing a path, or
@@ -399,10 +403,10 @@ broken; do not work around it with a temporary panel or another process path.
 ### RPC Services
 
 From eval, prefer the runtime clients (`workers`, `vcs`, `fs`, etc.) for
-workspace operations. Use raw `rpc.call("<svc>.<method>", [args])` when
-following a `docs_open` service catalog entry; `services.<svc>.<method>(...)` is
-the same raw call. `services.workers` is the raw `workers` service, not the
-`workers` runtime client.
+workspace operations. Use the typed `services.<svc>.<method>(...)` client when
+following a `docs_open` service catalog entry. For direct public `rpc.call`, use
+the receiver's descriptor table. `services.workers` is the host service client,
+not the `workers` runtime client.
 
 #### Worker lifecycle (portable typed client)
 
@@ -802,3 +806,5 @@ Fetch and process content from a URL.
 
 The full extracted page is cached in the blobstore. Use the returned digest
 with `web_read` to read beyond the inline head excerpt.
+
+Host RPC descriptors are exported by `@vibestudio/service-schemas/mainRpc`: import `mainRpcMethods` for the calls above.

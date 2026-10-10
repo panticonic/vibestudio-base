@@ -1,3 +1,10 @@
+import {
+  EnvelopeLineageSchema,
+  PrivateLineageForPublishedEnvelopeSchema,
+  type GadJsonValue,
+} from "@vibestudio/service-schemas/workspaceSource";
+import { mainRpcMethods } from "@vibestudio/service-schemas/mainRpc";
+import { durableWorkOwnerMethods } from "@vibestudio/service-schemas/durableWorkOwner";
 /**
  * Workspace-owned semantic authority.
  *
@@ -660,8 +667,8 @@ function snippetAround(text: string, query: string, radius = 160): string {
   return `${start > 0 ? "…" : ""}${text.slice(start, end)}${end < text.length ? "…" : ""}`;
 }
 
-function summarizeJsonForInspection(value: unknown, depth = 0): unknown {
-  if (value == null) return value;
+function summarizeJsonForInspection(value: unknown, depth = 0): GadJsonValue {
+  if (value == null) return null;
   if (typeof value === "string") {
     return value.length > 240
       ? { type: "string", chars: value.length, preview: value.slice(0, 240) }
@@ -685,7 +692,7 @@ function summarizeJsonForInspection(value: unknown, depth = 0): unknown {
         key,
         summarizeJsonForInspection(child, depth + 1),
       ]);
-    const out = Object.fromEntries(sample) as Record<string, unknown>;
+    const out = Object.fromEntries(sample) as Record<string, GadJsonValue>;
     if (entries.length > sample.length)
       out["omittedKeys"] = entries.length - sample.length;
     return out;
@@ -909,7 +916,10 @@ interface ProjectionKey {
 }
 
 export class GadWorkspaceDO extends DurableObjectBase {
-  static override rpcMethods = gadWireMethods;
+  static override rpcMethods = {
+    ...gadWireMethods,
+    ...durableWorkOwnerMethods,
+  };
   static override schemaVersion = GAD_WORKSPACE_SCHEMA_VERSION;
 
   protected override rpcSchemaCodeSource(
@@ -5480,7 +5490,7 @@ export class GadWorkspaceDO extends DurableObjectBase {
     if (!originRow) return null;
     const channelEnvelope = this.mapLogEnvelope(channelRow);
     const originEnvelope = this.mapLogEnvelope(originRow);
-    return {
+    return EnvelopeLineageSchema.parse({
       publication: {
         eventId: String(originEnvelope.envelopeId),
         trajectoryId: String(channelRow["origin_log_id"]),
@@ -5495,7 +5505,7 @@ export class GadWorkspaceDO extends DurableObjectBase {
         trajectoryId: String(channelRow["origin_log_id"]),
         branchId: String(channelRow["origin_head"]),
       }),
-    };
+    });
   }
 
   @schemaRpc()
@@ -5630,12 +5640,12 @@ export class GadWorkspaceDO extends DurableObjectBase {
     const events = this.readLog({ logId: trajectoryId, head: branchId }).filter(
       (envelope) => envelope.seq <= lineage.trajectoryEvent.seq,
     );
-    return {
+    return PrivateLineageForPublishedEnvelopeSchema.parse({
       lineage,
       branchEvents: events.map((envelope) =>
         this.trajectoryEventView(envelope, { trajectoryId, branchId }),
       ),
-    };
+    });
   }
 
   @schemaRpc()
@@ -6884,9 +6894,11 @@ export class GadWorkspaceDO extends DurableObjectBase {
     // idempotent, so the producer can safely retry the semantic operation.
     // `false` only means that no transport for the account is currently live;
     // the next authenticated shell snapshot will still load the durable row.
-    return this.rpc.call<boolean>("main", "notification.signalUserInbox", [
-      userId,
-    ]);
+    return this.rpc.call(
+      "main",
+      mainRpcMethods["notification.signalUserInbox"],
+      [userId],
+    );
   }
 
   /**

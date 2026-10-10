@@ -718,34 +718,5 @@ export function reduceChannelView(
     };
   }
 
-  if (event.turnId && event.kind !== "turn.closed" && event.kind !== "turn.waiting") {
-    const existing = next.turns[event.turnId];
-    if (
-      (existing?.status === "open" ||
-        (existing?.status === "waiting" && reactivatesWaitingTurn(event))) &&
-      existing.updatedAt !== event.createdAt
-    ) {
-      next = {
-        ...next,
-        turns: {
-          ...next.turns,
-          [event.turnId]: {
-            ...existing,
-            status: "open",
-            updatedAt: event.createdAt,
-          },
-        },
-      };
-    }
-  }
-
   return next;
-}
-
-function reactivatesWaitingTurn(event: AgenticEvent): boolean {
-  return (
-    event.kind === "message.started" ||
-    event.kind === "message.delta" ||
-    event.kind === "invocation.started"
-  );
 }

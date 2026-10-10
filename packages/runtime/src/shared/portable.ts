@@ -1,3 +1,4 @@
+export { formatRpcFailure } from "@vibestudio/rpc";
 /**
  * Portable authoring helpers — pure, target-independent utilities that are
  * IDENTICAL on panel · worker · eval. Both runtime barrels (`panel/index.ts`,

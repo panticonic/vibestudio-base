@@ -179,7 +179,8 @@ capabilities migrate.
   close panels in v1.
 - `ctx.db`: there is no general-purpose database service. For shared DO-backed
   storage, declare a service in the manifest and reach it with
-  `ctx.workers.resolveService(...)` and `ctx.rpc.call(targetId, ...)`. Use
+  `ctx.workers.resolveService(...)` and `ctx.rpc.call(targetId, descriptor, args)`
+  using the provider's exported receiver contract. Use
   `ctx.storage` for scratch data. `resolveDurableObject(...)` accepts workspace
   worker classes only; host-internal DOs are not workspace targets and cannot be
   reached by guessing a class or object key.

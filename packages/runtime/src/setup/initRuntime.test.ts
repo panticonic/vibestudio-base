@@ -1,5 +1,13 @@
+import { z } from "zod";
+import { createRpcMethods } from "@vibestudio/shared/rpcMethods";
+import { PanelDetailSchema } from "@vibestudio/service-schemas/workspaceState";
+import { mainRpcMethods } from "@vibestudio/service-schemas/mainRpc";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { rpcDiagnosticIdOf, type EnvelopeRpcTransport, type RpcEnvelope } from "@vibestudio/rpc";
+import {
+  rpcDiagnosticIdOf,
+  type EnvelopeRpcTransport,
+  type RpcEnvelope,
+} from "@vibestudio/rpc";
 import { initRuntime } from "./initRuntime.js";
 import { patchStateArgs } from "../panel/stateArgs.js";
 import { DEFAULT_THEME_CONFIG } from "../types.js";
@@ -7,6 +15,24 @@ import {
   HOST_COMMAND_CONTRIBUTION_EVENT,
   HOST_COMMAND_RUN_EVENT,
 } from "@vibestudio/shared/hostCommands";
+import { durableObjectServiceFixture } from "@vibestudio/service-schemas/test-utils";
+
+const testRpcMethods = createRpcMethods(
+  "test",
+  {
+    readGreeting: {
+      website: { kind: "closed", reason: "Test receiver" } as const,
+      args: z.tuple([]),
+      returns: z.object({ greeting: z.string() }),
+    },
+    late: {
+      website: { kind: "closed", reason: "Test receiver" } as const,
+      args: z.tuple([]),
+      returns: z.unknown(),
+    },
+  },
+  "",
+);
 
 const g = globalThis as typeof globalThis & {
   __vibestudioWorkspaceId?: string;
@@ -23,6 +49,46 @@ const g = globalThis as typeof globalThis & {
   __vibestudioStateArgs?: Record<string, unknown>;
 };
 const WORKSPACE_STATE_TARGET = "main";
+
+function parentDetail(entityId: string, source = "panels/parent") {
+  const slotId = "panel:tree/parent-slot";
+  return PanelDetailSchema.parse({
+    revision: 1,
+    slot: {
+      slot_id: slotId,
+      parent_slot_id: null,
+      current_entity_id: entityId,
+      current_entity_title: "Parent",
+      current_entry_key: "parent-entry",
+      sort_key: 0,
+      created_at: 1,
+      closed_at: null,
+    },
+    currentHistory: {
+      slot_id: slotId,
+      cursor: 0,
+      entry_key: "parent-entry",
+      entity_id: entityId,
+      source,
+      context_id: "ctx-1",
+      state_args: null,
+      options: null,
+      recorded_at: 1,
+    },
+    entity: {
+      id: entityId,
+      authoritySessionId: "test-owner",
+      kind: "panel",
+      source: { repoPath: source, effectiveVersion: "e".repeat(64) },
+      activeBuildKey: "b".repeat(64),
+      contextId: "ctx-1",
+      key: "parent-entry",
+      createdAt: 1,
+      status: "active",
+      cleanupComplete: false,
+    },
+  });
+}
 
 function createTransport(options?: {
   onSend?: (
@@ -95,12 +161,18 @@ describe("initRuntime", () => {
   it("settles addressed foreign replies and preserves original errors while rejecting another workspace", async () => {
     g.__vibestudioWorkspaceId = "workspace:test";
     g.__vibestudioEntityId = "panel:panel-1";
-    g.__vibestudioGatewayConfig = { serverUrl: "http://server.test", token: "test-token" };
+    g.__vibestudioGatewayConfig = {
+      serverUrl: "http://server.test",
+      token: "test-token",
+    };
     let deliverReply!: (envelope: RpcEnvelope) => void;
     let outgoing!: RpcEnvelope;
     const transport = createTransport({
       onSend(envelope, deliver) {
-        if (envelope.message.type === "request" && envelope.message.method === "readGreeting") {
+        if (
+          envelope.message.type === "request" &&
+          envelope.message.method === "readGreeting"
+        ) {
           outgoing = envelope;
           deliverReply = deliver;
         }
@@ -110,25 +182,38 @@ describe("initRuntime", () => {
     const reply = (workspaceId: string, failure = false): RpcEnvelope => ({
       ...responseFor(outgoing, { greeting: "hello across workspaces" }),
       destination: { kind: "workspace", workspaceId },
-      delivery: { caller: { callerId: outgoing.target, callerKind: "server", workspaceId: "peer" } },
+      delivery: {
+        caller: {
+          callerId: outgoing.target,
+          callerKind: "server",
+          workspaceId: "peer",
+        },
+      },
       ...(failure && outgoing.message.type === "request"
         ? {
             message: {
               type: "response" as const,
               requestId: outgoing.message.requestId,
-              error: "Original receiver failure",
-              errorKind: "application" as const,
-              errorCode: "RECEIVER_FAILED",
-              errorData: { phase: "readGreeting" },
-              diagnosticId: "c129a216-5c2d-4de5-979b-8a315f1aff22",
+              error: {
+                message: "Original receiver failure",
+                errorKind: "application" as const,
+                code: "RECEIVER_FAILED",
+                errorData: { phase: "readGreeting" },
+                diagnosticId: "c129a216-5c2d-4de5-979b-8a315f1aff22",
+              },
             },
           }
         : {}),
     });
     try {
-      const call = runtime.rpc.call("do:workers/peer:Receiver:main", "readGreeting", [], {
-        destination: { kind: "workspace", workspaceId: "peer" },
-      });
+      const call = runtime.rpc.call(
+        "do:workers/peer:Receiver:main",
+        testRpcMethods.readGreeting,
+        [],
+        {
+          destination: { kind: "workspace", workspaceId: "peer" },
+        },
+      );
       await Promise.resolve();
       let settled = false;
       void call.then(() => {
@@ -138,10 +223,17 @@ describe("initRuntime", () => {
       await Promise.resolve();
       expect(settled).toBe(false);
       deliverReply(reply("workspace:test"));
-      await expect(call).resolves.toEqual({ greeting: "hello across workspaces" });
-      const failed = runtime.rpc.call("do:workers/peer:Receiver:main", "readGreeting", [], {
-        destination: { kind: "workspace", workspaceId: "peer" },
+      await expect(call).resolves.toEqual({
+        greeting: "hello across workspaces",
       });
+      const failed = runtime.rpc.call(
+        "do:workers/peer:Receiver:main",
+        testRpcMethods.readGreeting,
+        [],
+        {
+          destination: { kind: "workspace", workspaceId: "peer" },
+        },
+      );
       await Promise.resolve();
       deliverReply(reply("workspace:test", true));
       const error = await failed.catch((failure: unknown) => failure);
@@ -151,7 +243,9 @@ describe("initRuntime", () => {
         errorKind: "application",
         errorData: { phase: "readGreeting" },
       });
-      expect(rpcDiagnosticIdOf(error)).toBe("c129a216-5c2d-4de5-979b-8a315f1aff22");
+      expect(rpcDiagnosticIdOf(error)).toBe(
+        "c129a216-5c2d-4de5-979b-8a315f1aff22",
+      );
     } finally {
       runtime.destroy();
     }
@@ -211,9 +305,9 @@ describe("initRuntime", () => {
     });
     runtime.destroy();
     expect(listeners.size).toBe(0);
-    await expect(runtime.rpc.call("main", "late", [])).rejects.toThrow(
-      /retired/,
-    );
+    await expect(
+      runtime.rpc.call("main", testRpcMethods.late, []),
+    ).rejects.toThrow(/retired/);
     emitState({ title: "Later document" });
     expect(panelWindow.__vibestudioStateArgs).toEqual({
       title: "Current document",
@@ -307,17 +401,22 @@ describe("initRuntime", () => {
             const message = envelope.message;
             if (message.type !== "request") return;
             sent.push(envelope);
-            deliver(responseFor(envelope, "ok"));
+            deliver(responseFor(envelope, undefined));
           },
         }),
     });
 
     await expect(
-      runtime.rpc.call("main", "fs.writeFile", ["/tmp/x", "y"], {
-        idempotencyKey: "idem-1",
-        readOnly: true,
-      }),
-    ).resolves.toBe("ok");
+      runtime.rpc.call(
+        "main",
+        mainRpcMethods["fs.writeFile"],
+        ["/tmp/x", "y"],
+        {
+          idempotencyKey: "idem-1",
+          readOnly: true,
+        },
+      ),
+    ).resolves.toBeUndefined();
 
     expect(sent).toHaveLength(1);
     expect(sent[0]).toMatchObject({
@@ -365,8 +464,9 @@ describe("initRuntime", () => {
               responseFor(
                 envelope,
                 message.method === "workers.resolveService"
-                  ? { kind: "durable-object", targetId: WORKSPACE_STATE_TARGET }
-                  : message.method === "workspace-state.slot.patchCurrentStateArgs"
+                  ? durableObjectServiceFixture(WORKSPACE_STATE_TARGET)
+                  : message.method ===
+                      "workspace-state.slot.patchCurrentStateArgs"
                     ? { mode: "live", fromHost: true }
                     : undefined,
               ),
@@ -524,21 +624,7 @@ describe("initRuntime", () => {
             });
             if (message.method === "workspace-state.panelTree.detail") {
               deliver(
-                responseFor(envelope, {
-                  slot: {
-                    parent_slot_id: null,
-                    current_entity_title: "Parent",
-                  },
-                  currentHistory: {
-                    source: "panels/parent",
-                    context_id: "ctx-1",
-                    options: null,
-                  },
-                  entity: {
-                    id: "panel:nav-parent-entity",
-                    source: { effectiveVersion: "ev-parent" },
-                  },
-                }),
+                responseFor(envelope, parentDetail("panel:nav-parent-entity")),
               );
               return;
             }
@@ -657,7 +743,9 @@ describe("initRuntime", () => {
               method: message.method,
               args: message.args,
             });
-            if (message.method === "workspace-state.slot.commitPreparedNavigation") {
+            if (
+              message.method === "workspace-state.slot.commitPreparedNavigation"
+            ) {
               currentEntityId = "panel:nav-next-entity";
             }
             const navigation =
@@ -682,128 +770,136 @@ describe("initRuntime", () => {
               responseFor(
                 envelope,
                 message.method === "workers.resolveService"
-                  ? { kind: "durable-object", targetId: WORKSPACE_STATE_TARGET }
-                  : message.method === "titlesForSlots"
-                    ? Object.fromEntries(
-                        (message.args[0] as string[]).map((slotId) => [
-                          slotId,
-                          slotId === "panel:tree/parent-slot"
-                            ? "Parent"
-                            : "Next",
-                        ]),
-                      )
-                    : message.method === "build.getPanelMetadata"
-                      ? { title: "Next", stateArgs: undefined }
-                      : message.method === "runtime.createEntity"
+                  ? durableObjectServiceFixture(WORKSPACE_STATE_TARGET)
+                  : message.method === "workspace-state.panel.updateTitle"
+                    ? message.args[1]
+                    : message.method === "titlesForSlots"
+                      ? Object.fromEntries(
+                          (message.args[0] as string[]).map((slotId) => [
+                            slotId,
+                            slotId === "panel:tree/parent-slot"
+                              ? "Parent"
+                              : "Next",
+                          ]),
+                        )
+                      : message.method === "build.getPanelMetadata"
                         ? {
-                            id: "panel:nav-next-entity",
-                            contextId: "ctx-next",
-                            source: { effectiveVersion: "ev-next" },
-                            buildKey: "build-next",
+                            source: "panels/next",
+                            title: "Next",
+                            hiddenInLauncher: false,
                           }
-                        : message.method === "workspace-state.slot.close"
-                          ? { closeId: "close-1", closedCount: 1 }
+                        : message.method === "runtime.createEntity"
+                          ? {
+                              id: "panel:nav-next-entity",
+                              targetId: "panel:nav-next-entity",
+                              kind: "panel",
+                              contextId: "ctx-next",
+                              source: {
+                                repoPath: "panels/next",
+                                effectiveVersion: "e".repeat(64),
+                              },
+                              buildKey: "b".repeat(64),
+                            }
                           : message.method ===
-                              "workspace-state.slot.closeCleanupPage"
-                            ? { items: [], nextCursor: null }
-                            : message.method ===
-                                "workspace-state.panelTree.detail"
-                              ? {
-                                  slot: {
-                                    slot_id: "panel:tree/parent-slot",
-                                    parent_slot_id: null,
-                                  },
-                                  currentHistory: {
-                                    source: "panels/current",
-                                    context_id: "ctx-1",
-                                    state_args: null,
-                                    options: null,
-                                  },
-                                  entity: {
-                                    id: currentEntityId,
-                                    source: { effectiveVersion: "ev-current" },
-                                    activeBuildKey: "build-current",
-                                  },
-                                }
+                              "workspace-state.slot.patchCurrentStateArgs"
+                            ? message.args[1]
+                            : message.method === "workspace-state.slot.close"
+                              ? { closeId: "close-1", closedCount: 1 }
                               : message.method ===
-                                  "workspace-state.slot.commitPreparedNavigation"
-                                ? {
-                                    previousEntityId: "panel:nav-parent-entity",
-                                    currentEntityId: "panel:nav-next-entity",
-                                  }
-                                : message.method === "panelRuntime.ensureSlot"
-                                  ? {
-                                      status: "assigned",
-                                      lease: null,
-                                      attempt: {
-                                        epoch: "test",
-                                        attemptId: `attempt:${currentEntityId}`,
-                                        slotId: String(message.args[0]),
-                                        runtimeEntityId: currentEntityId,
-                                        phase: "ready",
-                                        revision: 1,
-                                        reporter: "renderer",
-                                        updatedAt: 1,
-                                      },
-                                    }
+                                  "workspace-state.slot.closeCleanupPage"
+                                ? { items: [], nextCursor: null }
+                                : message.method ===
+                                    "workspace-state.panelTree.detail"
+                                  ? parentDetail(
+                                      currentEntityId,
+                                      "panels/current",
+                                    )
                                   : message.method ===
-                                      "panelRuntime.observeSlot"
+                                      "workspace-state.slot.commitPreparedNavigation"
                                     ? {
-                                        version: { epoch: "test", counter: 1 },
-                                        attempt: {
-                                          epoch: "test",
-                                          attemptId:
-                                            `attempt:${currentEntityId}`,
-                                          slotId: String(message.args[0]),
-                                          runtimeEntityId: currentEntityId,
-                                          phase: "ready",
-                                          revision: 1,
-                                          reporter: "renderer",
-                                          updatedAt: 1,
-                                        },
-                                        route: {
-                                          reachable: true,
-                                          connectionId: "route:parent",
-                                          holderLabel: "test",
-                                          platform: "headless",
-                                          supportsCdp: false,
-                                          view: {
-                                            url: "http://test/panels/next",
-                                            loading: false,
-                                          },
-                                        },
+                                        previousEntityId:
+                                          "panel:nav-parent-entity",
+                                        currentEntityId:
+                                          "panel:nav-next-entity",
+                                        currentEntryKey: "next-entry",
+                                        cursor: 1,
                                       }
-                                    : message.method === "panelTree.page"
+                                    : message.method ===
+                                        "panelRuntime.ensureSlot"
                                       ? {
-                                          revision: 1,
-                                          group: (
-                                            message.args[0] as {
-                                              group: unknown;
-                                            }
-                                          ).group,
-                                          nodes: [
-                                            {
-                                              slotId: "sibling-slot",
-                                              ownerUserId: null,
-                                              title: "Sibling",
-                                              source: "panels/sibling",
-                                              kind: "workspace",
-                                              parentSlotId:
-                                                "panel:tree/parent-slot",
-                                              runtimeEntityId:
-                                                "panel:sibling-entity",
-                                              createdAt: 1,
-                                              childCount: 0,
-                                            },
-                                          ],
-                                          nextCursor: null,
+                                          status: "assigned",
+                                          lease: null,
+                                          attempt: {
+                                            epoch: "test",
+                                            attemptId: `attempt:${currentEntityId}`,
+                                            slotId: String(message.args[0]),
+                                            runtimeEntityId: currentEntityId,
+                                            phase: "ready",
+                                            revision: 1,
+                                            reporter: "renderer",
+                                            updatedAt: 1,
+                                          },
                                         }
-                                      : navigation
+                                      : message.method ===
+                                          "panelRuntime.observeSlot"
                                         ? {
-                                            ...navigation,
-                                            observation: navigation,
+                                            version: {
+                                              epoch: "test",
+                                              counter: 1,
+                                            },
+                                            attempt: {
+                                              epoch: "test",
+                                              attemptId: `attempt:${currentEntityId}`,
+                                              slotId: String(message.args[0]),
+                                              runtimeEntityId: currentEntityId,
+                                              phase: "ready",
+                                              revision: 1,
+                                              reporter: "renderer",
+                                              updatedAt: 1,
+                                            },
+                                            route: {
+                                              reachable: true,
+                                              connectionId: "route:parent",
+                                              holderLabel: "test",
+                                              platform: "headless",
+                                              supportsCdp: false,
+                                              view: {
+                                                url: "http://test/panels/next",
+                                                loading: false,
+                                              },
+                                            },
                                           }
-                                        : undefined,
+                                        : message.method === "panelTree.page"
+                                          ? {
+                                              revision: 1,
+                                              group: (
+                                                message.args[0] as {
+                                                  group: unknown;
+                                                }
+                                              ).group,
+                                              nodes: [
+                                                {
+                                                  slotId: "sibling-slot",
+                                                  ownerUserId: null,
+                                                  title: "Sibling",
+                                                  source: "panels/sibling",
+                                                  kind: "workspace",
+                                                  parentSlotId:
+                                                    "panel:tree/parent-slot",
+                                                  runtimeEntityId:
+                                                    "panel:sibling-entity",
+                                                  createdAt: 1,
+                                                  childCount: 0,
+                                                },
+                                              ],
+                                              nextCursor: null,
+                                            }
+                                          : navigation
+                                            ? {
+                                                ...navigation,
+                                                observation: navigation,
+                                              }
+                                            : undefined,
               ),
             );
           },

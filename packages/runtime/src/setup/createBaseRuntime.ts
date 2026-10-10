@@ -1,3 +1,4 @@
+import { mainRpcMethods } from "@vibestudio/service-schemas/mainRpc";
 /**
  * Base runtime factory — transport-agnostic core shared by panels and workers.
  *
@@ -135,7 +136,7 @@ export function createBaseRuntime(deps: BaseRuntimeDeps) {
   // accent without waiting for the next theme push. Non-panel/worker contexts
   // (no such main method) simply reject, so swallow it.
   void rpc
-    .call("main", "view.getThemeConfig", [])
+    .call("main", mainRpcMethods["view.getThemeConfig"], [])
     .then((cfg) => {
       const parsed = parseThemeConfig({ config: cfg });
       if (parsed) applyThemeConfig(parsed);

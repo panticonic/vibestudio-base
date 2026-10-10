@@ -95,11 +95,6 @@ export function chatMessagesFromChannelView(state: ChannelViewState): ChatMessag
       .filter((item) => item.turnId)
       .map((item) => item.turnId as string)
   );
-  const turnIdsWithInvocations = new Set(
-    Object.values(state.invocations)
-      .filter((invocation) => invocation.turnId)
-      .map((invocation) => invocation.turnId as string)
-  );
   // The open-turn typing pill stays visible for the WHOLE open turn — including while an assistant
   // message streams — so the "agent is working" signal is stable instead of flickering off every time
   // the agent emits a message bubble. Active typing items sort below transcript activity.
@@ -114,7 +109,6 @@ export function chatMessagesFromChannelView(state: ChannelViewState): ChatMessag
     projectedClosedTurnWithoutResponseMessage(turn, {
       hasAssistantMessage:
         terminalAssistantMessageTurnIds.has(turn.turnId) || turnIdsWithInlineUi.has(turn.turnId),
-      hasInvocation: turnIdsWithInvocations.has(turn.turnId),
     })
   );
   const inlineUi = Object.entries(state.inlineUi).flatMap(([participantId, map]) =>
@@ -459,7 +453,7 @@ function projectedWaitingTurnMessage(turn: ProjectedTurn): ChatMessage[] {
 
 function projectedClosedTurnWithoutResponseMessage(
   turn: ProjectedTurn,
-  opts: { hasAssistantMessage: boolean; hasInvocation: boolean }
+  opts: { hasAssistantMessage: boolean }
 ): ChatMessage[] {
   if (turn.status !== "closed") return [];
   // Automation lifecycle rows already carry the actual result, including runs without a model answer.
@@ -467,7 +461,10 @@ function projectedClosedTurnWithoutResponseMessage(
   if (turn.actor.kind !== "agent") return [];
   if (opts.hasAssistantMessage) return [];
   if (isExpectedNoAssistantClose(turn)) return [];
-  if (!opts.hasInvocation && !turn.summary) return [];
+  // Native invocations have their own identity, not a containing turn. A
+  // failed lifecycle must remain visible even when no invocation was admitted;
+  // successful empty output is not evidence of a failure.
+  if (!turn.reason && !turn.summary) return [];
   if (isRunnerRestartClose(turn)) {
     const lifecycle: LifecycleNotice = {
       status: "recovered",

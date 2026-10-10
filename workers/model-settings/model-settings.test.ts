@@ -4,6 +4,8 @@ import {
   createTestDirectAuthority,
 } from "@workspace/runtime/worker/test-utils";
 import type { DirectAuthorityAttestation } from "@vibestudio/rpc/internal";
+import type { RpcCallOptions } from "@vibestudio/rpc";
+import { wireCallerFor } from "@vibestudio/rpc/internal";
 import type { WorkspaceConfig } from "@workspace/runtime/worker";
 import {
   DEFAULT_AGENT_MODEL_REF,
@@ -141,6 +143,10 @@ class TestModelSettingsDO extends ModelSettingsDO {
   static config: WorkspaceConfig = { ...BASE_CONFIG };
   static writes: Array<{ key: string; value: unknown }> = [];
 
+  wireCallerForTest() {
+    return wireCallerFor(this.rpc);
+  }
+
   protected getCatalog(): Promise<ModelCatalog> {
     return Promise.resolve(CATALOG);
   }
@@ -264,10 +270,7 @@ describe("ModelSettingsDO", () => {
     TestModelSettingsDO.config = { ...BASE_CONFIG };
     const { callAs } = await createTestDO(TestModelSettingsDO);
 
-    const catalog = await callAs<ModelCatalog>(
-      websiteCaller("listCatalog"),
-      "listCatalog",
-    );
+    const catalog = await callAs(websiteCaller("listCatalog"), "listCatalog");
     const settings = await callAs(websiteCaller("getSettings"), "getSettings");
     const defaultModel = await callAs(
       websiteCaller("getDefaultModel"),
@@ -1076,7 +1079,9 @@ describe("model discovery evidence and original failures", () => {
       {},
       { credentials: [{ id: "incomplete" }] },
     );
-    await expect(f.call("getSettings")).rejects.toThrow("injection");
+    await expect(f.call("getSettings")).rejects.toThrow(
+      'Service "credentials" method "listStoredCredentials" return value failed schema validation.',
+    );
     expect(f.calls).toContain("credentials.listStoredCredentials");
   });
   it("keeps a successful empty local inventory authoritative", async () => {
@@ -1094,33 +1099,35 @@ describe("model discovery evidence and original failures", () => {
 it("observes default changes and settles pending observations on owner retirement", async () => {
   const fixture = await createTestDO(TestModelSettingsDO);
   let live = 0;
-  Object.defineProperty(fixture.instance, "rpc", {
-    value: {
-      call: async (
-        _target: string,
-        method: string,
-        args: [{ afterVersion?: string }],
-        options: { signal: AbortSignal },
-      ) => {
-        if (method !== "credentials.observeChanges")
-          throw new Error(`Unexpected fixture RPC: ${method}`);
-        if (!args[0].afterVersion) return { version: "test-credentials" };
-        return new Promise((_resolve, reject) => {
-          live++;
-          const aborted = () => {
-            live--;
-            reject(
-              Object.assign(new Error("Credential observation cancelled"), {
-                code: "RPC_ABORTED",
-              }),
-            );
-          };
-          options.signal.addEventListener("abort", aborted, { once: true });
-          if (options.signal.aborted) aborted();
-        });
-      },
+  vi.spyOn(fixture.instance.wireCallerForTest(), "call").mockImplementation(
+    async (
+      _target: string,
+      method: string,
+      args: unknown[],
+      options?: RpcCallOptions,
+    ) => {
+      if (method !== "credentials.observeChanges")
+        throw new Error(`Unexpected fixture RPC: ${method}`);
+      const afterVersion = (args[0] as { afterVersion?: string } | undefined)
+        ?.afterVersion;
+      const signal = options?.signal;
+      if (!afterVersion) return { version: "test-credentials" };
+      if (!signal) throw new Error("Expected observation AbortSignal");
+      return new Promise((_resolve, reject) => {
+        live++;
+        const aborted = () => {
+          live--;
+          reject(
+            Object.assign(new Error("Credential observation cancelled"), {
+              code: "RPC_ABORTED",
+            }),
+          );
+        };
+        signal.addEventListener("abort", aborted, { once: true });
+        if (signal.aborted) aborted();
+      });
     },
-  });
+  );
   try {
     const initial = await fixture.instance.observeChanges();
     const changed = fixture.instance.observeChanges({
@@ -1158,13 +1165,11 @@ it("preserves an independently cancelled credential observation", async () => {
       code: "RPC_ABORTED",
     },
   );
-  Object.defineProperty(fixture.instance, "rpc", {
-    value: {
-      call: async () => {
-        throw failure;
-      },
+  vi.spyOn(fixture.instance.wireCallerForTest(), "call").mockImplementation(
+    async () => {
+      throw failure;
     },
-  });
+  );
   try {
     await expect(fixture.instance.observeChanges()).rejects.toBe(failure);
   } finally {
@@ -1176,35 +1181,37 @@ it("invalidates setup when credential availability changes independently", async
   const fixture = await createTestDO(TestModelSettingsDO);
   let credentialVersion = "credential-1";
   let publishCredentialChange: (() => void) | undefined;
-  Object.defineProperty(fixture.instance, "rpc", {
-    value: {
-      call: async (
-        _target: string,
-        method: string,
-        args: [{ afterVersion?: string }],
-        options: { signal: AbortSignal },
-      ) => {
-        if (method !== "credentials.observeChanges")
-          throw new Error(`Unexpected fixture RPC: ${method}`);
-        if (args[0].afterVersion !== credentialVersion)
-          return { version: credentialVersion };
-        return new Promise<{ version: string }>((resolve, reject) => {
-          const aborted = () =>
-            reject(
-              Object.assign(new Error("Credential observation cancelled"), {
-                code: "RPC_ABORTED",
-              }),
-            );
-          publishCredentialChange = () => {
-            options.signal.removeEventListener("abort", aborted);
-            resolve({ version: credentialVersion });
-          };
-          options.signal.addEventListener("abort", aborted, { once: true });
-          if (options.signal.aborted) aborted();
-        });
-      },
+  vi.spyOn(fixture.instance.wireCallerForTest(), "call").mockImplementation(
+    async (
+      _target: string,
+      method: string,
+      args: unknown[],
+      options?: RpcCallOptions,
+    ) => {
+      if (method !== "credentials.observeChanges")
+        throw new Error(`Unexpected fixture RPC: ${method}`);
+      const afterVersion = (args[0] as { afterVersion?: string } | undefined)
+        ?.afterVersion;
+      const signal = options?.signal;
+      if (afterVersion !== credentialVersion)
+        return { version: credentialVersion };
+      if (!signal) throw new Error("Expected observation AbortSignal");
+      return new Promise<{ version: string }>((resolve, reject) => {
+        const aborted = () =>
+          reject(
+            Object.assign(new Error("Credential observation cancelled"), {
+              code: "RPC_ABORTED",
+            }),
+          );
+        publishCredentialChange = () => {
+          signal.removeEventListener("abort", aborted);
+          resolve({ version: credentialVersion });
+        };
+        signal.addEventListener("abort", aborted, { once: true });
+        if (signal.aborted) aborted();
+      });
     },
-  });
+  );
   try {
     const initial = await fixture.instance.observeChanges();
     const waiting = fixture.instance.observeChanges({
@@ -1226,28 +1233,28 @@ it("invalidates setup when credential availability changes independently", async
 it("preserves a credential observer cleanup failure after a default change", async () => {
   const fixture = await createTestDO(TestModelSettingsDO);
   const cleanupFailure = new Error("credential observer cleanup failed");
-  Object.defineProperty(fixture.instance, "rpc", {
-    value: {
-      call: async (
-        _target: string,
-        method: string,
-        args: [{ afterVersion?: string }],
-        options: { signal: AbortSignal },
-      ) => {
-        if (method !== "credentials.observeChanges")
-          throw new Error(`Unexpected fixture RPC: ${method}`);
-        if (!args[0].afterVersion) return { version: "credential-1" };
-        return new Promise((_resolve, reject) => {
-          options.signal.addEventListener(
-            "abort",
-            () => reject(cleanupFailure),
-            { once: true },
-          );
-          if (options.signal.aborted) reject(cleanupFailure);
+  vi.spyOn(fixture.instance.wireCallerForTest(), "call").mockImplementation(
+    async (
+      _target: string,
+      method: string,
+      args: unknown[],
+      options?: RpcCallOptions,
+    ) => {
+      if (method !== "credentials.observeChanges")
+        throw new Error(`Unexpected fixture RPC: ${method}`);
+      const afterVersion = (args[0] as { afterVersion?: string } | undefined)
+        ?.afterVersion;
+      const signal = options?.signal;
+      if (!afterVersion) return { version: "credential-1" };
+      if (!signal) throw new Error("Expected observation AbortSignal");
+      return new Promise((_resolve, reject) => {
+        signal.addEventListener("abort", () => reject(cleanupFailure), {
+          once: true,
         });
-      },
+        if (signal.aborted) reject(cleanupFailure);
+      });
     },
-  });
+  );
   try {
     const initial = await fixture.instance.observeChanges();
     const waiting = fixture.instance.observeChanges({
@@ -1267,33 +1274,33 @@ it("keeps the initial credential snapshot joined across a local default change",
   const fixture = await createTestDO(TestModelSettingsDO);
   let resolveInitial!: (value: { version: string }) => void;
   let credentialSignal!: AbortSignal;
-  Object.defineProperty(fixture.instance, "rpc", {
-    value: {
-      call: async (
-        _target: string,
-        method: string,
-        _args: [{ afterVersion?: string }],
-        options: { signal: AbortSignal },
-      ) => {
-        if (method !== "credentials.observeChanges")
-          throw new Error(`Unexpected fixture RPC: ${method}`);
-        credentialSignal = options.signal;
-        return new Promise<{ version: string }>((resolve, reject) => {
-          resolveInitial = resolve;
-          options.signal.addEventListener(
-            "abort",
-            () =>
-              reject(
-                Object.assign(new Error("Credential observation cancelled"), {
-                  code: "RPC_ABORTED",
-                }),
-              ),
-            { once: true },
-          );
-        });
-      },
+  vi.spyOn(fixture.instance.wireCallerForTest(), "call").mockImplementation(
+    async (
+      _target: string,
+      method: string,
+      _args: unknown[],
+      options?: RpcCallOptions,
+    ) => {
+      if (method !== "credentials.observeChanges")
+        throw new Error(`Unexpected fixture RPC: ${method}`);
+      const signal = options?.signal;
+      if (!signal) throw new Error("Expected observation AbortSignal");
+      credentialSignal = signal;
+      return new Promise<{ version: string }>((resolve, reject) => {
+        resolveInitial = resolve;
+        signal.addEventListener(
+          "abort",
+          () =>
+            reject(
+              Object.assign(new Error("Credential observation cancelled"), {
+                code: "RPC_ABORTED",
+              }),
+            ),
+          { once: true },
+        );
+      });
     },
-  });
+  );
   try {
     let settled = false;
     const initial = fixture.instance.observeChanges().then((value) => {
@@ -1322,32 +1329,32 @@ it("keeps the initial credential snapshot joined across a local default change",
 it("cancels and joins the required initial credential read on retirement", async () => {
   const fixture = await createTestDO(TestModelSettingsDO);
   let live = 0;
-  Object.defineProperty(fixture.instance, "rpc", {
-    value: {
-      call: async (
-        _target: string,
-        method: string,
-        _args: [{ afterVersion?: string }],
-        options: { signal: AbortSignal },
-      ) => {
-        if (method !== "credentials.observeChanges")
-          throw new Error(`Unexpected fixture RPC: ${method}`);
-        return new Promise((_resolve, reject) => {
-          live++;
-          const abort = () => {
-            live--;
-            reject(
-              Object.assign(new Error("Initial credential read cancelled"), {
-                code: "RPC_ABORTED",
-              }),
-            );
-          };
-          options.signal.addEventListener("abort", abort, { once: true });
-          if (options.signal.aborted) abort();
-        });
-      },
+  vi.spyOn(fixture.instance.wireCallerForTest(), "call").mockImplementation(
+    async (
+      _target: string,
+      method: string,
+      _args: unknown[],
+      options?: RpcCallOptions,
+    ) => {
+      if (method !== "credentials.observeChanges")
+        throw new Error(`Unexpected fixture RPC: ${method}`);
+      const signal = options?.signal;
+      if (!signal) throw new Error("Expected observation AbortSignal");
+      return new Promise((_resolve, reject) => {
+        live++;
+        const abort = () => {
+          live--;
+          reject(
+            Object.assign(new Error("Initial credential read cancelled"), {
+              code: "RPC_ABORTED",
+            }),
+          );
+        };
+        signal.addEventListener("abort", abort, { once: true });
+        if (signal.aborted) abort();
+      });
     },
-  });
+  );
   try {
     const pending = fixture.instance.observeChanges();
     await Promise.resolve();

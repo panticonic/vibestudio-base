@@ -1,3 +1,4 @@
+import { formatRpcFailure } from "@vibestudio/rpc";
 import { bridgeTransport, type WorkspaceProvider } from "@vibestudio/rpc";
 import type {
   PanelEntityId,
@@ -123,7 +124,7 @@ export function connectWorkspace(
         stopDisconnect = undefined;
         activeProvider = undefined;
         connectionError =
-          error instanceof Error ? error.message : String(error);
+          formatRpcFailure(error);
       }
       throw error;
     })
@@ -152,7 +153,7 @@ export function disconnectWorkspace(): Promise<void> {
   disconnecting = Promise.resolve()
     .then(() => provider?.disconnect())
     .catch((error) => {
-      connectionError = error instanceof Error ? error.message : String(error);
+      connectionError = formatRpcFailure(error);
       throw error;
     })
     .finally(() => {

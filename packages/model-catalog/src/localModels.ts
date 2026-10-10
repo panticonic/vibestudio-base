@@ -284,3 +284,165 @@ export const localModelEntrySchema: z.ZodType<LocalModelEntry> = z.object({
     .nullable(),
   errorMessage: z.string().nullable(),
 });
+
+const engineBackendSchema = z.enum([
+  "cuda-12.4",
+  "cuda-13.3",
+  "vulkan",
+  "rocm",
+  "metal",
+  "cpu",
+]);
+const installedEngineSchema = z.object({
+  buildTag: z.string(),
+  backend: engineBackendSchema,
+  dir: z.string(),
+  serverBinPath: z.string(),
+  smokeTestedAt: z.number(),
+});
+const gpuInfoSchema = z.object({
+  vendor: z.enum(["nvidia", "amd", "intel", "apple"]),
+  name: z.string(),
+  vramMB: z.number(),
+  backend: engineBackendSchema,
+  discrete: z.boolean(),
+  deviceSelector: z.string().optional(),
+});
+export const hardwareProfileSchema: z.ZodType<HardwareProfile> = z.object({
+  os: z.enum(["linux", "darwin", "win32"]),
+  arch: z.enum(["x64", "arm64"]),
+  gpus: z.array(gpuInfoSchema),
+  cpu: z.object({ cores: z.number(), features: z.array(z.string()) }),
+  ramMB: z.number(),
+  usableRamMB: z.number(),
+  chosenBackend: engineBackendSchema,
+  chosenGpu: gpuInfoSchema.nullable(),
+  tier: z.enum(["gpu-large", "gpu-mid", "gpu-small", "cpu-strong", "cpu-min"]),
+  probedAt: z.number(),
+  notes: z.array(z.string()),
+});
+const serverStateSchema: z.ZodType<ServerState> = z.discriminatedUnion(
+  "state",
+  [
+    z.object({ state: z.literal("stopped") }),
+    z.object({ state: z.literal("starting") }),
+    z.object({
+      state: z.literal("running"),
+      port: z.number(),
+      loadedModels: z.array(z.string()),
+      uptimeMs: z.number(),
+    }),
+    z.object({
+      state: z.literal("backoff"),
+      attempt: z.number(),
+      nextRetryMs: z.number(),
+    }),
+    z.object({
+      state: z.literal("error"),
+      message: z.string(),
+      logTail: z.array(z.string()),
+    }),
+  ],
+);
+const ownerInfoSchema: z.ZodType<OwnerInfo> = z.object({
+  schemaVersion: z.literal(1),
+  pid: z.number(),
+  bootId: z.string(),
+  ports: z.object({ utility: z.number(), main: z.number() }),
+  adminPort: z.number().optional(),
+  workspaceId: z.string(),
+  since: z.number(),
+  serverPids: z
+    .object({ utility: z.number().optional(), main: z.number().optional() })
+    .optional(),
+});
+
+/** Runtime decoder for the public `local-models.status()` extension result. */
+export const localModelsStatusSchema: z.ZodType<LocalModelsStatus> = z.object({
+  role: z.enum(["owner", "attached"]),
+  owner: ownerInfoSchema.nullable(),
+  hardware: hardwareProfileSchema.nullable(),
+  engine: z
+    .object({
+      pin: z.object({
+        buildTag: z.string(),
+        checksums: z.record(z.string(), z.string()),
+      }),
+      cpu: installedEngineSchema.nullable(),
+      gpu: installedEngineSchema.nullable(),
+      degradedReason: z.string().nullable(),
+    })
+    .nullable(),
+  servers: z.object({ utility: serverStateSchema, main: serverStateSchema }),
+  fallback: z.object({
+    ready: z.boolean(),
+    warm: z.boolean(),
+    modelRef: z.string(),
+    downloadSizeBytes: z.number(),
+    reason: z.string().nullable(),
+  }),
+  downloads: z.array(
+    z.object({
+      id: z.string(),
+      slug: z.string(),
+      hfRepo: z.string(),
+      file: z.string(),
+      totalBytes: z.number().nullable(),
+      receivedBytes: z.number(),
+      phase: z.enum(["active", "queued", "paused"]),
+      error: z.string().nullable(),
+    }),
+  ),
+  storageRoot: z.string(),
+  diskFreeBytes: z.number(),
+});
+
+export const curatedModelSchema: z.ZodType<CuratedModel> = z.object({
+  slug: z.string(),
+  displayName: z.string(),
+  hfRepo: z.string(),
+  quantByTier: z.record(
+    z.enum(["gpu-large", "gpu-mid", "gpu-small", "cpu-strong", "cpu-min"]),
+    z.string(),
+  ),
+  sha256ByQuant: z.record(z.string(), z.string()),
+  toolsCapable: z.boolean(),
+  blurb: z.string(),
+});
+
+/** Shared public method descriptors for callers of the local-models extension. */
+export const localModelsExtensionMethods = {
+  status: { method: "status", result: localModelsStatusSchema },
+  listModels: { method: "listModels", result: z.array(localModelEntrySchema) },
+  capabilities: {
+    method: "capabilities",
+    result: z.object({
+      managementPanel: z.object({
+        source: z.string(),
+        stateArgs: z.record(z.string(), z.unknown()).optional(),
+      }),
+      serverLogs: z.object({
+        utility: z.object({
+          source: z.string(),
+          stateArgs: z.record(z.string(), z.unknown()).optional(),
+        }),
+        main: z.object({
+          source: z.string(),
+          stateArgs: z.record(z.string(), z.unknown()).optional(),
+        }),
+      }),
+    }),
+  },
+  getHardwareProfile: {
+    method: "getHardwareProfile",
+    result: hardwareProfileSchema,
+  },
+  searchCatalog: {
+    method: "searchCatalog",
+    result: z.array(curatedModelSchema),
+  },
+  tailServerLogLines: {
+    method: "tailServerLogLines",
+    result: z.array(z.string()),
+  },
+} as const;

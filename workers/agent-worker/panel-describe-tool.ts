@@ -13,7 +13,7 @@
 import { Type, type Static } from "@panticonic/pi-ai";
 import type { ToolRegistration, ToolExecutionResult } from "@panticonic/pi-durable";
 import { copyJson, type JsonRepresentation } from "@panticonic/pi-chord";
-import type { RpcCallOptions } from "@vibestudio/rpc";
+
 import type { PanelContextSnapshot } from "@vibestudio/service-schemas/panelContext";
 
 const panelDescribeParameters = Type.Object(
@@ -72,7 +72,7 @@ export function formatPanelContext(snapshot: PanelContextSnapshot): string {
   return `<panel-context>\n${lines.join("\n")}\n</panel-context>`;
 }
 export function createPanelDescribeTool(
-  callMain: <T>(method: string, args: unknown[], options?: RpcCallOptions) => Promise<T>,
+  callMain: import("@vibestudio/service-schemas/mainRpc").MainRpcCaller,
   boundPanelId: string,
 ): ToolRegistration<typeof panelDescribeParameters, JsonRepresentation<PanelContextSnapshot | null>> {
   return {
@@ -84,7 +84,7 @@ export function createPanelDescribeTool(
       params: PanelDescribeParams, _api, context,
     ): Promise<ToolExecutionResult<JsonRepresentation<PanelContextSnapshot | null>>> => {
       const panelId = params.panelId ?? boundPanelId;
-      const snapshot = await callMain<PanelContextSnapshot>(
+      const snapshot = await callMain(
         "panelContext.describe",
         [panelId],
         context.abortSignal ? { signal: context.abortSignal } : undefined,

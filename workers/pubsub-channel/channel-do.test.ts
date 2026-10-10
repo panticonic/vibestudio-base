@@ -4,7 +4,7 @@ import {
   evaluateAuthority,
   requirementForPrincipals,
 } from "@vibestudio/shared/authorization";
-import { successfulTestRpcFetch } from "@vibestudio/durable/test-utils";
+import { createTestRpcFetch } from "@vibestudio/durable/test-utils";
 import {
   createTestDO,
   createTestDirectAuthority,
@@ -23,10 +23,43 @@ import {
 } from "@workspace/agentic-protocol";
 import { GadWorkspaceDO } from "@workspace-workers/workspace-source";
 import { PubSubChannel } from "./channel-do.js";
+import { durableObjectServiceFixture } from "@vibestudio/service-schemas/test-utils";
+import { EntityRecordSchema } from "@vibestudio/service-schemas/workspaceState";
+import { accountProfileSchema } from "@vibestudio/service-schemas/account";
 
-type TestDO<T> = Awaited<ReturnType<typeof createTestDO<T>>>;
+type TestDO<C extends new (ctx: any, env: any) => object> = Awaited<
+  ReturnType<typeof createTestDO<C>>
+>;
+const channelTestRpcFetch = createTestRpcFetch((request) =>
+  request.message.type === "request" &&
+  request.message.method === "notification.signalUserInbox"
+    ? true
+    : null,
+);
+function activeEntityFixture(id: unknown) {
+  return EntityRecordSchema.parse({
+    id: String(id),
+    authoritySessionId: "session-test",
+    kind: "do",
+    source: { repoPath: "workers/test", effectiveVersion: "ev-test" },
+    contextId: "ctx-test",
+    key: "test",
+    createdAt: 1,
+    status: "active",
+    cleanupComplete: false,
+  });
+}
+
+function profileFixture(userId: string) {
+  return accountProfileSchema.parse({
+    userId,
+    handle: userId.replace(/^usr_/, ""),
+    displayName: userId,
+    role: "member",
+  });
+}
 function canonicalAgenticEvents(
-  gad: TestDO<GadWorkspaceDO>,
+  gad: TestDO<typeof GadWorkspaceDO>,
   channelId = "channel-1",
 ): AgenticEvent[] {
   return gad.instance
@@ -41,7 +74,7 @@ function canonicalAgenticEvents(
 }
 
 function canonicalAgenticEvent(
-  gad: TestDO<GadWorkspaceDO>,
+  gad: TestDO<typeof GadWorkspaceDO>,
   envelopeId: string,
   channelId = "channel-1",
 ): AgenticEvent {
@@ -58,7 +91,7 @@ function canonicalAgenticEvent(
 }
 
 async function appendOpaqueJournalPage(
-  gad: TestDO<GadWorkspaceDO>,
+  gad: TestDO<typeof GadWorkspaceDO>,
   channelId = "channel-1",
 ): Promise<void> {
   await gad.instance.appendLogEvent({
@@ -293,7 +326,7 @@ function messageTypeRegisteredEvent(
 }
 
 async function initializeChannelClone(
-  child: TestDO<PubSubChannel>,
+  child: TestDO<typeof PubSubChannel>,
   parentChannelId: string,
   targetContextId: string,
   sourceContextId = "source-context",
@@ -350,8 +383,8 @@ async function createGadBackedChannel(
     emitted?: unknown[];
     emittedTargets?: string[];
     channelKey?: string;
-    gad?: TestDO<GadWorkspaceDO>;
-    db?: TestDO<PubSubChannel>["db"];
+    gad?: TestDO<typeof GadWorkspaceDO>;
+    db?: TestDO<typeof PubSubChannel>["db"];
     blobstorePutText?: (
       value: string,
     ) => Promise<{ digest: string; size: number }>;
@@ -367,7 +400,7 @@ async function createGadBackedChannel(
     options.gad ??
     (await createTestDO(GadWorkspaceDO, {
       __objectKey: "workspace",
-      RPC_FETCH: successfulTestRpcFetch,
+      RPC_FETCH: channelTestRpcFetch,
     }));
   const channel = await createTestDO(
     PubSubChannel,
@@ -404,13 +437,11 @@ async function createGadBackedChannel(
         );
         if (custom !== undefined) return custom;
         if (target === "main" && method === "workers.resolveService") {
-          return {
-            kind: "durable-object",
+          return durableObjectServiceFixture(gadTarget, {
             source: "vibestudio/internal",
             className: "GadWorkspaceDO",
             objectKey: "workspace",
-            targetId: gadTarget,
-          };
+          });
         }
         if (target === "main" && method === "runtime.setTitle") {
           // Title registry isn't relevant in unit tests; treat as a no-op.
@@ -420,7 +451,7 @@ async function createGadBackedChannel(
           target === "main" &&
           method === "workspace-state.entity.resolveActive"
         ) {
-          return { id: args[0], kind: "do" };
+          return activeEntityFixture(args[0]);
         }
         if (
           target === "main" &&
@@ -435,7 +466,10 @@ async function createGadBackedChannel(
           const value = String(args[0] ?? "");
           const blob = options.blobstorePutText
             ? await options.blobstorePutText(value)
-            : { digest: `test-digest-${blobs.size + 1}`, size: value.length };
+            : {
+                digest: `${String(blobs.size + 1).padStart(64, "0")}`,
+                size: value.length,
+              };
           blobs.set(blob.digest, value);
           return blob;
         }
@@ -570,10 +604,13 @@ describe("PubSubChannel", () => {
 
     finishChildCleanup();
     const result = JSON.parse(await terminal) as {
-      message?: { type?: string; error?: string };
+      message?: { type?: string; error?: { code?: string; message?: string } };
     };
     expect(result.message?.type).toBe("response");
-    expect(result.message?.error).toEqual(expect.any(String));
+    expect(result.message?.error).toMatchObject({
+      code: "RPC_ABORTED",
+      message: "RPC call aborted by caller",
+    });
   });
 
   it.each(["headless", "agent"] as const)(
@@ -669,7 +706,7 @@ describe("PubSubChannel", () => {
           target === "main" &&
           method === "workspace-state.entity.resolveActive"
         ) {
-          return { id: args[0], kind: "do" };
+          return activeEntityFixture(args[0]);
         }
         if (target === workerId && method === "onChannelEnvelope") return null;
         return undefined;
@@ -1252,7 +1289,7 @@ describe("PubSubChannel", () => {
       rpcCall: (_target, method, args) => {
         if (method === "account.isMember") return args[0] === "usr_bob";
         if (method === "account.resolveProfiles") {
-          return { usr_bob: { handle: "bob" } };
+          return { usr_bob: profileFixture("usr_bob") };
         }
         return undefined;
       },
@@ -1354,7 +1391,7 @@ describe("PubSubChannel", () => {
       rpcCall: (target, method, args) => {
         if (method === "account.isMember") return args[0] === "usr_bob";
         if (method === "account.resolveProfiles")
-          return { usr_bob: { handle: "bob" } };
+          return { usr_bob: profileFixture("usr_bob") };
         if (
           target.includes("GadWorkspaceDO") &&
           method === "putChannelMembership" &&
@@ -1420,7 +1457,7 @@ describe("PubSubChannel", () => {
         if (method === "account.isMember")
           return isWorkspaceMember && args[0] === "usr_bob";
         if (method === "account.resolveProfiles")
-          return { usr_bob: { handle: "bob" } };
+          return { usr_bob: profileFixture("usr_bob") };
         if (
           target.includes("GadWorkspaceDO") &&
           method === "putChannelMembership"
@@ -1478,7 +1515,7 @@ describe("PubSubChannel", () => {
       rpcCall: async (target, method, args) => {
         if (method === "account.isMember") return args[0] === "usr_bob";
         if (method === "account.resolveProfiles")
-          return { usr_bob: { handle: "bob" } };
+          return { usr_bob: profileFixture("usr_bob") };
         if (
           target.includes("GadWorkspaceDO") &&
           method === "putChannelMembership" &&
@@ -1530,7 +1567,7 @@ describe("PubSubChannel", () => {
       rpcCall: async (target, method, args) => {
         if (method === "account.isMember") return args[0] === "usr_bob";
         if (method === "account.resolveProfiles")
-          return { usr_bob: { handle: "bob" } };
+          return { usr_bob: profileFixture("usr_bob") };
         if (
           target.includes("GadWorkspaceDO") &&
           method === "deleteChannelMembership" &&
@@ -1621,7 +1658,7 @@ describe("PubSubChannel", () => {
           target === "main" &&
           method === "workspace-state.entity.resolveActive"
         ) {
-          return { id: args[0], kind: "do" };
+          return activeEntityFixture(args[0]);
         }
         return undefined;
       },
@@ -1871,10 +1908,7 @@ describe("PubSubChannel", () => {
     expect(
       JSON.parse(String(rows[0]!["payload_ref_json"])).methodOffers,
     ).toEqual(metadata.methods);
-    const integrity = await gad.call<{ errors: Array<{ type: string }> }>(
-      "checkGadIntegrity",
-      {},
-    );
+    const integrity = await gad.call("checkGadIntegrity", {});
     expect(
       integrity.errors.filter((error) => error.type === "log-event-shape"),
     ).toEqual([]);
@@ -1951,7 +1985,7 @@ describe("PubSubChannel", () => {
     const { instance } = await createGadBackedChannel({
       blobstorePutText: async (value) => {
         if (!value.includes("must be stored")) {
-          return { digest: "setup-digest", size: value.length };
+          return { digest: "0".repeat(64), size: value.length };
         }
         throw new Error("blobstore unavailable");
       },
@@ -1979,7 +2013,7 @@ describe("PubSubChannel", () => {
     const blobs = new Map<string, string>();
     const { instance } = await createGadBackedChannel({
       blobstorePutText: async (value) => {
-        const digest = `digest-${blobs.size + 1}`;
+        const digest = `${String(blobs.size + 1).padStart(64, "0")}`;
         blobs.set(digest, value);
         return { digest, size: value.length };
       },
@@ -2112,7 +2146,7 @@ describe("PubSubChannel", () => {
           target === "main" &&
           method === "workspace-state.entity.resolveActive"
         ) {
-          return { id: args[0], kind: "do" };
+          return activeEntityFixture(args[0]);
         }
         return undefined;
       },
@@ -2198,7 +2232,7 @@ describe("PubSubChannel", () => {
           target === "main" &&
           method === "workspace-state.entity.resolveActive"
         ) {
-          return { id: args[0], kind: "do" };
+          return activeEntityFixture(args[0]);
         }
         return undefined;
       },
@@ -2270,7 +2304,7 @@ describe("PubSubChannel", () => {
           target === "main" &&
           method === "workspace-state.entity.resolveActive"
         ) {
-          return { id: args[0], kind: "do" };
+          return activeEntityFixture(args[0]);
         }
         return undefined;
       },
@@ -2333,7 +2367,7 @@ describe("PubSubChannel", () => {
           target === "main" &&
           method === "workspace-state.entity.resolveActive"
         ) {
-          return { id: args[0], kind: "do" };
+          return activeEntityFixture(args[0]);
         }
         return undefined;
       },
@@ -2418,7 +2452,7 @@ describe("PubSubChannel", () => {
           target === "main" &&
           method === "workspace-state.entity.resolveActive"
         ) {
-          return { id: args[0], kind: "do" };
+          return activeEntityFixture(args[0]);
         }
         return undefined;
       },
@@ -2711,7 +2745,7 @@ describe("PubSubChannel", () => {
           target === "main" &&
           method === "workspace-state.entity.resolveActive"
         ) {
-          return { id: args[0], kind: "do" };
+          return activeEntityFixture(args[0]);
         }
         if (target === targetPid && method === "onChannelEnvelope") return null;
         if (target === targetPid && method === "onMethodCall") {
@@ -2801,7 +2835,7 @@ describe("PubSubChannel", () => {
           target === "main" &&
           method === "workspace-state.entity.resolveActive"
         ) {
-          return { id: args[0], kind: "do" };
+          return activeEntityFixture(args[0]);
         }
         rpcCalls.push({ target, method });
         return undefined;
@@ -2992,7 +3026,7 @@ describe("PubSubChannel", () => {
             target === "main" &&
             method === "workspace-state.entity.resolveActive"
           ) {
-            return { id: args[0], kind: "do" };
+            return activeEntityFixture(args[0]);
           }
           rpcCalls.push({ target, method });
           if (
@@ -3817,17 +3851,21 @@ describe("PubSubChannel", () => {
           method === "workers.resolveService" &&
           args[0] === "vibestudio.channel.v1"
         ) {
-          return {
-            source: "workers/pubsub-channel",
-            className: "PubSubChannel",
-            objectKey: args[1] as string,
-          };
+          return durableObjectServiceFixture(
+            `do:workers/pubsub-channel:PubSubChannel:${String(args[1])}`,
+            {
+              source: "workers/pubsub-channel",
+              name: "PubSubChannel",
+              className: "PubSubChannel",
+              objectKey: String(args[1]),
+            },
+          );
         }
         if (
           target === "main" &&
           method === "workspace-state.entity.resolveActive"
         ) {
-          return { id: args[0], kind: "do" };
+          return activeEntityFixture(args[0]);
         }
         if (target === agentTarget && method === "exportChannelKnowledge") {
           lifecycleCalls.push({ target, method, args });
@@ -3851,6 +3889,8 @@ describe("PubSubChannel", () => {
           cloneCalls += 1;
           return {
             contextId: "ctx-lf-fork",
+            contexts: [],
+            rewired: [],
             entities: [
               {
                 sourceId: selfTarget,
@@ -4192,7 +4232,7 @@ describe("PubSubChannel", () => {
           target === "main" &&
           method === "workspace-state.entity.resolveActive"
         ) {
-          return { id: args[0], kind: "do" };
+          return activeEntityFixture(args[0]);
         }
         return undefined;
       },
@@ -4344,7 +4384,7 @@ describe("PubSubChannel", () => {
     const originalFailure = new Error("accepted cancellation reply lost");
     const gad = await createTestDO(GadWorkspaceDO, {
       __objectKey: "workspace",
-      RPC_FETCH: successfulTestRpcFetch,
+      RPC_FETCH: channelTestRpcFetch,
     });
     let loseReply = true;
     const { instance } = await createGadBackedChannel({
@@ -4472,7 +4512,7 @@ describe("PubSubChannel", () => {
     const fixture = await createGadBackedChannel({
       rpcCall: async (rpcTarget, method, args) => {
         if (method === "workspace-state.entity.resolveActive")
-          return { id: args[0], kind: "do" };
+          return activeEntityFixture(args[0]);
         if (rpcTarget === target && method === "onMethodCall") {
           arrived.resolve();
           await admission.promise;
@@ -4542,7 +4582,7 @@ describe("PubSubChannel", () => {
     const { instance, sql, gad } = await createGadBackedChannel({
       rpcCall: (_target, method, args) => {
         if (method === "workspace-state.entity.resolveActive")
-          return { id: args[0], kind: "do" };
+          return activeEntityFixture(args[0]);
         if (_target === target && method === "onMethodCall") {
           executions.push(args);
           started.resolve();
@@ -4838,7 +4878,7 @@ describe("PubSubChannel", () => {
           target === "main" &&
           method === "workspace-state.entity.resolveActive"
         ) {
-          return { id: args[0], kind: "do" };
+          return activeEntityFixture(args[0]);
         }
         if (target === targetPid && method === "onChannelEnvelope") return null;
         if (target === targetPid && method === "onMethodCall") {
@@ -5114,7 +5154,7 @@ describe("PubSubChannel", () => {
             invocationType: "panel",
             request: {
               protocol: "vibestudio.blob-ref.v1",
-              digest: "request-agent-loop",
+              digest: "a".repeat(64),
               size: 35,
               encoding: "json",
               originalBytes: 35,
@@ -5240,22 +5280,15 @@ describe("PubSubChannel", () => {
       payload: { result: 42, terminalOutcome: "success" },
     });
 
-    // The synthetic `started` root was appended too (fold invariant: every
-    // terminal is paired with a started carrying the same invocation id).
+    // No synthetic `started` is appended: the lost request's method and args
+    // are unavailable, so inventing an admission would corrupt the log.
     const rootRow = gad.sql
       .exec(
         `SELECT payload_ref_json FROM log_events WHERE envelope_id = ?`,
         "invocation-lost-record",
       )
       .toArray();
-    expect(rootRow).toHaveLength(1);
-    expect(canonicalAgenticEvent(gad, "invocation-lost-record")).toMatchObject({
-      kind: "invocation.started",
-      causality: {
-        invocationId: "invocation-lost-record",
-        transportCallId: "transport-lost-record",
-      },
-    });
+    expect(rootRow).toHaveLength(0);
 
     // The terminal is broadcast so subscribers (the caller) actually receive it.
     // The wire shape is { channelId, message: { kind: "log", event } } — the
@@ -5995,7 +6028,7 @@ describe("PubSubChannel", () => {
           target === "main" &&
           method === "workspace-state.entity.resolveActive"
         ) {
-          return { id: args[0], kind: "do" };
+          return activeEntityFixture(args[0]);
         }
         if (target === targetPid && method === "onChannelEnvelope") return null;
         if (target === targetPid && method === "onMethodCall") {
@@ -6953,11 +6986,15 @@ describe("PubSubChannel fork lineage delivery", () => {
           method === "workers.resolveService" &&
           args[0] === "vibestudio.channel.v1"
         ) {
-          return {
-            source: "workers/pubsub-channel",
-            className: "PubSubChannel",
-            objectKey: args[1] as string,
-          };
+          return durableObjectServiceFixture(
+            `do:workers/pubsub-channel:PubSubChannel:${String(args[1])}`,
+            {
+              source: "workers/pubsub-channel",
+              name: "PubSubChannel",
+              className: "PubSubChannel",
+              objectKey: String(args[1]),
+            },
+          );
         }
         if (method === "reportLineageHead") {
           reports.push({ target, report: args[0] });
@@ -7041,11 +7078,15 @@ describe("PubSubChannel appendSeed fork plumbing", () => {
           method === "workers.resolveService" &&
           args[0] === "vibestudio.channel.v1"
         ) {
-          return {
-            source: "workers/pubsub-channel",
-            className: "PubSubChannel",
-            objectKey: args[1] as string,
-          };
+          return durableObjectServiceFixture(
+            `do:workers/pubsub-channel:PubSubChannel:${String(args[1])}`,
+            {
+              source: "workers/pubsub-channel",
+              name: "PubSubChannel",
+              className: "PubSubChannel",
+              objectKey: String(args[1]),
+            },
+          );
         }
         return undefined;
       },
@@ -7386,7 +7427,7 @@ describe("conversation creation seed", () => {
     async (phase) => {
       const gad = await createTestDO(GadWorkspaceDO, {
         __objectKey: "workspace",
-        RPC_FETCH: successfulTestRpcFetch,
+        RPC_FETCH: channelTestRpcFetch,
       });
       let loseReply = false;
       const channel = await createGadBackedChannel({
@@ -7520,10 +7561,9 @@ describe("conversation image ownership", () => {
           method === "workers.resolveService" &&
           args[0] === "vibestudio.images.v1"
         )
-          return {
-            kind: "durable-object",
-            targetId: "do:workers/images:ImagesDO:workspace",
-          };
+          return durableObjectServiceFixture(
+            "do:workers/images:ImagesDO:workspace",
+          );
         if (target === "do:workers/images:ImagesDO:workspace") {
           if (method === "getAsset") {
             if (args[0] !== "image-one") throw new Error("Unknown image asset");
@@ -7614,6 +7654,8 @@ describe("channel fork lifetime ownership", () => {
       await held;
       return {
         contextId: "owned-context",
+        contexts: [],
+        rewired: [],
         entities: [
           {
             sourceId: "do:workers/pubsub-channel:PubSubChannel:owner-channel",
@@ -7635,11 +7677,15 @@ describe("channel fork lifetime ownership", () => {
           method === "workers.resolveService" &&
           args[0] === "vibestudio.channel.v1"
         )
-          return {
-            source: "workers/pubsub-channel",
-            className: "PubSubChannel",
-            objectKey: args[1],
-          };
+          return durableObjectServiceFixture(
+            `do:workers/pubsub-channel:PubSubChannel:${String(args[1])}`,
+            {
+              source: "workers/pubsub-channel",
+              name: "PubSubChannel",
+              className: "PubSubChannel",
+              objectKey: String(args[1]),
+            },
+          );
         if (method === "runtime.cloneContext") return clone();
         if (method === "postClone") return null;
         return undefined;
@@ -7714,17 +7760,23 @@ describe("channel fork lifetime ownership", () => {
           method === "workers.resolveService" &&
           args[0] === "vibestudio.channel.v1"
         )
-          return {
-            source: "workers/pubsub-channel",
-            className: "PubSubChannel",
-            objectKey: args[1],
-          };
+          return durableObjectServiceFixture(
+            `do:workers/pubsub-channel:PubSubChannel:${String(args[1])}`,
+            {
+              source: "workers/pubsub-channel",
+              name: "PubSubChannel",
+              className: "PubSubChannel",
+              objectKey: String(args[1]),
+            },
+          );
         if (method === "runtime.cloneContext")
           return (async () => {
             entered();
             await held;
             return {
               contextId: "owned-context",
+              contexts: [],
+              rewired: [],
               entities: [
                 {
                   sourceId:

@@ -210,10 +210,12 @@ ancestry from content hashes.
 ### Build Provenance
 
 Use the build service to see which source artifact the runtime can see. `rpc`
-is injected in `eval`, so no import is needed:
+is injected in `eval`; import its canonical main-process descriptor:
 
 ```ts
-const provenance = await rpc.call("main", "build.inspectBuildProvenance", [
+import { mainRpcMethods } from "@vibestudio/service-schemas/mainRpc";
+
+const provenance = await rpc.call("main", mainRpcMethods["build.inspectBuildProvenance"], [
   "@workspace-skills/system-testing",
 ]);
 ```

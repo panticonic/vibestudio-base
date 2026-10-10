@@ -1,3 +1,4 @@
+import { mainRpcMethods } from "@vibestudio/service-schemas/mainRpc";
 /**
  * Workerd profiling — attach the V8 inspector to workerd isolates through the
  * server's approval-gated workerdInspector service and bridge.
@@ -21,7 +22,7 @@ export interface WorkerdTarget {
 
 /** Live workerd inspector targets (one per top-level workerd service). */
 export async function listWorkerdTargets(): Promise<WorkerdTarget[]> {
-  return rpc.call<WorkerdTarget[]>("main", "workerdInspector.listTargets", []);
+  return rpc.call("main", mainRpcMethods["workerdInspector.listTargets"], []);
 }
 
 async function resolveTargetPath(target: string | WorkerdTarget): Promise<string> {
@@ -46,9 +47,9 @@ export async function workerdInspectorSession(
   target: string | WorkerdTarget
 ): Promise<CdpConnection> {
   const targetPath = await resolveTargetPath(target);
-  const endpoint = await rpc.call<{ wsEndpoint: string; token: string }>(
+  const endpoint = await rpc.call(
     "main",
-    "workerdInspector.getEndpoint",
+    mainRpcMethods["workerdInspector.getEndpoint"],
     [targetPath]
   );
   return CdpConnection.connect(endpoint.wsEndpoint, endpoint.token);

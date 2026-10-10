@@ -1,3 +1,4 @@
+import { mainRpcMethod } from "@vibestudio/service-schemas/mainRpc";
 import type { Api, Model } from "@panticonic/pi-ai";
 import {
   copyJson,
@@ -46,7 +47,7 @@ export async function withPreparedNativeModel<T>(
   context.abortSignal?.throwIfAborted();
   const invoke = (method: string, args: unknown[]) => {
     context.abortSignal?.throwIfAborted();
-    return host.rpc.call<unknown>("main", method, args, {
+    return host.rpc.call("main", mainRpcMethod(method), args, {
       signal: context.abortSignal,
       authorityAcquisition: "wait",
     });

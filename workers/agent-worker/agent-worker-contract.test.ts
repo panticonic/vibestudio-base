@@ -10,10 +10,10 @@ afterEach(() => {
   for (const database of databases) database.close();
   databases.clear();
 });
-async function nativeWorker<T>(
-  ...args: Parameters<typeof createNativeVesselTestDO<T>>
+async function nativeWorker<DOClass extends new (ctx: any, env: any) => object>(
+  ...args: Parameters<typeof createNativeVesselTestDO<DOClass>>
 ) {
-  const fixture = await createNativeVesselTestDO<T>(...args);
+  const fixture = await createNativeVesselTestDO<DOClass>(...args);
   databases.add(fixture.db);
   return fixture.instance;
 }

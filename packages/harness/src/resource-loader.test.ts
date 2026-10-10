@@ -1,3 +1,4 @@
+import { schemaRpcMock } from "@vibestudio/rpc/test-utils";
 import { describe, it, expect, vi } from "vitest";
 import {
   loadVibestudioResources,
@@ -19,10 +20,13 @@ function createMockRpc(responses: Record<string, unknown>): RpcCaller {
     }
     return responses[key];
   });
-  return {
-    call: call as RpcCaller["call"],
-    stream: vi.fn(async () => new Response()) as unknown as RpcCaller["stream"],
-  };
+  return Object.assign(
+    schemaRpcMock({
+      call,
+      stream: vi.fn(async () => new Response()),
+    }),
+    { call },
+  );
 }
 
 const SAMPLE_SKILLS: SkillEntry[] = [
@@ -46,7 +50,7 @@ describe("loadVibestudioResources", () => {
       "main:workspace.getAgentsMd": "System prompt content",
       "main:workspace.listSkills": SAMPLE_SKILLS,
     });
-    const callSpy = rpc.call as ReturnType<typeof vi.fn>;
+    const callSpy = rpc.call;
 
     const resources = await loadVibestudioResources({ rpc });
 
@@ -62,7 +66,7 @@ describe("loadVibestudioResources", () => {
       "main:workspace.getAgentsMd": "System prompt content",
       "main:workspace.listSkills": SAMPLE_SKILLS,
     });
-    const callSpy = rpc.call as ReturnType<typeof vi.fn>;
+    const callSpy = rpc.call;
     const controller = new AbortController();
 
     await loadVibestudioResources({ rpc, signal: controller.signal });
@@ -88,10 +92,10 @@ describe("loadVibestudioResources", () => {
       if (method === "workspace.listSkills") return Promise.resolve([]);
       return Promise.reject(new Error(`unexpected method: ${method}`));
     });
-    const rpc: RpcCaller = {
-      call: call as RpcCaller["call"],
-      stream: vi.fn(async () => new Response()) as unknown as RpcCaller["stream"],
-    };
+    const rpc = schemaRpcMock({
+      call,
+      stream: vi.fn(async () => new Response()),
+    });
 
     const loadPromise = loadVibestudioResources({ rpc, signal: controller.signal });
     await Promise.resolve();
@@ -173,10 +177,10 @@ describe("loadVibestudioResources", () => {
       if (method === "workspace.listSkills") return skillsPromise;
       throw new Error(`unexpected method: ${method}`);
     });
-    const rpc: RpcCaller = {
-      call: call as RpcCaller["call"],
-      stream: vi.fn(async () => new Response()) as unknown as RpcCaller["stream"],
-    };
+    const rpc = schemaRpcMock({
+      call,
+      stream: vi.fn(async () => new Response()),
+    });
 
     const loadPromise = loadVibestudioResources({ rpc });
     // Both calls should be in flight before either resolves.

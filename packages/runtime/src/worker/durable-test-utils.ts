@@ -7,7 +7,7 @@ import type {
   PrincipalKind,
 } from "@vibestudio/rpc";
 import type { AttestedCaller, DirectAuthorityAttestation } from "@vibestudio/rpc/internal";
-import { rpcMethodAuthority } from "@vibestudio/rpc";
+import { deserializeRpcFailure, rpcMethodAuthority } from "@vibestudio/rpc";
 import { requirementForPrincipals } from "@vibestudio/shared/authorization";
 
 type BindParams = Parameters<Database["run"]>[1];
@@ -45,7 +45,63 @@ interface AcceptedWebSocket {
   tags: string[];
 }
 
-export interface TestDOResult<T> {
+type IsAny<Value> = 0 extends 1 & Value ? true : false;
+type PublicMethodResult<T, Method extends string> = Method extends keyof T
+  ? T[Method] extends (...args: infer _Args) => infer Result
+    ? Awaited<Result>
+    : unknown
+  : unknown;
+type PublicMethodNames<T> = {
+  [Method in keyof T]-?: T[Method] extends (...args: infer _Args) => unknown
+    ? Method
+    : never;
+}[keyof T] & string;
+type NarrowSchemaMethodNames<Methods> = string extends keyof NonNullable<Methods>
+  ? never
+  : keyof NonNullable<Methods> & string;
+type ReceiverMethodNames<T, DOClass> = DOClass extends {
+  rpcMethods?: infer Methods;
+}
+  ? NarrowSchemaMethodNames<Methods> | PublicMethodNames<T>
+  : PublicMethodNames<T>;
+type ReceiverMethodResult<T, DOClass, Method extends string> = DOClass extends {
+  rpcMethods?: infer Methods;
+}
+  ? Method extends NarrowSchemaMethodNames<Methods>
+    ? NonNullable<Methods>[Method] extends { returns: infer ReturnSchema }
+      ? ReturnSchema extends { _output: infer Result }
+        ? IsAny<Result> extends true
+          ? unknown
+          : Result
+        : PublicMethodResult<T, Method>
+      : PublicMethodResult<T, Method>
+    : PublicMethodResult<T, Method>
+  : PublicMethodResult<T, Method>;
+type TestCaller =
+  | AuthenticatedCaller["callerKind"]
+  | (Pick<AuthenticatedCaller, "callerId" | "callerKind"> &
+      Partial<Pick<AuthenticatedCaller, "callerPanelId" | "userId">> & {
+        authorization?: DirectAuthorityAttestation;
+      });
+type ReceiverMethodCall<T, DOClass> = <Method extends string>(
+  method: Method,
+  ...args: unknown[]
+) => Promise<
+  Method extends ReceiverMethodNames<T, DOClass>
+    ? ReceiverMethodResult<T, DOClass, Method>
+    : unknown
+>;
+type ReceiverMethodCallAs<T, DOClass> = <Method extends string>(
+  caller: TestCaller,
+  method: Method,
+  ...args: unknown[]
+) => Promise<
+  Method extends ReceiverMethodNames<T, DOClass>
+    ? ReceiverMethodResult<T, DOClass, Method>
+    : unknown
+>;
+
+export interface TestDOResult<T, DOClass = unknown> {
   instance: T;
   sql: { exec(query: string, ...bindings: unknown[]): SqlResult };
   /** The raw in-memory database. Pass it to a second `createTestDO` (via
@@ -61,20 +117,13 @@ export interface TestDOResult<T> {
    * Runs ensureReady(), ensureBootstrapped(), and objectKey parsing from the URL.
    * Throws on non-2xx responses (with the error message from the response body).
    */
-  call: <R = unknown>(method: string, ...args: unknown[]) => Promise<R>;
+  call: ReceiverMethodCall<T, DOClass>;
   /** Like `call`, but constructs the exact attested principal for a runtime
    *  role (e.g. `callAs("do", ...)` to simulate an agent/channel DO). */
-  callAs: <R = unknown>(
-    caller:
-      | AuthenticatedCaller["callerKind"]
-      | (Pick<AuthenticatedCaller, "callerId" | "callerKind"> &
-          Partial<Pick<AuthenticatedCaller, "callerPanelId" | "userId">> & {
-            authorization?: DirectAuthorityAttestation;
-          }),
-    method: string,
-    ...args: unknown[]
-  ) => Promise<R>;
+  callAs: ReceiverMethodCallAs<T, DOClass>;
 }
+
+export type TestDOCall<T, DOClass = unknown> = TestDOResult<T, DOClass>["call"];
 
 /** Shared sql.js initialization (cached after first call) */
 let sqlJsPromise: Promise<SqlJsStatic> | null = null;
@@ -294,12 +343,12 @@ export function createTestDirectAuthority(input: {
  *
  * Must be awaited since sql.js initialization is async.
  */
-export async function createTestDO<T>(
+export async function createTestDO<DOClass extends new (ctx: any, env: any) => object>(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  DOClass: new (ctx: any, env: any) => T,
+  DOClass: DOClass,
   env?: Record<string, unknown>,
   opts?: { db?: Database; initialize?: boolean }
-): Promise<TestDOResult<T>> {
+): Promise<TestDOResult<InstanceType<DOClass>, DOClass>> {
   const SQL = await getSqlJs();
   // Reuse an existing db to simulate hibernation (fresh DO, same durable storage).
   const db = opts?.db ?? new SQL.Database();
@@ -378,14 +427,14 @@ export async function createTestDO<T>(
   };
 
   const mergedEnv = { ...AGENTIC_ENV_DEFAULTS, ...env };
-  const instance = new DOClass(ctx, mergedEnv);
+  const instance = new DOClass(ctx, mergedEnv) as InstanceType<DOClass>;
   if (opts?.initialize !== false) {
     await (instance as unknown as { initializeSchema?: () => Promise<void> }).initializeSchema?.();
   }
 
   // call() dispatches through fetch(), matching the production DO invocation path:
   // URL /{objectKey}/{method} → ensureReady() → ensureBootstrapped() → method dispatch
-  const dispatch = async <R = unknown>(
+  const dispatch = async (
     callerInput:
       | AuthenticatedCaller["callerKind"]
       | (Pick<AuthenticatedCaller, "callerId" | "callerKind"> &
@@ -394,7 +443,7 @@ export async function createTestDO<T>(
           }),
     method: string,
     args: unknown[]
-  ): Promise<R> => {
+  ): Promise<unknown> => {
     const caller =
       typeof callerInput === "string" ? { callerId: "main", callerKind: callerInput } : callerInput;
     const { authorization: suppliedAuthorization, ...callerIdentity } = caller;
@@ -463,21 +512,27 @@ export async function createTestDO<T>(
     const text = await response.text();
     if (!response.ok) {
       const parsed = text ? JSON.parse(text) : {};
-      throw new Error(parsed.error ?? `DO call ${method} failed: ${response.status}`);
+      if (parsed.error !== undefined) throw deserializeRpcFailure(parsed.error);
+      throw new Error(`DO call ${method} failed: ${response.status}`);
     }
     const respEnv = text ? JSON.parse(text) : {};
     const msg = respEnv.message as { type?: string; result?: unknown; error?: unknown } | undefined;
     if (msg?.type === "response" && msg.error != null) {
-      throw new Error(typeof msg.error === "string" ? msg.error : JSON.stringify(msg.error));
+      throw deserializeRpcFailure(msg.error);
     }
-    return (msg && "result" in msg ? msg.result : undefined) as R;
+    return msg && "result" in msg ? msg.result : undefined;
   };
 
   // Default test caller is the host relay. `callAs` changes the authenticated
   // origin and mints the matching exact-target attestation.
-  const call = <R = unknown>(method: string, ...args: unknown[]): Promise<R> =>
-    dispatch<R>("server", method, args);
-  const callAs = <R = unknown>(
+  // Wire dispatch stays unknown; the fixture's public callable class methods
+  // provide result types for known names, while malformed/private names stay unknown.
+  const call = ((method: string, ...args: unknown[]) =>
+    dispatch("server", method, args)) as TestDOResult<
+    InstanceType<DOClass>,
+    DOClass
+  >["call"];
+  const callAs = ((
     caller:
       | AuthenticatedCaller["callerKind"]
       | (Pick<AuthenticatedCaller, "callerId" | "callerKind"> &
@@ -486,7 +541,10 @@ export async function createTestDO<T>(
           }),
     method: string,
     ...args: unknown[]
-  ): Promise<R> => dispatch<R>(caller, method, args);
+  ) => dispatch(caller, method, args)) as TestDOResult<
+    InstanceType<DOClass>,
+    DOClass
+  >["callAs"];
 
   return { instance, sql: sqlProxy, db, alarms, acceptedWebSockets, call, callAs };
 }

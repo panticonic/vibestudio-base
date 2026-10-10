@@ -8,6 +8,7 @@ import {
   waitFor,
 } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
+import { schemaRpcMock } from "@vibestudio/rpc/test-utils";
 import type { PubSubClient } from "@workspace/pubsub";
 import { Theme } from "@radix-ui/themes";
 import { MessageList } from "./MessageList.js";
@@ -29,6 +30,7 @@ import {
   type AgenticEvent,
   type InvocationId,
 } from "@workspace/agentic-protocol";
+import { durableObjectServiceFixture } from "@vibestudio/service-schemas/test-utils";
 
 const hookState = vi.hoisted(() => {
   const scrollElement = {
@@ -221,7 +223,7 @@ describe("transcript delivery markers", () => {
     const createdAt = 1_700_000_000_000;
     const call = vi.fn(async (_target: string, method: string) => {
       if (method === "workers.resolveService") {
-        return { kind: "durable-object", targetId: "do:missions" };
+        return durableObjectServiceFixture("do:missions");
       }
       if (method === "overview") {
         const automation = {
@@ -263,6 +265,14 @@ describe("transcript delivery markers", () => {
           authority: { requestIds: [], grantIds: [], denialIds: [] },
         };
         return {
+          generatedAt: createdAt,
+          stats: {
+            total: 1,
+            active: 1,
+            running: 0,
+            issueRunsLast24Hours: 0,
+            completed: 0,
+          },
           items: [
             {
               automation,
@@ -272,6 +282,7 @@ describe("transcript delivery markers", () => {
               issueRunsSince: 0,
             },
           ],
+          attention: [],
         };
       }
       throw new Error(`Unexpected automation RPC ${method}`);
@@ -308,7 +319,7 @@ describe("transcript delivery markers", () => {
           mentionLabels={[]}
           isStreaming={false}
           isCopied={false}
-          chat={{ rpc: { call } }}
+          chat={{ rpc: schemaRpcMock({ call }) }}
           onInterrupt={noop}
           onCopy={noop}
           onClearCopied={noop}
@@ -331,6 +342,7 @@ describe("transcript delivery markers", () => {
       "do:missions",
       "overview",
       [{ missionId: "mission-talk-timer", limit: 1 }],
+      {},
     );
   });
 

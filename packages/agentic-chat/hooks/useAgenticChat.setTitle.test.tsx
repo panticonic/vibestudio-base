@@ -2,7 +2,9 @@
 
 import { act, render, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { schemaRpcMock } from "@vibestudio/rpc/test-utils";
 import type { MethodDefinition, PubSubClient } from "@workspace/pubsub";
+import { durableObjectServiceFixture } from "@vibestudio/service-schemas/test-utils";
 
 const pubsubMock = vi.hoisted(() => ({
   connectViaRpc: vi.fn(),
@@ -59,16 +61,30 @@ function createClient(
   };
 }
 
-function createRpcCall() {
+function createRpcWireCall() {
   return vi.fn(async (_target: string, method: string) => {
     if (method === "workers.resolveService") {
-      return { kind: "durable-object", targetId: "do:channel:chat-title-test" };
+      return durableObjectServiceFixture("do:channel:chat-title-test", {
+        origin: "workspace",
+        source: "workers/pubsub-channel",
+        name: "pubsub-channel",
+        action: "provide",
+        presentation: { domain: "web", verb: "see" },
+        authority: { principals: ["code"] },
+        protocols: ["vibestudio.channel.v1"],
+        className: "PubSubChannel",
+        objectKey: "chat-title-test",
+      });
     }
     if (method === "getProvenance") {
       return { kind: "root" };
     }
     return undefined;
-  }) as unknown as ConnectionConfig["rpc"]["call"];
+  });
+}
+
+function createRpcCall() {
+  return schemaRpcMock({ call: createRpcWireCall() }).call;
 }
 
 function Probe({
@@ -331,7 +347,11 @@ describe("useAgenticChat set_title", () => {
     const publish = vi.fn(async () => 1);
     Object.assign(client, {
       publish,
-      roster: { "do:author": { metadata: { name: "Author", type: "agent", handle: "author" } } },
+      roster: {
+        "do:author": {
+          metadata: { name: "Author", type: "agent", handle: "author" },
+        },
+      },
     });
     let methods: Record<string, MethodDefinition> | undefined;
     pubsubMock.connectViaRpc.mockImplementation(
@@ -360,21 +380,24 @@ describe("useAgenticChat set_title", () => {
       );
       expect(publish).toHaveBeenCalled();
     });
-    await methods!["load_action_bar"]!.execute(
-      { clear: true },
-      { callerId: "do:author", result: vi.fn() } as never,
-    );
+    await methods!["load_action_bar"]!.execute({ clear: true }, {
+      callerId: "do:author",
+      result: vi.fn(),
+    } as never);
     const requestedBy = {
       kind: "agent",
       id: "do:author",
       participantId: "do:author",
       displayName: "Author",
     };
-    const events = publish.mock.calls.map((call) => (call as unknown[])[1] as {
-      kind: string;
-      actor: { id: string };
-      payload: { requestedBy?: unknown };
-    });
+    const events = publish.mock.calls.map(
+      (call) =>
+        (call as unknown[])[1] as {
+          kind: string;
+          actor: { id: string };
+          payload: { requestedBy?: unknown };
+        },
+    );
     const inline = events.find((e) => e.kind === "ui.inline_rendered");
     const bar = events.find((e) => e.kind === "ui.action_bar.updated");
     expect(inline?.actor.id).toBe("panel:chat");
@@ -396,19 +419,26 @@ describe("useAgenticChat set_title", () => {
       },
     );
     const files = new Map<string, string>();
-    const base = createRpcCall();
-    const call = vi.fn(async (target: string, method: string, args: unknown[]) => {
-      if (method === "fs.writeFile") {
-        files.set(args[0] as string, args[1] as string);
-        return undefined;
-      }
-      if (method === "fs.readFile") {
-        const value = files.get(args[0] as string);
-        if (value === undefined) throw new Error(`ENOENT ${String(args[0])}`);
-        return value;
-      }
-      return (base as (...values: unknown[]) => Promise<unknown>)(target, method, args);
-    }) as unknown as ConnectionConfig["rpc"]["call"];
+    const base = createRpcWireCall();
+    const wireCall = vi.fn(
+      async (target: string, method: string, args: unknown[]) => {
+        if (method === "fs.writeFile") {
+          files.set(args[0] as string, args[1] as string);
+          return undefined;
+        }
+        if (method === "fs.readFile") {
+          const value = files.get(args[0] as string);
+          if (value === undefined) throw new Error(`ENOENT ${String(args[0])}`);
+          return value;
+        }
+        return (base as (...values: unknown[]) => Promise<unknown>)(
+          target,
+          method,
+          args,
+        );
+      },
+    );
+    const call = schemaRpcMock({ call: wireCall }).call;
     const onActionBarFileChange = vi.fn();
     function ActionBarProbe() {
       useAgenticChat({
@@ -430,11 +460,18 @@ describe("useAgenticChat set_title", () => {
     }
     const { unmount } = render(<ActionBarProbe />);
     await waitFor(() => expect(methods).toBeDefined());
-    const result = vi.fn((value: unknown, options?: unknown) => ({ value, options }));
+    const result = vi.fn((value: unknown, options?: unknown) => ({
+      value,
+      options,
+    }));
     const ctx = { callerId: "do:author", result } as never;
-    const code = "export default function ActionBar() { return <div>bar</div>; }";
+    const code =
+      "export default function ActionBar() { return <div>bar</div>; }";
     await waitFor(async () => {
-      const loaded = (await methods!["load_action_bar"]!.execute({ code }, ctx)) as {
+      const loaded = (await methods!["load_action_bar"]!.execute(
+        { code },
+        ctx,
+      )) as {
         ok?: boolean;
       };
       expect(loaded.ok).toBe(true);
@@ -459,7 +496,10 @@ describe("useAgenticChat set_title", () => {
       { code, path: "panels/bar/index.tsx" },
       ctx,
     )) as { value: { ok: boolean; error: string } };
-    expect(ambiguous.value).toEqual({ ok: false, error: "Provide exactly one of code or path" });
+    expect(ambiguous.value).toEqual({
+      ok: false,
+      error: "Provide exactly one of code or path",
+    });
 
     unmount();
   });
@@ -484,7 +524,9 @@ describe("useAgenticChat set_title", () => {
         on: vi.fn(() => () => undefined),
       },
     };
-    const { unmount } = render(<Probe config={config} loadDynamicImports={false} />);
+    const { unmount } = render(
+      <Probe config={config} loadDynamicImports={false} />,
+    );
     await waitFor(() => expect(methods).toBeDefined());
     // Wait until the hook has adopted the connected client.
     await waitFor(async () => {
@@ -495,13 +537,19 @@ describe("useAgenticChat set_title", () => {
       expect(publish).toHaveBeenCalled();
     });
     publish.mockClear();
-    const result = vi.fn((value: unknown, options?: unknown) => ({ value, options }));
+    const result = vi.fn((value: unknown, options?: unknown) => ({
+      value,
+      options,
+    }));
     const ctx = { callerId: "do:author", result } as never;
 
     const syntax = (await methods!["inline_ui"]!.execute(
       { code: "export default function A( { return <div>; }" },
       ctx,
-    )) as { value: { ok: boolean; error: string; compileError: boolean }; options: unknown };
+    )) as {
+      value: { ok: boolean; error: string; compileError: boolean };
+      options: unknown;
+    };
     expect(syntax.value).toMatchObject({ ok: false, compileError: true });
     expect(syntax.value.error).toBeTruthy();
     expect(syntax.options).toEqual({ isError: true });
@@ -630,10 +678,12 @@ describe("useAgenticChat set_title", () => {
     });
     await waitFor(() => {
       expect(document.title).toBe("Persistent task store");
-      expect(call).toHaveBeenCalledWith("main", "runtime.setTitle", [
-        "Persistent task store",
-        { explicit: true },
-      ]);
+      expect(call).toHaveBeenCalledWith(
+        "main",
+        "runtime.setTitle",
+        ["Persistent task store", { explicit: true }],
+        undefined,
+      );
     });
 
     unmount();
@@ -660,10 +710,12 @@ describe("useAgenticChat set_title", () => {
 
     await waitFor(() => {
       expect(document.title).toBe("Existing task title");
-      expect(call).toHaveBeenCalledWith("main", "runtime.setTitle", [
-        "Existing task title",
-        { explicit: true },
-      ]);
+      expect(call).toHaveBeenCalledWith(
+        "main",
+        "runtime.setTitle",
+        ["Existing task title", { explicit: true }],
+        undefined,
+      );
     });
 
     unmount();

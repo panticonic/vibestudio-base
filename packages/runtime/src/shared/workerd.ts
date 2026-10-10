@@ -1,3 +1,10 @@
+import { mainRpcMethods } from "@vibestudio/service-schemas/mainRpc";
+import { createDurableObjectServiceClient } from "@vibestudio/service-schemas/clients/durableObjectServiceClient";
+export { createDurableObjectServiceClient, createGadServiceClient, resolveDurableObjectService } from "@vibestudio/service-schemas/clients/durableObjectServiceClient";
+import type { workersMethods } from "@vibestudio/service-schemas/workers";
+import { createLazyTypedRpcServiceClient } from "@vibestudio/shared/typedRpcServiceClient";
+import type { RpcMethodMap } from "@vibestudio/shared/rpcMethods";
+import type { TypedServiceClient } from "@vibestudio/shared/typedServiceClient";
 /**
  * Typed client for the workerd RPC service.
  *
@@ -18,20 +25,9 @@ import type {
   RuntimeEntityCreateSpec,
   RuntimeEntityHandle,
 } from "@vibestudio/shared/runtime/entitySpec";
-import {
-  createDurableObjectServiceClient,
-  type DurableObjectServiceClient,
-  type ResolvedDurableObjectTarget,
-} from "@vibestudio/shared/workspaceServiceRpc";
+import { type DurableObjectServiceClient, type ResolvedDurableObjectTarget } from "@vibestudio/shared/workspaceServiceRpc";
 
-export {
-  GAD_WORKSPACE_SERVICE_PROTOCOL,
-  createDurableObjectServiceClient,
-  createGadServiceClient,
-  doTargetId,
-  parseDoTargetId,
-  resolveDurableObjectService,
-} from "@vibestudio/shared/workspaceServiceRpc";
+export { GAD_WORKSPACE_SERVICE_PROTOCOL, doTargetId, parseDoTargetId } from "@vibestudio/shared/workspaceServiceRpc";
 export type {
   DORefParam,
   DurableObjectServiceClient,
@@ -176,17 +172,19 @@ export interface WorkerdClient {
     objectKey: string
   ): Promise<ResolvedDurableObjectTarget>;
   /** Resolve a Durable Object-backed service and call it through unified RPC. */
-  durableObjectService(query: string, objectKey?: string | null): DurableObjectServiceClient;
+  durableObjectService<M extends RpcMethodMap>(query: string, methods: M, objectKey?: string | null): DurableObjectServiceClient<M>;
 }
 export function createWorkerdClient(rpc: RpcCaller): WorkerdClient {
-  const callWorkers = <T>(method: string, ...args: unknown[]) =>
-    rpc.call<T>("main", `workers.${method}`, args);
+  const workers: TypedServiceClient<typeof workersMethods> = createLazyTypedRpcServiceClient(
+    rpc, { targetId: "main", namespace: "workers" }, ["listSources", "listServices", "resolveService", "resolveDurableObject", "resetStorage", "listStorageBackups", "restoreStorageBackup"],
+    async () => (await import("@vibestudio/service-schemas/workers")).workersMethods,
+  );
 
   return {
-    listSources: () => callWorkers<WorkerSourceInfo[]>("listSources"),
-    create: (source, options = {}) => {
+    listSources: () => workers.listSources(),
+    create: async (source, options = {}) => {
       const { ref, artifact, ...entityOptions } = options;
-      return rpc.call<WorkerEntityHandle>("main", "runtime.createEntity", [
+      const handle = await rpc.call("main", mainRpcMethods["runtime.createEntity"], [
         {
           kind: "worker",
           execution: {
@@ -198,10 +196,12 @@ export function createWorkerdClient(rpc: RpcCaller): WorkerdClient {
           ...entityOptions,
         },
       ]);
+      if (handle.kind !== "worker") throw new TypeError("Runtime receiver returned another entity kind for worker creation");
+      return { ...handle, kind: handle.kind };
     },
-    createDurableObject: (source, className, options = {}) => {
+    createDurableObject: async (source, className, options = {}) => {
       const { ref, ...entityOptions } = options;
-      return rpc.call<DurableObjectEntityHandle>("main", "runtime.createEntity", [
+      const handle = await rpc.call("main", mainRpcMethods["runtime.createEntity"], [
         {
           kind: "do",
           execution: { surface: "code", source, ...(ref ? { ref } : {}) },
@@ -209,31 +209,35 @@ export function createWorkerdClient(rpc: RpcCaller): WorkerdClient {
           ...entityOptions,
         },
       ]);
+      if (handle.kind !== "do") throw new TypeError("Runtime receiver returned another entity kind for durable object creation");
+      return { ...handle, kind: handle.kind };
     },
-    list: () => rpc.call<WorkerEntityInfo[]>("main", "runtime.listEntities", [{ kind: "worker" }]),
+    list: async () => (await rpc.call("main", mainRpcMethods["runtime.listEntities"], [{ kind: "worker" }])).map((entity) => {
+      if (entity.kind !== "worker") throw new TypeError("Runtime receiver returned another entity kind in the worker list");
+      return { ...entity, kind: entity.kind };
+    }),
     destroy: (entity) =>
-      rpc.call<void>("main", "runtime.retireEntity", [
+      rpc.call("main", mainRpcMethods["runtime.retireEntity"], [
         {
           id: typeof entity === "string" ? entity : entity.id,
         },
       ]),
     resetStorage: (target, intent) =>
-      callWorkers<{ operationId: string }>("resetStorage", target, intent),
+      workers.resetStorage(target, intent),
     listStorageBackups: (target) =>
-      callWorkers<DurableObjectStorageBackup[]>("listStorageBackups", target),
+      workers.listStorageBackups(target),
     restoreStorageBackup: (target, operationId, intent) =>
-      callWorkers<{ operationId: string }>("restoreStorageBackup", target, operationId, intent),
-    listServices: () => callWorkers<WorkspaceServiceInfo[]>("listServices"),
+      workers.restoreStorageBackup(target, operationId, intent),
+    listServices: () => workers.listServices(),
     resolveService: (query, objectKey) =>
-      callWorkers<ResolvedWorkspaceService>("resolveService", query, objectKey ?? null),
+      workers.resolveService(query, objectKey ?? null),
     resolveDurableObject: (source, className, objectKey) =>
-      callWorkers<ResolvedDurableObjectTarget>(
-        "resolveDurableObject",
+      workers.resolveDurableObject(
         source,
         className,
         objectKey
       ),
-    durableObjectService: (query, objectKey) =>
-      createDurableObjectServiceClient(rpc, query, objectKey),
+    durableObjectService: (query, methods, objectKey) =>
+      createDurableObjectServiceClient(rpc, query, methods, objectKey),
   };
 }

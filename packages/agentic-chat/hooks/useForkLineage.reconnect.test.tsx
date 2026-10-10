@@ -1,8 +1,11 @@
 // @vitest-environment jsdom
+
+import { schemaRpcMock } from "@vibestudio/rpc/test-utils";
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { encodeChannelSubscriptionRecord } from "@vibestudio/service-schemas/channel";
 import { useForkLineage, type UseForkLineageOptions } from "./useForkLineage";
+import { durableObjectServiceFixture } from "@vibestudio/service-schemas/test-utils";
 
 function harness() {
   const reconnectHandlers = new Set<() => void>();
@@ -19,46 +22,55 @@ function harness() {
     controller: ReadableStreamDefaultController<Uint8Array>;
     signal: AbortSignal;
   }> = [];
-  const stream = vi.fn<NonNullable<UseForkLineageOptions["rpc"]["stream"]>>(
-    async (_target, _method, _args, options) => {
-      const body = new ReadableStream<Uint8Array>({
-        start(controller) {
-          streams.push({ controller, signal: options!.signal! });
-          controller.enqueue(encodeChannelSubscriptionRecord({ kind: "subscribed", result: {} }));
-        },
-      });
-      return new Response(body);
-    }
-  );
+  const stream = vi.fn<
+    import("@vibestudio/rpc/internal").RpcWireCaller["stream"]
+  >(async (_target, _method, _args, options) => {
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        streams.push({ controller, signal: options!.signal! });
+        controller.enqueue(
+          encodeChannelSubscriptionRecord({ kind: "subscribed", result: {} }),
+        );
+      },
+    });
+    return new Response(body);
+  });
   const rpc: UseForkLineageOptions["rpc"] = {
+    ...schemaRpcMock({
+      stream,
+      call: async (_target: string, method: string, args: unknown[]) => {
+        if (method === "workers.resolveService")
+          return durableObjectServiceFixture(`do:${args[1]}`, {
+            source: "workers/pubsub-channel",
+            className: "PubSubChannel",
+            objectKey: String(args[1]),
+          });
+        if (method === "getProvenance") return { kind: "root" };
+        if (method === "listForks") {
+          if (failRead) throw new Error("snapshot unavailable");
+          return {
+            headSeq: 1,
+            forks: [
+              {
+                parentChannelId: "root",
+                forkId: "fork-1",
+                forkedChannelId: "child",
+                forkedContextId: "child-context",
+                label,
+                reason: "fork",
+                actor: { kind: "agent", id: "agent-1" },
+                forkPointId: 1,
+                createdAtSeq: 2,
+                headSeq: head,
+                archived: false,
+              },
+            ],
+          };
+        }
+        throw new Error(`unexpected ${method}`);
+      },
+    }),
     selfId: "panel-1",
-    stream,
-    call: async <Result,>(_target: string, method: string, args: unknown[]) => {
-      if (method === "workers.resolveService") return { targetId: `do:${args[1]}` } as Result;
-      if (method === "getProvenance") return { kind: "root" } as Result;
-      if (method === "listForks") {
-        if (failRead) throw new Error("snapshot unavailable");
-        return {
-          headSeq: 1,
-          forks: [
-            {
-              parentChannelId: "root",
-              forkId: "fork-1",
-              forkedChannelId: "child",
-              forkedContextId: "child-context",
-              label,
-              reason: "fork",
-              actor: { kind: "agent", id: "agent-1" },
-              forkPointId: 1,
-              createdAtSeq: 2,
-              headSeq: head,
-              archived: false,
-            },
-          ],
-        } as Result;
-      }
-      throw new Error(`unexpected ${method}`);
-    },
   };
   const mounted = renderHook(() =>
     useForkLineage({
@@ -69,7 +81,7 @@ function harness() {
       messages: [],
       replaySettled: true,
       nav: { switchTo() {}, openInNewPanel() {} },
-    })
+    }),
   );
   return {
     ...mounted,
@@ -97,7 +109,7 @@ function harness() {
               content: JSON.stringify({ channelId: "child", headSeq }),
             },
           },
-        })
+        }),
       );
     },
     dispose() {
@@ -119,10 +131,14 @@ describe("fork lineage recovery", () => {
     try {
       await waitFor(() => expect(h.stream).toHaveBeenCalledTimes(1));
       await act(async () =>
-        h.streams[0]!.controller.error(new Error("ConnectionLost(ApplicationClosed)"))
+        h.streams[0]!.controller.error(
+          new Error("ConnectionLost(ApplicationClosed)"),
+        ),
       );
       await waitFor(() =>
-        expect(h.result.current.error).toContain("Live fork updates disconnected")
+        expect(h.result.current.error).toContain(
+          "Live fork updates disconnected",
+        ),
       );
       h.updateSnapshot();
       await act(async () => h.reconnect());
@@ -131,12 +147,14 @@ describe("fork lineage recovery", () => {
         expect(h.result.current.children[0]).toMatchObject({
           label: "Changed while offline",
           headSeq: 9,
-        })
+        }),
       );
       expect(h.result.current.error).toBeUndefined();
       expect(h.streams[0]!.signal.aborted).toBe(true);
       await act(async () => h.emitHead(1, 12));
-      await waitFor(() => expect(h.result.current.children[0]?.headSeq).toBe(12));
+      await waitFor(() =>
+        expect(h.result.current.children[0]?.headSeq).toBe(12),
+      );
     } finally {
       h.dispose();
     }
@@ -151,11 +169,15 @@ describe("fork lineage recovery", () => {
       await act(async () => h.reconnect());
       await waitFor(() => expect(h.stream).toHaveBeenCalledTimes(2));
       await act(async () =>
-        h.streams[0]!.controller.error(new Error("late old connection failure"))
+        h.streams[0]!.controller.error(
+          new Error("late old connection failure"),
+        ),
       );
       expect(h.result.current.error).toBeUndefined();
       await act(async () => h.emitHead(1, 7));
-      await waitFor(() => expect(h.result.current.children[0]?.headSeq).toBe(7));
+      await waitFor(() =>
+        expect(h.result.current.children[0]?.headSeq).toBe(7),
+      );
     } finally {
       h.dispose();
     }
@@ -167,16 +189,23 @@ describe("fork lineage recovery", () => {
       await waitFor(() => expect(h.stream).toHaveBeenCalledTimes(1));
       h.failRead(true);
       await act(async () => h.reconnect());
-      await waitFor(() => expect(h.result.current.error).toContain("snapshot unavailable"));
+      await waitFor(() =>
+        expect(h.result.current.error).toContain("snapshot unavailable"),
+      );
       h.failRead(false);
       await act(async () => h.reconnect());
       await waitFor(() => expect(h.result.current.error).toBeUndefined());
       act(() =>
-        h.result.current.actions.reportError("Could not save", new Error("storage unavailable"))
+        h.result.current.actions.reportError(
+          "Could not save",
+          new Error("storage unavailable"),
+        ),
       );
       await act(async () => h.reconnect());
       await waitFor(() => expect(h.stream).toHaveBeenCalledTimes(4));
-      expect(h.result.current.error).toBe("Could not save: storage unavailable");
+      expect(h.result.current.error).toBe(
+        "Could not save: storage unavailable",
+      );
     } finally {
       h.dispose();
     }

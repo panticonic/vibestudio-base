@@ -1,6 +1,7 @@
+import { createTypedRpcServiceClient } from "@vibestudio/shared/typedRpcServiceClient";
 import { Button, Flex, Text } from "@radix-ui/themes";
 import { credentialsMethods } from "@vibestudio/service-schemas/credentials";
-import { createTypedServiceClient } from "@vibestudio/shared/typedServiceClient";
+
 import { buildPanelLink, extensions, rpc } from "@workspace/runtime";
 import { createShellSurfaceLink } from "@vibestudio/shared/shellSurface";
 import { createTemplateManagementClient } from "@workspace/template-management";
@@ -10,11 +11,7 @@ import { AboutPage, AboutThemeRoot } from "@workspace/about-shared/ui";
 const templates = createTemplateManagementClient((extension, method, args) =>
   extensions.invoke(extension, method, args),
 );
-const accounts = createTypedServiceClient(
-  "credentials",
-  credentialsMethods,
-  (service, method, args) => rpc.call("main", `${service}.${method}`, args),
-);
+const accounts = createTypedRpcServiceClient(rpc, { targetId: "main", namespace: "credentials" }, credentialsMethods);
 const listSourceAccounts = () => accounts.listStoredCredentials();
 export default function TemplatesPage() {
   return (

@@ -1,3 +1,4 @@
+import { mainRpcMethod } from "@vibestudio/service-schemas/mainRpc";
 /** Build-backed dynamic import loading for browser panel sandboxes. */
 import {
   createBuildServiceClient,
@@ -6,7 +7,7 @@ import {
 import type { SandboxImportLoader } from "@workspace/eval";
 
 interface RpcLike {
-  call(target: string, method: string, args: unknown[]): Promise<unknown>;
+  call: import("@vibestudio/rpc").RpcCaller["call"];
 }
 
 /**
@@ -19,7 +20,7 @@ export function createPanelImportLoader(
   options: { defaultWorkspaceRef: () => `ctx:${string}` }
 ): SandboxImportLoader {
   const build = createBuildServiceClient((service, method, args) =>
-    rpc.call("main", `${service}.${method}`, args)
+    rpc.call("main", mainRpcMethod(`${service}.${method}`), args)
   );
   return createEvalImportLoader(build, "panel", options);
 }

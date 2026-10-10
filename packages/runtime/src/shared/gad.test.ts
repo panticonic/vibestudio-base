@@ -1,18 +1,16 @@
 import { describe, expect, it, vi } from "vitest";
+import { schemaRpcMock } from "@vibestudio/rpc/test-utils";
 import { createGadClient } from "./gad.js";
+import { durableObjectServiceFixture } from "@vibestudio/service-schemas/test-utils";
 
 describe("createGadClient", () => {
   it("routes finite GAD inspection methods through the declared workspace service", async () => {
-    const rpc = {
+    const rpc = schemaRpcMock({
       call: vi.fn(async (target: string, method: string) => {
         if (target === "main" && method === "workers.resolveService") {
-          return {
-            kind: "durable-object",
-            source: "vibestudio/internal",
+          return durableObjectServiceFixture("do:workers/workspace-source:GadWorkspaceDO:workspace", { source: "vibestudio/internal",
             className: "GadWorkspaceDO",
-            objectKey: "workspace",
-            targetId: "do:workers/workspace-source:GadWorkspaceDO:workspace",
-          };
+            objectKey: "workspace" });
         }
         if (
           method === "listTrajectoryBranches" ||
@@ -23,7 +21,7 @@ describe("createGadClient", () => {
         return undefined;
       }),
       stream: vi.fn(),
-    };
+    });
     const gad = createGadClient(rpc as never);
 
     await gad.listTrajectoryBranches({ limit: 10 });
@@ -34,18 +32,21 @@ describe("createGadClient", () => {
       "main",
       "workers.resolveService",
       ["vibestudio.gad.workspace.v1", null],
+      undefined,
     );
     expect(rpc.call).toHaveBeenNthCalledWith(
       2,
       "do:workers/workspace-source:GadWorkspaceDO:workspace",
       "listTrajectoryBranches",
       [{ limit: 10 }],
+      undefined,
     );
     expect(rpc.call).toHaveBeenNthCalledWith(
       3,
       "do:workers/workspace-source:GadWorkspaceDO:workspace",
       "listTrajectoryInvocations",
       [{ branchId: "branch-1", limit: 20 }],
+      undefined,
     );
   });
 
@@ -58,16 +59,12 @@ describe("createGadClient", () => {
       encoding: "json",
       originalBytes: 15,
     };
-    const rpc = {
+    const rpc = schemaRpcMock({
       call: vi.fn(async (target: string, method: string) => {
         if (target === "main" && method === "workers.resolveService") {
-          return {
-            kind: "durable-object",
-            source: "vibestudio/internal",
+          return durableObjectServiceFixture("do:workers/workspace-source:GadWorkspaceDO:workspace", { source: "vibestudio/internal",
             className: "GadWorkspaceDO",
-            objectKey: "workspace",
-            targetId: "do:workers/workspace-source:GadWorkspaceDO:workspace",
-          };
+            objectKey: "workspace" });
         }
         if (target === "main" && method === "blobstore.getText") {
           return JSON.stringify({ hydrated: true });
@@ -139,7 +136,7 @@ describe("createGadClient", () => {
         return { rows: [] };
       }),
       stream: vi.fn(),
-    };
+    });
     const gad = createGadClient(rpc as never);
 
     await expect(
@@ -164,23 +161,19 @@ describe("createGadClient", () => {
       result: { loaded: false },
       roster: { present: true, transport: "do" },
     };
-    const rpc = {
+    const rpc = schemaRpcMock({
       call: vi.fn(async (target: string, method: string) => {
         if (target === "main" && method === "workers.resolveService") {
-          return {
-            kind: "durable-object",
-            source: "workers/pubsub-channel",
+          return durableObjectServiceFixture(channelTarget, { source: "workers/pubsub-channel",
             className: "PubSubChannel",
-            objectKey: "channel-2",
-            targetId: channelTarget,
-          };
+            objectKey: "channel-2" });
         }
         if (target === channelTarget && method === "inspectAgent")
           return inspection;
         throw new Error(`unexpected call ${target}.${method}`);
       }),
       stream: vi.fn(),
-    };
+    });
     const gad = createGadClient(rpc as never);
 
     await expect(
@@ -191,25 +184,28 @@ describe("createGadClient", () => {
       "main",
       "workers.resolveService",
       ["vibestudio.channel.v1", "channel-2"],
+      undefined,
     );
-    expect(rpc.call).toHaveBeenNthCalledWith(2, channelTarget, "inspectAgent", [
-      { method: "getDebugState" },
-    ]);
+    expect(rpc.call).toHaveBeenNthCalledWith(
+      2,
+      channelTarget,
+      "inspectAgent",
+      [{ method: "getDebugState" }],
+      undefined,
+    );
     expect(gad.collectChannelEnvelopePages).toBeTypeOf("function");
   });
 
   it("exposes typed durable user-notification consumer and producer calls", async () => {
     const targetId = "do:workers/workspace-source:GadWorkspaceDO:workspace";
-    const rpc = {
+    const rpc = schemaRpcMock({
       call: vi.fn(async (target: string, method: string, args: unknown[]) => {
         if (target === "main" && method === "workers.resolveService") {
-          return {
-            kind: "durable-object",
+          return durableObjectServiceFixture(targetId, {
             source: "vibestudio/internal",
             className: "GadWorkspaceDO",
             objectKey: "workspace",
-            targetId,
-          };
+          });
         }
         if (method === "listUserNotificationsForMe") {
           return {
@@ -232,7 +228,7 @@ describe("createGadClient", () => {
         throw new Error(`unexpected call ${target}.${method}`);
       }),
       stream: vi.fn(),
-    };
+    });
     const gad = createGadClient(rpc as never);
 
     await expect(gad.listUserNotificationsForMe()).resolves.toMatchObject([
@@ -257,17 +253,19 @@ describe("createGadClient", () => {
       targetId,
       "listUserNotificationsForMe",
       [],
+      undefined,
     );
     expect(rpc.call).toHaveBeenCalledWith(
       targetId,
       "acknowledgeUserNotification",
       [{ id: "channel.invite:channel-1" }],
+      undefined,
     );
     expect(rpc.call).toHaveBeenCalledWith(targetId, "putUserNotification", [
       generic,
-    ]);
+    ], undefined);
     expect(rpc.call).toHaveBeenCalledWith(targetId, "deleteUserNotification", [
       { userId: "usr_bob", id: "build:42" },
-    ]);
+    ], undefined);
   });
 });

@@ -1,6 +1,8 @@
+import { createTypedRpcServiceClient } from "@vibestudio/shared/typedRpcServiceClient";
+import { mainRpcMethods } from "@vibestudio/service-schemas/mainRpc";
 import { Badge, Button, Callout, Flex, Tabs, Text } from "@radix-ui/themes";
 import { credentialsMethods } from "@vibestudio/service-schemas/credentials";
-import { createTypedServiceClient } from "@vibestudio/shared/typedServiceClient";
+
 import {
   buildPanelLink,
   extensions,
@@ -20,11 +22,7 @@ import { AboutPage, AboutThemeRoot } from "@workspace/about-shared/ui";
 const templates = createTemplateManagementClient((extension, method, args) =>
   extensions.invoke(extension, method, args),
 );
-const accounts = createTypedServiceClient(
-  "credentials",
-  credentialsMethods,
-  (service, method, args) => rpc.call("main", `${service}.${method}`, args),
-);
+const accounts = createTypedRpcServiceClient(rpc, { targetId: "main", namespace: "credentials" }, credentialsMethods);
 const listSourceAccounts = () => accounts.listStoredCredentials();
 const readInfo = () => workspace.getInfo();
 const readSources = () => templates.installed();
@@ -136,9 +134,9 @@ export default function WorkspacePage() {
                     });
                   }}
                   fetchContent={async (hash) => {
-                    const value = await rpc.call<string | null>(
+                    const value = await rpc.call(
                       "main",
-                      "blobstore.getBase64",
+                      mainRpcMethods["blobstore.getBase64"],
                       [hash],
                     );
                     if (value === null)

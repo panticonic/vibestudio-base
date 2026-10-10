@@ -1,16 +1,6 @@
 import type { RpcCaller } from "@vibestudio/rpc";
-import type {
-  IndexablePanel,
-  PanelSourceUsage,
-} from "@vibestudio/shared/panelSearchTypes";
-import type {
-  WorkspacePanelDetail,
-  WorkspacePanelTreePage,
-  WorkspacePanelTreeRootGroupPage,
-  WorkspacePanelTreeRootGroupPageInput,
-  WorkspacePanelTreeSearchInput,
-  WorkspacePanelTreeSearchPage,
-} from "@vibestudio/shared/panel/workspaceStateSnapshot";
+import type { IndexablePanel } from "@vibestudio/shared/panelSearchTypes";
+import type { WorkspacePanelDetail, WorkspacePanelTreeRootGroupPage, WorkspacePanelTreeRootGroupPageInput, WorkspacePanelTreeSearchInput } from "@vibestudio/shared/panel/workspaceStateSnapshot";
 import type {
   PanelTreePageInput,
   PanelTreePath,
@@ -60,7 +50,7 @@ export function createWorkspacePresentationClient(
         input,
       ) as Promise<WorkspacePanelTreeRootGroupPage>,
     rootsForCaller: (input: { cursor?: string; limit?: number }) =>
-      callWorkspaceState<WorkspacePanelTreePage>(
+      callWorkspaceState(
         rpc,
         "panelTree.rootsForCaller",
         [input],
@@ -70,28 +60,28 @@ export function createWorkspacePresentationClient(
       state.getPanelTreePath(asPanelSlotId(slotId)),
     detail,
     searchTree: (input: WorkspacePanelTreeSearchInput) =>
-      callWorkspaceState<WorkspacePanelTreeSearchPage>(
+      callWorkspaceState(
         rpc,
         "panelTree.search",
         [input],
       ),
     indexPanel: (panel: IndexablePanel) =>
-      callWorkspaceState<string | null>(rpc, "panel.index", [panel]),
+      callWorkspaceState(rpc, "panel.index", [panel]),
     updatePanelTitle: (
       slotId: string,
       title: string,
       options?: { explicit?: boolean },
     ) =>
-      callWorkspaceState<string | null>(rpc, "panel.updateTitle", [
+      callWorkspaceState(rpc, "panel.updateTitle", [
         slotId,
         title,
         options,
       ]),
     incrementAccess: (slotId: string) =>
-      callWorkspaceState<void>(rpc, "panel.incrementAccess", [slotId]),
+      callWorkspaceState(rpc, "panel.incrementAccess", [slotId]),
     sourceUsage: (limit = 200) =>
-      callWorkspaceState<PanelSourceUsage[]>(rpc, "panel.sourceUsage", [limit]),
-    rebuildIndex: () => callWorkspaceState<void>(rpc, "panel.rebuildIndex", []),
+      callWorkspaceState(rpc, "panel.sourceUsage", [limit]),
+    rebuildIndex: () => callWorkspaceState(rpc, "panel.rebuildIndex", []),
   };
 }
 

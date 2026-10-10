@@ -181,12 +181,7 @@ describe("createPanelTransport", () => {
     await transport.send(request);
     expect(shell.postEnvelope).toHaveBeenCalledWith(request);
     expect(handler).not.toHaveBeenCalled();
-    const reply = envelope("panel:panel-1", {
-      type: "response",
-      requestId: "native-1",
-      error: "denied",
-      errorKind: "access",
-    });
+    const reply = envelope("panel:panel-1", { type: "response", requestId: "native-1", error: { message: "denied", errorKind: "access" } });
     incoming(reply);
     expect(handler).toHaveBeenCalledWith(reply);
   });

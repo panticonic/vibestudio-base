@@ -3,9 +3,9 @@ import { createTestDO } from "@workspace/runtime/worker/test-utils";
 /** Probe the actual product schema before exercising the native owner's gate.
  * Tests still enter the production initializer with its trusted descriptor. */
 const descriptors = new Map<unknown, Promise<unknown>>();
-export async function createNativeVesselTestDO<T>(
-  ...args: Parameters<typeof createTestDO<T>>
-): ReturnType<typeof createTestDO<T>> {
+export async function createNativeVesselTestDO<DOClass extends new (ctx: any, env: any) => object>(
+  ...args: Parameters<typeof createTestDO<DOClass>>
+): ReturnType<typeof createTestDO<DOClass>> {
   const [ctor, env, options] = args;
   let descriptor = descriptors.get(ctor);
   if (!descriptor) {

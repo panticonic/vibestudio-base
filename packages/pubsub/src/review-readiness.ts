@@ -5,12 +5,7 @@ const PENDING_CHANGED_EVENT = "shell-approval:pending-changed" as const;
 const ABORTED_MESSAGE = "Channel service resolution was aborted";
 
 interface ReviewReadinessRpc {
-  stream(
-    targetId: string,
-    method: string,
-    args: unknown[],
-    options?: { signal?: AbortSignal; bodyIdleTimeoutMs?: number | null }
-  ): Promise<Response>;
+  stream: import("@vibestudio/rpc").RpcCaller["stream"];
 }
 
 interface Waiter {

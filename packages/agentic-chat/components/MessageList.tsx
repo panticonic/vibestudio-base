@@ -1,14 +1,30 @@
-import React, { useState, useRef, useEffect, useCallback, useMemo } from "react";
+import React, {
+  useState,
+  useRef,
+  useEffect,
+  useCallback,
+  useMemo,
+} from "react";
 import { Box, Button, Flex, ScrollArea, Text } from "@radix-ui/themes";
 import type { Participant } from "@workspace/pubsub";
 import { useStickToBottom } from "../hooks/useStickToBottom.js";
-import { useScrollAnchor, type ScrollAnchorItem } from "../hooks/useScrollAnchor.js";
-import { InlineGroup, type InlineItem, type InvocationRenderer } from "./InlineGroup";
+import {
+  useScrollAnchor,
+  type ScrollAnchorItem,
+} from "../hooks/useScrollAnchor.js";
+import {
+  InlineGroup,
+  type InlineItem,
+  type InvocationRenderer,
+} from "./InlineGroup";
 import { NewContentIndicator } from "./NewContentIndicator";
 import { MessageCard } from "./MessageCard";
 import { SubagentRunCard } from "./SubagentRunCard";
 import { TaskRunCard } from "./TaskRunCard";
-import type { InvocationCardPayload } from "@workspace/agentic-core";
+import type {
+  ChatSandboxValue,
+  InvocationCardPayload,
+} from "@workspace/agentic-core";
 import type {
   BrowserHandoffCaller,
   ChannelParticipantId,
@@ -17,7 +33,7 @@ import type {
   InlineUiComponentEntry,
   MessageTypeComponentEntry,
 } from "../types";
-import { useAccountProfiles, type AccountRpc } from "../hooks/useAccountProfiles";
+import { useAccountProfiles } from "../hooks/useAccountProfiles";
 
 // Grouped item types produced by the grouping logic
 type GroupedItem =
@@ -32,7 +48,12 @@ const INITIAL_RENDERED_ITEMS = 200;
 
 // --- Grouping helper functions (module-level for reuse by fast paths) ---
 
-type InlineItemType = "thinking" | "toolcall-progress" | "invocation" | "typing" | "custom";
+type InlineItemType =
+  | "thinking"
+  | "toolcall-progress"
+  | "invocation"
+  | "typing"
+  | "custom";
 
 function getInlineItemType(msg: ChatMessage): InlineItemType | null {
   if (msg.contentType === "thinking") return "thinking";
@@ -40,7 +61,8 @@ function getInlineItemType(msg: ChatMessage): InlineItemType | null {
   if (msg.contentType === "task") return null;
   if (msg.contentType === "invocation") return "invocation";
   if (msg.contentType === "typing") return "typing";
-  if (msg.contentType === "custom" && msg.custom?.displayMode === "inline") return "custom";
+  if (msg.contentType === "custom" && msg.custom?.displayMode === "inline")
+    return "custom";
   return null;
 }
 
@@ -50,7 +72,11 @@ function isTypingMessage(msg: ChatMessage): boolean {
 
 function messageSignature(msg: ChatMessage): string {
   const customUpdatedAt = msg.custom
-    ? JSON.stringify([msg.custom.initialState ?? null, msg.custom.lastSeq, msg.custom.updates])
+    ? JSON.stringify([
+        msg.custom.initialState ?? null,
+        msg.custom.lastSeq,
+        msg.custom.updates,
+      ])
     : "";
   return [
     msg.contentType ?? "",
@@ -78,13 +104,17 @@ function groupedItemAnchorId(item: GroupedItem): string {
 
 function groupedItemSignature(item: GroupedItem): string {
   if (item.type === "inline-group") {
-    return item.items.map(({ msg }) => `${msg.id}:${messageSignature(msg)}`).join("\u001e");
+    return item.items
+      .map(({ msg }) => `${msg.id}:${messageSignature(msg)}`)
+      .join("\u001e");
   }
   return messageSignature(item.msg);
 }
 
 /** Transform an inline group's messages into InlineItem[] */
-function buildInlineItems(items: Array<{ msg: ChatMessage; index: number }>): InlineItem[] {
+function buildInlineItems(
+  items: Array<{ msg: ChatMessage; index: number }>,
+): InlineItem[] {
   return items.flatMap(({ msg }) => {
     if (msg.contentType === "invocation") {
       if (!msg.invocation) return [];
@@ -134,7 +164,7 @@ function buildInlineItems(items: Array<{ msg: ChatMessage; index: number }>): In
 
 function pushInlineGroup(
   result: GroupedItem[],
-  items: Array<{ msg: ChatMessage; index: number }>
+  items: Array<{ msg: ChatMessage; index: number }>,
 ): void {
   if (items.length === 0) return;
   const inlineItems = buildInlineItems(items);
@@ -189,7 +219,7 @@ function fullGroupComputation(messages: ChatMessage[]): GroupedItem[] {
  */
 function buildActiveTypingItems(
   participants: Record<string, Participant<ChatParticipantMetadata>>,
-  selfId: string | null
+  selfId: string | null,
 ): InlineItem[] {
   const items: InlineItem[] = [];
   for (const [pid, p] of Object.entries(participants)) {
@@ -230,13 +260,20 @@ export interface MessageListProps {
   allParticipants: Record<string, Participant<ChatParticipantMetadata>>;
   inlineUiComponents?: Map<string, InlineUiComponentEntry>;
   messageTypeComponents?: Map<string, MessageTypeComponentEntry>;
-  chat?: Record<string, unknown>;
+  chat?: ChatSandboxValue;
   browserHandoffCaller?: BrowserHandoffCaller;
   hasMoreHistory?: boolean;
   loadingMore?: boolean;
   onLoadEarlierMessages?: () => void | Promise<void>;
-  onInterrupt?: (agentId: string, messageId?: string, agentHandle?: string) => void;
-  onCancelInvocation?: (invocation: InvocationCardPayload, senderId: string) => void;
+  onInterrupt?: (
+    agentId: string,
+    messageId?: string,
+    agentHandle?: string,
+  ) => void;
+  onCancelInvocation?: (
+    invocation: InvocationCardPayload,
+    senderId: string,
+  ) => void;
   onFocusPanel?: (panelId: string) => void;
   onReloadPanel?: (panelId: string) => void;
   onReply?: (messageId: string) => void;
@@ -244,10 +281,13 @@ export interface MessageListProps {
   renderMessage?: (
     msg: ChatMessage,
     senderInfo: SenderInfo,
-    defaultContent: React.ReactNode
+    defaultContent: React.ReactNode,
   ) => React.ReactNode;
   /** Replace, wrap, or elide an inline group using its complete stock renderer. */
-  renderInlineGroup?: (items: InlineItem[], defaultContent: React.ReactNode) => React.ReactNode;
+  renderInlineGroup?: (
+    items: InlineItem[],
+    defaultContent: React.ReactNode,
+  ) => React.ReactNode;
   /** Override individual invocation rendering while retaining the stock group. */
   renderInvocation?: InvocationRenderer;
   /** Override the empty-transcript placeholder (e.g. while an agent is launching). */
@@ -279,7 +319,9 @@ const GroupedMessageRow = React.memo(function GroupedMessageRow({
     <div
       className="message-item"
       data-scroll-anchor-id={groupedItemAnchorId(item)}
-      key={item.type === "inline-group" ? item.key : item.msg.id || `msg-${index}`}
+      key={
+        item.type === "inline-group" ? item.key : item.msg.id || `msg-${index}`
+      }
     >
       {renderItem(index, copied)}
     </div>
@@ -327,10 +369,11 @@ export const MessageList = React.memo(function MessageList({
   // --- Scroll state ---
   const [showNewContent, setShowNewContent] = useState(false);
   const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null);
-  const { scrollRef, contentRef, scrollToBottom, isAtBottom, isAtBottomRef } = useStickToBottom({
-    initial: "instant",
-    resize: "instant",
-  });
+  const { scrollRef, contentRef, scrollToBottom, isAtBottom, isAtBottomRef } =
+    useStickToBottom({
+      initial: "instant",
+      resize: "instant",
+    });
 
   // Refs for auto-load on scroll to top (keeps handleScroll stable)
   const hasMoreHistoryRef = useRef(hasMoreHistory);
@@ -360,7 +403,9 @@ export const MessageList = React.memo(function MessageList({
       return;
     }
 
-    viewport.addEventListener("scroll", handleViewportScroll, { passive: true });
+    viewport.addEventListener("scroll", handleViewportScroll, {
+      passive: true,
+    });
     handleViewportScroll();
     return () => viewport.removeEventListener("scroll", handleViewportScroll);
   }, [handleViewportScroll, scrollRef, hasMoreHistory, loadingMore]);
@@ -383,7 +428,10 @@ export const MessageList = React.memo(function MessageList({
     if (!element) return;
     element.scrollIntoView({ block: "center" });
     element.classList.add("message-row-focused");
-    const timer = setTimeout(() => element.classList.remove("message-row-focused"), 2500);
+    const timer = setTimeout(
+      () => element.classList.remove("message-row-focused"),
+      2500,
+    );
     focusConsumedRef.current?.(focusMessageId);
     return () => clearTimeout(timer);
   }, [focusMessageId, messages]);
@@ -395,14 +443,17 @@ export const MessageList = React.memo(function MessageList({
   }, [scrollToBottom]);
 
   // --- Copy handler (local to MessageList) ---
-  const handleCopyMessage = useCallback(async (messageId: string, content: string) => {
-    try {
-      await navigator.clipboard.writeText(content);
-      setCopiedMessageId(messageId);
-    } catch (err) {
-      console.error("Failed to copy message:", err);
-    }
-  }, []);
+  const handleCopyMessage = useCallback(
+    async (messageId: string, content: string) => {
+      try {
+        await navigator.clipboard.writeText(content);
+        setCopiedMessageId(messageId);
+      } catch (err) {
+        console.error("Failed to copy message:", err);
+      }
+    },
+    [],
+  );
   const handleClearCopiedMessage = useCallback((messageId: string) => {
     setCopiedMessageId((current) => (current === messageId ? null : current));
   }, []);
@@ -417,8 +468,10 @@ export const MessageList = React.memo(function MessageList({
     return [...ids];
   }, [allParticipants, messages]);
   const accountProfiles = useAccountProfiles(
-    (chat as { rpc?: AccountRpc } | undefined)?.rpc,
-    senderParticipantIds
+    chat && "rpc" in chat && typeof chat.rpc === "object"
+      ? chat.rpc
+      : undefined,
+    senderParticipantIds,
   );
 
   // --- Sender info lookup ---
@@ -454,7 +507,7 @@ export const MessageList = React.memo(function MessageList({
       }
       return base;
     },
-    [allParticipants, accountProfiles]
+    [allParticipants, accountProfiles],
   );
 
   // --- Interrupt handler ---
@@ -463,7 +516,7 @@ export const MessageList = React.memo(function MessageList({
       const handle = allParticipants[senderId]?.metadata?.handle;
       onInterrupt?.(senderId, msgId, handle);
     },
-    [onInterrupt, allParticipants]
+    [onInterrupt, allParticipants],
   );
 
   // Stable callback for interrupting typing indicators
@@ -472,7 +525,7 @@ export const MessageList = React.memo(function MessageList({
       const handle = allParticipants[senderId]?.metadata?.handle;
       onInterrupt?.(senderId, undefined, handle);
     },
-    [allParticipants, onInterrupt]
+    [allParticipants, onInterrupt],
   );
 
   // --- Message grouping (with incremental fast paths) ---
@@ -487,7 +540,11 @@ export const MessageList = React.memo(function MessageList({
     // Fast path A: streaming update — same array length, only last message changed.
     // During streaming, the messages array is replaced with a new reference where only
     // the last element has updated content. All prior elements are reference-equal.
-    if (cache && cache.messages.length === messages.length && messages.length > 0) {
+    if (
+      cache &&
+      cache.messages.length === messages.length &&
+      messages.length > 0
+    ) {
       let onlyLastChanged = true;
       for (let i = 0; i < messages.length - 1; i++) {
         if (messages[i] !== cache.messages[i]) {
@@ -522,7 +579,10 @@ export const MessageList = React.memo(function MessageList({
           if (lastSrcMsg?.id === lastMsg.id) {
             const result = cache.result.slice();
             const updatedItems = lastItem.items.slice();
-            updatedItems[updatedItems.length - 1] = { msg: lastMsg, index: messages.length - 1 };
+            updatedItems[updatedItems.length - 1] = {
+              msg: lastMsg,
+              index: messages.length - 1,
+            };
             const inlineItems = buildInlineItems(updatedItems);
             if (inlineItems.length > 0) {
               result[result.length - 1] = {
@@ -554,7 +614,8 @@ export const MessageList = React.memo(function MessageList({
       if (prefixMatch) {
         const result = cache.result.slice();
         // Process only the new messages, potentially merging with the tail group
-        let tailInlineGroup: Array<{ msg: ChatMessage; index: number }> | null = null;
+        let tailInlineGroup: Array<{ msg: ChatMessage; index: number }> | null =
+          null;
         const lastCached = result[result.length - 1];
         if (
           lastCached?.type === "inline-group" &&
@@ -606,7 +667,7 @@ export const MessageList = React.memo(function MessageList({
   const [renderLimit, setRenderLimit] = useState(INITIAL_RENDERED_ITEMS);
   const visibleGroupedItems = useMemo(
     () => groupedItems.slice(Math.max(0, groupedItems.length - renderLimit)),
-    [groupedItems, renderLimit]
+    [groupedItems, renderLimit],
   );
   const localHistoryHidden = visibleGroupedItems.length < groupedItems.length;
   localHistoryHiddenRef.current = localHistoryHidden;
@@ -624,7 +685,9 @@ export const MessageList = React.memo(function MessageList({
     previousMessagesRef.current = messages;
     const previousFirstId = previous[0]?.id;
     if (!previousFirstId || messages.length <= previous.length) return;
-    const previousFirstIndex = messages.findIndex((message) => message.id === previousFirstId);
+    const previousFirstIndex = messages.findIndex(
+      (message) => message.id === previousFirstId,
+    );
     if (previousFirstIndex > 0) {
       setRenderLimit((limit) => limit + previousFirstIndex);
     }
@@ -635,7 +698,7 @@ export const MessageList = React.memo(function MessageList({
         id: groupedItemAnchorId(item),
         signature: groupedItemSignature(item),
       })),
-    [visibleGroupedItems]
+    [visibleGroupedItems],
   );
 
   useScrollAnchor({
@@ -654,10 +717,15 @@ export const MessageList = React.memo(function MessageList({
   const messagesByIdRef = useRef(messagesById);
   messagesByIdRef.current = messagesById;
 
-  const hasDurableTypingMessages = messages.some((msg) => msg.contentType === "typing");
+  const hasDurableTypingMessages = messages.some(
+    (msg) => msg.contentType === "typing",
+  );
   const activeTypingItems = useMemo(
-    () => (hasDurableTypingMessages ? [] : buildActiveTypingItems(participants, selfId)),
-    [participants, selfId, hasDurableTypingMessages]
+    () =>
+      hasDurableTypingMessages
+        ? []
+        : buildActiveTypingItems(participants, selfId),
+    [participants, selfId, hasDurableTypingMessages],
   );
 
   // Ref for the stable renderItem callback — avoids recreating its closure when
@@ -679,7 +747,10 @@ export const MessageList = React.memo(function MessageList({
             key={item.key}
             items={item.inlineItems}
             messageTypeComponents={messageTypeComponents}
-            chat={chat}
+            chat={
+              chat as unknown as Record<string, unknown> &
+                Partial<Pick<ChatSandboxValue, "rpc">>
+            }
             onInterrupt={handleTypingInterrupt}
             onCancelInvocation={onCancelInvocation}
             renderInvocation={renderInvocation}
@@ -711,8 +782,12 @@ export const MessageList = React.memo(function MessageList({
           participantId
         );
       });
-      const repliedTo = msg.replyTo ? messagesByIdRef.current.get(msg.replyTo) : undefined;
-      const replySender = repliedTo ? getSenderInfo(repliedTo.senderId, repliedTo) : null;
+      const repliedTo = msg.replyTo
+        ? messagesByIdRef.current.get(msg.replyTo)
+        : undefined;
+      const replySender = repliedTo
+        ? getSenderInfo(repliedTo.senderId, repliedTo)
+        : null;
       const replyContext =
         repliedTo && replySender
           ? {
@@ -747,7 +822,7 @@ export const MessageList = React.memo(function MessageList({
           isCopied={copied}
           inlineUiComponents={inlineUiComponents}
           messageTypeComponents={messageTypeComponents}
-          chat={chat}
+          chat={chat as unknown as Record<string, unknown>}
           browserHandoffCaller={browserHandoffCaller}
           onInterrupt={handleInterruptMessage}
           onCopy={handleCopyMessage}
@@ -784,7 +859,7 @@ export const MessageList = React.memo(function MessageList({
       customRenderMessage,
       customRenderInlineGroup,
       renderInvocation,
-    ]
+    ],
   );
 
   // --- Render ---
@@ -819,10 +894,15 @@ export const MessageList = React.memo(function MessageList({
               <Button
                 size="1"
                 variant="soft"
-                onClick={() => setRenderLimit((limit) => limit + INITIAL_RENDERED_ITEMS)}
+                onClick={() =>
+                  setRenderLimit((limit) => limit + INITIAL_RENDERED_ITEMS)
+                }
               >
                 Show{" "}
-                {Math.min(INITIAL_RENDERED_ITEMS, groupedItems.length - visibleGroupedItems.length)}{" "}
+                {Math.min(
+                  INITIAL_RENDERED_ITEMS,
+                  groupedItems.length - visibleGroupedItems.length,
+                )}{" "}
                 earlier messages
               </Button>
             </Flex>
@@ -842,10 +922,11 @@ export const MessageList = React.memo(function MessageList({
           {groupedItems.length === 0 && activeTypingItems.length === 0 ? (
             footer ? null : (
               (emptyState ?? (
-              <Text color="gray" size="2">
+                <Text color="gray" size="2">
                   Send a message to start chatting
                 </Text>
-              )))
+              ))
+            )
           ) : (
             <Flex
               className="message-list-stack"
@@ -857,10 +938,17 @@ export const MessageList = React.memo(function MessageList({
             >
               {visibleGroupedItems.map((item, index) => (
                 <GroupedMessageRow
-                  key={item.type === "inline-group" ? item.key : item.msg.id || `msg-${index}`}
+                  key={
+                    item.type === "inline-group"
+                      ? item.key
+                      : item.msg.id || `msg-${index}`
+                  }
                   item={item}
                   index={index}
-                  copied={item.type === "chat-message" && copiedMessageId === item.msg.id}
+                  copied={
+                    item.type === "chat-message" &&
+                    copiedMessageId === item.msg.id
+                  }
                   renderItem={renderItem}
                 />
               ))}
@@ -873,17 +961,23 @@ export const MessageList = React.memo(function MessageList({
                         <InlineGroup
                           items={activeTypingItems}
                           messageTypeComponents={messageTypeComponents}
-                          chat={chat}
+                          chat={
+                            chat as unknown as Record<string, unknown> &
+                              Partial<Pick<ChatSandboxValue, "rpc">>
+                          }
                           onInterrupt={handleTypingInterrupt}
                           onCancelInvocation={onCancelInvocation}
                           renderInvocation={renderInvocation}
-                        />
+                        />,
                       )
                     ) : (
                       <InlineGroup
                         items={activeTypingItems}
                         messageTypeComponents={messageTypeComponents}
-                        chat={chat}
+                        chat={
+                          chat as unknown as Record<string, unknown> &
+                            Partial<Pick<ChatSandboxValue, "rpc">>
+                        }
                         onInterrupt={handleTypingInterrupt}
                         onCancelInvocation={onCancelInvocation}
                         renderInvocation={renderInvocation}
@@ -897,7 +991,9 @@ export const MessageList = React.memo(function MessageList({
           {footer}
         </div>
       </ScrollArea>
-      {showNewContent && <NewContentIndicator onClick={handleScrollToNewContent} />}
+      {showNewContent && (
+        <NewContentIndicator onClick={handleScrollToNewContent} />
+      )}
     </Box>
   );
 });

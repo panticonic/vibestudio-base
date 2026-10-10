@@ -1,9 +1,11 @@
+import { notificationMethods } from "@vibestudio/service-schemas/notification";
 // Builtin semantic-authority tests.
 import { describe, expect, it } from "vitest";
 import initSqlJs from "sql.js";
 import {
   createTestDO as createBaseTestDO,
-  successfulTestRpcFetch,
+  createTestRpcFetch,
+  type TestDOCall,
 } from "@vibestudio/durable/test-utils";
 import {
   AgentHealthInspectionSchema,
@@ -17,12 +19,20 @@ import {
   type AgenticEvent,
 } from "@workspace/agentic-protocol";
 import { GadWorkspaceDO } from "./index.js";
-import type { WorkClaim } from "@vibestudio/shared/durableWork";
+
+const notificationRpcFetch = createTestRpcFetch((request) => {
+  if (request.message.type !== "request") throw new Error("Expected request");
+  if (request.message.method === "notification.signalUserInbox") {
+    notificationMethods.signalUserInbox.args.parse(request.message.args);
+    return notificationMethods.signalUserInbox.returns.parse(true);
+  }
+  return null;
+});
 
 const createTestDO: typeof createBaseTestDO = (DOClass, env, opts) =>
   createBaseTestDO(
     DOClass,
-    { RPC_FETCH: successfulTestRpcFetch, ...env },
+    { RPC_FETCH: notificationRpcFetch, ...env },
     opts,
   );
 
@@ -137,8 +147,8 @@ interface TrajectoryEventFixture {
 }
 
 /** Append agentic fixtures through the canonical unified-log RPC. */
-async function appendTrajectoryEvents<T = any>(
-  call: <R>(method: string, ...args: unknown[]) => Promise<R>,
+async function appendTrajectoryEvents(
+  call: TestDOCall<GadWorkspaceDO, typeof GadWorkspaceDO>,
   input: {
     trajectoryId: string;
     branchId: string;
@@ -146,8 +156,8 @@ async function appendTrajectoryEvents<T = any>(
     expectedHeadHash?: string | null;
     events: TrajectoryEventFixture[];
   },
-): Promise<T> {
-  return call<T>("appendLogEvent", {
+) {
+  return call("appendLogEvent", {
     logId: input.trajectoryId,
     head: input.branchId,
     logKind: "trajectory",
@@ -660,7 +670,7 @@ describe("GadWorkspaceDO unified log and semantic VCS schema", () => {
       expect(envelope.message?.method).toBe("notification.signalUserInbox");
       signalAttempts += 1;
       return signalAvailable
-        ? successfulTestRpcFetch(request, init)
+        ? notificationRpcFetch(request, init)
         : new Response("live inbox bridge unavailable", { status: 503 });
     };
     const { callAs } = await createTestDO(GadWorkspaceDO, {
@@ -771,7 +781,7 @@ describe("appendLogEvent core (§3.2)", () => {
     });
 
     const workerId = "driver-publication-1";
-    const [first] = await call<WorkClaim[]>(
+    const [first] = await call(
       "claimReadyWork",
       "workspace-publication",
       {
@@ -793,7 +803,7 @@ describe("appendLogEvent core (§3.2)", () => {
       },
     });
 
-    const failed = await call<{ retryAt: number }>(
+    const failed = await call(
       "failReadyWork",
       "workspace-publication",
       {
@@ -802,16 +812,17 @@ describe("appendLogEvent core (§3.2)", () => {
         generation: first!.generation,
       },
     );
+    if (failed === "stale") throw new Error("Expected the claimed work item to fail");
     expect(failed.retryAt).toBeGreaterThan(Date.now());
     await expect(
-      call<WorkClaim[]>("claimReadyWork", "workspace-publication", {
+      call("claimReadyWork", "workspace-publication", {
         workerId,
         now: failed.retryAt - 1,
         limit: 10,
       }),
     ).resolves.toEqual([]);
 
-    const [retry] = await call<WorkClaim[]>(
+    const [retry] = await call(
       "claimReadyWork",
       "workspace-publication",
       {
@@ -915,7 +926,7 @@ describe("appendLogEvent core (§3.2)", () => {
 
   it("appends a hash-chained trajectory log starting at seq 1 and publishes via causality edges", async () => {
     const { call, sql } = await createTestDO(GadWorkspaceDO);
-    const result = await call<any>("appendLogEvent", {
+    const result = await call("appendLogEvent", {
       logId: "traj-core",
       head: "main",
       logKind: "trajectory",
@@ -949,18 +960,22 @@ describe("appendLogEvent core (§3.2)", () => {
     expect(result.logId).toBe("traj-core");
     expect(result.head).toBe("main");
     expect(result.envelopes).toHaveLength(2);
-    expect(result.envelopes[0]).toMatchObject({
+    const firstEnvelope = result.envelopes[0];
+    const secondEnvelope = result.envelopes[1];
+    if (!firstEnvelope || !secondEnvelope)
+      throw new Error("Expected both appended trajectory events");
+    expect(firstEnvelope).toMatchObject({
       envelopeId: "evt-1",
       seq: 1,
       prevHash: GENESIS,
     });
-    expect(result.envelopes[1]).toMatchObject({
+    expect(secondEnvelope).toMatchObject({
       envelopeId: "evt-2",
       seq: 2,
-      prevHash: result.envelopes[0].hash,
+      prevHash: firstEnvelope.hash,
     });
     expect(result.headSeq).toBe(2);
-    expect(result.headHash).toBe(result.envelopes[1].hash);
+    expect(result.headHash).toBe(secondEnvelope.hash);
 
     // publication is a deterministic causality edge, not a synthesized event
     expect(result.published).toEqual([
@@ -978,7 +993,7 @@ describe("appendLogEvent core (§3.2)", () => {
     expect(synthesized.rows[0]?.cnt).toBe(0);
 
     // channel log got the published envelope in the same call
-    const channelEnvelopes = await call<any[]>("readLog", {
+    const channelEnvelopes = await call("readLog", {
       logId: "chan-core",
       head: "main",
     });
@@ -1001,7 +1016,7 @@ describe("appendLogEvent core (§3.2)", () => {
         originEnvelopeId: "evt-2",
       },
     });
-    const channelHead = await call<any>("getLogHead", {
+    const channelHead = await call("getLogHead", {
       logId: "chan-core",
       head: "main",
     });
@@ -1047,7 +1062,7 @@ describe("appendLogEvent core (§3.2)", () => {
     ]);
 
     // structured log head pointer
-    const head = await call<any>("getLogHead", {
+    const head = await call("getLogHead", {
       logId: "traj-core",
       head: "main",
     });
@@ -1058,19 +1073,19 @@ describe("appendLogEvent core (§3.2)", () => {
     });
 
     // point lookup + payloadKind filter
-    const single = await call<any>("getLogEvent", {
+    const single = await call("getLogEvent", {
       logId: "traj-core",
       head: "main",
       envelopeId: "evt-2",
     });
     expect(single).toMatchObject({ envelopeId: "evt-2", seq: 2 });
-    const present = await call<string[]>("hasLogEvents", {
+    const present = await call("hasLogEvents", {
       logId: "traj-core",
       head: "main",
       envelopeIds: ["evt-2", "missing", "evt-1", "evt-2"],
     });
     expect(present.sort()).toEqual(["evt-1", "evt-2"]);
-    const filtered = await call<any[]>("readLog", {
+    const filtered = await call("readLog", {
       logId: "traj-core",
       head: "main",
       payloadKind: "message.completed",
@@ -1078,7 +1093,7 @@ describe("appendLogEvent core (§3.2)", () => {
     expect(filtered.map((row) => row.envelopeId)).toEqual(["evt-2"]);
 
     // one integrity code path passes over both log kinds
-    const integrity = await call<{ ok: boolean; errors: unknown[] }>(
+    const integrity = await call(
       "checkLogIntegrity",
       {},
     );
@@ -1099,7 +1114,7 @@ describe("appendLogEvent core (§3.2)", () => {
       causality: { turnId: "turn-1", messageId: "msg-dup" },
       appendedAt: "2026-05-20T12:00:00.000Z",
     };
-    await call<any>("appendLogEvent", {
+    await call("appendLogEvent", {
       logId: "traj-midbatch",
       head: "main",
       logKind: "trajectory",
@@ -1109,7 +1124,7 @@ describe("appendLogEvent core (§3.2)", () => {
 
     // At-least-once redelivery composes [new, already-applied] — the identical
     // duplicate is skipped, the new event appends, nothing is double-written.
-    const result = await call<any>("appendLogEvent", {
+    const result = await call("appendLogEvent", {
       logId: "traj-midbatch",
       head: "main",
       logKind: "trajectory",
@@ -1143,7 +1158,7 @@ describe("appendLogEvent core (§3.2)", () => {
 
   it("still rejects a DIVERGENT already-applied event after a new one", async () => {
     const { call } = await createTestDO(GadWorkspaceDO);
-    await call<any>("appendLogEvent", {
+    await call("appendLogEvent", {
       logId: "traj-midbatch-div",
       head: "main",
       logKind: "trajectory",
@@ -1165,7 +1180,7 @@ describe("appendLogEvent core (§3.2)", () => {
     });
 
     await expect(
-      call<any>("appendLogEvent", {
+      call("appendLogEvent", {
         logId: "traj-midbatch-div",
         head: "main",
         logKind: "trajectory",
@@ -1229,7 +1244,7 @@ describe("appendLogEvent core (§3.2)", () => {
 
   it("enforces expectedHeadHash CAS on appendLogEvent", async () => {
     const { call } = await createTestDO(GadWorkspaceDO);
-    const first = await call<any>("appendLogEvent", {
+    const first = await call("appendLogEvent", {
       logId: "log-cas",
       head: "main",
       logKind: "generic",
@@ -1282,7 +1297,7 @@ describe("appendLogEvent core (§3.2)", () => {
     });
 
     await expect(
-      call<any[]>("listTrajectoryBranches", { limit: 10 }),
+      call("listTrajectoryBranches", { limit: 10 }),
     ).resolves.toEqual([
       expect.objectContaining({
         trajectory_id: "trajectory-browser",
@@ -1292,7 +1307,7 @@ describe("appendLogEvent core (§3.2)", () => {
       }),
     ]);
     await expect(
-      call<any[]>("listChannelEnvelopes", { limit: 10 }),
+      call("listChannelEnvelopes", { limit: 10 }),
     ).resolves.toEqual([
       expect.objectContaining({
         channel_id: "channel-browser",
@@ -1570,8 +1585,8 @@ describe("trajectory projection invariants", () => {
       ],
     };
 
-    const first = await appendTrajectoryEvents<any>(call, input);
-    const second = await appendTrajectoryEvents<any>(call, input);
+    const first = await appendTrajectoryEvents(call, input);
+    const second = await appendTrajectoryEvents(call, input);
 
     expect(second.headSeq).toBe(first.headSeq);
     expect(second.headHash).toBe(first.headHash);
@@ -1593,7 +1608,7 @@ describe("trajectory projection invariants", () => {
 
   it("continues trajectory append replay from an already-applied prefix", async () => {
     const { call, sql } = await createTestDO(GadWorkspaceDO);
-    const first = await appendTrajectoryEvents<any>(call, {
+    const first = await appendTrajectoryEvents(call, {
       trajectoryId: "traj-1",
       branchId: "main",
       owner,
@@ -1614,7 +1629,7 @@ describe("trajectory projection invariants", () => {
       ],
     });
 
-    const replay = await appendTrajectoryEvents<any>(call, {
+    const replay = await appendTrajectoryEvents(call, {
       trajectoryId: "traj-1",
       branchId: "main",
       owner,
@@ -1711,7 +1726,7 @@ describe("trajectory projection invariants", () => {
 
   it("rejects appends whose expectedHeadHash does not match the current head", async () => {
     const { call } = await createTestDO(GadWorkspaceDO);
-    const first = await appendTrajectoryEvents<any>(call, {
+    const first = await appendTrajectoryEvents(call, {
       trajectoryId: "traj-1",
       branchId: "main",
       owner,
@@ -1863,7 +1878,7 @@ describe("trajectory projection invariants", () => {
       });
     }
 
-    const turns = await call<any>("inspectTurnState", {
+    const turns = await call("inspectTurnState", {
       trajectoryId: "channel-1",
       branchId: "main",
     });
@@ -1884,7 +1899,7 @@ describe("trajectory projection invariants", () => {
       nonterminal_invocations: 1,
     });
 
-    const invocations = await call<any>("inspectInvocationState", {
+    const invocations = await call("inspectInvocationState", {
       transportCallId: "transport-1",
     });
     expect(invocations.summary).toMatchObject({
@@ -1917,7 +1932,7 @@ describe("trajectory projection invariants", () => {
         },
       ],
     });
-    const health = await call<any>("inspectAgentHealth", {
+    const health = await call("inspectAgentHealth", {
       channelId: "channel-1",
       branchId: "main",
       // A broad detailed-inspector limit must not make the summary unbounded.
@@ -1958,7 +1973,7 @@ describe("trajectory projection invariants", () => {
         }),
       );
       expect(
-        (await call<any>("inspectAgentHealth", { channelId: "native-channel" }))
+        (await call("inspectAgentHealth", { channelId: "native-channel" }))
           .summary,
       ).toMatchObject({
         activity: "in-flight",
@@ -1977,7 +1992,7 @@ describe("trajectory projection invariants", () => {
         }),
       );
       expect(
-        (await call<any>("inspectAgentHealth", { channelId: "native-channel" }))
+        (await call("inspectAgentHealth", { channelId: "native-channel" }))
           .summary,
       ).toMatchObject({
         activity: "idle",
@@ -2123,7 +2138,7 @@ describe("trajectory projection invariants", () => {
       ],
     });
 
-    const turns = await call<any>("inspectTurnState", {
+    const turns = await call("inspectTurnState", {
       trajectoryId: "traj-failed-terminal",
       branchId: "main",
     });
@@ -2168,7 +2183,7 @@ describe("trajectory projection invariants", () => {
       channelId,
       "close",
     );
-    const turns = await call<any>("inspectTurnState", {
+    const turns = await call("inspectTurnState", {
       trajectoryId: channelId,
       branchId: "main",
     });
@@ -2181,7 +2196,7 @@ describe("trajectory projection invariants", () => {
       closed_at: expect.any(String),
       duplicate_open_events: 1,
     });
-    const health = await call<any>("inspectAgentHealth", { channelId });
+    const health = await call("inspectAgentHealth", { channelId });
     expect(health.summary).toMatchObject({
       durableIntegrityOk: false,
       turnIntegrityIssues: 1,
@@ -2218,7 +2233,7 @@ describe("channel projections (§3.4)", () => {
 
     expect(
       (
-        await call<any>("readChannelEnvelopes", {
+        await call("readChannelEnvelopes", {
           channelId: "channel-1",
           window: { kind: "after", seq: 1 },
         })
@@ -2232,7 +2247,7 @@ describe("channel projections (§3.4)", () => {
     ]);
     expect(
       (
-        await call<any>("readChannelEnvelopes", {
+        await call("readChannelEnvelopes", {
           channelId: "channel-1",
           window: { kind: "before", seq: 2 },
           limit: 1,
@@ -2247,7 +2262,7 @@ describe("channel projections (§3.4)", () => {
         attachments: [expect.objectContaining({ id: "att-1" })],
       }),
     ]);
-    const fetched = await call<any>("getChannelEnvelope", {
+    const fetched = await call("getChannelEnvelope", {
       channelId: "channel-1",
       envelopeId: "env-1",
     });
@@ -2256,7 +2271,7 @@ describe("channel projections (§3.4)", () => {
       seq: 1,
       publishedAt: "2026-05-20T12:00:00.000Z",
     });
-    const initial = await call<any>("readChannelEnvelopes", {
+    const initial = await call("readChannelEnvelopes", {
       channelId: "channel-1",
       window: { kind: "tail" },
       limit: 1,
@@ -2271,7 +2286,7 @@ describe("channel projections (§3.4)", () => {
       },
       items: [expect.objectContaining({ envelopeId: "env-2" })],
     });
-    const window = await call<any>("readChannelEnvelopes", {
+    const window = await call("readChannelEnvelopes", {
       channelId: "channel-1",
       window: { kind: "after", seq: 0 },
       limit: 1,
@@ -2317,7 +2332,7 @@ describe("channel projections (§3.4)", () => {
       1,
     );
 
-    const initial = await call<any>("readChannelEnvelopes", {
+    const initial = await call("readChannelEnvelopes", {
       channelId: "channel-child",
       window: { kind: "tail" },
       limit: 2,
@@ -2334,7 +2349,7 @@ describe("channel projections (§3.4)", () => {
     });
     expect(initial.items.map((envelope: any) => envelope.seq)).toEqual([6, 7]);
 
-    const after = await call<any>("readChannelEnvelopes", {
+    const after = await call("readChannelEnvelopes", {
       channelId: "channel-child",
       window: { kind: "after", seq: 5 },
       limit: 1,
@@ -2342,7 +2357,7 @@ describe("channel projections (§3.4)", () => {
     expect(after.items.map((envelope: any) => envelope.seq)).toEqual([6]);
     expect(after.pageInfo).toMatchObject({ totalCount: 7, firstSeq: 1 });
 
-    const before = await call<any>("readChannelEnvelopes", {
+    const before = await call("readChannelEnvelopes", {
       channelId: "channel-child",
       window: { kind: "before", seq: 7 },
       limit: 1,
@@ -2355,7 +2370,7 @@ describe("channel projections (§3.4)", () => {
     });
 
     await expect(
-      call<any>("readChannelEnvelopes", {
+      call("readChannelEnvelopes", {
         channelId: "channel-child",
         limit: 0,
       }),
@@ -2400,7 +2415,7 @@ describe("channel projections (§3.4)", () => {
     );
     expect(count.rows[0]?.cnt).toBe(1);
 
-    const roster = await call<any>("inspectChannelRoster", {
+    const roster = await call("inspectChannelRoster", {
       channelId: "channel-1",
     });
     expect(roster.summary).toMatchObject({
@@ -2571,7 +2586,7 @@ describe("channel projections (§3.4)", () => {
       "SELECT actor_json, to_json, payload_ref_json, annotations_json FROM log_events",
       [],
     );
-    const registered = await call<any[]>("listMessageTypes", {
+    const registered = await call("listMessageTypes", {
       channelId: "channel-1",
     });
 
@@ -2661,8 +2676,8 @@ describe("channel projections (§3.4)", () => {
       publishedAt: "2026-05-20T12:00:00.000Z",
     };
 
-    const first = await call<any>("appendChannelEnvelope", input);
-    const second = await call<any>("appendChannelEnvelope", input);
+    const first = await call("appendChannelEnvelope", input);
+    const second = await call("appendChannelEnvelope", input);
 
     expect(second).toEqual(first);
     expect(
@@ -2730,7 +2745,7 @@ describe("channel projections (§3.4)", () => {
       sourceDigest: "registry-source-1",
     });
     expect(
-      await call<any>("getMessageType", {
+      await call("getMessageType", {
         channelId: "channel-1",
         typeId: "custom",
       }),
@@ -2741,13 +2756,13 @@ describe("channel projections (§3.4)", () => {
       kind: "messageType.cleared",
     });
     expect(
-      await call<any>("getMessageType", {
+      await call("getMessageType", {
         channelId: "channel-1",
         typeId: "custom",
       }),
     ).toBeNull();
     expect(
-      await call<any[]>("listMessageTypes", { channelId: "channel-1" }),
+      await call("listMessageTypes", { channelId: "channel-1" }),
     ).toEqual([]);
 
     // a later upsert at a higher seq wins over the earlier clear
@@ -2757,7 +2772,7 @@ describe("channel projections (§3.4)", () => {
       sourceDigest: "registry-source-2",
     });
     expect(
-      await call<any>("getMessageType", {
+      await call("getMessageType", {
         channelId: "channel-1",
         typeId: "custom",
       }),
@@ -2775,10 +2790,10 @@ describe("channel projections (§3.4)", () => {
       metadata: { name: "User" },
     });
 
-    const raw = await call<any>("readChannelEnvelopes", {
+    const raw = await call("readChannelEnvelopes", {
       channelId: "channel-1",
     });
-    const inspected = await call<{ items: Array<Record<string, unknown>> }>(
+    const inspected = await call(
       "inspectChannelEnvelopes",
       { channelId: "channel-1" },
     );
@@ -2813,7 +2828,7 @@ describe("forkLog no-copy (§3.5)", () => {
       ["chan-parent", "main"],
     );
 
-    const fork = await call<any>("forkLog", {
+    const fork = await call("forkLog", {
       fromLogId: "chan-parent",
       fromHead: "main",
       toLogId: "chan-fork",
@@ -2831,7 +2846,7 @@ describe("forkLog no-copy (§3.5)", () => {
     });
 
     // lineage-aware read: child sees the parent prefix with ORIGINAL envelope ids
-    const childView = await call<any[]>("readLog", {
+    const childView = await call("readLog", {
       logId: "chan-fork",
       head: "main",
     });
@@ -2844,7 +2859,7 @@ describe("forkLog no-copy (§3.5)", () => {
     expect(await countRows(sql, "log_id = ?", ["chan-fork"])).toBe(0);
 
     // child appends continue at forkSeq + 1, chained from the fork hash
-    const appended = await call<any>("appendLogEvent", {
+    const appended = await call("appendLogEvent", {
       logId: "chan-fork",
       head: "main",
       logKind: "channel",
@@ -2859,7 +2874,7 @@ describe("forkLog no-copy (§3.5)", () => {
 
     // fork idempotency
     await expect(
-      call<any>("forkLog", {
+      call("forkLog", {
         fromLogId: "chan-parent",
         fromHead: "main",
         toLogId: "chan-fork",
@@ -2878,7 +2893,7 @@ describe("forkLog no-copy (§3.5)", () => {
     ).rejects.toThrow();
 
     // child head metadata
-    const childHead = await call<any>("getLogHead", {
+    const childHead = await call("getLogHead", {
       logId: "chan-fork",
       head: "main",
     });
@@ -2935,7 +2950,7 @@ describe("forkLog no-copy (§3.5)", () => {
       ],
     });
 
-    const fork = await call<any>("forkLog", {
+    const fork = await call("forkLog", {
       fromLogId: "traj-p5",
       fromHead: "main",
       toLogId: "traj-p5-fork",
@@ -2945,7 +2960,7 @@ describe("forkLog no-copy (§3.5)", () => {
     });
     expect(fork).toMatchObject({ forkSeq: 2, inherited: 2 });
 
-    const childView = await call<any[]>("readLog", {
+    const childView = await call("readLog", {
       logId: "traj-p5-fork",
       head: "main",
     });
@@ -2965,7 +2980,7 @@ describe("forkLog no-copy (§3.5)", () => {
       "msg-2",
     ]);
 
-    const appended = await appendTrajectoryEvents<any>(call, {
+    const appended = await appendTrajectoryEvents(call, {
       trajectoryId: "traj-p5-fork",
       branchId: "main",
       owner,
@@ -3025,7 +3040,7 @@ describe("forkLog no-copy (§3.5)", () => {
       publishedAt: "2026-05-20T12:00:03.000Z",
     });
 
-    const result = await call<any>("forkLog", {
+    const result = await call("forkLog", {
       fromLogId: "channel-parent",
       fromHead: "main",
       toLogId: "channel-fork",
@@ -3041,7 +3056,7 @@ describe("forkLog no-copy (§3.5)", () => {
     });
 
     const forked = (
-      await call<any>("readChannelEnvelopes", {
+      await call("readChannelEnvelopes", {
         channelId: "channel-fork",
         window: { kind: "after", seq: 0 },
         limit: 10,
@@ -3064,7 +3079,7 @@ describe("forkLog no-copy (§3.5)", () => {
     });
     expect(
       (
-        await call<any>("readChannelEnvelopes", {
+        await call("readChannelEnvelopes", {
           channelId: "channel-fork",
           window: { kind: "after", seq: 3 },
           limit: 10,
@@ -3204,16 +3219,18 @@ describe("fork-divergent deterministic terminals (§3.6)", () => {
     ).toBe(1);
 
     // 7. each head stored its own version of the terminal
-    const parentEvent = await call<any>("getLogEvent", {
+    const parentEvent = await call("getLogEvent", {
       logId: "traj-div",
       head: "main",
       envelopeId: "inv:1:terminal",
     });
-    const childEvent = await call<any>("getLogEvent", {
+    const childEvent = await call("getLogEvent", {
       logId: "traj-div",
       head: "child",
       envelopeId: "inv:1:terminal",
     });
+    if (!parentEvent || !childEvent)
+      throw new Error("Expected both canonical terminal events");
     expect(parentEvent.payloadKind).toBe("invocation.completed");
     expect(childEvent.payloadKind).toBe("invocation.abandoned");
     expect(parentEvent.hash).not.toBe(childEvent.hash);
@@ -3233,7 +3250,7 @@ describe("fork-divergent deterministic terminals (§3.6)", () => {
       expect.objectContaining({ head: "main", status: "completed" }),
     ]);
 
-    const integrity = await call<{ ok: boolean }>("checkLogIntegrity", {});
+    const integrity = await call("checkLogIntegrity", {});
     expect(integrity.ok).toBe(true);
   });
 });
@@ -3243,7 +3260,7 @@ describe("refs (§3.7)", () => {
     const { call } = await createTestDO(GadWorkspaceDO);
 
     // create with expected: null (must not exist)
-    const created = await call<any>("updateRef", {
+    const created = await call("updateRef", {
       refName: "tag:release-1",
       kind: "tag",
       target: { stateHash: "state:aaa" },
@@ -3266,7 +3283,7 @@ describe("refs (§3.7)", () => {
     ).rejects.toThrow(/ref CAS conflict: tag:release-1/u);
 
     // update with matching expected succeeds
-    const updated = await call<any>("updateRef", {
+    const updated = await call("updateRef", {
       refName: "tag:release-1",
       kind: "tag",
       target: { stateHash: "state:bbb" },
@@ -3291,14 +3308,14 @@ describe("refs (§3.7)", () => {
       target: { stateHash: "state:ccc" },
     });
     expect(
-      await call<any>("resolveRef", { refName: "tag:release-1" }),
+      await call("resolveRef", { refName: "tag:release-1" }),
     ).toMatchObject({
       target: { stateHash: "state:ccc" },
     });
-    expect(await call<any>("resolveRef", { refName: "tag:nope" })).toBeNull();
+    expect(await call("resolveRef", { refName: "tag:nope" })).toBeNull();
 
     // reflog recorded each transition
-    const reflog = await call<any[]>("listRefLog", {
+    const reflog = await call("listRefLog", {
       refName: "tag:release-1",
     });
     expect(reflog).toHaveLength(3);
@@ -3320,9 +3337,9 @@ describe("refs (§3.7)", () => {
       kind: "context",
       target: { id: "ctx-1" },
     });
-    const tags = await call<any[]>("listRefs", { kind: "tag" });
+    const tags = await call("listRefs", { kind: "tag" });
     expect(tags.map((row: any) => row.refName)).toEqual(["tag:release-1"]);
-    const byPrefix = await call<any[]>("listRefs", { prefix: "context:" });
+    const byPrefix = await call("listRefs", { prefix: "context:" });
     expect(byPrefix.map((row: any) => row.refName)).toEqual(["context:ctx-1"]);
   });
 
@@ -3344,7 +3361,7 @@ describe("refs (§3.7)", () => {
       target: { id: "wildcard-candidate-2" },
     });
 
-    const listed = await call<any[]>("listRefs", {
+    const listed = await call("listRefs", {
       prefix: "context:literal_%",
     });
     expect(listed.map((row: any) => row.refName)).toEqual([
@@ -3352,13 +3369,13 @@ describe("refs (§3.7)", () => {
     ]);
 
     expect(
-      await call<any>("resolveRef", { refName: "context:literal_%:one" }),
+      await call("resolveRef", { refName: "context:literal_%:one" }),
     ).toBeTruthy();
     expect(
-      await call<any>("resolveRef", { refName: "context:literal_A:any" }),
+      await call("resolveRef", { refName: "context:literal_A:any" }),
     ).toBeTruthy();
     expect(
-      await call<any>("resolveRef", { refName: "context:literal_zz:any" }),
+      await call("resolveRef", { refName: "context:literal_zz:any" }),
     ).toBeTruthy();
   });
 });
@@ -3399,7 +3416,7 @@ describe("projection replay", () => {
       ],
     });
 
-    const replay = await call<{ replayed: number }>(
+    const replay = await call(
       "rebuildTrajectoryProjections",
       {},
     );
@@ -3452,7 +3469,7 @@ describe("terminal idempotency guards (§3.13)", () => {
       ],
     });
 
-    const inspection = await call<any>("inspectInvocationState", {
+    const inspection = await call("inspectInvocationState", {
       invocationId: "inv-1",
     });
     expect(inspection.rows[0]).toMatchObject({
@@ -3484,7 +3501,7 @@ describe("terminal idempotency guards (§3.13)", () => {
       }),
     ).resolves.toMatchObject({ head: "main" });
 
-    const replayInspection = await call<any>("inspectInvocationState", {
+    const replayInspection = await call("inspectInvocationState", {
       invocationId: "inv-1",
     });
     expect(replayInspection.rows[0]).toMatchObject({
@@ -3516,7 +3533,7 @@ describe("terminal idempotency guards (§3.13)", () => {
       }),
     ).resolves.toMatchObject({ head: "main" });
 
-    const duplicateProjectionInspection = await call<any>(
+    const duplicateProjectionInspection = await call(
       "inspectInvocationState",
       {
         invocationId: "inv-1",
@@ -3749,7 +3766,7 @@ describe("stored-value refs (§3.14)", () => {
       payload: { value: "x".repeat(530 * 1024) },
     });
 
-    const diagnostics = await call<{ rows: Array<Record<string, unknown>> }>(
+    const diagnostics = await call(
       "inspectStorageDiagnostics",
       {},
     );
@@ -3757,10 +3774,7 @@ describe("stored-value refs (§3.14)", () => {
       expect.objectContaining({ id: "env-oversized" }),
     ]);
 
-    const integrity = await call<{
-      ok: boolean;
-      errors: Array<Record<string, unknown>>;
-    }>("checkGadIntegrity", {});
+    const integrity = await call("checkGadIntegrity", {});
     expect(integrity.ok).toBe(false);
     expect(integrity.errors).toEqual(
       expect.arrayContaining([
@@ -3800,14 +3814,14 @@ describe("stored-value refs (§3.14)", () => {
       ],
     });
 
-    const refs = await call<{ rows: Array<{ digest: string }> }>(
+    const refs = await call(
       "listStoredValueRefs",
       {
         eventId: "event-ref",
       },
     );
-    expect(refs.rows.map((row) => row.digest)).toEqual(["kept-digest"]);
-    const diagnostics = await call<{ rows: unknown[] }>(
+    expect(refs.rows.map((row) => row["digest"])).toEqual(["kept-digest"]);
+    const diagnostics = await call(
       "inspectStorageDiagnostics",
       {},
     );
@@ -3818,7 +3832,7 @@ describe("stored-value refs (§3.14)", () => {
 describe("lineage queries over causality edges (§3.15)", () => {
   it("links trajectory events to deterministic channel publications and back", async () => {
     const { call } = await createTestDO(GadWorkspaceDO);
-    const result = await appendTrajectoryEvents<any>(call, {
+    const result = await appendTrajectoryEvents(call, {
       trajectoryId: "traj-1",
       branchId: "main",
       owner,
@@ -3847,7 +3861,7 @@ describe("lineage queries over causality edges (§3.15)", () => {
     ]);
 
     const envelopes = (
-      await call<any>("readChannelEnvelopes", {
+      await call("readChannelEnvelopes", {
         channelId: "channel-1",
         payloadKind: AGENTIC_EVENT_PAYLOAD_KIND,
       })
@@ -3863,11 +3877,20 @@ describe("lineage queries over causality edges (§3.15)", () => {
       },
     });
     // the published payload is the semantic agentic event, free of storage fields
-    expect(envelopes[0].payload.eventId).toBeUndefined();
-    expect(envelopes[0].payload.branchId).toBeUndefined();
-    expect(envelopes[0].payload.seq).toBeUndefined();
+    const publishedEnvelope = envelopes[0];
+    if (!publishedEnvelope) throw new Error("Expected one published envelope");
+    const publishedPayload = publishedEnvelope.payload;
+    if (
+      !publishedPayload ||
+      typeof publishedPayload !== "object" ||
+      Array.isArray(publishedPayload)
+    )
+      throw new Error("Expected a published event object");
+    expect(publishedPayload["eventId"]).toBeUndefined();
+    expect(publishedPayload["branchId"]).toBeUndefined();
+    expect(publishedPayload["seq"]).toBeUndefined();
 
-    const lineage = await call<any>("getTrajectoryForEnvelope", {
+    const lineage = await call("getTrajectoryForEnvelope", {
       envelopeId: "pub:event-message-1:channel-1",
     });
     expect(lineage).toMatchObject({
@@ -3907,7 +3930,7 @@ describe("lineage queries over causality edges (§3.15)", () => {
       }),
     ).resolves.toEqual({ seq: 0 });
 
-    const turnPublications = await call<any[]>(
+    const turnPublications = await call(
       "listPublishedEnvelopesForTrajectory",
       {
         branchId: "main",
@@ -3926,7 +3949,7 @@ describe("lineage queries over causality edges (§3.15)", () => {
       },
     });
 
-    const envelopesForTrajectory = await call<any[]>(
+    const envelopesForTrajectory = await call(
       "getEnvelopesForTrajectory",
       {
         branchId: "main",
@@ -3935,7 +3958,7 @@ describe("lineage queries over causality edges (§3.15)", () => {
     );
     expect(envelopesForTrajectory).toHaveLength(1);
 
-    const artifacts = await call<any[]>("getPublishedArtifactsForTurn", {
+    const artifacts = await call("getPublishedArtifactsForTurn", {
       turnId: "turn-1",
     });
     expect(artifacts).toEqual([
@@ -3946,17 +3969,18 @@ describe("lineage queries over causality edges (§3.15)", () => {
       }),
     ]);
 
-    const privateLineage = await call<any>(
+    const privateLineage = await call(
       "getPrivateLineageForPublishedEnvelope",
       {
         envelopeId: "pub:event-message-1:channel-1",
       },
     );
-    expect(privateLineage.branchEvents.map((row: any) => row.eventId)).toEqual([
+    if (!privateLineage) throw new Error("Expected private lineage for the publication");
+    expect(privateLineage.branchEvents.map((row) => row.eventId)).toEqual([
       "event-message-1",
     ]);
 
-    const publicationIntegrity = await call<any>(
+    const publicationIntegrity = await call(
       "inspectPublicationIntegrity",
       {
         channelId: "channel-1",
@@ -3968,7 +3992,7 @@ describe("lineage queries over causality edges (§3.15)", () => {
       orphanMappings: 0,
     });
 
-    const integrity = await call<{ ok: boolean }>("checkGadIntegrity", {});
+    const integrity = await call("checkGadIntegrity", {});
     expect(integrity.ok).toBe(true);
   });
 
@@ -4009,7 +4033,7 @@ describe("lineage queries over causality edges (§3.15)", () => {
       ],
     });
 
-    const sideEnvelopes = await call<any[]>("getEnvelopesForTrajectory", {
+    const sideEnvelopes = await call("getEnvelopesForTrajectory", {
       branchId: "side-task",
     });
     expect(sideEnvelopes).toHaveLength(1);
@@ -4036,9 +4060,11 @@ describe("lineage queries over causality edges (§3.15)", () => {
       },
     });
 
-    const publishedEnvelopeId = sideEnvelopes[0].publication.envelopeId;
+    const firstSideEnvelope = sideEnvelopes[0];
+    if (!firstSideEnvelope) throw new Error("Expected a published side-task envelope");
+    const publishedEnvelopeId = firstSideEnvelope.publication.envelopeId;
     const publicChannel = (
-      await call<any>("readChannelEnvelopes", { channelId: "main-channel" })
+      await call("readChannelEnvelopes", { channelId: "main-channel" })
     ).items;
     expect(
       publicChannel.map(
@@ -4049,22 +4075,25 @@ describe("lineage queries over causality edges (§3.15)", () => {
       "keep this out of PubSub",
     );
 
-    const privateLineage = await call<any>(
+    const privateLineage = await call(
       "getPrivateLineageForPublishedEnvelope",
       {
         envelopeId: publishedEnvelopeId,
       },
     );
-    expect(privateLineage.branchEvents.map((row: any) => row.eventId)).toEqual([
+    if (!privateLineage) throw new Error("Expected private lineage for the side-task summary");
+    expect(privateLineage.branchEvents.map((row) => row.eventId)).toEqual([
       "side-private-observation",
       "side-summary",
     ]);
     expect(JSON.stringify(privateLineage.branchEvents)).not.toContain(
       "keep this out of PubSub",
     );
-    expect(privateLineage.branchEvents[0].payload.details).toMatchObject({
-      protocol: "vibestudio.blob-ref.v1",
-      digest: "details-side",
+    expect(privateLineage.branchEvents[0]?.payload).toMatchObject({
+      details: {
+        protocol: "vibestudio.blob-ref.v1",
+        digest: "details-side",
+      },
     });
 
     await appendTrajectoryEvents(call, {
@@ -4087,7 +4116,7 @@ describe("lineage queries over causality edges (§3.15)", () => {
       ],
     });
 
-    const consumers = await call<any[]>("getDownstreamConsumers", {
+    const consumers = await call("getDownstreamConsumers", {
       envelopeId: publishedEnvelopeId,
     });
     expect(consumers.map((row) => row.eventId)).toEqual([
@@ -4125,7 +4154,7 @@ describe("checkGadIntegrity (§3.16)", () => {
       "msg-1",
     );
 
-    const scoped = await call<{ ok: boolean; errors: unknown[] }>(
+    const scoped = await call(
       "checkLogIntegrity",
       {
         logId: "traj-1",
@@ -4135,10 +4164,7 @@ describe("checkGadIntegrity (§3.16)", () => {
     expect(scoped.ok).toBe(false);
     expect(scoped.errors.length).toBeGreaterThan(0);
 
-    const integrity = await call<{
-      ok: boolean;
-      errors: Array<Record<string, unknown>>;
-    }>("checkGadIntegrity", {});
+    const integrity = await call("checkGadIntegrity", {});
     expect(integrity.ok).toBe(false);
     expect(JSON.stringify(integrity.errors)).toContain("msg-1");
   });
@@ -4162,7 +4188,7 @@ describe("checkGadIntegrity (§3.16)", () => {
       "main",
     );
 
-    const scoped = await call<{ ok: boolean; errors: unknown[] }>(
+    const scoped = await call(
       "checkLogIntegrity",
       {
         logId: "channel-1",
@@ -4171,10 +4197,7 @@ describe("checkGadIntegrity (§3.16)", () => {
     );
     expect(scoped.ok).toBe(false);
 
-    const integrity = await call<{
-      ok: boolean;
-      errors: Array<Record<string, unknown>>;
-    }>("checkGadIntegrity", {});
+    const integrity = await call("checkGadIntegrity", {});
     expect(integrity.ok).toBe(false);
     expect(JSON.stringify(integrity.errors)).toContain("channel-1");
   });
@@ -4198,10 +4221,7 @@ describe("checkGadIntegrity (§3.16)", () => {
       "env-corrupt",
     );
 
-    const integrity = await call<{
-      ok: boolean;
-      errors: Array<Record<string, unknown>>;
-    }>("checkGadIntegrity", {});
+    const integrity = await call("checkGadIntegrity", {});
 
     expect(integrity.ok).toBe(false);
     expect(JSON.stringify(integrity.errors)).toContain("env-corrupt");
@@ -4285,7 +4305,7 @@ describe("canonical channel invocation journal", () => {
           },
         },
       });
-      const accepted = await call<any>("appendChannelEnvelope", {
+      const accepted = await call("appendChannelEnvelope", {
         channelId,
         envelopeId: "native-started",
         from: owner,
@@ -4294,7 +4314,7 @@ describe("canonical channel invocation journal", () => {
       });
       expect(accepted.payloadKind).toBe(AGENTIC_EVENT_PAYLOAD_KIND);
       expect(accepted.payload).toEqual(started);
-      const canonical = await call<any>("getLogEvent", {
+      const canonical = await call("getLogEvent", {
         logId: channelId,
         head: "main",
         envelopeId: "native-started",
@@ -4307,7 +4327,7 @@ describe("canonical channel invocation journal", () => {
         payload: started.payload,
         appendedAt: started.createdAt,
       });
-      const current = await call<any>("inspectInvocationState", {
+      const current = await call("inspectInvocationState", {
         trajectoryId: channelId,
         branchId: "main",
         invocationId,
@@ -4321,13 +4341,13 @@ describe("canonical channel invocation journal", () => {
         started_events: 1,
         terminal_events: 0,
       });
-      const replay = await call<any>("getChannelEnvelope", {
+      const replay = await call("getChannelEnvelope", {
         channelId,
         envelopeId: "native-started",
       });
       expect(replay).toEqual(accepted);
       expect(
-        await call<any>("getLogHead", {
+        await call("getLogHead", {
           logId: `branch:channel:${channelId}`,
           head: `branch:channel:${channelId}`,
         }),
@@ -4354,7 +4374,7 @@ describe("canonical channel invocation journal", () => {
         payload: terminal,
       });
       for (const window of [{ kind: "after", seq: 1 }, { kind: "tail" }]) {
-        const page = await call<any>("readChannelEnvelopes", {
+        const page = await call("readChannelEnvelopes", {
           channelId,
           payloadKind: AGENTIC_EVENT_PAYLOAD_KIND,
           window,
@@ -4371,7 +4391,7 @@ describe("canonical channel invocation journal", () => {
           hasMoreAfter: false,
         });
       }
-      const before = await call<any>("readChannelEnvelopes", {
+      const before = await call("readChannelEnvelopes", {
         channelId,
         payloadKind: AGENTIC_EVENT_PAYLOAD_KIND,
         window: { kind: "before", seq: 3 },
@@ -4380,7 +4400,7 @@ describe("canonical channel invocation journal", () => {
       expect(before.items.map((item: any) => item.envelopeId)).toEqual([
         "native-started",
       ]);
-      const completed = await call<any>("inspectInvocationState", {
+      const completed = await call("inspectInvocationState", {
         trajectoryId: channelId,
         branchId: "main",
         invocationId,

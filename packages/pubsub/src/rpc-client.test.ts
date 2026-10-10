@@ -18,7 +18,8 @@ import {
   invocationCompletedPayload,
   invocationFailedPayload,
 } from "@workspace/agentic-protocol";
-import { RpcBoundaryError } from "@vibestudio/rpc";
+import { RpcBoundaryError, type RpcMethod } from "@vibestudio/rpc";
+import { schemaRpcMock } from "@vibestudio/rpc/test-utils";
 import { createRecoveryCoordinator } from "@vibestudio/shell-core/recoveryCoordinator";
 import { encodeEventWatchRecord } from "@vibestudio/shared/events";
 import { z } from "zod";
@@ -31,6 +32,7 @@ const SELF_ID = "panel:panel-1";
 const CALL_ID_1 = "00000000-0000-4000-8000-000000000001";
 const CALL_ID_SLOW = "00000000-0000-4000-8000-000000000002";
 const TRANSPORT_ID_1 = "00000000-0000-4000-8000-000000000011";
+const VALID_BLOB_DIGEST = "a".repeat(64);
 
 function invocation(
   kind: string,
@@ -118,6 +120,27 @@ interface MockRpc {
   selfId: string;
 }
 
+/** Keep wire spies while exercising the public caller's schema boundary. */
+function publicRpcMock<T extends Parameters<typeof schemaRpcMock>[0]>(rpc: T) {
+  return Object.assign({}, rpc, schemaRpcMock(rpc));
+}
+
+function resolvedChannelService() {
+  return {
+    kind: "durable-object",
+    targetId: DO_TARGET,
+    source: "workers/pubsub-channel",
+    name: "PubSubChannel",
+    className: "PubSubChannel",
+    objectKey: CHANNEL,
+    action: "manage channel",
+    presentation: { domain: "web", verb: "see" },
+    authority: { principals: ["code"], binding: "declared" },
+    origin: "product",
+    protocols: ["vibestudio.channel.v1"],
+  };
+}
+
 /**
  * Creates a mock RPC object. `emit` writes a record onto the active
  * subscription response body, matching the production resource lifetime.
@@ -133,12 +156,16 @@ function createMockRpc() {
   const pendingPayloads: unknown[] = [];
   const streamSignals: AbortSignal[] = [];
   const priorSignalStatesAtOpen: boolean[][] = [];
+  let resolveSubscribeStarted!: () => void;
+  const subscribeStarted = new Promise<void>((resolve) => {
+    resolveSubscribeStarted = resolve;
+  });
   const encoder = new TextEncoder();
 
   const rpc: MockRpc = {
     call: vi.fn(async (target: string, method: string) => {
       if (target === "main" && method === "workers.resolveService") {
-        return { kind: "durable-object", targetId: DO_TARGET };
+        return resolvedChannelService();
       }
       if (target === DO_TARGET && method === "claimMethodCall") {
         return { claimed: true, generation: 1 };
@@ -155,6 +182,8 @@ function createMockRpc() {
         args: unknown[],
         options?: { signal?: AbortSignal },
       ) => {
+        if (target === DO_TARGET && method === "subscribe")
+          resolveSubscribeStarted();
         if (target === "main" && method === "events.watch") {
           const requested = args[0] as Array<"shell-approval:pending-changed">;
           const body = new ReadableStream<Uint8Array>({
@@ -339,6 +368,7 @@ function createMockRpc() {
     removeListener,
     streamSignals,
     priorSignalStatesAtOpen,
+    subscribeStarted,
     closeSubscription,
     failSubscription,
   };
@@ -400,6 +430,7 @@ describe("connectViaRpc", () => {
   let setPendingApprovals: (approvalIds: string[]) => void;
   let removeListener: ReturnType<typeof vi.fn>;
   let streamSignals: AbortSignal[];
+  let subscribeStarted: Promise<void>;
 
   beforeEach(() => {
     const mock = createMockRpc();
@@ -408,15 +439,15 @@ describe("connectViaRpc", () => {
     setPendingApprovals = mock.setPendingApprovals;
     removeListener = mock.removeListener;
     streamSignals = mock.streamSignals;
+    subscribeStarted = mock.subscribeStarted;
   });
 
   // ── 1. Subscribe + ready flow ──────────────────────────────────────────
 
   describe("subscribe + ready flow", () => {
     it("opens subscribe as the long-lived channel resource", async () => {
-      const client = connectViaRpc({ rpc: mockRpc as any, channel: CHANNEL });
-      await Promise.resolve();
-      await Promise.resolve();
+      const client = connectViaRpc({ rpc: publicRpcMock(mockRpc), channel: CHANNEL });
+      await subscribeStarted;
 
       expect(mockRpc.stream).toHaveBeenCalledWith(
         DO_TARGET,
@@ -439,7 +470,7 @@ describe("connectViaRpc", () => {
 
     it("requires the resident receiver registrar from the owning Durable Object", async () => {
       const client = connectViaRpc({
-        rpc: mockRpc as any,
+        rpc: publicRpcMock(mockRpc),
         channel: CHANNEL,
         deliveryMode: "resident",
       });
@@ -485,11 +516,11 @@ describe("connectViaRpc", () => {
             receiver = next;
             return {
               transport: {
-                call: <T = unknown>(
+                call: <Args extends unknown[], Result>(
                   target: string,
-                  method: string,
-                  args: unknown[],
-                ) => rpc.call(target, method, args) as Promise<T>,
+                  method: RpcMethod<Args, Result>,
+                  args: Args,
+                ) => publicRpcMock(rpc).call(target, method, args),
               },
               close: unregister,
             };
@@ -498,7 +529,7 @@ describe("connectViaRpc", () => {
         call: vi.fn(
           async (target: string, method: string, _args?: unknown[]) => {
             if (target === "main" && method === "workers.resolveService") {
-              return { kind: "durable-object", targetId: DO_TARGET };
+              return resolvedChannelService();
             }
             if (target === DO_TARGET && method === "relationshipState") {
               return { revision: joined ? 1 : 0, active: joined };
@@ -532,7 +563,7 @@ describe("connectViaRpc", () => {
       };
 
       const client = connectViaRpc({
-        rpc: rpc as any,
+        rpc: publicRpcMock(rpc),
         channel: CHANNEL,
         channelTargetId: DO_TARGET,
         deliveryMode: "resident",
@@ -571,7 +602,7 @@ describe("connectViaRpc", () => {
                 name: "inspect",
                 request: {
                   protocol: "vibestudio.blob-ref.v1",
-                  digest: "resident-request",
+                  digest: VALID_BLOB_DIGEST,
                   size: 20,
                   encoding: "json",
                   originalBytes: 20,
@@ -621,7 +652,7 @@ describe("connectViaRpc", () => {
       expect(unregister).toHaveBeenCalledOnce();
       expect(rpc.call).toHaveBeenCalledWith(DO_TARGET, "leave", [
         { participantId: SELF_ID, revision: 2 },
-      ]);
+      ], undefined);
     });
 
     it("preserves non-recoverable structured RPC errors through the subscription boundary", async () => {
@@ -647,7 +678,7 @@ describe("connectViaRpc", () => {
         stream: vi.fn(),
       };
       const errors: Error[] = [];
-      const client = connectViaRpc({ rpc: rpc as any, channel: CHANNEL });
+      const client = connectViaRpc({ rpc: publicRpcMock(rpc), channel: CHANNEL });
       client.onError((error) => errors.push(error));
 
       await expect(client.ready()).rejects.toMatchObject({
@@ -687,13 +718,13 @@ describe("connectViaRpc", () => {
           if (target === "main" && method === "workers.resolveService") {
             attempts += 1;
             if (attempts < 2) throw pendingReview;
-            return { kind: "durable-object", targetId: DO_TARGET };
+            return resolvedChannelService();
           }
           return undefined;
         },
       );
       const errors: Error[] = [];
-      const client = connectViaRpc({ rpc: mockRpc as any, channel: CHANNEL });
+      const client = connectViaRpc({ rpc: publicRpcMock(mockRpc), channel: CHANNEL });
       client.onError((error) => errors.push(error));
       let ready = false;
       void client.ready().then(() => {
@@ -746,7 +777,7 @@ describe("connectViaRpc", () => {
           if (target === "main" && method === "workers.resolveService") {
             attempts += 1;
             if (attempts === 1) throw pendingReview;
-            return { kind: "durable-object", targetId: DO_TARGET };
+            return resolvedChannelService();
           }
           return undefined;
         },
@@ -754,8 +785,8 @@ describe("connectViaRpc", () => {
 
       let settled = false;
       const resolution = resolveRpcChannelTarget({
-        rpc: mockRpc as any,
-        reviewRpc: mockRpc,
+        rpc: publicRpcMock(mockRpc),
+        reviewRpc: publicRpcMock(mockRpc),
         channel: CHANNEL,
         resolutionTimeoutMs: 10,
       }).finally(() => {
@@ -778,7 +809,7 @@ describe("connectViaRpc", () => {
 
     it("advertises Zod methods as provider-valid JSON Schema", async () => {
       const client = connectViaRpc({
-        rpc: mockRpc as any,
+        rpc: publicRpcMock(mockRpc),
         channel: CHANNEL,
         methods: {
           client_eval: {
@@ -790,8 +821,7 @@ describe("connectViaRpc", () => {
           },
         },
       });
-      await Promise.resolve();
-      await Promise.resolve();
+      await subscribeStarted;
 
       const subscribeCall = mockRpc.stream.mock.calls.find(
         (call) => call[1] === "subscribe",
@@ -826,7 +856,7 @@ describe("connectViaRpc", () => {
     it("rejects malformed explicit method schemas before subscribing", () => {
       expect(() =>
         connectViaRpc({
-          rpc: mockRpc as any,
+          rpc: publicRpcMock(mockRpc),
           channel: CHANNEL,
           methods: {
             client_eval: {
@@ -854,7 +884,7 @@ describe("connectViaRpc", () => {
       mockRpc.call.mockImplementation(
         async (target: string, method: string) => {
           if (target === "main" && method === "workers.resolveService") {
-            return { kind: "durable-object", targetId: DO_TARGET };
+            return resolvedChannelService();
           }
           if (target === DO_TARGET && method === "unsubscribe") {
             await new Promise<void>((resolve) => {
@@ -864,7 +894,7 @@ describe("connectViaRpc", () => {
           return undefined;
         },
       );
-      const client = connectViaRpc({ rpc: mockRpc as any, channel: CHANNEL });
+      const client = connectViaRpc({ rpc: publicRpcMock(mockRpc), channel: CHANNEL });
       await emitReplayAndReady(emit, []);
       await client.ready();
 
@@ -876,7 +906,7 @@ describe("connectViaRpc", () => {
         expect(mockRpc.call).toHaveBeenCalledWith(DO_TARGET, "unsubscribe", [
           SELF_ID,
           expect.any(String),
-        ]);
+        ], undefined);
       });
       expect(settled).toBe(false);
 
@@ -897,13 +927,13 @@ describe("connectViaRpc", () => {
       mockRpc.call.mockImplementation(
         async (target: string, method: string) => {
           if (target === "main" && method === "workers.resolveService") {
-            return { kind: "durable-object", targetId: DO_TARGET };
+            return resolvedChannelService();
           }
           if (target === DO_TARGET && method === "unsubscribe") await leaving;
           return undefined;
         },
       );
-      const client = connectViaRpc({ rpc: mockRpc as any, channel: CHANNEL });
+      const client = connectViaRpc({ rpc: publicRpcMock(mockRpc), channel: CHANNEL });
       await emitReplayAndReady(emit, []);
       await client.ready();
       const closing = client.close();
@@ -920,7 +950,7 @@ describe("connectViaRpc", () => {
 
     it("does not create a parallel PubSub heartbeat loop", async () => {
       const setIntervalSpy = vi.spyOn(globalThis, "setInterval");
-      const client = connectViaRpc({ rpc: mockRpc as any, channel: CHANNEL });
+      const client = connectViaRpc({ rpc: publicRpcMock(mockRpc), channel: CHANNEL });
       try {
         await emitReplayAndReady(emit, []);
         await client.ready();
@@ -935,7 +965,7 @@ describe("connectViaRpc", () => {
     });
 
     it("resolves ready() after replay + ready events", async () => {
-      const client = connectViaRpc({ rpc: mockRpc as any, channel: CHANNEL });
+      const client = connectViaRpc({ rpc: publicRpcMock(mockRpc), channel: CHANNEL });
 
       // Emit replay participants and ready
       await emitReplayAndReady(emit, [
@@ -969,7 +999,7 @@ describe("connectViaRpc", () => {
       mockRpc.call.mockImplementation(
         async (target: string, method: string, args: unknown[]) => {
           if (target === "main" && method === "workers.resolveService") {
-            return { kind: "durable-object", targetId: DO_TARGET };
+            return resolvedChannelService();
           }
           if (target === DO_TARGET && method === "subscribe") {
             return {
@@ -1010,7 +1040,7 @@ describe("connectViaRpc", () => {
         },
       );
       const client = connectViaRpc({
-        rpc: mockRpc as any,
+        rpc: publicRpcMock(mockRpc),
         channel: CHANNEL,
         clientId: "panel:slot-a",
         name: "Chat panel",
@@ -1025,20 +1055,20 @@ describe("connectViaRpc", () => {
         "test",
         { ok: true },
         expect.any(Object),
-      ]);
+      ], undefined);
 
       await client.close();
       expect(mockRpc.call).toHaveBeenCalledWith(DO_TARGET, "unsubscribe", [
         "user:usr_alice",
         expect.any(String),
-      ]);
+      ], undefined);
     });
 
     it("resolves ready() from the subscribe acknowledgment after applying fallback replay", async () => {
       mockRpc.call.mockImplementation(
         async (target: string, method: string) => {
           if (target === "main" && method === "workers.resolveService") {
-            return { kind: "durable-object", targetId: DO_TARGET };
+            return resolvedChannelService();
           }
           if (method === "subscribe") {
             return {
@@ -1090,7 +1120,7 @@ describe("connectViaRpc", () => {
         },
       );
 
-      const client = connectViaRpc({ rpc: mockRpc as any, channel: CHANNEL });
+      const client = connectViaRpc({ rpc: publicRpcMock(mockRpc), channel: CHANNEL });
       const events = client.events({ includeReplay: true });
       const readyHandler = vi.fn();
       client.onReady(readyHandler);
@@ -1154,7 +1184,7 @@ describe("connectViaRpc", () => {
       mockRpc.call.mockImplementation(
         async (target: string, method: string) => {
           if (target === "main" && method === "workers.resolveService") {
-            return { kind: "durable-object", targetId: DO_TARGET };
+            return resolvedChannelService();
           }
           if (method === "subscribe") {
             return {
@@ -1204,7 +1234,7 @@ describe("connectViaRpc", () => {
       );
 
       const client = connectViaRpc({
-        rpc: mockRpc as any,
+        rpc: publicRpcMock(mockRpc),
         channel: CHANNEL,
         replayMode: "skip",
       });
@@ -1218,7 +1248,7 @@ describe("connectViaRpc", () => {
     });
 
     it("joins a returned event subscription while its first read awaits readiness", async () => {
-      const client = connectViaRpc({ rpc: mockRpc as any, channel: CHANNEL });
+      const client = connectViaRpc({ rpc: publicRpcMock(mockRpc), channel: CHANNEL });
       const iterator = client.events({ includeReplay: true });
       const pending = iterator.next();
       const observed = pending.catch((error) => error);
@@ -1257,7 +1287,7 @@ describe("connectViaRpc", () => {
           this.controller.abort();
         }
       };
-      const client = connectViaRpc({ rpc: mockRpc as any, channel: CHANNEL });
+      const client = connectViaRpc({ rpc: publicRpcMock(mockRpc), channel: CHANNEL });
       vi.stubGlobal("AbortController", LegacyController);
       const iterator = client.events({ includeReplay: true });
       const pending = iterator.next();
@@ -1274,7 +1304,7 @@ describe("connectViaRpc", () => {
     });
 
     it("propagates event cancellation without closing the shared channel client", async () => {
-      const client = connectViaRpc({ rpc: mockRpc as any, channel: CHANNEL });
+      const client = connectViaRpc({ rpc: publicRpcMock(mockRpc), channel: CHANNEL });
       const caller = new AbortController();
       const iterator = client.events({
         includeReplay: true,
@@ -1301,7 +1331,7 @@ describe("connectViaRpc", () => {
     });
 
     it("seeds late event subscribers with streamed replay after ready", async () => {
-      const client = connectViaRpc({ rpc: mockRpc as any, channel: CHANNEL });
+      const client = connectViaRpc({ rpc: publicRpcMock(mockRpc), channel: CHANNEL });
       emit({
         stream: "log",
         phase: "replay",
@@ -1339,7 +1369,7 @@ describe("connectViaRpc", () => {
     });
 
     it("delivers buffered streamed replay to subscribers that are already listening before ready", async () => {
-      const client = connectViaRpc({ rpc: mockRpc as any, channel: CHANNEL });
+      const client = connectViaRpc({ rpc: publicRpcMock(mockRpc), channel: CHANNEL });
       const iter = client.events({ includeReplay: true });
       const next = iter.next();
 
@@ -1379,7 +1409,7 @@ describe("connectViaRpc", () => {
     });
 
     it("does not deliver buffered streamed replay to subscribers that opt out of replay", async () => {
-      const client = connectViaRpc({ rpc: mockRpc as any, channel: CHANNEL });
+      const client = connectViaRpc({ rpc: publicRpcMock(mockRpc), channel: CHANNEL });
       const iter = client.events();
       const next = iter.next();
 
@@ -1432,7 +1462,7 @@ describe("connectViaRpc", () => {
     });
 
     it("fires onRoster handlers during replay", async () => {
-      const client = connectViaRpc({ rpc: mockRpc as any, channel: CHANNEL });
+      const client = connectViaRpc({ rpc: publicRpcMock(mockRpc), channel: CHANNEL });
       const rosterUpdates: Array<{ participantId: string; action: string }> =
         [];
       client.onRoster((update) => {
@@ -1465,7 +1495,7 @@ describe("connectViaRpc", () => {
     let client: PubSubClient;
 
     beforeEach(async () => {
-      client = connectViaRpc({ rpc: mockRpc as any, channel: CHANNEL });
+      client = connectViaRpc({ rpc: publicRpcMock(mockRpc), channel: CHANNEL });
       await emitReplayAndReady(emit, []);
       await client.ready();
       // Clear call history from subscribe
@@ -1487,7 +1517,7 @@ describe("connectViaRpc", () => {
         "custom.event",
         { id: "m1", content: "hello" },
         expect.objectContaining({}),
-      ]);
+      ], undefined);
     });
 
     it("send() returns the owner-accepted message identity on retries", async () => {
@@ -1515,7 +1545,7 @@ describe("connectViaRpc", () => {
       );
       const stored = {
         protocol: "vibestudio.blob-ref.v1",
-        digest: "accepted-body",
+        digest: VALID_BLOB_DIGEST,
         size: 8,
         encoding: "text",
         originalBytes: 8,
@@ -1566,7 +1596,7 @@ describe("connectViaRpc", () => {
           kind: "message.completed",
         }),
         expect.objectContaining({ idempotencyKey: "send-1" }),
-      ]);
+      ], undefined);
 
       const [, , args] = mockRpc.call.mock.calls[0]!;
       const payload = (args as unknown[])[2];
@@ -1661,7 +1691,7 @@ describe("connectViaRpc", () => {
       const executeFn = vi.fn().mockResolvedValue({ success: false });
 
       const client = connectViaRpc({
-        rpc: mockRpc as any,
+        rpc: publicRpcMock(mockRpc),
         channel: CHANNEL,
         methods: {
           compute: {
@@ -1862,7 +1892,7 @@ describe("connectViaRpc", () => {
       });
 
       const client = connectViaRpc({
-        rpc: mockRpc as any,
+        rpc: publicRpcMock(mockRpc),
         channel: CHANNEL,
         methods: {
           compute: {
@@ -1957,7 +1987,7 @@ describe("connectViaRpc", () => {
       );
 
       const client = connectViaRpc({
-        rpc: mockRpc as any,
+        rpc: publicRpcMock(mockRpc),
         channel: CHANNEL,
         methods: {
           compute: {
@@ -2049,7 +2079,7 @@ describe("connectViaRpc", () => {
       const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
       const executeFn = vi.fn(() => new Promise(() => undefined)); // never resolves: stays in-flight
       const client = connectViaRpc({
-        rpc: mockRpc as any,
+        rpc: publicRpcMock(mockRpc),
         channel: CHANNEL,
         methods: {
           compute: {
@@ -2126,7 +2156,7 @@ describe("connectViaRpc", () => {
       const executeFn = vi.fn(async () => ({ answer: 42 }));
 
       const client = connectViaRpc({
-        rpc: mockRpc as any,
+        rpc: publicRpcMock(mockRpc),
         channel: CHANNEL,
         methods: {
           compute: {
@@ -2203,7 +2233,7 @@ describe("connectViaRpc", () => {
       const encodedRequest = JSON.stringify(request);
 
       const client = connectViaRpc({
-        rpc: mockRpc as any,
+        rpc: publicRpcMock(mockRpc),
         channel: CHANNEL,
         methods: {
           compute: {
@@ -2241,7 +2271,7 @@ describe("connectViaRpc", () => {
             name: "compute",
             request: {
               protocol: "vibestudio.blob-ref.v1",
-              digest: "abc123",
+              digest: VALID_BLOB_DIGEST,
               size: encodedRequest.length,
               encoding: "json",
               originalBytes: encodedRequest.length,
@@ -2275,7 +2305,7 @@ describe("connectViaRpc", () => {
       let releaseRead: ((value: string) => void) | undefined;
 
       const client = connectViaRpc({
-        rpc: mockRpc as any,
+        rpc: publicRpcMock(mockRpc),
         channel: CHANNEL,
         methods: {
           compute: {
@@ -2311,7 +2341,7 @@ describe("connectViaRpc", () => {
 
       const ref = {
         protocol: "vibestudio.blob-ref.v1",
-        digest: "shared-digest",
+        digest: VALID_BLOB_DIGEST,
         size: stored.length,
         encoding: "json",
         originalBytes: stored.length,
@@ -2363,7 +2393,7 @@ describe("connectViaRpc", () => {
       vi.useFakeTimers();
       const executeFn = vi.fn(() => new Promise(() => undefined));
       const client = connectViaRpc({
-        rpc: mockRpc as any,
+        rpc: publicRpcMock(mockRpc),
         channel: CHANNEL,
         methods: {
           feedback_form: {
@@ -2425,7 +2455,7 @@ describe("connectViaRpc", () => {
       vi.useFakeTimers();
       const executeFn = vi.fn(() => new Promise(() => undefined));
       const client = connectViaRpc({
-        rpc: mockRpc as any,
+        rpc: publicRpcMock(mockRpc),
         channel: CHANNEL,
         methods: {
           slowWork: {
@@ -2492,6 +2522,7 @@ describe("connectViaRpc", () => {
               terminalReasonCode: "method_execution_timeout",
             }),
           ],
+          undefined,
         );
       } finally {
         await client.close();
@@ -2504,7 +2535,7 @@ describe("connectViaRpc", () => {
       const encodedResult = JSON.stringify(result);
 
       const client = connectViaRpc({
-        rpc: mockRpc as any,
+        rpc: publicRpcMock(mockRpc),
         channel: CHANNEL,
       });
 
@@ -2533,7 +2564,7 @@ describe("connectViaRpc", () => {
           {
             result: {
               protocol: "vibestudio.blob-ref.v1",
-              digest: "def456",
+              digest: VALID_BLOB_DIGEST,
               size: encodedResult.length,
               encoding: "json",
               originalBytes: encodedResult.length,
@@ -2556,7 +2587,7 @@ describe("connectViaRpc", () => {
       let releaseHydration: ((value: string) => void) | undefined;
 
       const client = connectViaRpc({
-        rpc: mockRpc as any,
+        rpc: publicRpcMock(mockRpc),
         channel: CHANNEL,
       });
 
@@ -2596,7 +2627,7 @@ describe("connectViaRpc", () => {
           {
             output: {
               protocol: "vibestudio.blob-ref.v1",
-              digest: "progress",
+              digest: VALID_BLOB_DIGEST,
               size: encodedProgress.length,
               encoding: "json",
               originalBytes: encodedProgress.length,
@@ -2651,7 +2682,7 @@ describe("connectViaRpc", () => {
       mockRpc.call.mockImplementation(
         async (target: string, method: string) => {
           if (target === "main" && method === "workers.resolveService") {
-            return { kind: "durable-object", targetId: DO_TARGET };
+            return resolvedChannelService();
           }
           if (method === "subscribe") {
             return {
@@ -2691,7 +2722,7 @@ describe("connectViaRpc", () => {
       );
 
       const client = connectViaRpc({
-        rpc: mockRpc as any,
+        rpc: publicRpcMock(mockRpc),
         channel: CHANNEL,
         recoveryCoordinator: {
           registerResubscribeHandler,
@@ -2723,7 +2754,7 @@ describe("connectViaRpc", () => {
       await coordinator.run("resubscribe");
       const mock = createMockRpc();
       const client = connectViaRpc({
-        rpc: mock.rpc as any,
+        rpc: publicRpcMock(mock.rpc),
         channel: CHANNEL,
         recoveryCoordinator: coordinator,
       });
@@ -2741,7 +2772,7 @@ describe("connectViaRpc", () => {
       const coordinator = createRecoveryCoordinator();
       const mock = createMockRpc();
       const client = connectViaRpc({
-        rpc: mock.rpc as any,
+        rpc: publicRpcMock(mock.rpc),
         channel: CHANNEL,
         recoveryCoordinator: coordinator,
       });
@@ -2763,7 +2794,7 @@ describe("connectViaRpc", () => {
       const coordinator = createRecoveryCoordinator();
       const mock = createMockRpc();
       const client = connectViaRpc({
-        rpc: mock.rpc as any,
+        rpc: publicRpcMock(mock.rpc),
         channel: CHANNEL,
         recoveryCoordinator: coordinator,
       });
@@ -2809,7 +2840,7 @@ describe("connectViaRpc", () => {
               ...messageEvent("restored", "").payload,
               content: {
                 protocol: "vibestudio.blob-ref.v1",
-                digest: "stored-content",
+                digest: VALID_BLOB_DIGEST,
                 size: stored.length,
                 originalBytes: stored.length,
                 encoding: "json",
@@ -2843,7 +2874,7 @@ describe("connectViaRpc", () => {
       const coordinator = createRecoveryCoordinator();
       const mock = createMockRpc();
       const client = connectViaRpc({
-        rpc: mock.rpc as any,
+        rpc: publicRpcMock(mock.rpc),
         channel: CHANNEL,
         recoveryCoordinator: coordinator,
       });
@@ -2884,7 +2915,7 @@ describe("connectViaRpc", () => {
       const coordinator = createRecoveryCoordinator();
       const mock = createMockRpc();
       const client = connectViaRpc({
-        rpc: mock.rpc as any,
+        rpc: publicRpcMock(mock.rpc),
         channel: CHANNEL,
         recoveryCoordinator: coordinator,
       });
@@ -2955,7 +2986,7 @@ describe("connectViaRpc", () => {
     it("keeps the retained cursor when initial replay exceeds the client window", async () => {
       const mock = createMockRpc();
       const client = connectViaRpc({
-        rpc: mock.rpc as any,
+        rpc: publicRpcMock(mock.rpc),
         channel: CHANNEL,
         replayMessageLimit: 2,
       });
@@ -2997,7 +3028,7 @@ describe("connectViaRpc", () => {
       const coordinator = createRecoveryCoordinator();
       const mock = createMockRpc();
       const client = connectViaRpc({
-        rpc: mock.rpc as any,
+        rpc: publicRpcMock(mock.rpc),
         channel: CHANNEL,
         replayMessageLimit: 2,
         recoveryCoordinator: coordinator,
@@ -3083,6 +3114,7 @@ describe("connectViaRpc", () => {
         DO_TARGET,
         "getReplayBefore",
         [4, 2],
+        undefined,
       );
 
       await client.close();
@@ -3092,7 +3124,7 @@ describe("connectViaRpc", () => {
       const coordinator = createRecoveryCoordinator();
       const mock = createMockRpc();
       const client = connectViaRpc({
-        rpc: mock.rpc as any,
+        rpc: publicRpcMock(mock.rpc),
         channel: CHANNEL,
         recoveryCoordinator: coordinator,
       });
@@ -3110,7 +3142,7 @@ describe("connectViaRpc", () => {
       const coordinator = createRecoveryCoordinator();
       const mock = createMockRpc();
       const client = connectViaRpc({
-        rpc: mock.rpc as any,
+        rpc: publicRpcMock(mock.rpc),
         channel: CHANNEL,
         recoveryCoordinator: coordinator,
       });
@@ -3142,7 +3174,7 @@ describe("connectViaRpc", () => {
         new Error("first subscription transport failed"),
       );
       const client = connectViaRpc({
-        rpc: mock.rpc as any,
+        rpc: publicRpcMock(mock.rpc),
         channel: CHANNEL,
         recoveryCoordinator: coordinator,
       });
@@ -3187,7 +3219,7 @@ describe("connectViaRpc", () => {
         },
       );
       const client = connectViaRpc({
-        rpc: mock.rpc as any,
+        rpc: publicRpcMock(mock.rpc),
         channel: CHANNEL,
         recoveryCoordinator: coordinator,
       });
@@ -3204,7 +3236,7 @@ describe("connectViaRpc", () => {
   describe("channel membership, invitations, and presence", () => {
     it("reads participants from the exact channel target without rediscovery", async () => {
       const client = connectViaRpc({
-        rpc: mockRpc as any,
+        rpc: publicRpcMock(mockRpc),
         channel: CHANNEL,
         channelTargetId: DO_TARGET,
       });
@@ -3226,6 +3258,7 @@ describe("connectViaRpc", () => {
         DO_TARGET,
         "getParticipants",
         [],
+        undefined,
       );
       expect(mockRpc.call).not.toHaveBeenCalledWith(
         "main",
@@ -3237,7 +3270,7 @@ describe("connectViaRpc", () => {
     });
 
     it("unwraps the typed channel management responses", async () => {
-      const client = connectViaRpc({ rpc: mockRpc as any, channel: CHANNEL });
+      const client = connectViaRpc({ rpc: publicRpcMock(mockRpc), channel: CHANNEL });
       await Promise.resolve();
       await Promise.resolve();
       mockRpc.call.mockClear();
@@ -3296,19 +3329,21 @@ describe("connectViaRpc", () => {
 
       expect(mockRpc.call).toHaveBeenCalledWith(DO_TARGET, "addMember", [
         { userId: "usr_bob" },
-      ]);
+      ], undefined);
       expect(mockRpc.call).toHaveBeenCalledWith(DO_TARGET, "removeMember", [
         { userId: "usr_bob" },
-      ]);
+      ], undefined);
       expect(mockRpc.call).toHaveBeenCalledWith(
         DO_TARGET,
         "listInvitesForMe",
         [],
+        undefined,
       );
       expect(mockRpc.call).toHaveBeenCalledWith(
         DO_TARGET,
         "acknowledgeInvite",
         [],
+        undefined,
       );
       await client.close();
     });
@@ -3318,7 +3353,7 @@ describe("connectViaRpc", () => {
 
   describe("close", () => {
     it("leaves the subscription resource and fires disconnect handlers", async () => {
-      const client = connectViaRpc({ rpc: mockRpc as any, channel: CHANNEL });
+      const client = connectViaRpc({ rpc: publicRpcMock(mockRpc), channel: CHANNEL });
       await emitReplayAndReady(emit, []);
       await client.ready();
       mockRpc.call.mockClear();
@@ -3339,7 +3374,7 @@ describe("connectViaRpc", () => {
       expect(mockRpc.call).toHaveBeenCalledWith(DO_TARGET, "unsubscribe", [
         SELF_ID,
         expect.any(String),
-      ]);
+      ], undefined);
 
       // Verify disconnect handler fired
       expect(disconnectFn).toHaveBeenCalledTimes(1);
@@ -3356,7 +3391,7 @@ describe("connectViaRpc", () => {
 
   describe("method cancel propagation", () => {
     it("does not publish a method call when the caller signal is already aborted", async () => {
-      const client = connectViaRpc({ rpc: mockRpc as any, channel: CHANNEL });
+      const client = connectViaRpc({ rpc: publicRpcMock(mockRpc), channel: CHANNEL });
       await emitReplayAndReady(emit, []);
       await client.ready();
       mockRpc.call.mockClear();
@@ -3378,7 +3413,7 @@ describe("connectViaRpc", () => {
     });
 
     it("cancels an in-flight method call when the caller signal aborts", async () => {
-      const client = connectViaRpc({ rpc: mockRpc as any, channel: CHANNEL });
+      const client = connectViaRpc({ rpc: publicRpcMock(mockRpc), channel: CHANNEL });
       await emitReplayAndReady(emit, []);
       await client.ready();
       mockRpc.call.mockClear();
@@ -3411,7 +3446,7 @@ describe("connectViaRpc", () => {
           invocationId: handle.invocationId,
           transportCallId: handle.transportCallId,
         },
-      ]);
+      ], undefined);
 
       controller.abort();
 
@@ -3419,13 +3454,13 @@ describe("connectViaRpc", () => {
       expect(mockRpc.call).toHaveBeenCalledWith(DO_TARGET, "cancelMethodCall", [
         SELF_ID,
         handle.callId,
-      ]);
+      ], undefined);
 
       await client.close();
     });
 
     it("awaits cancelMethodCall for explicit cancellation", async () => {
-      const client = connectViaRpc({ rpc: mockRpc as any, channel: CHANNEL });
+      const client = connectViaRpc({ rpc: publicRpcMock(mockRpc), channel: CHANNEL });
       await emitReplayAndReady(emit, []);
       await client.ready();
       mockRpc.call.mockClear();
@@ -3454,7 +3489,7 @@ describe("connectViaRpc", () => {
       expect(mockRpc.call).toHaveBeenCalledWith(DO_TARGET, "cancelMethodCall", [
         SELF_ID,
         handle.callId,
-      ]);
+      ], undefined);
 
       resolveCancel();
       await cancelPromise;
@@ -3464,7 +3499,7 @@ describe("connectViaRpc", () => {
     });
 
     it("keeps pause calls on normal method transport until the provider result arrives", async () => {
-      const client = connectViaRpc({ rpc: mockRpc as any, channel: CHANNEL });
+      const client = connectViaRpc({ rpc: publicRpcMock(mockRpc), channel: CHANNEL });
       await emitReplayAndReady(emit, []);
       await client.ready();
       mockRpc.call.mockClear();
@@ -3493,7 +3528,7 @@ describe("connectViaRpc", () => {
           invocationId: handle.invocationId,
           transportCallId: handle.transportCallId,
         },
-      ]);
+      ], undefined);
 
       emit({
         stream: "log",
@@ -3520,7 +3555,7 @@ describe("connectViaRpc", () => {
 
     it("re-drives ambiguous method-start acknowledgements with the exact same identity", async () => {
       vi.useFakeTimers();
-      const client = connectViaRpc({ rpc: mockRpc as any, channel: CHANNEL });
+      const client = connectViaRpc({ rpc: publicRpcMock(mockRpc), channel: CHANNEL });
       try {
         await emitReplayAndReady(emit, []);
         await client.ready();
@@ -3583,7 +3618,7 @@ describe("connectViaRpc", () => {
 
     it("accepts a durable terminal after an ambiguous start ACK without waiting for redrive", async () => {
       vi.useFakeTimers();
-      const client = connectViaRpc({ rpc: mockRpc as any, channel: CHANNEL });
+      const client = connectViaRpc({ rpc: publicRpcMock(mockRpc), channel: CHANNEL });
       try {
         await emitReplayAndReady(emit, []);
         await client.ready();
@@ -3634,7 +3669,7 @@ describe("connectViaRpc", () => {
     });
 
     it("rejects a method start that the channel definitively refuses", async () => {
-      const client = connectViaRpc({ rpc: mockRpc as any, channel: CHANNEL });
+      const client = connectViaRpc({ rpc: publicRpcMock(mockRpc), channel: CHANNEL });
       await emitReplayAndReady(emit, []);
       await client.ready();
       mockRpc.call.mockClear();
@@ -3661,7 +3696,7 @@ describe("connectViaRpc", () => {
       let capturedSignal: AbortSignal | null = null;
 
       const client = connectViaRpc({
-        rpc: mockRpc as any,
+        rpc: publicRpcMock(mockRpc),
         channel: CHANNEL,
         methods: {
           slowWork: {
@@ -3751,7 +3786,7 @@ describe("connectViaRpc", () => {
       );
       const execute = vi.fn(async () => ({ shouldNotRun: true }));
       const client = connectViaRpc({
-        rpc: mockRpc as any,
+        rpc: publicRpcMock(mockRpc),
         channel: CHANNEL,
         methods: {
           sideEffect: {
@@ -3830,7 +3865,7 @@ describe("connectViaRpc", () => {
       });
       const execute = vi.fn(async () => ({ shouldNotRun: true }));
       const client = connectViaRpc({
-        rpc: mockRpc as any,
+        rpc: publicRpcMock(mockRpc),
         channel: CHANNEL,
         methods: {
           sideEffect: {
@@ -3910,7 +3945,7 @@ describe("connectViaRpc", () => {
     it("can redeliver after execution-start admission loses its response", async () => {
       const execute = vi.fn(async () => ({ ok: true }));
       const client = connectViaRpc({
-        rpc: mockRpc as any,
+        rpc: publicRpcMock(mockRpc),
         channel: CHANNEL,
         methods: {
           sideEffect: {
@@ -3976,7 +4011,7 @@ describe("connectViaRpc", () => {
     it("redrives a transient provider-claim failure without terminating or blocking the subscription", async () => {
       const execute = vi.fn(async () => ({ ok: true }));
       const client = connectViaRpc({
-        rpc: mockRpc as any,
+        rpc: publicRpcMock(mockRpc),
         channel: CHANNEL,
         methods: {
           sideEffect: {
@@ -4051,7 +4086,7 @@ describe("connectViaRpc", () => {
       let capturedSignal: AbortSignal | null = null;
 
       const client = connectViaRpc({
-        rpc: mockRpc as any,
+        rpc: publicRpcMock(mockRpc),
         channel: CHANNEL,
         methods: {
           slowWork: {
@@ -4138,7 +4173,7 @@ describe("connectViaRpc", () => {
     });
 
     it("abortExecutingMethod returns false when no execution matches the call id", async () => {
-      const client = connectViaRpc({ rpc: mockRpc as any, channel: CHANNEL });
+      const client = connectViaRpc({ rpc: publicRpcMock(mockRpc), channel: CHANNEL });
       await emitReplayAndReady(emit, []);
       await client.ready();
       expect(client.abortExecutingMethod(TRANSPORT_ID_1)).toBe(false);

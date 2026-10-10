@@ -2,7 +2,15 @@
 
 import React from "react";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { afterEach, beforeAll, beforeEach, describe, it, expect, vi } from "vitest";
+import {
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  it,
+  expect,
+  vi,
+} from "vitest";
 import type { InlineItem } from "./InlineGroup.js";
 
 beforeAll(async () => {
@@ -352,7 +360,9 @@ describe("MessageList typing indicators (roster-based)", () => {
       } as never),
     );
 
-    fireEvent.click(screen.getByRole("button", { name: /retry when the limit resets/i }));
+    fireEvent.click(
+      screen.getByRole("button", { name: /retry when the limit resets/i }),
+    );
 
     await waitFor(() => {
       expect(callMethod).toHaveBeenCalledWith(
@@ -388,29 +398,29 @@ describe("MessageList typing indicators (roster-based)", () => {
         ChatMessageActionsContext.Provider,
         { value: { onPersistAgentModel } as never },
         React.createElement(MessageList, {
-        messages: [
-          makeMessage({
-            id: "diagnostic:msg-provider-failed",
-            senderId: "agent-1",
-            contentType: "diagnostic",
-            kind: "system",
-            content: "The provider failed.",
-            complete: true,
-            diagnostic: {
-              messageId: "msg-provider-failed",
-              code: "message_failed",
-              failureCode: "provider_overloaded_retryable",
-              severity: "error",
-              title: "Provider overloaded",
-              detail: "The provider failed.",
-            },
-          }),
-        ],
-        participants: {},
-        selfId: "user-1",
-        allParticipants: makeParticipant("agent-1", { handle: "ai-chat" }),
-        chat: { callMethod, send },
-      } as never),
+          messages: [
+            makeMessage({
+              id: "diagnostic:msg-provider-failed",
+              senderId: "agent-1",
+              contentType: "diagnostic",
+              kind: "system",
+              content: "The provider failed.",
+              complete: true,
+              diagnostic: {
+                messageId: "msg-provider-failed",
+                code: "message_failed",
+                failureCode: "provider_overloaded_retryable",
+                severity: "error",
+                title: "Provider overloaded",
+                detail: "The provider failed.",
+              },
+            }),
+          ],
+          participants: {},
+          selfId: "user-1",
+          allParticipants: makeParticipant("agent-1", { handle: "ai-chat" }),
+          chat: { callMethod, send },
+        } as never),
       ),
     );
 
@@ -504,29 +514,29 @@ describe("MessageList typing indicators (roster-based)", () => {
         ChatMessageActionsContext.Provider,
         { value: { onPersistAgentModel } as never },
         React.createElement(MessageList, {
-        messages: [
-          makeMessage({
-            id: "diagnostic:msg-provider-failed-setmodel",
-            senderId: "agent-1",
-            contentType: "diagnostic",
-            kind: "system",
-            content: "The provider failed.",
-            complete: true,
-            diagnostic: {
-              messageId: "msg-provider-failed-setmodel",
-              code: "message_failed",
-              failureCode: "provider_overloaded_retryable",
-              severity: "error",
-              title: "Provider overloaded",
-              detail: "The provider failed.",
-            },
-          }),
-        ],
-        participants: {},
-        selfId: "user-1",
-        allParticipants: makeParticipant("agent-1", { handle: "ai-chat" }),
-        chat: { callMethod, send },
-      } as never),
+          messages: [
+            makeMessage({
+              id: "diagnostic:msg-provider-failed-setmodel",
+              senderId: "agent-1",
+              contentType: "diagnostic",
+              kind: "system",
+              content: "The provider failed.",
+              complete: true,
+              diagnostic: {
+                messageId: "msg-provider-failed-setmodel",
+                code: "message_failed",
+                failureCode: "provider_overloaded_retryable",
+                severity: "error",
+                title: "Provider overloaded",
+                detail: "The provider failed.",
+              },
+            }),
+          ],
+          participants: {},
+          selfId: "user-1",
+          allParticipants: makeParticipant("agent-1", { handle: "ai-chat" }),
+          chat: { callMethod, send },
+        } as never),
       ),
     );
 

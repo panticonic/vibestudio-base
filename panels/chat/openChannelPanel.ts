@@ -1,3 +1,6 @@
+import { resolveDurableObjectService } from "@vibestudio/service-schemas/clients/durableObjectServiceClient";
+import { channelClientRpcMethods } from "@workspace/pubsub/rpc-contract";
+
 /**
  * Find-or-open the chat panel for a channel (messaging plan §4.10.3–4.10.7).
  *
@@ -48,13 +51,9 @@ async function findChatPanelForChannel(channelId: string): Promise<string | null
 }
 
 async function resolveChannelContextId(channelId: string): Promise<string | null> {
-  const service = await rpc.call<{ kind: string; targetId?: string }>(
-    "main",
-    "workers.resolveService",
-    [CHANNEL_SERVICE_PROTOCOL, channelId]
-  );
+  const service = await resolveDurableObjectService(rpc, CHANNEL_SERVICE_PROTOCOL, channelId);
   if (service.kind !== "durable-object" || !service.targetId) return null;
-  return rpc.call<string | null>(service.targetId, "getContextId", []);
+  return rpc.call(service.targetId, channelClientRpcMethods["getContextId"], []);
 }
 
 export async function openChannelPanel(

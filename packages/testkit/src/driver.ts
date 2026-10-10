@@ -1,3 +1,4 @@
+import { driverRpcMethods } from "./driver-contract.js";
 /**
  * Client for the testkit-driver DO (workspace/workers/testkit-driver).
  *
@@ -15,19 +16,19 @@ import type { ProfileRef } from "./profile-core.js";
 const DRIVER_PROTOCOL = "vibestudio.testkit-driver.v1";
 const EVENT_POLL_INTERVAL_MS = 250;
 
-type DriverClient = { call<T = unknown>(method: string, ...args: unknown[]): Promise<T> };
+type DriverClient = import("@workspace/runtime").DurableObjectServiceClient<typeof driverRpcMethods>;
 
 let _client: DriverClient | null = null;
 
 function driverClient(): DriverClient {
-  _client ??= createDurableObjectServiceClient(DRIVER_PROTOCOL) as DriverClient;
+  _client ??= createDurableObjectServiceClient(DRIVER_PROTOCOL, driverRpcMethods);
   return _client;
 }
 
 /** Driver-backed RawCdpSession: events arrive via cursor polling. */
 async function openDriverSession(handle: PanelHandle): Promise<RawCdpSession> {
   const client = driverClient();
-  const { sessionId } = await client.call<{ sessionId: string }>("cdpOpen", handle.id);
+  const { sessionId } = await client.call("cdpOpen", handle.id);
 
   const listeners = new Map<string, Set<(params: unknown) => void>>();
   let cursor = 0;
@@ -37,7 +38,7 @@ async function openDriverSession(handle: PanelHandle): Promise<RawCdpSession> {
   const drain = async (): Promise<void> => {
     if (closed || listeners.size === 0) return;
     const result = await client
-      .call<{ events: Array<{ seq: number; method: string; params: unknown }>; cursor: number }>(
+      .call(
         "cdpDrainEvents",
         sessionId,
         cursor
@@ -83,13 +84,13 @@ export async function driverProfilePanel(
   opts?: { durationMs?: number; samplingIntervalUs?: number }
 ): Promise<ProfileRef> {
   const panelId = typeof handle === "string" ? handle : handle.id;
-  return driverClient().call<ProfileRef>("profilePanel", panelId, opts);
+  return driverClient().call("profilePanel", panelId, opts);
 }
 
 /** Heap snapshot of any panel, captured driver-side (artifact on context fs). */
 export async function driverHeapSnapshot(handle: PanelHandle | string): Promise<ProfileRef> {
   const panelId = typeof handle === "string" ? handle : handle.id;
-  return driverClient().call<ProfileRef>("heapSnapshot", panelId);
+  return driverClient().call("heapSnapshot", panelId);
 }
 
 /** Readiness probe; resolving the service builds/starts the worker on demand. */

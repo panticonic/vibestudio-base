@@ -30,6 +30,8 @@ import {
   type NativeInvocationSource,
 } from "@vibestudio/service-schemas/nativeInvocation";
 import { sha256HexSyncText } from "@vibestudio/content-addressing";
+import { schemaRpcMock } from "@vibestudio/rpc/test-utils";
+import { createMainRpcCaller } from "@vibestudio/service-schemas/mainRpc";
 import { canonicalJson } from "@vibestudio/shared/canonicalJson";
 import {
   openNativeChannelConversation,
@@ -83,8 +85,18 @@ const entity = {
   createdAt: 1,
   cleanupComplete: false,
 };
-const call: AgentHostCall = async <T>() =>
-  JSON.parse(JSON.stringify(entity)) as T;
+function hostCaller(activeEntity: typeof entity = entity): AgentHostCall {
+  return createMainRpcCaller(
+    schemaRpcMock({
+      call: async (_target: string, method: string) => {
+        if (method !== "workspace-state.entity.resolveActive")
+          throw new Error(`Unexpected main RPC ${method}`);
+        return JSON.parse(JSON.stringify(activeEntity));
+      },
+    }),
+  );
+}
+const call = hostCaller();
 const sessions: Harness[] = [];
 afterEach(async () => {
   await Promise.all(
@@ -968,7 +980,7 @@ describe("native invocation source", () => {
         harness,
         { taskId: 999, invocationId: "fabricated" },
         image,
-        async <T>() => ({ ...entity, authoritySessionId: "retired" }) as T,
+        hostCaller({ ...entity, authoritySessionId: "retired" }),
         context,
       ),
     ).rejects.toThrow("current host-bound owner");

@@ -1,3 +1,8 @@
+import { dispatchRpcCall } from "@vibestudio/rpc/internal";
+import { GadJsonRecordSchema } from "@vibestudio/service-schemas/workspaceSource";
+import { agentRpcMethods } from "@workspace/agentic-do/rpc-contract";
+import { mainRpcMethods } from "@vibestudio/service-schemas/mainRpc";
+import { createGadServiceClient } from "@vibestudio/service-schemas/clients/durableObjectServiceClient";
 import {
   DurableObjectBase,
   schemaRpc,
@@ -10,21 +15,7 @@ import type {
 } from "@workspace/runtime/worker/durable-base";
 import { withExecutionAdmission } from "@vibestudio/rpc/internal";
 import { missionsMethods } from "@vibestudio/service-schemas/missions";
-import type {
-  AutomationExecutorRunStatus,
-  MissionAuthorityProjection,
-  MissionCharter,
-  MissionCompletionReason,
-  MissionExecution,
-  MissionAuthorityPlanReference,
-  MissionRecord,
-  MissionRunEffectFailure,
-  MissionRunFailure,
-  MissionRunOutcome,
-  MissionRunPhase,
-  MissionRunRecord,
-  MissionState,
-} from "@vibestudio/automation/mission";
+import type { MissionAuthorityProjection, MissionCharter, MissionCompletionReason, MissionExecution, MissionAuthorityPlanReference, MissionRecord, MissionRunEffectFailure, MissionRunFailure, MissionRunOutcome, MissionRunPhase, MissionRunRecord, MissionState } from "@vibestudio/automation/mission";
 
 // Local schedules are opportunities, not a durable backlog. A small delivery
 // window absorbs ordinary timer jitter while ensuring an occurrence missed
@@ -41,7 +32,7 @@ import {
 } from "@vibestudio/automation/mission";
 import { canonicalJson } from "@vibestudio/shared/canonicalJson";
 import { sha256HexSyncText } from "@vibestudio/content-addressing";
-import { createGadServiceClient } from "@vibestudio/shared/workspaceServiceRpc";
+
 import type { PutUserNotificationInput } from "@vibestudio/shared/userNotifications";
 
 const CHANNEL_SOURCE = "workers/pubsub-channel";
@@ -1164,9 +1155,9 @@ export class MissionsDO extends DurableObjectBase {
       throw denied(
         "A new automation definition requires an author-bound authority plan",
       );
-    const verified = await this.rpc.call<MissionAuthorityPlanReference>(
+    const verified = await this.rpc.call(
       "main",
-      "authority.verifyAuthorityPlan",
+      mainRpcMethods["authority.verifyAuthorityPlan"],
       [
         {
           authorityPlanDigest: reference.digest,
@@ -1202,9 +1193,9 @@ export class MissionsDO extends DurableObjectBase {
     subject: `mission:${string}@${string}`,
     authorityPlanDigest: string,
   ): Promise<MissionAuthorityProjection> {
-    return this.rpc.call<MissionAuthorityProjection>(
+    return this.rpc.call(
       "main",
-      "authority.acquireForTarget",
+      mainRpcMethods["authority.acquireForTarget"],
       [{ targetSubject: subject, authorityPlanDigest }],
       { idempotencyKey: `automation:authority:${subject}` },
     );
@@ -1215,7 +1206,7 @@ export class MissionsDO extends DurableObjectBase {
   ): Promise<void> {
     await this.rpc.call(
       "main",
-      "authority.retireTarget",
+      mainRpcMethods["authority.retireTarget"],
       [{ targetSubject: subject }],
       { idempotencyKey: `automation:retire-authority:${subject}` },
     );
@@ -1318,14 +1309,7 @@ export class MissionsDO extends DurableObjectBase {
   private _gad: ReturnType<typeof createGadServiceClient> | null = null;
 
   private gad() {
-    this._gad ??= createGadServiceClient({
-      call: <T>(
-        targetId: string,
-        method: string,
-        args: unknown[],
-        options?: unknown,
-      ) => this.rpc.call<T>(targetId, method, args, options as never),
-    });
+    this._gad ??= createGadServiceClient(this.rpc);
     return this._gad;
   }
 
@@ -1337,7 +1321,7 @@ export class MissionsDO extends DurableObjectBase {
     if (effect.kind === "ack-executor-terminal") {
       await this.rpc.call(
         effect.executorId,
-        "acknowledgeAutomationRun",
+        agentRpcMethods["acknowledgeAutomationRun"],
         [{ channelId: effect.channelId, runId: effect.runId }],
         { idempotencyKey: `${effect.runId}:ack-executor-terminal` },
       );
@@ -1568,7 +1552,7 @@ export class MissionsDO extends DurableObjectBase {
     let interruption = this.runInterruptions.get(row.run_id);
     if (!interruption) {
       interruption = this.rpc
-        .call(row.executor_id, "interruptChannel", [row.channel_id, true])
+        .call(row.executor_id, agentRpcMethods["interruptChannel"], [row.channel_id, true])
         .then(() => undefined);
       this.runInterruptions.set(row.run_id, interruption);
       void interruption.catch(() => {
@@ -1616,13 +1600,24 @@ export class MissionsDO extends DurableObjectBase {
             channelId = execution.conversation.channelId;
           } else {
             channelId = `automation-${mission.missionId}-${runId}`;
-            const created = await this.rpc.call<{ contextId: string }>(
+            const created = await this.rpc.call(
               "main",
-              "runtime.createContext",
+              mainRpcMethods["runtime.createContext"],
               [{}],
               { idempotencyKey: `${runId}:context`, signal },
             );
             contextId = created.contextId;
+            // Persist the resource identity before channel activation. Activation
+            // can be interrupted after context creation has already succeeded;
+            // cancellation must retain that identity on the run for cleanup and
+            // must not lose the resource behind an aborted follow-up call.
+            this.sql.exec(
+              "UPDATE mission_runs SET progress_at=?,context_id=?,channel_id=? WHERE run_id=? AND phase='context-preparing'",
+              Date.now(),
+              contextId,
+              channelId,
+              runId,
+            );
             await this.activateChannel(channelId, contextId, runId, signal);
           }
         } else contextId = `automation-method:${mission.missionId}`;
@@ -1653,9 +1648,10 @@ export class MissionsDO extends DurableObjectBase {
           execution.kind === "agent" &&
           execution.conversation.mode === "fresh"
         ) {
+          if (!row.channel_id || !row.context_id) throw new Error("Prepared automation run has no conversation context");
           await this.rpc.call(
             target.targetId,
-            "subscribeChannel",
+            agentRpcMethods["subscribeChannel"],
             [
               {
                 channelId: row.channel_id,
@@ -1766,9 +1762,9 @@ export class MissionsDO extends DurableObjectBase {
     ) {
       return null;
     }
-    return this.rpc.call<AdmissionResult>(
+    return this.rpc.call(
       "main",
-      "authority.admitExecution",
+      mainRpcMethods["authority.admitExecution"],
       [
         {
           admissionKey: `${row.mission_subject}:${row.run_id}:${execution.kind}`,
@@ -1820,10 +1816,7 @@ export class MissionsDO extends DurableObjectBase {
       throw new Error("Expected prepared method executor");
     this.setPhase(row.run_id, "executing");
     try {
-      const result = await withExecutionAdmission(
-        this.rpc,
-        admission.nonce,
-      ).call(row.executor_id, execution.method, [...execution.args], {
+      const result = await dispatchRpcCall(withExecutionAdmission(this.rpc, admission.nonce), row.executor_id, execution.method, [...execution.args], {
         idempotencyKey: `${row.run_id}:dispatch`,
         signal,
       });
@@ -1878,7 +1871,7 @@ export class MissionsDO extends DurableObjectBase {
     if (execution.action.kind === "prompt")
       await executorRpc.call(
         row.executor_id,
-        "runAutomationTurn",
+        agentRpcMethods["runAutomationTurn"],
         [
           {
             channelId: row.channel_id,
@@ -1891,13 +1884,13 @@ export class MissionsDO extends DurableObjectBase {
     else if (execution.action.kind === "tool")
       await executorRpc.call(
         row.executor_id,
-        "runAutomationTool",
+        agentRpcMethods["runAutomationTool"],
         [
           {
             channelId: row.channel_id,
             automation: activity,
             tool: execution.action.tool,
-            args: execution.action.args,
+            args: GadJsonRecordSchema.parse(execution.action.args),
           },
         ],
         { idempotencyKey: `${row.run_id}:dispatch`, signal },
@@ -1905,7 +1898,7 @@ export class MissionsDO extends DurableObjectBase {
     else
       await executorRpc.call(
         row.executor_id,
-        "runAutomationEval",
+        agentRpcMethods["runAutomationEval"],
         [
           {
             channelId: row.channel_id,
@@ -1964,7 +1957,7 @@ export class MissionsDO extends DurableObjectBase {
     try {
       await this.rpc.call(
         "main",
-        "notification.pushUserInbox",
+        mainRpcMethods["notification.pushUserInbox"],
         [
           mission.owner.userId,
           {
@@ -1993,9 +1986,9 @@ export class MissionsDO extends DurableObjectBase {
   ): Promise<void> {
     if (!row.executor_id || !row.channel_id)
       throw new Error("Automation executor is not prepared");
-    const status = await this.rpc.call<AutomationExecutorRunStatus>(
+    const status = await this.rpc.call(
       row.executor_id,
-      "describeAutomationRun",
+      agentRpcMethods["describeAutomationRun"],
       [{ channelId: row.channel_id, runId: row.run_id }],
       { signal },
     );
@@ -2052,12 +2045,9 @@ export class MissionsDO extends DurableObjectBase {
       execution.kind === "agent" && execution.conversation.mode === "fresh"
         ? `${execution.image.objectKey}-${runId}`
         : execution.image.objectKey;
-    const value = await this.rpc.call<{
-      targetId?: string;
-      contextId?: string;
-    }>(
+    const value = await this.rpc.call(
       "main",
-      "runtime.createEntity",
+      mainRpcMethods["runtime.createEntity"],
       [
         {
           kind: "do",
@@ -2103,7 +2093,7 @@ export class MissionsDO extends DurableObjectBase {
   ): Promise<void> {
     await this.rpc.call(
       "main",
-      "runtime.createEntity",
+      mainRpcMethods["runtime.createEntity"],
       [
         {
           kind: "do",
@@ -2121,7 +2111,7 @@ export class MissionsDO extends DurableObjectBase {
     if (!row.authority_session_id) return;
     await this.rpc.call(
       "main",
-      "authority.finishExecution",
+      mainRpcMethods["authority.finishExecution"],
       [{ authoritySessionId: row.authority_session_id }],
       { idempotencyKey: `${row.run_id}:finish-admission` },
     );
@@ -2472,7 +2462,7 @@ async function deterministicRunId(
   const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", bytes));
   return `run_${[...digest].map((value) => value.toString(16).padStart(2, "0")).join("")}`;
 }
-function automationActivity(mission: MissionRecord, run: MissionRunRecord) {
+function automationActivity(mission: MissionRecord, run: MissionRunRecord): import("@vibestudio/shared/rpcMethods").RpcMethodArgs<typeof agentRpcMethods.runAutomationTurn>[0]["automation"] {
   const trigger = mission.charter.trigger;
   return {
     missionId: mission.missionId,

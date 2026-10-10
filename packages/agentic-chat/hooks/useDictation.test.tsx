@@ -1,4 +1,6 @@
 // @vitest-environment jsdom
+
+import { schemaRpcMock } from "@vibestudio/rpc/test-utils";
 import { act, renderHook } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
 import { transcribeRecording, useDictation } from "./useDictation";
@@ -93,7 +95,7 @@ it("stops a late microphone grant after cancellation and releases the audio cont
   const onTranscript = vi.fn();
   const { result, unmount } = renderHook(() =>
     useDictation(
-      { stream: vi.fn(), call: vi.fn(async () => ({ ready: true })) },
+      schemaRpcMock({ stream: vi.fn(), call: vi.fn(async () => ({ ready: true })) }),
       "chat",
       true,
       onTranscript,
@@ -135,7 +137,7 @@ function devices(available = true) {
 }
 it("hides dictation when no audio input device exists", async () => {
   const capture = devices(false);
-  const rpc = { stream: vi.fn(), call: vi.fn() };
+  const rpc = schemaRpcMock({ stream: vi.fn(), call: vi.fn() });
   const { result } = renderHook(() => useDictation(rpc, "chat", true, vi.fn()));
   await act(async () => {});
   expect(result.current.supported).toBe(false);
@@ -146,7 +148,7 @@ it("hides dictation when no audio input device exists", async () => {
 it("offers explicit preparation before capture, reports progress, and leaves ready recording to the user", async () => {
   const capture = devices();
   let events!: ReadableStreamDefaultController<Uint8Array>;
-  const rpc = {
+  const rpc = schemaRpcMock({
     call: vi.fn(async () => ({ ready: false })),
     stream: vi.fn(
       async () =>
@@ -158,7 +160,7 @@ it("offers explicit preparation before capture, reports progress, and leaves rea
           }),
         ),
     ),
-  };
+  });
   const { result } = renderHook(() => useDictation(rpc, "chat", true, vi.fn()));
   await act(async () => {});
   await act(async () => result.current.start());
@@ -192,7 +194,7 @@ it("offers explicit preparation before capture, reports progress, and leaves rea
 it("ignores a readiness response after dismissing the preparation prompt", async () => {
   const capture = devices();
   let answer!: (value: unknown) => void;
-  const rpc = {
+  const rpc = schemaRpcMock({
     stream: vi.fn(),
     call: vi.fn(
       () =>
@@ -200,7 +202,7 @@ it("ignores a readiness response after dismissing the preparation prompt", async
           answer = resolve;
         }),
     ),
-  };
+  });
   const { result } = renderHook(() => useDictation(rpc, "chat", true, vi.fn()));
   await act(async () => {});
   let checking!: Promise<void>;
@@ -219,12 +221,12 @@ it("ignores a readiness response after dismissing the preparation prompt", async
 it("cancels and releases an in-flight model preparation stream", async () => {
   devices();
   const retired = vi.fn();
-  const rpc = {
+  const rpc = schemaRpcMock({
     call: vi.fn(async () => ({ ready: false })),
     stream: vi.fn(
       async () => new Response(new ReadableStream({ cancel: retired })),
     ),
-  };
+  });
   const { result } = renderHook(() => useDictation(rpc, "chat", true, vi.fn()));
   await act(async () => {});
   await act(async () => result.current.start());
@@ -244,10 +246,10 @@ it("auto-dismisses only the completed ready notice while leaving the microphone 
   devices();
   vi.useFakeTimers();
   try {
-    const rpc = {
+    const rpc = schemaRpcMock({
       call: vi.fn(async () => ({ ready: false })),
       stream: vi.fn(async () => new Response('{"type":"ready"}\n')),
-    };
+    });
     const { result } = renderHook(() =>
       useDictation(rpc, "chat", true, vi.fn()),
     );
@@ -266,7 +268,7 @@ it("auto-dismisses only the completed ready notice while leaving the microphone 
 it("makes dictation available when a microphone is connected", async () => {
   devices(false);
   const { result } = renderHook(() =>
-    useDictation({ call: vi.fn(), stream: vi.fn() }, "chat", true, vi.fn()),
+    useDictation(schemaRpcMock({ call: vi.fn(), stream: vi.fn() }), "chat", true, vi.fn()),
   );
   await act(async () => {});
   expect(result.current.supported).toBe(false);

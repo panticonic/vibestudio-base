@@ -1,3 +1,4 @@
+import { mainRpcMethods } from "@vibestudio/service-schemas/mainRpc";
 import type {
   CredentialClient,
   StoredCredentialSummary,
@@ -134,9 +135,9 @@ export async function packageWebsite(
   unit: string,
   exactRef: `ctx:${string}` | `state:${string}`,
 ): Promise<WebsitePackage> {
-  const handle = await rpc.call<WebsiteBuildHandle>(
+  const handle = await rpc.call(
     "main",
-    "build.buildWebsite",
+    mainRpcMethods["build.buildWebsite"],
     [unit, exactRef],
   );
   if (!handle.website)
@@ -144,7 +145,7 @@ export async function packageWebsite(
   const files: WebsiteFile[] = [];
   for (const artifact of handle.artifacts) {
     assertSafePath(artifact.path);
-    const response = await rpc.stream("main", "build.readBuildArtifact", [
+    const response = await rpc.stream("main", mainRpcMethods["build.readBuildArtifact"], [
       handle.buildKey,
       artifact.path,
     ]);

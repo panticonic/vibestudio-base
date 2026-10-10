@@ -1,3 +1,4 @@
+import { mainRpcMethods } from "@vibestudio/service-schemas/mainRpc";
 import type { JsonRepresentation } from "@panticonic/pi-chord";
 import { toolDetails } from "./native-tool-json.js";
 /**
@@ -125,13 +126,9 @@ export function createFindTool(
       if (deps?.rpc) {
         let page: { files: string[]; truncated: boolean; nextCursor?: string };
         try {
-          page = await deps.rpc.call<{
-            files: string[];
-            truncated: boolean;
-            nextCursor?: string;
-          }>(
+          page = await deps.rpc.call(
             "main",
-            "fs.glob",
+            mainRpcMethods["fs.glob"],
             [
               pattern,
               {

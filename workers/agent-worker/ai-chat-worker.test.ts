@@ -1,3 +1,7 @@
+import { schemaRpcMock } from "@vibestudio/rpc/test-utils";
+import { createRpcMethodCaller, type RpcMethodArgs } from "@vibestudio/shared/rpcMethods";
+import { gadRpcMethods } from "@vibestudio/service-schemas/clients/durableObjectServiceClient";
+import { gadWireMethods } from "@vibestudio/service-schemas/workspaceSource";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { BACKGROUND_CONTEXT } from "@panticonic/pi-chord/context";
 import { createNativeVesselTestDO as createTestDO } from "@workspace/agentic-do/testing/native-vessel";
@@ -109,22 +113,29 @@ class TestableAiChatWorker extends AiChatWorker {
     return value as T;
   };
 
-  protected override async callGad<T>(
-    method: string,
-    ...args: unknown[]
-  ): Promise<T> {
-    if (method === "appendLogEvent") {
-      const input = (args[0] ?? {}) as {
-        events?: Array<{ envelopeId: string }>;
-      };
+  protected override callGad<K extends keyof typeof gadRpcMethods & string>(
+    method: K,
+    ...args: RpcMethodArgs<(typeof gadRpcMethods)[K]>
+  ) {
+    if (method !== "appendLogEvent") return super.callGad(method, ...args);
+    return createRpcMethodCaller(schemaRpcMock({ call: async (_target, _method, inputArgs) => {
+      const [input] = gadWireMethods.appendLogEvent.args.parse(inputArgs);
       return {
-        envelopes: (input.events ?? []).map((event, index) => ({
-          envelopeId: event.envelopeId,
-          seq: index + 1,
+        logId: input.logId,
+        head: input.head,
+        headSeq: input.events.length,
+        headHash: "test-head-hash",
+        envelopes: input.events.map((event, index) => ({
+          logId: input.logId, head: input.head, seq: index + 1,
+          envelopeId: event.envelopeId ?? `test-envelope:${index}`,
+          actor: event.actor, payloadKind: event.payloadKind, payload: event.payload,
+          ...(event.causality ? { causality: event.causality } : {}),
+          appendedAt: event.appendedAt ?? new Date().toISOString(),
+          prevHash: "test-previous-hash", hash: `test-hash:${index}`,
         })),
-      } as T;
-    }
-    return super.callGad<T>(method, ...args);
+        published: [],
+      };
+    } }), "test-gad", gadRpcMethods)(method, args);
   }
 
   private readonly methodChannels = new Map<

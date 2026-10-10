@@ -6,18 +6,21 @@ import type { SandboxSource } from "./tracker-types.js";
 import type { ChannelInvite as WorkspaceChannelInvite } from "@vibestudio/shared/channelInvites";
 import type { ParticipantRef } from "@workspace/agentic-protocol";
 import type { MethodAdvertisement } from "./protocol-types.js";
+import type {
+  ChannelConfig,
+  ChannelConversationInitialization,
+  ChannelConversationSeed,
+  ChannelProtocolBootstrapSnapshot,
+  ChannelProtocolEvent,
+  ChannelProtocolParticipantRef,
+  ChannelProtocolReplayReady,
+} from "@vibestudio/service-schemas/channel";
+export type { ChannelReplayAfterRequest, ChannelReplayEnvelope } from "@vibestudio/service-schemas/channel";
+export type { ChannelConfig } from "@vibestudio/service-schemas/channel";
 
 /** Authored initial content, installed only when the channel is created. */
-export interface ConversationSeed {
-  messages?: Array<{ content: string; author: string }>;
-  /** Held durably until a subscribed agent can receive it. */
-  openingRequest?: string;
-}
-export interface ConversationInitialization {
-  /** Derived from retained channel relationships, independent of message history. */
-  firstAgentPending: boolean;
-  openingRequest?: string;
-}
+export type ConversationSeed = ChannelConversationSeed;
+export type ConversationInitialization = ChannelConversationInitialization;
 
 /**
  * Channel configuration persisted with the channel.
@@ -26,19 +29,6 @@ export interface ConversationInitialization {
  * Note: contextId is NOT part of ChannelConfig. The server sends contextId
  * as a separate top-level field in the ready message. Access it via client.contextId.
  */
-export interface ChannelConfig {
-  seed?: ConversationSeed;
-  /** Read-only lifecycle projection supplied by the channel. */
-  initialization?: ConversationInitialization;
-  title?: string;
-  /** True when the title came from an explicit title command. */
-  titleExplicit?: boolean;
-  approvalLevel?: 0 | 1 | 2; // 0=Ask All, 1=Auto-Safe, 2=Full Auto (default)
-  /** Multi-agent conversation policy: "open" | "directed" | "moderated". */
-  conversationPolicy?: "open" | "directed" | "moderated";
-  /** Cap on consecutive agent-to-agent replies in one causal chain. */
-  agentHopLimit?: number;
-}
 
 /** Event-sequence decision context carried by one durable channel delivery.
  * It is derived beside recipient selection, so admission never consults newer
@@ -98,23 +88,7 @@ export interface StoredChannelAttachment {
   size: number;
 }
 
-export interface ServerLogEvent<T = unknown> {
-  id: number;
-  messageId: string;
-  type: string;
-  payload: T;
-  senderId: string;
-  senderMetadata?: Record<string, unknown>;
-  /** Host-attested content provenance preserved across live delivery and replay. */
-  contentClass?: "internal" | "external";
-  /** Exact outside-content lineage at publication time. */
-  externalKeys?: string[];
-  contentType?: string;
-  ts: number;
-  attachments?: StoredChannelAttachment[];
-  /** Durable envelope annotations used by channel policy folds. */
-  annotations?: Record<string, unknown>;
-}
+export type ServerLogEvent<T = unknown> = ChannelProtocolEvent<T>;
 
 /** Canonical durable channel event shared by the service and agent runtime. */
 export type ChannelEvent<T = unknown> = ServerLogEvent<T>;
@@ -128,40 +102,15 @@ export interface SendMessageOptions {
   attachments?: Array<{ data: string; mimeType: string }>;
 }
 
-export interface ParticipantSnapshot {
+export type ParticipantSnapshot = {
   id: string;
-  /** Canonical identity assigned by the channel, never reconstructed by consumers. */
-  ref: ParticipantRef;
+  ref: ParticipantRef & ChannelProtocolParticipantRef;
   metadata: Record<string, unknown>;
-}
+};
 
-export type BootstrapSnapshot =
-  | {
-      kind: "roster-snapshot";
-      participants: ParticipantSnapshot[];
-      ts: number;
-    }
-  | {
-      /** Durable receipt projection, emitted after replayed log events so it
-       * never creates receipt traffic or mailbox work of its own. */
-      kind: "receipt-snapshot";
-      events: ServerLogEvent[];
-      ts: number;
-    };
+export type BootstrapSnapshot = ChannelProtocolBootstrapSnapshot;
 
-export interface ReplayReady {
-  contextId?: string;
-  channelConfig?: ChannelConfig;
-  totalCount: number;
-  envelopeCount: number;
-  firstEnvelopeSeq?: number;
-  replayFromId?: number;
-  replayToId?: number;
-  /** Stable high-water mark captured by the first forward page. */
-  snapshotLastSeq?: number;
-  hasMoreBefore?: boolean;
-  hasMoreAfter?: boolean;
-}
+export type ReplayReady = ChannelProtocolReplayReady;
 
 /** Every replay RPC returns at most one bounded page. */
 export const DEFAULT_CHANNEL_REPLAY_PAGE_LIMIT = 500;
@@ -169,18 +118,6 @@ export const MAX_CHANNEL_REPLAY_PAGE_LIMIT = 500;
 
 /** One bounded, stable forward-replay page. Follow `ready.hasMoreAfter` with
  * `after=ready.replayToId` and the same `throughSeq=ready.snapshotLastSeq`. */
-export interface ChannelReplayAfterRequest {
-  after: number;
-  limit?: number;
-  throughSeq?: number;
-}
-
-export interface ChannelReplayEnvelope {
-  mode: "initial" | "after" | "before";
-  logEvents: ServerLogEvent[];
-  snapshots: BootstrapSnapshot[];
-  ready: ReplayReady;
-}
 
 export interface ChannelMember {
   userId: string;

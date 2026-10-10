@@ -1,3 +1,5 @@
+import { createTypedRpcServiceClient } from "@vibestudio/shared/typedRpcServiceClient";
+import { mainRpcMethods } from "@vibestudio/service-schemas/mainRpc";
 /**
  * useAgenticChat — Thin composer hook.
  *
@@ -20,7 +22,7 @@ import {
   useState,
 } from "react";
 import { z } from "zod";
-import { createTypedServiceClient } from "@vibestudio/shared/typedServiceClient";
+
 import { fsMethods } from "@vibestudio/service-schemas/fs";
 import type {
   ChannelConfig,
@@ -313,14 +315,11 @@ export function useAgenticChat({
   const scopeBlobBackend = useMemo<ScopeBlobBackend>(
     () => ({
       putText: (valueJson: string) =>
-        config.rpc.call("main", "blobstore.putText", [valueJson]) as Promise<{
-          digest: string;
-          size: number;
-        }>,
+        config.rpc.call("main", mainRpcMethods["blobstore.putText"], [
+          valueJson,
+        ]),
       getText: (digest: string) =>
-        config.rpc.call("main", "blobstore.getText", [digest]) as Promise<
-          string | null
-        >,
+        config.rpc.call("main", mainRpcMethods["blobstore.getText"], [digest]),
     }),
     [config.rpc],
   );
@@ -419,7 +418,7 @@ export function useAgenticChat({
         return core.clientRef.current!.publish(eventType, payload, {
           ...opts,
           idempotencyKey: opts?.idempotencyKey ?? crypto.randomUUID(),
-        }) as Promise<unknown>;
+        });
       },
       publishCustomMessage: (input, opts) => {
         return core.clientRef.current!.publishCustomMessage(input, {
@@ -636,11 +635,10 @@ export function useAgenticChat({
   );
   const loadSourceFile = useCallback(
     async (path: string) => {
-      const fsClient = createTypedServiceClient(
-        "fs",
+      const fsClient = createTypedRpcServiceClient(
+        config.rpc,
+        { targetId: "main", namespace: "fs" },
         fsMethods,
-        (service, method, args) =>
-          config.rpc.call("main", `${service}.${method}`, args),
       );
       return (await fsClient.readFile(path, "utf8")) as string;
     },
@@ -652,11 +650,10 @@ export function useAgenticChat({
   const managedActionBarPath = `.tmp/action-bars/${config.clientId.replace(/[^A-Za-z0-9_-]/gu, "_")}.tsx`;
   const writeManagedActionBar = useCallback(
     async (code: string) => {
-      const fsClient = createTypedServiceClient(
-        "fs",
+      const fsClient = createTypedRpcServiceClient(
+        config.rpc,
+        { targetId: "main", namespace: "fs" },
         fsMethods,
-        (service, method, args) =>
-          config.rpc.call("main", `${service}.${method}`, args),
       );
       await fsClient.writeFile(managedActionBarPath, code);
       return managedActionBarPath;

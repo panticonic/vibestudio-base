@@ -49,7 +49,7 @@ function shareSnapshot(previous: unknown, next: unknown): unknown {
 
 export function createStateArgsRuntime(input: {
   slotId: PanelSlotId;
-  call: <T>(service: string, method: string, args: unknown[]) => Promise<T>;
+  call: import("@vibestudio/rpc").RpcCaller["call"];
   initial?: Record<string, unknown>;
   changed?: (snapshot: Record<string, unknown>) => void;
 }) {

@@ -132,7 +132,7 @@ export async function bindAuthorityAcquisition(
   const owner = await retainedAgentExecutionOwner(harness, context);
   if (owner.runtimeId !== image.runtimeId)
     throw new Error("Authority acquisition image differs from the bound owner");
-  const observed = await call<unknown>("authority.acquisitionReceipt", [
+  const observed = await call("authority.acquisitionReceipt", [
     { acquisitionId: info.acquisitionId },
   ]);
   if (observed === null)
@@ -185,7 +185,7 @@ export async function bindAuthorityAcquisition(
   // reread canonical truth exactly once; later delivery can now find it.
   if (receipt.state === "pending") {
     const latest = authorityAcquisitionReceiptSchema.parse(
-      await call<unknown>("authority.acquisitionReceipt", [
+      await call("authority.acquisitionReceipt", [
         { acquisitionId: receipt.acquisitionId },
       ]),
     );
@@ -308,7 +308,7 @@ async function consumeObserved(
           (task.abortRequested && request["operation"] !== "cancelDeferred")));
     if (!ended) return { accepted: false };
     receipt = authorityAcquisitionReceiptSchema.parse(
-      await call<unknown>("authority.withdrawAcquisition", [
+      await call("authority.withdrawAcquisition", [
         {
           acquisitionId: receipt.acquisitionId,
           bindingDigest: admission.binding,
@@ -340,7 +340,7 @@ async function consumeObserved(
     );
   }, context);
   authorityMethods.acknowledgeAcquisition.returns.parse(
-    await call<unknown>("authority.acknowledgeAcquisition", [
+    await call("authority.acknowledgeAcquisition", [
       {
         acquisitionId: receipt.acquisitionId,
         resolutionDigest: receipt.resolutionDigest,
@@ -395,7 +395,7 @@ export async function withdrawFailedModelRequestAuthorities(
         );
     }, context);
     const closed = authorityAcquisitionReceiptSchema.parse(
-      await call<unknown>("authority.withdrawAcquisition", [
+      await call("authority.withdrawAcquisition", [
         {
           acquisitionId: receipt.acquisitionId,
           bindingDigest: admission.binding,
@@ -453,7 +453,7 @@ export async function consumeAuthorityReceipt(
     canonicalJson(image) !== canonicalJson(admission.image)
   )
     throw new Error("Authority receipt belongs to a different owner or image");
-  const observed = await call<unknown>("authority.acquisitionReceipt", [
+  const observed = await call("authority.acquisitionReceipt", [
     { acquisitionId },
   ]);
   if (observed === null) return { accepted: false };
@@ -580,7 +580,7 @@ export async function withdrawNativeToolAuthorities(
     const terminal =
       receipt.state === "pending"
         ? authorityAcquisitionReceiptSchema.parse(
-            await call<unknown>("authority.withdrawAcquisition", [
+            await call("authority.withdrawAcquisition", [
               {
                 acquisitionId: receipt.acquisitionId,
                 bindingDigest: receipt.bindingDigest,
@@ -729,7 +729,7 @@ async function* outstandingAuthorityReceipts(
   let after: { createdAt: number; acquisitionId: string } | undefined;
   for (;;) {
     const page = authorityMethods.outstandingAcquisitions.returns.parse(
-      await call<unknown>("authority.outstandingAcquisitions", [
+      await call("authority.outstandingAcquisitions", [
         after ? { after } : {},
       ]),
     );

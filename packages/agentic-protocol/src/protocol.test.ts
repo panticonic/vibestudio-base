@@ -1367,6 +1367,30 @@ describe("@workspace/agentic-protocol reducers", () => {
     }
   });
 
+  it("does not infer native run resumption from message or invocation traffic", () => {
+    const turnId = brandId<TurnId>("native-run:1:2");
+    const opened: AgenticEvent<"turn.opened"> = {
+      kind: "turn.opened", actor: agent, turnId,
+      payload: { protocol: AGENTIC_PROTOCOL_VERSION }, createdAt: "2026-05-20T12:00:00.000Z",
+    };
+    const waiting: AgenticEvent<"turn.waiting"> = {
+      kind: "turn.waiting", actor: agent, turnId,
+      payload: { protocol: AGENTIC_PROTOCOL_VERSION, reason: "waiting_for_background" }, createdAt: "2026-05-20T12:00:01.000Z",
+    };
+    const traffic: AgenticEvent[] = [
+      { kind: "message.started", actor: agent, turnId, causality: { messageId: brandId<MessageId>("native:1:3:0") }, payload: { protocol: AGENTIC_PROTOCOL_VERSION, role: "assistant" }, createdAt: "2026-05-20T12:00:02.000Z" },
+      { kind: "invocation.started", actor: agent, turnId, causality: { invocationId: brandId<InvocationId>("native-tool") }, payload: { protocol: AGENTIC_PROTOCOL_VERSION, name: "eval" }, createdAt: "2026-05-20T12:00:03.000Z" },
+    ];
+    let state = [opened, waiting].map((event, index) => envelope(event, index + 1))
+      .reduce(reduceChannelView, createInitialChannelViewState());
+    const lifecycle = state.turns[turnId];
+    for (const [index, event] of traffic.entries()) {
+      agenticEventSchema.parse(event);
+      state = reduceChannelView(state, envelope(event, index + 3));
+      expect(state.turns[turnId]).toEqual(lifecycle);
+    }
+  });
+
   it("keeps turns open but marked waiting when external input is required", async () => {
     const turnOpened = await trajectoryEvent(
       {

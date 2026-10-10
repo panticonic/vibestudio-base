@@ -1,3 +1,10 @@
+import type { ResidentChannelLifecycle } from "@vibestudio/shared/residentSession";
+import { agentRpcMethods } from "@workspace/agentic-do/rpc-contract";
+import { createMainRpcCaller } from "@vibestudio/service-schemas/mainRpc";
+import { resolveDurableObjectService } from "@vibestudio/service-schemas/clients/durableObjectServiceClient";
+import { channelRpcMethods } from "@workspace-workers/pubsub-channel/contract";
+import { createGadServiceClient } from "@vibestudio/service-schemas/clients/durableObjectServiceClient";
+import { mainRpcMethods } from "@vibestudio/service-schemas/mainRpc";
 /**
  * PubSubChannel — Durable Object for pub/sub messaging.
  *
@@ -17,12 +24,10 @@
 // oxlint-disable-next-line typescript/triple-slash-reference -- workerd.d.ts supplies runtime-only ambient WebSocket APIs.
 /// <reference path="./workerd.d.ts" />
 import {
-  createDurableObjectServiceClient,
   assertExactSqlTableSchema,
   rpc,
   DurableObjectBase,
   type DurableObjectContext,
-  type DurableObjectServiceClient,
 } from "@workspace/runtime/worker/kernel";
 import { createImagesClient } from "@workspace/runtime/images";
 import { canonicalJson } from "@vibestudio/content-addressing";
@@ -112,7 +117,6 @@ import {
   type PolicyEnvelopeView,
 } from "@workspace/channel-policies";
 import {
-  AGENT_INSPECTION_RPC_METHOD,
   AgentInspectionRequestSchema,
   type AgentInspectionRequest,
   type AgentInspectionResult,
@@ -137,7 +141,6 @@ const DEFAULT_POLICY_NAME = "agentic.conversation.v1";
 /** Service protocol the channel DO resolves for sibling channels (fork parent,
  *  lineage forwarding). */
 const CHANNEL_SERVICE_PROTOCOL = "vibestudio.channel.v1";
-const GAD_WORKSPACE_SERVICE_PROTOCOL = "vibestudio.gad.workspace.v1";
 /** Signal contentType for the ephemeral fork.head_changed lineage badge. */
 const FORK_HEAD_CHANGED_SIGNAL = "fork.head_changed";
 const LINEAGE_HEAD_COALESCE_MS = 100;
@@ -270,10 +273,6 @@ interface ClonedEntityView {
   newKey: string;
   targetId: string;
 }
-interface CloneContextResultView {
-  contextId: string;
-  entities: ClonedEntityView[];
-}
 
 function parseDOParticipantId(
   participantId: string,
@@ -382,11 +381,14 @@ interface ChannelPresenceEntry {
   sessionCount: number;
 }
 
-export class PubSubChannel extends DurableObjectBase {
+export class PubSubChannel
+  extends DurableObjectBase
+  implements ResidentChannelLifecycle
+{
   static override schemaVersion = PUBSUB_CHANNEL_SCHEMA_BASELINE;
 
   private _channelLog: ChannelLog | null = null;
-  private _inviteIndex: DurableObjectServiceClient | null = null;
+  private _inviteIndex: ReturnType<typeof createGadServiceClient> | null = null;
   private _policyHost: PolicyHost | null = null;
   private _calls: CallTransport | null = null;
   private _deliveryProjection: ChannelDeliveryProjection | null = null;
@@ -1695,11 +1697,7 @@ export class PubSubChannel extends DurableObjectBase {
   private get channelLog(): ChannelLog {
     this._channelLog ??= new ChannelLog(
       {
-        call: <T = unknown>(
-          targetId: string,
-          method: string,
-          args: unknown[],
-        ) => this.rpc.call<T>(targetId, method, args),
+        call: (targetId, method, args) => this.rpc.call(targetId, method, args),
       },
       this.objectKey,
     );
@@ -1836,17 +1834,8 @@ export class PubSubChannel extends DurableObjectBase {
     return inserted;
   }
 
-  private get inviteIndex(): DurableObjectServiceClient {
-    this._inviteIndex ??= createDurableObjectServiceClient(
-      {
-        call: <T = unknown>(
-          targetId: string,
-          method: string,
-          args: unknown[],
-        ) => this.rpc.call<T>(targetId, method, args),
-      },
-      GAD_WORKSPACE_SERVICE_PROTOCOL,
-    );
+  private get inviteIndex(): ReturnType<typeof createGadServiceClient> {
+    this._inviteIndex ??= createGadServiceClient(this.rpc);
     return this._inviteIndex;
   }
 
@@ -2932,7 +2921,7 @@ export class PubSubChannel extends DurableObjectBase {
       throw new Error("join: entity endpoint is not a Durable Object identity");
     const active = (await this.rpc.call(
       "main",
-      "workspace-state.entity.resolveActive",
+      mainRpcMethods["workspace-state.entity.resolveActive"],
       [input.endpoint.entityId],
     )) as { id?: unknown; kind?: unknown } | null;
     if (
@@ -3276,7 +3265,7 @@ export class PubSubChannel extends DurableObjectBase {
       // expose per-owner internal objects such as EvalDO).
       const active = (await this.rpc.call(
         "main",
-        "workspace-state.entity.resolveActive",
+        mainRpcMethods["workspace-state.entity.resolveActive"],
         [participantId],
       )) as { id?: unknown; kind?: unknown } | null;
       if (!active || active.id !== participantId || active.kind !== "do") {
@@ -4290,9 +4279,11 @@ export class PubSubChannel extends DurableObjectBase {
     // Authorization (WP7 §4): the only gate is workspace membership of the
     // ADDED user. Host seam — the child opens the shared identity DB RO and
     // answers `MembershipStore.has(userId, <its own workspaceId>)` (INV-2/§4).
-    const isMember = await this.rpc.call<boolean>("main", "account.isMember", [
-      targetUserId,
-    ]);
+    const isMember = await this.rpc.call(
+      "main",
+      mainRpcMethods["account.isMember"],
+      [targetUserId],
+    );
     if (!isMember) {
       throw new Error(
         `addMember: ${memberId} is not a member of this workspace and cannot be added to the channel`,
@@ -4302,9 +4293,9 @@ export class PubSubChannel extends DurableObjectBase {
     // Denormalize the invitee's current handle for member-list / invite-chip
     // display. Profiles still render LIVE from the host projection (WP6 §3) —
     // this snapshot is a convenience, not the source of truth.
-    const profiles = await this.rpc.call<Record<string, { handle?: string }>>(
+    const profiles = await this.rpc.call(
       "main",
-      "account.resolveProfiles",
+      mainRpcMethods["account.resolveProfiles"],
       [[targetUserId]],
     );
     const handle = profiles[targetUserId]?.handle ?? memberId;
@@ -4494,13 +4485,10 @@ export class PubSubChannel extends DurableObjectBase {
     const caller = this.caller;
     if (!caller?.userId)
       throw new Error("listInvitesForMe requires an authenticated user");
-    const invite = await this.inviteIndex.call<ChannelInvite | null>(
-      "getChannelInvite",
-      {
-        userId: caller.userId,
-        channelId: this.objectKey,
-      } satisfies DeleteChannelInviteInput,
-    );
+    const invite = await this.inviteIndex.call("getChannelInvite", {
+      userId: caller.userId,
+      channelId: this.objectKey,
+    } satisfies DeleteChannelInviteInput);
     return { invites: invite ? [invite] : [] };
   }
 
@@ -4520,13 +4508,10 @@ export class PubSubChannel extends DurableObjectBase {
     const caller = this.caller;
     if (!caller?.userId)
       throw new Error("acknowledgeInvite requires an authenticated user");
-    const result = await this.inviteIndex.call<{ deleted: boolean }>(
-      "deleteChannelInvite",
-      {
-        userId: caller.userId,
-        channelId: this.objectKey,
-      } satisfies DeleteChannelInviteInput,
-    );
+    const result = await this.inviteIndex.call("deleteChannelInvite", {
+      userId: caller.userId,
+      channelId: this.objectKey,
+    } satisfies DeleteChannelInviteInput);
     return { acknowledged: result.deleted };
   }
 
@@ -4595,9 +4580,9 @@ export class PubSubChannel extends DurableObjectBase {
         // The local row and journal can outlive workspace membership while a
         // failed GAD write is waiting for its alarm retry. Re-authorize every
         // delayed put so revocation cannot resurrect the canonical invite.
-        const isStillWorkspaceMember = await this.rpc.call<boolean>(
+        const isStillWorkspaceMember = await this.rpc.call(
           "main",
-          "account.isMember",
+          mainRpcMethods["account.isMember"],
           [userId],
         );
         if (!isStillWorkspaceMember) {
@@ -4612,7 +4597,7 @@ export class PubSubChannel extends DurableObjectBase {
           // the normal retry path retains it durably.
           return await this.flushInviteIndexOp(memberId);
         }
-        await this.inviteIndex.call<void>("putChannelMembership", {
+        await this.inviteIndex.call("putChannelMembership", {
           channelId: this.objectKey,
           channelTargetId: this.rpcSelfId,
           userId,
@@ -5097,7 +5082,7 @@ export class PubSubChannel extends DurableObjectBase {
 
     const response = (await this.rpc.call(
       participantId,
-      AGENT_INSPECTION_RPC_METHOD,
+      agentRpcMethods.readAgentInspection,
       [this.objectKey, method],
       { readOnly: true },
     )) as { result?: unknown; isError?: boolean } | unknown;
@@ -5271,9 +5256,9 @@ export class PubSubChannel extends DurableObjectBase {
       // reconcile: a cache-cold / lost record. Dropping the result here strands
       // the caller forever — its parked invocation only settles on a terminal
       // carrying the same invocationId/transportCallId, so with NO terminal the
-      // turn never closes and waitForIdle hangs. Recover by rooting the method
-      // (sanctioned synthetic `started`, satisfying the fold) and appending +
-      // broadcasting a real terminal keyed on the caller's invocationId.
+      // turn never closes and waitForIdle hangs. Append + broadcast the terminal
+      // keyed on the caller's invocationId without inventing an admission for
+      // the unavailable original request.
       const id = await this.calls.settleMissingCall(
         participantId,
         transportCallId,
@@ -5293,7 +5278,7 @@ export class PubSubChannel extends DurableObjectBase {
         },
       );
       console.warn(
-        `[Channel] submitMethodResult recovered a lost call (no pending row): rooted method + ` +
+        `[Channel] submitMethodResult recovered a lost call (no pending row): ` +
           `appended terminal so the caller settles: channel=${this.objectKey} ` +
           `transportCallId=${transportCallId} isError=${isError} terminalSeq=${id}`,
       );
@@ -5965,16 +5950,17 @@ export class PubSubChannel extends DurableObjectBase {
 
   /** Thin host-call wrapper (the DO drives runtime.cloneContext/destroyContext).
    *  Host runtime services take exactly ONE opts object, positional. */
-  private callMain<T>(method: string, arg: unknown): Promise<T> {
-    return this.rpc.call<T>("main", method, [arg]);
-  }
+  private callMain: import("@vibestudio/service-schemas/mainRpc").MainRpcCaller =
+    (method, args, options) =>
+      createMainRpcCaller(this.rpc)(method, args, options);
 
   /** Resolve a sibling channel's DO ref (fork parent / lineage forwarding). */
   private async resolveChannelRef(channelId: string): Promise<DORef> {
-    const svc = await this.rpc.call<DORef>("main", "workers.resolveService", [
+    const svc = await resolveDurableObjectService(
+      this.rpc,
       CHANNEL_SERVICE_PROTOCOL,
       channelId,
-    ]);
+    );
     return {
       source: svc.source,
       className: svc.className,
@@ -6154,9 +6140,9 @@ export class PubSubChannel extends DurableObjectBase {
       // transcript prefix crosses into the receiving lifetime.
       for (const agent of keptAgents) {
         if (agent.knowledge !== null) continue;
-        const knowledge = await this.rpc.call<NativeChannelKnowledge>(
+        const knowledge = await this.rpc.call(
           doTarget(agent.ref),
-          "exportChannelKnowledge",
+          agentRpcMethods["exportChannelKnowledge"],
           [
             {
               operationId: `fork:${forkId}:${agent.participantId}`,
@@ -6191,15 +6177,14 @@ export class PubSubChannel extends DurableObjectBase {
         doTarget(selfRef),
         ...keptAgents.map((a) => doTarget(a.ref)),
       ];
-      const clone = await this.callMain<CloneContextResultView>(
-        "runtime.cloneContext",
+      const clone = await this.callMain("runtime.cloneContext", [
         {
           sourceContextId,
           include,
           recursive: true,
           targetKey: `fork:${forkId}`,
         },
-      );
+      ]);
       const findClone = (ref: DORef): ClonedEntityView => {
         const id = doTarget(ref);
         const entity = clone.entities.find((e) => e.sourceId === id);
@@ -6241,16 +6226,20 @@ export class PubSubChannel extends DurableObjectBase {
           ? parentProvenance.rootChannelId
           : this.objectKey;
       if (!forkPhaseReached(phase, "postcloned")) {
-        await this.rpc.call(doTarget(forkedChannelRef), "postClone", [
-          this.objectKey,
-          opts.forkPointPubsubId,
-          forkedContextId,
-          {
-            forkId,
-            rootChannelId,
-            ...(opts.seed ? { seed: opts.seed } : {}),
-          },
-        ]);
+        await this.rpc.call(
+          doTarget(forkedChannelRef),
+          channelRpcMethods["postClone"],
+          [
+            this.objectKey,
+            opts.forkPointPubsubId,
+            forkedContextId,
+            {
+              forkId,
+              rootChannelId,
+              ...(opts.seed ? { seed: opts.seed } : {}),
+            },
+          ],
+        );
         this.forkLifetime.signal.throwIfAborted();
         for (const agent of keptAgents) {
           const ce = findClone(agent.ref);
@@ -6263,22 +6252,28 @@ export class PubSubChannel extends DurableObjectBase {
           // channel identity does not exist until the channel clone is known.
           // Commit the host-authenticated binding before the clone subscribes,
           // so its first delivery cannot run with split host/local identity.
-          await this.callMain("runtime.rebindAgentChannel", {
-            entityId: ce.newId,
-            channelId: forkedChannelId,
-          });
+          await this.callMain("runtime.rebindAgentChannel", [
+            {
+              entityId: ce.newId,
+              channelId: forkedChannelId,
+            },
+          ]);
           this.forkLifetime.signal.throwIfAborted();
           if (agent.knowledge === null)
             throw new Error("Fork lost its immutable agent knowledge");
-          await this.rpc.call(doTarget(clonedRef), "importChannelKnowledge", [
-            {
-              operationId: `fork:${forkId}:${agent.participantId}`,
-              parentChannelId: this.objectKey,
-              channelId: forkedChannelId,
-              contextId: forkedContextId,
-              knowledge: agent.knowledge,
-            },
-          ]);
+          await this.rpc.call(
+            doTarget(clonedRef),
+            agentRpcMethods["importChannelKnowledge"],
+            [
+              {
+                operationId: `fork:${forkId}:${agent.participantId}`,
+                parentChannelId: this.objectKey,
+                channelId: forkedChannelId,
+                contextId: forkedContextId,
+                knowledge: agent.knowledge,
+              },
+            ],
+          );
           this.forkLifetime.signal.throwIfAborted();
           clonedParticipants.push(agent.participantId);
           clonedAgents.push({
@@ -6312,9 +6307,11 @@ export class PubSubChannel extends DurableObjectBase {
       if (opts.seed) {
         seededMessageId = `fork-seed:${forkId}`;
         if (!forkPhaseReached(phase, "seeded")) {
-          await this.rpc.call(doTarget(forkedChannelRef), "appendSeed", [
-            { forkId },
-          ]);
+          await this.rpc.call(
+            doTarget(forkedChannelRef),
+            channelRpcMethods["appendSeed"],
+            [{ forkId }],
+          );
           this.forkLifetime.signal.throwIfAborted();
         }
       }
@@ -6388,9 +6385,11 @@ export class PubSubChannel extends DurableObjectBase {
       | undefined;
     if (forkedContextId) {
       try {
-        await this.callMain("runtime.destroyContext", {
-          contextId: forkedContextId,
-        });
+        await this.callMain("runtime.destroyContext", [
+          {
+            contextId: forkedContextId,
+          },
+        ]);
       } catch (e) {
         console.error(
           `[Channel] fork rollback destroyContext failed for ${forkedContextId}:`,
@@ -6592,9 +6591,9 @@ export class PubSubChannel extends DurableObjectBase {
       let heads: Record<string, number>;
       if (provenance.kind === "fork") {
         const rootRef = await this.resolveChannelRef(provenance.rootChannelId);
-        heads = await this.rpc.call<Record<string, number>>(
+        heads = await this.rpc.call(
           doTarget(rootRef),
-          "getLineageHeads",
+          channelRpcMethods["getLineageHeads"],
           [channelIds],
         );
       } else {
@@ -6902,9 +6901,9 @@ export class PubSubChannel extends DurableObjectBase {
         "reportLineageHead caller does not match the reported channel",
       );
     }
-    const reportedProvenance = await this.rpc.call<ChannelProvenance>(
+    const reportedProvenance = await this.rpc.call(
       doTarget(channelRef),
-      "getProvenance",
+      channelRpcMethods["getProvenance"],
       [],
     );
     if (
@@ -6990,13 +6989,17 @@ export class PubSubChannel extends DurableObjectBase {
     const headSeq = Number(row["head_seq"]);
     const rosterChanged = Number(row["roster_changed"]) === 1;
     const rootRef = await this.resolveChannelRef(provenance.rootChannelId);
-    await this.rpc.call(doTarget(rootRef), "reportLineageHead", [
-      {
-        channelId: this.objectKey,
-        headSeq,
-        ...(rosterChanged ? { rosterChanged: true } : {}),
-      },
-    ]);
+    await this.rpc.call(
+      doTarget(rootRef),
+      channelRpcMethods["reportLineageHead"],
+      [
+        {
+          channelId: this.objectKey,
+          headSeq,
+          ...(rosterChanged ? { rosterChanged: true } : {}),
+        },
+      ],
+    );
     this.sql.exec(
       `DELETE FROM lineage_head_outbox WHERE singleton = 1 AND head_seq <= ?`,
       headSeq,

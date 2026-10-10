@@ -1,3 +1,4 @@
+import { schemaRpcMock } from "@vibestudio/rpc/test-utils";
 import type { RpcCaller } from "@vibestudio/rpc";
 import {
   createCredentialClient,
@@ -29,7 +30,6 @@ function makeMockEnv(
   const credential: StoredCredentialSummary = {
     id: "cred-mock",
     label: "Mock",
-    providerId: "mock",
     accountIdentity: { providerUserId: "mock" },
     audience: [],
     injection: {
@@ -41,13 +41,13 @@ function makeMockEnv(
       {
         id: "github-user",
         use: "fetch",
-        audience: [],
+        audience: [{ url: "https://api.github.com/", match: "origin" }],
         injection: credentialInjection(),
       },
       {
         id: "github-git-http",
         use: "git-http",
-        audience: [],
+        audience: [{ url: "https://api.github.com/", match: "origin" }],
         injection: credentialInjection(),
       },
     ],
@@ -58,25 +58,20 @@ function makeMockEnv(
       providerKind: "fine-grained-pat",
       targetName: "acme",
     },
-    createdAt: Date.now(),
-  } as unknown as StoredCredentialSummary;
+  };
 
-  const rpc: RpcCaller = {
-    call: (async <T = unknown>(
-      _targetId: string,
-      method: string,
-      args: unknown[],
-    ): Promise<T> => {
+  const rpc: RpcCaller = schemaRpcMock({
+    call: async (_targetId: string, method: string, args: unknown[]) => {
       if (method === "credentials.resolveCredential") {
         stats.resolveCalls++;
         stats.resolveDescriptors.push(args[0]);
-        return credential as unknown as T;
+        return credential;
       }
       if (method === "credentials.listStoredCredentials") {
-        return [credential] as unknown as T;
+        return [credential];
       }
       throw new Error(`unexpected method: ${method}`);
-    }) as RpcCaller["call"],
+    },
     stream: async (_target: string, method: string, args: unknown[]) => {
       if (method !== "credentials.proxyFetch") {
         throw new Error(`unexpected stream method: ${method}`);
@@ -94,7 +89,7 @@ function makeMockEnv(
       });
       return respond(params.url, params);
     },
-  };
+  });
   const credentials = createCredentialClient(rpc);
   return { credentials, stats, credential };
 }
@@ -117,33 +112,71 @@ function jsonResponse(body: unknown, init: ResponseInit = {}): Response {
 
 describe("createGitHubClient", () => {
   it("accepts repository-scoped OAuth credentials after live account verification", async () => {
-    const { credentials, credential, stats } = makeMockEnv(() => jsonResponse({ login: "acme" }));
+    const { credentials, credential, stats } = makeMockEnv(() =>
+      jsonResponse({ login: "acme" }),
+    );
     credential.scopes = ["gist", "read:org", "repo"];
     credential.metadata = { providerId: "github", providerKind: "oauth" };
-    await expect(resolveGitHubPublishOperation(credentials, { owner: "acme", publication: "existing-repository" })).resolves.toMatchObject({ login: "acme", requiredCapabilities: ["github-api", "github-git-push"] });
+    await expect(
+      resolveGitHubPublishOperation(credentials, {
+        owner: "acme",
+        publication: "existing-repository",
+      }),
+    ).resolves.toMatchObject({
+      login: "acme",
+      requiredCapabilities: ["github-api", "github-git-push"],
+    });
     expect(stats.fetchCalls).toHaveLength(1);
     credential.scopes = ["read:org"];
-    await expect(resolveGitHubPublishOperation(credentials, { publication: "existing-repository" })).rejects.toThrow("contents:write");
+    await expect(
+      resolveGitHubPublishOperation(credentials, {
+        publication: "existing-repository",
+      }),
+    ).rejects.toThrow("contents:write");
     expect(stats.fetchCalls).toHaveLength(1);
   });
 
   it("requires actual repository permissions even for classic PAT metadata", async () => {
-    const { credentials, credential, stats } = makeMockEnv(() => jsonResponse({ login: "acme" }));
+    const { credentials, credential, stats } = makeMockEnv(() =>
+      jsonResponse({ login: "acme" }),
+    );
     credential.scopes = ["read:org"];
     credential.metadata = { providerId: "github", providerKind: "classic-pat" };
-    await expect(resolveGitHubPublishOperation(credentials, { publication: "existing-repository" })).rejects.toThrow("contents:write");
+    await expect(
+      resolveGitHubPublishOperation(credentials, {
+        publication: "existing-repository",
+      }),
+    ).rejects.toThrow("contents:write");
     expect(stats.fetchCalls).toHaveLength(0);
   });
 
   it("accepts contents-write for an existing repository but requires administration for creation", async () => {
-    const { credentials, credential, stats } = makeMockEnv(() => jsonResponse({ login: "acme" }));
+    const { credentials, credential, stats } = makeMockEnv(() =>
+      jsonResponse({ login: "acme" }),
+    );
     credential.scopes = ["metadata:read", "contents:write"];
-    await expect(resolveGitHubPublishOperation(credentials, { owner: "acme", publication: "existing-repository" })).resolves.toMatchObject({ requiredCapabilities: ["github-api", "github-git-push"] });
+    await expect(
+      resolveGitHubPublishOperation(credentials, {
+        owner: "acme",
+        publication: "existing-repository",
+      }),
+    ).resolves.toMatchObject({
+      requiredCapabilities: ["github-api", "github-git-push"],
+    });
     const reads = stats.fetchCalls.length;
-    await expect(resolveGitHubPublishOperation(credentials, { owner: "acme", publication: "repository" })).rejects.toThrow("administration:write");
+    await expect(
+      resolveGitHubPublishOperation(credentials, {
+        owner: "acme",
+        publication: "repository",
+      }),
+    ).rejects.toThrow("administration:write");
     expect(stats.fetchCalls).toHaveLength(reads);
     credential.scopes = ["metadata:read", "contents:read"];
-    await expect(resolveGitHubPublishOperation(credentials, { publication: "existing-repository" })).rejects.toThrow("contents:write");
+    await expect(
+      resolveGitHubPublishOperation(credentials, {
+        publication: "existing-repository",
+      }),
+    ).rejects.toThrow("contents:write");
   });
 
   it("requires Pages permission before making publication requests", async () => {
@@ -526,7 +559,6 @@ describe("factory client retry semantics", () => {
     const credential: StoredCredentialSummary = {
       id: "later",
       label: "Later",
-      providerId: "test",
       accountIdentity: { providerUserId: "x" },
       audience: [],
       injection: {
@@ -536,19 +568,19 @@ describe("factory client retry semantics", () => {
       },
       bindings: [],
       scopes: [],
+      lifecycle: { state: "active", canRefresh: false },
       metadata: {},
-      createdAt: Date.now(),
-    } as unknown as StoredCredentialSummary;
+    };
 
-    const rpc: RpcCaller = {
-      call: (async <T = unknown>(_t: string, method: string): Promise<T> => {
+    const rpc: RpcCaller = schemaRpcMock({
+      call: async (_t: string, method: string) => {
         if (method === "credentials.resolveCredential") {
-          return (credentialRegistered ? credential : null) as unknown as T;
+          return credentialRegistered ? credential : null;
         }
         throw new Error(`unexpected method: ${method}`);
-      }) as RpcCaller["call"],
+      },
       stream: async () => jsonResponse({ login: "u", id: 1 }),
-    };
+    });
     const github = createGitHubClient(createCredentialClient(rpc));
 
     // First call rejects.

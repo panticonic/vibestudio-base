@@ -1,3 +1,4 @@
+import { mainRpcMethods } from "@vibestudio/service-schemas/mainRpc";
 import type { BuildPerformanceProfileWire } from "@vibestudio/service-schemas/build";
 import type {
   HostEventLoopSample,
@@ -60,7 +61,7 @@ export async function hostPerformanceSnapshot(options?: {
   since?: number;
   eventLoopLimit?: number;
 }): Promise<HostPerformanceSnapshot> {
-  return rpc.call<HostPerformanceSnapshot>("main", "hostPerformance.snapshot", [
+  return rpc.call("main", mainRpcMethods["hostPerformance.snapshot"], [
     options,
   ]);
 }
@@ -141,9 +142,9 @@ export function profileBuild(
   source: string,
   options?: { ref?: string; verifyCache?: boolean },
 ): Promise<BuildPerformanceProfileWire> {
-  return rpc.call<BuildPerformanceProfileWire>(
+  return rpc.call(
     "main",
-    "build.getPerformanceProfile",
+    mainRpcMethods["build.getPerformanceProfile"],
     [source, options?.ref, { verifyCache: options?.verifyCache ?? true }],
   );
 }
@@ -169,10 +170,7 @@ export function electronPerformanceSnapshot(): Promise<ElectronProcessPerformanc
   return read();
 }
 
-type ServerLogEnvelope = {
-  records: ServerLogRecord[];
-  startedAt: number;
-};
+
 
 function firstStructuredField(
   record: ServerLogRecord | undefined,
@@ -197,9 +195,9 @@ export async function readStartupProfile(): Promise<{
   }>;
 }> {
   const snapshot = await hostPerformanceSnapshot({ eventLoopLimit: 1 });
-  const envelope = await rpc.call<ServerLogEnvelope>(
+  const envelope = await rpc.call(
     "main",
-    "serverLog.query",
+    mainRpcMethods["serverLog.query"],
     [{ since: snapshot.startedAt, limit: 5_000 }],
   );
   const latest = (predicate: (record: ServerLogRecord) => boolean) =>

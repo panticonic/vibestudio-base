@@ -1,3 +1,5 @@
+import { createMainRpcCaller } from "@vibestudio/service-schemas/mainRpc";
+import { schemaRpcMock } from "@vibestudio/rpc/test-utils";
 import { afterEach, describe, expect, it } from "vitest";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -48,7 +50,9 @@ async function fixture(
   storage: Storage = new MemoryStorage(),
   recordAccepted = true,
 ) {
-  const acknowledgements = createNativeEvalAcknowledgements(call);
+  const acknowledgements = createNativeEvalAcknowledgements((method, args) =>
+    call(method, args),
+  );
   const registry = createRegistry();
   registry.install(
     defineExtension({ name: "eval-ack", tasks: [acknowledgements.task] }),
@@ -83,14 +87,16 @@ async function tasks(harness: Harness) {
 describe("native Eval acknowledgement ownership", () => {
   it("consumes canonical completion through the original route after losing its start response", async () => {
     const calls: string[] = [];
-    const call: EvalCall = async <T>(method: string) => {
-      calls.push(method);
-      return (
-        method === "eval.receipt"
-          ? receipt
-          : { acknowledged: true, duplicate: false }
-      ) as T;
-    };
+    const call: EvalCall = createMainRpcCaller(
+      schemaRpcMock({
+        call: async (_target: string, method: string) => {
+          calls.push(method);
+          return method === "eval.receipt"
+            ? receipt
+            : { acknowledged: true, duplicate: false };
+        },
+      }),
+    );
     const f = await fixture(call, new MemoryStorage(), false);
     await consumeEvalReceipt(
       f.harness,
@@ -109,15 +115,20 @@ describe("native Eval acknowledgement ownership", () => {
   it("atomically consumes once and gives direct/hint races one exact background debt", async () => {
     const calls: unknown[][] = [];
     let f!: Awaited<ReturnType<typeof fixture>>;
-    const call: EvalCall = async <T>(method: string, args: unknown[]) => {
-      if (method === "eval.receipt") return receipt as T;
-      expect(method).toBe("eval.acknowledge");
-      expect(
-        (await f.harness.snapshot(ReceiptDoc, receipt.runId, context))?.result,
-      ).toEqual(receipt.result);
-      calls.push(args);
-      return { acknowledged: true, duplicate: false } as T;
-    };
+    const call: EvalCall = createMainRpcCaller(
+      schemaRpcMock({
+        call: async (_target: string, method: string, args: unknown[]) => {
+          if (method === "eval.receipt") return receipt;
+          expect(method).toBe("eval.acknowledge");
+          expect(
+            (await f.harness.snapshot(ReceiptDoc, receipt.runId, context))
+              ?.result,
+          ).toEqual(receipt.result);
+          calls.push(args);
+          return { acknowledged: true, duplicate: false };
+        },
+      }),
+    );
     f = await fixture(call);
     await retainObservedEvalReceipt(
       f.harness,
@@ -162,11 +173,15 @@ describe("native Eval acknowledgement ownership", () => {
     const path = join(directory, "session.sqlite");
     const original = new Error("original acknowledgement response lost");
     let attempts = 0;
-    const call: EvalCall = async <T>() => {
-      attempts++;
-      if (attempts === 1) throw original;
-      return { acknowledged: true, duplicate: false } as T;
-    };
+    const call: EvalCall = createMainRpcCaller(
+      schemaRpcMock({
+        call: async (_target: string) => {
+          attempts++;
+          if (attempts === 1) throw original;
+          return { acknowledged: true, duplicate: false };
+        },
+      }),
+    );
     const f = await fixture(call, await openNodeSqliteStorage(path));
     await retainObservedEvalReceipt(
       f.harness,
@@ -206,10 +221,16 @@ describe("native Eval acknowledgement ownership", () => {
   });
   it("joins accepted acknowledgement on native abort instead of discarding debt", async () => {
     let acknowledged = 0;
-    const f = await fixture(async <T>() => {
-      acknowledged++;
-      return { acknowledged: true, duplicate: false } as T;
-    });
+    const f = await fixture(
+      createMainRpcCaller(
+        schemaRpcMock({
+          call: async (_target: string) => {
+            acknowledged++;
+            return { acknowledged: true, duplicate: false };
+          },
+        }),
+      ),
+    );
     await retainObservedEvalReceipt(
       f.harness,
       f.harness,
@@ -227,7 +248,14 @@ describe("native Eval acknowledgement ownership", () => {
   });
   it("does not create a receipt or debt from foreign outcome identity", async () => {
     const f = await fixture(
-      async <T>() => ({ acknowledged: true, duplicate: false }) as T,
+      createMainRpcCaller(
+        schemaRpcMock({
+          call: async (_target: string) => ({
+            acknowledged: true,
+            duplicate: false,
+          }),
+        }),
+      ),
     );
     await expect(
       retainObservedEvalReceipt(
@@ -263,7 +291,14 @@ describe("native Eval acknowledgement ownership", () => {
     }
     const storage = new RejectingStorage();
     const f = await fixture(
-      async <T>() => ({ acknowledged: true, duplicate: false }) as T,
+      createMainRpcCaller(
+        schemaRpcMock({
+          call: async (_target: string) => ({
+            acknowledged: true,
+            duplicate: false,
+          }),
+        }),
+      ),
       storage,
     );
     storage.reject = true;

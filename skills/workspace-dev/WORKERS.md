@@ -74,7 +74,7 @@ Generated from `runtimeSurface.worker.ts`. Use `await help()` at runtime for the
 | `credentials` | namespace | `store`, `connect`, `beginWebsitePublication`, `recordWebsitePublication`, `configureClient`, `requestCredentialInput`, `getClientConfigStatus`, `deleteClientConfig`, `listStoredCredentials`, `summarizeStoredCredentials`, `inspectStoredCredentials`, `revokeCredential`, `resolveCredential`, `deriveCredential`, `fetch`, `publishFetch`, `hookForUrl`, `gitHttp`, `forAudience` | Typed credential lifecycle and credentialed network access. Use resolveCredential({ url }) for host-owned audience matching; an unbound URL returns null without UI. Inventory summaries do not replace the resolver's binding and use policy. Use store(input) to persist a URL-bound credential, fetch(url, init?, { credentialId? }?) for credentialed HTTP and a standard Response, hookForUrl(url, { credentialId? }?) for a bound fetch function, gitHttp({ credentialId?, gitIntent? }) for smart-HTTP, and forAudience(descriptor) for a credential-bound handle. The underlying RPC transport is internal. |
 | `browserData` | namespace | `getBrowserEnvironment`, `listImportHosts`, `listImportAcquisitionOptions`, `beginImportAcquisition`, `releaseImportSource`, `listImportSources`, `previewImport`, `previewSensitiveImport`, `startImport`, `startSensitiveImport`, `observeSensitiveImport`, `cancelSensitiveImport`, `openBrowserPrivacyManager`, `cancelImport`, `getImportJob`, `observeImportJob`, `listImportJobs`, `listOpenTabs`, `openTabsAsPanels`, `getSitePreferences`, `setSiteZoom`, `getBookmarks`, `addBookmark`, `updateBookmark`, `deleteBookmark`, `moveBookmark`, `searchBookmarks`, `getHistory`, `deleteHistoryEntry`, `deleteHistoryRange`, `clearAllHistory`, `searchHistory`, `searchHistoryForAutocomplete`, `recordHistoryVisit`, `updateHistoryTitle`, `getSearchEngines`, `setDefaultEngine`, `saveSearchEngine`, `getSearchSuggestions`, `listDownloads`, `listDownloadRecords`, `upsertDownloadRecord`, `pauseDownload`, `resumeDownload`, `cancelDownload`, `openDownload`, `revealDownload`, `putPageFavicon`, `getPageFavicon`, `exportBookmarks` | Typed access to the manifest-declared browser-data provider: detection, import, secret-free summaries, approved sensitive reads, mutation, and export. |
 | `git` | namespace | `setSharedRemote`, `removeSharedRemote`, `setUpstream`, `removeUpstream`, `detachUpstream`, `setAutoPush`, `upstreamStatus`, `createBranch`, `pushUpstream`, `pullUpstream`, `publishRepo`, `commitMapping`, `importProject` | Typed external Git operations routed through the workspace's configured gitInterop provider. Import and pull create unpublished semantic candidates; only ordinary VCS integration and explicit publication advance protected main. Declarations carry logical credential names resolved by the host, while credential-free remotes are anonymous-first. Pull dry-runs use isolated temporary state and do not mutate managed Git, semantic state, or the remote. |
-| `vcs` | namespace | `edit`, `move`, `copy`, `merge`, `revert`, `commit`, `discard`, `importSnapshot`, `registerExternalDelta`, `supersedeExternalDelta`, `finalizeExternalDelta`, `push`, `mainState`, `status`, `compare`, `inspect`, `neighbors`, `history`, `walk`, `query`, `search`, `blame`, `readMemory`, `resolveRepository`, `readFile`, `listDirectory`, `listFiles`, `publish` | Simple semantic version control: exact event/application state, expressive edit/move/copy records, incremental local integration, whole-chain commit/discard, directly walkable provenance, and atomic external-snapshot acknowledgements containing the committed event/application/work-unit/repository/snapshot tuple. |
+| `vcs` | namespace | `edit`, `move`, `copy`, `merge`, `revert`, `commit`, `discard`, `importSnapshot`, `registerExternalDelta`, `supersedeExternalDelta`, `finalizeExternalDelta`, `push`, `mainState`, `status`, `compare`, `inspect`, `neighbors`, `history`, `walk`, `query`, `search`, `blame`, `readMemory`, `resolveRepository`, `readFile`, `readFiles`, `listDirectory`, `listFiles`, `publish` | Simple semantic version control: exact event/application state, expressive edit/move/copy records, incremental local integration, whole-chain commit/discard, directly walkable provenance, and atomic external-snapshot acknowledgements containing the committed event/application/work-unit/repository/snapshot tuple. |
 | `gad` | namespace | `status`, `ensureBlob`, `listUserNotificationsForMe`, `acknowledgeUserNotification`, `putUserNotification`, `deleteUserNotification`, `getTrajectoryBranchHead`, `listTrajectoryBranches`, `listTrajectoryInvocations`, `listTrajectoryApprovals`, `listChannelEnvelopes`, `listTrajectoryEvents`, `appendChannelEnvelope`, `listMessageTypes`, `getMessageType`, `getChannelEnvelope`, `getTrajectoryForEnvelope`, `resolveTrajectoryForkPoint`, `listPublishedEnvelopesForTrajectory`, `getEnvelopesForTrajectory`, `getPublishedArtifactsForTurn`, `getPrivateLineageForPublishedEnvelope`, `getDownstreamConsumers`, `readChannelEnvelopes`, `inspectChannelEnvelopes`, `listStoredValueRefs`, `inspectStorageDiagnostics`, `inspectPublicationIntegrity`, `inspectTurnState`, `inspectInvocationState`, `diagnoseInvocation`, `inspectChannelRoster`, `inspectAgentHealth`, `inspectAgent`, `listAgentDirectory`, `searchAgentDirectory`, `describeChannels`, `validateGadHashes`, `clearDirtyAfterValidation`, `checkGadIntegrity`, `rebuildTrajectoryProjections`, `collectChannelEnvelopePages` | Typed access to the workspace's canonical Graph and Data store: parameterized SQL, trajectory/channel lineage, integrity diagnostics, provenance, and bounded channel-envelope paging. |
 | `images` | namespace | `generate`, `getJob`, `cancel`, `retry`, `forgetJob`, `deleteArtDirection`, `getAsset`, `readAsset`, `importAsset`, `retain`, `release`, `putArtDirection`, `getArtDirection`, `getBytes`, `wait` | Workspace image assets and durable generation jobs. generate({requestId,prompt,references?,artDirection?}) returns a job; wait(job.id) observes completion. Store the resulting immutable asset reference in application state. GeneratedImage from @workspace/react displays assets in running panels without rebuilding. getBytes performs authenticated reads for custom renderers. retain/release manage application ownership; art direction versions provide reusable style briefs and reference assets. |
 | `missions` | namespace | `overview`, `list`, `get`, `getDefault`, `listRuns`, `getRun`, `launch`, `provisionDefault`, `edit`, `runNow`, `cancel`, `pause`, `resume`, `retire` | Durable automations (vibestudio.missions.v1). launch({name, charter}) and edit(missionId, {name?, charter?}) compile the charter's authority plan as the calling author, then call the missions controller, which verifies that plan; never compile by hand. edit recompiles only when the execution changes or a seeded default is customized. overview/list/get/listRuns/getRun read the ledger; runNow/cancel/pause/resume/retire control one automation. Agents launching work for themselves use the launch_automation tool instead. |
@@ -87,7 +87,7 @@ Generated from `runtimeSurface.worker.ts`. Use `await help()` at runtime for the
 | `services` | value |  | Portable raw service namespace: services.<svc>.<method>(...) is always the server service <svc>, dispatched through the caller-scoped main service boundary, even when a runtime binding shares the name (services.blobstore is the raw blobstore service, the blobstore binding is the curated client). The client contract is shared by panels, workers, Durable Objects, and eval; Durable Objects bind clients to their own instance RPC. |
 | `hosts` | value |  | Portable owner-scoped attached-host access for development sessions. |
 | `runtime` | namespace | `createEntity`, `reserveEntity`, `activateReservedEntity`, `faultAbortAgentVessel`, `retireEntity`, `releaseResourceBindings`, `replaceResourceBindings`, `recoverExecution`, `listEntities`, `resolveContext`, `listContexts`, `setTitle`, `createContext`, `cloneContext`, `rebindAgentChannel`, `destroyContext`, `forkSemanticContext`, `dropSemanticContext`, `listOwnedContexts`, `recordContextEdge`, `createSubagentContext`, `supervision.list`, `supervision.describe`, `supervision.health`, `supervision.logs`, `supervision.reportReady`, `supervision.reportHealth`, `supervision.appendLog`, `supervision.restart`, `supervision.activate`, `supervision.prepare`, `supervision.retire`, `supervision.versions`, `supervision.rollback` | Portable typed runtime lifecycle and supervision client for the current workspace context. |
-| `workspace` | namespace | `getInfo`, `getActive`, `getConfig`, `validateConfig`, `setInitPanels`, `setConfigField`, `applyPreparedConfig`, `getAgentsMd`, `listSkills`, `readSkill`, `sourceTree`, `ensureContextFolder`, `findUnitForPath`, `projects` | Workspace catalog, source tree, and unit helpers. Does not include panelTree; use runtime.panelTree for panel-tree handles. |
+| `workspace` | namespace | `getInfo`, `getActive`, `getConfig`, `validateConfig`, `setInitPanels`, `setConfigField`, `applyPreparedConfig`, `getAgentResources`, `getAgentsMd`, `listSkills`, `readSkill`, `sourceTree`, `ensureContextFolder`, `findUnitForPath`, `projects` | Workspace catalog, source tree, and unit helpers. Does not include panelTree; use runtime.panelTree for panel-tree handles. |
 | `createPanelSlot` | value |  | Commit a panel and promptly return its durable handle without focusing or waiting for activation, build, or boot. Server reconciliation owns activation after commit and recovers it across transient failure or restart. Pass operationId for retry-stable identity; use handle.observe() when current lifecycle state matters. |
 | `openPanel` | value |  | Create a panel and return its handle after the exact attempt is application boot-ready, with no fixed readiness deadline. Pass options.signal for caller-owned cancellation and operationId for retry-stable identity. It defaults under the caller and focused; use parentId:null for a root or focus:false to suppress presentation. options.placement accepts "side" (default), "side-if-room", "replace", or "split-below". The returned PanelHandle is the complete lifecycle and inspection API. Use `const session = await handle.cdp.session(); const page = session.page` for automation. Keep the stable page across rebuild/navigation; its next awaited operation rebinds without replaying the interrupted action. `session.receipt` reports acquired, reconnected, or replaced generations. For a one-call host image use `await handle.cdp.screenshot({ format: "png" })`. For host-captured logs since panel creation use `await handle.cdp.consoleHistory()` (live page console events are separate). |
 | `getPanelHandle` | value |  | Alias for runtime.panelTree.get(id, kind?). |
@@ -208,17 +208,28 @@ import {
 } from "@workspace/runtime/worker";
 
 let exposedForWorker: string | null = null;
+let probeReceiver: ProbeReceiver | undefined;
+
+export class ProbeReceiver {
+  constructor(private readonly value: string | null) {}
+
+  observeConfiguredValue() {
+    return { value: this.value };
+  }
+}
 
 export default {
   async fetch(request: Request, env: WorkerEnv, _ctx: ExecutionContext) {
     const runtime = createWorkerRuntime(env);
+    probeReceiver = new ProbeReceiver(
+      typeof env["NON_SECRET_PROBE"] === "string"
+        ? env["NON_SECRET_PROBE"]
+        : null,
+    );
     if (exposedForWorker !== env.WORKER_ID) {
-      runtime.rpc.expose("observeConfiguredValue", () => ({
-        value:
-          typeof env["NON_SECRET_PROBE"] === "string"
-            ? env["NON_SECRET_PROBE"]
-            : null,
-      }));
+      runtime.rpc.expose("observeConfiguredValue", () =>
+        probeReceiver!.observeConfiguredValue(),
+      );
       exposedForWorker = env.WORKER_ID;
     }
     const rpcResponse = handleWorkerRpc(runtime, request);
@@ -229,12 +240,26 @@ export default {
 ```
 
 ```ts
-const observed = await rpc.call<{ value: string | null }>(
+import { probeRpcMethods } from "@workspace-workers/probe/contract";
+
+const observed = await rpc.call(
   handle.targetId,
-  "observeConfiguredValue",
+  probeRpcMethods.observeConfiguredValue,
   [],
 );
 if (observed.value !== "configured") throw new Error("Worker env mismatch");
+```
+
+The worker exports that descriptor table from `contract.ts`, derived from its
+actual receiver:
+
+```ts
+import { createReceiverRpcMethods } from "@vibestudio/shared/rpcMethods";
+import type { ProbeReceiver } from "./index.js";
+
+export const probeRpcMethods = createReceiverRpcMethods<
+  Pick<ProbeReceiver, "observeConfiguredValue">
+>(["observeConfiguredValue"]);
 ```
 
 Keep the probe narrow and remove it from production code. Never expose the
@@ -333,15 +358,20 @@ Add the service details to `workers/my-store/package.json` under
 Resolve and call it:
 
 ```ts
+import { rpc, workers } from "@workspace/runtime";
+import { myStoreRpcMethods } from "@workspace-workers/my-store/contract";
+
 const svc = await workers.resolveService("example.my-store.v1");
 if (svc.kind !== "durable-object") throw new Error("Expected DO service");
-await rpc.call(svc.targetId, "methodName", [arg]);
+await rpc.call(svc.targetId, myStoreRpcMethods.addItem, ["Review inbox"]);
 ```
 
-The method name is part of the static service contract. Pass a literal, or a
-finite union of literals, at the call site. An unbounded string cannot be
-checked against the provider's sealed RPC catalog and fails authority analysis
-with a bounded-method diagnostic.
+Export a descriptor table beside the receiver and import it at each caller.
+Derive it from the actual receiver, for example
+`createReceiverRpcMethods<Pick<TodoStore, "upsertTodo" | "listTodos">>(["upsertTodo", "listTodos"])`.
+Import `createReceiverRpcMethods` from `@vibestudio/shared/rpcMethods`. Public
+RPC calls require a descriptor; callers cannot choose their own result type.
+Keep descriptor modules free of receiver runtime imports by using `import type`.
 
 The consuming unit must declare the service route in its own `package.json`.
 Add it together with the call; do not wait for the build to report it:
@@ -580,6 +610,22 @@ export class TodoStore extends DurableObjectBase {
 }
 ```
 
+Export the public receiver contract from `workers/todo-store/contract.ts`:
+
+```ts
+import { createReceiverRpcMethods } from "@vibestudio/shared/rpcMethods";
+import type { TodoStore } from "./index.js";
+
+export const todoStoreRpcMethods = createReceiverRpcMethods<
+  Pick<TodoStore, "upsertTodo" | "listTodos">
+>(["upsertTodo", "listTodos"]);
+```
+
+Export `./contract` from the worker package and declare
+`@vibestudio/shared` as a dependency. Callers import this table; they don't
+restate method signatures or choose result types. Dynamic main-process method
+names use the validating `mainRpcMethod(name)` lookup and return `unknown`.
+
 Declare application-defined protocols in `meta/vibestudio.yml`; do not add
 `vibestudio.durable.classes[].rpcSchema` for them. `rpcSchema` selects one of a
 small set of reviewed schemas built into the host, and an arbitrary application
@@ -634,12 +680,13 @@ another DO:
 
 ```ts
 import { rpc, workers } from "@workspace/runtime";
+import { todoStoreRpcMethods } from "@workspace-workers/todo-store/contract";
 
 const svc = await workers.resolveService("example.todos.v1");
 if (svc.kind !== "durable-object") throw new Error("Expected DO service");
 
-await rpc.call(svc.targetId, "upsertTodo", [{ title: "Write storage docs" }]);
-const todos = await rpc.call(svc.targetId, "listTodos", []);
+await rpc.call(svc.targetId, todoStoreRpcMethods.upsertTodo, [{ title: "Write storage docs" }]);
+const todos = await rpc.call(svc.targetId, todoStoreRpcMethods.listTodos, []);
 ```
 
 For a partitioned store, pass the optional second argument:
@@ -649,6 +696,18 @@ const projectStore = await workers.resolveService(
   "example.todos.v1",
   projectId,
 );
+```
+
+For repeated calls, bind the same contract table with
+`workers.durableObjectService(methods, protocol, objectKey?)`:
+
+```ts
+const projectTodos = workers.durableObjectService(
+  todoStoreRpcMethods,
+  "example.todos.v1",
+  projectId,
+);
+const todos = await projectTodos.call("listTodos", []);
 ```
 
 This resolves `do:<source>:<className>:<projectId>` and creates or activates a
@@ -786,6 +845,21 @@ export class MyStoreDO extends DurableObjectBase {
 }
 ```
 
+Export the public app method from `workers/my-store/contract.ts` using the
+receiver's actual method signature:
+
+```ts
+import { createReceiverRpcMethods } from "@vibestudio/shared/rpcMethods";
+import type { MyStoreDO } from "./index.js";
+
+export const myStoreRpcMethods = createReceiverRpcMethods<
+  Pick<MyStoreDO, "addItem">
+>(["addItem"]);
+```
+
+Export `./contract` from the package. Import that descriptor table in the
+consumer and pass `myStoreRpcMethods.addItem` with its `string` argument tuple.
+
 Use `user` for direct user/session actions, `code` for installed workspace code
 and agents, and `host` only for trusted host lifecycle traffic. Listing a
 principal is only the receiver's minimum requirement: the caller's sealed
@@ -807,7 +881,7 @@ destination on the RPC call:
 })
 async listAvailableSlots(): Promise<string[]> { ... }
 
-const slots = await rpc.call(storeTargetId, "listAvailableSlots", [], {
+const slots = await rpc.call(storeTargetId, myStoreRpcMethods.listAvailableSlots, [], {
   destination: { kind: "workspace", workspaceId: personalWorkspaceId },
 });
 ```
@@ -995,10 +1069,12 @@ workerd supervision, routing, RPC dispatch, gateway reconnects, idle exit, or
 startup/shutdown.
 
 ```ts
-const recent = await rpc.call("main", "serverLog.query", [
+import { mainRpcMethods } from "@vibestudio/service-schemas/mainRpc";
+
+const recent = await rpc.call("main", mainRpcMethods["serverLog.query"], [
   { level: "warn", limit: 100 },
 ]);
-const build = await rpc.call("main", "serverLog.query", [
+const build = await rpc.call("main", mainRpcMethods["serverLog.query"], [
   { tag: "BuildV2", limit: 100 },
 ]);
 ```
@@ -1047,3 +1123,5 @@ layer, such as a server service.
 Blobs are immutable and content-addressed. Store the returned digest in your
 application state and fetch by that digest when rendering. A worker does not
 garbage-collect blobs or list other callers' blobs.
+
+Host RPC descriptors are exported by `@vibestudio/service-schemas/mainRpc`: import `mainRpcMethods` for the calls above.

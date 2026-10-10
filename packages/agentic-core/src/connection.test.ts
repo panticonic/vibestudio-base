@@ -1,3 +1,5 @@
+import { wireCallerFor } from "@vibestudio/rpc/internal";
+import { schemaRpcMock } from "@vibestudio/rpc/test-utils";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ConnectionManager } from "./connection.js";
 import type { ChatParticipantMetadata, ConnectionConfig } from "./types.js";
@@ -6,6 +8,7 @@ import {
   createInProcessNetwork,
   inProcessTransport,
 } from "@vibestudio/rpc/transports/inProcess";
+import { durableObjectServiceFixture } from "@vibestudio/service-schemas/test-utils";
 
 const CHANNEL_TARGET = "do:workers/pubsub-channel:PubSubChannel:chat-1";
 
@@ -14,19 +17,14 @@ function createConfig(
 ): ConnectionConfig {
   const call = vi.fn((target: string, method: string) => {
     if (target === "main" && method === "workers.resolveService") {
-      return Promise.resolve({
-        kind: "durable-object",
-        targetId: CHANNEL_TARGET,
-      });
+      return Promise.resolve(durableObjectServiceFixture(CHANNEL_TARGET));
     }
     return Promise.resolve(undefined);
-  }) as NonNullable<ConnectionConfig["rpc"]>["call"];
+  });
   return {
     clientId: "panel:panel-1",
-    rpc: {
-      selfId: "panel:panel-1",
-      call,
-      stream: vi.fn((_target, _method, _args, options) =>
+    rpc: { ...schemaRpcMock({ call,
+stream: vi.fn((_target, _method, _args, options) =>
         Promise.resolve(
           new Response(
             new ReadableStream<Uint8Array>({
@@ -51,9 +49,8 @@ function createConfig(
             }),
           ),
         ),
-      ),
-      on: vi.fn(() => vi.fn()),
-    },
+      ) }), selfId: "panel:panel-1",
+on: vi.fn(() => vi.fn()) },
   };
 }
 
@@ -96,6 +93,7 @@ describe("ConnectionManager", () => {
       CHANNEL_TARGET,
       "unsubscribe",
       ["panel:panel-1", expect.any(String)],
+      undefined,
     );
   });
 
@@ -164,7 +162,7 @@ describe("ConnectionManager", () => {
     const failure = new Error("Original service resolution failure");
     config.rpc!.call = vi.fn(async () => {
       throw failure;
-    }) as NonNullable<ConnectionConfig["rpc"]>["call"];
+    });
     const onError = vi.fn();
     const manager = new ConnectionManager({
       config,
@@ -232,7 +230,7 @@ describe("ConnectionManager owned readiness", () => {
       async () => {
         entered();
         await gate;
-        return { kind: "durable-object", targetId: CHANNEL_TARGET };
+        return durableObjectServiceFixture(CHANNEL_TARGET);
       },
       {
         kind: "eligible",
@@ -334,12 +332,12 @@ describe("ConnectionManager owned readiness", () => {
     const leaving = new Promise<void>((resolve) => {
       finishLeave = resolve;
     });
-    const originalCall = config.rpc!.call;
-    config.rpc!.call = vi.fn((target, method, args, options) =>
+    const originalCall = wireCallerFor(config.rpc!).call;
+    config.rpc!.call = schemaRpcMock({ call: vi.fn((target, method, args, options) =>
       method === "unsubscribe"
         ? leaving
         : originalCall(target, method, args, options),
-    ) as NonNullable<ConnectionConfig["rpc"]>["call"];
+    ) }).call;
     const manager = new ConnectionManager({ config, metadata, callbacks: {} });
     const connecting = manager.connect({ channelId: "chat-1", methods: {} });
     void connecting.catch(() => undefined);
@@ -355,6 +353,7 @@ describe("ConnectionManager owned readiness", () => {
           CHANNEL_TARGET,
           "unsubscribe",
           expect.any(Array),
+          undefined,
         ),
       );
       expect(retired).toBe(false);
@@ -373,12 +372,12 @@ it("preserves the pending owner when a replacement is already cancelled", async 
   const leaving = new Promise<void>((resolve) => {
     finishLeave = resolve;
   });
-  const originalCall = config.rpc!.call;
-  config.rpc!.call = vi.fn((target, method, args, options) =>
+  const originalCall = wireCallerFor(config.rpc!).call;
+  config.rpc!.call = schemaRpcMock({ call: vi.fn((target, method, args, options) =>
     method === "unsubscribe"
       ? leaving
       : originalCall(target, method, args, options),
-  ) as NonNullable<ConnectionConfig["rpc"]>["call"];
+  ) }).call;
   const manager = new ConnectionManager({ config, metadata, callbacks: {} });
   const connecting = manager.connect({ channelId: "chat-1", methods: {} });
   void connecting.catch(() => undefined);
@@ -404,6 +403,7 @@ it("preserves the pending owner when a replacement is already cancelled", async 
         CHANNEL_TARGET,
         "unsubscribe",
         expect.any(Array),
+        undefined,
       ),
     );
     expect(retired).toBe(false);
@@ -450,14 +450,14 @@ describe("Native-owner readiness cancellation", () => {
     const config = createConfig();
     const original = new Error("Channel service bootstrap failed");
     let fail!: (reason: unknown) => void;
-    config.rpc!.call = vi.fn((target, method) => {
+    config.rpc!.call = schemaRpcMock({ call: vi.fn((target, method) => {
       if (target === "main" && method === "workers.resolveService") {
         return new Promise((_resolve, reject) => {
           fail = reject;
         });
       }
       return Promise.resolve(undefined);
-    }) as NonNullable<ConnectionConfig["rpc"]>["call"];
+    }) }).call;
     const manager = new ConnectionManager({ config, metadata, callbacks: {} });
     const attempt = manager.connect({ channelId: "chat-1", methods: {} });
     let settled = false;

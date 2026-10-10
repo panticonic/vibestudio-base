@@ -1,3 +1,4 @@
+import { mainRpcMethods } from "@vibestudio/service-schemas/mainRpc";
 /**
  * Vibestudio Web Tools Extension
  *
@@ -22,11 +23,7 @@ import type { ToolRegistration } from "@panticonic/pi-durable";
 import { toolDetails } from "../tools/native-tool-json.js";
 import { base64ToBytes } from "@vibestudio/rpc";
 import { createWebSearchTool, type WebSearchDeps } from "./search.js";
-export type WebRpcCaller = <T = unknown>(
-  target: string,
-  method: string,
-  args: unknown[],
-) => Promise<T>;
+export type WebRpcCaller = import("@vibestudio/rpc").RpcCaller["call"];
 export interface WebToolsDeps extends WebSearchDeps {
   /** RPC client for blobstore put/range reads. */
   rpc: {
@@ -220,10 +217,7 @@ export function createWebTools(deps: WebToolsDeps): ToolRegistration[] {
           via: "web-fetch",
           classification: "external",
         });
-        const stored = await deps.rpc.call<{
-          digest: string;
-          size: number;
-        }>("main", "blobstore.putText", [page.markdown]);
+        const stored = await deps.rpc.call("main", mainRpcMethods["blobstore.putText"], [page.markdown]);
         urlCacheSet(cacheKey, stored.digest, stored.size, page.title);
         const head = utf8Prefix(page.markdown, headLength);
         const truncated = stored.size > head.byteLength;
@@ -304,16 +298,9 @@ function createChromiumFetcher(
         : input instanceof URL
           ? input.toString()
           : input.url;
-    const opened = await rpc.call<{
-      responseId: string;
-      url: string;
-      status: number;
-      statusText: string;
-      headers: Record<string, string>;
-      size: number;
-    }>(
+    const opened = await rpc.call(
       "main",
-      `chromiumFetch.${session === "browser" ? "openBrowser" : "openPublic"}`,
+      mainRpcMethods[session === "browser" ? "chromiumFetch.openBrowser" : "chromiumFetch.openPublic"],
       [url],
     );
     let offset = 0;
@@ -322,7 +309,7 @@ function createChromiumFetcher(
       if (closed) return;
       closed = true;
       await rpc
-        .call("main", "chromiumFetch.close", [opened.responseId])
+        .call("main", mainRpcMethods["chromiumFetch.close"], [opened.responseId])
         .catch(() => undefined);
     };
     const body = new ReadableStream<Uint8Array>({
@@ -335,9 +322,9 @@ function createChromiumFetcher(
           return;
         }
         try {
-          const chunk = await rpc.call<{ bytesBase64: string; done: boolean }>(
+          const chunk = await rpc.call(
             "main",
-            "chromiumFetch.read",
+            mainRpcMethods["chromiumFetch.read"],
             [opened.responseId, offset, 256 * 1024],
           );
           const bytes = base64ToBytes(chunk.bytesBase64);
@@ -394,9 +381,9 @@ async function readUtf8BlobRange(
   text: string;
   bytes: number;
 } | null> {
-  const range = await rpc.call<{ bytesBase64: string } | null>(
+  const range = await rpc.call(
     "main",
-    "blobstore.getRangeBytes",
+    mainRpcMethods["blobstore.getRangeBytes"],
     [digest, offset, limit],
   );
   if (range === null) return null;

@@ -1,3 +1,4 @@
+import { schemaRpcMock } from "@vibestudio/rpc/test-utils";
 import { describe, expect, it, vi } from "vitest";
 import { CreateEntitySpecSchema } from "@vibestudio/service-schemas/runtime";
 import {
@@ -15,18 +16,16 @@ import type { ConversationId } from "@panticonic/pi-durable";
 
 function makeRpc(
   impl?: (target: string, method: string, args: unknown[]) => Promise<unknown>
-): AgentLaunchRpc & { call: ReturnType<typeof vi.fn> } {
-  const rpc = {
-    call: vi.fn(async (target: string, method: string, args: unknown[]) => {
-      if (impl) return impl(target, method, args);
-      if (target === "main" && method === "runtime.createEntity") {
-        const spec = args[0] as { contextId?: string };
-        return { id: "entity-1", targetId: "target-1", contextId: spec.contextId ?? "ctx-minted" };
-      }
-      return { ok: true, participantId: "participant-1" };
-    }),
-  };
-  return rpc as unknown as AgentLaunchRpc & { call: typeof rpc.call };
+): AgentLaunchRpc & { wireCall: ReturnType<typeof vi.fn> } {
+  const wireCall = vi.fn(async (target: string, method: string, args: unknown[]) => {
+    if (impl) return impl(target, method, args);
+    if (target === "main" && method === "runtime.createEntity") {
+      const spec = args[0] as { contextId?: string };
+      return { id: "entity-1", kind: "do", source: { repoPath: "workers/agent-worker", effectiveVersion: "test" }, targetId: "target-1", contextId: spec.contextId ?? "ctx-minted" };
+    }
+    return { ok: true, participantId: "participant-1" };
+  });
+  return { ...schemaRpcMock({ call: (target, method, args) => wireCall(target, method, args) }), wireCall };
 }
 
 describe("agent launch primitive", () => {
@@ -102,7 +101,7 @@ describe("agent launch primitive", () => {
       subscription: { ok: true, participantId: "participant-1" },
       contextId: "ctx-1",
     });
-    expect(rpc.call).toHaveBeenNthCalledWith(1, "main", "runtime.createEntity", [
+    expect(rpc.wireCall).toHaveBeenNthCalledWith(1, "main", "runtime.createEntity", [
       expect.objectContaining({
         agentChannelId: "ch-1",
         stateArgs: expect.objectContaining({
@@ -113,7 +112,7 @@ describe("agent launch primitive", () => {
         }),
       }),
     ]);
-    expect(rpc.call).toHaveBeenNthCalledWith(2, "target-1", "subscribeChannel", [
+    expect(rpc.wireCall).toHaveBeenNthCalledWith(2, "target-1", "subscribeChannel", [
       {
         channelId: "ch-1",
         contextId: "ctx-1",
@@ -130,7 +129,7 @@ describe("agent launch primitive", () => {
   it("retires an isolated entity when subscribe fails after creation", async () => {
     const rpc = makeRpc(async (_target, method) => {
       if (method === "runtime.createEntity") {
-        return { id: "entity-1", targetId: "target-1", contextId: "ctx-1" };
+        return { id: "entity-1", kind: "do", source: { repoPath: "workers/agent-worker", effectiveVersion: "test" }, targetId: "target-1", contextId: "ctx-1" };
       }
       if (method === "subscribeChannel") throw new Error("subscribe failed");
       return undefined;
@@ -146,13 +145,13 @@ describe("agent launch primitive", () => {
       })
     ).rejects.toThrow("subscribe failed");
 
-    expect(rpc.call).toHaveBeenLastCalledWith("main", "runtime.retireEntity", [{ id: "entity-1" }]);
+    expect(rpc.wireCall).toHaveBeenLastCalledWith("main", "runtime.retireEntity", [{ id: "entity-1" }]);
   });
 
   it("refuses to subscribe an existing active agent into a different channel context", async () => {
     const rpc = makeRpc(async (_target, method) => {
       if (method === "runtime.createEntity") {
-        return { id: "entity-1", targetId: "target-1", contextId: "ctx-original" };
+        return { id: "entity-1", kind: "do", source: { repoPath: "workers/agent-worker", effectiveVersion: "test" }, targetId: "target-1", contextId: "ctx-original" };
       }
       return { ok: true, participantId: "participant-1" };
     });
@@ -167,7 +166,7 @@ describe("agent launch primitive", () => {
       })
     ).rejects.toThrow(/existing agent entity-1 in context ctx-original.*channel ch-fork.*ctx-fork/);
 
-    expect(rpc.call).toHaveBeenCalledTimes(1);
+    expect(rpc.wireCall).toHaveBeenCalledTimes(1);
   });
 
   it("imports native knowledge through the same stripped subscription config contract", async () => {
@@ -188,7 +187,7 @@ describe("agent launch primitive", () => {
       },
     });
 
-    expect(rpc.call).toHaveBeenCalledWith("target-1", "importChannelKnowledge", [
+    expect(rpc.wireCall).toHaveBeenCalledWith("target-1", "importChannelKnowledge", [
       {
         operationId: "native-fork-1",
         parentChannelId: "parent",
@@ -245,13 +244,13 @@ describe("agent launch primitive", () => {
       })
     ).resolves.toEqual({ ok: true, participantId: "participant-1" });
 
-    expect(rpc.call).toHaveBeenCalledOnce();
-    expect(rpc.call).toHaveBeenCalledWith(
+    expect(rpc.wireCall).toHaveBeenCalledOnce();
+    expect(rpc.wireCall).toHaveBeenCalledWith(
       "do:workers/agent-worker:AiChatWorker:agent-1",
       "unsubscribeChannel",
       ["ch-1"]
     );
-    expect(rpc.call).not.toHaveBeenCalledWith(
+    expect(rpc.wireCall).not.toHaveBeenCalledWith(
       "main",
       "workers.resolveDurableObject",
       expect.anything()
@@ -269,7 +268,7 @@ describe("agent launch primitive", () => {
       })
     ).resolves.toEqual({ contextId: "ctx-child" });
 
-    expect(rpc.call).toHaveBeenCalledWith("main", "runtime.createSubagentContext", [
+    expect(rpc.wireCall).toHaveBeenCalledWith("main", "runtime.createSubagentContext", [
       {
         parentContextId: "ctx-parent",
         ownerEntityId: "do:agent:parent",
@@ -343,7 +342,7 @@ describe("agent launch primitive", () => {
       }
     );
 
-    expect(rpc.call).toHaveBeenCalledWith("target-1", "subscribeChannel", [
+    expect(rpc.wireCall).toHaveBeenCalledWith("target-1", "subscribeChannel", [
       {
         channelId: "ch-1",
         contextId: "ctx-1",

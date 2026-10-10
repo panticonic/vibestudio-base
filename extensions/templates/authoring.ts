@@ -1,3 +1,4 @@
+import { mainRpcMethods } from "@vibestudio/service-schemas/mainRpc";
 import { Buffer } from "node:buffer";
 import YAML from "yaml";
 import {
@@ -172,13 +173,13 @@ async function repository(
   observation: SemanticWorkspaceObservation,
   repoPath: string,
 ): Promise<NonNullable<VcsResolveRepositoryResult>> {
-  const resolved = await ctx.rpc.call<VcsResolveRepositoryResult>(
+  const resolved = await ctx.rpc.call(
     "main",
-    "vcs.resolveRepository",
-    {
+    mainRpcMethods["vcs.resolveRepository"],
+    [{
       state: observation.mainState,
       repoPath,
-    },
+    }],
   );
   if (!resolved)
     throw new Error(`Workspace repository ${repoPath} disappeared`);
@@ -191,11 +192,11 @@ async function packageMetadata(
   repoPath: string,
 ): Promise<{ name?: string; dependencies: string[] }> {
   const resolved = await repository(ctx, observation, repoPath);
-  const file = await ctx.rpc.call<VcsReadFileResult>("main", "vcs.readFile", {
+  const file = await ctx.rpc.call("main", mainRpcMethods["vcs.readFile"], [{
     state: observation.mainState,
     repositoryId: resolved.repositoryId,
     file: { kind: "path", path: "package.json" },
-  });
+  }]);
   if (!file) return { dependencies: [] };
   return parsePackageMetadata(repoPath, text(file));
 }

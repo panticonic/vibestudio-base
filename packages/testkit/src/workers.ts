@@ -1,3 +1,4 @@
+import { mainRpcMethods } from "@vibestudio/service-schemas/mainRpc";
 /**
  * Worker/DO orchestration and state inspection helpers.
  */
@@ -64,14 +65,14 @@ export async function unitDiagnostics(
 }
 
 /** Call a method on a Durable Object-backed service. */
-export async function callDO<T = unknown>(
+export async function callDO<Args extends unknown[], Result>(
   query: string,
-  method: string,
-  args: unknown[] = [],
-  opts?: { objectKey?: string | null }
-): Promise<T> {
-  const client = createDurableObjectServiceClient(query, opts?.objectKey ?? null);
-  return (await client.call(method, ...args)) as T;
+  method: import("@vibestudio/rpc").RpcMethod<Args, Result>,
+  args: NoInfer<Args>,
+  opts?: { objectKey?: string | null },
+): Promise<Result> {
+  const client = createDurableObjectServiceClient(query, { invoke: method }, opts?.objectKey);
+  return client.call("invoke", ...args);
 }
 
 /** Ensure a worker instance exists for `source` and is running; auto-watch it. */
@@ -85,7 +86,7 @@ export async function ensureWorker(
   }
 ): Promise<CompactUnitStatus> {
   const name = opts?.name ?? source.split("/").pop() ?? source;
-  const handle = await rpc.call<{ id: string }>("main", "runtime.createEntity", [
+  const handle = await rpc.call("main", mainRpcMethods["runtime.createEntity"], [
       {
         kind: "worker",
         execution: { surface: "code", source },

@@ -1,6 +1,8 @@
 import { describe, it, expect } from "vitest";
 import { forkConversation } from "./fork.js";
-import type { RpcCaller } from "@vibestudio/rpc";
+import type { RpcCaller, RpcCallOptions } from "@vibestudio/rpc";
+import { schemaRpcMock } from "@vibestudio/rpc/test-utils";
+import { durableObjectServiceFixture } from "@vibestudio/service-schemas/test-utils";
 
 // The saga itself now lives in the parent channel DO (`PubSubChannel.fork`);
 // this package is only the thin client helper. We assert it resolves the
@@ -15,28 +17,25 @@ interface RpcCall {
 
 function createMockRpc(forkResult: unknown) {
   const calls: RpcCall[] = [];
-  const rpc = {
-    async call<T>(
+  const rpc = schemaRpcMock({
+    call: async (
       targetId: string,
       method: string,
       args: unknown[],
-      options?: { idempotencyKey?: string }
-    ): Promise<T> {
+      options?: RpcCallOptions
+    ): Promise<unknown> => {
       calls.push({ targetId, method, args, options });
       if (targetId === "main" && method === "workers.resolveService") {
-        return {
-          kind: "durable-object",
-          source: "workers/pubsub-channel",
+        return durableObjectServiceFixture(`do:workers/pubsub-channel:PubSubChannel:${String(args[1])}`, { source: "workers/pubsub-channel",
           className: "PubSubChannel",
-          objectKey: args[1],
-          targetId: `do:workers/pubsub-channel:PubSubChannel:${args[1]}`,
-        } as T;
+          objectKey: String(args[1]),
+          });
       }
-      if (method === "fork") return forkResult as T;
-      return undefined as T;
+      if (method === "fork") return forkResult;
+      return undefined;
     },
     stream: async () => new Response(),
-  } as unknown as RpcCaller;
+  }) as unknown as RpcCaller;
   return { rpc, calls };
 }
 

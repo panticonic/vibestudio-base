@@ -5,15 +5,13 @@ import { callWorkspaceState, createRuntimeWorkspaceStateClient } from "./workspa
 
 type PanelStateArgsRpc = Pick<RpcClient, "call">;
 
-interface PanelStateArgsDetail {
-  currentHistory: { state_args: string | null };
-}
+
 
 export async function readPanelStateArgs<T = Record<string, unknown>>(
   rpc: PanelStateArgsRpc,
   panelId: string
 ): Promise<T> {
-  const detail = await callWorkspaceState<PanelStateArgsDetail | null>(rpc, "panelTree.detail", [
+  const detail = await callWorkspaceState(rpc, "panelTree.detail", [
     panelId,
   ]);
   if (!detail) throw new Error(`Panel not found: ${panelId}`);

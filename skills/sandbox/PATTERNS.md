@@ -339,6 +339,7 @@ inline_ui({
 import { useCallback, useEffect, useState } from "react";
 import { Button, Flex, Text, Table, TextField } from "@radix-ui/themes";
 import { rpc, workers } from "@workspace/runtime";
+import { todoStoreRpcMethods } from "@workspace-workers/todo-store/contract";
 
 export default function TodoStoreView({ props = {} }) {
   const protocol = props.protocol || "example.todos.v1";
@@ -357,7 +358,7 @@ export default function TodoStoreView({ props = {} }) {
     setError(null);
     try {
       const service = await resolveStore();
-      setTodos(await rpc.call(service.targetId, "listTodos", []));
+      setTodos(await rpc.call(service.targetId, todoStoreRpcMethods.listTodos, []));
     } catch (e) { setError(e.message); }
   }, [resolveStore]);
 
@@ -368,7 +369,7 @@ export default function TodoStoreView({ props = {} }) {
     setError(null);
     try {
       const service = await resolveStore();
-      await rpc.call(service.targetId, "upsertTodo", [{ title: title.trim() }]);
+      await rpc.call(service.targetId, todoStoreRpcMethods.upsertTodo, [{ title: title.trim() }]);
       setTitle("");
       await load();
     } catch (e) { setError(e.message); }

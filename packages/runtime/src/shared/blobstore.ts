@@ -1,3 +1,4 @@
+import { createLazyTypedRpcServiceClient } from "@vibestudio/shared/typedRpcServiceClient";
 /**
  * Blobstore client — the portable runtime binding for the per-workspace
  * content-addressable blob store, shared by panel · worker · eval.
@@ -20,7 +21,7 @@
 
 import { base64ToBytes, bytesToBase64, type RpcCaller } from "@vibestudio/rpc";
 import { type TypedServiceClient } from "@vibestudio/shared/typedServiceClient";
-import { createLazyTypedServiceClient } from "@vibestudio/shared/lazyTypedServiceClient";
+
 import type { blobstoreMethods } from "@vibestudio/service-schemas/blobstore";
 import { BLOBSTORE_METHOD_NAMES } from "@vibestudio/service-schemas/clients/generated/runtimeClientMethods";
 import type { RuntimeFs } from "../types.js";
@@ -93,13 +94,8 @@ export function createBlobstoreClient(
   recordOperation: (entry: OperationJournalEntry) => void = (entry) =>
     currentJournal()?.append(entry),
 ): BlobstoreClient {
-  const serviceClient = createLazyTypedServiceClient(
-    "blobstore",
-    BLOBSTORE_METHOD_NAMES,
-    async () =>
-      (await import("@vibestudio/service-schemas/blobstore")).blobstoreMethods,
-    (svc, method, args) => rpc.call("main", `${svc}.${method}`, args),
-  );
+  const serviceClient = createLazyTypedRpcServiceClient(rpc, { targetId: "main", namespace: "blobstore" }, BLOBSTORE_METHOD_NAMES, async () =>
+      (await import("@vibestudio/service-schemas/blobstore")).blobstoreMethods);
 
   const putBytes = async (...args: unknown[]): Promise<PutBlobResult> => {
     if (args.length !== 1) {

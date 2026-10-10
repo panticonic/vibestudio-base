@@ -12,6 +12,7 @@
  * descriptors (one per repo-embedded SKILL.md).
  */
 import type { RpcCaller } from "@vibestudio/rpc";
+import { createMainRpcCaller } from "@vibestudio/service-schemas/mainRpc";
 import { AgentWorkerError } from "./errors.js";
 
 export type { RpcCaller } from "@vibestudio/rpc";
@@ -44,9 +45,16 @@ export interface ResourceLoaderDeps {
  */
 export async function loadVibestudioResources(deps: ResourceLoaderDeps): Promise<VibestudioResources> {
   throwIfAborted(deps.signal);
+  const callMain = createMainRpcCaller(deps.rpc);
   const [systemPromptRaw, skillsRaw] = await Promise.all([
-    abortable(callWorkspace<unknown>(deps, "workspace.getAgentsMd"), deps.signal),
-    abortable(callWorkspace<unknown>(deps, "workspace.listSkills"), deps.signal),
+    abortable(
+      callMain("workspace.getAgentsMd", [], deps.signal ? { signal: deps.signal } : undefined),
+      deps.signal,
+    ),
+    abortable(
+      callMain("workspace.listSkills", [], deps.signal ? { signal: deps.signal } : undefined),
+      deps.signal,
+    ),
   ]);
   const systemPrompt = validateAgentsMd(systemPromptRaw);
   const skills = validateSkillList(skillsRaw);
@@ -100,11 +108,6 @@ function validateSkillEntry(value: unknown, index: number): SkillEntry {
     );
   }
   return { name, description, dirPath, skillPath: skillPath ?? `${dirPath}/SKILL.md` };
-}
-
-function callWorkspace<T>(deps: ResourceLoaderDeps, method: string): Promise<T> {
-  if (deps.signal) return deps.rpc.call<T>("main", method, [], { signal: deps.signal });
-  return deps.rpc.call<T>("main", method, []);
 }
 
 function throwIfAborted(signal: AbortSignal | undefined): void {

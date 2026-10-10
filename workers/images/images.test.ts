@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { sha256Hex } from "@vibestudio/content-addressing";
 import { createTestDO } from "@workspace/runtime/worker/test-utils";
-import type { ImageAsset, ImageGenerationJob } from "@workspace/runtime/images";
 import type { GenerateImageInput } from "@workspace/harness/image-generation";
 import { ImagesDO } from "./index.js";
 
@@ -97,7 +96,7 @@ describe("durable image jobs and assets", () => {
   it("joins retained release debt after a forget acknowledgement was lost and the job row is already gone", async () => {
     const fixture = fixtureClass();
     const first = await createTestDO(fixture.TestImagesDO);
-    const job = await first.call<ImageGenerationJob>("generate", {
+    const job = await first.call("generate", {
       requestId: "forget-lost-ack",
       prompt: "A ship",
     });
@@ -141,7 +140,7 @@ describe("durable image jobs and assets", () => {
   it("refuses forgetting a live job and accepts exact repeated terminal cleanup without re-creating it", async () => {
     const fixture = fixtureClass();
     const host = await createTestDO(fixture.TestImagesDO);
-    const job = await host.call<ImageGenerationJob>("generate", {
+    const job = await host.call("generate", {
       requestId: "forget-live",
       prompt: "A lantern",
     });
@@ -169,7 +168,7 @@ describe("durable image jobs and assets", () => {
     const fixture = fixtureClass();
     const host = await createTestDO(fixture.TestImagesDO);
     const owner = '\\"'.repeat(128);
-    const asset = await host.call<ImageAsset>("importAsset", {
+    const asset = await host.call("importAsset", {
       base64: BASE64,
       owner,
     });
@@ -189,10 +188,10 @@ describe("durable image jobs and assets", () => {
   it("atomically owns every input before admission awaits and releases all of them when forgotten", async () => {
     const fixture = fixtureClass();
     const host = await createTestDO(fixture.TestImagesDO);
-    const first = await host.call<ImageAsset>("importAsset", {
+    const first = await host.call("importAsset", {
       base64: BASE64,
     });
-    const second = await host.call<ImageAsset>("importAsset", {
+    const second = await host.call("importAsset", {
       base64: btoa(atob(BASE64) + "variant"),
     });
     let entered!: () => void;
@@ -207,7 +206,7 @@ describe("durable image jobs and assets", () => {
       entered();
       await blocked;
     });
-    const admission = host.call<ImageGenerationJob>("generate", {
+    const admission = host.call("generate", {
       requestId: "forgotten-admission",
       prompt: "A harbor",
       references: [first, second],
@@ -239,12 +238,12 @@ describe("durable image jobs and assets", () => {
   it("keeps public application owner strings separate from internal job roots", async () => {
     const fixture = fixtureClass();
     const host = await createTestDO(fixture.TestImagesDO);
-    const job = await host.call<ImageGenerationJob>("generate", {
+    const job = await host.call("generate", {
       requestId: "owner-separation",
       prompt: "A harbor",
     });
     await host.instance.alarm();
-    const result = await host.call<ImageGenerationJob>("getJob", job.id);
+    const result = await host.call("getJob", job.id);
     await host.call("release", {
       assetId: result.asset!.id,
       owner: JSON.stringify(["job", job.id]),
@@ -262,7 +261,7 @@ describe("durable image jobs and assets", () => {
   it("serializes concurrent request replays while retaining references", async () => {
     const fixture = fixtureClass();
     const host = await createTestDO(fixture.TestImagesDO);
-    const reference = await host.call<ImageAsset>("importAsset", {
+    const reference = await host.call("importAsset", {
       base64: BASE64,
     });
     let entered!: () => void;
@@ -282,9 +281,9 @@ describe("durable image jobs and assets", () => {
       prompt: "A lantern",
       references: [reference],
     };
-    const first = host.call<ImageGenerationJob>("generate", request);
+    const first = host.call("generate", request);
     await started;
-    const second = host.call<ImageGenerationJob>("generate", request);
+    const second = host.call("generate", request);
     resume();
     const [left, right] = await Promise.all([first, second]);
     expect(left).toEqual(right);
@@ -314,7 +313,7 @@ describe("durable image jobs and assets", () => {
       });
     });
     const host = await createTestDO(fixture.TestImagesDO);
-    const job = await host.call<ImageGenerationJob>("generate", {
+    const job = await host.call("generate", {
       requestId: "retry-inflight",
       prompt: "A boat",
     });
@@ -361,7 +360,7 @@ describe("durable image jobs and assets", () => {
       return BASE64;
     });
     const host = await createTestDO(fixture.TestImagesDO);
-    const job = await host.call<ImageGenerationJob>("generate", {
+    const job = await host.call("generate", {
       requestId: "forget-inflight",
       prompt: "A boat",
     });
@@ -383,7 +382,7 @@ describe("durable image jobs and assets", () => {
   it("hides failed art-direction publication and never reuses a deleted version", async () => {
     const fixture = fixtureClass();
     const host = await createTestDO(fixture.TestImagesDO);
-    const reference = await host.call<ImageAsset>("importAsset", {
+    const reference = await host.call("importAsset", {
       base64: BASE64,
     });
     fixture.setRetaining(async () => {
@@ -402,7 +401,7 @@ describe("durable image jobs and assets", () => {
     fixture.setRetaining(async () => {});
     await host.instance.alarm();
     expect(fixture.roots.size).toBe(1);
-    const second = await host.call<{ id: string; version: number }>(
+    const second = await host.call(
       "putArtDirection",
       {
         id: "style",
@@ -423,13 +422,13 @@ describe("durable image jobs and assets", () => {
   it("replays requests and reads retained output after a fresh durable-object incarnation", async () => {
     const fixture = fixtureClass();
     const first = await createTestDO(fixture.TestImagesDO);
-    const queued = await first.call<ImageGenerationJob>("generate", {
+    const queued = await first.call("generate", {
       requestId: "scene:one",
       prompt: "A warm lantern in an engraving",
     });
     expect(queued.status).toBe("queued");
     await first.instance.alarm();
-    const result = await first.call<ImageGenerationJob>("getJob", queued.id);
+    const result = await first.call("getJob", queued.id);
     expect(result.status).toBe("succeeded");
     expect(result.asset).toMatchObject({
       width: 1,
@@ -468,10 +467,10 @@ describe("durable image jobs and assets", () => {
   it("retains reference closure and versioned art direction across deletion until a job is forgotten", async () => {
     const fixture = fixtureClass();
     const host = await createTestDO(fixture.TestImagesDO);
-    const reference = await host.call<ImageAsset>("importAsset", {
+    const reference = await host.call("importAsset", {
       base64: BASE64,
     });
-    const direction = await host.call<{ id: string; version: number }>(
+    const direction = await host.call(
       "putArtDirection",
       {
         id: "etching",
@@ -479,7 +478,7 @@ describe("durable image jobs and assets", () => {
         references: [reference],
       },
     );
-    const job = await host.call<ImageGenerationJob>("generate", {
+    const job = await host.call("generate", {
       requestId: "scene:two",
       prompt: "A lighthouse",
       artDirection: direction,
@@ -494,7 +493,7 @@ describe("durable image jobs and assets", () => {
       return BASE64;
     });
     await host.instance.alarm();
-    const result = await host.call<ImageGenerationJob>("getJob", job.id);
+    const result = await host.call("getJob", job.id);
     expect(result.status).toBe("succeeded");
     await host.call("retain", {
       assetId: result.asset!.id,
@@ -533,7 +532,7 @@ describe("durable image jobs and assets", () => {
       return result;
     });
     const host = await createTestDO(fixture.TestImagesDO);
-    const job = await host.call<ImageGenerationJob>("generate", {
+    const job = await host.call("generate", {
       requestId: "scene:cancel",
       prompt: "A ship",
     });
@@ -541,7 +540,7 @@ describe("durable image jobs and assets", () => {
     await waiting;
     let settled = false;
     const cancellation = host
-      .call<ImageGenerationJob>("cancel", job.id)
+      .call("cancel", job.id)
       .finally(() => {
         settled = true;
       });
@@ -552,11 +551,11 @@ describe("durable image jobs and assets", () => {
     await generation;
     expect(fixture.roots.size).toBe(0);
     fixture.setProvider(async () => BASE64);
-    expect((await host.call<ImageGenerationJob>("retry", job.id)).attempt).toBe(
+    expect((await host.call("retry", job.id)).attempt).toBe(
       2,
     );
     await host.instance.alarm();
-    expect((await host.call<ImageGenerationJob>("getJob", job.id)).status).toBe(
+    expect((await host.call("getJob", job.id)).status).toBe(
       "succeeded",
     );
     expect(fixture.calls()).toBe(2);
@@ -565,7 +564,7 @@ describe("durable image jobs and assets", () => {
   it("marks an interrupted provider attempt failed after restart without silently generating twice", async () => {
     const fixture = fixtureClass();
     const host = await createTestDO(fixture.TestImagesDO);
-    const job = await host.call<ImageGenerationJob>("generate", {
+    const job = await host.call("generate", {
       requestId: "scene:crash",
       prompt: "A bridge",
     });
@@ -588,7 +587,7 @@ describe("durable image jobs and assets", () => {
     await restarted.call("retry", job.id);
     await restarted.instance.alarm();
     expect(
-      (await restarted.call<ImageGenerationJob>("getJob", job.id)).status,
+      (await restarted.call("getJob", job.id)).status,
     ).toBe("succeeded");
   });
 });

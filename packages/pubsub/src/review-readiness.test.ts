@@ -1,3 +1,4 @@
+import { schemaRpcMock } from "@vibestudio/rpc/test-utils";
 import { describe, expect, it, vi } from "vitest";
 import { encodeEventWatchRecord } from "@vibestudio/shared/events";
 import { waitForApprovalResolution } from "./review-readiness.js";
@@ -37,7 +38,7 @@ function createApprovalEventsRpc(initialApprovalIds: string[]) {
   );
 
   return {
-    rpc: { stream },
+    rpc: schemaRpcMock({ call: async () => { throw new Error("Unexpected unary RPC"); }, stream }),
     stream,
     update(approvalIds: string[]) {
       sequence += 1;

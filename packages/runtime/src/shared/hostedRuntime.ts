@@ -1,3 +1,7 @@
+import { mainRpcMethod } from "@vibestudio/service-schemas/mainRpc";
+import { createMissionsClient } from "@vibestudio/service-schemas/clients/missionsClient";
+import { createLazyTypedRpcServiceClient } from "@vibestudio/shared/typedRpcServiceClient";
+import type { RpcMethodMap } from "@vibestudio/shared/rpcMethods";
 import {
   createWorkspaceCreationClient,
   type WorkspaceCreationClient,
@@ -41,10 +45,7 @@ import {
   createProblemReportsClient,
   type ProblemReportsClient,
 } from "./problemReports.js";
-import {
-  createMissionsClient,
-  type MissionsClient,
-} from "@vibestudio/automation/mission";
+import { type MissionsClient } from "@vibestudio/automation/mission";
 import { createBlobstoreClient, type BlobstoreClient } from "./blobstore.js";
 import { createWorkspaceClient, type WorkspaceClient } from "./workspace.js";
 import {
@@ -79,7 +80,7 @@ import type { PanelHandle } from "../core/index.js";
 import type { runtimeMethods } from "@vibestudio/service-schemas/runtime";
 import { RUNTIME_METHOD_NAMES } from "@vibestudio/service-schemas/clients/generated/runtimeClientMethods";
 import { type TypedServiceClient } from "@vibestudio/shared/typedServiceClient";
-import { createLazyTypedServiceClient } from "@vibestudio/shared/lazyTypedServiceClient";
+
 
 export type RuntimeServiceClient = TypedServiceClient<typeof runtimeMethods>;
 
@@ -160,10 +161,11 @@ export interface WorkspaceRuntime {
   readonly notifications: NotificationClient;
   readonly workers: WorkerdClient;
   readonly doTargetId: typeof doTargetId;
-  readonly createDurableObjectServiceClient: (
+  readonly createDurableObjectServiceClient: <M extends RpcMethodMap>(
     query: string,
+    methods: M,
     objectKey?: string | null,
-  ) => DurableObjectServiceClient;
+  ) => DurableObjectServiceClient<M>;
   readonly gatewayConfig: GatewayConfig | null;
   readonly gatewayFetch: GatewayFetch;
   openExternal(
@@ -206,7 +208,7 @@ export { createRuntimeParentHandle } from "./handles.js";
  * cross-target parity gate includes that member directly.
  */
 export function createServicesProxy(
-  rt: Pick<WorkspaceRuntime, "callMain">,
+  rt: Pick<WorkspaceRuntime, "rpc">,
 ): Record<string, unknown> {
   // Cache per-service clients so repeated `services.foo` access is stable
   // (=== across reads) and a method proxy isn't rebuilt on every property get.
@@ -228,7 +230,7 @@ export function createServicesProxy(
           let fn = methodCache.get(m);
           if (!fn) {
             fn = (...args: unknown[]) =>
-              rt.callMain(`${service}.${m}`, ...args);
+              rt.rpc.call("main", mainRpcMethod(`${service}.${m}`), args);
             methodCache.set(m, fn);
           }
           return fn;
@@ -340,7 +342,7 @@ export function createHostedRuntime(host: RuntimeHost): WorkspaceRuntime {
     "browserData",
     createBrowserDataClient({
       callService: (service, method, args) =>
-        rpc.call("main", `${service}.${method}`, args),
+        rpc.call("main", mainRpcMethod(`${service}.${method}`), args),
     }),
   );
   const gad = helpfulNamespace("gad", createGadClient(rpc));
@@ -355,19 +357,13 @@ export function createHostedRuntime(host: RuntimeHost): WorkspaceRuntime {
   );
   const runtimeService = helpfulNamespace(
     "runtime",
-    createLazyTypedServiceClient(
-      "runtime",
-      RUNTIME_METHOD_NAMES,
-      async () =>
-        (await import("@vibestudio/service-schemas/runtime")).runtimeMethods,
-      (service, method, args) => rpc.call("main", `${service}.${method}`, args),
-    ),
+    createLazyTypedRpcServiceClient(rpc, { targetId: "main", namespace: "runtime" }, RUNTIME_METHOD_NAMES, async () =>
+        (await import("@vibestudio/service-schemas/runtime")).runtimeMethods),
   );
   const vcs = helpfulNamespace(
     "vcs",
     createVcsClient(
-      <T>(method: string, ...args: unknown[]) =>
-        rpc.call<T>("main", method, args),
+      rpc,
       host.contextId,
     ),
   );
@@ -423,8 +419,8 @@ export function createHostedRuntime(host: RuntimeHost): WorkspaceRuntime {
     notifications,
     workers: host.workers,
     doTargetId,
-    createDurableObjectServiceClient: (query, objectKey) =>
-      createDurableObjectServiceClient(rpc, query, objectKey),
+    createDurableObjectServiceClient: (query, methods, objectKey) =>
+      createDurableObjectServiceClient(rpc, query, methods, objectKey),
     gatewayConfig: host.gatewayConfig,
     gatewayFetch: host.gatewayFetch,
     openExternal: host.openExternal,

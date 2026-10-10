@@ -1,5 +1,6 @@
+import { createTypedRpcServiceClient } from "@vibestudio/shared/typedRpcServiceClient";
 import YAML from "yaml";
-import { createTypedServiceClient } from "@vibestudio/shared/typedServiceClient";
+
 import { vcsMethods } from "@vibestudio/service-schemas/vcs";
 import type {
   TemplateAuthoringInspection,
@@ -63,11 +64,7 @@ export function createTemplatePublisher(
     ctx,
     "template-publications",
   );
-  const vcs = createTypedServiceClient(
-    "vcs",
-    vcsMethods,
-    (_service, method, args) => ctx.rpc.call("main", `vcs.${method}`, ...args),
-  );
+  const vcs = createTypedRpcServiceClient(ctx.rpc, { targetId: "main", namespace: "vcs" }, vcsMethods);
   return (request: Request) =>
     operations.serial(request.commandId, async () => {
       let operation: Publication;

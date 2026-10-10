@@ -1,3 +1,4 @@
+import { schemaRpcMock } from "@vibestudio/rpc/test-utils";
 import { describe, expect, it } from "vitest";
 import type { Context } from "@panticonic/pi-chord";
 import type { Harness } from "@panticonic/pi-durable";
@@ -11,6 +12,7 @@ import {
   createNativeChannelProvider,
   type NativeChannelProviderAdmission,
 } from "./testing/native-channel-provider.js";
+import { durableObjectServiceFixture } from "@vibestudio/service-schemas/test-utils";
 
 const channelId = "provider-lifecycle";
 const providerId = "do:workers/test:ProviderVessel:provider";
@@ -107,7 +109,7 @@ async function fixture(
     deliver: async (channel, callId, method, args, admission) => {
       lastAdmission = admission;
       const original = () =>
-        vessel.callAs<{ result: unknown; isError?: boolean }>(
+        vessel.callAs(
           channelCaller,
           "onMethodCall",
           channel,
@@ -128,21 +130,18 @@ async function fixture(
     },
   });
   const caller = { callerId: providerId, callerKind: "do" as const };
-  const rpc: RpcCaller = {
-    async call<T>(target: string, method: string, args: unknown[]): Promise<T> {
+  const rpc: RpcCaller = schemaRpcMock({
+    async call(target: string, method: string, args: unknown[]): Promise<unknown> {
       if (target === "main" && method === "workers.resolveService")
-        return {
-          kind: "durable-object",
-          targetId: channelCaller.callerId,
-        } as T;
+        return durableObjectServiceFixture(channelCaller.callerId);
       if (target !== channelCaller.callerId)
         throw Error(`Foreign fixture target ${target}`);
-      return provider.channel.callAs<T>(caller, method, ...args);
+      return provider.channel.callAs(caller, method, ...args);
     },
     async stream() {
       throw Error("Finite provider fixture cannot stream");
     },
-  };
+  });
   vessel.instance.client = new ChannelClient(rpc, channelId);
   return {
     vessel,
@@ -154,7 +153,7 @@ async function fixture(
     async terminal(callId: string, eventOverride?: ChannelEvent) {
       const event =
         eventOverride ??
-        (await provider.channel.callAs<ChannelEvent | null>(
+        (await provider.channel.callAs(
           caller,
           "getEnvelope",
           `terminal:${callId}`,

@@ -1,3 +1,4 @@
+import { createMainRpcCaller } from "@vibestudio/service-schemas/mainRpc";
 import { nativeToolAdmissionRefusal } from "./native-tool-refusal.js";
 import type { Context } from "@panticonic/pi-chord";
 import {
@@ -91,10 +92,7 @@ export function createNativeEvalExecution(
       }),
     );
     const route = { runId: input.runId, scopeKey };
-    const call: EvalCall = <T>(method: string, params: unknown[]) =>
-      execution.rpc.call<T>("main", method, params, {
-        signal: context.abortSignal,
-      });
+    const call: EvalCall = (method, params) => createMainRpcCaller(execution.rpc)(method, params, { signal: context.abortSignal });
     if (
       api.continuation !== undefined &&
       canonicalJson(api.continuation) !==
@@ -124,11 +122,11 @@ export function createNativeEvalExecution(
       if (consumed?.result !== undefined)
         return formatEvalResult(
           evalRunResultSchema.parse(consumed.result),
-          (digest) => call<string | null>("blobstore.getBase64", [digest]),
+          (digest) => call("blobstore.getBase64", [digest]),
         );
       let response: unknown;
       try {
-        response = await call<unknown>("eval.start", [input]);
+        response = await call("eval.start", [input]);
       } catch (error) {
         // A host refusal before the first admission owns no EvalDO run. A
         // restored continuation may already own one, even without an ack.
@@ -143,7 +141,7 @@ export function createNativeEvalExecution(
         (tx) => recordEvalAdmission(tx, route.runId, accepted),
         context,
       );
-      const observed = await call<unknown>("eval.receipt", [route]);
+      const observed = await call("eval.receipt", [route]);
       if (observed === null) return waiting(route.runId, binding);
       const receipt = await retainObservedEvalReceipt(
         harness,
@@ -153,7 +151,7 @@ export function createNativeEvalExecution(
         host.acknowledgements,
         context,
       );
-      return formatEvalResult(receipt.result, (digest) => call<string | null>("blobstore.getBase64", [digest]));
+      return formatEvalResult(receipt.result, (digest) => call("blobstore.getBase64", [digest]));
     },
     cancel: async (args, api, context) => {
       const { harness, binding, route, call } = await invocation(
@@ -175,9 +173,9 @@ export function createNativeEvalExecution(
         context,
       );
       evalMethods.cancel.returns.parse(
-        await call<unknown>("eval.cancel", [route]),
+        await call("eval.cancel", [route]),
       );
-      const observed = await call<unknown>("eval.receipt", [route]);
+      const observed = await call("eval.receipt", [route]);
       if (observed === null)
         throw new Error("Eval cancellation has no canonical terminal receipt");
       const receipt = evalResultReceiptSchema.parse(observed);
@@ -193,7 +191,7 @@ export function createNativeEvalExecution(
         host.acknowledgements,
         context,
       );
-      return formatEvalResult(receipt.result, (digest) => call<string | null>("blobstore.getBase64", [digest]));
+      return formatEvalResult(receipt.result, (digest) => call("blobstore.getBase64", [digest]));
     },
   };
 }

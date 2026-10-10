@@ -1,3 +1,4 @@
+import { mainRpcMethods } from "@vibestudio/service-schemas/mainRpc";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { WorkspaceProvider, RpcEnvelope } from "@vibestudio/rpc";
 
@@ -94,7 +95,7 @@ describe("default panel runtime binding", () => {
     const api = await import("./index.js");
     const call = api.rpc.call;
     expect(api.workspaceConnection.connected).toBe(false);
-    expect(() => call("main", "docs.list", [])).toThrow(/Connect this website/);
+    expect(() => call("main", mainRpcMethods["workers.listSources"], [])).toThrow(/Connect this website/);
     expect(f.bridge.connect).not.toHaveBeenCalled();
     expect(f.bridge.postEnvelope).not.toHaveBeenCalled();
     expect(api.id).toBeUndefined();
@@ -110,13 +111,13 @@ describe("default panel runtime binding", () => {
     expect(Object.keys(api.credentials)).toEqual(
       Object.keys(instance.credentials),
     );
-    const pending = instance.rpc.call("main", "docs.list", []);
+    const pending = instance.rpc.call("main", mainRpcMethods["workers.listSources"], []);
     const rejected = expect(pending).rejects.toThrow();
     await api.disconnectWorkspace();
     await rejected;
     expect(f.messages.size).toBe(0);
     expect(f.disconnected.size).toBe(0);
-    expect(() => api.rpc.call("main", "docs.list", [])).toThrow(
+    expect(() => api.rpc.call("main", mainRpcMethods["workers.listSources"], [])).toThrow(
       /Connect this website/,
     );
     expect(api.workspaceConnection.connected).toBe(false);

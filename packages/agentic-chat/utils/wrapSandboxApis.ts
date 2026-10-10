@@ -47,7 +47,7 @@ export function wrapChatForErrorReporting(
     focusMessage: (...args: Parameters<ChatSandboxValue["focusMessage"]>) =>
       trackPromise(chat.focusMessage(...args), onError),
     rpc: {
-      call: (...args: Parameters<ChatSandboxValue["rpc"]["call"]>) =>
+      call: (...args) =>
         trackPromise(chat.rpc.call(...args), onError),
     },
   };

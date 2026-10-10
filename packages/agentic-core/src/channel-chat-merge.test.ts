@@ -1789,7 +1789,7 @@ describe("chatMessagesFromChannelView", () => {
     });
   });
 
-  it("shows typing when a credential wait resumes with a new model call", () => {
+  it("keeps a credential wait until the native owner explicitly resumes it", () => {
     const turnId = brandId<TurnId>("turn-resumed-credential-model-call");
     const credKey = "cred:channel-1:openai-codex";
     const opened: AgenticEvent<"turn.opened"> = {
@@ -1835,9 +1835,22 @@ describe("chatMessagesFromChannelView", () => {
       createdAt: "2026-05-20T12:00:03.000Z",
     };
 
-    const state = [opened, waiting, resolved, resumed]
+    const waitingState = [opened, waiting, resolved, resumed]
       .map((event, index) => envelope(event, index + 1))
       .reduce(reduceChannelView, createInitialChannelViewState());
+
+    expect(waitingState.turns[turnId]?.status).toBe("waiting");
+    expect(chatMessagesFromChannelView(waitingState)).toContainEqual(
+      expect.objectContaining({ id: `turn:${turnId}:waiting` })
+    );
+    const ownerResumed: AgenticEvent<"turn.resumed"> = {
+      kind: "turn.resumed",
+      actor: agent,
+      turnId,
+      payload: { protocol: AGENTIC_PROTOCOL_VERSION },
+      createdAt: "2026-05-20T12:00:04.000Z",
+    };
+    const state = reduceChannelView(waitingState, envelope(ownerResumed, 5));
 
     expect(chatMessagesFromChannelView(state).map((message) => message.id)).toEqual([
       "turn:turn-resumed-credential-model-call",
@@ -1846,6 +1859,22 @@ describe("chatMessagesFromChannelView", () => {
       contentType: "typing",
       complete: false,
     });
+  });
+
+  it.each(["work_failed", undefined] as const)("uses the actual closed-run outcome without a turn-linked invocation: %s", (reason) => {
+    const turnId = brandId<TurnId>("native-run:1:2");
+    const events: AgenticEvent[] = [
+      { kind: "turn.opened", actor: agent, turnId, payload: { protocol: AGENTIC_PROTOCOL_VERSION }, createdAt: "2026-05-20T12:00:00.000Z" },
+      { kind: "turn.closed", actor: agent, turnId, payload: { protocol: AGENTIC_PROTOCOL_VERSION, ...(reason ? { reason } : {}) }, createdAt: "2026-05-20T12:00:01.000Z" },
+    ];
+    const state = events.map((event, index) => envelope(event, index + 1))
+      .reduce(reduceChannelView, createInitialChannelViewState());
+    const messages = chatMessagesFromChannelView(state);
+    if (reason) {
+      expect(messages).toEqual([expect.objectContaining({ error: "Agent turn closed without an assistant response" })]);
+    } else {
+      expect(messages).toEqual([]);
+    }
   });
 
   it("does not surface user-interrupted agent turns as no-response errors", () => {

@@ -14,10 +14,11 @@ const repository = await vcs.resolveRepository({
 });
 ```
 
-Each method takes its documented request object directly. Don't wrap it in an
-argument array or call `rpc.call("main", "vcs.*", ...)`: the raw transport
-adds nothing and makes argument errors harder to diagnose. In a chat turn,
-prefer the compact `vcs` tool (including commit), `apply_patch` for
+Each method takes its documented request object directly. If a direct RPC call
+is needed, pass the canonical descriptor from
+`@vibestudio/service-schemas/mainRpc` and its argument tuple, for example
+`rpc.call("main", mainRpcMethods["vcs.status"], [{ contextId }])`. In a chat
+turn, prefer the compact `vcs` tool (including commit), `apply_patch` for
 multi-file changes, and the `write`, `edit`, `move_file`, and `copy_file`
 tools.
 

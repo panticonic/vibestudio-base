@@ -1,3 +1,7 @@
+import { gadWireMethods } from "@vibestudio/service-schemas/workspaceSource";
+import { createHash } from "node:crypto";
+import { schemaRpcMock } from "@vibestudio/rpc/test-utils";
+import { durableObjectServiceFixture } from "@vibestudio/service-schemas/test-utils";
 import { vi } from "vitest";
 import { createTestDO } from "@workspace/runtime/worker/test-utils";
 import {
@@ -22,14 +26,18 @@ export const TRANSCRIPT_TEST_GAD_TARGET =
 function setRpcCaller(
   instance: PubSubChannel,
   callerId: string | null,
-  callerKind: string | null
+  callerKind: string | null,
 ): void {
-  (instance as unknown as { _currentRpcCallerId: string | null })._currentRpcCallerId = callerId;
-  (instance as unknown as { _currentRpcCallerKind: string | null })._currentRpcCallerKind =
-    callerKind;
+  (
+    instance as unknown as { _currentRpcCallerId: string | null }
+  )._currentRpcCallerId = callerId;
+  (
+    instance as unknown as { _currentRpcCallerKind: string | null }
+  )._currentRpcCallerKind = callerKind;
 }
 
-export async function createTranscriptHarness(channelId = TRANSCRIPT_TEST_CHANNEL_ID,
+export async function createTranscriptHarness(
+  channelId = TRANSCRIPT_TEST_CHANNEL_ID,
 ) {
   const channelTarget = `do:workers/pubsub-channel:PubSubChannel:${channelId}`;
   const gad = await createTestDO(GadWorkspaceDO, {
@@ -38,9 +46,8 @@ export async function createTranscriptHarness(channelId = TRANSCRIPT_TEST_CHANNE
   const channel = await createTestDO(PubSubChannel, { __objectKey: channelId });
   const listeners = new Map<string, (event: { payload: unknown }) => void>();
   const blobs = new Map<string, string>();
-  let blobCounter = 0;
   const putTextBlob = (value: string) => {
-    const digest = `test-digest-${++blobCounter}`;
+    const digest = createHash("sha256").update(value).digest("hex");
     blobs.set(digest, value);
     return { digest, size: value.length };
   };
@@ -49,24 +56,37 @@ export async function createTranscriptHarness(channelId = TRANSCRIPT_TEST_CHANNE
   // behind the `rpc` getter; pre-setting `_connectionless` short-circuits the
   // real (network) client construction.
   const mockClient = {
-    emit: vi.fn(async (target: string, _event: string, payload: unknown) => {
-      listeners.get(target)?.({ payload });
-    }),
     call: vi.fn(async (target: string, method: string, args: unknown[]) => {
       if (target === "main" && method === "workers.resolveService") {
-        return {
-          kind: "durable-object",
-          source: "vibestudio/internal",
+        return durableObjectServiceFixture(TRANSCRIPT_TEST_GAD_TARGET, {
+          origin: "workspace",
+          source: "workers/workspace-source",
+          name: "workspace-source",
+          action: "provide",
+          presentation: { domain: "web", verb: "see" },
+          authority: { principals: ["code"] },
           className: "GadWorkspaceDO",
           objectKey: "workspace",
-          targetId: TRANSCRIPT_TEST_GAD_TARGET,
-        };
+        });
       }
       if (
         target === "main" &&
         method === "workspace-state.entity.resolveActive"
       ) {
-        return { id: args[0], kind: "do" };
+        return {
+          id: args[0],
+          authoritySessionId: "authority-transcript-fixture",
+          kind: "do",
+          source: {
+            repoPath: "workers/workspace-source",
+            effectiveVersion: "test",
+          },
+          contextId: "ctx-transcript-fixture",
+          key: "workspace",
+          createdAt: 0,
+          status: "active",
+          cleanupComplete: false,
+        };
       }
       if (target === "main" && method === "blobstore.putText") {
         const value = String(args[0] ?? "");
@@ -87,6 +107,12 @@ export async function createTranscriptHarness(channelId = TRANSCRIPT_TEST_CHANNE
       if (target === "main") return undefined;
       throw new Error(`unexpected channel rpc call ${target}.${method}`);
     }),
+    stream: vi.fn(async () => {
+      throw new Error("unexpected channel streaming RPC");
+    }),
+    emit: vi.fn(async (target: string, _event: string, payload: unknown) => {
+      listeners.get(target)?.({ payload });
+    }),
     expose: () => {},
     exposeAll: () => {},
     on: () => () => {},
@@ -104,11 +130,19 @@ export async function createTranscriptHarness(channelId = TRANSCRIPT_TEST_CHANNE
     respond: async (envelope: {
       from?: string;
       target?: string;
-      message?: { type?: string; requestId?: string; method?: string; args?: unknown[] };
+      message?: {
+        type?: string;
+        requestId?: string;
+        method?: string;
+        args?: unknown[];
+      };
     }) => {
       const msg = envelope.message ?? {};
       if (msg.type !== "request") return null;
-      const callable = channel.instance as unknown as Record<string, (...a: unknown[]) => unknown>;
+      const callable = channel.instance as unknown as Record<
+        string,
+        (...a: unknown[]) => unknown
+      >;
       const result = await callable[msg.method ?? ""]!(...(msg.args ?? []));
       return {
         from: envelope.target,
@@ -121,92 +155,113 @@ export async function createTranscriptHarness(channelId = TRANSCRIPT_TEST_CHANNE
     deliver: () => {},
   };
 
-  function createParticipantRpc(opts: { id: string; name: string; type: string; handle: string }) {
-    const call = vi.fn(async (target: string, method: string, args: unknown[]) => {
-      if (target === "main" && method === "workers.resolveService") {
-        return { kind: "durable-object", targetId: channelTarget };
-      }
-      if (target === channelTarget) {
-        const participantId = opts.id;
-        const participantKind = participantId?.startsWith("do:")
+  function createParticipantRpc(opts: {
+    id: string;
+    name: string;
+    type: string;
+    handle: string;
+  }) {
+    const call = vi.fn(
+      async (target: string, method: string, args: unknown[]) => {
+        if (target === "main" && method === "workers.resolveService") {
+          return durableObjectServiceFixture(channelTarget, {
+            origin: "workspace",
+            source: "workers/pubsub-channel",
+            name: "pubsub-channel",
+            action: "provide",
+            presentation: { domain: "web", verb: "see" },
+            authority: { principals: ["code"] },
+            protocols: ["vibestudio.channel.v1"],
+            className: "PubSubChannel",
+            objectKey: channelId,
+          });
+        }
+        if (target === channelTarget) {
+          const participantId = opts.id;
+          const participantKind = participantId?.startsWith("do:")
             ? "durable-object"
             : participantId?.startsWith("panel:")
-          ? "panel"
-          : participantId?.startsWith("agent:")
-            ? "agent"
-            : null;
-        setRpcCaller(channel.instance, participantId, participantKind);
-        const callable = channel.instance as unknown as Record<
-          string,
-          (...methodArgs: unknown[]) => unknown
-        >;
-        return await callable[method]!(...args);
-      }
-      throw new Error(`unexpected client rpc call ${target}.${method}`);
-    },
+              ? "panel"
+              : participantId?.startsWith("agent:")
+                ? "agent"
+                : null;
+          setRpcCaller(channel.instance, participantId, participantKind);
+          const callable = channel.instance as unknown as Record<
+            string,
+            (...methodArgs: unknown[]) => unknown
+          >;
+          return await callable[method]!(...args);
+        }
+        throw new Error(`unexpected client rpc call ${target}.${method}`);
+      },
     );
 
     return {
-      selfId: opts.id,
-      call,
-      stream: vi.fn(
-        async (
-          target: string,
-          method: string,
-          args: unknown[],
-          options?: { signal?: AbortSignal }
-        ) => {
-          const response = await call(target, method, args);
-          if (!(response instanceof Response)) {
-            throw new Error(`streaming client rpc ${target}.${method} did not return a Response`);
-          }
-          if (!response.body || !options?.signal) return response;
-
-          const reader = response.body.getReader();
-          const signal = options.signal;
-          let terminal = false;
-          let streamController: ReadableStreamDefaultController<Uint8Array> | null = null;
-          const stop = async (reason?: unknown) => {
-            if (terminal) return;
-            terminal = true;
-            signal.removeEventListener("abort", abort);
-            await reader.cancel(reason).catch(() => {});
-            try {
-              streamController?.close();
-            } catch {
-              // The consumer already cancelled the response.
+      ...schemaRpcMock({
+        call,
+        stream: vi.fn(
+          async (
+            target: string,
+            method: string,
+            args: unknown[],
+            options?: { signal?: AbortSignal },
+          ) => {
+            const response = await call(target, method, args);
+            if (!(response instanceof Response)) {
+              throw new Error(
+                `streaming client rpc ${target}.${method} did not return a Response`,
+              );
             }
-          };
-          const abort = () => {
-            void stop(signal.reason);
-          };
-          const body = new ReadableStream<Uint8Array>({
-            start(controller) {
-              streamController = controller;
-              signal.addEventListener("abort", abort, { once: true });
-            },
-            async pull(controller) {
-              const chunk = await reader.read();
+            if (!response.body || !options?.signal) return response;
+
+            const reader = response.body.getReader();
+            const signal = options.signal;
+            let terminal = false;
+            let streamController: ReadableStreamDefaultController<Uint8Array> | null =
+              null;
+            const stop = async (reason?: unknown) => {
               if (terminal) return;
-              if (chunk.done) {
-                terminal = true;
-                signal.removeEventListener("abort", abort);
-                controller.close();
-                return;
+              terminal = true;
+              signal.removeEventListener("abort", abort);
+              await reader.cancel(reason).catch(() => {});
+              try {
+                streamController?.close();
+              } catch {
+                // The consumer already cancelled the response.
               }
-              controller.enqueue(chunk.value);
-            },
-            cancel(reason) {
-              return stop(reason);
-            },
-          });
-          return new Response(body, {
-            status: response.status,
-            statusText: response.statusText,
-            headers: response.headers,
-          });
-        }
-      ),
+            };
+            const abort = () => {
+              void stop(signal.reason);
+            };
+            const body = new ReadableStream<Uint8Array>({
+              start(controller) {
+                streamController = controller;
+                signal.addEventListener("abort", abort, { once: true });
+              },
+              async pull(controller) {
+                const chunk = await reader.read();
+                if (terminal) return;
+                if (chunk.done) {
+                  terminal = true;
+                  signal.removeEventListener("abort", abort);
+                  controller.close();
+                  return;
+                }
+                controller.enqueue(chunk.value);
+              },
+              cancel(reason) {
+                return stop(reason);
+              },
+            });
+            return new Response(body, {
+              status: response.status,
+              statusText: response.statusText,
+              headers: response.headers,
+            });
+          },
+        ),
+      }),
+      selfId: opts.id,
     };
   }
 
@@ -229,42 +284,49 @@ export async function createTranscriptHarness(channelId = TRANSCRIPT_TEST_CHANNE
     });
   }
 
-  return { gad, channel, channelId, connectParticipant, createParticipantRpc, putTextBlob };
+  return {
+    gad,
+    channel,
+    channelId,
+    connectParticipant,
+    createParticipantRpc,
+    putTextBlob,
+  };
 }
 
 export async function appendTrajectoryEventsAndBroadcast(
   harness: Awaited<ReturnType<typeof createTranscriptHarness>>,
-  events: AgenticEvent[]
+  events: AgenticEvent[],
 ) {
-  const result = await harness.gad.call<{
-    published: Array<{ channelId: string; envelopeId: string }>;
-  }>("appendLogEvent", {
-    logId: "trajectory:test",
-    head: "branch:test",
-    logKind: "trajectory",
-    owner: { kind: "agent", id: "agent:onboarding" },
-    events: await Promise.all(
-      events.map(async (event) => {
-        const encoded = (await encodeChannelPayloadStoredValues(
-          { ...event, turnId: "turn:test" },
-          {
-            putText: async (value) => harness.putTextBlob(value),
-          }
-        )) as AgenticEvent;
-        return {
-          actor: encoded.actor,
-          payloadKind: encoded.kind,
-          payload: encoded.payload,
-          causality: { ...(encoded.causality ?? {}), turnId: "turn:test" },
-          appendedAt: encoded.createdAt,
-          publish: { channels: [{ channelId: harness.channelId }] },
-        };
-      })
-    ),
-  });
+  const result = gadWireMethods.appendLogEvent.returns.parse(
+    await harness.gad.call("appendLogEvent", {
+      logId: "trajectory:test",
+      head: "branch:test",
+      logKind: "trajectory",
+      owner: { kind: "agent", id: "agent:onboarding" },
+      events: await Promise.all(
+        events.map(async (event) => {
+          const encoded = (await encodeChannelPayloadStoredValues(
+            { ...event, turnId: "turn:test" },
+            {
+              putText: async (value) => harness.putTextBlob(value),
+            },
+          )) as AgenticEvent;
+          return {
+            actor: encoded.actor,
+            payloadKind: encoded.kind,
+            payload: encoded.payload,
+            causality: { ...(encoded.causality ?? {}), turnId: "turn:test" },
+            appendedAt: encoded.createdAt,
+            publish: { channels: [{ channelId: harness.channelId }] },
+          };
+        }),
+      ),
+    }),
+  );
   await harness.channel.call(
     "broadcastStoredEnvelopes",
-    result.published.map((publication) => publication.envelopeId)
+    result.published.map((publication) => publication.envelopeId),
   );
   return result;
 }
@@ -273,15 +335,24 @@ export function agenticPublication(event: AgenticEvent) {
   return event;
 }
 
-export function assistantMessage(id: string, content: string): AgenticEvent<"message.completed"> {
+export function assistantMessage(
+  id: string,
+  content: string,
+): AgenticEvent<"message.completed"> {
   return {
     kind: "message.completed",
-    actor: { kind: "agent", id: "agent:onboarding", displayName: "Onboarding Agent" },
+    actor: {
+      kind: "agent",
+      id: "agent:onboarding",
+      displayName: "Onboarding Agent",
+    },
     causality: { messageId: brandId<MessageId>(id) },
     payload: {
       protocol: AGENTIC_PROTOCOL_VERSION,
       role: "assistant",
-      blocks: [{ blockId: brandId<BlockId>(`${id}:block:0`), type: "text", content }],
+      blocks: [
+        { blockId: brandId<BlockId>(`${id}:block:0`), type: "text", content },
+      ],
       outcome: "completed",
     },
     createdAt: new Date().toISOString(),
@@ -291,11 +362,15 @@ export function assistantMessage(id: string, content: string): AgenticEvent<"mes
 export function invocationStarted(
   id: string,
   name: string,
-  request: Record<string, unknown>
+  request: Record<string, unknown>,
 ): AgenticEvent<"invocation.started"> {
   return {
     kind: "invocation.started",
-    actor: { kind: "agent", id: "agent:onboarding", displayName: "Onboarding Agent" },
+    actor: {
+      kind: "agent",
+      id: "agent:onboarding",
+      displayName: "Onboarding Agent",
+    },
     causality: { invocationId: brandId<InvocationId>(id) },
     payload: {
       protocol: AGENTIC_PROTOCOL_VERSION,
@@ -308,11 +383,15 @@ export function invocationStarted(
 
 export function invocationCompleted(
   id: string,
-  result: unknown
+  result: unknown,
 ): AgenticEvent<"invocation.completed"> {
   return {
     kind: "invocation.completed",
-    actor: { kind: "agent", id: "agent:onboarding", displayName: "Onboarding Agent" },
+    actor: {
+      kind: "agent",
+      id: "agent:onboarding",
+      displayName: "Onboarding Agent",
+    },
     causality: { invocationId: brandId<InvocationId>(id) },
     payload: invocationCompletedPayload({ result }),
     createdAt: new Date().toISOString(),

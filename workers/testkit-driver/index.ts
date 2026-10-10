@@ -1,3 +1,5 @@
+import { mainRpcMethods } from "@vibestudio/service-schemas/mainRpc";
+import type { TestkitDriverReceiver } from "@workspace/testkit/driver-contract";
 /**
  * Testkit Driver — a Durable Object that performs CDP operations a panel
  * caller is not permitted to do directly (panelCdp policy restricts panel
@@ -19,10 +21,7 @@ import {
   type V8Profile,
 } from "@workspace/testkit/profiling";
 
-interface CdpEndpoint {
-  wsEndpoint: string;
-  token?: string;
-}
+
 
 interface DriverSession {
   connection: CdpConnection;
@@ -36,7 +35,10 @@ interface DriverSession {
 const MAX_BUFFERED_EVENTS = 2_000;
 const SESSION_IDLE_LIMIT_MS = 10 * 60_000;
 
-export class TestkitDriverDO extends DurableObjectBase {
+export class TestkitDriverDO
+  extends DurableObjectBase
+  implements TestkitDriverReceiver
+{
   static override schemaVersion = 1;
 
   private readonly sessions = new Map<string, DriverSession>();
@@ -47,7 +49,7 @@ export class TestkitDriverDO extends DurableObjectBase {
   }
 
   private async connectToPanel(panelId: string): Promise<CdpConnection> {
-    const endpoint = await this.rpc.call<CdpEndpoint>("main", "panelCdp.getCdpEndpoint", [panelId]);
+    const endpoint = await this.rpc.call("main", mainRpcMethods["panelCdp.getCdpEndpoint"], [panelId]);
     return CdpConnection.connect(endpoint.wsEndpoint, endpoint.token);
   }
 

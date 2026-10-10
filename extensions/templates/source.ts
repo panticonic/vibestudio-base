@@ -1,3 +1,4 @@
+import { mainRpcMethods } from "@vibestudio/service-schemas/mainRpc";
 import * as fsp from "node:fs/promises";
 import * as path from "node:path";
 import { Buffer } from "node:buffer";
@@ -104,8 +105,8 @@ function contentSink(ctx: ExtensionContextLike): SnapshotContentSink {
     async put(bytes) {
       return ctx.rpc.call(
         "main",
-        "blobstore.putBase64",
-        Buffer.from(bytes).toString("base64"),
+        mainRpcMethods["blobstore.putBase64"],
+        [Buffer.from(bytes).toString("base64")],
       );
     },
   };

@@ -1,4 +1,5 @@
-import { createMissionsClient } from "@vibestudio/automation/mission";
+import { createMissionsClient } from "@vibestudio/service-schemas/clients/missionsClient";
+
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Badge,
@@ -69,7 +70,7 @@ export interface AutomationInspection {
 }
 
 export interface AutomationUiRpc {
-  call(target: string, method: string, args: unknown[]): Promise<unknown>;
+  call: import("@vibestudio/rpc").RpcCaller["call"];
 }
 
 function effectFailureKey(effect: MissionRunEffectFailure): string {

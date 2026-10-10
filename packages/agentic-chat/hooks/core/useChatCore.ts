@@ -1,3 +1,4 @@
+import { mainRpcMethods } from "@vibestudio/service-schemas/mainRpc";
 /**
  * useChatCore — Channel-message-driven chat hook.
  *
@@ -264,7 +265,7 @@ export function useChatCore({
       const title = nextConfig.title?.trim();
       if (nextConfig.titleExplicit !== true || !title) return;
       void config.rpc
-        .call("main", "runtime.setTitle", [title, { explicit: true }])
+        .call("main", mainRpcMethods["runtime.setTitle"], [title, { explicit: true }])
         .catch((err) =>
           console.warn("[useChatCore] Failed to mirror explicit channel title to panel:", err)
         );

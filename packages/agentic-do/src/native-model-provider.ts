@@ -1,3 +1,4 @@
+import { mainRpcMethod } from "@vibestudio/service-schemas/mainRpc";
 import type { ApiKeyAuth, Provider } from "@panticonic/pi-ai";
 import { builtinModels } from "@panticonic/pi-ai/providers/all";
 import type { Context, JsonValue } from "@panticonic/pi-chord";
@@ -120,7 +121,7 @@ export function createProtectedModelProvider(
       const invocation = { service, method, args };
       try {
         return {
-          value: await rpc.call<unknown>("main", `${service}.${method}`, args, {
+          value: await rpc.call("main", mainRpcMethod(`${service}.${method}`), args, {
             authorityAcquisition: "return",
             idempotencyKey: `model:${sha256HexSyncText(canonicalJson({ request, invocation }))}`,
             signal: context.abortSignal,

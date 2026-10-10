@@ -134,5 +134,8 @@
     "@workspace/runtime": "workspace:*",
     "@workspace/cdp-client": "workspace:*",
     "@workspace/testkit": "workspace:*"
+  },
+  "exports": {
+    ".": "./index.ts"
   }
 }

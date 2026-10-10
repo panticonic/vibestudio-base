@@ -1,21 +1,20 @@
 import { describe, it, expect, vi } from "vitest";
-import { createImagesClient } from "./images.js";
+import { schemaRpcMock } from "@vibestudio/rpc/test-utils";
+import { createImagesClient, imagesRpcMethods } from "./images.js";
+import { durableObjectServiceFixture } from "@vibestudio/service-schemas/test-utils";
 function setup(states: string[]) {
   const call = vi.fn(async (_target: string, method: string) => {
     if (method === "workers.resolveService")
-      return {
-        kind: "durable-object",
-        source: "workers/images",
+      return durableObjectServiceFixture("do:images", { source: "workers/images",
         className: "ImagesDO",
-        objectKey: "default",
-        targetId: "do:images",
-      };
-    if (method === "getJob") return { id: "job:one", status: states.shift() ?? "succeeded" };
+        objectKey: "default" });
+    if (method === "getJob")
+      return { id: "job:one", status: states.shift() ?? "succeeded" };
     if (method === "readAsset")
       return { asset: { id: "asset:one", mimeType: "image/png" }, base64: "AP8=" };
     throw new Error(`Unexpected method: ${method}`);
   });
-  return { client: createImagesClient({ call } as never), call };
+  return { client: createImagesClient(schemaRpcMock({ call })), call };
 }
 describe("durable image runtime client", () => {
   it("resolves the workspace service and waits for a terminal job without initiating generation", async () => {
@@ -37,7 +36,11 @@ describe("durable image runtime client", () => {
   it("fetches bytes through authorized asset identity, never bare digest", async () => {
     const { client, call } = setup([]);
     expect(await client.getBytes({ id: "asset:one" })).toEqual(new Uint8Array([0, 255]));
-    expect(call).toHaveBeenLastCalledWith("do:images", "readAsset", ["asset:one"]);
+    expect(call.mock.lastCall?.slice(0, 3)).toEqual([
+      "do:images",
+      imagesRpcMethods.readAsset.name,
+      ["asset:one"],
+    ]);
   });
   it("rejects corrupt persisted asset metadata before decoding", async () => {
     const { client } = setup([]);

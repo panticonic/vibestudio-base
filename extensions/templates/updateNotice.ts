@@ -1,3 +1,6 @@
+import { resolveDurableObjectService } from "@vibestudio/service-schemas/clients/durableObjectServiceClient";
+import { gadRpcMethods } from "@vibestudio/service-schemas/clients/durableObjectServiceClient";
+
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { z } from "zod";
@@ -101,24 +104,20 @@ export function createTemplateUpdateNotices(ctx: ExtensionContextLike) {
   };
   const deliver = async (userId: string, notice: Notice) => {
     if (!notice.pending) return;
-    const service = await ctx.rpc.call<{ kind: string; targetId?: string }>(
-      "main",
-      "workers.resolveService",
-      "vibestudio.gad.workspace.v1",
-    );
+    const service = await resolveDurableObjectService(ctx.rpc, "vibestudio.gad.workspace.v1");
     if (service.kind !== "durable-object" || !service.targetId)
       throw new Error("Workspace inbox service is unavailable");
     if (notice.notification)
       await ctx.rpc.call(
         service.targetId,
-        "putUserNotification",
-        notice.notification,
+        gadRpcMethods["putUserNotification"],
+        [notice.notification],
       );
     for (const id of notice.retireIds)
-      await ctx.rpc.call(service.targetId, "deleteUserNotification", {
+      await ctx.rpc.call(service.targetId, gadRpcMethods["deleteUserNotification"], [{
         userId,
         id,
-      });
+      }]);
     await save(userId, { ...notice, pending: false, retireIds: [] });
   };
   const update = async (

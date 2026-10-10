@@ -1,7 +1,11 @@
+import { z } from "zod";
+import { createRpcMethods } from "@vibestudio/shared/rpcMethods";
+import { mainRpcMethods } from "@vibestudio/service-schemas/mainRpc";
 import { createServer } from "node:http";
 import { describe, expect, it } from "vitest";
 import {
   attachRpcDiagnosticId,
+  deserializeRpcFailure,
   decodeRpcJson,
   encodeRpcJson,
   rpc,
@@ -18,6 +22,8 @@ import {
   createTestDO,
   createTestDirectAuthority,
 } from "./durable-test-utils.js";
+
+const testRpcMethods = createRpcMethods("test", { "probe.after-wake": { website: { kind: "closed", reason: "Test receiver" } as const, args: z.tuple([]), returns: z.unknown() } }, "");
 
 abstract class TestDurableObjectBase extends DurableObjectBase {}
 
@@ -107,7 +113,7 @@ class DetachedRpcProbeDO extends TestDurableObjectBase {
     sensitivity: "write",
   })
   startDetached(throwAfterStart = false): string {
-    void this.rpc.call("main", "notification.signalUserInbox", ["usr_test"]);
+    void this.rpc.call("main", mainRpcMethods["notification.signalUserInbox"], ["usr_test"]);
     if (throwAfterStart) throw new Error("parent failed after starting child");
     return "started";
   }
@@ -585,7 +591,7 @@ class CausalDerivedAlarmProbeDO extends DerivedAlarmProbeDO {
     schedule: DoAlarmSchedule | null,
   ): Promise<void> {
     await super.persistAlarmSchedule(schedule);
-    await this.rpc.call("main", "probe.after-wake", []);
+    await this.rpc.call("main", testRpcMethods["probe.after-wake"], []);
   }
 }
 
@@ -646,11 +652,9 @@ async function dispatchAlarm(instance: DurableObjectBase): Promise<{
 }> {
   const { response, envelope } = await requestAlarm(instance);
   if (envelope.message.type !== "response" || "error" in envelope.message) {
-    throw new Error(
-      envelope.message.type === "response"
-        ? envelope.message.error
-        : "Alarm RPC did not return a response",
-    );
+    throw envelope.message.type === "response"
+      ? deserializeRpcFailure(envelope.message.error)
+      : new Error("Alarm RPC did not return a response");
   }
   return { response, result: envelope.message.result as DoAlarmDispatchResult };
 }
@@ -1545,14 +1549,7 @@ describe("DurableObjectBase work-ready receipts", () => {
 
     expect(response.status).toBe(200);
     const terminal = decodeRpcJson(await response.text()) as RpcEnvelope;
-    expect(terminal.message).toMatchObject({
-      type: "response",
-      requestId: "wake-failure-after-admission",
-      error: "wake publication failed",
-      errorCode: "WAKE_FAILED",
-      errorKind: "service",
-      errorData: { owner: "test-fixture" },
-    });
+    expect(terminal.message).toMatchObject({ type: "response", requestId: "wake-failure-after-admission", error: { message: "wake publication failed", code: "WAKE_FAILED", errorKind: "service", errorData: { owner: "test-fixture" } } });
   });
 
   it("exposes framework @rpc capability methods on subclasses", async () => {
@@ -2005,15 +2002,7 @@ describe("DurableObjectBase server-driven alarm durability", () => {
       );
       expect(response.status).toBe(200);
       const terminal = decodeRpcJson(await response.text()) as RpcEnvelope;
-      expect(terminal.message).toMatchObject({
-        type: "response",
-        requestId: "handler-and-alarm-failure",
-        error: expect.stringContaining("primary handler failure"),
-        errorKind: "access",
-        errorCode: "PRIMARY_HANDLER_FAILED",
-        diagnosticId: "ca91003e-5630-479c-8c49-640c9a0fd644",
-        errorData: { owner: "handler", detail: "preserve this payload" },
-      });
+      expect(terminal.message).toMatchObject({ type: "response", requestId: "handler-and-alarm-failure", error: { message: expect.stringContaining("primary handler failure"), errorKind: "access", code: "PRIMARY_HANDLER_FAILED", diagnosticId: "ca91003e-5630-479c-8c49-640c9a0fd644", errorData: { owner: "handler", detail: "preserve this payload" } } });
       expect((terminal.message as { error?: string }).error).toContain(
         "RPC endpoint returned HTTP 503: alarm store unavailable",
       );
@@ -2137,13 +2126,7 @@ describe("DurableObjectBase server-driven alarm durability", () => {
       const { response, body } = await terminalPromise;
       expect(response.status).toBe(200);
       expect(decodeRpcJson(body)).toMatchObject({
-        message: {
-          type: "response",
-          error: "Invocation authority parent is not active",
-          errorKind: "access",
-          errorCode: "INVOCATION_AUTHORITY_PARENT_NOT_ACTIVE",
-          errorData,
-        },
+        message: { type: "response", error: { message: "Invocation authority parent is not active", errorKind: "access", code: "INVOCATION_AUTHORITY_PARENT_NOT_ACTIVE", errorData } },
       });
     } finally {
       releaseSecondWrite();
@@ -2286,7 +2269,7 @@ describe("DurableObjectBase causal child RPC lifetime", () => {
           callerKind: "server",
           method: derivedWake ? "recordWake" : "startDetached",
         });
-        const { callAs } = await createTestDO<TestDurableObjectBase>(
+        const { callAs } = await createTestDO(
           derivedWake ? CausalDerivedAlarmProbeDO : DetachedRpcProbeDO,
           {
             GATEWAY_URL: `http://127.0.0.1:${address.port}`,

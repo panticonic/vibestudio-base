@@ -11,7 +11,7 @@ type HostSession = {
   cwd: string;
   shell: string;
 };
-type Output = { text: string; cursor: number; alive: boolean };
+
 
 /** Explicit host authority is never restored or opened by a mount effect. */
 export function HostTerminal(props: {
@@ -53,7 +53,7 @@ export function HostTerminal(props: {
     setOpening(true);
     setError(null);
     try {
-      const selected = await callMain<HostSession>("hostTerminal.open", {
+      const selected = await callMain("hostTerminal.open", {
         columns: 120,
         rows: 36,
       });
@@ -81,7 +81,7 @@ export function HostTerminal(props: {
     setSession(null);
     props.onFocusChange(false);
     try {
-      const result = await callMain<{ processExited: boolean }>("hostTerminal.close", {
+      const result = await callMain("hostTerminal.close", {
         terminalSessionId: selected.terminalSessionId,
       });
       if (!result.processExited && mounted.current)
@@ -151,7 +151,7 @@ export function HostTerminal(props: {
       const poll = async () => {
         if (cancelled) return;
         try {
-          const output = await callMain<Output>("hostTerminal.read", {
+          const output = await callMain("hostTerminal.read", {
             terminalSessionId,
             after: cursor,
             maxBytes: 512 * 1024,

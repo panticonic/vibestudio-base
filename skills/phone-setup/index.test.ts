@@ -1,16 +1,18 @@
 import { afterEach, expect, it, vi } from "vitest";
 import { phoneProvisioningMethods } from "@vibestudio/service-schemas/phoneProvisioning";
 import { phoneSetupStream } from "@vibestudio/service-schemas/clients/phoneSetupStream";
+import { durableObjectServiceFixture } from "@vibestudio/service-schemas/test-utils";
 const transport = vi.hoisted(() => ({ call: vi.fn(), stream: vi.fn() }));
-vi.mock("@workspace/runtime", () => ({
-  rpc: transport,
-  workers: {
-    resolveService: async () => ({
-      kind: "durable-object",
-      targetId: "phone-service",
-    }),
-  },
-}));
+vi.mock("@workspace/runtime", async () => {
+  const { schemaRpcMock } = await import("@vibestudio/rpc/test-utils");
+  const caller = schemaRpcMock(transport);
+  return {
+    rpc: { ...transport, ...caller },
+    workers: {
+      resolveService: async () => durableObjectServiceFixture("phone-service"),
+    },
+  };
+});
 import { phoneSetup } from "./index.js";
 const paired = {
   providerId: "desktop",

@@ -1,9 +1,11 @@
+import { mainRpcMethods } from "@vibestudio/service-schemas/mainRpc";
 import { buildUnitCatalogEntrySchema } from "@vibestudio/service-schemas/build";
 import { credentialsMethods } from "@vibestudio/service-schemas/credentials";
 import {
   modelProviderLabel,
   resolveProviderModelBaseUrl,
 } from "@workspace/model-catalog/providerConnect";
+import type { ModelSettingsRpc } from "@workspace/model-catalog/rpc-contract";
 /**
  * Model settings service — the single authority on what a model IS
  * (journaled `modelSpec`) and whether it is USABLE right now (`availability`).
@@ -355,7 +357,7 @@ export function pickFallbackModel(catalog: ModelCatalog): {
   return { ref: preferredRef ?? catalog.models[0]?.ref ?? "" };
 }
 
-export class ModelSettingsDO extends DurableObjectBase {
+export class ModelSettingsDO extends DurableObjectBase implements ModelSettingsRpc {
   private readonly observers = new Set<{
     afterVersion: string;
     resolve(value: string): void;
@@ -428,9 +430,9 @@ export class ModelSettingsDO extends DurableObjectBase {
     this.observers.add(observer);
     signal?.addEventListener("abort", aborted, { once: true });
 
-    const credentialObservation = this.rpc.call<{ version: string }>(
+    const credentialObservation = this.rpc.call(
       "main",
-      "credentials.observeChanges",
+      mainRpcMethods["credentials.observeChanges"],
       [previous ? { afterVersion: previous[1] } : {}],
       { signal: childController.signal },
     );
@@ -753,9 +755,9 @@ export class ModelSettingsDO extends DurableObjectBase {
 
   /** Successful empty inventories are authoritative; failed discovery is not absence. */
   protected async storedCredentials(): Promise<StoredCredentialSummary[]> {
-    const credentials = await this.rpc.call<unknown>(
+    const credentials = await this.rpc.call(
       "main",
-      "credentials.listStoredCredentials",
+      mainRpcMethods["credentials.listStoredCredentials"],
       [],
     );
     return credentialsMethods.listStoredCredentials.returns.parse(credentials);
@@ -769,7 +771,7 @@ export class ModelSettingsDO extends DurableObjectBase {
     if (declarations.length === 0) return [];
     const units = buildUnitCatalogEntrySchema
       .array()
-      .parse(await this.rpc.call<unknown>("main", "build.listUnits", []));
+      .parse(await this.rpc.call("main", mainRpcMethods["build.listUnits"], []));
     const local = units.find(
       (unit) =>
         unit.kind === "extension" && unit.name === LOCAL_MODELS_EXTENSION_ID,
@@ -785,7 +787,7 @@ export class ModelSettingsDO extends DurableObjectBase {
       throw new Error(
         `Declared local model provider ${declaration.source} has no valid extension build unit ${LOCAL_MODELS_EXTENSION_ID}; repair its package manifest/source declaration.`,
       );
-    const entries = await this.rpc.call<unknown>("main", "extensions.invoke", [
+    const entries = await this.rpc.call("main", mainRpcMethods["extensions.invoke"], [
       LOCAL_MODELS_EXTENSION_ID,
       "listModels",
       [],
@@ -794,7 +796,7 @@ export class ModelSettingsDO extends DurableObjectBase {
   }
 
   protected getWorkspaceConfig(): Promise<WorkspaceConfig> {
-    return this.rpc.call<WorkspaceConfig>("main", "workspace.getConfig", []);
+    return this.rpc.call("main", mainRpcMethods["workspace.getConfig"], []);
   }
 
   /** Saved preferences belong to this service, not protected workspace source.

@@ -17,24 +17,27 @@ describe("ParticipantBadgeMenu — presence", () => {
         <ParticipantBadgeMenu
           participant={{
             id: "user:usr_alice",
-            ref: { kind: "user", id: "user:usr_alice", participantId: "user:usr_alice" },
+            ref: {
+              kind: "user",
+              id: "user:usr_alice",
+              participantId: "user:usr_alice",
+            },
             metadata: { name: "Workspace member", type: "user" },
           }}
           profile={{
             userId: "usr_alice",
             handle: "alice",
             displayName: "Alice",
+            role: "member",
           }}
           presenceStatus="idle"
           hasActiveMessage={false}
           onCallMethod={vi.fn()}
         />
-      </Theme>
+      </Theme>,
     );
     expect(screen.getByText(/@alice/)).toBeTruthy();
     expect(screen.getByLabelText("idle")).toBeTruthy();
     expect(screen.getByTitle("Alice — idle")).toBeTruthy();
   });
-
-
 });

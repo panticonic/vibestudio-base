@@ -1,3 +1,6 @@
+import { channelClientRpcMethods } from "@workspace/pubsub/rpc-contract";
+import { createRpcMethodCaller, type RpcMethodArgs, type RpcMethodResult } from "@vibestudio/shared/rpcMethods";
+import { mainRpcMethods } from "@vibestudio/service-schemas/mainRpc";
 /**
  * ChannelClient — Typed wrapper for channel DO operations.
  *
@@ -77,10 +80,7 @@ function base64ByteLength(base64: string): number {
   return Math.floor((base64.length * 3) / 4) - padding;
 }
 const DEFAULT_CHANNEL_SERVICE_PROTOCOL = "vibestudio.channel.v1";
-interface ResolvedService {
-  kind: "durable-object" | "worker";
-  targetId?: string;
-}
+
 
 export type ChannelDeliveryEndpoint =
   | { kind: "entity"; entityId: string; invocation: "direct" | "mailbox" }
@@ -115,9 +115,9 @@ export class ChannelClient {
   ) {}
   async resolveTarget(): Promise<string> {
     this.targetPromise ??= this.rpc
-      .call<ResolvedService>(
+      .call(
         "main",
-        "workers.resolveService",
+        mainRpcMethods["workers.resolveService"],
         [this.protocol, this.channelId],
         this.callOptions,
       )
@@ -131,16 +131,11 @@ export class ChannelClient {
       });
     return this.targetPromise;
   }
-  private async call<T = unknown>(
-    method: string,
-    ...args: unknown[]
-  ): Promise<T> {
-    return this.rpc.call<T>(
-      await this.resolveTarget(),
-      method,
-      [...args],
-      this.callOptions,
-    );
+  private async call<K extends keyof typeof channelClientRpcMethods & string>(
+    method: K,
+    ...args: RpcMethodArgs<(typeof channelClientRpcMethods)[K]>
+  ): Promise<RpcMethodResult<(typeof channelClientRpcMethods)[K]>> {
+    return createRpcMethodCaller(this.rpc, await this.resolveTarget(), channelClientRpcMethods)(method, args, this.callOptions);
   }
   async send(
     participantId: string,
@@ -193,16 +188,20 @@ export class ChannelClient {
             type: "attachment" as const,
             metadata: {
               mimeType: attachment.mimeType,
-              filename: attachment.name,
+              ...(attachment.name !== undefined
+                ? { filename: attachment.name }
+                : {}),
             },
           })) ?? []),
         ],
         outcome: "completed",
         tier: opts?.tier ?? "primary",
         ...(opts?.saliency ? { saliency: opts.saliency } : {}),
-        mentions: opts?.mentions,
-        replyTo: opts?.replyTo as never,
-        to: opts?.to,
+        ...(opts?.mentions !== undefined ? { mentions: opts.mentions } : {}),
+        ...(opts?.replyTo !== undefined
+          ? { replyTo: opts.replyTo as never }
+          : {}),
+        ...(opts?.to !== undefined ? { to: opts.to } : {}),
         ...(opts?.metadata ? { metadata: opts.metadata } : {}),
       },
       createdAt: new Date().toISOString(),
@@ -255,7 +254,7 @@ export class ChannelClient {
     messageId: string,
     turnId?: string,
   ): Promise<{ recorded: true }> {
-    return this.call<{ recorded: true }>(
+    return this.call(
       "recordReceipt",
       participantId,
       messageId,
@@ -264,31 +263,6 @@ export class ChannelClient {
         ...(turnId ? { turnId } : {}),
       },
     );
-  }
-  async update(
-    participantId: string,
-    messageId: string,
-    content: string,
-    idempotencyKey?: string,
-    opts?: {
-      append?: boolean;
-    },
-  ): Promise<void> {
-    await this.call(
-      "update",
-      participantId,
-      messageId,
-      content,
-      idempotencyKey,
-      opts,
-    );
-  }
-  async complete(
-    participantId: string,
-    messageId: string,
-    idempotencyKey?: string,
-  ): Promise<void> {
-    await this.call("complete", participantId, messageId, idempotencyKey);
   }
   async error(
     participantId: string,
@@ -439,7 +413,7 @@ export class ChannelClient {
   }
   /** Look up one durable channel envelope by its stable id. */
   async getEnvelope(envelopeId: string): Promise<ChannelEvent | null> {
-    return this.call<ChannelEvent | null>("getEnvelope", envelopeId);
+    return this.call("getEnvelope", envelopeId);
   }
   async getMessageType(
     typeId: string,
@@ -457,8 +431,8 @@ export class ChannelClient {
       string | null
     >;
   }
-  async getMessageTypes(): Promise<Record<string, unknown>[]> {
-    return this.call("getMessageTypes") as Promise<Record<string, unknown>[]>;
+  async getMessageTypes() {
+    return this.call("getMessageTypes");
   }
   /** Channel policy fold state (WS2 §4.4 — replaces getConversationState).
    *  Default policy "agentic.conversation.v1" carries the conversation

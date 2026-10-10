@@ -1,3 +1,4 @@
+import { mainRpcMethods } from "@vibestudio/service-schemas/mainRpc";
 /**
  * Ad blocking programmatic interface for panels.
  *
@@ -41,31 +42,31 @@ export interface AdBlockApi {
 export function createAdBlockApi(rpc: Pick<RpcClient, "call">): AdBlockApi {
     return {
         async getStats(): Promise<AdBlockStats> {
-            return rpc.call<AdBlockStats>("main", "adblock.getStats", []);
+            return rpc.call("main", mainRpcMethods["adblock.getStats"], []);
         },
         async isActive(): Promise<boolean> {
-            return rpc.call<boolean>("main", "adblock.isActive", []);
+            return rpc.call("main", mainRpcMethods["adblock.isActive"], []);
         },
         async getStatsForPanel(webContentsId: number): Promise<AdBlockStats> {
-            return rpc.call<AdBlockStats>("main", "adblock.getStatsForPanel", [webContentsId]);
+            return rpc.call("main", mainRpcMethods["adblock.getStatsForPanel"], [webContentsId]);
         },
         async isEnabledForPanel(webContentsId: number): Promise<boolean> {
-            return rpc.call<boolean>("main", "adblock.isEnabledForPanel", [webContentsId]);
+            return rpc.call("main", mainRpcMethods["adblock.isEnabledForPanel"], [webContentsId]);
         },
         async setEnabledForPanel(webContentsId: number, enabled: boolean): Promise<void> {
-            await rpc.call<boolean>("main", "adblock.setEnabledForPanel", [webContentsId, enabled]);
+            await rpc.call("main", mainRpcMethods["adblock.setEnabledForPanel"], [webContentsId, enabled]);
         },
         async resetStatsForPanel(webContentsId: number): Promise<void> {
-            await rpc.call<boolean>("main", "adblock.resetStatsForPanel", [webContentsId]);
+            await rpc.call("main", mainRpcMethods["adblock.resetStatsForPanel"], [webContentsId]);
         },
         async getPanelUrl(webContentsId: number): Promise<string | undefined> {
-            return rpc.call<string | undefined>("main", "adblock.getPanelUrl", [webContentsId]);
+            return rpc.call("main", mainRpcMethods["adblock.getPanelUrl"], [webContentsId]);
         },
         async addToWhitelist(domain: string): Promise<void> {
-            await rpc.call<boolean>("main", "adblock.addToWhitelist", [domain]);
+            await rpc.call("main", mainRpcMethods["adblock.addToWhitelist"], [domain]);
         },
         async removeFromWhitelist(domain: string): Promise<void> {
-            await rpc.call<boolean>("main", "adblock.removeFromWhitelist", [domain]);
+            await rpc.call("main", mainRpcMethods["adblock.removeFromWhitelist"], [domain]);
         },
     };
 }

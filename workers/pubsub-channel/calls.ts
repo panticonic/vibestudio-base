@@ -1,3 +1,5 @@
+import { durableRpcMethods } from "@vibestudio/durable/rpcMethods";
+import { agentRpcMethods } from "@workspace/agentic-do/rpc-contract";
 /**
  * Method-call transport (WS2 §5) — `pending_calls` as a DECLARED CACHE.
  *
@@ -156,7 +158,7 @@ export interface CallTransportDeps {
   participantTransport(
     participantId: string,
   ): "external-session" | "entity" | "resident-session" | null;
-  rpcCall(targetId: string, method: string, args: unknown[]): Promise<unknown>;
+  rpcCall: import("@vibestudio/rpc").RpcCaller["call"];
   waitUntil(promise: Promise<unknown>): void;
   getStateValue(key: string): string | null;
   setStateValue(key: string, value: string): void;
@@ -405,20 +407,24 @@ export class CallTransport {
   async abortProviderCall(pending: PendingCallRow): Promise<void> {
     const transport = this.deps.participantTransport(pending.targetId);
     if (transport !== "resident-session" && transport !== "entity") return;
-    await this.deps.rpcCall(
-      pending.targetId,
-      transport === "entity"
-        ? "cancelDirectMethodCall"
-        : "cancelChannelInvocation",
-      transport === "entity"
-        ? [this.deps.objectKey, pending.transportCallId]
-        : [
-            {
-              channelId: this.deps.objectKey,
-              transportCallId: pending.transportCallId,
-            },
-          ],
-    );
+    if (transport === "entity") {
+      await this.deps.rpcCall(
+        pending.targetId,
+        agentRpcMethods.cancelDirectMethodCall,
+        [this.deps.objectKey, pending.transportCallId],
+      );
+    } else {
+      await this.deps.rpcCall(
+        pending.targetId,
+        durableRpcMethods.cancelChannelInvocation,
+        [
+          {
+            channelId: this.deps.objectKey,
+            transportCallId: pending.transportCallId,
+          },
+        ],
+      );
+    }
     await Promise.all([
       ...(this.providerDeliveries.get(pending.transportCallId) ?? []),
     ]);
@@ -797,12 +803,16 @@ export class CallTransport {
         pendingRow.invocationId,
       );
       if (!event) return;
-      await this.deps.rpcCall(pendingRow.targetId, "acceptChannelInvocation", [
-        {
-          channelId: this.deps.objectKey,
-          message: { kind: "log", phase: "live", event },
-        },
-      ]);
+      await this.deps.rpcCall(
+        pendingRow.targetId,
+        durableRpcMethods.acceptChannelInvocation,
+        [
+          {
+            channelId: this.deps.objectKey,
+            message: { kind: "log", phase: "live", event },
+          },
+        ],
+      );
     } catch {
       // The mailbox is authority; fast-path refusal is expected while the
       // resident provider is hibernated or between registrations.
@@ -824,17 +834,20 @@ export class CallTransport {
     );
     if (!claim.claimed || !claim.generation) return;
     try {
-      const result = await this.deps.rpcCall(input.targetPid, "onMethodCall", [
-        this.deps.objectKey,
-        input.transportCallId,
-        input.method,
-        input.args,
-        {
-          invocationId: input.invocationId,
-          turnId: input.turnId,
-          providerClaimGeneration: claim.generation,
-        },
-      ]);
+      const result = await this.deps.rpcCall(
+        input.targetPid,
+        agentRpcMethods.onMethodCall,
+        [
+          this.deps.objectKey,
+          input.transportCallId,
+          input.method,
+          input.args,
+          {
+            invocationId: input.invocationId,
+            providerClaimGeneration: claim.generation,
+          },
+        ],
+      );
       const res = result as { result: unknown; isError?: boolean };
       if (
         !this.isCurrentProviderClaim(
@@ -936,7 +949,7 @@ export class CallTransport {
     deliveryStartedAt = Date.now(),
   ): Promise<number | undefined> {
     const transportCallId = pending.transportCallId;
-    // 2. Root the terminal (synthetic started if the canonical one is absent).
+    // 2. Ensure the actual retained request has a durable root before terminal.
     await this.ensureMethodRoot(pending);
 
     // 3. APPEND the terminal FIRST, deterministic id. A duplicate settle after
@@ -997,12 +1010,10 @@ export class CallTransport {
    * We refuse to silently no-op the fold. The submitter knows the call's
    * identity (it just executed it): `participantId` is the target, and the
    * caller passes `invocationId` (the id its `routeInvocationTerminal` matches
-   * on) + `turnId` through `submitMethodResult`. We synthesize a minimal
-   * pending descriptor from that, root the method via the SANCTIONED
-   * `ensureMethodRoot` (which appends a synthetic `started` keyed on the
-   * invocation id, satisfying the fold's started⟂terminal pairing), then append
-   * + broadcast the terminal exactly as `settleCall` does. The caller now gets a
-   * real terminal instead of hanging.
+   * on) + `turnId` through `submitMethodResult`. The original method request is
+   * not retained here, so we append the terminal directly rather than inventing
+   * a started admission with a missing request. The terminal lets the caller
+   * settle without claiming that an unknown request was admitted.
    *
    * `callerId` is genuinely unknown here (the started that named it is missing),
    * so we use a sentinel and FORCE the broadcast — the caller is a remote
@@ -1037,11 +1048,9 @@ export class CallTransport {
       createdAt: Date.now(),
     };
 
-    // 1. Root the method (synthetic `started`, idempotent on invocationId).
-    await this.ensureMethodRoot(synthetic);
-
-    // 2. APPEND the terminal FIRST (deterministic envelopeId), mirroring
-    //    settleCall. Idempotent: a concurrent/duplicate settle finds it durable.
+    // APPEND the terminal (deterministic envelopeId). There is no retained
+    // request descriptor from which an honest started event could be built.
+    // Idempotent: a concurrent/duplicate settle finds it durable.
     const terminalEnvelopeId = `terminal:${transportCallId}`;
     let event = await this.deps.log.getEventByEnvelopeId(terminalEnvelopeId);
     if (!event) {
@@ -1076,7 +1085,7 @@ export class CallTransport {
       });
     }
 
-    // 3. There is no cache row to consume. Record head, schedule, and FORCE the
+    // There is no cache row to consume. Record head, schedule, and FORCE the
     //    broadcast — the caller is a subscriber matching by invocationId.
     this.recordObservedHead(event.id);
     this.deps.broadcastLive(
@@ -1089,8 +1098,8 @@ export class CallTransport {
     return event.id;
   }
 
-  /** Before any output/terminal append: if no envelope with the invocation id
-   *  exists in the log, append a synthetic started so terminals never orphan. */
+  /** Before output/terminal append for a retained pending row: if no envelope
+   *  with its invocation id exists, persist the actual retained request. */
   private async ensureMethodRoot(pending: PendingCallRow): Promise<void> {
     if (await this.deps.log.hasEnvelope(pending.invocationId)) return;
     const payload = this.deps.builders().started({

@@ -2,6 +2,7 @@ import { composedWorkspaceRoot } from "./composedWorkspace.js";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { parseUnitAuthorityManifest } from "@vibestudio/shared/authorityManifest";
 import YAML from "yaml";
+import { mainRpcMethods } from "@vibestudio/service-schemas/mainRpc";
 import type { ApplicationAuthorityPolicy } from "./create-project.js";
 
 const noEffects = { requests: [], provides: [] };
@@ -256,8 +257,7 @@ function resetRuntimeMocks(): void {
 describe("prepareProjects", () => {
   it("requires deliberate authority decisions before any edit", async () => {
     resetRuntimeMocks();
-    const { prepareApplication, prepareProjects } =
-      await import("./index.js");
+    const { prepareApplication, prepareProjects } = await import("./index.js");
     await expect(
       prepareProjects([
         { projectType: "panel", name: "missing-policy" } as never,
@@ -327,21 +327,34 @@ describe("prepareProjects", () => {
     const { prepareApplication } = await import("./index.js");
     const command = {
       commandId: "caller-owned-preparation",
-      expectedWorkingHead: { kind: "application" as const, applicationId: "application:working" },
+      expectedWorkingHead: {
+        kind: "application" as const,
+        applicationId: "application:working",
+      },
     };
-    const params = { name: "replay", authority: applicationPolicy("replay"), command };
+    const params = {
+      name: "replay",
+      authority: applicationPolicy("replay"),
+      command,
+    };
     const first = await prepareApplication(params);
     const originalMetadata = await mocks.readFile.mock.results[0]!.value;
     mocks.readFile.mockResolvedValue(originalMetadata);
-    mocks.status.mockRejectedValue(new Error("A replay must use the original observed basis"));
+    mocks.status.mockRejectedValue(
+      new Error("A replay must use the original observed basis"),
+    );
     const replay = await prepareApplication(params);
     expect(mocks.edit.mock.calls[1]![0]).toEqual(first.preparation.command);
     expect(replay.preparation).toEqual(first.preparation);
     expect(first.preparation).toMatchObject({
-      commandId: command.commandId, workUnitId: "work-unit:created", applicationId: "application:created",
+      commandId: command.commandId,
+      workUnitId: "work-unit:created",
+      applicationId: "application:created",
       command: { ...command, contextId: "ctx:test" },
     });
-    expect(mocks.readFile).toHaveBeenLastCalledWith(expect.objectContaining({ state: command.expectedWorkingHead }));
+    expect(mocks.readFile).toHaveBeenLastCalledWith(
+      expect.objectContaining({ state: command.expectedWorkingHead }),
+    );
   });
 
   it("retains a projects command and propagates identity reuse without minting a replacement", async () => {
@@ -351,13 +364,27 @@ describe("prepareProjects", () => {
       commandId: "projects-command",
       expectedWorkingHead: { kind: "event" as const, eventId: "event:basis" },
     };
-    const first = (await prepareProjects([{ projectType: "project", name: "replay" }], command))[0]!;
-    await prepareProjects([{ projectType: "project", name: "replay" }], command);
+    const first = (
+      await prepareProjects(
+        [{ projectType: "project", name: "replay" }],
+        command,
+      )
+    )[0]!;
+    await prepareProjects(
+      [{ projectType: "project", name: "replay" }],
+      command,
+    );
     expect(mocks.edit.mock.calls[1]![0]).toEqual(first.preparation.command);
-    const originalFailure = new Error("CommandIdReuse: generated source changed");
+    const originalFailure = new Error(
+      "CommandIdReuse: generated source changed",
+    );
     mocks.edit.mockRejectedValueOnce(originalFailure);
-    await expect(prepareProjects([{ projectType: "project", name: "changed" }], command)).rejects.toBe(originalFailure);
-    expect(mocks.edit).toHaveBeenLastCalledWith(expect.objectContaining({ commandId: command.commandId }));
+    await expect(
+      prepareProjects([{ projectType: "project", name: "changed" }], command),
+    ).rejects.toBe(originalFailure);
+    expect(mocks.edit).toHaveBeenLastCalledWith(
+      expect.objectContaining({ commandId: command.commandId }),
+    );
   });
   it("prepares a connected application in one validated edit without publishing", async () => {
     resetRuntimeMocks();
@@ -412,7 +439,7 @@ describe("prepareProjects", () => {
     ).toEqual(["repository-create", "repository-create", "text-edit"]);
     expect(mocks.validateConfig).toHaveBeenCalledWith(
       "main",
-      "workspace.validateConfig",
+      mainRpcMethods["workspace.validateConfig"],
       [
         expect.objectContaining({
           manifest: expect.any(String),
@@ -762,8 +789,7 @@ describe("prepareProjects", () => {
 
   it("returns a structured catalog repair plan before creating an unknown icon", async () => {
     addFile("skills/workspace-dev/assets/icons/lucide/database.svg", "<svg />");
-    const { prepareProjects, ProjectIconError } =
-      await import("./index.js");
+    const { prepareProjects, ProjectIconError } = await import("./index.js");
 
     const failure = await prepareProjects([
       {
@@ -885,7 +911,8 @@ describe("prepareProjects", () => {
     const [agenticWorker] = await prepareProjects([
       {
         authority: noEffects,
-        authorityReason: "Declare only the effects built into the agentic template.",
+        authorityReason:
+          "Declare only the effects built into the agentic template.",
         methods: recordMethods,
         projectType: "worker",
         name: "agent-worker",
@@ -957,7 +984,10 @@ describe("prepareProjects", () => {
     const { prepareProjects } = await import("./index.js");
     const coveringRequest = {
       capability: "workspace-service:models",
-      resource: { kind: "prefix" as const, prefix: "do:workers/model-settings:" },
+      resource: {
+        kind: "prefix" as const,
+        prefix: "do:workers/model-settings:",
+      },
       tier: "gated" as const,
       evidence: "bounded-dynamic" as const,
       packages: ["@workspace/agentic-do"],

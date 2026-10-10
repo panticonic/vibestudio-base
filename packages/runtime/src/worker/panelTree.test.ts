@@ -1,4 +1,9 @@
+import { z } from "zod";
+import { createRpcMethods } from "@vibestudio/shared/rpcMethods";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { durableObjectServiceFixture } from "@vibestudio/service-schemas/test-utils";
+
+const testRpcMethods = createRpcMethods("test", { "probe.read": { website: { kind: "closed", reason: "Test receiver" } as const, args: z.tuple([]), returns: z.string() }, read: { website: { kind: "closed", reason: "Test receiver" } as const, args: z.tuple([z.string()]), returns: z.string() } }, "");
 
 // Envelope-native /rpc: the mock receives an RpcEnvelope and must reply with a
 // response envelope echoing the requestId (else the connectionless client never
@@ -54,7 +59,7 @@ function respondToWorkspacePresentation(
     request.method === "workers.resolveService" &&
     request.args[0] === "workspace.presentation"
   ) {
-    return respond(init, { kind: "durable-object", targetId: "main" });
+    return respond(init, durableObjectServiceFixture("main"));
   }
   if (request.method === "titlesForSlots") {
     return respond(
@@ -86,19 +91,63 @@ function respondToWorkspacePresentation(
 
 function workspaceDetailFor(panelId: string, source = "panels/a") {
   const entityKey = panelId.replace(/^panel:tree\//, "");
+  const entityId = `panel:nav-${entityKey}-current-entity`;
   return {
-    slot: { parent_slot_id: null, current_entity_title: "Panel A" },
+    revision: 1,
+    slot: {
+      slot_id: panelId,
+      parent_slot_id: null,
+      current_entity_id: entityId,
+      current_entity_title: "Panel A",
+      current_entry_key: "entry-1",
+      sort_key: 0,
+      owner_user_id: null,
+      created_at: 1,
+      closed_at: null,
+    },
     currentHistory: {
+      slot_id: panelId,
+      cursor: 0,
+      entry_key: "entry-1",
+      entity_id: entityId,
       source,
       context_id: "ctx",
       state_args: "{}",
-      options: '{"ref":"main"}',
+      recorded_at: 1,
     },
     entity: {
-      id: `panel:nav-${entityKey}-current-entity`,
-      source: { effectiveVersion: "ev-a" },
+      id: entityId,
+      authoritySessionId: "authority-panel-fixture",
+      kind: "panel",
+      source: { repoPath: source, effectiveVersion: "ev-a" },
+      contextId: "ctx",
+      key: entityKey,
+      createdAt: 1,
+      status: "active",
+      cleanupComplete: false,
       activeBuildKey: "build-a",
     },
+  };
+}
+
+function runtimeEntityFixture(spec: unknown) {
+  const input = spec as {
+    kind?: "panel" | "app" | "worker" | "do" | "session";
+    execution?: { source?: string };
+    source?: string;
+    contextId?: string;
+    key?: string;
+  };
+  const source = input.execution?.source ?? input.source ?? "panels/new";
+  const id = `panel:nav-${input.key ?? "created"}`;
+  return {
+    id,
+    kind: input.kind ?? "panel",
+    source: { repoPath: source, effectiveVersion: "ev-created" },
+    buildKey: "b".repeat(64),
+    contextId: input.contextId ?? "ctx-created",
+    targetId: id,
+    created: true,
   };
 }
 
@@ -187,7 +236,7 @@ describe("worker panelTree handles", () => {
           "x-vibestudio-runtime-id",
         );
         envelopeFrom = JSON.parse(String(init?.body ?? "{}"))?.from;
-        const response = respond(init, { ok: true });
+        const response = respond(init, "ok");
         const reply = await response.json();
         return new Response(
           JSON.stringify({ ...reply, destination: { kind: "workspace", workspaceId: "workspace:test" } }),
@@ -204,7 +253,7 @@ describe("worker panelTree handles", () => {
       CONTEXT_ID: "ctx",
       GATEWAY_URL: "http://server.test",
     });
-    await runtime.rpc.call("main", "probe.read", []);
+    await runtime.rpc.call("main", testRpcMethods["probe.read"], []);
     runtime.destroy();
 
     expect(runtimeHeader).toBe("worker:workers/identity-probe:probe");
@@ -217,29 +266,30 @@ describe("worker panelTree handles", () => {
       const request = parseReq(init);
       calls.push(request);
       return respond(init, request.method === "workers.resolveService"
-        ? { kind: "durable-object", targetId: "do:workers/probe:Probe:chosen" }
+        ? durableObjectServiceFixture("do:workers/probe:Probe:chosen")
         : "value");
     }) as typeof fetch;
     const entry = await import("./index.js");
-    expect(() => entry.createDurableObjectServiceClient("probe.v1")).toThrow("not been initialized");
+    expect(() => entry.createDurableObjectServiceClient("probe.v1", testRpcMethods)).toThrow("not been initialized");
     const runtime = entry.createWorkerRuntime({
       WORKER_ID: "probe", WORKER_SOURCE: "workers/probe",
       RPC_AUTH_TOKEN: "token",
       WORKSPACE_ID: "workspace:test", CONTEXT_ID: "ctx", GATEWAY_URL: "http://server.test",
     });
     try {
-      const client = entry.createDurableObjectServiceClient("probe.v1", "chosen");
+      const client = entry.createDurableObjectServiceClient("probe.v1", testRpcMethods, "chosen");
       expect(await client.call("read", "argument")).toBe("value");
-      expect(await entry.callMain("probe.read", "direct")).toBe("value");
+      const digest = "a".repeat(64);
+      expect(await entry.callMain("blobstore.getText", digest)).toBe("value");
       expect(calls).toEqual([
         { type: "call", targetId: "main", method: "workers.resolveService", args: ["probe.v1", "chosen"] },
         { type: "call", targetId: "do:workers/probe:Probe:chosen", method: "read", args: ["argument"] },
-        { type: "call", targetId: "main", method: "probe.read", args: ["direct"] },
+        { type: "call", targetId: "main", method: "blobstore.getText", args: [digest] },
       ]);
     } finally {
       runtime.destroy();
     }
-    expect(() => entry.createDurableObjectServiceClient("probe.v1")).toThrow("not been initialized");
+    expect(() => entry.createDurableObjectServiceClient("probe.v1", testRpcMethods)).toThrow("not been initialized");
   });
 
   it("routes bare handle RPC events through the refreshed runtime entity id", async () => {
@@ -261,27 +311,10 @@ describe("worker panelTree handles", () => {
         const presentationResponse = respondToWorkspacePresentation(init, body);
         if (presentationResponse) return presentationResponse;
         if (body.method === "workers.resolveService") {
-          return respond(init, {
-            kind: "durable-object",
-            targetId: "main",
-          });
+          return respond(init, durableObjectServiceFixture("main"));
         }
         if (body.method === "workspace-state.panelTree.detail") {
-          return respond(init, {
-            slot: {
-              parent_slot_id: "root",
-              current_entity_title: "Panel A",
-            },
-            currentHistory: {
-              source: "panels/a",
-              context_id: "ctx",
-              options: null,
-            },
-            entity: {
-              id: "panel:nav-slot-a-current-entity",
-              source: { effectiveVersion: "ev-a" },
-            },
-          });
+          return respond(init, workspaceDetailFor("panel:tree/slot-a"));
         }
         if (body.method === "panelRuntime.ensureSlot")
           return respond(
@@ -290,6 +323,8 @@ describe("worker panelTree handles", () => {
           );
         if (body.method === "panelRuntime.observeSlot")
           return respond(init, readyRuntimeSlot(String(body.args[0])));
+        if (body.method === "workspace-state.slot.create")
+          return respond(init, undefined);
         return respond(init, "ok");
       },
     ) as typeof fetch;
@@ -309,7 +344,7 @@ describe("worker panelTree handles", () => {
     expect(handle.title).toBe("Panel A");
     expect(handle.source).toBe("panels/a");
     expect(handle.kind).toBe("workspace");
-    expect(handle.parentId).toBe("root");
+    expect(handle.parentId).toBeNull();
     await handle.emit("ready", { ok: true });
     runtime.destroy();
 
@@ -345,10 +380,7 @@ describe("worker panelTree handles", () => {
         const presentationResponse = respondToWorkspacePresentation(init, body);
         if (presentationResponse) return presentationResponse;
         if (body.method === "workers.resolveService")
-          return respond(init, {
-            kind: "durable-object",
-            targetId: "main",
-          });
+          return respond(init, durableObjectServiceFixture("main"));
         if (body.method === "workspace-state.panelTree.detail")
           return respond(init, workspaceDetailFor("panel:tree/slot-a"));
         if (body.method === "panelRuntime.observeSlot")
@@ -397,10 +429,7 @@ describe("worker panelTree handles", () => {
           args: body.args,
         });
         if (body.method === "workers.resolveService")
-          return respond(init, {
-            kind: "durable-object",
-            targetId: "main",
-          });
+          return respond(init, durableObjectServiceFixture("main"));
         if (body.method === "workspace-state.panelTree.detail")
           return respond(init, workspaceDetailFor("panel:tree/slot-a"));
         if (body.method === "panelRuntime.observeSlot")
@@ -449,10 +478,7 @@ describe("worker panelTree handles", () => {
         const presentationResponse = respondToWorkspacePresentation(init, body);
         if (presentationResponse) return presentationResponse;
         if (body.method === "workers.resolveService") {
-          return respond(init, {
-            kind: "durable-object",
-            targetId: "main",
-          });
+          return respond(init, durableObjectServiceFixture("main"));
         }
         if (body.method === "workspace-state.panelTree.rootGroups") {
           return respond(init, {
@@ -469,10 +495,9 @@ describe("worker panelTree handles", () => {
             group.kind === "roots"
               ? [
                   {
-                    slotId: "root-slot",
+                    slotId: "panel:tree/root-slot",
                     title: "Root",
                     source: "panels/root",
-                    kind: "workspace",
                     parentSlotId: null,
                     ownerUserId: null,
                     contextId: "ctx-root",
@@ -481,14 +506,13 @@ describe("worker panelTree handles", () => {
                     childCount: 1,
                   },
                 ]
-              : group.parentSlotId === "root-slot"
+              : group.parentSlotId === "panel:tree/root-slot"
                 ? [
                     {
-                      slotId: "child-slot",
+                      slotId: "panel:tree/child-slot",
                       title: "Child",
                       source: "panels/child",
-                      kind: "workspace",
-                      parentSlotId: "root-slot",
+                      parentSlotId: "panel:tree/root-slot",
                       ownerUserId: null,
                       contextId: "ctx-child",
                       runtimeEntityId: "panel:child-entity",
@@ -503,21 +527,10 @@ describe("worker panelTree handles", () => {
           body.method === "runtime.reserveEntity" ||
           body.method === "runtime.activateReservedEntity"
         ) {
-          const spec = body.args[0] as { key: string; contextId?: string };
-          return respond(init, {
-            id: `panel:nav-${spec.key}`,
-            contextId: spec.contextId ?? "ctx-created",
-            source: {
-              effectiveVersion:
-                body.method === "runtime.reserveEntity" ? "" : "ev-created",
-            },
-            ...(body.method === "runtime.reserveEntity"
-              ? {}
-              : { buildKey: "build-created" }),
-          });
+          return respond(init, runtimeEntityFixture(body.args[0]));
         }
         if (body.method === "build.getPanelMetadata")
-          return respond(init, { title: "Created" });
+          return respond(init, { source: "panels/new", title: "Created", hiddenInLauncher: false });
         if (body.method === "workspace-state.panelTree.detail") {
           const panelId = String(body.args[0]);
           const detail = workspaceDetailFor(panelId, "panels/new");
@@ -538,6 +551,8 @@ describe("worker panelTree handles", () => {
           );
         if (body.method === "panelRuntime.observeSlot")
           return respond(init, readyRuntimeSlot(String(body.args[0])));
+        if (body.method === "workspace-state.slot.create")
+          return respond(init, undefined);
         return respond(init, "ok");
       },
     ) as typeof fetch;
@@ -559,17 +574,17 @@ describe("worker panelTree handles", () => {
       limit: 50,
     });
     const children = await runtime.panelTree.page({
-      group: { kind: "children", parentSlotId: "root-slot" },
+      group: { kind: "children", parentSlotId: "panel:tree/root-slot" },
       limit: 50,
     });
     const created = await runtime.openPanel("panels/new");
     runtime.destroy();
 
-    expect(roots.entries.map(({ handle }) => handle.id)).toEqual(["root-slot"]);
+    expect(roots.entries.map(({ handle }) => handle.id)).toEqual(["panel:tree/root-slot"]);
     expect(children.entries.map(({ handle }) => handle.id)).toEqual([
-      "child-slot",
+      "panel:tree/child-slot",
     ]);
-    expect(children.entries[0]?.handle.parent()?.id).toBe("root-slot");
+    expect(children.entries[0]?.handle.parent()?.id).toBe("panel:tree/root-slot");
     expect(created.id).toMatch(/^panel:tree\/parent-slot\/panels~new\//);
     expect(created.parentId).toBe("panel:tree/parent-slot");
     expect(calls.map(({ method }) => method)).toContain(
@@ -593,10 +608,7 @@ describe("worker panelTree handles", () => {
         const presentationResponse = respondToWorkspacePresentation(init, body);
         if (presentationResponse) return presentationResponse;
         if (body.method === "workers.resolveService") {
-          return respond(init, {
-            kind: "durable-object",
-            targetId: "main",
-          });
+          return respond(init, durableObjectServiceFixture("main"));
         }
         if (body.method === "workspace-state.panelTree.rootGroups") {
           return respond(init, { revision: 1, groups: [], nextCursor: null });
@@ -605,21 +617,10 @@ describe("worker panelTree handles", () => {
           body.method === "runtime.reserveEntity" ||
           body.method === "runtime.activateReservedEntity"
         ) {
-          const spec = body.args[0] as { key: string; contextId?: string };
-          return respond(init, {
-            id: `panel:nav-${spec.key}`,
-            contextId: spec.contextId ?? "ctx-created",
-            source: {
-              effectiveVersion:
-                body.method === "runtime.reserveEntity" ? "" : "ev-created",
-            },
-            ...(body.method === "runtime.reserveEntity"
-              ? {}
-              : { buildKey: "build-created" }),
-          });
+          return respond(init, runtimeEntityFixture(body.args[0]));
         }
         if (body.method === "build.getPanelMetadata")
-          return respond(init, { title: "Created" });
+          return respond(init, { source: "panels/new", title: "Created", hiddenInLauncher: false });
         if (body.method === "workspace-state.panelTree.detail") {
           const panelId = String(body.args[0]);
           return respond(
@@ -692,10 +693,7 @@ describe("worker panelTree handles", () => {
           return respond(init, { wsEndpoint: "ws://cdp.test" });
         }
         if (body.method === "workers.resolveService")
-          return respond(init, {
-            kind: "durable-object",
-            targetId: "main",
-          });
+          return respond(init, durableObjectServiceFixture("main"));
         if (body.method === "workspace-state.panelTree.detail")
           return respond(
             init,
@@ -704,26 +702,34 @@ describe("worker panelTree handles", () => {
         if (body.method === "panelRuntime.observeSlot")
           return respond(init, readyRuntimeSlot(String(body.args[0])));
         if (body.method === "build.getPanelMetadata")
-          return respond(init, { title: "Parent" });
+          return respond(init, { source: "panels/parent", title: "Parent", hiddenInLauncher: false });
         if (body.method === "runtime.createEntity") {
           const spec = body.args[0] as { key: string };
           return respond(init, {
             id: `panel:nav-${spec.key}`,
+            kind: "panel",
+            targetId: `panel:nav-${spec.key}`,
             contextId: "ctx",
-            source: { effectiveVersion: "ev-a" },
-            buildKey: "build-a",
+            source: { repoPath: "panels/parent", effectiveVersion: "ev-a" },
+            buildKey: "b".repeat(64),
           });
         }
         if (body.method === "workspace-state.slot.commitPreparedNavigation") {
           const input = body.args[0] as {
             expectedCurrentEntityId: string;
-            mutation: { entry: { entityId: string } };
+            mutation: { entry: { entryKey: string } };
           };
           return respond(init, {
             previousEntityId: input.expectedCurrentEntityId,
-            currentEntityId: input.mutation.entry.entityId,
+            currentEntityId: `panel:nav-${input.mutation.entry.entryKey}`,
+            currentEntryKey: input.mutation.entry.entryKey,
+            cursor: 1,
           });
         }
+        if (body.method === "workspace-state.panel.updateTitle")
+          return respond(init, null);
+        if (body.method === "workspace-state.slot.create")
+          return respond(init, undefined);
         if (body.method === "panelRuntime.ensureSlot")
           return respond(
             init,

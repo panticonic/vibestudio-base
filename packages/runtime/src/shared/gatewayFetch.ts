@@ -1,3 +1,4 @@
+import { mainRpcMethods } from "@vibestudio/service-schemas/mainRpc";
 import type { RpcClient } from "@vibestudio/rpc";
 
 /** Direct authenticated HTTP is for server-hosted runtimes only. */
@@ -82,7 +83,7 @@ export function createGatewayFetch(
       });
       return config.rpc.stream(
         "main",
-        "gateway.fetch",
+        mainRpcMethods["gateway.fetch"],
         [
           {
             path: relative,

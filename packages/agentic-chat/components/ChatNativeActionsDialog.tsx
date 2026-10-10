@@ -1,11 +1,14 @@
 import { useMemo } from "react";
 import { Button, Card, Dialog, Flex, Text } from "@radix-ui/themes";
 import { useChatContext } from "../context/ChatContext";
-import { useAccountProfiles, type AccountRpc } from "../hooks/useAccountProfiles";
+import { useAccountProfiles } from "../hooks/useAccountProfiles";
 import { ChannelPeopleMenu } from "./ChannelPeopleMenu";
 import { ForkSwitcher } from "./ForkSwitcher";
 import { ToolPermissionsDropdown } from "./ToolPermissionsDropdown";
-import { ConversationAgentDialogs, useConversationActions } from "./useConversationActions";
+import {
+  ConversationAgentDialogs,
+  useConversationActions,
+} from "./useConversationActions";
 
 interface ChatNativeActionsDialogProps {
   open: boolean;
@@ -13,14 +16,22 @@ interface ChatNativeActionsDialogProps {
 }
 
 /** Touch-oriented conversation controls opened from the native panel menu. */
-export function ChatNativeActionsDialog({ open, onOpenChange }: ChatNativeActionsDialogProps) {
-  const { participants, chat, toolApproval, onRemoveAgent, onDebugConsoleChange } =
-    useChatContext();
-  const participantIds = useMemo(() => Object.keys(participants), [participants]);
-  const accountProfiles = useAccountProfiles(
-    (chat as { rpc?: AccountRpc } | undefined)?.rpc,
-    participantIds
+export function ChatNativeActionsDialog({
+  open,
+  onOpenChange,
+}: ChatNativeActionsDialogProps) {
+  const {
+    participants,
+    chat,
+    toolApproval,
+    onRemoveAgent,
+    onDebugConsoleChange,
+  } = useChatContext();
+  const participantIds = useMemo(
+    () => Object.keys(participants),
+    [participants],
   );
+  const accountProfiles = useAccountProfiles(chat.rpc, participantIds);
   const actions = useConversationActions({
     participants,
     accountProfiles,
@@ -39,7 +50,8 @@ export function ChatNativeActionsDialog({ open, onOpenChange }: ChatNativeAction
         <Dialog.Content className="chat-native-actions-dialog" maxWidth="440px">
           <Dialog.Title>Conversation actions</Dialog.Title>
           <Dialog.Description size="2" color="gray">
-            Manage this conversation without adding another toolbar to the panel.
+            Manage this conversation without adding another toolbar to the
+            panel.
           </Dialog.Description>
 
           <Flex direction="column" gap="4" mt="4">
@@ -69,7 +81,9 @@ export function ChatNativeActionsDialog({ open, onOpenChange }: ChatNativeAction
                           size="2"
                           variant="soft"
                           onClick={() =>
-                            leaveDialog(() => actions.openAgentSettings(participant.id))
+                            leaveDialog(() =>
+                              actions.openAgentSettings(participant.id),
+                            )
                           }
                         >
                           Settings
@@ -79,7 +93,11 @@ export function ChatNativeActionsDialog({ open, onOpenChange }: ChatNativeAction
                             size="2"
                             variant="soft"
                             color="gray"
-                            onClick={() => leaveDialog(() => actions.openDebugConsole(handle))}
+                            onClick={() =>
+                              leaveDialog(() =>
+                                actions.openDebugConsole(handle),
+                              )
+                            }
                           >
                             Debug
                           </Button>
@@ -90,7 +108,8 @@ export function ChatNativeActionsDialog({ open, onOpenChange }: ChatNativeAction
                             variant="soft"
                             color="red"
                             onClick={() => {
-                              if (actions.requestRemoveAgent(handle)) onOpenChange(false);
+                              if (actions.requestRemoveAgent(handle))
+                                onOpenChange(false);
                             }}
                           >
                             Remove
@@ -103,7 +122,10 @@ export function ChatNativeActionsDialog({ open, onOpenChange }: ChatNativeAction
               })}
               <Flex gap="2" wrap="wrap">
                 {actions.canChangeAgent ? (
-                  <Button size="2" onClick={() => leaveDialog(actions.openAddAgent)}>
+                  <Button
+                    size="2"
+                    onClick={() => leaveDialog(actions.openAddAgent)}
+                  >
                     {actions.agentActionLabel}
                   </Button>
                 ) : null}

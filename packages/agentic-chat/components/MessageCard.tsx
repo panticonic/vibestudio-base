@@ -284,11 +284,7 @@ export const MessageCard = React.memo(function MessageCard({
       return null;
     const bridge = chat["rpc"] as
       | {
-          call?: (
-            target: string,
-            method: string,
-            args: unknown[],
-          ) => Promise<unknown>;
+          call?: import("@vibestudio/rpc").RpcCaller["call"];
         }
       | undefined;
     if (typeof bridge?.call !== "function") return null;
@@ -1082,7 +1078,7 @@ export const MessageCard = React.memo(function MessageCard({
                   feedback={
                     senderType === "agent" && chat
                       ? {
-                          chat,
+                          chat: chat as unknown as Record<string, unknown>,
                           author: { kind: senderType, id: msg.senderId },
                           messageId: msg.id,
                           ...(msg.turnId ? { turnId: msg.turnId } : {}),

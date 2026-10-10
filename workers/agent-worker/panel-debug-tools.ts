@@ -14,9 +14,9 @@
 import { Type, type Static } from "@panticonic/pi-ai";
 import type { ToolRegistration, ToolExecutionResult } from "@panticonic/pi-durable";
 import { copyJson, type JsonRepresentation } from "@panticonic/pi-chord";
-import type { RpcCallOptions } from "@vibestudio/rpc";
 
-export type CallMain = <T>(method: string, args: unknown[], options?: RpcCallOptions) => Promise<T>;
+
+export type CallMain = import("@vibestudio/service-schemas/mainRpc").MainRpcCaller;
 
 const panelTarget = {
   panelId: Type.Optional(
@@ -63,7 +63,7 @@ export function createPanelScreenshotTool(
       params: PanelScreenshotParams, _api, context,
     ): Promise<ToolExecutionResult<JsonRepresentation<PanelScreenshotResult | null>>> => {
       const panelId = params.panelId ?? boundPanelId;
-      const result = await callMain<PanelScreenshotResult>(
+      const result = await callMain(
         "panelCdp.screenshot",
         [panelId, params.format ? { format: params.format } : {}],
         context.abortSignal ? { signal: context.abortSignal } : undefined,
@@ -177,7 +177,7 @@ export function createPanelConsoleTool(
       params: PanelConsoleParams, _api, context,
     ): Promise<ToolExecutionResult<JsonRepresentation<PanelConsoleResult | null>>> => {
       const panelId = params.panelId ?? boundPanelId;
-      const result = await callMain<PanelConsoleResult>(
+      const result = await callMain(
         "panelCdp.consoleHistory",
         [
           panelId,
@@ -269,7 +269,7 @@ export function createPanelEvalTool(
           details: null,
         };
       }
-      const result = await callMain<PanelEvaluateResult>("panelCdp.evaluate", [
+      const result = await callMain("panelCdp.evaluate", [
         panelId,
         expression,
         {},
@@ -329,7 +329,7 @@ export function createPanelCdpEndpointTool(
       params: PanelCdpEndpointParams, _api, context,
     ): Promise<ToolExecutionResult<JsonRepresentation<CdpEndpoint | null>>> => {
       const panelId = params.panelId ?? boundPanelId;
-      const endpoint = await callMain<CdpEndpoint>("panelCdp.getCdpEndpoint", [
+      const endpoint = await callMain("panelCdp.getCdpEndpoint", [
         panelId,
       ], context.abortSignal ? { signal: context.abortSignal } : undefined);
       return {

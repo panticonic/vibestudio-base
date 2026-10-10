@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { durableObjectServiceFixture } from "@vibestudio/service-schemas/test-utils";
 
 function readyObservation(panelId: string, source = "panels/example") {
   const entityKey = panelId.replace(/^panel:tree\//, "");
@@ -24,6 +25,51 @@ function readyObservation(panelId: string, source = "panels/example") {
   };
 }
 
+function panelDetail(
+  panelId: string,
+  source: string,
+  title: string,
+  parentSlotId: string | null,
+) {
+  const key = panelId.replace(/^panel:tree\//, "");
+  const entityId = `panel:nav-${key}-entity`;
+  return {
+    revision: 1,
+    slot: {
+      slot_id: panelId,
+      parent_slot_id: parentSlotId,
+      current_entity_id: entityId,
+      current_entity_title: title,
+      current_entry_key: "entry-1",
+      sort_key: 0,
+      owner_user_id: null,
+      created_at: 1,
+      closed_at: null,
+    },
+    currentHistory: {
+      slot_id: panelId,
+      cursor: 0,
+      entry_key: "entry-1",
+      entity_id: entityId,
+      source,
+      context_id: "ctx-meta",
+      state_args: '{"preserved":true}',
+      recorded_at: 1,
+    },
+    entity: {
+      id: entityId,
+      authoritySessionId: "authority-panel-fixture",
+      kind: "panel",
+      source: { repoPath: source, effectiveVersion: `ev-${key}` },
+      contextId: "ctx-meta",
+      key,
+      createdAt: 1,
+      status: "active",
+      cleanupComplete: false,
+    },
+  };
+}
+
 function readyAttempt(slotId: string, runtimeEntityId: string) {
   return {
     epoch: "test",
@@ -37,228 +83,244 @@ function readyAttempt(slotId: string, runtimeEntityId: string) {
   };
 }
 
-function createRpcCall() {
-  return vi.fn(async (_target: string, method: string, args: unknown[]) => {
-    switch (method) {
-      case "workers.resolveService":
-        return {
-          kind: "durable-object",
-          targetId: "do:workspace-presentation",
-        };
-      case "titlesForSlots":
-        return Object.fromEntries(
-          (args[0] as string[]).map((slotId) => [
-            slotId,
-            slotId.includes("parent")
-              ? "Parent"
-              : slotId.includes("browser")
-                ? "Browser"
-                : slotId.includes("child")
-                  ? "Child"
-                  : slotId.includes("panels~example")
-                    ? "Created"
-                    : "Panel",
-          ]),
-        );
-      case "bindSlot":
-      case "indexPanel":
-      case "updatePanelTitle":
-      case "incrementAccess":
-      case "rebuildIndex":
-      case "removeSlots":
-        return undefined;
-      case "runtime.reserveEntity":
-      case "runtime.activateReservedEntity":
-      case "runtime.createEntity": {
-        const spec = args[0] as {
-          key: string;
-          contextId?: string;
-          execution:
-            | { surface: "code"; source: string }
-            | { surface: "external"; url: string };
-        };
-        return {
-          id: `panel:nav-${spec.key}`,
-          contextId: spec.contextId ?? "ctx-created",
-          source: {
-            effectiveVersion:
-              method === "runtime.reserveEntity" ? "" : "ev-created",
-          },
-          ...(method === "runtime.reserveEntity"
-            ? {}
-            : { buildKey: "build-created" }),
-        };
-      }
-      case "workspace-state.slot.patchCurrentStateArgs":
-        return { preserved: true, ...(args[1] as Record<string, unknown>) };
-      case "workspace-state.slot.create":
-      case "workspace-state.panel.index":
-      case "workspace-state.panel.updateTitle":
-      case "panelTree.focus":
-        return undefined;
-      case "panelRuntime.ensureSlot":
-        return {
-          status: "assigned",
-          lease: null,
-          attempt: readyAttempt(
-            String(args[0]),
-            `panel:nav-${String(args[0]).replace(/^panel:tree\//, "")}-entity`,
-          ),
-        };
-      case "workspace-state.slot.commitPreparedNavigation": {
-        const input = args[0] as {
-          expectedCurrentEntityId: string;
-          mutation: { entry: { entityId: string } };
-        };
-        return {
-          previousEntityId: input.expectedCurrentEntityId,
-          currentEntityId: input.mutation.entry.entityId,
-        };
-      }
-      case "build.getPanelMetadata":
-        return { title: "Created" };
-      case "workspace-state.panelTree.rootGroups":
-        return {
-          revision: 1,
-          groups: [{ ownerUserId: null, rootCount: 1 }],
-          nextCursor: null,
-        };
-      case "workspace-state.panelTree.page": {
-        const input = args[0] as {
-          group:
-            | { kind: "roots"; ownerUserId: string | null }
-            | { kind: "children"; parentSlotId: string };
-        };
-        const childParent =
-          input.group.kind === "children" ? input.group.parentSlotId : null;
-        const nodes =
-          input.group.kind === "roots"
-            ? [
-                {
-                  slotId: "panel:tree/browser-1",
-                  title: "Browser",
-                  source: "browser:https://example.com",
-                  kind: "browser",
-                  parentSlotId: null,
-                  ownerUserId: null,
-                  contextId: "ctx",
-                  runtimeEntityId: "panel:browser-entity",
-                  effectiveVersion: "ev-browser",
-                  createdAt: 1,
-                  childCount: 0,
-                },
-              ]
-            : childParent
+async function createRpcCall() {
+  const call = vi.fn(
+    async (_target: string, method: string, args: unknown[]) => {
+      switch (method) {
+        case "workers.resolveService":
+          return durableObjectServiceFixture("do:workspace-presentation");
+        case "titlesForSlots":
+          return Object.fromEntries(
+            (args[0] as string[]).map((slotId) => [
+              slotId,
+              slotId.includes("parent")
+                ? "Parent"
+                : slotId.includes("browser")
+                  ? "Browser"
+                  : slotId.includes("child")
+                    ? "Child"
+                    : slotId.includes("panels~example")
+                      ? "Created"
+                      : "Panel",
+            ]),
+          );
+        case "bindSlot":
+        case "incrementAccess":
+        case "rebuildIndex":
+        case "removeSlots":
+          return undefined;
+        case "indexPanel":
+        case "panel.index":
+          return null;
+        case "updatePanelTitle":
+        case "panel.updateTitle":
+          return args[1] ?? null;
+        case "runtime.reserveEntity":
+        case "runtime.activateReservedEntity":
+        case "runtime.createEntity": {
+          const spec = args[0] as {
+            key: string;
+            contextId?: string;
+            execution:
+              | { surface: "code"; source: string }
+              | { surface: "external"; url: string };
+          };
+          return {
+            id: `panel:nav-${spec.key}`,
+            kind: "panel",
+            contextId: spec.contextId ?? "ctx-created",
+            source: {
+              repoPath: "panels/example",
+              effectiveVersion:
+                method === "runtime.reserveEntity"
+                  ? "ev-reserved"
+                  : "ev-created",
+            },
+            targetId: `panel:nav-${spec.key}`,
+            ...(method === "runtime.reserveEntity"
+              ? {}
+              : { buildKey: "b".repeat(64) }),
+          };
+        }
+        case "workspace-state.slot.patchCurrentStateArgs":
+          return { preserved: true, ...(args[1] as Record<string, unknown>) };
+        case "workspace-state.slot.create":
+          return undefined;
+        case "workspace-state.panel.index":
+          return null;
+        case "workspace-state.panel.updateTitle":
+          return args[1] ?? null;
+        case "panelTree.focus":
+          return undefined;
+        case "panelRuntime.ensureSlot":
+          return {
+            status: "assigned",
+            lease: null,
+            attempt: readyAttempt(
+              String(args[0]),
+              `panel:nav-${String(args[0]).replace(/^panel:tree\//, "")}-entity`,
+            ),
+          };
+        case "workspace-state.slot.commitPreparedNavigation": {
+          const input = args[0] as {
+            expectedCurrentEntityId: string;
+            mutation: { entry: { entityId: string } };
+          };
+          return {
+            previousEntityId: input.expectedCurrentEntityId,
+            currentEntityId: input.mutation.entry.entityId,
+            currentEntryKey: "entry-committed",
+            cursor: 0,
+          };
+        }
+        case "build.getPanelMetadata":
+          return {
+            source: "panels/example",
+            title: "Created",
+            hiddenInLauncher: false,
+          };
+        case "workspace-state.panelTree.rootGroups":
+          return {
+            revision: 1,
+            groups: [{ ownerUserId: null, rootCount: 1 }],
+            nextCursor: null,
+          };
+        case "workspace-state.panelTree.page": {
+          const input = args[0] as {
+            group:
+              | { kind: "roots"; ownerUserId: string | null }
+              | { kind: "children"; parentSlotId: string };
+          };
+          const childParent =
+            input.group.kind === "children" ? input.group.parentSlotId : null;
+          const nodes =
+            input.group.kind === "roots"
               ? [
                   {
-                    slotId: "panel:tree/child-1",
-                    title: "Child",
-                    source: "panels/child",
-                    kind: "workspace",
-                    parentSlotId: childParent,
+                    slotId: "panel:tree/browser-1",
+                    title: "Browser",
+                    source: "browser:https://example.com",
+                    kind: "browser",
+                    parentSlotId: null,
                     ownerUserId: null,
                     contextId: "ctx",
-                    runtimeEntityId: "panel:child-entity",
-                    effectiveVersion: "ev-child",
+                    runtimeEntityId: "panel:browser-entity",
+                    effectiveVersion: "ev-browser",
                     createdAt: 1,
                     childCount: 0,
                   },
                 ]
-              : [];
-        return { revision: 1, group: input.group, nodes, nextCursor: null };
-      }
-      case "workspace-state.panelTree.detail":
-        const panelId = String(args[0]);
-        const entityKey = panelId.replace(/^panel:tree\//, "");
-        const created = panelId.includes("panels~example");
-        return {
-          slot: {
-            current_entity_title: created
+              : childParent
+                ? [
+                    {
+                      slotId: "panel:tree/child-1",
+                      title: "Child",
+                      source: "panels/child",
+                      kind: "workspace",
+                      parentSlotId: childParent,
+                      ownerUserId: null,
+                      contextId: "ctx",
+                      runtimeEntityId: "panel:child-entity",
+                      effectiveVersion: "ev-child",
+                      createdAt: 1,
+                      childCount: 0,
+                    },
+                  ]
+                : [];
+          return { revision: 1, group: input.group, nodes, nextCursor: null };
+        }
+        case "workspace-state.panelTree.detail":
+          const panelId = String(args[0]);
+          const created = panelId.includes("panels~example");
+          const source = created
+            ? "panels/example"
+            : panelId.includes("parent")
+              ? "panels/parent"
+              : "panels/self";
+          return panelDetail(
+            panelId,
+            source,
+            created
               ? "Created"
               : panelId.includes("parent")
                 ? "Parent"
                 : "Panel",
-            parent_slot_id: created
+            created || panelId.includes("parent")
               ? null
-              : panelId.includes("parent")
-                ? null
-                : "panel:tree/panel-parent",
-          },
-          currentHistory: {
-            source: created
-              ? "panels/example"
-              : panelId.includes("parent")
-                ? "panels/parent"
-                : "panels/self",
-            context_id: "ctx-meta",
-            state_args: '{"preserved":true}',
-            options: null,
-          },
-          entity: {
-            id: `panel:nav-${entityKey}-entity`,
-            source: { effectiveVersion: `ev-${String(args[0])}` },
-          },
-        };
-      case "panelTree.observe":
-        return readyObservation(String(args[0]));
-      case "panelRuntime.observeSlot":
-        const observedPanelId = String(args[0]);
-        const observedEntityKey = observedPanelId.replace(/^panel:tree\//, "");
-        const observedRuntimeEntityId = `panel:nav-${observedEntityKey}-entity`;
-        return {
-          version: { epoch: "test", counter: 1 },
-          attempt: readyAttempt(observedPanelId, observedRuntimeEntityId),
-          route: {
-            reachable: true,
-            connectionId: `route:${observedPanelId}`,
-            holderLabel: "Test host",
-            platform: "headless",
-            supportsCdp: true,
-            view: { url: "http://panel.test/", loading: false },
-          },
-        };
-      case "panelTree.diagnose":
-        return {
-          observation: readyObservation(String(args[0])),
-          consoleHistory: {
-            entries: [{ message: "loaded" }],
+              : "panel:tree/panel-parent",
+          );
+        case "panelTree.observe":
+          return readyObservation(String(args[0]));
+        case "panelRuntime.observeSlot":
+          const observedPanelId = String(args[0]);
+          const observedEntityKey = observedPanelId.replace(
+            /^panel:tree\//,
+            "",
+          );
+          const observedRuntimeEntityId = `panel:nav-${observedEntityKey}-entity`;
+          return {
+            version: { epoch: "test", counter: 1 },
+            attempt: readyAttempt(observedPanelId, observedRuntimeEntityId),
+            route: {
+              reachable: true,
+              connectionId: `route:${observedPanelId}`,
+              holderLabel: "Test host",
+              platform: "headless",
+              supportsCdp: true,
+              view: { url: "http://panel.test/", loading: false },
+            },
+          };
+        case "panelTree.diagnose":
+          return {
+            observation: readyObservation(String(args[0])),
+            consoleHistory: {
+              entries: [{ message: "loaded" }],
+              errors: [],
+              page: { nextBeforeSeq: null, hasOlder: false },
+              dropped: { entries: 0, errors: 0 },
+              capacity: { entries: 1000, errors: 500 },
+            },
+          };
+        case "panelCdp.getCdpEndpoint":
+          return { wsEndpoint: "ws://localhost", token: "t" };
+        case "panelCdp.consoleHistory":
+          return {
+            entries: [
+              {
+                timestamp: 1,
+                level: "info",
+                message: "loaded",
+                line: 1,
+                sourceId: "app.tsx",
+                url: "https://example.com",
+              },
+            ],
             errors: [],
+            page: { nextBeforeSeq: null, hasOlder: false },
             dropped: { entries: 0, errors: 0 },
             capacity: { entries: 1000, errors: 500 },
-          },
-        };
-      case "panelCdp.getCdpEndpoint":
-        return { wsEndpoint: "ws://localhost", token: "t" };
-      case "panelCdp.consoleHistory":
-        return {
-          entries: [
-            {
-              timestamp: 1,
-              level: "info",
-              message: "loaded",
-              line: 1,
-              sourceId: "app.tsx",
-              url: "https://example.com",
-            },
-          ],
-          errors: [],
-          dropped: { entries: 0, errors: 0 },
-          capacity: { entries: 1000, errors: 500 },
-        };
-      case "panelTree.reload":
-        return readyObservation(String(args[0]));
-      case "panelTree.rebuildPanel":
-        return readyObservation(String(args[0]));
-      case "panelTree.navigate":
-        return {
-          id: args[0],
-          title: "Navigated",
-          observation: readyObservation(String(args[0]), String(args[1])),
-        };
-      default:
-        return undefined;
-    }
-  });
+          };
+        case "panelTree.reload":
+          return readyObservation(String(args[0]));
+        case "panelTree.rebuildPanel":
+          return readyObservation(String(args[0]));
+        case "panelTree.navigate":
+          return {
+            id: args[0],
+            title: "Navigated",
+            observation: readyObservation(String(args[0]), String(args[1])),
+          };
+        case "externalOpen.openExternal":
+          return {};
+        default:
+          return undefined;
+      }
+    },
+  );
+  const schemaMock = (await import("@vibestudio/rpc/test-utils")).schemaRpcMock(
+    { call },
+  );
+  return Object.assign(schemaMock.call, { wireCall: call });
 }
 
 describe("PanelHandle", () => {
@@ -273,8 +335,8 @@ describe("PanelHandle", () => {
 
   it("keeps panel APIs bound to their owning runtime when another runtime is created", async () => {
     const { createPanelHandleApi } = await import("./handle.js");
-    const firstCall = createRpcCall();
-    const secondCall = createRpcCall();
+    const firstCall = await createRpcCall();
+    const secondCall = await createRpcCall();
     const first = createPanelHandleApi(
       { call: firstCall, on: vi.fn() } as never,
       { selfId: "panel:tree/first" },
@@ -287,12 +349,13 @@ describe("PanelHandle", () => {
     expect(first.panelTree.self().id).toBe("panel:tree/first");
     expect(second.panelTree.self().id).toBe("panel:tree/second");
     await first.openExternal("https://example.test/first");
-    expect(firstCall).toHaveBeenCalledWith(
+    expect(firstCall.wireCall).toHaveBeenCalledWith(
       "main",
       "externalOpen.openExternal",
       ["https://example.test/first", undefined],
+      undefined,
     );
-    expect(secondCall).not.toHaveBeenCalled();
+    expect(secondCall.wireCall).not.toHaveBeenCalled();
   });
 
   it("cleans native and RPC child subscriptions exactly once on runtime destruction", async () => {
@@ -304,7 +367,7 @@ describe("PanelHandle", () => {
     const { createPanelHandleApi } = await import("./handle.js");
     const rpcUnsubscribe = vi.fn();
     const runtime = createPanelHandleApi({
-      call: createRpcCall(),
+      call: await createRpcCall(),
       on: vi.fn(() => rpcUnsubscribe),
     } as never);
     const unsubscribe = runtime.onChildCreated(vi.fn());
@@ -322,7 +385,7 @@ describe("PanelHandle", () => {
   it("returns a workspace handle from openPanel", async () => {
     const { createPanelHandleApi } = await import("./handle.js");
     const { openPanel } = createPanelHandleApi({
-      call: createRpcCall(),
+      call: await createRpcCall(),
       on: vi.fn(),
     } as never);
 
@@ -345,7 +408,7 @@ describe("PanelHandle", () => {
 
   it("defaults panel opens under self but treats parentId null as root", async () => {
     const { createPanelHandleApi } = await import("./handle.js");
-    const rpcCall = createRpcCall();
+    const rpcCall = await createRpcCall();
     const { openPanel } = createPanelHandleApi(
       { call: rpcCall, on: vi.fn() } as never,
       {
@@ -360,7 +423,7 @@ describe("PanelHandle", () => {
       ref: "ctx:ctx-next",
     });
 
-    const reservations = rpcCall.mock.calls.filter(
+    const reservations = rpcCall.wireCall.mock.calls.filter(
       ([target, method]) =>
         target === "main" && method === "runtime.reserveEntity",
     );
@@ -380,14 +443,16 @@ describe("PanelHandle", () => {
       contextId: "ctx-next",
     });
     expect(
-      rpcCall.mock.calls.filter(([, method]) => method === "panelTree.create"),
+      rpcCall.wireCall.mock.calls.filter(
+        ([, method]) => method === "panelTree.create",
+      ),
     ).toHaveLength(0);
   });
 
   it("hydrates paged browser handles with CDP automation", async () => {
     const { createPanelHandleApi } = await import("./handle.js");
     const { panelTree } = createPanelHandleApi({
-      call: createRpcCall(),
+      call: await createRpcCall(),
       on: vi.fn(),
     } as never);
 
@@ -406,7 +471,7 @@ describe("PanelHandle", () => {
   });
 
   it("routes hydrated handle RPC to the current runtime entity", async () => {
-    const rpcCall = createRpcCall();
+    const rpcCall = await createRpcCall();
     const rpcEmit = vi.fn(async () => undefined);
     const eventHandlers: Array<
       (event: { caller: { callerId: string }; payload: unknown }) => void
@@ -432,7 +497,7 @@ describe("PanelHandle", () => {
 
     const child = (
       await panelTree.page({
-        group: { kind: "children", parentSlotId: "parent-1" },
+        group: { kind: "children", parentSlotId: "panel:tree/parent-1" },
         limit: 200,
       })
     ).entries[0]?.handle;
@@ -453,10 +518,11 @@ describe("PanelHandle", () => {
       payload: { ok: true },
     });
 
-    expect(rpcCall).toHaveBeenCalledWith(
+    expect(rpcCall.wireCall).toHaveBeenCalledWith(
       "panel:nav-child-1-entity",
       "ping",
       [],
+      undefined,
     );
     expect(rpcEmit).toHaveBeenCalledWith("panel:nav-child-1-entity", "ready", {
       ok: true,
@@ -470,7 +536,7 @@ describe("PanelHandle", () => {
   });
 
   it("keeps child contract handles unified with the underlying panel target", async () => {
-    const rpcCall = createRpcCall();
+    const rpcCall = await createRpcCall();
     const rpcEmit = vi.fn(async () => undefined);
     const { createPanelHandleApi } = await import("./handle.js");
     const { panelTree } = createPanelHandleApi({
@@ -481,13 +547,32 @@ describe("PanelHandle", () => {
 
     const child = (
       await panelTree.page({
-        group: { kind: "children", parentSlotId: "parent-1" },
+        group: { kind: "children", parentSlotId: "panel:tree/parent-1" },
         limit: 200,
       })
     ).entries[0]!.handle;
-    const typedChild = child!.withContract({ source: "panels/child" }, "child");
+    const { defineContract } = await import("../core/defineContract.js");
+    const { createRpcMethods } = await import("@vibestudio/shared/rpcMethods");
+    const { z } = await import("zod");
+    const childContract = defineContract({
+      source: "panels/child",
+      child: {
+        methods: createRpcMethods(
+          "panel",
+          {
+            ping: {
+              website: { kind: "closed", reason: "Test child contract." },
+              args: z.tuple([]),
+              returns: z.void(),
+            },
+          },
+          "",
+        ),
+      },
+    });
+    const typedChild = child!.withContract(childContract, "child");
 
-    expect(typedChild).toBe(child);
+    expect(typedChild.id).toBe(child!.id);
     expect(typedChild.id).toBe("panel:tree/child-1");
     await (typedChild.call as Record<string, () => Promise<unknown>>)[
       "ping"
@@ -497,29 +582,33 @@ describe("PanelHandle", () => {
       wsEndpoint: "ws://localhost",
       token: "t",
     });
-    await expect(typedChild.stateArgs.patch({ mode: "live" })).resolves.toEqual({
-      mode: "live",
-      preserved: true,
-    });
+    await expect(typedChild.stateArgs.patch({ mode: "live" })).resolves.toEqual(
+      {
+        mode: "live",
+        preserved: true,
+      },
+    );
 
-    expect(rpcCall).toHaveBeenCalledWith(
+    expect(rpcCall.wireCall).toHaveBeenCalledWith(
       "panel:nav-child-1-entity",
       "ping",
       [],
+      undefined,
     );
     expect(rpcEmit).toHaveBeenCalledWith("panel:nav-child-1-entity", "ready", {
       ok: true,
     });
-    expect(rpcCall).toHaveBeenCalledWith(
+    expect(rpcCall.wireCall).toHaveBeenCalledWith(
       "main",
       "workspace-state.slot.patchCurrentStateArgs",
       ["panel:tree/child-1", { mode: "live" }],
+      undefined,
     );
   });
 
   it("exposes bounded panelTree queries plus get and self handles", async () => {
     const { createPanelHandleApi } = await import("./handle.js");
-    const rpcCall = createRpcCall();
+    const rpcCall = await createRpcCall();
     const { panelTree } = createPanelHandleApi(
       { call: rpcCall, on: vi.fn() } as never,
       {
@@ -534,7 +623,9 @@ describe("PanelHandle", () => {
     const roots = await panelTree.rootsForOwner(owners.owners[0]!.ownerUserId, {
       limit: 200,
     });
-    const children = await panelTree.children("parent-1", { limit: 50 });
+    const children = await panelTree.children("panel:tree/parent-1", {
+      limit: 50,
+    });
     const self = panelTree.self();
     const parent = self.parent();
 
@@ -553,37 +644,46 @@ describe("PanelHandle", () => {
       parentId: "panel:tree/panel-parent",
     });
     await (self.call as Record<string, () => Promise<unknown>>)["ping"]!();
-    expect(rpcCall).toHaveBeenCalledWith(
+    expect(rpcCall.wireCall).toHaveBeenCalledWith(
       "panel:nav-panel-self-entity",
       "ping",
       [],
+      undefined,
     );
     expect(parent?.id).toBe("panel:tree/panel-parent");
     await expect(parent?.observe()).resolves.toMatchObject({
       panelId: "panel:tree/panel-parent",
       parentId: null,
     });
-    expect(rpcCall).toHaveBeenCalledWith(
+    expect(rpcCall.wireCall).toHaveBeenCalledWith(
       "main",
       "workspace-state.panelTree.page",
       [{ group: { kind: "roots", ownerUserId: null }, limit: 200 }],
+      undefined,
     );
-    expect(rpcCall).toHaveBeenCalledWith(
+    expect(rpcCall.wireCall).toHaveBeenCalledWith(
       "main",
       "workspace-state.panelTree.page",
-      [{ group: { kind: "children", parentSlotId: "parent-1" }, limit: 50 }],
+      [
+        {
+          group: { kind: "children", parentSlotId: "panel:tree/parent-1" },
+          limit: 50,
+        },
+      ],
+      undefined,
     );
     await (parent!.call as Record<string, () => Promise<unknown>>)["ping"]!();
-    expect(rpcCall).toHaveBeenCalledWith(
+    expect(rpcCall.wireCall).toHaveBeenCalledWith(
       "panel:nav-panel-parent-entity",
       "ping",
       [],
+      undefined,
     );
   });
 
   it("lazily resolves arbitrary panel handles before target RPC", async () => {
     const { createPanelHandleApi } = await import("./handle.js");
-    const rpcCall = createRpcCall();
+    const rpcCall = await createRpcCall();
     const rpcEmit = vi.fn(async () => undefined);
     const { panelTree } = createPanelHandleApi({
       call: rpcCall,
@@ -595,15 +695,17 @@ describe("PanelHandle", () => {
     await (handle.call as Record<string, () => Promise<unknown>>)["ping"]!();
     await handle.emit("ready", { ok: true });
 
-    expect(rpcCall).toHaveBeenCalledWith(
+    expect(rpcCall.wireCall).toHaveBeenCalledWith(
       "main",
       "workspace-state.panelTree.detail",
       ["panel:tree/arbitrary"],
+      undefined,
     );
-    expect(rpcCall).toHaveBeenCalledWith(
+    expect(rpcCall.wireCall).toHaveBeenCalledWith(
       "panel:nav-arbitrary-entity",
       "ping",
       [],
+      undefined,
     );
     expect(rpcEmit).toHaveBeenCalledWith(
       "panel:nav-arbitrary-entity",
@@ -615,27 +717,63 @@ describe("PanelHandle", () => {
   it("resolves arbitrary panel event targets once and filters synchronously afterward", async () => {
     const { createPanelHandleApi } = await import("./handle.js");
     let resolveMetadata!: (value: unknown) => void;
+    let resolveDetailCallStarted!: () => void;
+    const detailCallStarted = new Promise<void>((resolve) => {
+      resolveDetailCallStarted = resolve;
+    });
     const metadataPromise = new Promise<unknown>((resolve) => {
       resolveMetadata = resolve;
     });
-    const rpcCall = vi.fn(
+    const wireCall = vi.fn(
       async (_target: string, method: string, args: unknown[]) => {
-        if (method === "workspace-state.panelTree.detail")
+        if (method === "workspace-state.panelTree.detail") {
+          resolveDetailCallStarted();
           return metadataPromise;
+        }
         if (method === "workers.resolveService") {
-          return {
-            kind: "durable-object",
-            targetId: "do:workspace-presentation",
-          };
+          return durableObjectServiceFixture("do:workspace-presentation");
         }
         if (method === "titlesForSlots") {
           return Object.fromEntries(
             (args[0] as string[]).map((slotId) => [slotId, "Events"]),
           );
         }
+        if (method === "panelRuntime.ensureSlot") {
+          return {
+            status: "assigned",
+            lease: null,
+            attempt: readyAttempt(
+              String(args[0]),
+              "panel:nav-arbitrary-events-entity",
+            ),
+          };
+        }
+        if (method === "panelRuntime.observeSlot") {
+          return {
+            version: { epoch: "test", counter: 1 },
+            attempt: readyAttempt(
+              String(args[0]),
+              "panel:nav-arbitrary-events-entity",
+            ),
+            route: {
+              reachable: true,
+              connectionId: `route:${String(args[0])}`,
+              holderLabel: "Test host",
+              platform: "headless",
+              supportsCdp: true,
+              view: { url: "http://panel.test/", loading: false },
+            },
+          };
+        }
         return undefined;
       },
     );
+    const schemaMock = (
+      await import("@vibestudio/rpc/test-utils")
+    ).schemaRpcMock({
+      call: wireCall,
+    });
+    const rpcCall = Object.assign(schemaMock.call, { wireCall });
     const eventHandlers: Array<
       (event: { caller: { callerId: string }; payload: unknown }) => void
     > = [];
@@ -665,55 +803,85 @@ describe("PanelHandle", () => {
 
     for (let i = 0; i < 5; i += 1) {
       eventHandlers[0]?.({
-        caller: { callerId: "panel:arbitrary-events-entity" },
+        caller: { callerId: "panel:nav-arbitrary-events-entity" },
         payload: { before: i },
       });
     }
-    await Promise.resolve();
-    await Promise.resolve();
-    expect(rpcCall).toHaveBeenCalledTimes(1);
-    expect(rpcCall).toHaveBeenCalledWith(
+    await detailCallStarted;
+    expect(rpcCall.wireCall).toHaveBeenCalledTimes(1);
+    expect(rpcCall.wireCall).toHaveBeenCalledWith(
       "main",
       "workspace-state.panelTree.detail",
       ["panel:tree/arbitrary-events"],
+      undefined,
     );
     expect(listener).not.toHaveBeenCalled();
 
     resolveMetadata({
-      slot: { parent_slot_id: null, current_entity_title: "Events" },
+      revision: 1,
+      slot: {
+        slot_id: "panel:tree/arbitrary-events",
+        parent_slot_id: null,
+        current_entity_id: "panel:nav-arbitrary-events-entity",
+        current_entity_title: "Events",
+        current_entry_key: "events-entry",
+        sort_key: 0,
+        owner_user_id: null,
+        created_at: 1,
+        closed_at: null,
+      },
       currentHistory: {
+        slot_id: "panel:tree/arbitrary-events",
+        cursor: 0,
+        entry_key: "events-entry",
+        entity_id: "panel:nav-arbitrary-events-entity",
         source: "panels/events",
         context_id: "ctx-events",
         state_args: null,
-        options: null,
+        recorded_at: 1,
       },
       entity: {
-        id: "panel:arbitrary-events-entity",
-        source: { effectiveVersion: "ev-events" },
+        id: "panel:nav-arbitrary-events-entity",
+        authoritySessionId: "authority-events",
+        kind: "panel",
+        source: { repoPath: "panels/events", effectiveVersion: "ev-events" },
+        contextId: "ctx-events",
+        key: "arbitrary-events",
+        createdAt: 1,
+        status: "active",
+        cleanupComplete: false,
+        activeBuildKey: "b".repeat(64),
       },
     });
-    await new Promise((resolve) => setTimeout(resolve, 0));
-
+    await vi.waitFor(() => {
+      eventHandlers[0]?.({
+        caller: { callerId: "panel:nav-arbitrary-events-entity" },
+        payload: { resolved: true },
+      });
+      expect(listener).toHaveBeenCalledTimes(1);
+    });
     eventHandlers[0]?.({
       caller: { callerId: "panel:other-entity" },
       payload: { ignored: true },
     });
     eventHandlers[0]?.({
-      caller: { callerId: "panel:arbitrary-events-entity" },
+      caller: { callerId: "panel:nav-arbitrary-events-entity" },
       payload: { ok: true },
     });
 
-    expect(rpcCall).toHaveBeenCalledTimes(1);
-    expect(rpcCall.mock.calls.map((entry) => entry[1])).not.toContain(
-      "workers.resolveService",
-    );
-    expect(listener).toHaveBeenCalledTimes(1);
-    expect(listener).toHaveBeenCalledWith({ ok: true });
+    expect(
+      rpcCall.wireCall.mock.calls.filter(
+        (entry) => entry[1] === "workspace-state.panelTree.detail",
+      ),
+    ).toHaveLength(1);
+    expect(listener).toHaveBeenCalledTimes(2);
+    expect(listener).toHaveBeenNthCalledWith(1, { resolved: true });
+    expect(listener).toHaveBeenNthCalledWith(2, { ok: true });
   });
 
   it("targets parent slot, not self, when navigating, reloading, and rebuilding parent handles", async () => {
     const { createPanelHandleApi } = await import("./handle.js");
-    const rpcCall = createRpcCall();
+    const rpcCall = await createRpcCall();
     const { panelTree } = createPanelHandleApi(
       { call: rpcCall, on: vi.fn() } as never,
       {
@@ -743,7 +911,7 @@ describe("PanelHandle", () => {
       phase: "ready",
     });
 
-    const replacements = rpcCall.mock.calls.filter(
+    const replacements = rpcCall.wireCall.mock.calls.filter(
       ([, method, args]) =>
         method === "workspace-state.slot.commitPreparedNavigation" &&
         (args[0] as { mutation: { kind: string } }).mutation.kind === "replace",
@@ -751,10 +919,11 @@ describe("PanelHandle", () => {
     expect(replacements).toHaveLength(1);
     // Reload restarts the current renderer; rebuilding replaces its source
     // generation. Both operations must target the parent, never this child.
-    expect(rpcCall).toHaveBeenCalledWith(
+    expect(rpcCall.wireCall).toHaveBeenCalledWith(
       "main",
       "runtime.supervision.restart",
       [{ kind: "panel", entityId: "panel:nav-panel-parent-entity" }],
+      undefined,
     );
     for (const [, , args] of replacements) {
       expect(args[0]).toMatchObject({
@@ -764,7 +933,7 @@ describe("PanelHandle", () => {
         },
       });
     }
-    expect(rpcCall).toHaveBeenCalledWith(
+    expect(rpcCall.wireCall).toHaveBeenCalledWith(
       "main",
       "workspace-state.slot.commitPreparedNavigation",
       [
@@ -773,34 +942,40 @@ describe("PanelHandle", () => {
           mutation: expect.objectContaining({ kind: "replace" }),
         }),
       ],
+      undefined,
     );
-    expect(rpcCall).not.toHaveBeenCalledWith(
+    expect(rpcCall.wireCall).not.toHaveBeenCalledWith(
       "main",
       "panelTree.rebuildPanel",
       expect.any(Array),
     );
-    expect(rpcCall).not.toHaveBeenCalledWith(
+    expect(rpcCall.wireCall).not.toHaveBeenCalledWith(
       "main",
       "panelTree.reload",
       expect.any(Array),
     );
-    expect(rpcCall).toHaveBeenCalledWith(
+    expect(rpcCall.wireCall).toHaveBeenCalledWith(
       "main",
       "workspace-state.slot.commitPreparedNavigation",
       [expect.objectContaining({ slotId: "panel:tree/panel-parent" })],
+      undefined,
     );
-    expect(rpcCall).not.toHaveBeenCalledWith(
+    expect(rpcCall.wireCall).not.toHaveBeenCalledWith(
       "main",
       "panelTree.navigate",
       expect.any(Array),
     );
-    expect(rpcCall).not.toHaveBeenCalledWith("main", "panelTree.rebuildPanel", [
-      "panel:tree/panel-self",
-    ]);
-    expect(rpcCall).not.toHaveBeenCalledWith("main", "panelTree.reload", [
-      "panel:tree/panel-self",
-    ]);
-    expect(rpcCall).not.toHaveBeenCalledWith(
+    expect(rpcCall.wireCall).not.toHaveBeenCalledWith(
+      "main",
+      "panelTree.rebuildPanel",
+      ["panel:tree/panel-self"],
+    );
+    expect(rpcCall.wireCall).not.toHaveBeenCalledWith(
+      "main",
+      "panelTree.reload",
+      ["panel:tree/panel-self"],
+    );
+    expect(rpcCall.wireCall).not.toHaveBeenCalledWith(
       "main",
       "panelTree.navigate",
       expect.arrayContaining(["panel:tree/panel-self"]),
@@ -810,7 +985,7 @@ describe("PanelHandle", () => {
   it("hydrates arbitrary parent handles from discovered tree metadata", async () => {
     const { createPanelHandleApi } = await import("./handle.js");
     const { panelTree } = createPanelHandleApi(
-      { call: createRpcCall(), on: vi.fn() } as never,
+      { call: await createRpcCall(), on: vi.fn() } as never,
       {
         selfId: "panel:tree/panel-self",
         parentId: "panel:tree/panel-parent",
@@ -819,15 +994,17 @@ describe("PanelHandle", () => {
 
     const child = (
       await panelTree.page({
-        group: { kind: "children", parentSlotId: "parent-1" },
+        group: { kind: "children", parentSlotId: "panel:tree/parent-1" },
         limit: 200,
       })
     ).entries[0]?.handle;
     const parent = child?.parent();
 
     expect(child?.id).toBe("panel:tree/child-1");
-    expect(panelTree.parent("panel:tree/child-1")?.id).toBe("parent-1");
-    expect(parent?.id).toBe("parent-1");
+    expect(panelTree.parent("panel:tree/child-1")?.id).toBe(
+      "panel:tree/parent-1",
+    );
+    expect(parent?.id).toBe("panel:tree/parent-1");
   });
 
   it("creates non-panel runtime handles that cannot be targeted", async () => {
@@ -881,7 +1058,7 @@ describe("PanelHandle", () => {
 
   it("rejects an owned lifetime before committing a slot when no lifecycle owner exists", async () => {
     const { createPanelHandleApi } = await import("./handle.js");
-    const call = createRpcCall();
+    const call = await createRpcCall();
     const { openPanel } = createPanelHandleApi({ call, on: vi.fn() } as never);
 
     await expect(
@@ -894,13 +1071,16 @@ describe("PanelHandle", () => {
     "claims %s ownership before activation, including a failed boot",
     async (lifetime) => {
       const { createPanelRuntime } = await import("../shared/panelRuntime.js");
-      const call = createRpcCall();
+      const call = await createRpcCall();
       const delegate = call.getMockImplementation()!;
       const claim = vi.fn();
       const failure = new Error("Panel activation failed");
       call.mockImplementation(async (target, method, args) => {
         if (method === "runtime.activateReservedEntity") {
-          expect(claim).toHaveBeenCalledExactlyOnceWith({ id: expect.any(String), lifetime });
+          expect(claim).toHaveBeenCalledExactlyOnceWith({
+            id: expect.any(String),
+            lifetime,
+          });
           throw failure;
         }
         return delegate(target, method, args);
@@ -909,7 +1089,9 @@ describe("PanelHandle", () => {
         rpc: { call, on: vi.fn() } as never,
         claimPanelLifetime: claim,
       });
-      await expect(runtime.openPanel("panels/example", { lifetime, focus: false })).rejects.toMatchObject({
+      await expect(
+        runtime.openPanel("panels/example", { lifetime, focus: false }),
+      ).rejects.toMatchObject({
         code: "PANEL_OPERATION_FAILED",
         failure: {
           message: expect.stringContaining(failure.message),
@@ -954,10 +1136,13 @@ describe("PanelHandle", () => {
   });
 
   it("routes non-Electron CDP calls through the server panelCdp service", async () => {
-    const rpcCall = vi.fn(async () => ({
+    const wireCall = vi.fn(async () => ({
       wsEndpoint: "ws://server/cdp/panel-1",
       token: "t",
     }));
+    const rpcCall = (await import("@vibestudio/rpc/test-utils")).schemaRpcMock({
+      call: wireCall,
+    }).call;
     const { createPanelHandleApi } = await import("./handle.js");
     const { getPanelHandle } = createPanelHandleApi({
       call: rpcCall,
@@ -971,7 +1156,7 @@ describe("PanelHandle", () => {
       token: "t",
     });
 
-    expect(rpcCall).toHaveBeenCalledWith(
+    expect(wireCall).toHaveBeenCalledWith(
       "main",
       "panelCdp.getCdpEndpoint",
       ["panel-1"],
@@ -980,7 +1165,7 @@ describe("PanelHandle", () => {
   });
 
   it("routes non-Electron CDP drive verbs through panelCdp", async () => {
-    const rpcCall = createRpcCall();
+    const rpcCall = await createRpcCall();
     const { createPanelHandleApi } = await import("./handle.js");
     const { getPanelHandle } = createPanelHandleApi({
       call: rpcCall,
@@ -991,12 +1176,13 @@ describe("PanelHandle", () => {
       "https://example.com",
     );
 
-    expect(rpcCall).toHaveBeenCalledWith(
+    expect(rpcCall.wireCall).toHaveBeenCalledWith(
       "main",
       "workspace-state.slot.commitPreparedNavigation",
       [expect.objectContaining({ slotId: "panel:tree/panel-1" })],
+      undefined,
     );
-    expect(rpcCall).not.toHaveBeenCalledWith(
+    expect(rpcCall.wireCall).not.toHaveBeenCalledWith(
       "main",
       "panelTree.navigate",
       expect.any(Array),
@@ -1004,7 +1190,7 @@ describe("PanelHandle", () => {
   });
 
   it("routes historical console access through panelCdp", async () => {
-    const rpcCall = createRpcCall();
+    const rpcCall = await createRpcCall();
     const { createPanelHandleApi } = await import("./handle.js");
     const { getPanelHandle } = createPanelHandleApi({
       call: rpcCall,
@@ -1021,14 +1207,16 @@ describe("PanelHandle", () => {
       capacity: { entries: 1000, errors: 500 },
     });
 
-    expect(rpcCall).toHaveBeenCalledWith("main", "panelCdp.consoleHistory", [
-      "panel:tree/panel-1",
-      { limit: 50, errorLimit: 50 },
-    ]);
+    expect(rpcCall.wireCall).toHaveBeenCalledWith(
+      "main",
+      "panelCdp.consoleHistory",
+      ["panel:tree/panel-1", { limit: 50, errorLimit: 50 }],
+      undefined,
+    );
   });
 
   it("exposes a unified panel diagnostics bundle", async () => {
-    const rpcCall = createRpcCall();
+    const rpcCall = await createRpcCall();
     const { createPanelHandleApi } = await import("./handle.js");
     const { getPanelHandle } = createPanelHandleApi({
       call: rpcCall,
@@ -1044,11 +1232,13 @@ describe("PanelHandle", () => {
       },
     });
 
-    expect(rpcCall).toHaveBeenCalledWith("main", "panelCdp.consoleHistory", [
-      "panel:tree/panel-1",
-      { limit: 200, errorLimit: 100 },
-    ]);
-    expect(rpcCall).not.toHaveBeenCalledWith(
+    expect(rpcCall.wireCall).toHaveBeenCalledWith(
+      "main",
+      "panelCdp.consoleHistory",
+      ["panel:tree/panel-1", { limit: 200, errorLimit: 100 }],
+      undefined,
+    );
+    expect(rpcCall.wireCall).not.toHaveBeenCalledWith(
       "main",
       "panelTree.diagnose",
       expect.any(Array),
@@ -1067,7 +1257,7 @@ describe("PanelHandle", () => {
     }));
     const loadCdpClient = vi.fn(() => ({ BrowserImpl: { connect } }));
     vi.doMock("@workspace/cdp-client", loadCdpClient);
-    const rpcCall = createRpcCall();
+    const rpcCall = await createRpcCall();
     const { createPanelHandleApi } = await import("./handle.js");
     const { getPanelHandle } = createPanelHandleApi({
       call: rpcCall,
@@ -1077,7 +1267,7 @@ describe("PanelHandle", () => {
     const handle = getPanelHandle("panel:tree/panel-1", "browser");
     await handle.click("button.submit");
 
-    expect(rpcCall).toHaveBeenCalledWith(
+    expect(rpcCall.wireCall).toHaveBeenCalledWith(
       "main",
       "panelCdp.getCdpEndpoint",
       ["panel:tree/panel-1"],
@@ -1105,7 +1295,7 @@ describe("PanelHandle", () => {
     }));
     const loadCdpClient = vi.fn(() => ({ BrowserImpl: { connect } }));
     vi.doMock("@workspace/cdp-client", loadCdpClient);
-    const rpcCall = createRpcCall();
+    const rpcCall = await createRpcCall();
     const { createPanelHandleApi } = await import("./handle.js");
     const { getPanelHandle } = createPanelHandleApi({
       call: rpcCall,
@@ -1126,7 +1316,7 @@ describe("PanelHandle", () => {
 
   it("reports an invalid canonical CDP package surface", async () => {
     vi.doMock("@workspace/cdp-client", () => ({ BrowserImpl: null }));
-    const rpcCall = createRpcCall();
+    const rpcCall = await createRpcCall();
     const { createPanelHandleApi } = await import("./handle.js");
     const { getPanelHandle } = createPanelHandleApi({
       call: rpcCall,
@@ -1139,7 +1329,7 @@ describe("PanelHandle", () => {
   });
 
   it("routes CDP operations through rpc for workspace and self handles", async () => {
-    const rpcCall = createRpcCall();
+    const rpcCall = await createRpcCall();
     const { createPanelHandleApi } = await import("./handle.js");
     const { getPanelHandle, panelTree } = createPanelHandleApi(
       { call: rpcCall, on: vi.fn() } as never,
@@ -1159,17 +1349,18 @@ describe("PanelHandle", () => {
       wsEndpoint: "ws://localhost",
       token: "t",
     });
-    expect(rpcCall).toHaveBeenCalledWith(
+    expect(rpcCall.wireCall).toHaveBeenCalledWith(
       "main",
       "workspace-state.slot.commitPreparedNavigation",
       [expect.objectContaining({ slotId: "panel:tree/workspace-1" })],
+      undefined,
     );
-    expect(rpcCall).not.toHaveBeenCalledWith(
+    expect(rpcCall.wireCall).not.toHaveBeenCalledWith(
       "main",
       "panelTree.navigate",
       expect.any(Array),
     );
-    expect(rpcCall).toHaveBeenCalledWith(
+    expect(rpcCall.wireCall).toHaveBeenCalledWith(
       "main",
       "panelCdp.getCdpEndpoint",
       ["panel:tree/workspace-1"],
@@ -1179,7 +1370,7 @@ describe("PanelHandle", () => {
       wsEndpoint: "ws://localhost",
       token: "t",
     });
-    expect(rpcCall).toHaveBeenCalledWith(
+    expect(rpcCall.wireCall).toHaveBeenCalledWith(
       "main",
       "panelCdp.getCdpEndpoint",
       ["panel:tree/panel-self"],
@@ -1189,7 +1380,7 @@ describe("PanelHandle", () => {
 
   it("hydrates direct children through bounded pages", async () => {
     const { createPanelHandleApi } = await import("./handle.js");
-    const rpcCall = createRpcCall();
+    const rpcCall = await createRpcCall();
     const { openPanel, panelTree } = createPanelHandleApi({
       call: rpcCall,
       on: vi.fn(),
@@ -1203,7 +1394,7 @@ describe("PanelHandle", () => {
 
     expect(children.entries).toHaveLength(1);
     expect(children.entries[0]?.handle.id).toBe("panel:tree/child-1");
-    expect(rpcCall).toHaveBeenCalledWith(
+    expect(rpcCall.wireCall).toHaveBeenCalledWith(
       "main",
       "workspace-state.panelTree.page",
       [
@@ -1212,6 +1403,7 @@ describe("PanelHandle", () => {
           limit: 200,
         },
       ],
+      undefined,
     );
   });
 });

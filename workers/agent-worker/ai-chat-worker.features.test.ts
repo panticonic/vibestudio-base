@@ -1,3 +1,4 @@
+import { schemaRpcClient, wireClientFor } from "@vibestudio/rpc/internal";
 import { afterEach, describe, expect, it } from "vitest";
 import { createNativeVesselTestDO } from "@workspace/agentic-do/testing/native-vessel";
 import type {
@@ -10,7 +11,7 @@ import { formatPanelContext } from "./panel-describe-tool.js";
 import type { AgentToolExecutionContext } from "@workspace/agentic-do";
 import type { Context } from "@panticonic/pi-chord";
 import type { ToolExecutionApi } from "@panticonic/pi-durable";
-import type { RpcClient, RpcCallOptions } from "@vibestudio/rpc";
+import type { RpcCallOptions } from "@vibestudio/rpc";
 import { executeTool } from "@workspace/harness/testing/native-tool";
 
 const databases = new Set<{ close(): void }>();
@@ -86,17 +87,18 @@ class TestConfiguredAgent extends AiChatWorker {
     api: ToolExecutionApi,
     context: Context,
   ): Promise<AgentToolExecutionContext> {
-    const rpc = {
-      call: async <T>(
+    const rpc = schemaRpcClient({
+      ...wireClientFor(this.rpc),
+      call: async (
         _target: string,
         method: string,
         args: unknown[],
         options?: RpcCallOptions,
       ) => {
         this.boundCalls.push({ method, args, signal: options?.signal });
-        return SNAPSHOT as T;
+        return SNAPSHOT;
       },
-    } as RpcClient;
+    });
     context.abortSignal?.throwIfAborted();
     return {
       invocationId: `native:${api.callId}`,

@@ -295,7 +295,7 @@ describe("credentialed model transport ownership", () => {
       expect(await response.text()).toBe("ok");
       expect(rpc.stream.mock.calls[0]?.slice(0, 3)).toEqual([
         "main",
-        "credentials.proxyFetch",
+        expect.objectContaining({ name: "credentials.proxyFetch" }),
         [
           {
             url: `${model.baseUrl}/responses?keep=yes`,

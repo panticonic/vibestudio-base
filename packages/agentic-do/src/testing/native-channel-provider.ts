@@ -1,7 +1,9 @@
 import { createTestDO } from "@workspace/runtime/worker/test-utils";
+import { createHash } from "node:crypto";
 import { successfulTestRpcFetch } from "@vibestudio/durable/test-utils";
 import { PubSubChannel } from "@workspace-workers/pubsub-channel";
 import { GadWorkspaceDO } from "@workspace-workers/workspace-source";
+import { durableObjectServiceFixture } from "@vibestudio/service-schemas/test-utils";
 
 export interface NativeChannelProviderAdmission {
   invocationId: string;
@@ -95,18 +97,31 @@ export async function createNativeChannelProvider(options: {
         }
       }
       if (target === "main" && method === "workers.resolveService")
-        return {
-          kind: "durable-object",
-          source: "vibestudio/internal",
+        return durableObjectServiceFixture(gadId, {
+          origin: "workspace",
+          source: "workers/workspace-source",
+          name: "workspace-source",
+          action: "provide",
+          presentation: { domain: "web", verb: "see" },
+          authority: { principals: ["code"] },
           className: "GadWorkspaceDO",
           objectKey: "workspace",
-          targetId: gadId,
-        };
+        });
       if (
         target === "main" &&
         method === "workspace-state.entity.resolveActive"
       )
-        return { id: args[0], kind: "do" };
+        return {
+          id: args[0],
+          authoritySessionId: "authority-provider-fixture",
+          kind: "do",
+          source: { repoPath: "workers/workspace-source", effectiveVersion: "test" },
+          contextId: "ctx-provider-fixture",
+          key: "workspace",
+          createdAt: 0,
+          status: "active",
+          cleanupComplete: false,
+        };
       if (
         target === "main" &&
         [
@@ -118,7 +133,7 @@ export async function createNativeChannelProvider(options: {
         return undefined;
       if (target === "main" && method === "blobstore.putText") {
         const value = String(args[0]);
-        const digest = `provider-fixture-blob-${blobs.size + 1}`;
+        const digest = createHash("sha256").update(value).digest("hex");
         blobs.set(digest, value);
         return { digest, size: value.length };
       }
@@ -166,7 +181,7 @@ export async function createNativeChannelProvider(options: {
       callId: string,
       generation: number,
     ) =>
-      channel.callAs<{ accepted: boolean }>(
+      channel.callAs(
         provider,
         "markMethodCallExecutionStarted",
         participantId,

@@ -1,3 +1,4 @@
+import { createLazyTypedRpcServiceClient } from "@vibestudio/shared/typedRpcServiceClient";
 /** Canonical runtime client for the deliberately small semantic VCS API. */
 
 import {
@@ -6,7 +7,7 @@ import {
   type VcsStatusResult,
 } from "@vibestudio/service-schemas/vcs";
 import { type TypedServiceClient } from "@vibestudio/shared/typedServiceClient";
-import { createLazyTypedServiceClient } from "@vibestudio/shared/lazyTypedServiceClient";
+
 import {
   COMMAND_BOUND_METHOD_NAMES,
   VCS_METHOD_NAMES,
@@ -87,15 +88,11 @@ function bindCommandInput(method: string, input: unknown): unknown {
 }
 
 export function createVcsClient(
-  callMain: <T>(method: string, ...args: unknown[]) => Promise<T>,
+  rpc: Pick<import("@vibestudio/rpc").RpcCaller, "call">,
   boundContextId: string
 ): VcsClient {
-  const schemaClient = createLazyTypedServiceClient(
-    "vcs",
-    VCS_METHOD_NAMES,
-    async () => (await import("@vibestudio/service-schemas/vcs")).vcsMethods,
-    (_service, method, args) => callMain(`vcs.${method}`, ...args)
-  );
+  const schemaClient = createLazyTypedRpcServiceClient(rpc, { targetId: "main", namespace: "vcs" }, VCS_METHOD_NAMES,
+    async () => (await import("@vibestudio/service-schemas/vcs")).vcsMethods);
   const client = Object.fromEntries(
     Object.entries(schemaClient).map(([method, invoke]) => [
       method,

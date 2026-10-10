@@ -1,9 +1,22 @@
+import { mainRpcMethods } from "@vibestudio/service-schemas/mainRpc";
 import { useCallback, useMemo, useState } from "react";
-import { Badge, Button, DropdownMenu, Flex, IconButton, Spinner, Text } from "@radix-ui/themes";
+import {
+  Badge,
+  Button,
+  DropdownMenu,
+  Flex,
+  IconButton,
+  Spinner,
+  Text,
+} from "@radix-ui/themes";
 import { PersonIcon } from "@radix-ui/react-icons";
-import type { ChannelInvite, ChannelMember, ChannelPresenceEntry } from "@workspace/pubsub";
+import type {
+  ChannelInvite,
+  ChannelMember,
+  ChannelPresenceEntry,
+} from "@workspace/pubsub";
 import { useChatContext } from "../context/ChatContext";
-import type { AccountProfile, AccountRpc } from "../hooks/useAccountProfiles";
+import type { AccountProfile } from "../hooks/useAccountProfiles";
 
 function presenceColor(status: ChannelPresenceEntry["status"] | undefined) {
   if (status === "online") return "green" as const;
@@ -15,11 +28,15 @@ function presenceColor(status: ChannelPresenceEntry["status"] | undefined) {
 function presenceDescription(entry: ChannelPresenceEntry | undefined): string {
   if (!entry) return "Not connected";
   if (entry.status !== "offline") {
-    const devices = entry.sessionCount === 1 ? "1 session" : `${entry.sessionCount} sessions`;
+    const devices =
+      entry.sessionCount === 1 ? "1 session" : `${entry.sessionCount} sessions`;
     return `${entry.status} · ${devices}`;
   }
   if (entry.lastSeenAt == null) return "Not seen in this channel yet";
-  const minutes = Math.max(0, Math.floor((Date.now() - entry.lastSeenAt) / 60_000));
+  const minutes = Math.max(
+    0,
+    Math.floor((Date.now() - entry.lastSeenAt) / 60_000),
+  );
   if (minutes < 1) return "Offline · just now";
   if (minutes < 60) return `Offline · ${minutes}m ago`;
   const hours = Math.floor(minutes / 60);
@@ -40,24 +57,30 @@ export function ChannelPeopleMenu({
   const [loading, setLoading] = useState(false);
   const [busyUserId, setBusyUserId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [workspaceProfiles, setWorkspaceProfiles] = useState<AccountProfile[]>([]);
+  const [workspaceProfiles, setWorkspaceProfiles] = useState<AccountProfile[]>(
+    [],
+  );
   const [members, setMembers] = useState<ChannelMember[]>([]);
   const [presence, setPresence] = useState<ChannelPresenceEntry[]>([]);
   const [invites, setInvites] = useState<ChannelInvite[]>([]);
 
   const refresh = useCallback(async () => {
     const client = clientRef.current;
-    const rpc = (chat as { rpc?: AccountRpc }).rpc;
-    if (!client || !rpc) return;
+    if (!client) return;
     setLoading(true);
     setError(null);
     try {
-      const [nextMembers, nextPresence, nextInvites, profiles] = await Promise.all([
-        client.listMembers(),
-        client.getChannelPresence(),
-        client.listInvitesForMe(),
-        rpc.call("main", "account.listWorkspaceMembers", []) as Promise<AccountProfile[]>,
-      ]);
+      const [nextMembers, nextPresence, nextInvites, profiles] =
+        await Promise.all([
+          client.listMembers(),
+          client.getChannelPresence(),
+          client.listInvitesForMe(),
+          chat.rpc.call(
+            "main",
+            mainRpcMethods["account.listWorkspaceMembers"],
+            [],
+          ),
+        ]);
       setMembers(nextMembers);
       setPresence(nextPresence.entries);
       setInvites(nextInvites);
@@ -74,20 +97,25 @@ export function ChannelPeopleMenu({
       setOpen(next);
       if (next) void refresh();
     },
-    [refresh]
+    [refresh],
   );
 
   const profileByUserId = useMemo(
-    () => new Map(workspaceProfiles.map((profile) => [profile.userId, profile])),
-    [workspaceProfiles]
+    () =>
+      new Map(workspaceProfiles.map((profile) => [profile.userId, profile])),
+    [workspaceProfiles],
   );
   const presenceByUserId = useMemo(
     () => new Map(presence.map((entry) => [entry.userId, entry])),
-    [presence]
+    [presence],
   );
-  const memberIds = useMemo(() => new Set(members.map((member) => member.userId)), [members]);
+  const memberIds = useMemo(
+    () => new Set(members.map((member) => member.userId)),
+    [members],
+  );
   const available = workspaceProfiles.filter(
-    (profile) => !memberIds.has(profile.userId) && `user:${profile.userId}` !== selfId
+    (profile) =>
+      !memberIds.has(profile.userId) && `user:${profile.userId}` !== selfId,
   );
 
   const add = useCallback(
@@ -105,7 +133,7 @@ export function ChannelPeopleMenu({
         setBusyUserId(null);
       }
     },
-    [clientRef, refresh]
+    [clientRef, refresh],
   );
 
   const remove = useCallback(
@@ -123,7 +151,7 @@ export function ChannelPeopleMenu({
         setBusyUserId(null);
       }
     },
-    [clientRef, refresh]
+    [clientRef, refresh],
   );
 
   const acknowledge = useCallback(async () => {
@@ -169,7 +197,11 @@ export function ChannelPeopleMenu({
           <DropdownMenu.Sub key={member.memberId}>
             <DropdownMenu.SubTrigger>
               <Flex align="center" gap="2">
-                <Badge color={presenceColor(entry?.status)} variant="soft" radius="full">
+                <Badge
+                  color={presenceColor(entry?.status)}
+                  variant="soft"
+                  radius="full"
+                >
                   @{profile?.handle ?? member.handle}
                 </Badge>
                 <Text size="1" color="gray">
@@ -178,7 +210,9 @@ export function ChannelPeopleMenu({
               </Flex>
             </DropdownMenu.SubTrigger>
             <DropdownMenu.SubContent>
-              <DropdownMenu.Label>{profile?.displayName ?? member.handle}</DropdownMenu.Label>
+              <DropdownMenu.Label>
+                {profile?.displayName ?? member.handle}
+              </DropdownMenu.Label>
               <DropdownMenu.Item
                 color="red"
                 disabled={busyUserId === member.userId}
@@ -224,7 +258,9 @@ export function ChannelPeopleMenu({
   if (variant === "submenu") {
     return (
       <DropdownMenu.Sub open={open} onOpenChange={onOpenChange}>
-        <DropdownMenu.SubTrigger disabled={!connected}>People</DropdownMenu.SubTrigger>
+        <DropdownMenu.SubTrigger disabled={!connected}>
+          People
+        </DropdownMenu.SubTrigger>
         <DropdownMenu.SubContent style={{ minWidth: 260, maxWidth: 340 }}>
           {content}
         </DropdownMenu.SubContent>
@@ -252,7 +288,10 @@ export function ChannelPeopleMenu({
           </Button>
         )}
       </DropdownMenu.Trigger>
-      <DropdownMenu.Content align="end" style={{ minWidth: 260, maxWidth: 340 }}>
+      <DropdownMenu.Content
+        align="end"
+        style={{ minWidth: 260, maxWidth: 340 }}
+      >
         {content}
       </DropdownMenu.Content>
     </DropdownMenu.Root>

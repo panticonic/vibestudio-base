@@ -1,3 +1,4 @@
+import { mainRpcMethods } from "@vibestudio/service-schemas/mainRpc";
 /**
  * Channel log access on the unified-log core (WS2 §2).
  *
@@ -10,16 +11,14 @@
  */
 
 import type { ChannelEvent } from "@workspace/pubsub";
+
 import {
   collectChannelEnvelopePages,
   type ChannelEnvelopePage,
   type ChannelEnvelopePageInfo,
   type ChannelEnvelopeWindow,
 } from "@vibestudio/shared/channelEnvelopePaging";
-import {
-  createGadServiceClient,
-  type DurableObjectServiceClient,
-} from "@workspace/runtime/workerd-client";
+import { createGadServiceClient } from "@workspace/runtime/workerd-client";
 import {
   DEFAULT_CHANNEL_REPLAY_PAGE_LIMIT,
   MAX_CHANNEL_REPLAY_PAGE_LIMIT,
@@ -74,11 +73,7 @@ export interface ChannelReplayContext {
 }
 
 interface RpcCallerLike {
-  call<T = unknown>(
-    targetId: string,
-    method: string,
-    args: unknown[],
-  ): Promise<T>;
+  call: import("@vibestudio/rpc").RpcCaller["call"];
 }
 
 type GadReplayPage = ChannelEnvelopePage<GadChannelEnvelopeView>;
@@ -115,12 +110,6 @@ interface GadChannelEnvelopeView {
   contentClass: "internal" | "external";
   externalKeys: string[];
   publishedAt: string;
-}
-
-interface AppendLogEventResultLike {
-  headSeq: number;
-  headHash: string;
-  envelopes: LogEnvelope[];
 }
 
 /** annotations minus the metadata/attachments carriers. */
@@ -160,7 +149,7 @@ function contentIntegrityFromAnnotations(
 }
 
 export class ChannelLog {
-  private readonly gad: DurableObjectServiceClient;
+  private readonly gad: ReturnType<typeof createGadServiceClient>;
   constructor(
     private readonly rpc: RpcCallerLike,
     private readonly channelId: string,
@@ -182,7 +171,7 @@ export class ChannelLog {
     // Idempotency intent is the STORE's contract now (no error-string
     // matching here): "idempotent-by-id" callers get the journaled original
     // back as a replayed envelope; everyone else gets hard typed errors.
-    const result = await this.gad.call<AppendLogEventResultLike>(
+    const result = await this.gad.call(
       "appendLogEvent",
       {
         logId: this.channelId,
@@ -221,7 +210,7 @@ export class ChannelLog {
   }
 
   async headSeq(): Promise<number> {
-    const head = await this.gad.call<{ seq: number } | null>("getLogHead", {
+    const head = await this.gad.call("getLogHead", {
       logId: this.channelId,
       head: CHANNEL_LOG_HEAD,
     });
@@ -229,7 +218,7 @@ export class ChannelLog {
   }
 
   async listMessageTypes(): Promise<MessageTypeDefinition[]> {
-    const rows = await this.gad.call<unknown[]>("listMessageTypes", {
+    const rows = await this.gad.call("listMessageTypes", {
       channelId: this.channelId,
     });
     return Promise.all(
@@ -240,7 +229,7 @@ export class ChannelLog {
   }
 
   async getMessageType(typeId: string): Promise<MessageTypeDefinition | null> {
-    const row = await this.gad.call<unknown | null>("getMessageType", {
+    const row = await this.gad.call("getMessageType", {
       channelId: this.channelId,
       typeId,
     });
@@ -250,7 +239,7 @@ export class ChannelLog {
   }
 
   async hasEnvelope(envelopeId: string): Promise<boolean> {
-    const envelope = await this.gad.call<LogEnvelope | null>("getLogEvent", {
+    const envelope = await this.gad.call("getLogEvent", {
       logId: this.channelId,
       head: CHANNEL_LOG_HEAD,
       envelopeId,
@@ -265,7 +254,7 @@ export class ChannelLog {
       ),
     );
     if (uniqueIds.length === 0) return new Set();
-    const present = await this.gad.call<string[]>("hasLogEvents", {
+    const present = await this.gad.call("hasLogEvents", {
       logId: this.channelId,
       head: CHANNEL_LOG_HEAD,
       envelopeIds: uniqueIds,
@@ -274,7 +263,7 @@ export class ChannelLog {
   }
 
   async getEventByEnvelopeId(envelopeId: string): Promise<ChannelEvent | null> {
-    const envelope = await this.gad.call<LogEnvelope | null>("getLogEvent", {
+    const envelope = await this.gad.call("getLogEvent", {
       logId: this.channelId,
       head: CHANNEL_LOG_HEAD,
       envelopeId,
@@ -292,7 +281,7 @@ export class ChannelLog {
     limit?: number;
     payloadKind?: string;
   }): Promise<LogEnvelope[]> {
-    return this.gad.call<LogEnvelope[]>("readLog", {
+    return this.gad.call("readLog", {
       logId: this.channelId,
       head: CHANNEL_LOG_HEAD,
       afterSeq: opts.afterSeq ?? 0,
@@ -416,7 +405,7 @@ export class ChannelLog {
   async inspectEnvelope(
     envelopeId: string,
   ): Promise<Record<string, unknown>[]> {
-    const envelope = await this.gad.call<LogEnvelope | null>("getLogEvent", {
+    const envelope = await this.gad.call("getLogEvent", {
       logId: this.channelId,
       head: CHANNEL_LOG_HEAD,
       envelopeId,
@@ -541,9 +530,9 @@ export class ChannelLog {
   private async encodePayload(payload: unknown): Promise<unknown> {
     return encodeChannelPayloadStoredValues(payload, {
       putText: (value) =>
-        this.rpc.call<{ digest: string; size: number }>(
+        this.rpc.call(
           "main",
-          "blobstore.putText",
+          mainRpcMethods["blobstore.putText"],
           [value],
         ),
     });
@@ -569,7 +558,7 @@ export class ChannelLog {
       { channelId: this.channelId, window },
       { maximumItems },
       async (request) => {
-        const page = await this.gad.call<GadReplayPage>(
+        const page = await this.gad.call(
           "readChannelEnvelopes",
           request,
         );
@@ -607,7 +596,7 @@ export class ChannelLog {
   private async hydrate<T>(value: T): Promise<T> {
     return hydrateStoredValueRefs(value, {
       getText: (digest) =>
-        this.rpc.call<string | null>("main", "blobstore.getText", [digest]),
+        this.rpc.call("main", mainRpcMethods["blobstore.getText"], [digest]),
     }) as Promise<T>;
   }
 }

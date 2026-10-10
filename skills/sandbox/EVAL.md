@@ -147,7 +147,8 @@ The table describes the agent tool. Code that calls the server service directly
 uses this typed shape:
 
 ```ts
-await rpc.call("main", "eval.start", [
+import { mainRpcMethods } from "@vibestudio/service-schemas/mainRpc";
+await rpc.call("main", mainRpcMethods["eval.start"], [
   {
     runId,
     source: {
@@ -168,6 +169,24 @@ and control calls take `scopeKey`, for example `eval.get({runId, scopeKey})`.
 No eval argument can name an owner, channel, context, agent, or receiver
 runtime; the host derives those from the authenticated caller and its verified
 binding.
+
+Host-side integrations can use the unified eval lifecycle helper instead of
+assembling start, status reads, and cancellation themselves. `EvalCall` is the
+canonical `MainRpcCaller` type, so the same descriptor-backed receiver powers
+both direct eval operations and the helper:
+
+```ts
+import { createMainRpcCaller } from "@vibestudio/service-schemas/mainRpc";
+import { createEvalExecutor } from "@vibestudio/service-schemas/eval";
+
+const runEval = createEvalExecutor(createMainRpcCaller(rpc), { signal });
+const result = await runEval(input);
+```
+
+The executor owns the run lifecycle: it starts once, reads durable status until
+the result settles, and requests cancellation when its caller aborts. Use the
+lower-level `eval.start`, `eval.get`, and `eval.cancel` methods only when the
+integration needs to manage that lifecycle explicitly.
 
 ### Per-run authority
 
@@ -239,15 +258,20 @@ are the same portable bindings that panels and workers use; use them directly
 or import them from `@workspace/runtime`.
 
 - **`rpc.call(targetId, method, args, options?)`**: portable RPC client, the
-  same as in panels and workers. Raw server services use the target `"main"`:
-  `await rpc.call("main", "vcs.status", [{ contextId: ctx.contextId }])`. To
+  same as in panels and workers. Public calls take the receiver's method
+  descriptor. Import `mainRpcMethods` from
+  `@vibestudio/service-schemas/mainRpc` for host methods, for example
+  `await rpc.call("main", mainRpcMethods["vcs.status"], [{ contextId: ctx.contextId }])`.
+  `mainRpcMethod(name)` is for a dynamically chosen, validated host method and
+  returns `unknown`. To
   call a specific remote workspace, pass
   `{ destination: { kind: "workspace", workspaceId } }`; without it the call
   stays local.
-- **`services`**: shortcut namespace for raw server services.
-  `services.<svc>.<method>(...)` is `rpc.call("main", "<svc>.<method>", [...])`,
-  even when a runtime binding shares the name: `services.workers` is the raw
-  `workers` service, and the bare `workers` binding is the runtime client. Each
+- **`services`**: shortcut namespace for server services.
+  `services.<svc>.<method>(...)` calls the same typed service receiver without
+  requiring a descriptor at the call site, even when a runtime binding shares
+  the name: `services.workers` is the host service client, and the bare
+  `workers` binding is the runtime client. Each
   method's server-side policy still applies. Use `help()` to list services and
   `help("workers")` to inspect a runtime binding.
 - **`hosts`**: owner-scoped clients for attached hosts.
@@ -795,10 +819,11 @@ and call it over RPC:
 
 ```ts
 import { rpc, workers } from "@workspace/runtime";
+import { todoStoreRpcMethods } from "@workspace-workers/todo-store/contract";
 
 const store = await workers.resolveService("example.todos.v1", "project-123");
 if (store.kind !== "durable-object") throw new Error("Expected DO service");
-const todos = await rpc.call(store.targetId, "listTodos", []);
+const todos = await rpc.call(store.targetId, todoStoreRpcMethods.listTodos, []);
 ```
 
 See [workspace-dev/WORKERS.md](../workspace-dev/WORKERS.md#durable-object-backed-app-databases)
@@ -903,30 +928,37 @@ context-local scratch files. Use `mktemp` for scratch.
 
 ## Calling Services
 
-`services.<svc>.<method>(...)` calls the raw server service method; it is
-shorthand for `rpc.call("main", "<svc>.<method>", [...])`. It is always the raw
-service, even when a runtime binding shares the name: `services.workers` is the
-`workers` service catalog, while the `workers` runtime binding is the typed
-client with `create`/`list`/`destroy` and `listSources()`.
+`services.<svc>.<method>(...)` calls the server service method through its
+typed client; use it where available. Direct public `rpc.call` requires a
+receiver-owned descriptor. Static host descriptors come from
+`@vibestudio/service-schemas/mainRpc`; use `mainRpcMethod(name)` only for a
+dynamically chosen, validated name, and handle its result as `unknown`. The
+service client is available even when a runtime binding shares the name:
+`services.workers` is the `workers` service catalog, while the `workers`
+runtime binding is the client with `create`/`list`/`destroy` and `listSources()`.
 
 The dots in a wire method name do not describe nested proxy objects. When a
 service method itself contains a dot, access that complete method name as one
-property or use `rpc.call` with the canonical wire name. For example,
+property. For a direct catalog call, use its canonical descriptor from
+`mainRpcMethods`. For example,
 `runtime.supervision.list` is the `supervision.list` method on the raw `runtime`
 service:
 
 ```ts
-const raw = await services.runtime["supervision.list"]({});
-const canonical = await rpc.call("main", "runtime.supervision.list", [{}]);
+const catalogResult = await services.runtime["supervision.list"]({});
+import { mainRpcMethods } from "@vibestudio/service-schemas/mainRpc";
+const canonical = await rpc.call("main", mainRpcMethods["runtime.supervision.list"], [{}]);
 const live = await runtime.supervision.list(); // richer typed runtime binding
 ```
 
-Prefer the public runtime binding when it provides the operation; use the raw
-service form when you specifically need the service catalog method.
+Prefer the public runtime binding when it provides the operation; use the
+direct service catalog form when you specifically need that method's service
+contract.
 
 ```
 eval({ code: `
-  const tree = await rpc.call("main", "workspace.sourceTree", []);
+  import { mainRpcMethods } from "@vibestudio/service-schemas/mainRpc";
+  const tree = await rpc.call("main", mainRpcMethods["workspace.sourceTree"], []);
   console.log("Workspace tree:", tree);
   // Use the ergonomic runtime binding when available:
   const tree2 = await workspace.sourceTree();
@@ -1089,14 +1121,15 @@ These slots are for recovery. Return compact summaries in the first place,
 using the compact inspectors:
 
 ```ts
-return await rpc.call("main", "gad.inspectChannelEnvelopes", [
+import { mainRpcMethods } from "@vibestudio/service-schemas/mainRpc";
+return await rpc.call("main", mainRpcMethods["gad.inspectChannelEnvelopes"], [
   { channelId, limit: 50 },
 ]);
-return await rpc.call("main", "gad.inspectTurnState", [{ branchId }]);
-return await rpc.call("main", "gad.inspectInvocationState", [
+return await rpc.call("main", mainRpcMethods["gad.inspectTurnState"], [{ branchId }]);
+return await rpc.call("main", mainRpcMethods["gad.inspectInvocationState"], [
   { transportCallId },
 ]);
-return await rpc.call("main", "gad.inspectPublicationIntegrity", [
+return await rpc.call("main", mainRpcMethods["gad.inspectPublicationIntegrity"], [
   { channelId },
 ]);
 return await services.serverLog.query({
@@ -1112,7 +1145,7 @@ objects in `scope` only for short-lived interactive follow-up.
 
 The blobstore is a runtime binding: use the injected `blobstore` (also
 `import { blobstore } from "@workspace/runtime"`), or the raw service through
-`services.blobstore` or `rpc.call("main", "blobstore.<method>", [...])`. Read and write methods
+`services.blobstore` or a host descriptor from `mainRpcMethods`. Read and write methods
 (`putText`/`putBase64`/`getText`/`readText`/`getRange`/`grep`/…) work from
 agent eval; the admin methods (`delete`/`list`) are server-only. Binary data
 such as a `Uint8Array` screenshot can be stored directly.
@@ -1172,12 +1205,13 @@ the server with `blobstore.grep(digest, pattern)`.
 
 ```
 eval({ code: `
+  import { mainRpcMethods } from "@vibestudio/service-schemas/mainRpc";
   // Build services default to protected main when no ref is given
-  const build = await rpc.call("main", "build.getBuild", ["panels/my-app"]);
+  const build = await rpc.call("main", mainRpcMethods["build.getBuild"], ["panels/my-app"]);
   console.log("Build artifacts:", Object.keys(build));
 
   // Pass a ctx: ref to build the working state of a context instead.
-  const branchBuild = await rpc.call("main", "build.getBuild", ["panels/my-app", \`ctx:\${ctx.contextId}\`]);
+  const branchBuild = await rpc.call("main", mainRpcMethods["build.getBuild"], ["panels/my-app", \`ctx:\${ctx.contextId}\`]);
   console.log("Context branch build:", branchBuild.sourceStateHash);
 
   // VCS reports the exact semantic state; ordinary build services validate it.
@@ -1187,7 +1221,7 @@ eval({ code: `
   // Direct runtime launches build the initiating caller's context unless
   // \`ref\` is explicit (main when the caller has none). This creates a worker
   // that reads/writes ctx-1 but runs this eval caller's code:
-  await rpc.call("main", "runtime.createEntity", [{
+  await rpc.call("main", mainRpcMethods["runtime.createEntity"], [{
     kind: "worker",
     source: "workers/agent-worker",
     key: "agent-main-code",
@@ -1195,7 +1229,7 @@ eval({ code: `
   }]);
 
   // Targeted branch launch for testing code edited in ctx-1:
-  await rpc.call("main", "runtime.createEntity", [{
+  await rpc.call("main", mainRpcMethods["runtime.createEntity"], [{
     kind: "worker",
     source: "workers/agent-worker",
     key: "agent-ctx-code",
@@ -1204,7 +1238,7 @@ eval({ code: `
   }]);
 
   // Check effective version
-  const ev = await rpc.call("main", "build.getEffectiveVersion", ["panels/my-app"]);
+  const ev = await rpc.call("main", mainRpcMethods["build.getEffectiveVersion"], ["panels/my-app"]);
   console.log("Effective version:", ev);
 `
 })

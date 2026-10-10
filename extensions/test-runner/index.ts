@@ -4,36 +4,11 @@ import * as path from "node:path";
 import { spawn } from "node:child_process";
 import { createRequire } from "node:module";
 import { pathToFileURL } from "node:url";
-
-export interface TestRunRequest {
-  target: string;
-  suite: string;
-  contextId?: string;
-  fileFilter?: string;
-  testName?: string;
-  artifactKey: string;
-  executionDigest: string;
-}
-
-export interface TestRunResult {
-  status: "passed" | "failed" | "no-tests";
-  runtime: "native";
-  artifactKey: string;
-  executionDigest: string;
-  summary: string;
-  passed: number;
-  failed: number;
-  total: number;
-  contextId: string;
-  target: string;
-  pattern: string;
-  details: Array<{
-    file: string;
-    status: "pass" | "fail" | "skip";
-    duration?: number;
-    errors?: string[];
-  }>;
-}
+import type {
+  NativeTestRunnerReceiver,
+  TestRunRequest,
+  TestRunResult,
+} from "@workspace/test-runtime/native";
 
 interface ExtensionContextLike {
   fs: { ensureMaterialized(scope: string | string[] | "all"): Promise<string> };
@@ -249,7 +224,7 @@ async function runChild(
 
 export type Api = Awaited<ReturnType<typeof activate>>;
 
-export async function activate(ctx: ExtensionContextLike) {
+export async function activate(ctx: ExtensionContextLike): Promise<NativeTestRunnerReceiver> {
   ctx.log.info("native test adapter activating");
   return {
     async runNative(request: TestRunRequest): Promise<TestRunResult> {

@@ -1,3 +1,4 @@
+import { agentRpcMethods } from "./rpc-contract.js";
 import type { JsonValue } from "@panticonic/pi-chord";
 import type { ConversationHistory, EntryId } from "@panticonic/pi-durable";
 import {
@@ -52,9 +53,9 @@ export async function importAgentChannelKnowledge(
 ): Promise<AgentSubscriptionResult> {
   return requireAgentSubscriptionResult(
     "importChannelKnowledge",
-    await rpc.call<unknown>(
+    await rpc.call(
       targetIdFor(handleOrTargetId),
-      "importChannelKnowledge",
+      agentRpcMethods["importChannelKnowledge"],
       [
         {
           ...input,

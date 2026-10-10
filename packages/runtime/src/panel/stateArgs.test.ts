@@ -1,3 +1,4 @@
+import { schemaRpcMock } from "@vibestudio/rpc/test-utils";
 import { describe, expect, it, vi } from "vitest";
 import { asPanelSlotId } from "@vibestudio/shared/panel/idValues";
 import { createStateArgsRuntime } from "./stateArgs.js";
@@ -10,12 +11,9 @@ describe("state args snapshots", () => {
       removed: true,
     };
     const changed = vi.fn();
-    const state = createStateArgsRuntime({
-      slotId: asPanelSlotId("panel:tree/test"),
-      initial,
-      call: vi.fn(),
-      changed,
-    });
+    const state = createStateArgsRuntime({ ...schemaRpcMock({ call: vi.fn(async () => undefined) }), slotId: asPanelSlotId("panel:tree/test"),
+initial,
+changed });
     state.apply({
       cursor: 1,
       removed: true,
@@ -49,12 +47,9 @@ describe("state args snapshots", () => {
       }
       throw new Error(`Unexpected RPC ${method}`);
     };
-    const state = createStateArgsRuntime({
-      slotId: asPanelSlotId("panel:tree/test"),
-      initial,
-      call,
-      changed,
-    });
+    const state = createStateArgsRuntime({ ...schemaRpcMock({ call }), slotId: asPanelSlotId("panel:tree/test"),
+initial,
+changed });
     const reply = await state.patch({ cursor: 2 });
     expect(calls).toEqual([
       {

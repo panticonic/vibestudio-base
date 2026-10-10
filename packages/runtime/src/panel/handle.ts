@@ -1,3 +1,4 @@
+import { mainRpcMethods } from "@vibestudio/service-schemas/mainRpc";
 import type { RpcClient, RpcEventContext } from "@vibestudio/rpc";
 import type { PanelHandle as CorePanelHandle, Rpc } from "../core/index.js";
 import type {
@@ -86,7 +87,7 @@ export function createPanelHandleApi(
     url: string,
     options?: OpenExternalOptions,
   ): Promise<OpenExternalResult> {
-    return rpc.call<OpenExternalResult>("main", "externalOpen.openExternal", [
+    return rpc.call("main", mainRpcMethods["externalOpen.openExternal"], [
       url,
       options,
     ]);

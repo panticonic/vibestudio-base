@@ -255,7 +255,7 @@ export interface PanelSetTitleOptions {
  * ```
  */
 export interface PanelHandle<
-  T extends Record<string, Rpc.AnyFunction> = Rpc.ExposedMethods,
+  T extends Record<string, Rpc.AnyFunction> = Rpc.UncontractedMethods,
   E extends Rpc.RpcEventMap = Rpc.RpcEventMap,
   EmitE extends Rpc.RpcEventMap = Rpc.RpcEventMap,
 > {
@@ -385,10 +385,10 @@ export interface PanelHandle<
  * One side of a panel contract (child or parent).
  */
 export interface ContractSide<
-  Methods extends Record<string, Rpc.AnyFunction> = Rpc.ExposedMethods,
+  Methods extends Record<string, Rpc.AnyFunction> = Rpc.UncontractedMethods,
   Emits extends EventSchemaMap = EventSchemaMap,
 > {
-  readonly methods?: Methods;
+  readonly methods?: { [K in keyof Methods]: import("@vibestudio/rpc").RpcMethod<Parameters<Methods[K]>, Awaited<ReturnType<Methods[K]>>> };
   readonly emits?: Emits;
 }
 
@@ -397,9 +397,9 @@ export interface ContractSide<
  * Defines RPC methods and events for both sides.
  */
 export interface PanelContract<
-  ChildMethods extends Record<string, Rpc.AnyFunction> = Rpc.ExposedMethods,
+  ChildMethods extends Record<string, Rpc.AnyFunction> = Rpc.UncontractedMethods,
   ChildEmits extends EventSchemaMap = EventSchemaMap,
-  ParentMethods extends Record<string, Rpc.AnyFunction> = Rpc.ExposedMethods,
+  ParentMethods extends Record<string, Rpc.AnyFunction> = Rpc.UncontractedMethods,
   ParentEmits extends EventSchemaMap = EventSchemaMap,
 > {
   readonly source: string;

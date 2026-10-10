@@ -1,10 +1,11 @@
+import { createMainRpcCaller } from "@vibestudio/service-schemas/mainRpc";
 import { AgentWorkerBase } from "@workspace/agentic-do/agent-worker-base";
 import type { AgentToolExecutionContext } from "@workspace/agentic-do";
 import type { ParticipantDescriptor } from "@workspace/harness";
 import type { ToolRegistration } from "@panticonic/pi-durable";
 import type { JsonValue } from "@panticonic/pi-chord";
 import type { TSchema } from "@panticonic/pi-ai";
-import type { RpcCallOptions } from "@vibestudio/rpc";
+
 import { authorNativeTool } from "@workspace/harness";
 import type {
   AgentChannelFeatures,
@@ -108,14 +109,13 @@ export class AiChatWorker extends AgentWorkerBase {
     }
 
     const panelTool = <TParameters extends TSchema, TDetails extends JsonValue>(
-      make: (callMain: <T>(method: string, args: unknown[], options?: RpcCallOptions) => Promise<T>, panelId: string) => ToolRegistration<TParameters, TDetails>,
+      make: (callMain: import("@vibestudio/service-schemas/mainRpc").MainRpcCaller, panelId: string) => ToolRegistration<TParameters, TDetails>,
       binding: AgentToolBinding,
     ) => {
       const panelId = this.resource(channelId, binding.resource, "panel-slot").id;
       return authorNativeTool(
         (execution: AgentToolExecutionContext | undefined) => make(
-          <T>(method: string, args: unknown[], options?: RpcCallOptions) =>
-            (execution?.rpc ?? this.rpc).call<T>("main", method, args, options),
+          createMainRpcCaller(execution?.rpc ?? this.rpc),
           panelId,
         ),
         (api, context) => this.bindNativeToolExecution(api, context),

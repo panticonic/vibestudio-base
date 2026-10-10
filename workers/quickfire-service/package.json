@@ -66,5 +66,9 @@
   },
   "devDependencies": {
     "vitest": "^3.2.7"
+  },
+  "exports": {
+    "./contract": "./contract.ts",
+    ".": "./index.ts"
   }
 }

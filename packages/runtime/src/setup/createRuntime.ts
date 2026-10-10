@@ -1,3 +1,4 @@
+import { formatRpcFailure } from "@vibestudio/rpc";
 /**
  * Panel runtime factory — extends createBaseRuntime with panel-specific features.
  *
@@ -60,7 +61,7 @@ export function createRuntime(deps: RuntimeDeps) {
       if (isRpcConnectionLost(error)) return;
       console.warn("[panelRuntime] Failed to publish renderer boot evidence", {
         phase: observation.boot.observation.phase,
-        error: error instanceof Error ? error.message : String(error),
+        error: formatRpcFailure(error),
       });
     },
   });

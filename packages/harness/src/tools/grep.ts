@@ -1,3 +1,4 @@
+import { mainRpcMethods } from "@vibestudio/service-schemas/mainRpc";
 import type { JsonRepresentation } from "@panticonic/pi-chord";
 import { toolDetails } from "./native-tool-json.js";
 /**
@@ -270,19 +271,9 @@ export function createGrepTool(
           };
         }
         const servicePattern = literalSearch ? escapeRegex(pattern) : pattern;
-        const result = await deps.rpc.call<{
-          matches: Array<{
-            file: string;
-            lineNumber: number;
-            line: string;
-            before: string[];
-            after: string[];
-          }>;
-          matchCount: number;
-          truncated: boolean;
-        }>(
+        const result = await deps.rpc.call(
           "main",
-          "fs.grep",
+          mainRpcMethods["fs.grep"],
           [
             servicePattern,
             {

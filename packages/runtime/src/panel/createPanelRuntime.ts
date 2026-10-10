@@ -12,10 +12,7 @@ import {
 } from "../shared/hostedRuntime.js";
 import { createPanelSelfNavigation } from "./selfNavigation.js";
 import { createAdBlockApi } from "./adblock.js";
-import type {
-  ShellSurfaceKind,
-  ShellSurfaceTarget,
-} from "@vibestudio/shared/shellSurface";
+import type { ShellSurfaceTarget } from "@vibestudio/shared/shellSurface";
 export interface PanelApiConfig {
   entityId: string;
   slotId?: string;
@@ -127,7 +124,7 @@ export function createPanelApi(
         /** Preserve this user-chosen title across inferred document-title updates. */
         explicit?: boolean;
       },
-    ) => callMain<void>("runtime.setTitle", title, options),
+    ) => callMain("runtime.setTitle", title, options),
     /**
      * Hand the user to the agent that sees this panel: open the shell's command
      * overlay bound to this panel's slot, optionally with the compose box
@@ -143,15 +140,15 @@ export function createPanelApi(
      * matching `vibestudio://…` deep link for the same target.
      */
     openShellSurface: (target: ShellSurfaceTarget) =>
-      callMain<void>("app.openShellSurface", target),
+      callMain("app.openShellSurface", target),
     describeShellSurfaces: () =>
-      callMain<{ surfaces: ShellSurfaceKind[] }>("app.describeShellSurfaces"),
+      callMain("app.describeShellSurfaces"),
     openCommandAgent: (options?: {
       /** Pre-filled compose text; implies the `/` conversation surface. */
       prompt?: string;
       mode?: "all" | "commands" | "goto" | "quickfire";
     }) =>
-      callMain<void>("app.openShellSurface", {
+      callMain("app.openShellSurface", {
         kind: "command-agent",
         panelId: _slotId,
         ...(options?.mode ? { mode: options.mode } : {}),

@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { schemaRpcClient, wireClientFor } from "@vibestudio/rpc/internal";
 
 import { createNativeVesselTestDO } from "./testing/native-vessel.js";
 import type { ParticipantDescriptor } from "@workspace/harness";
@@ -16,6 +17,7 @@ import {
   toolResultDetails,
 } from "@workspace/harness/testing/native-tool";
 import { AgentWorkerBase, hasAskableUser } from "./agent-worker-base.js";
+import { durableObjectServiceFixture } from "@vibestudio/service-schemas/test-utils";
 
 describe("agent loop tool availability", () => {
   it("offers ask_user only when the channel has a canonical user participant", () => {
@@ -88,12 +90,25 @@ describe("conversation address discovery", () => {
       ],
     }));
     readonly search = vi.fn(async () => ({
-      summary: { rows: 1 },
+      summary: { rows: 1, running: 1, terminal: 0 },
       entries: [
         {
+          instanceId: "instance-archivist",
           ref: "agent:archivist@foreign",
+          channelId: "foreign",
+          participantId: "agent:archivist",
+          kind: "agent",
           status: "running",
           handle: "archivist",
+          displayName: "Archivist",
+          description: null,
+          parentInstanceId: null,
+          runId: null,
+          workerId: null,
+          ownerUserId: null,
+          statusEventId: null,
+          lastActivityAt: null,
+          summary: null,
         },
       ],
     }));
@@ -113,44 +128,40 @@ describe("conversation address discovery", () => {
       return this.global();
     }
     protected override get rpc(): RpcClient {
-      const actual = super.rpc;
-      return new Proxy(actual, {
-        get: (target, property, receiver) => {
-          if (property !== "call")
-            return Reflect.get(target, property, receiver);
-          return async <T>(
-            destination: string,
-            method: string,
-            args: unknown[],
-            options?: RpcCallOptions,
-          ): Promise<T> => {
-            options?.signal?.throwIfAborted();
-            this.rpcCalls.push({
-              target: destination,
-              method,
-              args,
-              signal: options?.signal,
-            });
-            if (destination === "main" && method === "workers.resolveService") {
-              return {
-                kind: "durable-object",
+      const base = super.rpc;
+      const wire = wireClientFor(base);
+      return schemaRpcClient({
+        ...wire,
+        call: async (
+          destination: string,
+          method: string,
+          args: unknown[],
+          options?: RpcCallOptions,
+        ) => {
+          options?.signal?.throwIfAborted();
+          this.rpcCalls.push({
+            target: destination,
+            method,
+            args,
+            signal: options?.signal,
+          });
+          if (destination === "main" && method === "workers.resolveService") {
+            return durableObjectServiceFixture(
+              "do:workers/workspace-source:GadWorkspaceDO:workspace",
+              {
                 source: "workers/workspace-source",
                 className: "GadWorkspaceDO",
                 objectKey: "workspace",
-                targetId:
-                  "do:workers/workspace-source:GadWorkspaceDO:workspace",
-              } as T;
-            }
-            if (
-              destination ===
-                "do:workers/workspace-source:GadWorkspaceDO:workspace" &&
-              method === "searchAgentDirectory"
-            )
-              return (await this.search()) as T;
-            throw new Error(
-              `Unexpected discovery RPC ${destination}.${method}`,
+              },
             );
-          };
+          }
+          if (
+            destination ===
+              "do:workers/workspace-source:GadWorkspaceDO:workspace" &&
+            method === "searchAgentDirectory"
+          )
+            return await this.search();
+          return wire.call(destination, method, args, options);
         },
       });
     }
@@ -231,9 +242,22 @@ describe("conversation address discovery", () => {
     ]);
     expect(detailsRecord(toolResultDetails(result))["entries"]).toEqual([
       {
+        instanceId: "instance-archivist",
         ref: "agent:archivist@foreign",
+        channelId: "foreign",
+        participantId: "agent:archivist",
+        kind: "agent",
         status: "running",
         handle: "archivist",
+        displayName: "Archivist",
+        description: null,
+        parentInstanceId: null,
+        runId: null,
+        workerId: null,
+        ownerUserId: null,
+        statusEventId: null,
+        lastActivityAt: null,
+        summary: null,
       },
     ]);
     expect(f.conversation).not.toHaveBeenCalled();

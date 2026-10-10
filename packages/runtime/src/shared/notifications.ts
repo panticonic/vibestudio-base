@@ -1,3 +1,4 @@
+import { mainRpcMethods } from "@vibestudio/service-schemas/mainRpc";
 /**
  * Notification client — shared between panels and workers.
  *
@@ -74,7 +75,7 @@ export function createNotificationClient(
         if (onClick) handlers.set(id, onClick);
         return { ...action, id };
       });
-      const id = await rpc.call<string>("main", "notification.show", [
+      const id = await rpc.call("main", mainRpcMethods["notification.show"], [
         { type: "info", ...opts, actions },
       ]);
       if (handlers.size > 0) {
@@ -88,7 +89,7 @@ export function createNotificationClient(
     },
     async dismiss(id) {
       actionHandlers.delete(id);
-      await rpc.call("main", "notification.dismiss", [id]);
+      await rpc.call("main", mainRpcMethods["notification.dismiss"], [id]);
     },
   };
 }

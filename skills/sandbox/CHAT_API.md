@@ -286,34 +286,39 @@ await chat.updateCustomMessage(messageId, { status: "sent" });
 
 ## chat.rpc
 
-RPC bridge to all server and main-process services. It is the same as `rpc`
-from `@workspace/runtime`, available without importing the runtime.
+RPC bridge to all server and main-process services. It is the same typed public
+caller as `rpc` from `@workspace/runtime`, available without importing the
+runtime. Main-process calls use descriptors from
+`@vibestudio/service-schemas/mainRpc`.
 
 ```typescript
+import { mainRpcMethods } from "@vibestudio/service-schemas/mainRpc";
+import { todoStoreRpcMethods } from "@workspace-workers/todo-store/contract";
+
 // Filesystem
-const content = await chat.rpc.call("main", "fs.readFile", [
+const content = await chat.rpc.call("main", mainRpcMethods["fs.readFile"], [
   "src/index.ts",
   "utf-8",
 ]);
 
 // DO-backed app database
 // Resolve a manifest-declared Durable Object service, then call its narrow methods.
-const store = await chat.rpc.call("main", "workers.resolveService", [
+const store = await chat.rpc.call("main", mainRpcMethods["workers.resolveService"], [
   "example.todos.v1",
   "project-123",
 ]);
 if (store.kind !== "durable-object") throw new Error("Expected DO service");
-const rows = await chat.rpc.call(store.targetId, "listTodos", []);
+const rows = await chat.rpc.call(store.targetId, todoStoreRpcMethods.listTodos, []);
 
 // Build
-const build = await chat.rpc.call("main", "build.getBuild", ["panels/my-app"]);
+const build = await chat.rpc.call("main", mainRpcMethods["build.getBuild"], ["panels/my-app"]);
 
 // Browser data (panel/component runtime; resolves the manifest-declared broker)
 import { browserData } from "@workspace/runtime";
 const importHosts = await browserData.listImportHosts();
 
 // Workers (running worker instances)
-const instances = await chat.rpc.call("main", "runtime.listEntities", [
+const instances = await chat.rpc.call("main", mainRpcMethods["runtime.listEntities"], [
   { kind: "worker" },
 ]);
 ```

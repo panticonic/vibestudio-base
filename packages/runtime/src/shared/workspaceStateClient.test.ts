@@ -1,3 +1,4 @@
+import { schemaRpcMock } from "@vibestudio/rpc/test-utils";
 import { describe, expect, it, vi } from "vitest";
 import { createRuntimeWorkspaceStateClient } from "./workspaceStateClient.js";
 
@@ -8,7 +9,7 @@ describe("createRuntimeWorkspaceStateClient", () => {
       groups: [],
       nextCursor: null,
     }));
-    const client = createRuntimeWorkspaceStateClient({ call });
+    const client = createRuntimeWorkspaceStateClient(schemaRpcMock({ call }));
 
     await client.getPanelTreeRootGroups({ limit: 25 });
 
@@ -28,7 +29,7 @@ describe("createRuntimeWorkspaceStateClient", () => {
       cursor: 1,
     };
     const call = vi.fn(async (_target: string, _method: string, _args: unknown[]) => result);
-    const client = createRuntimeWorkspaceStateClient({ call });
+    const client = createRuntimeWorkspaceStateClient(schemaRpcMock({ call }));
     const input = {
       slotId: "panel:tree/news" as never,
       expectedCurrentEntityId: "panel:nav-old" as never,

@@ -1,3 +1,4 @@
+import { schemaRpcMock } from "@vibestudio/rpc/test-utils";
 import { describe, expect, it, vi } from "vitest";
 import { createPanelImportLoader } from "./panel-import-loader.js";
 
@@ -9,7 +10,7 @@ describe("createPanelImportLoader", () => {
       requiredModules: [],
     }));
     const loadImport = createPanelImportLoader(
-      { call },
+      schemaRpcMock({ call }),
       { defaultWorkspaceRef: () => "ctx:panel-context" },
     );
 

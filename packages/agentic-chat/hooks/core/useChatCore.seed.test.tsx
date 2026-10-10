@@ -1,4 +1,6 @@
 // @vitest-environment jsdom
+
+import { channelClientRpcMethods } from "@workspace/pubsub/rpc-contract";
 import { useEffect } from "react";
 import { render, waitFor } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
@@ -73,7 +75,7 @@ describe("useChatCore conversation seed", () => {
     });
     await agentRpc.call(
       `do:workers/pubsub-channel:PubSubChannel:${harness.channelId}`,
-      "join",
+      channelClientRpcMethods.join,
       [
         {
           participantId: agentId,

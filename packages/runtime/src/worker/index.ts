@@ -1,3 +1,4 @@
+import { createTypedRpcServiceClient } from "@vibestudio/shared/typedRpcServiceClient";
 /**
  * Worker runtime entry point for workerd workers.
  *
@@ -29,13 +30,10 @@ import {
   type RpcClient,
   type RpcEnvelope,
 } from "@vibestudio/rpc";
-import { createTypedServiceClient } from "@vibestudio/shared/typedServiceClient";
+
 import { canonicalEntityId } from "@vibestudio/shared/runtime/entitySpec";
 import { workerLogMethods } from "@vibestudio/service-schemas/workerLog";
-import type {
-  OpenExternalOptions,
-  OpenExternalResult,
-} from "@vibestudio/shared/externalOpen";
+import type { OpenExternalOptions } from "@vibestudio/shared/externalOpen";
 import { _initFsWithRpc } from "./fs.js";
 import { createWorkerdClient } from "../shared/workerd.js";
 import {
@@ -249,11 +247,7 @@ export const rpc = new Proxy(
 function installWorkerConsoleBridge(rpc: Pick<RpcClient, "call">): void {
   if (workerConsoleBridgeInstalled) return;
   workerConsoleBridgeInstalled = true;
-  const workerLogService = createTypedServiceClient(
-    "workerLog",
-    workerLogMethods,
-    (svc, m, a) => rpc.call("main", `${svc}.${m}`, a),
-  );
+  const workerLogService = createTypedRpcServiceClient(rpc, { targetId: "main", namespace: "workerLog" }, workerLogMethods);
   const original = {
     debug: console.debug.bind(console),
     log: console.log.bind(console),
@@ -440,7 +434,7 @@ export function createWorkerRuntime(env: WorkerEnv): WorkerRuntime {
     panelRuntime,
     workers,
     openExternal: (url: string, options?: OpenExternalOptions) =>
-      callMain<OpenExternalResult>("externalOpen.openExternal", url, options),
+      callMain("externalOpen.openExternal", url, options),
     resolveParent,
   };
   const core = createHostedRuntime(host);

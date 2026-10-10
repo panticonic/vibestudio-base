@@ -1,3 +1,4 @@
+import { createMainRpcCaller } from "@vibestudio/service-schemas/mainRpc";
 import type { Context } from "@panticonic/pi-chord";
 import { BACKGROUND_CONTEXT } from "@panticonic/pi-chord/context";
 import {
@@ -20,14 +21,7 @@ import {
   SqliteStorage,
 } from "@panticonic/pi-durable/storage/sqlite";
 import type { DurableObjectSchemaDescriptor } from "@vibestudio/durable/schema";
-import {
-  rpc,
-  withRpcContext,
-  type RpcClient,
-  type AcquisitionInfo,
-  type RpcCaller,
-  type RpcCallOptions,
-} from "@vibestudio/rpc";
+import { rpc, withRpcContext, type RpcClient, type AcquisitionInfo, type RpcCaller } from "@vibestudio/rpc";
 import { mergeRpcOptions } from "@vibestudio/rpc/internal";
 import { evalRuntimeId } from "@vibestudio/shared/evalRuntimeIdentity";
 import { evalGetArgsSchema } from "@vibestudio/service-schemas/eval";
@@ -135,24 +129,12 @@ export abstract class NativeAgentOwner extends PanelDurableObjectBase {
 
   /** Same host transport, independently authorized as this owner. Never hold
    * a request across a human decision; protected ports journal durable waits. */
-  protected readonly agentRpc: RpcCaller = Object.freeze({
-    call: <T>(
-      targetId: string,
-      method: string,
-      args: unknown[],
-      options?: RpcCallOptions,
-    ) =>
-      this.runDetached(() =>
-        this.rpc.call<T>(
-          targetId,
-          method,
-          args,
-          mergeRpcOptions(options, { authorityAcquisition: "return" }),
-        ),
-      ),
-    stream: (...args: Parameters<RpcCaller["stream"]>) =>
-      this.runDetached(() => this.rpc.stream(...args)),
-  });
+  protected readonly agentRpc: RpcCaller = {
+    call: (targetId, method, args, options) => this.runDetached(() =>
+      this.rpc.call(targetId, method, args, mergeRpcOptions(options, { authorityAcquisition: "return" }))),
+    stream: (targetId, method, args, options) => this.runDetached(() =>
+      this.rpc.stream(targetId, method, args, options)),
+  };
 
   /**
    * The product composition owns its domain resources (eval scopes, children,
@@ -335,12 +317,12 @@ export abstract class NativeAgentOwner extends PanelDurableObjectBase {
     return super.initializeSchema();
   }
 
-  protected callAgentHost: AgentHostCall = (method, args) =>
-    this.agentRpc.call("main", method, args);
+  protected callAgentHost: AgentHostCall = (method, args, options) =>
+    createMainRpcCaller(this.agentRpc)(method, args, options);
 
   protected readonly agentEvalAcknowledgements =
     createNativeEvalAcknowledgements((method, args, context) =>
-      this.agentRpc.call("main", method, args, { signal: context.abortSignal }),
+      createMainRpcCaller(this.agentRpc)(method, args, { signal: context.abortSignal }),
     );
 
   protected loadedImage(): LoadedAgentImage {

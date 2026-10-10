@@ -1,3 +1,5 @@
+import { createMainCaller } from "./mainRpc.js";
+import { schemaRpcMock } from "@vibestudio/rpc/test-utils";
 import { describe, expect, it } from "vitest";
 import type { RpcClient } from "@vibestudio/rpc";
 import {
@@ -51,42 +53,48 @@ function recordingHost() {
   const onEvents: string[] = [];
   const calls: Array<{ target: string; method: string; args: unknown[] }> = [];
   const rpc = {
+    ...schemaRpcMock({
+      call: async (target: string, method: string, args: unknown[]) => {
+        calls.push({ target, method, args });
+        if (method === "blobstore.putBase64") {
+          return { digest: "a".repeat(64), size: 1 };
+        }
+        if (method === "blobstore.getBase64") {
+          return args[0] === "b".repeat(64) ? null : "AP+AECpj";
+        }
+        if (method === "vcs.status") {
+          return {
+            contextId: "context:test",
+            committed: { kind: "event", eventId: "event:committed" },
+            workingHead: { kind: "event", eventId: "event:committed" },
+            clean: true,
+            mainEventId: "event:committed",
+            mainRelation: "at",
+            workingCounts: { applications: 0, workUnits: 0, changes: 0 },
+            integrating: [],
+          };
+        }
+        if (
+          method === "hubControl.createWorkspace" ||
+          method === "hubControl.workspaceCreationReceipt"
+        ) {
+          return {
+            operationId: (args[0] as { operationId: string }).operationId,
+            state: "registered",
+            workspaceId: "ws_created",
+            name: "Example",
+          };
+        }
+        if (
+          method === "extensions.invokeProvider" ||
+          method === "workers.listSources"
+        )
+          return [];
+        return undefined;
+      },
+      stream: async () => new Response(),
+    }),
     selfId: "test",
-    call: async (target: string, method: string, args: unknown[]) => {
-      calls.push({ target, method, args });
-      if (method === "blobstore.putBase64") {
-        return { digest: "a".repeat(64), size: 1 };
-      }
-      if (method === "blobstore.getBase64") {
-        return args[0] === "b".repeat(64) ? null : "AP+AECpj";
-      }
-      if (method === "vcs.status") {
-        return {
-          contextId: "context:test",
-          committed: { kind: "event", eventId: "event:committed" },
-          workingHead: { kind: "event", eventId: "event:committed" },
-          clean: true,
-          mainEventId: "event:committed",
-          mainRelation: "at",
-          workingCounts: { applications: 0, workUnits: 0, changes: 0 },
-          integrating: [],
-        };
-      }
-      if (
-        method === "hubControl.createWorkspace" ||
-        method === "hubControl.workspaceCreationReceipt"
-      ) {
-        return {
-          operationId: (args[0] as { operationId: string }).operationId,
-          state: "registered",
-          workspaceId: "ws_created",
-          name: "Example",
-        };
-      }
-      if (method === "extensions.invokeProvider") return [];
-      return undefined;
-    },
-    stream: async () => new Response(),
     emit: async () => {},
     on: (event: string) => {
       onEvents.push(event);
@@ -340,8 +348,7 @@ describe("createHostedRuntime ⟷ portable surface parity", () => {
 });
 
 /**
- * createServicesProxy — every name is the raw server service, dispatched
- * through callMain. No hand-curated list and no runtime-client override.
+ * createServicesProxy derives server service calls from the canonical method registry.
  */
 it("routes workspace creation and receipt recovery through the same portable host client", async () => {
   const { host, calls } = recordingHost();
@@ -381,20 +388,17 @@ describe("createServicesProxy", () => {
     });
   });
 
-  it("dynamically reaches ANY other service via callMain (no curated list, no gap)", async () => {
+  it("rejects services without a registered receiver contract before dispatch", async () => {
     const { host, calls } = recordingHost();
     const rt = createHostedRuntime(host);
     const services = createServicesProxy(rt) as Record<
       string,
       Record<string, (...a: unknown[]) => Promise<unknown>>
     >;
-    // An unlisted service must be reachable without adding a runtime binding.
-    await services["futureService"]!["query"]!({ limit: 5 });
-    expect(calls).toContainEqual({
-      target: "main",
-      method: "futureService.query",
-      args: [{ limit: 5 }],
-    });
+    expect(() => services["futureService"]!["query"]!({ limit: 5 })).toThrow(
+      /contract|registered|unknown/i,
+    );
+    expect(calls).toEqual([]);
   });
 
   it("caches fallback clients so repeated access is stable (===)", () => {
@@ -411,20 +415,24 @@ describe("createAttachedHostsApi", () => {
   it("attaches once and routes arbitrary ordinary child service methods", async () => {
     const calls: Array<{ method: string; args: unknown[] }> = [];
     const hosts = createAttachedHostsApi({
-      async callMain<T>(method: string, ...args: unknown[]): Promise<T> {
-        calls.push({ method, args });
-        if (method === "attachedHosts.attachClient") {
-          return {
-            sessionId: "attached-one",
-            developmentRunId: "development-one",
-            childHostId: "child-one",
-            childGenerationId: "1".repeat(32),
-            authorityCeilingDigest: "a".repeat(64),
-            expiresAt: Date.now() + 60_000,
-          } as T;
-        }
-        return { status: "running" } as T;
-      },
+      callMain: createMainCaller(
+        schemaRpcMock({
+          call: async (_target: string, method: string, args: unknown[]) => {
+            calls.push({ method, args });
+            if (method === "attachedHosts.attachClient") {
+              return {
+                sessionId: "attached-one",
+                developmentRunId: "development-one",
+                childHostId: "child-one",
+                childGenerationId: "1".repeat(32),
+                authorityCeilingDigest: "a".repeat(64),
+                expiresAt: Date.now() + 60_000,
+              };
+            }
+            return { status: "running" };
+          },
+        }),
+      ),
     });
     const child = await hosts.attach("attached-one");
     await expect(

@@ -7,7 +7,7 @@ import {
 } from "@vibestudio/trajectory-identity";
 import { GadWorkspaceDO } from "./index.js";
 
-type TestGad = Awaited<ReturnType<typeof createTestDO<GadWorkspaceDO>>>;
+type TestGad = Awaited<ReturnType<typeof createTestDO<typeof GadWorkspaceDO>>>;
 type PrivateReach = {
   indexMemoryRow(row: {
     text: string;

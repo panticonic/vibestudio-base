@@ -79,7 +79,9 @@ schemas, and volatile constants to live docs or code.
   in the current context. It does not add requests, commit, publish, or grant
   access. Its record methods are editable starter code, not a limit on the
   app's features: extend the data, receiver contracts and policies, and UI to
-  finish the requested application. Review the resulting authority envelope,
+  finish the requested application. The worker exports its shared `contract.ts`;
+  its receiver and the panel client use the same method schemas. Extend that
+  contract when adding methods. Review the resulting authority envelope,
   verify the candidate paths, then commit and push explicitly. See
   [PROJECTS.md](PROJECTS.md).
 - Build for real use. Workspace units are long-lived infrastructure, not

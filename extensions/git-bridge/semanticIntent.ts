@@ -1,10 +1,7 @@
+import { mainRpcMethods } from "@vibestudio/service-schemas/mainRpc";
 import { Buffer } from "node:buffer";
 import { canonicalJson } from "@vibestudio/content-addressing";
-import type {
-  VcsReadFileResult,
-  VcsResolveRepositoryResult,
-  VcsStatusResult,
-} from "@vibestudio/service-schemas/vcs";
+import type { VcsReadFileResult } from "@vibestudio/service-schemas/vcs";
 import type { ExtensionContextLike } from "./context.js";
 
 const META_REPOSITORY = "meta";
@@ -23,23 +20,23 @@ export async function ensureExternalSemanticIntent(input: {
   operationLabel: string;
 }): Promise<void> {
   const { ctx } = input;
-  await ctx.rpc.call("main", "runtime.createContext", { contextId: input.contextId });
-  let status = await ctx.rpc.call<VcsStatusResult>("main", "vcs.status", {
+  await ctx.rpc.call("main", mainRpcMethods["runtime.createContext"], [{ contextId: input.contextId }]);
+  let status = await ctx.rpc.call("main", mainRpcMethods["vcs.status"], [{
     contextId: input.contextId,
-  });
+  }]);
   if (!status.clean) {
     throw new Error(`${input.operationLabel} intent context has uncommitted work`);
   }
-  const meta = await ctx.rpc.call<VcsResolveRepositoryResult>("main", "vcs.resolveRepository", {
+  const meta = await ctx.rpc.call("main", mainRpcMethods["vcs.resolveRepository"], [{
     state: status.workingHead,
     repoPath: META_REPOSITORY,
-  });
+  }]);
   if (!meta) throw new Error(`${input.operationLabel} intent context has no meta repository`);
-  const existing = await ctx.rpc.call<VcsReadFileResult>("main", "vcs.readFile", {
+  const existing = await ctx.rpc.call("main", mainRpcMethods["vcs.readFile"], [{
     state: status.workingHead,
     repositoryId: meta.repositoryId,
     file: { kind: "path", path: input.fileName },
-  });
+  }]);
   if (existing) {
     let observed: unknown;
     try {
@@ -52,7 +49,7 @@ export async function ensureExternalSemanticIntent(input: {
     }
     return;
   }
-  await ctx.rpc.call("main", "vcs.edit", {
+  await ctx.rpc.call("main", mainRpcMethods["vcs.edit"], [{
     commandId: `${input.contextId}:record`,
     contextId: input.contextId,
     expectedWorkingHead: status.workingHead,
@@ -66,15 +63,15 @@ export async function ensureExternalSemanticIntent(input: {
         mode: 0o644,
       },
     ],
-  });
-  status = await ctx.rpc.call<VcsStatusResult>("main", "vcs.status", {
+  }]);
+  status = await ctx.rpc.call("main", mainRpcMethods["vcs.status"], [{
     contextId: input.contextId,
-  });
-  await ctx.rpc.call("main", "vcs.commit", {
+  }]);
+  await ctx.rpc.call("main", mainRpcMethods["vcs.commit"], [{
     commandId: `${input.contextId}:commit`,
     contextId: input.contextId,
     expectedWorkingHead: status.workingHead,
     intentSummary: `Commit exact ${input.operationLabel} intent`,
     message: `Record ${input.operationLabel}`,
-  });
+  }]);
 }

@@ -1,3 +1,6 @@
+import { createRpcMethodCaller, type RpcMethodArgs, type RpcMethodResult } from "@vibestudio/shared/rpcMethods";
+import { channelClientRpcMethods } from "@workspace/pubsub/rpc-contract";
+import { mainRpcMethods } from "@vibestudio/service-schemas/mainRpc";
 /**
  * RPC-based PubSub client.
  *
@@ -213,10 +216,7 @@ interface SubscribeResult {
   envelope?: ChannelReplayEnvelope;
 }
 
-interface ResolvedService {
-  kind: "durable-object" | "worker";
-  targetId?: string;
-}
+
 
 export interface RpcChannelTargetOptions {
   /** Transport used for the context-bound service resolution call. */
@@ -247,9 +247,9 @@ export async function resolveRpcChannelTarget({
 }: RpcChannelTargetOptions): Promise<string> {
   while (true) {
     try {
-      const service = await rpc.call<ResolvedService>(
+      const service = await rpc.call(
         "main",
-        "workers.resolveService",
+        mainRpcMethods["workers.resolveService"],
         [protocol, channel],
         {
           ...(signal ? { signal } : {}),
@@ -321,18 +321,8 @@ export interface RpcConnectOptions<
   T extends ParticipantMetadata = ParticipantMetadata,
 > {
   rpc: {
-    call<R = unknown>(
-      targetId: string,
-      method: string,
-      args: unknown[],
-      options?: { signal?: AbortSignal; timeoutMs?: number },
-    ): Promise<R>;
-    stream(
-      targetId: string,
-      method: string,
-      args: unknown[],
-      options?: { signal?: AbortSignal; bodyIdleTimeoutMs?: number | null },
-    ): Promise<Response>;
+    call: import("@vibestudio/rpc").RpcCaller["call"];
+    stream: import("@vibestudio/rpc").RpcCaller["stream"];
     selfId: string;
     registerResidentSession?: ResidentSessionRegistrar["registerResidentSession"];
   };
@@ -411,11 +401,9 @@ export function connectViaRpc<
     });
     return request;
   };
-  const callChannel = async <R = unknown>(
-    method: string,
-    ...args: unknown[]
-  ): Promise<R> =>
-    sessionTransport().call<R>(await getDoTarget(), method, args);
+  const callChannel = async <K extends keyof typeof channelClientRpcMethods & string>(method: K, ...args: RpcMethodArgs<(typeof channelClientRpcMethods)[K]>): Promise<RpcMethodResult<(typeof channelClientRpcMethods)[K]>> =>
+    createRpcMethodCaller(sessionTransport(), await getDoTarget(), channelClientRpcMethods)(method, args);
+
 
   async function forEachReplayAfterPage(
     request: ChannelReplayAfterRequest,
@@ -423,7 +411,7 @@ export function connectViaRpc<
   ): Promise<void> {
     for await (const page of iterateChannelReplayAfterPages(
       (pageRequest) =>
-        callChannel<ChannelReplayEnvelope>("getReplayAfter", pageRequest),
+        callChannel("getReplayAfter", pageRequest),
       request,
     )) {
       await visit(page);
@@ -434,9 +422,9 @@ export function connectViaRpc<
   const readStoredValueText = (digest: string): Promise<string | null> => {
     const active = storedValueReads.get(digest);
     if (active) return active;
-    const pending = sessionTransport().call<string | null>(
+    const pending = sessionTransport().call(
       "main",
-      "blobstore.getText",
+      mainRpcMethods["blobstore.getText"],
       [digest],
     );
     storedValueReads.set(digest, pending);
@@ -1390,7 +1378,7 @@ export function connectViaRpc<
     opts?: {
       callerId?: string;
       turnId?: string;
-      terminalOutcome?: string;
+      terminalOutcome?: "abandoned" | "cancelled" | "infrastructure_error" | "stale_dispatch" | "success" | "tool_error";
       terminalReasonCode?: string;
       attachments?: AttachmentInput[];
       providerClaimGeneration?: number;
@@ -1401,7 +1389,7 @@ export function connectViaRpc<
         `Cannot submit result for invocation ${invocationId}: pubsub client is disconnected`,
       );
     }
-    const response = await callChannel<{ id?: number } | undefined>(
+    const response = await callChannel(
       "submitMethodResult",
       pid,
       transportCallId,
@@ -1498,7 +1486,7 @@ export function connectViaRpc<
       ) {
         let claim: { claimed: boolean; generation?: number };
         try {
-          claim = await callChannel<{ claimed: boolean; generation?: number }>(
+          claim = await callChannel(
             "claimMethodCall",
             pid,
             event.transportCallId,
@@ -1560,7 +1548,7 @@ export function connectViaRpc<
     }
 
     const abortController = new AbortController();
-    const executionMark = await callChannel<{ accepted: boolean }>(
+    const executionMark = await callChannel(
       "markMethodCallExecutionStarted",
       pid,
       event.transportCallId,
@@ -2041,11 +2029,13 @@ export function connectViaRpc<
     ...(opts.type !== undefined ? { type: opts.type } : {}),
     ...(opts.handle !== undefined ? { handle: opts.handle } : {}),
     contextId: opts.contextId,
-    channelConfig: opts.channelConfig ? opts.channelConfig : undefined,
+    ...(opts.channelConfig !== undefined
+      ? { channelConfig: opts.channelConfig }
+      : {}),
     replay: replayMode !== "skip",
     replayMessageLimit:
       opts.replayMessageLimit ?? DEFAULT_CHANNEL_REPLAY_PAGE_LIMIT,
-    sinceId: opts.sinceId,
+    ...(opts.sinceId !== undefined ? { sinceId: opts.sinceId } : {}),
   };
   if (methodAdvertisements) subscribeMetadata["methods"] = methodAdvertisements;
 
@@ -2150,12 +2140,12 @@ export function connectViaRpc<
           const registration = residentRegistration;
           ownedResidentRegistration = registration;
           unregisterResident = () => registration.close();
-          const state = await callChannel<{ revision: number }>(
+          const state = await callChannel(
             "relationshipState",
             deliveryId,
           );
           residentRelationshipRevision = state.revision + 1;
-          const result = await callChannel<SubscribeResult>("join", {
+          const result = await callChannel("join", {
             participantId: deliveryId,
             revision: residentRelationshipRevision,
             contextId: String(opts.contextId ?? ""),
@@ -2189,7 +2179,7 @@ export function connectViaRpc<
         }
         const response = await rpc.stream(
           await getDoTarget(controller.signal),
-          "subscribe",
+          channelClientRpcMethods["subscribe"],
           [deliveryId, metadata, subscriptionId],
           { signal: controller.signal },
         );
@@ -2389,7 +2379,7 @@ export function connectViaRpc<
     if (closed) throw new PubSubError("not connected", "connection");
     const { attachments, idempotencyKey } = publishOptions;
 
-    const result = await callChannel<PublishReceipt>(
+    const result = await callChannel(
       "publish",
       pid,
       type,
@@ -2463,7 +2453,7 @@ export function connectViaRpc<
   async function updateChannelConfig(
     config: Partial<ChannelConfig>,
   ): Promise<ChannelConfig> {
-    const newConfig = await callChannel<ChannelConfig>("updateConfig", config);
+    const newConfig = await callChannel("updateConfig", config);
     serverChannelConfig = newConfig;
     return newConfig;
   }
@@ -2479,27 +2469,27 @@ export function connectViaRpc<
   }
 
   async function listMembers(): Promise<ChannelMember[]> {
-    const result = await callChannel<{ members: ChannelMember[] }>(
+    const result = await callChannel(
       "listMembers",
     );
     return result.members;
   }
 
   async function getParticipants(): Promise<
-    Array<{ participantId: string; metadata: T }>
+    Array<{ participantId: string; metadata: Record<string, unknown> }>
   > {
     return callChannel("getParticipants");
   }
 
   async function listInvitesForMe(): Promise<ChannelInvite[]> {
-    const result = await callChannel<{ invites: ChannelInvite[] }>(
+    const result = await callChannel(
       "listInvitesForMe",
     );
     return result.invites;
   }
 
   async function acknowledgeInvite(): Promise<boolean> {
-    const result = await callChannel<{ acknowledged: boolean }>(
+    const result = await callChannel(
       "acknowledgeInvite",
     );
     return result.acknowledged;
@@ -2560,15 +2550,21 @@ export function connectViaRpc<
             type: "attachment" as const,
             metadata: {
               mimeType: attachment.mimeType,
-              filename:
-                "filename" in attachment ? attachment.filename : undefined,
+              ...("filename" in attachment &&
+              attachment.filename !== undefined
+                ? { filename: attachment.filename }
+                : {}),
             },
           })) ?? []),
         ],
         outcome: "completed",
-        mentions: sendOptions?.mentions,
-        replyTo: sendOptions?.replyTo as never,
-        to: sendOptions?.to,
+        ...(sendOptions?.mentions !== undefined
+          ? { mentions: sendOptions.mentions }
+          : {}),
+        ...(sendOptions?.replyTo !== undefined
+          ? { replyTo: sendOptions.replyTo as never }
+          : {}),
+        ...(sendOptions?.to !== undefined ? { to: sendOptions.to } : {}),
         ...(sendOptions?.tier ? { tier: sendOptions.tier } : {}),
         // Send intent (e.g. deliverAfterTurn) rides on payload.metadata; the
         // agent loop lifts it into its queue entries via metadataFromPayload.
@@ -2967,10 +2963,7 @@ export function connectViaRpc<
         // anchor and closing the response stream.
         if (subscription?.acknowledged) {
           if (opts.deliveryMode === "resident") {
-            const relationship = await callChannel<{
-              revision: number;
-              active: boolean;
-            }>("relationshipState", pid);
+            const relationship = await callChannel("relationshipState", pid);
             if (!relationship.active) {
               await residentRegistration?.relationshipEnded?.();
               return;
@@ -2981,7 +2974,7 @@ export function connectViaRpc<
             });
             await residentRegistration?.relationshipEnded?.();
           } else {
-            await rpc.call(await getDoTarget(), "unsubscribe", [
+            await rpc.call(await getDoTarget(), channelClientRpcMethods["unsubscribe"], [
               pid,
               subscription.subscriptionId,
             ]);
@@ -3019,17 +3012,17 @@ export function connectViaRpc<
   }
 
   async function getMessageTypes(): Promise<MessageTypeDefinition[]> {
-    return callChannel<MessageTypeDefinition[]>("getMessageTypes");
+    return callChannel("getMessageTypes");
   }
 
   async function getEnvelope(envelopeId: string): Promise<unknown | null> {
-    return callChannel<unknown | null>("getEnvelope", envelopeId);
+    return callChannel("getEnvelope", envelopeId);
   }
 
   async function getMessageType(
     typeId: string,
   ): Promise<MessageTypeDefinition | null> {
-    return callChannel<MessageTypeDefinition | null>("getMessageType", typeId);
+    return callChannel("getMessageType", typeId);
   }
 
   async function registerMessageType(
@@ -3206,7 +3199,7 @@ export function connectViaRpc<
     },
     updateChannelConfig,
     async resolveOpeningRequest(outcome: "deliver" | "cancel") {
-      const cfg = await callChannel<ChannelConfig>(
+      const cfg = await callChannel(
         "resolveOpeningRequest",
         pid,
         outcome,
@@ -3243,14 +3236,14 @@ export function connectViaRpc<
       return serverHasMoreBefore;
     },
     async getReplayBefore(beforeSeq: number, limit = 100) {
-      return callChannel<ChannelReplayEnvelope>(
+      return callChannel(
         "getReplayBefore",
         beforeSeq,
         limit,
       );
     },
     async getReplayAfter(request: ChannelReplayAfterRequest) {
-      return callChannel<ChannelReplayEnvelope>("getReplayAfter", request);
+      return callChannel("getReplayAfter", request);
     },
   };
 }
@@ -3272,9 +3265,9 @@ export async function initializeConversation(options: {
       ? options.signal.reason
       : new PubSubError("conversation initialization aborted", "connection");
   }
-  return options.rpc.call<ChannelConfig>(
+  return options.rpc.call(
     target,
-    "initializeConversation",
+    channelClientRpcMethods["initializeConversation"],
     [options.contextId, options.config ?? {}],
     { signal: options.signal },
   );

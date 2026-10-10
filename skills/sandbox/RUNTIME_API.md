@@ -94,7 +94,7 @@ Generated from `runtimeSurface.panel.ts`. Use `await help()` at runtime for the 
 | `connectWorkspace` | value |  | Explicitly ask the presentation host to connect this website to its workspace, then bind the same runtime API used by installed panels. Calls never connect implicitly. |
 | `disconnectWorkspace` | value |  | Disconnect this document and retire its RPC calls, streams and borrowed clients. |
 | `workspaceConnection` | namespace | `connected`, `available`, `kind`, `status`, `error`, `subscribe` | Observe connection state without workspace access. status is unavailable, disconnected, connecting, connected or disconnecting; error is the latest failed action's message or null. subscribe returns an unsubscribe function. |
-| `workspace` | namespace | `getInfo`, `getActive`, `getConfig`, `validateConfig`, `setInitPanels`, `setConfigField`, `applyPreparedConfig`, `getAgentsMd`, `listSkills`, `readSkill`, `sourceTree`, `ensureContextFolder`, `findUnitForPath`, `projects` | Workspace catalog, source tree, and unit helpers. Does not include panelTree; import top-level panelTree for panel-tree handles. |
+| `workspace` | namespace | `getInfo`, `getActive`, `getConfig`, `validateConfig`, `setInitPanels`, `setConfigField`, `applyPreparedConfig`, `getAgentResources`, `getAgentsMd`, `listSkills`, `readSkill`, `sourceTree`, `ensureContextFolder`, `findUnitForPath`, `projects` | Workspace catalog, source tree, and unit helpers. Does not include panelTree; import top-level panelTree for panel-tree handles. |
 | `createPanelSlot` | value |  | Commit a panel under the caller and promptly return its durable handle without focusing or waiting for activation, build, or boot. Server reconciliation owns activation after commit and recovers it across transient failure or restart. Pass operationId for retry-stable identity across exact redelivery; source, contextId, parentId, and ref are also part of that identity. Do not combine operationId with slug. Use handle.observe() when current lifecycle state matters. |
 | `openPanel` | value |  | Create a panel and return its handle after the exact attempt is application boot-ready, with no fixed readiness deadline. Pass options.signal for caller-owned cancellation and operationId for retry-stable exact redelivery; source, contextId, parentId, and ref are also part of that identity. Do not combine operationId with slug. It defaults under the caller and focused; use parentId:null for a root or focus:false to suppress presentation. options.placement accepts "side" (default), "side-if-room", "replace", or "split-below". The returned PanelHandle is the complete lifecycle and inspection API. Use `const session = await handle.cdp.session(); const page = session.page` for automation. Keep the stable page across rebuild/navigation; its next awaited operation rebinds without replaying the interrupted action. `session.receipt` reports acquired, reconnected, or replaced generations. For a one-call host image use `await handle.cdp.screenshot({ format: "png" })`. For host-captured logs since panel creation use `await handle.cdp.consoleHistory()` (live page console events are separate). |
 | `getPanelHandle` | value |  |  |
@@ -157,9 +157,10 @@ and their build readiness, and `runtime.supervision` for live executions:
 
 ```ts
 import { contextId, rpc, runtime, workspace } from "@workspace/runtime";
+import { mainRpcMethods } from "@vibestudio/service-schemas/mainRpc";
 
 const active = await workspace.getActive();
-const units = await rpc.call("main", "build.listUnits", []);
+const units = await rpc.call("main", mainRpcMethods["build.listUnits"], []);
 const live = await runtime.supervision.list();
 
 console.log({ contextId, active });
@@ -189,7 +190,7 @@ permissions.
 Workspace host logs are available through the service catalog, not as an
 `@workspace/runtime` namespace. In eval, use `services.serverLog.tail/query/stats`
 or raw RPC such as
-`rpc.call("main", "serverLog.query", [{ level: "warn", limit: 100 }])`. To
+`rpc.call("main", mainRpcMethods["serverLog.query"], [{ level: "warn", limit: 100 }])`. To
 follow logs live, use
 `EventsClient.openWatch(rpc, ["server-log:append"], crypto.randomUUID(), { signal })`;
 cancelling that response is the only way to unsubscribe. Humans can open the
@@ -412,12 +413,13 @@ partitioned database, then call the DO target:
 
 ```ts
 import { rpc, workers } from "@workspace/runtime";
+import { todoStoreRpcMethods } from "@workspace-workers/todo-store/contract";
 
 const store = await workers.resolveService("example.todos.v1", "project-123");
 if (store.kind !== "durable-object") throw new Error("Expected DO service");
 
-await rpc.call(store.targetId, "upsertTodo", [{ title: "Ship the app" }]);
-const rows = await rpc.call(store.targetId, "listTodos", []);
+await rpc.call(store.targetId, todoStoreRpcMethods.upsertTodo, [{ title: "Ship the app" }]);
+const rows = await rpc.call(store.targetId, todoStoreRpcMethods.listTodos, []);
 ```
 
 The worker must admit the caller in two places: the live service's
@@ -621,7 +623,8 @@ code executes.
 To see which grants are active, use the permission inventory:
 
 ```ts
-const grants = await rpc.call("main", "permissions.list", []);
+import { mainRpcMethods } from "@vibestudio/service-schemas/mainRpc";
+const grants = await rpc.call("main", mainRpcMethods["permissions.list"], []);
 ```
 
 Use `permissions.listAgentProfiles` for each agent's standing permissions and

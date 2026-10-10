@@ -14,7 +14,15 @@
  */
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { isRpcConnectionLost, isPanelRuntimeLeaseConflict } from "@vibestudio/rpc";
+import {
+  isRpcConnectionLost,
+  isPanelRuntimeLeaseConflict,
+} from "@vibestudio/rpc";
+import { mainRpcMethods } from "@vibestudio/service-schemas/mainRpc";
+import type { AccountProfile } from "@vibestudio/service-schemas/account";
+import type { ChatSandboxValue } from "@workspace/agentic-core";
+
+export type { AccountProfile };
 
 /** Prefix of channel-stamped human participant ids (WP6 §4). */
 export const USER_PARTICIPANT_PREFIX = "user:";
@@ -27,22 +35,7 @@ export function userIdFromParticipantId(participantId: string): string | null {
 }
 
 /** Live profile projection returned by the host's `account` service. */
-export interface AccountProfile {
-  userId: string;
-  handle: string;
-  displayName: string;
-  /** Hex tint for handle/presence rendering. */
-  color?: string;
-  /** Inline `data:` URI avatar (WP0 §3.8). */
-  avatar?: string;
-  /** Revoked accounts still resolve so historical attribution renders. */
-  revoked?: boolean;
-}
-
-/** The minimal RPC shape needed (matches `ChatSandboxValue.rpc` / panel RPC). */
-export interface AccountRpc {
-  call(targetId: string, method: string, args: unknown[]): Promise<unknown>;
-}
+export type AccountRpc = ChatSandboxValue["rpc"];
 
 /**
  * Batch-resolve userIds to live profiles via the host RPC. Unknown ids are
@@ -54,10 +47,12 @@ export async function resolveAccountProfiles(
 ): Promise<Map<string, AccountProfile>> {
   const profiles = new Map<string, AccountProfile>();
   if (userIds.length === 0) return profiles;
-  const result = (await rpc.call("main", "account.resolveProfiles", [
-    [...userIds],
-  ])) as Record<string, AccountProfile> | null;
-  for (const [userId, profile] of Object.entries(result ?? {})) {
+  const result = await rpc.call(
+    "main",
+    mainRpcMethods["account.resolveProfiles"],
+    [[...userIds]],
+  );
+  for (const [userId, profile] of Object.entries(result)) {
     profiles.set(userId, profile);
   }
   return profiles;

@@ -64,10 +64,10 @@ export async function activate(ctx: { log: { info(message: string): void } }) {
       };
     },
 
-    async getMetadata(rawData: Uint8Array | ArrayBuffer) {
+    async getMetadata(rawData: Uint8Array | ArrayBuffer): Promise<{ mimeType: "image/png" | "image/jpeg" | "image/webp"; width: number; height: number; byteLength: number }> {
       const bytes = toUint8Array(rawData);
       const mimeType = detectMimeFromBytes(bytes);
-      if (!mimeType || !["image/png", "image/jpeg", "image/webp"].includes(mimeType))
+      if (mimeType !== "image/png" && mimeType !== "image/jpeg" && mimeType !== "image/webp")
         throw new Error("Unsupported image format");
       const photon = await loadPhoton();
       if (!photon) throw new Error("Image decoder is unavailable");

@@ -1,3 +1,4 @@
+import { mainRpcMethods } from "@vibestudio/service-schemas/mainRpc";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   SPEECH_MAX_PCM_BYTES,
@@ -6,13 +7,8 @@ import {
 } from "@workspace/speech";
 
 export interface SpeechRpc {
-  call(target: string, method: string, args: unknown[]): Promise<unknown>;
-  stream(
-    target: string,
-    method: string,
-    args: unknown[],
-    options?: { signal?: AbortSignal },
-  ): Promise<Response>;
+  call: import("@vibestudio/rpc").RpcCaller["call"];
+  stream: import("@vibestudio/rpc").RpcCaller["stream"];
 }
 
 export async function transcribeRecording(
@@ -46,7 +42,7 @@ export async function transcribeRecording(
     binary += String.fromCharCode(...bytes.subarray(i, i + 8192));
   const response = await rpc.stream(
     "main",
-    "extensions.invokeStream",
+    mainRpcMethods["extensions.invokeStream"],
     [
       SPEECH_EXTENSION,
       "transcribe",
@@ -323,7 +319,7 @@ export function useDictation(
     setPhase("checking");
     setMessage("Checking voice input…");
     try {
-      const status = (await rpc!.call("main", "extensions.invoke", [
+      const status = (await rpc!.call("main", mainRpcMethods["extensions.invoke"], [
         SPEECH_EXTENSION,
         "status",
         [],
@@ -356,7 +352,7 @@ export function useDictation(
     try {
       const response = await rpc.stream(
         "main",
-        "extensions.invokeStream",
+        mainRpcMethods["extensions.invokeStream"],
         [SPEECH_EXTENSION, "prepare", []],
         {
           signal: operation.signal,

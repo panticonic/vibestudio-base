@@ -1,3 +1,4 @@
+import { dispatchRpcCall } from "@vibestudio/rpc/internal";
 import type { RpcClient, RpcEventContext } from "@vibestudio/rpc";
 import type { PanelLifecycleResult } from "@vibestudio/shared/types";
 import { normalizePanelTitle } from "@vibestudio/shared/panel/title";
@@ -38,11 +39,7 @@ export interface PanelHandleMetadata {
 }
 
 export interface PanelHandleHostOps {
-  call?(
-    id: string,
-    method: string,
-    args: unknown[],
-  ): Promise<{ result: unknown; observation: PanelObservation }>;
+  call?(id: string, method: string, args: unknown[]): Promise<{ observation: PanelObservation; runtimeEntityId: string; result: unknown }>;
   refresh?(id: string): Promise<PanelHandleMetadata>;
   observe?(id: string): Promise<PanelObservation>;
   diagnose?(id: string): Promise<PanelDiagnosticPacket>;
@@ -89,18 +86,18 @@ export interface PanelHandleHostOps {
 type PanelHandleRpc = Pick<RpcClient, "call" | "emit" | "on">;
 type RpcTargetResolver = string | (() => string | Promise<string>);
 
-export function createCallProxy<T extends Rpc.ExposedMethods>(
+export function createCallProxy(
   rpc: Pick<RpcClient, "call">,
   targetId: RpcTargetResolver,
-): TypedCallProxy<T> {
+): Record<string, (...args: unknown[]) => Promise<unknown>> {
   return createInvocationProxy(async (method, args) => {
     const resolvedTargetId =
       typeof targetId === "function" ? await targetId() : targetId;
-    return rpc.call(resolvedTargetId, method, args);
+    return dispatchRpcCall(rpc, resolvedTargetId, method, args);
   });
 }
 
-function createInvocationProxy<T extends Rpc.ExposedMethods>(
+function createInvocationProxy<T extends Rpc.UncontractedMethods>(
   invoke: (method: string, args: unknown[]) => Promise<unknown>,
 ): TypedCallProxy<T> {
   const target = {} as TypedCallProxy<T>;
@@ -120,7 +117,6 @@ function createInvocationProxy<T extends Rpc.ExposedMethods>(
 }
 
 export function createPanelHandle<
-  T extends Rpc.ExposedMethods = Rpc.ExposedMethods,
   E extends Rpc.RpcEventMap = Rpc.RpcEventMap,
   EmitE extends Rpc.RpcEventMap = Rpc.RpcEventMap,
 >(options: {
@@ -128,7 +124,7 @@ export function createPanelHandle<
   metadata: PanelHandleMetadata;
   cdp: CdpAutomation;
   ops?: PanelHandleHostOps;
-}): PanelHandle<T, E, EmitE> {
+}): PanelHandle<Rpc.UncontractedMethods, E, EmitE> {
   const { rpc, cdp, ops } = options;
   let metadata = normalizeMetadata(options.metadata);
   let rpcTargetResolvePromise: Promise<string> | null = null;
@@ -179,12 +175,12 @@ export function createPanelHandle<
     return observation;
   };
   const call = ops?.call
-    ? createInvocationProxy<T>(async (method, args) => {
+    ? createInvocationProxy<Rpc.UncontractedMethods>(async (method, args) => {
         const invocation = await ops.call!(metadata.id, method, args);
         rememberObservation(invocation.observation);
         return invocation.result;
       })
-    : createCallProxy<T>(rpc, resolveRpcTargetId);
+    : createCallProxy(rpc, resolveRpcTargetId);
   const lifecycle = async (operation: () => Promise<PanelObservation>) => {
     try {
       return rememberObservation(await operation());
@@ -193,7 +189,7 @@ export function createPanelHandle<
     }
   };
 
-  const handle: PanelHandle<T, E, EmitE> = {
+  const handle: PanelHandle<Rpc.UncontractedMethods, E, EmitE> = {
     get id() {
       return metadata.id;
     },
@@ -263,10 +259,21 @@ export function createPanelHandle<
       );
     },
     withContract<C extends PanelContract, Role extends PanelHandleContractRole>(
-      _contract: C,
-      _role: Role,
+      contract: C,
+      role: Role,
     ): PanelHandleFromContract<C, Role> {
-      return handle as unknown as PanelHandleFromContract<C, Role>;
+      const methods = contract[role]?.methods;
+      const contractedCall = new Proxy({}, {
+        get(_target, key) {
+          if (key === "then" || typeof key !== "string") return undefined;
+          const method = methods?.[key];
+          if (!method) throw new Error(`Panel contract ${contract.source} has no ${role} method ${key}`);
+          return (...args: unknown[]) => method.invoke(args, parsed => call[method.name]!(...parsed));
+        },
+      });
+      return new Proxy(handle, { get(target, key, receiver) {
+        return key === "call" ? contractedCall : Reflect.get(target, key, receiver);
+      } }) as unknown as PanelHandleFromContract<C, Role>;
     },
     parent: () => ops?.parent?.(metadata.id, metadata.parentId) ?? null,
     navigate: async (source: string, options?: PanelNavigateOptions) => {
@@ -357,7 +364,7 @@ export function createPanelHandle<
     setMode: (mode: "fixture" | "live") =>
       ops?.callAgent?.(metadata.id, "_agent.setMode", [mode]) ??
       Promise.resolve(undefined),
-  } as PanelHandle<T, E, EmitE>;
+  } as PanelHandle<Rpc.UncontractedMethods, E, EmitE>;
 
   defineScopeRef(handle, () => ({ kind: "panel", id: metadata.id }));
   return handle;
@@ -378,10 +385,9 @@ export function unavailableCdp(id: string): CdpAutomation {
 
 export interface ParentHandleApi {
   getParent<
-    T extends Rpc.ExposedMethods = Rpc.ExposedMethods,
-    E extends Rpc.RpcEventMap = Rpc.RpcEventMap,
+      E extends Rpc.RpcEventMap = Rpc.RpcEventMap,
     EmitE extends Rpc.RpcEventMap = Rpc.RpcEventMap,
-  >(): PanelHandle<T, E, EmitE> | null;
+  >(): PanelHandle<Rpc.UncontractedMethods, E, EmitE> | null;
   getParentWithContract<C extends PanelContract>(
     contract: C,
   ): PanelHandleFromContract<C, "parent"> | null;
@@ -418,11 +424,10 @@ export function createParentHandleApi(
   resolveParent: () => PanelHandle | null,
 ): ParentHandleApi {
   const getParent = <
-    T extends Rpc.ExposedMethods = Rpc.ExposedMethods,
-    E extends Rpc.RpcEventMap = Rpc.RpcEventMap,
+      E extends Rpc.RpcEventMap = Rpc.RpcEventMap,
     EmitE extends Rpc.RpcEventMap = Rpc.RpcEventMap,
-  >(): PanelHandle<T, E, EmitE> | null => {
-    return resolveParent() as PanelHandle<T, E, EmitE> | null;
+  >(): PanelHandle<Rpc.UncontractedMethods, E, EmitE> | null => {
+    return resolveParent() as PanelHandle<Rpc.UncontractedMethods, E, EmitE> | null;
   };
   const getParentWithContract = <C extends PanelContract>(
     contract: C,

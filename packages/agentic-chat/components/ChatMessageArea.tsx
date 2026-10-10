@@ -121,10 +121,8 @@ export function ChatMessageArea({
     );
     if (pending) return "review";
     if (deferredAgent?.launching) return "agent";
-    if (
-      deferredAgent?.modelDiscoveryPending &&
-      deferredAgent.queued.length > 0
-    ) return "models";
+    if (deferredAgent?.modelDiscoveryPending && deferredAgent.queued.length > 0)
+      return "models";
     return connected ? "ready" : "connecting";
   }, [
     connectionError,
@@ -163,7 +161,7 @@ export function ChatMessageArea({
         allParticipants={allParticipants}
         inlineUiComponents={inlineUiComponents}
         messageTypeComponents={messageTypeComponents}
-        chat={chat as unknown as Record<string, unknown>}
+        chat={chat}
         browserHandoffCaller={browserHandoffCaller}
         hasMoreHistory={hasMoreHistory}
         loadingMore={loadingMore}

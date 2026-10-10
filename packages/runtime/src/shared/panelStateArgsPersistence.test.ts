@@ -1,5 +1,5 @@
+import { schemaRpcMock } from "@vibestudio/rpc/test-utils";
 import { describe, expect, it, vi } from "vitest";
-import type { RpcClient } from "@vibestudio/rpc";
 import { patchPanelStateArgs } from "./panelStateArgsPersistence.js";
 
 describe("patchPanelStateArgs", () => {
@@ -12,7 +12,7 @@ describe("patchPanelStateArgs", () => {
     });
 
     await expect(
-      patchPanelStateArgs({ call: call as RpcClient["call"] }, "panel:tree/chat", {
+      patchPanelStateArgs(schemaRpcMock({ call: call }), "panel:tree/chat", {
         channelName: "chat-1",
         stale: null,
       }),

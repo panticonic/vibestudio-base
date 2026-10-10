@@ -32,7 +32,7 @@ export interface PubSubClient<T extends ParticipantMetadata = ParticipantMetadat
   updateMetadata(metadata: Partial<T>, options?: UpdateMetadataOptions): Promise<void>;
 
   /** Read the channel's current participants from the exact connected channel entity. */
-  getParticipants(): Promise<Array<{ participantId: string; metadata: T }>>;
+  getParticipants(): Promise<Array<{ participantId: string; metadata: Record<string, unknown> }>>;
 
   /** Set this client's typing state. Broadcasts as a signal, outside durable message history. */
   setTyping(active: boolean): Promise<void>;

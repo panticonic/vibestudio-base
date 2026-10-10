@@ -1,3 +1,4 @@
+import { mainRpcMethod } from "@vibestudio/service-schemas/mainRpc";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import {
@@ -70,7 +71,7 @@ export class TemplateOperations<T extends TemplateOperation> {
     if (!record.done) {
       record.result = invoke
         ? await invoke(record.args)
-        : await this.ctx.rpc.call("main", record.method, ...record.args);
+        : await this.ctx.rpc.call("main", mainRpcMethod(record.method), record.args);
       record.done = true;
       await this.save(operation);
     }

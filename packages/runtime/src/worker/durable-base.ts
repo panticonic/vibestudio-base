@@ -1,3 +1,5 @@
+import { serializeRpcFailure, deserializeRpcFailure } from "@vibestudio/rpc";
+import { createTypedRpcServiceClient } from "@vibestudio/shared/typedRpcServiceClient";
 /**
  * DurableObjectBase — Tiny generic foundation for all Durable Objects.
  *
@@ -8,12 +10,7 @@
  * in @workspace/agentic-do — composable modules that extend this base.
  */
 
-import {
-  createTypedServiceClient,
-  type MethodSchema,
-  type ServiceMethodSchemas,
-  type TypedServiceClient,
-} from "@vibestudio/shared/typedServiceClient";
+import { type MethodSchema, type ServiceMethodSchemas, type TypedServiceClient } from "@vibestudio/shared/typedServiceClient";
 import { runtimeMethods } from "@vibestudio/service-schemas/runtime";
 import { workerLogMethods } from "@vibestudio/service-schemas/workerLog";
 import { workspaceStateMethods } from "@vibestudio/service-schemas/workspaceState";
@@ -31,27 +28,7 @@ export type {
   LifecycleResumeInput,
   LifecycleCloneInput,
 } from "@vibestudio/shared/doDispatcher";
-import {
-  collectExposableMethods,
-  decodeRpcJson,
-  encodeRpcJson,
-  envelopeFromMessage,
-  rpcExposedMethodNames,
-  rpcErrorDataOf,
-  rpcErrorKindOf,
-  rpcDiagnosticIdOf,
-  rpcMethodAuthority,
-  rpc,
-  type ConnectionlessRpcClient,
-  type RpcClient,
-  type RpcEnvelope,
-  type RpcEvent,
-  type RpcRequest,
-  responseEnvelopeFor,
-  type RpcRequestContext,
-  type ResolvedRpcAuthority,
-  type WebsiteMethodPolicy,
-} from "@vibestudio/rpc";
+import { collectExposableMethods, decodeRpcJson, encodeRpcJson, envelopeFromMessage, rpcExposedMethodNames, rpcMethodAuthority, rpc, type RpcClient, type RpcEnvelope, type RpcEvent, type RpcRequest, responseEnvelopeFor, type RpcRequestContext, type ResolvedRpcAuthority, type WebsiteMethodPolicy } from "@vibestudio/rpc";
 import type { AuthorizationContext } from "@vibestudio/rpc";
 import {
   DurableDirectRpcNonceLedger,
@@ -82,6 +59,8 @@ import {
   DIRECT_AUTHORITY_ACCEPTED_AT_HEADER,
   createCausalRpcOperationTracker,
   createInternalConnectionlessRpcClient,
+  type InternalConnectionlessRpcClient,
+  schemaRpcClient,
   type AttestedCaller,
 } from "@vibestudio/rpc/internal";
 import type { RuntimeFs } from "../types.js";
@@ -162,11 +141,7 @@ function directAuthorityAcceptedAt(request: Request): number {
 function installConsoleBridge(rpc: Pick<RpcClient, "call">): void {
   if (consoleBridgeInstalled) return;
   consoleBridgeInstalled = true;
-  const workerLogService = createTypedServiceClient(
-    "workerLog",
-    workerLogMethods,
-    (svc, m, a) => rpc.call("main", `${svc}.${m}`, a),
-  );
+  const workerLogService = createTypedRpcServiceClient(rpc, { targetId: "main", namespace: "workerLog" }, workerLogMethods);
   const original = {
     debug: console.debug.bind(console),
     log: console.log.bind(console),
@@ -305,7 +280,7 @@ export abstract class DurableObjectBase {
   private _schemaReady = false;
   private schemaInitialization: Promise<void> | null = null;
 
-  private _connectionless: ConnectionlessRpcClient | null = null;
+  private _connectionless: InternalConnectionlessRpcClient | null = null;
   private readonly _directRpcNonces: DurableDirectRpcNonceLedger;
   protected _currentRpcCallerId: string | null = null;
   protected _currentRpcCallerKind: string | null = null;
@@ -666,7 +641,7 @@ export abstract class DurableObjectBase {
    * `handleEnvelope`; `respond`/`deliver` are wired in `fetch`.
    */
   protected get rpc(): RpcClient {
-    return this.connectionlessClient().client;
+    return schemaRpcClient(this.connectionlessClient().client);
   }
 
   /** Activation-owned work has its own lifetime and cannot borrow an inbound
@@ -675,7 +650,7 @@ export abstract class DurableObjectBase {
     return this._invocationContext.runDetached(operation);
   }
 
-  private connectionlessClient(): ConnectionlessRpcClient {
+  private connectionlessClient(): InternalConnectionlessRpcClient {
     if (!this._connectionless) {
       const token = this.env["RPC_AUTH_TOKEN"];
       if (typeof token !== "string" || token.length === 0) {
@@ -780,7 +755,7 @@ export abstract class DurableObjectBase {
       // Bridge DO `console.*` to the server terminal. Installed lazily on
       // first rpc access — constructor-time logs are still local-only, but
       // steady-state errors reach the main terminal.
-      installConsoleBridge(connectionless.client);
+      installConsoleBridge(schemaRpcClient(connectionless.client));
     }
     return this._connectionless;
   }
@@ -1006,11 +981,7 @@ export abstract class DurableObjectBase {
     const isTestSentinel =
       gatewayUrl.includes("test-server.invalid") ||
       gatewayUrl.includes(".test/");
-    const runtimeService = createTypedServiceClient(
-      "runtime",
-      runtimeMethods,
-      (svc, m, a) => bridge.call("main", `${svc}.${m}`, a),
-    );
+    const runtimeService = createTypedRpcServiceClient(bridge, { targetId: "main", namespace: "runtime" }, runtimeMethods);
     try {
       await runtimeService.setTitle(effective, { explicit });
     } catch (err) {
@@ -1160,11 +1131,7 @@ export abstract class DurableObjectBase {
   private get workspaceStateService(): TypedServiceClient<
     typeof workspaceStateMethods
   > {
-    return (this._workspaceStateService ??= createTypedServiceClient(
-      "workspace-state",
-      workspaceStateMethods,
-      (svc, m, a) => this.rpc.call("main", `${svc}.${m}`, a),
-    ));
+    return (this._workspaceStateService ??= createTypedRpcServiceClient(this.rpc, { targetId: "main", namespace: "workspace-state" }, workspaceStateMethods));
   }
 
   /** Override in subclasses for timed callbacks. Return the one exact next wake. */
@@ -1242,55 +1209,16 @@ export abstract class DurableObjectBase {
       alarmResult.status === "rejected"
     ) {
       const failures = [
-        ...(dispatchResult.status === "rejected"
-          ? [dispatchResult.reason]
-          : []),
+        ...(dispatchResult.status === "rejected" ? [dispatchResult.reason] : []),
         ...(alarmResult.status === "rejected" ? [alarmResult.reason] : []),
-      ].flatMap((failure) =>
-        failure instanceof AggregateError ? [...failure.errors] : [failure],
-      );
+      ];
       const uniqueFailures = [...new Set(failures)];
-      const primaryFailure =
-        dispatchResult.status === "rejected"
-          ? dispatchResult.reason
-          : alarmResult.status === "rejected"
-            ? alarmResult.reason
-            : undefined;
-      if (uniqueFailures.length > 1) {
-        const aggregate = new AggregateError(
-          uniqueFailures,
-          "Durable Object request retained additional failures",
-          { cause: primaryFailure },
-        );
-        console.error(aggregate);
-      }
-      const serializedFailure =
-        dispatchResult.status === "rejected"
-          ? dispatchResult.reason
-          : alarmResult.status === "rejected" &&
-              alarmResult.reason instanceof AggregateError
-            ? (alarmResult.reason.cause ??
-              alarmResult.reason.errors[0] ??
-              alarmResult.reason)
-            : primaryFailure;
-      const message =
-        serializedFailure instanceof Error
-          ? serializedFailure.message
-          : String(serializedFailure);
-      const errorData = rpcErrorDataOf(serializedFailure);
-      const errorCode =
-        serializedFailure instanceof Error
-          ? (serializedFailure as Error & { code?: string }).code
-          : undefined;
+      const failure = uniqueFailures.length === 1 ? uniqueFailures[0] : new AggregateError(
+        uniqueFailures, "Durable Object request and alarm persistence failed", { cause: failures[0] }
+      );
       return new Response(
         encodeRpcJson({
-          error: message,
-          errorKind: rpcErrorKindOf(serializedFailure),
-          ...(rpcDiagnosticIdOf(serializedFailure)
-            ? { diagnosticId: rpcDiagnosticIdOf(serializedFailure) }
-            : {}),
-          ...(typeof errorCode === "string" ? { errorCode } : {}),
-          ...(errorData === undefined ? {} : { errorData }),
+          error: serializeRpcFailure(failure),
         }),
         {
           status: 500,
@@ -1369,10 +1297,7 @@ export abstract class DurableObjectBase {
         if (denial) {
           return new Response(
             encodeRpcJson({
-              error: denial.reason,
-              errorCode: denial.code,
-              errorKind: "access",
-              errorData: { authorityFailure: denial.failure },
+              error: { message: denial.reason, code: denial.code, errorKind: "access", errorData: { authorityFailure: denial.failure } },
             }),
             {
               status: 403,
@@ -1460,7 +1385,7 @@ export abstract class DurableObjectBase {
     const responseEnvelope = dispatched.result;
     const responseMessage = responseEnvelope?.message;
     if (responseMessage?.type === "response" && "error" in responseMessage) {
-      if (responseMessage.error.startsWith('Method "')) {
+      if (responseMessage.error.message.startsWith('Method "')) {
         return new Response(
           encodeRpcJson({
             error: `Unknown method: ${method}`,
@@ -1473,23 +1398,13 @@ export abstract class DurableObjectBase {
         );
       }
       const status =
-        responseMessage.errorCode === "EACCES" ||
-        responseMessage.errorCode === "EVAL_READ_ONLY"
+        responseMessage.error.code === "EACCES" ||
+        responseMessage.error.code === "EVAL_READ_ONLY"
           ? 403
           : 500;
       return new Response(
         encodeRpcJson({
           error: responseMessage.error,
-          errorKind: responseMessage.errorKind,
-          ...(responseMessage.diagnosticId
-            ? { diagnosticId: responseMessage.diagnosticId }
-            : {}),
-          ...(responseMessage.errorCode
-            ? { errorCode: responseMessage.errorCode }
-            : {}),
-          ...(responseMessage.errorData !== undefined
-            ? { errorData: responseMessage.errorData }
-            : {}),
           metadata: { durableWorkReady: [...dispatched.readyQueues].sort() },
         }),
         {
@@ -1537,10 +1452,7 @@ export abstract class DurableObjectBase {
       if (denial) {
         return new Response(
           encodeRpcJson({
-            error: denial.reason,
-            errorCode: denial.code,
-            errorKind: "access",
-            errorData: { authorityFailure: denial.failure },
+            error: { message: denial.reason, code: denial.code, errorKind: "access", errorData: { authorityFailure: denial.failure } },
           }),
           {
             status: 403,
@@ -1562,12 +1474,9 @@ export abstract class DurableObjectBase {
           "the receiver's retention bound";
         return new Response(
           encodeRpcJson({
-            error: reason,
-            errorCode: "EACCES",
-            errorKind: "access",
-            errorData: {
+            error: { message: reason, code: "EACCES", errorKind: "access", errorData: {
               authorityFailure: directRpcInvalidAttestationFailure(reason),
-            },
+            } },
           }),
           { status: 403, headers: { "Content-Type": "application/json" } },
         );
@@ -1598,37 +1507,28 @@ export abstract class DurableObjectBase {
           return responseMessage.result;
         return new Response(
           encodeRpcJson({
-            error: `Streaming method ${message.method} did not return a Response`,
+            error: serializeRpcFailure(new Error(`Streaming method ${message.method} did not return a Response`)),
           }),
           { status: 500, headers: { "Content-Type": "application/json" } },
         );
       }
       if (responseMessage?.type === "response" && "error" in responseMessage) {
         const status =
-          responseMessage.errorCode === "EACCES" ||
-          responseMessage.errorCode === "EVAL_READ_ONLY"
+          responseMessage.error.code === "EACCES" ||
+          responseMessage.error.code === "EVAL_READ_ONLY"
             ? 403
             : 500;
         return new Response(
           encodeRpcJson({
             error: responseMessage.error,
-            errorKind: responseMessage.errorKind,
-            ...(responseMessage.diagnosticId
-              ? { diagnosticId: responseMessage.diagnosticId }
-              : {}),
-            ...(responseMessage.errorCode
-              ? { errorCode: responseMessage.errorCode }
-              : {}),
-            ...(responseMessage.errorData !== undefined
-              ? { errorData: responseMessage.errorData }
-              : {}),
+
           }),
           { status, headers: { "Content-Type": "application/json" } },
         );
       }
       return new Response(
         encodeRpcJson({
-          error: `Streaming method ${message.method} did not produce a response`,
+          error: serializeRpcFailure(new Error(`Streaming method ${message.method} did not produce a response`)),
         }),
         { status: 500, headers: { "Content-Type": "application/json" } },
       );
@@ -1655,45 +1555,16 @@ export abstract class DurableObjectBase {
         const previous = dispatched.result?.message;
         const previousIsError =
           previous?.type === "response" && "error" in previous;
-        const failure = previousIsError
-          ? new AggregateError(
-              [new Error(previous.error), alarmFailure],
-              `RPC handler and durable alarm persistence both failed: ${previous.error}; ${alarmFailure instanceof Error ? alarmFailure.message : String(alarmFailure)}`,
-              { cause: previous.error },
-            )
-          : alarmFailure;
-        const errorCode =
-          previousIsError && previous.errorCode !== undefined
-            ? previous.errorCode
-            : failure instanceof Error
-            ? (failure as Error & { code?: string }).code
-            : undefined;
+        const previousFailure = previousIsError ? deserializeRpcFailure(previous.error) : undefined;
+        const failure = previousFailure ? new AggregateError(
+          [previousFailure, alarmFailure], "RPC handler and durable alarm persistence failed", { cause: previousFailure }
+        ) : alarmFailure;
         dispatched = {
           ...dispatched,
           result: responseEnvelopeFor(
             envelope,
             { callerId: envelope.target, callerKind: "do" },
-            {
-              type: "response",
-              requestId: message.requestId,
-              error: failure instanceof Error ? failure.message : String(failure),
-              errorKind: previousIsError
-                ? previous.errorKind
-                : rpcErrorKindOf(failure),
-              ...(previousIsError && previous.diagnosticId
-                ? { diagnosticId: previous.diagnosticId }
-                : rpcDiagnosticIdOf(failure)
-                  ? { diagnosticId: rpcDiagnosticIdOf(failure) }
-                : {}),
-              ...(typeof errorCode === "string" ? { errorCode } : {}),
-              ...(previousIsError
-                ? previous.errorData === undefined
-                  ? {}
-                  : { errorData: previous.errorData }
-                : rpcErrorDataOf(failure) === undefined
-                  ? {}
-                  : { errorData: rpcErrorDataOf(failure) }),
-            },
+            { type: "response", requestId: message.requestId, error: serializeRpcFailure(failure) },
           ),
         };
       }
@@ -1710,27 +1581,11 @@ export abstract class DurableObjectBase {
             { cause: primary },
           );
         }
-        const errorCode =
-          primary instanceof Error
-            ? (primary as Error & { code?: string }).code
-            : undefined;
         return {
           result: responseEnvelopeFor(
             envelope,
             { callerId: this.rpcSelfId, callerKind: "do" },
-            {
-              type: "response",
-              requestId: message.requestId,
-              error: failure instanceof Error ? failure.message : String(failure),
-              errorKind: rpcErrorKindOf(primary),
-              ...(typeof errorCode === "string" ? { errorCode } : {}),
-              ...(rpcErrorDataOf(primary) === undefined
-                ? {}
-                : { errorData: rpcErrorDataOf(primary) }),
-              ...(rpcDiagnosticIdOf(primary)
-                ? { diagnosticId: rpcDiagnosticIdOf(primary) }
-                : {}),
-            },
+            { type: "response", requestId: message.requestId, error: serializeRpcFailure(failure) },
           ),
           readyQueues: [],
         };
@@ -1897,14 +1752,7 @@ export abstract class DurableObjectBase {
             caller: caller ?? { callerId: "", callerKind: "unknown" },
           },
           provenance: envelope.provenance ?? [],
-          message: {
-            type: "response",
-            requestId: message?.requestId ?? "",
-            error: denial.reason,
-            errorCode: denial.code,
-            errorKind: "access",
-            errorData: { authorityFailure: denial.failure },
-          },
+          message: { type: "response", requestId: message?.requestId ?? "", error: { message: denial.reason, code: denial.code, errorKind: "access", errorData: { authorityFailure: denial.failure } } },
         } as RpcEnvelope,
         readyQueues: [],
       };
@@ -1930,16 +1778,9 @@ export abstract class DurableObjectBase {
             caller: caller ?? { callerId: "", callerKind: "unknown" },
           },
           provenance: envelope.provenance ?? [],
-          message: {
-            type: "response",
-            requestId: message?.requestId ?? "",
-            error: reason,
-            errorCode: "EACCES",
-            errorKind: "access",
-            errorData: {
+          message: { type: "response", requestId: message?.requestId ?? "", error: { message: reason, code: "EACCES", errorKind: "access", errorData: {
               authorityFailure: directRpcInvalidAttestationFailure(reason),
-            },
-          },
+            } } },
         } as RpcEnvelope,
         readyQueues: [],
       };
@@ -2010,13 +1851,7 @@ export abstract class DurableObjectBase {
       target: envelope.from,
       delivery: envelope.delivery,
       provenance: envelope.provenance ?? [],
-      message: {
-        type: "response",
-        requestId: message.requestId,
-        error: reason,
-        errorCode: "EINVAL",
-        errorKind: "protocol",
-      },
+      message: { type: "response", requestId: message.requestId, error: { message: reason, code: "EINVAL", errorKind: "protocol" } },
     };
   }
 

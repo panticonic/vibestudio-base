@@ -1,11 +1,13 @@
+import { createRpcMethods, createRpcMethodCaller, type RpcMethodArgs, type RpcMethodResult } from "@vibestudio/shared/rpcMethods";
+import { mainRpcMethod } from "@vibestudio/service-schemas/mainRpc";
+import { workspaceStateMethods } from "@vibestudio/service-schemas/workspaceState";
 import {
   createWorkspaceStateClient,
   type ShellServiceCall,
-} from "@vibestudio/shell-core/workspaceStateClient";
-import { omitTrailingUndefined } from "@vibestudio/shared/workspaceServiceRpc";
+} from "@vibestudio/service-schemas/clients/shellCoreClient";
 
 export interface RuntimeWorkspaceStateRpc {
-  call(target: string, method: string, args: unknown[]): Promise<unknown>;
+  call: import("@vibestudio/rpc").RpcCaller["call"];
 }
 
 /**
@@ -13,20 +15,17 @@ export interface RuntimeWorkspaceStateRpc {
  * are implemented by WorkspaceDO; the named service supplies authority,
  * invalidation, and post-commit presentation convergence for every caller.
  */
-export function callWorkspaceState<T>(
+const workspaceStateRpcMethods = createRpcMethods("workspace-state", workspaceStateMethods);
+export function callWorkspaceState<K extends keyof typeof workspaceStateRpcMethods & string>(
   rpc: RuntimeWorkspaceStateRpc,
-  method: string,
-  args: unknown[]
-): Promise<T> {
-  return rpc.call(
-    "main",
-    `workspace-state.${method}`,
-    omitTrailingUndefined(args),
-  ) as Promise<T>;
+  method: K,
+  args: RpcMethodArgs<(typeof workspaceStateRpcMethods)[K]>,
+): Promise<RpcMethodResult<(typeof workspaceStateRpcMethods)[K]>> {
+  return createRpcMethodCaller(rpc, "main", workspaceStateRpcMethods)(method, args);
 }
 
 export function createRuntimeWorkspaceStateClient(rpc: RuntimeWorkspaceStateRpc) {
   const callService: ShellServiceCall = (_service, method, args) =>
-    callWorkspaceState(rpc, method, args);
+    rpc.call("main", mainRpcMethod(`workspace-state.${method}`), args);
   return createWorkspaceStateClient(callService);
 }

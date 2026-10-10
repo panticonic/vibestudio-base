@@ -1,23 +1,32 @@
 import { describe, expect, it } from "vitest";
 import { createTestDO } from "@workspace/runtime/worker/test-utils";
+import { schemaRpcClient, wireClientFor } from "@vibestudio/rpc/internal";
+import type { RpcClient } from "@vibestudio/rpc";
 import { QuickfireSessionsDO } from "./index.js";
+import { durableObjectServiceFixture } from "@vibestudio/service-schemas/test-utils";
 
 class TestQuickfireSessionsDO extends QuickfireSessionsDO {
   modelSettingsFailure: Error | null = null;
   readonly calls: Array<{ target: string; method: string; args: unknown[] }> =
     [];
 
-  protected override get rpc(): never {
-    return {
+  protected override get rpc(): RpcClient {
+    const base = super.rpc;
+    const wire = wireClientFor(base);
+    return schemaRpcClient({
+      ...wire,
       call: async (target: string, method: string, args: unknown[]) => {
         this.calls.push({ target, method, args });
         if (method === "workers.resolveService") {
-          expect(args).toEqual(["vibestudio.models.v1"]);
-          return {
-            source: "workers/model-settings",
-            className: "ModelSettingsDO",
-            objectKey: "settings",
-          };
+          expect(args).toEqual(["vibestudio.models.v1", null]);
+          return durableObjectServiceFixture(
+            "do:workers/model-settings:ModelSettingsDO:settings",
+            {
+              source: "workers/model-settings",
+              className: "ModelSettingsDO",
+              objectKey: "settings",
+            },
+          );
         }
         if (method === "getSettings") {
           if (this.modelSettingsFailure) throw this.modelSettingsFailure;
@@ -30,43 +39,112 @@ class TestQuickfireSessionsDO extends QuickfireSessionsDO {
           };
         }
         if (method === "workspace-state.panelTree.detail") {
+          const slotId = "panel:tree/slot-a";
+          const entityId = "panel:nav-slot-a-current-entity";
           return {
+            revision: 1,
             slot: {
-              parent_slot_id: "slot-root",
+              slot_id: slotId,
+              parent_slot_id: null,
+              current_entity_id: entityId,
               current_entity_title: "Build log",
+              current_entry_key: "entry-1",
+              sort_key: 0,
+              created_at: 1,
+              closed_at: null,
             },
             currentHistory: {
+              slot_id: slotId,
+              cursor: 0,
+              entry_key: "entry-1",
+              entity_id: entityId,
               context_id: "ctx-panel",
               source: "panels/build-log",
+              state_args: "{}",
+              recorded_at: 1,
+            },
+            entity: {
+              id: entityId,
+              authoritySessionId: "authority-panel",
+              kind: "panel",
+              source: {
+                repoPath: "panels/build-log",
+                effectiveVersion: "test",
+              },
+              contextId: "ctx-panel",
+              key: "build-log",
+              createdAt: 1,
+              status: "active",
+              cleanupComplete: false,
             },
           };
         }
         if (method === "workspace-state.entity.resolveActive")
-          return { status: "active" };
+          return {
+            id: String(args[0]),
+            authoritySessionId: "authority-agent",
+            kind: "worker",
+            source: {
+              repoPath: "workers/agent-worker",
+              effectiveVersion: "test",
+            },
+            contextId: "ctx-panel",
+            key: "quickfire-agent",
+            createdAt: 1,
+            status: "active",
+            cleanupComplete: false,
+          };
         if (method === "runtime.createEntity") {
           const spec = args[0] as {
             className?: string;
             key?: string;
+            source?: string;
             contextId?: string;
             resourceBindings?: unknown[];
           };
           if (spec.className === "AiChatWorker") {
             return {
               id: `do:workers/agent-worker:AiChatWorker:${spec.key}`,
+              kind: "worker",
+              source: {
+                repoPath: spec.source ?? "workers/agent-worker",
+                effectiveVersion: "test",
+              },
               targetId: `do:workers/agent-worker:AiChatWorker:${spec.key}`,
-              contextId: spec.resourceBindings ? "ctx-panel" : spec.contextId,
+              contextId: spec.resourceBindings
+                ? "ctx-panel"
+                : (spec.contextId ?? "ctx-panel"),
             };
           }
           return {
             id: "channel-entity",
+            kind: "do",
+            source: {
+              repoPath: spec.source ?? "workers/pubsub-channel",
+              effectiveVersion: "test",
+            },
             targetId: "channel-target",
-            contextId: spec.resourceBindings ? "ctx-panel" : spec.contextId,
+            contextId: spec.resourceBindings
+              ? "ctx-panel"
+              : (spec.contextId ?? "ctx-panel"),
           };
         }
         if (method === "subscribeChannel")
           return { ok: true, participantId: "agent:quickfire" };
         if (method === "getReplayAfter")
-          return { ready: { snapshotLastSeq: 0 } };
+          return {
+            mode: "after",
+            logEvents: [],
+            snapshots: [],
+            ready: { totalCount: 0, envelopeCount: 0, snapshotLastSeq: 0 },
+          };
+        if (method === "getReplayBefore")
+          return {
+            mode: "before",
+            logEvents: [],
+            snapshots: [],
+            ready: { totalCount: 0, envelopeCount: 0 },
+          };
         if (
           method === "runtime.replaceResourceBindings" ||
           method === "runtime.releaseResourceBindings" ||
@@ -76,9 +154,9 @@ class TestQuickfireSessionsDO extends QuickfireSessionsDO {
         ) {
           return undefined;
         }
-        throw new Error(`unexpected rpc ${target}.${method}`);
+        return wire.call(target, method, args);
       },
-    } as never;
+    });
   }
 }
 

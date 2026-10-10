@@ -4,7 +4,8 @@
   "description": "WebSocket pub/sub client for Vibestudio",
   "type": "module",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./rpc-contract": "./src/rpc-contract.ts"
   },
   "scripts": {
     "test": "vitest run"

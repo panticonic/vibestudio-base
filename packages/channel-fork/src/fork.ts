@@ -1,3 +1,6 @@
+import { resolveDurableObjectService } from "@vibestudio/service-schemas/clients/durableObjectServiceClient";
+import { channelClientRpcMethods } from "@workspace/pubsub/rpc-contract";
+
 /**
  * Client helper for the durable, journaled channel fork.
  *
@@ -58,9 +61,7 @@ export interface ForkResult {
 const CHANNEL_SERVICE_PROTOCOL = "vibestudio.channel.v1";
 
 /** Resolved durable-object channel service (the fields we address). */
-interface ResolvedChannelService extends DORef {
-  targetId?: string;
-}
+
 
 /**
  * Fork a conversation at a point. Resolves the parent channel DO and drives its
@@ -70,16 +71,13 @@ export async function forkConversation(
   rpc: RpcCaller,
   opts: ForkConversationOpts
 ): Promise<ForkResult> {
-  const service = await rpc.call<ResolvedChannelService>("main", "workers.resolveService", [
-    CHANNEL_SERVICE_PROTOCOL,
-    opts.channelId,
-  ]);
+  const service = await resolveDurableObjectService(rpc, CHANNEL_SERVICE_PROTOCOL, opts.channelId);
   const target =
     service.targetId ?? `do:${service.source}:${service.className}:${service.objectKey}`;
   const operationId = crypto.randomUUID();
-  return rpc.call<ForkResult>(
+  return rpc.call(
     target,
-    "fork",
+    channelClientRpcMethods["fork"],
     [
       {
         operationId,

@@ -20,11 +20,7 @@ export interface ExtensionContextLike {
       event: string,
       callback: (event: { payload: unknown }) => void,
     ): () => void;
-    call<T = unknown>(
-      targetId: string,
-      method: string,
-      ...args: unknown[]
-    ): Promise<T>;
+    call: import("@vibestudio/rpc").RpcCaller["call"];
   };
   credentials: CredentialClient;
   emit(event: string, payload: unknown): void;

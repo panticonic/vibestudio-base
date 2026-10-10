@@ -1,3 +1,4 @@
+import { createTypedRpcServiceClient } from "@vibestudio/shared/typedRpcServiceClient";
 /**
  * useChatFeedback — Feedback form + custom feedback handlers.
  *
@@ -24,7 +25,7 @@ import type { SandboxOptions } from "@workspace/eval";
 import type { FeedbackComponentProps } from "@workspace/tool-ui";
 import { AGENTIC_EVENT_PAYLOAD_KIND, type AgenticEvent } from "@workspace/agentic-protocol";
 import { type ChatSandboxValue } from "@workspace/agentic-core";
-import { createTypedServiceClient } from "@vibestudio/shared/typedServiceClient";
+
 import { fsMethods } from "@vibestudio/service-schemas/fs";
 interface UseChatFeedbackOptions {
   chat: ChatSandboxValue;
@@ -67,9 +68,7 @@ export function useChatFeedback({
   activeFeedbacksRef.current = activeFeedbacks;
   const readTextFile = useCallback(
     async (path: string): Promise<string> => {
-      const fsClient = createTypedServiceClient("fs", fsMethods, (svc, method, args) =>
-        chat.rpc.call("main", `${svc}.${method}`, args)
-      );
+      const fsClient = createTypedRpcServiceClient(chat.rpc, { targetId: "main", namespace: "fs" }, fsMethods);
       return (await fsClient.readFile(path, "utf8")) as string;
     },
     [chat.rpc]

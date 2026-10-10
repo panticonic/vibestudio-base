@@ -1,3 +1,5 @@
+import { schemaRpcMock } from "@vibestudio/rpc/test-utils";
+import type { RpcWireCaller } from "@vibestudio/rpc/internal";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -103,14 +105,12 @@ function setup(provider = "faux", baseUrl = "https://provider.test/v1") {
   );
   const reports: unknown[] = [];
   const rpc = {
-    call: vi.fn<(...args: Parameters<RpcCaller["call"]>) => Promise<unknown>>(),
-    stream: vi.fn<RpcCaller["stream"]>(),
+    call: vi.fn<
+      (...args: Parameters<RpcWireCaller["call"]>) => Promise<unknown>
+    >(),
+    stream: vi.fn<RpcWireCaller["stream"]>(),
   };
-  const boundRpc: RpcCaller = {
-    call: async <T>(...args: Parameters<RpcCaller["call"]>) =>
-      (await rpc.call(...args)) as T,
-    stream: rpc.stream,
-  };
+  const boundRpc: RpcCaller = schemaRpcMock(rpc);
   const waitForAuthority = vi.fn<NativeModelProviderHost["waitForAuthority"]>(
     async (request) => ({
       status: "waiting",

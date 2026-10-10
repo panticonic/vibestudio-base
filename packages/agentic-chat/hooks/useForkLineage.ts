@@ -1,10 +1,22 @@
+import { channelClientRpcMethods } from "@workspace/pubsub/rpc-contract";
+import {
+  createRpcMethodCaller,
+  type RpcMethodArgs,
+} from "@vibestudio/shared/rpcMethods";
+import { resolveDurableObjectService } from "@vibestudio/service-schemas/clients/durableObjectServiceClient";
+
 /** Durable fork-lineage state and actions for the agentic chat surface. */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { RpcCaller } from "@vibestudio/rpc";
 import { forkConversation, type ForkLocus } from "@workspace/channel-fork";
-import type { ChatMessage } from "@workspace/agentic-core";
-import type { ForkProjection, MessageBlockInput } from "@workspace/agentic-protocol";
-import { readChannelSubscriptionRecords, type PubSubClient } from "@workspace/pubsub";
+import type { ChatMessage, ConnectionConfig } from "@workspace/agentic-core";
+import type {
+  ForkProjection,
+  MessageBlockInput,
+} from "@workspace/agentic-protocol";
+import {
+  readChannelSubscriptionRecords,
+  type PubSubClient,
+} from "@workspace/pubsub";
 import { isReviewPending } from "@vibestudio/shared/authority/reviewPending";
 import type {
   ChannelProvenance,
@@ -18,23 +30,8 @@ import type {
 const CHANNEL_SERVICE_PROTOCOL = "vibestudio.channel.v1";
 const FORK_HEAD_CHANGED_SIGNAL = "fork.head_changed";
 
-interface ForkRpc {
-  call<R = unknown>(targetId: string, method: string, args: unknown[]): Promise<R>;
-  stream?(
-    targetId: string,
-    method: string,
-    args: unknown[],
-    options?: { signal?: AbortSignal; bodyIdleTimeoutMs?: number | null }
-  ): Promise<Response>;
-  selfId: string;
-}
-
-interface ResolvedChannelService {
-  source: string;
-  className: string;
-  objectKey: string;
-  targetId?: string;
-}
+type ForkRpc = Pick<ConnectionConfig["rpc"], "call" | "stream"> &
+  Partial<Pick<ConnectionConfig["rpc"], "selfId">>;
 
 interface ForkListResult {
   forks: ForkProjection[];
@@ -56,20 +53,38 @@ export interface UseForkLineageOptions {
   nav?: ForkNavHandlers;
 }
 
-async function resolveChannelTarget(rpc: ForkRpc, channelId: string): Promise<string> {
-  const svc = await rpc.call<ResolvedChannelService>("main", "workers.resolveService", [
+async function resolveChannelTarget(
+  rpc: ForkRpc,
+  channelId: string,
+): Promise<string> {
+  const svc = await resolveDurableObjectService(
+    rpc,
     CHANNEL_SERVICE_PROTOCOL,
     channelId,
-  ]);
+  );
   return svc.targetId ?? `do:${svc.source}:${svc.className}:${svc.objectKey}`;
 }
 
-async function readProvenance(rpc: ForkRpc, channelId: string): Promise<ChannelProvenance> {
-  return rpc.call(await resolveChannelTarget(rpc, channelId), "getProvenance", []);
+async function readProvenance(
+  rpc: ForkRpc,
+  channelId: string,
+): Promise<ChannelProvenance> {
+  return rpc.call(
+    await resolveChannelTarget(rpc, channelId),
+    channelClientRpcMethods["getProvenance"],
+    [],
+  );
 }
 
-async function readForks(rpc: ForkRpc, channelId: string): Promise<ForkListResult> {
-  return rpc.call(await resolveChannelTarget(rpc, channelId), "listForks", []);
+async function readForks(
+  rpc: ForkRpc,
+  channelId: string,
+): Promise<ForkListResult> {
+  return rpc.call(
+    await resolveChannelTarget(rpc, channelId),
+    channelClientRpcMethods["listForks"],
+    [],
+  );
 }
 
 function forkProjectionToEntry(fork: ForkProjection): ForkEntry {
@@ -99,7 +114,16 @@ function messageExcerpt(message: ChatMessage): string {
 }
 
 export function useForkLineage(options: UseForkLineageOptions): ForkUiState {
-  const { rpc, channelId, contextId, selfId, replaySettled, retrySignal, client, nav } = options;
+  const {
+    rpc,
+    channelId,
+    contextId,
+    selfId,
+    replaySettled,
+    retrySignal,
+    client,
+    nav,
+  } = options;
   const enabled = Boolean(nav);
   const connected = Boolean(client);
   const navRef = useRef(nav);
@@ -124,31 +148,34 @@ export function useForkLineage(options: UseForkLineageOptions): ForkUiState {
     setError(`${summary}: ${conciseError(cause)}`);
   }, []);
 
-  const markRead = useCallback(async (readChannelId: string, headSeq: number) => {
-    if (headSeq <= 0) return;
-    const prior =
-      navRef.current?.readForkCursors?.()[readChannelId] ??
-      readCursorsRef.current[readChannelId] ??
-      0;
-    if (prior >= headSeq) return;
-    try {
-      await navRef.current?.markForkRead?.(readChannelId, headSeq);
-    } catch (cause) {
-      // A workspace creation/install review temporarily holds gated panel
-      // state writes. It is not a persistence failure: leave the cursor stale
-      // so the approval-change retry can write the same monotone head later.
-      if (isReviewPending(cause)) return;
-      throw cause;
-    }
-    setReadCursors((current) => {
-      const next = {
-        ...current,
-        [readChannelId]: Math.max(current[readChannelId] ?? 0, headSeq),
-      };
-      readCursorsRef.current = next;
-      return next;
-    });
-  }, []);
+  const markRead = useCallback(
+    async (readChannelId: string, headSeq: number) => {
+      if (headSeq <= 0) return;
+      const prior =
+        navRef.current?.readForkCursors?.()[readChannelId] ??
+        readCursorsRef.current[readChannelId] ??
+        0;
+      if (prior >= headSeq) return;
+      try {
+        await navRef.current?.markForkRead?.(readChannelId, headSeq);
+      } catch (cause) {
+        // A workspace creation/install review temporarily holds gated panel
+        // state writes. It is not a persistence failure: leave the cursor stale
+        // so the approval-change retry can write the same monotone head later.
+        if (isReviewPending(cause)) return;
+        throw cause;
+      }
+      setReadCursors((current) => {
+        const next = {
+          ...current,
+          [readChannelId]: Math.max(current[readChannelId] ?? 0, headSeq),
+        };
+        readCursorsRef.current = next;
+        return next;
+      });
+    },
+    [],
+  );
 
   const refreshData = useCallback(
     async (signal?: AbortSignal): Promise<void> => {
@@ -159,13 +186,22 @@ export function useForkLineage(options: UseForkLineageOptions): ForkUiState {
           readForks(rpc, channelId),
         ]);
         let siblings: ForkEntry[] = [];
-        let label = prov.kind === "task" ? "Subagent task" : prov.kind === "fork" ? "Fork" : "Main";
+        let label =
+          prov.kind === "task"
+            ? "Subagent task"
+            : prov.kind === "fork"
+              ? "Fork"
+              : "Main";
         if (prov.kind === "fork") {
           const parent = await readForks(rpc, prov.forkedFrom);
-          const self = parent.forks.find((fork) => fork.forkedChannelId === channelId);
+          const self = parent.forks.find(
+            (fork) => fork.forkedChannelId === channelId,
+          );
           if (self) label = self.label || self.reason || "Fork";
           siblings = parent.forks
-            .filter((fork) => fork.forkedChannelId !== channelId && !fork.archived)
+            .filter(
+              (fork) => fork.forkedChannelId !== channelId && !fork.archived,
+            )
             .map(forkProjectionToEntry);
         }
         if (signal?.aborted) return;
@@ -173,15 +209,19 @@ export function useForkLineage(options: UseForkLineageOptions): ForkUiState {
         setProvenance(prov);
         setCurrentLabel(label);
         setCurrentHead(own.headSeq);
-        setBaseChildren(own.forks.filter((fork) => !fork.archived).map(forkProjectionToEntry));
+        setBaseChildren(
+          own.forks.filter((fork) => !fork.archived).map(forkProjectionToEntry),
+        );
         setBaseSiblings(siblings);
         setReadCursors(navRef.current?.readForkCursors?.() ?? {});
       } catch (cause) {
         if (!signal?.aborted)
-          setLoadError(`Could not load conversation forks: ${conciseError(cause)}`);
+          setLoadError(
+            `Could not load conversation forks: ${conciseError(cause)}`,
+          );
       }
     },
-    [enabled, channelId, rpc]
+    [enabled, channelId, rpc],
   );
 
   useEffect(() => {
@@ -201,9 +241,17 @@ export function useForkLineage(options: UseForkLineageOptions): ForkUiState {
   useEffect(() => {
     if (!enabled || !replaySettled || !channelId || currentHead <= 0) return;
     void markRead(channelId, currentHead).catch((cause) =>
-      reportError("Could not save the conversation read position", cause)
+      reportError("Could not save the conversation read position", cause),
     );
-  }, [enabled, replaySettled, channelId, currentHead, retrySignal, markRead, reportError]);
+  }, [
+    enabled,
+    replaySettled,
+    channelId,
+    currentHead,
+    retrySignal,
+    markRead,
+    reportError,
+  ]);
 
   const lineageRootId =
     !channelId || !provenance
@@ -225,10 +273,15 @@ export function useForkLineage(options: UseForkLineageOptions): ForkUiState {
         try {
           const target = await resolveChannelTarget(rpc, lineageRootId);
           if (abort.signal.aborted) return;
-          const response = await rpc.stream!(target, "subscribeLineage", [selfId], {
-            signal: abort.signal,
-            bodyIdleTimeoutMs: null,
-          });
+          const response = await rpc.stream!(
+            target,
+            channelClientRpcMethods.subscribeLineage,
+            [selfId],
+            {
+              signal: abort.signal,
+              bodyIdleTimeoutMs: null,
+            },
+          );
           if (abort.signal.aborted) {
             await response.body?.cancel();
             return;
@@ -257,25 +310,33 @@ export function useForkLineage(options: UseForkLineageOptions): ForkUiState {
               headSeq?: unknown;
               rosterChanged?: unknown;
             };
-            if (typeof parsed.channelId !== "string" || typeof parsed.headSeq !== "number")
+            if (
+              typeof parsed.channelId !== "string" ||
+              typeof parsed.headSeq !== "number"
+            )
               continue;
             setLiveHeads((current) => ({
               ...current,
               [parsed.channelId as string]: Math.max(
                 current[parsed.channelId as string] ?? 0,
-                parsed.headSeq as number
+                parsed.headSeq as number,
               ),
             }));
             if (parsed.channelId === channelId) {
               void markRead(parsed.channelId, parsed.headSeq).catch((cause) =>
-                reportError("Could not save the conversation read position", cause)
+                reportError(
+                  "Could not save the conversation read position",
+                  cause,
+                ),
               );
               if (parsed.rosterChanged === true) void refreshData(abort.signal);
             }
           }
         } catch (cause) {
           if (!abort.signal.aborted) {
-            setStreamError(`Live fork updates disconnected: ${conciseError(cause)}`);
+            setStreamError(
+              `Live fork updates disconnected: ${conciseError(cause)}`,
+            );
           }
         }
       })();
@@ -288,22 +349,41 @@ export function useForkLineage(options: UseForkLineageOptions): ForkUiState {
       offReconnect();
       active?.abort();
     };
-  }, [enabled, rpc, client, lineageRootId, selfId, channelId, markRead, refreshData, reportError]);
+  }, [
+    enabled,
+    rpc,
+    client,
+    lineageRootId,
+    selfId,
+    channelId,
+    markRead,
+    refreshData,
+    reportError,
+  ]);
 
   const decorate = useCallback(
     (entries: ForkEntry[]): ForkEntry[] =>
       entries.map((entry) => {
-        const headSeq = Math.max(entry.headSeq, liveHeads[entry.channelId] ?? 0);
+        const headSeq = Math.max(
+          entry.headSeq,
+          liveHeads[entry.channelId] ?? 0,
+        );
         return {
           ...entry,
           headSeq,
           unread: headSeq > (readCursors[entry.channelId] ?? 0),
         };
       }),
-    [liveHeads, readCursors]
+    [liveHeads, readCursors],
   );
-  const children = useMemo(() => decorate(baseChildren), [decorate, baseChildren]);
-  const siblings = useMemo(() => decorate(baseSiblings), [decorate, baseSiblings]);
+  const children = useMemo(
+    () => decorate(baseChildren),
+    [decorate, baseChildren],
+  );
+  const siblings = useMemo(
+    () => decorate(baseSiblings),
+    [decorate, baseSiblings],
+  );
 
   // Notify the shell for newly materialized external forks. Focus policy belongs
   // to the shell notification service, which has the actual panel/window state.
@@ -316,7 +396,9 @@ export function useForkLineage(options: UseForkLineageOptions): ForkUiState {
       seenForkIdsRef.current = null;
     }
     if (seenForkIdsRef.current === null) {
-      seenForkIdsRef.current = new Set(baseChildren.map((entry) => entry.forkId));
+      seenForkIdsRef.current = new Set(
+        baseChildren.map((entry) => entry.forkId),
+      );
       return;
     }
     for (const entry of baseChildren) {
@@ -332,7 +414,10 @@ export function useForkLineage(options: UseForkLineageOptions): ForkUiState {
               forkPointId: entry.forkPointId,
             });
           } catch (cause) {
-            reportError("Could not notify about a new conversation fork", cause);
+            reportError(
+              "Could not notify about a new conversation fork",
+              cause,
+            );
           }
         })();
       }
@@ -341,17 +426,25 @@ export function useForkLineage(options: UseForkLineageOptions): ForkUiState {
 
   const parent = useMemo(() => {
     if (provenance?.kind === "fork") {
-      return { channelId: provenance.forkedFrom, contextId: provenance.parentContextId };
+      return {
+        channelId: provenance.forkedFrom,
+        contextId: provenance.parentContextId,
+      };
     }
     if (provenance?.kind === "task") {
-      return { channelId: provenance.parentChannelId, contextId: provenance.parentContextId };
+      return {
+        channelId: provenance.parentChannelId,
+        contextId: provenance.parentContextId,
+      };
     }
     return undefined;
   }, [provenance]);
 
   const loadTreeData = useCallback(async (): Promise<ForkTreeNode[]> => {
     if (!enabled || !channelId) return [];
-    const contextByChannel = new Map<string, string | undefined>([[channelId, contextId]]);
+    const contextByChannel = new Map<string, string | undefined>([
+      [channelId, contextId],
+    ]);
     let rootChannelId = channelId;
     let cursor = channelId;
     const ancestrySeen = new Set<string>();
@@ -360,12 +453,18 @@ export function useForkLineage(options: UseForkLineageOptions): ForkUiState {
       const cursorProvenance = await readProvenance(rpc, cursor);
       if (cursorProvenance.kind === "fork") {
         rootChannelId = cursorProvenance.rootChannelId;
-        contextByChannel.set(cursorProvenance.forkedFrom, cursorProvenance.parentContextId);
+        contextByChannel.set(
+          cursorProvenance.forkedFrom,
+          cursorProvenance.parentContextId,
+        );
         cursor = cursorProvenance.forkedFrom;
         continue;
       }
       if (cursorProvenance.kind === "task") {
-        contextByChannel.set(cursorProvenance.parentChannelId, cursorProvenance.parentContextId);
+        contextByChannel.set(
+          cursorProvenance.parentChannelId,
+          cursorProvenance.parentContextId,
+        );
         cursor = cursorProvenance.parentChannelId;
         rootChannelId = cursor;
         continue;
@@ -378,7 +477,7 @@ export function useForkLineage(options: UseForkLineageOptions): ForkUiState {
       nodeChannelId: string,
       nodeContextId: string | undefined,
       label: string,
-      provenanceKind: "root" | "fork" | "task"
+      provenanceKind: "root" | "fork" | "task",
     ): Promise<ForkTreeNode> => {
       if (seen.has(nodeChannelId)) {
         return {
@@ -398,8 +497,13 @@ export function useForkLineage(options: UseForkLineageOptions): ForkUiState {
           .filter((fork) => !fork.archived)
           .map((fork) => {
             contextByChannel.set(fork.forkedChannelId, fork.forkedContextId);
-            return build(fork.forkedChannelId, fork.forkedContextId, fork.label, "fork");
-          })
+            return build(
+              fork.forkedChannelId,
+              fork.forkedContextId,
+              fork.label,
+              "fork",
+            );
+          }),
       );
       return {
         channelId: nodeChannelId,
@@ -415,7 +519,14 @@ export function useForkLineage(options: UseForkLineageOptions): ForkUiState {
         children: childNodes,
       };
     };
-    return [await build(rootChannelId, contextByChannel.get(rootChannelId), "Main", "root")];
+    return [
+      await build(
+        rootChannelId,
+        contextByChannel.get(rootChannelId),
+        "Main",
+        "root",
+      ),
+    ];
   }, [enabled, rpc, channelId, contextId, liveHeads, readCursors]);
 
   const loadTree = useCallback(async (): Promise<ForkTreeNode[]> => {
@@ -454,14 +565,17 @@ export function useForkLineage(options: UseForkLineageOptions): ForkUiState {
                 : {}),
             }
           : undefined;
-        const result = await forkConversation(rpc as RpcCaller, {
+        const result = await forkConversation(rpc, {
           channelId,
           locus: opts.locus,
           reason: opts.reason,
           label: opts.label,
           ...(seed ? { seed } : {}),
         });
-        await navRef.current.switchTo(result.forkedChannelId, result.forkedContextId);
+        await navRef.current.switchTo(
+          result.forkedChannelId,
+          result.forkedContextId,
+        );
       } catch (cause) {
         setError(`Could not create fork: ${conciseError(cause)}`);
         throw cause;
@@ -469,7 +583,7 @@ export function useForkLineage(options: UseForkLineageOptions): ForkUiState {
         setForking(false);
       }
     },
-    [enabled, channelId, rpc]
+    [enabled, channelId, rpc],
   );
 
   const forkFromMessage = useCallback(
@@ -479,7 +593,7 @@ export function useForkLineage(options: UseForkLineageOptions): ForkUiState {
         reason: "fork",
         label: `After “${messageExcerpt(message)}”`,
       }),
-    [runFork]
+    [runFork],
   );
   const editAndForkMessage = useCallback(
     async (message: ChatMessage, newText: string) =>
@@ -490,34 +604,48 @@ export function useForkLineage(options: UseForkLineageOptions): ForkUiState {
         seedText: newText,
         replacesMessageId: message.id,
       }),
-    [runFork]
+    [runFork],
   );
   const newFork = useCallback(
-    async () => runFork({ locus: { kind: "head" }, reason: "fork", label: "New direction" }),
-    [runFork]
+    async () =>
+      runFork({
+        locus: { kind: "head" },
+        reason: "fork",
+        label: "New direction",
+      }),
+    [runFork],
   );
 
   const mutateFork = useCallback(
-    async (entry: ForkEntry, method: "renameFork" | "archiveFork", args: unknown[]) => {
+    async <K extends "renameFork" | "archiveFork">(
+      entry: ForkEntry,
+      method: K,
+      args: RpcMethodArgs<(typeof channelClientRpcMethods)[K]>,
+    ) => {
       try {
         setError(undefined);
         const target = await resolveChannelTarget(rpc, entry.parentChannelId);
-        await rpc.call(target, method, [entry.forkId, ...args]);
+        await createRpcMethodCaller(
+          rpc,
+          target,
+          channelClientRpcMethods,
+        )(method, args);
         await refreshData();
       } catch (cause) {
         setError(`Could not update fork: ${conciseError(cause)}`);
         throw cause;
       }
     },
-    [rpc, refreshData]
+    [rpc, refreshData],
   );
   const renameFork = useCallback(
-    (entry: ForkEntry, label: string) => mutateFork(entry, "renameFork", [label]),
-    [mutateFork]
+    (entry: ForkEntry, label: string) =>
+      mutateFork(entry, "renameFork", [entry.forkId, label]),
+    [mutateFork],
   );
   const archiveFork = useCallback(
-    (entry: ForkEntry) => mutateFork(entry, "archiveFork", []),
-    [mutateFork]
+    (entry: ForkEntry) => mutateFork(entry, "archiveFork", [entry.forkId]),
+    [mutateFork],
   );
   const clearError = useCallback(() => {
     setError(undefined);
@@ -525,27 +653,36 @@ export function useForkLineage(options: UseForkLineageOptions): ForkUiState {
     setStreamError(undefined);
   }, []);
   const refresh = useCallback(() => void refreshData(), [refreshData]);
-  const switchTo = useCallback(async (targetChannelId: string, targetContextId: string) => {
-    try {
-      await navRef.current?.switchTo(targetChannelId, targetContextId);
-    } catch (cause) {
-      setError(`Could not switch conversations: ${conciseError(cause)}`);
-      throw cause;
-    }
-  }, []);
-  const openInNewPanel = useCallback(async (targetChannelId: string, targetContextId: string) => {
-    try {
-      await navRef.current?.openInNewPanel(targetChannelId, targetContextId);
-    } catch (cause) {
-      setError(`Could not open conversation: ${conciseError(cause)}`);
-      throw cause;
-    }
-  }, []);
-  const readPersistedCursors = useCallback(() => navRef.current?.readForkCursors?.() ?? {}, []);
+  const switchTo = useCallback(
+    async (targetChannelId: string, targetContextId: string) => {
+      try {
+        await navRef.current?.switchTo(targetChannelId, targetContextId);
+      } catch (cause) {
+        setError(`Could not switch conversations: ${conciseError(cause)}`);
+        throw cause;
+      }
+    },
+    [],
+  );
+  const openInNewPanel = useCallback(
+    async (targetChannelId: string, targetContextId: string) => {
+      try {
+        await navRef.current?.openInNewPanel(targetChannelId, targetContextId);
+      } catch (cause) {
+        setError(`Could not open conversation: ${conciseError(cause)}`);
+        throw cause;
+      }
+    },
+    [],
+  );
+  const readPersistedCursors = useCallback(
+    () => navRef.current?.readForkCursors?.() ?? {},
+    [],
+  );
   const notifyExternalFork = useCallback(
     (fork: Parameters<NonNullable<ForkNavHandlers["onExternalFork"]>>[0]) =>
       navRef.current?.onExternalFork?.(fork),
-    []
+    [],
   );
 
   return useMemo(
@@ -596,6 +733,6 @@ export function useForkLineage(options: UseForkLineageOptions): ForkUiState {
       markRead,
       readPersistedCursors,
       notifyExternalFork,
-    ]
+    ],
   );
 }

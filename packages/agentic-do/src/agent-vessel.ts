@@ -1,3 +1,22 @@
+import { createRpcMethodCaller } from "@vibestudio/shared/rpcMethods";
+import { localModelEntrySchema } from "@workspace/model-catalog/localModels";
+import {
+  compileMissionAuthorityPlan,
+  createMissionsClient,
+} from "@vibestudio/service-schemas/clients/missionsClient";
+import { resolveDurableObjectService } from "@vibestudio/service-schemas/clients/durableObjectServiceClient";
+import { missionsRpcMethods } from "@vibestudio/service-schemas/missions";
+import { channelClientRpcMethods } from "@workspace/pubsub/rpc-contract";
+import { agentRpcMethods } from "@workspace/agentic-do/rpc-contract";
+import { gadRpcMethods } from "@vibestudio/service-schemas/clients/durableObjectServiceClient";
+import type {
+  RpcMethodArgs,
+  RpcMethodResult,
+} from "@vibestudio/shared/rpcMethods";
+import { modelSettingsRpcMethods } from "@workspace/model-catalog/rpc-contract";
+import { createTypedRpcServiceClient } from "@vibestudio/shared/typedRpcServiceClient";
+import { mainRpcMethods } from "@vibestudio/service-schemas/mainRpc";
+import { createDurableObjectServiceClient } from "@vibestudio/service-schemas/clients/durableObjectServiceClient";
 import { reconcileDefaultAutomationHost } from "./default-automation-host.js";
 import { createProvider, Type, type Api, type Model } from "@panticonic/pi-ai";
 import { authorNativeTool } from "@workspace/harness";
@@ -126,10 +145,7 @@ import {
   type RpcClient,
 } from "@vibestudio/rpc";
 import { withExecutionAdmission } from "@vibestudio/rpc/internal";
-import {
-  createGadServiceClient,
-  type DurableObjectServiceClient,
-} from "@workspace/runtime/workerd-client";
+import { createGadServiceClient } from "@workspace/runtime/workerd-client";
 import type {
   ChannelAgenticContext,
   RegisterMessageTypeInput,
@@ -176,7 +192,6 @@ import {
   sha256HexSyncText,
   stableSha256Hex,
 } from "@vibestudio/content-addressing";
-import { createTypedServiceClient } from "@vibestudio/shared/typedServiceClient";
 
 import {
   createAgentEntity,
@@ -197,12 +212,9 @@ import {
 } from "@workspace/agentic-core/subagent-prompt";
 import {
   MISSION_COMPLETION_PROTOCOL,
-  compileMissionAuthorityPlan,
-  createMissionsClient,
   type AutomationExecutorRunStatus,
   type MissionAgentAction,
   type MissionCharter,
-  type MissionAuthorityProjection,
   type MissionOperationIntent,
   type MissionRecord,
   type MissionTrigger,
@@ -229,7 +241,6 @@ import {
   MODEL_SETTINGS_SERVICE_PROTOCOL,
   type AgentThinkingLevel as ThinkingLevel,
 } from "@workspace/model-catalog/catalog";
-import { createDurableObjectServiceClient } from "@vibestudio/shared/workspaceServiceRpc";
 
 import { modelTransportRuntimeEvidence } from "./model-transport-runtime.js";
 
@@ -358,8 +369,10 @@ function subagentVcsCommandId(
 }
 
 function createSubagentVcsClient(rpcClient: RpcClient) {
-  return createTypedServiceClient("vcs", vcsMethods, (_service, method, args) =>
-    rpcClient.call("main", `vcs.${method}`, args),
+  return createTypedRpcServiceClient(
+    rpcClient,
+    { targetId: "main", namespace: "vcs" },
+    vcsMethods,
   );
 }
 
@@ -428,7 +441,9 @@ const OBSERVABLE_SUBAGENT_CONFIG_KEYS = [
 ] as const;
 
 function observableSubagentLaunchConfig(
-  value: Record<string, unknown> | undefined,
+  value:
+    | Partial<Record<(typeof OBSERVABLE_SUBAGENT_CONFIG_KEYS)[number], unknown>>
+    | undefined,
 ): Record<string, unknown> | null {
   if (!value) return null;
   const selected = Object.fromEntries(
@@ -852,7 +867,7 @@ export abstract class AgentVesselBase extends NativeChannelOwner<NativeProductCh
         .map(async (run) => {
           await this.agentRpc.call(
             run.childEntityId,
-            "retireSubagentExecution",
+            agentRpcMethods["retireSubagentExecution"],
             [
               {
                 runId: run.runId,
@@ -1033,7 +1048,11 @@ export abstract class AgentVesselBase extends NativeChannelOwner<NativeProductCh
    *  model request descriptor). Keep run-specific volatile instructions out of
    *  this path so provider prompt-cache keys stay stable. */
   protected async composePrompt(channelId: string): Promise<string> {
+    const startedAt = Date.now();
     const resources = await this.loadPromptResources(channelId);
+    this.traceHotPath(channelId, "configuration.prompt-resources", {
+      startedAt,
+    });
     const agentPrompt = this.getAgentPrompt(channelId);
     const override = this.getPromptOverride(channelId);
     const composed = composeSystemPrompt({
@@ -1233,32 +1252,29 @@ export abstract class AgentVesselBase extends NativeChannelOwner<NativeProductCh
     };
   }
 
-  private _gadClient: DurableObjectServiceClient | null = null;
+  private _gadClient: ReturnType<typeof createGadServiceClient> | null = null;
 
-  protected async callGad<T>(method: string, ...args: unknown[]): Promise<T> {
-    this._gadClient ??= createGadServiceClient({
-      call: <R>(targetId: string, m: string, a: unknown[]) =>
-        this.rpc.call<R>(targetId, m, a),
-    });
-    return this._gadClient.call<T>(method, ...args);
+  protected callGad<K extends keyof typeof gadRpcMethods & string>(
+    method: K,
+    ...args: RpcMethodArgs<(typeof gadRpcMethods)[K]>
+  ): Promise<RpcMethodResult<(typeof gadRpcMethods)[K]>> {
+    this._gadClient ??= createGadServiceClient(this.rpc);
+    return this._gadClient.call(method, ...args);
   }
 
-  protected async callGadWith<T>(
+  protected callGadWith<K extends keyof typeof gadRpcMethods & string>(
     rpc: RpcClient,
-    method: string,
-    ...args: unknown[]
-  ): Promise<T> {
-    return createGadServiceClient({
-      call: <R>(targetId: string, name: string, values: unknown[]) =>
-        rpc.call<R>(targetId, name, values),
-    }).call<T>(method, ...args);
+    method: K,
+    ...args: RpcMethodArgs<(typeof gadRpcMethods)[K]>
+  ): Promise<RpcMethodResult<(typeof gadRpcMethods)[K]>> {
+    return createGadServiceClient(rpc).call(method, ...args);
   }
 
   private async channelTarget(channelId: string): Promise<string> {
-    const service = await this.rpc.call<{ targetId?: string }>(
-      "main",
-      "workers.resolveService",
-      ["vibestudio.channel.v1", channelId],
+    const service = await resolveDurableObjectService(
+      this.rpc,
+      "vibestudio.channel.v1",
+      channelId,
     );
     if (!service.targetId) throw new Error("channel service did not resolve");
     return service.targetId;
@@ -1424,13 +1440,15 @@ export abstract class AgentVesselBase extends NativeChannelOwner<NativeProductCh
     if (!model.startsWith(`${LOCAL_PROVIDER_ID}:`)) return;
     const slug = model.slice(LOCAL_PROVIDER_ID.length + 1);
     try {
-      const entries = await this.rpc.call<LocalModelDescriptor[]>(
+      const entries = await this.rpc.call(
         "main",
-        "extensions.invoke",
+        mainRpcMethods["extensions.invoke"],
         [LOCAL_MODELS_EXTENSION_ID, "listModels", []],
       );
       const entry = Array.isArray(entries)
-        ? (entries.find((candidate) => candidate?.slug === slug) ?? null)
+        ? (entries
+            .map((candidate) => localModelEntrySchema.parse(candidate))
+            .find((candidate) => candidate.slug === slug) ?? null)
         : null;
       if (!entry) return;
       this.setStateValue(
@@ -1517,14 +1535,11 @@ export abstract class AgentVesselBase extends NativeChannelOwner<NativeProductCh
    *  from the channel roster rather than failing the message. */
   protected async workspaceUserEntries(): Promise<AddresseeUserEntry[]> {
     try {
-      const members = await this.rpc.call<
-        Array<{
-          userId: string;
-          handle?: string;
-          displayName?: string;
-          revoked?: boolean;
-        }>
-      >("main", "account.listWorkspaceMembers", []);
+      const members = await this.rpc.call(
+        "main",
+        mainRpcMethods["account.listWorkspaceMembers"],
+        [],
+      );
       return members
         .filter((member) => member.revoked !== true)
         .map((member) => ({
@@ -1543,14 +1558,9 @@ export abstract class AgentVesselBase extends NativeChannelOwner<NativeProductCh
    *  instance genuinely is not there. */
   protected async agentDirectoryEntries(): Promise<AddresseeDirectoryEntry[]> {
     try {
-      const listing = await this.callGad<{
-        entries: Array<{
-          instanceId: string;
-          handle: string | null;
-          channelId: string;
-          participantId: string;
-        }>;
-      }>("listAgentDirectory", { includeTerminal: true });
+      const listing = await this.callGad("listAgentDirectory", {
+        includeTerminal: true,
+      });
       return listing.entries
         .filter((entry) => entry.handle)
         .map((entry) => ({
@@ -1881,16 +1891,7 @@ export abstract class AgentVesselBase extends NativeChannelOwner<NativeProductCh
           throw new Error(
             "memory_recall requires an admitted native invocation",
           );
-        const recall = await this.callGadWith<{
-          results: Array<{
-            kind: string;
-            snippet: string;
-            path: string | null;
-            eventId: string | null;
-            actor: unknown;
-            appendedAt: string | null;
-          }>;
-        }>(execution.rpc, "recallMemory", {
+        const recall = await this.callGadWith(execution.rpc, "recallMemory", {
           query: input.query,
           kinds: Array.isArray(input.kinds)
             ? input.kinds.filter(
@@ -1955,6 +1956,13 @@ export abstract class AgentVesselBase extends NativeChannelOwner<NativeProductCh
     };
     const subscriptionStartedAt = Date.now();
     this.traceHotPath(opts.channelId, "subscription.started");
+    let phaseStartedAt = subscriptionStartedAt;
+    const completedPhase = (phase: string): void => {
+      this.traceHotPath(opts.channelId, `subscription.${phase}`, {
+        startedAt: phaseStartedAt,
+      });
+      phaseStartedAt = Date.now();
+    };
     this.ensureIdentity();
     await this.refreshLocalModelEntry(opts.channelId);
     const descriptor = this.getEffectiveParticipantInfo(
@@ -1978,6 +1986,7 @@ export abstract class AgentVesselBase extends NativeChannelOwner<NativeProductCh
         harness,
         BACKGROUND_CONTEXT,
       );
+      completedPhase("owner-ready");
       if (opts.contextId !== owner.contextId)
         throw new Error(
           "Reasoning membership must use its actual native owner context",
@@ -1991,41 +2000,32 @@ export abstract class AgentVesselBase extends NativeChannelOwner<NativeProductCh
       const existing = await this.admittedNativeChannelConversation(
         opts.channelId,
       );
+      completedPhase("opening-resolved");
       if (retained !== null || existing === null) {
+        const requested =
+          await this.subscriptions.prepareSubscription(subscription);
         const intent =
-          retained ??
-          copyJson(await this.subscriptions.prepareSubscription(subscription), {
-            omitUndefinedProperties: true,
+          retained ?? copyJson(requested, { omitUndefinedProperties: true });
+        completedPhase("intent-prepared");
+        const original = intent as unknown as PreparedChannelSubscription;
+        if (original.relationshipJson === requested.relationshipJson) {
+          result = { ok: true, participantId: original.input.participantId };
+        } else {
+          // A changed relationship follows initialization rather than changing
+          // the retained task's intent or its historical replay horizon.
+          result = await this.subscriptions.subscribe({
+            ...subscription,
+            replay: false,
           });
-        await this.nativeChannelBootstrap.open(
-          harness,
-          binding,
-          intent,
-          BACKGROUND_CONTEXT,
-        );
-        await this.nativeChannelBootstrap.ready(
-          harness,
-          binding,
-          BACKGROUND_CONTEXT,
-        );
-        // A concurrent membership change follows the original initialization;
-        // it cannot rewrite that task's retained request or replay history.
-        const originalConfig = this.subscriptions.getConfig(opts.channelId);
-        result = await this.subscriptions.subscribe({
-          ...subscription,
-          replay: false,
-        });
-        const configured = this.subscriptions.getConfig(opts.channelId);
-        if (canonicalJson(originalConfig) !== canonicalJson(configured)) {
           await this.prepareNativeChannelProduct(
             opts.channelId,
-            configured,
+            this.subscriptions.getConfig(opts.channelId),
             null,
             context,
           );
+          await this.refreshNativeChannelConfiguration(opts.channelId);
           await this.activateNativeChannelProduct(opts.channelId, context);
         }
-        await this.refreshNativeChannelConfiguration(opts.channelId);
       } else {
         result = await this.subscriptions.subscribe(subscription);
         await this.prepareNativeChannelProduct(
@@ -3269,9 +3269,9 @@ export abstract class AgentVesselBase extends NativeChannelOwner<NativeProductCh
         }
         const runId = invocationId;
         try {
-          const result = await this.rpc.call<{ ok: boolean }>(
+          const result = await this.rpc.call(
             "main",
-            "eval.cancel",
+            mainRpcMethods["eval.cancel"],
             [{ scopeKey: channelId, runId }],
             { signal },
           );
@@ -3343,9 +3343,9 @@ export abstract class AgentVesselBase extends NativeChannelOwner<NativeProductCh
           | ConnectCredentialEnvelope = handoffTarget
           ? { spec: request, handoffTarget }
           : request;
-        const credential = await this.rpc.call<Record<string, unknown>>(
+        const credential = await this.rpc.call(
           "main",
-          "credentials.connect",
+          mainRpcMethods["credentials.connect"],
           [connectParams],
           { signal },
         );
@@ -3506,7 +3506,7 @@ export abstract class AgentVesselBase extends NativeChannelOwner<NativeProductCh
           { idempotencyKey?: string } | undefined,
         ];
         const target = await this.channelTarget(channelId);
-        return this.rpc.call(target, "publish", [
+        return this.rpc.call(target, channelClientRpcMethods["publish"], [
           participantId,
           eventType,
           payload,
@@ -3757,9 +3757,9 @@ export abstract class AgentVesselBase extends NativeChannelOwner<NativeProductCh
       );
     }
     const target = await this.automationServiceTarget(this.rpc);
-    const existing = await this.rpc.call<MissionRecord | null>(
+    const existing = await this.rpc.call(
       target,
-      "getDefault",
+      missionsRpcMethods["getDefault"],
       [input.id],
     );
     const reconcileHost = async (mission: MissionRecord, existed: boolean) => {
@@ -3772,7 +3772,7 @@ export abstract class AgentVesselBase extends NativeChannelOwner<NativeProductCh
         read: (key) => this.getStateValue(key),
         write: (key, value) => this.setStateValue(key, value),
         run: (missionId, commandId) =>
-          this.rpc.call(target, "runNow", [missionId], {
+          this.rpc.call(target, missionsRpcMethods["runNow"], [missionId], {
             idempotencyKey: commandId,
           }),
       });
@@ -3782,7 +3782,7 @@ export abstract class AgentVesselBase extends NativeChannelOwner<NativeProductCh
     const channelId = this.objectKey;
     await this.rpc.call(
       "main",
-      "runtime.createEntity",
+      mainRpcMethods["runtime.createEntity"],
       [
         {
           kind: "do",
@@ -3844,10 +3844,10 @@ export abstract class AgentVesselBase extends NativeChannelOwner<NativeProductCh
   }
 
   private async automationServiceTarget(callerRpc: RpcClient): Promise<string> {
-    const service = await callerRpc.call<{
-      kind?: unknown;
-      targetId?: unknown;
-    }>("main", "workers.resolveService", ["vibestudio.missions.v1"]);
+    const service = await resolveDurableObjectService(
+      callerRpc,
+      "vibestudio.missions.v1",
+    );
     if (
       service.kind !== "durable-object" ||
       typeof service.targetId !== "string"
@@ -3887,7 +3887,11 @@ export abstract class AgentVesselBase extends NativeChannelOwner<NativeProductCh
     }
 
     const target = await this.automationServiceTarget(callerRpc);
-    const visible = await callerRpc.call<MissionRecord[]>(target, "list", []);
+    const visible = await callerRpc.call(
+      target,
+      missionsRpcMethods["list"],
+      [],
+    );
     let candidates = visible;
     if (requestedMissionId) {
       candidates = visible.filter(
@@ -3923,14 +3927,13 @@ export abstract class AgentVesselBase extends NativeChannelOwner<NativeProductCh
     }
     const mission = candidates[0]!;
     const method = action === "run_now" ? "runNow" : action;
-    const result = await callerRpc.call<unknown>(
+    const result = await createRpcMethodCaller(
+      callerRpc,
       target,
-      method,
-      [mission.missionId],
-      {
-        idempotencyKey: `automation:control:${this.objectKey}:${sha256HexSyncText(requestIdentity)}:${action}:${mission.missionId}`,
-      },
-    );
+      missionsRpcMethods,
+    )(method, [mission.missionId], {
+      idempotencyKey: `automation:control:${this.objectKey}:${sha256HexSyncText(requestIdentity)}:${action}:${mission.missionId}`,
+    });
     const verb =
       action === "pause"
         ? "paused"
@@ -3967,9 +3970,9 @@ export abstract class AgentVesselBase extends NativeChannelOwner<NativeProductCh
       definition.charter.execution.conversation.mode === "continue" &&
       definition.charter.execution.operations.length > 0
     ) {
-      const authority = await callerRpc.call<MissionAuthorityProjection>(
+      const authority = await callerRpc.call(
         "main",
-        "authority.acquireForCurrentTask",
+        mainRpcMethods["authority.acquireForCurrentTask"],
         [{ authorityPlanDigest: authorityPlan.digest }],
         {
           idempotencyKey: `automation:task-authority:${sha256HexSyncText(requestIdentity)}`,
@@ -3982,9 +3985,9 @@ export abstract class AgentVesselBase extends NativeChannelOwner<NativeProductCh
       }
     }
     const target = await this.automationServiceTarget(callerRpc);
-    const automation = await callerRpc.call<MissionRecord>(
+    const automation = await callerRpc.call(
       target,
-      "launch",
+      missionsRpcMethods["launch"],
       [{ ...definition, authorityPlan }],
       {
         idempotencyKey: `automation:launch:${this.objectKey}:${sha256HexSyncText(requestIdentity)}`,
@@ -4642,7 +4645,7 @@ export abstract class AgentVesselBase extends NativeChannelOwner<NativeProductCh
       );
     return hydrateStoredValueRefs(value, {
       getText: (digest) =>
-        rpc.call<string | null>("main", "blobstore.getText", [digest]),
+        rpc.call("main", mainRpcMethods["blobstore.getText"], [digest]),
     });
   }
 
@@ -4676,7 +4679,7 @@ export abstract class AgentVesselBase extends NativeChannelOwner<NativeProductCh
   ): Promise<void> {
     const contextId = this.subscriptions.getContextId(channelId);
     if (!contextId) return;
-    await this.rpc.call("main", "authority.resetTaskRules", [
+    await this.rpc.call("main", mainRpcMethods["authority.resetTaskRules"], [
       { contextId, channelId },
     ]);
   }
@@ -5318,9 +5321,11 @@ export abstract class AgentVesselBase extends NativeChannelOwner<NativeProductCh
         throw new Error("Child cleanup changed its actual owner");
       if (this.subscriptions.getParticipantId(intent.taskChannelId))
         await this.unsubscribeChannel(intent.taskChannelId);
-      await execution.rpc.call("main", "runtime.destroyContext", [
-        { contextId: intent.childContextId, recursive: true },
-      ]);
+      await execution.rpc.call(
+        "main",
+        mainRpcMethods["runtime.destroyContext"],
+        [{ contextId: intent.childContextId, recursive: true }],
+      );
       const run = this.subagentRuns.get(intent.invocationId);
       if (run)
         await this.settleSubagentTerminal(
@@ -5460,9 +5465,9 @@ export abstract class AgentVesselBase extends NativeChannelOwner<NativeProductCh
             replay: false,
           });
     this.subagentRuns.setChildParticipantId(runId, subscription.participantId);
-    const effective = await invocationRpc.call<Record<string, unknown>>(
+    const effective = await invocationRpc.call(
       child.targetId,
-      "getAgentSettings",
+      agentRpcMethods["getAgentSettings"],
       [],
     );
     for (const key of ["model", "thinkingLevel"] as const)
@@ -6024,13 +6029,12 @@ export abstract class AgentVesselBase extends NativeChannelOwner<NativeProductCh
       const activity =
         run.status === "abandoned"
           ? { active: false }
-          : await toolRpc.call<{ active: boolean }>(
+          : await toolRpc.call(
               run.childEntityId,
-              "readSubagentExecutionActivity",
+              agentRpcMethods["readSubagentExecutionActivity"],
               [
                 {
                   runId: run.runId,
-                  runRef: subagentRunReference(run),
                   taskChannelId: run.taskChannelId,
                 },
               ],
@@ -6078,12 +6082,11 @@ export abstract class AgentVesselBase extends NativeChannelOwner<NativeProductCh
       throw new Error("Child cancellation changed its original parent");
     await toolRpc.call(
       run.childEntityId,
-      "cancelSubagentExecution",
+      agentRpcMethods["cancelSubagentExecution"],
       [
         {
           operationId: intent["operationId"],
           runId: run.runId,
-          runRef: subagentRunReference(run),
           taskChannelId: run.taskChannelId,
           reason: intent["reason"],
         },
@@ -6200,9 +6203,9 @@ export abstract class AgentVesselBase extends NativeChannelOwner<NativeProductCh
     const activity = await Promise.all(
       runs.map(async (run) => {
         if (run.status === "starting") return true; // Original provisioning still owns the slot.
-        const state = await rpc.call<{ active: boolean }>(
+        const state = await rpc.call(
           run.childEntityId,
-          "readSubagentExecutionActivity",
+          agentRpcMethods["readSubagentExecutionActivity"],
           [{ runId: run.runId, taskChannelId: run.taskChannelId }],
         );
         return state.active;
@@ -6831,17 +6834,23 @@ export abstract class AgentVesselBase extends NativeChannelOwner<NativeProductCh
   }
 
   private readonly nativeChannelBootstrap = createNativeChannelBootstrap({
-    join: async (binding, intent) => {
-      const prepared = intent as unknown as PreparedChannelSubscription;
-      if (
-        prepared.channelId !== binding.channelId ||
-        prepared.input.contextId !== binding.contextId
-      )
-        throw new Error(
-          "Native bootstrap changed its admitted membership context",
-        );
-      return (await this.subscriptions.joinPrepared(prepared)).envelope;
-    },
+    join: (binding, intent) =>
+      this.runDetached(async () => {
+        const prepared = intent as unknown as PreparedChannelSubscription;
+        if (
+          prepared.channelId !== binding.channelId ||
+          prepared.input.contextId !== binding.contextId
+        )
+          throw new Error(
+            "Native bootstrap changed its admitted membership context",
+          );
+        const startedAt = Date.now();
+        const joined = await this.subscriptions.joinPrepared(prepared);
+        this.traceHotPath(binding.channelId, "bootstrap.membership", {
+          startedAt,
+        });
+        return joined.envelope;
+      }),
     replayAfter: (binding, request) =>
       this.createChannelClient(binding.channelId, this.agentRpc).getReplayAfter(
         request,
@@ -6863,40 +6872,54 @@ export abstract class AgentVesselBase extends NativeChannelOwner<NativeProductCh
           ]
         : [];
     },
-    prepareConfiguration: async (binding, intent, context, imported) => {
-      const conversation = await this.admittedNativeChannelConversation(
-        binding.channelId,
-      );
-      if (!conversation)
-        throw new Error("Native configuration has no bound conversation");
-      const configuration = await retainedNativeChannelKnowledgeConfiguration(
-        this.admittedAgentSession(),
-        conversation.id,
-        context,
-      );
-      await this.restoreNativeAgentKnowledgeConfiguration(
-        binding.channelId,
-        configuration,
-      );
-      const prepared = intent as unknown as PreparedChannelSubscription;
-      const fork = imported
-        ? {
-            oldChannelId: imported.parentChannelId,
-            newChannelId: binding.channelId,
-            forkPointPubsubId: imported.throughSequence,
-          }
-        : null;
-      if (fork) await this.onChannelForked(fork);
-      await this.prepareNativeChannelProduct(
-        binding.channelId,
-        prepared.input.applicationConfig?.value,
-        fork,
-        context,
-      );
-      return this.prepareNativeChannelInitialization(binding.channelId);
-    },
+    prepareConfiguration: (binding, intent, context, imported) =>
+      this.runDetached(async () => {
+        const startedAt = Date.now();
+        const conversation = await this.admittedNativeChannelConversation(
+          binding.channelId,
+        );
+        if (!conversation)
+          throw new Error("Native configuration has no bound conversation");
+        const configuration = await retainedNativeChannelKnowledgeConfiguration(
+          this.admittedAgentSession(),
+          conversation.id,
+          context,
+        );
+        await this.restoreNativeAgentKnowledgeConfiguration(
+          binding.channelId,
+          configuration,
+        );
+        const prepared = intent as unknown as PreparedChannelSubscription;
+        const fork = imported
+          ? {
+              oldChannelId: imported.parentChannelId,
+              newChannelId: binding.channelId,
+              forkPointPubsubId: imported.throughSequence,
+            }
+          : null;
+        if (fork) await this.onChannelForked(fork);
+        await this.prepareNativeChannelProduct(
+          binding.channelId,
+          prepared.input.applicationConfig?.value,
+          fork,
+          context,
+        );
+        const initialize = await this.prepareNativeChannelInitialization(
+          binding.channelId,
+        );
+        this.traceHotPath(
+          binding.channelId,
+          "bootstrap.configuration-prepared",
+          {
+            startedAt,
+          },
+        );
+        return initialize;
+      }),
     afterConfiguration: (binding, _intent, context) =>
-      this.activateNativeChannelProduct(binding.channelId, context),
+      this.runDetached(() =>
+        this.activateNativeChannelProduct(binding.channelId, context),
+      ),
   });
 
   protected override nativeProductExtensions(): readonly Extension[] {
@@ -7077,6 +7100,23 @@ export abstract class AgentVesselBase extends NativeChannelOwner<NativeProductCh
       channelId,
       this.subscriptions.getConfig(channelId),
     );
+    // One launch configuration owns instructions and executable tools. They
+    // depend on the committed relationship, but not on each other. Launch is
+    // acknowledged only after Pi commits this complete configuration.
+    const [instructions, tools] = await Promise.all([
+      (async () => {
+        const startedAt = Date.now();
+        const instructions = await this.composePrompt(channelId);
+        this.traceHotPath(channelId, "configuration.prompt", { startedAt });
+        return instructions;
+      })(),
+      (async () => {
+        const startedAt = Date.now();
+        const tools = await this.nativeProductTools(channelId);
+        this.traceHotPath(channelId, "configuration.tools", { startedAt });
+        return tools;
+      })(),
+    ]);
     return {
       modelPolicy,
       agent: {
@@ -7084,9 +7124,9 @@ export abstract class AgentVesselBase extends NativeChannelOwner<NativeProductCh
         thinkingLevel: settings.thinkingLevel,
         stream: nativeProductStream(provider, modelId, settings.fastMode),
         extensions: [this.nativeModelPolicyExtension],
-        instructions: await this.composePrompt(channelId),
+        instructions,
       },
-      tools: await this.nativeProductTools(channelId),
+      tools,
       projection: {
         channelId,
         participantId: this.rpcSelfId,
@@ -7208,19 +7248,26 @@ export abstract class AgentVesselBase extends NativeChannelOwner<NativeProductCh
     conversation: (channelId, context) =>
       this.nativeChannelConversation(channelId, context),
     finishRun: async (input, context) => {
-      const service = await this.agentRpc.call<{
-        kind: "durable-object" | "worker";
-        targetId?: string;
-      }>("main", "workers.resolveService", ["vibestudio.missions.v1"], {
-        signal: context.abortSignal,
-      });
+      const service = await resolveDurableObjectService(
+        this.agentRpc,
+        "vibestudio.missions.v1",
+        undefined,
+        {
+          signal: context.abortSignal,
+        },
+      );
       if (service.kind !== "durable-object" || !service.targetId)
         throw new Error(
           "The automation ledger must resolve to a Durable Object",
         );
-      await this.agentRpc.call(service.targetId, "finishRun", [input], {
-        signal: context.abortSignal,
-      });
+      await this.agentRpc.call(
+        service.targetId,
+        missionsRpcMethods["finishRun"],
+        [input],
+        {
+          signal: context.abortSignal,
+        },
+      );
     },
   });
 
@@ -7438,7 +7485,8 @@ export abstract class AgentVesselBase extends NativeChannelOwner<NativeProductCh
     await createDurableObjectServiceClient(
       this.rpc,
       MODEL_SETTINGS_SERVICE_PROTOCOL,
-    ).call<void>("initializeDefaultAgentModel", modelRef);
+      modelSettingsRpcMethods,
+    ).call("initializeDefaultAgentModel", modelRef);
   }
 
   protected override observeNativeModelConnection(
@@ -7542,7 +7590,7 @@ export abstract class AgentVesselBase extends NativeChannelOwner<NativeProductCh
     // The native settlement notification owns this exact delivery through reply loss.
     await this.agentRpc.call(
       child.parentRef,
-      "onSubagentInputSettled",
+      agentRpcMethods["onSubagentInputSettled"],
       [
         {
           runId: child.runId,
@@ -7631,12 +7679,14 @@ export abstract class AgentVesselBase extends NativeChannelOwner<NativeProductCh
       throw new Error(
         "Child settlement sender does not own this supervised run",
       );
-    const source = await this.agentRpc.call<{
-      submission: SettledSubmissionRecord;
-      active: boolean;
-    }>(run.childEntityId, "readSubagentInputSettlement", [input], {
-      signal: this.rpcAbortSignal ?? undefined,
-    });
+    const source = await this.agentRpc.call(
+      run.childEntityId,
+      agentRpcMethods["readSubagentInputSettlement"],
+      [input],
+      {
+        signal: this.rpcAbortSignal ?? undefined,
+      },
+    );
     if (
       source.submission.id !== input.submissionId ||
       source.submission.type !== "input" ||

@@ -17,17 +17,27 @@ import {
   type ModelCatalogEntry,
 } from "@workspace/agentic-core";
 import { isModelUsable } from "@workspace/model-catalog/catalog";
-import { useIsMobile, useTouchDevice, useViewportHeight } from "@workspace/react/responsive";
+import {
+  useIsMobile,
+  useTouchDevice,
+  useViewportHeight,
+} from "@workspace/react/responsive";
 import { useChatComposerRuntime } from "../context/ChatContext";
-import { getMentionsFromInput, useChatInputContext } from "../context/ChatInputContext";
+import {
+  getMentionsFromInput,
+  useChatInputContext,
+} from "../context/ChatInputContext";
 import { ImageInput, getAttachmentInputsFromPendingImages } from "./ImageInput";
 import { MentionAutocomplete } from "./MentionAutocomplete";
 import { ModelCommandMenu } from "./ModelCommandMenu";
 import { SendButton } from "./SendButton";
 import { DictationButton, DictationStatus } from "./DictationControl";
 import { useDictation } from "../hooks/useDictation";
-import { useMentionAutocomplete, type MentionCandidate } from "../hooks/useMentionAutocomplete";
-import { useAccountProfiles, type AccountRpc } from "../hooks/useAccountProfiles";
+import {
+  useMentionAutocomplete,
+  type MentionCandidate,
+} from "../hooks/useMentionAutocomplete";
+import { useAccountProfiles } from "../hooks/useAccountProfiles";
 import {
   getImagesFromClipboard,
   createPendingImage,
@@ -39,7 +49,14 @@ import {
 const MODEL_COMMAND_RE = /^\/model(?:\s+(.*))?$/;
 const MODEL_MENU_LIMIT = 8;
 
-const THINKING_LEVELS = new Set(["minimal", "low", "medium", "high", "xhigh", "max"]);
+const THINKING_LEVELS = new Set([
+  "minimal",
+  "low",
+  "medium",
+  "high",
+  "xhigh",
+  "max",
+]);
 const RESPOND_POLICIES = new Set([
   "all",
   "mentioned",
@@ -51,17 +68,20 @@ const RESPOND_POLICIES = new Set([
 function modelSwitchConfigFromSettings(
   settings: unknown,
   model: string,
-  handle?: string
+  handle?: string,
 ): AgentSubscriptionConfig {
   const source =
-    settings && typeof settings === "object" ? (settings as Record<string, unknown>) : {};
+    settings && typeof settings === "object"
+      ? (settings as Record<string, unknown>)
+      : {};
   const config: AgentSubscriptionConfig = {
     model,
     ...(handle ? { handle } : {}),
   };
   const thinkingLevel = source["thinkingLevel"];
   if (typeof thinkingLevel === "string" && THINKING_LEVELS.has(thinkingLevel)) {
-    config.thinkingLevel = thinkingLevel as AgentSubscriptionConfig["thinkingLevel"];
+    config.thinkingLevel =
+      thinkingLevel as AgentSubscriptionConfig["thinkingLevel"];
   }
   if (typeof source["fastMode"] === "boolean") {
     config.fastMode = source["fastMode"];
@@ -71,11 +91,18 @@ function modelSwitchConfigFromSettings(
     config.approvalLevel = approvalLevel;
   }
   const respondPolicy = source["respondPolicy"];
-  if (typeof respondPolicy === "string" && RESPOND_POLICIES.has(respondPolicy)) {
-    config.respondPolicy = respondPolicy as AgentSubscriptionConfig["respondPolicy"];
+  if (
+    typeof respondPolicy === "string" &&
+    RESPOND_POLICIES.has(respondPolicy)
+  ) {
+    config.respondPolicy =
+      respondPolicy as AgentSubscriptionConfig["respondPolicy"];
   }
   const respondFrom = source["respondFrom"];
-  if (Array.isArray(respondFrom) && respondFrom.every((value) => typeof value === "string")) {
+  if (
+    Array.isArray(respondFrom) &&
+    respondFrom.every((value) => typeof value === "string")
+  ) {
     config.respondFrom = respondFrom;
   }
   return config;
@@ -96,7 +123,11 @@ export interface ChatInputProps {
  * Chat input area with text input, image attachment, and send button.
  * Reads from ChatContext.
  */
-export function ChatInput({ placeholder, defaultMentions, disabled = false }: ChatInputProps = {}) {
+export function ChatInput({
+  placeholder,
+  defaultMentions,
+  disabled = false,
+}: ChatInputProps = {}) {
   const {
     connected,
     allParticipants,
@@ -132,7 +163,11 @@ export function ChatInput({ placeholder, defaultMentions, disabled = false }: Ch
 
   // Light haptic tick on send (touch devices). Settings-gated; default-on tick.
   const hapticTick = useCallback(() => {
-    if (isTouch && typeof navigator !== "undefined" && typeof navigator.vibrate === "function") {
+    if (
+      isTouch &&
+      typeof navigator !== "undefined" &&
+      typeof navigator.vibrate === "function"
+    ) {
       try {
         navigator.vibrate(8);
       } catch {
@@ -142,7 +177,12 @@ export function ChatInput({ placeholder, defaultMentions, disabled = false }: Ch
   }, [isTouch]);
 
   const textAreaRef = useRef<HTMLTextAreaElement>(null);
-  const speechRpc = chat?.rpc?.stream ? { stream: chat.rpc.stream.bind(chat.rpc), call: chat.rpc.call.bind(chat.rpc) } : undefined;
+  const speechRpc = chat?.rpc?.stream
+    ? {
+        stream: chat.rpc.stream.bind(chat.rpc),
+        call: chat.rpc.call.bind(chat.rpc),
+      }
+    : undefined;
   const dictation = useDictation(
     speechRpc,
     `${chat?.contextId}:${chat?.channelId}`,
@@ -157,19 +197,28 @@ export function ChatInput({ placeholder, defaultMentions, disabled = false }: Ch
       onInputChange(before + insertion + after);
       requestAnimationFrame(() => {
         field?.focus();
-        field?.setSelectionRange(start + insertion.length, start + insertion.length);
+        field?.setSelectionRange(
+          start + insertion.length,
+          start + insertion.length,
+        );
       });
-    }
+    },
   );
   const [sendError, setSendError] = useState<string | null>(null);
   const [attachError, setAttachError] = useState<string | null>(null);
   const [showImageInput, setShowImageInput] = useState(false);
-  const [selectedMentionIds, setSelectedMentionIds] = useState<Record<string, string>>({});
+  const [selectedMentionIds, setSelectedMentionIds] = useState<
+    Record<string, string>
+  >({});
   const accountProfiles = useAccountProfiles(
-    (chat as { rpc?: AccountRpc } | undefined)?.rpc,
-    Object.keys(allParticipants)
+    chat.rpc,
+    Object.keys(allParticipants),
   );
-  const mentions = useMentionAutocomplete(allParticipants, selfId, accountProfiles);
+  const mentions = useMentionAutocomplete(
+    allParticipants,
+    selfId,
+    accountProfiles,
+  );
 
   // --- `/model` composer quick-switcher (item 7) -------------------------
   const [modelMenuIndex, setModelMenuIndex] = useState(0);
@@ -177,7 +226,9 @@ export function ChatInput({ placeholder, defaultMentions, disabled = false }: Ch
     left: number;
     top: number;
   } | null>(null);
-  const [modelSwitchNotice, setModelSwitchNotice] = useState<string | null>(null);
+  const [modelSwitchNotice, setModelSwitchNotice] = useState<string | null>(
+    null,
+  );
 
   const modelQuery = useMemo(() => {
     const match = MODEL_COMMAND_RE.exec(input);
@@ -193,13 +244,14 @@ export function ChatInput({ placeholder, defaultMentions, disabled = false }: Ch
           (m) =>
             m.name.toLowerCase().includes(q) ||
             m.ref.toLowerCase().includes(q) ||
-            m.provider.toLowerCase().includes(q)
+            m.provider.toLowerCase().includes(q),
         )
       : usable;
     return matched.slice(0, MODEL_MENU_LIMIT);
   }, [modelQuery, modelCatalog, onReplaceAgent]);
 
-  const modelMenuOpen = modelQuery !== null && !!onReplaceAgent && modelCandidates.length > 0;
+  const modelMenuOpen =
+    modelQuery !== null && !!onReplaceAgent && modelCandidates.length > 0;
 
   // Anchor the menu to the composer and keep the highlighted row in range as
   // the candidate list narrows while typing.
@@ -210,7 +262,9 @@ export function ChatInput({ placeholder, defaultMentions, disabled = false }: Ch
     }
     const rect = textAreaRef.current?.getBoundingClientRect();
     if (rect) setModelMenuPos({ left: rect.left, top: rect.top });
-    setModelMenuIndex((i) => Math.min(i, Math.max(0, modelCandidates.length - 1)));
+    setModelMenuIndex((i) =>
+      Math.min(i, Math.max(0, modelCandidates.length - 1)),
+    );
   }, [modelQuery, modelCandidates.length]);
 
   // Auto-dismiss the "switched to X" confirmation.
@@ -223,14 +277,18 @@ export function ChatInput({ placeholder, defaultMentions, disabled = false }: Ch
   const switchModel = useCallback(
     async (model: ModelCatalogEntry) => {
       const agents = Object.values(participants).filter(
-        (p) => p.id !== selfId && isAgentParticipantType(p.metadata?.type as string | undefined)
+        (p) =>
+          p.id !== selfId &&
+          isAgentParticipantType(p.metadata?.type as string | undefined),
       );
       if (agents.length === 0) {
         setSendError("No agent in this conversation yet — add one first.");
         return;
       }
       if (agents.length > 1) {
-        setSendError("Multiple agents here — use the model picker to choose which to switch.");
+        setSendError(
+          "Multiple agents here — use the model picker to choose which to switch.",
+        );
         return;
       }
       if (!onReplaceAgent) {
@@ -240,12 +298,18 @@ export function ChatInput({ placeholder, defaultMentions, disabled = false }: Ch
       const agent = agents[0]!;
       try {
         const handle =
-          typeof agent.metadata?.handle === "string" ? agent.metadata.handle : undefined;
-        const settings = await onCallMethodResult(agent.id, "getAgentSettings", {});
+          typeof agent.metadata?.handle === "string"
+            ? agent.metadata.handle
+            : undefined;
+        const settings = await onCallMethodResult(
+          agent.id,
+          "getAgentSettings",
+          {},
+        );
         await onReplaceAgent(
           agent.id,
           undefined,
-          modelSwitchConfigFromSettings(settings, model.ref, handle)
+          modelSwitchConfigFromSettings(settings, model.ref, handle),
         );
         onInputChange("");
         setModelMenuPos(null);
@@ -255,7 +319,7 @@ export function ChatInput({ placeholder, defaultMentions, disabled = false }: Ch
         setSendError(error instanceof Error ? error.message : String(error));
       }
     },
-    [participants, selfId, onReplaceAgent, onCallMethodResult, onInputChange]
+    [participants, selfId, onReplaceAgent, onCallMethodResult, onInputChange],
   );
 
   // Measure content independently of the textarea's intrinsic row height.
@@ -347,26 +411,34 @@ export function ChatInput({ placeholder, defaultMentions, disabled = false }: Ch
           }
           const top = modelCandidates[modelMenuIndex] ?? modelCandidates[0];
           if (top) await switchModel(top);
-          else setSendError("No available model matches — keep typing or use the model picker.");
+          else
+            setSendError(
+              "No available model matches — keep typing or use the model picker.",
+            );
           return;
         }
         const attachments =
           pendingImages.length > 0
             ? getAttachmentInputsFromPendingImages(pendingImages)
             : undefined;
-        const effectiveMode = mode === "after-turn" && hasOpenTurn ? "after-turn" : "default";
+        const effectiveMode =
+          mode === "after-turn" && hasOpenTurn ? "after-turn" : "default";
         const explicitMentions = getMentionsFromInput(
           input,
           allParticipants,
           selectedMentionIds,
-          accountProfiles
+          accountProfiles,
         );
         await onSendMessage(attachments, {
           mentions:
-            explicitMentions.length > 0 ? explicitMentions : [...new Set(defaultMentions ?? [])],
+            explicitMentions.length > 0
+              ? explicitMentions
+              : [...new Set(defaultMentions ?? [])],
           replyTo: replyTo ?? undefined,
           // After-turn delivery is a message intent in payload.metadata.
-          ...(effectiveMode === "after-turn" ? { metadata: { deliverAfterTurn: true } } : {}),
+          ...(effectiveMode === "after-turn"
+            ? { metadata: { deliverAfterTurn: true } }
+            : {}),
         });
         hapticTick();
         onImagesChange([]);
@@ -402,7 +474,7 @@ export function ChatInput({ placeholder, defaultMentions, disabled = false }: Ch
       switchModel,
       disabled,
       dictation.busy,
-    ]
+    ],
   );
 
   const handleInputChange = useCallback(
@@ -412,7 +484,7 @@ export function ChatInput({ placeholder, defaultMentions, disabled = false }: Ch
       const textArea = textAreaRef.current;
       if (textArea) mentions.updateFromTextArea(textArea, value);
     },
-    [onInputChange, sendError, mentions]
+    [onInputChange, sendError, mentions],
   );
 
   const insertMention = useCallback(
@@ -425,7 +497,8 @@ export function ChatInput({ placeholder, defaultMentions, disabled = false }: Ch
       const after = input.slice(caret);
       const spacer = after.startsWith(" ") ? "" : " ";
       const next = `${before}@${candidate.handle}${spacer}${after}`;
-      const nextCaret = before.length + candidate.handle.length + 1 + spacer.length;
+      const nextCaret =
+        before.length + candidate.handle.length + 1 + spacer.length;
       onInputChange(next);
       setSelectedMentionIds((current) => ({
         ...current,
@@ -438,7 +511,7 @@ export function ChatInput({ placeholder, defaultMentions, disabled = false }: Ch
         handleTextAreaInput();
       });
     },
-    [input, mentions, onInputChange, handleTextAreaInput]
+    [input, mentions, onInputChange, handleTextAreaInput],
   );
 
   const handleImagesChange = useCallback<typeof onImagesChange>(
@@ -447,7 +520,7 @@ export function ChatInput({ placeholder, defaultMentions, disabled = false }: Ch
       if (attachError) setAttachError(null);
       onImagesChange(images);
     },
-    [onImagesChange, sendError, attachError]
+    [onImagesChange, sendError, attachError],
   );
 
   const handleKeyDown = useCallback(
@@ -509,7 +582,12 @@ export function ChatInput({ placeholder, defaultMentions, disabled = false }: Ch
       // Escape = flush (advance the pipeline one step) + interrupt, gated on the
       // mention popover being closed AND the composer empty (flush is
       // incremental, so a stray Escape should not dump the queue).
-      if (e.key === "Escape" && !mentions.open && input.trim().length === 0 && agentBusy) {
+      if (
+        e.key === "Escape" &&
+        !mentions.open &&
+        input.trim().length === 0 &&
+        agentBusy
+      ) {
         e.preventDefault();
         void flushOutboxAndInterrupt();
         return;
@@ -543,7 +621,7 @@ export function ChatInput({ placeholder, defaultMentions, disabled = false }: Ch
       onInputChange,
       dictation.busy,
       dictation.cancel,
-    ]
+    ],
   );
 
   const toggleImageInput = useCallback(() => {
@@ -560,7 +638,9 @@ export function ChatInput({ placeholder, defaultMentions, disabled = false }: Ch
 
   const inputDisabled = disabled || !connected;
   const canSend =
-    !inputDisabled && !dictation.busy && (input.trim().length > 0 || pendingImages.length > 0);
+    !inputDisabled &&
+    !dictation.busy &&
+    (input.trim().length > 0 || pendingImages.length > 0);
 
   return (
     <>
@@ -620,8 +700,12 @@ export function ChatInput({ placeholder, defaultMentions, disabled = false }: Ch
           <Flex align="center" justify="between" gap="2" mb="2">
             <Text size="1" color="gray" truncate>
               Replying to{" "}
-              {replyToMessage?.senderMetadata?.name ?? replyToMessage?.senderId ?? "message"}
-              {replyToMessage?.content ? `: ${replyToMessage.content.slice(0, 80)}` : ""}
+              {replyToMessage?.senderMetadata?.name ??
+                replyToMessage?.senderId ??
+                "message"}
+              {replyToMessage?.content
+                ? `: ${replyToMessage.content.slice(0, 80)}`
+                : ""}
             </Text>
             <IconButton
               size="1"
@@ -674,7 +758,9 @@ export function ChatInput({ placeholder, defaultMentions, disabled = false }: Ch
             }}
             placeholder={
               placeholder ??
-              (isMobile ? "Type a message…" : "Type a message…  (⏎ send · ⇧⏎ newline)")
+              (isMobile
+                ? "Type a message…"
+                : "Type a message…  (⏎ send · ⇧⏎ newline)")
             }
             value={input}
             onChange={(e) => handleInputChange(e.target.value)}
@@ -684,7 +770,11 @@ export function ChatInput({ placeholder, defaultMentions, disabled = false }: Ch
             readOnly={dictation.busy}
           />
           <Box className="chat-input-send-dock" style={{ gap: "0.5rem" }}>
-            <DictationButton dictation={dictation} disabled={inputDisabled} size={sendButtonSize} />
+            <DictationButton
+              dictation={dictation}
+              disabled={inputDisabled}
+              size={sendButtonSize}
+            />
             <SendButton
               intent={primaryActionIntent}
               agentBusy={agentBusy}
@@ -719,7 +809,12 @@ export function ChatInput({ placeholder, defaultMentions, disabled = false }: Ch
 
       {/* Transient "/model" switch confirmation (item 7). */}
       {modelSwitchNotice && (
-        <Box flexShrink="0" mt="1" className="chat-narration-pill-wrap" role="status">
+        <Box
+          flexShrink="0"
+          mt="1"
+          className="chat-narration-pill-wrap"
+          role="status"
+        >
           <Box className="chat-narration-pill">
             <Text size="1">Switched this agent to {modelSwitchNotice}</Text>
           </Box>
@@ -728,7 +823,12 @@ export function ChatInput({ placeholder, defaultMentions, disabled = false }: Ch
 
       {/* Transient flush self-narration pill. */}
       {flushNarration && (
-        <Box flexShrink="0" mt="1" className="chat-narration-pill-wrap" role="status">
+        <Box
+          flexShrink="0"
+          mt="1"
+          className="chat-narration-pill-wrap"
+          role="status"
+        >
           <Box className="chat-narration-pill">
             <Text size="1">{flushNarration.text}</Text>
           </Box>
@@ -737,8 +837,18 @@ export function ChatInput({ placeholder, defaultMentions, disabled = false }: Ch
 
       {/* Reversible-until-committed undo snackbar (~5s). */}
       {undoableAction && (
-        <Box flexShrink="0" mt="1" className="chat-undo-snackbar-wrap" role="status">
-          <Flex align="center" justify="between" gap="3" className="chat-undo-snackbar">
+        <Box
+          flexShrink="0"
+          mt="1"
+          className="chat-undo-snackbar-wrap"
+          role="status"
+        >
+          <Flex
+            align="center"
+            justify="between"
+            gap="3"
+            className="chat-undo-snackbar"
+          >
             <Text size="1">
               {undoableAction.messageIds.length > 1
                 ? `${undoableAction.messageIds.length} messages canceled`

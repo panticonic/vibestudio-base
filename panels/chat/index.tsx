@@ -1,3 +1,8 @@
+import { agentSubscriptionConfigSchema } from "@workspace/agentic-core/agent-subscription-config";
+import { resolveDurableObjectService } from "@vibestudio/service-schemas/clients/durableObjectServiceClient";
+import { channelClientRpcMethods } from "@workspace/pubsub/rpc-contract";
+import { modelSettingsRpcMethods } from "@workspace/model-catalog/rpc-contract";
+import { mainRpcMethods } from "@vibestudio/service-schemas/mainRpc";
 import { toCredentialConnectRequest } from "@workspace/model-catalog/providerConnect";
 /**
  * Agentic Chat Panel
@@ -72,10 +77,8 @@ import {
   ownModelSettingsConnection,
 } from "./modelSettingsRequest.js";
 import { isReviewPending } from "@vibestudio/shared/authority/reviewPending";
-import type {
-  LocalModelsCapabilities,
-  ServerKind,
-} from "@workspace/model-catalog/localModels";
+import type { ServerKind } from "@workspace/model-catalog/localModels";
+import { localModelsExtensionMethods } from "@workspace/model-catalog/localModels";
 import type { DurableObjectServiceClient } from "@workspace/runtime";
 import {
   buildAgentSubscriptionConfig,
@@ -109,24 +112,6 @@ const DEFAULT_HANDLE = "ai-chat";
 const CHANNEL_SERVICE_PROTOCOL = "vibestudio.channel.v1";
 
 /** Response shape from workers.listSources */
-interface WorkerSourceEntry {
-  name: string;
-  source: string;
-  title?: string;
-  icon?: string;
-  classes: Array<{ className: string }>;
-  /** Present iff this worker declares itself a chat agent (manifest `agent` block). */
-  agent?: {
-    displayName?: string;
-    description?: string;
-    defaultConfig?: AgentSubscriptionConfig;
-  };
-}
-
-interface ChannelParticipant {
-  participantId: string;
-  metadata: Record<string, unknown>;
-}
 
 interface ChannelDORef {
   source: string;
@@ -155,18 +140,18 @@ async function getChannelDOParticipants(
   channelId: string,
   signal: AbortSignal,
 ): Promise<ChannelDORef[]> {
-  const channelService = await rpc.call<{ kind: string; targetId?: string }>(
-    "main",
-    "workers.resolveService",
-    [CHANNEL_SERVICE_PROTOCOL, channelId],
+  const channelService = await resolveDurableObjectService(
+    rpc,
+    CHANNEL_SERVICE_PROTOCOL,
+    channelId,
     { signal },
   );
   if (channelService.kind !== "durable-object" || !channelService.targetId) {
     throw new Error("Channel service must resolve to a Durable Object service");
   }
-  const participants = await rpc.call<ChannelParticipant[]>(
+  const participants = await rpc.call(
     channelService.targetId,
-    "getParticipants",
+    channelClientRpcMethods["getParticipants"],
     [],
     { signal },
   );
@@ -246,9 +231,9 @@ export default function ChatPanel() {
     null,
   );
   const provisionalAgentIntentRevisionRef = useRef(0);
-  const modelSettingsServiceRef = useRef<DurableObjectServiceClient | null>(
-    null,
-  );
+  const modelSettingsServiceRef = useRef<DurableObjectServiceClient<
+    typeof modelSettingsRpcMethods
+  > | null>(null);
   const modelSettingsSnapshotRef = useRef<ModelSettingsSnapshot | null>(null);
   const modelSettingsRequestRef = useRef<ReturnType<
     typeof ownModelSettingsRequest<ModelSettingsSnapshot>
@@ -294,6 +279,7 @@ export default function ChatPanel() {
   const getModelSettingsService = useCallback(() => {
     modelSettingsServiceRef.current ??= createDurableObjectServiceClient(
       MODEL_SETTINGS_SERVICE_PROTOCOL,
+      modelSettingsRpcMethods,
     );
     return modelSettingsServiceRef.current;
   }, []);
@@ -335,12 +321,11 @@ export default function ChatPanel() {
       setFirstAgentModelPreflight("checking");
       setModelSettingsError(null);
       const request = ownModelSettingsRequest(async (signal) => {
-        const settings =
-          await getModelSettingsService().callWithOptions<ModelSettingsSnapshot>(
-            "getSettings",
-            [],
-            { signal },
-          );
+        const settings = await getModelSettingsService().callWithOptions(
+          "getSettings",
+          [],
+          { signal },
+        );
         signal.throwIfAborted();
         applyModelSettings(settings);
         return settings;
@@ -631,11 +616,14 @@ export default function ChatPanel() {
 
   const openLocalModelsCapability = useCallback(async (server?: ServerKind) => {
     try {
-      const capabilities = (await extensions.invoke(
-        LOCAL_MODELS_EXTENSION_ID,
-        "capabilities",
-        [],
-      )) as LocalModelsCapabilities;
+      const capabilities =
+        localModelsExtensionMethods.capabilities.result.parse(
+          await extensions.invoke(
+            LOCAL_MODELS_EXTENSION_ID,
+            localModelsExtensionMethods.capabilities.method,
+            [],
+          ),
+        );
       const target = server
         ? capabilities.serverLogs[server]
         : capabilities.managementPanel;
@@ -693,9 +681,9 @@ export default function ChatPanel() {
       // bytes at speculative priority. No entity is created and no credential
       // is inspected until the ordinary launch path commits this intent.
       try {
-        const report = await rpc.call<{ status: string }>(
+        const report = await rpc.call(
           "main",
-          "build.getBuildReport",
+          mainRpcMethods["build.getBuildReport"],
           [source, ref, { priority: "speculative" }],
         );
         if (report.status === "ok") return;
@@ -731,7 +719,7 @@ export default function ChatPanel() {
 
     function loadAvailableAgents() {
       void rpc
-        .call<WorkerSourceEntry[]>("main", "workers.listSources", [])
+        .call("main", mainRpcMethods["workers.listSources"], [])
         .then((sources) => {
           if (disposed) return;
           const agents: AvailableAgent[] = [];
@@ -744,7 +732,12 @@ export default function ChatPanel() {
                 name: source.agent.displayName ?? source.title ?? source.name,
                 description: source.agent.description,
                 icon: source.icon,
-                defaultConfig: source.agent.defaultConfig,
+                defaultConfig:
+                  source.agent.defaultConfig === undefined
+                    ? undefined
+                    : agentSubscriptionConfigSchema.parse(
+                        source.agent.defaultConfig,
+                      ),
                 proposedHandle: source.name.split("-")[0] ?? source.name,
               });
             }
@@ -970,11 +963,10 @@ export default function ChatPanel() {
   // successful answer initializes an absent model preference on the host.
   const saveDefaultAgentConfig = useCallback(
     async (config: DefaultAgentConfig): Promise<void> => {
-      const settings =
-        await getModelSettingsService().call<ModelSettingsSnapshot>(
-          "setDefaultAgentConfig",
-          config,
-        );
+      const settings = await getModelSettingsService().call(
+        "setDefaultAgentConfig",
+        config,
+      );
       applyModelSettings(settings);
     },
     [applyModelSettings, getModelSettingsService],
@@ -1172,7 +1164,9 @@ export default function ChatPanel() {
         throw new Error(
           "This sign-in method is unavailable. Choose another method.",
         );
-      await rpc.call("main", "credentials.connect", [request], { signal });
+      await rpc.call("main", mainRpcMethods["credentials.connect"], [request], {
+        signal,
+      });
       await loadModelSettings(true);
     },
     [loadModelSettings],
@@ -1262,14 +1256,19 @@ export default function ChatPanel() {
 
   const chatActions: AgenticChatActions = useMemo(
     () => ({
-      onListTaskRules: () =>
-        rpc.call("main", "authority.listTaskRules", [
+      onListTaskRules: () => {
+        if (!resolvedContextId || !channelName)
+          throw new Error("Conversation has no runtime context");
+        return rpc.call("main", mainRpcMethods["authority.listTaskRules"], [
           { contextId: resolvedContextId, channelId: channelName },
-        ]),
+        ]);
+      },
       onResetTaskRules: async () => {
-        const result = await rpc.call<{ revokedGrantCount: number }>(
+        if (!resolvedContextId || !channelName)
+          throw new Error("Conversation has no runtime context");
+        const result = await rpc.call(
           "main",
-          "authority.resetTaskRules",
+          mainRpcMethods["authority.resetTaskRules"],
           [{ contextId: resolvedContextId, channelId: channelName }],
         );
         return result.revokedGrantCount;

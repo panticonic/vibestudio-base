@@ -1,3 +1,4 @@
+import { vcsEditInputSchema } from "@vibestudio/service-schemas/vcs";
 import type {
   VcsCommitInput,
   VcsEditChange,
@@ -130,7 +131,8 @@ export class StubVcs implements ToolEditingVcs {
     };
   }
 
-  async edit(input: VcsEditInput) {
+  async edit(request: Parameters<ToolEditingVcs["edit"]>[0]) {
+    const input = vcsEditInputSchema.parse(request);
     this.lastEditInput = input;
     for (const change of input.changes) this.applyChange(change);
     this.version += 1;

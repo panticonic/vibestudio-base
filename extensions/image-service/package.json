@@ -67,6 +67,11 @@
     }
   },
   "dependencies": {
-    "@silvia-odwyer/photon-node": "^0.3.4"
+    "@silvia-odwyer/photon-node": "^0.3.4",
+    "@vibestudio/shared": "workspace:*"
+  },
+  "exports": {
+    ".": "./index.ts",
+    "./contract": "./contract.ts"
   }
 }

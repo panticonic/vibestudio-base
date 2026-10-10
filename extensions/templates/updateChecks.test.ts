@@ -6,6 +6,8 @@ import * as workspace from "./workspace";
 import { createTemplateUpdateChecks } from "./updateChecks";
 import type { ExtensionContextLike } from "./context";
 import { WORKSPACE_APP_VERSION } from "@vibestudio/shared/vcs/systemEpoch";
+import { schemaRpcMock } from "@vibestudio/rpc/test-utils";
+import { durableObjectServiceFixture } from "@vibestudio/service-schemas/test-utils";
 const roots: string[] = [];
 afterEach(async () => {
   vi.restoreAllMocks();
@@ -48,13 +50,16 @@ async function fixture(
   const resolve = vi.fn().mockResolvedValue(target);
   const deliver = vi.fn().mockResolvedValue(undefined);
   const call = vi.fn(
-    async (_target: string, method: string, ...args: unknown[]) => {
+    async (_target: string, method: string, args: unknown[]) => {
       if (method === "workspaceTemplateSource.readCompatibility")
         return requirement;
       if (method === "workers.resolveService")
-        return { kind: "durable-object", targetId: "inbox" };
-      if (method === "putUserNotification") return deliver(...args);
-      if (method === "deleteUserNotification") return {};
+        return durableObjectServiceFixture("inbox");
+      if (method === "putUserNotification") {
+        await deliver(...args);
+        return args[0];
+      }
+      if (method === "deleteUserNotification") return { deleted: true };
       throw new Error(`Unexpected method ${method}`);
     },
   );
@@ -70,7 +75,7 @@ async function fixture(
     },
     invocation: { current: () => ({ caller: { userId: owner } }) },
     storage: { root },
-    rpc: { call },
+    rpc: schemaRpcMock({ call }),
     emit: vi.fn(),
     log: { info: vi.fn() },
   } as unknown as ExtensionContextLike;
@@ -208,10 +213,12 @@ it("retires a notice as soon as its installed baseline changes, without a networ
   f.observation.templateSources = [f.target];
   f.resolve.mockRejectedValue(new Error("Offline"));
   await f.checker.reconcileInstalled();
-  expect(f.call).toHaveBeenCalledWith("inbox", "deleteUserNotification", {
-    userId: "usr_one",
-    id,
-  });
+  expect(f.call).toHaveBeenCalledWith(
+    "inbox",
+    "deleteUserNotification",
+    [{ userId: "usr_one", id }],
+    undefined,
+  );
   expect(f.deliver).toHaveBeenCalledTimes(1);
 });
 
@@ -256,10 +263,12 @@ it("refreshes one coherent workspace notice when a parent and its dependency bot
   f.hostVersion("0.1.85");
   await f.checker.signal();
   expect(f.deliver).toHaveBeenCalledTimes(2);
-  expect(f.call).toHaveBeenCalledWith("inbox", "deleteUserNotification", {
-    userId: "usr_one",
-    id: previousId,
-  });
+  expect(f.call).toHaveBeenCalledWith(
+    "inbox",
+    "deleteUserNotification",
+    [{ userId: "usr_one", id: previousId }],
+    undefined,
+  );
 });
 
 it("replays frozen notifications and allocates new identities on an app-version round trip", async () => {
@@ -298,10 +307,12 @@ it("retires superseded upstream targets on discovery and preserves the notice on
   ).toHaveLength(0);
   f.resolve.mockResolvedValue(f.source);
   await f.checker.check();
-  expect(f.call).toHaveBeenCalledWith("inbox", "deleteUserNotification", {
-    userId: "usr_one",
-    id,
-  });
+  expect(f.call).toHaveBeenCalledWith(
+    "inbox",
+    "deleteUserNotification",
+    [{ userId: "usr_one", id }],
+    undefined,
+  );
 });
 
 it("keeps member delivery independent when another member has a failed receipt", async () => {

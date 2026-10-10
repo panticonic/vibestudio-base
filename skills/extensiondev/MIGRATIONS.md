@@ -115,8 +115,9 @@ Each migration follows the same steps:
 - The extension provides the public API and any shell-only checks; the DO
   still stores the data.
 - To wrap a DO in an extension, declare a workspace service, resolve it with
-  `ctx.workers.resolveService(protocol, key)`, and call it with
-  `ctx.rpc.call(targetId, method, ...args)`. Do not go through an internal
+  `ctx.workers.resolveService(protocol, key)`, import the receiver-owned
+  descriptor table from the provider's `./contract` export, and call it with
+  `ctx.rpc.call(targetId, methodDescriptor, args)`. Do not go through an internal
   target catalog: access and identity come from the manifest-declared service
   and its singleton/provider version. Host-internal DOs are not workspace
   targets, and exporting a workspace DO class does not expose arbitrary

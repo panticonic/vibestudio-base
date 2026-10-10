@@ -32,7 +32,8 @@
     "./native-model-provider": "./src/native-model-provider.ts",
     "./testing/native-vessel": "./src/testing/native-vessel.ts",
     "./native-agent-session": "./src/native-agent-session.ts",
-    "./testing/native-channel-provider": "./src/testing/native-channel-provider.ts"
+    "./testing/native-channel-provider": "./src/testing/native-channel-provider.ts",
+    "./rpc-contract": "./src/rpc-contract.ts"
   },
   "dependencies": {
     "@vibestudio/automation": "workspace:*",
@@ -47,6 +48,7 @@
     "@workspace/harness": "workspace:*",
     "@workspace/model-catalog": "workspace:*",
     "@workspace/pubsub": "workspace:*",
+    "@workspace/test-runtime": "workspace:*",
     "@vibestudio/service-schemas": "workspace:*",
     "@vibestudio/shared": "workspace:*",
     "@vibestudio/workspace-contracts": "workspace:*",

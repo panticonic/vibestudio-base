@@ -1,3 +1,6 @@
+import { resolveDurableObjectService } from "@vibestudio/service-schemas/clients/durableObjectServiceClient";
+import { missionsRpcMethods } from "@vibestudio/service-schemas/missions";
+import { mainRpcMethods } from "@vibestudio/service-schemas/mainRpc";
 import type { TemplatesClient } from "@vibestudio/service-schemas/templates";
 import { createTemplateUpdateChecks } from "./updateChecks.js";
 import { createTemplatePublisher, publicationInput } from "./publication.js";
@@ -48,8 +51,8 @@ async function resolveSource(
 ) {
   const local = await ctx.rpc.call(
     "main",
-    "workspaceTemplateSource.resolveLocal",
-    source.url,
+    mainRpcMethods["workspaceTemplateSource.resolveLocal"],
+    [source.url],
   );
   return WorkspaceTemplatePinSchema.parse(
     local ?? (await discoverDirectTemplatePin(ctx, ctx.storage.root, source)),
@@ -111,10 +114,10 @@ async function inheritedInventory(
 
 async function inspect(ctx: ExtensionContextLike, locator: TemplateLocator) {
   const pin = await resolveInspectionPin(ctx, locator);
-  return ctx.rpc.call<TemplateInspection>(
+  return ctx.rpc.call(
     "main",
-    "workspaceTemplateSource.inspectExact",
-    pin,
+    mainRpcMethods["workspaceTemplateSource.inspectExact"],
+    [pin],
   );
 }
 
@@ -122,7 +125,8 @@ async function loadRegistry(ctx: ExtensionContextLike, requestedUrl?: string) {
   if (!requestedUrl) {
     const local = await ctx.rpc.call(
       "main",
-      "workspaceTemplateSource.localRegistry",
+      mainRpcMethods["workspaceTemplateSource.localRegistry"],
+      [],
     );
     if (local) return templateRegistrySchema.parse(local);
   }
@@ -162,14 +166,10 @@ export async function activate(ctx: ExtensionContextLike) {
   if (unsubscribe) ctx.subscriptions?.push({ dispose: unsubscribe });
   return {
     updateAssistant: async () => {
-      const service = await ctx.rpc.call<{ kind: string; targetId?: string }>(
-        "main",
-        "workers.resolveService",
-        "vibestudio.missions.v1",
-      );
+      const service = await resolveDurableObjectService(ctx.rpc, "vibestudio.missions.v1");
       if (service.kind !== "durable-object" || !service.targetId)
         throw new Error("Automations service is unavailable");
-      return ctx.rpc.call(service.targetId, "getDefault", "workspace-updates");
+      return ctx.rpc.call(service.targetId, missionsRpcMethods["getDefault"], ["workspace-updates"]);
     },
     updateSignal: updates.signal,
     updateStatus: updates.status,

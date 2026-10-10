@@ -1,3 +1,4 @@
+import { wireClientFor } from "@vibestudio/rpc/internal";
 /** Product-facing chat, inspection, configuration and retained child-resource invariants.
  * Native execution lifecycle/recovery is exercised by the native-* suites; this
  * fixture replaces only external host/channel transport boundaries. */
@@ -36,6 +37,7 @@ import {
   getChannelPolicy,
   type ChannelCallDescriptor,
 } from "@workspace/channel-policies";
+import { durableObjectServiceFixture } from "@vibestudio/service-schemas/test-utils";
 const methodBuilders = getChannelPolicy(
   "agentic.conversation.v1",
 ).callEventPayload!;
@@ -185,6 +187,15 @@ function automationRecord(
   };
 }
 class TestVessel extends AgentVesselBase {
+  rpcWireMockForTest:
+    | ((
+        target: string,
+        method: string,
+        args: unknown[],
+        options?: unknown,
+      ) => Promise<unknown>)
+    | null = null;
+  private rpcWireIntercepted = false;
   callerIdForTest: string | null = null;
 
   callerKindForTest: string | null = null;
@@ -308,107 +319,100 @@ class TestVessel extends AgentVesselBase {
   protected override get rpc(): RpcClient {
     const base = super.rpc;
     const vessel = this;
-    return new Proxy(base, {
-      get(target, property, receiver) {
-        if (property === "call") {
-          return async (
-            targetId: string,
-            method: string,
-            args: unknown[],
-            options?: unknown,
-          ) => {
-            if (
-              targetId === "main" &&
-              method === "credentials.connect" &&
-              vessel.credentialConnectForTest
-            ) {
-              return vessel.credentialConnectForTest();
-            }
-            if (
-              targetId === "main" &&
-              method === "blobstore.getBase64" &&
-              vessel.blobImageReaderForTest
-            ) {
-              return vessel.blobImageReaderForTest(String(args[0]));
-            }
-            if (
-              (vessel.automationLaunchForTest ||
-                vessel.automationVisibleForTest) &&
-              targetId === "main" &&
-              method === "authority.compileAuthorityPlan"
-            ) {
-              vessel.automationAuthorityCalls.push({ method, args });
-              return {
-                schemaVersion: 2,
-                digest: "c".repeat(64),
-                artifactRef: `authority-plan:${"c".repeat(64)}`,
-                compilerVersion: "test",
-                catalogDigest: "d".repeat(64),
-              };
-            }
-            if (
-              vessel.automationLaunchForTest &&
-              targetId === "main" &&
-              method === "authority.acquireForCurrentTask"
-            ) {
-              vessel.automationAuthorityCalls.push({ method, args });
-              return {
-                requestIds: [],
-                grantIds: ["grant:task"],
-                denialIds: [],
-              };
-            }
-            if (
-              (vessel.automationLaunchForTest ||
-                vessel.automationVisibleForTest) &&
-              targetId === "main" &&
-              method === "workers.resolveService" &&
-              args[0] === "vibestudio.missions.v1"
-            ) {
-              return { kind: "durable-object", targetId: "do:missions" };
-            }
-            if (
-              vessel.automationLaunchForTest &&
-              targetId === "do:missions" &&
-              method === "launch"
-            ) {
-              vessel.automationLaunchCalls.push({ args, options });
-              return vessel.automationLaunchForTest;
-            }
-            if (
-              vessel.automationVisibleForTest &&
-              targetId === "do:missions" &&
-              method === "list"
-            ) {
-              return vessel.automationVisibleForTest;
-            }
-            if (
-              vessel.automationVisibleForTest &&
-              targetId === "do:missions" &&
-              ["pause", "resume", "runNow", "retire"].includes(method)
-            ) {
-              vessel.automationControlCalls.push({ method, args, options });
-              const mission = vessel.automationVisibleForTest.find(
-                (candidate) => candidate.missionId === args[0],
-              );
-              if (!mission) throw new Error("unknown test automation");
-              return {
-                ...mission,
-                state:
-                  method === "pause"
-                    ? "paused"
-                    : method === "retire"
-                      ? "retired"
-                      : "active",
-              };
-            }
-            return target.call(targetId, method, args, options as never);
+    if (!this.rpcWireIntercepted) {
+      this.rpcWireIntercepted = true;
+      const wire = wireClientFor(base);
+      const forward = wire.call.bind(wire);
+      wire.call = async (targetId, method, args, options) => {
+        if (vessel.rpcWireMockForTest)
+          return vessel.rpcWireMockForTest(targetId, method, args, options);
+        if (
+          targetId === "main" &&
+          method === "credentials.connect" &&
+          vessel.credentialConnectForTest
+        ) {
+          return vessel.credentialConnectForTest();
+        }
+        if (
+          targetId === "main" &&
+          method === "blobstore.getBase64" &&
+          vessel.blobImageReaderForTest
+        ) {
+          return vessel.blobImageReaderForTest(String(args[0]));
+        }
+        if (
+          (vessel.automationLaunchForTest || vessel.automationVisibleForTest) &&
+          targetId === "main" &&
+          method === "authority.compileAuthorityPlan"
+        ) {
+          vessel.automationAuthorityCalls.push({ method, args });
+          return {
+            schemaVersion: 2,
+            digest: "c".repeat(64),
+            artifactRef: `authority-plan:${"c".repeat(64)}`,
+            compilerVersion: "test",
+            catalogDigest: "d".repeat(64),
           };
         }
-        const value = Reflect.get(target, property, receiver) as unknown;
-        return typeof value === "function" ? value.bind(target) : value;
-      },
-    });
+        if (
+          vessel.automationLaunchForTest &&
+          targetId === "main" &&
+          method === "authority.acquireForCurrentTask"
+        ) {
+          vessel.automationAuthorityCalls.push({ method, args });
+          return {
+            requestIds: [],
+            grantIds: ["grant:task"],
+            denialIds: [],
+          };
+        }
+        if (
+          (vessel.automationLaunchForTest || vessel.automationVisibleForTest) &&
+          targetId === "main" &&
+          method === "workers.resolveService" &&
+          args[0] === "vibestudio.missions.v1"
+        ) {
+          return durableObjectServiceFixture("do:missions");
+        }
+        if (
+          vessel.automationLaunchForTest &&
+          targetId === "do:missions" &&
+          method === "launch"
+        ) {
+          vessel.automationLaunchCalls.push({ args, options });
+          return vessel.automationLaunchForTest;
+        }
+        if (
+          vessel.automationVisibleForTest &&
+          targetId === "do:missions" &&
+          method === "list"
+        ) {
+          return vessel.automationVisibleForTest;
+        }
+        if (
+          vessel.automationVisibleForTest &&
+          targetId === "do:missions" &&
+          ["pause", "resume", "runNow", "retire"].includes(method)
+        ) {
+          vessel.automationControlCalls.push({ method, args, options });
+          const mission = vessel.automationVisibleForTest.find(
+            (candidate) => candidate.missionId === args[0],
+          );
+          if (!mission) throw new Error("unknown test automation");
+          return {
+            ...mission,
+            state:
+              method === "pause"
+                ? "paused"
+                : method === "retire"
+                  ? "retired"
+                  : "active",
+          };
+        }
+        return forward(targetId, method, args, options);
+      };
+    }
+    return base;
   }
 
   protected override createChannelClient(channelId: string): ChannelClient {
@@ -805,37 +809,105 @@ async function expectedEvalCaller(): Promise<string> {
 }
 describe("AgentVesselBase default automation authority", () => {
   it("compiles the creator's exact retained execution and reuses an installed default without recompiling", async () => {
-    const authorityPlan = { schemaVersion: 2, digest: "c".repeat(64), artifactRef: `authority-plan:${"c".repeat(64)}`, compilerVersion: "test", catalogDigest: "d".repeat(64) };
+    const authorityPlan = {
+      schemaVersion: 2,
+      digest: "c".repeat(64),
+      artifactRef: `authority-plan:${"c".repeat(64)}`,
+      compilerVersion: "test",
+      catalogDigest: "d".repeat(64),
+    };
     let installed: MissionRecord | null = null;
-    const remote = vi.fn(async (_target: string, method: string, args: unknown[]) => {
-      if (method === "workers.resolveService") return { kind: "durable-object", targetId: "do:missions" };
-      if (method === "getDefault") return installed;
-      if (method === "runtime.createEntity") return { targetId: "do:channel" };
-      if (method === "authority.compileAuthorityPlan") return authorityPlan;
-      if (method === "provisionDefault") {
-        installed = { ...(args[1] as object), missionId: "mission-default", state: "active" } as MissionRecord;
-        return installed;
-      }
-      throw new Error(`Unexpected default RPC ${method}`);
-    });
-    class DefaultVessel extends TestVessel {
-      protected override get rpc(): RpcClient { return { call: remote } as unknown as RpcClient; }
-    }
+    const remote = vi.fn(
+      async (_target: string, method: string, args: unknown[]) => {
+        if (method === "workers.resolveService")
+          return durableObjectServiceFixture("do:missions");
+        if (method === "getDefault") return installed;
+        if (method === "runtime.createEntity")
+          return {
+            id: "do:workers/pubsub-channel:PubSubChannel:channel",
+            kind: "do",
+            source: {
+              repoPath: "workers/pubsub-channel",
+              effectiveVersion: "test",
+            },
+            contextId: "ctx-1",
+            targetId: "do:workers/pubsub-channel:PubSubChannel:channel",
+          };
+        if (method === "authority.compileAuthorityPlan") return authorityPlan;
+        if (method === "provisionDefault") {
+          installed = automationRecord({
+            ...(args[1] as Partial<MissionRecord>),
+            missionId: "mission-default",
+            state: "active",
+          });
+          return installed;
+        }
+        throw new Error(`Unexpected default RPC ${method}`);
+      },
+    );
+    class DefaultVessel extends TestVessel {}
     const { instance, db } = await createTestDO(DefaultVessel, TEST_AGENT_ENV);
     databases.push(db);
-    vi.spyOn(instance, "subscribeChannel").mockImplementation(async ({ channelId }) => {
-      await instance.registerSubscriptionForTest(channelId);
-      return { ok: true, participantId: AGENT_ID };
-    });
-    const input = { id: "workspace-review", contextId: "ctx-1", appVersion: "0.1.84", definition: { source: "workers/test", className: "TestAgent", name: "Review", summary: "Review the workspace", action: { kind: "prompt", text: "Review the current workspace." }, trigger: { kind: "manual" }, operations: [{ service: "vcs", method: "status", args: [{ contextId: "ctx-1" }], use: "action" }] } };
+    instance.rpcWireMockForTest = remote;
+    vi.spyOn(instance, "subscribeChannel").mockImplementation(
+      async ({ channelId }) => {
+        await instance.registerSubscriptionForTest(channelId);
+        return { ok: true, participantId: AGENT_ID };
+      },
+    );
+    const input = {
+      id: "workspace-review",
+      contextId: "ctx-1",
+      appVersion: "0.1.84",
+      definition: {
+        source: "workers/test",
+        className: "TestAgent",
+        name: "Review",
+        summary: "Review the workspace",
+        action: { kind: "prompt", text: "Review the current workspace." },
+        trigger: { kind: "manual" },
+        operations: [
+          {
+            service: "vcs",
+            method: "status",
+            args: [{ contextId: "ctx-1" }],
+            use: "action",
+          },
+        ],
+      },
+    };
     const first = await instance.initializeAutomation(input);
-    const compiled = remote.mock.calls.find(([, method]) => method === "authority.compileAuthorityPlan")!;
+    const compiled = remote.mock.calls.find(
+      ([, method]) => method === "authority.compileAuthorityPlan",
+    )!;
     expect(compiled[0]).toBe("main");
     expect(compiled[2]).toEqual([{ execution: first.charter.execution }]);
-    expect(first.charter.execution).toMatchObject({ image: { source: TEST_AGENT_ENV.WORKER_SOURCE, effectiveVersion: TEST_AGENT_ENV.WORKER_EFFECTIVE_VERSION, objectKey: "agent-key" }, conversation: { mode: "continue", executorId: AGENT_ID, contextId: "ctx-1", channelId: "agent-key" }, operations: input.definition.operations });
-    expect(remote).toHaveBeenCalledWith("do:missions", "provisionDefault", [input.id, { name: "Review", charter: first.charter, authorityPlan }], { idempotencyKey: "default-automation:workspace-review:provision" });
+    expect(first.charter.execution).toMatchObject({
+      image: {
+        source: TEST_AGENT_ENV.WORKER_SOURCE,
+        effectiveVersion: TEST_AGENT_ENV.WORKER_EFFECTIVE_VERSION,
+        objectKey: "agent-key",
+      },
+      conversation: {
+        mode: "continue",
+        executorId: AGENT_ID,
+        contextId: "ctx-1",
+        channelId: "agent-key",
+      },
+      operations: input.definition.operations,
+    });
+    expect(remote).toHaveBeenCalledWith(
+      "do:missions",
+      "provisionDefault",
+      [input.id, { name: "Review", charter: first.charter, authorityPlan }],
+      { idempotencyKey: "default-automation:workspace-review:provision" },
+    );
     expect(await instance.initializeAutomation(input)).toEqual(first);
-    expect(remote.mock.calls.filter(([, method]) => method === "authority.compileAuthorityPlan")).toHaveLength(1);
+    expect(
+      remote.mock.calls.filter(
+        ([, method]) => method === "authority.compileAuthorityPlan",
+      ),
+    ).toHaveLength(1);
   });
 });
 
@@ -1136,7 +1208,13 @@ describe("AgentVesselBase.chatOp", () => {
       Array.from({ length: 2 }, () => ({
         args: [
           {
-            authorityPlan: { schemaVersion: 2, digest: "c".repeat(64), artifactRef: `authority-plan:${"c".repeat(64)}`, compilerVersion: "test", catalogDigest: "d".repeat(64) },
+            authorityPlan: {
+              schemaVersion: 2,
+              digest: "c".repeat(64),
+              artifactRef: `authority-plan:${"c".repeat(64)}`,
+              compilerVersion: "test",
+              catalogDigest: "d".repeat(64),
+            },
             name: "Daily check",
             charter: {
               summary: "Check the project every morning.",
@@ -1197,9 +1275,9 @@ describe("AgentVesselBase.chatOp", () => {
       }),
     );
 
-    expect(vessel.automationAuthorityCalls.map(({ method }) => method)).toEqual([
-      "authority.compileAuthorityPlan", "authority.compileAuthorityPlan",
-    ]);
+    expect(vessel.automationAuthorityCalls.map(({ method }) => method)).toEqual(
+      ["authority.compileAuthorityPlan", "authority.compileAuthorityPlan"],
+    );
     vessel.automationAuthorityCalls.length = 0;
     await vessel.executeAutomationLaunchForTest({
       ...input,
@@ -1472,6 +1550,7 @@ describe("AgentVesselBase.onEvalProgress authority lifecycle", () => {
   });
 });
 class SubagentSpawnProbe extends TestVessel {
+  private subagentRpcIntercepted = false;
   subagentIdentityForTest: SubagentIdentity | null = null;
 
   protected override subagentIdentity(): SubagentIdentity | null {
@@ -1493,61 +1572,74 @@ class SubagentSpawnProbe extends TestVessel {
   childExecutionActive = false;
 
   protected override get rpc(): RpcClient {
-    return {
-      call: async (target: string, method: string, args: unknown[]) => {
-        this.rpcCalls.push({ target, method, args });
-        this.operationLog.push(`rpc:${target}:${method}`);
-        const vcsResponses = this.vcsResponses.get(method);
-        if (target === "main" && vcsResponses && vcsResponses.length > 0) {
-          return vcsResponses.shift();
-        }
-        if (target === "main" && method === "vcs.status") {
-          const contextId = String(
-            (args[0] as { contextId?: unknown } | undefined)?.contextId ??
-              "ctx-1",
-          );
-          const eventId = `event:${contextId}`;
-          return semanticStatus(
-            contextId,
-            eventId,
-            { kind: "event", eventId },
-            true,
-          );
-        }
-        if (target === "main" && method === "runtime.resolveContext") {
-          return this.ownerRuntimeContextId;
-        }
-        if (target === "main" && method === "runtime.createSubagentContext") {
-          return { contextId: "ctx-child" };
-        }
-        if (target === "main" && method === "runtime.createEntity") {
-          const spec = args[0] as {
-            stateArgs?: { agentConfig?: Record<string, unknown> };
-          };
-          this.childSettings = { ...(spec.stateArgs?.agentConfig ?? {}) };
-          return {
-            id: "do:workers/agent-worker:AiChatWorker:subagent-inv-1",
-            targetId: "do:workers/agent-worker:AiChatWorker:subagent-inv-1",
-          };
-        }
-        if (method === "getAgentSettings" && target.includes(":subagent-")) {
-          return this.childSettings;
-        }
-        if (method === "readSubagentExecutionActivity") {
-          return { active: this.childExecutionActive };
-        }
-        if (target === "main" && method === "workers.resolveService") {
-          return {
-            kind: "durable-object",
-            source: "vibestudio/internal",
-            className: "GadWorkspaceDO",
-            objectKey: "workspace-main",
-            targetId: "gad",
-          };
-        }
-        return { ok: true, participantId: "participant-child" };
-      },
-    } as unknown as RpcClient;
+    const client = super.rpc;
+    if (this.subagentRpcIntercepted) return client;
+    this.subagentRpcIntercepted = true;
+    const wire = wireClientFor(client);
+    wire.call = async (target: string, method: string, args: unknown[]) => {
+      this.rpcCalls.push({ target, method, args });
+      this.operationLog.push(`rpc:${target}:${method}`);
+      const vcsResponses = this.vcsResponses.get(method);
+      if (target === "main" && vcsResponses && vcsResponses.length > 0) {
+        return vcsResponses.shift();
+      }
+      if (target === "main" && method === "vcs.status") {
+        const contextId = String(
+          (args[0] as { contextId?: unknown } | undefined)?.contextId ??
+            "ctx-1",
+        );
+        const eventId = `event:${contextId}`;
+        return semanticStatus(
+          contextId,
+          eventId,
+          { kind: "event", eventId },
+          true,
+        );
+      }
+      if (target === "main" && method === "runtime.resolveContext") {
+        return this.ownerRuntimeContextId;
+      }
+      if (target === "main" && method === "runtime.createSubagentContext") {
+        return { contextId: "ctx-child" };
+      }
+      if (target === "main" && method === "runtime.createEntity") {
+        const spec = args[0] as {
+          stateArgs?: { agentConfig?: Record<string, unknown> };
+          contextId?: string;
+        };
+        this.childSettings = { ...(spec.stateArgs?.agentConfig ?? {}) };
+        return {
+          id: "do:workers/agent-worker:AiChatWorker:subagent-inv-1",
+          kind: "worker",
+          source: {
+            repoPath: "workers/agent-worker",
+            effectiveVersion: TEST_AGENT_ENV.WORKER_EFFECTIVE_VERSION,
+          },
+          contextId: spec.contextId ?? "ctx-child",
+          targetId: "do:workers/agent-worker:AiChatWorker:subagent-inv-1",
+        };
+      }
+      if (method === "getAgentSettings" && target.includes(":subagent-")) {
+        return this.childSettings;
+      }
+      if (method === "readSubagentExecutionActivity") {
+        return { active: this.childExecutionActive };
+      }
+      if (target === "main" && method === "workers.resolveService") {
+        return durableObjectServiceFixture("gad", {
+          origin: "workspace",
+          source: "workers/workspace-source",
+          name: "workspace-source",
+          action: "provide",
+          presentation: { domain: "web", verb: "see" },
+          authority: { principals: ["code"] },
+          className: "GadWorkspaceDO",
+          objectKey: "workspace-main",
+        });
+      }
+      return { ok: true, participantId: "participant-child" };
+    };
+    return client;
   }
 
   subagentRunForTest(runId: string) {

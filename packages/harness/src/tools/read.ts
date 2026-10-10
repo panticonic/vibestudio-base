@@ -1,3 +1,4 @@
+import { mainRpcMethods } from "@vibestudio/service-schemas/mainRpc";
 import type { JsonRepresentation } from "@panticonic/pi-chord";
 import { toolDetails } from "./native-tool-json.js";
 /**
@@ -256,15 +257,13 @@ export function createReadTool(
     const normalized = requestedPath.replace(/^\/+/, "");
     const match = /^(?:skills\/)?([^/]+)\/SKILL\.md$/iu.exec(normalized);
     if (!match?.[1]) return null;
-    const entries = await runtimeRpc.call<
-      Array<{ name: string; dirPath: string; skillPath: string }>
-    >("main", "workspace.listSkills", []);
+    const entries = await runtimeRpc.call("main", mainRpcMethods["workspace.listSkills"], []);
     const matches = entries.filter((entry) => entry.name === match[1]);
     if (matches.length !== 1) return null;
     const entry = matches[0]!;
-    const content = await runtimeRpc.call<string>(
+    const content = await runtimeRpc.call(
       "main",
-      "workspace.readSkill",
+      mainRpcMethods["workspace.readSkill"],
       [entry.dirPath],
     );
     return {
@@ -411,9 +410,9 @@ export function createReadTool(
             },
           );
         }
-        const raw = await runtimeRpc.call<string | null>(
+        const raw = await runtimeRpc.call(
           "main",
-          "blobstore.getText",
+          mainRpcMethods["blobstore.getText"],
           [digest],
         );
         if (raw === null) {
@@ -471,9 +470,9 @@ export function createReadTool(
         isLikelyImagePath(path) || hasNoFileExtension(path);
       if (runtimeRpc && !shouldSniffMedia) {
         try {
-          const bounded = await runtimeRpc.call<FsReadTextResult>(
+          const bounded = await runtimeRpc.call(
             "main",
-            "fs.readText",
+            mainRpcMethods["fs.readText"],
             [
               absolutePath,
               {
@@ -634,9 +633,9 @@ export function createReadBinaryTool(
       }
       try {
         if (runtimeRpc) {
-          const bounded = await runtimeRpc.call<FsReadBytesResult>(
+          const bounded = await runtimeRpc.call(
             "main",
-            "fs.readBytes",
+            mainRpcMethods["fs.readBytes"],
             [
               absolutePath,
               {

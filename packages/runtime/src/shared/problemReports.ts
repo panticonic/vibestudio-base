@@ -1,6 +1,8 @@
+import { createTypedRpcServiceClient } from "@vibestudio/shared/typedRpcServiceClient";
+import { mainRpcMethods } from "@vibestudio/service-schemas/mainRpc";
 import { problemReportingConversation } from "@vibestudio/shared/problemReportingConversation";
 /** Explicit-client reporting API. Agents prepare drafts and request sharing through targeted host approval. */
-import { createTypedServiceClient } from "@vibestudio/shared/typedServiceClient";
+
 import { reportDraftContent } from "@vibestudio/service-schemas/problemReportBundle";
 export { reportDraftContent } from "@vibestudio/service-schemas/problemReportBundle";
 import { problemReportsMethods } from "@vibestudio/service-schemas/problemReports";
@@ -9,11 +11,7 @@ export type ProblemReportsClient = ReturnType<
   typeof createProblemReportsClient
 >;
 export function createProblemReportsClient(rpc: Pick<RpcCaller, "call">) {
-  return createTypedServiceClient(
-    "problemReports",
-    problemReportsMethods,
-    (service, method, args) => rpc.call("main", `${service}.${method}`, args),
-  );
+  return createTypedRpcServiceClient(rpc, { targetId: "main", namespace: "problemReports" }, problemReportsMethods);
 }
 export type { ProblemReportBundle } from "@vibestudio/service-schemas/problemReportBundle";
 export {
@@ -26,7 +24,7 @@ export function startProblemReportConversation(
   rpc: Pick<RpcCaller, "call">,
   context?: { reportId: string; revision: number },
 ) {
-  return rpc.call("main", "app.openShellSurface", [
+  return rpc.call("main", mainRpcMethods["app.openShellSurface"], [
     { kind: "command-agent", prompt: problemReportingConversation(context) },
   ]);
 }

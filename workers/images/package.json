@@ -14,7 +14,7 @@
       }
     ],
     "title": "Images",
-    "icon": "🎨",
+    "icon": "\ud83c\udfa8",
     "kind": "worker",
     "entry": "index.ts",
     "durable": {
@@ -73,10 +73,14 @@
     "@workspace/runtime": "workspace:*",
     "@workspace/harness": "workspace:*",
     "@vibestudio/credential-client": "workspace:*",
-    "@vibestudio/content-addressing": "workspace:*"
+    "@vibestudio/content-addressing": "workspace:*",
+    "@workspace-extensions/image-service": "workspace:*"
   },
   "devDependencies": {
     "@vibestudio/shared": "workspace:*",
     "vitest": "^3.2.7"
+  },
+  "exports": {
+    ".": "./index.ts"
   }
 }

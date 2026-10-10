@@ -1,3 +1,4 @@
+import { phoneProvisioningRpcMethods } from "@vibestudio/service-schemas/phoneProvisioning";
 import { rpc, workers } from "@workspace/runtime";
 import {
   PhoneDeviceDiscoverySchema,
@@ -38,32 +39,32 @@ export async function phoneSetup() {
   const { targetId } = service;
   const readiness = async (deviceId: string, signal?: AbortSignal) =>
     PhoneWorkspaceReadinessSchema.parse(
-      await rpc.call(targetId, "readiness", [{ deviceId }], { signal }),
+      await rpc.call(targetId, phoneProvisioningRpcMethods["readiness"], [{ deviceId }], { signal }),
     );
   return {
     providers: async () =>
       PhoneProviderSchema.array().parse(
-        await rpc.call(targetId, "providers", []),
+        await rpc.call(targetId, phoneProvisioningRpcMethods["providers"], []),
       ),
     prepare: async (
       providerId: string,
       platform: "android" | "ios" = "android",
     ) => {
-      await rpc.call(targetId, "prepare", [{ providerId, platform }]);
+      await rpc.call(targetId, phoneProvisioningRpcMethods["prepare"], [{ providerId, platform }]);
     },
     devices: async (
       providerId: string,
       platform: "android" | "ios" = "android",
     ) =>
       PhoneDeviceDiscoverySchema.parse(
-        await rpc.call(targetId, "devices", [{ providerId, platform }]),
+        await rpc.call(targetId, phoneProvisioningRpcMethods["devices"], [{ providerId, platform }]),
       ),
     provision: async (
       input: PhoneProvisionArgs,
       onEvent?: (event: PhoneSetupEvent) => void,
     ) => {
       return consumePhoneSetup(
-        await rpc.stream(targetId, "provision", [input]),
+        await rpc.stream(targetId, phoneProvisioningRpcMethods["provision"], [input]),
         onEvent,
       );
     },

@@ -59,18 +59,8 @@ export interface ConnectionConfig {
   /** Stable participant id. Panel callers should pass runtime `slotId`, not `rpc.selfId`. */
   clientId: string;
   rpc: {
-    call<R = unknown>(
-      targetId: string,
-      method: string,
-      args: unknown[],
-      options?: { timeoutMs?: number; signal?: AbortSignal },
-    ): Promise<R>;
-    stream(
-      targetId: string,
-      method: string,
-      args: unknown[],
-      options?: { signal?: AbortSignal },
-    ): Promise<Response>;
+    call: import("@vibestudio/rpc").RpcCaller["call"];
+    stream: import("@vibestudio/rpc").RpcCaller["stream"];
     on: import("@vibestudio/rpc").RpcClient["on"];
     selfId: string;
     registerResidentSession?: ResidentSessionRegistrar["registerResidentSession"];
@@ -314,7 +304,7 @@ export interface ChatSandboxValue {
   contextId: string;
   channelId: string | null;
   rpc: {
-    call: (target: string, method: string, args: unknown[]) => Promise<unknown>;
+    call: import("@vibestudio/rpc").RpcCaller["call"];
     stream?: ConnectionConfig["rpc"]["stream"];
   };
 }

@@ -1,37 +1,26 @@
+import type { RpcMethodArgs } from "@vibestudio/shared/rpcMethods";
+import { resolveDurableObjectService } from "@vibestudio/service-schemas/clients/durableObjectServiceClient";
+import { channelClientRpcMethods } from "@workspace/pubsub/rpc-contract";
+import { createLazyTypedRpcServiceClient } from "@vibestudio/shared/typedRpcServiceClient";
+
+import { createGadServiceClient, type gadRpcMethods } from "@vibestudio/service-schemas/clients/durableObjectServiceClient";
 import type { RpcCaller } from "@vibestudio/rpc";
-import type {
-  UserNotification,
-  UserNotificationAcknowledgementResult,
-  UserNotificationListResult,
-} from "@vibestudio/shared/userNotifications";
-import { createGadServiceClient } from "@vibestudio/shared/workspaceServiceRpc";
+
+
 import {
-  type ServiceCallFn,
   type TypedServiceClient,
 } from "@vibestudio/shared/typedServiceClient";
 import { createLazyTypedServiceClient } from "@vibestudio/shared/lazyTypedServiceClient";
-import {
-  type gadMethods,
-  type gadWireMethods,
-  type EnvelopeLineage,
-  type PrivateLineageForPublishedEnvelope,
-  type PublishedArtifact,
-} from "@vibestudio/service-schemas/workspaceSource";
+import { type gadMethods, type gadWireMethods, type EnvelopeLineage } from "@vibestudio/service-schemas/workspaceSource";
 import {
   BLOBSTORE_METHOD_NAMES,
   GAD_METHOD_NAMES,
 } from "@vibestudio/service-schemas/clients/generated/runtimeClientMethods";
-import {
-  collectChannelEnvelopePages,
-  type ChannelEnvelopePage,
-} from "@vibestudio/shared/channelEnvelopePaging";
-import type { AgentInspectionResult } from "@vibestudio/shared/agentInspection";
-import type { ResolvedWorkspaceService } from "@vibestudio/workspace-contracts/workspaceConfigSchema";
+import { collectChannelEnvelopePages } from "@vibestudio/shared/channelEnvelopePaging";
+
+
 import { hydrateStoredValueRefs } from "@workspace/agentic-protocol/stored-values";
-import type {
-  ChannelEnvelope,
-  TrajectoryEvent,
-} from "@workspace/agentic-protocol";
+
 
 export { GAD_WORKSPACE_SERVICE_PROTOCOL } from "@vibestudio/shared/workspaceServiceRpc";
 export type * from "@vibestudio/service-schemas/workspaceSource";
@@ -46,30 +35,12 @@ export type GadClient = TypedServiceClient<typeof gadMethods> & {
 
 export function createGadClient(rpc: RpcCaller): GadClient {
   const service = createGadServiceClient(rpc);
-  const wireTransport: ServiceCallFn = (_service, method, args) =>
-    service.call(method, ...args);
-  const call = async <T>(
-    method: keyof typeof gadWireMethods & string,
-    ...args: unknown[]
-  ) => {
-    const { callTypedServiceMethod } =
-      await import("@vibestudio/shared/typedServiceClient");
-    return callTypedServiceMethod(
-      "gad-wire",
-      (await import("@vibestudio/service-schemas/workspaceSource"))
-        .gadWireMethods,
-      wireTransport,
-      method,
-      args,
-    ) as Promise<T>;
-  };
-  const blobstore = createLazyTypedServiceClient(
-    "blobstore",
-    BLOBSTORE_METHOD_NAMES,
-    async () =>
-      (await import("@vibestudio/service-schemas/blobstore")).blobstoreMethods,
-    (svc, method, args) => rpc.call("main", `${svc}.${method}`, args),
-  );
+  const call = <K extends keyof typeof gadWireMethods & string>(
+    method: K,
+    ...args: RpcMethodArgs<(typeof gadRpcMethods)[K]>
+  ) => service.call(method, ...args);
+  const blobstore = createLazyTypedRpcServiceClient(rpc, { targetId: "main", namespace: "blobstore" }, BLOBSTORE_METHOD_NAMES, async () =>
+      (await import("@vibestudio/service-schemas/blobstore")).blobstoreMethods);
   const hydrate = async <T>(value: T): Promise<T> =>
     hydrateStoredValueRefs(value, {
       getText: (digest) => blobstore.getText(digest),
@@ -88,14 +59,14 @@ export function createGadClient(rpc: RpcCaller): GadClient {
       call("ensureBlob", hash, size, mimeType),
     listUserNotificationsForMe: async (input) =>
       (
-        await call<UserNotificationListResult>(
+        await call(
           "listUserNotificationsForMe",
           ...(input ? [input] : []),
         )
       ).notifications,
     acknowledgeUserNotification: async (id) =>
       (
-        await call<UserNotificationAcknowledgementResult>(
+        await call(
           "acknowledgeUserNotification",
           {
             id,
@@ -103,10 +74,10 @@ export function createGadClient(rpc: RpcCaller): GadClient {
         )
       ).acknowledged,
     putUserNotification: (input) =>
-      call<UserNotification>("putUserNotification", input),
+      call("putUserNotification", input),
     deleteUserNotification: async (userId, id) =>
       (
-        await call<{ deleted: boolean }>("deleteUserNotification", {
+        await call("deleteUserNotification", {
           userId,
           id,
         })
@@ -119,20 +90,20 @@ export function createGadClient(rpc: RpcCaller): GadClient {
     listChannelEnvelopes: (input) => call("listChannelEnvelopes", input),
     listTrajectoryEvents: async (input) =>
       Promise.all(
-        (await call<TrajectoryEvent[]>("listTrajectoryEvents", input)).map(
+        (await call("listTrajectoryEvents", input)).map(
           (event) => hydrate(event),
         ),
       ),
     appendChannelEnvelope: (input) =>
-      call<ChannelEnvelope>("appendChannelEnvelope", input).then(hydrate),
+      call("appendChannelEnvelope", input).then(hydrate),
     listMessageTypes: (input) => call("listMessageTypes", input),
     getMessageType: (input) => call("getMessageType", input),
     getChannelEnvelope: (input) =>
-      call<ChannelEnvelope | null>("getChannelEnvelope", input).then((value) =>
+      call("getChannelEnvelope", input).then((value) =>
         value ? hydrate(value) : null,
       ),
     getTrajectoryForEnvelope: (input) =>
-      call<EnvelopeLineage | null>("getTrajectoryForEnvelope", input).then(
+      call("getTrajectoryForEnvelope", input).then(
         (value) => (value ? hydrateLineage(value) : null),
       ),
     resolveTrajectoryForkPoint: (input) =>
@@ -140,7 +111,7 @@ export function createGadClient(rpc: RpcCaller): GadClient {
     listPublishedEnvelopesForTrajectory: async (input) =>
       Promise.all(
         (
-          await call<EnvelopeLineage[]>(
+          await call(
             "listPublishedEnvelopesForTrajectory",
             input,
           )
@@ -148,21 +119,21 @@ export function createGadClient(rpc: RpcCaller): GadClient {
       ),
     getEnvelopesForTrajectory: async (input) =>
       Promise.all(
-        (await call<EnvelopeLineage[]>("getEnvelopesForTrajectory", input)).map(
+        (await call("getEnvelopesForTrajectory", input)).map(
           hydrateLineage,
         ),
       ),
     getPublishedArtifactsForTurn: async (input) =>
       Promise.all(
         (
-          await call<PublishedArtifact[]>("getPublishedArtifactsForTurn", input)
+          await call("getPublishedArtifactsForTurn", input)
         ).map(async (item) => ({
           ...item,
           lineage: await hydrateLineage(item.lineage),
         })),
       ),
     getPrivateLineageForPublishedEnvelope: async (input) => {
-      const value = await call<PrivateLineageForPublishedEnvelope | null>(
+      const value = await call(
         "getPrivateLineageForPublishedEnvelope",
         input,
       );
@@ -178,12 +149,12 @@ export function createGadClient(rpc: RpcCaller): GadClient {
     },
     getDownstreamConsumers: async (input) =>
       Promise.all(
-        (await call<TrajectoryEvent[]>("getDownstreamConsumers", input)).map(
+        (await call("getDownstreamConsumers", input)).map(
           (event) => hydrate(event),
         ),
       ),
     readChannelEnvelopes: async (input) => {
-      const page = await call<ChannelEnvelopePage<ChannelEnvelope>>(
+      const page = await call(
         "readChannelEnvelopes",
         input,
       );
@@ -209,17 +180,13 @@ export function createGadClient(rpc: RpcCaller): GadClient {
     // The channel DO owns inspection and its channel.admin gate; resolve it
     // and call it under this caller's own authority.
     inspectAgent: async ({ channelId, ...request }) => {
-      const channel = await rpc.call<ResolvedWorkspaceService>(
-        "main",
-        "workers.resolveService",
-        [CHANNEL_SERVICE_PROTOCOL, channelId],
-      );
+      const channel = await resolveDurableObjectService(rpc, CHANNEL_SERVICE_PROTOCOL, channelId);
       if (channel.kind !== "durable-object") {
         throw new Error(
           `gad.inspectAgent: channel service resolved to a ${channel.kind}`,
         );
       }
-      return rpc.call<AgentInspectionResult>(channel.targetId, "inspectAgent", [
+      return rpc.call(channel.targetId, channelClientRpcMethods["inspectAgent"], [
         request,
       ]);
     },

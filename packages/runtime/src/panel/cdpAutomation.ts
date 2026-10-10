@@ -1,16 +1,8 @@
+import { formatRpcFailure } from "@vibestudio/rpc";
+import { mainRpcMethods } from "@vibestudio/service-schemas/mainRpc";
 import type { RpcClient } from "@vibestudio/rpc";
 import type { Browser, CdpPage } from "@workspace/cdp-client";
-import type {
-  CdpAutomation,
-  CdpEndpoint,
-  PanelCdpGeneration,
-  PanelCdpSession,
-  PanelCdpSessionReceipt,
-  PanelConsoleHistoryOptions,
-  PanelConsoleHistoryResult,
-  PanelScreenshotOptions,
-  PanelScreenshotResult,
-} from "../core/index.js";
+import type { CdpAutomation, CdpEndpoint, PanelCdpGeneration, PanelCdpSession, PanelCdpSessionReceipt, PanelConsoleHistoryOptions, PanelScreenshotOptions } from "../core/index.js";
 import type { PanelObservation } from "@vibestudio/shared/panel/observation";
 import type { CdpInteractionOutcome } from "@workspace/cdp-client";
 import {
@@ -59,7 +51,7 @@ async function loadCdpClient(
     } catch (error) {
       // A closure-held loader is the hosted runtime's authority-bearing module
       // path. Falling through would hide its failure behind another runtime.
-      const message = error instanceof Error ? error.message : String(error);
+      const message = formatRpcFailure(error);
       throw new Error(
         `Unable to load ${CDP_CLIENT_MODULE} for CDP automation. ${message}`,
         {
@@ -73,7 +65,7 @@ async function loadCdpClient(
     if (isCdpClientModule(loaded)) return loaded;
     throw new Error("module does not expose BrowserImpl.connect");
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
+    const message = formatRpcFailure(error);
     throw new Error(
       `Unable to load ${CDP_CLIENT_MODULE} for CDP automation. ${message}. ` +
         `Use handle.cdp.session() only from contexts that expose @workspace/cdp-client.`,
@@ -92,9 +84,9 @@ export function createCdpAutomation(
   // stop test agents from navigating the panel they were running in; that
   // over-corrected and blocked legitimate inspection of other workspace panels.)
   const fetchCdpEndpoint = (signal?: AbortSignal): Promise<CdpEndpoint> =>
-    rpc.call<CdpEndpoint>(
+    rpc.call(
       "main",
-      "panelCdp.getCdpEndpoint",
+      mainRpcMethods["panelCdp.getCdpEndpoint"],
       [id],
       signal ? { signal } : undefined,
     );
@@ -163,7 +155,7 @@ export function createCdpAutomation(
       operationSignal: options.operationSignal,
       browserOperation: (request, signal) => {
         const owner = options.operationSignal?.();
-        return rpc.call("main", "panelCdp.browserOperation", [id, request], {
+        return rpc.call("main", mainRpcMethods["panelCdp.browserOperation"], [id, request], {
           signal:
             signal && owner
               ? AbortSignal.any([signal, owner])
@@ -887,9 +879,9 @@ export function createCdpAutomation(
       return session;
     },
     consoleHistory: async (historyOptions?: PanelConsoleHistoryOptions) => {
-      const history = await rpc.call<PanelConsoleHistoryResult>(
+      const history = await rpc.call(
         "main",
-        "panelCdp.consoleHistory",
+        mainRpcMethods["panelCdp.consoleHistory"],
         [id, historyOptions],
       );
       options.recordOperation?.({
@@ -900,16 +892,16 @@ export function createCdpAutomation(
       return history;
     },
     getCdpEndpoint,
-    stop: () => {
-      return rpc.call<void>("main", "panelCdp.stop", [id]);
+    stop: async () => {
+      await rpc.call("main", mainRpcMethods["panelCdp.stop"], [id]);
     },
     click: async (selector) => {
       await stablePage.locator(selector).click();
     },
     screenshot: async (screenshotOptions?: PanelScreenshotOptions) => {
-      const image = await rpc.call<PanelScreenshotResult>(
+      const image = await rpc.call(
         "main",
-        "panelCdp.screenshot",
+        mainRpcMethods["panelCdp.screenshot"],
         [id, screenshotOptions],
       );
       options.recordOperation?.({

@@ -7,7 +7,7 @@ export interface ReopenPanelOptions {
 }
 
 interface SelfNavigationRpc {
-  call(target: string, method: string, args: unknown[]): Promise<unknown>;
+  call: import("@vibestudio/rpc").RpcCaller["call"];
 }
 
 export function createPanelSelfNavigation(options: {

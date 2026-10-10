@@ -133,23 +133,7 @@ export interface LockedChannelMembershipPolicy {
 }
 
 /** Channel config (mirrors PubSub client ChannelConfig). */
-export interface ChannelConfig {
-  seed?: import("@workspace/pubsub").ConversationSeed;
-  initialization?: import("@workspace/pubsub").ConversationInitialization;
-  title?: string;
-  /** True when the title came from an explicit title command. */
-  titleExplicit?: boolean;
-  approvalLevel?: number;
-  /** Multi-agent conversation policy: "open" | "directed" | "moderated". */
-  conversationPolicy?: string;
-  /** Cap on consecutive agent-to-agent replies in one causal chain. */
-  agentHopLimit?: number;
-  /** Named channel policies (fixed registry); default agentic.conversation.v1. */
-  policies?: string[];
-  /** Optional host-owned authorization boundary for private channels. */
-  membershipPolicy?: LockedChannelMembershipPolicy;
-  [key: string]: unknown;
-}
+export type ChannelConfig = import("@workspace/pubsub").ChannelConfig;
 
 /** Presence event payload stored in messages table. */
 export interface PresencePayload {

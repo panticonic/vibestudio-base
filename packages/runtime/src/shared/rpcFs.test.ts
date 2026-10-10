@@ -1,37 +1,62 @@
+import { schemaRpcMock } from "@vibestudio/rpc/test-utils";
 import { describe, expect, it, vi } from "vitest";
 import { createRpcFs } from "./rpcFs.js";
 
+function statFixture(size: number) {
+  return {
+    size,
+    isFile: true,
+    isDirectory: false,
+    isSymbolicLink: false,
+    mtime: "2026-01-01T00:00:00.000Z",
+    ctime: "2026-01-01T00:00:00.000Z",
+    mode: 0o100644,
+  };
+}
+
 function mockRpc() {
   const calls: Array<{ method: string; args: unknown[] }> = [];
-  const rpc = {
+  const rpc = schemaRpcMock({
     call: vi.fn(async (_target: string, method: string, args: unknown[]) => {
       calls.push({ method, args });
       if (method === "fs.open") return { handleId: 7 };
-      if (method === "fs.handleWrite") return { bytesWritten: (args[1] as Uint8Array).length };
-      if (method === "fs.writeFile" || method === "fs.appendFile") return undefined;
+      if (method === "fs.handleWrite")
+        return { bytesWritten: (args[1] as Uint8Array).length };
+      if (method === "fs.writeFile" || method === "fs.appendFile")
+        return undefined;
       throw new Error(`unexpected rpc ${method}`);
     }),
-  };
+  });
   return { rpc, calls };
 }
 
 describe("createRpcFs transport lifetime", () => {
   it("does not impose an implicit deadline on a filesystem operation", async () => {
-    let resolve!: (value: { size: number }) => void;
-    const rpc = {
-      call: vi.fn().mockImplementation(() => new Promise<{ size: number }>((r) => (resolve = r))),
-    };
+    let resolve!: (value: ReturnType<typeof statFixture>) => void;
+    const rpc = schemaRpcMock({
+      call: vi
+        .fn()
+        .mockImplementation(
+          () =>
+            new Promise<ReturnType<typeof statFixture>>((r) => (resolve = r)),
+        ),
+    });
     const fs = createRpcFs(rpc as never);
     const pending = fs.stat("slow-but-valid");
     await Promise.resolve();
-    expect(rpc.call).toHaveBeenCalledWith("main", "fs.stat", ["slow-but-valid"]);
-    resolve({ size: 7 });
+    expect(rpc.call).toHaveBeenCalledWith(
+      "main",
+      "fs.stat",
+      ["slow-but-valid"],
+      undefined,
+    );
+    resolve(statFixture(7));
     await expect(pending).resolves.toMatchObject({ size: 7 });
   });
 
   it("forwards explicit owner cancellation without inventing a deadline", async () => {
     const controller = new AbortController();
-    const rpc = { call: vi.fn(async () => ({ size: 1 })) };
+    const rpc = schemaRpcMock({ call: vi.fn(async () => statFixture(1)) });
     const fs = createRpcFs(rpc as never, { signal: controller.signal });
     await fs.stat("cancel-aware");
     expect(rpc.call).toHaveBeenCalledWith("main", "fs.stat", ["cancel-aware"], {
@@ -41,16 +66,22 @@ describe("createRpcFs transport lifetime", () => {
 
   it("reports settled operation latency without changing its lifetime", async () => {
     const telemetry: unknown[] = [];
-    const rpc = { call: vi.fn(async () => ({ size: 1 })) };
-    const fs = createRpcFs(rpc as never, { onTelemetry: (event) => telemetry.push(event) });
+    const rpc = schemaRpcMock({ call: vi.fn(async () => statFixture(1)) });
+    const fs = createRpcFs(rpc as never, {
+      onTelemetry: (event) => telemetry.push(event),
+    });
     await fs.stat("ready");
     expect(telemetry).toEqual([
-      expect.objectContaining({ method: "stat", phase: "settled", outcome: "ok" }),
+      expect.objectContaining({
+        method: "stat",
+        phase: "settled",
+        outcome: "ok",
+      }),
     ]);
   });
 
   it("does not let a telemetry observer change filesystem semantics", async () => {
-    const rpc = { call: vi.fn(async () => ({ size: 1 })) };
+    const rpc = schemaRpcMock({ call: vi.fn(async () => statFixture(1)) });
     const fs = createRpcFs(rpc as never, {
       onTelemetry: () => {
         throw new Error("observer failed");
@@ -63,16 +94,24 @@ describe("createRpcFs transport lifetime", () => {
 
 describe("createRpcFs binary file writes", () => {
   it("returns native wire bytes without relying on a Buffer global", async () => {
-    const rpc = {
+    const rpc = schemaRpcMock({
       call: vi.fn(async () => new Uint8Array([0, 1, 255])),
-    };
+    });
     const priorBuffer = globalThis.Buffer;
     try {
-      Object.defineProperty(globalThis, "Buffer", { configurable: true, value: undefined });
+      Object.defineProperty(globalThis, "Buffer", {
+        configurable: true,
+        value: undefined,
+      });
       const fs = createRpcFs(rpc as never);
-      await expect(fs.readFile("/f.bin")).resolves.toEqual(new Uint8Array([0, 1, 255]));
+      await expect(fs.readFile("/f.bin")).resolves.toEqual(
+        new Uint8Array([0, 1, 255]),
+      );
     } finally {
-      Object.defineProperty(globalThis, "Buffer", { configurable: true, value: priorBuffer });
+      Object.defineProperty(globalThis, "Buffer", {
+        configurable: true,
+        value: priorBuffer,
+      });
     }
   });
 
@@ -108,29 +147,49 @@ describe("createRpcFs binary file writes", () => {
 
 describe("createRpcFs temporary paths", () => {
   it("composes Node-style mkdtemp from the scoped temp-path and mkdir operations", async () => {
-    const rpc = {
-      call: vi.fn().mockResolvedValueOnce("/.tmp/probe-123").mockResolvedValueOnce(undefined),
-    };
+    const rpc = schemaRpcMock({
+      call: vi
+        .fn()
+        .mockResolvedValueOnce("/.tmp/probe-123")
+        .mockResolvedValueOnce(undefined),
+    });
     const fs = createRpcFs(rpc as never);
 
     await expect(fs.mkdtemp("probe")).resolves.toBe("/.tmp/probe-123");
-    expect(rpc.call).toHaveBeenNthCalledWith(1, "main", "fs.mktemp", ["probe"]);
-    expect(rpc.call).toHaveBeenNthCalledWith(2, "main", "fs.mkdir", [
-      "/.tmp/probe-123",
-      { recursive: true },
-    ]);
+    expect(rpc.call).toHaveBeenNthCalledWith(
+      1,
+      "main",
+      "fs.mktemp",
+      ["probe"],
+      undefined,
+    );
+    expect(rpc.call).toHaveBeenNthCalledWith(
+      2,
+      "main",
+      "fs.mkdir",
+      ["/.tmp/probe-123", { recursive: true }],
+      undefined,
+    );
   });
 });
 
 describe("createRpcFs directory listings", () => {
   it("forwards recursive listings through the injected runtime contract", async () => {
-    const rpc = {
+    const rpc = schemaRpcMock({
       call: vi.fn(async () => ["src", "src/index.ts"]),
-    };
+    });
     const fs = createRpcFs(rpc as never);
 
-    await expect(fs.readdir("/", { recursive: true })).resolves.toEqual(["src", "src/index.ts"]);
-    expect(rpc.call).toHaveBeenCalledWith("main", "fs.readdir", ["/", { recursive: true }]);
+    await expect(fs.readdir("/", { recursive: true })).resolves.toEqual([
+      "src",
+      "src/index.ts",
+    ]);
+    expect(rpc.call).toHaveBeenCalledWith(
+      "main",
+      "fs.readdir",
+      ["/", { recursive: true }],
+      undefined,
+    );
   });
 });
 

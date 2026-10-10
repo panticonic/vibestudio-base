@@ -80,11 +80,12 @@ For existing or custom providers:
 
    ```ts
    import { rpc, workers } from "@workspace/runtime";
+   import { exampleRpcMethods } from "@workspace-workers/example/contract";
 
    const service = await workers.resolveService("example.protocol");
    if (service.kind !== "durable-object")
      throw new Error("Expected a Durable Object service");
-   return rpc.call(service.targetId, "methodName", []);
+   return rpc.call(service.targetId, exampleRpcMethods.methodName, []);
    ```
 
 Updating the declaration of an existing service doesn't update its live RPC

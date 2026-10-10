@@ -29,7 +29,7 @@ export interface LoadedAgentImage {
   readonly executionDigest: string;
 }
 
-export type AgentHostCall = <T>(method: string, args: unknown[]) => Promise<T>;
+export type AgentHostCall = import("@vibestudio/service-schemas/mainRpc").MainRpcCaller;
 
 /**
  * Resolve authority from the live platform, not restored SQLite contents or
@@ -53,7 +53,7 @@ export async function openPlatformAgentSession(
   )
     throw new Error("Agent Session requires its exact host-loaded image");
   const entity = workspaceStateMethods["entity.resolveActive"].returns.parse(
-    await call<unknown>("workspace-state.entity.resolveActive", [loaded.runtimeId])
+    await call("workspace-state.entity.resolveActive", [loaded.runtimeId])
   );
   if (
     !entity ||
@@ -73,7 +73,7 @@ export async function openPlatformAgentSession(
     objectKey: loaded.objectKey,
   };
   const incarnation = workspaceStateMethods.alarmSourceRegister.returns.parse(
-    await call<unknown>("workspace-state.alarmSourceRegister", [key])
+    await call("workspace-state.alarmSourceRegister", [key])
   );
   return openBoundAgentSession(
     await createStorage(),
@@ -87,7 +87,7 @@ export async function openPlatformAgentSession(
       ...options,
       publishWake: async (schedule) => {
         const accepted = workspaceStateMethods.alarmSourcePublish.returns.parse(
-          await call<unknown>("workspace-state.alarmSourcePublish", [
+          await call("workspace-state.alarmSourcePublish", [
             { ...key, incarnation, ...schedule },
           ])
         );

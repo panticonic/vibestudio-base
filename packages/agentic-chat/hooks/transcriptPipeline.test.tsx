@@ -83,7 +83,7 @@ describe("headless transcript pipeline", () => {
     });
 
     const stored = (
-      await harness.gad.call<any>("readChannelEnvelopes", {
+      await harness.gad.call("readChannelEnvelopes", {
         channelId: harness.channelId,
         payloadKind: AGENTIC_EVENT_PAYLOAD_KIND,
       })

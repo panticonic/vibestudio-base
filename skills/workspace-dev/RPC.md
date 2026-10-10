@@ -8,6 +8,22 @@ authority](../capabilities/references/website-authority.md). Every method,
 stream, and event intake declares a website policy, separately from its
 cross-workspace exposure and its operation authority.
 
+## Receiver addresses
+
+The method contract must belong to the receiver at the address you call.
+`mainRpcMethods` describes the workspace's `main` receiver, shared by panels,
+workers, and eval. Its `hubControl` methods are the workspace-facing subset:
+workspace creation, creation receipts, and caller-scoped device revision
+observation. Account-wide device inspection and workspace catalog reads belong
+to the authenticated hub receiver used by the Shell. Importing the full hub
+schema does not make those methods available at workspace `main`.
+
+When joining sibling operations, retain the cancelling signal's reason. Use
+`isRpcAbortedBy(error, signal.reason)` from `@vibestudio/rpc` to identify cleanup
+caused by that owner. A matching message or an unrelated `RPC_ABORTED` error
+cannot establish that relationship. Keep independent cleanup failures in the
+aggregate.
+
 ## Cross-workspace calls
 
 Parent-child panel relationships exist only within one workspace. To work with
@@ -15,9 +31,16 @@ another workspace, call a receiver it has explicitly exposed, using normal RPC
 with a destination:
 
 ```typescript
-const result = await rpc.call(receiverId, "listAvailableSlots", [], {
-  destination: { kind: "workspace", workspaceId: destinationWorkspaceId },
-});
+import { storeRpcMethods } from "@workspace-workers/store/contract";
+
+const result = await rpc.call(
+  receiverId,
+  storeRpcMethods.listAvailableSlots,
+  [],
+  {
+    destination: { kind: "workspace", workspaceId: destinationWorkspaceId },
+  },
+);
 ```
 
 Without `destination`, the call goes to the current workspace; other workspaces
@@ -36,17 +59,15 @@ registry or forwarding service.
 ```typescript
 // panels/editor/contract.ts
 import { z, defineContract } from "@workspace/runtime";
-
-export interface EditorApi {
-  getContent(): Promise<string>;
-  setContent(text: string): Promise<void>;
-  save(): Promise<void>;
-}
+import { createReceiverRpcMethods } from "@vibestudio/shared/rpcMethods";
+import type { EditorRpcReceiver } from "./receiver.js";
 
 export const editorContract = defineContract({
   source: "panels/editor",
   child: {
-    methods: {} as EditorApi,
+    methods: createReceiverRpcMethods<
+      Pick<EditorRpcReceiver, "getContent" | "setContent" | "save">
+    >(["getContent", "setContent", "save"]),
     emits: {
       saved: z.object({ path: z.string(), timestamp: z.number() }),
       modified: z.object({ dirty: z.boolean() }),
@@ -54,6 +75,11 @@ export const editorContract = defineContract({
   },
 });
 ```
+
+`EditorRpcReceiver` is the type of the implementation that backs the exposed
+methods in `receiver.ts`. Keep it as a type-only import in the contract module;
+the contract derives argument and result types from that receiver instead of
+declaring a second interface.
 
 ## Export Contract
 
@@ -179,3 +205,22 @@ parent.emit("event", payload); // Emit event to parent
 parent.on("event", handler); // Listen for parent events
 await parent.click("button"); // CDP click convenience; prompts on first automation use
 ```
+
+When a UI needs to display an RPC failure, preserve nested receiver and cleanup
+details with `formatRpcFailure` instead of showing only the top-level message:
+
+```ts
+import { formatRpcFailure } from "@workspace/runtime";
+
+try {
+  await editor.call.save();
+} catch (error) {
+  setError(formatRpcFailure(error));
+}
+```
+
+RPC callers should follow the call's cancellation and terminal lifecycle. Do
+not add timeout races or retries to turn a pending call into a synthetic
+failure; use a deadline only when the operation's contract requires one.
+
+Import `storeRpcMethods` from the receiver’s contract module. Derive its descriptors from the real receiver with `createReceiverRpcMethods<Pick<Store, "listAvailableSlots">>(["listAvailableSlots"])`; public RPC accepts the descriptor and its argument tuple.

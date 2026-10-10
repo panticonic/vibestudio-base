@@ -1,3 +1,8 @@
+import { resolveDurableObjectService } from "@vibestudio/service-schemas/clients/durableObjectServiceClient";
+import { modelSettingsRpcMethods } from "@workspace/model-catalog/rpc-contract";
+import { agentRpcMethods } from "@workspace/agentic-do/rpc-contract";
+import { mainRpcMethods } from "@vibestudio/service-schemas/mainRpc";
+import { channelClientRpcMethods } from "@workspace/pubsub/rpc-contract";
 import {
   DurableObjectBase,
   doTargetId,
@@ -5,11 +10,7 @@ import {
 } from "@workspace/runtime/worker/kernel";
 import { launchAgentIntoChannel } from "@workspace/agentic-core/agent-launch";
 import { quickfireAgentConfig } from "@workspace/quickfire-core/agent";
-import {
-  MODEL_SETTINGS_SERVICE_PROTOCOL,
-  type ModelSettingsSnapshot,
-} from "@workspace/model-catalog/catalog";
-import type { DORef } from "@workspace/runtime/worker/kernel";
+import { MODEL_SETTINGS_SERVICE_PROTOCOL } from "@workspace/model-catalog/catalog";
 import type { QuickfireSession } from "@workspace/quickfire-core/service";
 
 const CHANNEL_SOURCE = "workers/pubsub-channel";
@@ -40,14 +41,6 @@ interface SessionRow {
   agent_key: string;
   created_at: number;
   promoted_at: number | null;
-}
-
-interface PanelTreeDetail {
-  slot?: {
-    parent_slot_id?: string | null;
-    current_entity_title?: string | null;
-  };
-  currentHistory?: { context_id?: string; source?: string };
 }
 
 export class QuickfireSessionsDO extends DurableObjectBase {
@@ -85,9 +78,9 @@ export class QuickfireSessionsDO extends DurableObjectBase {
   }> {
     const detail = (await this.rpc.call(
       "main",
-      "workspace-state.panelTree.detail",
+      mainRpcMethods["workspace-state.panelTree.detail"],
       [slotId],
-    )) as PanelTreeDetail | null;
+    ));
     const contextId = detail?.currentHistory?.context_id;
     const source = detail?.currentHistory?.source;
     if (!contextId || !source)
@@ -103,9 +96,9 @@ export class QuickfireSessionsDO extends DurableObjectBase {
   private async agentIsActive(row: SessionRow): Promise<boolean> {
     const record = (await this.rpc.call(
       "main",
-      "workspace-state.entity.resolveActive",
+      mainRpcMethods["workspace-state.entity.resolveActive"],
       [row.agent_entity_id],
-    )) as { status?: string } | null;
+    ));
     return record?.status === "active";
   }
 
@@ -113,7 +106,7 @@ export class QuickfireSessionsDO extends DurableObjectBase {
     channelId: string,
     slotId: string,
   ): Promise<void> {
-    await this.rpc.call("main", "runtime.createEntity", [
+    await this.rpc.call("main", mainRpcMethods["runtime.createEntity"], [
       {
         kind: "do",
         execution: { surface: "code", source: CHANNEL_SOURCE },
@@ -136,16 +129,19 @@ export class QuickfireSessionsDO extends DurableObjectBase {
   }> {
     try {
       const target = `do:${CHANNEL_SOURCE}:${CHANNEL_CLASS}:${row.channel_id}`;
-      const envelope = (await this.rpc.call(target, "getReplayAfter", [
-        { after: 0, limit: 1 },
-      ])) as { ready?: { snapshotLastSeq?: number } };
+      const envelope = await this.rpc.call(
+        target,
+        channelClientRpcMethods["getReplayAfter"],
+        [{ after: 0, limit: 1 }],
+      );
       const messageCount = envelope.ready?.snapshotLastSeq ?? null;
       if (!messageCount) return { messageCount, lastActivityAt: null };
-      const tail = (await this.rpc.call(target, "getReplayBefore", [
-        messageCount + 1,
-        1,
-      ])) as { logEvents?: Array<{ ts?: number }> } | Array<{ ts?: number }>;
-      const events = Array.isArray(tail) ? tail : (tail.logEvents ?? []);
+      const tail = await this.rpc.call(
+        target,
+        channelClientRpcMethods["getReplayBefore"],
+        [messageCount + 1, 1],
+      );
+      const events = tail.logEvents;
       return { messageCount, lastActivityAt: events.at(-1)?.ts ?? null };
     } catch {
       return { messageCount: null, lastActivityAt: null };
@@ -184,15 +180,15 @@ export class QuickfireSessionsDO extends DurableObjectBase {
       objectKey: row.agent_key,
     });
     await this.rpc
-      .call(target, "interruptChannel", [row.channel_id, false])
+      .call(target, agentRpcMethods["interruptChannel"], [row.channel_id, false])
       .catch(() => undefined);
     await this.rpc
-      .call(target, "unsubscribeChannel", [row.channel_id])
+      .call(target, agentRpcMethods["unsubscribeChannel"], [row.channel_id])
       .catch(() => undefined);
-    await this.rpc.call("main", "runtime.retireEntity", [
+    await this.rpc.call("main", mainRpcMethods["runtime.retireEntity"], [
       { id: row.agent_entity_id, removeContext: false },
     ]);
-    await this.rpc.call("main", "runtime.retireEntity", [
+    await this.rpc.call("main", mainRpcMethods["runtime.retireEntity"], [
       {
         id: doTargetId({
           source: CHANNEL_SOURCE,
@@ -238,7 +234,7 @@ export class QuickfireSessionsDO extends DurableObjectBase {
         // Resource bindings are lifecycle state, not immutable launch state.
         // Reconcile them when an older durable Quickfire conversation resumes
         // so newly added built-in grants apply without replacing the agent.
-        await this.rpc.call("main", "runtime.replaceResourceBindings", [
+        await this.rpc.call("main", mainRpcMethods["runtime.replaceResourceBindings"], [
           {
             id: existing.agent_entity_id,
             bindings: agentResourceBindings(input.slotId, existing.channel_id),
@@ -259,14 +255,13 @@ export class QuickfireSessionsDO extends DurableObjectBase {
     }
 
     const panel = await this.panelFor(input.slotId);
-    const modelSettings = await this.rpc.call<DORef>(
-      "main",
-      "workers.resolveService",
-      [MODEL_SETTINGS_SERVICE_PROTOCOL],
+    const modelSettings = await resolveDurableObjectService(
+      this.rpc,
+      MODEL_SETTINGS_SERVICE_PROTOCOL,
     );
-    const settings = await this.rpc.call<ModelSettingsSnapshot>(
+    const settings = await this.rpc.call(
       doTargetId(modelSettings),
-      "getSettings",
+      modelSettingsRpcMethods["getSettings"],
       [],
     );
     const suffix = crypto.randomUUID().slice(0, 12);
@@ -341,7 +336,7 @@ export class QuickfireSessionsDO extends DurableObjectBase {
     const row = this.row(input.slotId);
     if (!row) return null;
     if (row.promoted_at === null) {
-      await this.rpc.call("main", "runtime.releaseResourceBindings", [
+      await this.rpc.call("main", mainRpcMethods["runtime.releaseResourceBindings"], [
         {
           id: doTargetId({
             source: CHANNEL_SOURCE,
@@ -350,7 +345,7 @@ export class QuickfireSessionsDO extends DurableObjectBase {
           }),
         },
       ]);
-      await this.rpc.call("main", "runtime.releaseResourceBindings", [
+      await this.rpc.call("main", mainRpcMethods["runtime.releaseResourceBindings"], [
         { id: row.agent_entity_id },
       ]);
       this.sql.exec(

@@ -1,11 +1,9 @@
+import { createTypedRpcServiceClient } from "@vibestudio/shared/typedRpcServiceClient";
 /** Thin agent-tool adapter for the canonical semantic VCS service. */
 
 import { vcsMethods } from "@vibestudio/service-schemas/vcs";
 import type { VcsCommitResult, VcsStateNodeRef } from "@vibestudio/service-schemas/vcs";
-import {
-  createTypedServiceClient,
-  type TypedServiceClient,
-} from "@vibestudio/shared/typedServiceClient";
+import { type TypedServiceClient } from "@vibestudio/shared/typedServiceClient";
 
 import { resolveToCwd } from "./path-utils.js";
 
@@ -62,9 +60,7 @@ export async function resolveToolWorkingState(
 }
 
 export function createToolVcs(
-  callMain: <T>(method: string, args: unknown[]) => Promise<T>
+  rpc: Pick<import("@vibestudio/rpc").RpcCaller, "call">
 ): ToolVcs {
-  return createTypedServiceClient("vcs", vcsMethods, (_service, method, args) =>
-    callMain(`vcs.${method}`, args)
-  );
+  return createTypedRpcServiceClient(rpc, { targetId: "main", namespace: "vcs" }, vcsMethods);
 }

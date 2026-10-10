@@ -59,6 +59,9 @@ export interface PanelRpcIpcApi {
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export type AnyFunction = (...args: any[]) => any;
 
+/** Calls without a receiver contract retain unknown results. */
+export type UncontractedMethods = Record<string, (...args: unknown[]) => unknown>;
+
 export interface ExposedMethods {
   [methodName: string]: AnyFunction;
 }

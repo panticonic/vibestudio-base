@@ -1,6 +1,8 @@
+import { schemaRpcMock } from "@vibestudio/rpc/test-utils";
 import type { RpcCaller, RpcCallOptions } from "@vibestudio/rpc";
 import { describe, expect, it, vi } from "vitest";
 import { ChannelClient } from "./channel-client.js";
+import { durableObjectServiceFixture } from "@vibestudio/service-schemas/test-utils";
 
 interface Captured {
   event?: {
@@ -13,12 +15,26 @@ interface Captured {
   publishOpts?: { attachments?: Array<Record<string, unknown>> };
 }
 
+function resolvedChannelTarget() {
+  return durableObjectServiceFixture("chan-do", {
+    origin: "workspace",
+    source: "workers/pubsub-channel",
+    name: "pubsub-channel",
+    action: "provide",
+    presentation: { domain: "web", verb: "see" },
+    authority: { principals: ["code"] },
+    protocols: ["vibestudio.channel.v1"],
+    className: "ChannelDO",
+    objectKey: "chan-1",
+  });
+}
+
 /** A ChannelClient backed by a stub RpcCaller that captures the published event. */
 function makeClient(captured: Captured): ChannelClient {
-  const rpc = {
+  const rpc = schemaRpcMock({
     call: async (_target: string, method: string, args: unknown[]) => {
       if (method === "workers.resolveService") {
-        return { kind: "durable-object", targetId: "chan-do" };
+        return resolvedChannelTarget();
       }
       if (method === "publish") {
         captured.event = args[2] as Captured["event"];
@@ -27,7 +43,7 @@ function makeClient(captured: Captured): ChannelClient {
       }
       return undefined;
     },
-  };
+  });
   return new ChannelClient(rpc as never, "chan-1");
 }
 
@@ -37,10 +53,10 @@ describe("ChannelClient.send tier", () => {
     const accepted = new Promise<void>((resolve) => {
       acknowledge = resolve;
     });
-    const rpc = {
+    const rpc = schemaRpcMock({
       call: vi.fn(async (_target: string, method: string) => {
         if (method === "workers.resolveService") {
-          return { kind: "durable-object", targetId: "chan-do" };
+          return resolvedChannelTarget();
         }
         if (method === "publish") {
           await accepted;
@@ -48,7 +64,7 @@ describe("ChannelClient.send tier", () => {
         }
         return undefined;
       }),
-    };
+    });
     const publish = new ChannelClient(rpc as never, "chan-1").publish(
       "agent:1",
       "vibestudio.test",
@@ -126,10 +142,10 @@ describe("ChannelClient.send attachments", () => {
 describe("ChannelClient finite relationships", () => {
   it("joins without opening an RPC response stream", async () => {
     const stream = vi.fn();
-    const rpc = {
+    const rpc = schemaRpcMock({
       call: vi.fn(async (_target: string, method: string, args: unknown[]) => {
         if (method === "workers.resolveService") {
-          return { kind: "durable-object", targetId: "chan-do" };
+          return resolvedChannelTarget();
         }
         if (method === "join") {
           return {
@@ -140,7 +156,7 @@ describe("ChannelClient finite relationships", () => {
         return undefined;
       }),
       stream,
-    };
+    });
     const client = new ChannelClient(rpc as never, "chan-1");
     await expect(
       client.join({
@@ -162,17 +178,17 @@ describe("ChannelClient finite relationships", () => {
     const leaveAcknowledged = new Promise<void>((resolve) => {
       acknowledgeLeave = resolve;
     });
-    const rpc = {
+    const rpc = schemaRpcMock({
       call: vi.fn(async (_target: string, method: string) => {
         if (method === "workers.resolveService") {
-          return { kind: "durable-object", targetId: "chan-do" };
+          return resolvedChannelTarget();
         }
         if (method === "leave") {
           await leaveAcknowledged;
         }
         return undefined;
       }),
-    };
+    });
     const client = new ChannelClient(rpc as never, "chan-1");
 
     let settled = false;
@@ -204,13 +220,13 @@ describe("ChannelClient finite observation lifetime", () => {
         method: string;
         options: RpcCallOptions | undefined;
       }[] = [];
-      const caller: RpcCaller = {
-        call: async <T>(
+      const caller: RpcCaller = schemaRpcMock({
+        call: async (
           _target: string,
           method: string,
           _args: unknown[],
           options?: RpcCallOptions,
-        ): Promise<T> => {
+        ): Promise<unknown> => {
           received.push({ method, options });
           if (method === stage) {
             enter();
@@ -227,11 +243,11 @@ describe("ChannelClient finite observation lifetime", () => {
             });
           }
           if (method === "workers.resolveService")
-            return { kind: "durable-object", targetId: "actual-channel" } as T;
-          return undefined as T;
+            return { ...resolvedChannelTarget(), targetId: "actual-channel" };
+          return undefined;
         },
         stream: async () => new Response(),
-      };
+      });
       const sending = new ChannelClient(
         caller,
         "actual-channel-key",

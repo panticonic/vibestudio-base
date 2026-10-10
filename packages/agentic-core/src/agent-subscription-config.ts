@@ -1,3 +1,5 @@
+import { RESPOND_POLICIES } from "@workspace/agentic-protocol";
+import { z } from "zod";
 import type { RespondPolicy } from "@workspace/agentic-protocol";
 
 export type AgentThinkingLevel = "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
@@ -189,3 +191,16 @@ export function resolveAgentObservationConfig(
   }
   return { payloadKinds: normalized };
 }
+
+/** Validate worker-owned setup metadata before it enters agent configuration. */
+export const agentSubscriptionConfigSchema: z.ZodType<AgentSubscriptionConfig> = z.object({
+  model: z.string().optional(), thinkingLevel: z.enum(["minimal", "low", "medium", "high", "xhigh", "max"]).optional(), fastMode: z.boolean().optional(),
+  fallbackModel: z.string().optional(), fallbackThinkingLevel: z.enum(["minimal", "low", "medium", "high", "xhigh", "max"]).optional(),
+  fallbackOn: z.array(z.string()).optional(), fallbackScope: z.enum(["unattended", "all-turns"]).optional(),
+  approvalLevel: z.union([z.literal(0), z.literal(1), z.literal(2)]).optional(),
+  respondPolicy: z.enum(RESPOND_POLICIES).optional(), respondFrom: z.array(z.string()).optional(),
+  systemPrompt: z.string().optional(), systemPromptMode: z.enum(["append", "replace", "replace-vibestudio"]).optional(),
+  handle: z.string().optional(), name: z.string().optional(), wakePolicy: z.enum(["every-envelope", "explicit", "manual"]).optional(),
+  observations: z.object({ payloadKinds: z.array(z.string()) }).optional(),
+  features: z.object({ resources: z.record(z.object({ kind: z.string(), id: z.string() })).optional(), tools: z.array(z.object({ kind: z.string(), resource: z.string().optional() })).optional() }).optional(),
+}).passthrough();

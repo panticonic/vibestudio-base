@@ -1,7 +1,10 @@
 import React, { useCallback, useState, type ReactNode } from "react";
 import { Box, Flex, Spinner, Text } from "@radix-ui/themes";
 import { prettifyToolName } from "@workspace/pubsub";
-import type { CustomMessageCardPayload, InvocationCardPayload } from "@workspace/agentic-core";
+import type {
+  CustomMessageCardPayload,
+  InvocationCardPayload,
+} from "@workspace/agentic-core";
 import type { ChatSandboxValue } from "@workspace/agentic-core";
 import { ThinkingPill, ExpandedThinking } from "./ThinkingMessage";
 import { ActionPill, ExpandedAction } from "./ActionMessage";
@@ -14,7 +17,13 @@ const PREVIEW_MAX_LENGTH = 50;
 export type InlineItem =
   | { type: "thinking"; id: string; content: string; complete: boolean }
   | { type: "toolcall-progress"; id: string; content: string }
-  | { type: "invocation"; id: string; invocation: InvocationCardPayload; complete: boolean; senderId: string }
+  | {
+      type: "invocation";
+      id: string;
+      invocation: InvocationCardPayload;
+      complete: boolean;
+      senderId: string;
+    }
   | { type: "custom"; id: string; payload: CustomMessageCardPayload }
   | { type: "typing"; id: string; data: TypingIndicatorData; senderId: string };
 
@@ -34,7 +43,7 @@ export interface InvocationRenderContext {
  */
 export type InvocationRenderer = (
   context: InvocationRenderContext,
-  defaultContent: ReactNode
+  defaultContent: ReactNode,
 ) => ReactNode;
 
 export interface InlineGroupProps {
@@ -49,7 +58,10 @@ export interface InlineGroupProps {
    * run cancel to that agent (no transportCallId on an eval) versus the
    * panel-local / channel-method abort for everything else.
    */
-  onCancelInvocation?: (invocation: InvocationCardPayload, senderId: string) => void;
+  onCancelInvocation?: (
+    invocation: InvocationCardPayload,
+    senderId: string,
+  ) => void;
   /** Per-invocation presentation override. */
   renderInvocation?: InvocationRenderer;
 }
@@ -102,12 +114,19 @@ type Segment =
   | { kind: "pills"; key: string; items: InlineItem[] }
   | { kind: "expanded"; key: string; item: InlineItem };
 
-function buildSegments(items: InlineItem[], expandedIds: ReadonlySet<string>): Segment[] {
+function buildSegments(
+  items: InlineItem[],
+  expandedIds: ReadonlySet<string>,
+): Segment[] {
   const segments: Segment[] = [];
   let pillRun: InlineItem[] = [];
   const flush = () => {
     if (pillRun.length === 0) return;
-    segments.push({ kind: "pills", key: `pills-${pillRun[0]!.id}`, items: pillRun });
+    segments.push({
+      kind: "pills",
+      key: `pills-${pillRun[0]!.id}`,
+      items: pillRun,
+    });
     pillRun = [];
   };
   for (const item of items) {
@@ -136,7 +155,9 @@ export const InlineGroup = React.memo(function InlineGroup({
   onCancelInvocation,
   renderInvocation,
 }: InlineGroupProps) {
-  const [expandedIds, setExpandedIds] = useState<ReadonlySet<string>>(() => new Set());
+  const [expandedIds, setExpandedIds] = useState<ReadonlySet<string>>(
+    () => new Set(),
+  );
   const toggle = useCallback((id: string) => {
     setExpandedIds((prev) => {
       const next = new Set(prev);
@@ -193,7 +214,7 @@ export const InlineGroup = React.memo(function InlineGroup({
                 onToggle,
                 onCancel,
               },
-              defaultContent
+              defaultContent,
             )}
           </React.Fragment>
         ) : (
@@ -218,12 +239,16 @@ export const InlineGroup = React.memo(function InlineGroup({
           <TypingPill
             key={item.id}
             data={item.data}
-            onInterrupt={onInterrupt ? () => onInterrupt(item.senderId) : undefined}
+            onInterrupt={
+              onInterrupt ? () => onInterrupt(item.senderId) : undefined
+            }
           />
         );
       case "toolcall-progress": {
         const progress = parseToolCallProgress(item.content);
-        const label = progress.toolName ? prettifyToolName(progress.toolName) : "tool call";
+        const label = progress.toolName
+          ? prettifyToolName(progress.toolName)
+          : "tool call";
         const kb = `${(progress.argBytes / 1024).toFixed(1)} KB`;
         return (
           <Flex
@@ -240,7 +265,12 @@ export const InlineGroup = React.memo(function InlineGroup({
             }}
           >
             {progress.phase === "streaming" ? <Spinner size="1" /> : null}
-            <Text className="inline-pill-summary" size="1" color="gray" weight="medium">
+            <Text
+              className="inline-pill-summary"
+              size="1"
+              color="gray"
+              weight="medium"
+            >
               {progress.phase === "prepared"
                 ? `${label} · ${kb}`
                 : `${label} · writing ${kb}…`}
@@ -285,7 +315,7 @@ export const InlineGroup = React.memo(function InlineGroup({
                 onToggle: collapse,
                 onCancel,
               },
-              defaultContent
+              defaultContent,
             )
           : defaultContent;
       }

@@ -1,3 +1,5 @@
+import { agentRpcMethods } from "./rpc-contract.js";
+import { mainRpcMethods } from "@vibestudio/service-schemas/mainRpc";
 import {
   AGENTIC_PROTOCOL_VERSION,
   type AgenticEvent,
@@ -16,11 +18,7 @@ import {
  * authority is enforced by runtime/channel services, not by duplicate helpers.
  */
 export interface AgentLaunchRpc {
-  call<T = unknown>(
-    target: string,
-    method: string,
-    args: unknown[],
-  ): Promise<T>;
+  call: import("@vibestudio/rpc").RpcCaller["call"];
 }
 
 export interface AgentEntityHandle {
@@ -29,6 +27,8 @@ export interface AgentEntityHandle {
   contextId?: string;
 }
 
+/** A successful reasoning membership has its complete native initialization
+ * committed. Addressed supervision memberships do not own a model loop. */
 export interface AgentSubscriptionResult {
   ok: boolean;
   participantId: string;
@@ -163,7 +163,7 @@ export async function createAgentEntity(
   rpc: AgentLaunchRpc,
   input: AgentEntityCreateInput,
 ): Promise<AgentEntityHandle> {
-  return rpc.call<AgentEntityHandle>("main", "runtime.createEntity", [
+  return rpc.call("main", mainRpcMethods["runtime.createEntity"], [
     buildAgentEntityCreateSpec(input),
   ]);
 }
@@ -172,7 +172,7 @@ export async function retireAgentEntity(
   rpc: AgentLaunchRpc,
   id: string,
 ): Promise<void> {
-  await rpc.call("main", "runtime.retireEntity", [{ id }]);
+  await rpc.call("main", mainRpcMethods["runtime.retireEntity"], [{ id }]);
 }
 
 export async function subscribeAgentToChannel(
@@ -182,7 +182,7 @@ export async function subscribeAgentToChannel(
 ): Promise<AgentSubscriptionResult> {
   return requireAgentSubscriptionResult(
     "subscribeChannel",
-    await rpc.call<unknown>(targetIdFor(handleOrTargetId), "subscribeChannel", [
+    await rpc.call(targetIdFor(handleOrTargetId), agentRpcMethods["subscribeChannel"], [
       {
         channelId: input.channelId,
         contextId: input.contextId,
@@ -201,17 +201,20 @@ export async function unsubscribeAgentFromChannel(
   rpc: AgentLaunchRpc,
   input: AgentChannelUnsubscriptionInput,
 ): Promise<{ ok: boolean }> {
-  return rpc.call<{ ok: boolean }>(
+  return rpc.call(
     doTargetId({
       source: input.source,
       className: input.className,
       objectKey: input.key,
     }),
-    "unsubscribeChannel",
+    agentRpcMethods["unsubscribeChannel"],
     [input.channelId],
   );
 }
 
+/** Create/bind the execution scope, then initialize the channel. Success
+ * means instructions, model policy, tools and replay history are committed;
+ * no later configuration-discovery step is required before accepting input. */
 export async function launchAgentIntoChannel(
   rpc: AgentLaunchRpc,
   input: LaunchAgentIntoChannelInput,
@@ -263,9 +266,9 @@ export async function createSubagentContext(
   rpc: AgentLaunchRpc,
   input: CreateSubagentContextInput,
 ): Promise<{ contextId: string }> {
-  return rpc.call<{ contextId: string }>(
+  return rpc.call(
     "main",
-    "runtime.createSubagentContext",
+    mainRpcMethods["runtime.createSubagentContext"],
     [input],
   );
 }

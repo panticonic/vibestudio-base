@@ -44,7 +44,7 @@ export async function nativeInvocationOwner(
 ): Promise<NativeInvocationSource["owner"]> {
   const owner = await retainedAgentExecutionOwner(harness, context);
   const entity = workspaceStateMethods["entity.resolveActive"].returns.parse(
-    await call<unknown>("workspace-state.entity.resolveActive", [
+    await call("workspace-state.entity.resolveActive", [
       image.runtimeId,
     ]),
   );

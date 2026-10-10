@@ -1,3 +1,4 @@
+import { createMainRpcCaller } from "@vibestudio/service-schemas/mainRpc";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   createModels,
@@ -27,6 +28,7 @@ import {
   type JsonObject,
 } from "@panticonic/pi-durable";
 import type { RpcClient, RpcCallOptions } from "@vibestudio/rpc";
+import { wireClientFor } from "@vibestudio/rpc/internal";
 import type { ParticipantDescriptor, ChannelEvent } from "@workspace/harness";
 import {
   AGENTIC_EVENT_PAYLOAD_KIND,
@@ -133,6 +135,7 @@ class SpawnVessel extends AgentVesselBase {
   failDestroy: Error | null = null;
   changedContext = false;
   changedSettings = false;
+  private rpcWireIntercepted = false;
   protected override getParticipantInfo(): ParticipantDescriptor {
     return { type: "agent", name: "parent", handle: "parent" };
   }
@@ -170,7 +173,7 @@ class SpawnVessel extends AgentVesselBase {
       {
         harness: this.admittedAgentSession(),
         image: this.loadedImage(),
-        callHost: (method, args) => this.rpc.call("main", method, args),
+        callHost: createMainRpcCaller(this.rpc),
         rpc: this.rpc,
         publishStart: (id, event, key) =>
           this.createChannelClient(id).publishAgenticEvent(
@@ -185,106 +188,109 @@ class SpawnVessel extends AgentVesselBase {
   }
   protected override get rpc(): RpcClient {
     const base = super.rpc;
-    return new Proxy(base, {
-      get: (target, property, receiver) => {
-        if (property === "call")
-          return async <T>(
-            destination: string,
-            method: string,
-            args: unknown[],
-            options?: RpcCallOptions,
-          ): Promise<T> => {
-            this.calls.push({
-              target: destination,
-              method,
-              args: detached(args),
-              options,
-            });
-            if (
-              destination === "main" &&
-              method === "workspace-state.entity.resolveActive"
-            )
-              return copyJson(this.activeEntity) as T;
-            if (destination === "main" && method === "runtime.resolveContext")
-              return owner.contextId as T;
-            if (
-              destination === "main" &&
-              method === "runtime.createSubagentContext"
-            ) {
-              const input = args[0] as {
-                parentContextId: string;
-                ownerEntityId: string;
-                targetKey: string;
-              };
-              expect(input.parentContextId).toBe(owner.contextId);
-              expect(input.ownerEntityId).toBe(owner.runtimeId);
-              const contextId = contextIdForTargetKey(input.targetKey);
-              this.admittedContexts.add(contextId);
-              return {
-                contextId: this.changedContext ? "foreign-context" : contextId,
-              } as T;
-            }
-            if (destination === "main" && method === "runtime.createEntity") {
-              const input = args[0] as {
-                key: string;
-                contextId: string;
-                stateArgs: { agentConfig: Record<string, unknown> };
-              };
-              const child = {
-                id: `do:workers/test:TestAgent:${input.key}`,
-                contextId: input.contextId,
-                config: detached(input.stateArgs.agentConfig),
-              };
-              this.created.set(input.key, child);
-              if (this.failCreateResponse)
-                throw new Error("Original accepted entity response lost");
-              return { ...child, targetId: child.id } as T;
-            }
-            if (destination === "main" && method === "runtime.destroyContext") {
-              if (this.failDestroy) throw this.failDestroy;
-              const input = args[0] as { contextId: string };
-              this.admittedContexts.delete(input.contextId);
-              return { destroyed: true } as T;
-            }
-            const child = [...this.created.values()].find(
-              (child) => child.id === destination,
-            );
-            if (child && method === "subscribeChannel")
-              return { ok: true, participantId: child.id } as T;
-            if (child && method === "importChannelKnowledge")
-              return { ok: true, participantId: child.id } as T;
-            if (child && method === "getAgentSettings")
-              return {
-                ...child.config,
-                ...(this.changedSettings ? { thinkingLevel: "changed" } : {}),
-              } as T;
-            if (child && method === "readSubagentExecutionActivity")
-              return { active: this.activeChildren.has(child.id) } as T;
-            if (child && method === "cancelSubagentExecution") {
-              const input = args[0] as {
-                runId: string;
-                taskChannelId: string;
-                operationId: string;
-              };
-              const run = this.runs().find(
-                (run) => run.childEntityId === child.id,
-              );
-              expect(input.runId).toBe(run?.runId);
-              expect(input.taskChannelId).toBe(run?.taskChannelId);
-              expect(input.operationId).toBe(
-                options?.causalParent?.invocationId,
-              );
-              this.activeChildren.delete(child.id);
-              return { cancelled: true } as T;
-            }
-            throw new Error(
-              `Unexpected protected host operation ${destination}.${method}`,
-            );
+    if (!this.rpcWireIntercepted) {
+      this.rpcWireIntercepted = true;
+      const wire = wireClientFor(base);
+      wire.call = async (
+        destination: string,
+        method: string,
+        args: unknown[],
+        options?: RpcCallOptions,
+      ): Promise<unknown> => {
+        this.calls.push({
+          target: destination,
+          method,
+          args: detached(args),
+          options,
+        });
+        if (
+          destination === "main" &&
+          method === "workspace-state.entity.resolveActive"
+        )
+          return copyJson(this.activeEntity);
+        if (destination === "main" && method === "runtime.resolveContext")
+          return owner.contextId;
+        if (
+          destination === "main" &&
+          method === "runtime.createSubagentContext"
+        ) {
+          const input = args[0] as {
+            parentContextId: string;
+            ownerEntityId: string;
+            targetKey: string;
           };
-        const value = Reflect.get(target, property, receiver);
-        return typeof value === "function" ? value.bind(target) : value;
-      },
-    });
+          expect(input.parentContextId).toBe(owner.contextId);
+          expect(input.ownerEntityId).toBe(owner.runtimeId);
+          const contextId = contextIdForTargetKey(input.targetKey);
+          this.admittedContexts.add(contextId);
+          return {
+            contextId: this.changedContext ? "foreign-context" : contextId,
+          };
+        }
+        if (destination === "main" && method === "runtime.createEntity") {
+          const input = args[0] as {
+            key: string;
+            contextId: string;
+            stateArgs: { agentConfig: Record<string, unknown> };
+          };
+          const child = {
+            id: `do:workers/test:TestAgent:${input.key}`,
+            contextId: input.contextId,
+            config: detached(input.stateArgs.agentConfig),
+          };
+          this.created.set(input.key, child);
+          if (this.failCreateResponse)
+            throw new Error("Original accepted entity response lost");
+          return {
+            id: child.id,
+            kind: "do",
+            source: {
+              repoPath: image.source,
+              effectiveVersion: "current-version",
+            },
+            contextId: child.contextId,
+            targetId: child.id,
+          };
+        }
+        if (destination === "main" && method === "runtime.destroyContext") {
+          if (this.failDestroy) throw this.failDestroy;
+          const input = args[0] as { contextId: string };
+          this.admittedContexts.delete(input.contextId);
+          return undefined;
+        }
+        const child = [...this.created.values()].find(
+          (child) => child.id === destination,
+        );
+        if (child && method === "subscribeChannel")
+          return { ok: true, participantId: child.id };
+        if (child && method === "importChannelKnowledge")
+          return { ok: true, participantId: child.id };
+        if (child && method === "getAgentSettings")
+          return {
+            ...child.config,
+            ...(this.changedSettings ? { thinkingLevel: "changed" } : {}),
+          };
+        if (child && method === "readSubagentExecutionActivity")
+          return { active: this.activeChildren.has(child.id) };
+        if (child && method === "cancelSubagentExecution") {
+          const input = args[0] as {
+            runId: string;
+            taskChannelId: string;
+            operationId: string;
+          };
+          const run = this.runs().find((run) => run.childEntityId === child.id);
+          expect(input.runId).toBe(run?.runId);
+          expect(input.taskChannelId).toBe(run?.taskChannelId);
+          expect(input.operationId).toBe(options?.causalParent?.invocationId);
+          this.activeChildren.delete(child.id);
+          return { cancelled: true };
+        }
+        throw new Error(
+          `Unexpected protected host operation ${destination}.${method}`,
+        );
+      };
+    }
+    return base;
   }
   protected override createChannelClient(id: string): ChannelClient {
     const list = () => this.events.get(id) ?? [];

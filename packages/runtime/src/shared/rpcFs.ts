@@ -1,7 +1,9 @@
+import { fsMethods } from "@vibestudio/service-schemas/fs";
+import { createRpcMethodCaller, createRpcMethods, type RpcMethodArgs, type RpcMethodResult } from "@vibestudio/shared/rpcMethods";
 /**
  * RPC-backed RuntimeFs implementation.
  *
- * Each method calls rpc.call<T>("main", "fs.{method}", ...args).
+ * Each method uses the canonical filesystem receiver contract.
  * Binary data travels as native Uint8Array values through the RPC wire codec.
  *
  * Shared between panels and workers — no Node.js or browser-specific dependencies.
@@ -78,7 +80,9 @@ export interface RpcFsOptions {
 }
 
 export function createRpcFs(rpc: Pick<RpcClient, "call">, options: RpcFsOptions = {}): RuntimeFs {
-  function call<T>(method: string, ...args: unknown[]): Promise<T> {
+  const methods = createRpcMethods("fs", fsMethods);
+  const invoke = createRpcMethodCaller(rpc, "main", methods);
+  function call<K extends keyof typeof methods & string>(method: K, ...args: RpcMethodArgs<(typeof methods)[K]>): Promise<RpcMethodResult<(typeof methods)[K]>> {
     const startedAt = Date.now();
     const report = (event: RpcFsTelemetry): void => {
       try {
@@ -88,8 +92,8 @@ export function createRpcFs(rpc: Pick<RpcClient, "call">, options: RpcFsOptions 
       }
     };
     const invocation = options.signal
-      ? rpc.call<T>("main", `fs.${method}`, [...args], { signal: options.signal })
-      : rpc.call<T>("main", `fs.${method}`, [...args]);
+      ? invoke(method, args, { signal: options.signal })
+      : invoke(method, args);
     return invocation.then(
       (value) => {
         if (options.onTelemetry) {
@@ -118,18 +122,18 @@ export function createRpcFs(rpc: Pick<RpcClient, "call">, options: RpcFsOptions 
   return {
     constants: FS_CONSTANTS,
     async mktemp(prefix?: string): Promise<string> {
-      return call<string>("mktemp", prefix);
+      return call("mktemp", prefix);
     },
     async mkdtemp(prefix?: string): Promise<string> {
-      const path = await call<string>("mktemp", prefix);
-      await call<string | undefined>("mkdir", path, { recursive: true });
+      const path = await call("mktemp", prefix);
+      await call("mkdir", path, { recursive: true });
       return path;
     },
     async readFile(path: string, encoding?: string): Promise<string | Uint8Array> {
-      return call<string | Uint8Array>("readFile", path, encoding);
+      return call("readFile", path, encoding);
     },
     async writeFile(path: string, data: string | RuntimeBinaryData): Promise<void> {
-      await call<void>("writeFile", path, encodeWritePayload(data));
+      await call("writeFile", path, encodeWritePayload(data));
     },
     readdir: (async (
       path: string,
@@ -139,16 +143,23 @@ export function createRpcFs(rpc: Pick<RpcClient, "call">, options: RpcFsOptions 
       }
     ): Promise<string[] | Dirent[]> => {
       if (options?.withFileTypes) {
-        const entries = await call<SerializedDirent[]>("readdir", path, options);
-        return entries.map(toDirent);
+        const entries = await call("readdir", path, options);
+        return entries.map((entry) => {
+          if (typeof entry === "string") throw new TypeError("Filesystem receiver returned names when directory entries were requested");
+          return toDirent(entry);
+        });
       }
-      return options ? call<string[]>("readdir", path, options) : call<string[]>("readdir", path);
+      const entries = await (options ? call("readdir", path, options) : call("readdir", path));
+      return entries.map((entry) => {
+        if (typeof entry !== "string") throw new TypeError("Filesystem receiver returned directory entries when names were requested");
+        return entry;
+      });
     }) as RuntimeFs["readdir"],
     async stat(path: string): Promise<FileStats> {
-      return toFileStats(await call<unknown>("stat", path));
+      return toFileStats(await call("stat", path));
     },
     async lstat(path: string): Promise<FileStats> {
-      return toFileStats(await call<unknown>("lstat", path));
+      return toFileStats(await call("lstat", path));
     },
     async mkdir(
       path: string,
@@ -156,11 +167,11 @@ export function createRpcFs(rpc: Pick<RpcClient, "call">, options: RpcFsOptions 
         recursive?: boolean;
       }
     ): Promise<string | undefined> {
-      await call<void>("mkdir", path, options);
+      await call("mkdir", path, options);
       return undefined;
     },
     async rmdir(path: string): Promise<void> {
-      await call<void>("rmdir", path);
+      await call("rmdir", path);
     },
     async rm(
       path: string,
@@ -169,33 +180,31 @@ export function createRpcFs(rpc: Pick<RpcClient, "call">, options: RpcFsOptions 
         force?: boolean;
       }
     ): Promise<void> {
-      await call<void>("rm", path, options);
+      await call("rm", path, options);
     },
     async exists(path: string): Promise<boolean> {
-      return call<boolean>("exists", path);
+      return call("exists", path);
     },
     async unlink(path: string): Promise<void> {
-      await call<void>("unlink", path);
+      await call("unlink", path);
     },
     async access(path: string, mode?: number): Promise<void> {
-      await call<void>("access", path, mode);
+      await call("access", path, mode);
     },
     async appendFile(path: string, data: string | RuntimeBinaryData): Promise<void> {
-      await call<void>("appendFile", path, encodeWritePayload(data));
+      await call("appendFile", path, encodeWritePayload(data));
     },
     async copyFile(src: string, dest: string): Promise<void> {
-      await call<void>("copyFile", src, dest);
+      await call("copyFile", src, dest);
     },
     async rename(oldPath: string, newPath: string): Promise<void> {
-      await call<void>("rename", oldPath, newPath);
+      await call("rename", oldPath, newPath);
     },
     async realpath(path: string): Promise<string> {
-      return call<string>("realpath", path);
+      return call("realpath", path);
     },
     async open(filePath: string, flags?: string, mode?: number): Promise<FileHandle> {
-      const { handleId } = await call<{
-        handleId: number;
-      }>("open", filePath, flags, mode);
+      const { handleId } = await call("open", filePath, flags, mode);
       return {
         fd: handleId,
         async read(
@@ -207,10 +216,7 @@ export function createRpcFs(rpc: Pick<RpcClient, "call">, options: RpcFsOptions 
           bytesRead: number;
           buffer: Uint8Array;
         }> {
-          const result = await call<{
-            bytesRead: number;
-            buffer: Uint8Array;
-          }>("handleRead", handleId, length, position);
+          const result = await call("handleRead", handleId, length, position);
           buffer.set(result.buffer, offset);
           return { bytesRead: result.bytesRead, buffer };
         },
@@ -236,36 +242,34 @@ export function createRpcFs(rpc: Pick<RpcClient, "call">, options: RpcFsOptions 
             slice = bytes.subarray(offset ?? 0, (offset ?? 0) + (length ?? bytes.length));
             pos = position ?? null;
           }
-          const result = await call<{
-            bytesWritten: number;
-          }>("handleWrite", handleId, slice, pos);
+          const result = await call("handleWrite", handleId, slice, pos);
           return { bytesWritten: result.bytesWritten, buffer };
         },
         async close(): Promise<void> {
-          await call<void>("handleClose", handleId);
+          await call("handleClose", handleId);
         },
         async stat(): Promise<FileStats> {
-          return toFileStats(await call<unknown>("handleStat", handleId));
+          return toFileStats(await call("handleStat", handleId));
         },
       };
     },
     async readlink(path: string): Promise<string> {
-      return call<string>("readlink", path);
+      return call("readlink", path);
     },
     async symlink(target: string, path: string, type?: "file" | "dir" | "junction"): Promise<void> {
-      await call<void>("symlink", target, path, type);
+      await call("symlink", target, path, type);
     },
     async chmod(path: string, mode: number): Promise<void> {
-      await call<void>("chmod", path, mode);
+      await call("chmod", path, mode);
     },
     async utimes(path: string, atime: Date | number, mtime: Date | number): Promise<void> {
       // Convert Date to seconds-since-epoch for JSON transport
       const a = atime instanceof Date ? atime.getTime() / 1000 : atime;
       const m = mtime instanceof Date ? mtime.getTime() / 1000 : mtime;
-      await call<void>("utimes", path, a, m);
+      await call("utimes", path, a, m);
     },
     async truncate(path: string, len?: number): Promise<void> {
-      await call<void>("truncate", path, len);
+      await call("truncate", path, len);
     },
   };
 }

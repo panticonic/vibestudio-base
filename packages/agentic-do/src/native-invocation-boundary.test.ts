@@ -1,3 +1,8 @@
+import { createMainRpcCaller } from "@vibestudio/service-schemas/mainRpc";
+import { schemaRpcMock } from "@vibestudio/rpc/test-utils";
+import { z } from "zod";
+import { createRpcMethods } from "@vibestudio/shared/rpcMethods";
+import { schemaRpcClientMock } from "@vibestudio/rpc/test-utils";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   createModels,
@@ -25,6 +30,18 @@ import {
   prepareNativeInvocationTerminals,
   type NativeInvocationTerminalPublication,
 } from "./native-invocation-boundary.js";
+
+const testRpcMethods = createRpcMethods(
+  "test",
+  {
+    "test.protected": {
+      website: { kind: "closed", reason: "Test receiver" } as const,
+      args: z.tuple([]),
+      returns: z.null(),
+    },
+  },
+  "",
+);
 
 const context = BACKGROUND_CONTEXT;
 const owner = {
@@ -58,8 +75,9 @@ const entity = {
   createdAt: 1,
   cleanupComplete: false,
 };
-const callHost: AgentHostCall = async <T>() =>
-  JSON.parse(JSON.stringify(entity)) as T;
+const callHost: AgentHostCall = createMainRpcCaller(
+  schemaRpcMock({ call: async () => entity }),
+);
 const sessions: Harness[] = [];
 afterEach(async () => {
   await Promise.all(
@@ -74,35 +92,23 @@ async function fixture(options: { failStart?: boolean } = {}) {
   const starts: { event: AgenticEvent<"invocation.started">; key: string }[] =
     [];
   const protectedCalls: RpcCallOptions[] = [];
-  const rpc: RpcClient = {
-    selfId: owner.runtimeId,
-    expose() {},
-    exposeAll() {},
-    exposeStreaming() {},
-    async call<T>(
-      _target: string,
-      _method: string,
-      _args: unknown[],
-      opts?: RpcCallOptions,
-    ) {
-      protectedCalls.push(opts ?? {});
-      return null as T;
+  const rpc: RpcClient = schemaRpcClientMock(
+    {
+      async call(
+        _target: string,
+        _method: string,
+        _args: unknown[],
+        opts?: RpcCallOptions,
+      ) {
+        protectedCalls.push(opts ?? {});
+        return null;
+      },
+      async stream() {
+        throw new Error("Unexpected stream");
+      },
     },
-    async stream() {
-      throw new Error("Unexpected stream");
-    },
-    async streamReadable() {
-      throw new Error("Unexpected stream");
-    },
-    async emit() {},
-    on: () => () => {},
-    peer() {
-      throw new Error("Unexpected peer");
-    },
-    status: () => "connected",
-    ready: () => Promise.resolve(),
-    onStatusChange: () => () => {},
-  };
+    owner.runtimeId,
+  );
   let harness!: Harness;
   let ready = false;
   let taskId!: TaskId;
@@ -142,7 +148,7 @@ async function fixture(options: { failStart?: boolean } = {}) {
               kinds: ["test.ready"],
             },
           };
-        await execution.rpc.call("main", "test.protected", []);
+        await execution.rpc.call("main", testRpcMethods["test.protected"], []);
         return { status: "ready", options: {}, close: async () => {} };
       },
     },

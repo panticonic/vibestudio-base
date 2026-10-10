@@ -3,7 +3,11 @@
 import { memo } from "react";
 import { render } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { ChatContextValue, ChatInputContextValue, ChatMessage } from "../types";
+import type {
+  ChatContextValue,
+  ChatInputContextValue,
+  ChatMessage,
+} from "../types";
 import {
   useChatComposerRuntime,
   useChatContext,
@@ -43,7 +47,11 @@ const ComposerRuntimeProbe = memo(function ComposerRuntimeProbe({
   return null;
 });
 
-const FullContextProbe = memo(function FullContextProbe({ rendered }: { rendered: () => void }) {
+const FullContextProbe = memo(function FullContextProbe({
+  rendered,
+}: {
+  rendered: () => void;
+}) {
   rendered();
   useChatContext();
   return null;
@@ -102,7 +110,7 @@ describe("ChatProvider render slices", () => {
     const { rerender } = render(
       <ChatProvider value={value} inputValue={inputValue}>
         {probes}
-      </ChatProvider>
+      </ChatProvider>,
     );
     expect(messageRowsRendered).toHaveBeenCalledTimes(ROW_COUNT);
     expect(composerRendered).toHaveBeenCalledTimes(1);
@@ -116,9 +124,12 @@ describe("ChatProvider render slices", () => {
       complete: false,
     } as ChatMessage;
     rerender(
-      <ChatProvider value={{ ...value, messages: [streamingMessage] }} inputValue={inputValue}>
+      <ChatProvider
+        value={{ ...value, messages: [streamingMessage] }}
+        inputValue={inputValue}
+      >
         {probes}
-      </ChatProvider>
+      </ChatProvider>,
     );
 
     expect(messageRowsRendered).toHaveBeenCalledTimes(ROW_COUNT);
@@ -136,7 +147,7 @@ describe("ChatProvider render slices", () => {
           content: `content-${index}`,
           kind: "message",
           complete: true,
-        }) as ChatMessage
+        }) as ChatMessage,
     );
     const value = { ...contextValue(), messages };
     const sharedParticipants = {};
@@ -147,9 +158,8 @@ describe("ChatProvider render slices", () => {
           participants={sharedParticipants}
           allParticipants={sharedParticipants}
           selfId={null}
-          chat={value.chat as unknown as Record<string, unknown>}
         />
-      </ChatProvider>
+      </ChatProvider>,
     );
     expect(contentRendered).toHaveBeenCalledTimes(ROW_COUNT);
 
@@ -160,15 +170,17 @@ describe("ChatProvider render slices", () => {
       complete: false,
     };
     rerender(
-      <ChatProvider value={{ ...value, messages: streamingMessages }} inputValue={inputValue}>
+      <ChatProvider
+        value={{ ...value, messages: streamingMessages }}
+        inputValue={inputValue}
+      >
         <MessageList
           messages={streamingMessages}
           participants={sharedParticipants}
           allParticipants={sharedParticipants}
           selfId={null}
-          chat={value.chat as unknown as Record<string, unknown>}
         />
-      </ChatProvider>
+      </ChatProvider>,
     );
 
     expect(contentRendered).toHaveBeenCalledTimes(ROW_COUNT + 1);
@@ -183,9 +195,8 @@ describe("ChatProvider render slices", () => {
           participants={sharedParticipants}
           allParticipants={sharedParticipants}
           selfId={null}
-          chat={value.chat as unknown as Record<string, unknown>}
         />
-      </ChatProvider>
+      </ChatProvider>,
     );
 
     expect(contentRendered).toHaveBeenCalledTimes(ROW_COUNT + 1);

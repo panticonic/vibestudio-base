@@ -1,3 +1,4 @@
+import { schemaRpcMock } from "@vibestudio/rpc/test-utils";
 import { executeTool } from "../../testing/native-tool.js";
 import { describe, expect, it, vi } from "vitest";
 import { generateImage } from "../../image-generation.js";
@@ -9,6 +10,7 @@ import { StubVcs } from "./stub-vcs.js";
 import { sha256Hex } from "@vibestudio/content-addressing";
 import { base64ToBytes } from "../portable-bytes.js";
 import type { ToolMutationContext } from "../tool-vcs.js";
+import { durableObjectServiceFixture } from "@vibestudio/service-schemas/test-utils";
 
 const png =
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=";
@@ -36,16 +38,12 @@ function setup(inputEvents: unknown[] = events, context: ToolMutationContext = {
   }));
   let request: any;
   let asset: any;
-  const rpc = {
+  const rpc = schemaRpcMock({
     call: vi.fn(async (_target: string, method: string, args: any[]) => {
       if (method === "workers.resolveService")
-        return {
-          kind: "durable-object",
-          targetId: "do:images",
-          source: "workers/images",
+        return durableObjectServiceFixture("do:images", { source: "workers/images",
           className: "ImagesDO",
-          objectKey: "default",
-        };
+          objectKey: "default" });
       if (method === "generate") {
         request = args[0];
         return { id: "job:1", status: "queued" };
@@ -79,7 +77,7 @@ function setup(inputEvents: unknown[] = events, context: ToolMutationContext = {
       if (method === "importAsset") return { id: "reference:1" };
       return "image/png";
     }),
-  };
+  });
   const tool = createImagegenTool({
     cwd: "/",
     fs,

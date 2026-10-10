@@ -1,13 +1,14 @@
+import { imageServiceRpcMethods } from "@workspace-extensions/image-service/contract";
+import { base64ToBytes } from "@vibestudio/rpc";
+import { mainRpcMethods } from "@vibestudio/service-schemas/mainRpc";
+import { createCredentialClient } from "@vibestudio/service-schemas/clients/credentialClient";
 import { DurableObjectBase, rpc } from "@workspace/runtime/worker/kernel";
 import {
   generateImage,
   type GenerateImageInput,
   type CodexSession,
 } from "@workspace/harness/image-generation";
-import {
-  createCredentialClient,
-  type StoredCredentialSummary,
-} from "@vibestudio/credential-client";
+
 import { canonicalJson, sha256Hex } from "@vibestudio/content-addressing";
 import { IMAGE_REFERENCE_LIMIT } from "@workspace/runtime/images";
 import type {
@@ -16,10 +17,10 @@ import type {
   ImageGenerationJob,
   ArtDirection,
   ArtDirectionRef,
+  ImagesService,
 } from "@workspace/runtime/images";
 
 const TERMINAL = new Set(["succeeded", "failed", "cancelled"]);
-const IMAGE_EXTENSION = "@workspace-extensions/image-service";
 const text = (value: unknown, field: string): string => {
   if (typeof value !== "string" || !value.trim())
     throw new Error(`${field} must be a nonempty string`);
@@ -35,7 +36,7 @@ type Metadata = {
 };
 
 /** Durable jobs own references; immutable asset descriptors never contain display URLs or bytes. */
-export class ImagesDO extends DurableObjectBase {
+export class ImagesDO extends DurableObjectBase implements ImagesService {
   private readonly incarnation = crypto.randomUUID();
   private readonly mutations = new Map<string, Promise<unknown>>();
   private async serialized<T>(
@@ -942,26 +943,22 @@ export class ImagesDO extends DurableObjectBase {
     );
   }
   protected metadata(base64: string): Promise<Metadata> {
-    return this.rpc.call("main", "extensions.invoke", [
-      IMAGE_EXTENSION,
-      "getMetadata",
-      [base64],
-    ]);
+    return this.rpc.call("main", imageServiceRpcMethods.getMetadata, [base64ToBytes(base64)]);
   }
   protected storeContent(
     base64: string,
     owner: string,
   ): Promise<{ digest: string; size: number }> {
-    return this.rpc.call("main", "blobstore.putRetained", [{ base64, owner }]);
+    return this.rpc.call("main", mainRpcMethods["blobstore.putRetained"], [{ base64, owner }]);
   }
   protected retainContent(digest: string, owner: string): Promise<void> {
-    return this.rpc.call("main", "blobstore.retain", [{ digest, owner }]);
+    return this.rpc.call("main", mainRpcMethods["blobstore.retain"], [{ digest, owner }]);
   }
   protected releaseContent(owner: string): Promise<void> {
-    return this.rpc.call("main", "blobstore.releaseRetention", [{ owner }]);
+    return this.rpc.call("main", mainRpcMethods["blobstore.releaseRetention"], [{ owner }]);
   }
   protected readContent(digest: string): Promise<string | null> {
-    return this.rpc.call("main", "blobstore.getBase64", [digest]);
+    return this.rpc.call("main", mainRpcMethods["blobstore.getBase64"], [digest]);
   }
   protected async generateContent(
     input: GenerateImageInput,
@@ -980,9 +977,9 @@ export class ImagesDO extends DurableObjectBase {
     );
   }
   protected async resolveSession(id: string): Promise<CodexSession> {
-    const credential = await this.rpc.call<StoredCredentialSummary | null>(
+    const credential = await this.rpc.call(
       "main",
-      "credentials.resolveCredential",
+      mainRpcMethods["credentials.resolveCredential"],
       [{ url: "https://chatgpt.com/backend-api" }],
     );
     if (!credential)

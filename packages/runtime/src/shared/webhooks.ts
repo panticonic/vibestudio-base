@@ -1,3 +1,4 @@
+import { mainRpcMethods } from "@vibestudio/service-schemas/mainRpc";
 import type { RpcCaller } from "@vibestudio/rpc";
 import type {
   CreateWebhookIngressSubscriptionRequest,
@@ -37,24 +38,24 @@ export interface WebhookIngressClient {
 export function createWebhookIngressClient(rpc: RpcCaller): WebhookIngressClient {
   return {
     createSubscription(input) {
-      return rpc.call<WebhookIngressSubscriptionSummary>(
+      return rpc.call(
         "main",
-        "webhookIngress.createSubscription",
+        mainRpcMethods["webhookIngress.createSubscription"],
         [input]
       );
     },
     listSubscriptions(options) {
-      return rpc.call<WebhookIngressSubscriptionSummary[]>(
+      return rpc.call(
         "main",
-        "webhookIngress.listSubscriptions",
+        mainRpcMethods["webhookIngress.listSubscriptions"],
         options ? [options] : []
       );
     },
     async revokeSubscription(subscriptionId) {
-      await rpc.call<void>("main", "webhookIngress.revokeSubscription", [{ subscriptionId }]);
+      await rpc.call("main", mainRpcMethods["webhookIngress.revokeSubscription"], [{ subscriptionId }]);
     },
     rotateSecret(subscriptionId, secret) {
-      return rpc.call<RotateWebhookIngressSecretResult>("main", "webhookIngress.rotateSecret", [
+      return rpc.call("main", mainRpcMethods["webhookIngress.rotateSecret"], [
         { subscriptionId, secret },
       ]);
     },

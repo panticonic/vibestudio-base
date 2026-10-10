@@ -1,3 +1,5 @@
+import { testRunnerRpcMethods } from "@workspace/test-runtime";
+import { mainRpcMethods } from "@vibestudio/service-schemas/mainRpc";
 /**
  * AgentWorkerBase — workspace-default channel agent DO base.
  *
@@ -243,7 +245,7 @@ export abstract class AgentWorkerBase extends AgentVesselBase {
         }),
       )
       .then((value) => {
-        this.promptResourceCache = value;
+        if (this.promptResourceLoad === load) this.promptResourceCache = value;
         return value;
       })
       .finally(() => {
@@ -332,7 +334,7 @@ export abstract class AgentWorkerBase extends AgentVesselBase {
     const askableUser = hasAskableUser(capturedRoster);
     const dependencies = (execution?: AgentToolExecutionContext) => {
       const toolRpc = execution?.rpc ?? this.rpc;
-      const fs = createRpcFs(toolRpc as never);
+      const fs = createRpcFs(toolRpc);
       const visibility = createAgentFileVisibility(cwd, fs);
       const outsideContentReset = createOutsideContentReset({
         resetTaskAuthority: () =>
@@ -347,9 +349,7 @@ export abstract class AgentWorkerBase extends AgentVesselBase {
           );
         },
       });
-      const vcs = createToolVcs(<T>(method: string, methodArgs: unknown[]) =>
-        toolRpc.call<T>("main", method, methodArgs),
-      );
+      const vcs = createToolVcs(toolRpc);
       const mutationContext = {
         contextId,
         commandId: execution?.commandId ?? requireBoundMutationInvocation,
@@ -377,9 +377,9 @@ export abstract class AgentWorkerBase extends AgentVesselBase {
         signal?: AbortSignal,
         model = configuredProviderModel,
       ) => {
-        const credential = await toolRpc.call<StoredCredentialSummary | null>(
+        const credential = await toolRpc.call(
           "main",
-          "credentials.resolveCredential",
+          mainRpcMethods["credentials.resolveCredential"],
           [{ url: "https://chatgpt.com/backend-api" }],
           { signal },
         );
@@ -512,28 +512,25 @@ export abstract class AgentWorkerBase extends AgentVesselBase {
       // and runtime APIs) with typed schemas + access rules.
       author(({ toolRpc }) =>
         createDocsSearchTool(
-          <T>(method: string, methodArgs: unknown[], signal?: AbortSignal) =>
-            toolRpc.call<T>("main", method, methodArgs, { signal }),
+          toolRpc,
         ),
       ),
       author(({ toolRpc }) =>
         createDocsOpenTool(
-          <T>(method: string, methodArgs: unknown[], signal?: AbortSignal) =>
-            toolRpc.call<T>("main", method, methodArgs, { signal }),
+          toolRpc,
         ),
       ),
       author(({ vcs, mutationContext, toolRpc }) =>
         createWorkspaceServiceTool(vcs, mutationContext, {
           validateConfig: (candidate) =>
             toolRpc
-              .call("main", "workspace.validateConfig", [candidate])
+              .call("main", mainRpcMethods["workspace.validateConfig"], [candidate])
               .then(() => undefined),
         }),
       ),
       author(({ toolRpc }) =>
         createVerifyTool(
-          <T>(method: string, methodArgs: unknown[], signal?: AbortSignal) =>
-            toolRpc.call<T>("main", method, methodArgs, { signal }),
+          toolRpc,
           contextId,
           async (
             artifact: WorkspaceTestArtifactV1,
@@ -552,7 +549,7 @@ export abstract class AgentWorkerBase extends AgentVesselBase {
                 (request: unknown) => Promise<unknown>
               >;
               const request = {
-                protocol: "workspace-test-execution-request.v1",
+                protocol: "workspace-test-execution-request.v1" as const,
                 artifactKey: artifact.artifactKey,
                 executionDigest: artifact.execution.executionDigest,
                 ...(testName ? { testName } : {}),
@@ -592,9 +589,9 @@ export abstract class AgentWorkerBase extends AgentVesselBase {
                   >;
                   raw = await call["tests.run"]!(request);
                 } else {
-                  const worker = await toolRpc.call<{ id: string }>(
+                  const worker = await toolRpc.call(
                     "main",
-                    "runtime.createEntity",
+                    mainRpcMethods["runtime.createEntity"],
                     [
                       {
                         kind: "worker",
@@ -613,7 +610,7 @@ export abstract class AgentWorkerBase extends AgentVesselBase {
                     { signal },
                   );
                   runtimeEntityId = worker.id;
-                  raw = await toolRpc.call(worker.id, "tests.run", [request], {
+                  raw = await toolRpc.call(worker.id, testRunnerRpcMethods.run, [request], {
                     signal,
                   });
                 }
@@ -635,7 +632,7 @@ export abstract class AgentWorkerBase extends AgentVesselBase {
                 throw error;
               } finally {
                 if (artifact.runtime === "workerd" && runtimeEntityId) {
-                  await toolRpc.call("main", "runtime.retireEntity", [
+                  await toolRpc.call("main", mainRpcMethods["runtime.retireEntity"], [
                     { id: runtimeEntityId },
                   ]);
                 }
@@ -672,9 +669,9 @@ export abstract class AgentWorkerBase extends AgentVesselBase {
           recordIngestion: (entry) => outsideContentReset.observe(entry.key),
           hasCredentialForOrigin: async (origin) => {
             try {
-              const credential = await toolRpc.call<unknown>(
+              const credential = await toolRpc.call(
                 "main",
-                "credentials.resolveCredential",
+                mainRpcMethods["credentials.resolveCredential"],
                 [{ url: origin }],
               );
               return credential != null;
@@ -901,7 +898,7 @@ export abstract class AgentWorkerBase extends AgentVesselBase {
     },
     toolRpc: RpcClient = this.rpc,
   ): Promise<number> {
-    return toolRpc.call<number>("main", "notification.pushUserInbox", [
+    return toolRpc.call("main", mainRpcMethods["notification.pushUserInbox"], [
       userId,
       request,
     ]);
@@ -1213,10 +1210,7 @@ export abstract class AgentWorkerBase extends AgentVesselBase {
           if (typeof input.query !== "string" || !input.query.trim()) {
             throw new Error("discover_agents requires a non-empty query");
           }
-          const listing = await this.callGadWith<{
-            summary: { rows: number };
-            entries: Array<Record<string, unknown>>;
-          }>(toolRpc, "searchAgentDirectory", {
+          const listing = await this.callGadWith(toolRpc, "searchAgentDirectory", {
             query: input.query.trim(),
             ...(input.includeTerminal === true
               ? { includeTerminal: true }

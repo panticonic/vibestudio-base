@@ -1,3 +1,4 @@
+import { mainRpcMethods } from "@vibestudio/service-schemas/mainRpc";
 import { retainNativeToolInvocation } from "./native-invocation-source.js";
 import { createServer } from "node:http";
 import { afterEach, describe, expect, it } from "vitest";
@@ -30,6 +31,7 @@ import {
 } from "@workspace/runtime/worker/test-utils";
 import {
   rpc,
+  serializeRpcFailure,
   RpcBoundaryError,
   type AcquisitionInfo,
   type RpcCallOptions,
@@ -84,7 +86,7 @@ class Owner extends NativeAgentOwner {
     try {
       return await this.agentRpc.call(
         "main",
-        "credentials.resolveCredential",
+        mainRpcMethods["credentials.resolveCredential"],
         [{ url: "https://provider.test/v1" }],
         this.ownerCallOptions,
       );
@@ -103,8 +105,8 @@ class Owner extends NativeAgentOwner {
   async inspectOwnerStream() {
     const response = await this.agentRpc.stream(
       "main",
-      "credentials.proxyFetch",
-      [{ url: "https://provider.test/v1" }],
+      mainRpcMethods["credentials.proxyFetch"],
+      [{ url: "https://provider.test/v1", method: "GET" }],
       this.ownerCallOptions,
     );
     return {
@@ -137,14 +139,10 @@ class Owner extends NativeAgentOwner {
     sensitivity: "read",
   })
   async inspectNativeExecutionAdmission() {
-    return this.agentExecutionRpc
-      .peer<{
-        resolveCredential: (input: { url: string }) => unknown;
-      }>("main", this.ownerCallOptions)
-      .call.resolveCredential({ url: "https://provider.test/v1" });
+    return this.agentExecutionRpc.call("main", mainRpcMethods["credentials.resolveCredential"], [{ url: "https://provider.test/v1" }], this.ownerCallOptions);
   }
   probeCallerAdmission(url: string) {
-    return this.rpc.call("main", "credentials.resolveCredential", [{ url }], {
+    return this.rpc.call("main", mainRpcMethods["credentials.resolveCredential"], [{ url }], {
       authorityAcquisition: "return",
     });
   }
@@ -174,8 +172,8 @@ class Owner extends NativeAgentOwner {
   ): Promise<void> {
     return this.productRelease(input, harness);
   }
-  hostCall<T>(method: string, args: unknown[]) {
-    return this.callAgentHost<T>(method, args);
+  hostCall<K extends keyof typeof mainRpcMethods & string>(method: K, args: import("@vibestudio/shared/rpcMethods").RpcMethodArgs<(typeof mainRpcMethods)[K]>) {
+    return this.callAgentHost(method, args);
   }
   open() {
     return this.agentSession();
@@ -272,15 +270,13 @@ async function host() {
     const method = envelope.message.method;
     calls.push(method);
     let result: unknown;
-    let error: string | undefined;
-    let boundaryError: RpcBoundaryError | undefined;
+    let error: unknown;
     const handler = handlers.get(method);
     if (handler) {
       try {
         result = await handler(envelope.message.args);
       } catch (failure) {
-        error = failure instanceof Error ? failure.message : String(failure);
-        if (failure instanceof RpcBoundaryError) boundaryError = failure;
+        error = failure;
       }
     } else if (method === "workspace-state.entity.resolveActive") {
       onResolve();
@@ -327,17 +323,8 @@ async function host() {
         message: {
           type: "response",
           requestId: envelope.message.requestId,
-          ...(error
-            ? {
-                error,
-                ...(boundaryError
-                  ? {
-                      errorKind: boundaryError.errorKind,
-                      errorCode: boundaryError.code,
-                      errorData: boundaryError.errorData,
-                    }
-                  : {}),
-              }
+          ...(error !== undefined
+            ? { error: serializeRpcFailure(error) }
             : { result }),
         },
       }),
@@ -957,7 +944,7 @@ describe("native Pi entity activation and release", () => {
   it("native invocation RPC cannot inherit a transient caller authority parent", async () => {
     const h = await host();
     const fixture = await owner(h);
-    h.handle("resolveCredential", async () => null);
+    h.handle("credentials.resolveCredential", async () => null);
     fixture.instance.ownerCallOptions = bindExecutionSession(
       {
         causalParent: {
@@ -975,7 +962,7 @@ describe("native Pi entity activation and release", () => {
     const message = h.envelopes.find(
       (e) =>
         e.message.type === "request" &&
-        e.message.method === "resolveCredential",
+        e.message.method === "credentials.resolveCredential",
     )?.message;
     expect(message).toMatchObject({
       executionSessionNonce: "admission:native-exact",
@@ -1066,10 +1053,7 @@ describe("native Pi entity activation and release", () => {
       source,
       className: "Owner",
     });
-    const accepted = fixture.callAs<{
-      conversationId: string;
-      authority: unknown;
-    }>(
+    const accepted = fixture.callAs(
       { callerId: "main", callerKind: "server", authorization },
       "submitForScope",
     );
@@ -1387,8 +1371,7 @@ describe("native Pi entity activation and release", () => {
             objectKey: "test-key",
             executionDigest: image.WORKER_EXECUTION_DIGEST,
           },
-          <T>(method: string, args: unknown[]) =>
-            first.instance.hostCall<T>(method, args),
+          (method, args) => first.instance.hostCall(method, args),
           context,
         );
         retained = {
@@ -1454,7 +1437,7 @@ describe("native Pi entity activation and release", () => {
         modelRequests: next.instance.modelRequests,
       }),
     });
-    const observed = await next.callAs<unknown>(
+    const observed = await next.callAs(
       {
         callerId: "main",
         callerKind: "server",
@@ -1494,7 +1477,7 @@ describe("native Pi entity activation and release", () => {
       );
       expect(response.status).toBe(500);
       await expect(response.json()).resolves.toMatchObject({
-        error: expect.stringContaining("trusted loaded-image schema descriptor"),
+        error: { message: expect.stringContaining("trusted loaded-image schema descriptor") },
       });
       expect(
         fixture.sql
@@ -1511,7 +1494,7 @@ describe("native Pi entity activation and release", () => {
     const fixture = await owner(h);
     h.setAgentBinding("channel:lookup");
     const inspect = () =>
-      fixture.callAs<unknown>(
+      fixture.callAs(
         {
           callerId: "main",
           callerKind: "server",

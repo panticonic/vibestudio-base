@@ -1,3 +1,4 @@
+import { mainRpcMethods } from "@vibestudio/service-schemas/mainRpc";
 import { jsonSchemaNumericType } from "@vibestudio/shared/jsonSchemaNumericType";
 import type { JsonRepresentation } from "@panticonic/pi-chord";
 import { toolDetails } from "./native-tool-json.js";
@@ -90,11 +91,7 @@ function clamp(text: string, max: number): string {
 }
 
 export function createDocsSearchTool(
-  callMain: <T>(
-    method: string,
-    args: unknown[],
-    signal?: AbortSignal,
-  ) => Promise<T>,
+  rpc: Pick<import("@vibestudio/rpc").RpcCaller, "call">,
 ): ToolRegistration<typeof searchSchema> {
   return {
     name: "docs_search",
@@ -112,10 +109,10 @@ export function createDocsSearchTool(
       if (signal?.aborted)
         throw signal.reason ?? new Error("Operation aborted");
       const limit = Math.min(params.limit ?? 20, 100);
-      const serverHits = await callMain<CatalogHit[]>(
-        "docs.search",
+      const serverHits = await rpc.call(
+        "main", mainRpcMethods["docs.search"],
         [params.query, { surface: params.surface, limit }],
-        signal,
+        { signal },
       );
       const hits = serverHits.slice(0, limit);
       if (hits.length === 0) {
@@ -545,11 +542,7 @@ export function renderEntry(entry: CatalogEntry): string {
 }
 
 export function createDocsOpenTool(
-  callMain: <T>(
-    method: string,
-    args: unknown[],
-    signal?: AbortSignal,
-  ) => Promise<T>,
+  rpc: Pick<import("@vibestudio/rpc").RpcCaller, "call">,
 ): ToolRegistration<typeof openSchema> {
   return {
     name: "docs_open",
@@ -568,10 +561,10 @@ export function createDocsOpenTool(
       const signal = executionContext.abortSignal;
       if (signal?.aborted)
         throw signal.reason ?? new Error("Operation aborted");
-      const entry = await callMain<CatalogEntry | null>(
-        "docs.describe",
+      const entry = await rpc.call(
+        "main", mainRpcMethods["docs.describe"],
         [params.id],
-        signal,
+        { signal },
       );
       if (!entry) {
         return {

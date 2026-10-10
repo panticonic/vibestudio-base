@@ -1,3 +1,4 @@
+import { channelClientRpcMethods } from "@workspace/pubsub/rpc-contract";
 import { readChannelSubscriptionRecords } from "@vibestudio/service-schemas/channel";
 import type {
   RpcClient,
@@ -30,13 +31,13 @@ export function createConversationClient(rpc: RpcClient): ConversationClient {
     history: (channelTargetId, options) => {
       return rpc.call(
         channelTargetId,
-        "getReplayAfter",
+        channelClientRpcMethods["getReplayAfter"],
         [{ after: 0 }],
         options,
       );
     },
     send: (channelTargetId, text, options) => {
-      return rpc.call(channelTargetId, "sendAsCaller", [text, options ?? {}]);
+      return rpc.call(channelTargetId, channelClientRpcMethods["sendAsCaller"], [text, options ?? {}]);
     },
     subscribe: async (
       channelTargetId,
@@ -47,7 +48,7 @@ export function createConversationClient(rpc: RpcClient): ConversationClient {
     ) => {
       const response = await rpc.stream(
         channelTargetId,
-        "subscribe",
+        channelClientRpcMethods["subscribe"],
         [participantId, metadata],
         options,
       );

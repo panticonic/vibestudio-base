@@ -9,7 +9,9 @@
   },
   "dependencies": {
     "@vibestudio/rpc": "workspace:*",
-    "@workspace/agentic-protocol": "workspace:*"
+    "@workspace/agentic-protocol": "workspace:*",
+    "@workspace/pubsub": "workspace:*",
+    "@vibestudio/service-schemas": "workspace:*"
   },
   "devDependencies": {
     "vitest": "^3.2.7"

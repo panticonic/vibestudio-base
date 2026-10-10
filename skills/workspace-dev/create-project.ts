@@ -1,3 +1,4 @@
+import { mainRpcMethods } from "@vibestudio/service-schemas/mainRpc";
 import { contextId, fs, vcs, rpc } from "@workspace/runtime";
 import YAML from "yaml";
 import { planServiceMutation } from "@vibestudio/workspace-contracts/serviceMutation";
@@ -15,7 +16,10 @@ import {
   type ProjectPreparation,
   type PreparationCommand,
 } from "./project-preparation.js";
-export type { ProjectPreparation, PreparationCommand } from "./project-preparation.js";
+export type {
+  ProjectPreparation,
+  PreparationCommand,
+} from "./project-preparation.js";
 import {
   PROJECT_TYPES,
   assertProjectIdentity,
@@ -167,7 +171,9 @@ function authorityWithTemplateRequirements(
       resource: required.resource,
       ...(required.packages ? { packageName: required.packages[0] } : {}),
     };
-    if (!requests.some((request) => authorityRequestCoversEffect(request, effect))) {
+    if (
+      !requests.some((request) => authorityRequestCoversEffect(request, effect))
+    ) {
       requests.push(required);
     }
   }
@@ -201,7 +207,8 @@ async function resolveProject(
     canonicalProjectType === "panel" || canonicalProjectType === "worker"
       ? requireAuthority(params.authority, params.authorityReason)
       : undefined;
-  const agenticWorker = canonicalProjectType === "worker" && template === "agentic";
+  const agenticWorker =
+    canonicalProjectType === "worker" && template === "agentic";
   const authority = suppliedAuthority
     ? authorityWithTemplateRequirements(
         suppliedAuthority,
@@ -575,10 +582,27 @@ describe("${className}", () => {
           entry: "index.ts",
           template,
           durableClasses: [className],
-          dependencies: { "@workspace/runtime": "workspace:*" },
+          exports: { "./contract": "./contract.ts" },
+          dependencies: {
+            "@workspace/runtime": "workspace:*",
+            "@vibestudio/shared": "*",
+            zod: "3.25.76",
+          },
         });
+        files["contract.ts"] = `import { z } from "zod";
+import { createRpcMethods } from "@vibestudio/shared/rpcMethods";
+
+export const recordSchema = z.object({ id: z.string(), title: z.string(), createdAt: z.string(), updatedAt: z.string() });
+export type RecordItem = z.infer<typeof recordSchema>;
+export const recordStoreMethods = {
+  listRecords: { args: z.tuple([]), returns: z.array(recordSchema) },
+  upsertRecord: { args: z.tuple([z.object({ id: z.string().optional(), title: z.string() })]), returns: z.object({ id: z.string() }) },
+};
+export const recordStoreRpcMethods = createRpcMethods("recordStore", recordStoreMethods, "");
+`;
         files["index.ts"] =
-          `import { DurableObjectBase, rpc } from "@workspace/runtime/worker/kernel";
+          `import { recordStoreMethods, type RecordItem } from "./contract.js";
+import { DurableObjectBase, rpc } from "@workspace/runtime/worker/kernel";
 
 type RecordRow = {
   id: string;
@@ -588,6 +612,7 @@ type RecordRow = {
 };
 
 export class ${className} extends DurableObjectBase {
+  static override rpcMethods = recordStoreMethods;
   static override schemaVersion = 1;
 
   protected override createTables(): void {
@@ -623,7 +648,7 @@ export class ${className} extends DurableObjectBase {
   }
 
   @rpc(${literalMethodPolicy(params.methods?.listRecords)})
-  listRecords(): Array<{ id: string; title: string; createdAt: string; updatedAt: string }> {
+  listRecords(): RecordItem[] {
     this.ensureReady();
     const rows = this.sql
       .exec(\`SELECT id, title, created_at, updated_at FROM records ORDER BY updated_at DESC\`)
@@ -865,12 +890,15 @@ export async function prepareApplication({
   ]);
   const manifest = JSON.parse(panel.files["package.json"] as string);
   manifest.dependencies["@workspace/runtime"] = "workspace:*";
+  const storePackage = JSON.parse(worker.files["package.json"]!).name as string;
+  manifest.dependencies[storePackage] = "workspace:*";
   panel.files["package.json"] = JSON.stringify(manifest, null, 2) + "\n";
   panel.files["index.tsx"] =
     `import React, { useEffect, useState } from "react";
-import { rpc, workers } from "@workspace/runtime";
+import { createDurableObjectServiceClient } from "@workspace/runtime";
+import { recordStoreRpcMethods, type RecordItem } from ${JSON.stringify(`${storePackage}/contract`)};
 
-type RecordItem = { id: string; title: string; createdAt: string; updatedAt: string };
+const store = createDurableObjectServiceClient(${JSON.stringify(protocol)}, recordStoreRpcMethods);
 
 export default function App() {
   const [records, setRecords] = useState<RecordItem[]>([]);
@@ -881,9 +909,7 @@ export default function App() {
     let active = true;
     async function load() {
       try {
-        const service = await workers.resolveService(${JSON.stringify(protocol)});
-        if (service.kind !== "durable-object") throw new Error("Expected a durable record service");
-        const result = await rpc.call<RecordItem[]>(service.targetId, "listRecords", []);
+        const result = await store.call("listRecords");
         if (active) setRecords(result);
       } catch (cause) { if (active) setError(String(cause)); }
       finally { if (active) setBusy(false); }
@@ -897,11 +923,9 @@ export default function App() {
     setBusy(true);
     setError("");
     try {
-      const service = await workers.resolveService(${JSON.stringify(protocol)});
-      if (service.kind !== "durable-object") throw new Error("Expected a durable record service");
-      await rpc.call(service.targetId, "upsertRecord", [{ title: title.trim() }]);
+      await store.call("upsertRecord", { title: title.trim() });
       setTitle("");
-      setRecords(await rpc.call<RecordItem[]>(service.targetId, "listRecords", []));
+      setRecords(await store.call("listRecords"));
     } catch (cause) { setError(String(cause)); }
     finally { setBusy(false); }
   }
@@ -946,13 +970,25 @@ export default function App() {
     objectKey: "main",
     docsId: `workspace:${workerName}`,
   };
-  const workerPackage = JSON.parse(worker.files["package.json"]!) as Record<string, unknown>;
-  const workerVibestudio = workerPackage["vibestudio"] as Record<string, unknown>;
+  const workerPackage = JSON.parse(worker.files["package.json"]!) as Record<
+    string,
+    unknown
+  >;
+  const workerVibestudio = workerPackage["vibestudio"] as Record<
+    string,
+    unknown
+  >;
   const declaredProviderServices = workerVibestudio["services"];
-  if (declaredProviderServices !== undefined && !Array.isArray(declaredProviderServices)) {
-    throw new Error("Generated worker package.json vibestudio.services must be an array");
+  if (
+    declaredProviderServices !== undefined &&
+    !Array.isArray(declaredProviderServices)
+  ) {
+    throw new Error(
+      "Generated worker package.json vibestudio.services must be an array",
+    );
   }
-  const providerServices = (declaredProviderServices ?? []) as WorkspaceServiceExport[];
+  const providerServices = (declaredProviderServices ??
+    []) as WorkspaceServiceExport[];
   const serviceExport = {
     name: workerName,
     title: `${title} Store`,
@@ -961,29 +997,37 @@ export default function App() {
     notability: authority.service.notability,
     presentation: { domain: "files" as const, verb: "manage" as const },
     protocols: [protocol],
-    authority: { principals: authority.service.principals, binding: authority.service.binding },
+    authority: {
+      principals: authority.service.principals,
+      binding: authority.service.binding,
+    },
     durableObject: { className },
   };
-  const plan = planServiceMutation({
-    services: config.services ?? [],
-    singletonObjects: config.singletonObjects ?? [],
-    providerServices,
-  }, {
-    operation: "create",
-    source: worker.projectPath,
-    service: serviceExport,
-    singletonKey: "main",
-  });
+  const plan = planServiceMutation(
+    {
+      services: config.services ?? [],
+      singletonObjects: config.singletonObjects ?? [],
+      providerServices,
+    },
+    {
+      operation: "create",
+      source: worker.projectPath,
+      service: serviceExport,
+      singletonKey: "main",
+    },
+  );
   workerVibestudio["services"] = plan.providerServices;
   workerPackage["vibestudio"] = workerVibestudio;
   worker.files["package.json"] = `${JSON.stringify(workerPackage, null, 2)}\n`;
   document.set("services", plan.services);
   document.set("singletonObjects", plan.singletonObjects);
   const candidate = String(document);
-  await rpc.call("main", "workspace.validateConfig", [{
-    manifest: candidate,
-    serviceManifests: { [worker.projectPath]: worker.files["package.json"]! },
-  }]);
+  await rpc.call("main", mainRpcMethods["workspace.validateConfig"], [
+    {
+      manifest: candidate,
+      serviceManifests: { [worker.projectPath]: worker.files["package.json"]! },
+    },
+  ]);
   const preparation = await prepareChanges(
     [
       repositoryChange(panel.projectPath, panel.files),

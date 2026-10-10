@@ -10,7 +10,8 @@
     "./localModels": "./src/localModels.ts",
     "./modelRecommendations": "./src/modelRecommendations.ts",
     "./providerConnect": "./src/providerConnect.ts",
-    "./testing": "./src/testing.ts"
+    "./testing": "./src/testing.ts",
+    "./rpc-contract": "./src/rpc-contract.ts"
   },
   "dependencies": {
     "@vibestudio/service-schemas": "workspace:*",

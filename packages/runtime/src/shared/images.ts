@@ -1,3 +1,4 @@
+import { createReceiverRpcMethods } from "@vibestudio/shared/rpcMethods";
 import { base64ToBytes, type RpcCaller } from "@vibestudio/rpc";
 import { createDurableObjectServiceClient } from "./workerd.js";
 
@@ -79,8 +80,24 @@ export interface ImagesClient extends ImagesService {
   /** Authenticated, workspace-scoped read. Bytes stay out of application state. */
   getBytes(asset: Pick<ImageAsset, "id"> & Partial<ImageAsset>): Promise<Uint8Array>;
 }
+/** The image API contract is shared by clients and its worker implementation. */
+export const imagesRpcMethods = createReceiverRpcMethods<ImagesService>([
+  "generate",
+  "getJob",
+  "cancel",
+  "retry",
+  "forgetJob",
+  "getAsset",
+  "readAsset",
+  "importAsset",
+  "retain",
+  "release",
+  "putArtDirection",
+  "getArtDirection",
+  "deleteArtDirection",
+]);
 export function createImagesClient(rpc: RpcCaller): ImagesClient {
-  const service = createDurableObjectServiceClient(rpc, IMAGE_SERVICE_PROTOCOL);
+  const service = createDurableObjectServiceClient(rpc, IMAGE_SERVICE_PROTOCOL, imagesRpcMethods);
   const client: ImagesClient = {
     generate: (request) => service.call("generate", request),
     getJob: (id) => service.call("getJob", id),

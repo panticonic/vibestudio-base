@@ -1,3 +1,6 @@
+import { createMainRpcCaller } from "@vibestudio/service-schemas/mainRpc";
+import { schemaRpcMock } from "@vibestudio/rpc/test-utils";
+import { schemaRpcClientMock } from "@vibestudio/rpc/test-utils";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -102,7 +105,9 @@ function gate() {
 async function fixture(
   options: {
     storage?: Storage;
-    onSuccessfulAnswer?: Parameters<typeof createNativeChannelPublication>[0]["onSuccessfulAnswer"];
+    onSuccessfulAnswer?: Parameters<
+      typeof createNativeChannelPublication
+    >[0]["onSuccessfulAnswer"];
     policy?: NativeChannelProjection["policy"];
     reportTo?: string;
     publish?: Parameters<typeof createNativeChannelPublication>[0]["publish"];
@@ -124,7 +129,9 @@ async function fixture(
   models.setProvider(faux.provider);
   const registry = createRegistry();
   const extension = defineExtension({
-    name: "publication", tasks: [publication.task], tools: options.tools ?? [],
+    name: "publication",
+    tasks: [publication.task],
+    tools: options.tools ?? [],
   });
   registry.install(extension);
   const harnessOptions = {
@@ -142,7 +149,8 @@ async function fixture(
   const conversation = await harness.root(context, {
     agent: {
       model: { provider: "faux", modelId: faux.getModel().id },
-      extensions: [extension], tools: options.tools ?? [],
+      extensions: [extension],
+      tools: options.tools ?? [],
     },
   });
   await conversation.commit(
@@ -191,7 +199,10 @@ async function publicationTasks(harness: Harness) {
 
 describe("native run activity publication", () => {
   it("opens before the provider produces text and remains interruptible until provider cancellation joins", async () => {
-    const entered = gate(), opened = gate(), cancelled = gate(), release = gate();
+    const entered = gate(),
+      opened = gate(),
+      cancelled = gate(),
+      release = gate();
     const events: AgenticEvent[] = [];
     const f = await fixture({
       publish: async (_channel, _participant, event) => {
@@ -200,13 +211,20 @@ describe("native run activity publication", () => {
         return { id: events.length };
       },
     });
-    f.faux.setResponses([async (_context, options) => {
-      options?.signal?.addEventListener("abort", cancelled.resolve, { once: true });
-      entered.resolve();
-      await release.promise;
-      return fauxAssistantMessage("", { stopReason: "aborted" });
-    }]);
-    const input = await f.conversation.submit({ type: "input", content: "Start" }, context);
+    f.faux.setResponses([
+      async (_context, options) => {
+        options?.signal?.addEventListener("abort", cancelled.resolve, {
+          once: true,
+        });
+        entered.resolve();
+        await release.promise;
+        return fauxAssistantMessage("", { stopReason: "aborted" });
+      },
+    ]);
+    const input = await f.conversation.submit(
+      { type: "input", content: "Start" },
+      context,
+    );
     const running = f.harness.runPass(context);
     let stopping: Promise<void> | undefined;
     try {
@@ -220,9 +238,15 @@ describe("native run activity publication", () => {
       await stopping;
       await running;
       await f.harness.runPass(context);
-      expect(events.filter((event) => event.kind.startsWith("turn.")).map((event) => event.kind))
-        .toEqual(["turn.opened", "turn.closed"]);
-      expect(await input.wait(context)).toMatchObject({ status: "unanswered", reason: "aborted" });
+      expect(
+        events
+          .filter((event) => event.kind.startsWith("turn."))
+          .map((event) => event.kind),
+      ).toEqual(["turn.opened", "turn.closed"]);
+      expect(await input.wait(context)).toMatchObject({
+        status: "unanswered",
+        reason: "aborted",
+      });
     } finally {
       release.resolve();
       await stopping;
@@ -269,7 +293,8 @@ describe("native run activity publication", () => {
       f.attempts.some(
         ({ event }) =>
           event.kind === "message.completed" &&
-          "outcome" in event.payload && event.payload.outcome === "interrupted",
+          "outcome" in event.payload &&
+          event.payload.outcome === "interrupted",
       ),
     ).toBe(true);
     expect(remembered).toEqual([]);
@@ -287,17 +312,31 @@ describe("native run activity publication", () => {
     f.faux.setResponses([fauxAssistantMessage("Finished")]);
     await f.conversation.submit({ type: "input", content: "Start" }, context);
     await f.harness.runPass(context);
-    const failed = (await publicationTasks(f.harness)).find((task) =>
-      task.state.status === "waiting" && task.state.condition.kind === "failure",
+    const failed = (await publicationTasks(f.harness)).find(
+      (task) =>
+        task.state.status === "waiting" &&
+        task.state.condition.kind === "failure",
     );
-    if (!failed || failed.state.status !== "waiting" || failed.state.condition.kind !== "failure")
+    if (
+      !failed ||
+      failed.state.status !== "waiting" ||
+      failed.state.condition.kind !== "failure"
+    )
       throw new Error("Missing retained default-save failure");
     expect(remembered).toEqual([]);
     fail = false;
-    await f.harness.retryTask(failed.id, failed.state.condition.incident, context);
+    await f.harness.retryTask(
+      failed.id,
+      failed.state.condition.incident,
+      context,
+    );
     await f.harness.runPass(context);
     expect(remembered).toEqual([`faux:${f.faux.getModel().id}`]);
-    expect((await publicationTasks(f.harness)).every((task) => task.state.status === "terminal")).toBe(true);
+    expect(
+      (await publicationTasks(f.harness)).every(
+        (task) => task.state.status === "terminal",
+      ),
+    ).toBe(true);
   });
 
   it("recovers lifecycle publication after a lost acceptance reply without opening a second turn", async () => {
@@ -324,19 +363,34 @@ describe("native run activity publication", () => {
     await f.conversation.submit({ type: "input", content: "Start" }, context);
     await f.harness.runPass(context);
     const failed = (await publicationTasks(f.harness))[0]!;
-    if (failed.state.status !== "waiting" || failed.state.condition.kind !== "failure")
+    if (
+      failed.state.status !== "waiting" ||
+      failed.state.condition.kind !== "failure"
+    )
       throw new Error("Missing retained opening publication failure");
     const incident = failed.state.condition.incident;
     await f.harness.close(context);
-    const reopened = await Harness.open(await openNodeSqliteStorage(path), f.harnessOptions, context);
+    const reopened = await Harness.open(
+      await openNodeSqliteStorage(path),
+      f.harnessOptions,
+      context,
+    );
     sessions.push(reopened);
-    expect(await reopened.retryTask(failed.id, incident, context)).toBe("queued");
+    expect(await reopened.retryTask(failed.id, incident, context)).toBe(
+      "queued",
+    );
     await reopened.runPass(context);
     expect(attempts[0]).toEqual(attempts[1]);
     expect([...accepted.values()].map((event) => event.kind)).toEqual([
-      "turn.opened", "message.completed", "turn.closed",
+      "turn.opened",
+      "message.completed",
+      "turn.closed",
     ]);
-    expect((await publicationTasks(reopened)).every((task) => task.state.status === "terminal")).toBe(true);
+    expect(
+      (await publicationTasks(reopened)).every(
+        (task) => task.state.status === "terminal",
+      ),
+    ).toBe(true);
   });
 
   for (const cancel of [false, true]) {
@@ -349,7 +403,9 @@ describe("native run activity publication", () => {
         description: "Work with explicit completion and cancellation gates",
         parameters: Type.Object({}),
         execute: async (_args, _api, ctx) => {
-          ctx.abortSignal?.addEventListener("abort", cancelled.resolve, { once: true });
+          ctx.abortSignal?.addEventListener("abort", cancelled.resolve, {
+            once: true,
+          });
           entered.resolve();
           await release.promise;
           return { content: [{ type: "text", text: "Work joined" }] };
@@ -357,45 +413,88 @@ describe("native run activity publication", () => {
       });
       const f = await fixture({ tools: [tool] });
       f.faux.setResponses([
-        fauxAssistantMessage([
-          { type: "toolCall", id: "held-call", name: tool.name, arguments: {} },
-        ], { stopReason: "toolUse" }),
+        fauxAssistantMessage(
+          [
+            {
+              type: "toolCall",
+              id: "held-call",
+              name: tool.name,
+              arguments: {},
+            },
+          ],
+          { stopReason: "toolUse" },
+        ),
         fauxAssistantMessage("Finished"),
       ]);
-      const input = await f.conversation.submit({ type: "input", content: "Work" }, context);
+      const input = await f.conversation.submit(
+        { type: "input", content: "Work" },
+        context,
+      );
       const running = f.harness.runPass(context);
       let stopping: Promise<void> | undefined;
       try {
         await entered.promise;
         // Join the round's canonical publication while its tool remains running.
-        const entries = await f.conversation.entries({}, 100, undefined, context);
-        const round = entries.items.find((entry) => entry.kind === "pi.assistant")!;
-        await waitForNativeAnswerPublication(f.harness, f.conversation.id, round.id, context);
-        const lifecycle = () => f.attempts.filter(({ event }) => event.kind.startsWith("turn."));
-        expect(lifecycle().map(({ event }) => event.kind)).toEqual(["turn.opened"]);
+        const entries = await f.conversation.entries(
+          {},
+          100,
+          undefined,
+          context,
+        );
+        const round = entries.items.find(
+          (entry) => entry.kind === "pi.assistant",
+        )!;
+        await waitForNativeAnswerPublication(
+          f.harness,
+          f.conversation.id,
+          round.id,
+          context,
+        );
+        const lifecycle = () =>
+          f.attempts.filter(({ event }) => event.kind.startsWith("turn."));
+        expect(lifecycle().map(({ event }) => event.kind)).toEqual([
+          "turn.opened",
+        ]);
         const opened = lifecycle()[0]!.event;
         expect(opened.actor.id).toBe(binding.actor.id);
-        expect(opened.turnId).toBe(`native-run:${f.conversation.id}:${input.id}`);
+        expect(opened.turnId).toBe(
+          `native-run:${f.conversation.id}:${input.id}`,
+        );
         if (cancel) {
           stopping = f.conversation.abort(context, { background: true });
           await cancelled.promise;
-          expect(lifecycle().map(({ event }) => event.kind)).toEqual(["turn.opened"]);
+          expect(lifecycle().map(({ event }) => event.kind)).toEqual([
+            "turn.opened",
+          ]);
         }
         release.resolve();
         await stopping;
         await running;
         await f.harness.runPass(context);
-        expect(lifecycle().map(({ event }) => event.kind)).toEqual(["turn.opened", "turn.closed"]);
+        expect(lifecycle().map(({ event }) => event.kind)).toEqual([
+          "turn.opened",
+          "turn.closed",
+        ]);
         expect(lifecycle()[1]!.event.turnId).toBe(opened.turnId);
-        expect(await input.wait(context)).toMatchObject({ status: cancel ? "unanswered" : "done" });
-        const final = f.attempts.findIndex(({ event }) =>
-          event.kind === "message.completed" && "tier" in event.payload && event.payload.tier === "primary");
+        expect(await input.wait(context)).toMatchObject({
+          status: cancel ? "unanswered" : "done",
+        });
+        const final = f.attempts.findIndex(
+          ({ event }) =>
+            event.kind === "message.completed" &&
+            "tier" in event.payload &&
+            event.payload.tier === "primary",
+        );
         if (!cancel) {
           expect(final).toBeGreaterThan(0);
           expect(f.attempts[final]!.event.turnId).toBe(opened.turnId);
-          expect(f.attempts.findIndex(({ event }) => event.kind === "turn.closed")).toBeGreaterThan(final);
+          expect(
+            f.attempts.findIndex(({ event }) => event.kind === "turn.closed"),
+          ).toBeGreaterThan(final);
         } else {
-          expect(lifecycle()[1]!.event.payload).toMatchObject({ reason: "user_interrupted" });
+          expect(lifecycle()[1]!.event.payload).toMatchObject({
+            reason: "user_interrupted",
+          });
         }
       } finally {
         release.resolve();
@@ -647,7 +746,9 @@ describe("exact native answer publication observation", () => {
       { text: "", outcome: "empty", published: true },
     ]);
     expect(f.attempts.map(({ event }) => event.kind)).toEqual([
-      "turn.opened", "message.completed", "turn.closed",
+      "turn.opened",
+      "message.completed",
+      "turn.closed",
     ]);
   });
   it("reports captured suppression truthfully and rejects another conversation's answer", async () => {
@@ -758,7 +859,9 @@ describe("native channel publication ownership", () => {
     await f.conversation.submit({ type: "input", content: "hello" }, context);
     await f.harness.runPass(context);
     expect(f.attempts.map(({ event }) => event.kind)).toEqual([
-      "turn.opened", "message.completed", "turn.closed",
+      "turn.opened",
+      "message.completed",
+      "turn.closed",
     ]);
     const event = f.attempts[1]!.event;
     expect(agenticEventSchema.safeParse(event).success).toBe(true);
@@ -1024,7 +1127,11 @@ describe("native channel publication ownership", () => {
   });
   it("explicit cancellation propagates a retained predecessor incident without stranding its join", async () => {
     const original = new Error("earlier publication needs repair");
-    const f = await fixture({ publish: async () => { throw original; } });
+    const f = await fixture({
+      publish: async () => {
+        throw original;
+      },
+    });
     await f.append("first owed answer");
     await f.append("second owed answer");
     await f.append("last owed answer");
@@ -1033,12 +1140,18 @@ describe("native channel publication ownership", () => {
     const last = tasks.at(-1)!;
     await f.harness.abortTask(last.id, context);
     await f.harness.runPass(context);
-    await expect(f.harness.waitForTask(last.id, context)).rejects.toBe(original);
-    expect((await f.harness.getTask(tasks[0]!.id, context))?.state).toMatchObject({
-      status: "waiting", condition: { kind: "failure" },
+    await expect(f.harness.waitForTask(last.id, context)).rejects.toBe(
+      original,
+    );
+    expect(
+      (await f.harness.getTask(tasks[0]!.id, context))?.state,
+    ).toMatchObject({
+      status: "waiting",
+      condition: { kind: "failure" },
     });
     expect((await f.harness.getTask(last.id, context))?.state).toMatchObject({
-      status: "waiting", condition: { kind: "failure" },
+      status: "waiting",
+      condition: { kind: "failure" },
     });
   });
   it.each([
@@ -1064,48 +1177,32 @@ describe("native channel publication ownership", () => {
         objectKey: "direct",
         executionDigest: "a".repeat(64),
       };
-      const callHost: AgentHostCall = async <T>() =>
-        ({
-          id: owner.runtimeId,
-          authoritySessionId: owner.authoritySessionId,
-          kind: "do",
-          status: "active",
-          source: { repoPath: image.source, effectiveVersion: "state:one" },
-          contextId: owner.contextId,
-          className: image.className,
-          key: image.objectKey,
-          activeExecutionDigest: image.executionDigest,
-          agentBinding: {
-            entityId: owner.runtimeId,
+      const callHost: AgentHostCall = createMainRpcCaller(
+        schemaRpcMock({
+          call: async () => ({
+            id: owner.runtimeId,
+            authoritySessionId: owner.authoritySessionId,
+            kind: "do",
+            status: "active",
+            source: { repoPath: image.source, effectiveVersion: "state:one" },
             contextId: owner.contextId,
-            channelId: "channel:primary",
-          },
-          createdAt: 1,
-          cleanupComplete: false,
-        }) as T;
-      const rpc: RpcClient = {
-        selfId: owner.runtimeId,
-        expose() {},
-        exposeAll() {},
-        exposeStreaming() {},
-        async call<T>() {
-          return null as T;
-        },
-        async stream() {
-          throw new Error("Unexpected stream");
-        },
-        async streamReadable() {
-          throw new Error("Unexpected stream");
-        },
-        async emit() {},
-        on: () => () => {},
-        peer() {
-          throw new Error("Unexpected peer");
-        },
-        status: () => "connected",
-        ready: () => Promise.resolve(),
-        onStatusChange: () => () => {},
-      };
+            className: image.className,
+            key: image.objectKey,
+            activeExecutionDigest: image.executionDigest,
+            agentBinding: {
+              entityId: owner.runtimeId,
+              contextId: owner.contextId,
+              channelId: "channel:primary",
+            },
+            createdAt: 1,
+            cleanupComplete: false,
+          }),
+        }),
+      );
+      const rpc: RpcClient = schemaRpcClientMock(
+        { call: async () => null },
+        owner.runtimeId,
+      );
       const calls: { event: AgenticEvent; channel: string }[] = [];
       const publication = createNativeChannelPublication({
         publish: async (channel, _participant, event) => {
@@ -1146,11 +1243,16 @@ describe("native channel publication ownership", () => {
               source: origin,
               returnValue: args.value,
               console: "captured console",
-              ...(failureKind ? {
-                failureKind,
-                failureCode: "owned_transport_failure",
-                errorData: { code: "owned_transport_failure", recovery: { action: "reobserve" } },
-              } : {}),
+              ...(failureKind
+                ? {
+                    failureKind,
+                    failureCode: "owned_transport_failure",
+                    errorData: {
+                      code: "owned_transport_failure",
+                      recovery: { action: "reobserve" },
+                    },
+                  }
+                : {}),
             },
             isError,
           };
@@ -1262,10 +1364,15 @@ describe("native channel publication ownership", () => {
       if (isError)
         expect(terminals[0]!.event.payload).toMatchObject({
           reason: "Original direct failure",
-          terminalOutcome: failureKind === "infrastructure" ? "infrastructure_error" : "tool_error",
+          terminalOutcome:
+            failureKind === "infrastructure"
+              ? "infrastructure_error"
+              : "tool_error",
           failure: {
             operation: "direct_proof",
-            ...(failureKind ? { kind: failureKind, code: "owned_transport_failure" } : {}),
+            ...(failureKind
+              ? { kind: failureKind, code: "owned_transport_failure" }
+              : {}),
           },
         });
       expect(
@@ -1319,48 +1426,32 @@ describe("native channel publication ownership", () => {
         objectKey: "one",
         executionDigest: "a".repeat(64),
       };
-      const callHost: AgentHostCall = async <T>() =>
-        ({
-          id: owner.runtimeId,
-          authoritySessionId: owner.authoritySessionId,
-          kind: "do",
-          status: "active",
-          source: { repoPath: image.source, effectiveVersion: "state:one" },
-          contextId: owner.contextId,
-          className: image.className,
-          key: image.objectKey,
-          activeExecutionDigest: image.executionDigest,
-          agentBinding: {
-            entityId: owner.runtimeId,
+      const callHost: AgentHostCall = createMainRpcCaller(
+        schemaRpcMock({
+          call: async () => ({
+            id: owner.runtimeId,
+            authoritySessionId: owner.authoritySessionId,
+            kind: "do",
+            status: "active",
+            source: { repoPath: image.source, effectiveVersion: "state:one" },
             contextId: owner.contextId,
-            channelId: "channel:primary",
-          },
-          createdAt: 1,
-          cleanupComplete: false,
-        }) as T;
-      const rpc: RpcClient = {
-        selfId: owner.runtimeId,
-        expose() {},
-        exposeAll() {},
-        exposeStreaming() {},
-        async call<T>() {
-          return null as T;
-        },
-        async stream() {
-          throw new Error("Unexpected stream");
-        },
-        async streamReadable() {
-          throw new Error("Unexpected stream");
-        },
-        async emit() {},
-        on: () => () => {},
-        peer() {
-          throw new Error("Unexpected peer");
-        },
-        status: () => "connected",
-        ready: () => Promise.resolve(),
-        onStatusChange: () => () => {},
-      };
+            className: image.className,
+            key: image.objectKey,
+            activeExecutionDigest: image.executionDigest,
+            agentBinding: {
+              entityId: owner.runtimeId,
+              contextId: owner.contextId,
+              channelId: "channel:primary",
+            },
+            createdAt: 1,
+            cleanupComplete: false,
+          }),
+        }),
+      );
+      const rpc: RpcClient = schemaRpcClientMock(
+        { call: async () => null },
+        owner.runtimeId,
+      );
       const calls: {
         channel: string;
         participant: string;
@@ -1384,8 +1475,12 @@ describe("native channel publication ownership", () => {
         }
         if (!accepted.has(key)) accepted.set(key, accepted.size + 1);
         expect(agenticEventSchema.safeParse(event).success).toBe(true);
-        if (loseStart && event.kind === "invocation.started" &&
-          calls.filter((call) => call.event.kind === "invocation.started").length === 1)
+        if (
+          loseStart &&
+          event.kind === "invocation.started" &&
+          calls.filter((call) => call.event.kind === "invocation.started")
+            .length === 1
+        )
           throw new Error("Native start acceptance reply lost");
         return { id: accepted.get(key)! };
       };

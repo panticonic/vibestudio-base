@@ -11,7 +11,6 @@ import {
   useSyncExternalStore,
 } from "react";
 import * as runtime from "@workspace/runtime";
-import { Rpc } from "@workspace/runtime";
 import type { HostCommand, PanelHandle } from "@workspace/runtime";
 
 /**
@@ -173,39 +172,9 @@ export function usePanelRpcGlobalEvent<T = unknown>(
 // Parent PanelHandle Hooks
 // =============================================================================
 
-/**
- * Get a typed handle for communicating with the parent panel.
- * Returns null if this panel has no parent (is root).
- *
- * @typeParam T - RPC methods the parent exposes
- * @typeParam E - RPC event map for typed events from parent
- *
- * @example
- * ```tsx
- * interface ParentApi {
- *   notifyReady(): Promise<void>;
- *   reportStatus(status: string): Promise<void>;
- * }
- *
- * function MyPanel() {
- *   const parent = usePanelParent<ParentApi>();
- *
- *   useEffect(() => {
- *     if (parent) {
- *       parent.call.notifyReady();
- *     }
- *   }, [parent]);
- *
- *   return <div>Has parent: {parent ? "Yes" : "No"}</div>;
- * }
- * ```
- */
-export function usePanelParent<
-  T extends Rpc.ExposedMethods = Rpc.ExposedMethods,
-  E extends Rpc.RpcEventMap = Rpc.RpcEventMap,
->(): PanelHandle<T, E> | null {
-  // getParent() returns a cached handle, so useMemo is for React stability
-  return useMemo(() => runtime.getParent<T, E>(), []);
+/** Get the parent handle. Use its shared contract to bind typed methods. */
+export function usePanelParent(): PanelHandle | null {
+  return useMemo(() => runtime.getParent(), []);
 }
 
 /**

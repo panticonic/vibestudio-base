@@ -1,3 +1,4 @@
+import { mainRpcMethods } from "@vibestudio/service-schemas/mainRpc";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import {
@@ -62,12 +63,7 @@ export function createTemplateUpdateChecks(
           const requirement =
             target.commit === source.commit
               ? { systemEpoch: workspaceEpoch }
-              : await ctx.rpc.call<{
-                  systemEpoch: number;
-                  minimumAppVersion?: string;
-                  availableAppVersion?: string;
-                  hostError?: string;
-                }>("main", "workspaceTemplateSource.readCompatibility", target);
+              : await ctx.rpc.call("main", mainRpcMethods["workspaceTemplateSource.readCompatibility"], [target]);
           checks.push({
             source,
             target,

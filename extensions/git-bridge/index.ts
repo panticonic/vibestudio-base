@@ -24,7 +24,7 @@ import type {
 import { blobstoreMethods } from "@vibestudio/service-schemas/blobstore";
 import { vcsMethods } from "@vibestudio/service-schemas/vcs";
 import { runtimeMethods } from "@vibestudio/service-schemas/runtime";
-import { createTypedServiceClient } from "@vibestudio/shared/typedServiceClient";
+import { createTypedRpcServiceClient } from "@vibestudio/shared/typedRpcServiceClient";
 import { gitCheckoutsPath } from "@vibestudio/workspace/gitCheckouts";
 import { GitBridge, type BridgeHost } from "./bridge.js";
 import { UpstreamEngine } from "./upstream.js";
@@ -37,23 +37,9 @@ function createBridgeHost(
   ctx: ExtensionContextLike,
   repositorySelection: BridgeHost["repositorySelection"],
 ): BridgeHost {
-  const main = <T>(method: string, ...args: unknown[]): Promise<T> =>
-    ctx.rpc.call<T>("main", method, ...args);
-  const vcs = createTypedServiceClient(
-    "vcs",
-    vcsMethods,
-    (_service, method, args) => main(`vcs.${method}`, ...args),
-  );
-  const blobstore = createTypedServiceClient(
-    "blobstore",
-    blobstoreMethods,
-    (_service, method, args) => main(`blobstore.${method}`, ...args),
-  );
-  const runtime = createTypedServiceClient(
-    "runtime",
-    runtimeMethods,
-    (_service, method, args) => main(`runtime.${method}`, ...args),
-  );
+  const vcs = createTypedRpcServiceClient(ctx.rpc, { targetId: "main", namespace: "vcs" }, vcsMethods);
+  const blobstore = createTypedRpcServiceClient(ctx.rpc, { targetId: "main", namespace: "blobstore" }, blobstoreMethods);
+  const runtime = createTypedRpcServiceClient(ctx.rpc, { targetId: "main", namespace: "runtime" }, runtimeMethods);
 
   return {
     checkoutRoot: async () => gitCheckoutsPath(ctx.storage.root),

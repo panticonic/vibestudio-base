@@ -11,6 +11,7 @@ import { describe, expect, it } from "vitest";
 import {
   createTestDO as createBaseTestDO,
   successfulTestRpcFetch,
+  type TestDOCall,
 } from "@vibestudio/durable/test-utils";
 import { logIdForChannel } from "@vibestudio/trajectory-identity";
 import { AGENTIC_PROTOCOL_VERSION } from "@workspace/agentic-protocol";
@@ -23,7 +24,7 @@ const createTestDO: typeof createBaseTestDO = (DOClass, env, opts) =>
     opts,
   );
 
-type Call = <R>(method: string, ...args: unknown[]) => Promise<R>;
+type Call = TestDOCall<GadWorkspaceDO, typeof GadWorkspaceDO>;
 
 async function join(
   call: Call,
@@ -105,7 +106,7 @@ describe("agent directory", () => {
       metadata: AGENT_METADATA,
     });
 
-    const listing = await call<any>("listAgentDirectory", {});
+    const listing = await call("listAgentDirectory", {});
     expect(listing.summary).toMatchObject({ rows: 1, running: 0, terminal: 0 });
     expect(listing.entries[0]).toMatchObject({
       instanceId: "gmail@ch-mail",
@@ -135,7 +136,7 @@ describe("agent directory", () => {
       metadata: AGENT_METADATA,
     });
 
-    const listing = await call<any>("listAgentDirectory", {
+    const listing = await call("listAgentDirectory", {
       workerId: "do:gmail",
     });
     // "Message the gmail agent" is meaningless without saying where, so the
@@ -167,7 +168,7 @@ describe("agent directory", () => {
       publishedAt: "2026-05-20T12:00:00.000Z",
     });
 
-    const listing = await call<any>("listAgentDirectory", {});
+    const listing = await call("listAgentDirectory", {});
     expect(listing.entries).toEqual([]);
   });
 
@@ -191,7 +192,7 @@ describe("agent directory", () => {
         },
       ],
     });
-    let listing = await call<any>("listAgentDirectory", {});
+    let listing = await call("listAgentDirectory", {});
     expect(listing.entries[0]).toMatchObject({
       status: "running",
       // The event that set it is recorded; nothing here consults elapsed time.
@@ -210,7 +211,7 @@ describe("agent directory", () => {
         },
       ],
     });
-    listing = await call<any>("listAgentDirectory", {});
+    listing = await call("listAgentDirectory", {});
     expect(listing.entries[0]).toMatchObject({
       status: "idle",
       statusEventId: "ev-turn-closed",
@@ -233,10 +234,10 @@ describe("agent directory", () => {
       at: "2026-05-20T13:00:00.000Z",
     });
 
-    expect((await call<any>("listAgentDirectory", {})).entries).toEqual([]);
+    expect((await call("listAgentDirectory", {})).entries).toEqual([]);
     // A terminal instance whose channel is durable is exactly the catalog of
     // agents that can be woken again (plan §4.4).
-    const withTerminal = await call<any>("listAgentDirectory", {
+    const withTerminal = await call("listAgentDirectory", {
       includeTerminal: true,
     });
     expect(withTerminal.entries[0]).toMatchObject({
@@ -265,7 +266,7 @@ describe("agent directory", () => {
 
     expect(
       (
-        await call<any>("searchAgentDirectory", { query: "inbox triage" })
+        await call("searchAgentDirectory", { query: "inbox triage" })
       ).entries.map((entry: any) => entry.ref),
     ).toEqual(["agent:gmail@ch-mail"]);
 
@@ -296,13 +297,15 @@ describe("agent directory", () => {
       ],
     });
 
-    const hits = await call<any>("searchAgentDirectory", {
+    const hits = await call("searchAgentDirectory", {
       query: "deployment",
     });
     expect(hits.entries.map((entry: any) => entry.ref)).toEqual([
       "agent:builder@ch-build",
     ]);
-    expect(hits.entries[0].summary).toContain("nightly deployment");
+    const hit = hits.entries[0];
+    if (!hit) throw new Error("Expected the indexed agent directory entry");
+    expect(hit.summary).toContain("nightly deployment");
   });
 
   it("describes channels with their directory participants and envelope stats", async () => {
@@ -325,9 +328,10 @@ describe("agent directory", () => {
       ],
     });
 
-    const [described] = await call<any>("describeChannels", {
+    const [described] = await call("describeChannels", {
       channelIds: ["ch-mail"],
     });
+    if (!described) throw new Error("Expected the described channel");
     // Presence and the agent's lifecycle are both envelopes on the same
     // canonical channel log; no separate trajectory traffic is omitted.
     expect(described).toMatchObject({ channelId: "ch-mail", envelopeCount: 2 });
@@ -371,7 +375,7 @@ describe("agent directory", () => {
       { participantId: "do:gmail", revision: 1, metadata: AGENT_METADATA },
       AGENT_METADATA,
     );
-    let listing = await call<{ entries: Array<Record<string, unknown>> }>(
+    let listing = await call(
       "listAgentDirectory",
       {},
     );

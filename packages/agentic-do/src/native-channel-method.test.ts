@@ -1,3 +1,4 @@
+import { schemaRpcMock } from "@vibestudio/rpc/test-utils";
 import { afterEach, describe, expect, it } from "vitest";
 import { mkdtemp, rm } from "node:fs/promises";
 import { join } from "node:path";
@@ -36,6 +37,7 @@ import {
   createNativeChannelMethodExecution,
   type NativeChannelMethodRequest,
 } from "./native-channel-method.js";
+import { durableObjectServiceFixture } from "@vibestudio/service-schemas/test-utils";
 
 const context = BACKGROUND_CONTEXT;
 const sessions: Harness[] = [];
@@ -124,19 +126,19 @@ async function fixture(
       }),
     );
   }
-  const rpc = {
+  const rpc = schemaRpcMock({
     stream: async () => {
       throw new Error("Method receipt fixture cannot stream");
     },
-    call: async <T>(
+    call: async (
       _target: string,
       method: string,
       args: unknown[],
-    ): Promise<T> => {
+    ): Promise<unknown> => {
       if (method === "workers.resolveService")
-        return { kind: "durable-object", targetId: "channel-do" } as T;
+        return durableObjectServiceFixture("channel-do");
       if (method === "getEnvelope")
-        return (events.get(args[0] as string) ?? null) as T;
+        return events.get(args[0] as string) ?? null;
       if (method === "callMethod") {
         const [callerId, targetId, callId, name, input, opts] = args as [
           string,
@@ -180,7 +182,7 @@ async function fixture(
           failStart = false;
           throw startFailure;
         }
-        return undefined as T;
+        return undefined;
       }
       if (method === "cancelMethodCall") {
         const [callerId, callId] = args as [string, string];
@@ -203,11 +205,11 @@ async function fixture(
             route.target.id === options.failCancelTarget)
         )
           throw cancelFailure;
-        return undefined as T;
+        return undefined;
       }
       throw Error(`Unexpected channel method ${method}`);
     },
-  };
+  });
   const client = new ChannelClient(rpc, "channel:one");
   const execution = createNativeChannelMethodExecution({
     harness: () => harness,

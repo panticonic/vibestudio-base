@@ -1,41 +1,11 @@
-import type * as Rpc from "./rpc.js";
+import type { RpcMethodMap, RpcMethodArgs, RpcMethodResult } from "@vibestudio/shared/rpcMethods";
 import type { PanelContract, EventSchemaMap } from "./types.js";
-
-/**
- * Helper to define a panel contract with proper type inference.
- *
- * @example
- * ```ts
- * interface MyChildMethods {
- *   doSomething(): Promise<void>;
- * }
- *
- * export const myContract = defineContract({
- *   source: "panels/my-panel",
- *   child: {
- *     methods: {} as MyChildMethods,
- *     emits: {
- *       "done": z.object({ result: z.string() }),
- *     },
- *   },
- * });
- * ```
- */
-export function defineContract<
-  ChildMethods extends Record<string, Rpc.AnyFunction> = {},
-  ChildEmits extends EventSchemaMap = {},
-  ParentMethods extends Record<string, Rpc.AnyFunction> = {},
-  ParentEmits extends EventSchemaMap = {},
->(contract: {
+type Callable<M extends RpcMethodMap> = { [K in keyof M]: (...args: RpcMethodArgs<M[K]>) => Promise<RpcMethodResult<M[K]>> };
+/** Both panels share the receiver's real descriptors and event schemas. */
+export function defineContract<Child extends RpcMethodMap = {}, ChildEmits extends EventSchemaMap = {}, Parent extends RpcMethodMap = {}, ParentEmits extends EventSchemaMap = {}>(contract: {
   source: string;
-  child?: {
-    methods?: ChildMethods;
-    emits?: ChildEmits;
-  };
-  parent?: {
-    methods?: ParentMethods;
-    emits?: ParentEmits;
-  };
-}): PanelContract<ChildMethods, ChildEmits, ParentMethods, ParentEmits> {
-  return contract as PanelContract<ChildMethods, ChildEmits, ParentMethods, ParentEmits>;
+  child?: { methods?: Child; emits?: ChildEmits };
+  parent?: { methods?: Parent; emits?: ParentEmits };
+}): PanelContract<Callable<Child>, ChildEmits, Callable<Parent>, ParentEmits> {
+  return contract as PanelContract<Callable<Child>, ChildEmits, Callable<Parent>, ParentEmits>;
 }

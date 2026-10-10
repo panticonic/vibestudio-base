@@ -1,10 +1,6 @@
+import { mainRpcMethods } from "@vibestudio/service-schemas/mainRpc";
 import { Buffer } from "node:buffer";
-import type {
-  VcsReadFileResult,
-  VcsListDirectoryResult,
-  VcsResolveRepositoryResult,
-  VcsStateNodeRef,
-} from "@vibestudio/service-schemas/vcs";
+import type { VcsListDirectoryResult, VcsStateNodeRef } from "@vibestudio/service-schemas/vcs";
 import {
   installedDependencyLayers,
   parseTemplateManifestContent,
@@ -62,12 +58,12 @@ async function listDirectory(
       ctx,
       `listDirectory:${directory || "."}`,
       () =>
-        ctx.rpc.call<VcsListDirectoryResult>("main", "vcs.listDirectory", {
+        ctx.rpc.call("main", mainRpcMethods["vcs.listDirectory"], [{
           state,
           path: directory,
           ...(cursor ? { cursor } : {}),
           limit: 500,
-        }),
+        }]),
     );
     if (!page) break;
     entries.push(...page.entries);
@@ -99,24 +95,25 @@ export async function observeWorkspace(
 ): Promise<SemanticWorkspaceObservation> {
   ctx.log.info("Template authoring metadata observation started");
   const mainState = await authoringStep(ctx, "mainState", () =>
-    ctx.rpc.call<Extract<VcsStateNodeRef, { kind: "event" }>>(
+    ctx.rpc.call(
       "main",
-      "vcs.mainState",
+      mainRpcMethods["vcs.mainState"],
+      [],
     ),
   );
   const metaRepository = await authoringStep(ctx, "resolveMetaRepository", () =>
-    ctx.rpc.call<VcsResolveRepositoryResult>("main", "vcs.resolveRepository", {
+    ctx.rpc.call("main", mainRpcMethods["vcs.resolveRepository"], [{
       state: mainState,
       repoPath: META_REPOSITORY,
-    }),
+    }]),
   );
   if (!metaRepository) throw new Error("Workspace meta repository disappeared");
   const meta = await authoringStep(ctx, "readMetaManifest", () =>
-    ctx.rpc.call<VcsReadFileResult>("main", "vcs.readFile", {
+    ctx.rpc.call("main", mainRpcMethods["vcs.readFile"], [{
       state: mainState,
       repositoryId: metaRepository.repositoryId,
       file: { kind: "path", path: "vibestudio.yml" },
-    }),
+    }]),
   );
   if (!meta) throw new Error("Workspace meta/vibestudio.yml disappeared");
   const content =
@@ -129,10 +126,10 @@ export async function observeWorkspace(
   );
   const runtimeTop = rootRuntimeFromTemplateManifest(manifest);
   const installation = await authoringStep(ctx, "readInstallation", () =>
-    ctx.rpc.call<WorkspaceTemplateInstallation | null>(
+    ctx.rpc.call(
       "main",
-      "workspaceTemplateSource.readInstallation",
-      { eventId: mainState.eventId },
+      mainRpcMethods["workspaceTemplateSource.readInstallation"],
+      [{ eventId: mainState.eventId }],
     ),
   );
   const sources = installation?.sources ?? [];

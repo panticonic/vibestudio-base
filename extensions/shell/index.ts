@@ -1,3 +1,4 @@
+import { mainRpcMethods } from "@vibestudio/service-schemas/mainRpc";
 import * as path from "node:path";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { mkdir, readdir, stat, unlink, writeFile } from "node:fs/promises";
@@ -149,12 +150,7 @@ async function contextRevisionDisplay(
   contextId: string,
 ): Promise<string | undefined> {
   try {
-    const status = await ctx.rpc.call<{
-      workingHead:
-        | { kind: "event"; eventId: string }
-        | { kind: "application"; applicationId: string };
-      workingCounts: { workUnits: number };
-    }>("main", "vcs.status", { contextId });
+    const status = await ctx.rpc.call("main", mainRpcMethods["vcs.status"], [{ contextId }]);
     const short =
       contextId.length > 12 ? `${contextId.slice(0, 8)}…` : contextId;
     const head =
@@ -353,25 +349,25 @@ export async function activate(ctx: ExtensionContext) {
     async createContext(raw: unknown) {
       const parsed = createContextRequestSchema.parse(raw);
       const owner = currentOwner(ctx);
-      const handle = await ctx.rpc.call<{ id?: string; contextId?: string }>(
+      const handle = await ctx.rpc.call(
         "main",
-        "runtime.createEntity",
-        {
+        mainRpcMethods["runtime.createEntity"],
+        [{
           kind: "session",
           execution: { surface: "inert" },
           source: "terminal",
           title: parsed?.title ?? "Terminal context",
-        },
+        }],
       );
       const entityId = typeof handle?.id === "string" ? handle.id : undefined;
       const contextId =
         typeof handle?.contextId === "string"
           ? handle.contextId
           : entityId
-            ? await ctx.rpc.call<string | null>(
+            ? await ctx.rpc.call(
                 "main",
-                "runtime.resolveContext",
-                entityId,
+                mainRpcMethods["runtime.resolveContext"],
+                [entityId],
               )
             : null;
       if (!contextId) throw error("EIO", "Failed to resolve new context id");

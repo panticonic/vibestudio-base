@@ -1,3 +1,5 @@
+import { schemaRpcMock } from "@vibestudio/rpc/test-utils";
+import { durableObjectServiceFixture } from "@vibestudio/service-schemas/test-utils";
 import { describe, expect, it } from "vitest";
 import {
   channelEnvelopePageInfo,
@@ -16,17 +18,15 @@ describe("ChannelLog paging", () => {
     const seqs = Array.from({ length: 1_201 }, (_, index) => index + 1);
     const targetId = "do:workers/workspace-source:GadWorkspaceDO:workspace";
     const calls: Array<[target: string, method: string, args: unknown[]]> = [];
-    const rpc: ConstructorParameters<typeof ChannelLog>[0] = {
-      async call<T = unknown>(target: string, method: string, args: unknown[]): Promise<T> {
+    const rpc: ConstructorParameters<typeof ChannelLog>[0] = schemaRpcMock({
+      async call(target: string, method: string, args: unknown[]): Promise<unknown> {
         calls.push([target, method, args]);
         if (target === "main" && method === "workers.resolveService") {
-          return {
-            kind: "durable-object",
+          return durableObjectServiceFixture(targetId, {
             source: "vibestudio/internal",
             className: "GadWorkspaceDO",
             objectKey: "workspace",
-            targetId,
-          } as T;
+          });
         }
         if (target === targetId && method === "readChannelEnvelopes") {
           const request = normalizeChannelEnvelopePageRequest(args[0] as never);
@@ -49,11 +49,11 @@ describe("ChannelLog paging", () => {
               { totalCount: seqs.length, firstSeq: 1, lastSeq: seqs.length },
               returned
             ),
-          } as T;
+          };
         }
         throw new Error(`unexpected call ${target}.${method}`);
       },
-    };
+    });
 
     const log = new ChannelLog(rpc, "channel-1");
     const first = await log.replayAfter({ after: 0 }, {});

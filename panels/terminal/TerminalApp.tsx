@@ -14,7 +14,7 @@ const expose = (method: string, handler: (...args: any[]) => unknown | Promise<u
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { CommandLauncher } from "./CommandLauncher.js";
 import { ContextPicker, type CreatedContext, type PickedContextOptions } from "./ContextPicker.js";
-import { deriveContextOptions, type ContextOption, type LiveEntity } from "./contextPickerModel.js";
+import { deriveContextOptions, type ContextOption } from "./contextPickerModel.js";
 import { documentTitleForPanel } from "./documentTitle.js";
 import { NotificationCenter } from "./NotificationCenter.js";
 import { ScratchOverlay } from "./ScratchOverlay.js";
@@ -87,7 +87,7 @@ export function TerminalApp() {
   const [executionPlatform, setExecutionPlatform] = useState<string | null>(null);
   useEffect(() => {
     let active = true;
-    void callMain<{ platform: string }>("developmentNative.describeHost").then(
+    void callMain("developmentNative.describeHost").then(
       (host) => {
         if (active) setExecutionPlatform(host.platform);
       },
@@ -472,7 +472,7 @@ export function TerminalApp() {
   // Context picker (§4.1): list live contexts, create fresh session contexts,
   // and open a terminal placed in a chosen context (or the workspace root).
   const loadContexts = useCallback(async (): Promise<ContextOption[]> => {
-    const entities = await callMain<LiveEntity[]>("runtime.listEntities", {});
+    const entities = await callMain("runtime.listEntities", {});
     return deriveContextOptions(entities ?? []);
   }, []);
   const createSessionContext = useCallback(

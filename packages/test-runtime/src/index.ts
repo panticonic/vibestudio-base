@@ -1,3 +1,4 @@
+import { createReceiverRpcMethods } from "@vibestudio/shared/rpcMethods";
 import type { RpcClient } from "@vibestudio/rpc";
 
 export type SandboxTestRuntime = "browser" | "workerd";
@@ -605,3 +606,5 @@ export function exposeTestRunner(
     TEST_RUNNER_WEBSITE_POLICY,
   );
 }
+
+export const testRunnerRpcMethods = createReceiverRpcMethods<{ run(request: TestExecutionRequest): Promise<TestExecutionResult> }>(["run"], "tests");

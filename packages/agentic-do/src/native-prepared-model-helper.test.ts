@@ -1,3 +1,5 @@
+import { schemaRpcMock } from "@vibestudio/rpc/test-utils";
+import type { RpcWireCaller } from "@vibestudio/rpc/internal";
 import { describe, expect, it, vi } from "vitest";
 import { fauxProvider } from "@panticonic/pi-ai";
 import { BACKGROUND_CONTEXT } from "@panticonic/pi-chord/context";
@@ -26,16 +28,12 @@ const credential = {
 function fixture() {
   const original = fauxProvider().getModel();
   const calls = vi
-    .fn<(...args: Parameters<RpcCaller["call"]>) => Promise<unknown>>()
+    .fn<(...args: Parameters<RpcWireCaller["call"]>) => Promise<unknown>>()
     .mockResolvedValue(credential);
   const stream = vi
-    .fn<RpcCaller["stream"]>()
+    .fn<RpcWireCaller["stream"]>()
     .mockResolvedValue(new Response("actual response"));
-  const rpc: RpcCaller = {
-    call: async <T>(...args: Parameters<RpcCaller["call"]>) =>
-      (await calls(...args)) as T,
-    stream,
-  };
+  const rpc: RpcCaller = schemaRpcMock({ call: calls, stream });
   const owned = new Set<unknown>();
   const egress = vi
     .fn<typeof fetch>()

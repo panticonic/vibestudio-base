@@ -1,3 +1,4 @@
+import { schemaRpcMock } from "@vibestudio/rpc/test-utils";
 import { describe, expect, it, vi } from "vitest";
 import type { RpcConnectionStatus } from "@vibestudio/rpc";
 import type { PanelBootObservation } from "@vibestudio/shared/panel/observation";
@@ -30,27 +31,21 @@ function harness() {
   const call = vi.fn<(...args: unknown[]) => Promise<"reported" | "stale">>();
   const onError = vi.fn();
   const reporter = createPanelBootReporter({
-    rpc: {
-      call,
-      status: () => status,
-      onStatusChange: (listener) => {
+    rpc: { ...schemaRpcMock({ call }), status: () => status,
+onStatusChange: (listener) => {
         listeners.add(listener);
         return () => listeners.delete(listener);
-      },
-    },
+      } },
     observeView: view,
     onError,
   });
-  return {
-    call,
-    onError,
-    reporter,
-    setStatus(next: RpcConnectionStatus) {
+  return { ...schemaRpcMock({ call }), onError,
+reporter,
+setStatus(next: RpcConnectionStatus) {
       status = next;
       for (const listener of listeners) listener(next);
     },
-    listenerCount: () => listeners.size,
-  };
+listenerCount: () => listeners.size };
 }
 
 describe("createPanelBootReporter", () => {

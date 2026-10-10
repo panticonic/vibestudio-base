@@ -15,7 +15,7 @@ export interface ExtensionContextLike {
     resolveService(query: string, objectKey?: string | null): Promise<unknown>;
   };
   rpc: {
-    call<T = unknown>(targetId: string, method: string, ...args: unknown[]): Promise<T>;
+    call: import("@vibestudio/rpc").RpcCaller["call"];
     on?(eventName: string, cb: (event: { payload: unknown }) => void): () => void;
   };
   subscriptions?: Array<{ dispose(): void }>;

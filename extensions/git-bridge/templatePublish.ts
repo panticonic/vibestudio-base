@@ -1,3 +1,4 @@
+import { mainRpcMethods } from "@vibestudio/service-schemas/mainRpc";
 import * as fsp from "node:fs/promises";
 import * as path from "node:path";
 import { Buffer } from "node:buffer";
@@ -284,10 +285,10 @@ export class TemplatePublishEngine {
         const changedFiles: TemplatePublicationReview["changedFiles"] = [];
         const store = async (bytes: Uint8Array) =>
           (
-            await this.ctx.rpc.call<{ digest: string }>(
+            await this.ctx.rpc.call(
               "main",
-              "blobstore.putBase64",
-              Buffer.from(bytes).toString("base64"),
+              mainRpcMethods["blobstore.putBase64"],
+              [Buffer.from(bytes).toString("base64")],
             )
           ).digest;
         for (const file of [...new Set([...before.keys(), ...next.keys()])].sort()) {
@@ -427,10 +428,10 @@ export class TemplatePublishEngine {
             label: `published template ${input.templateName}`,
             sink: {
               put: async (bytes) =>
-                this.ctx.rpc.call<{ digest: string; size: number }>(
+                this.ctx.rpc.call(
                   "main",
-                  "blobstore.putBase64",
-                  Buffer.from(bytes).toString("base64"),
+                  mainRpcMethods["blobstore.putBase64"],
+                  [Buffer.from(bytes).toString("base64")],
                 ),
             },
             reservedPaths: "exclude",

@@ -1,3 +1,5 @@
+import { createTypedRpcServiceClient } from "@vibestudio/shared/typedRpcServiceClient";
+import { mainRpcMethods } from "@vibestudio/service-schemas/mainRpc";
 import { installedSourceDependencies } from "./sourceDependencies";
 import {
   TemplateOperations,
@@ -12,7 +14,7 @@ import {
   normalizeTemplateGitUrl,
   canonicalTemplateNodeId,
 } from "@vibestudio/workspace/templateCoordinates";
-import { createTypedServiceClient } from "@vibestudio/shared/typedServiceClient";
+
 import { vcsMethods } from "@vibestudio/service-schemas/vcs";
 import type {
   VcsCompareResult,
@@ -81,11 +83,7 @@ export function createTemplateLifecycle(
     }): Promise<TemplateExactPin>;
   },
 ) {
-  const vcs = createTypedServiceClient(
-    "vcs",
-    vcsMethods,
-    (_service, method, args) => ctx.rpc.call("main", `vcs.${method}`, ...args),
-  );
+  const vcs = createTypedRpcServiceClient(ctx.rpc, { targetId: "main", namespace: "vcs" }, vcsMethods);
   const operations = new TemplateOperations<Update>(ctx, "template-updates");
   const serial = operations.serial.bind(operations);
   const save = operations.save.bind(operations);
@@ -395,18 +393,18 @@ export function createTemplateLifecycle(
             throw new Error(
               "This template is already at the selected version.",
             );
-          const before = await ctx.rpc.call<TemplateSourceTree>(
+          const before = await ctx.rpc.call(
             "main",
-            "workspaceTemplateSource.composeExact",
-            {
-              sources: observation.templateSources,
+            mainRpcMethods["workspaceTemplateSource.composeExact"],
+            [{
+              sources: [...observation.templateSources],
               purpose: observation.installation?.upstream ? "author" : "use",
-            },
+            }],
           );
-          const after = await ctx.rpc.call<TemplateSourceTree>(
+          const after = await ctx.rpc.call(
             "main",
-            "workspaceTemplateSource.composeExact",
-            {
+            mainRpcMethods["workspaceTemplateSource.composeExact"],
+            [{
               purpose: observation.installation?.upstream ? "author" : "use",
               sources: selectTemplateUpdateSources(
                 observation.manifest,
@@ -414,7 +412,7 @@ export function createTemplateLifecycle(
                 target,
                 observation.installation,
               ),
-            },
+            }],
           );
           if (
             !after.sources.some(
@@ -455,10 +453,10 @@ export function createTemplateLifecycle(
             .find((repo) => repo.repoPath === input.repoPath)
             ?.files.find((file) => file.path === input.path);
           if (!descriptor) return null;
-          const encoded = await ctx.rpc.call<string | null>(
+          const encoded = await ctx.rpc.call(
             "main",
-            "blobstore.getBase64",
-            descriptor.contentHash,
+            mainRpcMethods["blobstore.getBase64"],
+            [descriptor.contentHash],
           );
           if (encoded === null)
             throw new Error("Update content is unavailable");

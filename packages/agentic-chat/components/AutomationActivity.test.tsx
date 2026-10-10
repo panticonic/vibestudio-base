@@ -1,5 +1,7 @@
 // @vitest-environment jsdom
 
+import { schemaRpcMock } from "@vibestudio/rpc/test-utils";
+
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { Theme } from "@radix-ui/themes";
 import { describe, expect, it, vi } from "vitest";
@@ -12,6 +14,7 @@ import {
   createAutomationUiClient,
   type AutomationUiClient,
 } from "./AutomationActivity.js";
+import { durableObjectServiceFixture } from "@vibestudio/service-schemas/test-utils";
 
 const automation: MissionRecord = {
   schemaVersion: 3,
@@ -92,10 +95,18 @@ describe("AutomationActivity", () => {
   it("shares service resolution and its client cache across history pills", async () => {
     const call = vi.fn(async (_target: string, method: string) => {
       if (method === "workers.resolveService") {
-        return { kind: "durable-object", targetId: "do:missions" };
+        return durableObjectServiceFixture("do:missions");
       }
       if (method === "overview") {
         return {
+          generatedAt: 1_700_000_000_000,
+          stats: {
+            total: 1,
+            active: 1,
+            running: 0,
+            issueRunsLast24Hours: 0,
+            completed: 0,
+          },
           items: [
             {
               automation,
@@ -105,12 +116,13 @@ describe("AutomationActivity", () => {
               issueRunsSince: 0,
             },
           ],
+          attention: [],
         };
       }
       if (method === "getRun") return run;
       throw new Error(`Unexpected method ${method}`);
     });
-    const rpc = { call };
+    const rpc = schemaRpcMock({ call });
     const first = createAutomationUiClient(rpc);
     const second = createAutomationUiClient(rpc);
 
@@ -128,6 +140,7 @@ describe("AutomationActivity", () => {
       "main",
       "workers.resolveService",
       ["vibestudio.missions.v1", null],
+      {},
     ]);
   });
 
@@ -148,7 +161,7 @@ describe("AutomationActivity", () => {
           _options?: unknown,
         ) => {
           if (method === "workers.resolveService")
-            return { kind: "durable-object", targetId: "do:missions" };
+            return durableObjectServiceFixture("do:missions");
           if (method === "get") return current;
           if (method === "authority.compileAuthorityPlan") return plan;
           if (method === "edit") return current;
@@ -176,14 +189,18 @@ describe("AutomationActivity", () => {
               : current.charter.execution,
         },
       };
-      await createAutomationUiClient({ call }).edit(current.missionId, patch);
+      await createAutomationUiClient(schemaRpcMock({ call })).edit(
+        current.missionId,
+        patch,
+      );
       expect(call.mock.calls[0]).toEqual([
         "main",
         "workers.resolveService",
         ["vibestudio.missions.v1", null],
+        {},
       ]);
       const compiled = call.mock.calls.filter(
-        ([, method]) => method === "authority.compileAuthorityPlan"
+        ([, method]) => method === "authority.compileAuthorityPlan",
       );
       if (kind === "unchanged") {
         expect(compiled).toHaveLength(0);
@@ -191,6 +208,7 @@ describe("AutomationActivity", () => {
           "do:missions",
           "edit",
           [current.missionId, patch],
+          {},
         ]);
       } else {
         expect(compiled).toEqual([
@@ -198,15 +216,17 @@ describe("AutomationActivity", () => {
             "main",
             "authority.compileAuthorityPlan",
             [{ execution: patch.charter.execution }],
+            undefined,
           ],
         ]);
         expect(call.mock.calls.at(-1)).toEqual([
           "do:missions",
           "edit",
           [current.missionId, { ...patch, authorityPlan: plan }],
+          {},
         ]);
       }
-    }
+    },
   );
 
   it("retains a continuing plan for ordinary cadence edits", async () => {
@@ -219,7 +239,10 @@ describe("AutomationActivity", () => {
         executorId: "do:agent:one",
       },
     };
-    const current = { ...automation, charter: { ...automation.charter, execution } };
+    const current = {
+      ...automation,
+      charter: { ...automation.charter, execution },
+    };
     const call = vi.fn(
       async (
         _target: string,
@@ -228,12 +251,15 @@ describe("AutomationActivity", () => {
         _options?: unknown,
       ) => {
         if (method === "workers.resolveService")
-          return { kind: "durable-object", targetId: "do:missions" };
+          return durableObjectServiceFixture("do:missions");
         if (method === "get" || method === "edit") return current;
         throw new Error(`Unexpected method ${method}`);
       },
     );
-    await createAutomationUiClient({ call }).edit(current.missionId, { name: "Renamed" });
+    await createAutomationUiClient(schemaRpcMock({ call })).edit(
+      current.missionId,
+      { name: "Renamed" },
+    );
     expect(call.mock.calls.map(([, method]) => method)).toEqual([
       "workers.resolveService",
       "get",
@@ -307,7 +333,12 @@ describe("AutomationActivity", () => {
       finalMessage: undefined,
       effectFailures: [
         {
-          source: {kind: "native-tool", invocationId: "notify-call", nativeTaskId: 7, nativeEntryId: 19},
+          source: {
+            kind: "native-tool",
+            invocationId: "notify-call",
+            nativeTaskId: 7,
+            nativeEntryId: 19,
+          },
           name: "notify",
           outcome: "tool_error",
           code: "ENOTIFY",
@@ -547,7 +578,8 @@ describe("AutomationActivity", () => {
 
   it("edits object arguments for the selected native tool without changing its identity", async () => {
     const execution = automation.charter.execution;
-    if (execution.kind !== "agent") throw new Error("Expected an agent mission");
+    if (execution.kind !== "agent")
+      throw new Error("Expected an agent mission");
     const toolAutomation: MissionRecord = {
       ...automation,
       charter: {

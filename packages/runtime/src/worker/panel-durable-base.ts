@@ -1,3 +1,4 @@
+import { mainRpcMethods } from "@vibestudio/service-schemas/mainRpc";
 /**
  * Opt-in panel automation capability for Durable Objects.
  *
@@ -25,7 +26,7 @@ export abstract class PanelDurableObjectBase extends DurableObjectBase {
       this._panelRuntime = createPanelRuntime({
         rpc: this.rpc,
         contextId: () =>
-          this.rpc.call<string | null>("main", "runtime.resolveContext", [this.rpcSelfId]),
+          this.rpc.call("main", mainRpcMethods["runtime.resolveContext"], [this.rpcSelfId]),
         selfHandle: () =>
           createNonPanelRuntimeHandle({
             id: String(this.env["DO_ID"] ?? this.ctx.id.toString()),

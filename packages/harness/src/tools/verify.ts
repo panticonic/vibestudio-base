@@ -1,3 +1,5 @@
+import { testRunnerRpcMethods } from "@workspace/test-runtime/native";
+import { mainRpcMethods } from "@vibestudio/service-schemas/mainRpc";
 import type { JsonRepresentation } from "@panticonic/pi-chord";
 import { toolDetails } from "./native-tool-json.js";
 /** First-class, context-exact build and test verification for coding agents. */
@@ -13,11 +15,7 @@ import type {
 } from "@vibestudio/service-schemas/build";
 import { sha256Hex } from "@vibestudio/content-addressing";
 import type { AgentToolFailure } from "@workspace/agentic-protocol";
-import type {
-  TestExecutionResultV1,
-  WorkspaceTestArtifactV1,
-  WorkspaceTestPlan,
-} from "@vibestudio/service-schemas/build";
+import type { TestExecutionResultV1, WorkspaceTestArtifactV1 } from "@vibestudio/service-schemas/build";
 import { encodeUtf8 } from "./portable-bytes.js";
 
 const buildVerificationSchema = Type.Object(
@@ -173,11 +171,7 @@ const MAX_ERRORS_PER_FILE = 20;
 const MAX_ERROR_CHARS = 4_000;
 
 export function createVerifyTool(
-  callMain: <T>(
-    method: string,
-    args: unknown[],
-    signal?: AbortSignal,
-  ) => Promise<T>,
+  rpc: Pick<import("@vibestudio/rpc").RpcCaller, "call">,
   contextId: () => string,
   executeSandboxTest?: (
     artifact: WorkspaceTestArtifactV1,
@@ -216,10 +210,10 @@ export function createVerifyTool(
       );
       if (command.operation === "build") {
         const exactContextId = contextId();
-        const report = await callMain<UnitBuildReportWire>(
-          "build.getBuildReport",
+        const report = await rpc.call(
+        "main", mainRpcMethods["build.getBuildReport"],
           [command.target, `ctx:${exactContextId}`],
-          signal,
+          { signal },
         );
         const bounded = boundBuildReport(report);
         const failed = report.status !== "ok";
@@ -304,10 +298,10 @@ export function createVerifyTool(
 
       const exactContextId = contextId();
       const ref = `ctx:${exactContextId}`;
-      const plan = await callMain<WorkspaceTestPlan>(
-        "build.resolveTestSuite",
+      const plan = await rpc.call(
+        "main", mainRpcMethods["build.resolveTestSuite"],
         [command.target, ref, command.suite],
-        signal,
+        { signal },
       );
       let report: TestRunResult;
       let artifactKey: string;
@@ -325,25 +319,10 @@ export function createVerifyTool(
           ),
         );
         artifactKey = `native:${executionDigest}`;
-        report = await callMain<TestRunResult>(
-          "extensions.invoke",
-          [
-            "@workspace-extensions/test-runner",
-            "runNative",
-            [
-              {
-                target: command.target,
-                suite: plan.suite,
-                contextId: exactContextId,
-                artifactKey,
-                executionDigest,
-                ...(command.file ? { fileFilter: command.file } : {}),
-                ...(command.testName ? { testName: command.testName } : {}),
-              },
-            ],
-          ],
-          signal,
-        );
+        report = await rpc.call("main", testRunnerRpcMethods.runNative, [{
+          target: command.target, suite: plan.suite, contextId: exactContextId, artifactKey, executionDigest,
+          ...(command.file ? { fileFilter: command.file } : {}), ...(command.testName ? { testName: command.testName } : {}),
+        }], { signal });
         if (
           report.artifactKey !== artifactKey ||
           report.executionDigest !== executionDigest
@@ -360,8 +339,8 @@ export function createVerifyTool(
         }
         let artifact: WorkspaceTestArtifactV1;
         try {
-          artifact = await callMain<WorkspaceTestArtifactV1>(
-            "build.getTestArtifact",
+          artifact = await rpc.call(
+        "main", mainRpcMethods["build.getTestArtifact"],
             [
               command.target,
               ref,
@@ -370,7 +349,7 @@ export function createVerifyTool(
                 ...(command.file ? { file: command.file } : {}),
               },
             ],
-            signal,
+            { signal },
           );
         } catch (error) {
           const parsed = workspaceTestCompilationFailureSchema.safeParse(

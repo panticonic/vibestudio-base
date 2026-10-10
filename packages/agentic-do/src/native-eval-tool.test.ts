@@ -1,3 +1,5 @@
+import { createMainRpcCaller } from "@vibestudio/service-schemas/mainRpc";
+import { schemaRpcClientMock } from "@vibestudio/rpc/test-utils";
 import { RemoteRpcError } from "@vibestudio/rpc";
 import { afterEach, describe, expect, it } from "vitest";
 import {
@@ -103,16 +105,28 @@ async function fixture(
           failureKind: "cancelled",
           error: "actual canonical cancellation",
         }
-      : { success: true, console: "actual console", returnValue: options.imageResult ? {
-          protocol: "eval-image-artifact.v1", digest: "a".repeat(64), size: 24, mimeType: "image/png",
-        } : 42 },
+      : {
+          success: true,
+          console: "actual console",
+          returnValue: options.imageResult
+            ? {
+                protocol: "eval-image-artifact.v1",
+                digest: "a".repeat(64),
+                size: 24,
+                mimeType: "image/png",
+              }
+            : 42,
+        },
     acknowledged: false,
   });
-  const call = async <T>(method: string, args: unknown[]): Promise<T> => {
+  const wireCall = async (
+    method: string,
+    args: unknown[],
+  ): Promise<unknown> => {
     calls.push(method);
     if (method === "blobstore.getBase64") {
       expect(args).toEqual(["a".repeat(64)]);
-      return "iVBORw0KGgoAAAANSUhEUgAAAAEAAAAB" as T;
+      return "iVBORw0KGgoAAAANSUhEUgAAAAEAAAAB";
     }
     if (method === "eval.start") {
       starts.push(args[0]);
@@ -132,54 +146,47 @@ async function fixture(
         ...(receipt
           ? { snapshot: { status: "done", result: receipt.result } }
           : {}),
-      } as T;
+      };
     }
     if (method === "eval.cancel") {
       receipt = terminal(true);
-      return { ok: true, forcedReset: false } as T;
+      return { ok: true, forcedReset: false };
     }
     if (method === "eval.receipt") {
       if (receipt?.result.failureKind === "cancelled" && failRead)
         throw cleanup;
-      return receipt as T;
+      return receipt;
     }
     if (method === "eval.acknowledge") {
       expect(args[0]).toMatchObject({
         runId,
         receipt: { runDigest: "b".repeat(64), resultDigest: "c".repeat(64) },
       });
-      return { acknowledged: true, duplicate: false } as T;
+      return { acknowledged: true, duplicate: false };
     }
     throw Error(`unexpected service ${method}`);
   };
-  const rpc: RpcClient = {
-    selfId: owner.runtimeId,
-    expose() {},
-    exposeAll() {},
-    exposeStreaming() {},
-    call: <T>(
-      _target: Parameters<RpcClient["call"]>[0],
-      method: string,
-      args: unknown[],
-    ) => call<T>(method, args),
-    stream: () => {
-      throw Error("unexpected stream");
+  const rpc: RpcClient = schemaRpcClientMock(
+    {
+      call: (
+        _target: Parameters<RpcClient["call"]>[0],
+        method: string,
+        args: unknown[],
+      ) => wireCall(method, args),
+      stream: () => {
+        throw Error("unexpected stream");
+      },
     },
-    streamReadable: async () => {
-      throw Error("unexpected stream");
-    },
-    emit: async () => {},
-    on: () => () => {},
-    peer: () => {
-      throw Error("unexpected peer");
-    },
-    status: () => "connected",
-    ready: () => Promise.resolve(),
-    onStatusChange: () => () => {},
-  };
-  const callHost: AgentHostCall = async <T>() =>
-    JSON.parse(JSON.stringify(entity)) as T;
-  const acknowledgements = createNativeEvalAcknowledgements(call);
+    owner.runtimeId,
+  );
+  const callHost: AgentHostCall = createMainRpcCaller(
+    schemaRpcClientMock({ call: async () => entity }, owner.runtimeId),
+  );
+  const call = createMainRpcCaller(rpc);
+  const acknowledgements = createNativeEvalAcknowledgements(
+    (method, args, context) =>
+      call(method, args, { signal: context.abortSignal }),
+  );
   const execution = createNativeEvalExecution({
     harness: () => harness,
     acknowledgements,

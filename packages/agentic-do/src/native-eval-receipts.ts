@@ -207,7 +207,7 @@ export async function consumeEvalReceipt(
   const admission = await harness.snapshot(EvalAdmission, key, context);
   if (!admission?.binding)
     throw new Error("Eval receipt has no retained domain admission");
-  const observed = await call<unknown>("eval.receipt", [admission.route]);
+  const observed = await call("eval.receipt", [admission.route]);
   if (observed === null) return { accepted: false };
   await retainObservedEvalReceipt(
     harness,
@@ -236,7 +236,7 @@ export interface EvalAcknowledgementInput {
 
 /** Both ordinary execution and cancellation discharge the same accepted domain debt. */
 export function createNativeEvalAcknowledgements(
-  call: <T>(method: string, args: unknown[], context: Context) => Promise<T>,
+  call: (method: "eval.acknowledge", args: Parameters<import("@vibestudio/service-schemas/mainRpc").MainRpcMethods["eval.acknowledge"]>, context: Context) => ReturnType<import("@vibestudio/service-schemas/mainRpc").MainRpcMethods["eval.acknowledge"]>,
 ) {
   const task = defineTask<
     EvalAcknowledgementInput,
@@ -263,7 +263,7 @@ export function createNativeEvalAcknowledgements(
   ) {
     try {
       evalMethods.acknowledge.returns.parse(
-        await call<unknown>(
+        await call(
           "eval.acknowledge",
           [
             {

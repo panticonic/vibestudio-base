@@ -4,7 +4,8 @@
   "private": true,
   "type": "module",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./native": "./src/native.ts"
   },
   "vibestudio": {
     "tests": [
@@ -20,5 +21,8 @@
   "devDependencies": {
     "@vibestudio/rpc": "workspace:*",
     "vitest": "^3.2.7"
+  },
+  "dependencies": {
+    "@vibestudio/shared": "workspace:*"
   }
 }

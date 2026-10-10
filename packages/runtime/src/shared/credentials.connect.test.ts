@@ -1,6 +1,6 @@
+import { schemaRpcMock } from "@vibestudio/rpc/test-utils";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { RpcCaller } from "@vibestudio/rpc";
 import type { StoredCredentialSummary } from "./credentials.js";
 import { createCredentialClient } from "./credentials.js";
 
@@ -31,10 +31,10 @@ describe("runtime credential OAuth API", () => {
       }
       throw new Error(`unexpected method: ${method}`);
     });
-    const client = createCredentialClient({
-      call: callMock as RpcCaller["call"],
-      stream: vi.fn(async () => new Response()) as unknown as RpcCaller["stream"],
-    });
+    const client = createCredentialClient(schemaRpcMock({
+      call: callMock,
+      stream: vi.fn(async () => new Response()),
+    }));
 
     await expect(client.connect({
       flow: {
