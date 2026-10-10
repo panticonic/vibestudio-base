@@ -84,12 +84,14 @@ describe("agent settings parsing", () => {
 function TranscriptView({ client }: { client: PubSubClient }) {
   const { messages } = useChannelMessages(client);
   return (
-    <MessageList
-      messages={messages}
-      participants={{}}
-      selfId={channelParticipantId("panel:chat")}
-      allParticipants={{}}
-    />
+    <Theme>
+      <MessageList
+        messages={messages}
+        participants={{}}
+        selfId={channelParticipantId("panel:chat")}
+        allParticipants={{}}
+      />
+    </Theme>
   );
 }
 

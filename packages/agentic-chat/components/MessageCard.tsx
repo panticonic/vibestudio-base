@@ -15,8 +15,6 @@ import {
   TextArea,
 } from "@radix-ui/themes";
 import {
-  CopyIcon,
-  CheckIcon,
   ChatBubbleIcon,
   CrossCircledIcon,
   ExclamationTriangleIcon,
@@ -855,6 +853,7 @@ export const MessageCard = React.memo(function MessageCard({
   const canFork =
     Boolean(forkState) && msg.seq !== undefined && !isStreaming && !msg.pending;
   const showForkMenu = canFork && msg.kind === "message";
+  const showContentActions = hasContent && !isStreaming;
 
   // A retracted message collapses to a slim tombstone — no content, actions,
   // or badge. The author canceled it before any recipient read it.
@@ -918,19 +917,7 @@ export const MessageCard = React.memo(function MessageCard({
               )}
               <Box style={{ minWidth: 0 }}>
                 <Text size="1" weight="medium" truncate>
-                  {senderInfo.name}
-                </Text>
-                <Text
-                  as="span"
-                  size="1"
-                  color="gray"
-                  style={{
-                    marginLeft: 6,
-                    // Account tint (WP6 §6) — personalizes the handle only.
-                    ...(senderInfo.color ? { color: senderInfo.color } : {}),
-                  }}
-                >
-                  @{senderInfo.handle}
+                  {isSelfAuthored ? "You" : senderInfo.name}
                 </Text>
                 {/* Guest chip (messaging plan §4.10.4): this participant is not
                     on our roster. The message is still an ordinary message —
@@ -959,43 +946,8 @@ export const MessageCard = React.memo(function MessageCard({
                   {modelLabel}
                 </Badge>
               )}
-              {hasContent && !isStreaming && (
-                <Button
-                  size="1"
-                  variant="ghost"
-                  color="gray"
-                  disabled={reportBusy}
-                  onClick={() => void handleReport()}
-                >
-                  Report a problem
-                </Button>
-              )}
-              {reportError && (
-                <Text size="1" color="red" role="alert">
-                  {reportError}
-                </Text>
-              )}
-              {/* Copy lives in the header (right after the handle) to keep the
-                  card bottom free for content + the delivery badge. */}
-              {hasContent && !isStreaming && (
-                <IconButton
-                  className="copy-button"
-                  size="1"
-                  variant="ghost"
-                  color="gray"
-                  style={{ flexShrink: 0 }}
-                  onClick={handleCopy}
-                  onBlur={handleClearCopied}
-                  onPointerLeave={handleClearCopied}
-                  title="Copy message"
-                  aria-label="Copy message"
-                >
-                  {isCopied ? <CheckIcon /> : <CopyIcon />}
-                </IconButton>
-              )}
             </Flex>
-            {/* Top-bar right cluster: delivery status + edited marker + reply,
-                kept in the header to save a whole row at the card bottom. */}
+            {/* Keep message status visible; collect actions in one menu. */}
             <Flex align="center" gap="2" style={{ flexShrink: 0 }}>
               {isEdited && !isStreaming && (
                 <Text size="1" color="gray" className="message-edited-marker">
@@ -1009,20 +961,7 @@ export const MessageCard = React.memo(function MessageCard({
                   mode="compact"
                 />
               )}
-              {onReply && hasContent && !isStreaming && (
-                <IconButton
-                  className="copy-button"
-                  size="1"
-                  variant="ghost"
-                  color="gray"
-                  onClick={handleReply}
-                  title="Reply"
-                  aria-label="Reply"
-                >
-                  <ChatBubbleIcon />
-                </IconButton>
-              )}
-              {showForkMenu && (
+              {(showContentActions || showForkMenu) && (
                 <DropdownMenu.Root>
                   <DropdownMenu.Trigger>
                     <IconButton
@@ -1032,28 +971,58 @@ export const MessageCard = React.memo(function MessageCard({
                       color="gray"
                       title="Message actions"
                       aria-label="Message actions"
+                      onBlur={handleClearCopied}
+                      onPointerLeave={handleClearCopied}
                     >
                       <DotsHorizontalIcon />
                     </IconButton>
                   </DropdownMenu.Trigger>
                   <DropdownMenu.Content align="end">
-                    <DropdownMenu.Item onSelect={forkFromHere}>
-                      Fork from here
-                    </DropdownMenu.Item>
-                    {isUnreadOutbox ? (
-                      <DropdownMenu.Item onSelect={() => openEdit("outbox")}>
-                        Edit
-                      </DropdownMenu.Item>
-                    ) : (
-                      <DropdownMenu.Item onSelect={() => openEdit("fork")}>
-                        {isSelfAuthored ? "Edit & fork" : "Edit & fork (steer)"}
-                      </DropdownMenu.Item>
+                    {showContentActions && (
+                      <>
+                        <DropdownMenu.Item onSelect={handleCopy}>
+                          {isCopied ? "Copied" : "Copy message"}
+                        </DropdownMenu.Item>
+                        {onReply && (
+                          <DropdownMenu.Item onSelect={handleReply}>
+                            Reply
+                          </DropdownMenu.Item>
+                        )}
+                        <DropdownMenu.Item
+                          disabled={reportBusy}
+                          onSelect={() => void handleReport()}
+                        >
+                          Report a problem
+                        </DropdownMenu.Item>
+                      </>
+                    )}
+                    {showForkMenu && (
+                      <>
+                        {showContentActions && <DropdownMenu.Separator />}
+                        <DropdownMenu.Item onSelect={forkFromHere}>
+                          Fork from here
+                        </DropdownMenu.Item>
+                        {isUnreadOutbox ? (
+                          <DropdownMenu.Item onSelect={() => openEdit("outbox")}>
+                            Edit
+                          </DropdownMenu.Item>
+                        ) : (
+                          <DropdownMenu.Item onSelect={() => openEdit("fork")}>
+                            {isSelfAuthored ? "Edit & fork" : "Edit & fork (steer)"}
+                          </DropdownMenu.Item>
+                        )}
+                      </>
                     )}
                   </DropdownMenu.Content>
                 </DropdownMenu.Root>
               )}
             </Flex>
           </Flex>
+          {reportError && (
+            <Text size="1" color="red" role="alert">
+              {reportError}
+            </Text>
+          )}
           {msg.replaces && (
             <Text size="1" color="gray" className="message-edited-marker">
               ⑂ substituted this turn
