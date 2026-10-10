@@ -3,6 +3,7 @@ import { sha256HexSyncText } from "@vibestudio/content-addressing";
 import { canonicalJson } from "@vibestudio/shared/canonicalJson";
 import {
   defineDoc,
+  type JsonObject,
   type Harness,
   type ModelRequestApi,
   type ModelRequestTarget,
@@ -42,17 +43,16 @@ import {
 } from "./native-invocation-source.js";
 
 /** Only publication obligations live here. Pi's actual task remains the execution truth. */
-const InvocationPublications = defineDoc<{
-  pending: {
-    taskId: TaskId;
-    invocationId: string;
-    source: JsonValue;
-    request: JsonValue | null;
-    originatingInput: JsonValue | null;
-    createdAt: string;
-    startedEventSequence: number | null;
-  }[];
-}>({
+interface InvocationPublication extends JsonObject {
+  taskId: TaskId;
+  invocationId: string;
+  source: JsonValue;
+  request: JsonValue | null;
+  originatingInput: JsonValue | null;
+  createdAt: string;
+  startedEventSequence: number | null;
+}
+const InvocationPublications = defineDoc<{ pending: InvocationPublication[] }>({
   kind: "vibestudio.native-invocation-publications",
   version: 2,
   scope: "conversation",

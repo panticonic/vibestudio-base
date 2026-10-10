@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { createModels, fauxProvider } from "@panticonic/pi-ai";
 import { BACKGROUND_CONTEXT } from "@panticonic/pi-chord/context";
 import { createRegistry, WakeDoc } from "@panticonic/pi-durable";
-import { rpc, type RpcEnvelope } from "@vibestudio/rpc";
+import { rpc, serializeRpcFailure, type RpcEnvelope } from "@vibestudio/rpc";
 import type { ParticipantDescriptor } from "@workspace/harness";
 import { AgentVesselBase } from "./agent-vessel.js";
 import type { NativeAgentOptions } from "./native-agent-owner.js";
@@ -113,9 +113,9 @@ describe("native vessel alarm ownership", () => {
           message: {
             type: "response",
             requestId,
-            ...(error ? { error } : { result }),
+            ...(error ? { error: serializeRpcFailure(new Error(error)) } : { result }),
           },
-        }),
+        } satisfies RpcEnvelope),
         { headers: { "Content-Type": "application/json" } },
       );
     };
@@ -154,8 +154,12 @@ describe("native vessel alarm ownership", () => {
         { type: "input", content: "retained runnable work" },
         BACKGROUND_CONTEXT,
       );
+      // Submission commits its wake before the serialized host publication joins.
+      // Complete that owned publication before measuring the next request's replay.
+      await session.flushWake(BACKGROUND_CONTEXT);
       const committed = await session.snapshot(WakeDoc, BACKGROUND_CONTEXT);
       expect(committed).toMatchObject({ wakeAt: 0 });
+      expect(committed!.publishedRevision).toBe(committed!.revision);
       const beforeRead = publications.length;
       await expect(fixture.call("inspectPassiveState")).resolves.toBe("ready");
       expect(publications).toHaveLength(beforeRead + 1);
