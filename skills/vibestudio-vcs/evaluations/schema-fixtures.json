@@ -201,6 +201,12 @@
       ]
     },
     {
+      "name": "read-current-main-event",
+      "method": "mainState",
+      "valid": true,
+      "args": []
+    },
+    {
       "name": "reject-import-external-evidence-graph",
       "method": "importSnapshot",
       "valid": false,
@@ -308,6 +314,26 @@
           "state": { "kind": "application", "applicationId": "application:1" },
           "repositoryId": "repository:app",
           "file": { "kind": "id", "fileId": "file:1" }
+        }
+      ]
+    },
+    {
+      "name": "read-related-files-at-one-state",
+      "method": "readFiles",
+      "valid": true,
+      "args": [
+        {
+          "state": { "kind": "application", "applicationId": "application:1" },
+          "files": [
+            {
+              "repositoryId": "repository:app",
+              "file": { "kind": "id", "fileId": "file:1" }
+            },
+            {
+              "repositoryId": "repository:app",
+              "file": { "kind": "path", "path": "src/example.ts" }
+            }
+          ]
         }
       ]
     },

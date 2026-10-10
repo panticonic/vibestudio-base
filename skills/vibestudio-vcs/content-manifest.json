@@ -12,7 +12,7 @@
     },
     {
       "path": "evaluations/schema-fixtures.json",
-      "sha256": "527be6176dc6fd26bed5f58f14cc6460b6c61cf6d40fe93ace4d3bc4636b2ae4"
+      "sha256": "b35321ac882444ed84fc57a390416487fc33adb257248d2391f781941b6e56db"
     },
     {
       "path": "package.json",
@@ -20,7 +20,7 @@
     },
     {
       "path": "references/authoring-basics.md",
-      "sha256": "d85127097820b5df411bcd0d57c5d77a375640a408467119e6e72cac733540ce"
+      "sha256": "3d91c754940c93cbc87c9d02d3e9839d2f4d0100a712534c6676acaa8b9c7bc7"
     },
     {
       "path": "references/checks-and-publication.md",
@@ -32,7 +32,7 @@
     },
     {
       "path": "references/contexts-and-state.md",
-      "sha256": "28f7989a8ae01bbba92bd9b0a279d6843f2eb3c14c8a7134d14db5c540b10494"
+      "sha256": "ef22034b3652aaf75493b4fbefb5a8f55d8266bb9b5e1bae4d0533fac2b88562"
     },
     {
       "path": "references/external-snapshot-import.md",
@@ -48,11 +48,11 @@
     },
     {
       "path": "references/public-contract.json",
-      "sha256": "4ca5c4ea716e4178b99c31f3935cf264d7bd25a5f61055f6eed62ee29e8860c5"
+      "sha256": "9a65cedab8d7a2cabf220010d84bbc65bca7afbcf35507a96983ab15f8b19b44"
     },
     {
       "path": "references/public-contract.md",
-      "sha256": "f13e0c0a954f0b0e17a268b84b0c5c787a16e13b9f2c778299110a546c05adfd"
+      "sha256": "a7c607b3fd854da67e5f2274fded8e4f13a34953ef666087bc33b2f0787df63e"
     },
     {
       "path": "references/querying-provenance.md",
@@ -75,5 +75,5 @@
       "sha256": "33f68c5eafeda6878f39648650765f482e392fa004c1e7e8b39fee30227f21d8"
     }
   ],
-  "packageDigest": "488f225519c88d022cd0737859133f4014af47438633c839dfd74ea65ed5565e"
+  "packageDigest": "d851a6a8de09c8dcc4df91c2221c7335ff212c129c152563b7afe2424aa2b746"
 }

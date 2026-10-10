@@ -43,6 +43,11 @@ file ID once discovered (use a path only to find the ID). `null` means the
 file doesn't exist at that state. The method is semantic-only: always pass
 `state`, `repositoryId`, and a typed file selector.
 
+When several files are needed from one state, use `vcs.readFiles` with that
+single state and an ordered list of file-ID or canonical-path selectors. The
+results preserve selector order and return `null` for files absent at that
+state. Use `readFile` for a single file.
+
 Use `fs` for host or materialized paths. VCS has no raw variant and never
 falls back to disk.
 

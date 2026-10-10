@@ -60,8 +60,8 @@ from checkout modification times.
 ## Read a specific state
 
 Pass an event or application state directly to `resolveRepository`,
-`readFile`, `listFiles`, `compare`, file/repository roots, and `blame`. Paths
-help you find stable IDs; they don't name revisions.
+`readFile`, `readFiles`, `listFiles`, `compare`, file/repository roots, and
+`blame`. Paths help you find stable IDs; they don't name revisions.
 
 `vcs.readFile` always reads semantic state and has no raw or host form. Use
 `fs` for bytes at a host or materialized path. A context filesystem read may

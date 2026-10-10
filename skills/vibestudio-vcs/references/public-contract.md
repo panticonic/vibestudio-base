@@ -40,6 +40,7 @@ mutation except `push` advances an exact context working head; `commit` and
 | `vcs.readMemory` | `read` | Project bounded blame-backed workspace memory for the exact text range and content hash returned by a managed file read. | `Unauthorized`, `InvalidReference`, `ScopeTooLarge`, `IntegrityFailure` |
 | `vcs.resolveRepository` | `read` | Resolve one canonical repository path at one exact semantic state. | `Unauthorized`, `InvalidReference`, `ScopeTooLarge`, `IntegrityFailure` |
 | `vcs.readFile` | `read` | Read one file from an exact semantic state. | `Unauthorized`, `InvalidReference`, `ScopeTooLarge`, `IntegrityFailure`, `ExternalEffectFailed` |
+| `vcs.readFiles` | `read` | Read a bounded set of files from one exact semantic state, preserving selector order and null for absent files. | `Unauthorized`, `InvalidReference`, `ScopeTooLarge`, `IntegrityFailure`, `ExternalEffectFailed` |
 | `vcs.listDirectory` | `read` | Page immediate visible children of one workspace directory with stable identities and attached name provenance. | `Unauthorized`, `InvalidReference`, `ScopeTooLarge`, `IntegrityFailure` |
 | `vcs.listFiles` | `read` | Page the exact path-to-file manifest of one repository at one semantic state. | `Unauthorized`, `InvalidReference`, `ScopeTooLarge`, `IntegrityFailure` |
 
