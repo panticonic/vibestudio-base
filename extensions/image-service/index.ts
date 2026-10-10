@@ -1,3 +1,4 @@
+import type {} from "@vibestudio/extension";
 import { loadPhoton } from "./image/photon.js";
 import { Buffer } from "node:buffer";
 import { resizeImage, formatDimensionNote, type ImageResizeOptions } from "./image/image-resize.js";
