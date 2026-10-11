@@ -508,11 +508,14 @@ function importsForRequiredModules(
 ): Record<string, string> {
   const selected = { ...imports };
   for (const [specifier, ref] of Object.entries(imports)) {
-    if (getPackageSpecifier(specifier) !== specifier || required.has(specifier)) {
+    if (
+      getPackageSpecifier(specifier) !== specifier ||
+      required.has(specifier)
+    ) {
       continue;
     }
-    const subpaths = [...required].filter(
-      (candidate) => candidate.startsWith(`${specifier}/`),
+    const subpaths = [...required].filter((candidate) =>
+      candidate.startsWith(`${specifier}/`),
     );
     if (subpaths.length === 0) continue;
     delete selected[specifier];
@@ -1783,7 +1786,7 @@ export async function executeSandbox(
       );
       if (Object.keys(autoImports).length > 0) {
         throwIfAborted(signal);
-        options.onConsole?.(
+        capture.proxy.log(
           `[eval] Auto-loading: ${Object.keys(autoImports).join(", ")}...`,
         );
         await withAbort(
@@ -1954,14 +1957,13 @@ export async function executeSandbox(
     // Typed application failures already carry bounded recovery data. Repeating
     // their transport stack in the primary agent surface obscures that recovery;
     // keep stacks for unstructured exceptions where they remain diagnostic.
+    if (errorStack && errorData === undefined) {
+      capture.proxy.log(`[eval] Error stack: ${errorStack}`);
+    }
     const consoleEntries = capture.getEntries();
-    const debugInfo =
-      errorStack && errorData === undefined
-        ? `\n[eval] Error stack: ${errorStack}`
-        : "";
     return {
       success: false,
-      consoleOutput: formatConsoleOutput(consoleEntries) + debugInfo,
+      consoleOutput: formatConsoleOutput(consoleEntries),
       error: serializeRpcFailure(err),
       failureKind:
         err instanceof SandboxInfrastructureError

@@ -86,11 +86,7 @@ describe("executeSandbox", () => {
 
     expect(result).toMatchObject({ success: true, returnValue: 42 });
     expect(loadImport.mock.calls).toEqual([
-      [
-        "@vibestudio/shared/rpcMethods",
-        "workspace:rpc-contracts",
-        [],
-      ],
+      ["@vibestudio/shared/rpcMethods", "workspace:rpc-contracts", []],
       [
         "@workspace/unused",
         "workspace:unused",
@@ -1465,11 +1461,16 @@ return fs.readFileSync("/tmp/a");`,
   });
 
   it("retains stacks for unstructured guest exceptions", async () => {
+    const streamed: string[] = [];
     const result = await executeSandbox('throw new Error("authored boom")', {
       syntax: "typescript",
+      onConsole: (formatted) => streamed.push(formatted),
     });
 
     expect(result.consoleOutput).toContain("[eval] Error stack:");
+    expect(streamed).toHaveLength(1);
+    expect(streamed[0]).toContain("[eval] Error stack:");
+    expect(streamed[0]).toContain("authored boom");
   });
 
   it("honors a structured failure's declared cross-tool classification", async () => {
@@ -1525,6 +1526,7 @@ return fs.readFileSync("/tmp/a");`,
   });
 
   it("auto-loads an unscoped manifest-declared workspace unit", async () => {
+    const streamed: string[] = [];
     const resolveWorkspaceImport = vi.fn(
       async (specifier: string) => specifier === "local-worker",
     );
@@ -1546,12 +1548,17 @@ return fs.readFileSync("/tmp/a");`,
       {
         syntax: "typescript",
         loadImport,
+        onConsole: (formatted) => streamed.push(formatted),
       },
     );
 
     expect(result).toMatchObject({ success: true, returnValue: 42 });
     expect(resolveWorkspaceImport).toHaveBeenCalledWith("local-worker");
     expect(loadImport).toHaveBeenCalledOnce();
+    expect(result.consoleOutput).toContain(
+      "[eval] Auto-loading: local-worker...",
+    );
+    expect(streamed).toContain("[eval] Auto-loading: local-worker...");
   });
 
   it("keeps unknown npm packages on the explicit npm import path", async () => {

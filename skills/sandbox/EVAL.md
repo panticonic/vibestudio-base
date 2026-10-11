@@ -108,6 +108,17 @@ The tool result contains the captured console text and the return value. Use
 the panel's `cdp.consoleHistory()` only when the task is about console messages
 produced inside a rendered panel.
 
+`help()` also writes each requested description to this captured output while
+returning the same structured value. Sequential help calls therefore remain
+visible even when the eval returns a separate summary. Return or assign a help
+result when later code needs to inspect its structure:
+
+```ts
+await help("rpc");
+await help("workers.createDurableObject");
+return { inspected: true };
+```
+
 For multi-file code, put the entry point in a context-relative file and pass
 `path`:
 
@@ -272,7 +283,9 @@ or import them from `@workspace/runtime`.
   import { createReceiverRpcMethods } from "@vibestudio/shared/rpcMethods";
 
   const methods = createReceiverRpcMethods(["storeRows", "readRows"]);
-  await rpc.call(targetId, methods.storeRows, [[{ id: "row-1", value: "alpha" }]]);
+  await rpc.call(targetId, methods.storeRows, [
+    [{ id: "row-1", value: "alpha" }],
+  ]);
   const rows = await rpc.call(targetId, methods.readRows, []);
   ```
 
@@ -284,6 +297,7 @@ or import them from `@workspace/runtime`.
   call a specific remote workspace, pass
   `{ destination: { kind: "workspace", workspaceId } }`; without it the call
   stays local.
+
 - **`services`**: shortcut namespace for server services.
   `services.<svc>.<method>(...)` calls the same typed service receiver without
   requiring a descriptor at the call site, even when a runtime binding shares
@@ -312,8 +326,8 @@ or import them from `@workspace/runtime`.
   `await agent.setModel("provider:model")`, and so on. Agent eval only; see
   below.
 - **`help()`**: `await help()` lists services and import guidance;
-  `await help("vcs")` returns a compact live method index;
-  `await help("vcs.edit")` returns that method's exact schema and typed errors.
+  `await help("vcs")` displays and returns a compact live method index;
+  `await help("vcs.edit")` displays and returns that method's exact schema and typed errors.
 
 ```
 eval({ code: `
