@@ -1,4 +1,4 @@
-import { schemaRpcMock } from "@vibestudio/rpc/test-utils";
+import { schemaRpcClientMock } from "@vibestudio/rpc/test-utils";
 import { readFile, stat, mkdtemp, mkdir, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -29,6 +29,12 @@ async function makeApi(
     async (_target: string, _method: string, ..._args: unknown[]) =>
       [] as unknown,
   );
+  const rpcWire = {
+    call: rpcCall,
+    stream: vi.fn(async () => new Response()),
+  };
+  const rpc = schemaRpcClientMock(rpcWire, "shell-extension-test");
+  rpc.on = vi.fn(() => () => {});
   const invoke = vi.fn(
     async (_name: string, _method: string, _args: unknown[]) => null as unknown,
   );
@@ -61,7 +67,7 @@ async function makeApi(
       list: vi.fn(),
       reload: vi.fn(),
     },
-    rpc: { ...schemaRpcMock({ call: rpcCall, stream: vi.fn() }), on: vi.fn() },
+    rpc,
     health: {
       healthy: vi.fn(),
       degraded: vi.fn(),
@@ -543,7 +549,13 @@ describe("@workspace-extensions/shell", () => {
     const { api, ensureContextFolder, rpcCall } = await makeApi("allow");
     rpcCall.mockImplementation(async (_target: string, method: string) => {
       if (method === "runtime.createEntity")
-        return { id: "entity-new", kind: "session", source: { repoPath: "terminal", effectiveVersion: "" }, targetId: "entity-new", contextId: "ctx-new" };
+        return {
+          id: "entity-new",
+          kind: "session",
+          source: { repoPath: "terminal", effectiveVersion: "" },
+          targetId: "entity-new",
+          contextId: "ctx-new",
+        };
       if (method === "runtime.resolveContext") return "ctx-new";
       return [];
     });
@@ -551,12 +563,19 @@ describe("@workspace-extensions/shell", () => {
     const created = await api.createContext({ title: "New terminal context" });
     expect(created.contextId).toBe("ctx-new");
     expect(created.contextAttachToken).toEqual(expect.any(String));
-    expect(rpcCall).toHaveBeenCalledWith("main", "runtime.createEntity", [{
-      kind: "session",
-      execution: { surface: "inert" },
-      source: "terminal",
-      title: "New terminal context",
-    }], undefined);
+    expect(rpcCall).toHaveBeenCalledWith(
+      "main",
+      "runtime.createEntity",
+      [
+        {
+          kind: "session",
+          execution: { surface: "inert" },
+          source: "terminal",
+          title: "New terminal context",
+        },
+      ],
+      undefined,
+    );
 
     const { sessionId } = await api.open({
       command: "node",

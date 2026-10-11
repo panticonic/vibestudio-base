@@ -5,7 +5,10 @@ import { formatRpcFailure } from "@vibestudio/rpc";
  * Adds: stateArgs bridge, unified panel handles, panel lifecycle methods.
  */
 
-import { isRpcConnectionLost, type EnvelopeRpcTransport } from "@vibestudio/rpc";
+import {
+  isRpcConnectionLost,
+  type EnvelopeRpcTransport,
+} from "@vibestudio/rpc";
 import { createBaseRuntime } from "./createBaseRuntime.js";
 import type { GatewayConfig } from "../shared/globals.js";
 import { createParentHandleApi } from "../shared/handles.js";

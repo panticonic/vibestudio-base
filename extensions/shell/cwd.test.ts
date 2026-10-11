@@ -2,6 +2,7 @@ import { mkdtemp, mkdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
+import { schemaRpcClientMock } from "@vibestudio/rpc/test-utils";
 import type { ExtensionContext } from "@vibestudio/extension";
 
 // Cwd admission is independent from terminal UI transports and the janitor.
@@ -37,7 +38,15 @@ describe("shell execution location", () => {
         await mkdir(scratch);
         return { source: join(root, "source"), scratch };
       });
+      const rpc = schemaRpcClientMock(
+        {
+          call: vi.fn(async () => undefined),
+          stream: vi.fn(async () => new Response()),
+        },
+        "shell-cwd-test",
+      );
       const ctx = {
+        rpc,
         storage: { root: join(root, "uncreated-private-storage") },
         workspace: {
           getInfo: async () => ({ path: workspace }),

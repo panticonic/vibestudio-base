@@ -96,8 +96,11 @@ mid-stream when it is exceeded.
 
 Default to RPC:
 
-- **RPC** is typed end to end through `extensions.use<T>(name).method(...)`.
-  The dispatcher validates arguments and attributes the caller automatically.
+- **RPC** is typed end to end through
+  `extensions.use("@workspace-extensions/name").method(...)`. The extension
+  registers its API type in `WorkspaceExtensions`; the caller-selected name
+  selects that registered type. The dispatcher validates arguments and
+  attributes the caller automatically.
 - **Fetch** suits callers that already speak HTTP: wrapping an HTTP-shaped
   library, a download endpoint that benefits from streaming, or a proxy to an
   upstream service that returns Fetch-compatible responses.

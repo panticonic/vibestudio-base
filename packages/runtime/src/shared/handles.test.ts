@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { schemaRpcMock } from "@vibestudio/rpc/test-utils";
+import type { PanelRuntimeRpc } from "./rpcClient.js";
 import { z } from "zod";
 import { createRpcMethods } from "@vibestudio/shared/rpcMethods";
 import { defineContract } from "../core/defineContract.js";
@@ -9,10 +10,21 @@ import {
   unavailableCdp,
 } from "./handles.js";
 
+function runtimeRpc(rpc: ReturnType<typeof schemaRpcMock>): PanelRuntimeRpc {
+  return {
+    ...rpc,
+    emit: vi.fn(async () => {}),
+    on: vi.fn(() => () => {}),
+  };
+}
+
 describe("createCallProxy", () => {
   it("remains safely inspectable without becoming a thenable", async () => {
     const call = vi.fn(async () => "pong");
-    const proxy = createCallProxy(schemaRpcMock({ call }), "panel:runtime");
+    const proxy = createCallProxy(
+      runtimeRpc(schemaRpcMock({ call })),
+      "panel:runtime",
+    );
 
     expect(String(proxy)).toBe("[PanelHandle RPC call proxy]");
     expect(Object.prototype.toString.call(proxy)).toBe(
@@ -25,7 +37,7 @@ describe("createCallProxy", () => {
   it("still dispatches arbitrary string method names", async () => {
     const call = vi.fn(async () => "pong");
     const proxy = createCallProxy(
-      schemaRpcMock({ call }),
+      runtimeRpc(schemaRpcMock({ call })),
       "panel:runtime",
     ) as Record<string, (...args: unknown[]) => Promise<unknown>>;
 
@@ -54,7 +66,7 @@ it("validates a panel contract's arguments and results before exposing its types
   );
   const rpc = { ...schemaRpcMock({ call: wire }), emit: vi.fn(), on: vi.fn() };
   const panel = createPanelHandle({
-    rpc,
+    rpc: runtimeRpc(rpc),
     metadata: { id: "panel:runtime" },
     cdp: unavailableCdp("panel:runtime"),
   });

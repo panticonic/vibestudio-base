@@ -48,8 +48,21 @@ Each migration follows the same steps:
 
    ```ts
    import { extensions } from "@workspace/runtime";
-   const svc = extensions.use<ApiType>("@workspace-extensions/<service>");
+   const svc = extensions.use("@workspace-extensions/<service>");
    await svc.<method>(...);
+   ```
+
+   The type comes from the extension's own module augmentation, not a type
+   argument supplied by each caller. In the extension entry module, register
+   the API returned by `activate`:
+
+   ```ts
+   export type Api = Awaited<ReturnType<typeof activate>>;
+   declare module "@vibestudio/extension" {
+     interface WorkspaceExtensions {
+       "@workspace-extensions/<service>": Api;
+     }
+   }
    ```
 
 4. **Declare the extension** in the owning workspace's `meta/vibestudio.yml`
@@ -95,7 +108,7 @@ Each migration follows the same steps:
   compute.
 - The move was mechanical: the in-host service was a thin RPC wrapper around
   `photon`, and so is the extension.
-- Call sites: every `ctx.image.dimensions(bytes)` became `extensions.use<ImageApi>("@workspace-extensions/image-service").dimensions(bytes)`.
+- Call sites: every `ctx.image.dimensions(bytes)` became `extensions.use("@workspace-extensions/image-service").dimensions(bytes)`.
 - Dependency mode: `auto` (photon is WASM-backed; `auto` externalizes it).
 
 ### `typecheckService` → `@workspace-extensions/typecheck-service`
@@ -129,11 +142,12 @@ Each migration follows the same steps:
 - [ ] Create `workspace/extensions/<name>/` with manifest + `index.ts`.
 - [ ] Copy handler logic, adjust `ctx` references.
 - [ ] Delete the in-host service and its registration.
-- [ ] Update every consumer (`ctx.<name>` → `extensions.use<ApiType>(name)`).
+- [ ] Update every consumer (`ctx.<name>` → `extensions.use(name)`).
 - [ ] Add an integration test that boots a real server.
 - [ ] Declare the extension in the template repository's `meta/vibestudio.yml` (`extensions:`).
 - [ ] Confirm `build.listUnits()` reports the declared extension as available,
       then verify the row from
       `runtime.supervision.describe({ kind: "extension", releaseId: name })`
       has `lastError: null`.
-- [ ] Document the public API type (`export interface <Name>Api`) so consumers can `extensions.use<NameApi>(...)`.
+- [ ] Export and register the public API type in `WorkspaceExtensions` so
+      consumers infer it from `extensions.use(name)`.

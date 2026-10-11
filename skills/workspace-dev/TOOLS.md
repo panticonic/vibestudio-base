@@ -325,17 +325,14 @@ Extension methods normally use unary RPC and must return JSON-serializable
 values. A method that returns a `Response` or `ReadableStream` uses streaming
 RPC end to end. Streaming needs `extensions.use`, not `extensions.invoke`; the
 client reads the streaming methods from the extension's manifest, and
-`streamingMethods` overrides that list:
+`streamingMethods` overrides that list. `use` infers the API from the extension's
+`WorkspaceExtensions` module augmentation; do not provide a caller-selected
+generic.
 
 ```tsx
 import { extensions } from "@workspace/runtime";
 
-type ShellApi = {
-  attach(sessionId: string): Promise<Response>;
-  write(sessionId: string, data: string): Promise<void>;
-};
-
-const shell = extensions.use<ShellApi>("@workspace-extensions/shell", {
+const shell = extensions.use("@workspace-extensions/shell", {
   streamingMethods: ["attach"],
 });
 ```

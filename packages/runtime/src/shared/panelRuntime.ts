@@ -1,23 +1,31 @@
 import { formatRpcFailure } from "@vibestudio/rpc";
-import { dispatchRpcCall } from "@vibestudio/rpc/internal";
 import { panelCapturedDocumentSchema } from "@vibestudio/shared/panel/observation";
-import { createRpcMethods, createRpcMethodCaller } from "@vibestudio/shared/rpcMethods";
+import {
+  createRpcMethods,
+  createRpcMethodCaller,
+} from "@vibestudio/shared/rpcMethods";
 import { workspaceStateMethods } from "@vibestudio/service-schemas/workspaceState";
 import { viewMethods } from "@vibestudio/service-schemas/view";
 import { mainRpcMethods } from "@vibestudio/service-schemas/mainRpc";
 import { DOM_SNAPSHOT_EXPRESSION } from "@vibestudio/shared/panel/domSnapshot";
-import type { RpcClient } from "@vibestudio/rpc";
 import {
   currentJournal,
   consoleHistoryReceipt,
   type OperationJournalEntry,
 } from "./journal.js";
 import type { PanelSourceUsage } from "@vibestudio/shared/panelSearchTypes";
+import type { Rpc } from "../core/index.js";
 import type {
   PanelLifecycleResult,
   PanelPlacementHint,
 } from "@vibestudio/shared/types";
-import type { PanelTreeNode, PanelTreePage, PanelTreePageInput, PanelTreePageWindow, PanelTreeSearchInput } from "@vibestudio/shared/panel/treeIndex";
+import type {
+  PanelTreeNode,
+  PanelTreePage,
+  PanelTreePageInput,
+  PanelTreePageWindow,
+  PanelTreeSearchInput,
+} from "@vibestudio/shared/panel/treeIndex";
 import {
   isBrowserPanelSource,
   isOpenPanelBrowserUrl,
@@ -34,7 +42,17 @@ import {
   generateContextId,
 } from "@vibestudio/shared/panelIdentity";
 import { validateStateArgsAsync } from "@vibestudio/shared/asyncStateArgsValidator";
-import { panelFailure, panelFailureFromError, PanelOperationError, rethrowPanelOperationError, type PanelDiagnosticPacket, type PanelAttempt, type PanelAttemptRef, type PanelObservation, type PanelSnapshotObservation } from "@vibestudio/shared/panel/observation";
+import {
+  panelFailure,
+  panelFailureFromError,
+  PanelOperationError,
+  rethrowPanelOperationError,
+  type PanelDiagnosticPacket,
+  type PanelAttempt,
+  type PanelAttemptRef,
+  type PanelObservation,
+  type PanelSnapshotObservation,
+} from "@vibestudio/shared/panel/observation";
 import type {
   PanelFocusOptions,
   PanelHandle,
@@ -66,6 +84,8 @@ import {
   callWorkspaceState,
   createRuntimeWorkspaceStateClient,
 } from "./workspaceStateClient.js";
+import type { PanelRuntimeRpc } from "./rpcClient.js";
+import { createReceiverRpcMethods } from "@vibestudio/shared/rpcMethods";
 import {
   commitPreparedPanelNavigation,
   type PanelNavigationCommitResult,
@@ -103,10 +123,6 @@ interface WorkspacePanelDetail {
     activeBuildKey?: string;
   };
 }
-
-
-
-
 
 export interface CreatePanelSlotOptions {
   parentId?: string | null;
@@ -247,7 +263,7 @@ export interface PanelRuntimeApi {
 }
 
 export interface CreatePanelRuntimeOptions {
-  rpc: Pick<RpcClient, "call" | "emit" | "on">;
+  rpc: PanelRuntimeRpc;
   /** Owning runtime's context; workspace panels reuse it unless explicitly overridden. */
   contextId?: string | null | (() => string | null | Promise<string | null>);
   /** The owning execution context supplies its journal across compiled module boundaries. */
@@ -301,16 +317,21 @@ export interface CreatePanelRuntimeOptions {
 export function createPanelRuntime(
   options: CreatePanelRuntimeOptions,
 ): PanelRuntimeApi {
+  const rpc = options.rpc;
   const recordOperation =
     options.recordOperation ??
     ((entry: OperationJournalEntry) => currentJournal()?.append(entry));
   const metadataCache = new Map<string, PanelHandleMetadata>();
-  const callState = createRpcMethodCaller(options.rpc, "main", createRpcMethods("workspace-state", workspaceStateMethods));
-  const workspaceState = createRuntimeWorkspaceStateClient(options.rpc);
+  const callState = createRpcMethodCaller(
+    rpc,
+    "main",
+    createRpcMethods("workspace-state", workspaceStateMethods),
+  );
+  const workspaceState = createRuntimeWorkspaceStateClient(rpc);
   const navigationClients: PanelNavigationTransactionClients = {
     runtime: {
       retireEntity: (id) =>
-        options.rpc.call("main", mainRpcMethods["runtime.retireEntity"], [{ id }]),
+        rpc.call("main", mainRpcMethods["runtime.retireEntity"], [{ id }]),
     },
     workspaceState: {
       commitPreparedNavigation: (input) =>
@@ -323,30 +344,45 @@ export function createPanelRuntime(
     if (result.retirement.status !== "failed") return;
     const error = result.retirement.error;
     console.warn(
-      `[panel.navigate] Runtime ${result.previousEntityId} was displaced but could not be retired: ${
-        formatRpcFailure(error)
-      }`,
+      `[panel.navigate] Runtime ${result.previousEntityId} was displaced but could not be retired: ${formatRpcFailure(
+        error,
+      )}`,
     );
   };
   const panelReads = {
     rootGroups: workspaceState.getPanelTreeRootGroups,
-    rootsForCaller: (input: Parameters<typeof callWorkspaceState<"panelTree.rootsForCaller">>[2][0]) => callState("panelTree.rootsForCaller", [input]),
+    rootsForCaller: (
+      input: Parameters<
+        typeof callWorkspaceState<"panelTree.rootsForCaller">
+      >[2][0],
+    ) => callState("panelTree.rootsForCaller", [input]),
     page: workspaceState.getPanelTreePage,
     path: (id: string) => workspaceState.getPanelTreePath(asPanelSlotId(id)),
     detail: (id: string) => workspaceState.getPanelDetail(asPanelSlotId(id)),
-    search: (input: Parameters<typeof callWorkspaceState<"panelTree.search">>[2][0]) => callState("panelTree.search", [input]),
+    search: (
+      input: Parameters<typeof callWorkspaceState<"panelTree.search">>[2][0],
+    ) => callState("panelTree.search", [input]),
   };
-  const callPanelState = async <K extends keyof typeof panelReads>(method: K, args: Parameters<(typeof panelReads)[K]>): Promise<Awaited<ReturnType<(typeof panelReads)[K]>>> => {
+  const callPanelState = async <K extends keyof typeof panelReads>(
+    method: K,
+    args: Parameters<(typeof panelReads)[K]>,
+  ): Promise<Awaited<ReturnType<(typeof panelReads)[K]>>> => {
     try {
-      const read = panelReads[method] as (...values: Parameters<(typeof panelReads)[K]>) => ReturnType<(typeof panelReads)[K]>;
+      const read = panelReads[method] as (
+        ...values: Parameters<(typeof panelReads)[K]>
+      ) => ReturnType<(typeof panelReads)[K]>;
       return await read(...args);
     } catch (error) {
       rethrowPanelOperationError(error);
     }
   };
-  const callView = createRpcMethodCaller(options.rpc, "main", createRpcMethods("view", viewMethods));
+  const callView = createRpcMethodCaller(
+    rpc,
+    "main",
+    createRpcMethods("view", viewMethods),
+  );
   const ensurePanelMaterialized = async (id: string): Promise<PanelAttempt> => {
-    const result = await options.rpc.call(
+    const result = await rpc.call(
       "main",
       mainRpcMethods["panelRuntime.ensureSlot"],
       [id],
@@ -357,9 +393,7 @@ export function createPanelRuntime(
     ) {
       return result.attempt;
     }
-    const detail = await callPanelState("detail", [
-      id,
-    ]);
+    const detail = await callPanelState("detail", [id]);
     if (!detail) throw new Error(`Unknown panel slot: ${id}`);
     const holder = result.lease?.holderLabel;
     throw new PanelOperationError(
@@ -389,13 +423,11 @@ export function createPanelRuntime(
     );
   };
   const getStateArgs = <T = Record<string, unknown>>(id: string): Promise<T> =>
-    readPanelStateArgs<T>(options.rpc, id);
+    readPanelStateArgs<T>(rpc, id);
   const readMetadata = async (
     id: string,
   ): Promise<PanelRuntimeMetadataResult | null> => {
-    const detail = await callPanelState("detail", [
-      id,
-    ]);
+    const detail = await callPanelState("detail", [id]);
     if (!detail) return null;
     const storedOptions = detail.currentHistory.options
       ? (JSON.parse(detail.currentHistory.options) as { ref?: string })
@@ -501,7 +533,7 @@ export function createPanelRuntime(
   };
   const createIndependentCdp = (metadata: PanelHandleMetadata): CdpAutomation =>
     options.createCdp?.(metadata) ??
-    createCdpAutomation(options.rpc, metadata.id, {
+    createCdpAutomation(rpc, metadata.id, {
       kind: metadata.kind,
       requesterPanelId: requesterPanelId(),
       loadModule: options.loadModule,
@@ -513,11 +545,9 @@ export function createPanelRuntime(
     });
 
   const observePanel = async (id: string): Promise<PanelObservation> => {
-    const detail = await callPanelState("detail", [
-      id,
-    ]);
+    const detail = await callPanelState("detail", [id]);
     if (!detail) throw new Error(`Unknown panel slot: ${id}`);
-    const runtime = await options.rpc.call(
+    const runtime = await rpc.call(
       "main",
       mainRpcMethods["panelRuntime.observeSlot"],
       [id],
@@ -702,7 +732,7 @@ export function createPanelRuntime(
       signal?.throwIfAborted();
       if (!attempt) {
         if (followSlot) {
-          const lifecycle = await options.rpc.call(
+          const lifecycle = await rpc.call(
             "main",
             mainRpcMethods["panelRuntime.observeSlot"],
             [initial.panelId],
@@ -721,7 +751,7 @@ export function createPanelRuntime(
           attempt = lifecycle.attempt;
           attemptRef = { epoch: attempt.epoch, attemptId: attempt.attemptId };
         } else {
-          const snapshot = await options.rpc.call(
+          const snapshot = await rpc.call(
             "main",
             mainRpcMethods["panelRuntime.getAttempt"],
             [attemptRef],
@@ -807,7 +837,7 @@ export function createPanelRuntime(
         }
         throw stoppedFailure(attempt);
       }
-      const result = await options.rpc.call(
+      const result = await rpc.call(
         "main",
         mainRpcMethods["panelRuntime.awaitAttempt"],
         [attemptRef, attempt.revision],
@@ -865,7 +895,7 @@ export function createPanelRuntime(
         const entityId = item.entityId;
         if (entityId) {
           await runCleanup(() =>
-            options.rpc.call("main", mainRpcMethods["runtime.retireEntity"], [
+            rpc.call("main", mainRpcMethods["runtime.retireEntity"], [
               { id: entityId },
             ]),
           );
@@ -918,10 +948,7 @@ export function createPanelRuntime(
     navigateOptions?: PanelNavigateOptions,
     historyMode: "append" | "replace" = "append",
   ): Promise<PanelObservation> => {
-    const current = await callPanelState(
-      "detail",
-      [id],
-    );
+    const current = await callPanelState("detail", [id]);
     if (!current) throw new Error(`Unknown panel slot: ${id}`);
     const external = isOpenPanelBrowserUrl(source);
     const contextId =
@@ -929,7 +956,10 @@ export function createPanelRuntime(
     const selectedRef = navigateOptions?.ref ?? `ctx:${contextId}`;
     const panelMetadata = external
       ? null
-      : await options.rpc.call("main", mainRpcMethods["build.getPanelMetadata"], [source, selectedRef]);
+      : await rpc.call("main", mainRpcMethods["build.getPanelMetadata"], [
+          source,
+          selectedRef,
+        ]);
     if (!external && !panelMetadata)
       throw new Error(`Unknown panel source: ${source}`);
     const stateArgsValidation = external
@@ -966,7 +996,7 @@ export function createPanelRuntime(
       contextId,
       stateArgs,
     };
-    const next = await options.rpc.call(
+    const next = await rpc.call(
       "main",
       mainRpcMethods["runtime.createEntity"],
       [entitySpec],
@@ -1028,10 +1058,7 @@ export function createPanelRuntime(
     delta: -1 | 1,
     waitOptions?: PanelWaitOptions,
   ): Promise<PanelObservation | null> => {
-    const current = await callPanelState(
-      "detail",
-      [id],
-    );
+    const current = await callPanelState("detail", [id]);
     if (!current) throw new Error(`Unknown panel slot: ${id}`);
     const target = await callState("slot.historyRelative", [id, delta]);
     if (!target) return null;
@@ -1057,13 +1084,13 @@ export function createPanelRuntime(
       contextId: target.context_id,
       stateArgs: target.state_args ? JSON.parse(target.state_args) : {},
     };
-    const next = await options.rpc.call(
+    const next = await rpc.call(
       "main",
       mainRpcMethods["runtime.createEntity"],
       [spec],
     );
     if (next.id !== target.entity_id) {
-      await options.rpc
+      await rpc
         .call("main", mainRpcMethods["runtime.retireEntity"], [{ id: next.id }])
         .catch(() => {});
       throw new Error(
@@ -1084,9 +1111,7 @@ export function createPanelRuntime(
   const requirePanelDetail = async (
     id: string,
   ): Promise<WorkspacePanelDetail> => {
-    const detail = await callPanelState("detail", [
-      id,
-    ]);
+    const detail = await callPanelState("detail", [id]);
     if (!detail) throw new Error(`Unknown panel slot: ${id}`);
     return detail;
   };
@@ -1154,7 +1179,7 @@ export function createPanelRuntime(
     if (observation.phase === "ready" && observation.host?.reachable === true)
       return observation;
     let watchedAttemptId = observation.attemptId;
-    let slot = await options.rpc.call(
+    let slot = await rpc.call(
       "main",
       mainRpcMethods["panelRuntime.observeSlot"],
       [observation.panelId],
@@ -1172,7 +1197,7 @@ export function createPanelRuntime(
           replacement,
         );
         watchedAttemptId = readied.attemptId;
-        slot = await options.rpc.call(
+        slot = await rpc.call(
           "main",
           mainRpcMethods["panelRuntime.observeSlot"],
           [observation.panelId],
@@ -1198,7 +1223,7 @@ export function createPanelRuntime(
           signal,
         );
         watchedAttemptId = readied.attemptId;
-        slot = await options.rpc.call(
+        slot = await rpc.call(
           "main",
           mainRpcMethods["panelRuntime.observeSlot"],
           [observation.panelId],
@@ -1208,7 +1233,7 @@ export function createPanelRuntime(
       if (slot.attempt?.phase === "ready" && slot.route.reachable) {
         return observePanel(observation.panelId);
       }
-      slot = await options.rpc.call(
+      slot = await rpc.call(
         "main",
         mainRpcMethods["panelRuntime.awaitSlot"],
         [observation.panelId, slot.version],
@@ -1258,11 +1283,11 @@ export function createPanelRuntime(
       return {
         observation,
         runtimeEntityId: expectedRuntimeEntityId,
-        result: (await dispatchRpcCall(options.rpc,
+        result: await rpc.call(
           expectedRuntimeEntityId,
-          method,
+          createReceiverRpcMethods<Rpc.UncontractedMethods>([method])[method]!,
           args,
-        )),
+        ),
       };
     } catch (error) {
       const errorCode = rpcErrorCode(error);
@@ -1298,11 +1323,13 @@ export function createPanelRuntime(
         return {
           observation,
           runtimeEntityId: replacementRuntimeEntityId,
-          result: (await dispatchRpcCall(options.rpc,
+          result: await rpc.call(
             replacementRuntimeEntityId,
-            method,
+            createReceiverRpcMethods<Rpc.UncontractedMethods>([method])[
+              method
+            ]!,
             args,
-          )),
+          ),
         };
       } catch (replacementError) {
         throw panelAgentRouteFailure(id, observation, replacementError, {
@@ -1380,7 +1407,13 @@ export function createPanelRuntime(
         );
       runtimeEntityId = ready.runtimeEntityId;
     } else {
-      const captured = await invokeObservedPanelAgent(id, "_agent.snapshot", [], initial, waitOptions);
+      const captured = await invokeObservedPanelAgent(
+        id,
+        "_agent.snapshot",
+        [],
+        initial,
+        waitOptions,
+      );
       observation = captured.observation;
       runtimeEntityId = captured.runtimeEntityId;
       document = panelCapturedDocumentSchema.parse(captured.result);
@@ -1406,10 +1439,11 @@ export function createPanelRuntime(
     const observation = await observePanel(id);
     let consoleHistory: PanelDiagnosticPacket["consoleHistory"];
     try {
-      const history = await options.rpc.call("main", mainRpcMethods["panelCdp.consoleHistory"], [
-        id,
-        { limit: 200, errorLimit: 100 },
-      ]);
+      const history = await rpc.call(
+        "main",
+        mainRpcMethods["panelCdp.consoleHistory"],
+        [id, { limit: 200, errorLimit: 100 }],
+      );
       consoleHistory = {
         available: true,
         ...history,
@@ -1448,18 +1482,18 @@ export function createPanelRuntime(
     },
     reload: (id, waitOptions) =>
       changingGeneration(id, async () => {
-      const detail = await requirePanelDetail(id);
-      await ensurePanelMaterialized(id);
-      await options.rpc.call("main", mainRpcMethods["runtime.supervision.restart"], [
-        { kind: "panel", entityId: detail.entity.id },
-      ]);
-      const result = await waitUntilReady(
-        await observePanel(id),
-        waitOptions?.signal,
-      );
-      options.onReload?.(id);
-      recordOperation({ type: "reload", id });
-      return result;
+        const detail = await requirePanelDetail(id);
+        await ensurePanelMaterialized(id);
+        await rpc.call("main", mainRpcMethods["runtime.supervision.restart"], [
+          { kind: "panel", entityId: detail.entity.id },
+        ]);
+        const result = await waitUntilReady(
+          await observePanel(id),
+          waitOptions?.signal,
+        );
+        options.onReload?.(id);
+        recordOperation({ type: "reload", id });
+        return result;
       }),
     archive: async (id) => {
       const result = await closePanel(id);
@@ -1468,11 +1502,7 @@ export function createPanelRuntime(
     },
     unload: (id) =>
       changingGeneration(id, () =>
-        options.rpc.call(
-          "main",
-          mainRpcMethods["panelRuntime.unloadSlot"],
-          [id],
-        ),
+        rpc.call("main", mainRpcMethods["panelRuntime.unloadSlot"], [id]),
       ),
     setTitle: async (id, title, titleOptions) => {
       await callState("panel.updateTitle", [
@@ -1491,7 +1521,7 @@ export function createPanelRuntime(
         placement,
       ),
     takeOver: async (id) => {
-      await options.rpc.call("main", mainRpcMethods["panelRuntime.takeOverSlot"], [id]);
+      await rpc.call("main", mainRpcMethods["panelRuntime.takeOverSlot"], [id]);
       await options.focusPanel?.(id);
     },
     openDevTools: (id, mode) => callView("openPanelDevTools", [id, mode]),
@@ -1520,7 +1550,7 @@ export function createPanelRuntime(
     stateArgs: {
       get: getStateArgs,
       patch: async (id, patch) => {
-        const next = await patchPanelStateArgs(options.rpc, id, patch);
+        const next = await patchPanelStateArgs(rpc, id, patch);
         options.onStateArgsPatch?.(id);
         recordOperation({ type: "stateArgs.patch", id });
         return next;
@@ -1611,9 +1641,7 @@ export function createPanelRuntime(
       return fromMetadata(metadata);
     },
     async rootOwners(input = {}) {
-      const page = await callPanelState("rootGroups", [
-        input,
-      ]);
+      const page = await callPanelState("rootGroups", [input]);
       return {
         revision: page.revision,
         owners: page.groups,
@@ -1811,11 +1839,13 @@ export function createPanelRuntime(
       // A fresh browser context is an owned lifecycle boundary, not merely an
       // entity coordinate. Establish its durable parentage before attaching
       // the browser so the creator can retire the complete owned subtree.
-      await options.rpc.call("main", mainRpcMethods["runtime.createContext"], [{ contextId }]);
+      await rpc.call("main", mainRpcMethods["runtime.createContext"], [
+        { contextId },
+      ]);
     }
     const panelMetadata = external
       ? null
-      : await options.rpc.call("main", mainRpcMethods["build.getPanelMetadata"], [
+      : await rpc.call("main", mainRpcMethods["build.getPanelMetadata"], [
           source,
           openOptions?.ref ?? (contextId ? `ctx:${contextId}` : undefined),
         ]);
@@ -1844,8 +1874,13 @@ export function createPanelRuntime(
     const runtimeEntity = await timed(
       external ? "runtime.createEntity" : "runtime.reserveEntity",
       () => {
-        if (entitySpec.execution.surface === "external") return options.rpc.call("main", mainRpcMethods["runtime.createEntity"], [entitySpec]);
-        return options.rpc.call("main", mainRpcMethods["runtime.reserveEntity"], [{ ...entitySpec, execution: entitySpec.execution }]);
+        if (entitySpec.execution.surface === "external")
+          return rpc.call("main", mainRpcMethods["runtime.createEntity"], [
+            entitySpec,
+          ]);
+        return rpc.call("main", mainRpcMethods["runtime.reserveEntity"], [
+          { ...entitySpec, execution: entitySpec.execution },
+        ]);
       },
     );
     const historySource = external ? `browser:${source}` : source;
@@ -1858,9 +1893,9 @@ export function createPanelRuntime(
         panelFailure({
           code: "unknown_failure",
           stage: "runtime",
-          message: `Panel ${id} was created, but the post-commit operation failed: ${
-            formatRpcFailure(error)
-          }`,
+          message: `Panel ${id} was created, but the post-commit operation failed: ${formatRpcFailure(
+            error,
+          )}`,
           provenance: {
             panelId: id,
             runtimeEntityId: runtimeEntity.id,
@@ -1988,7 +2023,7 @@ export function createPanelRuntime(
       // Materialization follows activation because connection grants require
       // the panel principal registered by that transition.
       if (committed.activationSpec) {
-        await options.rpc.call(
+        await rpc.call(
           "main",
           mainRpcMethods["runtime.activateReservedEntity"],
           [committed.activationSpec],
@@ -2021,9 +2056,9 @@ export function createPanelRuntime(
         panelFailure({
           code: "unknown_failure",
           stage: "runtime",
-          message: `Panel ${panelHandle.id} was created, but readiness could not be determined: ${
-            formatRpcFailure(error)
-          }`,
+          message: `Panel ${panelHandle.id} was created, but readiness could not be determined: ${formatRpcFailure(
+            error,
+          )}`,
           provenance: {
             panelId: panelHandle.id,
             runtimeEntityId:

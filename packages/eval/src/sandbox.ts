@@ -64,6 +64,13 @@ export interface SandboxImportLoader {
   ): Promise<LibraryModuleArtifact>;
   /** Optional build-backed probe supplied by Vibestudio hosts. */
   resolveWorkspaceImport?: (specifier: string) => Promise<boolean>;
+  /** Canonical graph identity lets preloaded provider roots satisfy package aliases. */
+  resolveWorkspaceUnit?: (specifier: string) => Promise<{
+    name: string;
+    kind: string;
+    relativePath: string;
+    isRoot: boolean;
+  } | null>;
 }
 
 export type LibraryModuleArtifact = BuildBundleResult;
@@ -457,6 +464,26 @@ async function loadImports(
   for (const [specifier, refValue] of Object.entries(imports)) {
     const ref = refValue === "latest" ? undefined : refValue;
     const existing = loadedLibraryMetadata(moduleMap, specifier);
+    const workspaceUnit = await loadImport.resolveWorkspaceUnit?.(specifier);
+    if (workspaceUnit?.isRoot && !existing) {
+      const preloaded = [workspaceUnit.name, workspaceUnit.relativePath]
+        .filter((candidate) => !loadedLibraryMetadata(moduleMap, candidate))
+        .map((candidate) => moduleMap[candidate])
+        .find((value) => value !== undefined);
+      if (preloaded !== undefined) {
+        for (const alias of [workspaceUnit.name, workspaceUnit.relativePath, specifier]) {
+          if (
+            moduleMap[alias] === undefined &&
+            !loadedLibraryMetadata(moduleMap, alias)
+          ) {
+            moduleMap[alias] = preloaded;
+          }
+        }
+        if (moduleMap[specifier] === preloaded) continue;
+      }
+    }
+    // A build-loaded root retains its explicit ref identity. The provider alias
+    // applies only to host-owned entries without loaded-library metadata.
     // Host-provided modules (panel exposeModules: react, react/jsx-runtime,
     // @radix-ui/*, …) never go through the build service. Asking it for
     // "react" can even resolve to an unrelated workspace unit via basename

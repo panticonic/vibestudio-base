@@ -247,7 +247,11 @@ export const rpc = new Proxy(
 function installWorkerConsoleBridge(rpc: Pick<RpcClient, "call">): void {
   if (workerConsoleBridgeInstalled) return;
   workerConsoleBridgeInstalled = true;
-  const workerLogService = createTypedRpcServiceClient(rpc, { targetId: "main", namespace: "workerLog" }, workerLogMethods);
+  const workerLogService = createTypedRpcServiceClient(
+    rpc,
+    { targetId: "main", namespace: "workerLog" },
+    workerLogMethods,
+  );
   const original = {
     debug: console.debug.bind(console),
     log: console.log.bind(console),
@@ -512,7 +516,9 @@ export function handleWorkerRpc(
         start(controller) {
           void invocation.completion.then(
             (result) => {
-              controller.enqueue(new TextEncoder().encode(encodeRpcJson(result ?? {})));
+              controller.enqueue(
+                new TextEncoder().encode(encodeRpcJson(result ?? {})),
+              );
               controller.close();
             },
             (error: unknown) => controller.error(error),

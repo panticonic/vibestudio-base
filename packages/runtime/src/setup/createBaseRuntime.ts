@@ -41,7 +41,9 @@ export interface BaseRuntimeDeps {
 
 export function createBaseRuntime(deps: BaseRuntimeDeps) {
   if (!deps.workspaceId)
-    throw new Error("Runtime requires its authenticated owning workspace identity");
+    throw new Error(
+      "Runtime requires its authenticated owning workspace identity",
+    );
   const rpcLifetime = new AbortController();
   const primaryTransport = deps.createTransport(rpcLifetime.signal);
   const rpc = createRpcClient({

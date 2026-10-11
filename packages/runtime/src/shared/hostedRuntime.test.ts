@@ -90,6 +90,7 @@ function recordingHost() {
           method === "workers.listSources"
         )
           return [];
+        if (method === "workspace.sourceTree") return { children: [] };
         return undefined;
       },
       stream: async () => new Response(),
@@ -367,6 +368,18 @@ it("routes workspace creation and receipt recovery through the same portable hos
       args: [{ operationId: input.operationId }],
     },
   ]);
+});
+
+it("uses the schema facade for workspace methods across runtime boundaries", async () => {
+  const { host } = recordingHost();
+  const call = vi.spyOn(host.rpc, "call");
+  await createHostedRuntime(host).workspace.projects();
+  expect(call).toHaveBeenCalledWith(
+    "main",
+    expect.objectContaining({ name: "workspace.sourceTree" }),
+    [],
+    undefined,
+  );
 });
 
 describe("createServicesProxy", () => {

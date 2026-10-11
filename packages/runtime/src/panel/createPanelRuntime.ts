@@ -53,7 +53,7 @@ export function createPanelApi(
   const _panelHost: RuntimeHost = {
     id,
     contextId,
-    rpc,
+    rpc: bootstrapRuntime.rpc,
     fs,
     gatewayConfig,
     gatewayFetch,
@@ -141,8 +141,7 @@ export function createPanelApi(
      */
     openShellSurface: (target: ShellSurfaceTarget) =>
       callMain("app.openShellSurface", target),
-    describeShellSurfaces: () =>
-      callMain("app.describeShellSurfaces"),
+    describeShellSurfaces: () => callMain("app.describeShellSurfaces"),
     openCommandAgent: (options?: {
       /** Pre-filled compose text; implies the `/` conversation surface. */
       prompt?: string;

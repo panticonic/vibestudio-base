@@ -173,7 +173,8 @@ function runtimeHarness(
             contextId: "ctx:test",
             targetId: currentEntityId,
             source: { repoPath: "panels/new", effectiveVersion: "ev-new" },
-            buildKey: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            buildKey:
+              "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
           } as T;
         case "runtime.createEntity": {
           const spec = args[0] as { key: string; contextId?: string };
@@ -187,7 +188,8 @@ function runtimeHarness(
             contextId: spec.contextId ?? "ctx:test",
             targetId: currentEntityId,
             source: { repoPath: spec.key, effectiveVersion: "ev-new" },
-            buildKey: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            buildKey:
+              "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
             created: true,
           } as T;
         }
@@ -591,22 +593,29 @@ describe("panel runtime topology composition", () => {
         .rebuild();
 
       expect(observation.runtimeEntityId).not.toBe("panel:nav-new");
-      expect(call).toHaveBeenCalledWith("main", "build.getPanelMetadata", [
-        "panels/new",
-        ref ?? "ctx:ctx:test",
-      ], undefined);
-      expect(call).toHaveBeenCalledWith("main", "runtime.createEntity", [
-        expect.objectContaining({
-          kind: "panel",
-          execution: {
-            surface: "code",
-            source: "panels/new",
-            ref: ref ?? "ctx:ctx:test",
-          },
-          contextId: "ctx:test",
-          stateArgs: { documentId: "doc-123" },
-        }),
-      ], undefined);
+      expect(call).toHaveBeenCalledWith(
+        "main",
+        "build.getPanelMetadata",
+        ["panels/new", ref ?? "ctx:ctx:test"],
+        undefined,
+      );
+      expect(call).toHaveBeenCalledWith(
+        "main",
+        "runtime.createEntity",
+        [
+          expect.objectContaining({
+            kind: "panel",
+            execution: {
+              surface: "code",
+              source: "panels/new",
+              ref: ref ?? "ctx:ctx:test",
+            },
+            contextId: "ctx:test",
+            stateArgs: { documentId: "doc-123" },
+          }),
+        ],
+        undefined,
+      );
       expect(call).toHaveBeenCalledWith(
         "main",
         "workspace-state.slot.commitPreparedNavigation",
@@ -644,9 +653,12 @@ describe("panel runtime topology composition", () => {
         .reload();
 
       expect(observation.runtimeEntityId).toBe("panel:nav-new");
-      expect(call).toHaveBeenCalledWith("main", "runtime.supervision.restart", [
-        { kind: "panel", entityId: "panel:nav-new" },
-      ], undefined);
+      expect(call).toHaveBeenCalledWith(
+        "main",
+        "runtime.supervision.restart",
+        [{ kind: "panel", entityId: "panel:nav-new" }],
+        undefined,
+      );
       expect(call.mock.calls.map((entry) => entry[1])).not.toContain(
         "runtime.createEntity",
       );
@@ -692,22 +704,32 @@ describe("panel runtime topology composition", () => {
       focus: false,
     });
 
-    expect(call).toHaveBeenCalledWith("main", "runtime.reserveEntity", [
-      expect.objectContaining({
-        execution: {
-          surface: "code",
-          source: "panels/new",
-          artifact,
-        },
-      }),
-    ], undefined);
-    expect(call).toHaveBeenCalledWith("main", "workspace-state.slot.create", [
-      expect.objectContaining({
-        initialEntry: expect.objectContaining({
-          options: expect.objectContaining({ artifact }),
+    expect(call).toHaveBeenCalledWith(
+      "main",
+      "runtime.reserveEntity",
+      [
+        expect.objectContaining({
+          execution: {
+            surface: "code",
+            source: "panels/new",
+            artifact,
+          },
         }),
-      }),
-    ], undefined);
+      ],
+      undefined,
+    );
+    expect(call).toHaveBeenCalledWith(
+      "main",
+      "workspace-state.slot.create",
+      [
+        expect.objectContaining({
+          initialEntry: expect.objectContaining({
+            options: expect.objectContaining({ artifact }),
+          }),
+        }),
+      ],
+      undefined,
+    );
   });
 
   it("reports an unassigned presentation as explicit pending state", async () => {
@@ -819,10 +841,12 @@ describe("panel runtime topology composition", () => {
       .map((entry) => entry[2][0] as { key: string });
     expect(reservations).toHaveLength(2);
     expect(reservations[1]?.key).toBe(reservations[0]?.key);
-    expect(call).toHaveBeenCalledWith("main", "build.getPanelMetadata", [
-      "panels/new",
-      "ctx:feature",
-    ], undefined);
+    expect(call).toHaveBeenCalledWith(
+      "main",
+      "build.getPanelMetadata",
+      ["panels/new", "ctx:feature"],
+      undefined,
+    );
   });
 
   it("scopes operation identity by source, explicit context, and parent", async () => {
@@ -1177,13 +1201,18 @@ describe("panel runtime topology composition", () => {
     expect(call.mock.calls.map((entry) => entry[1])).not.toContain(
       "panelRuntime.observeSlot",
     );
-    expect(call).toHaveBeenCalledWith("main", "workspace-state.panel.index", [
-      {
-        id: expect.any(String),
-        title: "example.com",
-        path: "browser:https://example.com/",
-      },
-    ], undefined);
+    expect(call).toHaveBeenCalledWith(
+      "main",
+      "workspace-state.panel.index",
+      [
+        {
+          id: expect.any(String),
+          title: "example.com",
+          path: "browser:https://example.com/",
+        },
+      ],
+      undefined,
+    );
     expect(call.mock.calls.map((entry) => entry[1])).not.toContain(
       "workers.resolveService",
     );
@@ -1345,7 +1374,13 @@ describe("panel runtime topology composition", () => {
     expect(page).toMatchObject({
       revision: 17,
       entries: [
-        { handle: { id: "panel:tree/browser", kind: "browser", parentId: "panel:tree/group" } },
+        {
+          handle: {
+            id: "panel:tree/browser",
+            kind: "browser",
+            parentId: "panel:tree/group",
+          },
+        },
       ],
     });
     await expect(
@@ -1370,26 +1405,41 @@ describe("panel runtime topology composition", () => {
     });
     let revision = 1;
     const reads: string[] = [];
-    const call = vi.fn(async (_target: string, method: string, args: unknown[]) => {
-      if (method !== "workspace-state.panelTree.page") {
-        throw new Error(`Unexpected RPC method: ${method}`);
-      }
-      const input = args[0] as {
-        group: { parentSlotId: string };
-        cursor?: string;
-      };
-      const parent = input.group.parentSlotId;
-      reads.push(`${parent}${input.cursor ? `@${input.cursor}` : ""}`);
-      // The tree changes while the first walk is between groups.
-      if (parent === "panel:tree/a" && revision === 1) revision = 2;
-      const pages: Record<string, { nodes: unknown[]; nextCursor: string | null }> = {
-      "panel:tree/root": { nodes: [node("panel:tree/a", "panel:tree/root", 1)], nextCursor: "more" },
-      "panel:tree/root@more": { nodes: [node("panel:tree/b", "panel:tree/root")], nextCursor: null },
-      "panel:tree/a": { nodes: [node("panel:tree/c", "panel:tree/a")], nextCursor: null },
-      };
-      const page = pages[`${parent}${input.cursor ? `@${input.cursor}` : ""}`]!;
-      return { revision, group: input.group, ...page };
-    });
+    const call = vi.fn(
+      async (_target: string, method: string, args: unknown[]) => {
+        if (method !== "workspace-state.panelTree.page") {
+          throw new Error(`Unexpected RPC method: ${method}`);
+        }
+        const input = args[0] as {
+          group: { parentSlotId: string };
+          cursor?: string;
+        };
+        const parent = input.group.parentSlotId;
+        reads.push(`${parent}${input.cursor ? `@${input.cursor}` : ""}`);
+        // The tree changes while the first walk is between groups.
+        if (parent === "panel:tree/a" && revision === 1) revision = 2;
+        const pages: Record<
+          string,
+          { nodes: unknown[]; nextCursor: string | null }
+        > = {
+          "panel:tree/root": {
+            nodes: [node("panel:tree/a", "panel:tree/root", 1)],
+            nextCursor: "more",
+          },
+          "panel:tree/root@more": {
+            nodes: [node("panel:tree/b", "panel:tree/root")],
+            nextCursor: null,
+          },
+          "panel:tree/a": {
+            nodes: [node("panel:tree/c", "panel:tree/a")],
+            nextCursor: null,
+          },
+        };
+        const page =
+          pages[`${parent}${input.cursor ? `@${input.cursor}` : ""}`]!;
+        return { revision, group: input.group, ...page };
+      },
+    );
     const runtime = createPanelRuntime({
       rpc: schemaRpcClientMock({ call }, "panel-test"),
       defaultOpenParentId: null,
@@ -1397,7 +1447,9 @@ describe("panel runtime topology composition", () => {
     });
 
     const walked: Array<[string, number]> = [];
-    for await (const entry of runtime.panelTree.walk("panel:tree/root", { limit: 10 })) {
+    for await (const entry of runtime.panelTree.walk("panel:tree/root", {
+      limit: 10,
+    })) {
       walked.push([entry.handle.id, entry.depth]);
     }
 
@@ -1416,7 +1468,9 @@ describe("panel runtime topology composition", () => {
     ]);
 
     const limited: string[] = [];
-    for await (const entry of runtime.panelTree.walk("panel:tree/root", { limit: 1 })) {
+    for await (const entry of runtime.panelTree.walk("panel:tree/root", {
+      limit: 1,
+    })) {
       limited.push(entry.handle.id);
     }
     expect(limited).toEqual(["panel:tree/a"]);
@@ -1560,7 +1614,8 @@ describe("recursive panel ownership", () => {
               epoch: "test",
               attemptId: `attempt:${id}`,
               slotId: id,
-              runtimeEntityId: id === root ? "panel:nav-root" : "panel:nav-child",
+              runtimeEntityId:
+                id === root ? "panel:nav-root" : "panel:nav-child",
               phase: "ready",
               revision: 1,
               reporter: "renderer",

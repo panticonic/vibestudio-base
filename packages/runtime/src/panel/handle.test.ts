@@ -1,5 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { durableObjectServiceFixture } from "@vibestudio/service-schemas/test-utils";
+import type { RpcClient } from "@vibestudio/rpc";
+import type { RpcWireCaller } from "@vibestudio/rpc/internal";
+import { createPanelHandleApi } from "./handle.js";
 
 function readyObservation(panelId: string, source = "panels/example") {
   const entityKey = panelId.replace(/^panel:tree\//, "");
@@ -81,6 +84,15 @@ function readyAttempt(slotId: string, runtimeEntityId: string) {
     reporter: "renderer" as const,
     updatedAt: 1,
   };
+}
+
+async function createRpcOperations<Call extends RpcWireCaller["call"]>(
+  call: Call,
+) {
+  const rpcTestUtils = await import("@vibestudio/rpc/test-utils");
+  const rpc = rpcTestUtils.schemaRpcClientMock({ call }, "panel-handle-test");
+  rpc.on = vi.fn(() => () => {});
+  return { rpc, wireCall: call };
 }
 
 async function createRpcCall() {
@@ -317,10 +329,7 @@ async function createRpcCall() {
       }
     },
   );
-  const schemaMock = (await import("@vibestudio/rpc/test-utils")).schemaRpcMock(
-    { call },
-  );
-  return Object.assign(schemaMock.call, { wireCall: call });
+  return createRpcOperations(call);
 }
 
 describe("PanelHandle", () => {
@@ -334,28 +343,25 @@ describe("PanelHandle", () => {
   });
 
   it("keeps panel APIs bound to their owning runtime when another runtime is created", async () => {
-    const { createPanelHandleApi } = await import("./handle.js");
-    const firstCall = await createRpcCall();
-    const secondCall = await createRpcCall();
-    const first = createPanelHandleApi(
-      { call: firstCall, on: vi.fn() } as never,
-      { selfId: "panel:tree/first" },
-    );
-    const second = createPanelHandleApi(
-      { call: secondCall, on: vi.fn() } as never,
-      { selfId: "panel:tree/second" },
-    );
+    const firstFixture = await createRpcCall();
+    const secondFixture = await createRpcCall();
+    const first = createPanelHandleApi(firstFixture.rpc, {
+      selfId: "panel:tree/first",
+    });
+    const second = createPanelHandleApi(secondFixture.rpc, {
+      selfId: "panel:tree/second",
+    });
 
     expect(first.panelTree.self().id).toBe("panel:tree/first");
     expect(second.panelTree.self().id).toBe("panel:tree/second");
     await first.openExternal("https://example.test/first");
-    expect(firstCall.wireCall).toHaveBeenCalledWith(
+    expect(firstFixture.wireCall).toHaveBeenCalledWith(
       "main",
       "externalOpen.openExternal",
       ["https://example.test/first", undefined],
       undefined,
     );
-    expect(secondCall.wireCall).not.toHaveBeenCalled();
+    expect(secondFixture.wireCall).not.toHaveBeenCalled();
   });
 
   it("cleans native and RPC child subscriptions exactly once on runtime destruction", async () => {
@@ -364,12 +370,10 @@ describe("PanelHandle", () => {
       addEventListener: vi.fn().mockReturnValueOnce(11).mockReturnValueOnce(12),
       removeEventListener,
     };
-    const { createPanelHandleApi } = await import("./handle.js");
     const rpcUnsubscribe = vi.fn();
-    const runtime = createPanelHandleApi({
-      call: await createRpcCall(),
-      on: vi.fn(() => rpcUnsubscribe),
-    } as never);
+    const fixture = await createRpcCall();
+    fixture.rpc.on = vi.fn(() => rpcUnsubscribe);
+    const runtime = createPanelHandleApi(fixture.rpc);
     const unsubscribe = runtime.onChildCreated(vi.fn());
     runtime.onChildCreationError(vi.fn());
     unsubscribe();
@@ -383,11 +387,8 @@ describe("PanelHandle", () => {
   });
 
   it("returns a workspace handle from openPanel", async () => {
-    const { createPanelHandleApi } = await import("./handle.js");
-    const { openPanel } = createPanelHandleApi({
-      call: await createRpcCall(),
-      on: vi.fn(),
-    } as never);
+    const fixture = await createRpcCall();
+    const { openPanel } = createPanelHandleApi(fixture.rpc);
 
     const handle = await openPanel("panels/example");
 
@@ -407,14 +408,10 @@ describe("PanelHandle", () => {
   });
 
   it("defaults panel opens under self but treats parentId null as root", async () => {
-    const { createPanelHandleApi } = await import("./handle.js");
-    const rpcCall = await createRpcCall();
-    const { openPanel } = createPanelHandleApi(
-      { call: rpcCall, on: vi.fn() } as never,
-      {
-        selfId: "panel:tree/panel-self",
-      },
-    );
+    const fixture = await createRpcCall();
+    const { openPanel } = createPanelHandleApi(fixture.rpc, {
+      selfId: "panel:tree/panel-self",
+    });
 
     await openPanel("panels/child");
     await openPanel("panels/root", { parentId: null });
@@ -423,7 +420,7 @@ describe("PanelHandle", () => {
       ref: "ctx:ctx-next",
     });
 
-    const reservations = rpcCall.wireCall.mock.calls.filter(
+    const reservations = fixture.wireCall.mock.calls.filter(
       ([target, method]) =>
         target === "main" && method === "runtime.reserveEntity",
     );
@@ -443,18 +440,15 @@ describe("PanelHandle", () => {
       contextId: "ctx-next",
     });
     expect(
-      rpcCall.wireCall.mock.calls.filter(
+      fixture.wireCall.mock.calls.filter(
         ([, method]) => method === "panelTree.create",
       ),
     ).toHaveLength(0);
   });
 
   it("hydrates paged browser handles with CDP automation", async () => {
-    const { createPanelHandleApi } = await import("./handle.js");
-    const { panelTree } = createPanelHandleApi({
-      call: await createRpcCall(),
-      on: vi.fn(),
-    } as never);
+    const fixture = await createRpcCall();
+    const { panelTree } = createPanelHandleApi(fixture.rpc);
 
     const page = await panelTree.page({
       group: { kind: "roots", ownerUserId: null },
@@ -471,7 +465,8 @@ describe("PanelHandle", () => {
   });
 
   it("routes hydrated handle RPC to the current runtime entity", async () => {
-    const rpcCall = await createRpcCall();
+    const fixture = await createRpcCall();
+    const rpcCall = fixture.wireCall;
     const rpcEmit = vi.fn(async () => undefined);
     const eventHandlers: Array<
       (event: { caller: { callerId: string }; payload: unknown }) => void
@@ -488,12 +483,9 @@ describe("PanelHandle", () => {
         return vi.fn();
       },
     );
-    const { createPanelHandleApi } = await import("./handle.js");
-    const { panelTree } = createPanelHandleApi({
-      call: rpcCall,
-      emit: rpcEmit,
-      on: rpcOn,
-    } as never);
+    fixture.rpc.emit = rpcEmit;
+    fixture.rpc.on = rpcOn as RpcClient["on"];
+    const { panelTree } = createPanelHandleApi(fixture.rpc);
 
     const child = (
       await panelTree.page({
@@ -518,7 +510,7 @@ describe("PanelHandle", () => {
       payload: { ok: true },
     });
 
-    expect(rpcCall.wireCall).toHaveBeenCalledWith(
+    expect(rpcCall).toHaveBeenCalledWith(
       "panel:nav-child-1-entity",
       "ping",
       [],
@@ -536,14 +528,11 @@ describe("PanelHandle", () => {
   });
 
   it("keeps child contract handles unified with the underlying panel target", async () => {
-    const rpcCall = await createRpcCall();
+    const fixture = await createRpcCall();
+    const rpcCall = fixture.wireCall;
     const rpcEmit = vi.fn(async () => undefined);
-    const { createPanelHandleApi } = await import("./handle.js");
-    const { panelTree } = createPanelHandleApi({
-      call: rpcCall,
-      emit: rpcEmit,
-      on: vi.fn(),
-    } as never);
+    fixture.rpc.emit = rpcEmit;
+    const { panelTree } = createPanelHandleApi(fixture.rpc);
 
     const child = (
       await panelTree.page({
@@ -589,7 +578,7 @@ describe("PanelHandle", () => {
       },
     );
 
-    expect(rpcCall.wireCall).toHaveBeenCalledWith(
+    expect(rpcCall).toHaveBeenCalledWith(
       "panel:nav-child-1-entity",
       "ping",
       [],
@@ -598,7 +587,7 @@ describe("PanelHandle", () => {
     expect(rpcEmit).toHaveBeenCalledWith("panel:nav-child-1-entity", "ready", {
       ok: true,
     });
-    expect(rpcCall.wireCall).toHaveBeenCalledWith(
+    expect(rpcCall).toHaveBeenCalledWith(
       "main",
       "workspace-state.slot.patchCurrentStateArgs",
       ["panel:tree/child-1", { mode: "live" }],
@@ -607,17 +596,14 @@ describe("PanelHandle", () => {
   });
 
   it("exposes bounded panelTree queries plus get and self handles", async () => {
-    const { createPanelHandleApi } = await import("./handle.js");
-    const rpcCall = await createRpcCall();
-    const { panelTree } = createPanelHandleApi(
-      { call: rpcCall, on: vi.fn() } as never,
-      {
-        selfId: "panel:tree/panel-self",
-        selfRpcTargetId: "panel:self-entity",
-        parentId: "panel:tree/panel-parent",
-        parentRpcTargetId: "panel:parent-entity",
-      },
-    );
+    const fixture = await createRpcCall();
+    const rpcCall = fixture.wireCall;
+    const { panelTree } = createPanelHandleApi(fixture.rpc, {
+      selfId: "panel:tree/panel-self",
+      selfRpcTargetId: "panel:self-entity",
+      parentId: "panel:tree/panel-parent",
+      parentRpcTargetId: "panel:parent-entity",
+    });
 
     const owners = await panelTree.rootOwners({ limit: 200 });
     const roots = await panelTree.rootsForOwner(owners.owners[0]!.ownerUserId, {
@@ -644,7 +630,7 @@ describe("PanelHandle", () => {
       parentId: "panel:tree/panel-parent",
     });
     await (self.call as Record<string, () => Promise<unknown>>)["ping"]!();
-    expect(rpcCall.wireCall).toHaveBeenCalledWith(
+    expect(rpcCall).toHaveBeenCalledWith(
       "panel:nav-panel-self-entity",
       "ping",
       [],
@@ -655,13 +641,13 @@ describe("PanelHandle", () => {
       panelId: "panel:tree/panel-parent",
       parentId: null,
     });
-    expect(rpcCall.wireCall).toHaveBeenCalledWith(
+    expect(rpcCall).toHaveBeenCalledWith(
       "main",
       "workspace-state.panelTree.page",
       [{ group: { kind: "roots", ownerUserId: null }, limit: 200 }],
       undefined,
     );
-    expect(rpcCall.wireCall).toHaveBeenCalledWith(
+    expect(rpcCall).toHaveBeenCalledWith(
       "main",
       "workspace-state.panelTree.page",
       [
@@ -673,7 +659,7 @@ describe("PanelHandle", () => {
       undefined,
     );
     await (parent!.call as Record<string, () => Promise<unknown>>)["ping"]!();
-    expect(rpcCall.wireCall).toHaveBeenCalledWith(
+    expect(rpcCall).toHaveBeenCalledWith(
       "panel:nav-panel-parent-entity",
       "ping",
       [],
@@ -682,26 +668,23 @@ describe("PanelHandle", () => {
   });
 
   it("lazily resolves arbitrary panel handles before target RPC", async () => {
-    const { createPanelHandleApi } = await import("./handle.js");
-    const rpcCall = await createRpcCall();
+    const fixture = await createRpcCall();
+    const rpcCall = fixture.wireCall;
     const rpcEmit = vi.fn(async () => undefined);
-    const { panelTree } = createPanelHandleApi({
-      call: rpcCall,
-      emit: rpcEmit,
-      on: vi.fn(),
-    } as never);
+    fixture.rpc.emit = rpcEmit;
+    const { panelTree } = createPanelHandleApi(fixture.rpc);
 
     const handle = panelTree.get("panel:tree/arbitrary");
     await (handle.call as Record<string, () => Promise<unknown>>)["ping"]!();
     await handle.emit("ready", { ok: true });
 
-    expect(rpcCall.wireCall).toHaveBeenCalledWith(
+    expect(rpcCall).toHaveBeenCalledWith(
       "main",
       "workspace-state.panelTree.detail",
       ["panel:tree/arbitrary"],
       undefined,
     );
-    expect(rpcCall.wireCall).toHaveBeenCalledWith(
+    expect(rpcCall).toHaveBeenCalledWith(
       "panel:nav-arbitrary-entity",
       "ping",
       [],
@@ -715,7 +698,6 @@ describe("PanelHandle", () => {
   });
 
   it("resolves arbitrary panel event targets once and filters synchronously afterward", async () => {
-    const { createPanelHandleApi } = await import("./handle.js");
     let resolveMetadata!: (value: unknown) => void;
     let resolveDetailCallStarted!: () => void;
     const detailCallStarted = new Promise<void>((resolve) => {
@@ -768,12 +750,8 @@ describe("PanelHandle", () => {
         return undefined;
       },
     );
-    const schemaMock = (
-      await import("@vibestudio/rpc/test-utils")
-    ).schemaRpcMock({
-      call: wireCall,
-    });
-    const rpcCall = Object.assign(schemaMock.call, { wireCall });
+    const fixture = await createRpcOperations(wireCall);
+    const rpcCall = fixture.wireCall;
     const eventHandlers: Array<
       (event: { caller: { callerId: string }; payload: unknown }) => void
     > = [];
@@ -789,10 +767,8 @@ describe("PanelHandle", () => {
         return vi.fn();
       },
     );
-    const { panelTree } = createPanelHandleApi({
-      call: rpcCall,
-      on: rpcOn,
-    } as never);
+    fixture.rpc.on = rpcOn as RpcClient["on"];
+    const { panelTree } = createPanelHandleApi(fixture.rpc);
 
     const handle = panelTree.get("panel:tree/arbitrary-events");
     const listener = vi.fn();
@@ -808,8 +784,8 @@ describe("PanelHandle", () => {
       });
     }
     await detailCallStarted;
-    expect(rpcCall.wireCall).toHaveBeenCalledTimes(1);
-    expect(rpcCall.wireCall).toHaveBeenCalledWith(
+    expect(rpcCall).toHaveBeenCalledTimes(1);
+    expect(rpcCall).toHaveBeenCalledWith(
       "main",
       "workspace-state.panelTree.detail",
       ["panel:tree/arbitrary-events"],
@@ -870,7 +846,7 @@ describe("PanelHandle", () => {
     });
 
     expect(
-      rpcCall.wireCall.mock.calls.filter(
+      rpcCall.mock.calls.filter(
         (entry) => entry[1] === "workspace-state.panelTree.detail",
       ),
     ).toHaveLength(1);
@@ -880,17 +856,14 @@ describe("PanelHandle", () => {
   });
 
   it("targets parent slot, not self, when navigating, reloading, and rebuilding parent handles", async () => {
-    const { createPanelHandleApi } = await import("./handle.js");
-    const rpcCall = await createRpcCall();
-    const { panelTree } = createPanelHandleApi(
-      { call: rpcCall, on: vi.fn() } as never,
-      {
-        selfId: "panel:tree/panel-self",
-        selfRpcTargetId: "panel:self-entity",
-        parentId: "panel:tree/panel-parent",
-        parentRpcTargetId: "panel:parent-entity",
-      },
-    );
+    const fixture = await createRpcCall();
+    const rpcCall = fixture.wireCall;
+    const { panelTree } = createPanelHandleApi(fixture.rpc, {
+      selfId: "panel:tree/panel-self",
+      selfRpcTargetId: "panel:self-entity",
+      parentId: "panel:tree/panel-parent",
+      parentRpcTargetId: "panel:parent-entity",
+    });
 
     const parent = panelTree.self().parent();
     await expect(parent?.rebuild()).resolves.toMatchObject({
@@ -911,7 +884,7 @@ describe("PanelHandle", () => {
       phase: "ready",
     });
 
-    const replacements = rpcCall.wireCall.mock.calls.filter(
+    const replacements = rpcCall.mock.calls.filter(
       ([, method, args]) =>
         method === "workspace-state.slot.commitPreparedNavigation" &&
         (args[0] as { mutation: { kind: string } }).mutation.kind === "replace",
@@ -919,7 +892,7 @@ describe("PanelHandle", () => {
     expect(replacements).toHaveLength(1);
     // Reload restarts the current renderer; rebuilding replaces its source
     // generation. Both operations must target the parent, never this child.
-    expect(rpcCall.wireCall).toHaveBeenCalledWith(
+    expect(rpcCall).toHaveBeenCalledWith(
       "main",
       "runtime.supervision.restart",
       [{ kind: "panel", entityId: "panel:nav-panel-parent-entity" }],
@@ -933,7 +906,7 @@ describe("PanelHandle", () => {
         },
       });
     }
-    expect(rpcCall.wireCall).toHaveBeenCalledWith(
+    expect(rpcCall).toHaveBeenCalledWith(
       "main",
       "workspace-state.slot.commitPreparedNavigation",
       [
@@ -944,38 +917,34 @@ describe("PanelHandle", () => {
       ],
       undefined,
     );
-    expect(rpcCall.wireCall).not.toHaveBeenCalledWith(
+    expect(rpcCall).not.toHaveBeenCalledWith(
       "main",
       "panelTree.rebuildPanel",
       expect.any(Array),
     );
-    expect(rpcCall.wireCall).not.toHaveBeenCalledWith(
+    expect(rpcCall).not.toHaveBeenCalledWith(
       "main",
       "panelTree.reload",
       expect.any(Array),
     );
-    expect(rpcCall.wireCall).toHaveBeenCalledWith(
+    expect(rpcCall).toHaveBeenCalledWith(
       "main",
       "workspace-state.slot.commitPreparedNavigation",
       [expect.objectContaining({ slotId: "panel:tree/panel-parent" })],
       undefined,
     );
-    expect(rpcCall.wireCall).not.toHaveBeenCalledWith(
+    expect(rpcCall).not.toHaveBeenCalledWith(
       "main",
       "panelTree.navigate",
       expect.any(Array),
     );
-    expect(rpcCall.wireCall).not.toHaveBeenCalledWith(
-      "main",
-      "panelTree.rebuildPanel",
-      ["panel:tree/panel-self"],
-    );
-    expect(rpcCall.wireCall).not.toHaveBeenCalledWith(
-      "main",
-      "panelTree.reload",
-      ["panel:tree/panel-self"],
-    );
-    expect(rpcCall.wireCall).not.toHaveBeenCalledWith(
+    expect(rpcCall).not.toHaveBeenCalledWith("main", "panelTree.rebuildPanel", [
+      "panel:tree/panel-self",
+    ]);
+    expect(rpcCall).not.toHaveBeenCalledWith("main", "panelTree.reload", [
+      "panel:tree/panel-self",
+    ]);
+    expect(rpcCall).not.toHaveBeenCalledWith(
       "main",
       "panelTree.navigate",
       expect.arrayContaining(["panel:tree/panel-self"]),
@@ -983,14 +952,11 @@ describe("PanelHandle", () => {
   });
 
   it("hydrates arbitrary parent handles from discovered tree metadata", async () => {
-    const { createPanelHandleApi } = await import("./handle.js");
-    const { panelTree } = createPanelHandleApi(
-      { call: await createRpcCall(), on: vi.fn() } as never,
-      {
-        selfId: "panel:tree/panel-self",
-        parentId: "panel:tree/panel-parent",
-      },
-    );
+    const fixture = await createRpcCall();
+    const { panelTree } = createPanelHandleApi(fixture.rpc, {
+      selfId: "panel:tree/panel-self",
+      parentId: "panel:tree/panel-parent",
+    });
 
     const child = (
       await panelTree.page({
@@ -1042,8 +1008,9 @@ describe("PanelHandle", () => {
       .fn()
       .mockResolvedValueOnce({ status: "archived" })
       .mockRejectedValueOnce(new Error("archive denied"));
+    const fixture = await createRpcCall();
     const handle = createPanelHandle({
-      rpc: { call: vi.fn(), on: vi.fn() } as never,
+      rpc: fixture.rpc,
       metadata: { id: "panel:tree/owned", source: "panels/example" },
       cdp: unavailableCdp("panel:tree/owned"),
       ops: { archive },
@@ -1057,21 +1024,21 @@ describe("PanelHandle", () => {
   });
 
   it("rejects an owned lifetime before committing a slot when no lifecycle owner exists", async () => {
-    const { createPanelHandleApi } = await import("./handle.js");
-    const call = await createRpcCall();
-    const { openPanel } = createPanelHandleApi({ call, on: vi.fn() } as never);
+    const fixture = await createRpcCall();
+    const { openPanel } = createPanelHandleApi(fixture.rpc);
 
     await expect(
       openPanel("panels/example", { lifetime: "invocation" }),
     ).rejects.toThrow(/requires an owning eval invocation or session/);
-    expect(call).not.toHaveBeenCalled();
+    expect(fixture.wireCall).not.toHaveBeenCalled();
   });
 
   it.each(["invocation", "session"] as const)(
     "claims %s ownership before activation, including a failed boot",
     async (lifetime) => {
       const { createPanelRuntime } = await import("../shared/panelRuntime.js");
-      const call = await createRpcCall();
+      const fixture = await createRpcCall();
+      const call = fixture.wireCall;
       const delegate = call.getMockImplementation()!;
       const claim = vi.fn();
       const failure = new Error("Panel activation failed");
@@ -1086,7 +1053,7 @@ describe("PanelHandle", () => {
         return delegate(target, method, args);
       });
       const runtime = createPanelRuntime({
-        rpc: { call, on: vi.fn() } as never,
+        rpc: fixture.rpc,
         claimPanelLifetime: claim,
       });
       await expect(
@@ -1109,8 +1076,9 @@ describe("PanelHandle", () => {
       (value as Record<symbol, () => unknown>)[
         Symbol.for("vibestudio.scopeRef")
       ]?.();
+    const fixture = await createRpcCall();
     const panel = createPanelHandle({
-      rpc: { call: vi.fn(), on: vi.fn() } as never,
+      rpc: fixture.rpc,
       metadata: {
         id: "panel:tree/owned",
         rpcTargetId: "panel:cached-entity",
@@ -1140,14 +1108,8 @@ describe("PanelHandle", () => {
       wsEndpoint: "ws://server/cdp/panel-1",
       token: "t",
     }));
-    const rpcCall = (await import("@vibestudio/rpc/test-utils")).schemaRpcMock({
-      call: wireCall,
-    }).call;
-    const { createPanelHandleApi } = await import("./handle.js");
-    const { getPanelHandle } = createPanelHandleApi({
-      call: rpcCall,
-      on: vi.fn(),
-    } as never);
+    const fixture = await createRpcOperations(wireCall);
+    const { getPanelHandle } = createPanelHandleApi(fixture.rpc);
 
     await expect(
       getPanelHandle("panel-1", "browser").cdp.getCdpEndpoint(),
@@ -1165,24 +1127,21 @@ describe("PanelHandle", () => {
   });
 
   it("routes non-Electron CDP drive verbs through panelCdp", async () => {
-    const rpcCall = await createRpcCall();
-    const { createPanelHandleApi } = await import("./handle.js");
-    const { getPanelHandle } = createPanelHandleApi({
-      call: rpcCall,
-      on: vi.fn(),
-    } as never);
+    const rpcFixture = await createRpcCall();
+    const rpcCall = rpcFixture.wireCall;
+    const { getPanelHandle } = createPanelHandleApi(rpcFixture.rpc);
 
     await getPanelHandle("panel:tree/panel-1", "browser").navigate(
       "https://example.com",
     );
 
-    expect(rpcCall.wireCall).toHaveBeenCalledWith(
+    expect(rpcCall).toHaveBeenCalledWith(
       "main",
       "workspace-state.slot.commitPreparedNavigation",
       [expect.objectContaining({ slotId: "panel:tree/panel-1" })],
       undefined,
     );
-    expect(rpcCall.wireCall).not.toHaveBeenCalledWith(
+    expect(rpcCall).not.toHaveBeenCalledWith(
       "main",
       "panelTree.navigate",
       expect.any(Array),
@@ -1190,12 +1149,9 @@ describe("PanelHandle", () => {
   });
 
   it("routes historical console access through panelCdp", async () => {
-    const rpcCall = await createRpcCall();
-    const { createPanelHandleApi } = await import("./handle.js");
-    const { getPanelHandle } = createPanelHandleApi({
-      call: rpcCall,
-      on: vi.fn(),
-    } as never);
+    const rpcFixture = await createRpcCall();
+    const rpcCall = rpcFixture.wireCall;
+    const { getPanelHandle } = createPanelHandleApi(rpcFixture.rpc);
 
     await expect(
       getPanelHandle("panel:tree/panel-1").cdp.consoleHistory({
@@ -1207,7 +1163,7 @@ describe("PanelHandle", () => {
       capacity: { entries: 1000, errors: 500 },
     });
 
-    expect(rpcCall.wireCall).toHaveBeenCalledWith(
+    expect(rpcCall).toHaveBeenCalledWith(
       "main",
       "panelCdp.consoleHistory",
       ["panel:tree/panel-1", { limit: 50, errorLimit: 50 }],
@@ -1216,12 +1172,9 @@ describe("PanelHandle", () => {
   });
 
   it("exposes a unified panel diagnostics bundle", async () => {
-    const rpcCall = await createRpcCall();
-    const { createPanelHandleApi } = await import("./handle.js");
-    const { getPanelHandle } = createPanelHandleApi({
-      call: rpcCall,
-      on: vi.fn(),
-    } as never);
+    const rpcFixture = await createRpcCall();
+    const rpcCall = rpcFixture.wireCall;
+    const { getPanelHandle } = createPanelHandleApi(rpcFixture.rpc);
 
     await expect(
       getPanelHandle("panel:tree/panel-1").diagnose(),
@@ -1232,13 +1185,13 @@ describe("PanelHandle", () => {
       },
     });
 
-    expect(rpcCall.wireCall).toHaveBeenCalledWith(
+    expect(rpcCall).toHaveBeenCalledWith(
       "main",
       "panelCdp.consoleHistory",
       ["panel:tree/panel-1", { limit: 200, errorLimit: 100 }],
       undefined,
     );
-    expect(rpcCall.wireCall).not.toHaveBeenCalledWith(
+    expect(rpcCall).not.toHaveBeenCalledWith(
       "main",
       "panelTree.diagnose",
       expect.any(Array),
@@ -1257,17 +1210,14 @@ describe("PanelHandle", () => {
     }));
     const loadCdpClient = vi.fn(() => ({ BrowserImpl: { connect } }));
     vi.doMock("@workspace/cdp-client", loadCdpClient);
-    const rpcCall = await createRpcCall();
-    const { createPanelHandleApi } = await import("./handle.js");
-    const { getPanelHandle } = createPanelHandleApi({
-      call: rpcCall,
-      on: vi.fn(),
-    } as never);
+    const rpcFixture = await createRpcCall();
+    const rpcCall = rpcFixture.wireCall;
+    const { getPanelHandle } = createPanelHandleApi(rpcFixture.rpc);
 
     const handle = getPanelHandle("panel:tree/panel-1", "browser");
     await handle.click("button.submit");
 
-    expect(rpcCall.wireCall).toHaveBeenCalledWith(
+    expect(rpcCall).toHaveBeenCalledWith(
       "main",
       "panelCdp.getCdpEndpoint",
       ["panel:tree/panel-1"],
@@ -1295,12 +1245,8 @@ describe("PanelHandle", () => {
     }));
     const loadCdpClient = vi.fn(() => ({ BrowserImpl: { connect } }));
     vi.doMock("@workspace/cdp-client", loadCdpClient);
-    const rpcCall = await createRpcCall();
-    const { createPanelHandleApi } = await import("./handle.js");
-    const { getPanelHandle } = createPanelHandleApi({
-      call: rpcCall,
-      on: vi.fn(),
-    } as never);
+    const rpcFixture = await createRpcCall();
+    const { getPanelHandle } = createPanelHandleApi(rpcFixture.rpc);
 
     const handle = getPanelHandle("panel:tree/browser-1");
     const session = await handle.cdp.session();
@@ -1316,12 +1262,8 @@ describe("PanelHandle", () => {
 
   it("reports an invalid canonical CDP package surface", async () => {
     vi.doMock("@workspace/cdp-client", () => ({ BrowserImpl: null }));
-    const rpcCall = await createRpcCall();
-    const { createPanelHandleApi } = await import("./handle.js");
-    const { getPanelHandle } = createPanelHandleApi({
-      call: rpcCall,
-      on: vi.fn(),
-    } as never);
+    const rpcFixture = await createRpcCall();
+    const { getPanelHandle } = createPanelHandleApi(rpcFixture.rpc);
 
     await expect(
       getPanelHandle("panel:tree/browser-1").cdp.session(),
@@ -1329,14 +1271,11 @@ describe("PanelHandle", () => {
   });
 
   it("routes CDP operations through rpc for workspace and self handles", async () => {
-    const rpcCall = await createRpcCall();
-    const { createPanelHandleApi } = await import("./handle.js");
-    const { getPanelHandle, panelTree } = createPanelHandleApi(
-      { call: rpcCall, on: vi.fn() } as never,
-      {
-        selfId: "panel:tree/panel-self",
-      },
-    );
+    const rpcFixture = await createRpcCall();
+    const rpcCall = rpcFixture.wireCall;
+    const { getPanelHandle, panelTree } = createPanelHandleApi(rpcFixture.rpc, {
+      selfId: "panel:tree/panel-self",
+    });
 
     // CDP automation is available for every panel target, including workspace
     // panels and the panel the agent is running in (panelTree.self()).
@@ -1349,18 +1288,18 @@ describe("PanelHandle", () => {
       wsEndpoint: "ws://localhost",
       token: "t",
     });
-    expect(rpcCall.wireCall).toHaveBeenCalledWith(
+    expect(rpcCall).toHaveBeenCalledWith(
       "main",
       "workspace-state.slot.commitPreparedNavigation",
       [expect.objectContaining({ slotId: "panel:tree/workspace-1" })],
       undefined,
     );
-    expect(rpcCall.wireCall).not.toHaveBeenCalledWith(
+    expect(rpcCall).not.toHaveBeenCalledWith(
       "main",
       "panelTree.navigate",
       expect.any(Array),
     );
-    expect(rpcCall.wireCall).toHaveBeenCalledWith(
+    expect(rpcCall).toHaveBeenCalledWith(
       "main",
       "panelCdp.getCdpEndpoint",
       ["panel:tree/workspace-1"],
@@ -1370,7 +1309,7 @@ describe("PanelHandle", () => {
       wsEndpoint: "ws://localhost",
       token: "t",
     });
-    expect(rpcCall.wireCall).toHaveBeenCalledWith(
+    expect(rpcCall).toHaveBeenCalledWith(
       "main",
       "panelCdp.getCdpEndpoint",
       ["panel:tree/panel-self"],
@@ -1379,12 +1318,9 @@ describe("PanelHandle", () => {
   });
 
   it("hydrates direct children through bounded pages", async () => {
-    const { createPanelHandleApi } = await import("./handle.js");
-    const rpcCall = await createRpcCall();
-    const { openPanel, panelTree } = createPanelHandleApi({
-      call: rpcCall,
-      on: vi.fn(),
-    } as never);
+    const rpcFixture = await createRpcCall();
+    const rpcCall = rpcFixture.wireCall;
+    const { openPanel, panelTree } = createPanelHandleApi(rpcFixture.rpc);
     const handle = await openPanel("panels/example");
 
     const children = await panelTree.page({
@@ -1394,7 +1330,7 @@ describe("PanelHandle", () => {
 
     expect(children.entries).toHaveLength(1);
     expect(children.entries[0]?.handle.id).toBe("panel:tree/child-1");
-    expect(rpcCall.wireCall).toHaveBeenCalledWith(
+    expect(rpcCall).toHaveBeenCalledWith(
       "main",
       "workspace-state.panelTree.page",
       [

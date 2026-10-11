@@ -1,5 +1,5 @@
 import { mainRpcMethods } from "@vibestudio/service-schemas/mainRpc";
-import type { RpcClient, RpcEventContext } from "@vibestudio/rpc";
+import type { RpcEventContext } from "@vibestudio/rpc";
 import type { PanelHandle as CorePanelHandle, Rpc } from "../core/index.js";
 import type {
   OpenExternalOptions,
@@ -9,6 +9,7 @@ import {
   createPanelRuntime,
   type PanelRuntimeTree,
 } from "../shared/panelRuntime.js";
+import type { PanelRuntimeRpc } from "../shared/rpcClient.js";
 
 export type PanelHandle<
   T extends Rpc.ExposedMethods = Rpc.ExposedMethods,
@@ -17,8 +18,6 @@ export type PanelHandle<
 > = CorePanelHandle<T, E, EmitE>;
 
 export type PanelTreeApi = PanelRuntimeTree;
-
-type PanelRuntimeRpc = Pick<RpcClient, "call" | "emit" | "on">;
 
 export function createPanelHandleApi(
   rpc: PanelRuntimeRpc,

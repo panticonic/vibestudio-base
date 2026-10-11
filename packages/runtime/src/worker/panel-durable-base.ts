@@ -26,7 +26,9 @@ export abstract class PanelDurableObjectBase extends DurableObjectBase {
       this._panelRuntime = createPanelRuntime({
         rpc: this.rpc,
         contextId: () =>
-          this.rpc.call("main", mainRpcMethods["runtime.resolveContext"], [this.rpcSelfId]),
+          this.rpc.call("main", mainRpcMethods["runtime.resolveContext"], [
+            this.rpcSelfId,
+          ]),
         selfHandle: () =>
           createNonPanelRuntimeHandle({
             id: String(this.env["DO_ID"] ?? this.ctx.id.toString()),
@@ -34,7 +36,9 @@ export abstract class PanelDurableObjectBase extends DurableObjectBase {
           }),
         defaultOpenParentId: null,
         requesterPanelId: () =>
-          this.rpcCallerKind === "panel" ? (this.rpcCallerPanelId ?? this.rpcCallerId) : null,
+          this.rpcCallerKind === "panel"
+            ? (this.rpcCallerPanelId ?? this.rpcCallerId)
+            : null,
       });
     }
     return this._panelRuntime;
@@ -66,16 +70,22 @@ export abstract class PanelDurableObjectBase extends DurableObjectBase {
 
   protected createPanelSlot(
     source: string,
-    options?: CreatePanelSlotOptions
+    options?: CreatePanelSlotOptions,
   ): Promise<PanelHandle> {
     return this.panelRuntime.createPanelSlot(source, options);
   }
 
-  protected openPanel(source: string, options?: OpenPanelOptions): Promise<PanelHandle> {
+  protected openPanel(
+    source: string,
+    options?: OpenPanelOptions,
+  ): Promise<PanelHandle> {
     return this.panelRuntime.openPanel(source, options);
   }
 
-  protected getPanelHandle(id: string, kind?: "workspace" | "browser"): PanelHandle {
+  protected getPanelHandle(
+    id: string,
+    kind?: "workspace" | "browser",
+  ): PanelHandle {
     return this.panelRuntime.getPanelHandle(id, kind);
   }
 

@@ -81,7 +81,6 @@ import type { runtimeMethods } from "@vibestudio/service-schemas/runtime";
 import { RUNTIME_METHOD_NAMES } from "@vibestudio/service-schemas/clients/generated/runtimeClientMethods";
 import { type TypedServiceClient } from "@vibestudio/shared/typedServiceClient";
 
-
 export type RuntimeServiceClient = TypedServiceClient<typeof runtimeMethods>;
 
 /**
@@ -358,16 +357,15 @@ export function createHostedRuntime(host: RuntimeHost): WorkspaceRuntime {
   );
   const runtimeService = helpfulNamespace(
     "runtime",
-    createLazyTypedRpcServiceClient(rpc, { targetId: "main", namespace: "runtime" }, RUNTIME_METHOD_NAMES, async () =>
-        (await import("@vibestudio/service-schemas/runtime")).runtimeMethods),
-  );
-  const vcs = helpfulNamespace(
-    "vcs",
-    createVcsClient(
+    createLazyTypedRpcServiceClient(
       rpc,
-      host.contextId,
+      { targetId: "main", namespace: "runtime" },
+      RUNTIME_METHOD_NAMES,
+      async () =>
+        (await import("@vibestudio/service-schemas/runtime")).runtimeMethods,
     ),
   );
+  const vcs = helpfulNamespace("vcs", createVcsClient(rpc, host.contextId));
   const webhooks = helpfulNamespace(
     "webhooks",
     createWebhookIngressClient(rpc),

@@ -1605,4 +1605,135 @@ return fs.readFileSync("/tmp/a");`,
     );
     expect(loadImport).not.toHaveBeenCalled();
   });
+
+  it.each(["@workspace/runtime", "runtime", "packages/runtime"])(
+    "reuses a preloaded provider namespace for semantic root reference %s",
+    async (specifier) => {
+      const runtime = { answer: 42 };
+      const moduleMap: Record<string, unknown> = {
+        "packages/runtime": runtime,
+      };
+      const loadImport = Object.assign(
+        vi.fn(async () => ({
+          bundle: "module.exports = { answer: 0 };",
+          format: "cjs" as const,
+          requiredModules: [],
+        })),
+        {
+          resolveWorkspaceUnit: vi.fn(async () => ({
+            name: "@workspace/runtime",
+            kind: "package",
+            relativePath: "packages/runtime",
+            isRoot: true,
+          })),
+        },
+      );
+
+      const result = await executeSandbox(
+        `import { answer } from ${JSON.stringify(specifier)}; return answer;`,
+        {
+          syntax: "typescript",
+          imports: { [specifier]: "latest" },
+          moduleMap,
+          loadImport,
+          require: (id) => moduleMap[id],
+        },
+      );
+
+      expect(result).toMatchObject({ success: true, returnValue: 42 });
+      expect(moduleMap["@workspace/runtime"]).toBe(runtime);
+      expect(moduleMap["@workspace/runtime"]).toBe(
+        moduleMap["packages/runtime"],
+      );
+      expect(loadImport).not.toHaveBeenCalled();
+    },
+  );
+
+  it("keeps an explicitly ref-loaded workspace root ahead of a host provider alias", async () => {
+    const moduleMap: Record<string, unknown> = {};
+    const loadImport = Object.assign(
+      vi.fn(async (_specifier: string, ref: string | undefined) => ({
+        bundle: `module.exports = { answer: ${ref === "release-a" ? 1 : 2} };`,
+        format: "cjs" as const,
+        requiredModules: [],
+      })),
+      {
+        resolveWorkspaceUnit: vi.fn(async () => ({
+          name: "@workspace/runtime",
+          kind: "package",
+          relativePath: "packages/runtime",
+          isRoot: true,
+        })),
+      },
+    );
+    const execute = (ref: string) =>
+      executeSandbox(
+        'import { answer } from "@workspace/runtime"; return answer;',
+        {
+          syntax: "typescript",
+          imports: { "@workspace/runtime": ref },
+          moduleMap,
+          loadImport,
+          require: (id) => moduleMap[id],
+        },
+      );
+
+    await expect(execute("release-a")).resolves.toMatchObject({
+      success: true,
+      returnValue: 1,
+    });
+    const acquired = moduleMap["@workspace/runtime"];
+    moduleMap["packages/runtime"] = { answer: 99 };
+
+    await expect(execute("release-b")).resolves.toMatchObject({
+      success: true,
+      returnValue: 2,
+    });
+    expect(loadImport).toHaveBeenCalledTimes(2);
+    expect(moduleMap["@workspace/runtime"]).not.toBe(acquired);
+    expect(moduleMap["@workspace/runtime"]).not.toBe(
+      moduleMap["packages/runtime"],
+    );
+  });
+
+  it("keeps exported subpaths distinct from the preloaded package root", async () => {
+    const runtime = { answer: 42 };
+    const moduleMap: Record<string, unknown> = {
+      "@workspace/runtime": runtime,
+    };
+    const loadImport = Object.assign(
+      vi.fn(async (specifier: string) => ({
+        bundle: `module.exports = { answer: ${specifier === "@workspace/runtime/extra" ? 7 : 0} };`,
+        format: "cjs" as const,
+        requiredModules: [],
+      })),
+      {
+        resolveWorkspaceUnit: vi.fn(async () => ({
+          name: "@workspace/runtime",
+          kind: "package",
+          relativePath: "packages/runtime",
+          isRoot: false,
+        })),
+      },
+    );
+
+    const result = await executeSandbox(
+      'import { answer } from "@workspace/runtime/extra"; return answer;',
+      {
+        syntax: "typescript",
+        imports: { "@workspace/runtime/extra": "latest" },
+        moduleMap,
+        loadImport,
+        require: (id) => moduleMap[id],
+      },
+    );
+
+    expect(result).toMatchObject({ success: true, returnValue: 7 });
+    expect(loadImport).toHaveBeenCalledWith(
+      "@workspace/runtime/extra",
+      undefined,
+      ["@workspace/runtime"],
+    );
+    expect(moduleMap["@workspace/runtime"]).toBe(runtime);
+  });
 });
