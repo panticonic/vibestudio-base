@@ -1,6 +1,5 @@
 defaultAutomations:
   workspace-updates:
-    events: [ app-update ]
     action:
       code: |
         import { extensions } from "@workspace/runtime";
@@ -8,11 +7,12 @@ defaultAutomations:
       kind: watch
       syntax: typescript
     className: AiChatWorker
+    events:
+      - app-update
     name: Workspace update assistant
     operations: []
     source: workers/agent-worker
-    summary: Check upstream sources and notify me about new updates. Ask before
-      merging or installing anything.
+    summary: Check upstream sources and notify me about new updates. Ask before merging or installing anything.
     trigger:
       everyMs: 21600000
       kind: schedule
@@ -28,6 +28,7 @@ extensions:
   - source: extensions/test-runner
 initPanels:
   - source: about/new
+minimumAppVersion: 0.1.84
 providers:
   cdpClient:
     source: "@workspace/cdp-client"
@@ -76,7 +77,6 @@ singletonObjects:
   - className: MissionsDO
     key: workspace-missions
     source: workers/missions
-minimumAppVersion: 0.1.84
 systemEpoch: 0
 template:
   description: Shared native agent, workspace and tooling foundations.
