@@ -8609,9 +8609,16 @@ export class SemanticWorkspace {
       }),
     );
     const transitionsCompletedAt = Date.now();
+    const workspaceFileTransitions = fileTransitions.filter(
+      ({ expected, result }) => expected?.fileStateId !== result.fileStateId,
+    );
     const workspaceChangeSet =
-      fileTransitions.length || repoTransitions.length
-        ? this.planWorkspaceFacts(basisRoot, fileTransitions, repoTransitions)
+      workspaceFileTransitions.length || repoTransitions.length
+        ? this.planWorkspaceFacts(
+            basisRoot,
+            workspaceFileTransitions,
+            repoTransitions,
+          )
         : null;
     const workspacePlanCompletedAt = Date.now();
     const workspaceFacts = workspaceChangeSet

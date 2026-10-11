@@ -54,7 +54,11 @@ async function fixture() {
       }
     },
   });
-  const initial = store.initializeWorkspace("context:test", "command:genesis", null);
+  const initial = store.initializeWorkspace(
+    "context:test",
+    "command:genesis",
+    null,
+  );
   const request = (
     commandId: string,
     changes: unknown[],
@@ -103,6 +107,160 @@ async function fixture() {
 }
 
 describe("semantic authored content preparation", () => {
+  it("records authored no-op edits without planning unchanged workspace facts", async () => {
+    const f = await fixture();
+    const seed = f.request("command:seed", f.create(btoa("same")));
+    f.semantic.acknowledgeContent(
+      f.prepare(await f.semantic.dispatch("edit", seed)),
+    );
+    const head = f.store.context("context:test")!.working.ref;
+    const root = f.store.stateRoot(head);
+    const repository = f.store.facts.repositoryAtPath(root, "projects/art")!;
+    const text = f.store.facts.fileAtPath(
+      root,
+      repository.repositoryId,
+      "story.txt",
+    )!;
+    const binary = f.store.facts.fileAtPath(
+      root,
+      repository.repositoryId,
+      "scene.png",
+    )!;
+
+    const contentReplace = f.request(
+      "command:no-op-content",
+      [
+        {
+          kind: "content-replace",
+          repositoryId: repository.repositoryId,
+          fileId: text.state.fileId,
+          content: { kind: "text", text: "moon gate\n" },
+        },
+      ],
+      head,
+    );
+    const replacedDispatch = await f.semantic.dispatch("edit", contentReplace);
+    const replaced = f.semantic.acknowledgeContent(f.prepare(replacedDispatch));
+    expect(replaced.kind).toBe("effects-pending");
+    expect(
+      f.store.stateRoot(f.store.context("context:test")!.working.ref),
+    ).toBe(root);
+    expect(f.store.command("command:no-op-content")).not.toBeNull();
+    expect(await f.semantic.dispatch("edit", contentReplace)).toEqual(replaced);
+
+    const textEdit = f.request(
+      "command:no-op-text",
+      [
+        {
+          kind: "text-edit",
+          repositoryId: repository.repositoryId,
+          fileId: text.state.fileId,
+          edits: [{ start: 0, end: 4, text: "moon" }],
+        },
+      ],
+      f.store.context("context:test")!.working.ref,
+    );
+    const observation = await f.semantic.dispatch("edit", textEdit);
+    expect(observation.kind).toBe("host-read");
+    if (observation.kind !== "host-read") throw new Error("expected text read");
+    const preparedText = f.semantic.acknowledgeHostRead({
+      request: observation.request,
+      files: [
+        {
+          contentHash: sha256Hex(new TextEncoder().encode("moon gate\n")),
+          text: "moon gate\n",
+        },
+      ],
+    });
+    const textResult = f.semantic.acknowledgeContent(f.prepare(preparedText));
+    expect(textResult.kind).toBe("effects-pending");
+    expect(
+      f.store.stateRoot(f.store.context("context:test")!.working.ref),
+    ).toBe(root);
+
+    const fileMode = f.request(
+      "command:no-op-mode",
+      [
+        {
+          kind: "file-mode",
+          repositoryId: repository.repositoryId,
+          fileId: binary.state.fileId,
+          mode: 0o644,
+        },
+      ],
+      f.store.context("context:test")!.working.ref,
+    );
+    const modeDispatch = await f.semantic.dispatch("edit", fileMode);
+    const modeResult =
+      modeDispatch.kind === "host-content"
+        ? f.semantic.acknowledgeContent(f.prepare(modeDispatch))
+        : modeDispatch;
+    expect(modeResult.kind).toBe("effects-pending");
+    expect(
+      f.store.stateRoot(f.store.context("context:test")!.working.ref),
+    ).toBe(root);
+  });
+
+  it("applies changed file facts in a mixed edit while retaining no-op changes", async () => {
+    const f = await fixture();
+    f.semantic.acknowledgeContent(
+      f.prepare(
+        await f.semantic.dispatch(
+          "edit",
+          f.request("command:seed", f.create(btoa("same"))),
+        ),
+      ),
+    );
+    const head = f.store.context("context:test")!.working.ref;
+    const root = f.store.stateRoot(head);
+    const repository = f.store.facts.repositoryAtPath(root, "projects/art")!;
+    const text = f.store.facts.fileAtPath(
+      root,
+      repository.repositoryId,
+      "story.txt",
+    )!;
+    const binary = f.store.facts.fileAtPath(
+      root,
+      repository.repositoryId,
+      "scene.png",
+    )!;
+    const request = f.request(
+      "command:mixed-no-op",
+      [
+        {
+          kind: "content-replace",
+          repositoryId: repository.repositoryId,
+          fileId: text.state.fileId,
+          content: { kind: "text", text: "moon gate\n" },
+        },
+        {
+          kind: "file-mode",
+          repositoryId: repository.repositoryId,
+          fileId: binary.state.fileId,
+          mode: 0o755,
+        },
+      ],
+      head,
+    );
+    const result = f.semantic.acknowledgeContent(
+      f.prepare(await f.semantic.dispatch("edit", request)),
+    );
+    expect(result.kind).toBe("effects-pending");
+    const resultRoot = f.store.stateRoot(
+      f.store.context("context:test")!.working.ref,
+    );
+    expect(resultRoot).not.toBe(root);
+    expect(
+      f.store.facts.fileAtPath(resultRoot, repository.repositoryId, "scene.png")
+        ?.state,
+    ).toMatchObject({ presence: "placed", mode: 0o755 });
+    expect(
+      f.store.facts.fileAtPath(resultRoot, repository.repositoryId, "story.txt")
+        ?.state.fileStateId,
+    ).toBe(text.state.fileStateId);
+    expect(await f.semantic.dispatch("edit", request)).toEqual(result);
+  });
+
   it("reads a mixed batch at one retained state with exact order, absence and repository ownership", async () => {
     const f = await fixture();
     f.semantic.acknowledgeContent(
