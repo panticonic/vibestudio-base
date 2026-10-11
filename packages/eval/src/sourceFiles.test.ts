@@ -210,7 +210,7 @@ describe("source file bundles", () => {
     expect(loadCalls).toEqual([{ specifier: "math-lib", ref: "npm:^1.2.3" }]);
   });
 
-  it("uses explicit imports over package.json inference, including subpaths", async () => {
+  it("uses a package-root ref for the exact imported subpath without building the root", async () => {
     const code = `import { double } from "math-lib/subpath"; return double(input);`;
     const loadCalls: Array<{ specifier: string; ref: string | undefined }> = [];
     const result = await executeSandbox(code, {
@@ -225,6 +225,9 @@ describe("source file bundles", () => {
         throw missing(path);
       },
       loadImport: async (specifier, ref) => {
+        if (specifier === "math-lib") {
+          throw new Error("the unused package root must not be built");
+        }
         loadCalls.push({ specifier, ref });
         return {
           bundle: `module.exports = { double: (n) => n * 2 };`,
@@ -238,8 +241,42 @@ describe("source file bundles", () => {
     expect(result.success).toBe(true);
     expect(result.returnValue).toBe(42);
     expect(loadCalls).toEqual([
-      { specifier: "math-lib", ref: "npm:9" },
       { specifier: "math-lib/subpath", ref: "npm:9" },
+    ]);
+  });
+
+  it("prefers an explicit imported-subpath ref over its package-root ref", async () => {
+    const code = `import { double } from "math-lib/subpath"; return double(input);`;
+    const loadCalls: Array<{ specifier: string; ref: string | undefined }> = [];
+    const result = await executeSandbox(code, {
+      syntax: "typescript",
+      sourcePath: "packages/app/src/main.ts",
+      imports: { "math-lib": "npm:9", "math-lib/subpath": "npm:10" },
+      loadSourceFile: async (path) => {
+        if (path === "packages/app/src/main.ts") return code;
+        if (path === "packages/app/package.json") {
+          return JSON.stringify({ dependencies: { "math-lib": "^1.2.3" } });
+        }
+        throw missing(path);
+      },
+      loadImport: async (specifier, ref) => {
+        if (specifier === "math-lib") {
+          throw new Error("the unused package root must not be built");
+        }
+        loadCalls.push({ specifier, ref });
+        return {
+          bundle: `module.exports = { double: (n) => n * 2 };`,
+          format: "cjs" as const,
+          requiredModules: [],
+        };
+      },
+      bindings: { input: 21 },
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.returnValue).toBe(42);
+    expect(loadCalls).toEqual([
+      { specifier: "math-lib/subpath", ref: "npm:10" },
     ]);
   });
 
@@ -263,7 +300,9 @@ describe("source file bundles", () => {
 
     expect(result.success).toBe(false);
     expect(formatRpcFailure(result.error!)).toContain("not declared");
-    expect(formatRpcFailure(result.error!)).toContain("packages/app/package.json");
+    expect(formatRpcFailure(result.error!)).toContain(
+      "packages/app/package.json",
+    );
   });
 
   it("does not suggest npm imports for Node built-ins from file-loaded helpers", async () => {
@@ -310,7 +349,9 @@ describe("source file bundles", () => {
 
     expect(result.success).toBe(false);
     expect(formatRpcFailure(result.error!)).toContain("not declared");
-    expect(formatRpcFailure(result.error!)).toContain("packages/app/package.json");
+    expect(formatRpcFailure(result.error!)).toContain(
+      "packages/app/package.json",
+    );
     expect(loadCalls).toEqual([]);
   });
 
