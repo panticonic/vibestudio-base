@@ -73,5 +73,8 @@
   "exports": {
     ".": "./index.ts",
     "./contract": "./contract.ts"
+  },
+  "devDependencies": {
+    "@vibestudio/extension": "workspace:*"
   }
 }

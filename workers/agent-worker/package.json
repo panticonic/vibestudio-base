@@ -270,7 +270,8 @@
     "@vibestudio/rpc": "workspace:*",
     "@workspace/agentic-protocol": "workspace:*",
     "vitest": "^3.2.7",
-    "@vibestudio/shared": "workspace:*"
+    "@vibestudio/shared": "workspace:*",
+    "@workspace/testkit": "workspace:*"
   },
   "exports": {
     ".": "./ai-chat-worker.ts"

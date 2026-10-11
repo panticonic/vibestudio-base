@@ -60,5 +60,8 @@
   },
   "dependencies": {
     "@vscode/ripgrep": "^1.18.0"
+  },
+  "devDependencies": {
+    "@vibestudio/extension": "workspace:*"
   }
 }

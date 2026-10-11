@@ -205,5 +205,8 @@
     "@vibestudio/workspace": "workspace:*",
     "@vibestudio/workspace-contracts": "workspace:*",
     "@workspace/integrations": "workspace:*"
+  },
+  "devDependencies": {
+    "@vibestudio/rpc": "workspace:*"
   }
 }

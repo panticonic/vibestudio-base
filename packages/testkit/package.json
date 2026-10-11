@@ -19,12 +19,19 @@
     ".": "./src/index.ts",
     "./driver-contract": "./src/driver-contract.ts",
     "./suites": "./src/suites/index.ts",
-    "./profiling": "./src/profile-core.ts"
+    "./profiling": "./src/profile-core.ts",
+    "./native-channel-provider": "./src/native-channel-provider.ts"
   },
   "dependencies": {
     "@vibestudio/shared": "workspace:*",
     "@vibestudio/service-schemas": "workspace:*",
     "@workspace/runtime": "workspace:*",
-    "@workspace/cdp-client": "workspace:*"
+    "@workspace/cdp-client": "workspace:*",
+    "@vibestudio/durable": "workspace:*",
+    "@workspace-workers/pubsub-channel": "workspace:*",
+    "@workspace-workers/workspace-source": "workspace:*"
+  },
+  "devDependencies": {
+    "@vibestudio/rpc": "workspace:*"
   }
 }

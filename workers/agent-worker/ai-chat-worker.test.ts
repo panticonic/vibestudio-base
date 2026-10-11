@@ -8,7 +8,7 @@ import { gadWireMethods } from "@vibestudio/service-schemas/workspaceSource";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { BACKGROUND_CONTEXT } from "@panticonic/pi-chord/context";
 import { createNativeVesselTestDO as createTestDO } from "@workspace/agentic-do/testing/native-vessel";
-import { createNativeChannelProvider } from "@workspace/agentic-do/testing/native-channel-provider";
+import { createNativeChannelProvider } from "@workspace/testkit/native-channel-provider";
 import {
   rpcExposedMethodNames,
   rpcMethodAuthority,

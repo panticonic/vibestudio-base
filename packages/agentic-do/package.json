@@ -32,7 +32,6 @@
     "./native-model-provider": "./src/native-model-provider.ts",
     "./testing/native-vessel": "./src/testing/native-vessel.ts",
     "./native-agent-session": "./src/native-agent-session.ts",
-    "./testing/native-channel-provider": "./src/testing/native-channel-provider.ts",
     "./rpc-contract": "./src/rpc-contract.ts"
   },
   "dependencies": {
@@ -61,6 +60,8 @@
     "@panticonic/builtin": "workspace:*",
     "@vibestudio/durable": "workspace:*",
     "@workspace-workers/pubsub-channel": "workspace:*",
-    "@workspace-workers/workspace-source": "workspace:*"
+    "@workspace-workers/workspace-source": "workspace:*",
+    "zod": "^3.25.76",
+    "@workspace/testkit": "workspace:*"
   }
 }

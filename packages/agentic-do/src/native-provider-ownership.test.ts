@@ -12,7 +12,7 @@ import { createNativeVesselTestDO } from "./testing/native-vessel.js";
 import {
   createNativeChannelProvider,
   type NativeChannelProviderAdmission,
-} from "./testing/native-channel-provider.js";
+} from "@workspace/testkit/native-channel-provider";
 import { durableObjectServiceFixture } from "@vibestudio/service-schemas/test-utils";
 
 const channelId = "provider-lifecycle";

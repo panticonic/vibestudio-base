@@ -52,5 +52,8 @@
   },
   "dependencies": {
     "@workspace/speech": "workspace:*"
+  },
+  "devDependencies": {
+    "@vibestudio/extension": "workspace:*"
   }
 }

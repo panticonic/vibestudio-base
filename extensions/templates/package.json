@@ -399,6 +399,10 @@
     "yaml": "^2.8.0",
     "@vibestudio/shared": "workspace:*",
     "@workspace/integrations": "workspace:*",
-    "@workspace/template-management": "workspace:*"
+    "@workspace/template-management": "workspace:*",
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "@vibestudio/rpc": "workspace:*"
   }
 }
