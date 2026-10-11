@@ -2,7 +2,7 @@ import vm from "node:vm";
 import { deserializeRpcFailure, formatRpcFailure } from "@vibestudio/rpc";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { tameRealmCodegen } from "@vibestudio/shared/evalConfinement";
-import { executeSandbox } from "./sandbox";
+import { compileModule, executeSandbox } from "./sandbox";
 import type { AsyncTrackingAPI } from "./asyncTracking";
 import {
   Journal,
@@ -11,6 +11,97 @@ import {
 } from "../../runtime/src/shared/journal.js";
 
 describe("executeSandbox", () => {
+  it("applies a declared package-root ref to the exact imported subpath", async () => {
+    const loadImport = vi.fn(async () => ({
+      format: "cjs" as const,
+      requiredModules: [],
+      bundle: "module.exports = { answer: 42 };",
+    }));
+    const result = await executeSandbox(
+      'import { answer } from "@vibestudio/shared/rpcMethods"; return answer;',
+      {
+        syntax: "typescript",
+        imports: { "@vibestudio/shared": "workspace:*" },
+        loadImport,
+      },
+    );
+
+    expect(result).toMatchObject({ success: true, returnValue: 42 });
+    expect(loadImport).toHaveBeenCalledOnce();
+    expect(loadImport).toHaveBeenCalledWith(
+      "@vibestudio/shared/rpcMethods",
+      "workspace:*",
+      [],
+    );
+    expect(
+      (globalThis as Record<string, unknown>)["__vibestudioModuleMap__"],
+    ).not.toHaveProperty("@vibestudio/shared");
+  });
+
+  it("uses the package-root ref when a compiled module imports only a subpath", async () => {
+    const loadImport = vi.fn(async () => ({
+      format: "cjs" as const,
+      requiredModules: [],
+      bundle: "module.exports = { answer: 42 };",
+    }));
+    const result = await compileModule(
+      'import { answer } from "@vibestudio/shared/rpcMethods"; export const value = answer;',
+      {
+        syntax: "typescript",
+        imports: { "@vibestudio/shared": "workspace:*" },
+        loadImport,
+      },
+    );
+
+    expect(result).toMatchObject({ success: true, module: { value: 42 } });
+    expect(loadImport).toHaveBeenCalledOnce();
+    expect(loadImport).toHaveBeenCalledWith(
+      "@vibestudio/shared/rpcMethods",
+      "workspace:*",
+      [],
+    );
+    expect(
+      (globalThis as Record<string, unknown>)["__vibestudioModuleMap__"],
+    ).not.toHaveProperty("@vibestudio/shared");
+  });
+
+  it("prefers an exact subpath ref and still preloads unused explicit imports", async () => {
+    const loadImport = vi.fn(async () => ({
+      format: "cjs" as const,
+      requiredModules: [],
+      bundle: "module.exports = { answer: 42 };",
+    }));
+    const result = await executeSandbox(
+      'import { answer } from "@vibestudio/shared/rpcMethods"; return answer;',
+      {
+        syntax: "typescript",
+        imports: {
+          "@vibestudio/shared": "workspace:*",
+          "@vibestudio/shared/rpcMethods": "workspace:rpc-contracts",
+          "@workspace/unused": "workspace:unused",
+        },
+        loadImport,
+      },
+    );
+
+    expect(result).toMatchObject({ success: true, returnValue: 42 });
+    expect(loadImport.mock.calls).toEqual([
+      [
+        "@vibestudio/shared/rpcMethods",
+        "workspace:rpc-contracts",
+        [],
+      ],
+      [
+        "@workspace/unused",
+        "workspace:unused",
+        ["@vibestudio/shared/rpcMethods"],
+      ],
+    ]);
+    expect(
+      (globalThis as Record<string, unknown>)["__vibestudioModuleMap__"],
+    ).not.toHaveProperty("@vibestudio/shared");
+  });
+
   it.each([false, true])(
     "preserves completed operation receipts despite return projection or a later exception (%s)",
     async (failLater) => {

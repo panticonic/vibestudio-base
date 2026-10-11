@@ -145,6 +145,12 @@ are seeded from `this.ctx.props.stateArgs?.agentConfig`, and child identity from
 an automation from the executing agent rather than reading object facts from
 shared environment bindings.
 
+When `workers.createDurableObject(...)` creates an owned instance, call it
+through the returned handle's `targetId` and destroy it through its `id` or
+the handle. The handle does not include the creation key. If you will need a
+later `workers.resolveDurableObject(source, className, objectKey)` lookup, pass
+an explicit `key` at creation and retain that exact value.
+
 ### Startup and dependency budgets
 
 Worker and Durable Object builds keep ESM dynamic imports as separate modules in

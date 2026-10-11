@@ -455,6 +455,9 @@ Lifecycle methods:
   creates an owned disposable Durable Object.
 - Both return `{ id, targetId, … }` handles accepted by
   `workers.destroy(handleOrId)`.
+- Call an owned DO through its returned `handle.targetId`; the handle does not
+  contain the creation `key`. If you need to resolve that object later by
+  `source`, `className`, and key, choose and retain an explicit `options.key`.
 - `workers.resolveService(...)` and `workers.resolveDurableObject(...)` address
   existing targets but never transfer lifecycle ownership.
 - `workers.list()` lists live regular worker **instances**.

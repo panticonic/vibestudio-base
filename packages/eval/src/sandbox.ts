@@ -33,6 +33,7 @@ import {
   type CompileFunction,
 } from "./execute.js";
 import {
+  getPackageSpecifier,
   getMissingPackageDeclarations,
   inferImportsFromPackageJson,
   prepareSourceCode,
@@ -492,6 +493,47 @@ async function loadImports(
       ref,
     );
   }
+}
+
+/**
+ * An imports entry for a package root supplies the ref for that package, but
+ * should not force-build the root when authored code uses only an exported
+ * subpath. Keep exact imported modules as the build targets and inherit the
+ * root ref for those subpaths. Unused explicit entries retain their preload
+ * behavior, and an exact subpath ref always wins over its package root.
+ */
+function importsForRequiredModules(
+  imports: Record<string, string>,
+  required: ReadonlySet<string>,
+): Record<string, string> {
+  const selected = { ...imports };
+  for (const [specifier, ref] of Object.entries(imports)) {
+    if (getPackageSpecifier(specifier) !== specifier || required.has(specifier)) {
+      continue;
+    }
+    const subpaths = [...required].filter(
+      (candidate) => candidate.startsWith(`${specifier}/`),
+    );
+    if (subpaths.length === 0) continue;
+    delete selected[specifier];
+    for (const subpath of subpaths) {
+      if (selected[subpath] === undefined) selected[subpath] = ref;
+    }
+  }
+  return selected;
+}
+
+async function requiredModulesInPreparedSource(
+  prepared: { sourceFiles?: Record<string, string> },
+  entryRequires: readonly string[],
+  syntax: "javascript" | "typescript" | "jsx" | "tsx",
+): Promise<Set<string>> {
+  const required = new Set(entryRequires);
+  for (const source of Object.values(prepared.sourceFiles ?? {})) {
+    const transformed = await transformCode(source, { syntax });
+    for (const specifier of transformed.requires) required.add(specifier);
+  }
+  return required;
 }
 
 /**
@@ -1596,27 +1638,6 @@ export async function executeSandbox(
       );
     }
 
-    // Load on-demand imports
-    if (options.imports && Object.keys(options.imports).length > 0) {
-      if (!options.loadImport) {
-        throw new Error(
-          "loadImport callback required when imports are specified",
-        );
-      }
-      await withAbort(
-        loadImports(
-          options.imports!,
-          options.loadImport!,
-          moduleMap,
-          requireFn,
-          options.compileFunction,
-          options.freezeModuleNamespace,
-          options.confinement,
-        ),
-        signal,
-      );
-    }
-
     const prepare = (source: string) =>
       withAbort(
         prepareSourceCode(
@@ -1678,6 +1699,35 @@ export async function executeSandbox(
     }
     throwIfAborted(signal);
     const { transformed } = built;
+    if (options.imports && Object.keys(options.imports).length > 0) {
+      if (!options.loadImport) {
+        throw new Error(
+          "loadImport callback required when imports are specified",
+        );
+      }
+      const required = await withAbort(
+        requiredModulesInPreparedSource(
+          built.prepared,
+          transformed.requires,
+          syntax,
+        ),
+        signal,
+      );
+      const imports = importsForRequiredModules(options.imports, required);
+      await withAbort(
+        loadImports(
+          imports,
+          options.loadImport,
+          moduleMap,
+          requireFn,
+          options.compileFunction,
+          options.freezeModuleNamespace,
+          options.confinement,
+        ),
+        signal,
+      );
+    }
+    throwIfAborted(signal);
     const completionAwareCode = returnTrailingExpression(transformed.code);
     const deadlineInstrumented = options.deadline
       ? instrumentDeadlineCheckpoints(completionAwareCode)
@@ -2029,15 +2079,6 @@ async function prepareModule(
   options: CompileComponentOptions,
 ): Promise<string> {
   const syntax = options.syntax ?? "tsx";
-  if (options.imports && Object.keys(options.imports).length > 0) {
-    if (!options.loadImport) {
-      throw new Error(
-        "loadImport callback required when imports are specified",
-      );
-    }
-    await loadImports(options.imports, options.loadImport);
-  }
-
   const requireOptions = {
     loadImport: options.loadImport,
     loadSourceFile: options.loadSourceFile,
@@ -2056,6 +2097,23 @@ async function prepareModule(
   );
 
   const transformed = await transformCode(prepared.code, { syntax });
+
+  if (options.imports && Object.keys(options.imports).length > 0) {
+    if (!options.loadImport) {
+      throw new Error(
+        "loadImport callback required when imports are specified",
+      );
+    }
+    const required = await requiredModulesInPreparedSource(
+      prepared,
+      transformed.requires,
+      syntax,
+    );
+    await loadImports(
+      importsForRequiredModules(options.imports, required),
+      options.loadImport,
+    );
+  }
 
   await ensureRequires(
     transformed.requires.filter(
