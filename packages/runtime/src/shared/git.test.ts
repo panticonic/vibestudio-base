@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { schemaRpcMock } from "@vibestudio/rpc/test-utils";
 import { gitInteropMethods } from "@vibestudio/service-schemas/gitInterop";
 import { createGitClient } from "./git.js";
 
@@ -19,7 +20,7 @@ const SEMANTIC_EVIDENCE = {
 describe("runtime Git client", () => {
   it("is exactly the canonical gitInterop service surface", () => {
     const rpc = { call: vi.fn() };
-    const client = createGitClient(rpc as never);
+    const client = createGitClient(schemaRpcMock(rpc));
 
     expect(Object.keys(client)).toEqual(Object.keys(gitInteropMethods));
   });
@@ -77,7 +78,7 @@ describe("runtime Git client", () => {
         return results[name];
       }),
     };
-    const client = createGitClient(rpc as never) as unknown as Record<
+    const client = createGitClient(schemaRpcMock(rpc)) as unknown as Record<
       string,
       (...args: unknown[]) => Promise<unknown>
     >;
@@ -111,7 +112,7 @@ describe("runtime Git client", () => {
         "gitInterop",
         method,
         args,
-      ]);
+      ], undefined);
     }
   });
 
@@ -145,7 +146,7 @@ describe("runtime Git client", () => {
         pushed: true,
       }),
     };
-    const client = createGitClient(rpc as never);
+    const client = createGitClient(schemaRpcMock(rpc));
 
     await expect(client.upstreamStatus(["projects/demo"])).resolves.toEqual(statusRows);
     await client.publishRepo(publishInput);
@@ -154,11 +155,11 @@ describe("runtime Git client", () => {
       "gitInterop",
       "upstreamStatus",
       [["projects/demo"]],
-    ]);
+    ], undefined);
     expect(rpc.call).toHaveBeenNthCalledWith(2, "main", "extensions.invokeProvider", [
       "gitInterop",
       "publishRepo",
       [publishInput],
-    ]);
+    ], undefined);
   });
 });

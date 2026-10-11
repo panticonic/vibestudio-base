@@ -1062,7 +1062,7 @@ export function useAgenticChat({
 - inlineUi: stable identity \`{ id, renderedAt }\`; \`renderedAt\` changes whenever the same ID is rendered again and can trigger a data-refresh effect
 - chat:
   - chat.send(content, { metadata: { interaction: { source, kind, action, targetId } } }) — send a user message that starts a new agent turn; the structured \`interaction\` tells you exactly which control was used. Response components such as \`Choices\` and \`ActionButton\` do this for you.
-  - chat.rpc.call(target, method, args) — call a runtime service; \`args\` is the complete positional argument array. Example: chat.rpc.call("main", "fs.readFile", ["/src/config.ts"])
+  - chat.rpc.call(target, methodDescriptor, args) — call a runtime service with its receiver-owned descriptor and complete positional argument array. For host methods, import \`mainRpcMethods\` from \`@vibestudio/service-schemas/mainRpc\`; for example, chat.rpc.call("main", mainRpcMethods["fs.readFile"], ["/src/config.ts"]).
   - chat.publish(type, payload, options?) — publish a typed non-message event.
   - chat.contextId, chat.channelId — current identifiers
 - scope: panel-local durable UI state shared by inline_ui, feedback_custom, and the action bar in this panel instance. Serializable values persist in localStorage across panel reloads; nonserializable values are live-only and dropped on restore.

@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { CdpError } from "@workspace/cdp-client";
+import { schemaRpcClientMock } from "@vibestudio/rpc/test-utils";
 import { createCdpAutomation } from "./cdpAutomation.js";
 import { Journal, withJournal, currentJournal } from "../shared/journal.js";
 
@@ -49,12 +50,10 @@ describe("createCdpAutomation screenshot", () => {
       buildKey: null,
     } as const;
     const cdp = createCdpAutomation(
-      {
-        call: vi.fn(async () => ({
-          wsEndpoint: "ws://panel",
-          token: "grant",
-        })),
-      } as never,
+      schemaRpcClientMock(
+        { call: vi.fn(async () => ({ wsEndpoint: "ws://panel", token: "grant" })) },
+        "cdp-test",
+      ),
       ready.panelId,
       {
         kind: "workspace",
@@ -87,9 +86,10 @@ describe("createCdpAutomation screenshot", () => {
     let currentOwner = new AbortController();
     const operationSignal = () => currentOwner.signal;
     const cdp = createCdpAutomation(
-      {
-        call: vi.fn(async () => ({ wsEndpoint: "ws://panel", token: "grant" })),
-      } as never,
+      schemaRpcClientMock(
+        { call: vi.fn(async () => ({ wsEndpoint: "ws://panel", token: "grant" })) },
+        "cdp-test",
+      ),
       "panel:journal",
       {
         loadModule: async () => ({ BrowserImpl: { connect }, CdpError }),
@@ -169,7 +169,10 @@ describe("createCdpAutomation screenshot", () => {
     });
     const journal = new Journal();
     const cdp = createCdpAutomation(
-      { call: vi.fn(async () => ({ wsEndpoint: "ws://panel" })) } as never,
+      schemaRpcClientMock(
+        { call: vi.fn(async () => ({ wsEndpoint: "ws://panel" })) },
+        "cdp-test",
+      ),
       "panel:profile",
       {
         observe: async () => readyObservation("panel:profile"),
@@ -219,7 +222,10 @@ describe("createCdpAutomation screenshot", () => {
     const evaluate = vi.fn(async () => result as unknown);
     const journal = new Journal();
     const cdp = createCdpAutomation(
-      { call: vi.fn(async () => ({ wsEndpoint: "ws://panel" })) } as never,
+      schemaRpcClientMock(
+        { call: vi.fn(async () => ({ wsEndpoint: "ws://panel" })) },
+        "cdp-test",
+      ),
       "panel:evaluate",
       {
         observe: async () => readyObservation("panel:evaluate"),
@@ -295,7 +301,7 @@ describe("createCdpAutomation screenshot", () => {
     });
     const bytes = new Uint8Array([1, 2, 3]);
     const screenshot = vi.fn(async () => bytes);
-    const cdp = createCdpAutomation({ call } as never, "panel:observations", {
+    const cdp = createCdpAutomation(schemaRpcClientMock({ call }, "cdp-test"), "panel:observations", {
       observe: async () => readyObservation("panel:observations"),
       recordOperation,
       loadModule: async () => ({
@@ -376,7 +382,7 @@ describe("createCdpAutomation screenshot", () => {
       };
       const recordOperation = vi.fn();
       const cdp = createCdpAutomation(
-        { call: vi.fn(async () => history) } as never,
+        schemaRpcClientMock({ call: vi.fn(async () => history) }, "cdp-test"),
         "panel:filtered",
         { recordOperation },
       );
@@ -409,7 +415,7 @@ describe("createCdpAutomation screenshot", () => {
     }));
     (globalThis as Record<string, unknown>)["__vibestudioRequire__"] = fallback;
     const cdp = createCdpAutomation(
-      { call: vi.fn() } as never,
+      schemaRpcClientMock({ call: vi.fn() }, "cdp-test"),
       "panel:tree/retained",
       {
         loadModule,
@@ -442,17 +448,19 @@ describe("createCdpAutomation screenshot", () => {
       if (method === "panelCdp.screenshot") return shot;
       throw new Error(`Unexpected RPC method: ${method}`);
     });
-    const cdp = createCdpAutomation({ call } as never, "panel:child");
+    const cdp = createCdpAutomation(schemaRpcClientMock({ call }, "cdp-test"), "panel:child");
 
     await expect(
       cdp.screenshot({ format: "png", quality: 90 }),
     ).resolves.toEqual(shot);
 
     expect(call).toHaveBeenCalledTimes(1);
-    expect(call).toHaveBeenCalledWith("main", "panelCdp.screenshot", [
-      "panel:child",
-      { format: "png", quality: 90 },
-    ]);
+    expect(call).toHaveBeenCalledWith(
+      "main",
+      "panelCdp.screenshot",
+      ["panel:child", { format: "png", quality: 90 }],
+      undefined,
+    );
     expect(
       call.mock.calls.some(
         ([, method]) => method === "panelCdp.getCdpEndpoint",
@@ -490,7 +498,7 @@ describe("createCdpAutomation screenshot", () => {
       attemptId: "unknown-attempt",
       runtimeEntityId: null,
     }));
-    const cdp = createCdpAutomation({ call } as never, "panel:deferred", {
+    const cdp = createCdpAutomation(schemaRpcClientMock({ call }, "cdp-test"), "panel:deferred", {
       loadModule,
       observe: observe as never,
       ensureReady: ensureReady as never,
@@ -543,7 +551,7 @@ describe("createCdpAutomation screenshot", () => {
       .mockResolvedValueOnce(newGeneration)
       .mockResolvedValueOnce(newGeneration)
       .mockResolvedValueOnce(newGeneration);
-    const cdp = createCdpAutomation({ call } as never, "panel:child", {
+    const cdp = createCdpAutomation(schemaRpcClientMock({ call }, "cdp-test"), "panel:child", {
       loadModule,
       observe,
       recordOperation,
@@ -622,7 +630,10 @@ describe("createCdpAutomation screenshot", () => {
         connectedBrowser({ isClosed: () => false }, secondClose),
       );
     const cdp = createCdpAutomation(
-      { call: vi.fn(async () => ({ wsEndpoint: "ws://panel" })) } as never,
+      schemaRpcClientMock(
+        { call: vi.fn(async () => ({ wsEndpoint: "ws://panel" })) },
+        "cdp-test",
+      ),
       "panel:race",
       {
         observe,
@@ -666,7 +677,10 @@ describe("createCdpAutomation screenshot", () => {
         },
       );
     const cdp = createCdpAutomation(
-      { call: vi.fn(async () => ({ wsEndpoint: "ws://panel" })) } as never,
+      schemaRpcClientMock(
+        { call: vi.fn(async () => ({ wsEndpoint: "ws://panel" })) },
+        "cdp-test",
+      ),
       "panel:close-during-bind",
       {
         observe: async () => readyObservation("panel:close-during-bind"),
@@ -712,7 +726,10 @@ describe("createCdpAutomation screenshot", () => {
       });
       const connect = vi.fn();
       const cdp = createCdpAutomation(
-        { call: vi.fn(async () => ({ wsEndpoint: "ws://panel" })) } as never,
+        schemaRpcClientMock(
+          { call: vi.fn(async () => ({ wsEndpoint: "ws://panel" })) },
+          "cdp-test",
+        ),
         `panel:owner-abort-${operation}`,
         {
           operationSignal: () => owner.signal,
@@ -760,7 +777,10 @@ describe("createCdpAutomation screenshot", () => {
         connectedBrowser({ isClosed: () => false }, close),
       );
       const cdp = createCdpAutomation(
-        { call: vi.fn(async () => ({ wsEndpoint: "ws://panel" })) } as never,
+        schemaRpcClientMock(
+          { call: vi.fn(async () => ({ wsEndpoint: "ws://panel" })) },
+          "cdp-test",
+        ),
         `panel:verify-abort-${operation}`,
         {
           operationSignal: () => owner.signal,
@@ -808,9 +828,10 @@ describe("createCdpAutomation screenshot", () => {
       buildKey: "build:stable",
     } as never;
     const cdp = createCdpAutomation(
-      {
-        call: vi.fn(async () => ({ wsEndpoint: "ws://panel", token: "grant" })),
-      } as never,
+      schemaRpcClientMock(
+        { call: vi.fn(async () => ({ wsEndpoint: "ws://panel", token: "grant" })) },
+        "cdp-test",
+      ),
       "panel:child",
       {
         loadModule: async () => ({ BrowserImpl: { connect }, CdpError }),
@@ -842,7 +863,10 @@ describe("createCdpAutomation screenshot", () => {
       isClosed: () => false,
     };
     const cdp = createCdpAutomation(
-      { call: vi.fn(async () => ({ wsEndpoint: "ws://panel" })) } as never,
+      schemaRpcClientMock(
+        { call: vi.fn(async () => ({ wsEndpoint: "ws://panel" })) },
+        "cdp-test",
+      ),
       "panel:workspace",
       {
         kind: "browser",
@@ -888,7 +912,10 @@ describe("createCdpAutomation screenshot", () => {
       isClosed: () => false,
     };
     const cdp = createCdpAutomation(
-      { call: vi.fn(async () => ({ wsEndpoint: "ws://panel" })) } as never,
+      schemaRpcClientMock(
+        { call: vi.fn(async () => ({ wsEndpoint: "ws://panel" })) },
+        "cdp-test",
+      ),
       "panel:browser",
       {
         kind: "browser",
@@ -929,7 +956,10 @@ describe("createCdpAutomation screenshot", () => {
       const browserClose = vi.fn(async () => undefined);
       const connect = vi.fn(async () => connectedBrowser(page, browserClose));
       const cdp = createCdpAutomation(
-        { call: vi.fn(async () => ({ wsEndpoint: "ws://panel" })) } as never,
+        schemaRpcClientMock(
+          { call: vi.fn(async () => ({ wsEndpoint: "ws://panel" })) },
+          "cdp-test",
+        ),
         "panel:child",
         {
           kind: "browser",
@@ -969,7 +999,10 @@ describe("createCdpAutomation screenshot", () => {
       buildKey: "build:stable",
     } as never;
     const cdp = createCdpAutomation(
-      { call: vi.fn(async () => ({ wsEndpoint: "ws://panel" })) } as never,
+      schemaRpcClientMock(
+        { call: vi.fn(async () => ({ wsEndpoint: "ws://panel" })) },
+        "cdp-test",
+      ),
       "panel:child",
       {
         loadModule: async () => ({ BrowserImpl: { connect }, CdpError }),

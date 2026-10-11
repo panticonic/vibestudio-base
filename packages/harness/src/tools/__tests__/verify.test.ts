@@ -1,18 +1,35 @@
+import { schemaRpcMock } from "@vibestudio/rpc/test-utils";
 import { executeTool } from "../../testing/native-tool.js";
 import { describe, expect, it, vi } from "vitest";
 import type { UnitBuildReportWire } from "@vibestudio/service-schemas/build";
 import { createVerifyTool } from "../verify.js";
+
+const fixtureExecution = {
+  version: 1 as const,
+  sourceState: {
+    kind: "workspace" as const,
+    workspaceId: "workspace:verify",
+    effectiveVersion: "a".repeat(64),
+    state: { kind: "event" as const, eventId: "event:verify" },
+    contentRoots: [{ repoPath: "packages/parser", stateHash: `state:${"a".repeat(64)}` }],
+    sourceClosureDigest: "d".repeat(64),
+  },
+  recipeDigest: "e".repeat(64),
+  buildKey: "f".repeat(64),
+  artifactDigest: "b".repeat(64),
+  executionDigest: "c".repeat(64),
+};
 
 function rpcResult<T>(value: T) {
   const calls = vi.fn();
   return {
     calls,
     callMain: async <R>(
-      method: string,
+      _target: string, method: string,
       args: unknown[],
-      signal?: AbortSignal,
+      options?: import("@vibestudio/rpc").RpcCallOptions,
     ) => {
-      calls(method, args, signal);
+      calls(method, args, options?.signal);
       return value as unknown as R;
     },
   };
@@ -36,7 +53,7 @@ describe("context-exact verify tool", () => {
       ],
     });
     const controller = new AbortController();
-    const tool = createVerifyTool(callMain, () => "context-7");
+    const tool = createVerifyTool(schemaRpcMock({ call: callMain }), () => "context-7");
 
     const result = await executeTool(
       tool,
@@ -98,7 +115,7 @@ describe("context-exact verify tool", () => {
     const updates: unknown[] = [];
     const output: Array<string | Uint8Array> = [];
     const execution = executeTool(
-      createVerifyTool(callMain, () => "context-7"),
+      createVerifyTool(schemaRpcMock({ call: callMain }), () => "context-7"),
       { operation: "build", target: "packages/example" },
       {
         callId: "call-progress",
@@ -146,7 +163,7 @@ describe("context-exact verify tool", () => {
       builds: [{ target: "runtime" as const, diagnosticIndexes: [0] }],
     });
     const result = await executeTool(
-      createVerifyTool(callMain, () => "context-7"),
+      createVerifyTool(schemaRpcMock({ call: callMain }), () => "context-7"),
       {
         operation: "build",
         target: "panels/editor",
@@ -234,7 +251,7 @@ describe("context-exact verify tool", () => {
     });
 
     const result = await executeTool(
-      createVerifyTool(callMain, () => "context-7"),
+      createVerifyTool(schemaRpcMock({ call: callMain }), () => "context-7"),
       {
         operation: "build",
         target: "panels/editor",
@@ -273,7 +290,7 @@ describe("context-exact verify tool", () => {
       builds: [],
     });
     const result = await executeTool(
-      createVerifyTool(callMain, () => "context-7"),
+      createVerifyTool(schemaRpcMock({ call: callMain }), () => "context-7"),
       { operation: "build", target: "panels/editor" },
       { callId: "call-build" },
     );
@@ -335,7 +352,7 @@ describe("context-exact verify tool", () => {
       builds: [{ target: "runtime" as const, diagnosticIndexes: [0] }],
     });
     const result = await executeTool(
-      createVerifyTool(callMain, () => "context-7"),
+      createVerifyTool(schemaRpcMock({ call: callMain }), () => "context-7"),
       {
         operation: "build",
         target: "panels/editor",
@@ -364,7 +381,7 @@ describe("context-exact verify tool", () => {
     });
 
     const result = await executeTool(
-      createVerifyTool(callMain, () => "context-7"),
+      createVerifyTool(schemaRpcMock({ call: callMain }), () => "context-7"),
       {
         operation: "build",
         target: "packages/docs",
@@ -409,7 +426,7 @@ describe("context-exact verify tool", () => {
     });
 
     const result = await executeTool(
-      createVerifyTool(callMain, () => "context-7"),
+      createVerifyTool(schemaRpcMock({ call: callMain }), () => "context-7"),
       {
         operation: "build",
         target: "panels/editor",
@@ -482,14 +499,19 @@ describe("context-exact verify tool", () => {
       files: [],
     }));
     const tool = createVerifyTool(
-      async <T>(method: string) => {
+      schemaRpcMock({ call: async <T>(_target: string, method: string) => {
         if (method === "build.resolveTestSuite") return plan as T;
         if (!repaired) throw refusal;
         return {
+          protocol: "workspace-test-artifact.v1",
+          target: plan.target,
+          suite: plan.suite,
+          runtime: plan.runtime,
+          selectedFiles: ["parser.test.ts"],
           artifactKey: "b".repeat(64),
-          execution: { executionDigest: "c".repeat(64) },
+          execution: fixtureExecution,
         } as T;
-      },
+      } }),
       () => "context-7",
       executor,
     );
@@ -544,7 +566,8 @@ describe("context-exact verify tool", () => {
         target: "packages/parser",
         suite: "unit",
         runtime: "browser",
-        stateHash: "state:exact",
+        protocol: "workspace-test-plan.v1",
+        stateHash: `state:${"a".repeat(64)}`,
       };
       const source = {
         source: "esbuild",
@@ -580,10 +603,10 @@ describe("context-exact verify tool", () => {
       });
       const executor = vi.fn();
       const tool = createVerifyTool(
-        async <T>(method: string) => {
+        schemaRpcMock({ call: async <T>(_target: string, method: string) => {
           if (method === "build.resolveTestSuite") return plan as T;
           throw error;
-        },
+        } }),
         () => "context-7",
         executor,
       );
@@ -600,7 +623,7 @@ describe("context-exact verify tool", () => {
 
   it("runs one focused browser selection without reaching the native extension", async () => {
     const calls = vi.fn();
-    const callMain = async <T>(method: string, args: unknown[]) => {
+    const callMain = async <T>(_target: string, method: string, args: unknown[]) => {
       calls(method, args);
       if (method === "build.resolveTestSuite") {
         return {
@@ -618,10 +641,7 @@ describe("context-exact verify tool", () => {
         suite: "unit",
         runtime: "browser",
         selectedFiles: ["parser.test.ts"],
-        bundle: "",
-        format: "async-cjs",
-        requiredModules: [],
-        execution: { executionDigest: "c".repeat(64) },
+        execution: fixtureExecution,
       } as T;
     };
     const executeSandboxTest = vi.fn(async () => ({
@@ -637,7 +657,7 @@ describe("context-exact verify tool", () => {
       files: [{ file: "parser.test.ts", status: "pass" as const }],
     }));
     const result = await executeTool(
-      createVerifyTool(callMain, () => "context-7", executeSandboxTest),
+      createVerifyTool(schemaRpcMock({ call: callMain }), () => "context-7", executeSandboxTest),
       {
         operation: "test",
         target: "packages/parser",
@@ -678,7 +698,7 @@ describe("context-exact verify tool", () => {
   it.each(["failed", "cancelled", "infrastructure-error"] as const)(
     "preserves %s execution even when partial counts contain passed tests",
     async (status) => {
-      const callMain = async <T>(method: string) =>
+      const callMain = async <T>(_target: string, method: string) =>
         (method === "build.resolveTestSuite"
           ? {
               protocol: "workspace-test-plan.v1",
@@ -694,11 +714,11 @@ describe("context-exact verify tool", () => {
               suite: "unit",
               runtime: "workerd",
               selectedFiles: ["parser.test.ts"],
-              execution: { executionDigest: "c".repeat(64) },
+              execution: fixtureExecution,
             }) as T;
       const result = await executeTool(
         createVerifyTool(
-          callMain,
+          schemaRpcMock({ call: callMain }),
           () => "context-7",
           async () => ({
             protocol: "workspace-test-execution-result.v1",
@@ -752,7 +772,7 @@ describe("context-exact verify tool", () => {
   );
 
   it("does not present zero discovered tests as successful verification", async () => {
-    const callMain = async <T>(method: string) =>
+    const callMain = async <T>(_target: string, method: string) =>
       (method === "build.resolveTestSuite"
         ? {
             protocol: "workspace-test-plan.v1",
@@ -768,14 +788,11 @@ describe("context-exact verify tool", () => {
             suite: "unit",
             runtime: "workerd",
             selectedFiles: ["parser.test.ts"],
-            bundle: "",
-            format: "async-cjs",
-            requiredModules: [],
-            execution: { executionDigest: "c".repeat(64) },
+            execution: fixtureExecution,
           }) as T;
     const result = await executeTool(
       createVerifyTool(
-        callMain,
+        schemaRpcMock({ call: callMain }),
         () => "context-7",
         async () => ({
           protocol: "workspace-test-execution-result.v1",

@@ -1,7 +1,9 @@
 // @vitest-environment jsdom
 
 import React from "react";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import type { ReactElement } from "react";
+import { fireEvent, render as renderBase, screen, waitFor } from "@testing-library/react";
+import { Theme } from "@radix-ui/themes";
 import {
   afterEach,
   beforeAll,
@@ -73,6 +75,13 @@ import {
 } from "./SubagentRunCard.js";
 import { SubagentTranscriptContent } from "./SubagentTranscript.js";
 import { installPanelModules, warmMessageMdx } from "./panelModules.testing.js";
+
+function render(ui: ReactElement, options?: Parameters<typeof renderBase>[1]) {
+  const themed = (next: ReactElement) =>
+    React.createElement(Theme, undefined, next);
+  const result = renderBase(themed(ui), options);
+  return { ...result, rerender: (next: ReactElement) => result.rerender(themed(next)) };
+}
 
 // Message MDX compiles through the panel's sandbox module registry.
 beforeAll(warmMessageMdx);

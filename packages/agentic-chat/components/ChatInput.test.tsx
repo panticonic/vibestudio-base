@@ -8,6 +8,7 @@ import {
   waitFor,
 } from "@testing-library/react";
 import { beforeAll, describe, expect, it, vi } from "vitest";
+import { schemaRpcMock } from "@vibestudio/rpc/test-utils";
 import { Theme } from "@radix-ui/themes";
 import { Blob as NodeBlob } from "node:buffer";
 import { makeTestCatalogEntry } from "@workspace/model-catalog/testing";
@@ -66,6 +67,16 @@ function renderInput(
   const undoLastAction = vi.fn();
 
   const ctx = {
+    chat: {
+      rpc: schemaRpcMock({
+        call: vi.fn(async (_target: string, method: string) => {
+          if (method === "account.resolveProfiles") return {};
+          throw new Error("Unexpected ChatInput RPC");
+        }),
+      }),
+      contextId: "context:chat-input-test",
+      channelId: "chat-input-test",
+    },
     connected: true,
     allParticipants: {},
     participants: {},

@@ -25,6 +25,6 @@ describe("createPanelImportLoader", () => {
       "@workspace/example",
       "ctx:panel-context",
       { library: true, externals: [], libraryTarget: "panel" },
-    ]);
+    ], undefined);
   });
 });

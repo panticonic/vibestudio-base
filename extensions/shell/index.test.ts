@@ -1,3 +1,4 @@
+import { schemaRpcMock } from "@vibestudio/rpc/test-utils";
 import { readFile, stat, mkdtemp, mkdir, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -60,7 +61,7 @@ async function makeApi(
       list: vi.fn(),
       reload: vi.fn(),
     },
-    rpc: { call: rpcCall, stream: vi.fn(), on: vi.fn() },
+    rpc: { ...schemaRpcMock({ call: rpcCall, stream: vi.fn() }), on: vi.fn() },
     health: {
       healthy: vi.fn(),
       degraded: vi.fn(),
@@ -542,7 +543,7 @@ describe("@workspace-extensions/shell", () => {
     const { api, ensureContextFolder, rpcCall } = await makeApi("allow");
     rpcCall.mockImplementation(async (_target: string, method: string) => {
       if (method === "runtime.createEntity")
-        return { id: "entity-new", contextId: "ctx-new" };
+        return { id: "entity-new", kind: "session", source: { repoPath: "terminal", effectiveVersion: "" }, targetId: "entity-new", contextId: "ctx-new" };
       if (method === "runtime.resolveContext") return "ctx-new";
       return [];
     });
@@ -550,12 +551,12 @@ describe("@workspace-extensions/shell", () => {
     const created = await api.createContext({ title: "New terminal context" });
     expect(created.contextId).toBe("ctx-new");
     expect(created.contextAttachToken).toEqual(expect.any(String));
-    expect(rpcCall).toHaveBeenCalledWith("main", "runtime.createEntity", {
+    expect(rpcCall).toHaveBeenCalledWith("main", "runtime.createEntity", [{
       kind: "session",
       execution: { surface: "inert" },
       source: "terminal",
       title: "New terminal context",
-    });
+    }], undefined);
 
     const { sessionId } = await api.open({
       command: "node",

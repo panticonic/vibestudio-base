@@ -1,3 +1,4 @@
+import { formatRpcFailure } from "@vibestudio/rpc";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   compileComponent,
@@ -155,10 +156,12 @@ describe("source file bundles", () => {
     });
     expect(result).toMatchObject({
       success: false,
-      error: "Workspace session closed",
-      errorKind: "transport",
-      code: "CONNECTION_LOST",
-      errorData: { reconnectable: true },
+      error: {
+        message: "Workspace session closed",
+        errorKind: "transport",
+        code: "CONNECTION_LOST",
+        errorData: { reconnectable: true },
+      },
     });
   });
 
@@ -259,8 +262,8 @@ describe("source file bundles", () => {
     });
 
     expect(result.success).toBe(false);
-    expect(result.error).toContain("not declared");
-    expect(result.error).toContain("packages/app/package.json");
+    expect(formatRpcFailure(result.error!)).toContain("not declared");
+    expect(formatRpcFailure(result.error!)).toContain("packages/app/package.json");
   });
 
   it("does not suggest npm imports for Node built-ins from file-loaded helpers", async () => {
@@ -275,11 +278,11 @@ describe("source file bundles", () => {
     });
 
     expect(result.success).toBe(false);
-    expect(result.error).toContain(
+    expect(formatRpcFailure(result.error!)).toContain(
       'Node built-in module "node:child_process" is not available',
     );
-    expect(result.error).toContain("@workspace/runtime");
-    expect(result.error).not.toContain("npm:latest");
+    expect(formatRpcFailure(result.error!)).toContain("@workspace/runtime");
+    expect(formatRpcFailure(result.error!)).not.toContain("npm:latest");
   });
 
   it("does not infer eval imports from devDependencies", async () => {
@@ -306,8 +309,8 @@ describe("source file bundles", () => {
     });
 
     expect(result.success).toBe(false);
-    expect(result.error).toContain("not declared");
-    expect(result.error).toContain("packages/app/package.json");
+    expect(formatRpcFailure(result.error!)).toContain("not declared");
+    expect(formatRpcFailure(result.error!)).toContain("packages/app/package.json");
     expect(loadCalls).toEqual([]);
   });
 

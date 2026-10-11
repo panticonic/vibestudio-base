@@ -74,7 +74,9 @@
     "@workspace/harness": "workspace:*",
     "@vibestudio/credential-client": "workspace:*",
     "@vibestudio/content-addressing": "workspace:*",
-    "@workspace-extensions/image-service": "workspace:*"
+    "@workspace-extensions/image-service": "workspace:*",
+    "@vibestudio/rpc": "workspace:*",
+    "@vibestudio/service-schemas": "workspace:*"
   },
   "devDependencies": {
     "@vibestudio/shared": "workspace:*",

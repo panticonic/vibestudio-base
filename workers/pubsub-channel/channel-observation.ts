@@ -1,6 +1,6 @@
 import { gadWireMethods } from "@vibestudio/service-schemas/workspaceSource";
 import type { RpcCaller } from "@vibestudio/rpc";
-import { createGadServiceClient } from "@workspace/runtime/workerd-client";
+import { createGadServiceClient } from "@vibestudio/service-schemas/clients/gadServiceClient";
 import { MAX_CHANNEL_REPLAY_PAGE_LIMIT } from "@workspace/pubsub";
 import type { LogEnvelope } from "@workspace/agentic-protocol";
 

@@ -1,5 +1,6 @@
 import YAML from "yaml";
 import { describe, expect, it, vi } from "vitest";
+import { schemaRpcMock } from "@vibestudio/rpc/test-utils";
 import { inspectTemplateAuthoring } from "./authoring.js";
 
 function observation(eventId: string) {
@@ -15,45 +16,66 @@ function observation(eventId: string) {
 }
 
 function context() {
-  return {
-    rpc: {
-      call: vi.fn(
-        async (
-          _target: string,
-          method: string,
-          input: { repoPath?: string; repositoryId?: string },
-        ) => {
-          if (method === "vcs.resolveRepository") {
-            return {
-              repositoryId: `repository:${input.repoPath}`,
-              repoPath: input.repoPath,
-            };
-          }
-          if (method === "vcs.readFile") {
-            if (input.repositoryId === "repository:meta") {
-              return {
-                content: {
-                  kind: "text",
-                  text: "systemEpoch: 0\ntemplate:\n  name: Source\n",
-                },
-              };
-            }
-            return {
-              content: {
-                kind: "text",
-                text: JSON.stringify({
-                  name:
-                    input.repositoryId === "repository:packages/runtime"
-                      ? "@workspace/runtime"
-                      : "@workspace-panels/news",
-                }),
-              },
-            };
-          }
-          throw new Error(`unexpected method ${method}`);
-        },
-      ),
+  const call = vi.fn(
+    async (
+      _target: string,
+      method: string,
+      args: unknown[],
+    ): Promise<unknown> => {
+      const input = (args[0] ?? {}) as { state?: unknown; repoPath?: string; repositoryId?: string };
+      if (method === "vcs.resolveRepository") {
+        return {
+          state: input.state,
+          repositoryId: `repository:${input.repoPath}`,
+          repoPath: input.repoPath,
+        };
+      }
+      if (method === "vcs.readFile") {
+        if (input.repositoryId === "repository:meta") {
+          return {
+            repositoryId: input.repositoryId,
+            fileId: `file:${input.repositoryId}`,
+            repoPath: input.repositoryId?.replace(/^repository:/u, "") ?? "meta",
+            path: input.repositoryId === "repository:meta" ? "vibestudio.yml" : "package.json",
+            contentHash: "a".repeat(64),
+            authoredChangeId: null,
+            authoredByWorkUnitId: null,
+            contentClass: "internal",
+            externalKeys: [],
+            mode: 0o644,
+            content: {
+              kind: "text",
+              text: "systemEpoch: 0\ntemplate:\n  name: Source\n",
+            },
+          };
+        }
+        return {
+          repositoryId: input.repositoryId,
+          fileId: `file:${input.repositoryId}`,
+          repoPath: input.repositoryId?.replace(/^repository:/u, "") ?? "meta",
+          path: "package.json",
+          contentHash: "a".repeat(64),
+          authoredChangeId: null,
+          authoredByWorkUnitId: null,
+          contentClass: "internal",
+          externalKeys: [],
+          mode: 0o644,
+          content: {
+            kind: "text",
+            text: JSON.stringify({
+              name:
+                input.repositoryId === "repository:packages/runtime"
+                  ? "@workspace/runtime"
+                  : "@workspace-panels/news",
+            }),
+          },
+        };
+      }
+      throw new Error(`unexpected method ${method}`);
     },
+  );
+  return {
+    rpc: schemaRpcMock({ call }),
   };
 }
 
@@ -193,13 +215,13 @@ it("retains declared workspace defaults when incidental repositories are exclude
   };
   const ctx = context();
   const baseCall = ctx.rpc.call.getMockImplementation()!;
-  ctx.rpc.call.mockImplementation(async (target, method, input) => {
+  ctx.rpc.call.mockImplementation(async (target, method, args) => {
+    const input = (args[0] ?? {}) as { repositoryId?: string };
     if (
       method === "vcs.readFile" &&
       input.repositoryId === "repository:projects/scratch"
-    )
-      return null as never;
-    return baseCall(target, method, input);
+    ) return null;
+    return baseCall(target, method, args);
   });
   const plan = await inspectTemplateAuthoring(
     ctx as never,

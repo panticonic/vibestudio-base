@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { schemaRpcClientMock } from "@vibestudio/rpc/test-utils";
 import { createPanelRuntime } from "./panelRuntime.js";
 
 function readyHostReport() {
@@ -25,19 +26,46 @@ function readyHostReport() {
   };
 }
 
-function detail(entityId = "panel:nav-new", source = "panels/new") {
+function detail(
+  entityId = "panel:nav-new",
+  source = "panels/new",
+  slotId = "panel:tree/new",
+) {
   return {
-    slot: { parent_slot_id: null, current_entity_title: "New" },
+    revision: 1,
+    slot: {
+      slot_id: slotId,
+      parent_slot_id: null,
+      current_entity_id: entityId,
+      current_entity_title: "New",
+      current_entry_key: "nav-current",
+      sort_key: 1,
+      owner_user_id: "user:test",
+      created_at: 1,
+      closed_at: null,
+    },
     currentHistory: {
+      slot_id: slotId,
+      cursor: 1,
+      entry_key: "nav-current",
+      entity_id: entityId,
       source,
       context_id: "ctx:test",
       state_args: "{}",
       options: '{"ref":"main"}',
+      recorded_at: 1,
     },
     entity: {
       id: entityId,
-      source: { effectiveVersion: "ev-new" },
+      authoritySessionId: "session:test",
+      kind: "panel",
+      source: { repoPath: source, effectiveVersion: "ev-new" },
       activeBuildKey: "build-new",
+      contextId: "ctx:test",
+      key: "panels/new",
+      createdAt: 1,
+      status: "active",
+      cleanupComplete: true,
     },
   };
 }
@@ -107,10 +135,15 @@ function runtimeHarness(
         case "tests.run":
           return { target: _target } as T;
         case "build.getPanelMetadata":
-          return { title: "New" } as T;
+          return {
+            source: currentSource,
+            title: "New",
+            hiddenInLauncher: false,
+          } as T;
         case "workspace-state.panel.index":
+          return "panel:nav-new" as T;
         case "workspace-state.panel.updateTitle":
-          return undefined as T;
+          return null as T;
         case "workspace-state.panel.sourceUsage":
           return [
             {
@@ -120,34 +153,42 @@ function runtimeHarness(
             },
           ] as T;
         case "workspace-state.panelTree.search":
-          return { results: [], nextCursor: null } as T;
+          return { revision: 1, hits: [], nextCursor: null } as T;
         case "runtime.createContext":
           return args[0] as T;
         case "runtime.reserveEntity":
           return {
             id: currentEntityId,
+            kind: "panel",
             contextId: "ctx:test",
-            source: { effectiveVersion: "" },
+            targetId: currentEntityId,
+            source: { repoPath: "panels/new", effectiveVersion: "" },
+            created: true,
           } as T;
         case "runtime.activateReservedEntity":
           if (options.activateError) throw options.activateError;
           return {
             id: currentEntityId,
+            kind: "panel",
             contextId: "ctx:test",
-            source: { effectiveVersion: "ev-new" },
-            buildKey: "build-new",
+            targetId: currentEntityId,
+            source: { repoPath: "panels/new", effectiveVersion: "ev-new" },
+            buildKey: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
           } as T;
         case "runtime.createEntity": {
           const spec = args[0] as { key: string; contextId?: string };
           currentEntityId =
             method === "runtime.createEntity"
-              ? `panel:${spec.key}`
+              ? `panel:nav-${spec.key}`
               : currentEntityId;
           return {
             id: currentEntityId,
+            kind: "panel",
             contextId: spec.contextId ?? "ctx:test",
-            source: { effectiveVersion: "ev-new" },
-            buildKey: "build-new",
+            targetId: currentEntityId,
+            source: { repoPath: spec.key, effectiveVersion: "ev-new" },
+            buildKey: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            created: true,
           } as T;
         }
         case "workspace-state.slot.create": {
@@ -176,7 +217,7 @@ function runtimeHarness(
           } as T;
         }
         case "workspace-state.panelTree.detail":
-          return detail(currentEntityId, currentSource) as T;
+          return detail(currentEntityId, currentSource, currentSlotId) as T;
         case "panelRuntime.ensureSlot":
           ensureSlotCalls += 1;
           if (options.recoverStoppedRoute && ensureSlotCalls > 1) {
@@ -189,9 +230,16 @@ function runtimeHarness(
               options.hostAvailable === false
                 ? null
                 : {
+                    slotId: currentSlotId,
+                    runtimeEntityId: currentEntityId,
+                    clientSessionId: "client:test",
+                    hostConnectionId: "host:test",
+                    connectionId: "connection:test",
                     holderLabel: "Headless",
                     platform: "headless",
                     supportsCdp: true,
+                    loadOnLeaseAssignment: true,
+                    acquiredAt: 1,
                   },
             attempt: {
               epoch: "test",
@@ -350,17 +398,24 @@ function runtimeHarness(
         case "runtime.supervision.restart":
           return undefined as T;
         case "workspace-state.panelTree.page": {
-          const input = args[0] as { group: { parentSlotId: string } };
+          const input = args[0] as {
+            group:
+              | { kind: "children"; parentSlotId: string }
+              | { kind: "roots"; ownerUserId: string | null };
+          };
           return {
             revision: 17,
             group: input.group,
             nodes: [
               {
-                slotId: "browser",
+                slotId: "panel:tree/browser",
                 title: "Example",
                 kind: "browser",
                 source: "browser:https://example.com/",
-                parentSlotId: input.group.parentSlotId,
+                parentSlotId:
+                  input.group.kind === "children"
+                    ? input.group.parentSlotId
+                    : null,
                 ownerUserId: null,
                 contextId: "ctx:browser",
                 createdAt: 1,
@@ -376,7 +431,7 @@ function runtimeHarness(
             group: { kind: "roots", ownerUserId: "usr-current" },
             nodes: [
               {
-                slotId: "current-root",
+                slotId: "panel:tree/current-root",
                 title: "Current root",
                 kind: "workspace",
                 source: "panels/current",
@@ -394,7 +449,7 @@ function runtimeHarness(
             revision: 17,
             nodes: [
               {
-                slotId: "root",
+                slotId: "panel:tree/root",
                 title: "Research",
                 kind: "workspace",
                 source: "about/collection",
@@ -416,7 +471,7 @@ function runtimeHarness(
   return {
     call,
     runtime: createPanelRuntime({
-      rpc: { call, emit: vi.fn(), on: vi.fn() } as never,
+      rpc: schemaRpcClientMock({ call }, "panel-test"),
       defaultOpenParentId: null,
       createCdp: options.createCdp ?? (() => ({}) as never),
       onCreateSlotTiming: options.onCreateSlotTiming,
@@ -434,7 +489,7 @@ function runtimeFocusHarness() {
     call: harness.call,
     focusPanel,
     runtime: createPanelRuntime({
-      rpc: { call: harness.call, emit: vi.fn(), on: vi.fn() } as never,
+      rpc: schemaRpcClientMock({ call: harness.call }, "panel-test"),
       focusPanel,
       defaultOpenParentId: null,
       createCdp: () => ({}) as never,
@@ -539,7 +594,7 @@ describe("panel runtime topology composition", () => {
       expect(call).toHaveBeenCalledWith("main", "build.getPanelMetadata", [
         "panels/new",
         ref ?? "ctx:ctx:test",
-      ]);
+      ], undefined);
       expect(call).toHaveBeenCalledWith("main", "runtime.createEntity", [
         expect.objectContaining({
           kind: "panel",
@@ -551,7 +606,7 @@ describe("panel runtime topology composition", () => {
           contextId: "ctx:test",
           stateArgs: { documentId: "doc-123" },
         }),
-      ]);
+      ], undefined);
       expect(call).toHaveBeenCalledWith(
         "main",
         "workspace-state.slot.commitPreparedNavigation",
@@ -571,6 +626,7 @@ describe("panel runtime topology composition", () => {
             },
           }),
         ],
+        undefined,
       );
       expect(call.mock.calls.map((entry) => entry[1])).not.toContain(
         "runtime.supervision.restart",
@@ -590,7 +646,7 @@ describe("panel runtime topology composition", () => {
       expect(observation.runtimeEntityId).toBe("panel:nav-new");
       expect(call).toHaveBeenCalledWith("main", "runtime.supervision.restart", [
         { kind: "panel", entityId: "panel:nav-new" },
-      ]);
+      ], undefined);
       expect(call.mock.calls.map((entry) => entry[1])).not.toContain(
         "runtime.createEntity",
       );
@@ -626,7 +682,7 @@ describe("panel runtime topology composition", () => {
   it("reserves a panel from an exact sealed artifact when requested", async () => {
     const { runtime, call } = runtimeHarness();
     const artifact = {
-      buildKey: "build-test-panel",
+      buildKey: "b".repeat(64),
       executionDigest: "a".repeat(64),
     };
 
@@ -644,14 +700,14 @@ describe("panel runtime topology composition", () => {
           artifact,
         },
       }),
-    ]);
+    ], undefined);
     expect(call).toHaveBeenCalledWith("main", "workspace-state.slot.create", [
       expect.objectContaining({
         initialEntry: expect.objectContaining({
           options: expect.objectContaining({ artifact }),
         }),
       }),
-    ]);
+    ], undefined);
   });
 
   it("reports an unassigned presentation as explicit pending state", async () => {
@@ -766,7 +822,7 @@ describe("panel runtime topology composition", () => {
     expect(call).toHaveBeenCalledWith("main", "build.getPanelMetadata", [
       "panels/new",
       "ctx:feature",
-    ]);
+    ], undefined);
   });
 
   it("scopes operation identity by source, explicit context, and parent", async () => {
@@ -1127,7 +1183,7 @@ describe("panel runtime topology composition", () => {
         title: "example.com",
         path: "browser:https://example.com/",
       },
-    ]);
+    ], undefined);
     expect(call.mock.calls.map((entry) => entry[1])).not.toContain(
       "workers.resolveService",
     );
@@ -1283,20 +1339,20 @@ describe("panel runtime topology composition", () => {
     const { runtime } = runtimeHarness();
 
     const page = await runtime.panelTree.page({
-      group: { kind: "children", parentSlotId: "group" },
+      group: { kind: "children", parentSlotId: "panel:tree/group" },
       limit: 50,
     });
     expect(page).toMatchObject({
       revision: 17,
       entries: [
-        { handle: { id: "browser", kind: "browser", parentId: "group" } },
+        { handle: { id: "panel:tree/browser", kind: "browser", parentId: "panel:tree/group" } },
       ],
     });
     await expect(
       runtime.panelTree.path("panel:tree/root"),
     ).resolves.toMatchObject({
       revision: 17,
-      entries: [{ handle: { id: "root" } }],
+      entries: [{ handle: { id: "panel:tree/root" } }],
     });
   });
 
@@ -1325,38 +1381,45 @@ describe("panel runtime topology composition", () => {
       const parent = input.group.parentSlotId;
       reads.push(`${parent}${input.cursor ? `@${input.cursor}` : ""}`);
       // The tree changes while the first walk is between groups.
-      if (parent === "a" && revision === 1) revision = 2;
+      if (parent === "panel:tree/a" && revision === 1) revision = 2;
       const pages: Record<string, { nodes: unknown[]; nextCursor: string | null }> = {
-        root: { nodes: [node("a", "root", 1)], nextCursor: "more" },
-        "root@more": { nodes: [node("b", "root")], nextCursor: null },
-        a: { nodes: [node("c", "a")], nextCursor: null },
+      "panel:tree/root": { nodes: [node("panel:tree/a", "panel:tree/root", 1)], nextCursor: "more" },
+      "panel:tree/root@more": { nodes: [node("panel:tree/b", "panel:tree/root")], nextCursor: null },
+      "panel:tree/a": { nodes: [node("panel:tree/c", "panel:tree/a")], nextCursor: null },
       };
       const page = pages[`${parent}${input.cursor ? `@${input.cursor}` : ""}`]!;
       return { revision, group: input.group, ...page };
     });
     const runtime = createPanelRuntime({
-      rpc: { call, emit: vi.fn(), on: vi.fn() } as never,
+      rpc: schemaRpcClientMock({ call }, "panel-test"),
       defaultOpenParentId: null,
       createCdp: () => ({}) as never,
     });
 
     const walked: Array<[string, number]> = [];
-    for await (const entry of runtime.panelTree.walk("root", { limit: 10 })) {
+    for await (const entry of runtime.panelTree.walk("panel:tree/root", { limit: 10 })) {
       walked.push([entry.handle.id, entry.depth]);
     }
 
     expect(walked).toEqual([
-      ["a", 1],
-      ["b", 1],
-      ["c", 2],
+      ["panel:tree/a", 1],
+      ["panel:tree/b", 1],
+      ["panel:tree/c", 2],
     ]);
-    expect(reads).toEqual(["root", "root@more", "a", "root", "root@more", "a"]);
+    expect(reads).toEqual([
+      "panel:tree/root",
+      "panel:tree/root@more",
+      "panel:tree/a",
+      "panel:tree/root",
+      "panel:tree/root@more",
+      "panel:tree/a",
+    ]);
 
     const limited: string[] = [];
-    for await (const entry of runtime.panelTree.walk("root", { limit: 1 })) {
+    for await (const entry of runtime.panelTree.walk("panel:tree/root", { limit: 1 })) {
       limited.push(entry.handle.id);
     }
-    expect(limited).toEqual(["a"]);
+    expect(limited).toEqual(["panel:tree/a"]);
   });
 
   it("reads the current caller's roots without exposing an ownership key", async () => {
@@ -1365,13 +1428,14 @@ describe("panel runtime topology composition", () => {
     await expect(runtime.panelTree.roots({ limit: 25 })).resolves.toMatchObject(
       {
         group: { kind: "roots", ownerUserId: "usr-current" },
-        entries: [{ handle: { id: "current-root" } }],
+        entries: [{ handle: { id: "panel:tree/current-root" } }],
       },
     );
     expect(call).toHaveBeenCalledWith(
       "main",
       "workspace-state.panelTree.rootsForCaller",
       [{ limit: 25 }],
+      undefined,
     );
 
     await runtime.panelTree.rootsForOwner("usr-other", { limit: 10 });
@@ -1379,6 +1443,7 @@ describe("panel runtime topology composition", () => {
       "main",
       "workspace-state.panelTree.page",
       [{ group: { kind: "roots", ownerUserId: "usr-other" }, limit: 10 }],
+      undefined,
     );
   });
 
@@ -1392,6 +1457,7 @@ describe("panel runtime topology composition", () => {
       "main",
       "workspace-state.panel.sourceUsage",
       [25],
+      undefined,
     );
   });
 
@@ -1405,6 +1471,7 @@ describe("panel runtime topology composition", () => {
       "main",
       "workspace-state.panel.updateTitle",
       ["panel:tree/browser", "Support inbox", { explicit: true }],
+      undefined,
     );
     expect(handle.title).toBe("Support inbox");
   });
@@ -1425,14 +1492,10 @@ describe("recursive panel ownership", () => {
             ? []
             : [
                 {
-                  closeId: root,
-                  ownerUserId: "user",
                   slotId: root,
-                  entityId: "panel:root-entity",
+                  entityId: "panel:nav-root",
                 },
                 {
-                  closeId: root,
-                  ownerUserId: "user",
                   slotId: child,
                   entityId: null,
                 },
@@ -1447,7 +1510,7 @@ describe("recursive panel ownership", () => {
       throw new Error(`Unexpected call ${method}`);
     });
     const runtime = createPanelRuntime({
-      rpc: { call, emit: vi.fn(), on: vi.fn() } as never,
+      rpc: schemaRpcClientMock({ call }, "panel-test"),
       onClose,
     });
     await runtime.panelTree.get(root).archive();
@@ -1479,9 +1542,11 @@ describe("recursive panel ownership", () => {
       async (_target: string, method: string, args: unknown[]) => {
         if (method === "workspace-state.panelTree.detail") {
           const id = args[0] as string;
+          const entityId = id === root ? "panel:nav-root" : "panel:nav-child";
           return {
-            ...detail(`${id}-entity`),
+            ...detail(entityId, "panels/test", id),
             slot: {
+              ...detail(entityId, "panels/test", id).slot,
               parent_slot_id: id === root ? null : root,
               current_entity_title: id,
             },
@@ -1495,7 +1560,7 @@ describe("recursive panel ownership", () => {
               epoch: "test",
               attemptId: `attempt:${id}`,
               slotId: id,
-              runtimeEntityId: `${id}-entity`,
+              runtimeEntityId: id === root ? "panel:nav-root" : "panel:nav-child",
               phase: "ready",
               revision: 1,
               reporter: "renderer",
@@ -1520,8 +1585,8 @@ describe("recursive panel ownership", () => {
         if (method === "workspace-state.slot.closeCleanupPage") {
           return {
             items: [
-              { slotId: root, entityId: `${root}-entity` },
-              { slotId: child, entityId: `${child}-entity` },
+              { slotId: root, entityId: "panel:nav-root" },
+              { slotId: child, entityId: "panel:nav-child" },
             ],
             nextCursor: null,
           };
@@ -1534,7 +1599,7 @@ describe("recursive panel ownership", () => {
       },
     );
     const runtime = createPanelRuntime({
-      rpc: { call, emit: vi.fn(), on: vi.fn() } as never,
+      rpc: schemaRpcClientMock({ call }, "panel-test"),
       loadModule: async () => ({
         BrowserImpl: {
           connect: async () => browsers[connectIndex++],
@@ -1554,7 +1619,7 @@ describe("recursive panel ownership", () => {
       call.mock.calls
         .filter(([, method]) => method === "runtime.retireEntity")
         .map(([, , args]) => args),
-    ).toEqual([[{ id: `${root}-entity` }], [{ id: `${child}-entity` }]]);
+    ).toEqual([[{ id: "panel:nav-root" }], [{ id: "panel:nav-child" }]]);
     expect(acknowledge).not.toHaveBeenCalled();
   });
 });

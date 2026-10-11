@@ -2,6 +2,7 @@ import { afterEach, expect, it, vi } from "vitest";
 import * as workspace from "./workspace.js";
 import { createTemplateLifecycle } from "./lifecycle.js";
 import type { ExtensionContextLike } from "./context.js";
+import { schemaRpcMock } from "@vibestudio/rpc/test-utils";
 
 const pin = {
   url: "https://example.test/base.git",
@@ -184,10 +185,11 @@ it.each([0, 1])(
     vi.spyOn(TemplateOperations.prototype, "load").mockResolvedValue(operation);
     vi.spyOn(TemplateOperations.prototype, "save").mockResolvedValue();
     const call = vi.fn(
-      async (_target: string, method: string, ..._args: unknown[]) => {
+      async (_target: string, method: string, args: unknown[]) => {
+        const input = (args[0] ?? {}) as { contextId?: string };
         if (method === "vcs.status")
           return {
-            contextId: "update:context",
+            contextId: input.contextId,
             committed: state,
             workingHead: state,
             clean: true,
@@ -212,12 +214,19 @@ it.each([0, 1])(
             mode: 0o644,
             content: { kind: "text", text: `systemEpoch: ${candidateEpoch}\n` },
           };
-        if (method === "vcs.push") return {};
+        if (method === "vcs.push")
+          return {
+            contextId: "update:context",
+            eventId: "candidate:one",
+            mainEventId: "published:one",
+            effectId: "effect:publication",
+            appliedAt: "2026-07-15T00:00:00.000Z",
+          };
         throw new Error(`Unexpected call ${method}`);
       },
     );
     const lifecycle = createTemplateLifecycle(
-      { rpc: { call } } as unknown as ExtensionContextLike,
+      { rpc: schemaRpcMock({ call }) } as unknown as ExtensionContextLike,
       {
         inspect: async () => ({ pin, repositories: [], dependencies: [] }),
         resolve: async () => pin,
@@ -229,12 +238,13 @@ it.each([0, 1])(
     expect(call).toHaveBeenCalledWith(
       "main",
       "vcs.readFile",
-      expect.objectContaining({ state }),
+      [expect.objectContaining({ state, repositoryId: "meta:one" })],
+      undefined,
     );
     const publish = call.mock.calls.find(
       (args) => args[1] === "vcs.push",
-    ) as unknown as [string, string, Record<string, unknown>];
-    expect(publish[2]).toEqual({
+    ) as unknown as [string, string, unknown[]];
+    expect(publish[2]?.[0]).toEqual({
       commandId: "update:context:push",
       contextId: "update:context",
       expectedCommittedEventId: "candidate:one",

@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { schemaRpcClientMock } from "@vibestudio/rpc/test-utils";
 import { createGatewayFetch } from "./gatewayFetch.js";
 
 describe("explicit gateway transport", () => {
@@ -39,7 +40,7 @@ describe("explicit gateway transport", () => {
   it("allows absolute same-origin gateway URLs", async () => {
     const stream = vi.fn(async () => new Response("ok"));
     await createGatewayFetch({
-      rpc: { stream },
+      rpc: schemaRpcClientMock({ call: vi.fn(), stream }, "gateway-test"),
       serverUrl: "https://gateway.test",
     })("https://gateway.test/build?key=1");
     expect(stream).toHaveBeenCalledWith(
@@ -63,7 +64,7 @@ describe("explicit gateway transport", () => {
     ]) {
       vi.stubGlobal("__vibestudioShell", shell);
       const stream = vi.fn(async () => new Response("tunneled"));
-      const response = await createGatewayFetch({ rpc: { stream } })(
+      const response = await createGatewayFetch({ rpc: schemaRpcClientMock({ call: vi.fn(), stream }, "gateway-test") })(
         "api/route",
       );
       expect(await response.text()).toBe("tunneled");
@@ -86,7 +87,7 @@ describe("explicit gateway transport", () => {
         c.close();
       },
     });
-    await createGatewayFetch({ rpc: { stream } })("/upload", {
+    await createGatewayFetch({ rpc: schemaRpcClientMock({ call: vi.fn(), stream }, "gateway-test") })("/upload", {
       method: "POST",
       body,
       signal: abort.signal,

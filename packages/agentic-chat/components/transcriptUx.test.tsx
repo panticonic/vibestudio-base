@@ -32,6 +32,21 @@ import {
 } from "@workspace/agentic-protocol";
 import { durableObjectServiceFixture } from "@vibestudio/service-schemas/test-utils";
 
+const MISSIONS_TARGET = "do:workers/missions:MissionsDO:workspace-missions";
+
+function resolvedMissionsService() {
+  return durableObjectServiceFixture(
+    MISSIONS_TARGET,
+    {
+      name: "missions",
+      source: "workers/missions",
+      className: "MissionsDO",
+      objectKey: "workspace-missions",
+      protocols: ["vibestudio.missions.v1"],
+    },
+  );
+}
+
 const hookState = vi.hoisted(() => {
   const scrollElement = {
     scrollTop: 0,
@@ -223,7 +238,7 @@ describe("transcript delivery markers", () => {
     const createdAt = 1_700_000_000_000;
     const call = vi.fn(async (_target: string, method: string) => {
       if (method === "workers.resolveService") {
-        return durableObjectServiceFixture("do:missions");
+        return resolvedMissionsService();
       }
       if (method === "overview") {
         const automation = {
@@ -339,7 +354,7 @@ describe("transcript delivery markers", () => {
       ),
     ).toBeTruthy();
     expect(call).toHaveBeenCalledWith(
-      "do:missions",
+      MISSIONS_TARGET,
       "overview",
       [{ missionId: "mission-talk-timer", limit: 1 }],
       {},

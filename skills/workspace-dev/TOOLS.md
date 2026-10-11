@@ -474,7 +474,7 @@ For app data, prefer a Durable Object service over eval `db` or ad hoc files.
 The DO keeps its data in SQLite through `this.sql`, the live service
 declaration sets `authority.principals`, and each method declares its `@rpc`
 receiver policy. Callers use `workers.resolveService(protocol, objectKey?)` plus
-`rpc.call(targetId, method, args)`. See
+`rpc.call(targetId, methodDescriptor, args)`, using a descriptor exported by the receiver's contract. See
 [WORKERS.md](WORKERS.md#durable-object-backed-app-databases).
 
 #### Semantic workspace version control

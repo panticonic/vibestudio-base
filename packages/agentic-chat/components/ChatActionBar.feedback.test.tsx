@@ -2,6 +2,7 @@
 
 import { render, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
+import { serializeRpcFailure } from "@vibestudio/rpc";
 import { Stats } from "@workspace/ui/response";
 
 const chatContext = vi.hoisted(() => ({
@@ -31,6 +32,7 @@ const data = {
   id: "bar-1",
   source: { type: "file" as const, path: "bars/Bar.tsx" },
 };
+const compileFailure = serializeRpcFailure(new SyntaxError("Unexpected token"));
 
 function publishedPayloads() {
   return chatContext.chat.publish.mock.calls.map(
@@ -43,7 +45,7 @@ describe("ChatActionBar ui.feedback", () => {
     chatContext.chat.publish.mockClear();
     chatContext.actionBar = {
       data: { ...data, author },
-      component: { cacheKey: "k", error: "Unexpected token" },
+      component: { cacheKey: "k", error: compileFailure },
     };
     const view = render(<ChatActionBar />);
     await waitFor(() => expect(chatContext.chat.publish).toHaveBeenCalledTimes(1));
@@ -73,7 +75,7 @@ describe("ChatActionBar ui.feedback", () => {
     chatContext.chat.publish.mockClear();
     chatContext.actionBar = {
       data,
-      component: { cacheKey: "k", error: "Unexpected token" },
+      component: { cacheKey: "k", error: compileFailure },
     };
     const view = render(<ChatActionBar />);
     await waitFor(() => expect(view.getAllByText(/Unexpected token/).length).toBeGreaterThan(0));

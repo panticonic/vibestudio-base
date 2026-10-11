@@ -56,7 +56,7 @@ describe("createPanelBootReporter", () => {
 
     h.reporter.publish({ phase: "booting" });
     h.reporter.publish({ phase: "ready" });
-    expect(h.call).toHaveBeenCalledTimes(1);
+    await vi.waitFor(() => expect(h.call).toHaveBeenCalledTimes(1));
 
     first.resolve("reported");
     await vi.waitFor(() => expect(h.call).toHaveBeenCalledTimes(2));

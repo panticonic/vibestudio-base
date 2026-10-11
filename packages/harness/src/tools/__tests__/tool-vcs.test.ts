@@ -1,10 +1,11 @@
+import { schemaRpcMock } from "@vibestudio/rpc/test-utils";
 import { describe, expect, it, vi } from "vitest";
 import { vcsMethods } from "@vibestudio/service-schemas/vcs";
 import { createToolVcs, toolCommandId } from "../tool-vcs.js";
 
 describe("canonical tool VCS adapter", () => {
   it("derives the complete method roster from the service schema", () => {
-    const vcs = createToolVcs(async () => null as never);
+    const vcs = createToolVcs(schemaRpcMock({ call: async () => null }));
     expect(Object.keys(vcs).sort()).toEqual(Object.keys(vcsMethods).sort());
   });
 
@@ -22,7 +23,7 @@ describe("canonical tool VCS adapter", () => {
       workingHead: { kind: "application", applicationId: "application:1" },
     }));
     const vcs = createToolVcs(
-      async <T>(method: string, args: unknown[]) => (await call(method, args)) as T
+      schemaRpcMock({ call: async (_target: string, method: string, args: unknown[]) => call(method, args) })
     );
     const base = {
       contextId: "context:1",

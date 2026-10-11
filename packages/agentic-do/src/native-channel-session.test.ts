@@ -586,7 +586,7 @@ describe("native product channel admission", () => {
         { ...binding, contextId: "foreign" },
         context,
       ),
-    ).rejects.toThrow("retained host context");
+    ).rejects.toThrow("Native channel binding conflicts with its execution context");
     expect(
       (await f.storage.scanSubmissions({}, 10, undefined, context)).items,
     ).toEqual([]);

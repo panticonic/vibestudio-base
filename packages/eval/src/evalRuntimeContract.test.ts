@@ -1,3 +1,4 @@
+import { formatRpcFailure } from "@vibestudio/rpc";
 import { describe, expect, it } from "vitest";
 import type { RpcClient } from "@vibestudio/rpc";
 import { executeSandbox } from "./sandbox.js";
@@ -107,7 +108,7 @@ describe("eval runtime surface contract", () => {
   it("rejects importing an ambient-only name (db is PRE_INJECTED)", async () => {
     const result = await run(`import { db } from "@workspace/runtime"; return db;`);
     expect(result.success).toBe(false);
-    expect(result.error).toMatch(/injected|ambient|pre-inject/i);
+    expect(formatRpcFailure(result.error!)).toMatch(/injected|ambient|pre-inject/i);
   });
 
   it("the ambient-only globals are present", async () => {

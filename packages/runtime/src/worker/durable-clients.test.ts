@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import type { RpcClient } from "@vibestudio/rpc";
+import { schemaRpcClientMock } from "@vibestudio/rpc/test-utils";
 import { DurableObjectBase } from "./durable-base.js";
 import { createTestDO } from "./durable-test-utils.js";
 import { _initFsWithRpc, fs as workerFs } from "./fs.js";
@@ -14,7 +15,7 @@ class ClientProbe extends DurableObjectBase {
   );
   protected createTables(): void {}
   protected override get rpc(): RpcClient {
-    return { call: this.call } as unknown as RpcClient;
+    return schemaRpcClientMock({ call: this.call }, this.rpcSelfId);
   }
   readBlob() {
     return this.blobstore.getText("a".repeat(64));
@@ -47,7 +48,7 @@ describe("Durable Object owned clients", () => {
     ]);
     expect(a.instance.call).toHaveBeenCalledWith("main", "blobstore.getText", [
       "a".repeat(64),
-    ]);
+    ], undefined);
     expect(b.instance.call).toHaveBeenCalledTimes(1);
   });
 

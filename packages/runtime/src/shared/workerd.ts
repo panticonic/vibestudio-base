@@ -1,6 +1,6 @@
 import { mainRpcMethods } from "@vibestudio/service-schemas/mainRpc";
 import { createDurableObjectServiceClient } from "@vibestudio/service-schemas/clients/durableObjectServiceClient";
-export { createDurableObjectServiceClient, createGadServiceClient, resolveDurableObjectService } from "@vibestudio/service-schemas/clients/durableObjectServiceClient";
+export { createDurableObjectServiceClient, resolveDurableObjectService } from "@vibestudio/service-schemas/clients/durableObjectServiceClient";
 import type { workersMethods } from "@vibestudio/service-schemas/workers";
 import { createLazyTypedRpcServiceClient } from "@vibestudio/shared/typedRpcServiceClient";
 import type { RpcMethodMap } from "@vibestudio/shared/rpcMethods";

@@ -1,4 +1,5 @@
 import { schemaRpcMock } from "@vibestudio/rpc/test-utils";
+import { durableObjectServiceFixture } from "@vibestudio/service-schemas/test-utils";
 /**
  * Panel-rpc harness: drives createAndSubscribeAgent against a mocked
  * `@workspace/runtime` rpc and asserts the per-agent config seeds into the
@@ -16,6 +17,8 @@ const mocks = vi.hoisted(() => ({
   getStateArgs: vi.fn(),
   patchStateArgs: vi.fn(),
   call: vi.fn(async (_target: string, method: string, args: unknown[]) => {
+    if (method === "workers.resolveService")
+      return resolvedChannelService(String(args[1]));
     if (method === "runtime.createEntity") {
       const spec = args[0] as { key: string; contextId?: string };
       const id = `do:workers/agent-worker:AiChatWorker:${spec.key}`;
@@ -29,9 +32,27 @@ vi.mock("@workspace/runtime", async () => ({
   rpc: (await import("@vibestudio/rpc/test-utils")).schemaRpcMock({ call: mocks.call }),
   panel: { stateArgs: { get: mocks.getStateArgs, patch: mocks.patchStateArgs } },
 }));
-vi.mock("@workspace/pubsub", () => ({
+vi.mock("@workspace/pubsub", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@workspace/pubsub")>()),
   waitForApprovalResolution: mocks.waitForApprovalResolution,
 }));
+
+function resolvedChannelService(channelId: string) {
+  return durableObjectServiceFixture(
+    `do:workers/pubsub-channel:PubSubChannel:${channelId}`,
+    {
+      origin: "workspace",
+      source: "workers/pubsub-channel",
+      name: "channel",
+      action: "provide",
+      presentation: { domain: "web", verb: "see" },
+      authority: { principals: ["code"] },
+      protocols: ["vibestudio.channel.v1"],
+      className: "PubSubChannel",
+      objectKey: channelId,
+    },
+  );
+}
 
 import { createAndSubscribeAgent, persistInstalledAgent } from "./agentLifecycle.js";
 
@@ -130,7 +151,9 @@ describe("createAndSubscribeAgent (panel-rpc harness)", () => {
 
   it("keeps activation pending across the exact workspace review", async () => {
     let subscriptionAttempts = 0;
-    mocks.call.mockImplementation(async (_target: string, _method: string, args: unknown[]) => {
+    mocks.call.mockImplementation(async (_target: string, method: string, args: unknown[]) => {
+      if (method === "workers.resolveService")
+        return resolvedChannelService(String(args[1]));
       subscriptionAttempts += 1;
       if (subscriptionAttempts === 1) {
         throw Object.assign(new Error("Waiting for workspace review"), {
@@ -199,6 +222,8 @@ function provisionalIntent(model: string): ProvisionalAgentIntent {
 function lifecycleRpc(): AgentLaunchRpc & { wireCall: ReturnType<typeof vi.fn> } {
   const rpc = {
     call: vi.fn(async (_target: string, method: string, args: unknown[]) => {
+      if (method === "workers.resolveService")
+        return resolvedChannelService(String(args[1]));
       if (method === "runtime.createEntity") {
         const spec = args[0] as { key: string; contextId: string };
         const id = `do:workers/agent-worker:AiChatWorker:${spec.key}`;
@@ -225,6 +250,7 @@ describe("ProvisionalAgentLifecycle", () => {
 
     expect(rpc.wireCall.mock.calls.map((call) => call[1])).toEqual([
       "runtime.createEntity",
+      "workers.resolveService",
       "subscribeChannel",
     ]);
     expect(claimed).toMatchObject({
@@ -249,12 +275,14 @@ describe("ProvisionalAgentLifecycle", () => {
     const rpc = lifecycleRpc();
     let attempts = 0;
     rpc.wireCall.mockImplementation(async (_target, method, args) => {
+      if (method === "workers.resolveService")
+        return resolvedChannelService(String(args[1]));
       if (method === "runtime.createEntity") {
         const spec = args[0] as { key: string; contextId: string };
         const id = `do:workers/agent-worker:AiChatWorker:${spec.key}`;
         return { id, kind: "do", source: { repoPath: "workers/agent-worker", effectiveVersion: "test" }, targetId: id, contextId: spec.contextId, agentInitialization: { ok: true, participantId: "p-1" } };
       }
-      attempts += 1;
+      if (method === "subscribeChannel") attempts += 1;
       if (attempts === 1) {
         throw Object.assign(new Error("Waiting for workspace review"), {
           code: "EREVIEWPENDING",

@@ -24,6 +24,7 @@ import {
 const HASH_A = "a".repeat(64);
 const HASH_B = "b".repeat(64);
 const HASH_C = "c".repeat(64);
+const GAD_TARGET = "do:workers/workspace-source:GadWorkspaceDO:workspace";
 const RESTART = {
   epoch: "restart",
   previousGeneration: 1,
@@ -155,6 +156,29 @@ function policy(digest = HASH_C): MissionAuthorityPlanReference {
   };
 }
 
+function resolvedGadService() {
+  return durableObjectServiceFixture(GAD_TARGET, {
+    source: "workers/workspace-source",
+    name: "workspace-source",
+    className: "GadWorkspaceDO",
+    objectKey: "workspace",
+    protocols: ["vibestudio.gad.workspace.v1"],
+  });
+}
+
+function resolvedChannelService(channelId: string) {
+  return durableObjectServiceFixture(
+    `do:workers/pubsub-channel:PubSubChannel:${channelId}`,
+    {
+      source: "workers/pubsub-channel",
+      name: "pubsub-channel",
+      className: "PubSubChannel",
+      objectKey: channelId,
+      protocols: ["vibestudio.channel.v1"],
+    },
+  );
+}
+
 function runtimeEntityReply(args: unknown[], contextId?: string) {
   const spec = args[0] as RuntimeEntityCreateSpec;
   const source = runtimeEntitySource(spec);
@@ -174,6 +198,14 @@ function runtimeEntityReply(args: unknown[], contextId?: string) {
     },
     contextId: contextId ?? spec.contextId ?? "context:test-runtime-entity",
     targetId: id,
+    ...(spec.kind === "do" && spec.agentInitialization
+      ? {
+          agentInitialization: {
+            ok: true,
+            participantId: `agent:${spec.key ?? "test-runtime-entity"}`,
+          },
+        }
+      : {}),
   });
 }
 
@@ -1092,8 +1124,8 @@ describe("MissionsDO", () => {
         async (target, method, args = [], options) => {
           harness.calls.push({ target, method, args, options });
           if (target === "main" && method === "workers.resolveService")
-            return durableObjectServiceFixture("gad");
-          if (target === "gad" && method === "putUserNotification") {
+            return resolvedGadService();
+          if (target === GAD_TARGET && method === "putUserNotification") {
             const notification = args[0] as Record<string, unknown>;
             if (
               delivery === "inbox-failed" &&
@@ -1176,7 +1208,7 @@ describe("MissionsDO", () => {
   it("records an overlapping occurrence and raises one persistent run issue", async () => {
     const harness = await createMissions();
     const executorId = "do:workers/summary:SummaryAgent:daily";
-    const gadTarget = "do:workers/workspace-source:GadWorkspaceDO:workspace";
+    const gadTarget = GAD_TARGET;
     const notifications: Array<Record<string, unknown>> = [];
     harness.rpcCall.mockImplementation(async (target, method, args = []) => {
       if (target === "main" && method === "authority.verifyAuthorityPlan")
@@ -1191,7 +1223,7 @@ describe("MissionsDO", () => {
       if (target === executorId && method === "runAutomationTurn")
         return undefined;
       if (target === "main" && method === "workers.resolveService")
-        return durableObjectServiceFixture(gadTarget);
+        return resolvedGadService();
       if (target === gadTarget && method === "putUserNotification") {
         notifications.push(args[0] as Record<string, unknown>);
         return args[0];
@@ -1309,6 +1341,8 @@ describe("MissionsDO", () => {
             return { contextId: "ctx:fresh" };
           if (target === "main" && method === "runtime.createEntity")
             return runtimeEntityReply(args, "ctx:fresh");
+          if (target === "main" && method === "workers.resolveService")
+            return resolvedChannelService(String(args[1]));
           if (method === "subscribeChannel") return undefined;
           if (target === "main" && method === "authority.admitExecution") {
             admissions += 1;
@@ -1351,7 +1385,7 @@ describe("MissionsDO", () => {
         })(),
       });
       const run = await harness.callAs(alice, "runNow", mission.missionId);
-      expect(run.phase).toBe("executing");
+      expect(run.phase, JSON.stringify(run.failure)).toBe("executing");
       const wake = await harness.instance.alarm();
       expect(wake).toBeNull();
       await harness.instance.resumeAfterRestart(RESTART);
@@ -1423,7 +1457,7 @@ describe("MissionsDO", () => {
 
   it("records failed child effects without misreporting the run as succeeded", async () => {
     const harness = await createMissions(IdempotentCommandMissionsDO);
-    const gadTarget = "do:workers/workspace-source:GadWorkspaceDO:workspace";
+    const gadTarget = GAD_TARGET;
     let gadAvailable = false;
     let closeAvailable = false;
     harness.rpcCall.mockImplementation(async (target, method, args = []) => {
@@ -1436,6 +1470,12 @@ describe("MissionsDO", () => {
         return { contextId: "ctx:fresh" };
       if (target === "main" && method === "runtime.createEntity")
         return runtimeEntityReply(args, "ctx:fresh");
+      if (
+        target === "main" &&
+        method === "workers.resolveService" &&
+        args[0] === "vibestudio.channel.v1"
+      )
+        return resolvedChannelService(String(args[1]));
       if (method === "subscribeChannel" || method === "runAutomationTurn")
         return undefined;
       if (method === "acknowledgeAutomationRun") return undefined;
@@ -1446,7 +1486,7 @@ describe("MissionsDO", () => {
         return undefined;
       }
       if (target === "main" && method === "workers.resolveService")
-        return durableObjectServiceFixture(gadTarget);
+        return resolvedGadService();
       if (target === gadTarget && method === "putUserNotification") {
         if (!gadAvailable) throw new Error("GAD temporarily unavailable");
         return args[0];
@@ -1630,6 +1670,8 @@ describe("MissionsDO", () => {
         return { contextId: "ctx:lifecycle" };
       if (target === "main" && method === "runtime.createEntity")
         return runtimeEntityReply(args, "ctx:lifecycle");
+      if (target === "main" && method === "workers.resolveService")
+        return resolvedChannelService(String(args[1]));
       if (method === "subscribeChannel" || method === "runAutomationTurn")
         return undefined;
       if (target === "main" && method === "authority.admitExecution")
@@ -1695,6 +1737,8 @@ describe("MissionsDO durable execution ownership", () => {
       if (method === "runtime.createContext")
         return { contextId: "context:owned-run" };
       if (method === "runtime.createEntity") return runtimeEntityReply(args);
+      if (method === "workers.resolveService")
+        return resolvedChannelService(String(args[1]));
       if (method === "subscribeChannel" || method === "runAutomationTurn")
         return undefined;
       if (method === "authority.admitExecution")
@@ -1972,6 +2016,12 @@ describe("MissionsDO cancellation ownership", () => {
       if (target === "main" && method === "runtime.createEntity")
         return runtimeEntityReply(args, "ctx:resume-terminal");
       if (
+        target === "main" &&
+        method === "workers.resolveService" &&
+        args[0] === "vibestudio.channel.v1"
+      )
+        return resolvedChannelService(String(args[1]));
+      if (
         method === "subscribeChannel" ||
         method === "runAutomationTurn" ||
         method === "acknowledgeAutomationRun"
@@ -2186,6 +2236,8 @@ describe("MissionsDO cancellation ownership", () => {
       if (method === "runtime.createContext")
         return { contextId: "context:task" };
       if (method === "runtime.createEntity") return runtimeEntityReply(args);
+      if (method === "workers.resolveService")
+        return resolvedChannelService(String(args[1]));
       if (
         method === "subscribeChannel" ||
         method === "runAutomationTurn" ||

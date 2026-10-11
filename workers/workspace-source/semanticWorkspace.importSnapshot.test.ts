@@ -7,6 +7,7 @@ import type { ExtensionContextLike } from "../../extensions/templates/context.js
 import type { TemplateSourceTree } from "@vibestudio/service-schemas/templates";
 // Builtin semantic-authority tests.
 import { describe, expect, it, vi } from "vitest";
+import { schemaRpcMock } from "@vibestudio/rpc/test-utils";
 import {
   canonicalSnapshotDigest,
   sha256Hex,
@@ -3283,7 +3284,7 @@ it.each(["nonoverlap", "conflict", "removal"] as const)(
       const call = async (
         _target: string,
         method: string,
-        ...args: unknown[]
+        args: unknown[],
       ): Promise<unknown> => {
         if (method === "workspaceTemplateSource.composeExact")
           return (args[0] as { sources: (typeof pin)[] }).sources[0]!.commit ===
@@ -3291,15 +3292,16 @@ it.each(["nonoverlap", "conflict", "removal"] as const)(
             ? tree(oldFile)
             : scenario === "removal"
               ? {
-                  sources: [target],
+                  ...tree(newFile, target),
                   repositories: [repository("meta", manifestFile)],
                 }
             : tree(newFile, target);
         if (method === "runtime.createContext") {
           const contextId = (args[0] as { contextId: string }).contextId;
-          return finish(
-            semantic.ensureContext({ contextId, commandId: `ensure:${contextId}` }, ingress)
+          finish(
+            semantic.ensureContext({ contextId, commandId: `ensure:${contextId}` }, ingress),
           );
+          return { contextId };
         }
         if (method === "vcs.push") pushRequests.push(args);
         const value = finish(
@@ -3315,7 +3317,7 @@ it.each(["nonoverlap", "conflict", "removal"] as const)(
         return value;
       };
       const ctx = {
-        rpc: { call },
+        rpc: schemaRpcMock({ call }),
         storage: { root: directory },
       } as unknown as ExtensionContextLike;
       const source = {

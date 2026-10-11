@@ -1,3 +1,4 @@
+import { schemaRpcMock } from "@vibestudio/rpc/test-utils";
 import { executeTool, toolResultDetails } from "../../testing/native-tool.js";
 import { describe, it, expect, vi } from "vitest";
 import { Value } from "typebox/value";
@@ -108,7 +109,7 @@ describe("createReadTool", () => {
       history: [],
       truncated: false,
     }));
-    const rpc = {
+    const rpc = schemaRpcMock({
       call: vi.fn(async (_target: string, method: string) => {
         if (method !== "fs.readText")
           throw new Error(`Unexpected RPC ${method}`);
@@ -117,7 +118,7 @@ describe("createReadTool", () => {
           contentHash: "b".repeat(64),
         };
       }),
-    };
+    });
     const tool = createReadTool("/", fs, {
       rpc: rpc as never,
       provenance: {
@@ -290,7 +291,7 @@ describe("createReadTool", () => {
 
   it("resolves a unique workspace skill name when its guessed skills/ path is absent", async () => {
     const fs = new StubFs();
-    const rpc = {
+    const rpc = schemaRpcMock({
       call: vi.fn(async (_target: string, method: string) => {
         if (method === "extensions.invoke") {
           const error = new Error(
@@ -314,6 +315,7 @@ describe("createReadTool", () => {
           return [
             {
               name: "git-bridge",
+              description: "Git source integration",
               dirPath: "extensions/git-bridge",
               skillPath: "extensions/git-bridge/SKILL.md",
             },
@@ -323,7 +325,7 @@ describe("createReadTool", () => {
         throw new Error(`Unexpected RPC ${method}`);
       }),
       stream: vi.fn(async () => new Response()),
-    };
+    });
     const tool = createReadTool(CWD, fs, { rpc: rpc as never });
 
     const result = await executeTool(
@@ -417,13 +419,13 @@ describe("createReadTool", () => {
       encoding: "json" as const,
       description: "Complete verify result",
     };
-    const rpc = {
+    const rpc = schemaRpcMock({
       call: vi.fn(async (_target: string, method: string, args: unknown[]) => {
         expect(method).toBe("blobstore.getText");
         expect(args).toEqual([digest]);
         return '{"status":"failed"}';
       }),
-    };
+    });
     const tool = createReadTool(CWD, new StubFs({ files: {} }), {
       rpc: rpc as never,
     });
@@ -492,7 +494,7 @@ describe("createReadTool", () => {
     const readFile = vi.spyOn(fs, "readFile");
     const stat = vi.spyOn(fs, "stat");
     const access = vi.spyOn(fs, "access");
-    const rpc = {
+    const rpc = schemaRpcMock({
       call: vi.fn().mockImplementation((_target, method) => {
         if (method === "fs.readText")
           return Promise.resolve(
@@ -501,7 +503,7 @@ describe("createReadTool", () => {
         return Promise.resolve([]);
       }),
       stream: vi.fn(async () => new Response()),
-    };
+    });
     const tool = createReadTool(CWD, fs, { rpc });
 
     const result = await executeTool(
@@ -539,7 +541,7 @@ describe("createReadTool", () => {
     const bytes = Buffer.from([0, 255, 1, 254, 2, 253]);
     const fs = new StubFs({ files: { [`${CWD}/value.bin`]: bytes } });
     const readFile = vi.spyOn(fs, "readFile");
-    const rpc = {
+    const rpc = schemaRpcMock({
       call: vi.fn().mockImplementation((_target, method) => {
         if (method !== "fs.readBytes")
           throw new Error(`Unexpected RPC ${method}`);
@@ -555,7 +557,7 @@ describe("createReadTool", () => {
         });
       }),
       stream: vi.fn(async () => new Response()),
-    };
+    });
     const tool = createReadBinaryTool(CWD, fs, { rpc });
 
     const input = {
@@ -616,7 +618,7 @@ describe("createReadTool", () => {
     const unavailable = Object.assign(new Error("Extension is not installed"), {
       code: "ENOEXT",
     });
-    const rpc = {
+    const rpc = schemaRpcMock({
       call: vi
         .fn()
         .mockImplementation(
@@ -639,7 +641,7 @@ describe("createReadTool", () => {
           },
         ),
       stream: vi.fn(async () => new Response()),
-    };
+    });
     const tool = createReadTool(CWD, fs, { rpc });
 
     await expect(
@@ -661,7 +663,7 @@ describe("createReadTool", () => {
     ]);
     const fs = new StubFs({ files: { [`${CWD}/pic.png`]: pngBytes } });
     const readFile = vi.spyOn(fs, "readFile");
-    const rpc = {
+    const rpc = schemaRpcMock({
       call: vi
         .fn()
         .mockImplementation(
@@ -688,7 +690,7 @@ describe("createReadTool", () => {
           },
         ),
       stream: vi.fn(async () => new Response()),
-    };
+    });
     const tool = createReadTool(CWD, fs, { rpc });
 
     const result = await executeTool(
@@ -718,7 +720,7 @@ describe("createReadTool", () => {
     const screenshotPath = `${CWD}/.tmp/panel-capture-123`;
     const fs = new StubFs({ files: { [screenshotPath]: pngBytes } });
     const readFile = vi.spyOn(fs, "readFile");
-    const rpc = {
+    const rpc = schemaRpcMock({
       call: vi
         .fn()
         .mockImplementation(
@@ -748,7 +750,7 @@ describe("createReadTool", () => {
           },
         ),
       stream: vi.fn(async () => new Response()),
-    };
+    });
     const tool = createReadTool(CWD, fs, { rpc });
 
     const result = await executeTool(
@@ -786,7 +788,7 @@ describe("createReadTool", () => {
       0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
     ]);
     const fs = new StubFs({ files: { [`${CWD}/pic.png`]: pngBytes } });
-    const rpc = {
+    const rpc = schemaRpcMock({
       call: vi
         .fn()
         .mockImplementation(
@@ -813,7 +815,7 @@ describe("createReadTool", () => {
           },
         ),
       stream: vi.fn(async () => new Response()),
-    };
+    });
     const tool = createReadTool(CWD, fs, { rpc });
     const result = await executeTool(
       tool,

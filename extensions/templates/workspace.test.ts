@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { observeWorkspace } from "./workspace.js";
 import type { ExtensionContextLike } from "./context.js";
+import { schemaRpcMock } from "@vibestudio/rpc/test-utils";
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
@@ -13,8 +14,23 @@ function deferred<T>() {
 describe("template workspace observation", () => {
   it("reads one exact protected main and inventories it without creating a context", async () => {
     const state = { kind: "event", eventId: "event:current-main" };
+    const entry = (entryPath: string, repositoryRoot: boolean) => ({
+      name: entryPath.split("/").at(-1)!,
+      path: entryPath,
+      kind: "directory" as const,
+      identity: `identity:${entryPath}`,
+      repositoryId: null,
+      repositoryRoot,
+      fileId: null,
+      lineage: {
+        authoredChangeId: null,
+        authoredByWorkUnitId: null,
+        contentClass: "internal" as const,
+        externalKeys: [],
+      },
+    });
     const call = vi.fn(
-      async (_target: string, method: string, ...args: unknown[]) => {
+      async (_target: string, method: string, args: unknown[]) => {
         if (method === "vcs.mainState") {
           expect(args).toEqual([]);
           return state;
@@ -28,32 +44,16 @@ describe("template workspace observation", () => {
             entries:
               path === ""
                 ? [
-                    { path: "meta", kind: "directory", repositoryRoot: true },
-                    {
-                      path: "extensions",
-                      kind: "directory",
-                      repositoryRoot: false,
-                    },
-                    {
-                      path: "workers",
-                      kind: "directory",
-                      repositoryRoot: false,
-                    },
+                    entry("meta", true),
+                    entry("extensions", false),
+                    entry("workers", false),
                   ]
                 : path === "extensions"
                   ? [
-                      {
-                        path: "extensions/templates",
-                        kind: "directory",
-                        repositoryRoot: true,
-                      },
+                      entry("extensions/templates", true),
                     ]
                   : [
-                      {
-                        path: "workers/models",
-                        kind: "directory",
-                        repositoryRoot: true,
-                      },
+                      entry("workers/models", true),
                     ],
             nextCursor: null,
           };
@@ -62,7 +62,7 @@ describe("template workspace observation", () => {
         // exposes the templates it is composed from.
         if (method === "vcs.resolveRepository") {
           expect(args[0]).toMatchObject({ state, repoPath: "meta" });
-          return { repositoryId: "repository:meta" };
+          return { state, repositoryId: "repository:meta", repoPath: "meta" };
         }
         if (method === "vcs.readFile") {
           expect(args[0]).toMatchObject({
@@ -70,6 +70,16 @@ describe("template workspace observation", () => {
             repositoryId: "repository:meta",
           });
           return {
+            repositoryId: "repository:meta",
+            fileId: "file:manifest",
+            repoPath: "meta",
+            path: "vibestudio.yml",
+            contentHash: "a".repeat(64),
+            authoredChangeId: null,
+            authoredByWorkUnitId: null,
+            contentClass: "internal",
+            externalKeys: [],
+            mode: 0o644,
             content: {
               kind: "text",
               text: [
@@ -96,7 +106,7 @@ describe("template workspace observation", () => {
     );
     const ctx = {
       log: { info: vi.fn(), warn: vi.fn() },
-      rpc: { call },
+      rpc: schemaRpcMock({ call }),
     } as unknown as ExtensionContextLike;
     await expect(observeWorkspace(ctx)).resolves.toMatchObject({
       mainState: state,
@@ -112,7 +122,7 @@ describe("template workspace observation", () => {
     expect(
       call.mock.calls
         .filter(([, method]) => method === "vcs.listDirectory")
-        .map(([, , input]) => (input as { path: string }).path)
+        .map(([, , args]) => ((args as unknown[])[0] as { path: string }).path)
         .sort(),
     ).toEqual(["", "extensions", "workers"]);
     expect(
@@ -122,18 +132,43 @@ describe("template workspace observation", () => {
 
   it("starts sibling repository listings together and joins them on the same main state", async () => {
     const state = { kind: "event", eventId: "event:current-main" };
+    const entry = (entryPath: string, repositoryRoot: boolean) => ({
+      name: entryPath.split("/").at(-1)!,
+      path: entryPath,
+      kind: "directory" as const,
+      identity: `identity:${entryPath}`,
+      repositoryId: null,
+      repositoryRoot,
+      fileId: null,
+      lineage: {
+        authoredChangeId: null,
+        authoredByWorkUnitId: null,
+        contentClass: "internal" as const,
+        externalKeys: [],
+      },
+    });
     const extensionsResult = deferred<unknown>();
     const workersResult = deferred<unknown>();
     const bothStarted = deferred<void>();
     const firstTurnChecked = deferred<"both" | "one">();
     const started = new Set<string>();
     const call = vi.fn(
-      async (_target: string, method: string, ...args: unknown[]) => {
+      async (_target: string, method: string, args: unknown[]) => {
         if (method === "vcs.mainState") return state;
         if (method === "vcs.resolveRepository")
-          return { repositoryId: "repository:meta" };
+          return { state, repositoryId: "repository:meta", repoPath: "meta" };
         if (method === "vcs.readFile") {
           return {
+            repositoryId: "repository:meta",
+            fileId: "file:manifest",
+            repoPath: "meta",
+            path: "vibestudio.yml",
+            contentHash: "a".repeat(64),
+            authoredChangeId: null,
+            authoredByWorkUnitId: null,
+            contentClass: "internal",
+            externalKeys: [],
+            mode: 0o644,
             content: {
               kind: "text",
               text: "systemEpoch: 0\ntemplate:\n  name: Test\n  description: Test template\n",
@@ -149,13 +184,9 @@ describe("template workspace observation", () => {
               state,
               path: "",
               entries: [
-                { path: "meta", kind: "directory", repositoryRoot: true },
-                {
-                  path: "extensions",
-                  kind: "directory",
-                  repositoryRoot: false,
-                },
-                { path: "workers", kind: "directory", repositoryRoot: false },
+                entry("meta", true),
+                entry("extensions", false),
+                entry("workers", false),
               ],
               nextCursor: null,
             };
@@ -176,7 +207,7 @@ describe("template workspace observation", () => {
     );
     const ctx = {
       log: { info: vi.fn(), warn: vi.fn() },
-      rpc: { call },
+      rpc: schemaRpcMock({ call }),
     } as unknown as ExtensionContextLike;
     const observation = observeWorkspace(ctx);
 
@@ -191,20 +222,14 @@ describe("template workspace observation", () => {
       extensionsResult.resolve({
         state,
         path: "extensions",
-        entries: [
-          {
-            path: "extensions/templates",
-            kind: "directory",
-            repositoryRoot: true,
-          },
-        ],
+          entries: [entry("extensions/templates", true)],
         nextCursor: null,
       });
       workersResult.resolve({
         state,
         path: "workers",
         entries: [
-          { path: "workers/models", kind: "directory", repositoryRoot: true },
+          entry("workers/models", true),
         ],
         nextCursor: null,
       });

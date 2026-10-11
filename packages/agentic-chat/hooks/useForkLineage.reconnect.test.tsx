@@ -7,6 +7,19 @@ import { encodeChannelSubscriptionRecord } from "@vibestudio/service-schemas/cha
 import { useForkLineage, type UseForkLineageOptions } from "./useForkLineage";
 import { durableObjectServiceFixture } from "@vibestudio/service-schemas/test-utils";
 
+function resolvedChannelService(channelId: string) {
+  return durableObjectServiceFixture(
+    `do:workers/pubsub-channel:PubSubChannel:${channelId}`,
+    {
+      name: "pubsub-channel",
+      source: "workers/pubsub-channel",
+      className: "PubSubChannel",
+      objectKey: channelId,
+      protocols: ["vibestudio.channel.v1"],
+    },
+  );
+}
+
 function harness() {
   const reconnectHandlers = new Set<() => void>();
   const client = {
@@ -40,11 +53,7 @@ function harness() {
       stream,
       call: async (_target: string, method: string, args: unknown[]) => {
         if (method === "workers.resolveService")
-          return durableObjectServiceFixture(`do:${args[1]}`, {
-            source: "workers/pubsub-channel",
-            className: "PubSubChannel",
-            objectKey: String(args[1]),
-          });
+          return resolvedChannelService(String(args[1]));
         if (method === "getProvenance") return { kind: "root" };
         if (method === "listForks") {
           if (failRead) throw new Error("snapshot unavailable");

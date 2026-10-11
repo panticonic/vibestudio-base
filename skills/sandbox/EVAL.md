@@ -260,7 +260,7 @@ These names are available in eval code. `scope`, `scopes`, `db`, `ctx`, `help`,
 are the same portable bindings that panels and workers use; use them directly
 or import them from `@workspace/runtime`.
 
-- **`rpc.call(targetId, method, args, options?)`**: portable RPC client, the
+- **`rpc.call(targetId, methodDescriptor, args, options?)`**: portable RPC client, the
   same as in panels and workers. Public calls take the receiver's method
   descriptor. Import `mainRpcMethods` from
   `@vibestudio/service-schemas/mainRpc` for host methods, for example
@@ -506,7 +506,7 @@ module exports, and eval rejects importing them.
 
 `rpc` and `fs` are both injected **and** exported by `@workspace/runtime`, so
 you may import them. The imported and injected bindings are the same clients:
-`rpc.call(targetId, method, args, options?)` and the context-scoped `fs`.
+`rpc.call(targetId, methodDescriptor, args, options?)` and the context-scoped `fs`.
 
 ### Importing the runtime surface
 
@@ -523,7 +523,7 @@ eval({ code: `
 
 <!-- BEGIN GENERATED: eval-importable -->
 
-Importable members (generated from `EVAL_IMPORTABLE_KEYS` in `runtimeSurface.eval.ts`): `PanelOperationError`, `id`, `contextId`, `rpc`, `fs`, `callMain`, `getParent`, `getParentWithContract`, `doTargetId`, `createDurableObjectServiceClient`, `gatewayConfig`, `gatewayFetch`, `openExternal`, `createPanelSlot`, `openPanel`, `getPanelHandle`, `workers`, `workspaces`, `workspace`, `credentials`, `browserData`, `git`, `vcs`, `gad`, `images`, `missions`, `blobstore`, `webhooks`, `extensions`, `templates`, `notifications`, `problemReports`, `panelTree`, `services`, `hosts`, `runtime`.
+Importable members (generated from `EVAL_IMPORTABLE_KEYS` in `runtimeSurface.eval.ts`): `formatRpcFailure`, `PanelOperationError`, `id`, `contextId`, `rpc`, `fs`, `callMain`, `getParent`, `getParentWithContract`, `doTargetId`, `createDurableObjectServiceClient`, `gatewayConfig`, `gatewayFetch`, `openExternal`, `createPanelSlot`, `openPanel`, `getPanelHandle`, `workers`, `workspaces`, `workspace`, `credentials`, `browserData`, `git`, `vcs`, `gad`, `images`, `missions`, `blobstore`, `webhooks`, `extensions`, `templates`, `notifications`, `problemReports`, `panelTree`, `services`, `hosts`, `runtime`.
 
 <!-- END GENERATED: eval-importable -->
 

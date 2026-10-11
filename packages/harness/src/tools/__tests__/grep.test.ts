@@ -1,3 +1,4 @@
+import { schemaRpcMock } from "@vibestudio/rpc/test-utils";
 import { executeTool } from "../../testing/native-tool.js";
 import { describe, it, expect, vi } from "vitest";
 import { createGrepTool, shouldWarnRe2Fallback } from "../grep.js";
@@ -102,7 +103,7 @@ describe("createGrepTool", () => {
 
   it("uses the host fs service before walking files", async () => {
     const calls: Array<{ target: string; method: string }> = [];
-    const rpc = {
+    const rpc = schemaRpcMock({
       async call(target: string, method: string) {
         calls.push({ target, method });
         if (method === "fs.grep") {
@@ -124,7 +125,7 @@ describe("createGrepTool", () => {
           code: "ENOEXT",
         });
       },
-    };
+    });
     const tool = createGrepTool(CWD, new StubFs({ files: {} }), {
       rpc: rpc as never,
     });
@@ -142,7 +143,7 @@ describe("createGrepTool", () => {
   });
 
   it("routes directly through the host fs service without invoking an extension", async () => {
-    const rpc = {
+    const rpc = schemaRpcMock({
       call: vi.fn().mockImplementation((_target: string, method: string) => {
         if (method === "extensions.invoke") return new Promise(() => {});
         if (method === "fs.grep") {
@@ -162,7 +163,7 @@ describe("createGrepTool", () => {
         }
         return Promise.reject(new Error(`Unexpected method: ${method}`));
       }),
-    };
+    });
     const tool = createGrepTool(CWD, new StubFs({ files: {} }), {
       rpc: rpc as never,
     });
@@ -185,13 +186,13 @@ describe("createGrepTool", () => {
   });
 
   it("propagates host failures instead of reporting a false empty search", async () => {
-    const rpc = {
+    const rpc = schemaRpcMock({
       call: vi
         .fn()
         .mockRejectedValue(
           Object.assign(new Error("denied"), { code: "EACCES" }),
         ),
-    };
+    });
     const tool = createGrepTool(CWD, new StubFs({ files: {} }), {
       rpc: rpc as never,
     });
@@ -204,11 +205,11 @@ describe("createGrepTool", () => {
   });
 
   it("passes cancellation and useful context ranges to the bounded host search", async () => {
-    const rpc = {
+    const rpc = schemaRpcMock({
       call: vi
         .fn()
         .mockResolvedValue({ matches: [], matchCount: 0, truncated: false }),
-    };
+    });
     const tool = createGrepTool(CWD, new StubFs({ files: {} }), {
       rpc: rpc as never,
     });

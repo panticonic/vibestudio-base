@@ -4,7 +4,7 @@ import { agentRpcMethods } from "@workspace/agentic-do/rpc-contract";
 import { createMainRpcCaller } from "@vibestudio/service-schemas/mainRpc";
 import { resolveDurableObjectService } from "@vibestudio/service-schemas/clients/durableObjectServiceClient";
 import { channelRpcMethods } from "@workspace-workers/pubsub-channel/contract";
-import { createGadServiceClient } from "@vibestudio/service-schemas/clients/durableObjectServiceClient";
+import { createGadServiceClient } from "@vibestudio/service-schemas/clients/gadServiceClient";
 import { mainRpcMethods } from "@vibestudio/service-schemas/mainRpc";
 import type { ChannelJoinResult } from "@workspace/pubsub/rpc-contract";
 /**

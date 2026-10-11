@@ -133,7 +133,8 @@
   "dependencies": {
     "@workspace/runtime": "workspace:*",
     "@workspace/cdp-client": "workspace:*",
-    "@workspace/testkit": "workspace:*"
+    "@workspace/testkit": "workspace:*",
+    "@vibestudio/service-schemas": "workspace:*"
   },
   "exports": {
     ".": "./index.ts"

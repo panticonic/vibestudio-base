@@ -64,8 +64,10 @@ describe("durable receiver caller attribution", () => {
           );
           expect(denied.status).toBe(403);
           await expect(denied.json()).resolves.toMatchObject({
-            errorCode: "EACCES",
-            error: expect.stringContaining("does not accept cross-workspace RPC"),
+            error: {
+              code: "EACCES",
+              message: expect.stringContaining("does not accept cross-workspace RPC"),
+            },
           });
         } else {
           const deliver = (method: string) =>
@@ -108,8 +110,10 @@ describe("durable receiver caller attribution", () => {
           expect(deniedReply.message).toMatchObject({
             type: "response",
             requestId: "request:inspectLocalCaller",
-            errorCode: "EACCES",
-            error: expect.stringContaining("does not accept cross-workspace RPC"),
+            error: {
+              code: "EACCES",
+              message: expect.stringContaining("does not accept cross-workspace RPC"),
+            },
           });
         }
       } finally {

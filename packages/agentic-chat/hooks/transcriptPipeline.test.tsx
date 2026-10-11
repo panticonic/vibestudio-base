@@ -82,13 +82,15 @@ describe("headless transcript pipeline", () => {
       );
     });
 
-    const stored = (
-      await harness.gad.call("readChannelEnvelopes", {
-        channelId: harness.channelId,
-        payloadKind: AGENTIC_EVENT_PAYLOAD_KIND,
-      })
-    ).items;
-    expect(stored.map((envelope: any) => envelope.payload.payload.blocks?.[0]?.content)).toEqual(
+    const stored = await harness.channel.instance.getReplayAfter({
+      after: 0,
+      limit: 50,
+    });
+    expect(
+      stored.logEvents
+        .filter((event) => event.type === AGENTIC_EVENT_PAYLOAD_KIND)
+        .map((event) => (event.payload as { payload?: { blocks?: Array<{ content?: unknown }> } }).payload?.blocks?.[0]?.content),
+    ).toEqual(
       expect.arrayContaining([
         "The user just opened this workspace for the first time",
         "Welcome to Vibestudio.",

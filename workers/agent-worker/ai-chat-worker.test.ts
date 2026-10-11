@@ -3,7 +3,7 @@ import {
   createRpcMethodCaller,
   type RpcMethodArgs,
 } from "@vibestudio/shared/rpcMethods";
-import { gadRpcMethods } from "@vibestudio/service-schemas/clients/durableObjectServiceClient";
+import { gadRpcMethods } from "@vibestudio/service-schemas/clients/gadServiceClient";
 import { gadWireMethods } from "@vibestudio/service-schemas/workspaceSource";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { BACKGROUND_CONTEXT } from "@panticonic/pi-chord/context";

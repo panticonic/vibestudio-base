@@ -9,6 +9,7 @@ import {
   rootRuntimeFromTemplateManifest,
 } from "@vibestudio/workspace/templateManifest";
 import type { ExtensionContextLike } from "./context.js";
+import { schemaRpcMock } from "@vibestudio/rpc/test-utils";
 
 it("records its own upstream and overrides, and retries an uncertain main push without publishing again", async () => {
   const root = await fs.mkdtemp(
@@ -86,9 +87,10 @@ it("records its own upstream and overrides, and retries an uncertain main push w
     const pushes: unknown[] = [];
     const invoke = vi.fn().mockResolvedValue(published);
     const call = vi.fn(
-      async (_target: string, method: string, ...args: unknown[]) => {
-        const input = args[0] as Record<string, unknown>;
-        if (method === "runtime.createContext") return {};
+      async (_target: string, method: string, args: unknown[]) => {
+        const input = (args[0] ?? {}) as Record<string, unknown>;
+        if (method === "runtime.createContext")
+          return { contextId: input["contextId"] };
         if (method === "vcs.status")
           return {
             contextId: input["contextId"],
@@ -124,11 +126,27 @@ it("records its own upstream and overrides, and retries an uncertain main push w
             input["changes"] as Array<{ edits: Array<{ text: string }> }>
           )[0]!.edits[0]!.text;
           head = "edited";
-          return {};
+          return {
+            commandId: input["commandId"],
+            contextId: input["contextId"],
+            workUnitId: "work:publication",
+            applicationId: "application:publication",
+            changeCount: 1,
+            changeIds: ["change:publication"],
+            incorporatedChangeCount: 0,
+            incorporatedChangeIds: [],
+            decisionIds: [],
+            workingHead: { kind: "event", eventId: head },
+          };
         }
         if (method === "vcs.commit") {
           head = "published";
-          return {};
+          return {
+            contextId: input["contextId"],
+            event: { kind: "event", eventId: head },
+            committedApplicationIds: ["application:publication"],
+            integrationSourceEventIds: [],
+          };
         }
         if (method === "vcs.push") {
           pushes.push(input);
@@ -137,14 +155,20 @@ it("records its own upstream and overrides, and retries an uncertain main push w
             lost = false;
             throw new Error("response lost");
           }
-          return {};
+          return {
+            contextId: input["contextId"],
+            eventId: input["expectedCommittedEventId"],
+            mainEventId: "published",
+            effectId: "effect:publication",
+            appliedAt: "2026-07-15T00:00:00.000Z",
+          };
         }
         throw new Error(`Unexpected ${method}`);
       },
     );
     const ctx = {
       storage: { root },
-      rpc: { call },
+      rpc: schemaRpcMock({ call }),
       extensions: { invoke },
     } as unknown as ExtensionContextLike;
     const inspect = vi.fn().mockResolvedValue({

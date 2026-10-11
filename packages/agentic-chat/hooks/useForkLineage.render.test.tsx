@@ -9,6 +9,19 @@ import { encodeChannelSubscriptionRecord } from "@vibestudio/service-schemas/cha
 import { useForkLineage, type UseForkLineageOptions } from "./useForkLineage";
 import { durableObjectServiceFixture } from "@vibestudio/service-schemas/test-utils";
 
+function resolvedChannelService(channelId: string) {
+  return durableObjectServiceFixture(
+    `do:workers/pubsub-channel:PubSubChannel:${channelId}`,
+    {
+      name: "pubsub-channel",
+      source: "workers/pubsub-channel",
+      className: "PubSubChannel",
+      objectKey: channelId,
+      protocols: ["vibestudio.channel.v1"],
+    },
+  );
+}
+
 function message(content: string): ChatMessage {
   return {
     id: "assistant-1",
@@ -53,14 +66,7 @@ describe("useForkLineage render stability", () => {
       ...schemaRpcMock({
         call: async (target: string, method: string, args: unknown[]) => {
           if (target === "main" && method === "workers.resolveService") {
-            return durableObjectServiceFixture(
-              `do:channel:${String(args[1])}`,
-              {
-                source: "workers/pubsub-channel",
-                className: "PubSubChannel",
-                objectKey: String(args[1]),
-              },
-            );
+            return resolvedChannelService(String(args[1]));
           }
           if (method === "getProvenance") return { kind: "root" };
           if (method === "listForks") {
@@ -152,16 +158,11 @@ describe("useForkLineage render stability", () => {
       ...schemaRpcMock({
         call: async (target: string, method: string, args: unknown[]) => {
           if (target === "main" && method === "workers.resolveService") {
-            return durableObjectServiceFixture(
-              `do:channel:${String(args[1])}`,
-              {
-                source: "workers/pubsub-channel",
-                className: "PubSubChannel",
-                objectKey: String(args[1]),
-              },
-            );
+            return resolvedChannelService(String(args[1]));
           }
-          const targetChannel = target.slice("do:channel:".length);
+          const targetChannel = target.slice(
+            "do:workers/pubsub-channel:PubSubChannel:".length,
+          );
           if (method === "getProvenance") {
             return targetChannel === "child-a"
               ? {
@@ -221,14 +222,7 @@ describe("useForkLineage render stability", () => {
       ...schemaRpcMock({
         call: async (target: string, method: string, args: unknown[]) => {
           if (target === "main" && method === "workers.resolveService") {
-            return durableObjectServiceFixture(
-              `do:channel:${String(args[1])}`,
-              {
-                source: "workers/pubsub-channel",
-                className: "PubSubChannel",
-                objectKey: String(args[1]),
-              },
-            );
+            return resolvedChannelService(String(args[1]));
           }
           if (method === "getProvenance") return { kind: "root" };
           if (method === "listForks") return { headSeq: 12, forks: [] };
@@ -295,14 +289,7 @@ describe("useForkLineage render stability", () => {
           ),
         call: async (target: string, method: string, args: unknown[]) => {
           if (target === "main" && method === "workers.resolveService") {
-            return durableObjectServiceFixture(
-              `do:channel:${String(args[1])}`,
-              {
-                source: "workers/pubsub-channel",
-                className: "PubSubChannel",
-                objectKey: String(args[1]),
-              },
-            );
+            return resolvedChannelService(String(args[1]));
           }
           if (method === "getProvenance") return { kind: "root" };
           if (method === "listForks") return { headSeq: 12, forks: [] };

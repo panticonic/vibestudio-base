@@ -11,6 +11,7 @@ import {
 import { sha256Hex } from "@vibestudio/content-addressing";
 import { TemplatePushEngine } from "./templatePush.js";
 import type { ProtectedRepositorySnapshot } from "./bridge.js";
+import { schemaRpcMock } from "@vibestudio/rpc/test-utils";
 
 const BASE = "c".repeat(40);
 const roots: string[] = [];
@@ -36,6 +37,7 @@ function snapshot(repoPath: string, eventId: string, marker: string): ProtectedR
 
 interface SemanticContext {
   clean: boolean;
+  committed: { kind: "event"; eventId: string };
   head: { kind: "event"; eventId: string };
   content: string | null;
 }
@@ -44,67 +46,107 @@ function semanticRpc() {
   const contexts = new Map<string, SemanticContext>();
   let event = 0;
   const call = vi.fn(
-    async <T>(
+    async (
       _target: string,
       method: string,
-      args: {
-        contextId: string;
-        changes: Array<{ content: { text: string } }>;
-      }
-    ): Promise<T> => {
+      wireArgs: unknown[],
+    ): Promise<unknown> => {
+      const args = (wireArgs[0] ?? {}) as {
+        contextId?: string;
+        changes?: Array<{ content: { text: string } }>;
+        commandId?: string;
+        state?: { kind: "event"; eventId: string };
+      };
       if (method === "runtime.createContext") {
+        const contextId = args.contextId;
+        if (!contextId) throw new Error("missing semantic context id");
         contexts.set(
-          args.contextId,
-          contexts.get(args.contextId) ?? {
+          contextId,
+          contexts.get(contextId) ?? {
             clean: true,
+            committed: { kind: "event", eventId: "semantic-main" },
             head: { kind: "event", eventId: "semantic-main" },
             content: null,
           }
         );
-        return undefined as T;
+        return { contextId };
       }
-      const id = args.contextId as string | undefined;
+      const id = args.contextId;
       const context = id ? contexts.get(id) : [...contexts.values()][0];
       if (!context) throw new Error(`missing semantic context for ${method}`);
       if (method === "vcs.status") {
+        if (!args.contextId) throw new Error("missing semantic context id");
         return {
+          contextId: args.contextId,
+          mainEventId: "semantic-main",
+          mainRelation: context.clean ? "at" : "ahead",
+          workingCounts: {
+            applications: context.clean ? 0 : 1,
+            workUnits: context.clean ? 0 : 1,
+            changes: context.clean ? 0 : 1,
+          },
           clean: context.clean,
+          committed: context.committed,
           workingHead: context.head,
-          committed: context.head,
-        } as T;
+          integrating: [],
+        };
       }
       if (method === "vcs.resolveRepository") {
-        return { repositoryId: "repository:meta", repoPath: "meta" } as T;
+        return { state: args.state, repositoryId: "repository:meta", repoPath: "meta" };
       }
       if (method === "vcs.readFile") {
         return (
           context.content === null
             ? null
             : {
+                repositoryId: "repository:meta",
                 fileId: "file:intent",
+                repoPath: "meta",
                 path: "template-suggestion-intent.json",
                 mode: 0o644,
+                contentHash: "a".repeat(64),
+                authoredChangeId: null,
+                authoredByWorkUnitId: null,
+                contentClass: "internal",
+                externalKeys: [],
                 content: { kind: "text", text: context.content },
               }
-        ) as T;
+        );
       }
       if (method === "vcs.edit") {
-        const [change] = args.changes;
+        const [change] = args.changes ?? [];
         if (!change) throw new Error("missing semantic edit");
         context.content = change.content.text;
         context.clean = false;
         context.head = { kind: "event", eventId: `semantic-edit-${++event}` };
-        return undefined as T;
+        return {
+          commandId: args.commandId,
+          contextId: args.contextId,
+          workUnitId: `work:semantic-${event}`,
+          applicationId: `application:semantic-${event}`,
+          changeCount: 1,
+          changeIds: [`change:semantic-${event}`],
+          incorporatedChangeCount: 0,
+          incorporatedChangeIds: [],
+          decisionIds: [],
+          workingHead: context.head,
+        };
       }
       if (method === "vcs.commit") {
         context.clean = true;
         context.head = { kind: "event", eventId: `semantic-commit-${++event}` };
-        return undefined as T;
+        context.committed = context.head;
+        return {
+          contextId: args.contextId,
+          event: context.head,
+          committedApplicationIds: [`application:semantic-${event - 1}`],
+          integrationSourceEventIds: [],
+        };
       }
       throw new Error(`unexpected semantic RPC ${method}`);
     }
   );
-  return { call, contexts };
+  return { rpc: schemaRpcMock({ call }), contexts };
 }
 
 function diskTree(root: string): GitCommitTreeEntry[] {
@@ -147,7 +189,7 @@ function fixture() {
     storage: { root: statePath },
     workspace: { getInfo: vi.fn(async () => ({ path: root, statePath, id: "ws-1" })) },
     credentials: { gitHttp: vi.fn(() => ({})) },
-    rpc: semantic,
+    rpc: semantic.rpc,
   };
   return {
     root,

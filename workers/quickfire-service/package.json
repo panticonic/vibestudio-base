@@ -62,10 +62,14 @@
     "@workspace/quickfire-core": "workspace:*",
     "@workspace/model-catalog": "workspace:*",
     "@workspace/runtime": "workspace:*",
-    "react": "^19.0.0"
+    "react": "^19.0.0",
+    "@vibestudio/shared": "workspace:*",
+    "@vibestudio/service-schemas": "workspace:*",
+    "@workspace/agentic-do": "workspace:*"
   },
   "devDependencies": {
-    "vitest": "^3.2.7"
+    "vitest": "^3.2.7",
+    "@vibestudio/rpc": "workspace:*"
   },
   "exports": {
     "./contract": "./contract.ts",

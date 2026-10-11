@@ -30,6 +30,33 @@ function staticInputs(
   return found;
 }
 
+/** Include the shortest known static path in boundary failures. */
+function staticImportPath(
+  inputs: NonNullable<Awaited<ReturnType<typeof build>>["metafile"]>["inputs"],
+  entry: string,
+  target: string,
+): string[] | null {
+  const queue: Array<{ input: string; path: string[] }> = [
+    { input: entry, path: [entry] },
+  ];
+  const seen = new Set<string>();
+  while (queue.length > 0) {
+    const current = queue.shift()!;
+    if (current.input.includes(target)) return current.path;
+    if (seen.has(current.input)) continue;
+    seen.add(current.input);
+    for (const dependency of inputs[current.input]?.imports ?? []) {
+      if (!dependency.external && dependency.kind !== "dynamic-import") {
+        queue.push({
+          input: dependency.path,
+          path: [...current.path, dependency.path],
+        });
+      }
+    }
+  }
+  return null;
+}
+
 describe("panel runtime startup boundary", () => {
   it.each(["index.ts", "installed.ts"])(
     "keeps host-only implementations and deferred validators out of %s startup",
@@ -82,9 +109,12 @@ describe("panel runtime startup boundary", () => {
       expect(entry).toBeDefined();
       const eager = [...staticInputs(result.metafile!.inputs, entry!)];
       for (const forbidden of FORBIDDEN_EAGER_INPUTS) {
+        const included = eager.filter((input) => input.includes(forbidden));
         expect(
-          eager.filter((input) => input.includes(forbidden)),
-          forbidden,
+          included,
+          `${forbidden}; static import path: ${
+            staticImportPath(result.metafile!.inputs, entry!, forbidden)?.join(" -> ") ?? "unavailable"
+          }`,
         ).toEqual([]);
       }
     },

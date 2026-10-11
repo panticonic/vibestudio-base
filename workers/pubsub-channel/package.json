@@ -208,10 +208,11 @@
     "@workspace/runtime": "workspace:*",
     "@workspace/pubsub": "workspace:*",
     "@workspace/channel-policies": "workspace:*",
-    "zod": "^3.25.76"
+    "zod": "^3.25.76",
+    "@vibestudio/durable": "workspace:*",
+    "@vibestudio/service-schemas": "workspace:*"
   },
   "devDependencies": {
-    "@vibestudio/durable": "workspace:*",
     "@workspace-workers/workspace-source": "workspace:*",
     "@panticonic/builtin": "workspace:*",
     "vitest": "^3.2.7"

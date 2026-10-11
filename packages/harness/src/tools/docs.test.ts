@@ -1,5 +1,7 @@
 import { executeTool } from "../testing/native-tool.js";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+import type { RpcWireCaller } from "@vibestudio/rpc/internal";
+import { schemaRpcMock } from "@vibestudio/rpc/test-utils";
 import { parseUnitAuthorityManifest } from "@vibestudio/shared/authorityManifest";
 import { portableExports } from "@vibestudio/service-schemas/runtime/runtimeSurface.portable";
 import {
@@ -10,13 +12,14 @@ import {
 
 describe("docs_search", () => {
   it("caps oversized result requests instead of turning discovery into a tool error", async () => {
-    const calls: Array<{ method: string; args: unknown[] }> = [];
-    const tool = createDocsSearchTool(
-      async <T>(method: string, args: unknown[]) => {
-        calls.push({ method, args });
-        return [] as T;
+    const calls: Array<{ method: string; args: unknown[]; options?: unknown }> = [];
+    const wireCall = vi.fn<RpcWireCaller["call"]>(
+      async (_target: string, method: string, args: unknown[], options?: unknown) => {
+        calls.push({ method, args, ...(options === undefined ? {} : { options }) });
+        return [];
       },
     );
+    const tool = createDocsSearchTool(schemaRpcMock({ call: wireCall }));
 
     await executeTool(
       tool,
@@ -28,18 +31,25 @@ describe("docs_search", () => {
       {
         method: "docs.search",
         args: ["runtime", { surface: undefined, limit: 100 }],
+        options: { signal: undefined },
       },
     ]);
   });
 
   it("forwards cancellation to catalog discovery", async () => {
     const observed: Array<AbortSignal | undefined> = [];
-    const tool = createDocsSearchTool(
-      async <T>(_method: string, _args: unknown[], signal?: AbortSignal) => {
-        observed.push(signal);
-        return [] as T;
+    const wireCall = vi.fn<RpcWireCaller["call"]>(
+      async (
+        _target: string,
+        _method: string,
+        _args: unknown[],
+        options?: { signal?: AbortSignal },
+      ) => {
+        observed.push(options?.signal);
+        return [];
       },
     );
+    const tool = createDocsSearchTool(schemaRpcMock({ call: wireCall }));
     const controller = new AbortController();
 
     await executeTool(
@@ -154,7 +164,7 @@ describe("renderEntry (readable docs_open text)", () => {
     );
     expect(text).toContain("query: string — Keyword query.");
     expect(text).toContain(
-      'await rpc.call("main", "docs.search", ["query", { ... }])',
+      'await rpc.call("main", mainRpcMethods["docs.search"], ["query", { ... }])',
     );
     expect(text).not.toContain("arg0");
   });
@@ -184,7 +194,7 @@ describe("renderEntry (readable docs_open text)", () => {
     expect(text).toContain(".feedId: string — the feed id");
   });
 
-  it("shows the raw rpc.call form for service methods", () => {
+  it("shows the descriptor-based rpc.call form for service methods", () => {
     const entry: CatalogEntry = {
       id: "service:workers.listSources",
       surface: "service",
@@ -199,7 +209,9 @@ describe("renderEntry (readable docs_open text)", () => {
     };
     const text = renderEntry(entry);
 
-    expect(text).toContain('await rpc.call("main", "workers.listSources", [])');
+    expect(text).toContain('import { mainRpcMethods } from "@vibestudio/service-schemas/mainRpc"');
+    expect(text).toContain('await rpc.call("main", mainRpcMethods["workers.listSources"], [])');
+    expect(text).not.toContain('rpc.call("main", "workers.listSources"');
     expect(text).toContain("services.<name>");
     expect(text).toContain("not necessarily an importable named export");
     expect(text).toContain("even when a runtime binding shares the name");
@@ -320,7 +332,9 @@ describe("renderEntry (readable docs_open text)", () => {
         { protocol: "vibestudio.gad.workspace.v1", availability: "required" },
       ],
     });
-    expect(text).toContain('rpc.call(service.targetId, "exactMethodName"');
+    expect(text).toContain(
+      "Import the receiver's method descriptor from its contract module",
+    );
     expect(text).toContain("Installed panel code uses its own code identity");
     expect(text).toContain("Installed-unit declaration");
     expect(text).toContain('"workspace-service:gad.workspace"');
@@ -391,6 +405,8 @@ describe("renderEntry (readable docs_open text)", () => {
       expect(text).toContain(
         'runtime.workers.resolveService("example.notes.v1")',
       );
+      if (method)
+        expect(text).toContain("rpc.call(service.targetId, methodDescriptor");
     },
   );
 });

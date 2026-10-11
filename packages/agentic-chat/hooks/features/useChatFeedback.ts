@@ -250,7 +250,7 @@ export function useChatFeedback({
 - onCancel() — signal cancellation to the agent
 - onError(message) — signal error
 - chat — chat API
-  - chat.rpc.call(target, method, args) — call a runtime service; \`args\` is the complete positional argument array, e.g. chat.rpc.call("main", "fs.readFile", ["/src/config.ts"])
+  - chat.rpc.call(target, methodDescriptor, args) — call a runtime service with its receiver-owned descriptor and complete positional argument array. For host methods, import \`mainRpcMethods\` from \`@vibestudio/service-schemas/mainRpc\`; for example, chat.rpc.call("main", mainRpcMethods["fs.readFile"], ["/src/config.ts"]).
   - chat.publish(type, payload) — publish a typed non-message event
 - scope — panel-local durable UI state shared by inline_ui, feedback_custom, and the action bar in this panel instance. Serializable values persist in localStorage across panel reloads; functions, class instances, DOM objects, and other nonserializable values are live-only and are dropped on restore.
 - scopes — scope API for this panel-local UI scope: scopes.save(), scopes.push(), scopes.list(), scopes.get(id)

@@ -28,7 +28,7 @@ import {
  * targets expose the identical core surface.
  */
 
-import type { RpcClient } from "@vibestudio/rpc";
+import { formatRpcFailure, type RpcClient } from "@vibestudio/rpc";
 import {
   createBrowserDataClient,
   type BrowserDataClient,
@@ -130,6 +130,8 @@ export interface RuntimeHost {
 
 /** The portable runtime surface — identical across panel · worker · eval. */
 export interface WorkspaceRuntime {
+  /** Format a structured RPC failure for concise user-facing diagnostics. */
+  readonly formatRpcFailure: typeof formatRpcFailure;
   /** Structured error class thrown by readiness-bearing panel operations. */
   readonly PanelOperationError: typeof PanelOperationError;
   readonly id: string;
@@ -193,9 +195,8 @@ export { createRuntimeParentHandle } from "./handles.js";
 /**
  * Raw service namespace, identical on every target: `services.<name>` is
  * always the server service named `<name>`, never a runtime client. Every
- * `.<method>(...args)` becomes `rt.callMain("<name>.<method>", ...args)`, i.e.
- * `rpc.call("main", "<name>.<method>", args)`, so the methods and arguments are
- * exactly the service catalog's. Rich runtime clients (`fs`, `vcs`,
+ * `.<method>(...args)` becomes `rt.callMain("<name>.<method>", ...args)`, which
+ * resolves the validated host method descriptor before dispatch. Rich runtime clients (`fs`, `vcs`,
  * `blobstore`, `workers`, …) are separate top-level bindings.
  *
  * SECURITY: the proxy adds NO new access. It routes solely through `callMain`,
@@ -390,6 +391,7 @@ export function createHostedRuntime(host: RuntimeHost): WorkspaceRuntime {
   const parentApi = createParentHandleApi(host.resolveParent);
 
   const runtime = {
+    formatRpcFailure,
     PanelOperationError,
     id: host.id,
     contextId: host.contextId,

@@ -1,6 +1,8 @@
 // @vitest-environment jsdom
 
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import type { ReactElement } from "react";
+import { fireEvent, render as renderBase, screen, waitFor } from "@testing-library/react";
+import { Theme } from "@radix-ui/themes";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ChatMessage } from "../types";
 
@@ -73,6 +75,14 @@ vi.mock("../hooks/useStickToBottom.js", () => ({
 }));
 
 import { MessageList } from "./MessageList.js";
+
+function render(ui: ReactElement, options?: Parameters<typeof renderBase>[1]) {
+  const result = renderBase(<Theme>{ui}</Theme>, options);
+  return {
+    ...result,
+    rerender: (next: ReactElement) => result.rerender(<Theme>{next}</Theme>),
+  };
+}
 
 function makeMessage(id: string, overrides: Partial<ChatMessage> = {}): ChatMessage {
   return {

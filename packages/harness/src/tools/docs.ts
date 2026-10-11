@@ -325,7 +325,7 @@ function serviceRpcExample(
     if (type.endsWith("[]")) return "[]";
     return `/* ${type} */`;
   });
-  return `await rpc.call("main", ${JSON.stringify(qualifiedName)}, [${args.join(", ")}])`;
+  return `import { mainRpcMethods } from "@vibestudio/service-schemas/mainRpc";\nawait rpc.call("main", mainRpcMethods[${JSON.stringify(qualifiedName)}], [${args.join(", ")}])`;
 }
 
 export function renderEntry(entry: CatalogEntry): string {
@@ -411,7 +411,7 @@ export function renderEntry(entry: CatalogEntry): string {
       if (rpcExample) {
         parts.push(
           `Eval/raw RPC call:\n${rpcExample}\n\n` +
-            "The portable `rpc.call(target, method, args)` form addresses this service; normal caller, authority, and session-admission checks still apply. " +
+            "The portable `rpc.call(target, methodDescriptor, args)` form addresses this service with its receiver-owned descriptor; normal caller, authority, and session-admission checks still apply. " +
             "A service name is not necessarily an importable named export of `@workspace/runtime`. " +
             "In eval, `services.<name>.<method>(...)` is the same raw service call, even when a runtime binding shares the name.",
         );
@@ -492,12 +492,11 @@ export function renderEntry(entry: CatalogEntry): string {
           : "";
       const callExample = entry.parent
         ? durableObjectGuard +
-          `await rpc.call(service.targetId, ${JSON.stringify(
-            entry.qualifiedName.split(".").at(-1),
-          )}, [/* args */]);`
+          "// Import this method's RpcMethod descriptor from the receiver's contract module.\n" +
+          "await rpc.call(service.targetId, methodDescriptor, [/* args */]);"
         : durableObjectGuard +
           (access?.target?.kind === "durable-object"
-            ? '// Open a method doc, then call: await rpc.call(service.targetId, "exactMethodName", [/* args */]);'
+            ? "// Import the receiver's method descriptor from its contract module before calling rpc.call."
             : "// Stateless worker services expose service.routeBasePath for their published canonical HTTP route.\n// A context-local alias may reference an existing published route; it does not serve task-context code.\n// Private context-local services use Durable Objects.");
       const factoryObjectKey =
         access?.target?.kind === "durable-object" &&

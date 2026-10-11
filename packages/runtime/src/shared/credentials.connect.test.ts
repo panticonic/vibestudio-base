@@ -64,6 +64,7 @@ describe("runtime credential OAuth API", () => {
           flow: expect.objectContaining({ clientId: "client-1" }),
         }),
       ],
+      undefined,
     );
   });
 });

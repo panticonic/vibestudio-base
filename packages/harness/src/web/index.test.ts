@@ -1,3 +1,5 @@
+import { wireCallerFor } from "@vibestudio/rpc/internal";
+import { schemaRpcMock } from "@vibestudio/rpc/test-utils";
 import type { ToolRegistration } from "@panticonic/pi-durable";
 import { executeTool, toolText } from "../testing/native-tool.js";
 import { describe, it, expect, vi } from "vitest";
@@ -142,7 +144,7 @@ function makeBlobstore() {
       return Promise.reject(new Error(`unexpected rpc method ${method}`));
     },
   );
-  return { rpc: { call }, store };
+  return { rpc: schemaRpcMock({ call }), store };
 }
 
 describe("createWebTools", () => {
@@ -511,11 +513,11 @@ describe("createWebTools", () => {
             done: true,
           } as T;
         }
-        return (await blobRpc.call(target, method, args)) as T;
+        return (await wireCallerFor(blobRpc).call(target, method, args)) as T;
       },
     );
     const registered = registeredTools(
-      createWebTools({ rpc: { call } as never }),
+      createWebTools({ rpc: schemaRpcMock({ call }) }),
     );
 
     const result = await executeTool(
@@ -526,12 +528,12 @@ describe("createWebTools", () => {
 
     expect(call).toHaveBeenCalledWith("main", "chromiumFetch.openBrowser", [
       "https://example.com/private",
-    ]);
+    ], undefined);
     expect(call).toHaveBeenCalledWith("main", "chromiumFetch.read", [
       "c531b602-45d7-4875-bbe8-c876f0721750",
       0,
       256 * 1024,
-    ]);
+    ], undefined);
     expect((result.details as { session: string }).session).toBe("browser");
   });
 

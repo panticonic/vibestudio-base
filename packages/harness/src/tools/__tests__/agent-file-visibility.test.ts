@@ -1,3 +1,4 @@
+import { schemaRpcMock } from "@vibestudio/rpc/test-utils";
 import { executeTool } from "../../testing/native-tool.js";
 import { describe, expect, it, vi } from "vitest";
 import { createAgentFileVisibility } from "../agent-file-visibility.js";
@@ -226,7 +227,7 @@ describe("agent file visibility", () => {
     });
 
     const grep = await executeTool(
-      createGrepTool("/", fs, { rpc: { call } as never, visibility }),
+      createGrepTool("/", fs, { rpc: schemaRpcMock({ call }), visibility }),
       { pattern: "needle", path: "skills", includeIgnored: true },
       { callId: "grep" },
     );
@@ -236,7 +237,7 @@ describe("agent file visibility", () => {
 
     const found = await executeTool(
       createFindTool("/", fs, {
-        rpc: { call } as never,
+        rpc: schemaRpcMock({ call }),
         visibility,
       }),
       { pattern: "**/*.ts", path: "skills", includeIgnored: true },

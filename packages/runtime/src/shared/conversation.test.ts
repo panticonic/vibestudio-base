@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { schemaRpcMock } from "@vibestudio/rpc/test-utils";
 import { createConversationClient } from "./conversation.js";
 
 describe("createConversationClient", () => {
@@ -7,7 +8,7 @@ describe("createConversationClient", () => {
       .fn()
       .mockResolvedValueOnce([{ seq: 1, text: "hello" }])
       .mockResolvedValueOnce({ messageId: "m1" });
-    const client = createConversationClient({ call, stream: vi.fn() } as never);
+    const client = createConversationClient(schemaRpcMock({ call, stream: vi.fn() }));
 
     await expect(client.history("chat")).resolves.toEqual([
       { seq: 1, text: "hello" },
@@ -22,10 +23,13 @@ describe("createConversationClient", () => {
       [{ after: 0 }],
       undefined,
     );
-    expect(call).toHaveBeenNthCalledWith(2, "chat", "sendAsCaller", [
-      "hello",
-      {},
-    ]);
+    expect(call).toHaveBeenNthCalledWith(
+      2,
+      "chat",
+      "sendAsCaller",
+      ["hello", {}],
+      undefined,
+    );
   });
 
   it("reassembles split subscription records and cancels after callback failure", async () => {
@@ -41,7 +45,7 @@ describe("createConversationClient", () => {
     });
     const stream = vi.fn().mockResolvedValue(new Response(body));
     const call = vi.fn();
-    const client = createConversationClient({ call, stream } as never);
+    const client = createConversationClient(schemaRpcMock({ call, stream }));
     const records: unknown[] = [];
     await expect(
       client.subscribe("chat", "website-participant", {}, (record) => {

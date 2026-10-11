@@ -1,5 +1,5 @@
 import { resolveDurableObjectService } from "@vibestudio/service-schemas/clients/durableObjectServiceClient";
-import { gadRpcMethods } from "@vibestudio/service-schemas/clients/durableObjectServiceClient";
+import { gadRpcMethods } from "@vibestudio/service-schemas/clients/gadServiceClient";
 
 import * as fs from "node:fs/promises";
 import * as path from "node:path";

@@ -1,11 +1,19 @@
 import { describe, expect, it, vi } from "vitest";
 import { RemoteRpcError } from "@vibestudio/rpc";
+import { schemaRpcMock } from "@vibestudio/rpc/test-utils";
 import { vcsMethods } from "@vibestudio/service-schemas/vcs";
 import { createVcsClient } from "./vcsClient.js";
 
+function rpcFor(call: (method: string, ...args: unknown[]) => Promise<unknown>) {
+  return schemaRpcMock({
+    call: async (_target: string, method: string, args: unknown[]) =>
+      call(method, ...args),
+  });
+}
+
 describe("createVcsClient", () => {
   it("exposes the schema-owned method roster plus the publication composite", () => {
-    const client = createVcsClient(async () => null as never, "context:bound");
+    const client = createVcsClient(rpcFor(async () => null), "context:bound");
     expect(Object.keys(client).sort()).toEqual([...Object.keys(vcsMethods), "publish"].sort());
   });
 
@@ -15,10 +23,7 @@ describe("createVcsClient", () => {
       workingHead: { kind: "event", eventId: "event:committed" },
       discardedApplicationIds: [],
     }));
-    const client = createVcsClient(
-      async <T>(method: string, ...args: unknown[]) => (await call(method, args[0])) as T,
-      "context:bound"
-    );
+    const client = createVcsClient(rpcFor(call), "context:bound");
     const expectedWorkingHead = { kind: "event" as const, eventId: "event:committed" };
 
     await client.discard({ expectedWorkingHead });
@@ -38,10 +43,7 @@ describe("createVcsClient", () => {
       workingHead: { kind: "event", eventId: "event:committed" },
       discardedApplicationIds: [],
     }));
-    const client = createVcsClient(
-      async <T>(method: string, ...args: unknown[]) => (await call(method, args[0])) as T,
-      "context:bound"
-    );
+    const client = createVcsClient(rpcFor(call), "context:bound");
     const expectedWorkingHead = { kind: "event" as const, eventId: "event:committed" };
 
     await client.discard({ expectedWorkingHead, commandId: "invocation:1" });
@@ -64,10 +66,7 @@ describe("createVcsClient", () => {
       workingCounts: { applications: 0, workUnits: 0, changes: 0 },
       integrating: [],
     }));
-    const client = createVcsClient(
-      async <T>(method: string, ...args: unknown[]) => (await call(method, args[0])) as T,
-      "context:bound"
-    );
+    const client = createVcsClient(rpcFor(call), "context:bound");
 
     await client.status();
 
@@ -77,10 +76,7 @@ describe("createVcsClient", () => {
   it("preserves the zero-argument mainState contract", async () => {
     const result = { kind: "event" as const, eventId: "event:main" };
     const call = vi.fn(async (..._args: unknown[]) => result);
-    const client = createVcsClient(
-      async <T>(method: string, ...args: unknown[]) => (await call(method, ...args)) as T,
-      "context:bound"
-    );
+    const client = createVcsClient(rpcFor(call), "context:bound");
 
     await expect(client.mainState()).resolves.toEqual(result);
     expect(call).toHaveBeenCalledWith("vcs.mainState");
@@ -112,7 +108,7 @@ describe("createVcsClient", () => {
     };
 
     it("commits a dirty chain and pushes it against the observed main", async () => {
-      const call = vi.fn(async (method: string, _input: unknown) => {
+      const call = vi.fn(async (method: string, ..._args: unknown[]) => {
         if (method === "vcs.status")
           return status({
             clean: false,
@@ -127,10 +123,7 @@ describe("createVcsClient", () => {
           };
         return pushResult;
       });
-      const client = createVcsClient(
-        async <T>(method: string, ...args: unknown[]) => (await call(method, args[0])) as T,
-        "context:bound"
-      );
+      const client = createVcsClient(rpcFor(call), "context:bound");
 
       const result = await client.publish({ message: "Ship the change" });
 
@@ -157,13 +150,10 @@ describe("createVcsClient", () => {
     });
 
     it("pushes a clean committed event without committing", async () => {
-      const call = vi.fn(async (method: string, _input: unknown) =>
+      const call = vi.fn(async (method: string, ..._args: unknown[]) =>
         method === "vcs.status" ? status({}) : pushResult
       );
-      const client = createVcsClient(
-        async <T>(method: string, ...args: unknown[]) => (await call(method, args[0])) as T,
-        "context:bound"
-      );
+      const client = createVcsClient(rpcFor(call), "context:bound");
 
       await expect(client.publish()).resolves.toMatchObject({ status: "published", commit: null });
       expect(call.mock.calls.map(([method]) => method)).toEqual(["vcs.status", "vcs.push"]);
@@ -176,13 +166,10 @@ describe("createVcsClient", () => {
     it.each(["behind", "diverged"] as const)(
       "returns IntegrationRequired without merging when main is %s",
       async (mainRelation) => {
-        const call = vi.fn(async (_method: string, _input: unknown) =>
+        const call = vi.fn(async (_method: string, ..._args: unknown[]) =>
           status({ mainRelation, clean: false })
         );
-        const client = createVcsClient(
-          async <T>(method: string, ...args: unknown[]) => (await call(method, args[0])) as T,
-          "context:bound"
-        );
+        const client = createVcsClient(rpcFor(call), "context:bound");
 
         await expect(client.publish({ message: "Ship" })).resolves.toEqual({
           status: "integration-required",
@@ -211,10 +198,7 @@ describe("createVcsClient", () => {
       workingCounts: { applications: 0, workUnits: 0, changes: 0 },
       integrating: [],
     }));
-    const client = createVcsClient(
-      async <T>(method: string, ...args: unknown[]) => (await call(method, args[0])) as T,
-      "context:bound"
-    );
+    const client = createVcsClient(rpcFor(call), "context:bound");
 
     await client.status({ contextId: "context:1" });
 
@@ -232,10 +216,7 @@ describe("createVcsClient", () => {
       workingCounts: { applications: 0, workUnits: 0, changes: 0 },
       integrating: [],
     }));
-    const client = createVcsClient(
-      async <T>(method: string, ...args: unknown[]) => (await call(method, args[0])) as T,
-      "context:bound"
-    );
+    const client = createVcsClient(rpcFor(call), "context:bound");
 
     await client.status();
 
@@ -253,6 +234,7 @@ describe("createVcsClient", () => {
           commandId: "command:1",
           kind: "commit",
           workspaceFactRootId: "fact:1",
+          snapshotSource: null,
           parentEventIds: [],
           applicationIds: [],
           decisionIds: [],
@@ -264,10 +246,7 @@ describe("createVcsClient", () => {
       edges: [],
       hasMoreEdges: false,
     }));
-    const client = createVcsClient(
-      async <T>(method: string, ...args: unknown[]) => (await call(method, args[0])) as T,
-      "context:bound"
-    );
+    const client = createVcsClient(rpcFor(call), "context:bound");
 
     await client.inspect({
       node: { kind: "event", eventId: "event:committed" },
@@ -286,10 +265,7 @@ describe("createVcsClient", () => {
       workingHead: { kind: "event", eventId: "event:committed" },
       discardedApplicationIds: [],
     }));
-    const client = createVcsClient(
-      async <T>(method: string, ...args: unknown[]) => (await call(method, args[0])) as T,
-      "context:bound"
-    );
+    const client = createVcsClient(rpcFor(call), "context:bound");
 
     await client.discard({
       commandId: "command:discard",
@@ -311,9 +287,12 @@ describe("createVcsClient", () => {
       actual: { kind: "application" as const, applicationId: "application:current" },
     };
     const refusal = new RemoteRpcError(errorData.message, "application", errorData.code, errorData);
-    const client = createVcsClient(async () => {
-      throw refusal;
-    }, "context:bound");
+    const client = createVcsClient(
+      rpcFor(async () => {
+        throw refusal;
+      }),
+      "context:bound",
+    );
 
     const rejected = await client
       .discard({

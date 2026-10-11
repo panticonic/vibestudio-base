@@ -16,6 +16,21 @@ import {
 } from "./AutomationActivity.js";
 import { durableObjectServiceFixture } from "@vibestudio/service-schemas/test-utils";
 
+const MISSIONS_TARGET = "do:workers/missions:MissionsDO:workspace-missions";
+
+function resolvedMissionsService() {
+  return durableObjectServiceFixture(
+    MISSIONS_TARGET,
+    {
+      name: "missions",
+      source: "workers/missions",
+      className: "MissionsDO",
+      objectKey: "workspace-missions",
+      protocols: ["vibestudio.missions.v1"],
+    },
+  );
+}
+
 const automation: MissionRecord = {
   schemaVersion: 3,
   missionId: "mission-daily",
@@ -95,7 +110,7 @@ describe("AutomationActivity", () => {
   it("shares service resolution and its client cache across history pills", async () => {
     const call = vi.fn(async (_target: string, method: string) => {
       if (method === "workers.resolveService") {
-        return durableObjectServiceFixture("do:missions");
+        return resolvedMissionsService();
       }
       if (method === "overview") {
         return {
@@ -161,7 +176,7 @@ describe("AutomationActivity", () => {
           _options?: unknown,
         ) => {
           if (method === "workers.resolveService")
-            return durableObjectServiceFixture("do:missions");
+            return resolvedMissionsService();
           if (method === "get") return current;
           if (method === "authority.compileAuthorityPlan") return plan;
           if (method === "edit") return current;
@@ -205,7 +220,7 @@ describe("AutomationActivity", () => {
       if (kind === "unchanged") {
         expect(compiled).toHaveLength(0);
         expect(call.mock.calls.at(-1)).toEqual([
-          "do:missions",
+          MISSIONS_TARGET,
           "edit",
           [current.missionId, patch],
           {},
@@ -220,7 +235,7 @@ describe("AutomationActivity", () => {
           ],
         ]);
         expect(call.mock.calls.at(-1)).toEqual([
-          "do:missions",
+          MISSIONS_TARGET,
           "edit",
           [current.missionId, { ...patch, authorityPlan: plan }],
           {},
@@ -251,7 +266,7 @@ describe("AutomationActivity", () => {
         _options?: unknown,
       ) => {
         if (method === "workers.resolveService")
-          return durableObjectServiceFixture("do:missions");
+          return resolvedMissionsService();
         if (method === "get" || method === "edit") return current;
         throw new Error(`Unexpected method ${method}`);
       },

@@ -1,6 +1,7 @@
 import { expect, it, vi } from "vitest";
 import { activate } from "./index.js";
 import { createGitHubClient } from "@workspace/integrations/github";
+import { schemaRpcMock } from "@vibestudio/rpc/test-utils";
 vi.mock("@workspace/integrations/github", () => ({
   createGitHubClient: vi.fn(),
 }));
@@ -33,7 +34,7 @@ it("lists only writable active repositories and preserves pagination across filt
     storage: { root: process.cwd() },
     credentials,
     log: { info: vi.fn() },
-    rpc: { call: vi.fn() },
+    rpc: schemaRpcMock({ call: vi.fn(async () => undefined) }),
   } as never);
   await expect(
     api.publicationRepositories({ credentialId: "account-1", page: 2 }),

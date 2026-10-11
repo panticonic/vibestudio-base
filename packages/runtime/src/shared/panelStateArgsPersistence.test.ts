@@ -24,6 +24,7 @@ describe("patchPanelStateArgs", () => {
       "main",
       "workspace-state.slot.patchCurrentStateArgs",
       ["panel:tree/chat", { channelName: "chat-1", stale: null }],
+      undefined,
     );
   });
 });

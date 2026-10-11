@@ -4,7 +4,7 @@ import { serializeRpcFailure } from "@vibestudio/rpc";
 import { GadJsonRecordSchema } from "@vibestudio/service-schemas/workspaceSource";
 import { agentRpcMethods } from "@workspace/agentic-do/rpc-contract";
 import { mainRpcMethods } from "@vibestudio/service-schemas/mainRpc";
-import { createGadServiceClient } from "@vibestudio/service-schemas/clients/durableObjectServiceClient";
+import { createGadServiceClient } from "@vibestudio/service-schemas/clients/gadServiceClient";
 import {
   DurableObjectBase,
   schemaRpc,

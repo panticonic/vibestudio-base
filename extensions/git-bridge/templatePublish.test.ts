@@ -13,6 +13,7 @@ import { sha256Hex } from "@vibestudio/content-addressing";
 import { registerRemoteProvider } from "@workspace/integrations/remoteProviders";
 import { TemplatePublishEngine } from "./templatePublish.js";
 import type { ProtectedRepositorySnapshot } from "./bridge.js";
+import { schemaRpcMock } from "@vibestudio/rpc/test-utils";
 
 const roots: string[] = [];
 const resolveOrCreateRepo = vi.fn();
@@ -146,20 +147,21 @@ function testContext(root: string) {
       })),
     },
     credentials: { gitHttp: vi.fn(() => ({})) },
-    rpc: {
+    rpc: schemaRpcMock({
       call: vi.fn(
-        async <T>(
+        async (
           _target: string,
           method: string,
-          encoded: string,
-        ): Promise<T> => {
+          args: unknown[],
+        ): Promise<unknown> => {
           if (method !== "blobstore.putBase64")
             throw new Error(`unexpected RPC ${method}`);
+          const encoded = args[0] as string;
           const bytes = Buffer.from(encoded, "base64");
-          return { digest: sha256Hex(bytes), size: bytes.byteLength } as T;
+          return { digest: sha256Hex(bytes), size: bytes.byteLength };
         },
       ),
-    },
+    }),
   };
 }
 

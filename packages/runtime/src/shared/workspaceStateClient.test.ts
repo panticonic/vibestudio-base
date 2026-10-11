@@ -15,7 +15,7 @@ describe("createRuntimeWorkspaceStateClient", () => {
 
     expect(call).toHaveBeenCalledWith("main", "workspace-state.panelTree.rootGroups", [
       { limit: 25 },
-    ]);
+    ], undefined);
     expect(call.mock.calls.map((entry: unknown[]) => entry[1])).not.toContain(
       "workers.resolveService"
     );
@@ -39,6 +39,6 @@ describe("createRuntimeWorkspaceStateClient", () => {
     await expect(client.commitPreparedNavigation(input)).resolves.toEqual(result);
     expect(call).toHaveBeenCalledWith("main", "workspace-state.slot.commitPreparedNavigation", [
       input,
-    ]);
+    ], undefined);
   });
 });

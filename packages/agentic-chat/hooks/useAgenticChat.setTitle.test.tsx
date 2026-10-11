@@ -3,6 +3,7 @@
 import { act, render, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { schemaRpcMock } from "@vibestudio/rpc/test-utils";
+import { deserializeRpcFailure, formatRpcFailure } from "@vibestudio/rpc";
 import type { MethodDefinition, PubSubClient } from "@workspace/pubsub";
 import { durableObjectServiceFixture } from "@vibestudio/service-schemas/test-utils";
 
@@ -64,17 +65,20 @@ function createClient(
 function createRpcWireCall() {
   return vi.fn(async (_target: string, method: string) => {
     if (method === "workers.resolveService") {
-      return durableObjectServiceFixture("do:channel:chat-title-test", {
-        origin: "workspace",
-        source: "workers/pubsub-channel",
-        name: "pubsub-channel",
-        action: "provide",
-        presentation: { domain: "web", verb: "see" },
-        authority: { principals: ["code"] },
-        protocols: ["vibestudio.channel.v1"],
-        className: "PubSubChannel",
-        objectKey: "chat-title-test",
-      });
+      return durableObjectServiceFixture(
+        "do:workers/pubsub-channel:PubSubChannel:chat-title-test",
+        {
+          origin: "workspace",
+          source: "workers/pubsub-channel",
+          name: "pubsub-channel",
+          action: "provide",
+          presentation: { domain: "web", verb: "see" },
+          authority: { principals: ["code"] },
+          protocols: ["vibestudio.channel.v1"],
+          className: "PubSubChannel",
+          objectKey: "chat-title-test",
+        },
+      );
     }
     if (method === "getProvenance") {
       return { kind: "root" };
@@ -559,9 +563,11 @@ describe("useAgenticChat set_title", () => {
         code: 'import x from "definitely-not-a-package-xyz"; export default () => <div>{String(x)}</div>;',
       },
       ctx,
-    )) as { value: { ok: boolean; error: string } };
+    )) as { value: { ok: boolean; error: unknown } };
     expect(unresolved.value.ok).toBe(false);
-    expect(unresolved.value.error).toContain("definitely-not-a-package-xyz");
+    expect(
+      formatRpcFailure(deserializeRpcFailure(unresolved.value.error)),
+    ).toContain("definitely-not-a-package-xyz");
     expect(publish).not.toHaveBeenCalled();
 
     await methods!["inline_ui"]!.execute(

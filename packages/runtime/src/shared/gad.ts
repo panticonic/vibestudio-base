@@ -3,8 +3,9 @@ import { resolveDurableObjectService } from "@vibestudio/service-schemas/clients
 import { channelClientRpcMethods } from "@workspace/pubsub/rpc-contract";
 import { createLazyTypedRpcServiceClient } from "@vibestudio/shared/typedRpcServiceClient";
 
-import { createGadServiceClient, type gadRpcMethods } from "@vibestudio/service-schemas/clients/durableObjectServiceClient";
 import type { RpcCaller } from "@vibestudio/rpc";
+import type { gadRpcMethods } from "@vibestudio/service-schemas/clients/gadServiceClient";
+import type { DurableObjectServiceClient } from "@vibestudio/shared/workspaceServiceRpc";
 
 
 import {
@@ -34,11 +35,17 @@ export type GadClient = TypedServiceClient<typeof gadMethods> & {
 };
 
 export function createGadClient(rpc: RpcCaller): GadClient {
-  const service = createGadServiceClient(rpc);
+  let servicePromise:
+    | Promise<DurableObjectServiceClient<typeof gadRpcMethods>>
+    | undefined;
+  const service = () =>
+    (servicePromise ??= import(
+      "@vibestudio/service-schemas/clients/gadServiceClient"
+    ).then(({ createGadServiceClient }) => createGadServiceClient(rpc)));
   const call = <K extends keyof typeof gadWireMethods & string>(
     method: K,
     ...args: RpcMethodArgs<(typeof gadRpcMethods)[K]>
-  ) => service.call(method, ...args);
+  ) => service().then((client) => client.call(method, ...args));
   const blobstore = createLazyTypedRpcServiceClient(rpc, { targetId: "main", namespace: "blobstore" }, BLOBSTORE_METHOD_NAMES, async () =>
       (await import("@vibestudio/service-schemas/blobstore")).blobstoreMethods);
   const hydrate = async <T>(value: T): Promise<T> =>

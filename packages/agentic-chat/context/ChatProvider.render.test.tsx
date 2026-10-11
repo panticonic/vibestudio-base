@@ -1,7 +1,9 @@
 // @vitest-environment jsdom
 
 import { memo } from "react";
-import { render } from "@testing-library/react";
+import type { ReactElement } from "react";
+import { render as renderBase } from "@testing-library/react";
+import { Theme } from "@radix-ui/themes";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type {
   ChatContextValue,
@@ -26,6 +28,14 @@ vi.mock("../components/MessageContent", () => ({
 }));
 
 import { MessageList } from "../components/MessageList";
+
+function render(ui: ReactElement, options?: Parameters<typeof renderBase>[1]) {
+  const result = renderBase(<Theme>{ui}</Theme>, options);
+  return {
+    ...result,
+    rerender: (next: ReactElement) => result.rerender(<Theme>{next}</Theme>),
+  };
+}
 
 const MessageActionProbe = memo(function MessageActionProbe({
   rendered,

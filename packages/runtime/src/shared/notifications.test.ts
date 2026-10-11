@@ -1,23 +1,25 @@
 import { describe, expect, it, vi } from "vitest";
-import type { RpcClient } from "@vibestudio/rpc";
+import { schemaRpcClientMock } from "@vibestudio/rpc/test-utils";
 import { createNotificationClient } from "./notifications.js";
 
 function makeRpc() {
   const directListeners = new Set<(event: { payload: unknown }) => void>();
-  const rpc = {
-    call: vi.fn(async (_target: string, method: string, _args: unknown[]) => {
-      if (method === "notification.show") return "n1";
-      return undefined;
-    }),
-    on: vi.fn(
-      (_event: string, listener: (event: { payload: unknown }) => void) => {
-        directListeners.add(listener);
-        return () => directListeners.delete(listener);
-      },
-    ),
-  };
+  const call = vi.fn(async (_target: string, method: string, _args: unknown[]) => {
+    if (method === "notification.show") return "n1";
+    return undefined;
+  });
+  const on = vi.fn(
+    (_event: string, listener: (event: { payload: unknown }) => void) => {
+      directListeners.add(listener);
+      return () => directListeners.delete(listener);
+    },
+  );
+  const rpc = schemaRpcClientMock({ call }, "notifications-test");
+  Object.defineProperty(rpc, "on", { value: on });
   return {
     rpc,
+    call,
+    on,
     emitDirectAction(payload: { id: string; actionId: string }) {
       for (const listener of directListeners) listener({ payload });
     },
@@ -28,9 +30,7 @@ describe("notification client", () => {
   it("routes action button clicks through the addressed event without serializing functions", async () => {
     const fixture = makeRpc();
     const onClick = vi.fn();
-    const client = createNotificationClient(
-      fixture.rpc as unknown as RpcClient,
-    );
+    const client = createNotificationClient(fixture.rpc);
 
     const id = await client.show({
       type: "success",
@@ -38,7 +38,7 @@ describe("notification client", () => {
       actions: [{ id: "reveal", label: "Reveal", onClick }],
     });
 
-    expect(fixture.rpc.on).toHaveBeenCalledWith(
+    expect(fixture.on).toHaveBeenCalledWith(
       "notification:action",
       expect.any(Function),
       {
@@ -47,13 +47,13 @@ describe("notification client", () => {
           "Only trusted notification delivery may invoke these action callbacks.",
       },
     );
-    expect(fixture.rpc.call).toHaveBeenCalledWith("main", "notification.show", [
+    expect(fixture.call).toHaveBeenCalledWith("main", "notification.show", [
       expect.objectContaining({
         actions: [expect.objectContaining({ id: "reveal", label: "Reveal" })],
       }),
-    ]);
+    ], undefined);
     expect(id).toBe("n1");
-    const shown = fixture.rpc.call.mock.calls.find(
+    const shown = fixture.call.mock.calls.find(
       (call) => call[1] === "notification.show",
     )?.[2][0] as {
       actions?: Array<Record<string, unknown>>;
@@ -68,7 +68,7 @@ describe("notification client", () => {
     const fixture = makeRpc();
     const onClick = vi.fn();
     const client = createNotificationClient(
-      fixture.rpc as unknown as RpcClient,
+      fixture.rpc,
     );
 
     const id = await client.show({
@@ -77,7 +77,7 @@ describe("notification client", () => {
       actions: [{ label: "Reveal in folder", onClick }],
     });
 
-    expect(fixture.rpc.call).toHaveBeenCalledWith("main", "notification.show", [
+    expect(fixture.call).toHaveBeenCalledWith("main", "notification.show", [
       expect.objectContaining({
         actions: [
           expect.objectContaining({
@@ -86,7 +86,7 @@ describe("notification client", () => {
           }),
         ],
       }),
-    ]);
+    ], undefined);
     fixture.emitDirectAction({ id, actionId: "reveal-in-folder-0" });
     await vi.waitFor(() => expect(onClick).toHaveBeenCalledTimes(1));
   });
@@ -95,7 +95,7 @@ describe("notification client", () => {
     const fixture = makeRpc();
     const onClick = vi.fn();
     const client = createNotificationClient(
-      fixture.rpc as unknown as RpcClient,
+      fixture.rpc,
     );
 
     const id = await client.show({
@@ -110,7 +110,7 @@ describe("notification client", () => {
   it("defaults to an info notification without opening an unused watch", async () => {
     const fixture = makeRpc();
     const client = createNotificationClient(
-      fixture.rpc as unknown as RpcClient,
+      fixture.rpc,
     );
 
     await client.show({
@@ -118,13 +118,13 @@ describe("notification client", () => {
       message: "Shown from the message field",
     });
 
-    expect(fixture.rpc.call).toHaveBeenCalledWith("main", "notification.show", [
+    expect(fixture.call).toHaveBeenCalledWith("main", "notification.show", [
       expect.objectContaining({
         type: "info",
         title: "Hello",
         message: "Shown from the message field",
       }),
-    ]);
-    expect(fixture.rpc.on).not.toHaveBeenCalled();
+    ], undefined);
+    expect(fixture.on).not.toHaveBeenCalled();
   });
 });

@@ -9,7 +9,7 @@ import { resolveDurableObjectService } from "@vibestudio/service-schemas/clients
 import { missionsRpcMethods } from "@vibestudio/service-schemas/missions";
 import { channelClientRpcMethods } from "@workspace/pubsub/rpc-contract";
 import { agentRpcMethods } from "@workspace/agentic-do/rpc-contract";
-import { gadRpcMethods } from "@vibestudio/service-schemas/clients/durableObjectServiceClient";
+import { gadRpcMethods, createGadServiceClient } from "@vibestudio/service-schemas/clients/gadServiceClient";
 import type {
   RpcMethodArgs,
   RpcMethodResult,
@@ -146,7 +146,6 @@ import {
   type RpcClient,
 } from "@vibestudio/rpc";
 import { withExecutionAdmission } from "@vibestudio/rpc/internal";
-import { createGadServiceClient } from "@workspace/runtime/workerd-client";
 import type {
   ChannelAgenticContext,
   RegisterMessageTypeInput,

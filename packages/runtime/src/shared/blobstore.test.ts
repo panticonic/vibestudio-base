@@ -1,5 +1,6 @@
 import { Buffer } from "buffer";
 import { describe, expect, it, vi } from "vitest";
+import { schemaRpcMock } from "@vibestudio/rpc/test-utils";
 import { createBlobstoreClient } from "./blobstore.js";
 import { Journal } from "./journal.js";
 
@@ -13,7 +14,7 @@ describe("createBlobstoreClient", () => {
         return "hello";
       }),
     };
-    const client = createBlobstoreClient(rpc as never);
+    const client = createBlobstoreClient(schemaRpcMock(rpc));
 
     await expect(client.readText(digest)).resolves.toBe("hello");
   });
@@ -37,7 +38,7 @@ describe("createBlobstoreClient", () => {
         throw new Error(`unexpected ${method}`);
       }),
     };
-    const client = createBlobstoreClient(rpc as never);
+    const client = createBlobstoreClient(schemaRpcMock(rpc));
 
     const result = await client.putPathTree(
       {
@@ -68,7 +69,7 @@ describe("createBlobstoreClient", () => {
   });
 
   it("rejects path-tree paths that are not plain relative file paths", async () => {
-    const client = createBlobstoreClient({ call: vi.fn() } as never);
+    const client = createBlobstoreClient(schemaRpcMock({ call: vi.fn() }));
     await expect(client.putPathTree({ "a//b.txt": "x" })).rejects.toThrow(
       /relative file paths/,
     );
@@ -147,7 +148,7 @@ describe("createBlobstoreClient", () => {
     };
 
     const journal = new Journal();
-    const client = createBlobstoreClient(rpc as never, fs as never, (entry) =>
+    const client = createBlobstoreClient(schemaRpcMock(rpc), fs as never, (entry) =>
       journal.append(entry),
     );
     await expect(
@@ -173,11 +174,12 @@ describe("createBlobstoreClient", () => {
     expect(rpc.call).toHaveBeenCalledWith("main", "blobstore.listTree", [
       `manifest:${"d".repeat(64)}`,
       { limit: 1000, cursor: "page-2" },
-    ]);
+    ], undefined);
     expect(rpc.call).not.toHaveBeenCalledWith(
       "main",
       "blobstore.materializeTree",
       expect.anything(),
+      undefined,
     );
   });
 
@@ -227,7 +229,7 @@ describe("createBlobstoreClient", () => {
     };
     const recorded = vi.fn();
     const pending = createBlobstoreClient(
-      rpc as never,
+      schemaRpcMock(rpc),
       fs as never,
       recorded,
     ).materializeTree(ref, "/checkout");
@@ -249,7 +251,7 @@ describe("createBlobstoreClient", () => {
   it("rejects hardlink materialization because the scoped runtime fs cannot honor it", async () => {
     const rpc = { call: vi.fn() };
     const fs = { mkdir: vi.fn() };
-    const client = createBlobstoreClient(rpc as never, fs as never);
+    const client = createBlobstoreClient(schemaRpcMock(rpc), fs as never);
 
     await expect(
       client.materializeTree(`manifest:${"d".repeat(64)}`, "/checkout", {
@@ -284,7 +286,7 @@ describe("createBlobstoreClient", () => {
       ),
     };
     const fs = { mkdir: vi.fn(async () => undefined) };
-    const client = createBlobstoreClient(rpc as never, fs as never);
+    const client = createBlobstoreClient(schemaRpcMock(rpc), fs as never);
 
     await expect(
       client.materializeTree(`manifest:${"d".repeat(64)}`, "/checkout"),
@@ -321,7 +323,7 @@ describe("createBlobstoreClient", () => {
       }),
     };
     await expect(
-      createBlobstoreClient(repeatedRpc as never, fs as never).materializeTree(
+      createBlobstoreClient(schemaRpcMock(repeatedRpc), fs as never).materializeTree(
         ref,
         "/checkout",
       ),
@@ -348,7 +350,7 @@ describe("createBlobstoreClient", () => {
       }),
     };
     await expect(
-      createBlobstoreClient(changingRpc as never, fs as never).materializeTree(
+      createBlobstoreClient(schemaRpcMock(changingRpc), fs as never).materializeTree(
         ref,
         "/checkout",
       ),

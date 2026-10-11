@@ -26,7 +26,9 @@ export interface ConversationClient {
   ): Promise<void>;
 }
 
-export function createConversationClient(rpc: RpcClient): ConversationClient {
+export function createConversationClient(
+  rpc: Pick<RpcClient, "call" | "stream">
+): ConversationClient {
   return {
     history: (channelTargetId, options) => {
       return rpc.call(

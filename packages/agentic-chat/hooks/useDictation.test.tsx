@@ -1,8 +1,9 @@
 // @vitest-environment jsdom
 
 import { schemaRpcMock } from "@vibestudio/rpc/test-utils";
-import { act, renderHook } from "@testing-library/react";
+import { act, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
+import { mainRpcMethods } from "@vibestudio/service-schemas/mainRpc";
 import { transcribeRecording, useDictation } from "./useDictation";
 
 afterEach(() => vi.unstubAllGlobals());
@@ -54,7 +55,7 @@ it("resamples supplied audio and reads progress across RPC chunk boundaries", as
   expect(progress).toHaveBeenCalledWith("Loading…");
   expect(stream).toHaveBeenCalledWith(
     "main",
-    "extensions.invokeStream",
+    mainRpcMethods["extensions.invokeStream"],
     [
       "@workspace-extensions/speech",
       "transcribe",
@@ -106,6 +107,7 @@ it("stops a late microphone grant after cancellation and releases the audio cont
   await act(async () => {
     work = result.current.start();
   });
+  await waitFor(() => expect(result.current.phase).toBe("permission"));
   expect(result.current.phase).toBe("permission");
   act(() => result.current.cancel());
   const stop = vi.fn();
@@ -209,6 +211,7 @@ it("ignores a readiness response after dismissing the preparation prompt", async
   act(() => {
     checking = result.current.start();
   });
+  await waitFor(() => expect(answer).toBeTypeOf("function"));
   act(() => result.current.cancel());
   await act(async () => {
     answer({ ready: true });

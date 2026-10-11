@@ -5,12 +5,15 @@ import { durableObjectServiceFixture } from "@vibestudio/service-schemas/test-ut
 import { vi } from "vitest";
 import { createTestDO } from "@workspace/runtime/worker/test-utils";
 import {
+  AGENTIC_EVENT_PAYLOAD_KIND,
   AGENTIC_PROTOCOL_VERSION,
+  agenticEventFromLogEnvelope,
   brandId,
   encodeChannelPayloadStoredValues,
   invocationCompletedPayload,
   type AgenticEvent,
   type BlockId,
+  type EnvelopeId,
   type InvocationId,
   type MessageId,
 } from "@workspace/agentic-protocol";
@@ -324,9 +327,32 @@ export async function appendTrajectoryEventsAndBroadcast(
       ),
     }),
   );
+  const envelopesById = new Map<string, (typeof result.envelopes)[number]>(
+    result.envelopes.map((envelope) => [envelope.envelopeId, envelope]),
+  );
   await harness.channel.call(
     "admitPublishedEnvelopes",
-    result.published.map((publication) => publication.envelopeId),
+    result.published.map((publication) => {
+      const origin = envelopesById.get(publication.originEnvelopeId);
+      if (!origin)
+        throw new Error(
+          `Missing source envelope ${publication.originEnvelopeId}`,
+        );
+      const envelopeId = brandId<EnvelopeId>(publication.envelopeId);
+      return {
+        envelopeId,
+        actor: origin.actor,
+        payloadKind: AGENTIC_EVENT_PAYLOAD_KIND,
+        payload: agenticEventFromLogEnvelope(origin),
+        annotations: { contentClass: "internal", externalKeys: [] },
+        causality: {
+          originLogId: "trajectory:test",
+          originHead: "branch:test",
+          originEnvelopeId: publication.originEnvelopeId,
+        },
+        appendedAt: origin.appendedAt,
+      };
+    }),
   );
   return result;
 }

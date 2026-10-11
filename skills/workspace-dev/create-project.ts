@@ -585,7 +585,7 @@ describe("${className}", () => {
           exports: { "./contract": "./contract.ts" },
           dependencies: {
             "@workspace/runtime": "workspace:*",
-            "@vibestudio/shared": "*",
+            "@vibestudio/shared": "workspace:*",
             zod: "3.25.76",
           },
         });
@@ -595,8 +595,8 @@ import { createRpcMethods } from "@vibestudio/shared/rpcMethods";
 export const recordSchema = z.object({ id: z.string(), title: z.string(), createdAt: z.string(), updatedAt: z.string() });
 export type RecordItem = z.infer<typeof recordSchema>;
 export const recordStoreMethods = {
-  listRecords: { args: z.tuple([]), returns: z.array(recordSchema) },
-  upsertRecord: { args: z.tuple([z.object({ id: z.string().optional(), title: z.string() })]), returns: z.object({ id: z.string() }) },
+  listRecords: { website: { kind: "closed", reason: "Workspace-private records" } as const, args: z.tuple([]), returns: z.array(recordSchema) },
+  upsertRecord: { website: { kind: "closed", reason: "Workspace-private records" } as const, args: z.tuple([z.object({ id: z.string().optional(), title: z.string() })]), returns: z.object({ id: z.string() }) },
 };
 export const recordStoreRpcMethods = createRpcMethods("recordStore", recordStoreMethods, "");
 `;

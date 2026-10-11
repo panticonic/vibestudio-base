@@ -1,3 +1,4 @@
+import { schemaRpcMock } from "@vibestudio/rpc/test-utils";
 import { executeTool } from "../../testing/native-tool.js";
 import { describe, it, expect, vi } from "vitest";
 import { createFindTool } from "../find.js";
@@ -115,13 +116,13 @@ describe("createFindTool", () => {
   it("uses the context-scoped host glob when RPC is available", async () => {
     const fs = new StubFs({ files: { [`${CWD}/src/a.ts`]: "x" } });
     const stat = vi.spyOn(fs, "stat");
-    const rpc = {
+    const rpc = schemaRpcMock({
       call: vi.fn().mockResolvedValue({
         files: [`${CWD}/src/a.ts`],
         truncated: false,
       }),
       stream: vi.fn(async () => new Response()),
-    };
+    });
     const tool = createFindTool(CWD, fs, { rpc });
 
     const result = await executeTool(
@@ -142,13 +143,13 @@ describe("createFindTool", () => {
 
   it("bounds host glob results without issuing per-directory RPC calls", async () => {
     const fs = new StubFs({ files: { [`${CWD}/src/a.ts`]: "x" } });
-    const rpc = {
+    const rpc = schemaRpcMock({
       call: vi.fn().mockResolvedValue({
         files: [`${CWD}/src/a.ts`, `${CWD}/src/b.ts`],
         truncated: true,
         nextCursor: `${CWD}/src/b.ts`,
       }),
-    };
+    });
     const tool = createFindTool(CWD, fs, { rpc: rpc as never });
 
     const result = await executeTool(
@@ -171,13 +172,13 @@ describe("createFindTool", () => {
   });
 
   it("returns a diagnostic empty result when the host search root is a file", async () => {
-    const rpc = {
+    const rpc = schemaRpcMock({
       call: vi
         .fn()
         .mockRejectedValue(
           Object.assign(new Error("not a directory"), { code: "ENOTDIR" }),
         ),
-    };
+    });
     const tool = createFindTool(CWD, new StubFs({ files: {} }), {
       rpc: rpc as never,
     });
@@ -202,13 +203,13 @@ describe("createFindTool", () => {
   });
 
   it("propagates host authorization and infrastructure failures", async () => {
-    const rpc = {
+    const rpc = schemaRpcMock({
       call: vi
         .fn()
         .mockRejectedValue(
           Object.assign(new Error("denied"), { code: "EACCES" }),
         ),
-    };
+    });
     const tool = createFindTool(CWD, new StubFs({ files: {} }), {
       rpc: rpc as never,
     });

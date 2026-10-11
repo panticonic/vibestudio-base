@@ -4,7 +4,7 @@ import { workspaceStateMethods } from "@vibestudio/service-schemas/workspaceStat
 import {
   createWorkspaceStateClient,
   type ShellServiceCall,
-} from "@vibestudio/service-schemas/clients/shellCoreClient";
+} from "@vibestudio/service-schemas/clients/workspaceStateClient";
 
 export interface RuntimeWorkspaceStateRpc {
   call: import("@vibestudio/rpc").RpcCaller["call"];

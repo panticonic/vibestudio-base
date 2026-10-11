@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { schemaRpcMock } from "@vibestudio/rpc/test-utils";
 import { retainedInspectionPin } from "./inspectionPin.js";
 import { activate } from "./index.js";
 
@@ -29,14 +30,15 @@ it("delegates every exact pin to the host-owned source acquisition contract", as
   const api = await activate({
     storage: { root: process.cwd() },
     log: { info: vi.fn() },
-    rpc: { call },
+    rpc: schemaRpcMock({ call }),
   } as never);
 
   await expect(api.inspect({ pin })).resolves.toEqual(inspected);
   expect(call).toHaveBeenCalledWith(
     "main",
     "workspaceTemplateSource.inspectExact",
-    pin,
+    [pin],
+    undefined,
   );
 });
 
@@ -46,7 +48,7 @@ it("prefers an instance-designated checkpoint to remote discovery", async () => 
     ref: "refs/heads/vibestudio-dev-checkpoint",
     commit: "b".repeat(40),
   };
-  const call = vi.fn(async (_target, method) => {
+  const call = vi.fn(async (_target: string, method: string) => {
     if (method === "workspaceTemplateSource.resolveLocal") return pin;
     if (method === "workspaceTemplateSource.inspectExact") {
       return { pin, repositories: [], dependencies: [] };
@@ -56,7 +58,7 @@ it("prefers an instance-designated checkpoint to remote discovery", async () => 
   const api = await activate({
     storage: { root: process.cwd() },
     log: { info: vi.fn() },
-    rpc: { call },
+    rpc: schemaRpcMock({ call }),
   } as never);
 
   await expect(api.inspect({ url: pin.url })).resolves.toMatchObject({ pin });
@@ -64,13 +66,15 @@ it("prefers an instance-designated checkpoint to remote discovery", async () => 
     1,
     "main",
     "workspaceTemplateSource.resolveLocal",
-    pin.url,
+    [pin.url],
+    undefined,
   );
   expect(call).toHaveBeenNthCalledWith(
     2,
     "main",
     "workspaceTemplateSource.inspectExact",
-    pin,
+    [pin],
+    undefined,
   );
 });
 
@@ -87,19 +91,21 @@ it("loads the instance registry by default", async () => {
       })),
     ],
   };
-  const call = vi.fn(async (_target, method) =>
+  const call = vi.fn(async (_target: string, method: string) =>
     method === "workspaceTemplateSource.localRegistry" ? registry : null,
   );
   const api = await activate({
     storage: { root: process.cwd() },
     log: { info: vi.fn() },
-    rpc: { call },
+    rpc: schemaRpcMock({ call }),
   } as never);
 
   await expect(api.registry({})).resolves.toEqual(registry);
   expect(call).toHaveBeenCalledWith(
     "main",
     "workspaceTemplateSource.localRegistry",
+    [],
+    undefined,
   );
 });
 
@@ -116,7 +122,7 @@ it("checks every tag page using the chosen account before suggesting a version",
   const api = await activate({
     storage: { root: process.cwd() },
     log: { info: vi.fn() },
-    rpc: { call: vi.fn() },
+    rpc: schemaRpcMock({ call: vi.fn(async () => undefined) }),
     credentials: { forAudience },
   } as never);
   await expect(
@@ -139,7 +145,7 @@ it("reports inaccessible tags instead of suggesting an unverified first release"
   const api = await activate({
     storage: { root: process.cwd() },
     log: { info: vi.fn() },
-    rpc: { call: vi.fn() },
+    rpc: schemaRpcMock({ call: vi.fn(async () => undefined) }),
     credentials: {
       forAudience: async () => ({
         fetch: async () => new Response("Access denied", { status: 403 }),
@@ -184,9 +190,10 @@ it("derives inherited ownership from the pinned source tree without a manifest i
       localRepoPaths: new Set(["meta", "panels/inherited", "projects/local"]),
     } as never);
   try {
-    const call = vi.fn(async (_target, method, inspectedPin) => {
+    const call = vi.fn(async (_target: string, method: string, args: unknown[]) => {
       if (method !== "workspaceTemplateSource.inspectExact")
         throw new Error(`Unexpected method: ${method}`);
+      const inspectedPin = args[0];
       expect(inspectedPin).toEqual(pin);
       return {
         pin,
@@ -197,7 +204,7 @@ it("derives inherited ownership from the pinned source tree without a manifest i
     const api = await activate({
       storage: { root: process.cwd() },
       log: { info: vi.fn() },
-      rpc: { call },
+      rpc: schemaRpcMock({ call }),
     } as never);
     const setup = await api.authoringSetup();
     expect(setup.parts).toEqual([

@@ -12,12 +12,22 @@ import { durableObjectServiceFixture } from "@vibestudio/service-schemas/test-ut
 
 const CHANNEL_TARGET = "do:workers/pubsub-channel:PubSubChannel:chat-1";
 
+function resolvedChannelService() {
+  return durableObjectServiceFixture(CHANNEL_TARGET, {
+    name: "pubsub-channel",
+    source: "workers/pubsub-channel",
+    className: "PubSubChannel",
+    objectKey: "chat-1",
+    protocols: ["vibestudio.channel.v1"],
+  });
+}
+
 function createConfig(
   onStream?: (controller: ReadableStreamDefaultController<Uint8Array>) => void,
 ): ConnectionConfig {
   const call = vi.fn((target: string, method: string) => {
     if (target === "main" && method === "workers.resolveService") {
-      return Promise.resolve(durableObjectServiceFixture(CHANNEL_TARGET));
+      return Promise.resolve(resolvedChannelService());
     }
     return Promise.resolve(undefined);
   });
@@ -230,7 +240,7 @@ describe("ConnectionManager owned readiness", () => {
       async () => {
         entered();
         await gate;
-        return durableObjectServiceFixture(CHANNEL_TARGET);
+        return resolvedChannelService();
       },
       {
         kind: "eligible",
