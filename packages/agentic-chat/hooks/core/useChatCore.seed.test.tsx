@@ -149,6 +149,14 @@ describe("useChatCore conversation seed", () => {
       />,
     );
     await waitFor(() => expect(latest?.connected).toBe(true));
+    await waitFor(() =>
+      expect(latest?.messages).toContainEqual(
+        expect.objectContaining({
+          content: "Welcome before credentials",
+          complete: true,
+        }),
+      ),
+    );
     expect(
       latest?.messages.filter(
         (message) => message.content === "Welcome before credentials",

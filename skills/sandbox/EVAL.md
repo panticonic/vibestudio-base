@@ -276,17 +276,27 @@ or import them from `@workspace/runtime`.
   descriptor object; a method-name string is not a valid call. Import
   `mainRpcMethods` from `@vibestudio/service-schemas/mainRpc` for host methods,
   or import the descriptor table exported by a userland receiver contract. For
-  a disposable receiver you just created with no contract module, derive a
-  descriptor from its actual method names:
+  a disposable receiver you just created, import the contract exported by its
+  package. Define that contract beside the receiver so the descriptors use its
+  actual method signatures:
 
   ```ts
   import { createReceiverRpcMethods } from "@vibestudio/shared/rpcMethods";
+  import type { ProbeStore } from "./index.js";
 
-  const methods = createReceiverRpcMethods(["storeRows", "readRows"]);
-  await rpc.call(targetId, methods.storeRows, [
-    [{ id: "row-1", value: "alpha" }],
-  ]);
-  const rows = await rpc.call(targetId, methods.readRows, []);
+  export const probeStoreMethods = createReceiverRpcMethods<
+    Pick<ProbeStore, "storeRows" | "readRows">
+  >(["storeRows", "readRows"]);
+  ```
+
+  In eval code, import that owner-exported table using the package's declared
+  contract subpath:
+
+  ```ts
+  import { probeStoreMethods } from "@workspace-workers/probe-store/contract";
+
+  await rpc.call(targetId, probeStoreMethods.storeRows, [[{ id: "row-1", value: "alpha" }]]);
+  const rows = await rpc.call(targetId, probeStoreMethods.readRows, []);
   ```
 
   The third argument is the complete positional argument array, including `[]`
