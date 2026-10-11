@@ -1895,7 +1895,7 @@ describe("native Pi entity activation and release", () => {
           callerKind: "do",
         },
         "onEvalComplete",
-        { runId, result: { returnValue: "forged" } },
+        { runId },
       ),
     ).rejects.toThrow("does not belong");
     expect(h.calls).not.toContain("eval.receipt");
@@ -1908,6 +1908,18 @@ describe("native Pi entity activation and release", () => {
         },
         "onEvalComplete",
         { runId, result: { returnValue: "forged" } },
+      ),
+    ).rejects.toThrow();
+    expect(h.calls).not.toContain("eval.receipt");
+    expect(h.calls).not.toContain("eval.acknowledge");
+    await expect(
+      fixture.callAs(
+        {
+          callerId: evalRuntimeId(runtimeId, route.scopeKey),
+          callerKind: "do",
+        },
+        "onEvalComplete",
+        { runId },
       ),
     ).resolves.toEqual({ accepted: true });
     expect(acknowledged).toBe(true);

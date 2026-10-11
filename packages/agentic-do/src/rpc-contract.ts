@@ -1,9 +1,15 @@
-import { createReceiverRpcMethods } from "@vibestudio/shared/rpcMethods";
+import {
+  createReceiverRpcMethods,
+  type RpcMethodArgs,
+  type RpcMethodResult,
+} from "@vibestudio/shared/rpcMethods";
 import {
   agentRpcMethods as clientAgentRpcMethods,
   type AgentRpcClientMethods,
 } from "@workspace/agentic-core/rpc-contract";
+import { evalOwnerCallbackRpcMethods } from "@vibestudio/service-schemas/eval";
 import type { AgentWorkerBase } from "./agent-worker-base.js";
+
 type Receiver = Pick<
   AgentWorkerBase,
   | "inspectNativeInvocationSource"
@@ -38,12 +44,15 @@ type Receiver = Pick<
   | "readSubagentInputSettlement"
   | "onSubagentInputSettled"
 >;
-type AdditionalReceiver = Omit<Receiver, keyof AgentRpcClientMethods>;
+type EvalOwnerCallbackNames = keyof typeof evalOwnerCallbackRpcMethods;
+type AdditionalReceiver = Omit<
+  Receiver,
+  keyof AgentRpcClientMethods | EvalOwnerCallbackNames
+>;
 
 const additionalAgentRpcMethods = createReceiverRpcMethods<AdditionalReceiver>([
   "inspectNativeInvocationSource",
   "onAuthorityChanged",
-  "onEvalComplete",
   "getAgentSettings",
   "runAutomationTurn",
   "runAutomationEval",
@@ -60,7 +69,6 @@ const additionalAgentRpcMethods = createReceiverRpcMethods<AdditionalReceiver>([
   "chatOp",
   "describeEvalOwner",
   "initializeAutomation",
-  "onEvalProgress",
   "canFork",
   "exportChannelKnowledge",
   "cancelSubagentExecution",
@@ -73,10 +81,36 @@ const additionalAgentRpcMethods = createReceiverRpcMethods<AdditionalReceiver>([
 
 export const agentRpcMethods = {
   ...clientAgentRpcMethods,
+  ...evalOwnerCallbackRpcMethods,
   ...additionalAgentRpcMethods,
 };
 
 type Assert<T extends true> = T;
+type Equal<Left, Right> =
+  (<Value>() => Value extends Left ? 1 : 2) extends <
+    Value,
+  >() => Value extends Right ? 1 : 2
+    ? true
+    : false;
+type EvalOwnerCallbacks = Pick<AgentWorkerBase, EvalOwnerCallbackNames>;
+type EvalOwnerCallbackContractChecks = {
+  [Method in EvalOwnerCallbackNames]: Equal<
+    [
+      Parameters<EvalOwnerCallbacks[Method]>,
+      Awaited<ReturnType<EvalOwnerCallbacks[Method]>>,
+    ],
+    [
+      RpcMethodArgs<(typeof evalOwnerCallbackRpcMethods)[Method]>,
+      RpcMethodResult<(typeof evalOwnerCallbackRpcMethods)[Method]>,
+    ]
+  >;
+};
+
 export type AgentRpcClientContractCheck = Assert<
-  Pick<Receiver, keyof AgentRpcClientMethods> extends AgentRpcClientMethods ? true : false
+  Pick<Receiver, keyof AgentRpcClientMethods> extends AgentRpcClientMethods
+    ? true
+    : false
+>;
+export type AgentEvalCallbackContractCheck = Assert<
+  EvalOwnerCallbackContractChecks[EvalOwnerCallbackNames]
 >;

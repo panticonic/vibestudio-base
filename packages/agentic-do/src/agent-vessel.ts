@@ -17,6 +17,7 @@ import type {
 import { modelSettingsRpcMethods } from "@workspace/model-catalog/rpc-contract";
 import { createTypedRpcServiceClient } from "@vibestudio/shared/typedRpcServiceClient";
 import { mainRpcMethods } from "@vibestudio/service-schemas/mainRpc";
+import { evalOwnerCallbackMethods } from "@vibestudio/service-schemas/eval";
 import { createDurableObjectServiceClient } from "@vibestudio/service-schemas/clients/durableObjectServiceClient";
 import { reconcileDefaultAutomationHost } from "./default-automation-host.js";
 import { createProvider, Type, type Api, type Model } from "@panticonic/pi-ai";
@@ -4583,11 +4584,14 @@ export abstract class AgentVesselBase extends NativeChannelOwner<NativeProductCh
       detail?: unknown;
     };
   }): Promise<void> {
-    await this.assertOwnEvalCaller(payload.channelId);
-    if (payload.activity) {
+    const [validatedPayload] =
+      evalOwnerCallbackMethods.onEvalProgress.args.parse([payload]);
+    await this.assertOwnEvalCaller(validatedPayload.channelId);
+    if (validatedPayload.activity) {
       const detail =
-        payload.activity.detail && typeof payload.activity.detail === "object"
-          ? (payload.activity.detail as Record<string, unknown>)
+        validatedPayload.activity.detail &&
+        typeof validatedPayload.activity.detail === "object"
+          ? (validatedPayload.activity.detail as Record<string, unknown>)
           : {};
       const capability =
         typeof detail["capability"] === "string"
@@ -4597,7 +4601,7 @@ export abstract class AgentVesselBase extends NativeChannelOwner<NativeProductCh
         typeof detail["resourceKey"] === "string"
           ? detail["resourceKey"]
           : undefined;
-      const waiting = payload.activity.kind === "authority-requested";
+      const waiting = validatedPayload.activity.kind === "authority-requested";
       const message = waiting
         ? `Waiting for approval${capability ? ` to use ${capability}` : ""}${resourceKey ? ` on ${resourceKey}` : ""}`
         : "Approval decision received; resuming eval";
@@ -4608,52 +4612,50 @@ export abstract class AgentVesselBase extends NativeChannelOwner<NativeProductCh
       const event: AgenticEvent<"invocation.progress"> = {
         kind: "invocation.progress",
         actor,
-        causality: { invocationId: payload.agentInvocationId as never },
+        causality: {
+          invocationId: validatedPayload.agentInvocationId as never,
+        },
         payload: {
           protocol: AGENTIC_PROTOCOL_VERSION,
           message,
           data: {
             eval: {
-              runId: payload.runId,
+              runId: validatedPayload.runId,
               activity: waiting ? "authority-pending" : "executing",
-              detail: payload.activity.detail,
+              detail: validatedPayload.activity.detail,
             },
           },
         },
         createdAt: new Date().toISOString(),
       };
-      await this.createChannelClient(payload.channelId).publishAgenticEvent(
-        participantId,
-        event,
-        {
-          senderMetadata: actor.metadata,
-        },
-      );
+      await this.createChannelClient(
+        validatedPayload.channelId,
+      ).publishAgenticEvent(participantId, event, {
+        senderMetadata: actor.metadata,
+      });
       return;
     }
-    if (!payload.output) return;
+    if (!validatedPayload.output) return;
     const participantId =
-      this.subscriptions.getParticipantId(payload.channelId) ??
+      this.subscriptions.getParticipantId(validatedPayload.channelId) ??
       this.participantId();
-    const actor = this.cardActor(payload.channelId, participantId);
+    const actor = this.cardActor(validatedPayload.channelId, participantId);
     const event: AgenticEvent<"invocation.output"> = {
       kind: "invocation.output",
       actor,
-      causality: { invocationId: payload.agentInvocationId as never },
+      causality: { invocationId: validatedPayload.agentInvocationId as never },
       payload: {
         protocol: AGENTIC_PROTOCOL_VERSION,
-        output: payload.output,
+        output: validatedPayload.output,
         channel: "stdout",
       },
       createdAt: new Date().toISOString(),
     };
-    await this.createChannelClient(payload.channelId).publishAgenticEvent(
-      participantId,
-      event,
-      {
-        senderMetadata: actor.metadata,
-      },
-    );
+    await this.createChannelClient(
+      validatedPayload.channelId,
+    ).publishAgenticEvent(participantId, event, {
+      senderMetadata: actor.metadata,
+    });
   }
 
   /**

@@ -45,6 +45,7 @@
   "dependencies": {
     "@vibestudio/automation": "workspace:*",
     "@vibestudio/browser-data": "workspace:*",
+    "@vibestudio/content-addressing": "workspace:*",
     "@vibestudio/credential-client": "workspace:*",
     "@vibestudio/durable": "workspace:*",
     "@vibestudio/extension": "workspace:*",

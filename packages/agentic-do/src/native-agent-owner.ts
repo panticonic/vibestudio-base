@@ -21,10 +21,17 @@ import {
   SqliteStorage,
 } from "@panticonic/pi-durable/storage/sqlite";
 import type { DurableObjectSchemaDescriptor } from "@vibestudio/durable/schema";
-import { rpc, serializeRpcFailure, withRpcContext, type RpcClient, type AcquisitionInfo, type RpcCaller } from "@vibestudio/rpc";
+import {
+  rpc,
+  serializeRpcFailure,
+  withRpcContext,
+  type RpcClient,
+  type AcquisitionInfo,
+  type RpcCaller,
+} from "@vibestudio/rpc";
 import { mergeRpcOptions } from "@vibestudio/rpc/internal";
 import { evalRuntimeId } from "@vibestudio/shared/evalRuntimeIdentity";
-import { evalGetArgsSchema } from "@vibestudio/service-schemas/eval";
+import { evalOwnerCallbackMethods } from "@vibestudio/service-schemas/eval";
 import { authorityMethods } from "@vibestudio/service-schemas/authority";
 import { nativeInvocationInspectionInputSchema } from "@vibestudio/service-schemas/nativeInvocation";
 import { inspectNativeInvocationSource } from "./native-invocation-source.js";
@@ -615,7 +622,9 @@ export abstract class NativeAgentOwner extends PanelDurableObjectBase {
     runId: string;
   }): Promise<{ accepted: boolean }> {
     return this.ownSettlement(async () => {
-      const { runId } = evalGetArgsSchema.parse({ runId: payload?.runId });
+      const [{ runId }] = evalOwnerCallbackMethods.onEvalComplete.args.parse([
+        payload,
+      ]);
       // Existing-domain settlement remains serviceable while new admission is
       // sealed and the resource owner awaits its cleanup receipt.
       const harness = await this.restoreAgentSession();
