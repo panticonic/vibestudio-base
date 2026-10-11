@@ -59,10 +59,9 @@ export function createRuntime(deps: RuntimeDeps) {
       // described a fault in a panel that was doing nothing wrong — and failed
       // the desktop smoke, which reads renderer warnings as faults.
       if (isRpcConnectionLost(error)) return;
-      console.warn("[panelRuntime] Failed to publish renderer boot evidence", {
-        phase: observation.boot.observation.phase,
-        error: formatRpcFailure(error),
-      });
+      console.warn(
+        `[panelRuntime] Failed to publish renderer boot evidence (${observation.boot.observation.phase}): ${formatRpcFailure(error)}`,
+      );
     },
   });
   const publishBoot = (boot: PanelBootObservation) => {
