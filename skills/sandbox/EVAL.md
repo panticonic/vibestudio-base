@@ -261,9 +261,23 @@ are the same portable bindings that panels and workers use; use them directly
 or import them from `@workspace/runtime`.
 
 - **`rpc.call(targetId, methodDescriptor, args, options?)`**: portable RPC client, the
-  same as in panels and workers. Public calls take the receiver's method
-  descriptor. Import `mainRpcMethods` from
-  `@vibestudio/service-schemas/mainRpc` for host methods, for example
+  same as in panels and workers. The second argument must be an `RpcMethod`
+  descriptor object; a method-name string is not a valid call. Import
+  `mainRpcMethods` from `@vibestudio/service-schemas/mainRpc` for host methods,
+  or import the descriptor table exported by a userland receiver contract. For
+  a disposable receiver you just created with no contract module, derive a
+  descriptor from its actual method names:
+
+  ```ts
+  import { createReceiverRpcMethods } from "@vibestudio/shared/rpcMethods";
+
+  const methods = createReceiverRpcMethods(["storeRows", "readRows"]);
+  await rpc.call(targetId, methods.storeRows, [[{ id: "row-1", value: "alpha" }]]);
+  const rows = await rpc.call(targetId, methods.readRows, []);
+  ```
+
+  The third argument is the complete positional argument array, including `[]`
+  for a method with no parameters. For example, a host call is
   `await rpc.call("main", mainRpcMethods["vcs.status"], [{ contextId: ctx.contextId }])`.
   `mainRpcMethod(name)` is for a dynamically chosen, validated host method and
   returns `unknown`. To

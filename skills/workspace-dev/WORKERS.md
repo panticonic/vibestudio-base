@@ -60,7 +60,7 @@ Generated from `runtimeSurface.worker.ts`. Use `await help()` at runtime for the
 | `PanelOperationError` | value |  | Structured error class thrown by panel create, navigation, reload, rebuild, and readiness operations. Inspect its failure provenance instead of parsing message text. |
 | `id` | value |  |  |
 | `contextId` | value |  |  |
-| `rpc` | value |  | Portable RPC client (the full createRpcClient). |
+| `rpc` | value |  | Portable RPC client. `rpc.call(targetId, methodDescriptor, args, options?)` requires an `RpcMethod` descriptor object; the method argument is never a method-name string. Import `mainRpcMethods` from `@vibestudio/service-schemas/mainRpc` for host methods, or the userland receiver's exported descriptor table. For a disposable receiver with no contract module, derive descriptors from its actual method names using `createReceiverRpcMethods` from `@vibestudio/shared/rpcMethods`. Pass the complete positional argument array, including `[]` for a zero-argument method. Calls, streams, and readable streams share this descriptor contract. |
 | `fs` | value |  | Per-context filesystem sandbox. Paths are context-root-relative. The semantic workspace records managed mutations before projection; moves preserve file identity and copies mint a new identity with exact copy provenance. Tracked-to-scratch renames, managed empty-directory mkdir, and open with write flags are rejected. Scratch mkdir and utimes remain direct filesystem operations. Platform-excluded paths and paths outside reserved workspace source roots are local scratch. |
 | `callMain` | value |  | Call a `main` (server) service method: callMain("fs.readFile", path). |
 | `getParent` | value |  | Get the parent panel handle, or null when there is no parent. |
@@ -551,10 +551,6 @@ type TodoRow = {
 export class TodoStore extends DurableObjectBase {
   static override schemaVersion = 1;
 
-  protected override schemaProductionBaseline() {
-    return { version: 1, name: "todo-store-v1" } as const;
-  }
-
   protected override createTables(): void {
     this.sql.exec(`
       CREATE TABLE IF NOT EXISTS todos (
@@ -851,10 +847,6 @@ are extracted from the source build without running it.
 import { DurableObjectBase, rpc } from "@workspace/runtime/worker/kernel";
 
 export class MyStoreDO extends DurableObjectBase {
-  protected override schemaProductionBaseline() {
-    return { version: 1, name: "my-store-v1" } as const;
-  }
-
   @rpc({ website: { kind: "closed", reason: "Workspace data is not exposed to websites." }, principals: ["user", "code"], effect: { kind: "open" }, tier: "open", sensitivity: "write" })
   async addItem(label: string): Promise<{ id: string }> { ... }
 

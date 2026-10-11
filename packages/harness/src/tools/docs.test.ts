@@ -262,6 +262,23 @@ describe("renderEntry (readable docs_open text)", () => {
     expect(text).not.toContain("rpc.call");
   });
 
+  it("documents receiver method descriptors for the public RPC client", () => {
+    const rpc = portableExports["rpc"]!;
+    expect(rpc.description).toBeDefined();
+    const text = renderEntry({
+      id: "runtime:workerRuntime.rpc",
+      surface: "runtime",
+      qualifiedName: "rpc",
+      title: "rpc",
+      description: rpc.description,
+    });
+
+    expect(text).toContain("method argument is never a method-name string");
+    expect(text).toContain("mainRpcMethods");
+    expect(text).toContain("createReceiverRpcMethods");
+    expect(text).toContain("complete positional argument array");
+  });
+
   it("puts live protocol resolution and installed authority on workspace service roots", () => {
     const entry: CatalogEntry = {
       id: "workspace:notes",
