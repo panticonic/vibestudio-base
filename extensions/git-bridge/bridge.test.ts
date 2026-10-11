@@ -49,7 +49,8 @@ function eventInspection(eventId: string, applicationId = "application:1") {
         workspaceId: "workspace:test",
         commandId: `command:${eventId}`,
         kind: "commit" as const,
-        snapshotSource: null, workspaceFactRootId: `facts:${eventId}`,
+        snapshotSource: null,
+        workspaceFactRootId: `facts:${eventId}`,
         parentEventIds: ["event:parent"],
         applicationIds: [applicationId],
         decisionIds: [],
@@ -222,7 +223,7 @@ function baseHost(root: string) {
       inspect: unreachable(),
       resolveRepository: vi.fn(async () => null),
       listFiles: unreachable(),
-      readFile: unreachable(),
+      readFiles: unreachable(),
       importSnapshot: unreachable(),
     },
   };
@@ -988,19 +989,26 @@ describe("GitBridge semantic snapshot boundary", () => {
       ],
       nextCursor: null,
     }));
-    host.vcs.readFile = vi.fn(async () => ({
-      repositoryId: repositoryRef.repositoryId,
-      fileId: "file:index",
-      repoPath,
-      path: "index.ts",
-      contentHash: sha256Hex(Buffer.from("exported\n")),
-      authoredChangeId: "change:exported",
-      authoredByWorkUnitId: "work:exported",
-      contentClass: "internal" as const,
-      externalKeys: [],
-      mode: 0o755,
-      content: { kind: "text" as const, text: "exported\n" },
-    }));
+    host.vcs.readFiles = vi.fn(
+      async ({ files }: Parameters<BridgeHost["vcs"]["readFiles"]>[0]) =>
+        files.map(({ file }) =>
+          file.kind === "id" && file.fileId === "file:index"
+            ? {
+                repositoryId: repositoryRef.repositoryId,
+                fileId: "file:index",
+                repoPath,
+                path: "index.ts",
+                contentHash: sha256Hex(Buffer.from("exported\n")),
+                authoredChangeId: "change:exported",
+                authoredByWorkUnitId: "work:exported",
+                contentClass: "internal" as const,
+                externalKeys: [],
+                mode: 0o755,
+                content: { kind: "text" as const, text: "exported\n" },
+              }
+            : null,
+        ),
+    );
     const bridge = new GitBridge(host);
     vi.spyOn(bridge.git, "getCurrentCommit")
       .mockResolvedValueOnce(null)
@@ -1201,20 +1209,26 @@ describe("GitBridge semantic snapshot boundary", () => {
       }),
       nextCursor: null,
     }));
-    host.vcs.readFile = vi.fn(async ({ state, file, repositoryId }) => {
-      const fileId = (file as { fileId: string }).fileId;
-      const text = textAt((state as { eventId: string }).eventId, fileId);
-      return {
-        repositoryId,
-        fileId,
-        repoPath,
-        path: fileId,
-        contentHash: sha256Hex(Buffer.from(text)),
-        ...INTERNAL_LIST_LINEAGE,
-        mode: 0o644,
-        content: { kind: "text" as const, text },
-      };
-    });
+    host.vcs.readFiles = vi.fn(
+      async ({
+        state,
+        files: selectors,
+      }: Parameters<BridgeHost["vcs"]["readFiles"]>[0]) =>
+        selectors.map(({ file, repositoryId }) => {
+          const fileId = (file as { fileId: string }).fileId;
+          const text = textAt((state as { eventId: string }).eventId, fileId);
+          return {
+            repositoryId,
+            fileId,
+            repoPath,
+            path: fileId,
+            contentHash: sha256Hex(Buffer.from(text)),
+            ...INTERNAL_LIST_LINEAGE,
+            mode: 0o644,
+            content: { kind: "text" as const, text },
+          };
+        }),
+    );
     const bridge = new GitBridge(host);
     const baseline = await bridge.exportProtectedRepository(repoPath);
     vi.mocked(host.vcs.status).mockClear();
@@ -1312,6 +1326,161 @@ describe("GitBridge semantic snapshot boundary", () => {
     );
     expect(host.vcs.status).toHaveBeenCalledTimes(1);
     expect(maximumActiveRepositoryReads).toBe(1);
+  });
+
+  it("reads template snapshots in exact-state batches capped at 500 files", async () => {
+    const repoPath = "workers/demo";
+    const repositoryId = `repository:${repoPath}`;
+    const state = { kind: "event" as const, eventId: "event:main" };
+    const listed = Array.from({ length: 501 }, (_, index) => {
+      const fileId = `file:${index}`;
+      const filePath = `files/${index}.txt`;
+      const text = `content ${index}\n`;
+      return {
+        fileId,
+        path: filePath,
+        contentHash: sha256Hex(Buffer.from(text)),
+        ...INTERNAL_LIST_LINEAGE,
+        mode: 0o644,
+        contentKind: "text" as const,
+        byteLength: Buffer.byteLength(text),
+        coordinateExtent: Buffer.byteLength(text),
+        text,
+      };
+    });
+    const { host } = baseHost(root);
+    host.vcs.status = vi.fn(async ({ contextId }) =>
+      status(contextId, state.eventId),
+    );
+    host.vcs.resolveRepository = vi.fn(async () => ({
+      state,
+      repositoryId,
+      repoPath,
+    }));
+    host.vcs.listFiles = vi.fn(async () => ({
+      state,
+      repositoryId,
+      files: listed.map(({ text: _text, ...file }) => file),
+      nextCursor: null,
+    }));
+    host.vcs.readFiles = vi.fn(
+      async (input: Parameters<BridgeHost["vcs"]["readFiles"]>[0]) =>
+        input.files.map((selector) => {
+          if (selector.file.kind !== "id") return null;
+          const fileId = selector.file.fileId;
+          const file = listed.find((candidate) => candidate.fileId === fileId);
+          if (!file) return null;
+          return {
+            repositoryId,
+            fileId: file.fileId,
+            repoPath,
+            path: file.path,
+            contentHash: file.contentHash,
+            ...INTERNAL_LIST_LINEAGE,
+            mode: file.mode,
+            content: { kind: "text" as const, text: file.text },
+          };
+        }),
+    );
+    const bridge = new GitBridge(host);
+
+    const [snapshot] = await bridge.readProtectedRepositories(
+      [repoPath],
+      state.eventId,
+      "publish-501-files",
+    );
+
+    expect(host.vcs.readFiles).toHaveBeenCalledTimes(2);
+    expect(
+      vi
+        .mocked(host.vcs.readFiles)
+        .mock.calls.map(([input]) => input.files.length),
+    ).toEqual([500, 1]);
+    for (const [input] of vi.mocked(host.vcs.readFiles).mock.calls) {
+      expect(input.state).toEqual(state);
+      expect(
+        input.files.every((file) => file.repositoryId === repositoryId),
+      ).toBe(true);
+    }
+    expect(snapshot?.files).toHaveLength(501);
+    expect(
+      snapshot?.files.find((file) => file.path === "files/500.txt"),
+    ).toMatchObject({
+      contentHash: listed[500]!.contentHash,
+      size: listed[500]!.byteLength,
+    });
+  });
+
+  it("rejects missing or reordered readFiles results against the listing witness", async () => {
+    const repoPath = "workers/demo";
+    const repositoryId = `repository:${repoPath}`;
+    const state = { kind: "event" as const, eventId: "event:main" };
+    const listed = ["first.txt", "second.txt"].map((fileId) => {
+      const text = `${fileId}\n`;
+      return {
+        fileId,
+        path: fileId,
+        text,
+        contentHash: sha256Hex(Buffer.from(text)),
+        ...INTERNAL_LIST_LINEAGE,
+        mode: 0o644,
+        contentKind: "text" as const,
+        byteLength: Buffer.byteLength(text),
+        coordinateExtent: Buffer.byteLength(text),
+      };
+    });
+    const { host } = baseHost(root);
+    host.vcs.status = vi.fn(async ({ contextId }) =>
+      status(contextId, state.eventId),
+    );
+    host.vcs.resolveRepository = vi.fn(async () => ({
+      state,
+      repositoryId,
+      repoPath,
+    }));
+    host.vcs.listFiles = vi.fn(async () => ({
+      state,
+      repositoryId,
+      files: listed.map(({ text: _text, ...file }) => file),
+      nextCursor: null,
+    }));
+    const contentFor = (fileId: string) => {
+      const file = listed.find((candidate) => candidate.fileId === fileId)!;
+      return {
+        repositoryId,
+        fileId,
+        repoPath,
+        path: file.path,
+        contentHash: file.contentHash,
+        ...INTERNAL_LIST_LINEAGE,
+        mode: file.mode,
+        content: { kind: "text" as const, text: file.text },
+      };
+    };
+    const bridge = new GitBridge(host);
+    host.vcs.readFiles = vi.fn(async () => [null, contentFor("second.txt")]);
+
+    await expect(
+      bridge.readProtectedRepositories(
+        [repoPath],
+        state.eventId,
+        "missing-file",
+      ),
+    ).rejects.toThrow("Semantic state lost first.txt during Git export");
+
+    host.vcs.readFiles = vi.fn(async () => [
+      contentFor("second.txt"),
+      contentFor("first.txt"),
+    ]);
+    await expect(
+      bridge.readProtectedRepositories(
+        [repoPath],
+        state.eventId,
+        "reordered-files",
+      ),
+    ).rejects.toThrow(
+      "Semantic state returned a mismatched Git export witness for first.txt",
+    );
   });
 
   it("refuses to export over an unresolved external candidate", async () => {

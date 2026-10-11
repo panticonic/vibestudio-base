@@ -52,7 +52,7 @@ export interface BridgeHost {
     | "inspect"
     | "resolveRepository"
     | "listFiles"
-    | "readFile"
+    | "readFiles"
     | "importSnapshot"
   >;
 }
@@ -364,27 +364,12 @@ export class GitBridge {
       state,
       repository.repositoryId,
     );
-    const files: ProtectedRepositorySnapshot["files"] = [];
-    for (const file of listed) {
-      const content = await this.host.vcs.readFile({
-        state,
-        repositoryId: repository.repositoryId,
-        file: { kind: "id", fileId: file.fileId },
-      });
-      if (!content)
-        throw new Error(`Semantic state lost ${file.path} during Git export`);
-      const bytes =
-        content.content.kind === "text"
-          ? Buffer.from(content.content.text, "utf8")
-          : Buffer.from(content.content.base64, "base64");
-      files.push({
-        path: file.path,
-        contentHash: file.contentHash,
-        size: bytes.byteLength,
-        mode: file.mode,
-        bytes,
-      });
-    }
+    const files = await this.readListedFilesAtState(
+      state,
+      repository.repositoryId,
+      repo,
+      listed,
+    );
     files.sort((left, right) => compareUtf16CodeUnits(left.path, right.path));
     return {
       repositoryId: repository.repositoryId,
@@ -400,6 +385,87 @@ export class GitBridge {
       ),
       files,
     };
+  }
+
+  /**
+   * Read listed file identities in the semantic API's bounded batches. A
+   * single readFiles call resolves file lineage for the whole batch at one
+   * exact state; repeating readFile would recompute the same state ancestry
+   * once per file. Preserve request order and verify every returned witness
+   * against the listing before using its bytes as a Git snapshot.
+   */
+  private async readListedFilesAtState(
+    state: VcsStateNodeRef,
+    repositoryId: string,
+    repoPath: string,
+    listed: readonly ListedRepositoryFile[],
+  ): Promise<ProtectedRepositorySnapshot["files"]> {
+    const identities = new Set<string>();
+    const paths = new Set<string>();
+    for (const file of listed) {
+      if (identities.has(file.fileId))
+        throw new Error(
+          `Semantic file listing repeats identity ${file.fileId}`,
+        );
+      if (paths.has(file.path))
+        throw new Error(`Semantic file listing repeats path ${file.path}`);
+      identities.add(file.fileId);
+      paths.add(file.path);
+    }
+
+    const files: ProtectedRepositorySnapshot["files"] = [];
+    for (let offset = 0; offset < listed.length; offset += PAGE_LIMIT) {
+      const batch = listed.slice(offset, offset + PAGE_LIMIT);
+      const contents = await this.host.vcs.readFiles({
+        state,
+        files: batch.map((file) => ({
+          repositoryId,
+          file: { kind: "id" as const, fileId: file.fileId },
+        })),
+      });
+      if (contents.length !== batch.length)
+        throw new Error(
+          "Semantic state returned an incomplete Git export batch",
+        );
+      for (let index = 0; index < batch.length; index += 1) {
+        const listedFile = batch[index]!;
+        const content = contents[index];
+        if (!content)
+          throw new Error(
+            `Semantic state lost ${listedFile.path} during Git export`,
+          );
+        if (
+          content.repositoryId !== repositoryId ||
+          content.repoPath !== repoPath ||
+          content.fileId !== listedFile.fileId ||
+          content.path !== listedFile.path ||
+          content.contentHash !== listedFile.contentHash ||
+          content.mode !== listedFile.mode
+        )
+          throw new Error(
+            `Semantic state returned a mismatched Git export witness for ${listedFile.path}`,
+          );
+        const bytes =
+          content.content.kind === "text"
+            ? Buffer.from(content.content.text, "utf8")
+            : Buffer.from(content.content.base64, "base64");
+        if (
+          bytes.byteLength !== listedFile.byteLength ||
+          sha256Hex(bytes) !== listedFile.contentHash
+        )
+          throw new Error(
+            `Semantic state returned bytes that do not match ${listedFile.path}`,
+          );
+        files.push({
+          path: listedFile.path,
+          contentHash: listedFile.contentHash,
+          size: bytes.byteLength,
+          mode: listedFile.mode,
+          bytes,
+        });
+      }
+    }
+    return files;
   }
 
   async exportLockedInner(
@@ -615,6 +681,7 @@ export class GitBridge {
     const materialized = await this.materializeState(
       state,
       repository.repositoryId,
+      repo,
       gitDir,
       tracked,
       targetFiles,
@@ -908,6 +975,7 @@ export class GitBridge {
   private async materializeState(
     state: VcsStateNodeRef,
     repositoryId: string,
+    repoPath: string,
     gitDir: string,
     tracked: CheckoutMap,
     files: ListedRepositoryFile[],
@@ -925,30 +993,31 @@ export class GitBridge {
 
     const next: CheckoutMap = {};
     const stagePaths: string[] = [];
+    const changed = files.filter(
+      (file) =>
+        !(
+          tracked[file.path]?.regular === true &&
+          tracked[file.path]?.contentHash === file.contentHash &&
+          tracked[file.path]?.mode === file.mode
+        ),
+    );
+    const contents = await this.readListedFilesAtState(
+      state,
+      repositoryId,
+      repoPath,
+      changed,
+    );
+    const contentByPath = new Map(
+      contents.map((file) => [file.path, file.bytes]),
+    );
     for (const file of files) {
       next[file.path] = {
         contentHash: file.contentHash,
         mode: file.mode,
         regular: true,
       };
-      if (
-        tracked[file.path]?.regular === true &&
-        tracked[file.path]?.contentHash === file.contentHash &&
-        tracked[file.path]?.mode === file.mode
-      ) {
-        continue;
-      }
-      const content = await this.host.vcs.readFile({
-        state,
-        repositoryId,
-        file: { kind: "id", fileId: file.fileId },
-      });
-      if (!content)
-        throw new Error(`Semantic state lost ${file.path} during Git export`);
-      const bytes =
-        content.content.kind === "text"
-          ? Buffer.from(content.content.text, "utf8")
-          : Buffer.from(content.content.base64, "base64");
+      if (!contentByPath.has(file.path)) continue;
+      const bytes = contentByPath.get(file.path)!;
       const absolute = safeCheckoutJoin(gitDir, file.path);
       if (tracked[file.path]?.regular === false) {
         await fsp.rm(absolute, { recursive: true, force: true });
