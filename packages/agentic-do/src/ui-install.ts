@@ -15,7 +15,6 @@ import {
   type AgenticEvent,
   type CustomMessageDisplayMode,
 } from "@workspace/agentic-protocol";
-import { lintRendererSource } from "@workspace/agentic-core";
 import type { ChannelClient } from "./channel-client.js";
 import type { CardManager } from "./custom-cards.js";
 
@@ -150,7 +149,8 @@ async function lintSources(options: InstallMessageTypesOptions): Promise<void> {
       console.warn(`[installMessageTypes] renderer lint skipped (unreadable): ${path}`);
       continue;
     }
-    for (const issue of lintRendererSource(code, { imports: options.imports })) {
+    const { lintRendererSource } = await import("@workspace/agentic-core/renderer-lint");
+    for (const issue of await lintRendererSource(code, { imports: options.imports })) {
       failures.push(`${path}: ${issue.message}`);
     }
   }

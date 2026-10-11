@@ -60,6 +60,7 @@ async function fixture(storage: Storage = new MemoryStorage()) {
         authoritySessionId: "lifetime:one",
         contextId: "context:one",
         incarnation: "storage:one",
+        generation: 1,
       },
       {
         models,

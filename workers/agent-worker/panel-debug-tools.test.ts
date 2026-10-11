@@ -39,8 +39,8 @@ describe("panel_screenshot", () => {
       ["slot-a", { format: "jpeg" }],
       undefined,
     ]);
-    expect(result.content[0]).toMatchObject({ type: "image", data: "aGk=" });
-    expect(result.content[1]).toMatchObject({
+    expect(result.output[0]).toMatchObject({ type: "image", data: "aGk=" });
+    expect(result.output[1]).toMatchObject({
       type: "text",
       text: expect.stringContaining("800"),
     });
@@ -97,7 +97,7 @@ describe("panel_console", () => {
       {},
       { callId: "t1" },
     );
-    const text = result.content
+    const text = result.output
       .map((part) => ("text" in part ? part.text : ""))
       .join("");
     expect(text).toContain("[error] boom");
@@ -150,7 +150,7 @@ describe("panel_console", () => {
       {},
       { callId: "t1" },
     );
-    const text = result.content
+    const text = result.output
       .map((part) => ("text" in part ? part.text : ""))
       .join("");
     expect(text).toContain("console: (none)");
@@ -187,7 +187,7 @@ describe("panel_eval", () => {
       undefined,
     ]);
     expect(result.isError).toBeUndefined();
-    expect(result.content[0]).toMatchObject({ text: "number: 720" });
+    expect(result.output[0]).toMatchObject({ text: "number: 720" });
   });
 
   it("surfaces a thrown expression as a tool error the model can read", async () => {
@@ -206,7 +206,7 @@ describe("panel_eval", () => {
       { callId: "t1" },
     );
     expect(result.isError).toBe(true);
-    expect(result.content[0]).toMatchObject({
+    expect(result.output[0]).toMatchObject({
       text: expect.stringContaining("not a function"),
     });
   });
@@ -226,7 +226,7 @@ describe("panel_eval", () => {
       },
       { callId: "t1" },
     );
-    expect(result.content[0]).toMatchObject({
+    expect(result.output[0]).toMatchObject({
       text: expect.stringContaining("truncated"),
     });
   });
@@ -256,7 +256,7 @@ describe("panel_cdp_endpoint", () => {
       ["slot-a"],
       undefined,
     ]);
-    expect(result.content[0]).toMatchObject({
+    expect(result.output[0]).toMatchObject({
       text: expect.stringContaining("ws://server/cdp/slot-a"),
     });
     expect(tool.description).toContain("panel_eval");

@@ -754,7 +754,7 @@ export function createWorkspaceVcsTool(
         }
         context.onIntegrationSourcesCommitted?.(result);
         return {
-          content: [
+          output: [
             {
               type: "text",
               text:
@@ -985,7 +985,7 @@ function resultOf(
   result: unknown,
 ): ToolExecutionResult<JsonRepresentation<WorkspaceVcsToolDetails>> {
   return {
-    content: [{ type: "text", text }],
+    output: [{ type: "text", text }],
     details: toolDetails({ operation, result }),
   };
 }

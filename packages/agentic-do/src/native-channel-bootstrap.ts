@@ -418,7 +418,7 @@ export function createNativeChannelBootstrap(options: {
     if (!conversation) throw new Error("Channel bootstrap was not admitted");
     let revision = 0;
     let wake: (() => void) | undefined;
-    let closed: Error | undefined;
+    let closed = false;
     let failed: unknown;
     let failureReported = false;
     let settled = false;
@@ -428,7 +428,7 @@ export function createNativeChannelBootstrap(options: {
     };
     const unsubscribe = harness.subscribeCommits(changed);
     const unsubscribeClose = harness.subscribeClose(() => {
-      closed = new Error("Native readiness observation session closed");
+      closed = true;
       changed();
     });
     const abort = () => changed();
@@ -438,7 +438,11 @@ export function createNativeChannelBootstrap(options: {
     try {
       for (;;) {
         context.abortSignal?.throwIfAborted();
-        if (closed) throw closed;
+        if (closed) {
+          const receipt = await harness.closed;
+          if (receipt.reason === "failed") throw receipt.error;
+          throw new Error("Native readiness observation session closed");
+        }
         const before = revision;
         const opening = await harness.snapshot(
           NativeChannelOpening,
@@ -482,6 +486,12 @@ export function createNativeChannelBootstrap(options: {
         });
         wake = undefined;
       }
+    } catch (error) {
+      if (closed) {
+        const receipt = await harness.closed;
+        if (receipt.reason === "failed") throw receipt.error;
+      }
+      throw error;
     } finally {
       // Retire and join only these observers. The bootstrap task keeps its
       // original activation/repair debt and cannot be abandoned by a viewer.

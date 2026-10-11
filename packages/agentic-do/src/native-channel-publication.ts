@@ -481,7 +481,7 @@ export function createNativeChannelPublication(options: {
                 result["entryId"] as EntryRecord["id"],
                 context,
               );
-            if (publication.source.operation.kind !== "model" && !entry)
+            if (publication.source.operation.kind !== "model" && publication.source.operation.kind !== "nested-tool" && !entry)
               throw new Error(
                 "Native tool terminal has no canonical result entry",
               );
@@ -1118,7 +1118,10 @@ function terminalEvent(
   }
   const modelResults =
     entry?.model?.filter((message) => message.role === "toolResult") ?? [];
-  const result = direct ?? modelResults[0];
+  const result = publication.nestedResult ?? direct ?? modelResults[0];
+  const protocolContent = direct?.output ?? modelResults[0]?.content ?? [];
+  if (publication.source.operation.kind === "nested-tool" && outcome.status === "completed" && !publication.nestedResult)
+    throw new Error("Nested native terminal has no retained program result");
   if (
     publication.source.operation.kind === "tool" &&
     outcome.status === "completed" &&
@@ -1140,10 +1143,11 @@ function terminalEvent(
       outcome.status === "faulted" || outcome.status === "failed"
         ? outcome.error
         : {
-            message: (result?.content ?? [])
-              .filter((block) => block.type === "text")
-              .map((block) => (block.type === "text" ? block.text : ""))
-              .join("\n"),
+            message: publication.nestedResult
+              ? publication.nestedResult.diagnostics.map((item) => item.message).join("\n")
+              : protocolContent.filter((block) => block.type === "text")
+                .map((block) => (block.type === "text" ? block.text : ""))
+                .join("\n"),
             details: result?.details,
           };
     const failure = agentToolFailureFromUnknown(error, {
@@ -1178,8 +1182,10 @@ function terminalEvent(
               nativeOutcome: outcome.result,
               ...(entry ? { entry: detached(entry) } : {}),
             }
+          : publication.source.operation.kind === "nested-tool"
+            ? detached(publication.nestedResult!)
           : {
-              protocolContent: detached(result?.content ?? []),
+              protocolContent: detached(protocolContent),
               ...(result?.details === undefined
                 ? {}
                 : { details: detached(result.details) }),

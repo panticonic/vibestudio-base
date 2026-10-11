@@ -26,7 +26,7 @@ async function fixture(storage: Storage = new MemoryStorage()) {
       const key = `work:${api.taskId}`;
       await api.commit(tx => bindReceipt(tx, key, 'owned-work'), ctx);
       return {wait: {kind: 'receipt' as const, key, binding: 'owned-work'}, continuation: {owned: true}};
-    }, cancel: async () => {cancelled++; return {content: []};}});
+    }, cancel: async () => {cancelled++; return {output: []};}});
   const registry = createRegistry();
   registry.install(defineExtension({name: 'cancellation', tasks: [cancellation.task], tools: [tool]}));
   async function open(next: Storage) {

@@ -1,3 +1,4 @@
+import { recoverableStorage } from "./testing/recoverable-storage.js";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -14,15 +15,12 @@ import {
   defineDoc,
   InboxDoc,
   LiveDoc,
-  MemoryStorage,
-  StorageRejected,
   type Harness,
   type HarnessOptions,
   type ConversationId,
   type EntryId,
   type SubmissionId,
   type Storage,
-  type StorageWrite,
 } from "@panticonic/pi-durable";
 import { openNodeSqliteStorage } from "@panticonic/pi-durable/storage/sqlite/node";
 import type { TurnId, UiFeedbackPayload } from "@workspace/agentic-protocol";
@@ -66,73 +64,73 @@ const owner = {
   authoritySessionId: "host-authority-one",
 };
 const sessions: Harness[] = [];
+const storageCleanups: (() => Promise<void>)[] = [];
 afterEach(async () => {
   vi.useRealTimers();
   vi.restoreAllMocks();
   const results = await Promise.allSettled(
     sessions.splice(0).map((session) => session.close(context)),
   );
-  for (const result of results)
+  const retired = await Promise.allSettled(storageCleanups.splice(0).map(cleanup => cleanup()));
+  for (const result of [...results, ...retired])
     if (result.status === "rejected") throw result.reason;
 });
 
-class RejectingStorage extends MemoryStorage {
-  requestId: string | undefined;
-  rejectConversation = false;
-  readonly original = new StorageRejected("Native channel admission refused");
-  override async commit(
-    writes: readonly StorageWrite[],
-    ctx: Parameters<Storage["commit"]>[1],
-  ) {
-    if (
-      this.rejectConversation &&
-      writes.some((write) => write.type === "conversation")
-    ) {
-      this.rejectConversation = false;
-      throw this.original;
+type RejectingStorage = Storage & { requestId: string | undefined; rejectConversation: boolean; readonly original: Error; reopen(): Promise<RejectingStorage> };
+async function createRejectingStorage(): Promise<RejectingStorage> {
+  const controls = { requestId: undefined as string | undefined, rejectConversation: false };
+  const original = new Error("Native channel admission refused");
+  const recovery = await recoverableStorage(writes => {
+    if (controls.rejectConversation && writes.some(write => write.type === "conversation")) {
+      controls.rejectConversation = false; return original;
     }
-    if (
-      this.requestId &&
-      writes.some(
-        (write) =>
-          write.type === "submission" &&
-          write.value.requestId === this.requestId,
-      )
-    ) {
-      this.requestId = undefined;
-      throw this.original;
+    if (controls.requestId && writes.some(write => write.type === "submission" && write.value.requestId === controls.requestId)) {
+      controls.requestId = undefined; return original;
     }
-    return super.commit(writes, ctx);
+    return undefined;
+  });
+  storageCleanups.push(recovery.cleanup);
+  function attach(storage: Storage): RejectingStorage {
+    return new Proxy(storage, {
+      has(target, key) {
+        return key === "original" || key === "reopen" || Object.hasOwn(controls, key) || Reflect.has(target, key);
+      },
+      get(target, key) {
+        if (key === "original") return original;
+        if (key === "reopen") return async () => attach(await recovery.reopen());
+        if (Object.hasOwn(controls, key)) return Reflect.get(controls, key);
+        const value = Reflect.get(target, key);
+        return typeof value === "function" ? value.bind(target) : value;
+      },
+      set(target, key, value) {
+        return Object.hasOwn(controls, key) ? Reflect.set(controls, key, value) : Reflect.set(target, key, value);
+      },
+    }) as RejectingStorage;
   }
+  return attach(recovery.storage);
 }
 
 async function fixture<S extends Storage = RejectingStorage>(
-  storage: S = new RejectingStorage() as Storage as S,
+  storage?: S,
   extra: Partial<HarnessOptions> = {},
 ) {
+  let currentStorage = storage ?? (await createRejectingStorage() as Storage as S);
   const models = createModels();
   const faux = fauxProvider();
   models.setProvider(faux.provider);
-  const harness = await openBoundAgentSession(
-    storage,
-    owner,
-    {
+  const harnessOptions = {
       ...extra,
       models,
       registry: createRegistry(),
       publishWake: async () => {},
-      modelRequests:
-        extra.modelRequests ??
-        (async (request) => ({
-          status: "waiting",
-          condition: {
-            kind: "input",
-            conversationId: request.conversationId,
-            after: request.cutoff,
-            kinds: ["test.model-ready"],
-          },
-        })),
-    },
+      modelRequests: extra.modelRequests ?? (async (request) => ({
+        status: "waiting", condition: { kind: "input", conversationId: request.conversationId, after: request.cutoff, kinds: ["test.model-ready"] },
+      })),
+  } satisfies HarnessOptions;
+  let harness = await openBoundAgentSession(
+    currentStorage,
+    { ...owner, generation: 1 },
+    harnessOptions,
     context,
   );
   sessions.push(harness);
@@ -140,13 +138,27 @@ async function fixture<S extends Storage = RejectingStorage>(
     model: { provider: "faux", modelId: faux.getModel().id },
     instructions: "Channel-specific instructions",
   };
-  const conversation = await openNativeChannelConversation(
+  let conversation = await openNativeChannelConversation(
     harness,
     binding,
     agent,
     context,
   );
-  return { harness, storage, conversation, agent, faux };
+  return {
+    get harness() { return harness; }, get storage() { return currentStorage; }, get conversation() { return conversation; }, agent, faux,
+    async recover() {
+      const failed = await harness.closed;
+      if (!("original" in currentStorage)) throw new Error("Fixture has no original storage failure");
+      expect(failed).toMatchObject({ reason: "failed", error: currentStorage.original });
+      if (!("reopen" in currentStorage) || typeof currentStorage.reopen !== "function") throw new Error("Fixture has no durable reopening contract");
+      currentStorage = await currentStorage.reopen() as S;
+      harness = await openBoundAgentSession(currentStorage, { ...owner, generation: 1 }, harnessOptions, context);
+      sessions.push(harness);
+      const restored = await harness.conversation(conversation.id, context);
+      if (!restored) throw new Error("Durable channel conversation disappeared");
+      conversation = restored;
+    },
+  };
 }
 
 function messageDelivery(
@@ -775,6 +787,7 @@ describe("native product channel admission", () => {
     await expect(
       openNativeChannelConversation(f.harness, second, f.agent, context),
     ).rejects.toBe(f.storage.original);
+    await f.recover();
     expect(
       (await f.storage.scanConversations({}, 10, undefined, context)).items,
     ).toHaveLength(1);
@@ -1186,6 +1199,7 @@ describe("native product channel admission", () => {
         context,
       ),
     ).rejects.toBe(f.storage.original);
+    await f.recover();
     expect(
       await retainedNativeChannelDelivery(
         f.harness,
@@ -1481,7 +1495,7 @@ describe("native product channel admission", () => {
   });
 
   it("originating-input inspection creates no attribution for queued source, passive history or initiated inputs", async () => {
-    const f = await fixture(new RejectingStorage(), {
+    const f = await fixture(await createRejectingStorage(), {
       prepareCommit: (tx, staged) =>
         prepareNativeChannelReadReceipts(
           tx,
@@ -1546,7 +1560,7 @@ describe("native product channel admission", () => {
 
   it("placed input read-wins, correction stays passive, and read acknowledgement follows exact same-transaction native entry", async () => {
     const reads: { messageId: string; entryId: EntryId }[] = [];
-    const f = await fixture(new RejectingStorage(), {
+    const f = await fixture(await createRejectingStorage(), {
       prepareCommit: async (tx, staged) =>
         prepareNativeChannelReadReceipts(
           tx,
@@ -1670,6 +1684,7 @@ describe("native product channel admission", () => {
         context,
       ),
     ).rejects.toBe(f.storage.original);
+    await f.recover();
     expect(
       await retainedNativeChannelDelivery(f.harness, edit.deliveryId, context),
     ).toBeUndefined();
@@ -1795,7 +1810,7 @@ describe("native product channel admission", () => {
     ).rejects.toThrow(/canonical address/);
   });
   it("pins the actual queued content revision at placement, independently of later passive corrections", async () => {
-    const f = await fixture(new RejectingStorage(), {
+    const f = await fixture(await createRejectingStorage(), {
       modelRequests: async (request, api) => {
         await api.prepare(request.model, context);
         return { status: "ready", options: {}, close: async () => {} };
@@ -1885,7 +1900,7 @@ describe("native product channel admission", () => {
   });
   it("pins exact consumed feedback frontiers without comparing unrelated channel clocks or lowering a corrected input frontier", async () => {
     let modelReady = false;
-    const f = await fixture(new RejectingStorage(), {
+    const f = await fixture(await createRejectingStorage(), {
       modelRequests: async (request, api) => {
         if (!modelReady)
           return {
@@ -2015,7 +2030,7 @@ describe("native product channel admission", () => {
 describe("ui feedback repair turns", () => {
   /** Model calls are ready while `ready` allows; later generations wait (a busy run). */
   async function repairFixture<S extends Storage = RejectingStorage>(
-    storage: S = new RejectingStorage() as Storage as S,
+    storage?: S,
     ready = Infinity,
   ) {
     let calls = 0;
@@ -2241,7 +2256,7 @@ describe("ui feedback repair turns", () => {
   });
 
   it("while the producing turn runs, the repair follows it and later failures join the queued repair", async () => {
-    const f = await repairFixture(new RejectingStorage(), 0);
+    const f = await repairFixture(await createRejectingStorage(), 0);
     const ordinary = await submitNativeChannelDelivery(
       f.harness,
       binding,
@@ -2281,7 +2296,7 @@ describe("ui feedback repair turns", () => {
   });
 
   it("a failure arriving while its repair turn runs steers into that repair turn", async () => {
-    const f = await repairFixture(new RejectingStorage(), 1);
+    const f = await repairFixture(await createRejectingStorage(), 1);
     f.faux.setResponses([fauxAssistantMessage("ordinary reply")]);
     const ordinary = await submitNativeChannelDelivery(
       f.harness,

@@ -117,7 +117,7 @@ export function createDocsSearchTool(
       const hits = serverHits.slice(0, limit);
       if (hits.length === 0) {
         return {
-          content: [
+          output: [
             {
               type: "text",
               text: `No catalog matches for "${params.query}". Try broader keywords, or a different surface.`,
@@ -131,7 +131,7 @@ export function createDocsSearchTool(
           `${h.id}  —  ${h.title}${h.description ? `: ${h.description}` : ""}`,
       );
       return {
-        content: [
+        output: [
           {
             type: "text",
             text: `${lines.join("\n")}\n\n(${hits.length} result${hits.length === 1 ? "" : "s"}. Use docs_open({ id: "<result-id>" }) for the full schema, access rules, and examples.)`,
@@ -567,7 +567,7 @@ export function createDocsOpenTool(
       );
       if (!entry) {
         return {
-          content: [
+          output: [
             {
               type: "text",
               text: `No catalog entry "${params.id}" (unknown, or not callable by you). Use docs_search to find ids.`,
@@ -577,7 +577,7 @@ export function createDocsOpenTool(
         };
       }
       return {
-        content: [{ type: "text", text: renderEntry(entry) }],
+        output: [{ type: "text", text: renderEntry(entry) }],
         details: toolDetails(entry),
       };
     },

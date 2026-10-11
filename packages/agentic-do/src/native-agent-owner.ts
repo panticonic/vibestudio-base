@@ -84,6 +84,7 @@ interface RetainedModelConnection {
  */
 export abstract class NativeAgentOwner extends PanelDurableObjectBase {
   static override schemaVersion = 5;
+  static override nativeOwner = true;
 
   private opening: Promise<Harness> | null = null;
   private harness: Harness | null = null;
@@ -92,9 +93,11 @@ export abstract class NativeAgentOwner extends PanelDurableObjectBase {
     Promise<LifecyclePrepareResult>
   >();
   private sealed = false;
-  private leaseRegistered = false;
   private connectionReleased = true;
   private cleanupFailure: unknown;
+  private sessionFailure: { readonly error: unknown } | undefined;
+  private sessionClosure: Promise<void> | null = null;
+  private sessionClosing = false;
   private readonly modelConnections = new Set<RetainedModelConnection>();
   private readonly modelCleanupFailures = new Set<unknown>();
   private readonly native: NativeStorage;
@@ -271,6 +274,7 @@ export abstract class NativeAgentOwner extends PanelDurableObjectBase {
 
   /** Product resources use this same activation admission barrier. */
   protected assertNativeAgentAdmission(): void {
+    if (this.sessionFailure) throw this.sessionFailure.error;
     if (this.sealed || !this.harness)
       throw new Error("Pi activation is sealed for new product work");
   }
@@ -282,6 +286,7 @@ export abstract class NativeAgentOwner extends PanelDurableObjectBase {
   }
 
   protected admittedAgentSession(): Harness {
+    if (this.sessionFailure) throw this.sessionFailure.error;
     if (!this.harness || this.connectionReleased)
       throw new Error("Pi owner has no open admitted Session");
     return this.harness;
@@ -384,6 +389,7 @@ export abstract class NativeAgentOwner extends PanelDurableObjectBase {
   protected async agentSession(
     context: Context = BACKGROUND_CONTEXT,
   ): Promise<Harness> {
+    if (this.sessionFailure) throw this.sessionFailure.error;
     if (this.sealed)
       throw new Error("Pi activation is sealed for lifecycle release");
     const harness = await this.restoreAgentSession(context);
@@ -443,8 +449,6 @@ export abstract class NativeAgentOwner extends PanelDurableObjectBase {
       phaseStartedAt = Date.now();
       const harness = await openPlatformAgentSession(
         async () => {
-          // Native owner admission atomically declared this release lease.
-          this.leaseRegistered = true;
           const database = new NativeDatabase(this.native);
           this.connectionReleased = false;
           try {
@@ -469,12 +473,8 @@ export abstract class NativeAgentOwner extends PanelDurableObjectBase {
           }
         },
         this.loadedImage(),
-        async (method, args, options) => {
-          const startedAt = Date.now();
-          const result = await this.callAgentHost(method, args, options);
-          if (method === "workspace-state.alarmSourceRegister") this.traceOwnerStartup("owner-admission", startedAt);
-          return result;
-        },
+        this.ctx.props.nativeOwner,
+        this.callAgentHost,
         {
           ...options,
           onReport: (error) => {
@@ -487,6 +487,23 @@ export abstract class NativeAgentOwner extends PanelDurableObjectBase {
       );
       this.traceOwnerStartup("session-open", phaseStartedAt);
       this.harness = harness;
+      this.sessionClosing = false;
+      harness.subscribeClose(() => { this.sessionClosing = true; });
+      // Session failure is authoritative. Join the real provider/backend close
+      // before recording a released connection; a later lifecycle epoch may
+      // restore retained obligations, while product admission keeps the cause.
+      this.sessionClosure = harness.closed.then(async (end) => {
+        if (end.reason === "failed") this.sessionFailure ??= { error: end.error };
+        try {
+          await harness.close(BACKGROUND_CONTEXT);
+          this.assertModelResourcesReleased();
+          if (this.harness === harness) this.connectionReleased = true;
+        } catch (error) {
+          this.cleanupFailure ??= end.reason === "failed" && error !== end.error
+            ? new AggregateError([end.error, error], "Pi session failure and resource release failed")
+            : error;
+        }
+      });
       return harness;
     } catch (error) {
       // openBoundAgentSession closes its connection before rejecting. An
@@ -659,7 +676,14 @@ export abstract class NativeAgentOwner extends PanelDurableObjectBase {
     const key = `${input.epoch}:${input.phase}`;
     const existing = this.releasePhases.get(key);
     if (existing) return existing;
-    if (input.phase === "quiesce") this.sealed = true;
+    if (input.phase === "quiesce") {
+      this.sealed = true;
+      // A new lifecycle epoch may own a dormant native obligation after a
+      // previous suspend released its connection. Only settlement reopens;
+      // product/model admission remains sealed throughout the peer barrier.
+      if (!this.opening && this.connectionReleased && !this.cleanupFailure)
+        this.settlementSealed = false;
+    }
     const flight = this.runDetached(() => this.releaseAgent(input));
     this.releasePhases.set(key, flight);
     void flight.then((result) => {
@@ -674,7 +698,18 @@ export abstract class NativeAgentOwner extends PanelDurableObjectBase {
   ): Promise<LifecyclePrepareResult> {
     try {
       if (this.opening) await this.opening.catch(() => {});
-      if (input.phase === "quiesce") return { status: "ready" };
+      if (input.phase === "quiesce") {
+        if (this.sessionClosing && this.sessionClosure) {
+          await this.sessionClosure;
+          if (this.cleanupFailure) throw this.cleanupFailure;
+          if (this.sessionFailure) {
+            this.harness = null;
+            this.opening = null;
+            this.settlementSealed = false;
+          }
+        }
+        return { status: "ready" };
+      }
       if (this.cleanupFailure) throw this.cleanupFailure;
       if (input.phase === "peer-obligations") {
         // A fresh activation has no connection cache; its committed execution
@@ -705,12 +740,13 @@ export abstract class NativeAgentOwner extends PanelDurableObjectBase {
         throw new Error("Pi connection release is unconfirmed");
       // Harness.close seals and joins its active invocations while preserving
       // their durable task records. Model-provider close receipts settle there;
-      // inspect them before acknowledging the local lifecycle lease release.
+      // inspect them before acknowledging the lifecycle epoch release.
       this.assertModelResourcesReleased();
-      if (this.leaseRegistered) {
-        await this.clearLifecycleRelease();
-        this.leaseRegistered = false;
-      }
+      // Native resource ownership belongs to the active entity, including
+      // hibernated connections. The lifecycle epoch receipt confirms this
+      // connection was joined; retirement clears the obligation on the host.
+      this.harness = null;
+      this.opening = null;
       return { status: "ready" };
     } catch (error) {
       return {
@@ -722,7 +758,7 @@ export abstract class NativeAgentOwner extends PanelDurableObjectBase {
 
   private assertModelResourcesReleased(): void {
     // Harness.close joins active invocations but leaves these receipts intact;
-    // inspect them before acknowledging local lease release.
+    // inspect them before acknowledging the lifecycle epoch release.
     if (this.modelCleanupFailures.size === 1)
       throw [...this.modelCleanupFailures][0];
     if (this.modelCleanupFailures.size > 1)

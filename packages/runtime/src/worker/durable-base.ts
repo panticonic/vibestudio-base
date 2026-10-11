@@ -1,3 +1,4 @@
+import { AlarmProjectionPublisher } from "./alarm-projection-publisher.js";
 import { LifecyclePreparation } from "@vibestudio/shared/lifecyclePreparation";
 import { serializeRpcFailure, deserializeRpcFailure } from "@vibestudio/rpc";
 import { createTypedRpcServiceClient } from "@vibestudio/shared/typedRpcServiceClient";
@@ -146,6 +147,7 @@ function directAuthorityAcceptedAt(request: Request): number {
 export interface DurableObjectContext {
   /** Per-object creation configuration, independent of the shared executable. */
   props: {
+    nativeOwner: import("@vibestudio/shared/runtime/entitySpec").NativeOwnerAdmission | null;
     stateArgs: Record<string, unknown> | null;
     image: { effectiveVersion: string; sourceRef: string } | null;
   };
@@ -266,6 +268,7 @@ export abstract class DurableObjectBase {
   // --- Schema (lazy init, enforced automatically) ---
 
   static schemaVersion = 1;
+  static readonly nativeOwner: boolean = false;
   static readonly durableWorkQueues: readonly DurableWorkQueue[] = [];
   static eventIntake: readonly EventIntakeRule[] = [];
   static rpcMethods?: ServiceMethodSchemas;
@@ -479,6 +482,7 @@ export abstract class DurableObjectBase {
       validateDurableObjectExecutableCapabilities(
         descriptor,
         (this.constructor as typeof DurableObjectBase).durableWorkQueues,
+        (this.constructor as typeof DurableObjectBase).nativeOwner,
       );
     await installDurableObjectSchema({
       className: String(this.env["WORKER_CLASS_NAME"] ?? this.constructor.name),
@@ -506,6 +510,7 @@ export abstract class DurableObjectBase {
           validateSchema: () => this.validateSchema(),
         },
         (this.constructor as typeof DurableObjectBase).durableWorkQueues,
+        (this.constructor as typeof DurableObjectBase).nativeOwner,
       ),
     );
   }
@@ -685,6 +690,7 @@ export abstract class DurableObjectBase {
         const previous = invocation?.requestSignal;
         if (invocation) invocation.requestSignal = request.signal;
         try {
+          this.alarmProjection.invalidate();
           return { nextAlarm: await this.alarm() };
         } finally {
           if (invocation) {
@@ -1023,17 +1029,16 @@ export abstract class DurableObjectBase {
 
   /** Persist an exact alarm projection from activation-owned work which has
    * no later fetch-finally drain boundary. */
-  protected async persistAlarmSchedule(
-    schedule: DoAlarmSchedule | null,
-  ): Promise<void> {
-    if (schedule) {
-      await this.workspaceStateService.alarmSet({
-        ...this.lifecycleKey(),
-        wakeAt: schedule.wakeAt,
-      });
-      return;
+  private readonly alarmProjection = new AlarmProjectionPublisher(async (wakeAt) => {
+    if (wakeAt !== null) {
+      await this.workspaceStateService.alarmSet({ ...this.lifecycleKey(), wakeAt });
+    } else {
+      await this.workspaceStateService.alarmClear(this.lifecycleKey());
     }
-    await this.workspaceStateService.alarmClear(this.lifecycleKey());
+  });
+
+  protected persistAlarmSchedule(schedule: DoAlarmSchedule | null): Promise<void> {
+    return this.alarmProjection.publish(schedule?.wakeAt ?? null);
   }
 
   private readonly pendingAlarmRpcs = new Set<Promise<void>>();
@@ -1046,6 +1051,9 @@ export abstract class DurableObjectBase {
     void pending.catch(() => undefined);
     this.pendingAlarmRpcs.add(pending);
     this.activeInvocationContext?.alarmRpcs?.add(pending);
+    // Own the complete publication, including queued writes and subclass
+    // continuations, before any asynchronous outbound RPC starts.
+    this._causalRpcOperations.observe(pending);
   }
 
   private async drainAlarmRpcs(): Promise<void> {
@@ -1303,8 +1311,10 @@ export abstract class DurableObjectBase {
                   this.lifecyclePreparation.cancelled(input);
                   return { status: "ready" } satisfies LifecyclePrepareResult;
                 }
-                if (input.phase === "quiesce")
+                if (input.phase === "quiesce") {
+                  this.alarmProjection.invalidate();
                   this.beginLifecycleRelease(input);
+                }
                 const failures: unknown[] = [];
                 if (input.phase === "quiesce") {
                   try {
@@ -1333,6 +1343,7 @@ export abstract class DurableObjectBase {
             : method === "__lifecycle/initializeClone"
               ? this.initializeClone(args[0] as LifecycleCloneInput)
               : await (async () => {
+                  this.alarmProjection.invalidate();
                   await this.resumeAfterRestart(
                     args[0] as LifecycleResumeInput,
                   );

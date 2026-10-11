@@ -48,12 +48,12 @@ describe("createReadTool", () => {
       { path: "hello.txt" },
       { callId: "call-1" },
     );
-    expect(result.content[0]).toMatchObject({
+    expect(result.output[0]).toMatchObject({
       type: "text",
       text: "hello\nworld",
     });
     expect(toolResultDetails(result).path).toBe("hello.txt");
-    expect(result.content).toHaveLength(1);
+    expect(result.output).toHaveLength(1);
     expect(JSON.stringify(result)).not.toContain("contentHash");
     expect(JSON.stringify(result)).not.toContain("workspace-read-receipt");
     expect(observations.get("hello.txt")).toMatch(/^[0-9a-f]{64}$/u);
@@ -145,25 +145,25 @@ describe("createReadTool", () => {
       episodeLimit: 4,
       historyLimit: 3,
     });
-    expect(result.content[0]).toMatchObject({
+    expect(result.output[0]).toMatchObject({
       type: "text",
       text: expect.stringMatching(/^second(?:\n|$)/u),
     });
-    expect(result.content[1]).toMatchObject({
+    expect(result.output[1]).toMatchObject({
       type: "text",
       text: expect.stringContaining(
         "workspace memory · why packages/example/src/value.ts lines 2-2 exist",
       ),
     });
-    expect((result.content[1] as { text: string }).text).toContain(
+    expect((result.output[1] as { text: string }).text).toContain(
       'stated: "Keep the retry budget owned by the caller"',
     );
     // Without a reference store the renderer names the kind and nothing else:
     // a content-addressed identity is never rendered to the model.
-    expect((result.content[1] as { text: string }).text).toContain(
+    expect((result.output[1] as { text: string }).text).toContain(
       "change change",
     );
-    expect((result.content[1] as { text: string }).text).not.toContain(
+    expect((result.output[1] as { text: string }).text).not.toContain(
       "change:value",
     );
     expect(result.details).toMatchObject({
@@ -202,11 +202,11 @@ describe("createReadTool", () => {
       { callId: "call-memory-failure" },
     );
 
-    expect(result.content[0]).toMatchObject({
+    expect(result.output[0]).toMatchObject({
       type: "text",
       text: "export const value = 1;",
     });
-    expect(result.content).toHaveLength(1);
+    expect(result.output).toHaveLength(1);
     expect(toolResultDetails(result).provenance).toEqual({
       status: "unavailable",
       path: "packages/example/src/value.ts",
@@ -230,7 +230,7 @@ describe("createReadTool", () => {
     await expect(
       executeTool(tool, { path: "hello.txt" }, { callId: "call-1" }),
     ).resolves.toMatchObject({
-      content: [{ type: "text", text: "hello" }],
+      output: [{ type: "text", text: "hello" }],
     });
     expect(readFile).toHaveBeenCalledTimes(2);
   });
@@ -256,7 +256,7 @@ describe("createReadTool", () => {
       engine: "runtime-fs",
       directory: true,
     });
-    expect((result.content[0] as { text: string }).text).toBe(
+    expect((result.output[0] as { text: string }).text).toBe(
       "README.md\ngit/",
     );
     expect(stat).not.toHaveBeenCalled();
@@ -284,7 +284,7 @@ describe("createReadTool", () => {
       missing: true,
       suggestions: expect.arrayContaining(["index.ts", "package.json"]),
     });
-    expect((result.content[0] as { text: string }).text).toContain(
+    expect((result.output[0] as { text: string }).text).toContain(
       "Use ls/find",
     );
   });
@@ -336,7 +336,7 @@ describe("createReadTool", () => {
       { callId: "call-1" },
     );
 
-    expect(result.content[0]).toMatchObject({
+    expect(result.output[0]).toMatchObject({
       type: "text",
       text: "# Git Bridge\n",
     });
@@ -353,7 +353,7 @@ describe("createReadTool", () => {
 
     expect(Value.Check(tool.parameters, input)).toBe(true);
     const result = await executeTool(tool, input, { callId: "call-1" });
-    expect(result.content[0]).toMatchObject({
+    expect(result.output[0]).toMatchObject({
       type: "text",
       text: "hello\nworld",
     });
@@ -401,7 +401,7 @@ describe("createReadTool", () => {
 
     expect(Value.Check(tool.parameters, input)).toBe(true);
     const result = await executeTool(tool, input, { callId: "call-1" });
-    expect(result.content[0]).toMatchObject({
+    expect(result.output[0]).toMatchObject({
       type: "text",
       text: "hello\nworld",
     });
@@ -436,7 +436,7 @@ describe("createReadTool", () => {
       { callId: "call-artifact" },
     );
 
-    expect(result.content[0]).toMatchObject({
+    expect(result.output[0]).toMatchObject({
       type: "text",
       text: '{"status":"failed"}',
     });
@@ -458,7 +458,7 @@ describe("createReadTool", () => {
       },
       { callId: "call-1" },
     );
-    const text = (result.content[0] as { text: string }).text;
+    const text = (result.output[0] as { text: string }).text;
     // Selected slice "line 3\nline 4" plus a continuation hint.
     expect(text).toContain("line 3");
     expect(text).toContain("line 4");
@@ -478,7 +478,7 @@ describe("createReadTool", () => {
       { callId: "call-1" },
     );
 
-    expect((result.content[0] as { text: string }).text).toContain(
+    expect((result.output[0] as { text: string }).text).toContain(
       "Offset 615 is beyond end of file (2 lines total)",
     );
     expect(result.details).toMatchObject({
@@ -516,7 +516,7 @@ describe("createReadTool", () => {
       { callId: "call-1" },
     );
 
-    expect((result.content[0] as { text: string }).text).toBe("line 3\nline 4");
+    expect((result.output[0] as { text: string }).text).toBe("line 3\nline 4");
     expect(result.details).toMatchObject({
       path: "big.txt",
       engine: "runtime-fs",
@@ -568,7 +568,7 @@ describe("createReadTool", () => {
     expect(Value.Check(tool.parameters, input)).toBe(true);
     const result = await executeTool(tool, input, { callId: "call-bytes" });
 
-    expect(JSON.parse((result.content[0] as { text: string }).text)).toEqual({
+    expect(JSON.parse((result.output[0] as { text: string }).text)).toEqual({
       path: "value.bin",
       encoding: "base64",
       range: { start: 1, end: 4, totalBytes: 6, nextOffset: 4 },
@@ -647,7 +647,7 @@ describe("createReadTool", () => {
     await expect(
       executeTool(tool, { path: "guide.md" }, { callId: "call-1" }),
     ).resolves.toMatchObject({
-      content: [{ type: "text", text: "approval guide" }],
+      output: [{ type: "text", text: "approval guide" }],
       details: { path: "guide.md", engine: "runtime-fs" },
     });
     expect(rpc.call).not.toHaveBeenCalledWith(
@@ -699,7 +699,7 @@ describe("createReadTool", () => {
       { callId: "call-1" },
     );
 
-    const last = result.content[result.content.length - 1] as {
+    const last = result.output[result.output.length - 1] as {
       type: string;
       mimeType: string;
     };
@@ -762,7 +762,7 @@ describe("createReadTool", () => {
       { callId: "call-opaque-image" },
     );
 
-    expect(result.content).toEqual([
+    expect(result.output).toEqual([
       expect.objectContaining({ type: "image", mimeType: "image/png" }),
     ]);
     expect(result.details).toMatchObject({
@@ -822,7 +822,7 @@ describe("createReadTool", () => {
       { path: "pic.png" },
       { callId: "call-1" },
     );
-    const last = result.content[result.content.length - 1] as {
+    const last = result.output[result.output.length - 1] as {
       type: string;
       mimeType: string;
     };

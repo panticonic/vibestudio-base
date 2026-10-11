@@ -1,3 +1,4 @@
+import { recoverableStorage } from "./testing/recoverable-storage.js";
 import { bindNativeChannelConversation } from "./native-channel-session.js";
 import { createMainRpcCaller } from "@vibestudio/service-schemas/mainRpc";
 import { schemaRpcMock } from "@vibestudio/rpc/test-utils";
@@ -22,7 +23,6 @@ import {
   ToolResultEntry,
   Harness,
   MemoryStorage,
-  StorageRejected,
   type Storage,
   type StorageWrite,
 } from "@panticonic/pi-durable";
@@ -64,6 +64,7 @@ const binding: NativeChannelProjection = {
   policy: "all",
 };
 const sessions: Harness[] = [];
+const storageCleanups: (() => Promise<void>)[] = [];
 const directories: string[] = [];
 afterEach(async () => {
   const results = await Promise.allSettled(
@@ -74,28 +75,36 @@ afterEach(async () => {
       .splice(0)
       .map((directory) => rm(directory, { recursive: true, force: true })),
   );
-  for (const result of results)
+  const retired = await Promise.allSettled(storageCleanups.splice(0).map(cleanup => cleanup()));
+  for (const result of [...results, ...retired])
     if (result.status === "rejected") throw result.reason;
 });
-class RejectingStorage extends MemoryStorage {
-  reject = false;
-  readonly original = new StorageRejected("Publication batch rejected");
-  override commit(
-    writes: readonly StorageWrite[],
-    context: Parameters<Storage["commit"]>[1],
-  ) {
-    if (
-      this.reject &&
-      writes.some(
-        (write) =>
-          write.type === "entry" && write.value.kind === "pi.assistant",
-      )
-    ) {
-      this.reject = false;
-      return Promise.reject(this.original);
+type RejectingStorage = Storage & { reject: boolean; readonly original: Error; reopen(): Promise<RejectingStorage> };
+async function createRejectingStorage(): Promise<RejectingStorage> {
+  const controls = { reject: false };
+  const original = new Error("Publication batch rejected");
+  const recovery = await recoverableStorage(writes => {
+    if (controls.reject && writes.some(write => write.type === "entry" && write.value.kind === "pi.assistant")) {
+      controls.reject = false; return original;
     }
-    return super.commit(writes, context);
+    return undefined;
+  });
+  storageCleanups.push(recovery.cleanup);
+  function attach(storage: Storage): RejectingStorage {
+    return new Proxy(storage, {
+      get(target, key) {
+        if (key === "original") return original;
+        if (key === "reopen") return async () => attach(await recovery.reopen());
+        if (Object.hasOwn(controls, key)) return Reflect.get(controls, key);
+        const value = Reflect.get(target, key);
+        return typeof value === "function" ? value.bind(target) : value;
+      },
+      set(target, key, value) {
+        return Object.hasOwn(controls, key) ? Reflect.set(controls, key, value) : Reflect.set(target, key, value);
+      },
+    }) as RejectingStorage;
   }
+  return attach(recovery.storage);
 }
 function gate() {
   let resolve!: () => void;
@@ -142,13 +151,13 @@ async function fixture(
     publishWake: async () => {},
     prepareCommit: publication.prepareCommit,
   };
-  const harness = await Harness.open(
+  let harness = await Harness.open(
     options.storage ?? new MemoryStorage(),
     harnessOptions,
     context,
   );
   sessions.push(harness);
-  const conversation = await harness.root(context, {
+  let conversation = await harness.root(context, {
     agent: {
       model: { provider: "faux", modelId: faux.getModel().id },
       extensions: [extension],
@@ -184,13 +193,21 @@ async function fixture(
       context,
     );
   return {
-    harness,
-    conversation,
+    get harness() { return harness; },
+    get conversation() { return conversation; },
     publication,
     attempts,
     append,
     faux,
     harnessOptions,
+    async recover(reopened: Storage) {
+      expect((await harness.closed).reason).toBe("failed");
+      harness = await Harness.open(reopened, harnessOptions, context);
+      sessions.push(harness);
+      const restored = await harness.conversation(conversation.id, context);
+      if (!restored) throw new Error("Retained publication conversation disappeared");
+      conversation = restored;
+    },
   };
 }
 async function publicationTasks(harness: Harness) {
@@ -411,7 +428,7 @@ describe("native run activity publication", () => {
           });
           entered.resolve();
           await release.promise;
-          return { content: [{ type: "text", text: "Work joined" }] };
+          return { output: [{ type: "text", text: "Work joined" }] };
         },
       });
       const f = await fixture({ tools: [tool] });
@@ -954,10 +971,12 @@ describe("native channel publication ownership", () => {
     });
   });
   it("commits assistant entry and publication task together and rolls both back on deterministic rejection", async () => {
-    const storage = new RejectingStorage();
+    const storage = await createRejectingStorage();
     const f = await fixture({ storage });
     storage.reject = true;
     await expect(f.append("rejected")).rejects.toBe(storage.original);
+    expect(await f.harness.closed).toMatchObject({ reason: "failed", error: storage.original });
+    await f.recover(await storage.reopen());
     expect(
       (await f.conversation.entries({}, 20, undefined, context)).items,
     ).toEqual([]);
@@ -1232,7 +1251,7 @@ describe("native channel publication ownership", () => {
             ctx,
           );
           return {
-            content: [
+            output: [
               {
                 type: "text",
                 text: isError
@@ -1286,7 +1305,8 @@ describe("native channel publication ownership", () => {
       harness = await openPlatformAgentSession(
         async () => new MemoryStorage(),
         image,
-        callHost,
+        { ...owner, generation: 1, executionDigest: image.executionDigest, effectiveVersion: "state:one" },
+    callHost,
         {
           models,
           registry,
@@ -1506,7 +1526,8 @@ describe("native channel publication ownership", () => {
       harness = await openPlatformAgentSession(
         async () => new MemoryStorage(),
         image,
-        callHost,
+        { ...owner, generation: 1, executionDigest: image.executionDigest, effectiveVersion: "state:one" },
+    callHost,
         {
           models,
           registry,
@@ -1618,14 +1639,10 @@ describe("native channel publication ownership", () => {
     },
   );
   it("canonical input placement and mandatory source-channel read publication share one accepted batch and rollback together", async () => {
-    class ReadRejectingStorage extends MemoryStorage {
-      reject = true;
-      readonly original = new StorageRejected("Read placement batch rejected");
-      readonly batches: (readonly StorageWrite[])[] = [];
-      override async commit(
-        writes: readonly StorageWrite[],
-        ctx: Parameters<Storage["commit"]>[1],
-      ) {
+    let rejectRead = true;
+    const storageFailure = new Error("Read placement batch rejected");
+    const batches: (readonly StorageWrite[])[] = [];
+    const recovery = await recoverableStorage(writes => {
         const isRead = writes.some(
           (write) =>
             write.type === "task" &&
@@ -1634,15 +1651,15 @@ describe("native channel publication ownership", () => {
         const isPlacement = writes.some(
           (write) => write.type === "entry" && write.value.kind === "pi.user",
         );
-        if (isRead && isPlacement && this.reject) {
-          this.reject = false;
-          throw this.original;
+        if (isRead && isPlacement && rejectRead) {
+          rejectRead = false;
+          return storageFailure;
         }
-        this.batches.push(writes);
-        return super.commit(writes, ctx);
-      }
-    }
-    const storage = new ReadRejectingStorage();
+        batches.push(writes);
+        return undefined;
+    });
+    storageCleanups.push(recovery.cleanup);
+    let storage = recovery.storage;
     const accepted: {
       channelId: string;
       participantId: string;
@@ -1678,10 +1695,7 @@ describe("native channel publication ownership", () => {
       incarnation: "incarnation:read",
       authoritySessionId: "authority:read",
     };
-    const harness = await openBoundAgentSession(
-      storage,
-      owner,
-      {
+    const harnessOptions = {
         models,
         registry,
         publishWake: async () => {},
@@ -1695,7 +1709,11 @@ describe("native channel publication ownership", () => {
             kinds: ["test.read-model-ready"],
           },
         }),
-      },
+      } satisfies Parameters<typeof openBoundAgentSession>[2];
+    let harness = await openBoundAgentSession(
+      storage,
+      { ...owner, generation: 1 },
+      harnessOptions,
       context,
     );
     sessions.push(harness);
@@ -1704,7 +1722,7 @@ describe("native channel publication ownership", () => {
       channelRef: { source: "workers/channel", className: "ChannelDO", objectKey: "channel:response" },
       contextId: owner.contextId,
     };
-    const conversation = await openNativeChannelConversation(
+    let conversation = await openNativeChannelConversation(
       harness,
       target,
       { model: { provider: "faux", modelId: faux.getModel().id } },
@@ -1778,7 +1796,14 @@ describe("native channel publication ownership", () => {
         { kind: "input", content: "read me" },
         context,
       ),
-    ).rejects.toBe(storage.original);
+    ).rejects.toBe(storageFailure);
+    expect(await harness.closed).toMatchObject({ reason: "failed", error: storageFailure });
+    storage = await recovery.reopen();
+    harness = await openBoundAgentSession(storage, { ...owner, generation: 1 }, harnessOptions, context);
+    sessions.push(harness);
+    const restored = await harness.conversation(conversation.id, context);
+    if (!restored) throw new Error("Native source channel conversation disappeared");
+    conversation = restored;
     expect(
       await retainedNativeChannelSourceMessage(
         harness,
@@ -1796,7 +1821,7 @@ describe("native channel publication ownership", () => {
       context,
     );
     const record = await storage.submission(admitted.submissionId, context);
-    const batch = storage.batches.find((writes) =>
+    const batch = batches.find((writes) =>
       writes.some(
         (write) => write.type === "entry" && write.value.id === record?.entry,
       ),

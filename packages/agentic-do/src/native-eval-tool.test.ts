@@ -52,24 +52,7 @@ const image = {
   objectKey: "one",
   executionDigest: "a".repeat(64),
 };
-const entity = {
-  id: owner.runtimeId,
-  authoritySessionId: owner.authoritySessionId,
-  kind: "do",
-  status: "active",
-  source: { repoPath: image.source, effectiveVersion: "state:one" },
-  contextId: owner.contextId,
-  className: image.className,
-  key: image.objectKey,
-  activeExecutionDigest: image.executionDigest,
-  agentBinding: {
-    entityId: owner.runtimeId,
-    contextId: owner.contextId,
-    channelId: "channel:one",
-  },
-  createdAt: 1,
-  cleanupComplete: false,
-};
+
 async function fixture(
   options: {
     loseStart?: boolean;
@@ -182,7 +165,7 @@ async function fixture(
     owner.runtimeId,
   );
   const callHost: AgentHostCall = createMainRpcCaller(
-    schemaRpcClientMock({ call: async (_target, method) => method === "workspace-state.alarmSourceRegister" ? { entity, incarnation: owner.incarnation } : "accepted" }, owner.runtimeId),
+    schemaRpcClientMock({ call: async (_target, _method) => "accepted" }, owner.runtimeId),
   );
   const call = createMainRpcCaller(rpc);
   const acknowledgements = createNativeEvalAcknowledgements(
@@ -226,6 +209,7 @@ async function fixture(
   harness = await openPlatformAgentSession(
     async () => new MemoryStorage(),
     image,
+    { ...owner, generation: 1, executionDigest: image.executionDigest, effectiveVersion: "state:one" },
     callHost,
     { models, registry },
     context,

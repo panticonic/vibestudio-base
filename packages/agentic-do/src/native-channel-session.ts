@@ -1370,6 +1370,8 @@ export async function submitNativeChannelDelivery(
     return admission;
   };
   let submission: Submission;
+  let closing = false;
+  const stopObservingClose = harness.subscribeClose(() => { closing = true; });
   try {
     submission =
       prepared.kind === "input"
@@ -1559,6 +1561,10 @@ export async function submitNativeChannelDelivery(
               context,
             );
   } catch (original) {
+    if (closing) {
+      const end = await harness.closed;
+      throw end.reason === "failed" ? end.error : original;
+    }
     // A racing policy may have selected another native submission type. Only
     // an actually committed, exact source admission establishes successful replay.
     let replay: NativeChannelAdmission | null;
@@ -1576,6 +1582,8 @@ export async function submitNativeChannelDelivery(
     }
     if (replay?.conversationId === conversationId) return replay;
     throw original;
+  } finally {
+    stopObservingClose();
   }
   // The kernel correctly skips factories on request-ID replay. Verify the
   // retained product identity even then, including racing different envelopes.

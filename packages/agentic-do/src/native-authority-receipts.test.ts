@@ -102,7 +102,7 @@ async function parkedApproval() {
   let taskId: number | undefined;
   harness = await openBoundAgentSession(
     new MemoryStorage(),
-    owner,
+    { ...owner, generation: 1 },
     {
       models,
       registry: createRegistry(),

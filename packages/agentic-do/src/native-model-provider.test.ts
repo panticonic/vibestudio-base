@@ -131,7 +131,7 @@ function setup(provider = "faux", baseUrl = "https://provider.test/v1") {
   async function open(storage: Storage = new MemoryStorage()) {
     const harness = await openBoundAgentSession(
       storage,
-      owner,
+      { ...owner, generation: 1 },
       {
         models,
         registry,

@@ -48,10 +48,10 @@ async function database() {
   return join(root, "agent.sqlite");
 }
 
-async function open(path: string, identity = owner, agentOptions = options) {
+async function open(path: string, identity = owner, agentOptions = options, generation = 1) {
   const session = await openBoundAgentSession(
     await openNodeSqliteStorage(path),
-    identity,
+    { ...identity, generation },
     agentOptions,
     BACKGROUND_CONTEXT
   );
@@ -68,7 +68,7 @@ describe("retained agent execution owner", () => {
       incarnation: "host-incarnation-one",
       authoritySessionId: "authority-session-one",
     };
-    const session = await openBoundAgentSession(storage, owner, options, BACKGROUND_CONTEXT);
+    const session = await openBoundAgentSession(storage, { ...owner, generation: 1 }, options, BACKGROUND_CONTEXT);
     sessions.push(session);
     const before = await storage.scanDocuments(
       { scope: { kind: "session" }, at: "current" },
@@ -173,6 +173,61 @@ describe("retained agent execution owner", () => {
         BACKGROUND_CONTEXT
       )
     ).toEqual(history);
+  });
+
+  it("restores the same active owner from an older storage generation before reconciliation", async () => {
+    const path = await database();
+    const first = await open(path);
+    const conversation = await first.root(BACKGROUND_CONTEXT);
+    await first.commit((tx) => tx.appendEntry(conversation.id, {
+      kind: "test.history", data: { retained: true },
+    }), BACKGROUND_CONTEXT);
+    await first.close(BACKGROUND_CONTEXT);
+    const replacement = { ...owner, incarnation: "replacement-storage" };
+    const restored = await open(path, replacement, options, 2);
+    expect(await retainedAgentExecutionOwner(restored, BACKGROUND_CONTEXT)).toEqual(replacement);
+    const retained = await restored.conversation(conversation.id, BACKGROUND_CONTEXT);
+    expect((await retained!.entries({}, 10, undefined, BACKGROUND_CONTEXT)).items).toHaveLength(1);
+    await restored.close(BACKGROUND_CONTEXT);
+    // Publication is idempotent; reopening uses the same current generation.
+    expect(await retainedAgentExecutionOwner(await open(path, replacement, options, 2), BACKGROUND_CONTEXT)).toEqual(replacement);
+  });
+
+  it("restores retired same-owner history into a newly published generation and authority lifetime", async () => {
+    const path = await database();
+    const first = await open(path);
+    const conversation = await first.root(BACKGROUND_CONTEXT);
+    await first.commit((tx) => tx.appendEntry(conversation.id, {
+      kind: "test.history", data: { retired: true },
+    }), BACKGROUND_CONTEXT);
+    await retireBoundAgentSession(first, BACKGROUND_CONTEXT);
+    await first.close(BACKGROUND_CONTEXT);
+    const replacement = { ...owner, incarnation: "restored-retired-storage", authoritySessionId: "restored-authority" };
+    const restored = await open(path, replacement, options, 2);
+    expect(await retainedAgentExecutionOwner(restored, BACKGROUND_CONTEXT)).toEqual(replacement);
+    const retained = await restored.conversation(conversation.id, BACKGROUND_CONTEXT);
+    expect((await retained!.entries({}, 10, undefined, BACKGROUND_CONTEXT)).items).toHaveLength(1);
+    await restored.close(BACKGROUND_CONTEXT);
+    await expect(open(path, owner)).rejects.toThrow("Retired execution owner");
+  });
+
+  it("rejects storage incarnation conflicts and transplanted owners even with a newer generation", async () => {
+    const path = await database();
+    const first = await open(path);
+    await first.close(BACKGROUND_CONTEXT);
+    for (const [identity, generation] of [
+      [{ ...owner, incarnation: "conflicting-storage" }, 1],
+      [{ ...owner, incarnation: "conflicting-storage", contextId: "foreign-context" }, 2],
+      [{ ...owner, incarnation: "conflicting-storage", runtimeId: "do:workers/agent:Agent:foreign" }, 2],
+      [{ ...owner, incarnation: "conflicting-storage", authoritySessionId: "foreign-authority" }, 2],
+      [owner, 2],
+    ] as const) {
+      await expect(open(path, identity, options, generation)).rejects.toThrow("Retired execution owner");
+    }
+    const replacement = { ...owner, incarnation: "replacement-storage" };
+    await (await open(path, replacement, options, 2)).close(BACKGROUND_CONTEXT);
+    await expect(open(path)).rejects.toThrow("Retired execution owner");
+    expect(await retainedAgentExecutionOwner(await open(path, replacement, options, 2), BACKGROUND_CONTEXT)).toEqual(replacement);
   });
 
   it("cannot transfer retained storage to another context or storage incarnation after retirement", async () => {

@@ -95,7 +95,7 @@ export function createEditTool(
         observations,
       );
       return {
-        content: [{ type: "text", text: mutationResultText(details) }],
+        output: [{ type: "text", text: mutationResultText(details) }],
         details: toolDetails(details),
       };
     },

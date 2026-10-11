@@ -69,7 +69,7 @@ export function createPanelScreenshotTool(
         context.abortSignal ? { signal: context.abortSignal } : undefined,
       );
       return {
-        content: [
+        output: [
           { type: "image", data: result.data, mimeType: result.mimeType },
           {
             type: "text",
@@ -201,7 +201,7 @@ export function createPanelConsoleTool(
           ? `\n(${result.dropped.entries} entries and ${result.dropped.errors} errors were dropped before this read — the history is bounded.)`
           : "";
       return {
-        content: [
+        output: [
           {
             type: "text",
             text: `${renderEntries("console", result.entries)}\n\n${renderEntries(
@@ -259,7 +259,7 @@ export function createPanelEvalTool(
       const expression = params.expression;
       if (typeof expression !== "string" || expression.length === 0) {
         return {
-          content: [
+          output: [
             {
               type: "text",
               text: "panel_eval needs an expression to evaluate.",
@@ -276,7 +276,7 @@ export function createPanelEvalTool(
       ], context.abortSignal ? { signal: context.abortSignal } : undefined);
       if (!result.ok) {
         return {
-          content: [
+          output: [
             {
               type: "text",
               text: `${result.type}: ${result.error ?? "(no detail)"}`,
@@ -290,7 +290,7 @@ export function createPanelEvalTool(
         ? "\n(truncated at the host's serialization limit)"
         : "";
       return {
-        content: [
+        output: [
           {
             type: "text",
             text: `${result.type}: ${result.value ?? "(no value)"}${truncated}`,
@@ -333,7 +333,7 @@ export function createPanelCdpEndpointTool(
         panelId,
       ], context.abortSignal ? { signal: context.abortSignal } : undefined);
       return {
-        content: [
+        output: [
           {
             type: "text",
             text: `CDP endpoint for ${panelId}: ${endpoint.wsEndpoint}`,

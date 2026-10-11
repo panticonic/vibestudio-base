@@ -112,7 +112,7 @@ async function fixture(
     execute: async (args) => {
       toolCalls.push(args);
       return {
-        content: [],
+        output: [],
         details: value,
       };
     },
@@ -169,6 +169,7 @@ async function fixture(
         authoritySessionId: "lifetime:one",
         contextId: "context:one",
         incarnation: "storage:one",
+        generation: 1,
       },
       options,
       context,

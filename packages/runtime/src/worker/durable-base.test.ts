@@ -2051,12 +2051,19 @@ describe("DurableObjectBase server-driven alarm durability", () => {
       throw new Error("test server did not bind TCP");
 
     try {
-      const { call } = await createTestDO(DerivedAlarmProbeDO, {
+      const { call, instance } = await createTestDO(DerivedAlarmProbeDO, {
         GATEWAY_URL: `http://127.0.0.1:${address.port}`,
       });
 
       await expect(call("recordWake", 456)).resolves.toBe("recorded");
+      await expect(call("recordWake", 456)).resolves.toBe("recorded");
       expect(methods).toEqual(["workspace-state.alarmSet"]);
+      await dispatchAlarm(instance);
+      await expect(call("recordWake", 456)).resolves.toBe("recorded");
+      expect(methods).toEqual([
+        "workspace-state.alarmSet",
+        "workspace-state.alarmSet",
+      ]);
     } finally {
       server.closeAllConnections();
       await new Promise<void>((resolve, reject) =>

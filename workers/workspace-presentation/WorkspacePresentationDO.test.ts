@@ -237,7 +237,7 @@ function sqliteContext(db: DatabaseSync): DurableObjectContext {
     },
   };
   return {
-    props: { stateArgs: null, image: null },
+    props: { stateArgs: null, image: null, nativeOwner: null },
     id: {
       toString: () => "workspace-presentation-test",
       name: "workspace-presentation-test",

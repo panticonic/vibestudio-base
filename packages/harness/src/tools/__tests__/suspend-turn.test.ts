@@ -19,7 +19,7 @@ describe("native suspend_turn", () => {
       async () => wait,
     );
     const cancel = vi.fn<NativeSuspendTurnExecution["cancel"]>(async () => ({
-      content: [],
+      output: [],
     }));
     const tool = createSuspendTurnTool({ execution: { execute, cancel } });
     const args = { reason: "waiting_for_background" as const };
@@ -33,7 +33,7 @@ describe("native suspend_turn", () => {
 
   it("preserves a stale-wait result and the original owner failure", async () => {
     const result = {
-      content: [
+      output: [
         { type: "text" as const, text: "Integrate the completed run." },
       ],
       details: { completedRunsAwaitingIntegration: ["native:completed"] },
@@ -43,7 +43,7 @@ describe("native suspend_turn", () => {
     const tool = createSuspendTurnTool({
       execution: {
         execute: async () => result,
-        cancel: async () => ({ content: [] }),
+        cancel: async () => ({ output: [] }),
       },
     });
     expect(
@@ -55,7 +55,7 @@ describe("native suspend_turn", () => {
         execute: async () => {
           throw error;
         },
-        cancel: async () => ({ content: [] }),
+        cancel: async () => ({ output: [] }),
       },
     });
     await expect(failing.execute({}, api, context)).rejects.toBe(error);

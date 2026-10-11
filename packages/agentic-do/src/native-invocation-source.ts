@@ -2,6 +2,8 @@ import { copyJson, type Context, type JsonValue } from "@panticonic/pi-chord";
 import {
   defineDocFamily,
   DirectToolCallEntry,
+  NestedCallDoc,
+  type TaskRecord,
   type EntryId,
   type Harness,
   type ModelRequestApi,
@@ -13,8 +15,10 @@ import {
 import { sha256HexSyncText } from "@vibestudio/content-addressing";
 import {
   nativeInvocationId,
+  nativeInvocationIdentity,
   nativeInvocationSourceSchema,
   type NativeInvocationInspection,
+  type NativeInvocationIdentity,
   type NativeInvocationSource,
 } from "@vibestudio/service-schemas/nativeInvocation";
 import { canonicalJson } from "@vibestudio/shared/canonicalJson";
@@ -128,6 +132,31 @@ export async function retainNativeModelInvocation(
   }, context);
 }
 
+/** Coordinates of the committed tool task, never supplied by a tool caller. */
+export function nativeToolInvocationCoordinates(
+  task: TaskRecord<JsonValue, JsonValue, unknown>,
+): Exclude<NativeInvocationIdentity["operation"], { kind: "model" }> {
+  const input = task.input;
+  if (task.kind !== "pi.tool" || !isObject(input))
+    throw new Error("Native tool authority has no original call identity");
+  if (input["kind"] === "nested") {
+    const call = input["call"];
+    if (!isObject(call) || typeof call["id"] !== "string" || !call["id"] ||
+      typeof input["parent"] !== "number" || task.owner !== input["parent"] ||
+      typeof input["parentCallId"] !== "string" || !input["parentCallId"] ||
+      typeof input["key"] !== "string" || !input["key"])
+      throw new Error("Nested native tool has no committed parent call");
+    return { kind: "nested-tool", parentTaskId: input["parent"], parentCallId: input["parentCallId"], key: input["key"], callId: call["id"] };
+  }
+  if (typeof input["callId"] !== "string" || !input["callId"])
+    throw new Error("Native tool authority has no original call identity");
+  if (input["kind"] === "model" && typeof input["assistant"] === "number")
+    return { kind: "tool", assistantEntryId: input["assistant"], callId: input["callId"] };
+  if (input["kind"] === "direct" && typeof input["entryId"] === "number")
+    return { kind: "direct-tool", directEntryId: input["entryId"], callId: input["callId"] };
+  throw new Error("Native tool authority has no original call identity");
+}
+
 /** Derive attribution from the real assistant or direct call and final native execution intent. */
 export async function retainNativeToolInvocation(
   harness: Harness,
@@ -144,19 +173,32 @@ export async function retainNativeToolInvocation(
       task.conversationId !== api.conversationId ||
       task.state.status !== "running" ||
       !isObject(task.input) ||
-      task.input["callId"] !== api.callId ||
-      !isObject(task.input["source"]) ||
-      (task.input["source"]["kind"] !== "assistant" &&
-        task.input["source"]["kind"] !== "direct") ||
-      typeof task.input["source"]["entryId"] !== "number" ||
+
       !isObject(task.state.checkpoint) ||
       task.state.checkpoint["phase"] !== "execute"
     )
       throw new Error(
         "Native tool source does not match its committed invocation",
       );
-    const entry = await tx.entry(task.input["source"]["entryId"] as EntryId);
-    const direct = task.input["source"]["kind"] === "direct";
+    const coordinates = nativeToolInvocationCoordinates(task);
+    if (coordinates.callId !== api.callId)
+      throw new Error("Native tool call conflicts with its invoking task");
+    if (coordinates.kind === "nested-tool") {
+      const parent = await tx.task(coordinates.parentTaskId as TaskId);
+      const retained = await tx.doc(NestedCallDoc, coordinates.parentTaskId as TaskId, coordinates.key, null);
+      const call = task.input["call"];
+      if (!parent || parent.conversationId !== task.conversationId ||
+        nativeToolInvocationCoordinates(parent).callId !== coordinates.parentCallId ||
+        retained.taskId !== task.id || !isObject(call) || typeof call["name"] !== "string" || !call["name"])
+        throw new Error("Nested native tool does not belong to its retained parent call");
+      return retain(tx, {
+        owner,
+        task: { taskId: task.id, conversationId: task.conversationId, kind: task.kind, version: task.version },
+        operation: { ...coordinates, name: call["name"], argumentsDigest: sha256HexSyncText(canonicalJson(task.state.checkpoint["arguments"])) },
+      });
+    }
+    const direct = task.input["kind"] === "direct";
+    const entry = await tx.entry(task.input[direct ? "entryId" : "assistant"] as EntryId);
     if (direct) {
       const source =
         entry && DirectToolCallEntry.is(entry) ? entry.data?.call : undefined;
@@ -287,14 +329,7 @@ export async function inspectNativeInvocationSource(
   if (source.operation.kind !== "model") {
     if (
       !isObject(task.input) ||
-      task.input["callId"] !== source.operation.callId ||
-      !isObject(task.input["source"]) ||
-      task.input["source"]["kind"] !==
-        (source.operation.kind === "tool" ? "assistant" : "direct") ||
-      task.input["source"]["entryId"] !==
-        (source.operation.kind === "tool"
-          ? source.operation.assistantEntryId
-          : source.operation.directEntryId) ||
+      canonicalJson(nativeToolInvocationCoordinates(task)) !== canonicalJson(nativeInvocationIdentity(source).operation) ||
       task.state.checkpoint["phase"] !== "execute" ||
       sha256HexSyncText(canonicalJson(task.state.checkpoint["arguments"])) !==
         source.operation.argumentsDigest

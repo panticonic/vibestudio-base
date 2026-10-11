@@ -65,7 +65,7 @@ import {
   PROVIDER_CREDENTIAL_SETUPS,
 } from "./agent-config.js";
 import type { RespondPolicy } from "@workspace/agentic-protocol";
-import { AGENT_APPROVAL_LEVELS } from "@workspace/agentic-core";
+import { AGENT_APPROVAL_LEVELS } from "@workspace/agentic-core/agent-subscription-config";
 
 type StandardAgentMethodName =
   | "pause"
@@ -738,7 +738,7 @@ export abstract class AgentWorkerBase extends AgentVesselBase {
           titleExplicit: true,
         });
         return {
-          content: [
+          output: [
             { type: "text", text: `set conversation title to ${normalized}` },
           ],
           details: copyJson(
@@ -782,7 +782,7 @@ export abstract class AgentWorkerBase extends AgentVesselBase {
         const description = raw.trim().replace(/\s+/gu, " ").slice(0, 200);
         await this.setAgentDescription(channelId, description || null, toolRpc);
         return {
-          content: [
+          output: [
             {
               type: "text",
               text: description
@@ -1165,7 +1165,7 @@ export abstract class AgentWorkerBase extends AgentVesselBase {
             );
           }
           return {
-            content: [{ type: "text", text: lines.join("\n") }],
+            output: [{ type: "text", text: lines.join("\n") }],
             details: copyJson(
               { addressees: rows },
               { omitUndefinedProperties: true },
@@ -1212,7 +1212,7 @@ export abstract class AgentWorkerBase extends AgentVesselBase {
           });
           if (listing.entries.length === 0) {
             return {
-              content: [
+              output: [
                 {
                   type: "text",
                   text: `No agent matched "${input.query}". Use list_addressees to see who is already here.`,
@@ -1237,7 +1237,7 @@ export abstract class AgentWorkerBase extends AgentVesselBase {
             })
             .join("\n");
           return {
-            content: [{ type: "text", text }],
+            output: [{ type: "text", text }],
             details: copyJson(
               { entries: listing.entries },
               { omitUndefinedProperties: true },
@@ -1577,7 +1577,7 @@ export abstract class AgentWorkerBase extends AgentVesselBase {
             channelId,
             toolRpc,
           );
-          const text = result.content
+          const text = result.output
             ?.map((block) => (block.type === "text" ? block.text : ""))
             .join("")
             .trim();
@@ -1669,7 +1669,7 @@ export abstract class AgentWorkerBase extends AgentVesselBase {
         }
 
         return {
-          content: [{ type: "text", text: results.join("; ") }],
+          output: [{ type: "text", text: results.join("; ") }],
           details: copyJson({ alert, sent }, { omitUndefinedProperties: true }),
         };
       },

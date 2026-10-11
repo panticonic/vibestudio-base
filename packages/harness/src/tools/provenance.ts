@@ -372,7 +372,7 @@ function invalidTargetResult(target: string, message: string) {
     "compact ref returned by provenance",
   ] as const;
   return {
-    content: [
+    output: [
       {
         type: "text" as const,
         text: `${message}\nUse "session", an existing managed repository/file path, a semantic identity, or a compact ref returned by provenance. Service and tool names are not provenance targets.`,
@@ -501,7 +501,7 @@ function toolResult(
     ],
   };
   return {
-    content: [
+    output: [
       {
         type: "text" as const,
         text:
@@ -634,7 +634,7 @@ export function createProvenanceTool(
         if (conflictingFields.length > 0) {
           const mode = input.query !== undefined ? "query" : "targets";
           return {
-            content: [
+            output: [
               {
                 type: "text" as const,
                 text: `${mode} cannot be combined with ${conflictingFields.join(", ")}. Queries cover the visible context; express the set in SQL, comparing identity columns to returned @refs rather than managed paths.`,
@@ -653,7 +653,7 @@ export function createProvenanceTool(
             limit: Math.min(input.limit ?? QUERY_ROW_LIMIT, 200),
           });
           return {
-            content: [
+            output: [
               {
                 type: "text" as const,
                 text: renderQueryBlock({
@@ -701,7 +701,7 @@ export function createProvenanceTool(
             }),
           );
           return {
-            content: [
+            output: [
               {
                 type: "text" as const,
                 text: renderInspectionBatch({ inspections, reference }),
@@ -734,7 +734,7 @@ export function createProvenanceTool(
             limit: Math.min(input.limit ?? SEARCH_HIT_LIMIT, 50),
           });
           return {
-            content: [
+            output: [
               {
                 type: "text" as const,
                 text: renderSearchBlock({ result, reference }),
@@ -774,7 +774,7 @@ export function createProvenanceTool(
             limit: Math.min(input.limit ?? WALK_ENTRY_LIMIT, 200),
           });
           return {
-            content: [
+            output: [
               {
                 type: "text" as const,
                 text: renderWalkBlock({ label: targetLabel,

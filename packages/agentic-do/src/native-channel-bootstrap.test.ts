@@ -1,3 +1,4 @@
+import { recoverableStorage } from "./testing/recoverable-storage.js";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -10,10 +11,8 @@ import {
   createRegistry,
   defineExtension,
   MemoryStorage,
-  StorageRejected,
   type Harness,
   type Storage,
-  type StorageWrite,
 } from "@panticonic/pi-durable";
 import type { ChannelReplayEnvelope } from "@workspace/pubsub";
 import { openBoundAgentSession } from "./native-agent-session.js";
@@ -42,6 +41,7 @@ const owner = {
 };
 const intent = { channelId: binding.channelId, revision: 1 };
 const sessions: Harness[] = [];
+const storageCleanups: (() => Promise<void>)[] = [];
 const directories: string[] = [];
 afterEach(async () => {
   const results = await Promise.allSettled(
@@ -52,7 +52,8 @@ afterEach(async () => {
       .splice(0)
       .map((directory) => rm(directory, { recursive: true, force: true })),
   );
-  for (const result of [...results, ...cleanup])
+  const retired = await Promise.allSettled(storageCleanups.splice(0).map(cleanup => cleanup()));
+  for (const result of [...results, ...cleanup, ...retired])
     if (result.status === "rejected") throw result.reason;
 });
 function gate() {
@@ -88,34 +89,35 @@ function page(
     },
   };
 }
-class RejectingStorage extends MemoryStorage {
-  rejectHistory = false;
-  rejectImport = false;
-  readonly original = new StorageRejected("History batch refused");
-  override async commit(
-    writes: readonly StorageWrite[],
-    ctx: Parameters<Storage["commit"]>[1],
-  ) {
-    if (
-      this.rejectImport &&
-      writes.some((write) => write.type === "conversation")
-    ) {
-      this.rejectImport = false;
-      throw this.original;
+type RejectingStorage = Storage & { rejectHistory: boolean; rejectImport: boolean; readonly original: Error; reopen(): Promise<RejectingStorage> };
+async function createRejectingStorage(): Promise<RejectingStorage> {
+  const controls = { rejectHistory: false, rejectImport: false };
+  const original = new Error("History batch refused");
+  const recovery = await recoverableStorage(writes => {
+    if (controls.rejectImport && writes.some(write => write.type === "conversation")) {
+      controls.rejectImport = false; return original;
     }
-    if (
-      this.rejectHistory &&
-      writes.some(
-        (write) =>
-          write.type === "entry" &&
-          write.value.kind === "vibestudio.channel-history",
-      )
-    ) {
-      this.rejectHistory = false;
-      throw this.original;
+    if (controls.rejectHistory && writes.some(write => write.type === "entry" && write.value.kind === "vibestudio.channel-history")) {
+      controls.rejectHistory = false; return original;
     }
-    return super.commit(writes, ctx);
+    return undefined;
+  });
+  storageCleanups.push(recovery.cleanup);
+  function attach(storage: Storage): RejectingStorage {
+    return new Proxy(storage, {
+      get(target, key) {
+        if (key === "original") return original;
+        if (key === "reopen") return async () => attach(await recovery.reopen());
+        if (Object.hasOwn(controls, key)) return Reflect.get(controls, key);
+        const value = Reflect.get(target, key);
+        return typeof value === "function" ? value.bind(target) : value;
+      },
+      set(target, key, value) {
+        return Object.hasOwn(controls, key) ? Reflect.set(controls, key, value) : Reflect.set(target, key, value);
+      },
+    }) as RejectingStorage;
   }
+  return attach(recovery.storage);
 }
 async function fixture(
   options: Partial<Parameters<typeof createNativeChannelBootstrap>[0]> = {},
@@ -156,21 +158,26 @@ async function fixture(
     registry,
     publishWake: async () => {},
   };
-  const harness = await openBoundAgentSession(
+  let harness = await openBoundAgentSession(
     storage,
-    owner,
+    { ...owner, generation: 1 },
     harnessOptions,
     context,
   );
   sessions.push(harness);
   return {
     bootstrap,
-    harness,
+    get harness() { return harness; },
     joins,
     replay,
     prepare,
     storage,
     harnessOptions,
+    async recover(reopened: Storage) {
+      expect((await harness.closed).reason).toBe("failed");
+      harness = await openBoundAgentSession(reopened, { ...owner, generation: 1 }, harnessOptions, context);
+      sessions.push(harness);
+    },
   };
 }
 async function history(
@@ -405,19 +412,22 @@ describe("native subscription bootstrap readiness", () => {
       await f.bootstrap.retainedIntent(f.harness, binding, context),
     ).toEqual(intent);
   });
-  it("rejected history commit retains page and frontier; exact repair adds no duplicate prefix", async () => {
-    const storage = new RejectingStorage();
+  it("failed history storage closes the Session; durable reopen resumes its retained page without duplication", async () => {
+    const storage = await createRejectingStorage();
     const f = await fixture({}, storage);
-    const conversation = await f.bootstrap.open(
+    let conversation = await f.bootstrap.open(
       f.harness,
       binding,
       intent,
       context,
     );
     storage.rejectHistory = true;
-    await expect(f.bootstrap.ready(f.harness, binding, context)).rejects.toBe(
-      storage.original,
-    );
+    await expect(f.bootstrap.ready(f.harness, binding, context)).rejects.toBe(storage.original);
+    expect(await f.harness.closed).toMatchObject({ reason: "failed", error: storage.original });
+    await f.recover(await storage.reopen());
+    const restored = await f.harness.conversation(conversation.id, context);
+    if (!restored) throw new Error("Retained bootstrap conversation disappeared");
+    conversation = restored;
     expect(await history(conversation)).toEqual([]);
     const opening = await f.harness.snapshot(
       NativeChannelOpening,
@@ -426,19 +436,8 @@ describe("native subscription bootstrap readiness", () => {
     );
     const failed = (await f.harness.getTask(opening!.taskId!, context))!;
     expect(failed.state).toMatchObject({
-      status: "waiting",
       checkpoint: { phase: "history", after: 0 },
     });
-    if (
-      failed.state.status !== "waiting" ||
-      failed.state.condition.kind !== "failure"
-    )
-      throw new Error("Expected owned failure incident");
-    await f.harness.retryTask(
-      failed.id,
-      failed.state.condition.incident,
-      context,
-    );
     await f.bootstrap.ready(f.harness, binding, context);
     expect(await history(conversation)).toHaveLength(2);
     expect(f.joins).toHaveBeenCalledOnce();
@@ -598,7 +597,7 @@ describe("native subscription bootstrap readiness", () => {
     expect(joined[1]!.status).toBe("fulfilled");
     const replacement = await openBoundAgentSession(
       await openNodeSqliteStorage(path),
-      owner,
+      { ...owner, generation: 1 },
       f.harnessOptions,
       context,
     );
@@ -847,7 +846,7 @@ describe("native subscription bootstrap readiness", () => {
       context,
     );
     const knowledge = await original.exportHistory(entry.id, context);
-    const storage = new RejectingStorage();
+    const storage = await createRejectingStorage();
     const f = await fixture({}, storage);
     storage.rejectImport = true;
     await expect(
@@ -866,6 +865,8 @@ describe("native subscription bootstrap readiness", () => {
         context,
       ),
     ).rejects.toBe(storage.original);
+    expect(await f.harness.closed).toMatchObject({ reason: "failed", error: storage.original });
+    await f.recover(await storage.reopen());
     expect(
       await lookupNativeChannelConversation(f.harness, binding, context),
     ).toBeNull();

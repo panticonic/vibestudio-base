@@ -526,7 +526,7 @@ async function fixture(
       WORKER_CLASS_NAME: image.className,
       WORKER_EXECUTION_DIGEST: image.executionDigest,
     },
-    { props: { stateArgs: options.stateArgs ?? null, image: null } },
+    { props: { stateArgs: options.stateArgs ?? null, image: null, nativeOwner: { ...owner, generation: 1, executionDigest: image.executionDigest, effectiveVersion: "current-version" } } },
   );
   databases.push(result.db);
   const vessel = result.instance;
@@ -572,12 +572,11 @@ async function fixture(
   const harness = await openPlatformAgentSession(
     async () => new MemoryStorage(),
     image,
+    { ...owner, generation: 1, executionDigest: image.executionDigest, effectiveVersion: "current-version" },
     createMainRpcCaller(
       schemaRpcMock({
-        call: async (_target, method) =>
-          method === "workspace-state.alarmSourceRegister"
-            ? { entity: vessel.activeEntity, incarnation: owner.incarnation }
-            : "accepted",
+        call: async (_target, _method) =>
+          "accepted",
       }),
     ),
     {
@@ -1189,7 +1188,7 @@ describe("native shipping subagent launch", () => {
       execute: async (_args, api, ctx) => {
         if (api.continuation !== undefined)
           return {
-            content: [
+            output: [
               { type: "text" as const, text: "Original parent work joined" },
             ],
           };
@@ -1207,7 +1206,7 @@ describe("native shipping subagent launch", () => {
           continuation: { original: true },
         };
       },
-      cancel: async () => ({ content: [] }),
+      cancel: async () => ({ output: [] }),
     });
     const f = await fixture({ tools: [hold] });
     await f.terminal(await f.spawn());

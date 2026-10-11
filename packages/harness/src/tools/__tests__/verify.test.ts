@@ -98,7 +98,7 @@ describe("context-exact verify tool", () => {
         liveRuntime: "unchanged",
       },
     });
-    expect(result.content[0]).toMatchObject({
+    expect(result.output[0]).toMatchObject({
       type: "text",
       text: expect.stringContaining(
         "protected main and every live runtime remain unchanged",
@@ -172,15 +172,15 @@ describe("context-exact verify tool", () => {
     );
 
     expect(result.isError).toBe(false);
-    expect(result.content[0]).toMatchObject({
+    expect(result.output[0]).toMatchObject({
       type: "text",
       text: expect.stringContaining("1 diagnostic"),
     });
-    expect((result.content[0] as { text: string }).text).toContain(
+    expect((result.output[0] as { text: string }).text).toContain(
       "Cannot find name",
     );
     const modelEvidence = JSON.parse(
-      (result.content[0] as { text: string }).text.split("\n").at(-1)!,
+      (result.output[0] as { text: string }).text.split("\n").at(-1)!,
     );
     expect(modelEvidence.diagnostics).toEqual(
       (result.details as { report: UnitBuildReportWire }).report.diagnostics,
@@ -188,7 +188,7 @@ describe("context-exact verify tool", () => {
     expect(modelEvidence.receipt).toEqual(
       (result.details as { receipt: unknown }).receipt,
     );
-    expect((result.content[0] as { text: string }).text).toContain(
+    expect((result.output[0] as { text: string }).text).toContain(
       "Inspect these diagnostics, repair the source or dependency, then rerun verify once",
     );
     expect(result.details).toMatchObject({
@@ -271,7 +271,7 @@ describe("context-exact verify tool", () => {
         recovery: { action: "reobserve" },
       },
     });
-    const text = (result.content[0] as { text: string }).text;
+    const text = (result.output[0] as { text: string }).text;
     expect(text).toContain("Build verification for panels/editor encountered an infrastructure failure.");
     expect(text).toContain("Declared runtime dependency is unavailable");
     expect(text).toContain(
@@ -308,7 +308,7 @@ describe("context-exact verify tool", () => {
         recovery: { action: "stop" },
       },
     });
-    const text = (result.content[0] as { text: string }).text;
+    const text = (result.output[0] as { text: string }).text;
     expect(text).toContain(
       "failed but contains no error diagnostics",
     );
@@ -365,7 +365,7 @@ describe("context-exact verify tool", () => {
     ).report;
     expect(report.diagnostics[0]!.repair).toEqual(repair);
     const modelEvidence = JSON.parse(
-      (result.content[0] as { text: string }).text.split("\n").at(-1)!,
+      (result.output[0] as { text: string }).text.split("\n").at(-1)!,
     );
     expect(modelEvidence.diagnostics[0].repair).toEqual(repair);
   });
@@ -390,7 +390,7 @@ describe("context-exact verify tool", () => {
     );
 
     expect(result.isError).toBe(true);
-    expect(result.content[0]).toMatchObject({
+    expect(result.output[0]).toMatchObject({
       type: "text",
       text: expect.stringContaining("Build skipped for packages/docs"),
     });
@@ -452,7 +452,7 @@ describe("context-exact verify tool", () => {
     expect(
       (result.details as { report: UnitBuildReportWire }).report.diagnostics,
     ).toHaveLength(40);
-    expect(result.content[0]).toMatchObject({
+    expect(result.output[0]).toMatchObject({
       type: "text",
       text: expect.stringContaining("45 diagnostics; 40 retained"),
     });
@@ -529,7 +529,7 @@ describe("context-exact verify tool", () => {
     });
     expect(failed.details).not.toHaveProperty("failureKind");
     expect(failed.details).not.toHaveProperty("failure");
-    expect(failed.content[0]).toMatchObject({
+    expect(failed.output[0]).toMatchObject({
       type: "text",
       text: expect.stringContaining(
         "Inspect the compiler diagnostics, repair the source, then rerun verify.",
@@ -687,7 +687,7 @@ describe("context-exact verify tool", () => {
       status: "passed",
     });
     const modelEvidence = JSON.parse(
-      (result.content[0] as { text: string }).text.split("\n").at(-1)!,
+      (result.output[0] as { text: string }).text.split("\n").at(-1)!,
     );
     expect(modelEvidence).toEqual({
       report: (result.details as { report: unknown }).report,
@@ -754,7 +754,7 @@ describe("context-exact verify tool", () => {
       if (status === "failed") {
         expect(result.details).not.toHaveProperty("failureKind");
         expect(result.details).not.toHaveProperty("failure");
-        expect(result.content[0]).toMatchObject({
+        expect(result.output[0]).toMatchObject({
           type: "text",
           text: expect.stringContaining(
             "Inspect these failures, repair the source or tests, then rerun verify once.",
@@ -822,7 +822,7 @@ describe("context-exact verify tool", () => {
         recovery: { action: "correct-request" },
       },
     });
-    expect(result.content[0]).toMatchObject({
+    expect(result.output[0]).toMatchObject({
       type: "text",
       text: expect.stringContaining("verification did not pass"),
     });

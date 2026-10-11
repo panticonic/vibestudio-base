@@ -27,10 +27,10 @@ function withHandle(entry: RosterEntry, handle: string): RosterEntry {
 function engine() {
   return {
     execute: vi.fn(async (prepare: () => Promise<unknown>) => ({
-      content: [],
+      output: [],
       details: await prepare(),
     })),
-    cancel: vi.fn(async () => ({ content: [] })),
+    cancel: vi.fn(async () => ({ output: [] })),
   };
 }
 describe("native advertised channel tools", () => {

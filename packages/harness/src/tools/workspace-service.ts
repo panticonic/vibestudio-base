@@ -231,7 +231,7 @@ export function createWorkspaceServiceTool(
       }, command);
       if (plan.diagnostic) {
         return {
-          content: [
+          output: [
             {
               type: "text",
               text:
@@ -293,7 +293,7 @@ export function createWorkspaceServiceTool(
       const docsId =
         operation === "upsert" ? `workspace:${serviceName}` : undefined;
       return {
-        content: [
+        output: [
           {
             type: "text",
             text:

@@ -72,7 +72,7 @@ export function createLsTool(
 
       if (visibility && (await visibility.isHidden(dirPath))) {
         return {
-          content: [{ type: "text", text: `Path not found: ${dirPath}` }],
+          output: [{ type: "text", text: `Path not found: ${dirPath}` }],
           details: toolDetails({ diagnostic: "not-found", path: dirPath }),
         };
       }
@@ -83,7 +83,7 @@ export function createLsTool(
       } catch (err) {
         if ((err as NodeJS.ErrnoException).code === "ENOENT") {
           return {
-            content: [
+            output: [
               {
                 type: "text",
                 text:
@@ -104,7 +104,7 @@ export function createLsTool(
       }
       if (!stat.isDirectory()) {
         return {
-          content: [
+          output: [
             {
               type: "text",
               text:
@@ -154,7 +154,7 @@ export function createLsTool(
 
       if (results.length === 0) {
         return {
-          content: [{ type: "text", text: "(empty directory)" }],
+          output: [{ type: "text", text: "(empty directory)" }],
           details: toolDetails({ path: dirPath, entries: [] }),
         };
       }
@@ -182,7 +182,7 @@ export function createLsTool(
       }
 
       return {
-        content: [{ type: "text", text: output }],
+        output: [{ type: "text", text: output }],
         details: toolDetails(details),
       };
     },

@@ -32,7 +32,7 @@ export function nativeToolAdmissionRefusal(
   });
   return {
     isError: true,
-    content: [
+    output: [
       {
         type: "text",
         text:

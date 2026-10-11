@@ -6,7 +6,7 @@ import type { ToolRegistration } from "@panticonic/pi-durable";
 import type { JsonValue } from "@panticonic/pi-chord";
 import type { TSchema } from "@panticonic/pi-ai";
 
-import { authorNativeTool } from "@workspace/harness";
+import { authorNativeTool } from "@workspace/harness/native-tool-authoring";
 import type {
   AgentChannelFeatures,
   AgentResourceBinding,

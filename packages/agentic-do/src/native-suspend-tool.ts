@@ -51,18 +51,18 @@ export function createNativeSuspendExecution(
           throw new Error(
             "Native suspension lost its original conversation binding",
           );
-        return { content: [] };
+        return { output: [] };
       }
       if (args.reason !== "waiting_for_background")
-        return { content: [], control: { terminate: true } };
+        return { output: [], control: { terminate: true } };
       const background = await host.background(channelId, api, context);
       return api.commit(async (tx) => {
         const inbox = await tx.doc(InboxDoc, api.conversationId);
         if (inbox.items.some((item) => item.mode !== "write"))
-          return { content: [] } as const;
+          return { output: [] } as const;
         if (!background.live)
           return {
-            content: [
+            output: [
               {
                 type: "text",
                 text: background.unintegrated.length
@@ -102,7 +102,7 @@ export function createNativeSuspendExecution(
     },
     async cancel(_args, api, context) {
       await host.bindExecution(api, context);
-      return { content: [], control: { terminate: true } };
+      return { output: [], control: { terminate: true } };
     },
   };
 }

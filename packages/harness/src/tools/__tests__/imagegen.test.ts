@@ -121,7 +121,7 @@ describe("workspace imagegen", () => {
       responseId: "resp_test",
       mutation: { status: "applied", storage: "vcs" },
     });
-    expect(result.content).toContainEqual({
+    expect(result.output).toContainEqual({
       type: "image",
       data: png,
       mimeType: "image/png",

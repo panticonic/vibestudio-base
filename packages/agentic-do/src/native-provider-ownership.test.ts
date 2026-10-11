@@ -104,6 +104,7 @@ async function fixture(
     },
     {
       props: {
+        nativeOwner: null,
         stateArgs: null,
         image: {
           effectiveVersion: "a".repeat(64),

@@ -102,7 +102,7 @@ async function fixture(name: string, storage: Storage = new MemoryStorage()) {
   );
   const harness = await openBoundAgentSession(
     storage,
-    owner,
+    { ...owner, generation: 1 },
     {
       models,
       registry,
@@ -374,7 +374,7 @@ describe("native channel knowledge transfer", () => {
               };
             },
             cancel: async () => ({
-              content: [
+              output: [
                 { type: "text" as const, text: "Original child cancelled" },
               ],
             }),

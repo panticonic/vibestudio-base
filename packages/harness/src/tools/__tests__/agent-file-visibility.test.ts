@@ -57,7 +57,7 @@ describe("agent file visibility", () => {
       { path: "skills" },
       { callId: "ls" },
     );
-    expect(listed.content[0]).toMatchObject({ text: "public/" });
+    expect(listed.output[0]).toMatchObject({ text: "public/" });
 
     const read = await executeTool(
       createReadTool("/", fs, { visibility }),
@@ -77,10 +77,10 @@ describe("agent file visibility", () => {
       },
       { callId: "grep" },
     );
-    expect(grep.content[0]).toMatchObject({
+    expect(grep.output[0]).toMatchObject({
       text: expect.stringContaining("public/index.ts"),
     });
-    expect(grep.content[0]).not.toMatchObject({
+    expect(grep.output[0]).not.toMatchObject({
       text: expect.stringContaining("internal"),
     });
 
@@ -93,7 +93,7 @@ describe("agent file visibility", () => {
       },
       { callId: "find" },
     );
-    expect(found.content[0]).toMatchObject({ text: "public/index.ts" });
+    expect(found.output[0]).toMatchObject({ text: "public/index.ts" });
   });
 
   it("hides a declared skill at any depth, including inside an adopted project", async () => {
@@ -118,10 +118,10 @@ describe("agent file visibility", () => {
       },
       { callId: "grep" },
     );
-    expect(grep.content[0]).toMatchObject({
+    expect(grep.output[0]).toMatchObject({
       text: expect.stringContaining("public/index.ts"),
     });
-    expect(grep.content[0]).not.toMatchObject({
+    expect(grep.output[0]).not.toMatchObject({
       text: expect.stringContaining("internal"),
     });
   });
@@ -142,7 +142,7 @@ describe("agent file visibility", () => {
       { path: "workers" },
       { callId: "ls" },
     );
-    expect(listed.content[0]).toMatchObject({ text: "open/" });
+    expect(listed.output[0]).toMatchObject({ text: "open/" });
   });
 
   it("treats a manifest without the flag, or unparseable JSON, as visible", async () => {
@@ -231,7 +231,7 @@ describe("agent file visibility", () => {
       { pattern: "needle", path: "skills", includeIgnored: true },
       { callId: "grep" },
     );
-    expect(grep.content[0]).toMatchObject({
+    expect(grep.output[0]).toMatchObject({
       text: "public/index.ts:1: needle",
     });
 
@@ -243,6 +243,6 @@ describe("agent file visibility", () => {
       { pattern: "**/*.ts", path: "skills", includeIgnored: true },
       { callId: "find" },
     );
-    expect(found.content[0]).toMatchObject({ text: "public/index.ts" });
+    expect(found.output[0]).toMatchObject({ text: "public/index.ts" });
   });
 });

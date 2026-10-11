@@ -243,7 +243,7 @@ export function createGrepTool(
       const literalSearch = literal !== false;
       if (typeof pattern !== "string") {
         return {
-          content: [
+          output: [
             {
               type: "text",
               text: "No grep pattern supplied. Pass the text to search for in `pattern`.",
@@ -266,7 +266,7 @@ export function createGrepTool(
         const searchPath = resolveToCwd(searchDir || ".", cwd);
         if (deps.visibility && (await deps.visibility.isHidden(searchPath))) {
           return {
-            content: [{ type: "text", text: "No matches found" }],
+            output: [{ type: "text", text: "No matches found" }],
             details: undefined,
           };
         }
@@ -327,7 +327,7 @@ export function createGrepTool(
         }
         if (lines.length === 0) {
           return {
-            content: [{ type: "text", text: "No matches found" }],
+            output: [{ type: "text", text: "No matches found" }],
             details: undefined,
           };
         }
@@ -355,7 +355,7 @@ export function createGrepTool(
         }
         if (notices.length > 0) text += `\n\n[${notices.join(". ")}]`;
         return {
-          content: [{ type: "text", text }],
+          output: [{ type: "text", text }],
           details: toolDetails(details),
         };
       }
@@ -363,7 +363,7 @@ export function createGrepTool(
       const searchPath = resolveToCwd(searchDir || ".", cwd);
       if (deps?.visibility && (await deps.visibility.isHidden(searchPath))) {
         return {
-          content: [{ type: "text", text: "No matches found" }],
+          output: [{ type: "text", text: "No matches found" }],
           details: undefined,
         };
       }
@@ -390,7 +390,7 @@ export function createGrepTool(
           : "";
         const displayPath = searchDir || ".";
         return {
-          content: [
+          output: [
             {
               type: "text",
               text: `No matches found (search path does not exist: ${displayPath}).${hint}`,
@@ -541,7 +541,7 @@ export function createGrepTool(
 
       if (matchCount === 0) {
         return {
-          content: [{ type: "text", text: "No matches found" }],
+          output: [{ type: "text", text: "No matches found" }],
           details: undefined,
         };
       }
@@ -576,7 +576,7 @@ export function createGrepTool(
       }
 
       return {
-        content: [{ type: "text", text: output }],
+        output: [{ type: "text", text: output }],
         details: Object.keys(details).length > 0 ? toolDetails(details) : undefined,
       };
     },

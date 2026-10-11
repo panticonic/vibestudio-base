@@ -10,7 +10,7 @@ describe("createFindTool", () => {
   it("returns actionable guidance when the pattern is omitted", async () => {
     const tool = createFindTool(CWD, new StubFs());
     const result = await executeTool(tool, {}, { callId: "call-1" });
-    expect((result.content[0] as { text: string }).text).toContain(
+    expect((result.output[0] as { text: string }).text).toContain(
       "No find pattern supplied",
     );
   });
@@ -29,7 +29,7 @@ describe("createFindTool", () => {
       { pattern: "**/*.ts" },
       { callId: "call-1" },
     );
-    const text = (result.content[0] as { text: string }).text;
+    const text = (result.output[0] as { text: string }).text;
     expect(text).toContain("a.ts");
     expect(text).toContain("sub/c.ts");
     expect(text).not.toContain("b.md");
@@ -43,7 +43,7 @@ describe("createFindTool", () => {
       { pattern: "*.md" },
       { callId: "call-1" },
     );
-    expect((result.content[0] as { text: string }).text).toBe(
+    expect((result.output[0] as { text: string }).text).toBe(
       "No files found matching pattern",
     );
   });
@@ -59,7 +59,7 @@ describe("createFindTool", () => {
       { callId: "call-1" },
     );
 
-    expect((result.content[0] as { text: string }).text).toContain(
+    expect((result.output[0] as { text: string }).text).toContain(
       "No files found matching pattern (search path does not exist: packages/missing)",
     );
     expect(result.details).toMatchObject({
@@ -78,7 +78,7 @@ describe("createFindTool", () => {
       { pattern: "*" },
       { callId: "call-1" },
     );
-    const text = (result.content[0] as { text: string }).text;
+    const text = (result.output[0] as { text: string }).text;
     expect(text).toContain(".hidden");
   });
 
@@ -99,7 +99,7 @@ describe("createFindTool", () => {
       { pattern: "**/*.ts" },
       { callId: "call-1" },
     );
-    expect((normal.content[0] as { text: string }).text).toBe("visible.ts");
+    expect((normal.output[0] as { text: string }).text).toBe("visible.ts");
     const complete = await executeTool(
       tool,
       {
@@ -108,7 +108,7 @@ describe("createFindTool", () => {
       },
       { callId: "call-2" },
     );
-    expect((complete.content[0] as { text: string }).text).toBe(
+    expect((complete.output[0] as { text: string }).text).toBe(
       "ignored.ts\nnested/local.ts\nvisible.ts",
     );
   });
@@ -131,7 +131,7 @@ describe("createFindTool", () => {
       { callId: "call-1" },
     );
 
-    expect((result.content[0] as { text: string }).text).toBe("src/a.ts");
+    expect((result.output[0] as { text: string }).text).toBe("src/a.ts");
     expect(rpc.call).toHaveBeenCalledWith(
       "main",
       "fs.glob",
@@ -158,9 +158,9 @@ describe("createFindTool", () => {
       { callId: "call-1" },
     );
 
-    expect((result.content[0] as { text: string }).text).toContain("src/a.ts");
-    expect((result.content[0] as { text: string }).text).toContain("src/b.ts");
-    expect((result.content[0] as { text: string }).text).not.toContain(
+    expect((result.output[0] as { text: string }).text).toContain("src/a.ts");
+    expect((result.output[0] as { text: string }).text).toContain("src/b.ts");
+    expect((result.output[0] as { text: string }).text).not.toContain(
       "src/c.ts",
     );
     expect(result.details).toMatchObject({
@@ -193,7 +193,7 @@ describe("createFindTool", () => {
       { callId: "call-1" },
     );
 
-    expect((result.content[0] as { text: string }).text).toContain(
+    expect((result.output[0] as { text: string }).text).toContain(
       "search path is not a directory: packages/runtime/src/shared/rpcFs.test.ts",
     );
     expect(result.details).toMatchObject({

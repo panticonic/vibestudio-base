@@ -710,7 +710,7 @@ describe("createProvenanceTool", () => {
       limit: 5,
     });
     const text =
-      result.content[0]?.type === "text" ? result.content[0].text : "";
+      result.output[0]?.type === "text" ? result.output[0].text : "";
     expect(text).toMatch(
       /past · "Explain the public entry point" · change @r[0-9a-z]+-[0-9a-f]{4}/u,
     );
@@ -760,7 +760,7 @@ describe("createProvenanceTool", () => {
       limit: 2,
     });
     const text =
-      result.content[0]?.type === "text" ? result.content[0].text : "";
+      result.output[0]?.type === "text" ? result.output[0].text : "";
     expect(text).toContain("file history page 2");
     expect(text).toMatch(/more file history → @r[0-9a-z]+-[0-9a-f]{4}/u);
     expect(text.indexOf("more file history")).toBeLessThan(
@@ -900,7 +900,7 @@ describe("createProvenanceTool", () => {
       diagnostic: "invalid-target",
       target: "projects/missing-history",
     });
-    expect(result.content[0]).toMatchObject({
+    expect(result.output[0]).toMatchObject({
       type: "text",
       text: expect.stringContaining("is not present in the working state"),
     });
@@ -1016,7 +1016,7 @@ describe("createProvenanceTool", () => {
       { callId: "call:work" },
     );
     const text =
-      result.content[0]?.type === "text" ? result.content[0].text : "";
+      result.output[0]?.type === "text" ? result.output[0].text : "";
 
     expect(text).toContain(
       'node · work-unit · edit · stated: "Rename the public entry point" · command @r',
@@ -1056,9 +1056,9 @@ describe("createProvenanceTool", () => {
       { callId: "call:invocation" },
     );
     const commandText =
-      command.content[0]?.type === "text" ? command.content[0].text : "";
+      command.output[0]?.type === "text" ? command.output[0].text : "";
     const invocationText =
-      invocation.content[0]?.type === "text" ? invocation.content[0].text : "";
+      invocation.output[0]?.type === "text" ? invocation.output[0].text : "";
 
     expect(commandText).toContain("node · command · vcs.edit · complete");
     expect(invocationText).toContain(
@@ -1085,7 +1085,7 @@ describe("createProvenanceTool", () => {
     );
     const details = detailsOf(result);
     const rendered =
-      result.content[0]?.type === "text" ? result.content[0].text : "";
+      result.output[0]?.type === "text" ? result.output[0].text : "";
 
     expect(rendered).toContain("node · command · vcs.edit · complete");
     expect(details).toMatchObject({
@@ -1127,9 +1127,9 @@ describe("createProvenanceTool", () => {
     );
     const turnDetails = detailsOf(turn);
     const turnText =
-      turn.content[0]?.type === "text" ? turn.content[0].text : "";
+      turn.output[0]?.type === "text" ? turn.output[0].text : "";
     const messageText =
-      message.content[0]?.type === "text" ? message.content[0].text : "";
+      message.output[0]?.type === "text" ? message.output[0].text : "";
 
     expect(turnText).toContain("node · trajectory-turn · ordinal 1 · summary");
     expect(messageText).toContain(
@@ -1179,16 +1179,16 @@ describe("createProvenanceTool", () => {
       },
     });
     const text =
-      result.content[0]?.type === "text" ? result.content[0].text : "";
+      result.output[0]?.type === "text" ? result.output[0].text : "";
     expect(text).toContain("Trajectory subnodes require the compact ref");
   });
 });
 
 describe("question-shaped provenance surfaces", () => {
   const textOf = (result: {
-    content: Array<{ type: string; text?: string }>;
+    output: Array<{ type: string; text?: string }>;
   }): string =>
-    result.content[0]?.type === "text" ? (result.content[0].text ?? "") : "";
+    result.output[0]?.type === "text" ? (result.output[0].text ?? "") : "";
 
   it("renders a cause walk as a spine with intents leading and refs, not identities", async () => {
     const f = fixture();

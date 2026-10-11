@@ -90,7 +90,7 @@ export function createPanelDescribeTool(
         context.abortSignal ? { signal: context.abortSignal } : undefined,
       );
       return {
-        content: [{ type: "text", text: formatPanelContext(snapshot) }],
+        output: [{ type: "text", text: formatPanelContext(snapshot) }],
         details: copyJson(snapshot, { omitUndefinedProperties: true }) as JsonRepresentation<typeof snapshot>,
       };
     },

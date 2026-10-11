@@ -93,6 +93,7 @@ async function makeVessel(
     { __objectKey: options.objectKey ?? "agent-key" },
     {
       props: {
+        nativeOwner: null,
         stateArgs: options.stateArgs ?? null,
         image: options.image ?? null,
       },

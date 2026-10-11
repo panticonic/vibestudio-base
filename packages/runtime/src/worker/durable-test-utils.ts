@@ -350,10 +350,7 @@ export async function createTestDO<DOClass extends new (ctx: any, env: any) => o
   opts?: {
     db?: Database;
     initialize?: boolean;
-    props?: {
-      stateArgs: Record<string, unknown> | null;
-      image: { effectiveVersion: string; sourceRef: string } | null;
-    };
+    props?: import("./durable-base.js").DurableObjectContext["props"];
   }
 ): Promise<TestDOResult<InstanceType<DOClass>, DOClass>> {
   const SQL = await getSqlJs();
@@ -367,7 +364,7 @@ export async function createTestDO<DOClass extends new (ctx: any, env: any) => o
   const objectKey = (env?.["__objectKey"] as string) ?? "test-key";
 
   const ctx = {
-    props: structuredClone(opts?.props ?? { stateArgs: null, image: null }),
+    props: structuredClone(opts?.props ?? { nativeOwner: null, stateArgs: null, image: null }),
     id: { toString: () => objectKey, name: objectKey },
     storage: {
       sql: sqlProxy,

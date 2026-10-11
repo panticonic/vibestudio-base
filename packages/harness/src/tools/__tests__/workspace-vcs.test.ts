@@ -236,7 +236,7 @@ describe("workspace VCS agent tool", () => {
       { operation: "status" },
       { callId: "call:status" },
     );
-    expect(status.content[0]).toMatchObject({
+    expect(status.output[0]).toMatchObject({
       type: "text",
       text: expect.stringContaining("dirty"),
     });
@@ -255,7 +255,7 @@ describe("workspace VCS agent tool", () => {
         source: { kind: "event", eventId: "event:source" },
       }),
     );
-    expect(compared.content[0]).toMatchObject({
+    expect(compared.output[0]).toMatchObject({
       type: "text",
       text: expect.stringContaining("file:file:source"),
     });
@@ -283,7 +283,7 @@ describe("workspace VCS agent tool", () => {
         source: f.working,
       }),
     );
-    expect(compared.content[0]).toMatchObject({
+    expect(compared.output[0]).toMatchObject({
       type: "text",
       text: expect.stringContaining(
         "Local working state relative to protected main",
@@ -461,7 +461,7 @@ describe("workspace VCS agent tool", () => {
         intentSummary: "Merge the source behavior after coordinate review",
       }),
     );
-    expect(result.content[0]).toMatchObject({
+    expect(result.output[0]).toMatchObject({
       type: "text",
       text: expect.stringMatching(
         /Resolution: complete=true; concluded=true; remaining=0[\s\S]*Intent: theirs\/merged[\s\S]*Composed: file:file:source/,
@@ -510,7 +510,7 @@ describe("workspace VCS agent tool", () => {
     );
 
     expect(JSON.stringify(result)).not.toContain("cursor:conflicts");
-    expect(result.content[0]).toMatchObject({
+    expect(result.output[0]).toMatchObject({
       type: "text",
       text: expect.stringMatching(
         /More conflicts: vcs\(\{"operation":"compare","ref":"@r[0-9a-z]+-[0-9a-f]{4}"\}\)/u,
@@ -680,7 +680,7 @@ describe("workspace VCS agent tool", () => {
         range: { start: 1, end: 4 },
       }),
     );
-    expect(result.content[0]).toMatchObject({
+    expect(result.output[0]).toMatchObject({
       type: "text",
       text: expect.stringMatching(
         /1\.\.4 · authored · [a-z]+ · change @r[0-9a-z]+-[0-9a-f]{4} · applied @r[0-9a-z]+-[0-9a-f]{4} · work @r[0-9a-z]+-[0-9a-f]{4} · command @r[0-9a-z]+-[0-9a-f]{4}/u,
@@ -857,7 +857,7 @@ describe("workspace VCS agent tool", () => {
       { callId: "call:blame-import" },
     );
 
-    expect(result.content[0]).toMatchObject({
+    expect(result.output[0]).toMatchObject({
       type: "text",
       text: expect.stringMatching(
         /change @r[0-9a-z]+-[0-9a-f]{4} · applied @r[0-9a-z]+-[0-9a-f]{4} · work @r[0-9a-z]+-[0-9a-f]{4} · command @r[0-9a-z]+-[0-9a-f]{4} · import boundary: the owning import work carries the external snapshot/u,

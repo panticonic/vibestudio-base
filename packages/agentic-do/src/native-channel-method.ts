@@ -201,7 +201,7 @@ function result(
   outcome: NativeChannelMethodOutcome,
 ): ToolExecutionResult<NativeChannelMethodOutcome> {
   return {
-    content: [
+    output: [
       {
         type: "text",
         text:
@@ -717,7 +717,7 @@ export function createNativeChannelMethodExecution(
       context: Context,
     ): Promise<ToolExecutionResult> => {
       const { execution, admission } = await invocation(api, context);
-      if (!admission?.request) return { content: [] };
+      if (!admission?.request) return { output: [] };
       const client = host.channelClient(admission.request.channelId, execution);
       const request = admission.request;
       await joinMethodCleanup(
@@ -735,7 +735,7 @@ export function createNativeChannelMethodExecution(
       );
       // Cancellation owns cleanup and completes the actual native abort phase;
       // it must not manufacture an unanswered user response receipt.
-      return { content: [] };
+      return { output: [] };
     },
   };
 }

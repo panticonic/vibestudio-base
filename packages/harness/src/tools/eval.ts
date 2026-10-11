@@ -414,7 +414,7 @@ export async function formatEvalResult(
     ? { ...result, returnValue: projectedReturn }
     : result;
   return {
-    content: [
+    output: [
       { type: "text", text: parts.join("\n") || "[eval] (no output)" },
       ...[...images.values()].map((image) => image.content),
     ],

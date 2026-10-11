@@ -21,7 +21,7 @@ import { evalOwnerCallbackMethods } from "@vibestudio/service-schemas/eval";
 import { createDurableObjectServiceClient } from "@vibestudio/service-schemas/clients/durableObjectServiceClient";
 import { reconcileDefaultAutomationHost } from "./default-automation-host.js";
 import { createProvider, Type, type Api, type Model } from "@panticonic/pi-ai";
-import { authorNativeTool } from "@workspace/harness";
+import { authorNativeTool } from "@workspace/harness/native-tool-authoring";
 import { openAICompletionsApi } from "@panticonic/pi-ai/api/openai-completions.lazy";
 import { BACKGROUND_CONTEXT } from "@panticonic/pi-chord/context";
 import {
@@ -205,7 +205,7 @@ import {
   isAgentApprovalLevel,
   resolveAgentObservationConfig,
   type AgentApprovalLevel,
-} from "@workspace/agentic-core";
+} from "@workspace/agentic-core/agent-subscription-config";
 import {
   subagentFirstTaskPrompt,
   subagentRuntimePrompt,
@@ -1834,7 +1834,7 @@ export abstract class AgentVesselBase extends NativeChannelOwner<NativeProductCh
           execution.rpc,
         );
         return {
-          content: [
+          output: [
             {
               type: "text",
               text: `${automation.name} is running. Its automation pill is now available in this chat.`,
@@ -1925,7 +1925,7 @@ export abstract class AgentVesselBase extends NativeChannelOwner<NativeProductCh
           context,
         );
         return {
-          content: [
+          output: [
             {
               type: "text",
               text: "Automation completion recorded; no future ticks will be scheduled.",
@@ -2004,7 +2004,7 @@ export abstract class AgentVesselBase extends NativeChannelOwner<NativeProductCh
           return `[${result.kind}] ${where}${when}\n${result.snippet}`;
         });
         return {
-          content: [
+          output: [
             {
               type: "text" as const,
               text:
@@ -4068,7 +4068,7 @@ export abstract class AgentVesselBase extends NativeChannelOwner<NativeProductCh
             ? "started"
             : "removed";
     return {
-      content: [
+      output: [
         {
           type: "text",
           text: `${mission.name} was ${verb}.`,
@@ -5265,7 +5265,7 @@ export abstract class AgentVesselBase extends NativeChannelOwner<NativeProductCh
     details?: Record<string, unknown>,
   ): ToolExecutionResult {
     return {
-      content: [{ type: "text", text }],
+      output: [{ type: "text", text }],
       details: copyJson(details ?? {}, { omitUndefinedProperties: true }),
     };
   }
@@ -6112,7 +6112,7 @@ export abstract class AgentVesselBase extends NativeChannelOwner<NativeProductCh
     }
     if (messages.length === 0) {
       return {
-        content: [
+        output: [
           {
             type: "text",
             text: "No new subagent messages after this cursor.",
@@ -6153,7 +6153,7 @@ export abstract class AgentVesselBase extends NativeChannelOwner<NativeProductCh
   ): Promise<ToolExecutionResult> {
     let intent = api.continuation;
     if (intent === undefined) {
-      if (!admit) return { content: [] };
+      if (!admit) return { output: [] };
       const run = await this.resolveSubagentRun(runId, parentChannelId);
       if (!run)
         throw this.subagentReferenceError("unknown subagent run " + runId, {

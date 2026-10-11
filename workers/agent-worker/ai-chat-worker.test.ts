@@ -120,9 +120,7 @@ class TestableAiChatWorker extends AiChatWorker {
     const value =
       method === "workspace-state.entity.resolveActive"
         ? entity
-        : method === "workspace-state.alarmSourceRegister"
-          ? { incarnation: "actual-ai-storage-incarnation", entity }
-          : method === "workspace-state.alarmSourcePublish"
+        : method === "workspace-state.alarmSourcePublish"
             ? "accepted"
             : method === "authority.outstandingAcquisitions"
               ? { receipts: [], next: null }
@@ -338,11 +336,20 @@ const admittedImage = {
   WORKER_EXECUTION_DIGEST: "f".repeat(64),
 };
 
+function activationProps(objectKey: string) {
+  return { stateArgs: null, image: null, nativeOwner: {
+    runtimeId: `do:${admittedImage.WORKER_SOURCE}:${admittedImage.WORKER_CLASS_NAME}:${objectKey}`,
+    contextId: "ctx-1", authoritySessionId: "actual-ai-test-owner",
+    incarnation: "actual-ai-storage-incarnation", generation: 1,
+    executionDigest: admittedImage.WORKER_EXECUTION_DIGEST, effectiveVersion: "test-ai-image",
+  } };
+}
+
 async function makeWorker() {
   const resource = await createTestDO(TestableAiChatWorker, {
     ...admittedImage,
     __objectKey: "agent-1",
-  });
+  }, { props: activationProps("agent-1") });
   resources.push(resource);
   return resource.instance;
 }
@@ -374,7 +381,7 @@ describe("AiChatWorker", () => {
     const first = await createTestDO(TestableAiChatWorker, {
       ...admittedImage,
       __objectKey: "agent-replay",
-    });
+    }, { props: activationProps("agent-replay") });
     resources.push(first);
     expect(
       (
@@ -386,10 +393,13 @@ describe("AiChatWorker", () => {
         })
       ).status,
     ).toBe("ready");
+    // The released activation is replaced below; only its replacement owns
+    // the shared native database during teardown.
+    resources.splice(resources.indexOf(first), 1);
     const second = await createTestDO(
       TestableAiChatWorker,
       { ...admittedImage, __objectKey: "agent-replay" },
-      { db: first.db },
+      { db: first.db, props: activationProps("agent-replay") },
     );
     resources.push(second);
     expect(second.instance).toBeInstanceOf(TestableAiChatWorker);

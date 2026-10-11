@@ -213,6 +213,15 @@ class Owner extends NativeAgentOwner {
   resources() {
     return this.retainedModelConnections();
   }
+  failPersistence(error: Error) {
+    const native = this.ctx.storage as typeof this.ctx.storage & NativeStorage;
+    const sync = native.sync;
+    native.sync = () => {
+      native.sync = sync;
+      return Promise.reject(error);
+    };
+    return () => { native.sync = sync; };
+  }
   failConfirmation() {
     const native = this.ctx.storage as typeof this.ctx.storage & NativeStorage;
     native.sync = () => Promise.reject(new Error("confirmation failure"));
@@ -295,6 +304,7 @@ async function host() {
     cleanupComplete: false,
   };
   let incarnation = "host-one";
+  let generation = 1;
   let hold: Promise<void> | undefined;
   let onResolve = () => {};
   let clearFailures = 0;
@@ -328,23 +338,6 @@ async function host() {
       onResolve();
       await hold;
       result = active;
-    } else if (method === "workspace-state.alarmSourceRegister") {
-      onResolve();
-      await hold;
-      const key = envelope.message.args[0] as { executionDigest: string };
-      const entity = active as {
-        status: string;
-        activeExecutionDigest: string;
-      } | null;
-      if (
-        !entity ||
-        entity.status !== "active" ||
-        entity.activeExecutionDigest !== key.executionDigest
-      )
-        error = new Error(
-          "Wake source does not match its active execution image",
-        );
-      else result = { incarnation, entity: active };
     } else if (method === "workspace-state.alarmSourcePublish")
       result = "accepted";
     else if (method === "authority.outstandingAcquisitions")
@@ -404,6 +397,10 @@ async function host() {
   return {
     calls,
     envelopes,
+    activation: () => {
+      const entity = active as { id: string; contextId: string; authoritySessionId: string; activeExecutionDigest: string; source: { effectiveVersion: string } } | null;
+      return entity ? { runtimeId: entity.id, contextId: entity.contextId, authoritySessionId: entity.authoritySessionId, incarnation, generation, executionDigest: entity.activeExecutionDigest, effectiveVersion: entity.source.effectiveVersion } : null;
+    },
     handle: (
       method: string,
       handler: (args: unknown[]) => Promise<unknown>,
@@ -427,8 +424,9 @@ async function host() {
     setAuthoritySession: (value: string) => {
       active = { ...(active as object), authoritySessionId: value };
     },
-    setIncarnation: (value: string) => {
+    setIncarnation: (value: string, nextGeneration = generation) => {
       incarnation = value;
+      generation = nextGeneration;
     },
     holdResolution: (promise: Promise<void>, observed: () => void) => {
       hold = promise;
@@ -462,7 +460,7 @@ async function owner(
       GATEWAY_URL: hostFixture.url,
       ...extra,
     },
-    { db },
+    { db, props: { stateArgs: null, image: null, nativeOwner: hostFixture.activation() } },
   );
   disposals.push(async () => {
     await lifecycleRelease(fixture.instance, releaseInput);
@@ -728,23 +726,14 @@ async function ordinaryAuthorityOwner(waiting: boolean, attachLocator = false) {
         Array.isArray(task.input)
       )
         throw new Error("No actual original tool input");
-      const originalSource = task.input["source"];
-      if (
-        !originalSource ||
-        typeof originalSource !== "object" ||
-        Array.isArray(originalSource) ||
-        originalSource["kind"] !== "assistant" ||
-        typeof originalSource["entryId"] !== "number"
-      )
-        throw new Error(
-          "No original assistant source for ordinary tool fixture",
-        );
+      if (task.input["kind"] !== "model" || typeof task.input["assistant"] !== "number")
+        throw new Error("No original assistant source for ordinary tool fixture");
       const nativeInvocation = {
         owner: { runtimeId, authoritySessionId: "authority:owner-lifetime" },
         task: { taskId: api.taskId, conversationId: api.conversationId },
         operation: {
           kind: "tool" as const,
-          assistantEntryId: originalSource["entryId"],
+          assistantEntryId: task.input["assistant"],
           callId: api.callId,
         },
       };
@@ -766,7 +755,7 @@ async function ordinaryAuthorityOwner(waiting: boolean, attachLocator = false) {
           })),
         }),
       );
-      if (!waiting) return { content: [] };
+      if (!waiting) return { output: [] };
       await api.commit(
         (tx) => bindReceipt(tx, "ordinary:external", "original"),
         context,
@@ -780,7 +769,7 @@ async function ordinaryAuthorityOwner(waiting: boolean, attachLocator = false) {
         continuation: { external: "original" },
       };
     },
-    cancel: async () => ({ content: [] }),
+    cancel: async () => ({ output: [] }),
   });
   registry.install(defineExtension({ name: "ordinary", tools: [tool] }));
   Object.defineProperty(fixture.instance, "agentOptions", {
@@ -1190,6 +1179,26 @@ describe("native Pi entity activation and release", () => {
     }
   });
 
+  it("joins a fatal native storage failure, retains its cause, and retires through explicit lifecycle recovery", async () => {
+    const h = await host();
+    const fixture = await owner(h);
+    const harness = await fixture.instance.open();
+    const original = new Error("Original native persistence failure");
+    const repair = fixture.instance.failPersistence(original);
+    try {
+      await expect(harness.commit(async (tx) => {
+        await tx.createConversation({ ownership: { kind: "ownerless" } });
+      }, BACKGROUND_CONTEXT)).rejects.toBe(original);
+      expect(await harness.closed).toEqual({ reason: "failed", error: original });
+      await harness.close(BACKGROUND_CONTEXT);
+      await expect(fixture.instance.open()).rejects.toBe(original);
+    } finally {
+      repair();
+    }
+    expect(await lifecycleRelease(fixture.instance, { ...releaseInput, mode: "retire" })).toEqual({ status: "ready" });
+    await expect(fixture.instance.open()).rejects.toBe(original);
+  });
+
   it("refuses an omitted model request port before host or connection admission", async () => {
     const h = await host();
     const fixture = await owner(h);
@@ -1257,7 +1266,7 @@ describe("native Pi entity activation and release", () => {
       finish();
       expect(await release).toEqual({ status: "ready" });
       expect(fixture.instance.resources()).toHaveLength(0);
-      expect(h.calls.at(-1)).toBe("workspace-state.lifecycleLeaseClear");
+      expect(h.calls).not.toContain("workspace-state.lifecycleLeaseClear");
     } finally {
       finish();
       await lifecycleRelease(fixture.instance, releaseInput);
@@ -1345,7 +1354,7 @@ describe("native Pi entity activation and release", () => {
       h.calls.filter(
         (method) => method === "workspace-state.alarmSourceRegister",
       ),
-    ).toHaveLength(2);
+    ).toHaveLength(0);
   });
 
   it("retains a failed model connection after the task faults and refuses a successful lifecycle release", async () => {
@@ -1468,7 +1477,7 @@ describe("native Pi entity activation and release", () => {
       name: "retained",
       description: "Retained native invocation",
       parameters: Type.Object({}),
-      cancel: async () => ({ content: [] }),
+      cancel: async () => ({ output: [] }),
       execute: async (_args, api, context) => {
         const source = await retainNativeToolInvocation(
           session,
@@ -1630,7 +1639,7 @@ describe("native Pi entity activation and release", () => {
         { taskId: 1, invocationId: "invocation:missing" },
       );
     expect(await inspect()).toBeNull();
-    expect(h.calls).toContain("workspace-state.alarmSourceRegister");
+    expect(h.calls).not.toContain("workspace-state.alarmSourceRegister");
     expect(
       fixture.sql.exec("SELECT count(*) AS count FROM tasks").toArray(),
     ).toEqual([{ count: 0 }]);
@@ -1677,7 +1686,7 @@ describe("native Pi entity activation and release", () => {
     }
   });
 
-  it("opens one Session and registers release before execution admission", async () => {
+  it("opens one Session from activation and retains its entity release obligation", async () => {
     const h = await host();
     const fixture = await owner(h);
     const [first, second] = await Promise.all([
@@ -1685,32 +1694,32 @@ describe("native Pi entity activation and release", () => {
       fixture.instance.open(),
     ]);
     expect(first).toBe(second);
-    expect(h.calls[0]).toBe("workspace-state.alarmSourceRegister");
+    expect(h.calls).not.toContain("workspace-state.alarmSourceRegister");
     expect(h.calls).not.toContain("workspace-state.lifecycleLeaseUpsert");
     expect(
       h.calls.filter((m) => m === "workspace-state.alarmSourceRegister"),
-    ).toHaveLength(1);
+    ).toHaveLength(0);
     await first.root(BACKGROUND_CONTEXT);
     expect(await lifecycleRelease(fixture.instance, releaseInput)).toEqual({
       status: "ready",
     });
     await expect(first.root(BACKGROUND_CONTEXT)).rejects.toThrow(/closed/i);
     await expect(fixture.instance.open()).rejects.toThrow("sealed");
-    expect(h.calls.at(-1)).toBe("workspace-state.lifecycleLeaseClear");
+    expect(h.calls).not.toContain("workspace-state.lifecycleLeaseClear");
   });
 
   it("refuses a retired host entity before registering or reconciling", async () => {
     const h = await host();
+    h.setActive(null);
     const fixture = await owner(h);
     const before = fixture.db.export();
-    h.setActive(null);
     await expect(fixture.instance.open()).rejects.toThrow(
-      "Wake source does not match its active execution image",
+      "Agent image does not match its active platform owner",
     );
     expect(fixture.db.export()).toEqual(before);
-    expect(h.calls).toEqual(["workspace-state.alarmSourceRegister"]);
+    expect(h.calls).not.toContain("workspace-state.alarmSourceRegister");
     expectLifecycleFailure(await lifecycleRelease(fixture.instance, releaseInput),
-      "Wake source does not match its active execution image",
+      "Agent image does not match its active platform owner",
     );
     expect(h.calls).not.toContain("workspace-state.lifecycleLeaseClear");
   });
@@ -1726,7 +1735,7 @@ describe("native Pi entity activation and release", () => {
     const reached = new Promise<void>((resolve) => {
       observed = resolve;
     });
-    h.holdResolution(held, observed);
+    Object.defineProperty(fixture.instance, "prepareAgentRegistry", { value: async () => { observed(); await held; } });
     const opening = fixture.instance.open();
     const openingOutcome = opening.catch((error) => error as Error);
     await reached;
@@ -1743,7 +1752,7 @@ describe("native Pi entity activation and release", () => {
     expect(await releasing).toEqual({ status: "ready" });
     expect(
       h.calls.filter((m) => m === "workspace-state.lifecycleLeaseClear"),
-    ).toHaveLength(1);
+    ).toHaveLength(0);
   });
 
   it("reopens committed history in a fresh activation of the same owner", async () => {
@@ -1805,14 +1814,62 @@ describe("native Pi entity activation and release", () => {
     await expect(next.instance.open()).rejects.toThrow("sealed");
   });
 
+  it("retires the dormant native obligation after an earlier suspend on the same heap", async () => {
+    const h = await host();
+    const fixture = await owner(h);
+    const original = await fixture.instance.open();
+    const root = await original.root(BACKGROUND_CONTEXT);
+    await original.commit((tx) => tx.appendEntry(root.id, {
+      kind: "test.history", data: { dormant: true },
+    }), BACKGROUND_CONTEXT);
+    expect(await lifecycleRelease(fixture.instance, releaseInput)).toEqual({ status: "ready" });
+    let settlements = 0;
+    fixture.instance.productRelease = async (input, harness) => {
+      expect(input.mode).toBe("retire");
+      const conversation = await harness.conversation(root.id, BACKGROUND_CONTEXT);
+      expect((await conversation!.entries({}, 10, undefined, BACKGROUND_CONTEXT)).items).toHaveLength(1);
+      settlements++;
+    };
+    const retirement = { ...releaseInput, epoch: "retire-dormant", mode: "retire" as const };
+    expect(await lifecycleRelease(fixture.instance, retirement)).toEqual({ status: "ready" });
+    expect(await lifecycleRelease(fixture.instance, retirement)).toEqual({ status: "ready" });
+    expect(settlements).toBe(1);
+    await expect(fixture.instance.open()).rejects.toThrow("sealed");
+    // Retired history can enter a new authority lifetime only after native
+    // cancellation and resource release have completed on the restored owner.
+    h.setAuthoritySession("authority:after-dormant-retirement");
+    const next = await owner(h, {}, fixture.db);
+    const session = await next.instance.open();
+    const retained = await session.conversation(root.id, BACKGROUND_CONTEXT);
+    expect((await retained!.entries({}, 10, undefined, BACKGROUND_CONTEXT)).items).toHaveLength(1);
+  });
+
+  it("reopens a same-owner restored database under its newly published storage generation", async () => {
+    const h = await host();
+    const first = await owner(h);
+    const original = await first.instance.open();
+    const root = await original.root(BACKGROUND_CONTEXT);
+    await original.commit((tx) => tx.appendEntry(root.id, {
+      kind: "test.history", data: { restored: true },
+    }), BACKGROUND_CONTEXT);
+    expect(await lifecycleRelease(first.instance, releaseInput)).toEqual({ status: "ready" });
+    h.setIncarnation("restored-storage", 2);
+    const restored = await owner(h, {}, first.db);
+    const harness = await restored.instance.open();
+    const conversation = await harness.conversation(root.id, BACKGROUND_CONTEXT);
+    expect((await conversation!.entries({}, 10, undefined, BACKGROUND_CONTEXT)).items).toHaveLength(1);
+    expect(h.calls).not.toContain("workspace-state.alarmSourceRegister");
+    expect(await lifecycleRelease(restored.instance, { ...releaseInput, epoch: "restored-release" })).toEqual({ status: "ready" });
+  });
+
   it("refuses a restored database under a new host incarnation without changing records", async () => {
     const h = await host();
     const first = await owner(h);
     await (await first.instance.open()).root(BACKGROUND_CONTEXT);
     await lifecycleRelease(first.instance, releaseInput);
+    h.setIncarnation("host-two");
     const next = await owner(h, {}, first.db);
     const before = first.db.export();
-    h.setIncarnation("host-two");
     await expect(next.instance.open()).rejects.toThrow(
       "Retired execution owner",
     );
@@ -1820,7 +1877,7 @@ describe("native Pi entity activation and release", () => {
     expectLifecycleFailure(await lifecycleRelease(next.instance, releaseInput),
       "Retired execution owner: this storage cannot authorize the current owner",
     );
-    expect(h.calls.filter((method) => method === "workspace-state.lifecycleLeaseClear")).toHaveLength(1);
+    expect(h.calls.filter((method) => method === "workspace-state.lifecycleLeaseClear")).toHaveLength(0);
   });
 
   it("never acknowledges release after uncertain connection confirmation", async () => {
@@ -1836,24 +1893,13 @@ describe("native Pi entity activation and release", () => {
     expect(h.calls).not.toContain("workspace-state.lifecycleLeaseClear");
   });
 
-  it("retries failed host lease clearing only after confirmed local release", async () => {
+  it("does not make connection release depend on clearing the entity obligation", async () => {
     const h = await host();
     const fixture = await owner(h);
     await fixture.instance.open();
     h.failClear();
-    expectLifecycleFailure(
-      await lifecycleRelease(fixture.instance, releaseInput),
-      "lease clear unavailable",
-    );
-    expect(await lifecycleRelease(fixture.instance, releaseInput)).toEqual({
-      status: "ready",
-    });
-    expect(
-      h.calls.filter((m) => m === "workspace-state.lifecycleLeaseClear"),
-    ).toHaveLength(2);
-    expect(
-      h.calls.filter((m) => m === "workspace-state.alarmSourceRegister"),
-    ).toHaveLength(1);
+    expect(await lifecycleRelease(fixture.instance, releaseInput)).toEqual({ status: "ready" });
+    expect(h.calls).not.toContain("workspace-state.lifecycleLeaseClear");
   });
 
   it("authenticates the exact EvalDO and commits domain truth before acknowledging", async () => {
@@ -2100,7 +2146,7 @@ describe("native Pi entity activation and release", () => {
         ),
       ).resolves.toEqual({ accepted: true });
       expect(await release).toEqual({ status: "ready" });
-      expect(h.calls.at(-1)).toBe("workspace-state.lifecycleLeaseClear");
+      expect(h.calls).not.toContain("workspace-state.lifecycleLeaseClear");
     } finally {
       completed();
       await release;

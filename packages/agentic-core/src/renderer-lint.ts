@@ -10,8 +10,6 @@
  * render time in someone else's panel.
  */
 
-import { analyzeModuleImports } from "@vibestudio/module-imports";
-
 /** Modules the chat panel exposes to sandbox components (its exposeModules). */
 export const DEFAULT_HOST_MODULES: readonly string[] = [
   "react",
@@ -34,7 +32,7 @@ export interface RendererLintIssue {
  * Lint renderer source for value imports that the panel cannot satisfy
  * without a build-service call. Returns issues (empty = clean).
  */
-export function lintRendererSource(
+export async function lintRendererSource(
   code: string,
   opts: {
     /** Declared registration imports (loaded on demand — allowed). */
@@ -42,7 +40,8 @@ export function lintRendererSource(
     /** Host-exposed modules; defaults to the chat panel's exposeModules. */
     hostModules?: readonly string[] | undefined;
   } = {},
-): RendererLintIssue[] {
+): Promise<RendererLintIssue[]> {
+  const { analyzeModuleImports } = await import("@vibestudio/module-imports");
   const allowed = new Set([
     ...(opts.hostModules ?? DEFAULT_HOST_MODULES),
     ...Object.keys(opts.imports ?? {}),

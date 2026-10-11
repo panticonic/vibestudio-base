@@ -129,7 +129,7 @@ describe("stable-identity file transfer tools", () => {
         },
       },
     });
-    expect(result.content[0]).toMatchObject({
+    expect(result.output[0]).toMatchObject({
       type: "text",
       text: expect.stringContaining(
         'provenance({ target: "panels/target/src/moved.ts" })',

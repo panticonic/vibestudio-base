@@ -99,7 +99,7 @@ export function createFindTool(
       const { pattern, path: searchDir, limit, cursor, includeIgnored } = input;
       if (typeof pattern !== "string") {
         return {
-          content: [
+          output: [
             {
               type: "text",
               text: "No find pattern supplied. Pass a glob such as `*`, `**/*.ts`, or `src/**`.",
@@ -146,7 +146,7 @@ export function createFindTool(
           const displayPath = searchDir || ".";
           const nonDirectory = code === "ENOTDIR";
           return {
-            content: [
+            output: [
               {
                 type: "text",
                 text: nonDirectory
@@ -186,7 +186,7 @@ export function createFindTool(
           throw error;
         const displayPath = searchDir || ".";
         return {
-          content: [
+          output: [
             {
               type: "text",
               text: `No files found matching pattern (search path does not exist: ${displayPath})`,
@@ -248,12 +248,12 @@ function renderMatches(
   resultLimitReached: boolean,
   engine: "fs-service" | "runtime-fs",
 ): {
-  content: (TextContent | ImageContent)[];
+  output: (TextContent | ImageContent)[];
   details: FindToolDetails | undefined;
 } {
   if (matches.length === 0) {
     return {
-      content: [{ type: "text", text: "No files found matching pattern" }],
+      output: [{ type: "text", text: "No files found matching pattern" }],
       details: undefined,
     };
   }
@@ -283,7 +283,7 @@ function renderMatches(
   }
 
   return {
-    content: [{ type: "text", text: resultOutput }],
+    output: [{ type: "text", text: resultOutput }],
     details: toolDetails(details),
   };
 }

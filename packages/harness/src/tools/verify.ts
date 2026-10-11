@@ -270,7 +270,7 @@ export function createVerifyTool(
                 })
               : undefined;
         return {
-          content: [
+          output: [
             {
               type: "text",
               text: renderBuild(command.target, bounded.report, receipt, failure),
@@ -443,7 +443,7 @@ export function createVerifyTool(
               })
             : undefined;
       return {
-        content: [
+        output: [
           {
             type: "text",
             text:
@@ -499,7 +499,7 @@ function compilationFailureResult(
     `Test compilation failed for ${target}; no tests executed. ` +
     "Inspect the compiler diagnostics, repair the source, then rerun verify.";
   return {
-    content: [
+    output: [
       {
         type: "text",
         text:

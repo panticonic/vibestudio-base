@@ -1,3 +1,4 @@
+import { nativeToolInvocationCoordinates } from "./native-invocation-source.js";
 import type { Context, JsonValue } from "@panticonic/pi-chord";
 import {
   acceptReceipt,
@@ -564,7 +565,7 @@ export async function withdrawNativeToolAuthorities(
       !original.input ||
       typeof original.input !== "object" ||
       Array.isArray(original.input) ||
-      original.input["callId"] !== api.callId
+      nativeToolInvocationCoordinates(original).callId !== api.callId
     )
       throw new Error("Authority closure has no original running native tool");
   }, context);
@@ -606,38 +607,10 @@ function toolInvocationId(
   task: TaskRecord<JsonValue, JsonValue, unknown>,
   owner: AgentExecutionOwner,
 ): string {
-  const input = task.input;
-  if (
-    task.kind !== "pi.tool" ||
-    !input ||
-    typeof input !== "object" ||
-    Array.isArray(input) ||
-    !input["source"] ||
-    typeof input["source"] !== "object" ||
-    Array.isArray(input["source"]) ||
-    (input["source"]["kind"] !== "assistant" &&
-      input["source"]["kind"] !== "direct") ||
-    typeof input["source"]["entryId"] !== "number" ||
-    !Number.isSafeInteger(input["source"]["entryId"]) ||
-    typeof input["callId"] !== "string" ||
-    !input["callId"]
-  )
-    throw new Error("Native tool authority has no original call identity");
   return nativeInvocationId({
     owner,
     task: { taskId: task.id, conversationId: task.conversationId },
-    operation:
-      input["source"]["kind"] === "direct"
-        ? {
-            kind: "direct-tool",
-            directEntryId: input["source"]["entryId"],
-            callId: input["callId"],
-          }
-        : {
-            kind: "tool",
-            assistantEntryId: input["source"]["entryId"],
-            callId: input["callId"],
-          },
+    operation: nativeToolInvocationCoordinates(task),
   });
 }
 

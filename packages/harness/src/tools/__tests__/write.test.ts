@@ -202,7 +202,7 @@ describe("canonical write tool", () => {
       ],
       conflicts: [],
     });
-    expect(result.content).toEqual([
+    expect(result.output).toEqual([
       {
         type: "text",
         text: "meta/out.txt already matches the requested state.",
@@ -297,7 +297,7 @@ describe("canonical write tool", () => {
         },
       ],
     });
-    expect(result.content[0]).toMatchObject({
+    expect(result.output[0]).toMatchObject({
       type: "text",
       text: expect.stringContaining("No files changed"),
     });

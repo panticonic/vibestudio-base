@@ -47,7 +47,7 @@ export function createNativeChildLaunch(host: NativeChildLaunchHost) {
     async cancel(_args: unknown, api: ToolExecutionApi, context: Context): Promise<ToolExecutionResult> {
       if (api.continuation !== undefined)
         await host.cleanup(retainedIntent(api.continuation, api), api, context);
-      return {content: []};
+      return {output: []};
     },
   };
 }

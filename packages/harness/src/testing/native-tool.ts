@@ -29,6 +29,16 @@ export function nativeToolApi<TDetails extends JsonValue>(
       "This native tool unit fixture has no durable owner; use a real Harness",
     );
   };
+  const outputChunks: Uint8Array[] = [];
+  const retainedOutput = () => {
+    const bytes = new Uint8Array(outputChunks.reduce((size, chunk) => size + chunk.byteLength, 0));
+    let offset = 0;
+    for (const chunk of outputChunks) {
+      bytes.set(chunk, offset);
+      offset += chunk.byteLength;
+    }
+    return { text: new TextDecoder().decode(bytes), truncated: false };
+  };
   return {
     taskId: 1 as TaskId,
     conversationId: 1 as ConversationId,
@@ -40,7 +50,11 @@ export function nativeToolApi<TDetails extends JsonValue>(
     env: undefined,
     outputWindow: undefined,
     agent: unavailable,
-    output: options.onOutput ?? (() => undefined),
+    output: (chunk) => {
+      outputChunks.push(typeof chunk === "string" ? new TextEncoder().encode(chunk) : chunk.slice());
+      options.onOutput?.(chunk);
+    },
+    retainedOutput,
     diagnostic: () => undefined,
     details: async (details, context) => {
       context.abortSignal?.throwIfAborted();
@@ -52,6 +66,7 @@ export function nativeToolApi<TDetails extends JsonValue>(
     createTask: unavailable,
     getTask: unavailable,
     waitForTask: unavailable,
+    executeTool: unavailable,
     conversation: unavailable,
     snapshot: unavailable,
     snapshotAsOf: unavailable,
@@ -74,7 +89,7 @@ export function toolResultDetails<TDetails extends JsonValue>(
 }
 
 export function toolText(result: ToolExecutionResult, index = 0): string {
-  const content = result.content?.[index];
+  const content = result.output?.[index];
   if (content?.type !== "text")
     throw new Error("Expected native text tool output");
   return content.text;
@@ -90,17 +105,19 @@ export async function executeTool<
   options: NativeToolTestOptions<TDetails> = {},
 ): Promise<
   ToolExecutionResult<TDetails> & {
-    content: NonNullable<ToolExecutionResult<TDetails>["content"]>;
+    output: NonNullable<ToolExecutionResult<TDetails>["output"]>;
   }
 > {
+  const api = nativeToolApi(options);
   const result = await tool.execute(
     args,
-    nativeToolApi(options),
+    api,
     nativeToolContext(options.signal),
   );
   if ("wait" in result)
     throw new Error(
       "Portable tool unit test unexpectedly parked; use a native owner integration test",
     );
-  return { ...result, content: result.content ?? [] };
+  const retained = api.retainedOutput().text;
+  return { ...result, output: result.output ?? (retained === "" ? [] : [{ type: "text", text: retained }]) };
 }

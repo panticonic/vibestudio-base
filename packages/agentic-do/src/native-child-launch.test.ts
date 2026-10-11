@@ -42,7 +42,7 @@ async function fixture(storage: Storage = new MemoryStorage()) {
       launches.push(intent);
       admitted.add(intent.childContextId);
       if (failLaunch) throw lostReply;
-      return {content: [{type: 'text', text: 'accepted'}], details: {contextId: intent.childContextId}};
+      return {output: [{type: 'text', text: 'accepted'}], details: {contextId: intent.childContextId}};
     },
     cleanup: async intent => {
       cleaned.push(intent);

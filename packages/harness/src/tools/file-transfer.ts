@@ -176,7 +176,7 @@ function createFileTransferTool(
         if (kind === "move") await fs.rename(sourcePath, destinationPath);
         else await fs.copyFile(sourcePath, destinationPath);
         return {
-          content: [
+          output: [
             {
               type: "text",
               text: `${kind === "move" ? "Moved" : "Copied"} scratch file ${sourcePath} to ${destinationPath}.`,
@@ -193,7 +193,7 @@ function createFileTransferTool(
 
       if (!sourceRoute?.repoRelPath || !destinationRoute?.repoRelPath) {
         return {
-          content: [
+          output: [
             {
               type: "text",
               text: "No file transferred: source and destination must both be managed workspace files or both be context-local scratch paths.",
@@ -276,7 +276,7 @@ function createFileTransferTool(
       const destinationDetails = details(produced);
 
       return {
-        content: [
+        output: [
           {
             type: "text",
             text:

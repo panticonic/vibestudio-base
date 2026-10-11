@@ -48,5 +48,5 @@ export type {
 export {
   DEFAULT_HOST_MODULES,
   lintRendererSource,
-} from "@workspace/agentic-core";
-export type { RendererLintIssue } from "@workspace/agentic-core";
+} from "@workspace/agentic-core/renderer-lint";
+export type { RendererLintIssue } from "@workspace/agentic-core/renderer-lint";

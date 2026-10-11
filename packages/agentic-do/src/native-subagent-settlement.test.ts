@@ -189,7 +189,7 @@ async function fixture(failure = false) {
         continuation: { original: true },
       };
     },
-    cancel: async () => ({ content: [] }),
+    cancel: async () => ({ output: [] }),
   });
   registry.install(defineExtension({ name: "child-work", tools: [blocked] }));
   const harness = await openBoundAgentSession(
@@ -199,6 +199,7 @@ async function fixture(failure = false) {
       contextId: "child-context",
       incarnation: "child-storage",
       authoritySessionId: "original-child-lifetime",
+      generation: 1,
     },
     { models, registry, publishWake: async () => {} },
     context,

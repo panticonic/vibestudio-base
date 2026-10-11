@@ -10,11 +10,15 @@ import {
   createModels,
   fauxAssistantMessage,
   fauxProvider,
+  fauxToolCall,
+  Type,
 } from "@panticonic/pi-ai";
 import { BACKGROUND_CONTEXT } from "@panticonic/pi-chord/context";
 import {
   createRegistry,
   defineExtension,
+  defineTool,
+  NestedCallDoc,
   MemoryStorage,
   type Harness,
   type TaskId,
@@ -29,6 +33,7 @@ import {
 } from "./native-agent-session.js";
 import {
   bindNativeModelInvocation,
+  bindNativeToolInvocation,
   prepareNativeInvocationTerminals,
   type NativeInvocationTerminalPublication,
 } from "./native-invocation-boundary.js";
@@ -59,26 +64,9 @@ const image = {
   objectKey: "one",
   executionDigest: "a".repeat(64),
 };
-const entity = {
-  id: owner.runtimeId,
-  authoritySessionId: owner.authoritySessionId,
-  kind: "do",
-  status: "active",
-  source: { repoPath: image.source, effectiveVersion: "state:one" },
-  contextId: owner.contextId,
-  className: image.className,
-  key: image.objectKey,
-  activeExecutionDigest: image.executionDigest,
-  agentBinding: {
-    entityId: owner.runtimeId,
-    contextId: owner.contextId,
-    channelId: "channel:one",
-  },
-  createdAt: 1,
-  cleanupComplete: false,
-};
+
 const callHost: AgentHostCall = createMainRpcCaller(
-  schemaRpcMock({ call: async (_target, method) => method === "workspace-state.alarmSourceRegister" ? { incarnation: owner.incarnation, entity } : "accepted" }),
+  schemaRpcMock({ call: async (_target, _method) => "accepted" }),
 );
 const sessions: Harness[] = [];
 afterEach(async () => {
@@ -124,7 +112,8 @@ async function fixture(options: { failStart?: boolean } = {}) {
   harness = await openPlatformAgentSession(
     async () => new MemoryStorage(),
     image,
-        callHost,
+        { ...owner, generation: 1, executionDigest: image.executionDigest, effectiveVersion: "state:one" },
+    callHost,
     {
       models,
       registry,
@@ -181,6 +170,56 @@ async function fixture(options: { failStart?: boolean } = {}) {
 }
 
 describe("native invocation publication boundary", () => {
+  it("captures nested program results before the parent retires its call documents", async () => {
+    const models = createModels();
+    const faux = fauxProvider();
+    models.setProvider(faux.provider);
+    const registry = createRegistry();
+    const events: { kind: string; result?: unknown }[] = [];
+    const captured: NativeInvocationTerminalPublication[] = [];
+    const publication = createNativeChannelPublication({ publish: async (_channel, _participant, event) => {
+      events.push(event);
+      return { id: events.length };
+    } });
+    let harness!: Harness;
+    let parent!: TaskId;
+    const rpc = schemaRpcClientMock({ call: async () => null, stream: async () => { throw new Error("Unexpected stream"); } }, owner.runtimeId);
+    const inner = defineTool({
+      name: "nested_child", description: "Returns a program value", callers: ["tools"],
+      parameters: Type.Object({}), structuredOutputSchema: Type.Object({ value: Type.Number() }),
+      async execute(_args, api, ctx) {
+        await bindNativeToolInvocation({ harness, image, rpc, enqueueStart: publication.enqueueStart }, api, ctx);
+        return { output: [{ type: "text" as const, text: "model presentation" }], structuredOutput: { value: 42 } };
+      },
+    });
+    const outer = defineTool({
+      name: "nested_parent", description: "Owns a nested child", parameters: Type.Object({}),
+      async execute(_args, api, ctx) {
+        parent = api.taskId;
+        const result = await api.executeTool("nested_child", {}, ctx, { key: "owned-child" });
+        expect(result.structuredOutput).toEqual({ value: 42 });
+        return { output: [{ type: "text" as const, text: "joined" }] };
+      },
+    });
+    registry.install(defineExtension({ name: "nested-publication", tools: [outer, inner], tasks: [publication.task] }));
+    harness = await openPlatformAgentSession(async () => new MemoryStorage(), image,
+      { ...owner, generation: 1, executionDigest: image.executionDigest, effectiveVersion: "state:one" }, callHost,
+      { models, registry, prepareCommit: (tx, staged) => prepareNativeInvocationTerminals(tx, staged.tasks, async (_tx, terminal) => {
+        captured.push(terminal);
+      }) }, context);
+    sessions.push(harness);
+    const conversation = await openNativeChannelConversation(harness, { channelId: "channel:one", contextId: owner.contextId, channelRef: { source: "workers/channel", className: "ChannelDO", objectKey: "channel:one" } }, { model: { provider: "faux", modelId: faux.getModel().id } }, context);
+    await conversation.configure({ tools: [outer, inner] }, context);
+    faux.setResponses([fauxAssistantMessage([fauxToolCall("nested_parent", {})], { stopReason: "toolUse" }), fauxAssistantMessage("done")]);
+    await (await conversation.submit({ type: "input", content: "go" }, context)).wait(context);
+    await harness.waitForIdle(context);
+    expect(captured).toHaveLength(1);
+    expect(captured[0]!.source.operation.kind).toBe("nested-tool");
+    expect(captured[0]!.nestedResult?.structuredOutput).toEqual({ value: 42 });
+    expect(await harness.snapshot(NestedCallDoc, parent, "owned-child", context)).toBeUndefined();
+    expect(captured[0]!.nestedResult).toMatchObject({ structuredOutput: { value: 42 }, isError: false });
+  });
+
   it("admits one actual source publication before protected execution and reuses it after a native wait", async () => {
     const state = await fixture();
     expect(state.starts).toHaveLength(1);

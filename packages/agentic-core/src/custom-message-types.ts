@@ -1,6 +1,6 @@
 import type { ComponentType } from "react";
 import { jsonSchemaToZod } from "@workspace/agentic-protocol";
-import { compileModule, type CompileComponentOptions } from "@workspace/eval";
+import type { CompileComponentOptions } from "@workspace/eval";
 
 export interface CustomMessageComponentProps {
   messageId: string;
@@ -23,6 +23,7 @@ export async function compileMessageTypeModule(
   code: string,
   options: CompileComponentOptions = {},
 ) {
+  const { compileModule } = await import("@workspace/eval");
   return compileModule<MessageTypeModule>(code, options);
 }
 

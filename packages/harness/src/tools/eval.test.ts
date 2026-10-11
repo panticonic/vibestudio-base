@@ -21,9 +21,9 @@ const rpcFailure = (message: string, errorData?: unknown) => ({
 
 /** Join the text parts of a formatted tool result. */
 function textOf(
-  out: Pick<Awaited<ReturnType<typeof formatEvalResult>>, "content">,
+  out: Pick<Awaited<ReturnType<typeof formatEvalResult>>, "output">,
 ): string {
-  return (out.content ?? [])
+  return (out.output ?? [])
     .map((c) => (c as { type: string; text?: string }).text ?? "")
     .join("\n");
 }
@@ -32,9 +32,9 @@ function factory(execution?: NativeEvalExecution) {
   return createEvalTool({
     execution: execution ?? {
       execute: async () => ({
-        content: [{ type: "text", text: "native receipt" }],
+        output: [{ type: "text", text: "native receipt" }],
       }),
-      cancel: async () => ({ content: [{ type: "text", text: "cancelled" }] }),
+      cancel: async () => ({ output: [{ type: "text", text: "cancelled" }] }),
     },
   });
 }
@@ -164,10 +164,10 @@ describe("formatEvalResult (shared by the eval tool's execute + the agent's defe
 
   it("accepts only a positive integer timeout and forwards the explicit deadline", async () => {
     const execute = vi.fn<NativeEvalExecution["execute"]>(async () => ({
-      content: [],
+      output: [],
     }));
     const cancel = vi.fn<NativeEvalExecution["cancel"]>(async () => ({
-      content: [],
+      output: [],
     }));
     const tool = factory({ execute, cancel });
 
@@ -228,9 +228,9 @@ describe("formatEvalResult (shared by the eval tool's execute + the agent's defe
   });
   it("forwards reset as an atomic pre-run lifecycle option to its native owner", async () => {
     const execute = vi.fn<NativeEvalExecution["execute"]>(async () => ({
-      content: [],
+      output: [],
     }));
-    const tool = factory({ execute, cancel: async () => ({ content: [] }) });
+    const tool = factory({ execute, cancel: async () => ({ output: [] }) });
     const args = { reset: true, code: "return Object.keys(scope)" };
     const api = nativeToolApi();
     const context = nativeToolContext();
@@ -278,7 +278,7 @@ describe("formatEvalResult (shared by the eval tool's execute + the agent's defe
         execute: async () => {
           throw error;
         },
-        cancel: async () => ({ content: [] }),
+        cancel: async () => ({ output: [] }),
       }).execute({ code: "return 1" }, api, context),
     ).rejects.toBe(error);
   });
@@ -344,7 +344,7 @@ describe("formatEvalResult (shared by the eval tool's execute + the agent's defe
 
     expect(textOf(out)).toContain("attached image/png image (1280×720)");
     expect(textOf(out)).not.toContain(data);
-    expect(out.content?.[1]).toEqual({
+    expect(out.output?.[1]).toEqual({
       type: "image",
       mimeType: "image/png",
       data,
@@ -373,7 +373,7 @@ describe("formatEvalResult (shared by the eval tool's execute + the agent's defe
       async () => "\uFFFDPNG\r\n\u001a\n",
     );
     expect(result.isError).toBe(true);
-    expect(result.content?.some((block) => block.type === "image")).toBe(false);
+    expect(result.output?.some((block) => block.type === "image")).toBe(false);
     expect(result.details).toMatchObject({
       failureKind: "infrastructure",
       failureCode: "eval_artifact_unavailable",
@@ -403,7 +403,7 @@ describe("formatEvalResult (shared by the eval tool's execute + the agent's defe
     expect(out.isError).toBe(false);
     expect(reader).toHaveBeenCalledTimes(1);
     expect(
-      (out.content ?? []).filter((part) => part.type === "image"),
+      (out.output ?? []).filter((part) => part.type === "image"),
     ).toHaveLength(1);
     expect(out.details).toMatchObject({
       returnValue: {
@@ -433,7 +433,7 @@ describe("formatEvalResult (shared by the eval tool's execute + the agent's defe
         digest.startsWith("a") ? "iVBORw0KGgoAAAANSUhEUgAAAAEAAAAB" : null,
     );
     expect(out.isError).toBe(true);
-    expect((out.content ?? []).every((part) => part.type === "text")).toBe(
+    expect((out.output ?? []).every((part) => part.type === "text")).toBe(
       true,
     );
     expect(out.details).toMatchObject({
@@ -467,7 +467,7 @@ describe("formatEvalResult (shared by the eval tool's execute + the agent's defe
         failureCode: "eval_artifact_unavailable",
         returnValue: artifact,
       });
-      expect((out.content ?? []).every((part) => part.type === "text")).toBe(
+      expect((out.output ?? []).every((part) => part.type === "text")).toBe(
         true,
       );
     }
@@ -530,7 +530,7 @@ describe("formatEvalResult (shared by the eval tool's execute + the agent's defe
     };
     const tool = factory({
       execute: async () => formatEvalResult(failure),
-      cancel: async () => ({ content: [] }),
+      cancel: async () => ({ output: [] }),
     });
     const result = await executeTool(
       tool,

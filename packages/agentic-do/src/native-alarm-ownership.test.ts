@@ -84,30 +84,7 @@ describe("native vessel alarm ownership", () => {
       methods.push(method);
       let result: unknown;
       let error: string | undefined;
-      if (method === "workspace-state.alarmSourceRegister") {
-        expect(args[0]).toEqual({
-          source,
-          className,
-          objectKey,
-          executionDigest,
-        });
-        result = {
-          incarnation: "storage:alarm-ownership",
-          entity: {
-            id: `do:${source}:${className}:${objectKey}`,
-            authoritySessionId: "authority:alarm-ownership",
-            kind: "do",
-            source: { repoPath: source, effectiveVersion: "test" },
-            activeExecutionDigest: executionDigest,
-            contextId: "context:alarm-ownership",
-            className,
-            key: objectKey,
-            createdAt: 1,
-            status: "active",
-            cleanupComplete: false,
-          },
-        };
-      } else if (method === "workspace-state.alarmSourcePublish") {
+      if (method === "workspace-state.alarmSourcePublish") {
         if (publicationFailure) error = publicationFailure;
         else {
           publications.push(
@@ -152,9 +129,17 @@ describe("native vessel alarm ownership", () => {
     const hostFetch = vi
       .spyOn(globalThis, "fetch")
       .mockImplementation(rpcFetch);
+    const props = { stateArgs: null, image: null, nativeOwner: {
+      runtimeId: `do:${source}:${className}:${objectKey}`,
+      authoritySessionId: "authority:alarm-ownership",
+      contextId: "context:alarm-ownership",
+      incarnation: "storage:alarm-ownership",
+      generation: 1, executionDigest, effectiveVersion: "test",
+    } };
     const fixture = await createNativeVesselTestDO(
       AlarmOwnershipVessel,
       environment,
+      { props },
     );
     let current = fixture;
     try {
@@ -213,7 +198,7 @@ describe("native vessel alarm ownership", () => {
       current = await createNativeVesselTestDO(
         AlarmOwnershipVessel,
         environment,
-        { db: fixture.db },
+        { db: fixture.db, props },
       );
       current.instance.models.setProvider(faux.provider);
       await current.instance.open();

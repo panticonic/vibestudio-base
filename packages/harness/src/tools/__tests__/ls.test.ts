@@ -22,7 +22,7 @@ describe("createLsTool", () => {
     });
     const tool = createLsTool(CWD, fs);
     const result = await executeTool(tool, {}, { callId: "call-1" });
-    const text = (result.content[0] as { text: string }).text;
+    const text = (result.output[0] as { text: string }).text;
     const lines = text.split("\n");
     expect(lines[0]).toBe("a.ts");
     expect(lines[1]).toBe("b.ts");
@@ -42,7 +42,7 @@ describe("createLsTool", () => {
       { path: "empty" },
       { callId: "call-1" },
     );
-    expect((result.content[0] as { text: string }).text).toBe(
+    expect((result.output[0] as { text: string }).text).toBe(
       "(empty directory)",
     );
     expect(result.details).toEqual({ path: `${CWD}/empty`, entries: [] });
@@ -56,7 +56,7 @@ describe("createLsTool", () => {
       { path: "nope" },
       { callId: "call-1" },
     );
-    expect((result.content[0] as { text: string }).text).toMatch(
+    expect((result.output[0] as { text: string }).text).toMatch(
       /recoverable lookup miss/i,
     );
     expect(result.details).toEqual({
@@ -73,7 +73,7 @@ describe("createLsTool", () => {
       { path: "a.ts" },
       { callId: "call-1" },
     );
-    expect((result.content[0] as { text: string }).text).toMatch(
+    expect((result.output[0] as { text: string }).text).toMatch(
       /use read for a file/i,
     );
     expect(result.details).toEqual({

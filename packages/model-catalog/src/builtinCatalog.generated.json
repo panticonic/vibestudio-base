@@ -1,5 +1,5 @@
 {
-  "generatedFrom": "@panticonic/pi-ai@1.1.0-vibestudio.1",
+  "generatedFrom": "@panticonic/pi-ai@1.1.0-vibestudio.2",
   "providers": {
     "amazon-bedrock": [
       {

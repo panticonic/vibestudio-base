@@ -208,7 +208,7 @@ export function createImagegenTool(deps: {
             )
           : undefined;
         return {
-          content: [
+          output: [
             {
               type: "text",
               text: mutation

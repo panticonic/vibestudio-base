@@ -19,7 +19,7 @@ describe("createGrepTool", () => {
   it("returns actionable guidance when the pattern is omitted", async () => {
     const tool = createGrepTool(CWD, new StubFs());
     const result = await executeTool(tool, {}, { callId: "call-1" });
-    expect((result.content[0] as { text: string }).text).toContain(
+    expect((result.output[0] as { text: string }).text).toContain(
       "No grep pattern supplied",
     );
   });
@@ -37,7 +37,7 @@ describe("createGrepTool", () => {
       { pattern: "foo", literal: true },
       { callId: "call-1" },
     );
-    const text = (result.content[0] as { text: string }).text;
+    const text = (result.output[0] as { text: string }).text;
     expect(text).toContain("a.ts:1");
     expect(text).toContain("b.ts:2");
   });
@@ -52,7 +52,7 @@ describe("createGrepTool", () => {
       { pattern: "let \\w+ = \\d+", literal: false },
       { callId: "call-1" },
     );
-    const text = (result.content[0] as { text: string }).text;
+    const text = (result.output[0] as { text: string }).text;
     expect(text).toContain("a.ts:1");
     expect(text).toContain("a.ts:2");
     expect(text).not.toContain("a.ts:3");
@@ -68,7 +68,7 @@ describe("createGrepTool", () => {
       { pattern: "eval({ path" },
       { callId: "call-1" },
     );
-    const text = (result.content[0] as { text: string }).text;
+    const text = (result.output[0] as { text: string }).text;
     expect(text).toContain("a.ts:1");
   });
 
@@ -96,7 +96,7 @@ describe("createGrepTool", () => {
       { callId: "call-1" },
     );
 
-    expect((result.content[0] as { text: string }).text).toContain(
+    expect((result.output[0] as { text: string }).text).toContain(
       "No grep pattern supplied",
     );
   });
@@ -135,7 +135,7 @@ describe("createGrepTool", () => {
       { callId: "call-1" },
     );
 
-    expect((result.content[0] as { text: string }).text).toContain(
+    expect((result.output[0] as { text: string }).text).toContain(
       "src/a.ts:2: open();",
     );
     expect(result.details).toMatchObject({ engine: "fs-service" });
@@ -174,7 +174,7 @@ describe("createGrepTool", () => {
       { callId: "call-1" },
     );
 
-    expect((result.content[0] as { text: string }).text).toContain(
+    expect((result.output[0] as { text: string }).text).toContain(
       "src/a.ts:1: open();",
     );
     expect(result.details).toMatchObject({ engine: "fs-service" });
@@ -244,7 +244,7 @@ describe("createGrepTool", () => {
       { pattern: "xyz" },
       { callId: "call-1" },
     );
-    expect((result.content[0] as { text: string }).text).toBe(
+    expect((result.output[0] as { text: string }).text).toBe(
       "No matches found",
     );
   });
@@ -260,7 +260,7 @@ describe("createGrepTool", () => {
       { callId: "call-1" },
     );
 
-    expect((result.content[0] as { text: string }).text).toContain(
+    expect((result.output[0] as { text: string }).text).toContain(
       "No matches found (search path does not exist: packages/missing)",
     );
     expect(result.details).toMatchObject({
@@ -282,7 +282,7 @@ describe("createGrepTool", () => {
       { pattern: "match", glob: "*.ts" },
       { callId: "call-1" },
     );
-    const text = (result.content[0] as { text: string }).text;
+    const text = (result.output[0] as { text: string }).text;
     expect(text).toContain("a.ts");
     expect(text).not.toContain("b.md");
   });
@@ -320,10 +320,10 @@ describe("createGrepTool", () => {
       { pattern: "needle" },
       { callId: "call-1" },
     );
-    expect((normal.content[0] as { text: string }).text).toContain(
+    expect((normal.output[0] as { text: string }).text).toContain(
       "visible.ts",
     );
-    expect((normal.content[0] as { text: string }).text).not.toContain(
+    expect((normal.output[0] as { text: string }).text).not.toContain(
       "ignored.ts:1",
     );
     const complete = await executeTool(
@@ -331,7 +331,7 @@ describe("createGrepTool", () => {
       { pattern: "needle", includeIgnored: true },
       { callId: "call-2" },
     );
-    expect((complete.content[0] as { text: string }).text).toContain(
+    expect((complete.output[0] as { text: string }).text).toContain(
       "ignored.ts:1",
     );
   });
@@ -373,7 +373,7 @@ describe("createGrepTool", () => {
       },
       { callId: "call-1" },
     );
-    const text = (result.content[0] as { text: string }).text;
+    const text = (result.output[0] as { text: string }).text;
     expect(text).toContain("a.ts-1- before");
     expect(text).toContain("a.ts:2: match one");
     expect(text).toContain("a.ts-3- after");
@@ -388,7 +388,7 @@ describe("createGrepTool", () => {
       { pattern: "hello", ignoreCase: true },
       { callId: "call-1" },
     );
-    expect((result.content[0] as { text: string }).text).toContain("a.ts:1");
+    expect((result.output[0] as { text: string }).text).toContain("a.ts:1");
   });
 
   it("aborts when signal is already aborted", async () => {

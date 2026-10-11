@@ -29,17 +29,22 @@ export interface LoadedAgentImage {
   readonly executionDigest: string;
 }
 
+/** Activation-published native resource obligation, delivered in object props. */
+export type NativeAgentActivation =
+  import("@vibestudio/shared/runtime/entitySpec").NativeOwnerAdmission;
+
 export type AgentHostCall =
   import("@vibestudio/service-schemas/mainRpc").MainRpcCaller;
 
 /**
- * Resolve authority from the live platform, not restored SQLite contents or
- * inbound request arguments. Schema admission precedes this function; its caller
- * supplies the exact host-loaded image and an owner-authenticated service client.
+ * Consume the host-published activation witness, never restored SQLite identity
+ * or inbound request arguments. Activation already owns native wake registration
+ * and the entity-lifetime release obligation before the object can execute.
  */
 export async function openPlatformAgentSession(
   createStorage: () => Promise<Storage>,
   image: LoadedAgentImage,
+  activation: NativeAgentActivation | null,
   call: AgentHostCall,
   options: Omit<HarnessOptions, "publishWake">,
   context: Context,
@@ -59,31 +64,28 @@ export async function openPlatformAgentSession(
     className: loaded.className,
     objectKey: loaded.objectKey,
   };
-  const { entity, incarnation } =
-    workspaceStateMethods.alarmSourceRegister.returns.parse(
-      await call("workspace-state.alarmSourceRegister", [
-        { ...key, executionDigest: loaded.executionDigest },
-      ]),
-    );
   if (
-    entity.kind !== "do" ||
-    entity.status !== "active" ||
-    entity.id !== loaded.runtimeId ||
-    entity.source.repoPath !== loaded.source ||
-    entity.className !== loaded.className ||
-    entity.key !== loaded.objectKey ||
-    entity.activeExecutionDigest !== loaded.executionDigest ||
-    !entity.contextId
+    !activation ||
+    activation.runtimeId !== loaded.runtimeId ||
+    activation.executionDigest !== loaded.executionDigest ||
+    [activation.contextId, activation.authoritySessionId, activation.incarnation, activation.effectiveVersion].some(
+      (value) => typeof value !== "string" || value.length === 0,
+    ) ||
+    !Number.isSafeInteger(activation.generation) ||
+    activation.generation < 1
   )
     throw new Error("Agent image does not match its active platform owner");
+  const { incarnation, contextId, authoritySessionId, effectiveVersion } =
+    activation;
   let acknowledgedWake: { revision: number; wakeAt: number | null } | undefined;
   const harness = await openBoundAgentSession(
     await createStorage(),
     {
       runtimeId: loaded.runtimeId,
-      contextId: entity.contextId,
+      contextId,
       incarnation,
-      authoritySessionId: entity.authoritySessionId,
+      authoritySessionId,
+      generation: activation.generation,
     },
     {
       ...options,
@@ -110,12 +112,12 @@ export async function openPlatformAgentSession(
   );
   admittedExecutors.set(harness, {
     ...loaded,
-    effectiveVersion: entity.source.effectiveVersion,
+    effectiveVersion,
     owner: {
       runtimeId: loaded.runtimeId,
-      contextId: entity.contextId,
+      contextId,
       incarnation,
-      authoritySessionId: entity.authoritySessionId,
+      authoritySessionId,
     },
   });
   return harness;
@@ -157,16 +159,18 @@ const ExecutionOwner = defineDoc<{
   contextId: string;
   incarnation: string;
   authoritySessionId: string;
+  generation: number;
   status: "active" | "retired";
 }>({
   kind: "vibestudio.execution-owner",
-  version: 1,
+  version: 2,
   scope: "session",
   initial: () => ({
     runtimeId: "",
     contextId: "",
     incarnation: "",
     authoritySessionId: "",
+    generation: 0,
     status: "active",
   }),
   checkpointWhen: () => true,
@@ -296,13 +300,13 @@ type BoundHarnessOptions = Omit<HarnessOptions, "publishWake"> & {
 
 /**
  * Open one independently hosted execution owner over an already schema-admitted
- * store. The caller registers its host wake source before calling this function.
+ * store. Entity activation has already published its host wake source.
  * Validate ownership before Harness.open reconciles any surviving task record.
  * This does not install a schema, grant authority or invent domain receipts.
  */
 export async function openBoundAgentSession(
   storage: Storage,
-  owner: AgentExecutionOwner,
+  owner: AgentExecutionOwner & { readonly generation: number },
   options: BoundHarnessOptions,
   context: Context,
 ): Promise<Harness> {
@@ -320,20 +324,28 @@ export async function openBoundAgentSession(
           "Agent execution requires its host-resolved owner binding",
         );
     }
+    if (!Number.isSafeInteger(bound.generation) || bound.generation < 1)
+      throw new Error("Agent execution requires its host storage generation");
     const record = await storage.findDocument(
       { kind: ExecutionOwner.definition.kind, scope: { kind: "session" } },
       "current",
       context,
     );
-    let handover = false;
     if (record) {
       const stored = await storage.document(record.id, "current", context);
+      const storedGeneration = stored?.value["generation"];
+      const sameStorage = stored?.value["incarnation"] === bound.incarnation &&
+        storedGeneration === bound.generation;
+      const replacedStorage = typeof storedGeneration === "number" &&
+        Number.isSafeInteger(storedGeneration) && storedGeneration >= 1 &&
+        storedGeneration < bound.generation &&
+        stored?.value["incarnation"] !== bound.incarnation;
       if (
         !stored ||
         stored.version !== ExecutionOwner.definition.version ||
         stored.value["runtimeId"] !== bound.runtimeId ||
         stored.value["contextId"] !== bound.contextId ||
-        stored.value["incarnation"] !== bound.incarnation ||
+        (!sameStorage && !replacedStorage) ||
         typeof stored.value["authoritySessionId"] !== "string" ||
         stored.value["authoritySessionId"] === "" ||
         !(
@@ -347,7 +359,7 @@ export async function openBoundAgentSession(
           "Retired execution owner: this storage cannot authorize the current owner",
         );
       }
-      handover = stored.value["status"] === "retired";
+      const handover = stored.value["status"] === "retired";
       if (handover) {
         for (const status of [
           "pending",
@@ -388,6 +400,27 @@ export async function openBoundAgentSession(
           } while (cursor !== undefined);
         }
       }
+      // Validate the whole handover before changing identity. Published storage
+      // replacement and retired-owner handover compose on one mutation line,
+      // before Harness.open admits retained invocations or wake publication.
+      if (replacedStorage || handover) {
+        await storage.commit([{
+          type: "document.change",
+          id: record.id,
+          content: {
+            kind: "base",
+            version: ExecutionOwner.definition.version,
+            value: {
+              runtimeId: bound.runtimeId,
+              contextId: bound.contextId,
+              incarnation: bound.incarnation,
+              authoritySessionId: bound.authoritySessionId,
+              generation: bound.generation,
+              status: "active",
+            },
+          },
+        }], context);
+      }
     } else {
       const conversations = await storage.scanConversations(
         {},
@@ -407,12 +440,13 @@ export async function openBoundAgentSession(
         );
     }
     harness = await Harness.open(storage, options, context);
-    if (!record || handover) {
+    if (!record) {
       await harness.commit(async (tx) => {
         const identity = await tx.doc(ExecutionOwner);
         identity.runtimeId = bound.runtimeId;
         identity.contextId = bound.contextId;
         identity.incarnation = bound.incarnation;
+        identity.generation = bound.generation;
         identity.authoritySessionId = bound.authoritySessionId;
         identity.status = "active";
       }, context);

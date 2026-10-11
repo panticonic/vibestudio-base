@@ -94,6 +94,8 @@ async function runTool(
         : "Domain tool aborted",
     );
   expect(provider.state.callCount).toBe(0);
+  if (task.state.outcome.result.kind !== "direct")
+    throw new Error("Domain task changed its direct result kind");
   const entries = await conversation.entries(
     {
       minEntryId: task.state.outcome.result.entryId,
@@ -119,6 +121,7 @@ const TEST_AGENT_ENV = {
   WORKER_CLASS_NAME: "TestAgent",
 } as const;
 const TEST_AGENT_PROPS = {
+  nativeOwner: null,
   stateArgs: null,
   image: {
     effectiveVersion: "a".repeat(64),
@@ -1396,7 +1399,7 @@ describe("AgentVesselBase.chatOp", () => {
     await expect(
       vessel.executeAutomationControlForTest({ action: "pause" }),
     ).resolves.toMatchObject({
-      content: [{ text: "Sloth fun facts was paused." }],
+      output: [{ text: "Sloth fun facts was paused." }],
       details: { missionId: "mission-sloths", state: "paused" },
     });
     expect(vessel.automationControlCalls).toEqual([
@@ -1975,7 +1978,7 @@ describe("AgentVesselBase retained subagent resources", () => {
 
     const out = await probe.inspectSubagentForTest(runId, "diff");
     const text =
-      (out.content?.[0] as { text?: string } | undefined)?.text ?? "";
+      (out.output?.[0] as { text?: string } | undefined)?.text ?? "";
 
     expect(text).toContain("Source event:child: 1 adopt");
     expect(text).toContain("Coordinate: file:child · adopt · child");
@@ -2041,7 +2044,7 @@ describe("AgentVesselBase retained subagent resources", () => {
     );
 
     const out = await probe.inspectSubagentForTest(runId, "diff");
-    expect(out.content?.[0]).toMatchObject({
+    expect(out.output?.[0]).toMatchObject({
       text: expect.stringContaining(
         "comparison includes its current working state",
       ),
@@ -2081,7 +2084,7 @@ describe("AgentVesselBase retained subagent resources", () => {
 
     const out = await probe.inspectSubagentForTest(runId, "log");
 
-    expect((out.content?.[0] as { text?: string } | undefined)?.text).toContain(
+    expect((out.output?.[0] as { text?: string } | undefined)?.text).toContain(
       "Child fixture commit",
     );
     expect(
@@ -2204,7 +2207,7 @@ describe("AgentVesselBase retained subagent resources", () => {
         sourceHeadline: "asked by user:owner: Build the fixture corpus",
       }),
     });
-    expect(result.content?.[0]).toMatchObject({
+    expect(result.output?.[0]).toMatchObject({
       type: "text",
       text: expect.stringMatching(
         /Resolution: complete=true; concluded=true; remaining=0[\s\S]*Source: asked by user:owner[\s\S]*Composed: file:one/,

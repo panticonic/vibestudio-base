@@ -67,7 +67,7 @@ describe("workspace VCS commit operation", () => {
       workingCounts: { applications: 0, workUnits: 0, changes: 0 },
       integrating: [],
     });
-    expect(result.content[0]).toMatchObject({
+    expect(result.output[0]).toMatchObject({
       type: "text",
       text: expect.stringContaining("the context is clean at that event"),
     });

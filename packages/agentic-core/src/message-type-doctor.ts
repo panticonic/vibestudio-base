@@ -126,7 +126,7 @@ export async function runMessageTypeDoctor(
       });
       continue;
     }
-    for (const issue of lintRendererSource(code, {
+    for (const issue of await lintRendererSource(code, {
       imports: definition.imports,
       hostModules: opts.hostModules ?? DEFAULT_HOST_MODULES,
     })) {

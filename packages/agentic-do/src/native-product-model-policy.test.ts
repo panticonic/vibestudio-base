@@ -54,7 +54,7 @@ async function fixture() {
     name: "echo",
     description: "Actual effect",
     parameters: Type.Object({ text: Type.String() }),
-    execute: async (args) => ({ content: [{ type: "text", text: args.text }] }),
+    execute: async (args) => ({ output: [{ type: "text", text: args.text }] }),
   });
   registry.install(
     defineExtension({

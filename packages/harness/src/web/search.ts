@@ -260,7 +260,7 @@ async function runCodexSearch(
     "openai-codex",
   );
   return {
-    content: [
+    output: [
       { type: "text", text: formatNormalizedResults(results, "openai-codex") },
     ],
     details: toolDetails(
@@ -331,7 +331,7 @@ async function runStandardSearch(
     provider,
   );
   return {
-    content: [
+    output: [
       { type: "text", text: formatNormalizedResults(results, provider) },
     ],
     details: toolDetails({

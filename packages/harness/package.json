@@ -7,6 +7,7 @@
     ".": "./src/index.ts",
     "./agent-references": "./src/tools/agent-pagination.ts",
     "./merge-driver": "./src/merge-driver.ts",
+    "./native-tool-authoring": "./src/native-tool-authoring.ts",
     "./resource-loader": "./src/resource-loader.ts",
     "./semantic-file-resolution": "./src/semantic-file-resolution.ts",
     "./standard-tools": "./src/standard-tools.ts",
@@ -34,9 +35,9 @@
     "unpdf": "^1.8.0",
     "yaml": "^2.8.0",
     "@workspace/runtime": "workspace:*",
-    "@panticonic/pi-ai": "1.1.0-vibestudio.1",
-    "@panticonic/pi-chord": "1.1.0-vibestudio.1",
-    "@panticonic/pi-durable": "1.1.0-vibestudio.1",
+    "@panticonic/pi-ai": "1.1.0-vibestudio.2",
+    "@panticonic/pi-chord": "1.1.0-vibestudio.2",
+    "@panticonic/pi-durable": "1.1.0-vibestudio.2",
     "@workspace/test-runtime": "workspace:*"
   },
   "optionalDependencies": {

@@ -358,6 +358,8 @@ export function createNativeAutomationRuns(host: NativeAutomationHost) {
           );
           return;
         }
+        if (outcome.result.kind !== "direct")
+          throw new Error("Automation invocation did not return its direct result");
         const entry = await runtime.entry(
           DirectToolResultEntry,
           outcome.result.entryId,
@@ -788,18 +790,9 @@ export function createNativeAutomationRuns(host: NativeAutomationHost) {
             throw new Error(
               "Automation effect has no genuine native task input",
             );
-          const original = input["source"];
-          if (
-            !original ||
-            typeof original !== "object" ||
-            Array.isArray(original) ||
-            original["kind"] !== "assistant" ||
-            typeof original["entryId"] !== "number" ||
-            input["callId"] !== message.toolCallId
-          )
-            throw new Error(
-              "Automation effect has no exact original provider call",
-            );
+          if (input["kind"] !== "model" || typeof input["assistant"] !== "number" ||
+            input["callId"] !== message.toolCallId)
+            throw new Error("Automation effect has no exact original provider call");
           const owner = await retainedAgentExecutionOwnerInTransaction(tx);
           const invocationId = nativeInvocationId({
             owner: {
@@ -809,7 +802,7 @@ export function createNativeAutomationRuns(host: NativeAutomationHost) {
             task: { taskId: task.id, conversationId: task.conversationId },
             operation: {
               kind: "tool",
-              assistantEntryId: original["entryId"],
+              assistantEntryId: input["assistant"],
               callId: message.toolCallId,
             },
           });

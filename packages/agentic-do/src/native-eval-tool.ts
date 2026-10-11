@@ -166,7 +166,7 @@ export function createNativeEvalExecution(
       );
       // An unstarted native tool owns no external run. Read-only inspection
       // must not manufacture a notebook or a new domain operation on abort.
-      if (!admission) return { content: [] };
+      if (!admission) return { output: [] };
       await api.commit(
         (tx) =>
           bindEvalRun(tx, route.runId, binding, route, api.conversationId),

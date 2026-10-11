@@ -186,7 +186,7 @@ export function createWebTools(deps: WebToolsDeps): ToolRegistration[] {
               headSlice.text,
             ].join("\n");
             return {
-              content: [{ type: "text" as const, text: summary }],
+              output: [{ type: "text" as const, text: summary }],
               details: toolDetails({
                 url,
                 title: cached.title,
@@ -233,7 +233,7 @@ export function createWebTools(deps: WebToolsDeps): ToolRegistration[] {
           head.text,
         ].join("\n");
         return {
-          content: [{ type: "text" as const, text: summary }],
+          output: [{ type: "text" as const, text: summary }],
           details: toolDetails({
             url: page.url,
             title: page.title,
@@ -272,7 +272,7 @@ export function createWebTools(deps: WebToolsDeps): ToolRegistration[] {
           );
         }
         return {
-          content: [{ type: "text" as const, text: slice.text }],
+          output: [{ type: "text" as const, text: slice.text }],
           details: toolDetails({
             digest,
             offset: off,

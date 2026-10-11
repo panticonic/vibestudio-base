@@ -1,3 +1,4 @@
+import { NestedCallDoc, type NestedToolExecutionResult } from "@panticonic/pi-durable";
 import { copyJson, type Context, type JsonValue } from "@panticonic/pi-chord";
 import { sha256HexSyncText } from "@vibestudio/content-addressing";
 import { canonicalJson } from "@vibestudio/shared/canonicalJson";
@@ -254,6 +255,7 @@ export interface NativeInvocationStartPublication {
 
 export interface NativeInvocationTerminalPublication extends NativeInvocationStartPublication {
   readonly terminalIdempotencyKey: string;
+  readonly nestedResult?: NestedToolExecutionResult;
   readonly outcome: Extract<
     TaskRecord<JsonValue, JsonValue, JsonValue>["state"],
     { status: "terminal" }
@@ -284,7 +286,26 @@ export async function prepareNativeInvocationTerminals(
     );
     for (const publication of owned) {
       const source = nativeInvocationSourceSchema.parse(publication.source);
+      let nestedResult: NestedToolExecutionResult | undefined;
+      if (source.operation.kind === "nested-tool" && task.state.outcome.status === "completed") {
+        const retained = await tx.doc(NestedCallDoc, source.operation.parentTaskId as TaskId, source.operation.key, null);
+        if (retained.taskId !== task.id || !retained.result || retained.result.taskId !== task.id)
+          throw new Error("Nested native terminal lost its canonical parent result");
+        const result = retained.result;
+        // Read every field while its task-owned overlay is live. JSON-valued
+        // program data is detached; typed scalar records keep their contract.
+        nestedResult = {
+          taskId: task.id,
+          isError: result.isError,
+          diagnostics: result.diagnostics.map((diagnostic) => ({ ...diagnostic })),
+          ...(result.structuredOutput === undefined ? {} : { structuredOutput: copyJson(result.structuredOutput) }),
+          ...(result.details === undefined ? {} : { details: copyJson(result.details) }),
+          ...(result.durationMs === undefined ? {} : { durationMs: result.durationMs }),
+          ...(result.usage === undefined ? {} : { usage: { ...result.usage, cost: { ...result.usage.cost } } }),
+        };
+      }
       await enqueue(tx, {
+        ...(nestedResult ? { nestedResult } : {}),
         source,
         start: startEvent(
           source,

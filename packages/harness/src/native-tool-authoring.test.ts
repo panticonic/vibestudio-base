@@ -105,7 +105,7 @@ describe("native tool authoring", () => {
     const api = { ...nativeToolApi(), continuation: { operation: "existing" } };
     const context = nativeToolContext();
     const execute = vi.fn(async () => wait);
-    const cancel = vi.fn(async () => ({ content: [{ type: "text" as const, text: "cancelled" }] }));
+    const cancel = vi.fn(async () => ({ output: [{ type: "text" as const, text: "cancelled" }] }));
     const bind = vi.fn(async (actualApi: ToolExecutionApi, actualContext: Context) => {
       expect(actualApi).toBe(api); expect(actualContext).toBe(context);
       return "retained invocation";

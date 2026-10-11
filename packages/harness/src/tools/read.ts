@@ -183,7 +183,7 @@ interface ImageResizeResult {
   dimensionNote?: string;
 }
 interface ReadResult {
-  content: (TextContent | ImageContent)[];
+  output: (TextContent | ImageContent)[];
   details: ReadToolDetails;
 }
 interface FsReadTextResult {
@@ -267,7 +267,7 @@ export function createReadTool(
       [entry.dirPath],
     );
     return {
-      content: [{ type: "text", text: content }],
+      output: [{ type: "text", text: content }],
       details: toolDetails({
         path: entry.skillPath,
         engine: "runtime-fs",
@@ -304,7 +304,7 @@ export function createReadTool(
         ? ` Nearby entries: ${suggestions.join(", ")}.`
         : " The parent directory is also unavailable or empty.";
     return {
-      content: [
+      output: [
         {
           type: "text",
           text: `File not found: ${requestedPath}.${hint} Use ls/find before choosing another path.`,
@@ -368,9 +368,9 @@ export function createReadTool(
       });
       return {
         ...result,
-        content: block
-          ? [...result.content, { type: "text" as const, text: block }]
-          : result.content,
+        output: block
+          ? [...result.output, { type: "text" as const, text: block }]
+          : result.output,
         details: toolDetails({ ...result.details, provenance }),
       };
     } catch (error) {
@@ -441,7 +441,7 @@ export function createReadTool(
       const path = normalizeReadLocation(input);
       if (!path) {
         return {
-          content: [
+          output: [
             {
               type: "text",
               text: "No file reference was supplied. Call read with path, or with a file:<path> target returned by a discovery tool.",
@@ -457,7 +457,7 @@ export function createReadTool(
       const absolutePath = resolveToCwd(path, cwd);
       if (deps?.visibility && (await deps.visibility.isHidden(absolutePath))) {
         return {
-          content: [{ type: "text", text: `Path not found: ${path}` }],
+          output: [{ type: "text", text: `Path not found: ${path}` }],
           details: toolDetails({ path, missing: true, suggestions: [] }),
         };
       }
@@ -555,7 +555,7 @@ export function createReadTool(
             sha256Hex(raw),
           );
           return {
-            content,
+            output: content,
             details: toolDetails({
               path: absolutePath,
               mimeType: resized.mimeType,
@@ -614,7 +614,7 @@ export function createReadBinaryTool(
       const path = normalizeReadLocation(input);
       if (!path) {
         return {
-          content: [
+          output: [
             {
               type: "text",
               text: "No file reference was supplied. Call read_binary with path, or with a file:<path> target returned by a discovery tool.",
@@ -627,7 +627,7 @@ export function createReadBinaryTool(
       const absolutePath = resolveToCwd(path, cwd);
       if (deps?.visibility && (await deps.visibility.isHidden(absolutePath))) {
         return {
-          content: [{ type: "text", text: `Path not found: ${path}` }],
+          output: [{ type: "text", text: `Path not found: ${path}` }],
           details: toolDetails({ path, missing: true, suggestions: [] }),
         };
       }
@@ -693,7 +693,7 @@ export function createReadBinaryTool(
         if (recovered) return recovered;
         if ((error as NodeJS.ErrnoException).code === "ENOENT") {
           return {
-            content: [
+            output: [
               {
                 type: "text",
                 text: `File not found: ${path}. Use ls/find before choosing another path.`,
@@ -739,7 +739,7 @@ async function recoverReadFailure(
       .slice(0, 200);
     const omitted = entries.length - shown.length;
     return {
-      content: [
+      output: [
         {
           type: "text",
           text:
@@ -836,7 +836,7 @@ function formatBoundedTextResult(
 ): ReadResult {
   if (bounded.startLine > bounded.totalLines) {
     return {
-      content: [
+      output: [
         {
           type: "text",
           text:
@@ -866,7 +866,7 @@ function formatBoundedTextResult(
   };
   if (bounded.firstLineExceedsLimit) {
     return {
-      content: [
+      output: [
         {
           type: "text",
           text: `[Line ${bounded.startLine} exceeds ${formatSize(bounded.maxBytes)} limit. Use offset=${bounded.nextOffset} to skip past it.]`,
@@ -890,7 +890,7 @@ function formatBoundedTextResult(
       `Use offset=${bounded.nextOffset} to continue.]`;
   }
   return {
-    content: [{ type: "text", text }],
+    output: [{ type: "text", text }],
     details: toolDetails({
       path: displayPath,
       engine: "runtime-fs",
@@ -925,7 +925,7 @@ function formatBoundedBytesResult(
     base64: bounded.base64,
   };
   return {
-    content: [{ type: "text", text: JSON.stringify(payload) }],
+    output: [{ type: "text", text: JSON.stringify(payload) }],
     details: toolDetails({
       path: displayPath,
       engine: "runtime-fs",
@@ -944,7 +944,7 @@ function formatTextResult(
   limit: number | undefined,
   extensionFallback?: string,
 ): {
-  content: (TextContent | ImageContent)[];
+  output: (TextContent | ImageContent)[];
   details: ReadToolDetails;
 } {
   const allLines = textContent.split("\n");
@@ -953,7 +953,7 @@ function formatTextResult(
   const startLineDisplay = startLine + 1;
   if (startLine >= allLines.length) {
     return {
-      content: [
+      output: [
         {
           type: "text",
           text:
@@ -1012,7 +1012,7 @@ function formatTextResult(
     outputText = truncation.content;
   }
   return {
-    content: [{ type: "text", text: outputText }],
+    output: [{ type: "text", text: outputText }],
     details: toolDetails({
       ...details,
       path: displayPath,

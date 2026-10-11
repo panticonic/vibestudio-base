@@ -67,31 +67,13 @@ const image = {
   objectKey: "one",
   executionDigest: "a".repeat(64),
 };
-const entity = {
-  id: owner.runtimeId,
-  authoritySessionId: owner.authoritySessionId,
-  kind: "do",
-  status: "active",
-  source: { repoPath: image.source, effectiveVersion: "state:one" },
-  contextId: owner.contextId,
-  className: image.className,
-  key: image.objectKey,
-  activeExecutionDigest: image.executionDigest,
-  agentBinding: {
-    entityId: owner.runtimeId,
-    contextId: owner.contextId,
-    channelId: "channel:one",
-  },
-  createdAt: 1,
-  cleanupComplete: false,
-};
+
 const hostMethods: string[] = [];
-function hostCaller(activeEntity: typeof entity = entity): AgentHostCall {
+function hostCaller(): AgentHostCall {
   return createMainRpcCaller(
     schemaRpcMock({
       call: async (_target: string, method: string) => {
         hostMethods.push(method);
-        if (method === "workspace-state.alarmSourceRegister") return { incarnation: owner.incarnation, entity: JSON.parse(JSON.stringify(activeEntity)) };
         if (method === "workspace-state.alarmSourcePublish") return "accepted";
         throw new Error(`Unexpected main RPC ${method}`);
       },
@@ -120,10 +102,14 @@ async function open(
   storage: Storage = new MemoryStorage(),
   executable = image,
   activeCall = call,
+  effectiveVersion = "state:one",
+  binding = owner,
+  generation = 1,
 ) {
   const harness = await openPlatformAgentSession(
     async () => storage,
     executable,
+    { ...binding, generation, executionDigest: executable.executionDigest, effectiveVersion },
     activeCall,
     {
       models: state.models,
@@ -224,14 +210,15 @@ describe("native invocation source", () => {
           ctx,
         );
         expected.push(inspected?.originatingInput);
-        return { content: [{ type: "text", text: "ok" }] };
+        return { output: [{ type: "text", text: "ok" }] };
       },
     });
     state.registry.install(defineExtension({ name: "origin", tools: [tool] }));
     harness = await openPlatformAgentSession(
       async () => new MemoryStorage(),
       image,
-      call,
+      { ...owner, generation: 1, executionDigest: image.executionDigest, effectiveVersion: "state:one" },
+    call,
       {
         models: state.models,
         registry: state.registry,
@@ -385,7 +372,8 @@ describe("native invocation source", () => {
     harness = await openPlatformAgentSession(
       async () => new MemoryStorage(),
       image,
-      call,
+      { ...owner, generation: 1, executionDigest: image.executionDigest, effectiveVersion: "state:one" },
+    call,
       {
         models: state.models,
         registry: state.registry,
@@ -555,7 +543,59 @@ describe("native invocation source", () => {
       ),
     ).toBeNull();
   });
-  it("reopens actual pending work under a new executable image while preserving its original task attribution", async () => {
+  it("attributes genuine nested tools to their retained parent call and original input", async () => {
+    const state = setup();
+    let harness!: Harness;
+    let parentTaskId = 0;
+    let parentCallId = "";
+    let source!: NativeInvocationSource;
+    const inner = defineTool({
+      name: "nested_inner",
+      description: "Called by the parent tool",
+      callers: ["tools"],
+      parameters: Type.Object({ value: Type.String() }),
+      async execute(args, api, ctx) {
+        source = await retainNativeToolInvocation(harness, api, image, ctx);
+        expect((await harness.getTask(api.taskId, ctx))?.owner).toBe(parentTaskId);
+        expect(source.operation).toMatchObject({
+          kind: "nested-tool", parentTaskId, parentCallId, key: "child:one",
+          callId: api.callId, name: "nested_inner",
+        });
+        const inspected = await inspectNativeInvocationSource(harness, {
+          taskId: api.taskId, invocationId: nativeInvocationId(source),
+        }, image, ctx);
+        expect(inspected?.source).toEqual(source);
+        return { output: [{ type: "text" as const, text: args.value }] };
+      },
+    });
+    const outer = defineTool({
+      name: "nested_outer",
+      description: "Owns its nested child",
+      parameters: Type.Object({}),
+      async execute(_args, api, ctx) {
+        parentTaskId = api.taskId;
+        parentCallId = api.callId;
+        const result = await api.executeTool("nested_inner", { value: "owned child" }, ctx, { key: "child:one" });
+        expect(result.isError).toBe(false);
+        expect(result.structuredOutput).toBe("owned child");
+        return { output: [{ type: "text" as const, text: "nested call joined" }] };
+      },
+    });
+    state.registry.install(defineExtension({ name: "nested-native-source", tools: [outer, inner] }));
+    const opened = await open(state);
+    harness = opened.harness;
+    await opened.root.configure({ tools: [outer, inner] }, context);
+    state.faux.setResponses([
+      fauxAssistantMessage([fauxToolCall("nested_outer", {})], { stopReason: "toolUse" }),
+      fauxAssistantMessage("done"),
+    ]);
+    const submission = await opened.root.submit({ type: "input", content: "original nested request" }, context);
+    await expect(submission.wait(context)).resolves.toMatchObject({ status: "done" });
+    expect(source.operation.kind).toBe("nested-tool");
+    expect(await inspectNativeInvocationSource(harness, { taskId: source.task.taskId, invocationId: nativeInvocationId(source) }, image, context)).toBeNull();
+  });
+
+  it.each(["executable", "storage"] as const)("reopens actual pending work after %s replacement while preserving its original task attribution", async (replacementKind) => {
     const directory = await mkdtemp(join(tmpdir(), "native-source-"));
     const state = setup();
     let harness!: Harness;
@@ -614,14 +654,20 @@ describe("native invocation source", () => {
       unsubscribe();
       const original = source;
       await harness.close(context);
-      executable = { ...image, executionDigest: "c".repeat(64) };
-      activeCall = hostCaller({ ...entity, activeExecutionDigest: executable.executionDigest, source: { ...entity.source, effectiveVersion: "state:replacement" } });
+      const replacementOwner = replacementKind === "storage"
+        ? { ...owner, incarnation: "restored-storage" } : owner;
+      const effectiveVersion = replacementKind === "executable" ? "state:replacement" : "state:one";
+      executable = replacementKind === "executable" ? { ...image, executionDigest: "c".repeat(64) } : image;
+      activeCall = hostCaller();
       opened = await open(
         state,
         port,
         await openNodeSqliteStorage(join(directory, "owner.sqlite")),
         executable,
         activeCall,
+        effectiveVersion,
+        replacementOwner,
+        replacementKind === "storage" ? 2 : 1,
       );
       harness = opened.harness;
       expect(
@@ -636,7 +682,7 @@ describe("native invocation source", () => {
         ),
       ).toEqual({
         source: original,
-        executor: { ...original.owner, executionDigest: executable.executionDigest, effectiveVersion: "state:replacement" },
+        executor: { ...original.owner, incarnation: replacementOwner.incarnation, executionDigest: executable.executionDigest, effectiveVersion },
         status: "waiting",
         abortRequested: false,
         originatingInput: null,
@@ -802,7 +848,7 @@ describe("native invocation source", () => {
                 ctx,
               );
               expect(inspect).toMatchObject({ source, status: "running" });
-              return { content: [{ type: "text", text: "done" }] };
+              return { output: [{ type: "text", text: "done" }] };
             },
           }),
         ],
@@ -900,7 +946,7 @@ describe("native invocation source", () => {
                 ),
               ).toMatchObject({ source, abortRequested: true });
               cleaned = true;
-              return { content: [] };
+              return { output: [] };
             },
           }),
         ],
@@ -932,11 +978,31 @@ describe("native invocation source", () => {
     ).toBeNull();
   });
 
-  it("does not admit invented source facts on inspection and propagates the original host failure", async () => {
+  it.each([
+    null,
+    { ...owner, generation: 1, executionDigest: "b".repeat(64), effectiveVersion: "state:one" },
+    { ...owner, runtimeId: "do:workers/agent:Agent:other", generation: 1, executionDigest: image.executionDigest, effectiveVersion: "state:one" },
+    { ...owner, contextId: "", generation: 1, executionDigest: image.executionDigest, effectiveVersion: "state:one" },
+    { ...owner, authoritySessionId: "", generation: 1, executionDigest: image.executionDigest, effectiveVersion: "state:one" },
+    { ...owner, incarnation: "", generation: 1, executionDigest: image.executionDigest, effectiveVersion: "state:one" },
+    { ...owner, generation: -1, executionDigest: image.executionDigest, effectiveVersion: "state:one" },
+  ])("rejects an incomplete or contradictory activation before storage opens: %j", async (activation) => {
+    const state = setup();
+    let opened = false;
+    const before = hostMethods.length;
+    await expect(openPlatformAgentSession(async () => {
+      opened = true;
+      return new MemoryStorage();
+    }, image, activation, call, { models: state.models, registry: state.registry }, context)).rejects.toThrow("active platform owner");
+    expect(opened).toBe(false);
+    expect(hostMethods).toHaveLength(before);
+  });
+
+  it("does not admit invented source facts on inspection and propagates the original storage failure", async () => {
     const state = setup();
     const before = hostMethods.length;
     const { harness } = await open(state);
-    expect(hostMethods.slice(before).filter(method => method === "workspace-state.alarmSourceRegister")).toHaveLength(1);
+    expect(hostMethods.slice(before)).not.toContain("workspace-state.alarmSourceRegister");
     expect(
       await inspectNativeInvocationSource(
         harness,
@@ -946,9 +1012,9 @@ describe("native invocation source", () => {
       ),
     ).toBeNull();
     expect(hostMethods.slice(before).filter(method => method === "workspace-state.entity.resolveActive")).toHaveLength(0);
-    const original = new Error("host disconnected");
-    await expect(openPlatformAgentSession(async () => new MemoryStorage(), image, async () => { throw original; }, { models: state.models, registry: state.registry }, context)).rejects.toBe(original);
-    await expect(openPlatformAgentSession(async () => new MemoryStorage(), image, hostCaller({ ...entity, activeExecutionDigest: "b".repeat(64) }), { models: state.models, registry: state.registry }, context)).rejects.toThrow("active platform owner");
+    const original = new Error("storage disconnected");
+    await expect(openPlatformAgentSession(async () => { throw original; }, image, { ...owner, generation: 1, executionDigest: image.executionDigest, effectiveVersion: "state:one" }, call, { models: state.models, registry: state.registry }, context)).rejects.toBe(original);
+    await expect(openPlatformAgentSession(async () => new MemoryStorage(), image, { ...owner, generation: 1, executionDigest: "b".repeat(64), effectiveVersion: "state:one" }, call, { models: state.models, registry: state.registry }, context)).rejects.toThrow("active platform owner");
 
   });
 });

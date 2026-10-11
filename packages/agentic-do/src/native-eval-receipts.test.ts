@@ -12,9 +12,7 @@ import {
   Harness,
   MemoryStorage,
   ReceiptDoc,
-  StorageRejected,
   type Storage,
-  type StorageWrite,
 } from "@panticonic/pi-durable";
 import { openNodeSqliteStorage } from "@panticonic/pi-durable/storage/sqlite/node";
 import type { EvalCall } from "@vibestudio/service-schemas/eval";
@@ -25,7 +23,9 @@ import {
   retainObservedEvalReceipt,
   consumeEvalReceipt,
 } from "./native-eval-receipts.js";
+import { recoverableStorage } from "./testing/recoverable-storage.js";
 const context = BACKGROUND_CONTEXT;
+const storageCleanups: (() => Promise<void>)[] = [];
 const receipt = {
   runId: "run:one",
   runDigest: "a".repeat(64),
@@ -39,6 +39,7 @@ afterEach(async () => {
   await Promise.all(
     sessions.splice(0).map((session) => session.close(context)),
   );
+  await Promise.all(storageCleanups.splice(0).map((cleanup) => cleanup()));
   await Promise.all(
     directories
       .splice(0)
@@ -273,23 +274,14 @@ describe("native Eval acknowledgement ownership", () => {
     ).toBeUndefined();
   });
   it("rolls back result and background task together when native commit fails", async () => {
-    class RejectingStorage extends MemoryStorage {
+    let reject = false;
+    const original = new Error("original receipt batch rejected");
+    const store = await recoverableStorage(() => {
+      if (!reject) return undefined;
       reject = false;
-      readonly original = new StorageRejected(
-        "original receipt batch rejected",
-      );
-      override commit(
-        writes: readonly StorageWrite[],
-        ctx: Parameters<Storage["commit"]>[1],
-      ) {
-        if (this.reject) {
-          this.reject = false;
-          return Promise.reject(this.original);
-        }
-        return super.commit(writes, ctx);
-      }
-    }
-    const storage = new RejectingStorage();
+      return original;
+    });
+    storageCleanups.push(store.cleanup);
     const f = await fixture(
       createMainRpcCaller(
         schemaRpcMock({
@@ -299,9 +291,9 @@ describe("native Eval acknowledgement ownership", () => {
           }),
         }),
       ),
-      storage,
+      store.storage,
     );
-    storage.reject = true;
+    reject = true;
     await expect(
       retainObservedEvalReceipt(
         f.harness,
@@ -311,19 +303,22 @@ describe("native Eval acknowledgement ownership", () => {
         f.acknowledgements,
         context,
       ),
-    ).rejects.toBe(storage.original);
-    expect(await tasks(f.harness)).toHaveLength(0);
+    ).rejects.toBe(original);
+    expect(await f.harness.closed).toEqual({ reason: "failed", error: original });
+    const recovered = await Harness.open(await store.reopen(), f.options, context);
+    sessions.push(recovered);
+    expect(await tasks(recovered)).toHaveLength(0);
     expect(
-      (await f.harness.snapshot(ReceiptDoc, receipt.runId, context))?.result,
+      (await recovered.snapshot(ReceiptDoc, receipt.runId, context))?.result,
     ).toBeUndefined();
     await retainObservedEvalReceipt(
-      f.harness,
-      f.harness,
+      recovered,
+      recovered,
       receipt.runId,
       receipt,
       f.acknowledgements,
       context,
     );
-    expect(await tasks(f.harness)).toHaveLength(1);
+    expect(await tasks(recovered)).toHaveLength(1);
   });
 });
