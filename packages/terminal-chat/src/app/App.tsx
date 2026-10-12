@@ -718,7 +718,7 @@ export function TerminalChatApp({ runtime, input, control, approvalsKey = "Ctrl-
     <Box flexDirection="column" width={size.columns}>
       {screen.lines.map((line, index) => (
         <Text key={index} wrap="truncate-end">
-          {line}
+          {line || " " /* an empty Text has no height */}
         </Text>
       ))}
     </Box>
