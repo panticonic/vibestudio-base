@@ -1405,8 +1405,8 @@ describe("SubagentTranscriptContent", () => {
     expect(
       screen.getByText("Loaded child history remains readable."),
     ).toBeTruthy();
-    expect(screen.getByText(/loaded history is preserved/i)).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "Retry refresh" }));
+    expect(screen.getByText(/shown so far is kept/i)).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Resume updates" }));
     expect(retry).toHaveBeenCalledOnce();
   });
 

@@ -194,6 +194,29 @@ describe("useQuickfireSessionCore", () => {
     unmount();
   });
 
+  it("reports a failed send separately and keeps the conversation usable", async () => {
+    const channel = fakeClient({ replay: [] });
+    channel.raw.send
+      .mockRejectedValueOnce(new Error("Delivery rejected"))
+      .mockResolvedValue({ messageId: "sent", pubsubId: undefined });
+    const transport = fakeTransport([channel.client]);
+    const { result, unmount } = renderHook(() =>
+      useQuickfireSessionCore("slot-1", transport),
+    );
+    await waitFor(() => expect(result.current.view.connecting).toBe(false));
+    await act(async () => {
+      await result.current.send("first try");
+    });
+    expect(result.current.view.sendError).toBe("Delivery rejected");
+    expect(result.current.view.error).toBeNull();
+    expect(result.current.view.historyError).toBeNull();
+    await act(async () => {
+      await result.current.send("second try");
+    });
+    expect(result.current.view.sendError).toBeNull();
+    unmount();
+  });
+
   it("pages durable history from the join anchor and surfaces a failed page", async () => {
     const getReplayBefore = vi
       .fn()
@@ -232,7 +255,9 @@ describe("useQuickfireSessionCore", () => {
       await result.current.showOlder();
     });
     expect(getReplayBefore).toHaveBeenLastCalledWith(5, 500);
-    await waitFor(() => expect(result.current.view.error).toBe("History is unavailable"));
+    await waitFor(() => expect(result.current.view.historyError).toBe("History is unavailable"));
+    // A history failure is not a conversation failure: composing stays enabled.
+    expect(result.current.view.error).toBeNull();
     expect(texts(result.current.view.transcript)).toEqual(["Recent answer"]);
 
     await act(async () => {
@@ -244,7 +269,7 @@ describe("useQuickfireSessionCore", () => {
         "Recent answer",
       ]),
     );
-    expect(result.current.view.error).toBeNull();
+    expect(result.current.view.historyError).toBeNull();
     expect(result.current.view.expandable).toBe(false);
     unmount();
   });

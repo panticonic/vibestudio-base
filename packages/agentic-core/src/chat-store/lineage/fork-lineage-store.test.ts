@@ -144,6 +144,23 @@ describe("ForkLineageStore", () => {
     release();
   });
 
+  it("reports a stopped live stream and resumes it on retryLiveUpdates", async () => {
+    const f = fixture();
+    const release = f.store.retain();
+    f.store.setInputs({ client: f.client, selfId: "panel-1", replaySettled: true, nav: f.nav });
+    await until(() => f.streams.length === 1 && f.store.getSnapshot().children.length === 1);
+    f.streams[0]!.controller.error(new Error("socket reset"));
+    await until(() => f.store.getSnapshot().liveUpdatesInterrupted === true);
+    expect(f.store.getSnapshot().error).toMatch(/Fork updates paused/);
+    expect(f.store.getSnapshot().error).not.toMatch(/socket reset/);
+
+    f.store.getSnapshot().actions.retryLiveUpdates!();
+    await until(() => f.streams.length === 2);
+    await until(() => f.store.getSnapshot().liveUpdatesInterrupted === false);
+    expect(f.store.getSnapshot().error).toBeUndefined();
+    release();
+  });
+
   it("stays inert without navigation handlers", async () => {
     const f = fixture();
     const release = f.store.retain();

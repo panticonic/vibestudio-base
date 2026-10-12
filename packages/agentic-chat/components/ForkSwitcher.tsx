@@ -167,6 +167,11 @@ export function ForkSwitcher({ variant = "button" }: { variant?: "button" | "sub
           <DropdownMenu.Label>
             <Text color="red">{error}</Text>
           </DropdownMenu.Label>
+          {forkState.liveUpdatesInterrupted && actions.retryLiveUpdates ? (
+            <DropdownMenu.Item onSelect={actions.retryLiveUpdates}>
+              Retry fork updates
+            </DropdownMenu.Item>
+          ) : null}
           <DropdownMenu.Item onSelect={actions.clearError}>Dismiss error</DropdownMenu.Item>
         </>
       )}

@@ -19,6 +19,8 @@ describe("composer panel height", () => {
       agentBusy: false, hasOpenTurn: false, primaryActionIntent: "send",
       flushOutboxAndInterrupt: vi.fn(), undoLastAction: vi.fn(), pendingSendCount: 0,
       modelCatalog: null, onCallMethodResult: vi.fn(async () => ({})),
+      // The composer resolves account profiles through the chat's rpc.
+      chat: { rpc: { call: vi.fn(async () => []) } },
     } as unknown as ChatContextValue;
     const input = {
       input: "Landscape draft", pendingImages: [], onInputChange: vi.fn(),

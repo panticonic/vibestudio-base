@@ -54,7 +54,13 @@ import type { AgentSubscriptionConfig } from "../agent-subscription-config.js";
 import type { AgenticChatActions, AvailableAgent } from "../types.js";
 import { ChatMethodRegistry, type ChatMethodProvider } from "./methods.js";
 import { connectionRetryDelayMs, isTransientConnectionFailure } from "./connection-retry.js";
-import { RetainCount, StateCell, type ReadableStore } from "./store.js";
+import {
+  RetainCount,
+  StateCell,
+  userFacingError,
+  type ReadableStore,
+  type UserFacingError,
+} from "./store.js";
 
 /** Maximum agent debug events retained (ring buffer). */
 export const MAX_DEBUG_EVENTS = 500;
@@ -88,8 +94,17 @@ export interface UndoableAction {
   expiresAt: number;
 }
 
+/**
+ * A failure the user should see, written for them: `title` says what happened,
+ * `message` the next step; `detail` keeps the technical text for a disclosure.
+ */
 export interface ConnectionErrorInfo {
+  title: string;
   message: string;
+  /** Technical detail (the original error text), for a "Details" disclosure. */
+  detail?: string;
+  /** Whether rejoining the conversation (`reconnect("user-retry")`) can help. */
+  retryable: boolean;
   at: number;
   cause?: unknown;
 }
@@ -173,6 +188,7 @@ export type ChatAgentHost = Pick<
   | "defaultModelRef"
   | "defaultAgentConfig"
   | "firstAgentModelPreflight"
+  | "onParticipantsChanged"
 >;
 
 export interface ChatSessionSnapshot {
@@ -322,6 +338,7 @@ export class ChatSession implements ReadableStore<ChatSessionSnapshot> {
   #clientListeners: Array<() => void> = [];
   /** Channel id of a join whose transcript has not replaced the previous one yet. */
   #pendingFeedReset: string | null = null;
+  #presentedTitle: { title: string; explicit: boolean } | null = null;
 
   // Owned async work.
   #loop: AbortController | null = null;
@@ -391,7 +408,7 @@ export class ChatSession implements ReadableStore<ChatSessionSnapshot> {
           if (isTransientConnectionFailure(error))
             console.debug("[ChatSession] transient connection failure:", error);
           else console.error("[ChatSession] connection error:", error);
-          this.#setConnectionError(error.message, error);
+          this.#setConnectionError(joinFailure(error), true);
         },
         onEvent: (event) => this.ingest(event),
         onRoster: (update) => this.#applyRoster(update),
@@ -513,8 +530,12 @@ export class ChatSession implements ReadableStore<ChatSessionSnapshot> {
       } catch (error) {
         console.error("[ChatSession] Channel methods could not be composed:", error);
         this.#setConnectionError(
-          `This chat could not join: ${error instanceof Error ? error.message : String(error)}`,
-          error
+          userFacingError(
+            "This chat can't start",
+            "Two chat features offer the same agent tool, so the chat can't join the conversation. Restart the chat; if it keeps happening, report the details.",
+            error
+          ),
+          false
         );
         if (this.#loop === loop) this.#loop = null;
         return;
@@ -609,7 +630,7 @@ export class ChatSession implements ReadableStore<ChatSessionSnapshot> {
         this.#defaultTitleSet = true;
         this.#cell.update({ channelTitle: config.title });
         const explicit = config.titleExplicit === true && Boolean(config.title.trim());
-        this.#ports.presentTitle?.(config.title, { explicit });
+        this.#presentTitle(config.title, explicit);
       }
     });
   }
@@ -690,6 +711,8 @@ export class ChatSession implements ReadableStore<ChatSessionSnapshot> {
       const previous = this.#cell.getSnapshot().participants;
       const next = { ...update.participants };
       this.#cell.update({ participants: next });
+      // The host owns recovery of installed agents; a departure is its trigger.
+      this.#agentHost.onParticipantsChanged?.(Object.keys(next));
       // A joined agent is an authoritative initialization lifecycle event.
       if (Object.values(next).some((participant) => participant.metadata?.type === "agent")) {
         this.#cell.update((current) => ({
@@ -803,8 +826,17 @@ export class ChatSession implements ReadableStore<ChatSessionSnapshot> {
     });
   }
 
-  #setConnectionError(message: string, cause: unknown): void {
-    this.#cell.update({ connectionError: { message, at: Date.now(), cause } });
+  #setConnectionError(error: UserFacingError, retryable: boolean): void {
+    this.#cell.update({
+      connectionError: {
+        title: error.title,
+        message: error.message,
+        ...(error.detail ? { detail: error.detail } : {}),
+        retryable,
+        at: Date.now(),
+        ...(error.cause === undefined ? {} : { cause: error.cause }),
+      },
+    });
   }
 
   dismissConnectionError(): void {
@@ -1052,12 +1084,21 @@ export class ChatSession implements ReadableStore<ChatSessionSnapshot> {
     this.#applyDefaultTitle(text);
   };
 
+  /** Present a title to the host only when its text or explicitness changed
+   *  (a persisted config echoing the title back is not a new title). */
+  #presentTitle(title: string, explicit: boolean): void {
+    const last = this.#presentedTitle;
+    if (last && last.title === title && last.explicit === explicit) return;
+    this.#presentedTitle = { title, explicit };
+    this.#ports.presentTitle?.(title, { explicit });
+  }
+
   #applyDefaultTitle(text: string): void {
     const title = titleFromFirstUserMessage(text);
     if (!title) return;
     this.#defaultTitleSet = true;
     this.#cell.update({ channelTitle: title });
-    this.#ports.presentTitle?.(title, { explicit: false });
+    this.#presentTitle(title, false);
     void this.client
       ?.updateChannelConfig({ title, titleExplicit: false })
       .catch((error: unknown) => {
@@ -1075,8 +1116,12 @@ export class ChatSession implements ReadableStore<ChatSessionSnapshot> {
       await this.feed.backfillAfterLocalPublish(pubsubId);
     } catch (cause) {
       this.#setConnectionError(
-        "The server accepted the change, but the transcript could not be refreshed.",
-        cause
+        userFacingError(
+          "Sent, but not shown yet",
+          "Your change was saved, but this view couldn't refresh to show it. Retry to reload the conversation.",
+          cause
+        ),
+        true
       );
     }
   }
@@ -1220,10 +1265,14 @@ export class ChatSession implements ReadableStore<ChatSessionSnapshot> {
         } catch (error) {
           console.warn("[Chat] Pause agent failed:", error);
           this.#setConnectionError(
-            error instanceof Error
-              ? `Couldn't interrupt the agent: ${error.message}`
-              : "Couldn't interrupt the agent. Try again.",
-            error
+            userFacingError(
+              flushDeferred ? "Couldn't send your queued message now" : "Couldn't interrupt the agent",
+              flushDeferred
+                ? "The agent didn't respond to the interrupt. Your message stays queued and is delivered when the agent's turn ends; try again to interrupt now."
+                : "The agent didn't respond and may still be working. Try again.",
+              error
+            ),
+            false
           );
           throw error;
         }
@@ -1253,10 +1302,12 @@ export class ChatSession implements ReadableStore<ChatSessionSnapshot> {
     } catch (error) {
       console.warn("[Chat] Interrupt failed:", error);
       this.#setConnectionError(
-        error instanceof Error
-          ? `Couldn't stop the agent: ${error.message}`
-          : "Couldn't stop the agent. Try again.",
-        error
+        userFacingError(
+          "Couldn't stop the agent",
+          "The agent didn't respond and may still be working. Try stopping it again.",
+          error
+        ),
+        false
       );
     }
   }
@@ -1267,10 +1318,12 @@ export class ChatSession implements ReadableStore<ChatSessionSnapshot> {
     if (!client) return;
     const cancelFailed = (error: unknown) =>
       this.#setConnectionError(
-        error instanceof Error
-          ? `Couldn't cancel the tool call: ${error.message}`
-          : "Couldn't cancel the tool call. Try again.",
-        error
+        userFacingError(
+          "Couldn't cancel the tool call",
+          "It may still finish on its own. Try cancelling again, or stop the agent.",
+          error
+        ),
+        false
       );
     // An `eval` runs server-side in the owning agent's EvalDO: route the
     // invocation coordinate through the agent that emitted it, which derives
@@ -1412,3 +1465,25 @@ function mergeParticipants(
   return merged;
 }
 
+
+/** A join failure in the user's terms; the raw text stays in `detail`. */
+function joinFailure(error: Error): UserFacingError {
+  const kind = (error as { errorKind?: unknown }).errorKind;
+  if (kind === "access")
+    return userFacingError(
+      "Couldn't open this conversation",
+      "You may not have access to it, or it was removed. Retry, or open another conversation.",
+      error
+    );
+  if (kind === "application")
+    return userFacingError(
+      "Couldn't open this conversation",
+      "The server rejected the request. Retry; if it keeps failing, report the details.",
+      error
+    );
+  return userFacingError(
+    "Reconnecting to this conversation",
+    "The connection dropped. The chat retries automatically; you can also retry now.",
+    error
+  );
+}

@@ -236,7 +236,17 @@ export interface ChatContextValue {
    * reconnect. Rendered inline at the top of the chat by `ChatLayout`
    * so silent stalls become visibly broken.
    */
-  connectionError: { message: string; at: number; cause?: unknown } | null;
+  connectionError: {
+    message: string;
+    at: number;
+    cause?: unknown;
+    /** What happened (user-facing); `message` is the next step. */
+    title?: string;
+    /** Technical detail for a "Details" disclosure. */
+    detail?: string;
+    /** Whether rejoining the conversation can help. */
+    retryable?: boolean;
+  } | null;
   /** Clear the current connectionError (e.g., after a retry). */
   dismissConnectionError?: () => void;
   /** Re-run the initial channel connection after a terminal failure. */

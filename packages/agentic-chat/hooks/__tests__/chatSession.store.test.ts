@@ -177,7 +177,11 @@ describe("ChatSession (stream delivery)", () => {
     owned.push(session.retain());
     session.start();
     await until(() => session.getSnapshot().connectionError !== null, "join failure surfaced");
-    expect(session.getSnapshot().connectionError?.message).toContain('"dup" has multiple owners');
+    expect(session.getSnapshot().connectionError).toMatchObject({
+      title: "This chat can't start",
+      retryable: false,
+    });
+    expect(session.getSnapshot().connectionError?.detail).toContain('"dup" has multiple owners');
     expect(session.getSnapshot().connected).toBe(false);
     expect(session.client).toBeNull();
     // Terminal: the loop does not retry a defect as a transient failure.
@@ -266,9 +270,13 @@ describe("ChatSession outbox", () => {
 
     session.setInput("A second message");
     await session.sendMessage();
-    // Later sends never re-derive the default title (the persisted config may
-    // re-present the same one).
-    expect(titles.every((entry) => entry.title === "Plan my week" && !entry.explicit)).toBe(true);
+    // Later sends never re-derive the default title, and the persisted config
+    // echoing it back is not a new title: it was presented exactly once.
+    await until(
+      () => session.client?.channelConfig?.title === "Plan my week",
+      "default title persisted and echoed"
+    );
+    expect(titles).toEqual([{ title: "Plan my week", explicit: false }]);
   });
 
   it("restores a rejected draft beside a newer one", async () => {
@@ -380,7 +388,9 @@ describe("ChatSession outbox", () => {
     owned.push(() => warn.mockRestore());
     await session.interruptAgent("agent");
     expect(session.getSnapshot().connectionError).toMatchObject({
-      message: "Couldn't stop the agent: Agent unreachable",
+      title: "Couldn't stop the agent",
+      detail: "Agent unreachable",
+      retryable: false,
       cause: failure,
     });
   });
@@ -472,6 +482,10 @@ describe("ChatSession titles", () => {
     await until(() => titles.some((entry) => entry.title === "Release plan"), "title presented");
     expect(titles.at(-1)).toEqual({ title: "Release plan", explicit: true });
     expect(session.getSnapshot().channelTitle).toBe("Release plan");
+    // A config change that leaves the title as it was does not present it again.
+    const presented = titles.length;
+    await session.client!.updateChannelConfig({ title: "Release plan", titleExplicit: true });
+    expect(titles).toHaveLength(presented);
   });
 });
 

@@ -178,8 +178,20 @@ export class ForkLineageStore implements ReadableStore<ForkUiState> {
       readForkCursors: this.readForkCursors,
       markForkRead: this.markForkRead,
       onExternalFork: this.notifyExternalFork,
+      retryLiveUpdates: this.retryLiveUpdates,
     };
   }
+
+  /**
+   * Resubscribe the live lineage stream now (after it stopped). The channel
+   * client's reconnect event does the same automatically.
+   */
+  readonly retryLiveUpdates = (): void => {
+    const binding = this.#subscription;
+    if (!binding) return;
+    this.#mutate({ streamError: undefined });
+    this.#openStream(binding);
+  };
 
   readonly subscribe = (listener: () => void): (() => void) => this.#cell.subscribe(listener);
 
@@ -201,6 +213,7 @@ export class ForkLineageStore implements ReadableStore<ForkUiState> {
       parent,
       forking: state.forking,
       error: state.actionError ?? state.loadError ?? state.streamError,
+      liveUpdatesInterrupted: state.streamError !== undefined,
       refresh: this.refresh,
       loadTree: this.loadTree,
       actions: this.#actions,
@@ -514,7 +527,11 @@ export class ForkLineageStore implements ReadableStore<ForkUiState> {
         }
       } catch (cause) {
         if (!abort.signal.aborted) {
-          this.#mutate({ streamError: `Live fork updates disconnected: ${errorMessage(cause)}` });
+          console.warn("[ForkLineageStore] live fork updates stopped:", cause);
+          this.#mutate({
+            streamError:
+              "Fork updates paused: new forks and unread badges won't refresh until you retry.",
+          });
         }
       }
     })();

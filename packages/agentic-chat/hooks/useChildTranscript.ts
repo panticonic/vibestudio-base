@@ -29,6 +29,7 @@ const INACTIVE: ChildTranscriptSnapshot = {
   selfId: null,
   loading: false,
   error: null,
+  failure: null,
   hasMoreHistory: false,
   loadingMore: false,
 };
