@@ -52,9 +52,16 @@ export type { AgenticChatFeature, ResolvedAgenticChatFeatures } from "./features
 export { useChannelSignals } from "./hooks/useChannelSignals";
 export type { ChannelSignal, UseChannelSignalsOptions } from "./hooks/useChannelSignals";
 
-// Core hook (minimum viable chat — delegates to SessionManager)
-export { useChatCore } from "./hooks/core/useChatCore";
+// Core hook (minimum viable chat) and the bindings to the headless chat core
+// (`@workspace/agentic-core/chat-store`).
+export { useChatCore, useChatSession } from "./hooks/core/useChatCore";
 export type { UseChatCoreOptions, ChatCoreState } from "./hooks/core/useChatCore";
+export {
+  useChatMethodProvider,
+  useChatStore,
+  useRetainedStore,
+  useStoreSnapshot,
+} from "./hooks/useChatStore";
 
 // Live account-profile projection for `user:<userId>` participants (WP6 §6).
 // `resolveAccountProfiles` is the shared seam (also consumed by presence, WP8).
