@@ -43,7 +43,7 @@ import {
   messageTypeDefinitionsFromChannelView,
 } from "../channel-chat-merge.js";
 import type { ActionBarPayload, ChatMessage, MessageTypeDefinition } from "../derived-types.js";
-import { StateCell, type ReadableStore } from "./store.js";
+import { StateCell, errorMessage, type ReadableStore } from "./store.js";
 
 /** Maximum messages in the visible window. New messages push the oldest out. */
 export const TRANSCRIPT_MAX_VISIBLE = 2000;
@@ -68,12 +68,22 @@ export interface ChannelViewFeedSnapshot {
    *  Sourced from the client's ready marker, which fires even for an empty
    *  channel — never from socket connect. */
   replaySettled: boolean;
+  /** The last failure of this generation's event stream or history paging
+   *  (display text), cleared when a new generation starts or a history page
+   *  is requested again. Successful work never sets it. */
+  error: string | null;
 }
 
 /** The channel client capabilities the feed uses for paging and readiness. */
 export type ChannelFeedClient = Pick<
   PubSubClient,
-  "channelId" | "connected" | "hasMoreBefore" | "onReady" | "getReplayBefore" | "getReplayAfter"
+  | "channelId"
+  | "connected"
+  | "hasMoreBefore"
+  | "firstEnvelopeSeq"
+  | "onReady"
+  | "getReplayBefore"
+  | "getReplayAfter"
 >;
 
 /** The client capabilities `follow` additionally needs. */
@@ -92,6 +102,7 @@ function initialSnapshot(): ChannelViewFeedSnapshot {
     loadingMore: false,
     hasOpenTurn: false,
     replaySettled: false,
+    error: null,
   };
 }
 
@@ -197,6 +208,13 @@ export class ChannelViewFeed implements ReadableStore<ChannelViewFeedSnapshot> {
     this.#channelId = client.channelId;
     const settle = () => {
       if (this.#generation !== generation || generation.lifetime.signal.aborted) return;
+      // The ready marker names the oldest envelope of the join replay. It is
+      // the paging anchor even when that envelope projects nothing (or has not
+      // been consumed yet), so history before it stays reachable.
+      const first = client.firstEnvelopeSeq;
+      if (typeof first === "number" && first > 0) {
+        this.#oldestSeq = Math.min(this.#oldestSeq ?? Infinity, first);
+      }
       this.#cell.transaction(() => {
         this.#flushReplay();
         this.#cell.update({ hasMoreHistory: Boolean(client.hasMoreBefore), replaySettled: true });
@@ -230,7 +248,10 @@ export class ChannelViewFeed implements ReadableStore<ChannelViewFeedSnapshot> {
           this.#cell.transaction(() => this.#flushReplay());
         }
       } catch (error) {
-        if (!signal.aborted) console.error("[ChannelViewFeed]", error);
+        if (!signal.aborted && this.#generation === generation) {
+          console.error("[ChannelViewFeed]", error);
+          this.#cell.update({ error: errorMessage(error) });
+        }
       }
     })();
     signal.addEventListener(
@@ -259,7 +280,13 @@ export class ChannelViewFeed implements ReadableStore<ChannelViewFeedSnapshot> {
     this.#cell.transaction(() => {
       if (wire.phase === "live" && this.#replayDirty) this.#flushReplay();
 
-      if (wire.delivery === "signal") {
+      // Streaming deltas ride string-content signals; other signals that carry
+      // a typed payload (live read receipts) reduce like durable events.
+      if (
+        wire.delivery === "signal" &&
+        wire.contentType === AGENTIC_EVENT_PAYLOAD_KIND &&
+        typeof wire.content === "string"
+      ) {
         this.#ingestSignal(wire);
         return;
       }
@@ -311,12 +338,13 @@ export class ChannelViewFeed implements ReadableStore<ChannelViewFeedSnapshot> {
       this.#cell.update({ hasMoreHistory: false });
       return;
     }
-    this.#cell.update({ loadingMore: true });
+    this.#cell.update({ loadingMore: true, error: null });
     try {
       const result = await client.getReplayBefore(anchor, pageSize);
       if (generation.lifetime.signal.aborted) return;
       this.#cell.transaction(() => {
         this.#cell.update({ hasMoreHistory: Boolean(result.ready.hasMoreBefore) });
+        const before = this.#oldestSeq;
         for (const raw of result.logEvents as ReplayLogEvent[]) {
           // Advance the cursor for EVERY event in the page: a page of only
           // credential/presence events must still move the anchor.
@@ -325,9 +353,15 @@ export class ChannelViewFeed implements ReadableStore<ChannelViewFeedSnapshot> {
           this.#view = this.#reduceReplayed(this.#view, raw);
         }
         this.#project("head");
+        // A page that claims more history must move the anchor, or the next
+        // request would ask for the same page forever.
+        if (result.ready.hasMoreBefore && (this.#oldestSeq ?? Infinity) >= (before ?? Infinity)) {
+          this.#cell.update({ error: "Channel history page did not advance its cursor" });
+        }
       });
     } catch (error) {
       console.error("[ChannelViewFeed] loadEarlierMessages failed:", error);
+      if (!generation.lifetime.signal.aborted) this.#cell.update({ error: errorMessage(error) });
     } finally {
       if (this.#generation === generation) this.#cell.update({ loadingMore: false });
     }
