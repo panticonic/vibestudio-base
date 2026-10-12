@@ -2,7 +2,7 @@
  * `feedback_form` as a terminal form: a pure reducer over key events plus a
  * line renderer. Value semantics (defaults, the "Other" free-text choice,
  * required validation, the submitted shape) are the panel's, from
- * `@workspace/tool-ui/feedback-form-values`.
+ * `@workspace/pubsub/feedback-form-values`.
  */
 import type { FeedbackFormArgs } from "@workspace/pubsub";
 import {
@@ -18,7 +18,7 @@ import {
   normalizeFreeTextValues,
   validateFeedbackValues,
   withDefaultFreeText,
-} from "@workspace/tool-ui/feedback-form-values";
+} from "@workspace/pubsub/feedback-form-values";
 import { indentWrap, paint, sanitize, style, symbols, truncate, wrap } from "./ansi.js";
 import { applyEdit, editorFor, type EditCommand } from "./composer.js";
 import { highlightLines } from "./highlight.js";

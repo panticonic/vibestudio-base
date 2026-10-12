@@ -20,7 +20,6 @@
     "@workspace/model-catalog": "workspace:*",
     "@workspace/pubsub": "workspace:*",
     "@workspace/quickfire-core": "workspace:*",
-    "@workspace/tool-ui": "workspace:*",
     "highlight.js": "^11.12.0",
     "ink": "^6.8.0",
     "react": "^19.0.0",

@@ -21,7 +21,7 @@ import {
   normalizeFreeTextValues,
   validateFeedbackValues,
   withDefaultFreeText,
-} from "../feedback-form-values";
+} from "@workspace/pubsub/feedback-form-values";
 import type { FeedbackCallbacks } from "../types";
 import { ToolPreviewField } from "./ToolPreviewField";
 import { ApprovalHeaderField } from "./ApprovalHeaderField";

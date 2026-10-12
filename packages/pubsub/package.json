@@ -5,7 +5,8 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
-    "./rpc-contract": "./src/rpc-contract.ts"
+    "./rpc-contract": "./src/rpc-contract.ts",
+    "./feedback-form-values": "./src/feedback-form-values.ts"
   },
   "scripts": {
     "test": "vitest run"
