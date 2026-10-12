@@ -6,7 +6,6 @@ export {
   DEFAULT_AGENT_HANDLE,
   DEFAULT_AGENT_WORKER_SOURCE,
   LOCAL_MODEL_REFRESH_DEBOUNCE_MS,
-  agentCatalogRepollDelayMs,
   chatHostActionData,
 } from "./chat-host-controller.js";
 export type {
@@ -37,12 +36,9 @@ export type {
   InstalledAgentRecord,
 } from "./installed-agents.js";
 export { createAndSubscribeAgent, persistInstalledAgent } from "./agent-lifecycle.js";
-export {
-  AGENT_RECOVERY_MAX_ATTEMPTS,
-  AGENT_RECOVERY_RETRY_DELAY_MS,
-  AgentRecoveryLoop,
-} from "./agent-recovery.js";
+export { AgentRecoveryRunner, IDLE_RECOVERY, recoveryFailure } from "./agent-recovery.js";
 export type {
+  AgentRecoveryProgress,
   AgentRecoveryState,
   AgentRecoveryStatus,
   AgentRecoveryTask,

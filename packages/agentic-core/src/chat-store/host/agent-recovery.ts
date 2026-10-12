@@ -1,57 +1,88 @@
 /**
- * Installed-agent recovery attempt loop.
+ * Installed-agent recovery runner.
  *
- * Each `run()` owns one recovery generation through an AbortController;
- * replacing it (new inputs, an explicit retry, disposal) aborts both the
- * in-flight attempt and its backoff, and a superseded generation can never
- * publish a status.
+ * One attempt per trigger, never a timer: the host starts an attempt when its
+ * inputs change and whenever something that can make a missing agent
+ * recoverable happens (start, a workspace review decided, workspace config or
+ * unit set changed, a participant left the channel, an explicit Retry). Each
+ * attempt owns an AbortController generation; a newer attempt, a replaced task
+ * or disposal aborts the older one, and a superseded attempt never publishes.
  *
- * EXISTING PRODUCT BEHAVIOUR, kept as-is: a failed attempt is retried up to
- * `AGENT_RECOVERY_MAX_ATTEMPTS` times with a fixed pause, after which the
- * failure is terminal and surfaced (with an explicit Retry). This is a
- * time-based re-poll: recovery right after a cold start races worker builds
- * and channel activation, which publish no event the host could wait on.
+ * A failed attempt is a visible terminal state (`failed`, with a user-facing
+ * error and Retry) until the next trigger starts a fresh attempt.
  */
-import { asError } from "../store.js";
-
-export const AGENT_RECOVERY_MAX_ATTEMPTS = 60;
-export const AGENT_RECOVERY_RETRY_DELAY_MS = 1_000;
+import { userFacingError, type UserFacingError } from "../store.js";
 
 export type AgentRecoveryStatus = "idle" | "recovering" | "failed";
 
 export interface AgentRecoveryState {
   status: AgentRecoveryStatus;
-  error: string | null;
+  /** Why the last attempt failed (user-facing, with the technical detail). */
+  error: UserFacingError | null;
+  /** Handles of the installed agents being (or that failed to be) reconnected. */
+  missing: string[];
+  /** Attempts made for the current inputs (1 for the first). */
+  attempt: number;
 }
 
-export type AgentRecoveryTask = (signal: AbortSignal) => Promise<void>;
+/** Progress a task reports while it runs. */
+export interface AgentRecoveryProgress {
+  /** Handles found missing from the channel and being reconnected. */
+  missing(handles: string[]): void;
+}
 
-export class AgentRecoveryLoop {
+export type AgentRecoveryTask = (
+  signal: AbortSignal,
+  progress: AgentRecoveryProgress
+) => Promise<void>;
+
+export const IDLE_RECOVERY: AgentRecoveryState = {
+  status: "idle",
+  error: null,
+  missing: [],
+  attempt: 0,
+};
+
+/** The user-facing failure of an attempt to reconnect `missing` agents. */
+export function recoveryFailure(missing: string[], cause: unknown): UserFacingError {
+  const who =
+    missing.length === 0
+      ? "Your agent"
+      : missing.length === 1
+        ? `@${missing[0]}`
+        : `${missing.length} agents`;
+  return userFacingError(
+    `${who} didn't reconnect to this conversation`,
+    "Your messages are safe. Retry now; if it keeps failing, check that the agent's worker builds and that any pending approval is granted.",
+    cause
+  );
+}
+
+export class AgentRecoveryRunner {
   #generation: AbortController | null = null;
   #task: AgentRecoveryTask | null = null;
-  #state: AgentRecoveryState = { status: "idle", error: null };
+  #state: AgentRecoveryState = IDLE_RECOVERY;
 
-  constructor(
-    private readonly hooks: {
-      onState: (state: AgentRecoveryState) => void;
-      onFailure: (error: Error) => void;
-    },
-    private readonly options: { maxAttempts?: number; retryDelayMs?: number } = {}
-  ) {}
+  constructor(private readonly onState: (state: AgentRecoveryState) => void) {}
 
   get state(): AgentRecoveryState {
     return this.#state;
   }
 
-  /** Replace the recovery task (null: nothing to recover) and start it. */
+  /** Replace the recovery task (null: nothing to recover) and attempt it. */
   run(task: AgentRecoveryTask | null): void {
     this.#task = task;
-    this.#start();
+    this.#publish(IDLE_RECOVERY);
+    this.#attempt();
   }
 
-  /** Start a fresh generation of the current task (explicit user retry). */
-  retry(): void {
-    this.#start();
+  /**
+   * Attempt again for the current task: an explicit Retry, or an event that
+   * may have made a missing agent recoverable. A no-op while nothing is
+   * installed; an attempt in flight is superseded.
+   */
+  trigger(): void {
+    this.#attempt();
   }
 
   dispose(): void {
@@ -61,50 +92,48 @@ export class AgentRecoveryLoop {
   }
 
   #publish(state: AgentRecoveryState): void {
-    if (state.status === this.#state.status && state.error === this.#state.error) return;
+    const current = this.#state;
+    if (
+      state.status === current.status &&
+      state.error === current.error &&
+      state.attempt === current.attempt &&
+      state.missing.join("\0") === current.missing.join("\0")
+    )
+      return;
     this.#state = state;
-    this.hooks.onState(state);
+    this.onState(state);
   }
 
-  #start(): void {
+  #attempt(): void {
     this.#generation?.abort(new Error("Agent recovery superseded"));
     this.#generation = null;
     const task = this.#task;
     if (!task) {
-      this.#publish({ status: "idle", error: null });
+      this.#publish(IDLE_RECOVERY);
       return;
     }
     const controller = new AbortController();
     this.#generation = controller;
     const { signal } = controller;
-    const maxAttempts = this.options.maxAttempts ?? AGENT_RECOVERY_MAX_ATTEMPTS;
-    const retryDelayMs = this.options.retryDelayMs ?? AGENT_RECOVERY_RETRY_DELAY_MS;
-    this.#publish({ status: "recovering", error: null });
-    void (async () => {
-      for (let count = 1; !signal.aborted; count += 1) {
-        try {
-          await task(signal);
-          if (!signal.aborted) this.#publish({ status: "idle", error: null });
-          return;
-        } catch (cause) {
-          if (signal.aborted) return;
-          if (count === maxAttempts) {
-            const failure = asError(cause);
-            this.#publish({ status: "failed", error: failure.message });
-            this.hooks.onFailure(failure);
-            return;
-          }
-          await new Promise<void>((resolve) => {
-            const finish = () => {
-              clearTimeout(timer);
-              signal.removeEventListener("abort", finish);
-              resolve();
-            };
-            const timer = setTimeout(finish, retryDelayMs);
-            signal.addEventListener("abort", finish, { once: true });
-          });
-        }
+    const attempt = this.#state.attempt + 1;
+    let missing = this.#state.missing;
+    this.#publish({ status: "recovering", error: null, missing, attempt });
+    const progress: AgentRecoveryProgress = {
+      missing: (handles) => {
+        if (signal.aborted) return;
+        missing = handles;
+        this.#publish({ status: "recovering", error: null, missing, attempt });
+      },
+    };
+    void task(signal, progress).then(
+      () => {
+        if (!signal.aborted) this.#publish({ status: "idle", error: null, missing: [], attempt });
+      },
+      (cause: unknown) => {
+        if (signal.aborted) return;
+        console.warn("[ChatHost] Agent subscription recovery failed:", cause);
+        this.#publish({ status: "failed", error: recoveryFailure(missing, cause), missing, attempt });
       }
-    })();
+    );
   }
 }

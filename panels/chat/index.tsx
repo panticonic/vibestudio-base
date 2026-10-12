@@ -32,6 +32,7 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useState,
   useSyncExternalStore,
 } from "react";
 import { Button, Callout, Flex, Spinner, Text, Theme } from "@radix-ui/themes";
@@ -51,7 +52,9 @@ import {
   chatHostActionData,
   requireChatContextId,
   type ChatHostPorts,
+  type ChatHostSnapshot,
   type ChatHostState,
+  type UserFacingError,
 } from "@workspace/agentic-core/chat-store";
 import { waitForApprovalResolution } from "@workspace/pubsub";
 import { LOCAL_MODELS_EXTENSION_ID } from "@workspace/model-catalog/catalog";
@@ -119,7 +122,9 @@ function createPanelHostPorts(resolvedContextId: string): ChatHostPorts {
       const name =
         event === "approvals-changed"
           ? SHELL_APPROVAL_PENDING_CHANGED_EVENT
-          : "workspace:config-changed";
+          : event === "units-changed"
+            ? "workspace:units-changed"
+            : "workspace:config-changed";
       const off = workspaceEvents.on(name, handler);
       void workspaceEvents.subscribe(name);
       return () => {
@@ -162,8 +167,45 @@ function useChatHost(resolvedContextId: string): ChatHostController {
 export default function ChatPanel() {
   const theme = usePanelTheme();
   const appTheme = usePanelThemeConfig();
+  // A chat creates agents in its workspace context; without one there is
+  // nothing to run. Say so instead of throwing during render.
+  if (!contextId?.trim()) {
+    return (
+      <ErrorBoundary surfaceName="chat panel">
+        <Theme appearance={theme} {...appTheme}>
+          <Flex
+            direction="column"
+            align="center"
+            justify="center"
+            gap="2"
+            style={{ minHeight: "100dvh", padding: 24, textAlign: "center" }}
+          >
+            <Text size="3" weight="medium">
+              This chat isn't attached to a workspace
+            </Text>
+            <Text size="2" color="gray" style={{ maxWidth: 420 }}>
+              Chats run their agents inside a workspace. Close this panel and
+              open a new chat from your workspace.
+            </Text>
+          </Flex>
+        </Theme>
+      </ErrorBoundary>
+    );
+  }
+  return <ChatPanelInContext contextId={contextId} theme={theme} appTheme={appTheme} />;
+}
+
+function ChatPanelInContext({
+  contextId: panelContextId,
+  theme,
+  appTheme,
+}: {
+  contextId: string;
+  theme: ReturnType<typeof usePanelTheme>;
+  appTheme: ReturnType<typeof usePanelThemeConfig>;
+}) {
   const stateArgs = useStateArgs<ChatStateArgs>();
-  const resolvedContextId = requireChatContextId(contextId);
+  const resolvedContextId = requireChatContextId(panelContextId);
   const controller = useChatHost(resolvedContextId);
   const host = useSyncExternalStore(
     controller.subscribe,
@@ -468,52 +510,33 @@ export default function ChatPanel() {
         overflow: "hidden",
       }}
     >
-      {host.modelSettingsError ? (
-        <Theme appearance={theme} {...appTheme}>
-          <Callout.Root color="red" size="1" style={{ borderRadius: 0 }}>
-            <Flex align="center" justify="between" gap="3" width="100%">
-              <Callout.Text>
-                Couldn't load models: {host.modelSettingsError}
-              </Callout.Text>
-              <Button
-                size="1"
-                variant="soft"
-                color="red"
-                onClick={() => controller.retryModelSettings()}
-              >
-                Retry
-              </Button>
+      <Theme appearance={theme} {...appTheme}>
+        {host.modelSettingsError ? (
+          <HostFailureCallout
+            failure={host.modelSettingsError}
+            onRetry={() => controller.retryModelSettings()}
+          />
+        ) : null}
+        {host.agentCatalogError ? (
+          <HostFailureCallout
+            failure={host.agentCatalogError}
+            onRetry={() => controller.retryAgentCatalog()}
+          />
+        ) : null}
+        {host.recovery.status === "failed" && host.recovery.error ? (
+          <HostFailureCallout
+            failure={host.recovery.error}
+            onRetry={() => controller.retryAgentRecovery()}
+          />
+        ) : host.recovery.status === "recovering" ? (
+          <Callout.Root color="blue" size="1" style={{ borderRadius: 0 }}>
+            <Flex align="center" gap="2" width="100%">
+              <Spinner size="1" />
+              <Callout.Text>{recoveringText(host.recovery)}</Callout.Text>
             </Flex>
           </Callout.Root>
-        </Theme>
-      ) : null}
-      {host.recovery.status !== "idle" ? (
-        <Theme appearance={theme} {...appTheme}>
-          <Callout.Root
-            color={host.recovery.status === "failed" ? "red" : "blue"}
-            size="1"
-            style={{ borderRadius: 0 }}
-          >
-            <Flex align="center" justify="between" gap="3" width="100%">
-              <Callout.Text>
-                {host.recovery.status === "failed"
-                  ? `Couldn't reconnect your agent${host.recovery.error ? `: ${host.recovery.error}` : "."}`
-                  : "Reconnecting your agent…"}
-              </Callout.Text>
-              {host.recovery.status === "failed" ? (
-                <Button
-                  size="1"
-                  variant="soft"
-                  color="red"
-                  onClick={() => controller.retryAgentRecovery()}
-                >
-                  Retry
-                </Button>
-              ) : null}
-            </Flex>
-          </Callout.Root>
-        </Theme>
-      ) : null}
+        ) : null}
+      </Theme>
       <div style={{ flex: "1 1 0", minHeight: 0, overflow: "hidden" }}>
         <Suspense
           fallback={
@@ -573,5 +596,65 @@ export default function ChatPanel() {
         </Suspense>
       </div>
     </div>
+  );
+}
+
+function recoveringText(recovery: ChatHostSnapshot["recovery"]): string {
+  const who =
+    recovery.missing.length === 0
+      ? "your agent"
+      : recovery.missing.length === 1
+        ? `@${recovery.missing[0]}`
+        : `${recovery.missing.length} agents`;
+  const verb = recovery.missing.length === 0 ? "Checking" : "Reconnecting";
+  const retry = recovery.attempt > 1 ? ` (attempt ${recovery.attempt})` : "";
+  return `${verb} ${who} to this conversation…${retry}`;
+}
+
+/** A host failure: what happened, the next step, Retry, and the technical detail on request. */
+function HostFailureCallout({
+  failure,
+  onRetry,
+}: {
+  failure: UserFacingError;
+  onRetry: () => void;
+}) {
+  const [showDetail, setShowDetail] = useState(false);
+  return (
+    <Callout.Root color="red" size="1" style={{ borderRadius: 0 }} role="alert">
+      <Flex direction="column" gap="1" width="100%">
+        <Flex align="center" justify="between" gap="3" width="100%">
+          <Callout.Text>
+            <Text weight="medium">{failure.title}.</Text> {failure.message}
+          </Callout.Text>
+          <Flex gap="2" flexShrink="0">
+            {failure.detail ? (
+              <Button
+                size="1"
+                variant="ghost"
+                color="red"
+                aria-expanded={showDetail}
+                onClick={() => setShowDetail((value) => !value)}
+              >
+                {showDetail ? "Hide details" : "Details"}
+              </Button>
+            ) : null}
+            <Button size="1" variant="soft" color="red" onClick={onRetry}>
+              Retry
+            </Button>
+          </Flex>
+        </Flex>
+        {showDetail && failure.detail ? (
+          <Text
+            as="div"
+            size="1"
+            color="gray"
+            style={{ fontFamily: "var(--code-font-family)", whiteSpace: "pre-wrap" }}
+          >
+            {failure.detail}
+          </Text>
+        ) : null}
+      </Flex>
+    </Callout.Root>
   );
 }
