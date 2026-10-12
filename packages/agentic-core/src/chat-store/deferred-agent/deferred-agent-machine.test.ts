@@ -191,4 +191,143 @@ describe("DeferredAgentMachine", () => {
     machine.reconcile();
     expect(machine.getSnapshot()).toBe(before);
   });
+
+  it("keeps each failure on its own item, marks later items waiting, and retries or discards per item", async () => {
+    const publishText = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("Publication rejected"))
+      .mockResolvedValue(undefined);
+    const { machine } = machineWith({ input: "first", publishText });
+    await machine.send();
+    machine.setHostInputs({ input: "second" });
+    await machine.send();
+    machine.setHostInputs({ participants: AGENT_ROSTER });
+    machine.reconcile();
+    await settle();
+    const state = machine.getSnapshot().deferredAgent!;
+    expect(state.queued.map((item) => [item.text, item.status])).toEqual([
+      ["first", "failed"],
+      ["second", "waiting"],
+    ]);
+    const [failed, waiting] = state.queued;
+    expect(failed!.failure).toMatchObject({
+      title: "Couldn't send this message",
+      detail: "Publication rejected",
+    });
+    expect(waiting!.waitingOn).toBe(failed!.id);
+    expect(state.deliveryError).toBe("Publication rejected");
+    // The snapshot is stable until something changes.
+    machine.reconcile();
+    expect(machine.getSnapshot().deferredAgent).toBe(state);
+
+    // Retry the failed item: same idempotency key, then the waiting one follows.
+    state.retryDelivery(failed!.id);
+    await settle();
+    expect(publishText).toHaveBeenCalledTimes(3);
+    expect(publishText.mock.calls[1]![1]).toMatchObject({ idempotencyKey: failed!.idempotencyKey });
+    expect(machine.getSnapshot().deferredAgent).toBeUndefined();
+  });
+
+  it("discards a failed item and resumes the rest", async () => {
+    const publishText = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("Publication rejected"))
+      .mockResolvedValue(undefined);
+    const { machine } = machineWith({ input: "first", publishText });
+    await machine.send();
+    machine.setHostInputs({ input: "second" });
+    await machine.send();
+    machine.setHostInputs({ participants: AGENT_ROSTER });
+    machine.reconcile();
+    await settle();
+    const state = machine.getSnapshot().deferredAgent!;
+    state.discardQueued(state.queued[0]!.id);
+    await settle();
+    expect(publishText).toHaveBeenLastCalledWith("second", expect.anything());
+    expect(machine.getSnapshot().deferredAgent).toBeUndefined();
+  });
+
+  it("reports launch stages from lifecycle facts and a failed launch's reason", async () => {
+    let finishAdd!: () => void;
+    let failAdd!: (error: Error) => void;
+    const onAddAgent = vi.fn(
+      () =>
+        new Promise<void>((resolve, reject) => {
+          finishAdd = resolve;
+          failAdd = reject;
+        })
+    );
+    const { machine } = machineWith({ input: "hello", onAddAgent, firstAgentModelPreflight: "checking" });
+    await machine.send();
+    expect(machine.getSnapshot().deferredAgent?.launchStage).toBe("preparing-model");
+    machine.setHostInputs({ firstAgentModelPreflight: "ready" });
+    machine.reconcile();
+    await settle();
+    expect(machine.getSnapshot().deferredAgent?.launchStage).toBe("creating-agent");
+    finishAdd();
+    await settle();
+    expect(machine.getSnapshot().deferredAgent?.launchStage).toBe("joining");
+    machine.setHostInputs({
+      pendingAgents: new Map([
+        ["ai-chat", { agentId: "x", status: "error", error: { message: "Build failed", details: "tsc: 2 errors" } }],
+      ]),
+    });
+    machine.reconcile();
+    const failed = machine.getSnapshot().deferredAgent!;
+    expect(failed.launchStage).toBe("failed");
+    expect(failed.launchError).toMatchObject({
+      title: "Your agent couldn't start",
+      detail: "Build failed\ntsc: 2 errors",
+    });
+    // A rejected create carries its own reason.
+    machine.setHostInputs({ pendingAgents: new Map() });
+    failed.retryLaunch();
+    await settle();
+    failAdd(new Error("quota exceeded"));
+    await settle();
+    expect(machine.getSnapshot().deferredAgent?.launchError).toMatchObject({
+      title: "Your agent couldn't be created",
+      detail: "quota exceeded",
+    });
+    machine.setHostInputs({ participants: AGENT_ROSTER });
+    machine.reconcile();
+    expect(machine.getSnapshot().deferredAgent?.launchStage).toBe("ready");
+  });
+
+  it("explains a blocked start instead of silently doing nothing", async () => {
+    const needsSetup: ModelCatalog = {
+      providers: [],
+      models: [
+        makeTestCatalogEntry({
+          ref: MODEL,
+          id: "gpt-6.1-sol",
+          name: "GPT-6.1 Sol",
+          provider: "openai-codex",
+          baseUrl: "https://chatgpt.com/backend-api",
+          availability: { state: "needs-setup", detail: "no-credential" },
+        }),
+      ],
+    };
+    const { machine, host } = machineWith({
+      input: "hello",
+      modelCatalog: needsSetup,
+      firstAgentModelPreflight: "selection-required",
+      defaultModelRef: MODEL,
+    });
+    await machine.send();
+    machine.getSnapshot().deferredAgent!.startQueued();
+    const state = machine.getSnapshot().deferredAgent!;
+    expect(state.setupRequired).toMatchObject({
+      reason: "model-needs-setup",
+      modelRef: MODEL,
+      title: "GPT-6.1 Sol isn't ready yet",
+    });
+    expect(host.onAddAgent).not.toHaveBeenCalled();
+    state.setDraft({ ...state.draft, model: "" });
+    expect(machine.getSnapshot().deferredAgent?.setupRequired).toBeUndefined();
+    machine.getSnapshot().deferredAgent!.startQueued();
+    expect(machine.getSnapshot().deferredAgent?.setupRequired).toMatchObject({
+      reason: "no-model-selected",
+    });
+  });
 });

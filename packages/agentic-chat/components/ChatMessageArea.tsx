@@ -1,3 +1,4 @@
+import { launchStageLabel } from "@workspace/agentic-core/chat-store";
 import { useMemo } from "react";
 import type { ReactNode } from "react";
 import { Flex } from "@radix-ui/themes";
@@ -138,14 +139,24 @@ export function ChatMessageArea({
       );
       return <ChatStartupStatus phase="review" detail={pending?.message} />;
     }
-    if (emptyPhase === "agent") return <ChatStartupStatus phase="agent" />;
+    if (emptyPhase === "agent")
+      return (
+        <ChatStartupStatus
+          phase="agent"
+          detail={
+            deferredAgent?.launchStage
+              ? launchStageLabel(deferredAgent.launchStage)
+              : undefined
+          }
+        />
+      );
     if (emptyPhase === "models") return <ChatStartupStatus phase="models" />;
     return emptyPhase === "ready" ? (
       <FirstRunCard />
     ) : (
       <ChatStartupStatus phase="conversation" />
     );
-  }, [emptyPhase, connectionError]);
+  }, [emptyPhase, connectionError, deferredAgent?.launchStage]);
   const emptyState = renderEmptyState
     ? renderEmptyState(defaultEmptyState, { phase: emptyPhase })
     : defaultEmptyState;
