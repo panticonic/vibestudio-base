@@ -145,9 +145,7 @@ describe("fork lineage recovery", () => {
         ),
       );
       await waitFor(() =>
-        expect(h.result.current.error).toContain(
-          "Live fork updates disconnected",
-        ),
+        expect(h.result.current.error).toContain("Fork updates paused"),
       );
       h.updateSnapshot();
       await act(async () => h.reconnect());

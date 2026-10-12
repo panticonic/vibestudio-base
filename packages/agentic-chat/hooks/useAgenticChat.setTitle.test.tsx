@@ -264,9 +264,11 @@ describe("useAgenticChat set_title", () => {
 
     await waitFor(
       () => {
-        expect(latestContext.current?.connectionError?.message).toBe(
-          "ReadError(Reset(513))",
-        );
+        // User-facing copy; the transport's own text stays in the details.
+        expect(latestContext.current?.connectionError).toMatchObject({
+          title: "Reconnecting to this conversation",
+          detail: "ReadError(Reset(513))",
+        });
       },
       { timeout: 200 },
     );

@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   ownModelSettingsRequest,
   ownModelSettingsConnection,
-} from "./modelSettingsRequest.js";
+} from "./model-settings-request.js";
 
 function deferred<T>() {
   let resolve!: (value: T) => void;

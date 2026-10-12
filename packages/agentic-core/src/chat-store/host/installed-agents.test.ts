@@ -5,7 +5,7 @@ import {
   requireChatContextId,
   sanitizeHandle,
   type InstalledAgentRecord,
-} from "./bootstrap.js";
+} from "./installed-agents.js";
 
 const HANDLE_RE = /^[a-zA-Z][a-zA-Z0-9_-]{0,63}$/;
 

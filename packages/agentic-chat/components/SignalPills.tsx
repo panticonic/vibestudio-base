@@ -21,7 +21,8 @@ function formatSignalContent(content: string): string {
 }
 
 export function SignalPills({ client }: SignalPillsProps) {
-  const signals = useChannelSignals(client, { maxSignals: 4, ttlMs: 7000 });
+  // The shared signal lifetime (DEFAULT_SIGNAL_TTL_MS) — one constant for every client.
+  const signals = useChannelSignals(client, { maxSignals: 4 });
 
   if (signals.length === 0) return null;
 

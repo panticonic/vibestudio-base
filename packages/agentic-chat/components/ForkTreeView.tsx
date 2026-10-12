@@ -146,9 +146,16 @@ export function ForkTreeView({ open, onClose }: { open: boolean; onClose: () => 
             </Text>
           )}
           {forkState?.error && (
-            <Text size="2" color="red">
-              {forkState.error}
-            </Text>
+            <Flex align="center" gap="2" wrap="wrap">
+              <Text size="2" color="red">
+                {forkState.error}
+              </Text>
+              {forkState.liveUpdatesInterrupted && forkState.actions.retryLiveUpdates ? (
+                <Button size="1" variant="soft" onClick={forkState.actions.retryLiveUpdates}>
+                  Retry fork updates
+                </Button>
+              ) : null}
+            </Flex>
           )}
           <Flex direction="column" gap="1">
             {tree.map((node) => (

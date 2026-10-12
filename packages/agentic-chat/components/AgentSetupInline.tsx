@@ -27,7 +27,8 @@ export function AgentSetupInline() {
   const [setupPending, setSetupPending] = useState(false);
   const [setupError, setSetupError] = useState<string | null>(null);
   if (!deferredAgent) return null;
-  const { draft, setDraft, modelSelectionRequired, startQueued, queued } = deferredAgent;
+  const { draft, setDraft, modelSelectionRequired, startQueued, queued, setupRequired } =
+    deferredAgent;
   const selectedModel = modelCatalog?.models.find((model) => model.ref === draft.model) ?? null;
   const selectedProvider =
     modelCatalog?.providers.find((provider) => provider.id === selectedModel?.provider)?.label ??
@@ -139,6 +140,19 @@ export function AgentSetupInline() {
                 }
               />
             ) : null}
+            {setupRequired ? (
+              <Callout.Root color="amber" size="1" role="alert">
+                <Callout.Icon>
+                  <ExclamationTriangleIcon />
+                </Callout.Icon>
+                <Callout.Text>
+                  <Text weight="medium">{setupRequired.title}</Text> {setupRequired.message}
+                </Callout.Text>
+              </Callout.Root>
+            ) : null}
+            {/* While the model still needs setup, the setup action above is the
+                next step; the store's `setupRequired` explains a blocked start
+                (e.g. the model stopped being usable before the click landed). */}
             {showStart && canStart && (
               <Button size="2" onClick={startQueued} style={{ width: "100%" }}>
                 {selectedModel?.provider === "local" ? "Start with local model" : "Start agent"}
