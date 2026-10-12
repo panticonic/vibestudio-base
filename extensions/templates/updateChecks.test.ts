@@ -9,6 +9,11 @@ import { WORKSPACE_APP_VERSION } from "@vibestudio/shared/vcs/systemEpoch";
 import { schemaRpcMock } from "@vibestudio/rpc/test-utils";
 import { durableObjectServiceFixture } from "@vibestudio/service-schemas/test-utils";
 const roots: string[] = [];
+const nextWorkspaceAppVersion = (() => {
+  const match = /^(\d+\.\d+\.)(\d+)$/u.exec(WORKSPACE_APP_VERSION);
+  if (!match) throw new Error(`Expected a stable semantic app version: ${WORKSPACE_APP_VERSION}`);
+  return `${match[1]}${Number(match[2]) + 1}`;
+})();
 afterEach(async () => {
   vi.restoreAllMocks();
   await Promise.all(
@@ -260,7 +265,7 @@ it("refreshes one coherent workspace notice when a parent and its dependency bot
     parents.map((check: { source: { url: string } }) => check.source.url),
   ).toEqual([f.source.url]);
   const previousId = notice.id;
-  f.hostVersion("0.1.85");
+  f.hostVersion(nextWorkspaceAppVersion);
   await f.checker.signal();
   expect(f.deliver).toHaveBeenCalledTimes(2);
   expect(f.call).toHaveBeenCalledWith(
@@ -282,7 +287,7 @@ it("replays frozen notifications and allocates new identities on an app-version 
   });
   f.hostVersion("0.1.84");
   await f.checker.signal();
-  f.hostVersion("0.1.85");
+  f.hostVersion(nextWorkspaceAppVersion);
   await f.checker.signal();
   f.hostVersion("0.1.84");
   await f.checker.signal();
@@ -318,7 +323,7 @@ it("retires superseded upstream targets on discovery and preserves the notice on
 it("keeps member delivery independent when another member has a failed receipt", async () => {
   const f = await fixture();
   await f.checker.signal();
-  f.hostVersion("0.1.85");
+  f.hostVersion(nextWorkspaceAppVersion);
   f.deliver.mockImplementation(async (notice) => {
     if (notice.userId === "usr_one") throw new Error("Owner inbox unavailable");
   });
