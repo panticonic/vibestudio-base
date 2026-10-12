@@ -649,9 +649,8 @@ export function TerminalChatApp({ runtime, input, control, approvalsKey = "Ctrl-
   const screen = layoutScreen(model);
   viewportRows.current = screen.transcriptRows;
 
-  useEffect(() => {
-    setCursorPosition(screen.cursor ?? undefined);
-  });
+  // Ink applies the cursor position given during render to the frame it commits.
+  setCursorPosition(screen.cursor ?? undefined);
 
   function modelNameFor(ref: string | null): string | null {
     if (!ref) return null;

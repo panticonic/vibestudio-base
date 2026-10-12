@@ -50,7 +50,6 @@ export async function runTerminalChat(
     stdin,
     exitOnCtrlC: false,
     patchConsole: false,
-    incrementalRendering: true,
   });
 
   let restored = false;

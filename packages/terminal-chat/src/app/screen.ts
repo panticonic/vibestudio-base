@@ -2,8 +2,8 @@
  * Screen layout: everything the app shows, as exactly `rows - 1` lines plus
  * the composer cursor. Pure, so the whole screen is testable as text.
  *
- * One row stays free because Ink redraws the whole terminal every frame once
- * its output fills the screen; one row short, it rewrites only changed lines.
+ * One row stays free: once Ink's output fills the screen it clears the whole
+ * terminal on every frame instead of rewriting its own lines.
  */
 import type { FeedbackFormArgs } from "@workspace/pubsub";
 import { indentWrap, padEnd, paint, style, symbols, truncate } from "../model/ansi.js";
