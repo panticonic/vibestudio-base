@@ -1,0 +1,35 @@
+{
+  "name": "@workspace/terminal-chat",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "The terminal chat: an Ink UI over the headless chat core (@workspace/agentic-core/chat-store). Host-agnostic; a terminal host supplies the connection, state port and terminal capabilities.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@vibestudio/rpc": "workspace:*",
+    "@vibestudio/service-schemas": "workspace:*",
+    "@vibestudio/shared": "workspace:*",
+    "@vibestudio/types": "workspace:*",
+    "@workspace/agentic-core": "workspace:*",
+    "@workspace/agentic-protocol": "workspace:*",
+    "@workspace/model-catalog": "workspace:*",
+    "@workspace/pubsub": "workspace:*",
+    "@workspace/quickfire-core": "workspace:*",
+    "highlight.js": "^11.12.0",
+    "ink": "^6.8.0",
+    "react": "^19.0.0",
+    "slice-ansi": "^8.0.0",
+    "string-width": "^8.1.1",
+    "wrap-ansi": "^9.0.0"
+  },
+  "devDependencies": {
+    "@types/mdast": "^4.0.4",
+    "@xterm/headless": "^5.5.0",
+    "vitest": "^3.2.7"
+  }
+}

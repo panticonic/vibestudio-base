@@ -31,7 +31,9 @@ export type {
 } from "@workspace/model-catalog/catalog";
 export {
   AGENT_APPROVAL_LEVELS,
+  AGENT_THINKING_LEVELS,
   isAgentApprovalLevel,
+  modelSwitchConfigFromSettings,
 } from "./agent-subscription-config.js";
 export type {
   AgentApprovalLevel,

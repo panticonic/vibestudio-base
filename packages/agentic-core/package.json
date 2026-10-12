@@ -18,7 +18,8 @@
     "./agent-channel-roster": "./src/agent-channel-roster.ts",
     "./agent-subscription-config": "./src/agent-subscription-config.ts",
     "./rpc-contract": "./src/rpc-contract.ts",
-    "./chat-store": "./src/chat-store/index.ts"
+    "./chat-store": "./src/chat-store/index.ts",
+    "./chat-presentation": "./src/chat-presentation/index.ts"
   },
   "dependencies": {
     "@vibestudio/module-imports": "workspace:*",
