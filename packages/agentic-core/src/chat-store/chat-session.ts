@@ -198,6 +198,8 @@ export interface ChatSessionSnapshot {
   view: ChannelViewState;
   hasMoreHistory: boolean;
   loadingMore: boolean;
+  /** Last failure of history paging or the transcript stream (cleared on retry). */
+  historyError: string | null;
   replaySettled: boolean;
   actionBar: ActionBarPayload | null;
   messageTypes: MessageTypeDefinition[];
@@ -356,6 +358,7 @@ export class ChatSession implements ReadableStore<ChatSessionSnapshot> {
       view: feedSnapshot.view,
       hasMoreHistory: feedSnapshot.hasMoreHistory,
       loadingMore: feedSnapshot.loadingMore,
+      historyError: feedSnapshot.error,
       replaySettled: feedSnapshot.replaySettled,
       actionBar: feedSnapshot.actionBar,
       messageTypes: feedSnapshot.messageTypes,
@@ -501,11 +504,26 @@ export class ChatSession implements ReadableStore<ChatSessionSnapshot> {
   async #runConnectLoop(loop: AbortController): Promise<void> {
     let transientAttempt = 0;
     for (;;) {
+      // The method surface is composed per join. Two features claiming one
+      // method is a defect of this participant, not of the connection: it is
+      // terminal and visible, never retried as a transient failure.
+      let methods: ReturnType<ChatMethodRegistry["compose"]>;
+      try {
+        methods = this.methods.compose();
+      } catch (error) {
+        console.error("[ChatSession] Channel methods could not be composed:", error);
+        this.#setConnectionError(
+          `This chat could not join: ${error instanceof Error ? error.message : String(error)}`,
+          error
+        );
+        if (this.#loop === loop) this.#loop = null;
+        return;
+      }
       try {
         await this.connect({
           signal: loop.signal,
           channelId: this.options.channelName!,
-          methods: this.methods.compose(),
+          methods,
           ...(this.#channelConfig ? { channelConfig: this.#channelConfig } : {}),
           ...(this.options.contextId ? { contextId: this.options.contextId } : {}),
         });
@@ -773,6 +791,7 @@ export class ChatSession implements ReadableStore<ChatSessionSnapshot> {
       view: feed.view,
       hasMoreHistory: feed.hasMoreHistory,
       loadingMore: feed.loadingMore,
+      historyError: feed.error,
       replaySettled: feed.replaySettled,
       actionBar: feed.actionBar,
       messageTypes: feed.messageTypes,
