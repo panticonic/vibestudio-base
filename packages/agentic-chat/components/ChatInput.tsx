@@ -13,7 +13,7 @@ import {
 import { Cross2Icon } from "@radix-ui/react-icons";
 import {
   isAgentParticipantType,
-  type AgentSubscriptionConfig,
+  modelSwitchConfigFromSettings,
   type ModelCatalogEntry,
 } from "@workspace/agentic-core";
 import { isModelUsable } from "@workspace/model-catalog/catalog";
@@ -49,64 +49,6 @@ import {
 const MODEL_COMMAND_RE = /^\/model(?:\s+(.*))?$/;
 const MODEL_MENU_LIMIT = 8;
 
-const THINKING_LEVELS = new Set([
-  "minimal",
-  "low",
-  "medium",
-  "high",
-  "xhigh",
-  "max",
-]);
-const RESPOND_POLICIES = new Set([
-  "all",
-  "mentioned",
-  "mentioned-strict",
-  "mentioned-or-followup",
-  "from-participants",
-]);
-
-function modelSwitchConfigFromSettings(
-  settings: unknown,
-  model: string,
-  handle?: string,
-): AgentSubscriptionConfig {
-  const source =
-    settings && typeof settings === "object"
-      ? (settings as Record<string, unknown>)
-      : {};
-  const config: AgentSubscriptionConfig = {
-    model,
-    ...(handle ? { handle } : {}),
-  };
-  const thinkingLevel = source["thinkingLevel"];
-  if (typeof thinkingLevel === "string" && THINKING_LEVELS.has(thinkingLevel)) {
-    config.thinkingLevel =
-      thinkingLevel as AgentSubscriptionConfig["thinkingLevel"];
-  }
-  if (typeof source["fastMode"] === "boolean") {
-    config.fastMode = source["fastMode"];
-  }
-  const approvalLevel = source["approvalLevel"];
-  if (approvalLevel === 0 || approvalLevel === 1 || approvalLevel === 2) {
-    config.approvalLevel = approvalLevel;
-  }
-  const respondPolicy = source["respondPolicy"];
-  if (
-    typeof respondPolicy === "string" &&
-    RESPOND_POLICIES.has(respondPolicy)
-  ) {
-    config.respondPolicy =
-      respondPolicy as AgentSubscriptionConfig["respondPolicy"];
-  }
-  const respondFrom = source["respondFrom"];
-  if (
-    Array.isArray(respondFrom) &&
-    respondFrom.every((value) => typeof value === "string")
-  ) {
-    config.respondFrom = respondFrom;
-  }
-  return config;
-}
 
 const MAX_IMAGE_COUNT = 10;
 

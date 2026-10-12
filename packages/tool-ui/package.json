@@ -6,7 +6,8 @@
     ".": "./src/index.ts",
     "./components/EventErrorBoundary": "./src/components/EventErrorBoundary.tsx",
     "./components/SurfaceFrame": "./src/components/SurfaceFrame.tsx",
-    "./utils/trackAsyncErrors": "./src/utils/trackAsyncErrors.ts"
+    "./utils/trackAsyncErrors": "./src/utils/trackAsyncErrors.ts",
+    "./feedback-form-values": "./src/feedback-form-values.ts"
   },
   "dependencies": {
     "@vibestudio/types": "workspace:*",
