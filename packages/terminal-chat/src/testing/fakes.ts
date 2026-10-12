@@ -161,6 +161,7 @@ export function createFakeChat(initial: Partial<ChatSessionSnapshot> = {}) {
     subscribe: runtimeStore.subscribe,
     signIn: Object.assign(signIn, { dismiss() {}, cancel() {}, paste: async () => {}, connect: async () => true }),
     controller: null,
+    diagnostics: new ValueStore([]),
     files: { read: async () => ({ name: "a.txt", mimeType: "text/plain", bytes: new Uint8Array(1) }), writeExport: async (name: string) => `/ws/chat-exports/${name}` },
     rpc: {},
     notify(notice: Omit<Notice, "id">) {

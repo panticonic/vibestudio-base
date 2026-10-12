@@ -25,6 +25,7 @@ import { mainRpcMethods } from "@vibestudio/service-schemas/mainRpc";
 import type { FeedbackResult } from "../model/forms.js";
 import type { TerminalChatBootstrap } from "./bootstrap.js";
 import { ProviderSignIn } from "./providerSignIn.js";
+import { ValueStore } from "./valueStore.js";
 
 const CONVERSATION_CONTEXT_KEY = "conversationContextId";
 
@@ -80,8 +81,19 @@ function stateArgsPort(store: TerminalChatBootstrap["state"]): StateArgsPort {
   };
 }
 
+/** One line of program output the screen does not show directly (console, library warnings). */
+export interface DiagnosticLine {
+  at: number;
+  level: "debug" | "info" | "warn" | "error";
+  text: string;
+}
+
+const MAX_DIAGNOSTICS = 300;
+
 export class ChatRuntime implements ReadableStore<ChatRuntimeSnapshot> {
   readonly signIn: ProviderSignIn;
+  /** Recent diagnostics (newest last), for the palette's "Show diagnostics". */
+  readonly diagnostics = new ValueStore<readonly DiagnosticLine[]>([]);
   readonly #boot: TerminalChatBootstrap;
   readonly #ports: ChatRuntimePorts;
   readonly #state: StateArgsPort;
@@ -144,6 +156,12 @@ export class ChatRuntime implements ReadableStore<ChatRuntimeSnapshot> {
   }
 
   // ── notices ────────────────────────────────────────────────────────────────
+
+  /** Keep a diagnostic line (bounded). */
+  recordDiagnostic(level: DiagnosticLine["level"], text: string): void {
+    const lines = this.diagnostics.getSnapshot();
+    this.diagnostics.set([...lines.slice(-(MAX_DIAGNOSTICS - 1)), { at: Date.now(), level, text }]);
+  }
 
   notify(notice: Omit<Notice, "id">): void {
     const next = { ...notice, id: ++this.#noticeId };

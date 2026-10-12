@@ -351,6 +351,29 @@ export function TerminalChatApp({ runtime, input, control, approvalsKey = "Ctrl-
       { id: "select", label: "Select messages in the transcript", detail: "Ctrl-↑", run: () => enterSelect() },
       { id: "expand", label: expandAll ? "Collapse tool calls and thinking" : "Expand tool calls and thinking", detail: "Ctrl-O", run: () => setExpandAll((v) => !v) },
       { id: "retry-connection", label: "Reconnect the conversation", detail: chat?.connected ? "connected" : "offline", run: () => session?.reconnect("user-retry") },
+      {
+        id: "diagnostics",
+        label: "Show diagnostics",
+        detail: "connection and library messages",
+        run: () => {
+          const lines = runtime.diagnostics.getSnapshot();
+          setOverlay({
+            kind: "picker",
+            onPick: () => {},
+            picker: {
+              title: `Diagnostics (${lines.length}, newest first)`,
+              items: [...lines].reverse().map((line, index) => ({
+                id: String(index),
+                label: `${new Date(line.at).toISOString().slice(11, 19)} ${line.level.padEnd(5)} ${line.text.split("\n")[0]}`,
+              })),
+              query: "",
+              index: 0,
+              filterable: true,
+              empty: "Nothing has been logged.",
+            },
+          });
+        },
+      },
       { id: "retry-models", label: "Reload models and agents", detail: "", run: () => { runtime.controller?.retryModelSettings(); runtime.controller?.retryAgentCatalog(); runtime.controller?.retryAgentRecovery(); } },
     ];
   }
