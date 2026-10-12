@@ -146,9 +146,11 @@ it("keeps an accepted send out of the composer and surfaces the original project
     expect(latest.input).toBe("");
     expect(latest.pendingSendCount).toBe(0);
     expect(latest.connectionError).toMatchObject({ cause: failure });
-    expect(latest.connectionError?.message).toContain(
-      "server accepted the change",
-    );
+    expect(latest.connectionError).toMatchObject({
+      title: "Sent, but not shown yet",
+      detail: "Replay connection lost",
+      retryable: true,
+    });
     await act(async () => {
       await latest.sendMessage();
     });

@@ -5,6 +5,37 @@ import type { AgentSubscriptionConfig } from "../../agent-subscription-config.js
 import type { PendingAgent } from "../../derived-types.js";
 import type { AvailableAgent, ChatParticipantMetadata } from "../../types.js";
 import type { AgentConfigDraft } from "./agent-config-draft.js";
+import type { UserFacingError } from "../store.js";
+
+/** Where one held message stands in the delivery queue. */
+export type PendingDeliveryStatus =
+  /** Held until the first agent joins. */
+  | "queued"
+  /** Being published right now; it can no longer be removed. */
+  | "delivering"
+  /** Its delivery failed; `failure` says why. Retry or discard it. */
+  | "failed"
+  /** Held behind an earlier failed message (`waitingOn`), to keep order. */
+  | "waiting";
+
+/**
+ * How far the first agent has come. Each stage is a lifecycle fact, not a
+ * guess: model discovery/choice, the host's create call in flight, the created
+ * agent not yet in the roster, and the agent present.
+ */
+export type LaunchStage =
+  | "preparing-model"
+  | "creating-agent"
+  | "joining"
+  | "ready"
+  | "failed";
+
+/** Why "Start agent" could not start the queued message's agent. */
+export interface FirstAgentSetupRequired extends UserFacingError {
+  reason: "model-needs-setup" | "no-model-selected";
+  /** The selected model that needs setup, when one is selected. */
+  modelRef?: string;
+}
 
 /** A message the user "sent" while no agent was present yet — held client-side
  *  (unsent) and flushed live once the first agent joins the roster, so the very
@@ -20,6 +51,12 @@ export interface PendingDelivery {
   tier?: MessageTier;
   /** Stable key for idempotent (re)delivery — for a queued message. */
   idempotencyKey?: string;
+  /** Delivery status (always set on published queue items). */
+  status?: PendingDeliveryStatus;
+  /** Why this item failed (status `failed`). */
+  failure?: UserFacingError;
+  /** The failed item this one waits behind (status `waiting`). */
+  waitingOn?: string;
 }
 
 /** State for the first-agent flow: the inline armed config plus the queue of
@@ -37,10 +74,22 @@ export interface DeferredAgentState {
   launching: boolean;
   /** The spawn failed (onAddAgent rejected) — drives the queue's error + retry UI. */
   launchFailed: boolean;
+  /** Stage of the first agent's launch; undefined when no launch is involved. */
+  launchStage?: LaunchStage;
+  /** Why the launch failed (stage `failed`): what happened, next step, detail. */
+  launchError?: UserFacingError;
+  /** "Start agent" was blocked: the model needs setup or none is selected. */
+  setupRequired?: FirstAgentSetupRequired;
+  /** The first failed item's original error text (compatibility; prefer `queued[i].failure`). */
   deliveryError?: string;
   /** The currently owned publication cannot be removed as an unsent message. */
   deliveringId?: string;
-  retryDelivery: () => void;
+  /** Retry one failed item (or every failed item when `id` is omitted). Later
+   *  items resume in order once it is delivered. */
+  retryDelivery: (id?: string) => void;
+  /** Remove a held or failed item without sending it (an opening request is
+   *  cancelled on the channel). Not possible while it is being delivered. */
+  discardQueued: (id: string) => void;
   /** The host found no configured model for the first agent. Its queued first
    *  message must wait for an explicit model/provider choice. */
   modelSelectionRequired: boolean;

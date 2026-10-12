@@ -15,7 +15,13 @@ import { ConnectionManager, type ClientParticipantMetadata } from "../../connect
 import type { ChatMessage } from "../../derived-types.js";
 import type { ChatParticipantMetadata, ConnectionConfig } from "../../types.js";
 import { ChannelViewFeed, type ChannelViewFeedSnapshot } from "../channel-view-feed.js";
-import { RetainCount, StateCell, errorMessage, type ReadableStore } from "../store.js";
+import {
+  RetainCount,
+  StateCell,
+  userFacingError,
+  type ReadableStore,
+  type UserFacingError,
+} from "../store.js";
 
 /** Transport material reused from the parent surface's own connection. */
 export interface ChildTranscriptConnection {
@@ -35,9 +41,12 @@ export interface ChildTranscriptSnapshot {
   participants: Record<string, Participant<ChatParticipantMetadata>>;
   /** The observer's participant id once connected. */
   selfId: string | null;
-  /** True until the child's history has replayed. */
+  /** True until the child's history has replayed (false once it failed). */
   loading: boolean;
+  /** The failure as one user-facing sentence (title and next step). */
   error: string | null;
+  /** The failure with its technical detail, for a "Details" disclosure. */
+  failure?: UserFacingError | null;
   hasMoreHistory: boolean;
   loadingMore: boolean;
 }
@@ -46,7 +55,15 @@ interface ObserverState {
   participants: Record<string, Participant<ChatParticipantMetadata>>;
   selfId: string | null;
   connecting: boolean;
-  error: string | null;
+  failure: UserFacingError | null;
+}
+
+function observerFailure(cause: unknown): UserFacingError {
+  return userFacingError(
+    "Couldn't load this subagent's transcript",
+    "The task's conversation didn't respond. Retry to load it again.",
+    cause
+  );
 }
 
 let nextObserverGeneration = 0;
@@ -63,7 +80,7 @@ export class ChildTranscriptStore implements ReadableStore<ChildTranscriptSnapsh
     participants: {},
     selfId: null,
     connecting: false,
-    error: null,
+    failure: null,
   });
   readonly #retained: RetainCount;
   #attempt: { manager: ConnectionManager; cancelled: boolean } | null = null;
@@ -103,8 +120,10 @@ export class ChildTranscriptStore implements ReadableStore<ChildTranscriptSnapsh
       messages: feed.messages,
       participants: state.participants,
       selfId: state.selfId,
-      loading: state.connecting || !feed.replaySettled,
-      error: state.error,
+      // A failure ends loading: the card shows the failure and Retry instead.
+      loading: !state.failure && (state.connecting || !feed.replaySettled),
+      error: state.failure ? `${state.failure.title}. ${state.failure.message}` : null,
+      failure: state.failure,
       hasMoreHistory: feed.hasMoreHistory,
       loadingMore: feed.loadingMore,
     };
@@ -149,17 +168,17 @@ export class ChildTranscriptStore implements ReadableStore<ChildTranscriptSnapsh
             if (!attempt.cancelled) this.#cell.update({ participants: { ...update.participants } });
           },
           onError: (error) => {
-            if (!attempt.cancelled) this.#cell.update({ error: error.message });
+            if (!attempt.cancelled) this.#cell.update({ failure: observerFailure(error) });
           },
           onReconnect: () => {
-            if (!attempt.cancelled) this.#cell.update({ error: null });
+            if (!attempt.cancelled) this.#cell.update({ failure: null });
           },
         },
       }),
     };
     this.#attempt = attempt;
     this.#feed.reset(channelId);
-    this.#cell.update({ connecting: true, error: null, selfId: null });
+    this.#cell.update({ connecting: true, failure: null, selfId: null });
     void attempt.manager
       .connect({ channelId, methods: {}, ...(contextId ? { contextId } : {}) })
       .then((client) => {
@@ -170,7 +189,7 @@ export class ChildTranscriptStore implements ReadableStore<ChildTranscriptSnapsh
         });
       })
       .catch((error: unknown) => {
-        if (!attempt.cancelled) this.#cell.update({ error: errorMessage(error) });
+        if (!attempt.cancelled) this.#cell.update({ failure: observerFailure(error) });
       })
       .finally(() => {
         if (!attempt.cancelled) this.#cell.update({ connecting: false });

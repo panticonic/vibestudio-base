@@ -68,9 +68,15 @@ export interface ChatHostNotification {
 
 /**
  * Workspace events the controller listens to: a pending workspace review was
- * added or decided, or the workspace configuration changed.
+ * added or decided, the workspace configuration changed, or a publication
+ * changed the workspace's units (host event `workspace:units-changed`). They
+ * drive model refresh, agent catalog reads and installed-agent recovery; the
+ * controller never polls.
  */
-export type ChatHostWorkspaceEvent = "approvals-changed" | "workspace-config-changed";
+export type ChatHostWorkspaceEvent =
+  | "approvals-changed"
+  | "workspace-config-changed"
+  | "units-changed";
 
 export interface ChatHostPorts {
   rpc: ChatHostRpc;
@@ -81,7 +87,12 @@ export interface ChatHostPorts {
   waitForReview?: WorkspaceReviewWaiter;
   /** Rpc transport status; model discovery is re-read after a reconnect. */
   connection?: ChatHostConnectionPort;
-  /** Surface a failure the user must see (e.g. agent recovery gave up). */
+  /**
+   * Surface a failure of a user action that no snapshot field renders (e.g.
+   * removing an agent failed). Failures the snapshot carries
+   * (`modelSettingsError`, `agentCatalogError`, `recovery.error`) are never
+   * also notified, so a host never shows the same failure twice.
+   */
   notify?: (notification: ChatHostNotification) => void | Promise<unknown>;
   /**
    * Subscribe to a workspace event. Approval changes can unblock channel

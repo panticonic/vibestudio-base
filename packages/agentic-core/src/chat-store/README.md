@@ -54,8 +54,12 @@ interface ReadableStore<Snapshot> {
   generations and is cancelled by disposal, reconnects and supersession. The
   only timers are product behaviour (listed under *Timing*).
 - **Errors are data.** Failures that the user should see land in a snapshot
-  field (`connectionError`, `deliveryError`, `modelSettingsError`, …) with a
-  readable message; nothing throws into your render loop.
+  field (`connectionError`, `queued[i].failure`, `launchError`,
+  `modelSettingsError`, `recovery.error`, …) shaped as a `UserFacingError`:
+  `{ title, message, detail?, cause? }` — what happened, the next step, and the
+  technical text for a Details disclosure. Never show `cause` or a stack.
+  Nothing throws into your render loop, and a failure shown in a snapshot is
+  never also pushed through a notification port.
 
 ## Quick start: a terminal chat in a Durable Object
 
@@ -147,8 +151,8 @@ new ChatSession(options: ChatSessionOptions)
 | `channelConfig` | Creation config passed on join (seed, initial title). `setChannelConfig()` replaces it. |
 | `contextId`     | Workspace context the channel must resolve in. |
 | `metadata`      | Participant label (`{ name, type }`). Humans get their identity from the channel, not from this. |
-| `ports`         | `presentTitle(title, { explicit })`, `observeEvent(event)`; both optional. |
-| `agentHost`     | Agent management (`onAddAgent`, `onPrepareAgent`, `onReplaceAgent`, `onPersistAgentModel`, `onRemoveAgent`) and catalog data (`availableAgents`, `modelCatalog`, `defaultModelRef`, `defaultAgentConfig`, `firstAgentModelPreflight`). Replace with `setAgentHost()`. Omit to disable the first-agent flow. |
+| `ports`         | `presentTitle(title, { explicit })` (called only when the title text or its explicitness changes), `observeEvent(event)`; both optional. |
+| `agentHost`     | Agent management (`onAddAgent`, `onPrepareAgent`, `onReplaceAgent`, `onPersistAgentModel`, `onRemoveAgent`, `onParticipantsChanged` — called with the present participant ids on every roster change) and catalog data (`availableAgents`, `modelCatalog`, `defaultModelRef`, `defaultAgentConfig`, `firstAgentModelPreflight`). Replace with `setAgentHost()`. Omit to disable the first-agent flow. |
 | `forkNav`       | `ForkNavHandlers`. Present at construction ⇒ `session.forks` exists. Replace handlers with `setForkNav()`. |
 
 ### Snapshot (`ChatSessionSnapshot`)
@@ -158,7 +162,7 @@ new ChatSession(options: ChatSessionOptions)
 | `channelName` | `string \| null` | The joined or configured channel. |
 | `status` | `string` | Human-readable connection status. |
 | `connected` | `boolean` | A join is live. |
-| `connectionError` | `{ message, at, cause? } \| null` | Last failure the user should see (join, interrupt, read-back). |
+| `connectionError` | `{ title, message, detail?, retryable, at, cause? } \| null` | A failure the user should see (join, interrupt, cancel, read-back): `title` says what happened, `message` the next step, `detail` the technical text for a Details disclosure. Offer `reconnect("user-retry")` only when `retryable`. |
 | `client` | `PubSubClient \| null` | The live channel client. |
 | `selfId` | `string \| null` | This participant's channel id. |
 | `initialization` | `{ firstAgentPending, openingRequest? } \| undefined` | Channel creation state. |
@@ -278,15 +282,18 @@ is inactive and nothing is queued).
 | `DeferredAgentState` | |
 | --- | --- |
 | `active` / `setupActive` | The flow owns adding the first agent / show the inline setup (model, thinking, approval…). |
-| `launching` / `launchFailed` | The first message armed a spawn / it failed (`retryLaunch()`). |
+| `launchStage` | `"preparing-model"` → `"creating-agent"` → `"joining"` → `"ready"`, or `"failed"`. Show it with `launchStageLabel(stage)`. Each stage is a lifecycle fact (model discovery/choice, the host's create call in flight, the created agent not yet in the roster, the agent present). |
+| `launchError` | `UserFacingError` when the launch failed; `retryLaunch()` tries again. (`launching`/`launchFailed` remain as booleans.) |
+| `setupRequired` | Set when `startQueued()` cannot start: `{ reason: "model-needs-setup" \| "no-model-selected", modelRef?, title, message }`. Render it beside your model setup action; changing the model clears it. `startQueued()` never silently does nothing. |
 | `modelSelectionRequired` / `modelDiscoveryPending` | The user must choose a model / discovery is still running. |
-| `queued: PendingDelivery[]` | Messages held until the agent joins (`cancelQueued(id)`). |
-| `deliveringId`, `deliveryError` | The item being published / a failure kept until `retryDelivery()`. |
+| `queued: PendingDelivery[]` | Messages held until the agent joins. Each has `status` (`queued`/`delivering`/`failed`/`waiting`); a failed item has `failure` (`UserFacingError`); later items are `waiting` with `waitingOn` naming the failed item, because delivery keeps order. |
+| `retryDelivery(id?)`, `discardQueued(id)` | Retry one failed item (or all, without an id) with the same idempotency key; discard an item (for the opening request this cancels it on the channel). `cancelQueued(id)` is the same as `discardQueued`. |
+| `deliveringId`, `deliveryError` | The item being published / the first failure's raw text (compatibility). |
 | `draft`, `setDraft(draft)`, `agentId`, `setAgentId(id)`, `availableAgents` | The inline config. |
 | `startQueued()` | Confirm the draft and start the agent for a held message. |
 
 Helpers: `draftForAgent`, `draftToConfig`, `pickDefaultModel`,
-`spawnConfigFromDraft`.
+`spawnConfigFromDraft`, `launchStageLabel`.
 
 ## `session.forks` — fork lineage
 
@@ -296,7 +303,10 @@ Helpers: `draftForAgent`, `draftToConfig`, `pickDefaultModel`,
 `refresh()`, `loadTree()` (`ForkTreeNode[]`), and `actions`:
 `forkFromMessage(msg)`, `editAndForkMessage(msg, text)`, `newFork()`,
 `renameFork(entry, label)`, `archiveFork(entry)`, `switchTo`, `openInNewPanel`,
-`markForkRead`, `readForkCursors`, `clearError`, `reportError`.
+`markForkRead`, `readForkCursors`, `clearError`, `reportError`,
+`retryLiveUpdates()`. When the live lineage stream stops,
+`liveUpdatesInterrupted` is true and `error` explains it; it resumes on the
+client's reconnect or on `retryLiveUpdates()`.
 `ForkNavHandlers` is what the host supplies: `switchTo(channelId, contextId)`,
 `openInNewPanel(...)`, and optionally `readForkCursors()`,
 `markForkRead(channelId, headSeq)` (back these with
@@ -311,13 +321,16 @@ const child = new ChildTranscriptStore({
   contextId: task.contextId ?? null,
 });
 const release = child.retain();     // opens an observer connection
-// snapshot: { messages, participants, selfId, loading, error, hasMoreHistory, loadingMore }
+// snapshot: { messages, participants, selfId, loading, error, failure, hasMoreHistory, loadingMore }
 child.retry(); child.loadEarlierMessages();
 ```
 
+A failure ends `loading`; `failure` (`UserFacingError`) carries the copy and
+detail, and `retry()` starts a new attempt.
+
 ## `ChannelSignalsStore` — transient signals
 
-`new ChannelSignalsStore(client, { maxSignals = 5, ttlMs = 8000 })`; snapshot is
+`new ChannelSignalsStore(client, { maxSignals = 5, ttlMs = DEFAULT_SIGNAL_TTL_MS })`; snapshot is
 `readonly ChannelSignal[]` (`{ id, ts, content, contentType }`), e.g. an agent's
 "working…" status.
 
@@ -353,8 +366,8 @@ Ports (required: `rpc`, `contextId`, `state`, `instanceId`; the rest optional):
 | `instanceId` | Unique per host instance; scopes recovery keys. |
 | `waitForReview(approvalId)` | Resolve when a workspace review is decided. |
 | `connection` | `{ status(), onStatusChange() }` of the rpc transport; model settings are re-read after a reconnect. |
-| `notify({ type, title, message? })` | Failures the user must see (recovery gave up, remove failed). |
-| `onWorkspaceEvent("approvals-changed" \| "workspace-config-changed", handler)` | Event subscription. |
+| `notify({ type, title, message? })` | Failures of user actions that no snapshot field renders (e.g. removing an agent). Never used for snapshot errors. |
+| `onWorkspaceEvent("approvals-changed" \| "workspace-config-changed" \| "units-changed", handler)` | Event subscription. In a panel these are `shell-approval:pending-changed`, `workspace:config-changed` and `workspace:units-changed`. A DO host can subscribe to the same events, or omit the port and rely on the `retry*()` methods. |
 | `localModels` | `{ installModel(ref), onChange(handler) }` when the local-models extension exists. |
 | `recoveryCoordinator` | Re-run work after transport recovery. |
 | `randomUuid()` | Id source (tests). |
@@ -396,17 +409,27 @@ function createStoragePort(storage: DurableObjectStorage, initial: ChatHostState
 Snapshot (`ChatHostSnapshot`): `channelName`, `availableAgents`,
 `modelCatalog`, `workspaceDefaultModelRef`, `workspaceDefaultAgentConfig`,
 `effectiveDefaultAgentConfig`, `firstAgentModelPreflight`
-(`"checking" | "ready" | "selection-required"`), `modelSettingsError`,
-`recovery: { status: "idle" | "recovering" | "failed"; error }`,
+(`"checking" | "ready" | "selection-required"`), `modelSettingsError` and
+`agentCatalogError` (`UserFacingError | null`),
+`recovery: { status: "idle" | "recovering" | "failed"; error: UserFacingError | null; missing: string[]; attempt: number }`,
 `connectionRetrySignal` (advances when joining may have been unblocked).
+
+The controller never polls. The agent catalog and installed-agent recovery run
+once per trigger: start, `approvals-changed`, `workspace-config-changed`,
+`units-changed`, transport reconnect, an agent leaving the channel
+(`onParticipantsChanged` / `notifyParticipantsChanged`), or an explicit
+`retryAgentCatalog()` / `retryAgentRecovery()`. A failed recovery stays
+`failed` with a user-facing error until the next trigger. An empty catalog is
+not an error: the next `units-changed` refills it.
 
 `controller.actions` holds the agent members of `AgenticChatActions`
 (`onAddAgent`, `onPrepareAgent`, `onReplaceAgent`, `onRemoveAgent`,
 `onPersistAgentModel`, `onInstallLocalModel`, `onConnectModelProvider`,
-`onSaveDefaults`, `onListTaskRules`, `onResetTaskRules`);
+`onSaveDefaults`, `onListTaskRules`, `onResetTaskRules`, `onParticipantsChanged`);
 `chatHostActionData(snapshot)` gives the data members. Spread both into a
 session's `agentHost`. Direct methods: `loadModelSettings(refresh?)`,
-`retryModelSettings()`, `retryAgentRecovery()`, `saveDefaultAgentConfig()`,
+`retryModelSettings()`, `retryAgentCatalog()`, `retryAgentRecovery()`,
+`notifyParticipantsChanged(ids)`, `saveDefaultAgentConfig()`,
 `connectModelProvider()`, `installLocalModel()`, `readForkCursors()`,
 `markForkRead()`.
 
@@ -419,8 +442,6 @@ session's `agentHost`. Direct methods: `loadModelSettings(refresh?)`,
 | Undo window | 5 s (`UNDO_WINDOW_MS`) |
 | Flush narration | 4 s (`FLUSH_NARRATION_MS`) |
 | Transient join failures | retried at 250 ms doubling to 5 s; terminal failures are not retried |
-| Signals | expire after 8 s |
+| Signals | expire after `DEFAULT_SIGNAL_TTL_MS` (8 s), shared by every client |
 | Host: bootstrap re-persist while a review is pending | 5 s |
-| Host: empty agent catalog during cold start | re-polled at 2 s doubling to 30 s |
-| Host: installed-agent recovery | up to 60 attempts, 1 s apart, then `failed` with Retry |
 | Host: local-model change bursts | debounced 500 ms |

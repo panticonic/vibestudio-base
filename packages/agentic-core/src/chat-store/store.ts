@@ -180,3 +180,34 @@ export function errorMessage(error: unknown): string {
 export function asError(error: unknown): Error {
   return error instanceof Error ? error : new Error(String(error));
 }
+
+/**
+ * A failure written for the person using the chat: what happened and what to
+ * do next, with the technical cause kept for a "details" affordance. Stores
+ * expose this shape (never a raw RPC message) wherever a user sees a failure.
+ */
+export interface UserFacingError {
+  /** Short statement of what happened ("Couldn't connect to this conversation"). */
+  title: string;
+  /** The next step in plain language ("Check your connection, then retry."). */
+  message: string;
+  /** Technical detail (original error text) for a details/disclosure view. */
+  detail?: string;
+  /** The underlying error, for logging and programmatic inspection. */
+  cause?: unknown;
+}
+
+/** Build a `UserFacingError`, keeping the original error text as detail. */
+export function userFacingError(
+  title: string,
+  message: string,
+  cause?: unknown
+): UserFacingError {
+  const detail = cause === undefined ? undefined : errorMessage(cause);
+  return {
+    title,
+    message,
+    ...(detail ? { detail } : {}),
+    ...(cause === undefined ? {} : { cause }),
+  };
+}

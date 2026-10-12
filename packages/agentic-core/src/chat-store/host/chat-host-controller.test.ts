@@ -7,7 +7,12 @@ import {
   type ModelSettingsSnapshot,
 } from "@workspace/model-catalog/catalog";
 import { ChatHostController } from "./chat-host-controller.js";
-import type { ChatHostPorts, ChatHostState, ChatHostStatePatch } from "./ports.js";
+import type {
+  ChatHostPorts,
+  ChatHostState,
+  ChatHostStatePatch,
+  ChatHostWorkspaceEvent,
+} from "./ports.js";
 
 const MODEL = "openai-codex:gpt-6-luna";
 const SETTINGS_TARGET = "do:workers/model-settings:ModelSettingsDO:workspace";
@@ -77,6 +82,7 @@ function harness(options: {
   participants?: string[];
   wire?: Wire;
   getSettings?: () => Promise<ModelSettingsSnapshot>;
+  listSources?: () => Promise<unknown>;
 } = {}) {
   const state = new FakeState(options.state);
   const participants = options.participants ?? [];
@@ -112,6 +118,7 @@ function harness(options: {
       });
     }
     if (method === "getSettings") return (options.getSettings ?? (async () => settings()))();
+    if (method === "workers.listSources" && options.listSources) return options.listSources();
     if (method === "workers.listSources")
       return [
         {
@@ -143,7 +150,17 @@ function harness(options: {
     throw new Error(`unexpected rpc ${target}.${method}`);
   });
   const notify = vi.fn();
+  const handlers = new Map<ChatHostWorkspaceEvent, Set<() => void>>();
+  const emit = (event: ChatHostWorkspaceEvent) => {
+    for (const handler of handlers.get(event) ?? []) handler();
+  };
   const ports: ChatHostPorts = {
+    onWorkspaceEvent: (event, handler) => {
+      const set = handlers.get(event) ?? new Set();
+      handlers.set(event, set);
+      set.add(handler);
+      return () => set.delete(handler);
+    },
     rpc: schemaRpcMock({ call: (target, method, args) => call(target, method, args) }),
     contextId: "ctx-1",
     state: state.port(),
@@ -153,7 +170,7 @@ function harness(options: {
   };
   const controller = new ChatHostController(ports);
   const methods = () => call.mock.calls.map((entry) => entry[1]);
-  return { controller, state, call, methods, notify };
+  return { controller, state, call, methods, notify, emit };
 }
 
 const live: ChatHostController[] = [];
@@ -224,8 +241,12 @@ describe("ChatHostController model settings", () => {
       .mockResolvedValue(settings());
     const h = start(harness({ state: { channelName: "c" }, getSettings }));
     await vi.waitFor(() =>
-      expect(h.controller.getSnapshot().modelSettingsError).toBe("models offline")
+      expect(h.controller.getSnapshot().modelSettingsError).toMatchObject({
+        title: "Models are unavailable right now",
+        detail: "models offline",
+      })
     );
+    expect(h.notify).not.toHaveBeenCalled();
     h.controller.retryModelSettings();
     await vi.waitFor(() => expect(h.controller.getSnapshot().connectionRetrySignal).toBe(1));
     expect(h.controller.getSnapshot().modelSettingsError).toBeNull();
@@ -286,7 +307,7 @@ describe("ChatHostController recovery", () => {
     expect(h.methods()).not.toContain("runtime.createEntity");
   });
 
-  it("fails terminally after its attempts, notifies, and recovers on explicit retry", async () => {
+  it("fails visibly after one attempt (no timer), without a duplicate toast, and retries on events", async () => {
     vi.useFakeTimers();
     let failing = true;
     const h = start(
@@ -298,20 +319,82 @@ describe("ChatHostController recovery", () => {
         },
       })
     );
-    await vi.advanceTimersByTimeAsync(60_000);
-    expect(h.controller.getSnapshot().recovery).toEqual({
-      status: "failed",
-      error: "channel offline",
-    });
-    expect(h.notify).toHaveBeenCalledWith(
-      expect.objectContaining({ type: "error", title: "Couldn't reconnect the chat agent" })
-    );
-    failing = false;
-    h.controller.retryAgentRecovery();
     await vi.advanceTimersByTimeAsync(0);
-    await vi.waitFor(() =>
-      expect(h.controller.getSnapshot().recovery).toEqual({ status: "idle", error: null })
+    await vi.waitFor(() => expect(h.controller.getSnapshot().recovery.status).toBe("failed"));
+    expect(h.controller.getSnapshot().recovery).toMatchObject({
+      attempt: 1,
+      error: { title: "Your agent didn't reconnect to this conversation", detail: "channel offline" },
+    });
+    const reads = () => h.methods().filter((method) => method === "getParticipants").length;
+    expect(reads()).toBe(1);
+    await vi.advanceTimersByTimeAsync(120_000);
+    expect(reads()).toBe(1);
+    expect(h.notify).not.toHaveBeenCalled();
+    failing = false;
+    // A publication changed the workspace's units: recovery tries again.
+    h.emit("units-changed");
+    await vi.waitFor(() => expect(h.controller.getSnapshot().recovery.status).toBe("idle"));
+    expect(h.controller.getSnapshot().recovery.attempt).toBe(2);
+    expect(reads()).toBe(2);
+    h.controller.retryAgentRecovery();
+    await vi.waitFor(() => expect(reads()).toBe(3));
+  });
+
+  it("re-checks when a participant leaves the channel", async () => {
+    const h = start(
+      harness({
+        state: { channelName: "c", installedAgents: [installed] },
+        participants: ["do:workers/agent-worker:AiChatWorker:ai-chat-1-key"],
+      })
     );
+    const reads = () => h.methods().filter((method) => method === "getParticipants").length;
+    await vi.waitFor(() => expect(h.controller.getSnapshot().recovery.status).toBe("idle"));
+    expect(reads()).toBe(1);
+    h.controller.notifyParticipantsChanged(["user:1", "agent:a"]);
+    h.controller.notifyParticipantsChanged(["user:1", "agent:a", "agent:b"]);
+    expect(reads()).toBe(1);
+    h.controller.notifyParticipantsChanged(["user:1"]);
+    await vi.waitFor(() => expect(reads()).toBe(2));
+  });
+});
+
+describe("ChatHostController agent catalog", () => {
+  it("reads once, waits for the units-changed event instead of polling, and surfaces failures", async () => {
+    vi.useFakeTimers();
+    let sources: unknown = [];
+    const listSources = vi.fn(async () => {
+      if (sources instanceof Error) throw sources;
+      return sources;
+    });
+    const h = start(harness({ state: { channelName: "c" }, listSources }));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(listSources).toHaveBeenCalledTimes(1);
+    expect(h.controller.getSnapshot().availableAgents).toEqual([]);
+    await vi.advanceTimersByTimeAsync(120_000);
+    expect(listSources).toHaveBeenCalledTimes(1);
+    sources = [
+      {
+        source: "workers/agent-worker",
+        name: "agent-worker",
+        title: "AI Chat",
+        agent: { displayName: "AI Chat" },
+        classes: [{ className: "AiChatWorker" }],
+      },
+    ];
+    h.emit("units-changed");
+    await vi.waitFor(() => expect(h.controller.getSnapshot().availableAgents).toHaveLength(1));
+    sources = new Error("hub restarting");
+    h.emit("units-changed");
+    await vi.waitFor(() =>
+      expect(h.controller.getSnapshot().agentCatalogError).toMatchObject({
+        title: "Couldn't load the list of agents",
+        detail: "hub restarting",
+      })
+    );
+    expect(h.controller.getSnapshot().availableAgents).toHaveLength(1);
+    sources = [];
+    h.controller.retryAgentCatalog();
+    await vi.waitFor(() => expect(h.controller.getSnapshot().agentCatalogError).toBeNull());
   });
 });
 

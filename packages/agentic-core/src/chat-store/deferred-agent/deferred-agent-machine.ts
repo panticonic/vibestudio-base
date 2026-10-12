@@ -46,19 +46,58 @@ import { isAgentParticipantType, type AttachmentInput } from "@workspace/pubsub"
 import { isModelAgentLaunchable } from "@workspace/model-catalog/catalog";
 import type { AgentSubscriptionConfig } from "../../agent-subscription-config.js";
 import type { AvailableAgent } from "../../types.js";
-import { RetainCount, StateCell, errorMessage, shallowEqual, type ReadableStore } from "../store.js";
+import {
+  RetainCount,
+  StateCell,
+  shallowEqual,
+  userFacingError,
+  type ReadableStore,
+  type UserFacingError,
+} from "../store.js";
 import { draftForAgent, draftToConfig, type AgentConfigDraft } from "./agent-config-draft.js";
 import type {
   DeferredAgentInputs,
   DeferredAgentSnapshot,
   DeferredAgentState,
   DeferredSendOptions,
+  FirstAgentSetupRequired,
+  LaunchStage,
   PendingDelivery,
 } from "./types.js";
 
 /** A reconcile that keeps changing state is a logic defect, not slow work. */
 const MAX_RECONCILE_PASSES = 32;
 const OPENING_REQUEST_ID = "conversation-opening";
+
+/** Plain-language description of each launch stage, shared by every UI. */
+export function launchStageLabel(stage: LaunchStage): string {
+  switch (stage) {
+    case "preparing-model":
+      return "Preparing the model for your agent";
+    case "creating-agent":
+      return "Creating your agent";
+    case "joining":
+      return "Your agent is joining the conversation";
+    case "ready":
+      return "Your agent is ready — sending your messages";
+    case "failed":
+      return "Your agent couldn't start";
+  }
+}
+
+function deliveryFailure(item: PendingDelivery, cause: unknown): UserFacingError {
+  return item.kind === "opening-request"
+    ? userFacingError(
+        "Couldn't deliver the opening request",
+        "It is still waiting. Retry it, or discard it to start without it.",
+        cause
+      )
+    : userFacingError(
+        "Couldn't send this message",
+        "It is still waiting. Retry it, or discard it if you no longer need it.",
+        cause
+      );
+}
 
 /** Build the spawn config from a draft, dropping the handle: the first-agent
  *  setup never exposes a handle field, so a draft handle is only a seeded
@@ -81,6 +120,7 @@ interface Derived {
   launching: boolean;
   active: boolean;
   deliveryError: string | undefined;
+  launchStage: LaunchStage | undefined;
 }
 
 export class DeferredAgentMachine implements ReadableStore<DeferredAgentSnapshot> {
@@ -96,7 +136,19 @@ export class DeferredAgentMachine implements ReadableStore<DeferredAgentSnapshot
   /** Committed to spawning OUR first agent. */
   #armed = false;
   #launchFailed = false;
-  #failedDelivery: { id: string; message: string } | undefined;
+  /** Per-item delivery failures, keyed by queue item id. */
+  #failures = new Map<string, UserFacingError>();
+  /** Why the last spawn failed (rejection), when known. */
+  #launchError: UserFacingError | undefined;
+  /** "Start agent" was blocked; shown until the draft changes or a start succeeds. */
+  #setupRequired: FirstAgentSetupRequired | undefined;
+  /** Published queue view, cached by its inputs so identity stays stable. */
+  #queueView: {
+    queued: PendingDelivery[];
+    failures: Map<string, UserFacingError>;
+    deliveringId: string | undefined;
+    view: PendingDelivery[];
+  } | null = null;
   /** First-run model setup is an explicit-choice boundary: provider setup may
    *  make the model usable, but must not dismiss setup before the user starts. */
   #explicitModelChoiceActive: boolean;
@@ -250,6 +302,7 @@ export class DeferredAgentMachine implements ReadableStore<DeferredAgentSnapshot
 
   readonly setDraft = (next: AgentConfigDraft): void => {
     this.#draftTouched = true;
+    if (next.model !== this.#draft.model) this.#setupRequired = undefined;
     if (next.model !== this.#draft.model) this.#modelTouched = true;
     this.#draft = next;
     this.reconcile();
@@ -273,29 +326,65 @@ export class DeferredAgentMachine implements ReadableStore<DeferredAgentSnapshot
       void this.#inputs.resolveOpeningRequest("cancel").then(
         () => {
           if (signal.aborted) return;
-          this.#queued = this.#queued.filter((item) => item.id !== id);
+          this.#removeQueued(id);
           this.reconcile();
         },
         (error: unknown) => {
           if (signal.aborted) return;
-          this.#failedDelivery = { id, message: errorMessage(error) };
+          this.#setFailure(
+            id,
+            userFacingError(
+              "Couldn't discard the opening request",
+              "The conversation didn't accept the change. Try discarding it again.",
+              error
+            )
+          );
           this.reconcile();
         }
       );
       return;
     }
-    this.#queued = this.#queued.filter((item) => item.id !== id);
+    this.#removeQueued(id);
     this.reconcile();
   };
 
+  /** Remove a held or failed item without sending it (same as `cancelQueued`). */
+  readonly discardQueued = (id: string): void => this.cancelQueued(id);
+
   readonly startQueued = (): void => {
     const derived = this.#derive();
-    if (derived.agentPresent || this.#armed || this.#queued.length === 0 || !this.#draft.model)
+    if (derived.agentPresent || this.#armed || this.#queued.length === 0) return;
+    if (!this.#draft.model) {
+      this.#setupRequired = {
+        reason: "no-model-selected",
+        ...userFacingError(
+          "Choose a model first",
+          "Pick a model for your agent above, then start again."
+        ),
+      };
+      this.reconcile();
       return;
+    }
     const selectedModel = this.#inputs.modelCatalog?.models.find(
       (model) => model.ref === this.#draft.model
     );
-    if (!isModelAgentLaunchable(selectedModel)) return;
+    if (!isModelAgentLaunchable(selectedModel)) {
+      // Never a silent no-op: say why the agent can't start and what to do.
+      this.#setupRequired = {
+        reason: "model-needs-setup",
+        modelRef: this.#draft.model,
+        ...userFacingError(
+          `${selectedModel?.name ?? "This model"} isn't ready yet`,
+          selectedModel?.availability.state === "downloading" ||
+            selectedModel?.availability.state === "starting"
+            ? "It is still being prepared. Start again when it is ready, or choose another model."
+            : "Connect its provider or finish its setup, or choose another model, then start again."
+        ),
+      };
+      this.reconcile();
+      return;
+    }
+    this.#setupRequired = undefined;
     this.#spawnIntent = {
       agentId: this.#agentTypeTouched ? this.#agentId : undefined,
       config: spawnConfigFromDraft(this.#draft),
@@ -308,13 +397,35 @@ export class DeferredAgentMachine implements ReadableStore<DeferredAgentSnapshot
   readonly retryLaunch = (): void => {
     this.#issued = false;
     this.#launchFailed = false; // re-arms the spawn driver
+    this.#launchError = undefined;
     this.reconcile();
   };
 
-  readonly retryDelivery = (): void => {
-    this.#failedDelivery = undefined;
+  /** Retry one failed item, or all of them; queued order resumes from it. */
+  readonly retryDelivery = (id?: string): void => {
+    if (id === undefined) this.#failures = new Map();
+    else if (this.#failures.has(id)) {
+      const next = new Map(this.#failures);
+      next.delete(id);
+      this.#failures = next;
+    }
     this.reconcile();
   };
+
+  #setFailure(id: string, failure: UserFacingError): void {
+    const next = new Map(this.#failures);
+    next.set(id, failure);
+    this.#failures = next;
+  }
+
+  #removeQueued(id: string): void {
+    this.#queued = this.#queued.filter((item) => item.id !== id);
+    if (this.#failures.has(id)) {
+      const next = new Map(this.#failures);
+      next.delete(id);
+      this.#failures = next;
+    }
+  }
 
   // ===========================================================================
   // Pipeline
@@ -344,7 +455,7 @@ export class DeferredAgentMachine implements ReadableStore<DeferredAgentSnapshot
       inputs.firstAgentPending &&
       !everHadAgent;
     const launching = !agentPresent && this.#armed;
-    const failed = this.#failedDelivery;
+    const firstFailure = this.#queued.find((item) => this.#failures.has(item.id));
     return {
       agentPresent,
       canDefer,
@@ -355,11 +466,37 @@ export class DeferredAgentMachine implements ReadableStore<DeferredAgentSnapshot
       setupActive,
       launching,
       active: setupActive || launching,
-      deliveryError:
-        failed && this.#queued.some((item) => item.id === failed.id)
-          ? failed.message || "Delivery failed"
-          : undefined,
+      deliveryError: firstFailure
+        ? (this.#failures.get(firstFailure.id)!.detail ??
+          this.#failures.get(firstFailure.id)!.title)
+        : undefined,
+      launchStage: this.#launchStage(agentPresent, preflight, modelSelectionRequired, canSpawn),
     };
+  }
+
+  /**
+   * The first agent's launch stage, from lifecycle facts: model discovery or an
+   * explicit choice pending, the host's create call in flight, a created agent
+   * not yet in the roster (its pending badge), the agent present.
+   */
+  #launchStage(
+    agentPresent: boolean,
+    preflight: "checking" | "ready" | "selection-required",
+    modelSelectionRequired: boolean,
+    canSpawn: boolean
+  ): LaunchStage | undefined {
+    if (agentPresent) return this.#queued.length > 0 ? "ready" : undefined;
+    if (this.#launchFailed) return "failed";
+    if (this.#armed) {
+      if (this.#spawnInFlight) return "creating-agent";
+      if (this.#issued) return "joining";
+      return canSpawn && preflight === "ready" ? "creating-agent" : "preparing-model";
+    }
+    if (this.#queued.length === 0) return undefined;
+    if (this.#inputs.pendingAgents.size > 0) return "joining";
+    if (this.#waitingForModelDiscovery || preflight === "checking" || modelSelectionRequired)
+      return "preparing-model";
+    return undefined;
   }
 
   /** One pass over every step; true when any step changed state. */
@@ -453,11 +590,17 @@ export class DeferredAgentMachine implements ReadableStore<DeferredAgentSnapshot
    */
   #detectLaunchFailure(): boolean {
     if (!this.#armed || this.#launchFailed || this.#derive().agentPresent) return false;
-    const failed = Array.from(this.#inputs.pendingAgents.values()).some(
+    const failed = Array.from(this.#inputs.pendingAgents.values()).find(
       (agent) => agent.status === "error"
     );
     if (!failed) return false;
     this.#launchFailed = true;
+    const technical = [failed.error?.message, failed.error?.details].filter(Boolean).join("\n");
+    this.#launchError = userFacingError(
+      "Your agent couldn't start",
+      "Your messages are still waiting. Check the agent's model and settings, then retry.",
+      technical ? new Error(technical) : undefined
+    );
     return true;
   }
 
@@ -556,6 +699,11 @@ export class DeferredAgentMachine implements ReadableStore<DeferredAgentSnapshot
           if (signal.aborted) return;
           this.#issued = false;
           this.#launchFailed = true;
+          this.#launchError = userFacingError(
+            "Your agent couldn't be created",
+            "Your messages are still waiting. Retry, or change the agent's settings first.",
+            error
+          );
           this.reconcile();
         }
       );
@@ -582,6 +730,8 @@ export class DeferredAgentMachine implements ReadableStore<DeferredAgentSnapshot
     const changed = this.#armed || this.#launchFailed;
     this.#armed = false;
     this.#launchFailed = false;
+    this.#launchError = undefined;
+    this.#setupRequired = undefined;
     return changed;
   }
 
@@ -631,8 +781,8 @@ export class DeferredAgentMachine implements ReadableStore<DeferredAgentSnapshot
           this.reconcile();
         }
       } catch (error) {
-        if (deliveryId && !signal.aborted)
-          this.#failedDelivery = { id: deliveryId, message: errorMessage(error) };
+        const failedItem = batch.find((item) => item.id === deliveryId);
+        if (failedItem && !signal.aborted) this.#setFailure(failedItem.id, deliveryFailure(failedItem, error));
       } finally {
         if (this.#flushing === flushing) this.#flushing = null;
         // Completion of the owned batch makes later input eligible; this also
@@ -700,9 +850,13 @@ export class DeferredAgentMachine implements ReadableStore<DeferredAgentSnapshot
       setupActive: derived.setupActive,
       launching: derived.launching,
       launchFailed: this.#launchFailed,
+      launchStage: derived.launchStage,
+      launchError: this.#launchFailed ? this.#launchError : undefined,
+      setupRequired: this.#setupRequired,
       deliveryError: derived.deliveryError,
       deliveringId: this.#flushing?.itemId,
       retryDelivery: this.retryDelivery,
+      discardQueued: this.discardQueued,
       modelSelectionRequired: derived.modelSelectionRequired,
       modelDiscoveryPending: derived.modelDiscoveryPending,
       startQueued: this.startQueued,
@@ -712,12 +866,38 @@ export class DeferredAgentMachine implements ReadableStore<DeferredAgentSnapshot
       agentId: this.#agentId,
       setAgentId: this.setAgentId,
       availableAgents: this.#inputs.availableAgents,
-      queued: this.#queued,
+      queued: this.#publishedQueue(),
       cancelQueued: this.cancelQueued,
     };
     const previous = this.#cell.getSnapshot().deferredAgent;
     if (previous && sameState(previous, next)) return;
     this.#cell.update({ deferredAgent: next });
+  }
+
+  /** The queue with each item's delivery status; cached by its inputs. */
+  #publishedQueue(): PendingDelivery[] {
+    const deliveringId = this.#flushing?.itemId;
+    const cached = this.#queueView;
+    if (
+      cached &&
+      cached.queued === this.#queued &&
+      cached.failures === this.#failures &&
+      cached.deliveringId === deliveringId
+    )
+      return cached.view;
+    let blockedBy: string | undefined;
+    const view = this.#queued.map((item): PendingDelivery => {
+      const failure = this.#failures.get(item.id);
+      if (failure) {
+        blockedBy ??= item.id;
+        return { ...item, status: "failed", failure };
+      }
+      if (item.id === deliveringId) return { ...item, status: "delivering" };
+      if (blockedBy) return { ...item, status: "waiting", waitingOn: blockedBy };
+      return { ...item, status: "queued" };
+    });
+    this.#queueView = { queued: this.#queued, failures: this.#failures, deliveringId, view };
+    return view;
   }
 
   #dispose(): void {

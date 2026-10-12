@@ -12,8 +12,9 @@ export {
   asError,
   errorMessage,
   shallowEqual,
+  userFacingError,
 } from "./store.js";
-export type { ReadableStore, StoreListener } from "./store.js";
+export type { ReadableStore, StoreListener, UserFacingError } from "./store.js";
 
 export {
   ChannelViewFeed,

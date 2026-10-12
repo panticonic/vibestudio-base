@@ -89,6 +89,9 @@ export interface ForkUiState {
   forking: boolean;
   /** Last actionable lineage/fork failure; never dropped to console only. */
   error?: string;
+  /** The live lineage stream stopped; `actions.retryLiveUpdates()` resumes it
+   *  (the client's reconnect event also resumes it automatically). */
+  liveUpdatesInterrupted?: boolean;
   /** Reconcile siblings + badges from durable heads (call on switcher/tree open). */
   refresh: () => void;
   /** Walk provenance up + forks down into the full lineage tree (lazy). */
@@ -104,5 +107,7 @@ export interface ForkUiState {
     archiveFork: (entry: ForkEntry) => Promise<void>;
     clearError: () => void;
     reportError: (summary: string, error: unknown) => void;
+    /** Resubscribe the live lineage stream after it stopped. */
+    retryLiveUpdates?: () => void;
   } & ForkNavHandlers;
 }

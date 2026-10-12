@@ -182,7 +182,15 @@ export interface QuickfireSessionView {
     reason: string | null;
   } | null;
   streaming: boolean;
+  /**
+   * The conversation could not be bound or joined. Surfaces disable composing
+   * while it is set (there is nothing to send to).
+   */
   error: string | null;
+  /** The last message could not be sent; composing stays available to retry. */
+  sendError: string | null;
+  /** Earlier history (or the live transcript stream) failed to load. */
+  historyError: string | null;
 }
 
 export interface QuickfireSessionController {
@@ -233,6 +241,8 @@ const IDLE: QuickfireSessionView = {
   credentialRequest: null,
   streaming: false,
   error: null,
+  sendError: null,
+  historyError: null,
 };
 
 function durableResponseObservedAfter(
@@ -377,8 +387,8 @@ export function useQuickfireSessionCore(
     let reportedError: string | null = null;
     return feed.subscribe(() => {
       const { error } = feed.getSnapshot();
-      if (error && error !== reportedError) {
-        setView((current) => ({ ...current, error }));
+      if (error !== reportedError) {
+        setView((current) => ({ ...current, historyError: error }));
       }
       reportedError = error;
       schedulePush();
@@ -415,7 +425,7 @@ export function useQuickfireSessionCore(
       } catch (error) {
         setView((current) => ({
           ...current,
-          error: error instanceof Error ? error.message : String(error),
+          sendError: error instanceof Error ? error.message : String(error),
         }));
         return false;
       }
@@ -588,7 +598,7 @@ export function useQuickfireSessionCore(
       awaitingResponseRef.current = {
         afterCursor: feed.view.cursor ?? 0,
       };
-      setView((current) => ({ ...current, error: null, streaming: true }));
+      setView((current) => ({ ...current, sendError: null, streaming: true }));
       flush();
       // Not connected yet: the resolve effect delivers this once the channel is
       // ready (see `queuedRef`). Sending and binding are one gesture from the
@@ -845,7 +855,6 @@ export function useQuickfireSessionCore(
       flush();
       return;
     }
-    setView((current) => ({ ...current, error: null }));
     await feed.loadEarlierMessages(HISTORY_PAGE_SIZE);
     // A failed page is reported through the feed's error (see the
     // subscription above); only a fetched page reveals more entries.

@@ -51,9 +51,21 @@ import {
   type ProvisionalAgentIntent,
 } from "../../provisional-agent-lifecycle.js";
 import type { AgenticChatActions, AvailableAgent, ModelSetupResult } from "../../types.js";
-import { RetainCount, StateCell, errorMessage, type ReadableStore } from "../store.js";
+import {
+  RetainCount,
+  StateCell,
+  errorMessage,
+  userFacingError,
+  type ReadableStore,
+  type UserFacingError,
+} from "../store.js";
 import { createAndSubscribeAgent, persistInstalledAgent } from "./agent-lifecycle.js";
-import { AgentRecoveryLoop, type AgentRecoveryState } from "./agent-recovery.js";
+import {
+  AgentRecoveryRunner,
+  IDLE_RECOVERY,
+  type AgentRecoveryProgress,
+  type AgentRecoveryState,
+} from "./agent-recovery.js";
 import {
   buildAgentSubscriptionConfig,
   parseDoTargetId,
@@ -83,16 +95,6 @@ export const BOOTSTRAP_REVIEW_REPERSIST_MS = 5_000;
  * (download progress); they are coalesced into one model-settings refresh.
  */
 export const LOCAL_MODEL_REFRESH_DEBOUNCE_MS = 500;
-/**
- * EXISTING PRODUCT BEHAVIOUR: during a cold bootstrap workspace units are
- * admitted and built asynchronously, so an empty (or failed) agent catalog is
- * provisional. It is re-read with exponential backoff until at least one agent
- * exists. The host publishes no "catalog changed" event to wait on instead.
- */
-export function agentCatalogRepollDelayMs(attempt: number): number {
-  return Math.min(30_000, 2_000 * 2 ** Math.min(attempt, 4));
-}
-
 export type ChatHostModelPreflight = "checking" | "ready" | "selection-required";
 
 export interface ChatHostSnapshot {
@@ -111,8 +113,15 @@ export interface ChatHostSnapshot {
    *  explicit choice is required (no usable default). */
   firstAgentModelPreflight: ChatHostModelPreflight;
   /** Last model discovery failure; retry with `retryModelSettings()`. */
-  modelSettingsError: string | null;
-  /** Installed-agent recovery: idle, recovering, or failed with `error`. */
+  modelSettingsError: UserFacingError | null;
+  /**
+   * Last agent catalog read failure; it is re-read on the next workspace event
+   * (review decided, config or unit set changed, transport reconnect) or with
+   * `retryAgentCatalog()`.
+   */
+  agentCatalogError: UserFacingError | null;
+  /** Installed-agent recovery: idle, recovering (with the missing handles), or
+   *  failed with a user-facing `error` until the next trigger or Retry. */
   recovery: AgentRecoveryState;
   /**
    * Revision of "the chat connection may be unblocked": it advances when model
@@ -136,6 +145,7 @@ export type ChatHostAgentActions = Required<
     | "onInstallLocalModel"
     | "onConnectModelProvider"
     | "onSaveDefaults"
+    | "onParticipantsChanged"
   >
 >;
 
@@ -153,6 +163,15 @@ export function chatHostActionData(
     defaultAgentConfig: snapshot.effectiveDefaultAgentConfig,
     firstAgentModelPreflight: snapshot.firstAgentModelPreflight,
   };
+}
+
+/** The user-facing failure of reading model settings. */
+function modelSettingsFailure(cause: unknown): UserFacingError {
+  return userFacingError(
+    "Models are unavailable right now",
+    "Chat can't start a new agent until models load. Retry; if it keeps failing, open model settings to check your providers.",
+    cause
+  );
 }
 
 function effectiveDefaultAgentConfig(
@@ -193,7 +212,8 @@ function initialSnapshot(channelName: string | null): ChatHostSnapshot {
     effectiveDefaultAgentConfig: null,
     firstAgentModelPreflight: "checking",
     modelSettingsError: null,
-    recovery: { status: "idle", error: null },
+    agentCatalogError: null,
+    recovery: IDLE_RECOVERY,
     connectionRetrySignal: 0,
   };
 }
@@ -231,10 +251,11 @@ export class ChatHostController implements ReadableStore<ChatHostSnapshot> {
   // --- agents ---
   #provisional: ProvisionalAgentLifecycle | null = null;
   #provisionalIntentRevision = 0;
-  readonly #recovery: AgentRecoveryLoop;
+  readonly #recovery: AgentRecoveryRunner;
   #recoveryKey: string | null = null;
   #effectiveConfigKey: string | null = null;
   #forkCursorWrites: Promise<void> = Promise.resolve();
+  #participantsKey: string | null = null;
 
   readonly actions: ChatHostAgentActions;
 
@@ -245,17 +266,9 @@ export class ChatHostController implements ReadableStore<ChatHostSnapshot> {
     this.#persistedChannelName = persisted;
     this.#cell = new StateCell(initialSnapshot(persisted ?? null));
     this.#retain = new RetainCount({ start: () => this.#start(), dispose: () => this.#dispose() });
-    this.#recovery = new AgentRecoveryLoop({
-      onState: (recovery) => this.#cell.update({ recovery }),
-      onFailure: (error) => {
-        console.warn("[ChatHost] Agent subscription recovery failed:", error);
-        void this.#ports.notify?.({
-          type: "error",
-          title: "Couldn't reconnect the chat agent",
-          message: error.message,
-        });
-      },
-    });
+    // A recovery failure is snapshot state (`recovery.error`) that hosts render
+    // with its Retry; it is deliberately not also sent through `notify`.
+    this.#recovery = new AgentRecoveryRunner((recovery) => this.#cell.update({ recovery }));
     this.actions = {
       onListTaskRules: () => this.listTaskRules(),
       onResetTaskRules: () => this.resetTaskRules(),
@@ -272,6 +285,7 @@ export class ChatHostController implements ReadableStore<ChatHostSnapshot> {
       onConnectModelProvider: (modelRef, method, browser, signal, configuration) =>
         this.connectModelProvider(modelRef, method, browser, signal, configuration),
       onSaveDefaults: (config) => this.saveDefaultAgentConfig(config),
+      onParticipantsChanged: (participantIds) => this.notifyParticipantsChanged(participantIds),
     };
   }
 
@@ -303,8 +317,13 @@ export class ChatHostController implements ReadableStore<ChatHostSnapshot> {
           this.#modelSettings = null;
           this.#cell.update({ firstAgentModelPreflight: "checking" });
         },
-        reconnect: () => this.#refreshModelSettings(true),
-        failure: (error) => this.#cell.update({ modelSettingsError: errorMessage(error) }),
+        reconnect: () =>
+          this.#cell.transaction(() => {
+            this.#refreshModelSettings(true);
+            this.#discoverAgents();
+            this.#recovery.trigger();
+          }),
+        failure: (error) => this.#cell.update({ modelSettingsError: modelSettingsFailure(error) }),
       });
     }
     if (ports.onWorkspaceEvent) {
@@ -317,9 +336,24 @@ export class ChatHostController implements ReadableStore<ChatHostSnapshot> {
             this.#approvalNeedsConnectionRetry = true;
             this.#refreshModelSettings(true);
             this.#ensureChannel();
+            this.#recovery.trigger();
           });
         }),
-        ports.onWorkspaceEvent("workspace-config-changed", () => this.#refreshModelSettings(true))
+        ports.onWorkspaceEvent("workspace-config-changed", () =>
+          this.#cell.transaction(() => {
+            this.#refreshModelSettings(true);
+            this.#recovery.trigger();
+          })
+        ),
+        // A publication changed the workspace's units: the agent catalog is
+        // stale, and an installed agent whose worker was missing or broken may
+        // be launchable now.
+        ports.onWorkspaceEvent("units-changed", () =>
+          this.#cell.transaction(() => {
+            this.#discoverAgents();
+            this.#recovery.trigger();
+          })
+        )
       );
     }
     if (ports.localModels) {
@@ -425,7 +459,9 @@ export class ChatHostController implements ReadableStore<ChatHostSnapshot> {
     if (recoveryKey !== this.#recoveryKey) {
       this.#recoveryKey = recoveryKey;
       this.#recovery.run(
-        recoveryInputs ? (signal) => this.#recoverInstalledAgents(recoveryInputs, signal) : null
+        recoveryInputs
+          ? (signal, progress) => this.#recoverInstalledAgents(recoveryInputs, signal, progress)
+          : null
       );
     }
   }
@@ -544,7 +580,7 @@ export class ChatHostController implements ReadableStore<ChatHostSnapshot> {
       (error: unknown) => {
         if (!current()) return;
         this.#modelSettingsRecovering = true;
-        this.#cell.update({ modelSettingsError: errorMessage(error) });
+        this.#cell.update({ modelSettingsError: modelSettingsFailure(error) });
       }
     );
   }
@@ -569,67 +605,67 @@ export class ChatHostController implements ReadableStore<ChatHostSnapshot> {
   // Agent catalog
   // ===========================================================================
 
+  /** Re-read the agent catalog (the "Retry" affordance of a catalog error). */
+  retryAgentCatalog(): void {
+    this.#discoverAgents();
+  }
+
+  /**
+   * Read the agent catalog once. There is no re-poll: during a cold bootstrap
+   * the catalog fills as units are published, and each publication raises the
+   * workspace `units-changed` event, which re-runs this read (as do a decided
+   * review, a config change and a transport reconnect).
+   */
   #discoverAgents(): void {
     this.#agentDiscovery?.abort();
     if (this.#lifetime.signal.aborted) return;
     const generation = new AbortController();
     this.#agentDiscovery = generation;
     const { signal } = generation;
-    let attempt = 0;
-    let timer: ReturnType<typeof setTimeout> | null = null;
-    signal.addEventListener("abort", () => timer !== null && clearTimeout(timer), { once: true });
-    const repoll = () => {
-      if (signal.aborted) return;
-      timer = setTimeout(load, agentCatalogRepollDelayMs(attempt));
-      attempt += 1;
-    };
-    const load = () => {
-      timer = null;
-      void this.#ports.rpc
-        .call("main", mainRpcMethods["workers.listSources"], [])
-        .then((sources) => {
-          if (signal.aborted) return;
-          const agents: AvailableAgent[] = [];
-          for (const source of sources) {
-            if (!source.agent) continue;
-            for (const cls of source.classes) {
-              agents.push({
-                id: source.source,
-                className: cls.className,
-                name: source.agent.displayName ?? source.title ?? source.name,
-                description: source.agent.description,
-                icon: source.icon,
-                defaultConfig:
-                  source.agent.defaultConfig === undefined
-                    ? undefined
-                    : agentSubscriptionConfigSchema.parse(source.agent.defaultConfig),
-                proposedHandle: source.name.split("-")[0] ?? source.name,
-              });
-            }
-          }
-          this.#cell.transaction(() => {
-            this.#cell.update({ availableAgents: agents });
-            this.#prepareInitialAgentRuntimeIfReady();
-          });
-          if (agents.length === 0) {
-            repoll();
-          } else {
-            attempt = 0;
-            console.info("[ChatHost] agent source catalog ready", {
-              sourceCount: sources.length,
-              agentCount: agents.length,
+    void this.#ports.rpc
+      .call("main", mainRpcMethods["workers.listSources"], [], { signal })
+      .then((sources) => {
+        if (signal.aborted) return;
+        const agents: AvailableAgent[] = [];
+        for (const source of sources) {
+          if (!source.agent) continue;
+          for (const cls of source.classes) {
+            agents.push({
+              id: source.source,
+              className: cls.className,
+              name: source.agent.displayName ?? source.title ?? source.name,
+              description: source.agent.description,
+              icon: source.icon,
+              defaultConfig:
+                source.agent.defaultConfig === undefined
+                  ? undefined
+                  : agentSubscriptionConfigSchema.parse(source.agent.defaultConfig),
+              proposedHandle: source.name.split("-")[0] ?? source.name,
             });
           }
-        })
-        .catch((error: unknown) => {
-          if (signal.aborted) return;
-          if (!isReviewPending(error)) {
-            console.warn("[ChatHost] Failed to load worker sources; retrying:", error);
-          }
-          repoll();
+        }
+        this.#cell.transaction(() => {
+          this.#cell.update({ availableAgents: agents, agentCatalogError: null });
+          this.#prepareInitialAgentRuntimeIfReady();
         });
-    };
-    load();
+        console.info("[ChatHost] agent source catalog read", {
+          sourceCount: sources.length,
+          agentCount: agents.length,
+        });
+      })
+      .catch((error: unknown) => {
+        if (signal.aborted) return;
+        // A pending review is not a failure: the approval event re-reads.
+        if (isReviewPending(error)) return;
+        console.warn("[ChatHost] Failed to load worker sources:", error);
+        this.#cell.update({
+          agentCatalogError: userFacingError(
+            "Couldn't load the list of agents",
+            "Agents you already added keep working. Retry; the list also refreshes when the workspace changes.",
+            error
+          ),
+        });
+      });
   }
 
   /**
@@ -683,9 +719,22 @@ export class ChatHostController implements ReadableStore<ChatHostSnapshot> {
   // Recovery
   // ===========================================================================
 
-  /** Start a fresh recovery attempt (the "Retry" affordance of a failure). */
+  /** Attempt recovery again now (the "Retry" affordance of a failure). */
   retryAgentRecovery(): void {
-    this.#recovery.retry();
+    this.#recovery.trigger();
+  }
+
+  /**
+   * The channel's participants changed (the session reports its roster). A
+   * departure can leave an installed agent missing, so recovery re-checks.
+   */
+  notifyParticipantsChanged(participantIds: readonly string[]): void {
+    const key = [...participantIds].sort().join("\0");
+    const previous = this.#participantsKey;
+    this.#participantsKey = key;
+    if (previous === null || previous === key) return;
+    const left = previous.split("\0").some((id) => id && !participantIds.includes(id));
+    if (left) this.#recovery.trigger();
   }
 
   async #channelDurableObjects(channelId: string, signal: AbortSignal): Promise<ChannelDORef[]> {
@@ -717,7 +766,8 @@ export class ChatHostController implements ReadableStore<ChatHostSnapshot> {
       systemPrompt?: string;
       systemPromptMode?: ChatHostState["systemPromptMode"];
     },
-    signal: AbortSignal
+    signal: AbortSignal,
+    progress: AgentRecoveryProgress
   ): Promise<void> {
     const contextId = requireChatContextId(this.#ports.contextId);
     const dos = await this.#channelDurableObjects(inputs.channelName, signal);
@@ -732,6 +782,7 @@ export class ChatHostController implements ReadableStore<ChatHostSnapshot> {
         )
     );
     if (missing.length === 0) return;
+    progress.missing(missing.map((agent) => agent.handle));
     const defaultAgentConfig = await this.resolveWorkspaceDefaultAgentConfig();
     signal.throwIfAborted();
     for (const agent of missing) {
@@ -992,10 +1043,11 @@ export class ChatHostController implements ReadableStore<ChatHostSnapshot> {
         ),
       });
     } catch (error) {
+      console.warn(`[ChatHost] Failed to remove @${handle}:`, error);
       void this.#ports.notify?.({
         type: "error",
         title: `Couldn't remove @${handle}`,
-        message: errorMessage(error),
+        message: `It is still in this conversation. Try again. (Details: ${errorMessage(error)})`,
       });
       throw error;
     }

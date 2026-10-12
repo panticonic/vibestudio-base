@@ -1,38 +1,35 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
-import { AgentRecoveryLoop, type AgentRecoveryState } from "./agent-recovery.js";
+import { describe, expect, it, vi } from "vitest";
+import {
+  AgentRecoveryRunner,
+  type AgentRecoveryProgress,
+  type AgentRecoveryState,
+} from "./agent-recovery.js";
 
-afterEach(() => {
-  vi.useRealTimers();
-});
-
-function loop(onFailure = vi.fn()) {
+function runner() {
   const states: AgentRecoveryState[] = [];
-  const recovery = new AgentRecoveryLoop({
-    onState: (state) => states.push(state),
-    onFailure,
-  });
-  return { recovery, states, onFailure };
+  const recovery = new AgentRecoveryRunner((state) => states.push(state));
+  return { recovery, states };
 }
 
-describe("agent recovery ownership", () => {
-  it("restarts after its first generation is cancelled", async () => {
+describe("agent recovery runner", () => {
+  it("supersedes an attempt that a newer trigger replaced", async () => {
     const signals: AbortSignal[] = [];
     const recover = vi.fn(async (signal: AbortSignal) => {
       signals.push(signal);
       await Promise.resolve();
       signal.throwIfAborted();
     });
-    const { recovery, onFailure } = loop();
+    const { recovery } = runner();
     recovery.run(recover);
-    recovery.retry();
+    recovery.trigger();
     await vi.waitFor(() => expect(recovery.state.status).toBe("idle"));
     expect(signals).toHaveLength(2);
     expect(signals[0]!.aborted).toBe(true);
     expect(signals[1]!.aborted).toBe(false);
-    expect(onFailure).not.toHaveBeenCalled();
+    expect(recovery.state.attempt).toBe(2);
   });
 
-  it("ignores an abandoned failure after a replacement recovery succeeds", async () => {
+  it("ignores an abandoned failure after a replacement task succeeds", async () => {
     let rejectOld!: (error: Error) => void;
     let oldSignal!: AbortSignal;
     const old = (signal: AbortSignal) => {
@@ -41,46 +38,64 @@ describe("agent recovery ownership", () => {
         rejectOld = reject;
       });
     };
-    const next = vi.fn(async () => {});
-    const { recovery, onFailure } = loop();
+    const { recovery } = runner();
     recovery.run(old);
-    recovery.run(next);
+    recovery.run(async () => {});
     await vi.waitFor(() => expect(recovery.state.status).toBe("idle"));
     expect(oldSignal.aborted).toBe(true);
     rejectOld(new Error("abandoned"));
     await Promise.resolve();
-    expect(recovery.state).toEqual({ status: "idle", error: null });
-    expect(onFailure).not.toHaveBeenCalled();
+    expect(recovery.state).toMatchObject({ status: "idle", error: null, attempt: 1 });
   });
 
-  it("cancels retry backoff when disposed", async () => {
+  it("makes one attempt per trigger: a failure is terminal until the next trigger, with no timer", async () => {
     vi.useFakeTimers();
-    const recover = vi.fn(async () => {
-      throw new Error("not ready");
-    });
-    const { recovery } = loop();
-    recovery.run(recover);
-    await vi.advanceTimersByTimeAsync(0);
-    expect(vi.getTimerCount()).toBe(1);
+    try {
+      const recover = vi.fn<(signal: AbortSignal, progress: AgentRecoveryProgress) => Promise<void>>(
+        async (_signal, progress) => {
+          progress.missing(["ai-chat"]);
+          throw new Error("worker build failed");
+        }
+      );
+      const { recovery } = runner();
+      recovery.run(recover);
+      await vi.advanceTimersByTimeAsync(0);
+      expect(recovery.state).toMatchObject({
+        status: "failed",
+        missing: ["ai-chat"],
+        attempt: 1,
+        error: {
+          title: "@ai-chat didn't reconnect to this conversation",
+          detail: "worker build failed",
+        },
+      });
+      expect(vi.getTimerCount()).toBe(0);
+      await vi.advanceTimersByTimeAsync(120_000);
+      expect(recover).toHaveBeenCalledTimes(1);
+      recover.mockImplementation(async () => {});
+      recovery.trigger();
+      await vi.advanceTimersByTimeAsync(0);
+      expect(recovery.state).toMatchObject({ status: "idle", error: null, missing: [], attempt: 2 });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("reports progress and stops publishing after disposal", async () => {
+    let finish!: () => void;
+    const { recovery, states } = runner();
+    recovery.run(
+      (_signal, progress) =>
+        new Promise<void>((resolve) => {
+          progress.missing(["a", "b"]);
+          finish = resolve;
+        })
+    );
+    expect(recovery.state).toMatchObject({ status: "recovering", missing: ["a", "b"] });
     recovery.dispose();
-    await vi.advanceTimersByTimeAsync(60_000);
-    expect(recover).toHaveBeenCalledTimes(1);
-    expect(vi.getTimerCount()).toBe(0);
-  });
-
-  it("reaches a terminal failure and permits an explicit fresh recovery", async () => {
-    vi.useFakeTimers();
-    const recover = vi.fn(async (): Promise<void> => {
-      throw new Error("offline");
-    });
-    const { recovery, onFailure } = loop();
-    recovery.run(recover);
-    await vi.advanceTimersByTimeAsync(60_000);
-    expect(recovery.state).toEqual({ status: "failed", error: "offline" });
-    expect(onFailure).toHaveBeenCalledTimes(1);
-    recover.mockImplementation(async () => {});
-    recovery.retry();
-    await vi.advanceTimersByTimeAsync(0);
-    expect(recovery.state).toEqual({ status: "idle", error: null });
+    const published = states.length;
+    finish();
+    await Promise.resolve();
+    expect(states).toHaveLength(published);
   });
 });
