@@ -45,11 +45,9 @@ import type {
   ScopeManager,
   ScopesApi,
 } from "@workspace/eval";
-import type { MessageTier } from "@workspace/agentic-protocol";
 import type { RpcFailure } from "@vibestudio/rpc";
 import type { DefaultAgentConfig } from "@workspace/model-catalog/catalog";
-import type { AgentConfigDraft } from "./components/AgentConfigForm";
-import type { ChildTranscriptConnection } from "./hooks/useChildTranscript";
+import type { ChildTranscriptConnection } from "@workspace/agentic-core/chat-store";
 import type {
   ChatParticipantMetadata,
   ChatSandboxValue,
@@ -176,206 +174,44 @@ export interface ChatInputContextValue {
   setReplyTo: (messageId: string | null) => void;
 }
 
-/**
- * What pressing Enter will do right now, given agent-busy + send-mode state.
- * - `send`  — no agent busy: a normal send.
- * - `steer` — an agent is mid-turn: the default send steers it.
- * - `queue` — after-turn mode armed: the message waits until the turn closes.
- */
-export type PrimaryActionIntent = "send" | "steer" | "queue";
-
-/** Transient outcome of the last incremental flush, for the pill + aria-live. */
-export interface FlushNarration {
-  text: string;
-  /** Remaining queued items after this flush step (drives "· N waiting"). */
-  remaining: number;
-}
-
-/** A short, reversible client-side undo window after retract/cancel. */
-export interface UndoableAction {
-  kind: "retract" | "cancel";
-  /** Messages covered by this undo. Consecutive cancels within the window
-   *  accumulate here so a single Undo restores them all (e.g. "cancel queued"). */
-  messageIds: string[];
-  /** The resend can restore text only; the original carried richer delivery data. */
-  textOnlyRestore?: boolean;
-  /** Epoch ms when the undo window closes. */
-  expiresAt: number;
-}
+/** Delivery-model UI types (send intent, flush narration, undo window) live
+ *  with the chat session in the core. */
+export type {
+  FlushNarration,
+  PrimaryActionIntent,
+  UndoableAction,
+} from "@workspace/agentic-core/chat-store";
+import type {
+  FlushNarration,
+  PrimaryActionIntent,
+  UndoableAction,
+} from "@workspace/agentic-core/chat-store";
 
 // ===========================================================================
 // Deferred agent — first-agent setup + pre-send delivery queue
 // ===========================================================================
 
-/** A message the user "sent" while no agent was present yet — held client-side
- *  (unsent) and flushed live once the first agent joins the roster, so the very
- *  first message lands as a normal live turn rather than backlog replay. */
-export interface PendingDelivery {
-  kind: "message" | "opening-request";
-  id: string;
-  text: string;
-  attachments?: AttachmentInput[];
-  mentions?: string[];
-  replyTo?: string;
-  metadata?: Record<string, unknown>;
-  tier?: MessageTier;
-  /** Stable key for idempotent (re)delivery — for a queued message. */
-  idempotencyKey?: string;
-}
-
-/** State for the first-agent flow: the inline armed config plus the queue of
- *  messages waiting for that agent to come online. Present only on surfaces that
- *  can create agents, or have a retained opening request. */
-export interface DeferredAgentState {
-  /** No agent present and one can or will be created — hides the header
-   *  "Add agent" launcher (the inline setup owns adding the first agent). */
-  active: boolean;
-  /** Show the inline config card: no agent present, none already spawning, and
-   *  we have the means to spawn one. Flips false once the first message arms it. */
-  setupActive: boolean;
-  /** True once the first message has armed the spawn (agent launching) — drives
-   *  the "Launching agent…" spinner/explanation in the pre-send queue. */
-  launching: boolean;
-  /** The spawn failed (onAddAgent rejected) — drives the queue's error + retry UI. */
-  launchFailed: boolean;
-  deliveryError?: string;
-  /** The currently owned publication cannot be removed as an unsent message. */
-  deliveringId?: string;
-  retryDelivery: () => void;
-  /** The host found no configured model for the first agent. Its queued first
-   *  message must wait for an explicit model/provider choice. */
-  modelSelectionRequired: boolean;
-  /** Model/provider discovery has not resolved yet. The queued message is
-   * waiting on preflight, not on an agent that has already been launched. */
-  modelDiscoveryPending: boolean;
-  /** Confirm the current draft and start the agent for the queued message. */
-  startQueued: () => void;
-  /** Retry a failed launch (re-issues the spawn). */
-  retryLaunch: () => void;
-  /** Inline config draft (model/effort/autonomy/…) applied to the agent spawned
-   *  on the first message. */
-  draft: AgentConfigDraft;
-  setDraft: (next: AgentConfigDraft) => void;
-  /** Selected agent-type id (worker source) for the first agent. */
-  agentId: string | undefined;
-  setAgentId: (id: string | undefined) => void;
-  /** Agent types available to choose from (mirrors `availableAgents`). */
-  availableAgents: AvailableAgent[];
-  /** Messages queued (unsent) until the agent joins; rendered in the pre-send queue. */
-  queued: PendingDelivery[];
-  /** Drop a queued message before it is delivered. */
-  cancelQueued: (id: string) => void;
-}
+// The pending-delivery queue and first-agent flow state are owned by the
+// headless DeferredAgentMachine; these are its public shapes.
+export type {
+  DeferredAgentState,
+  PendingDelivery,
+} from "@workspace/agentic-core/chat-store";
+import type { DeferredAgentState } from "@workspace/agentic-core/chat-store";
 
 // ===========================================================================
 // Fork lineage UI (switcher, tree, inline rows, subagent review)
 // ===========================================================================
 
-/** Client-side mirror of the channel DO's `getProvenance()` result. */
-export type ChannelProvenance =
-  | { kind: "root" }
-  | {
-      kind: "fork";
-      forkedFrom: string;
-      parentContextId: string;
-      forkPointId: number;
-      rootChannelId: string;
-    }
-  | {
-      kind: "task";
-      parentChannelId: string;
-      parentContextId: string;
-      runId: string;
-    };
-
-/** A fork surfaced in the switcher / tree (a child of the current channel or a
- *  sibling read from the parent's `forks` projection). */
-export interface ForkEntry {
-  forkId: string;
-  channelId: string;
-  contextId: string;
-  label: string;
-  reason: string;
-  actorName: string;
-  actorId: string;
-  forkPointId: number;
-  createdAtSeq: number;
-  /** Latest durable head reported by this fork. */
-  headSeq: number;
-  /** Channel on whose log rename/archive facts for this entry live. */
-  parentChannelId: string;
-  archived: boolean;
-  /** Live "has unread since our cursor" badge, reconciled on open (§H). */
-  unread?: boolean;
-}
-
-/** One node of the lazily-walked lineage tree ("Show tree" overlay). */
-export interface ForkTreeNode {
-  channelId: string;
-  contextId?: string;
-  label: string;
-  provenanceKind: "root" | "fork" | "task";
-  children: ForkTreeNode[];
-  isCurrent: boolean;
-  headSeq?: number;
-  unread?: boolean;
-}
-
-/** Panel-supplied navigation handlers. */
-export interface ForkNavHandlers {
-  /** In-place switch: rebind the panel's channel + context and reconnect. */
-  switchTo: (channelId: string, contextId: string) => void | Promise<void>;
-  /** Side-by-side: open the fork in a NEW chat panel. */
-  openInNewPanel: (
-    channelId: string,
-    contextId: string,
-  ) => void | Promise<void>;
-  /** Panel-persisted lineage read cursors. */
-  readForkCursors?: () => Record<string, number>;
-  /** Persist one monotone lineage read cursor. */
-  markForkRead?: (channelId: string, headSeq: number) => void | Promise<void>;
-  /** A fork the local user did not initiate just landed. The shell owns focus
-   * policy and notification presentation. */
-  onExternalFork?: (fork: {
-    forkedChannelId: string;
-    forkedContextId: string;
-    actorName: string;
-    forkPointId: number;
-  }) => void | Promise<void>;
-}
-
-/** Fork lineage state + actions threaded onto ChatContextValue and read by the
- *  ForkSwitcher, ForkTreeView, inline fork rows, and SubagentRunCard. */
-export interface ForkUiState {
-  provenance?: ChannelProvenance;
-  currentLabel: string;
-  /** Direct-child forks of the current channel (from `ChannelViewState.forks`). */
-  children: ForkEntry[];
-  /** Sibling forks (the parent's other children); loaded lazily by `refresh`. */
-  siblings: ForkEntry[];
-  /** Parent channel breadcrumb, when this channel is itself a fork. */
-  parent?: { channelId: string; contextId?: string };
-  /** True while a fork op is mid-flight (disables the affordances). */
-  forking: boolean;
-  /** Last actionable lineage/fork failure; never dropped to console only. */
-  error?: string;
-  /** Reconcile siblings + badges from durable heads (call on switcher/tree open). */
-  refresh: () => void;
-  /** Walk provenance up + forks down into the full lineage tree (lazy). */
-  loadTree: () => Promise<ForkTreeNode[]>;
-  actions: {
-    /** Fork at a message's seq (inclusive), no seed. */
-    forkFromMessage: (msg: ChatMessage) => Promise<void>;
-    /** Fork at seq−1 seeding an edited/authored turn (replaces for agent msgs). */
-    editAndForkMessage: (msg: ChatMessage, newText: string) => Promise<void>;
-    /** Channel-level fork at the current head, no seed. */
-    newFork: () => Promise<void>;
-    renameFork: (entry: ForkEntry, label: string) => Promise<void>;
-    archiveFork: (entry: ForkEntry) => Promise<void>;
-    clearError: () => void;
-    reportError: (summary: string, error: unknown) => void;
-  } & ForkNavHandlers;
-}
+/** Fork lineage UI types live with the `ForkLineageStore` in the core. */
+export type {
+  ChannelProvenance,
+  ForkEntry,
+  ForkNavHandlers,
+  ForkTreeNode,
+  ForkUiState,
+} from "@workspace/agentic-core/chat-store";
+import type { ForkUiState } from "@workspace/agentic-core/chat-store";
 
 // ===========================================================================
 // ChatContext Value

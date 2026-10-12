@@ -1,10 +1,9 @@
 // @vitest-environment jsdom
-import { useCallback } from "react";
+import { useEffect } from "react";
 import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createStateArgsRuntime } from "../../../runtime/src/panel/stateArgs.js";
 import { asPanelSlotId } from "@vibestudio/shared/panel/idValues";
-import { useAgentRecovery } from "../../../../panels/chat/useAgentRecovery.js";
 
 const binding = vi.hoisted(() => ({ get: () => ({}) as unknown }));
 vi.mock("@workspace/runtime", () => ({
@@ -16,7 +15,7 @@ import { useStateArgs } from "../hooks.js";
 afterEach(cleanup);
 
 describe("state args subscriptions", () => {
-  it("does not restart agent recovery when an incoming item advances only the read cursor", async () => {
+  it("keeps unrelated field identity, so work keyed on it does not restart, when only the read cursor advances", async () => {
     const initial = {
       installedAgents: [{ key: "agent-1", config: { model: "test" } }],
       forkCursors: { chat: 1 },
@@ -31,18 +30,16 @@ describe("state args subscriptions", () => {
         ),
     });
     binding.get = state.get;
-    const recover = vi.fn(async () => {});
-    const onFailure = vi.fn();
+    // Work keyed on `installedAgents` (as agent recovery is) runs once per identity.
+    const recover = vi.fn();
     const { result } = renderHook(() => {
       const args = useStateArgs<typeof initial>();
-      const recoverAgents = useCallback(
-        async () => recover(),
-        [args.installedAgents],
-      );
-      return { args, ...useAgentRecovery(recoverAgents, onFailure) };
+      useEffect(() => {
+        recover();
+      }, [args.installedAgents]);
+      return { args };
     });
-    await waitFor(() => expect(result.current.status).toBe("idle"));
-    expect(recover).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(recover).toHaveBeenCalledTimes(1));
 
     for (const chat of [2, 3, 4]) {
       await act(async () =>

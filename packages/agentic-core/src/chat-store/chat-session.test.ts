@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import { pruneAfterTurnIds, titleFromFirstUserMessage } from "./useChatCore";
-import type { ChatMessage } from "../../types";
+import { pruneAfterTurnIds, titleFromFirstUserMessage } from "./chat-session.js";
+import type { ChatMessage } from "../derived-types.js";
 
 const SELF = "panel:user";
 const selfMsg = (id: string, extra: Partial<ChatMessage> = {}): ChatMessage =>

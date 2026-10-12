@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { connectionRetryDelayMs, isTransientConnectionFailure } from "./connectionRetry";
+import { connectionRetryDelayMs, isTransientConnectionFailure } from "./connection-retry.js";
 
 describe("chat connection recovery", () => {
   it("backs transient reconnects off to a bounded five-second interval", () => {

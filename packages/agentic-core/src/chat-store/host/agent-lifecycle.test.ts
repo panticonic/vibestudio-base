@@ -10,10 +10,10 @@ import {
   ProvisionalAgentLifecycle,
   type AgentLaunchRpc,
   type ProvisionalAgentIntent,
-} from "@workspace/agentic-core";
+} from "../../index.js";
 
 const mocks = vi.hoisted(() => ({
-  waitForApprovalResolution: vi.fn(async () => undefined),
+  waitForApprovalResolution: vi.fn(async (_rpc: unknown, _approvalId: string) => undefined),
   getStateArgs: vi.fn(),
   patchStateArgs: vi.fn(),
   call: vi.fn(async (_target: string, method: string, args: unknown[]) => {
@@ -28,14 +28,16 @@ const mocks = vi.hoisted(() => ({
   }),
 }));
 
-vi.mock("@workspace/runtime", async () => ({
-  rpc: (await import("@vibestudio/rpc/test-utils")).schemaRpcMock({ call: mocks.call }),
-  panel: { stateArgs: { get: mocks.getStateArgs, patch: mocks.patchStateArgs } },
-}));
-vi.mock("@workspace/pubsub", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("@workspace/pubsub")>()),
-  waitForApprovalResolution: mocks.waitForApprovalResolution,
-}));
+// The host ports a panel supplies: its runtime rpc, its state args, and a
+// review waiter that resolves the exact workspace approval over that rpc.
+const panelRpc = schemaRpcMock({ call: (target, method, args) => mocks.call(target, method, args) });
+const panelState = {
+  get: () => mocks.getStateArgs(),
+  patch: (partial: Record<string, unknown>) => mocks.patchStateArgs(partial),
+  subscribe: () => () => undefined,
+};
+const waitForPanelReview = (approvalId: string) =>
+  mocks.waitForApprovalResolution(panelRpc, approvalId) as Promise<void>;
 
 function resolvedChannelService(channelId: string) {
   return durableObjectServiceFixture(
@@ -54,7 +56,16 @@ function resolvedChannelService(channelId: string) {
   );
 }
 
-import { createAndSubscribeAgent, persistInstalledAgent } from "./agentLifecycle.js";
+import {
+  createAndSubscribeAgent as launch,
+  persistInstalledAgent as persist,
+} from "./agent-lifecycle.js";
+import type { InstalledAgentRecord } from "./installed-agents.js";
+
+const createAndSubscribeAgent = (args: Parameters<typeof launch>[2]) =>
+  launch(panelRpc, waitForPanelReview, args);
+const persistInstalledAgent = (agent: InstalledAgentRecord) =>
+  persist(panelState, waitForPanelReview, agent);
 
 function callsFor(method: string): unknown[][] {
   return mocks.call.mock.calls.filter((c) => c[1] === method).map((c) => c[2] as unknown[]);

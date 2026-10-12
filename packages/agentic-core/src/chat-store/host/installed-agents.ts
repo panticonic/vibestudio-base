@@ -1,3 +1,4 @@
+/** Installed-agent records and launch-config composition for chat hosts. */
 import type { DefaultAgentConfig } from "@workspace/model-catalog/catalog";
 
 /**
@@ -111,4 +112,29 @@ export function buildAgentSubscriptionConfig({
   }
 
   return { subscribeConfig, perAgent };
+}
+
+/** A Durable Object participant's identity, parsed from `do:<source>:<class>:<key>`. */
+export interface ChannelDORef {
+  source: string;
+  className: string;
+  objectKey: string;
+}
+
+/** Parse a channel participant id into its Durable Object identity, if it is one. */
+export function parseDoTargetId(participantId: string): ChannelDORef | null {
+  if (!participantId.startsWith("do:")) return null;
+  const body = participantId.slice(3);
+  const slashIdx = body.indexOf("/");
+  const colonAfterSlash = slashIdx >= 0 ? body.indexOf(":", slashIdx) : -1;
+  if (colonAfterSlash === -1) return null;
+  const source = body.slice(0, colonAfterSlash);
+  const rest = body.slice(colonAfterSlash + 1);
+  const nextColon = rest.indexOf(":");
+  if (nextColon === -1) return null;
+  return {
+    source,
+    className: rest.slice(0, nextColon),
+    objectKey: rest.slice(nextColon + 1),
+  };
 }
