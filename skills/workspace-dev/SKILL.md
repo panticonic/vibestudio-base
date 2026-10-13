@@ -36,7 +36,7 @@ Use the System workspace's `skills/appdev/SKILL.md` for trusted apps and
 | Reduce bundle size or optimize runtime cost                    | System workspace: `skills/performance/SKILL.md`                      |
 | Panel lifecycle, observation, failure diagnosis, host commands | [PANEL_API.md](PANEL_API.md)                                         |
 | Workers, DOs, service-backed data, agent workers               | [WORKERS.md](WORKERS.md)                                             |
-| Terminal apps (Ink UIs in the terminal browser)                | System workspace: `skills/terminal-apps/SKILL.md`                    |
+| Terminal apps (panels hosted by terminals, in workspace PTYs)  | [terminal-apps/SKILL.md](../terminal-apps/SKILL.md)                  |
 | Build a workspace-enabled website                              | [WEBSITES.md](WEBSITES.md)                                           |
 | Package or publish a panel website                             | [website publishing](../website-publishing/SKILL.md)                 |
 | Typed parent-child contracts                                   | [RPC.md](RPC.md)                                                     |
