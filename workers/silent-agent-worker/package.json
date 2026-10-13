@@ -80,10 +80,10 @@
           "capability": "model.use",
           "resource": {
             "kind": "prefix",
-            "prefix": ""
+            "prefix": "model:"
           },
           "tier": "gated",
-          "evidence": "intentional-broad"
+          "evidence": "bounded-dynamic"
         },
         {
           "capability": "panel.inspect",

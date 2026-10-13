@@ -1,6 +1,6 @@
 import { bindNativeChannelConversation } from "./native-channel-session.js";
 import { mainRpcMethods } from "@vibestudio/service-schemas/mainRpc";
-import { retainNativeToolInvocation } from "./native-invocation-source.js";
+import { retainNativeToolInvocation, retainNativeModelInvocation, readRetainedNativeInvocationSource } from "./native-invocation-source.js";
 import { createServer } from "node:http";
 import { afterEach, describe, expect, it } from "vitest";
 import {
@@ -60,12 +60,18 @@ import {
   type AuthorityAcquisitionReceipt,
 } from "@vibestudio/service-schemas/authority";
 import { canonicalJson } from "@vibestudio/shared/canonicalJson";
-import { sha256HexSyncText } from "@vibestudio/content-addressing";
+import { sha256HexSyncText, stableSha256Hex } from "@vibestudio/content-addressing";
 import type { AuthorityInvocation } from "./native-authority-receipts.js";
 import { nativeInvocationId } from "@vibestudio/service-schemas/nativeInvocation";
 import { channelTrajectoryFor } from "@vibestudio/trajectory-identity";
+import { createNativeChannelPublication } from "./native-channel-publication.js";
+import { AGENTIC_PROTOCOL_VERSION } from "@workspace/agentic-protocol";
 
 class Owner extends NativeAgentOwner {
+  readonly registry = createRegistry();
+  retainModelSource(request: ModelRequestTarget, api: ModelRequestApi, context: import("@panticonic/pi-chord").Context) {
+    return retainNativeModelInvocation(this.admittedAgentSession(), request, api, this.loadedImage(), context);
+  }
   readonly models = createModels();
   modelRequests: ModelRequestPort = async () => ({
     status: "ready",
@@ -166,7 +172,7 @@ class Owner extends NativeAgentOwner {
   }
   protected agentOptions(): NativeAgentOptions {
     return {
-      registry: createRegistry(),
+      registry: this.registry,
       models: this.models,
       modelRequests: this.modelRequests,
       settings: this.settings,
@@ -636,6 +642,9 @@ async function authorityOwner(
   const errors: unknown[] = [];
   fixture.instance.modelRequests = async (request, api, context) => {
     requests.push(request);
+    // Production binds the source before the protected host call. The injected
+    // rollback below affects receipt admission, not that preceding model proof.
+    await fixture.instance.retainModelSource(request, api, context);
     const consumed = await session.snapshot(
       ReceiptDoc,
       authority.info.acquisitionId,
@@ -811,6 +820,149 @@ async function ordinaryAuthorityOwner(waiting: boolean, attachLocator = false) {
 }
 
 describe("native Pi entity activation and release", () => {
+  it.each(["pending", "acknowledgement", "historical-archive"] as const)(
+    "migrates legacy task-scoped provenance before reopening %s authority debt",
+    async (debt) => {
+      const h = await host();
+      const authority = authorityHost(h);
+      const first = await authorityOwner(h, authority);
+      const submission = await first.start();
+      const request = first.requests[0]!;
+      const document = first.fixture.sql.exec(
+        "SELECT id, key_value FROM documents WHERE kind = ? AND scope_kind = 'session'",
+        JSON.stringify("vibestudio.native-invocation-source"),
+      ).one();
+      const coordinates = { taskId: request.taskId, invocationId: JSON.parse(String(document["key_value"])) as string };
+      const sourceBefore = await readRetainedNativeInvocationSource(
+        first.session, coordinates, {
+          runtimeId, source, className: "Owner", objectKey: "test-key", executionDigest: image.WORKER_EXECUTION_DIGEST,
+        }, BACKGROUND_CONTEXT,
+      );
+      expect(sourceBefore).not.toBeNull();
+      let journalTask = 0;
+      if (debt !== "pending") {
+        const journal = createNativeChannelPublication({ publish: async () => ({ id: 1 }) });
+        first.fixture.instance.registry.install(defineExtension({ name: "source-upgrade-journal", tasks: [journal.task] }));
+        journalTask = await first.session.commit((tx) => journal.enqueueStart(tx, {
+          source: sourceBefore!,
+          start: {
+            kind: "invocation.started",
+            actor: { kind: "agent", id: runtimeId, participantId: runtimeId },
+            causality: { invocationId: coordinates.invocationId as never },
+            payload: { protocol: AGENTIC_PROTOCOL_VERSION, name: "model.generation", invocationType: "system", nativeSource: sourceBefore!, originatingInput: null },
+            createdAt: new Date().toISOString(),
+          },
+          startIdempotencyKey: `${coordinates.invocationId}:started`,
+        }), BACKGROUND_CONTEXT);
+        await first.session.waitForTask(journalTask as never, BACKGROUND_CONTEXT);
+        const terminal = authority.settle();
+        authority.loseAck();
+        await expect(first.fixture.call("onAuthorityChanged", terminal.acquisitionId))
+          .rejects.toThrow("Authority acknowledgement response lost");
+        await first.session.waitForIdle(BACKGROUND_CONTEXT);
+      }
+      await lifecycleRelease(first.fixture.instance, releaseInput);
+      // Seed the persisted v1 layout from an actual admitted request. Old Pi
+      // task retirement destroyed source content; its retained authority receipt
+      // remains sufficient to reconcile an already consumed acknowledgement.
+      first.fixture.sql.exec(
+        `UPDATE payload_chunks SET
+          data = CAST(json_set(CAST(data AS TEXT), '$.scope', json(?)) AS BLOB),
+          byte_length = length(CAST(json_set(CAST(data AS TEXT), '$.scope', json(?)) AS BLOB))
+         WHERE id = ? AND revision = 0`,
+        JSON.stringify({ kind: "task", taskId: request.taskId }),
+        JSON.stringify({ kind: "task", taskId: request.taskId }), document["id"],
+      ).toArray();
+      first.fixture.sql.exec(
+        "UPDATE documents SET scope_kind = 'task', owner_id = ? WHERE id = ?",
+        request.taskId, document["id"],
+      ).toArray();
+      if (debt !== "pending") {
+        first.fixture.sql.exec(
+          "UPDATE documents SET retired_at = (SELECT next_seq - 1 FROM durable_metadata) WHERE id = ?",
+          document["id"],
+        ).toArray();
+        first.fixture.sql.exec(
+          `UPDATE payload_chunks SET
+            data = CAST(json_set(CAST(data AS TEXT), '$.retiredAt', (SELECT retired_at FROM documents WHERE id = ?)) AS BLOB),
+            byte_length = length(CAST(json_set(CAST(data AS TEXT), '$.retiredAt', (SELECT retired_at FROM documents WHERE id = ?)) AS BLOB))
+           WHERE id = ? AND revision = 0`,
+          document["id"], document["id"], document["id"],
+        ).toArray();
+        first.fixture.sql.exec("DELETE FROM document_revisions WHERE document_id = ?", document["id"]).toArray();
+        first.fixture.sql.exec("DELETE FROM payload_chunks WHERE id = ? AND revision > 0", document["id"]).toArray();
+      }
+      let historicalSource: unknown;
+      if (debt === "historical-archive") {
+        if (!sourceBefore || sourceBefore.operation.kind !== "model") throw new Error("Expected model archive");
+        const { providerId: _provider, modelId: _model, endpoint: _endpoint, ...operation } = sourceBefore.operation;
+        historicalSource = { ...sourceBefore, operation };
+        coordinates.invocationId = `invocation:native:${stableSha256Hex([
+          "vibestudio/native-invocation/v1", sourceBefore.owner.runtimeId,
+          sourceBefore.owner.authoritySessionId, sourceBefore.task.conversationId, sourceBefore.task.taskId,
+          ["model", operation.purpose, operation.attempt, operation.cutoff],
+        ])}`;
+        first.fixture.sql.exec("UPDATE documents SET key_value = ? WHERE id = ?",
+          JSON.stringify(coordinates.invocationId), document["id"]).toArray();
+        const changeRecord = (id: unknown, expression: string, values: unknown[]) => {
+          first.fixture.sql.exec(`UPDATE payload_chunks SET
+            data = CAST(${expression} AS BLOB), byte_length = length(CAST(${expression} AS BLOB))
+            WHERE id = ? AND revision = 0`, ...values, ...values, id).toArray();
+        };
+        changeRecord(document["id"], "json_set(CAST(data AS TEXT), '$.key', ?)", [coordinates.invocationId]);
+        changeRecord(journalTask, `json_set(CAST(data AS TEXT),
+          '$.input.events[0].event.payload.nativeSource', json(?),
+          '$.input.events[0].event.causality.invocationId', ?, '$.input.events[0].key', ?)`,
+          [JSON.stringify(historicalSource), coordinates.invocationId, `${coordinates.invocationId}:started`]);
+      }
+      first.fixture.sql.exec(
+        "DELETE FROM state WHERE key = 'vibestudio.native-invocation-source.layout'",
+      ).toArray();
+      // A true pre-upgrade request also has no active model witness document.
+      first.fixture.sql.exec(`DELETE FROM payload_chunks WHERE id IN (
+        SELECT id FROM documents WHERE kind = '"vibestudio.native-model-execution"'
+      )`).toArray();
+      first.fixture.sql.exec(`DELETE FROM document_revisions WHERE document_id IN (
+        SELECT id FROM documents WHERE kind = '"vibestudio.native-model-execution"'
+      )`).toArray();
+      first.fixture.sql.exec("DELETE FROM documents WHERE kind = ?", JSON.stringify("vibestudio.native-model-execution")).toArray();
+      const revisionsBefore = first.fixture.sql.exec(
+        "SELECT * FROM document_revisions WHERE document_id = ? ORDER BY seq", document["id"],
+      ).toArray();
+      const contentBefore = first.fixture.sql.exec(
+        "SELECT * FROM payload_chunks WHERE id = ? AND revision > 0 ORDER BY revision, ordinal", document["id"],
+      ).toArray();
+      const next = await authorityOwner(h, authority, first.fixture.db);
+      expect(next.fixture.sql.exec("SELECT scope_kind, owner_id FROM documents WHERE id = ?", document["id"]).one())
+        .toEqual({ scope_kind: "session", owner_id: 0 });
+      if (debt === "pending") {
+        expect(next.fixture.sql.exec("SELECT * FROM document_revisions WHERE document_id = ? ORDER BY seq", document["id"]).toArray())
+          .toEqual(revisionsBefore);
+        expect(next.fixture.sql.exec("SELECT * FROM payload_chunks WHERE id = ? AND revision > 0 ORDER BY revision, ordinal", document["id"]).toArray())
+          .toEqual(contentBefore);
+      }
+      if (debt === "historical-archive") {
+        const archived = next.fixture.sql.exec("SELECT CAST(data AS TEXT) AS content FROM payload_chunks WHERE id = ? AND revision > 0", document["id"]).one();
+        expect(JSON.parse(String(archived["content"]))).toEqual({ source: historicalSource });
+      } else {
+        expect(await readRetainedNativeInvocationSource(next.session, coordinates, {
+          runtimeId, source, className: "Owner", objectKey: "test-key", executionDigest: image.WORKER_EXECUTION_DIGEST,
+        }, BACKGROUND_CONTEXT)).toEqual(sourceBefore);
+      }
+      expect(next.fixture.sql.exec("SELECT value FROM state WHERE key = 'vibestudio.native-invocation-source.layout'").one())
+        .toEqual({ value: "2" });
+      expect(next.fixture.sql.exec("SELECT version FROM durable_schema").one()).toEqual({ version: 2 });
+      if (debt === "pending") {
+        const terminal = authority.settle();
+        await next.fixture.call("onAuthorityChanged", terminal.acquisitionId);
+      }
+      await next.fixture.instance.alarm();
+      expect((await (await next.session.submission(submission.id, BACKGROUND_CONTEXT))!.wait(BACKGROUND_CONTEXT)).status)
+        .toBe("done");
+      expect(authority.acknowledgements).toHaveLength(debt === "pending" ? 1 : 2);
+    },
+  );
+
   it("keeps ordinary approval live until its actual native task ends and then closes exact authority", async () => {
     const f = await ordinaryAuthorityOwner(true);
     await f.fixture.instance.alarm();

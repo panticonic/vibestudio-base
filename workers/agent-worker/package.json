@@ -108,6 +108,15 @@
           "evidence": "intentional-broad"
         },
         {
+          "capability": "model.use",
+          "resource": {
+            "kind": "prefix",
+            "prefix": "model:"
+          },
+          "tier": "gated",
+          "evidence": "bounded-dynamic"
+        },
+        {
           "capability": "devices.pair",
           "resource": {
             "kind": "exact",
@@ -133,15 +142,6 @@
           },
           "tier": "gated",
           "evidence": "exact"
-        },
-        {
-          "capability": "model.use",
-          "resource": {
-            "kind": "prefix",
-            "prefix": ""
-          },
-          "tier": "gated",
-          "evidence": "intentional-broad"
         },
         {
           "capability": "network.response.read",

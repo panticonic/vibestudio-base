@@ -1,5 +1,5 @@
 import { createMainRpcCaller } from "@vibestudio/service-schemas/mainRpc";
-import type { Context } from "@panticonic/pi-chord";
+import type { Context, JsonValue } from "@panticonic/pi-chord";
 import { BACKGROUND_CONTEXT } from "@panticonic/pi-chord/context";
 import {
   defineExtension,
@@ -12,6 +12,8 @@ import {
   ModelRequestTarget,
   ModelRequestWait,
   type ToolExecutionApi,
+  type Cursor,
+  type TaskId,
 } from "@panticonic/pi-durable";
 import {
   applySqliteMigrationsInTransaction,
@@ -33,7 +35,9 @@ import { mergeRpcOptions } from "@vibestudio/rpc/internal";
 import { evalRuntimeId } from "@vibestudio/shared/evalRuntimeIdentity";
 import { evalOwnerCallbackMethods } from "@vibestudio/service-schemas/eval";
 import { authorityMethods } from "@vibestudio/service-schemas/authority";
-import { nativeInvocationInspectionInputSchema } from "@vibestudio/service-schemas/nativeInvocation";
+import { nativeInvocationInspectionInputSchema, nativeInvocationSourceSchema, nativeInvocationId } from "@vibestudio/service-schemas/nativeInvocation";
+import { canonicalJson } from "@vibestudio/shared/canonicalJson";
+import { stableSha256Hex } from "@vibestudio/content-addressing";
 import { inspectNativeInvocationSource } from "./native-invocation-source.js";
 import { nativeFailureDiagnostic } from "./native-failure-diagnostic.js";
 import type {
@@ -76,6 +80,9 @@ interface RetainedModelConnection {
   readonly connection: ModelRequestConnection;
   readonly request: ModelRequestTarget;
 }
+
+const NATIVE_SOURCE_LAYOUT_KEY = "vibestudio.native-invocation-source.layout";
+const NATIVE_SOURCE_LAYOUT_VERSION = 2;
 
 /**
  * One Pi execution owner in the existing entity/facet boundary. Product
@@ -329,7 +336,130 @@ export abstract class NativeAgentOwner extends PanelDurableObjectBase {
     console.info("[NativeAgentOwner] startup", JSON.stringify({ runtimeId: this.rpcSelfId, phase, startedAt, durationMs: Date.now() - startedAt }));
   }
 
+  /** Data layout belongs to this owner, separately from Pi's upstream schema
+   * ledger and each product's structural schema version. */
+  private migrateNativeSourceLayout(): Promise<void> {
+    return this.native.transaction(async () => {
+      const row = this.native.sql.exec(
+        "SELECT value FROM state WHERE key = ?", NATIVE_SOURCE_LAYOUT_KEY,
+      ).toArray()[0];
+      const version = row ? JSON.parse(String(row["value"])) : 1;
+      if (version === NATIVE_SOURCE_LAYOUT_VERSION) return;
+      if (version !== 1)
+        throw new Error(`Unsupported native invocation source layout ${version}`);
+      await this.restoreRetiredNativeSources();
+      // Document metadata contains a hashed invocation key, fixed kind, IDs,
+      // and scope, so its revision-zero record fits one Pi payload chunk.
+      // Content revisions, source bytes, IDs and sequence history are untouched.
+      this.native.sql.exec(`UPDATE payload_chunks SET
+        data = CAST(json_set(CAST(data AS TEXT), '$.scope', json('{"kind":"session"}')) AS BLOB),
+        byte_length = length(CAST(json_set(CAST(data AS TEXT), '$.scope', json('{"kind":"session"}')) AS BLOB))
+       WHERE revision = 0 AND id IN (
+         SELECT id FROM documents
+         WHERE kind = '"vibestudio.native-invocation-source"' AND scope_kind = 'task'
+       )`).toArray();
+      this.native.sql.exec(`UPDATE documents SET scope_kind = 'session', owner_id = 0
+        WHERE kind = '"vibestudio.native-invocation-source"' AND scope_kind = 'task'`).toArray();
+      this.native.sql.exec(
+        "INSERT OR REPLACE INTO state (key, value) VALUES (?, ?)",
+        NATIVE_SOURCE_LAYOUT_KEY, JSON.stringify(NATIVE_SOURCE_LAYOUT_VERSION),
+      ).toArray();
+    });
+  }
+
+  /** Old task retirement removed source content. Recover only the original
+   * source already retained by the trusted invocation publication journal. */
+  private async restoreRetiredNativeSources(): Promise<void> {
+    const retired = this.native.sql.exec(`SELECT id, key_value, owner_id, created_at FROM documents
+      WHERE kind = '"vibestudio.native-invocation-source"' AND scope_kind = 'task' AND retired_at IS NOT NULL`).toArray();
+    if (!retired.length) return;
+    const needed = new Map(retired.map((row) => [JSON.parse(String(row["key_value"])) as string, row]));
+    // Before model targets became part of native identity, the admitted model
+    // source contained only purpose/attempt/cutoff/requestDigest. Preserve that
+    // historical archive exactly; migration does not invent target fields or
+    // broaden the live source schema.
+    const archivedSourceSchema = nativeInvocationSourceSchema.or(
+      nativeInvocationSourceSchema.extend({
+        operation: nativeInvocationSourceSchema.shape.operation.options[3].omit({
+          providerId: true, modelId: true, endpoint: true,
+        }),
+      }),
+    );
+    const sources = new Map<string, ReturnType<typeof archivedSourceSchema.parse>>();
+    // This read-only portable connection uses Pi's canonical chunk decoder.
+    // It creates no Session or execution owner, and its reads share the outer
+    // native data-migration transaction.
+    const storage = await SqliteStorage.open(new NativeDatabase(this.native), () => Promise.resolve());
+    try {
+      let cursor: Cursor | undefined;
+      do {
+        const page = await storage.scanTasks({ kind: "vibestudio.channel-publication" }, 32, cursor, BACKGROUND_CONTEXT);
+        for (const publication of page.items) {
+          const input = publication.input as unknown as {
+            terminal?: { source?: JsonValue; start?: { causality?: { invocationId?: string } } };
+            events?: { event?: { causality?: { invocationId?: string }; payload?: { nativeSource?: JsonValue } } }[];
+          };
+          const candidates = [
+            { invocationId: input.terminal?.start?.causality?.invocationId, source: input.terminal?.source },
+            ...(Array.isArray(input.events) ? input.events : []).map(({ event }) => ({
+              invocationId: event?.causality?.invocationId, source: event?.payload?.nativeSource,
+            })),
+          ];
+          for (const candidate of candidates) {
+            if (!candidate.invocationId || !needed.has(candidate.invocationId)) continue;
+            const source = archivedSourceSchema.parse(candidate.source);
+            const id = source.operation.kind === "model" && !("providerId" in source.operation)
+              ? `invocation:native:${stableSha256Hex([
+                  "vibestudio/native-invocation/v1", source.owner.runtimeId,
+                  source.owner.authoritySessionId, source.task.conversationId, source.task.taskId,
+                  ["model", source.operation.purpose, source.operation.attempt, source.operation.cutoff],
+                ])}`
+              : nativeInvocationId(nativeInvocationSourceSchema.parse(source));
+            if (id !== candidate.invocationId)
+              throw new Error("Legacy native source publication conflicts with its invocation identity");
+            const document = needed.get(id)!;
+            const original = await storage.task(source.task.taskId as TaskId, BACKGROUND_CONTEXT);
+            const image = this.loadedImage();
+            if (!original || source.task.taskId !== document["owner_id"] ||
+              source.task.conversationId !== original.conversationId ||
+              source.task.kind !== original.kind || source.task.version !== original.version ||
+              publication.conversationId !== original.conversationId ||
+              source.owner.runtimeId !== image.runtimeId || source.owner.source !== image.source ||
+              source.owner.className !== image.className || source.owner.objectKey !== image.objectKey)
+              throw new Error("Legacy native source publication conflicts with its actual task or owner");
+            const prior = sources.get(id);
+            if (prior && canonicalJson(prior) !== canonicalJson(source))
+              throw new Error("Legacy native source has contradictory original publications");
+            sources.set(id, source);
+          }
+        }
+        cursor = page.next;
+      } while (cursor);
+      for (const [invocationId, source] of sources) {
+        const document = needed.get(invocationId)!;
+        const documentId = Number(document["id"]);
+        const revision = Number(document["created_at"]);
+        const bytes = new TextEncoder().encode(JSON.stringify({ source }));
+        this.native.sql.exec("INSERT INTO document_revisions (document_id, seq, kind, version) VALUES (?, ?, 'base', 1)", documentId, revision).toArray();
+        // Pi's SQLite wire format caps each payload chunk at 512 KiB.
+        for (let offset = 0, ordinal = 0; offset < bytes.length; offset += 512 * 1024, ordinal++) {
+          const data = bytes.slice(offset, offset + 512 * 1024);
+          this.native.sql.exec("INSERT INTO payload_chunks (id, revision, ordinal, byte_length, data) VALUES (?, ?, ?, ?, ?)",
+            documentId, revision, ordinal, bytes.length, data.buffer).toArray();
+        }
+        this.native.sql.exec(`UPDATE payload_chunks SET
+          data = CAST(json_remove(CAST(data AS TEXT), '$.retiredAt') AS BLOB),
+          byte_length = length(CAST(json_remove(CAST(data AS TEXT), '$.retiredAt') AS BLOB))
+          WHERE id = ? AND revision = 0`, documentId).toArray();
+        this.native.sql.exec("UPDATE documents SET retired_at = NULL WHERE id = ?", documentId).toArray();
+      }
+    } finally {
+      await storage.close(BACKGROUND_CONTEXT);
+    }
+  }
+
   protected override initializeSchema(): Promise<void> {
+    if (this.tracedSchemaInitialization) return this.tracedSchemaInitialization;
     if (this.env["VIBESTUDIO_SCHEMA_PROBE"] !== true) {
       const descriptor = this.env["VIBESTUDIO_SCHEMA_DESCRIPTOR"] as
         | DurableObjectSchemaDescriptor
@@ -347,7 +477,7 @@ export abstract class NativeAgentOwner extends PanelDurableObjectBase {
       }
     }
     const startedAt = Date.now();
-    const initialization = super.initializeSchema();
+    const initialization = super.initializeSchema().then(() => this.migrateNativeSourceLayout());
     if (!this.tracedSchemaInitialization) {
       this.tracedSchemaInitialization = initialization;
       void initialization.then(() => this.traceOwnerStartup("schema", startedAt), () => {
