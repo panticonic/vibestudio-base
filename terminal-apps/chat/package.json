@@ -39,15 +39,6 @@
           "evidence": "intentional-broad"
         },
         {
-          "capability": "account-providers.configure",
-          "resource": {
-            "kind": "exact",
-            "key": "account-providers.configure"
-          },
-          "tier": "gated",
-          "evidence": "exact"
-        },
-        {
           "capability": "account.profile.update",
           "resource": {
             "kind": "prefix",
@@ -216,7 +207,7 @@
             "prefix": ""
           },
           "tier": "gated",
-          "evidence": "bounded-dynamic"
+          "evidence": "intentional-broad"
         }
       ]
     }

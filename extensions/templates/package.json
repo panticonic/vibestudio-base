@@ -365,7 +365,7 @@
             "prefix": ""
           },
           "tier": "gated",
-          "evidence": "bounded-dynamic"
+          "evidence": "intentional-broad"
         },
         {
           "capability": "workspace-service:gad.workspace",
@@ -374,7 +374,7 @@
             "prefix": ""
           },
           "tier": "gated",
-          "evidence": "bounded-dynamic"
+          "evidence": "intentional-broad"
         }
       ],
       "serviceRequests": [
