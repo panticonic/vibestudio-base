@@ -146,6 +146,7 @@
   },
   "dependencies": {
     "@workspace-extensions/shell": "workspace:*",
+    "@workspace/pty-stream": "workspace:*",
     "@workspace/runtime": "workspace:*",
     "@workspace/react": "workspace:*",
     "@workspace/testkit": "workspace:*",
