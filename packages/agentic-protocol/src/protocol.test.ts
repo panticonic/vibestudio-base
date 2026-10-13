@@ -23,6 +23,8 @@ import {
   isStoredValueRef,
   messageDisplayText,
   participantRefSchema,
+  invocationFailedPayload,
+  agentToolFailureFromUnknown,
   principalRefSchema,
   publicActorRef,
   trajectoryEventSchema,
@@ -134,6 +136,34 @@ function envelope(
 }
 
 describe("@workspace/agentic-protocol schemas", () => {
+  const advancedBase = { actor: agent, causality: { invocationId: brandId<InvocationId>("inv-history") }, createdAt: "2026-05-20T12:00:02.000Z" };
+  const advancedEvents: AgenticEvent[] = [
+    { ...advancedBase, kind: "invocation.progress", payload: { protocol: AGENTIC_PROTOCOL_VERSION, message: "working" } },
+    { ...advancedBase, kind: "invocation.completed", payload: { protocol: AGENTIC_PROTOCOL_VERSION, result: { count: 3 }, terminalOutcome: "success" } },
+    { ...advancedBase, kind: "invocation.failed", payload: invocationFailedPayload("tool_error", "rejected", { failure: agentToolFailureFromUnknown(new Error("rejected"), { operation: "get_agent_settings", stage: "execute" }) }) },
+    { ...advancedBase, kind: "invocation.cancelled", payload: { protocol: AGENTIC_PROTOCOL_VERSION, reason: "cancelled", terminalOutcome: "cancelled" } },
+    { ...advancedBase, kind: "invocation.abandoned", payload: { protocol: AGENTIC_PROTOCOL_VERSION, reason: "abandoned", terminalOutcome: "abandoned" } },
+  ];
+  it.each(advancedEvents)("enriches an earlier start after $kind without rewinding the invocation lifecycle", (advanced) => {
+    const started: AgenticEvent<"invocation.started"> = { kind: "invocation.started", actor: agent, turnId: brandId<TurnId>("turn-1"), causality: { invocationId: brandId<InvocationId>("inv-history") }, payload: { protocol: AGENTIC_PROTOCOL_VERSION, name: "get_agent_settings", request: { agentId: "agent-1" }, requiresApproval: true, userVisible: true }, createdAt: "2026-05-20T12:00:00.000Z" };
+    agenticEventSchema.parse(started);
+    agenticEventSchema.parse(advanced);
+    const chronological = [envelope(started, 1), envelope(advanced, 2)].reduce(reduceChannelView, createInitialChannelViewState());
+    const tail = reduceChannelView(createInitialChannelViewState(), envelope(advanced, 2));
+    const restored = reduceChannelView(tail, envelope(started, 1));
+    expect(restored.invocations).toEqual(chronological.invocations);
+    expect(restored.invocations["inv-history"]).toMatchObject({ name: "get_agent_settings", request: { agentId: "agent-1" }, startedAt: started.createdAt, updatedAt: advanced.createdAt });
+    expect(reduceChannelView(restored, envelope(started, 1))).toBe(restored);
+  });
+
+  it("keeps the canonical earliest start metadata when paging starts in reverse order", () => {
+    const start = (name: string, at: string): AgenticEvent<"invocation.started"> => ({ kind: "invocation.started", actor: agent, causality: { invocationId: brandId<InvocationId>("inv-earliest") }, payload: { protocol: AGENTIC_PROTOCOL_VERSION, name, request: { name } }, createdAt: at });
+    const terminal: AgenticEvent<"invocation.completed"> = { kind: "invocation.completed", actor: agent, causality: { invocationId: brandId<InvocationId>("inv-earliest") }, payload: { protocol: AGENTIC_PROTOCOL_VERSION, result: 7, terminalOutcome: "success" }, createdAt: "2026-05-20T12:00:03.000Z" };
+    const earliest = start("original", "2026-05-20T12:00:00.000Z");
+    const later = start("later", "2026-05-20T12:00:01.000Z");
+    const restored = [envelope(terminal, 3), envelope(later, 2), envelope(earliest, 1)].reduce(reduceChannelView, createInitialChannelViewState());
+    expect(restored.invocations["inv-earliest"]).toMatchObject({ name: "original", request: { name: "original" }, status: "completed", result: 7, terminalOutcome: "success", startedAt: earliest.createdAt, completedAt: terminal.createdAt, updatedAt: terminal.createdAt });
+  });
   it("keeps the live frontier when older history pages are folded", () => {
     let state = reduceChannelView(createInitialChannelViewState(), envelope(messageEvent(), 100));
     const older = envelope(messageEvent({ causality: { messageId: brandId<MessageId>("older") } }), 1);

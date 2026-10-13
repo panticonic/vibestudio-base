@@ -752,39 +752,35 @@ export function applyInvocationEvent(
   };
 
   if (event.kind === "invocation.started") {
-    if (isTerminalInvocationStatus(existing.status)) return invocations;
     const payload = event.payload;
+    // Paging may reveal the start after progress or a terminal event. Start
+    // metadata owns the invocation's identity, not its lifecycle frontier.
+    const earliestStart = existing.startedAt === undefined || event.createdAt < existing.startedAt;
     return {
       ...invocations,
       [invocationId]: {
         ...existing,
         transportCallId:
           existing.transportCallId ?? event.causality?.transportCallId,
-        actor: existing.actor ?? event.actor,
-        turnId: existing.turnId ?? event.turnId,
-        name: existing.name ?? ("name" in payload ? payload.name : undefined),
+        actor: earliestStart ? event.actor : existing.actor,
+        turnId: earliestStart ? (event.turnId ?? existing.turnId) : existing.turnId,
+        name: earliestStart && "name" in payload ? payload.name : existing.name,
         nativeSource:
-          existing.nativeSource ??
-          ("nativeSource" in payload ? payload.nativeSource : undefined),
-        originatingInput: existing.originatingInput !== undefined ? existing.originatingInput
-          : ("originatingInput" in payload ? payload.originatingInput : undefined),
+          earliestStart && "nativeSource" in payload ? payload.nativeSource : existing.nativeSource,
+        originatingInput: earliestStart && "originatingInput" in payload ? payload.originatingInput : existing.originatingInput,
         request:
-          existing.request ??
-          ("request" in payload ? payload.request : undefined),
+          earliestStart && "request" in payload ? payload.request : existing.request,
         requiresApproval:
-          existing.requiresApproval ??
-          ("requiresApproval" in payload
-            ? payload.requiresApproval
-            : undefined),
+          earliestStart && "requiresApproval" in payload ? payload.requiresApproval : existing.requiresApproval,
         userVisible:
           existing.userVisible === true
             ? true
             : "userVisible" in payload
               ? payload.userVisible
               : existing.userVisible,
-        status: "started",
-        startedAt: existing.startedAt ?? event.createdAt,
-        updatedAt: event.createdAt,
+        status: existing.status,
+        startedAt: earliestStart ? event.createdAt : existing.startedAt,
+        updatedAt: existing.updatedAt ?? event.createdAt,
       },
     };
   }
