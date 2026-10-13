@@ -1,5 +1,18 @@
 import { describe, expect, it } from "vitest";
-import { isModelAgentLaunchable, isModelUsable, type ModelAvailability } from "./catalog";
+import {
+  canonicalModelRef,
+  isModelAgentLaunchable,
+  isModelUsable,
+  type ModelAvailability,
+} from "./catalog";
+
+describe("canonicalModelRef", () => {
+  it("uses the provider:modelId identity shared by every model surface", () => {
+    expect(canonicalModelRef("openai-codex", "gpt-6.1-sol")).toBe(
+      "openai-codex:gpt-6.1-sol",
+    );
+  });
+});
 
 describe("isModelUsable", () => {
   it.each<ModelAvailability>([

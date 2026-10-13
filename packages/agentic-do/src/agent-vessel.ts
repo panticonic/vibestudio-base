@@ -240,6 +240,7 @@ import type { ModelFailureClass } from "@workspace/agentic-core/model-failures";
 import type { RosterEntry } from "@workspace/agentic-core/agent-channel-roster";
 import {
   MODEL_SETTINGS_SERVICE_PROTOCOL,
+  canonicalModelRef,
   type AgentThinkingLevel as ThinkingLevel,
 } from "@workspace/model-catalog/catalog";
 
@@ -4921,7 +4922,7 @@ export abstract class AgentVesselBase extends NativeChannelOwner<NativeProductCh
               model.provider,
               {
                 resumeAfterConnect: false,
-                modelRef: `${model.provider}:${model.id}`,
+                modelRef: canonicalModelRef(model.provider, model.id),
               },
               rpc,
             ),
@@ -7928,7 +7929,7 @@ export abstract class AgentVesselBase extends NativeChannelOwner<NativeProductCh
       request.model.provider,
       {
         resumeAfterConnect: true,
-        modelRef: `${request.model.provider}:${request.model.id}`,
+        modelRef: canonicalModelRef(request.model.provider, request.model.id),
       },
     );
   }
