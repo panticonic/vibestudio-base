@@ -299,7 +299,7 @@ describe("ChatHostController recovery", () => {
     const h = start(
       harness({
         state: { channelName: "c" },
-        wire: (_target, method) =>
+        wire: async (_target, method) =>
           method === "getParticipants"
             ? [
                 { participantId: "user:u", metadata: { type: "user" } },

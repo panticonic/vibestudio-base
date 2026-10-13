@@ -16,7 +16,9 @@ The workspace's terminal launch service (`terminalApps.*`) runs the program
 in a PTY of the Base `shell` extension, inside the workspace's native runtime,
 as the app's own principal. It keeps the person's sessions: programs keep
 running when the browser detaches or quits, and the person resumes them from
-any device (also the desktop terminal panel). An app that ended is started
+any device (also the desktop terminal panel). Plain shells are sessions of the
+same registry: the desktop terminal panel opens every pane through
+`terminalApps.launch`, so panes and browser tabs are one list. An app that ended is started
 again on resume; anything that must survive belongs in its durable session
 state.
 

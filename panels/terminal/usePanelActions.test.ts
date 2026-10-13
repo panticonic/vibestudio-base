@@ -2,12 +2,13 @@ import { describe, expect, it, vi } from "vitest";
 import { defaultTerminalState } from "./terminalState.js";
 import { createPanelActions } from "./usePanelActions.js";
 import type { SessionInfo, ShellApi, TerminalState } from "./types.js";
+import type { TerminalLauncher } from "./terminalLauncher.js";
 import { VSCODE_SHELL_INTEGRATION_META_KEY } from "./vscodeShellIntegrationMeta.js";
 
 describe("panel actions", () => {
   it("applies the configured scrollback limit to newly opened sessions", async () => {
-    const shell = makeShell();
-    const harness = makeHarness(shell);
+    const { shell, launcher } = makeBackend();
+    const harness = makeHarness(shell, launcher);
 
     const sessionId = await harness.actions.openSession();
 
@@ -16,12 +17,18 @@ describe("panel actions", () => {
   });
 
   it("applies the configured scrollback limit to split and restarted sessions", async () => {
-    const shell = makeShell();
-    const harness = makeHarness(shell, {
+    const { shell, launcher } = makeBackend();
+    const harness = makeHarness(shell, launcher, {
       tree: { kind: "leaf", sessionId: "old-1" },
       focusedSessionId: "old-1",
       perSession: {
-        "old-1": { cwd: "/repo", originalArgv: ["/bin/sh"], readCursor: 0, lastSeenAt: 0 },
+        "old-1": {
+          cwd: "/repo",
+          originalArgv: ["/bin/sh"],
+          readCursor: 0,
+          lastSeenAt: 0,
+          registryId: "reg-old-1",
+        },
       },
     }, { "old-1": session("old-1", "/repo") });
 
@@ -30,14 +37,17 @@ describe("panel actions", () => {
 
     expect(shell.setScrollbackLimit).toHaveBeenCalledWith("new-1", 1024 * 1024);
     expect(shell.setScrollbackLimit).toHaveBeenCalledWith("restart-1", 1024 * 1024);
-    expect(shell.dispose).toHaveBeenCalledWith("old-1");
+    // The same registered session starts again; nothing is ended.
+    expect(launcher.restart).toHaveBeenCalledWith("reg-old-1");
+    expect(launcher.close).not.toHaveBeenCalled();
+    expect(harness.state.perSession["restart-1"]?.registryId).toBe("reg-old-1");
     expect(harness.sessions["old-1"]).toBeUndefined();
     expect(harness.state.perSession["old-1"]).toBeUndefined();
   });
 
   it("returns the spawned session id when running a command", async () => {
-    const shell = makeShell();
-    const harness = makeHarness(shell, {
+    const { shell, launcher } = makeBackend();
+    const harness = makeHarness(shell, launcher, {
       tree: { kind: "leaf", sessionId: "old-1" },
       focusedSessionId: "old-1",
     }, { "old-1": session("old-1", "/repo") });
@@ -45,7 +55,7 @@ describe("panel actions", () => {
     const sessionId = await harness.actions.runCommand("pnpm dev");
 
     expect(sessionId).toBe("new-1");
-    expect(shell.open).toHaveBeenCalledWith({
+    expect(launcher.open).toHaveBeenCalledWith({
       command: "/bin/sh",
       args: ["-c", "pnpm dev"],
       label: "pnpm dev",
@@ -54,15 +64,15 @@ describe("panel actions", () => {
   });
 
   it("uses live shell integration cwd when splitting or running a command", async () => {
-    const shell = makeShell();
-    const harness = makeHarness(shell, {
+    const { shell, launcher } = makeBackend();
+    const harness = makeHarness(shell, launcher, {
       tree: { kind: "leaf", sessionId: "old-1" },
       focusedSessionId: "old-1",
     }, { "old-1": session("old-1", "/launch", { liveCwd: "/repo/live" }) });
 
     await harness.actions.runCommand("pnpm dev");
 
-    expect(shell.open).toHaveBeenCalledWith({
+    expect(launcher.open).toHaveBeenCalledWith({
       command: "/bin/sh",
       args: ["-c", "pnpm dev"],
       label: "pnpm dev",
@@ -71,8 +81,8 @@ describe("panel actions", () => {
   });
 
   it("restarts the remembered command in the live shell integration cwd", async () => {
-    const shell = makeShell();
-    const harness = makeHarness(shell, {
+    const { shell, launcher } = makeBackend();
+    const harness = makeHarness(shell, launcher, {
       tree: { kind: "leaf", sessionId: "old-1" },
       focusedSessionId: "old-1",
       perSession: {
@@ -87,7 +97,7 @@ describe("panel actions", () => {
 
     await harness.actions.restartCommand("old-1");
 
-    expect(shell.open).toHaveBeenCalledWith({
+    expect(launcher.open).toHaveBeenCalledWith({
       command: "/bin/sh",
       args: ["-c", "pnpm dev"],
       cwd: "/repo/live",
@@ -97,8 +107,8 @@ describe("panel actions", () => {
 
 
   it("remembers the shell-provided label for new sessions", async () => {
-    const shell = makeShell();
-    const harness = makeHarness(shell);
+    const { shell, launcher } = makeBackend();
+    const harness = makeHarness(shell, launcher);
 
     const sessionId = await harness.actions.openSession();
 
@@ -106,8 +116,8 @@ describe("panel actions", () => {
   });
 
   it("reopens the remembered original command in place", async () => {
-    const shell = makeShell();
-    const harness = makeHarness(shell, {
+    const { shell, launcher } = makeBackend();
+    const harness = makeHarness(shell, launcher, {
       tree: { kind: "leaf", sessionId: "old-1" },
       focusedSessionId: "old-1",
       perSession: {
@@ -123,7 +133,7 @@ describe("panel actions", () => {
     const sessionId = await harness.actions.restartCommand("old-1");
 
     expect(sessionId).toBe("new-1");
-    expect(shell.open).toHaveBeenCalledWith({
+    expect(launcher.open).toHaveBeenCalledWith({
       command: "/bin/sh",
       args: ["-c", "pnpm dev"],
       cwd: "/repo",
@@ -137,17 +147,41 @@ describe("panel actions", () => {
   });
 
   it("opens a session in the chosen context", async () => {
-    const shell = makeShell();
-    const harness = makeHarness(shell);
+    const { shell, launcher } = makeBackend();
+    const harness = makeHarness(shell, launcher);
 
     await harness.actions.openSession(undefined, { contextId: "ctx-new" });
 
-    expect(shell.open).toHaveBeenCalledWith({ contextId: "ctx-new" });
+    expect(launcher.open).toHaveBeenCalledWith({ contextId: "ctx-new" });
+  });
+
+  it("ends a registered pane through the launch service, not the shell extension", () => {
+    const { shell, launcher } = makeBackend();
+    const harness = makeHarness(shell, launcher, {
+      tree: { kind: "leaf", sessionId: "old-1" },
+      focusedSessionId: "old-1",
+      perSession: {
+        "old-1": { cwd: "/repo", readCursor: 0, lastSeenAt: 0, registryId: "reg-1" },
+      },
+    }, { "old-1": session("old-1", "/repo") });
+
+    harness.actions.closeSession("old-1");
+
+    expect(launcher.close).toHaveBeenCalledWith("reg-1");
+    expect(shell.kill).not.toHaveBeenCalled();
+    expect(shell.dispose).not.toHaveBeenCalled();
+  });
+
+  it("records the registry id of a new pane", async () => {
+    const { shell, launcher } = makeBackend();
+    const harness = makeHarness(shell, launcher);
+    const sessionId = await harness.actions.openSession();
+    expect(harness.state.perSession[sessionId]?.registryId).toBe(`reg-${sessionId}`);
   });
 
   it("removes exited panes without sending another kill signal", () => {
-    const shell = makeShell();
-    const harness = makeHarness(shell, {
+    const { shell, launcher } = makeBackend();
+    const harness = makeHarness(shell, launcher, {
       tree: { kind: "leaf", sessionId: "old-1" },
       focusedSessionId: "old-1",
       perSession: {
@@ -168,6 +202,7 @@ describe("panel actions", () => {
 
 function makeHarness(
   shell: ShellApi,
+  launcher: TerminalLauncher,
   statePatch: Partial<TerminalState> = {},
   initialSessions: Record<string, SessionInfo> = {},
 ) {
@@ -182,28 +217,31 @@ function makeHarness(
   return {
     get state() { return state; },
     get sessions() { return sessions; },
-    actions: createPanelActions({ shell, state, sessions, setState, setSessions }),
+    actions: createPanelActions({ shell, launcher, state, sessions, setState, setSessions }),
   };
 }
 
-function makeShell(): ShellApi {
+function makeBackend(): { shell: ShellApi; launcher: TerminalLauncher } {
   let nextId = 1;
   const sessions = new Map<string, SessionInfo>();
-  return {
-    open: vi.fn(async (req?: { cwd?: string }) => {
+  const launcher: TerminalLauncher = {
+    open: vi.fn(async (req: { cwd?: string }) => {
       const sessionId = `new-${nextId++}`;
       sessions.set(sessionId, session(sessionId, req?.cwd ?? "."));
-      return { sessionId };
+      return { sessionId, registryId: `reg-${sessionId}` };
     }),
+    restart: vi.fn(async (registryId: string) => {
+      sessions.set("restart-1", session("restart-1", "/repo"));
+      return { sessionId: "restart-1", registryId };
+    }),
+    resume: vi.fn(),
+    close: vi.fn(async () => {}),
+  };
+  const shell = {
     get: vi.fn(async (sessionId: string) => {
       const info = sessions.get(sessionId) ?? session(sessionId, ".");
       sessions.set(sessionId, info);
       return info;
-    }),
-    restart: vi.fn(async () => {
-      const sessionId = "restart-1";
-      sessions.set(sessionId, session(sessionId, "/repo"));
-      return { sessionId };
     }),
     dispose: vi.fn(async () => {}),
     setScrollbackLimit: vi.fn(),
@@ -218,6 +256,7 @@ function makeShell(): ShellApi {
     awaitExit: vi.fn(),
     getScrollback: vi.fn(),
   } as unknown as ShellApi;
+  return { shell, launcher };
 }
 
 function session(
