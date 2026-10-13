@@ -222,6 +222,50 @@ describe("native protected model provider", () => {
     expect(state.waitForAuthority).not.toHaveBeenCalled();
   });
 
+  it("keeps the deterministic Pi session stable when tool rounds hand off generation tasks", async () => {
+    const state = setup(
+      TEST_MODEL_PROVIDER_ID,
+      TEST_MODEL_SPEC.baseUrl,
+      TEST_MODEL_PROVIDER_ID,
+      TEST_MODEL_ID,
+    );
+    const request: ModelRequestTarget = {
+      taskId: 1 as ModelRequestTarget["taskId"],
+      conversationId: 1 as ModelRequestTarget["conversationId"],
+      taskKind: "pi.generate",
+      taskVersion: 1,
+      purpose: "generation",
+      attempt: 1,
+      operation: "stream",
+      model: JSON.parse(JSON.stringify(state.faux.getModel())),
+      messages: [],
+      cutoff: 1 as ModelRequestTarget["cutoff"],
+      options: {},
+    };
+    const api = {
+      prepared: undefined,
+      prepare: async () => undefined,
+      commit: async () => undefined,
+    } as unknown as ModelRequestApi;
+
+    const first = await state.port(request, api, context);
+    const next = await state.port(
+      { ...request, taskId: 2 as ModelRequestTarget["taskId"] },
+      api,
+      context,
+    );
+
+    expect(first).toMatchObject({
+      status: "ready",
+      options: { sessionId: "1" },
+    });
+    expect(next).toMatchObject({
+      status: "ready",
+      options: { sessionId: "1" },
+    });
+    expect(state.rpc.call).not.toHaveBeenCalled();
+  });
+
   it("publishes actual credential wait and same-turn resume without carrying the stale wait reason", async () => {
     const state = setup();
     state.rpc.call.mockResolvedValue(null);

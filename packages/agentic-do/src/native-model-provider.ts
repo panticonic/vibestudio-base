@@ -134,7 +134,11 @@ export function createProtectedModelProvider(
       context.abortSignal?.throwIfAborted();
       return {
         status: "ready",
-        options: { sessionId: String(request.taskId) },
+        // Model generation tasks are handed off after every tool round. The
+        // conversation is the stable Pi provider session across those tasks;
+        // taskId changes after a tool result and would reset deterministic
+        // test-model turn state on each generation.
+        options: { sessionId: String(request.conversationId) },
         close: async () => {},
       };
     }
