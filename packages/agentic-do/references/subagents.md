@@ -12,6 +12,15 @@ Subagents are supervised child agents with their own task channel and semantic w
 6. If an integration returns `source-uncommitted` or `needs-decision`, use the returned evidence first. Inspect only the child state needed to resolve a concrete ambiguity. Reporting and inspection may cover dirty child work, but merging requires the child to commit its mergeable work before retrying. Author any truthful combined state with ordinary parent edit tools, then call `merge_subagent` again with coordinate resolutions.
 7. No cleanup action follows integration or an ordinary child response. An idle child stops consuming execution capacity while its context, transcript, committed source, and integration projection remain available for follow-up work. Use `cancel_subagent` only to stop work that is currently starting or running.
 
+## Child model defaults
+
+Shared agent launches inherit the caller's canonical workspace model defaults,
+including provider, model, and thinking settings. Omit those fields from the
+launch configuration for ordinary delegation. An explicit field in the child
+configuration overrides the inherited value; use this only when the task needs
+a different model or setting. The launcher resolves these defaults, so product
+surfaces should not copy the parent settings into a second merge layer.
+
 ## Inspecting child state
 
 Inspection serves explicit review/comparison goals and exceptional diagnostics;

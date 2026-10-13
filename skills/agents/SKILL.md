@@ -25,13 +25,17 @@ const result = await addAgentToChannel({
   channelId: chat.channelId, // defaults contextId to the current runtime context
   replay: true, // only when eligible existing history should be admitted
   config: {
-    /* model, respondPolicy, … per-agent behavior */
+    /* optional explicit overrides, such as model or respondPolicy */
   },
 });
 // → { ok, channelId, contextId, targetId, participantId, key: "assistant-<channelId>" }
 ```
 
 Remove with `removeAgentFromChannel({ source, className, handle, channelId })`.
+
+Shared launches inherit canonical workspace agent defaults. Leave model and
+thinking fields out of `config` to use them; explicit fields override the
+inherited values. The launch helper owns this resolution.
 
 The worker, channel, prompt resources, and agent state all come from the
 workspace of the target panel. Contexts are branches within that workspace and

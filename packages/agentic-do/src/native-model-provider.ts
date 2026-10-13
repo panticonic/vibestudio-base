@@ -219,9 +219,9 @@ export function createProtectedModelProvider(
 
     const resolveArgs: JsonValue[] = [
       {
-        ...(!request.model.baseUrl || /\{[^}]+\}/.test(request.model.baseUrl)
-          ? { providerId: request.model.provider }
-          : { url: request.model.baseUrl }),
+        providerId: request.model.provider,
+        modelId: request.model.id,
+        endpoint: request.model.baseUrl ?? null,
       },
     ];
     async function resolve(): Promise<
@@ -229,12 +229,12 @@ export function createProtectedModelProvider(
     > {
       const result = await invoke(
         "credentials",
-        "resolveCredential",
+        "resolveNativeModel",
         resolveArgs,
       );
       if ("status" in result) return result;
       return {
-        credential: credentialsMethods.resolveCredential.returns.parse(
+        credential: credentialsMethods.resolveNativeModel.returns.parse(
           result.value,
         ),
       };

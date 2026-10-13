@@ -327,8 +327,8 @@ describe("native protected model provider", () => {
     ).toBe("done");
     expect(state.rpc.call).toHaveBeenCalledWith(
       "main",
-      "credentials.resolveCredential",
-      [{ providerId: "faux" }],
+      "credentials.resolveNativeModel",
+      [{ providerId: "faux", modelId: state.faux.getModel().id, endpoint: "https://{tenant}.provider.test/v1" }],
       expect.objectContaining({
         authorityAcquisition: "return",
         idempotencyKey: expect.stringMatching(/^model:[a-f0-9]{64}$/),
@@ -689,14 +689,14 @@ describe("native protected model provider", () => {
         acquisition,
         {
           service: local ? "extensions" : "credentials",
-          method: local ? "invoke" : "resolveCredential",
+          method: local ? "invoke" : "resolveNativeModel",
           args: local
             ? [
                 "@workspace-extensions/local-models",
                 "ensureLoaded",
                 [request.model.id],
               ]
-            : [{ url: request.model.baseUrl }],
+            : [{ providerId: request.model.provider, modelId: request.model.id, endpoint: request.model.baseUrl ?? null }],
         },
         context,
       );

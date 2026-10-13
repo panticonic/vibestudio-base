@@ -341,11 +341,6 @@ export default function ChatPanel() {
     [applyModelSettings, getModelSettingsService],
   );
 
-  const resolveWorkspaceDefaultAgentConfig =
-    useCallback(async (): Promise<DefaultAgentConfig> => {
-      return (await loadModelSettings(true)).defaultAgentConfig;
-    }, [loadModelSettings]);
-
   useEffect(() => {
     const close = ownModelSettingsConnection(rpc, {
       current: () => modelSettingsRequestRef.current,
@@ -473,12 +468,9 @@ export default function ChatPanel() {
           ),
       );
       if (missingAgents.length === 0) return;
-      const defaultAgentConfig = await resolveWorkspaceDefaultAgentConfig();
-      signal.throwIfAborted();
       for (const agent of missingAgents) {
         const { subscribeConfig } = buildAgentSubscriptionConfig({
           handle: agent.handle,
-          workspaceDefaultAgentConfig: defaultAgentConfig,
           globalConfig: stateArgs.agentConfig,
           perAgentConfig: agent.config,
           systemPrompt: stateArgs.systemPrompt,
@@ -503,7 +495,6 @@ export default function ChatPanel() {
       stateArgs.systemPrompt,
       stateArgs.systemPromptMode,
       resolvedContextId,
-      resolveWorkspaceDefaultAgentConfig,
     ],
   );
   const reportRecoveryFailure = useCallback((error: Error) => {
@@ -878,22 +869,16 @@ export default function ChatPanel() {
     };
   }, [loadModelSettings]);
 
-  /** Build the subscription config for a new agent: workspace defaults, global
-   *  agentConfig, then the per-agent config, with the resolved handle last.
-   *  Returns both the wire config and the per-agent config to persist. */
+  /** Build explicit panel overrides and channel presentation; the shared
+   *  launch primitive supplies workspace defaults. */
   const buildSubscribeConfig = useCallback(
     (
       handle: string,
       config: AgentSubscriptionConfig | undefined,
-      defaultAgentConfig: DefaultAgentConfig,
     ) => {
-      // Launch configuration must be one coherent read. Reactive state is for
-      // rendering, while this callback can outlive the render that created it
-      // as model discovery and provisional activation race with bootstrap.
       const currentState = panel.stateArgs.get<ChatStateArgs>();
       return buildAgentSubscriptionConfig({
         handle,
-        workspaceDefaultAgentConfig: defaultAgentConfig,
         globalConfig: currentState.agentConfig,
         perAgentConfig: config,
         systemPrompt: currentState.systemPrompt,
@@ -939,12 +924,7 @@ export default function ChatPanel() {
         handleFromClass ||
         DEFAULT_HANDLE;
       const handleBase = sanitizeHandle(requestedHandle);
-      const defaultAgentConfig = await resolveWorkspaceDefaultAgentConfig();
-      const { subscribeConfig, perAgent } = buildSubscribeConfig(
-        handleBase,
-        config,
-        defaultAgentConfig,
-      );
+      const { subscribeConfig, perAgent } = buildSubscribeConfig(handleBase, config);
       return {
         source,
         className,
@@ -956,7 +936,7 @@ export default function ChatPanel() {
         replay: true,
       };
     },
-    [availableAgents, buildSubscribeConfig, resolveWorkspaceDefaultAgentConfig],
+    [availableAgents, buildSubscribeConfig],
   );
 
   // Explicitly replace workspace defaults (model + behavior). The first
@@ -1093,12 +1073,7 @@ export default function ChatPanel() {
       const handle =
         configHandle.trim() || agent?.proposedHandle || DEFAULT_HANDLE;
       const agentKey = `${handle}-${crypto.randomUUID().slice(0, 8)}`;
-      const defaultAgentConfig = await resolveWorkspaceDefaultAgentConfig();
-      const { subscribeConfig, perAgent } = buildSubscribeConfig(
-        handle,
-        config,
-        defaultAgentConfig,
-      );
+      const { subscribeConfig, perAgent } = buildSubscribeConfig(handle, config);
 
       // Kick the exact DO, then invite the replacement (replay restores history).
       await unsubscribeDOFromChannel(
@@ -1137,7 +1112,7 @@ export default function ChatPanel() {
       await panel.stateArgs.patch({ installedAgents: nextInstalled });
       return { agentId: source, handle };
     },
-    [availableAgents, buildSubscribeConfig, resolveWorkspaceDefaultAgentConfig],
+    [availableAgents, buildSubscribeConfig],
   );
 
   const handleConnectModelProvider = useCallback(

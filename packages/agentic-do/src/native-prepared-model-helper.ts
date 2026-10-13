@@ -89,11 +89,13 @@ export async function withPreparedNativeModel<T>(
       context,
     );
   } else {
-    const credential = credentialsMethods.resolveCredential.returns.parse(
-      await invoke("credentials.resolveCredential", [
-        !model.baseUrl || /\{[^}]+\}/.test(model.baseUrl)
-          ? { providerId: model.provider }
-          : { url: model.baseUrl },
+    const credential = credentialsMethods.resolveNativeModel.returns.parse(
+      await invoke("credentials.resolveNativeModel", [
+        {
+          providerId: model.provider,
+          modelId: model.id,
+          endpoint: model.baseUrl ?? null,
+        },
       ]),
     );
     if (credential === null) {

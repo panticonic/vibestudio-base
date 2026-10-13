@@ -17,16 +17,17 @@ prove the provider received the request.
 
 ## Two Tiers
 
-Cold-start choices live in `src/agent-config.ts`:
+`src/agent-config.ts` supplies the worker's final defaults. The shared agent
+launch path first inherits canonical workspace model settings; explicit launch
+configuration takes precedence. Cold-start defaults apply only when neither
+launch configuration nor persisted live settings provide a value:
 
 - `DEFAULT_MODEL` chooses the default `provider:modelId`.
 - `PROVIDER_CREDENTIAL_SETUPS` wires OAuth or API-key credential collection and
   is derived from the shared provider presets in
   `@workspace/model-catalog/providerConnect`.
-- These choices apply when a worker boots or when an agent is created with an
-  `extraConfig.model` override. `setModel({ model })` changes the persisted live
-  agent setting afterward; behavior settings belong to the agent, not to one
-  channel subscription.
+- `setModel({ model })` changes the persisted live agent setting afterward;
+  behavior settings belong to the agent, not to one channel subscription.
 
 To inspect configured provider credential presets from eval, import the small
 model-catalog surface rather than the full agent DO package:

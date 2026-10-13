@@ -115,6 +115,9 @@ export async function retainNativeModelInvocation(
       purpose: request.purpose,
       attempt: request.attempt,
       cutoff: request.cutoff,
+      providerId: request.model.provider,
+      modelId: request.model.id,
+      endpoint: request.model.baseUrl ?? null,
       requestDigest: sha256HexSyncText(canonicalJson(intent)),
     },
   });

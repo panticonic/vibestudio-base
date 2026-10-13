@@ -1,6 +1,9 @@
 import { resolveChannelEndpoint } from "@workspace/pubsub";
 import { agentRpcMethods } from "./rpc-contract.js";
 import { mainRpcMethods } from "@vibestudio/service-schemas/mainRpc";
+import { resolveDurableObjectService } from "@vibestudio/service-schemas/clients/durableObjectServiceClient";
+import { MODEL_SETTINGS_SERVICE_PROTOCOL } from "@workspace/model-catalog/catalog";
+import { modelSettingsRpcMethods } from "@workspace/model-catalog/rpc-contract";
 import {
   AGENTIC_PROTOCOL_VERSION,
   type AgenticEvent,
@@ -9,6 +12,7 @@ import type { RuntimeEntityCreateSpec } from "@vibestudio/shared/runtime/entityS
 import { doTargetId } from "@vibestudio/shared/workspaceServiceRpc";
 import {
   AGENT_SETTING_KEYS,
+  mergeAgentConfig,
   toSubscriptionConfig,
   type AgentSubscriptionConfig,
   type ChannelSubscriptionConfig,
@@ -176,13 +180,33 @@ export function buildAgentEntityCreateSpec(
   };
 }
 
-export async function createAgentEntity(
+async function resolveWorkspaceAgentConfig(
+  rpc: AgentLaunchRpc,
+  config: AgentSubscriptionConfig | Record<string, unknown> | undefined
+): Promise<Record<string, unknown>> {
+  const service = await resolveDurableObjectService(rpc, MODEL_SETTINGS_SERVICE_PROTOCOL);
+  if (!service.targetId) throw new Error("model settings service did not resolve");
+  const settings = await rpc.call(service.targetId, modelSettingsRpcMethods["getSettings"], []);
+  return mergeAgentConfig(settings.defaultAgentConfig, config);
+}
+
+async function createAgentEntityWithResolvedConfig(
   rpc: AgentLaunchRpc,
   input: AgentEntityCreateInput,
 ): Promise<AgentEntityHandle> {
   return rpc.call("main", mainRpcMethods["runtime.createEntity"], [
     buildAgentEntityCreateSpec(input),
   ]);
+}
+
+export async function createAgentEntity(
+  rpc: AgentLaunchRpc,
+  input: AgentEntityCreateInput,
+): Promise<AgentEntityHandle> {
+  return createAgentEntityWithResolvedConfig(rpc, {
+    ...input,
+    config: await resolveWorkspaceAgentConfig(rpc, input.config),
+  });
 }
 
 export async function retireAgentEntity(
@@ -242,11 +266,14 @@ export async function launchAgentIntoChannel(
   rpc: AgentLaunchRpc,
   input: LaunchAgentIntoChannelInput,
 ): Promise<LaunchAgentIntoChannelResult> {
-  const handle = await createAgentEntity(rpc, {
+  // All creation surfaces use the same secret-free workspace settings read.
+  const resolvedConfig = await resolveWorkspaceAgentConfig(rpc, input.config);
+  const handle = await createAgentEntityWithResolvedConfig(rpc, {
     ...input,
+    config: resolvedConfig,
     agentInitialization: {
       channelId: input.channelId,
-      config: toSubscriptionConfig(input.config),
+      config: toSubscriptionConfig(resolvedConfig),
       replay: input.replay,
     },
   });

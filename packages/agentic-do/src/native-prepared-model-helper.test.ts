@@ -83,8 +83,8 @@ describe("protected one-shot native model connection", () => {
     expect(f.owned.size).toBe(0);
     expect(f.calls.mock.calls[0]).toMatchObject([
       "main",
-      "credentials.resolveCredential",
-      [{ providerId: "faux" }],
+      "credentials.resolveNativeModel",
+      [{ providerId: "faux", modelId: f.model.id, endpoint: "https://{tenant}.provider.test/v1" }],
       { authorityAcquisition: "wait" },
     ]);
     expect(f.stream.mock.calls[0]?.[2]?.[0]).toMatchObject({
