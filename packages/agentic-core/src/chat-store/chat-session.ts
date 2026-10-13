@@ -355,6 +355,7 @@ export class ChatSession implements ReadableStore<ChatSessionSnapshot> {
 
   // Owned async work.
   #loop: AbortController | null = null;
+  readonly #lifetime = new AbortController();
   #undoTimer: ReturnType<typeof setTimeout> | null = null;
   #flushTimer: ReturnType<typeof setTimeout> | null = null;
   #disposed = false;
@@ -1034,10 +1035,9 @@ export class ChatSession implements ReadableStore<ChatSessionSnapshot> {
    */
   readonly sendMessage = async (attachments?: AttachmentInput[], options?: SendOptions): Promise<void> => {
     const snapshot = this.#cell.getSnapshot();
-    const client = snapshot.client;
     const text = snapshot.input.trim();
     const hasAttachments = Boolean(attachments && attachments.length > 0);
-    if ((!text && !hasAttachments) || !client) return;
+    if (!text && !hasAttachments) return;
     const previousReplyTo = options?.replyTo ?? null;
     const isAfterTurn = options?.metadata?.["deliverAfterTurn"] === true;
     const hadPriorTranscriptMessages = this.#hasTranscriptMessages;
@@ -1054,6 +1054,7 @@ export class ChatSession implements ReadableStore<ChatSessionSnapshot> {
     };
     let receipt: { messageId: string; pubsubId: number | undefined };
     try {
+      const client = snapshot.client ?? (await this.#clientForSend());
       receipt = await client.send(text || "", {
         attachments: hasAttachments ? attachments : undefined,
         mentions: options?.mentions && options.mentions.length > 0 ? options.mentions : undefined,
@@ -1086,6 +1087,45 @@ export class ChatSession implements ReadableStore<ChatSessionSnapshot> {
     await this.#backfill(receipt.pubsubId);
     if (!this.#defaultTitleSet && !hadPriorTranscriptMessages) this.#applyDefaultTitle(text);
   };
+
+  /**
+   * A submitted draft belongs to this session even while its initial join is
+   * still in flight. Wait for that owned join; a terminal join failure or
+   * session disposal settles the send with the same lifecycle cause.
+   */
+  #clientForSend(): Promise<PubSubClient<ChatParticipantMetadata>> {
+    const ready = this.client;
+    if (ready) return Promise.resolve(ready);
+    if (this.#disposed) return Promise.reject(this.#lifetime.signal.reason);
+    this.start();
+    return new Promise((resolve, reject) => {
+      let off = () => {};
+      let settled = false;
+      const finish = (
+        result:
+          | { client: PubSubClient<ChatParticipantMetadata> }
+          | { error: unknown }
+      ) => {
+        if (settled) return;
+        settled = true;
+        off();
+        this.#lifetime.signal.removeEventListener("abort", onAbort);
+        if ("client" in result) resolve(result.client);
+        else reject(result.error);
+      };
+      const inspect = () => {
+        const current = this.#cell.getSnapshot();
+        if (current.client) finish({ client: current.client });
+        else if (current.connectionError && !current.connectionError.retryable)
+          finish({ error: current.connectionError.cause ?? new Error(current.connectionError.detail ?? current.connectionError.message) });
+      };
+      const onAbort = () => finish({ error: this.#lifetime.signal.reason });
+      off = this.subscribe(inspect);
+      this.#lifetime.signal.addEventListener("abort", onAbort, { once: true });
+      if (this.#lifetime.signal.aborted) onAbort();
+      else inspect();
+    });
+  }
 
   /**
    * Publish text without touching the composer (deferred first-message
@@ -1453,6 +1493,7 @@ export class ChatSession implements ReadableStore<ChatSessionSnapshot> {
 
   #dispose(): void {
     this.#disposed = true;
+    this.#lifetime.abort(new Error("Chat session disposed"));
     for (const release of this.#releaseSubStores.splice(0)) release();
     this.#loop?.abort(new Error("Chat session disposed"));
     this.#loop = null;

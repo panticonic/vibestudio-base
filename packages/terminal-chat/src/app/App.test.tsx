@@ -62,6 +62,22 @@ describe("TerminalChatApp", () => {
     expect(app.text()).toContain("› You");
   });
 
+  it("sends input to the live conversation during a render handoff", async () => {
+    const app = await mount();
+    const next = app.chat.replaceLiveSessionWithoutRender();
+
+    await app.type("fork message");
+    // A newly opened conversation may finish loading its persisted draft
+    // after the editor has rendered the user's input.
+    next.update({ input: "" });
+    await app.type("\r");
+
+    expect(app.chat.calls.submitted).toEqual([]);
+    expect(next.calls.submitted).toEqual([
+      { text: "fork message", options: { mentions: [] } },
+    ]);
+  });
+
   it("streams agent replies into the transcript and renders markdown", async () => {
     const app = await mount();
     app.chat.update({ messages: [agentReply("a1", "# Plan\n\n- step **one**", { complete: false })], agentBusy: true });

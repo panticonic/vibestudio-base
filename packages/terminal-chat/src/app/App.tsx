@@ -3,7 +3,7 @@
  * input, and lays the screen out as lines (see `screen.ts`); Ink draws them
  * and places the real cursor in the composer.
  */
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Box, Text, useCursor } from "ink";
 import type { ChatMessage } from "@workspace/agentic-core";
 import { deriveActiveOutbox } from "@workspace/agentic-core/chat-presentation";
@@ -76,7 +76,7 @@ export function TerminalChatApp({ runtime, input, control, approvalsKey = "Ctrl-
   const [childVersion, setChildVersion] = useState(0);
 
   // Reset per-conversation view state when the conversation changes.
-  useEffect(() => {
+  useLayoutEffect(() => {
     setMode("compose");
     setOverlay(null);
     setExpanded(new Set());
@@ -88,10 +88,15 @@ export function TerminalChatApp({ runtime, input, control, approvalsKey = "Ctrl-
 
   // The composer's text is the store's draft; the editor keeps the cursor.
   const draft = chat?.input ?? "";
-  useEffect(() => setEditor((current) => editorFor(draft, current)), [draft]);
+  // Conversation switches and session draft hydration must settle before Ink
+  // publishes a frame that can invite the next terminal input event.
+  useLayoutEffect(() => setEditor((current) => editorFor(draft, current)), [draft]);
   const setDraft = (next: EditorState) => {
     setEditor(next);
-    session?.setInput(next.text);
+    // A conversation switch can complete between this render and the input
+    // event. Mutations belong to the runtime's current session, never the
+    // session captured by an older React render.
+    runtime.getSnapshot().session?.setInput(next.text);
   };
 
   const actions = useMemo(
@@ -306,14 +311,18 @@ export function TerminalChatApp({ runtime, input, control, approvalsKey = "Ctrl-
       actions.run(parsed.command.name, parsed.args);
       return;
     }
-    if (!session) return;
+    const liveSession = runtime.getSnapshot().session;
+    if (!liveSession) return;
     if (!parsed.text.trim() && attachments.length === 0) return;
-    if (parsed.text !== text) session.setInput(parsed.text);
+    // Submission is the commit boundary for the composer. Reassert the text
+    // from this render because a newly opened session can finish hydrating
+    // its persisted draft after the input event but before Enter.
+    liveSession.setInput(parsed.text);
     const sending = attachments;
     setAttachments([]);
     setScroll(FOLLOW);
     try {
-      await session.submit(sending.length ? sending : undefined, {
+      await liveSession.submit(sending.length ? sending : undefined, {
         mentions: mentionIds(parsed.text, chat?.participants ?? {}, selfId),
         ...(afterTurn ? { metadata: { deliverAfterTurn: true } } : {}),
       });
