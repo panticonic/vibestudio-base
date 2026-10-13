@@ -77,6 +77,15 @@
           "evidence": "intentional-broad"
         },
         {
+          "capability": "model.use",
+          "resource": {
+            "kind": "prefix",
+            "prefix": "model:"
+          },
+          "tier": "gated",
+          "evidence": "bounded-dynamic"
+        },
+        {
           "capability": "panel.inspect",
           "resource": {
             "kind": "prefix",

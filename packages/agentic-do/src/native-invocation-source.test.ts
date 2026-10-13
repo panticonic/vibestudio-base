@@ -14,12 +14,15 @@ import {
   bindReceipt,
   createRegistry,
   defineExtension,
+  defineTask,
   defineTool,
   DirectToolCallEntry,
   Harness,
   MemoryStorage,
   type ModelRequestPort,
   type TaskId,
+  type EntryId,
+  type PinnedModel,
   type Storage,
   type ToolExecutionApi,
   UserEntry,
@@ -52,6 +55,9 @@ import {
   retainNativeModelInvocation,
   retainNativeToolInvocation,
 } from "./native-invocation-source.js";
+
+import { copyJson } from "@panticonic/pi-chord";
+import { completeNativeModelHelper, NativeModelHelperTask } from "./native-model-helper.js";
 
 const context = BACKGROUND_CONTEXT;
 const owner = {
@@ -185,6 +191,72 @@ function originDelivery(
 }
 
 describe("native invocation source", () => {
+  it("inspects one-shot inference through the same trusted native model port", async () => {
+    const state = setup();
+    state.registry.install(defineExtension({ name: "one-shot", tasks: [NativeModelHelperTask] }));
+    state.faux.setResponses([fauxAssistantMessage("one-shot answer")]);
+    let harness!: Harness;
+    let source!: NativeInvocationSource;
+    const opened = await open(state, async (request, api, ctx) => {
+      source = await retainNativeModelInvocation(harness, request, api, image, ctx);
+      expect(source.task.kind).toBe("vibestudio.model-helper");
+      const inspected = await inspectNativeInvocationSource(harness, {
+        taskId: source.task.taskId, invocationId: nativeInvocationId(source),
+      }, image, ctx);
+      expect(inspected?.source).toEqual(source);
+      return { status: "ready", options: {}, close: async () => {} };
+    });
+    harness = opened.harness;
+    await expect(completeNativeModelHelper(harness, opened.root, state.faux.getModel(), {
+      systemPrompt: "Write a reply", messages: [{ role: "user", content: "An email", timestamp: 1 }],
+    }, { temperature: 0, maxTokens: 50 }, context)).resolves.toMatchObject({ content: [{ type: "text", text: "one-shot answer" }] });
+    expect(await inspectNativeInvocationSource(harness, {
+      taskId: source.task.taskId, invocationId: nativeInvocationId(source),
+    }, image, context)).toBeNull();
+  });
+
+  it("invalidates a model witness when its actual task advances to another phase", async () => {
+    const state = setup();
+    let harness!: Harness;
+    let source!: NativeInvocationSource;
+    const task = defineTask<{ cutoff: EntryId }, { phase: "request" | "finished" }, null>({
+      name: "test.native-model-phase", version: 1,
+      initial: () => ({ phase: "request" }),
+      phases: {
+        request: async (current, runtime, ctx) => {
+          await runtime.withModelRequest({
+            purpose: "generation", operation: "complete", attempt: 0,
+            model: copyJson(state.faux.getModel(), { omitUndefinedProperties: true }) as PinnedModel, messages: [], cutoff: current.input.cutoff, options: {},
+          }, async () => null, ctx);
+          await runtime.commit(() => ({ status: "running", checkpoint: { phase: "finished" } }), ctx);
+        },
+        finished: async (_current, runtime, ctx) => {
+          expect(await inspectNativeInvocationSource(harness, {
+            taskId: source.task.taskId, invocationId: nativeInvocationId(source),
+          }, image, ctx)).toBeNull();
+          await runtime.commit(() => ({ status: "terminal", outcome: { status: "completed", result: null } }), ctx);
+        },
+      },
+      abort: async (_current, runtime, ctx) => {
+        await runtime.commit(() => ({ status: "terminal", outcome: { status: "aborted" } }), ctx);
+      },
+    });
+    state.registry.install(defineExtension({ name: "native-model-phase", tasks: [task] }));
+    const opened = await open(state, async (request, api, ctx) => {
+      source = await retainNativeModelInvocation(harness, request, api, image, ctx);
+      expect(await inspectNativeInvocationSource(harness, {
+        taskId: source.task.taskId, invocationId: nativeInvocationId(source),
+      }, image, ctx)).not.toBeNull();
+      return { status: "ready", options: {}, close: async () => {} };
+    });
+    harness = opened.harness;
+    const id = await opened.root.commit(async (tx) => {
+      const marker = await tx.appendEntry(opened.root.id, { kind: "test.model-phase" });
+      return tx.createTask(task, { cutoff: marker.id }, { ownership: { kind: "conversation" } });
+    }, context);
+    expect((await harness.waitForTask(id, context)).state.outcome.status).toBe("completed");
+  });
+
   it("proves only the original placed mailbox input through model and genuine ToolTask ancestry despite history and later steering", async () => {
     const state = setup();
     let harness!: Harness;

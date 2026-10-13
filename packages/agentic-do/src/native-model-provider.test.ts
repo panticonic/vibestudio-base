@@ -139,11 +139,15 @@ function setup(
     }),
   );
   const egressFetch = vi.fn<typeof fetch>();
+  const notifyCredentialMissing = vi.fn<
+    NonNullable<NativeModelProviderHost["notifyCredentialMissing"]>
+  >(async () => {});
   const port = createProtectedModelProvider({
     ...(deterministicTestProviderId ? { deterministicTestProviderId } : {}),
     rpcForRequest,
     egressFetch,
     waitForAuthority,
+    notifyCredentialMissing,
   });
   async function open(storage: Storage = new MemoryStorage()) {
     const harness = await openBoundAgentSession(
@@ -185,6 +189,7 @@ function setup(
     rpcForRequest,
     waitForAuthority,
     egressFetch,
+    notifyCredentialMissing,
     port,
     open,
     reports,
@@ -282,6 +287,11 @@ describe("native protected model provider", () => {
     expect(lifecycle()[1]?.payload).toMatchObject({
       reason: "model_credential_required",
       summary: "Waiting for model connection",
+    });
+    expect(state.notifyCredentialMissing).toHaveBeenCalledOnce();
+    expect(state.notifyCredentialMissing.mock.calls[0]?.[0]).toMatchObject({
+      conversationId: root.id,
+      model: { provider: "faux", id: state.faux.getModel().id },
     });
     state.rpc.call.mockResolvedValue(summary());
     await notifyModelCredentialChange(harness, owner, root.id, "faux", context);

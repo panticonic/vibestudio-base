@@ -899,6 +899,13 @@ export function createNativeChannelPublication(options: {
                       input.reason === "aborted"
                         ? "user_interrupted"
                         : "work_failed",
+                    ...(input.detail !== undefined
+                      ? {
+                          summary: typeof input.detail === "string"
+                            ? input.detail
+                            : canonicalJson(input.detail),
+                        }
+                      : {}),
                   }
                 : {}),
             },

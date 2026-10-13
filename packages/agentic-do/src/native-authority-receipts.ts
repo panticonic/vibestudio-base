@@ -1,4 +1,4 @@
-import { nativeToolInvocationCoordinates } from "./native-invocation-source.js";
+import { nativeToolInvocationCoordinates, readRetainedNativeInvocationSource } from "./native-invocation-source.js";
 import type { Context, JsonValue } from "@panticonic/pi-chord";
 import {
   acceptReceipt,
@@ -23,6 +23,7 @@ import { canonicalJson } from "@vibestudio/shared/canonicalJson";
 import { sha256HexSyncText } from "@vibestudio/content-addressing";
 import {
   nativeInvocationId,
+  nativeInvocationIdentity,
   type NativeInvocationIdentity,
 } from "@vibestudio/service-schemas/nativeInvocation";
 import { channelTrajectoryFor } from "@vibestudio/trajectory-identity";
@@ -518,7 +519,7 @@ export async function reconcileAuthorityReceipts(
         task.conversationId!,
         context,
       );
-      assertNativeReceipt(receipt, sourceOwner, image, task, identity);
+      await assertNativeReceipt(harness, receipt, sourceOwner, image, task, identity, context);
       await harness.commit(
         (tx) => retainNativeReceipt(tx, receipt, task, owner, image),
         context,
@@ -576,7 +577,7 @@ export async function withdrawNativeToolAuthorities(
     const identity = receipt.invocations[0]!.nativeInvocation;
     if (!identity)
       throw new Error("Native tool authority has no original coordinates");
-    assertNativeReceipt(receipt, sourceOwner, image, task, identity);
+    await assertNativeReceipt(harness, receipt, sourceOwner, image, task, identity, context);
     await api.commit(
       (tx) => retainNativeReceipt(tx, receipt, task, owner, image),
       context,
@@ -614,29 +615,36 @@ function toolInvocationId(
   });
 }
 
-function assertNativeReceipt(
+async function assertNativeReceipt(
+  harness: Harness,
   receipt: AuthorityAcquisitionReceipt,
   owner: Awaited<ReturnType<typeof nativeInvocationOwner>>,
   image: LoadedAgentImage,
   task: TaskRecord<JsonValue, JsonValue, unknown>,
   identity: NativeInvocationIdentity,
-): void {
+  context: Context,
+): Promise<void> {
   if (
     identity.owner.runtimeId !== owner.runtimeId ||
     identity.owner.authoritySessionId !== owner.authoritySessionId ||
     identity.task.taskId !== task.id ||
     identity.task.conversationId !== task.conversationId ||
-    (identity.operation.kind !== "model"
-      ? task.kind !== "pi.tool" ||
-        toolInvocationId(task, owner) !== nativeInvocationId(identity)
-      : task.kind !==
-        (identity.operation.purpose === "generation"
-          ? "pi.generation"
-          : "pi.compaction"))
+    (identity.operation.kind !== "model" &&
+      (task.kind !== "pi.tool" ||
+        toolInvocationId(task, owner) !== nativeInvocationId(identity)))
   )
     throw new Error(
       "Authority receipt conflicts with its original native task",
     );
+  if (identity.operation.kind === "model") {
+    // Settlement debt can outlive the request phase. Validate its retained
+    // source, admitted by the trusted model port, rather than current activity.
+    const source = await readRetainedNativeInvocationSource(harness, {
+      taskId: task.id, invocationId: nativeInvocationId(identity),
+    }, image, context);
+    if (!source || canonicalJson(nativeInvocationIdentity(source)) !== canonicalJson(identity))
+      throw new Error("Authority receipt has no original admitted native model request");
+  }
   const trajectory = channelTrajectoryFor(owner.channelId);
   const parent = {
     kind: "trajectory-invocation",

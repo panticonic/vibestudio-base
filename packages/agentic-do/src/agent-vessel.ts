@@ -106,8 +106,8 @@ import {
   type NativeChildLaunchIntent,
 } from "./native-child-launch.js";
 import { createNativeInputSettlement } from "./native-input-settlement.js";
-import { withPreparedNativeModel } from "./native-prepared-model-helper.js";
-import type { CredentialedModelConnection } from "./native-model-transport.js";
+import { completeNativeModelHelper, NativeModelHelperTask } from "./native-model-helper.js";
+
 import { OwnedMethodCalls } from "./owned-method-calls.js";
 import {
   prepareNativeProductContexts,
@@ -4874,62 +4874,30 @@ export abstract class AgentVesselBase extends NativeChannelOwner<NativeProductCh
     );
   }
 
-  /** Resolve the current model's API key (out-of-loop helpers like draft
-   *  writers). When no credential is configured, publishes a connect-only
-   *  credential card (resumeAfterConnect: false — one-shot flows have no
-   *  parked turn to resume) and throws with the canonical message. */
-  private readonly nativeHelperConnections =
-    new Set<CredentialedModelConnection>();
   private readonly nativeHelperOperations = new Set<{
     controller: AbortController;
     operation: Promise<unknown>;
   }>();
 
-  protected async withNativeModelConnection<T>(
+  protected async completeNativeModel(
     channelId: string,
     selected: Model<Api>,
-    dispatch: (
-      model: Model<Api>,
-      connection: CredentialedModelConnection,
-    ) => Promise<T>,
-    context: Context = {
-      ...BACKGROUND_CONTEXT,
-      abortSignal: this.rpcAbortSignal ?? undefined,
-    },
-    rpc: RpcClient = this.rpc,
-  ): Promise<T> {
-    await this.agentSession(context);
+    transcript: import("@panticonic/pi-ai").Context,
+    options: { temperature?: number; maxTokens?: number },
+    context: Context = { ...BACKGROUND_CONTEXT, abortSignal: this.rpcAbortSignal ?? undefined },
+    parent?: ToolExecutionApi,
+  ): Promise<import("@panticonic/pi-ai").AssistantMessage> {
+    const harness = await this.agentSession(context);
     this.assertNativeAgentAdmission();
     const controller = new AbortController();
     const abortSignal = context.abortSignal
       ? AbortSignal.any([context.abortSignal, controller.signal])
       : controller.signal;
-    const operation = Promise.resolve().then(() =>
-      withPreparedNativeModel(
-        {
-          rpc,
-          cleanupRpc: rpc,
-          egressFetch: fetch,
-          own: (connection) => {
-            this.nativeHelperConnections.add(connection);
-          },
-          released: (connection) => {
-            this.nativeHelperConnections.delete(connection);
-          },
-          credentialMissing: (model) =>
-            this.publishCredentialConnectCard(
-              channelId,
-              model.provider,
-              {
-                resumeAfterConnect: false,
-                modelRef: canonicalModelRef(model.provider, model.id),
-              },
-              rpc,
-            ),
-        },
-        selected,
-        dispatch,
-        { ...context, abortSignal },
+    const operation = Promise.resolve().then(async () =>
+      completeNativeModelHelper(
+        harness,
+        await this.nativeChannelConversation(channelId, { ...context, abortSignal }),
+        selected, transcript, options, { ...context, abortSignal }, parent,
       ),
     );
     const owned = { controller, operation };
@@ -4944,28 +4912,11 @@ export abstract class AgentVesselBase extends NativeChannelOwner<NativeProductCh
   private async releaseNativeModelHelpers(reason: Error): Promise<void> {
     const operations = [...this.nativeHelperOperations];
     for (const { controller } of operations) controller.abort(reason);
-    await Promise.allSettled(operations.map(({ operation }) => operation));
-    const outcomes = await Promise.allSettled(
-      [...this.nativeHelperConnections].map(async (connection) => {
-        await connection.close(BACKGROUND_CONTEXT);
-        this.nativeHelperConnections.delete(connection);
-      }),
-    );
-    const failures = outcomes
-      .filter(
-        (outcome): outcome is PromiseRejectedResult =>
-          outcome.status === "rejected",
-      )
-      .map((outcome) => outcome.reason);
-    if (failures.length === 1) throw failures[0];
-    if (failures.length)
-      throw new AggregateError(
-        failures,
-        "One-shot model resource cleanup failed",
-        {
-          cause: failures[0],
-        },
-      );
+    const outcomes = await Promise.allSettled(operations.map(({ operation }) => operation));
+    const failures = outcomes.filter((outcome): outcome is PromiseRejectedResult =>
+      outcome.status === "rejected" && outcome.reason !== reason,
+    ).map((outcome) => outcome.reason);
+    if (failures.length) throw new AggregateError(failures, "One-shot model resource cleanup failed");
   }
 
   /** The credential-connect inline card (same renderer the chat panel ships). */
@@ -7081,6 +7032,7 @@ export abstract class AgentVesselBase extends NativeChannelOwner<NativeProductCh
           this.nativeInputSettlement.task,
           this.nativeConversationCancellation.task,
           this.nativeModelReset.task,
+          NativeModelHelperTask,
           ...this.nativeAutomationRuns.tasks,
         ],
       }),

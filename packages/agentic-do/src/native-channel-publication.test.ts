@@ -123,6 +123,7 @@ async function fixture(
     reportTo?: string;
     publish?: Parameters<typeof createNativeChannelPublication>[0]["publish"];
     tools?: NonNullable<Parameters<typeof defineExtension>[0]["tools"]>;
+    modelRequests?: Parameters<typeof Harness.open>[1]["modelRequests"];
   } = {},
 ) {
   const attempts: { key: string; event: AgenticEvent }[] = [];
@@ -147,6 +148,7 @@ async function fixture(
   registry.install(extension);
   const harnessOptions = {
     models,
+    ...(options.modelRequests ? { modelRequests: options.modelRequests } : {}),
     registry,
     publishWake: async () => {},
     prepareCommit: publication.prepareCommit,
@@ -218,6 +220,33 @@ async function publicationTasks(harness: Harness) {
 
 
 describe("native run activity publication", () => {
+  it("preserves the original model admission failure in the closed turn", async () => {
+    const detail =
+      "Chat worker did not request model.use for the selected model account";
+    const f = await fixture({
+      modelRequests: async () => {
+        throw new Error(detail);
+      },
+    });
+    const input = await f.conversation.submit(
+      { type: "input", content: "Start" },
+      context,
+    );
+    await f.harness.runPass(context);
+    await f.harness.runPass(context);
+    expect(await input.wait(context)).toMatchObject({
+      status: "unanswered",
+      reason: "faulted",
+      detail,
+    });
+    const closed = f.attempts.filter(({ event }) => event.kind === "turn.closed");
+    expect(closed).toHaveLength(1);
+    expect(closed[0]!.event.payload).toMatchObject({
+      reason: "work_failed",
+      summary: detail,
+    });
+  });
+
   it("opens before the provider produces text and remains interruptible until provider cancellation joins", async () => {
     const entered = gate(),
       opened = gate(),

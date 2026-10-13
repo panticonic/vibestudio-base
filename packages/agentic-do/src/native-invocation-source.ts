@@ -1,6 +1,7 @@
 import { copyJson, type Context, type JsonValue } from "@panticonic/pi-chord";
 import {
   defineDocFamily,
+  defineDoc,
   DirectToolCallEntry,
   NestedCallDoc,
   type TaskRecord,
@@ -29,12 +30,26 @@ import {
 import { nativeTaskProductContext } from "./native-product-context.js";
 import { retainedNativeConversationChannel, retainedNativeChannelOriginatingInput } from "./native-channel-session.js";
 
+/** Immutable invocation provenance outlives task execution and its cleanup debt. */
 const NativeSource = defineDocFamily<{ source: JsonValue }, null>({
   kind: "vibestudio.native-invocation-source",
   version: 1,
-  scope: "task",
+  scope: "session",
   family: true,
   initial: () => ({ source: null }),
+  checkpointWhen: () => true,
+});
+
+/** The trusted scheduler request port witnesses the task's current model phase.
+ * Product tasks and built-in generation use the same admission proof. */
+const NativeModelExecution = defineDoc<{
+  invocationId: string;
+  checkpointDigest: string;
+}>({
+  kind: "vibestudio.native-model-execution",
+  version: 1,
+  scope: "task",
+  initial: () => ({ invocationId: "", checkpointDigest: "" }),
   checkpointWhen: () => true,
 });
 
@@ -73,7 +88,6 @@ async function retain(
   const id = nativeInvocationId(checked);
   const retained = await tx.doc(
     NativeSource,
-    checked.task.taskId as TaskId,
     id,
     null,
   );
@@ -131,6 +145,9 @@ export async function retainNativeModelInvocation(
       task.version !== request.taskVersion
     )
       throw new Error("Native model source does not match the invoking task");
+    const execution = await tx.doc(NativeModelExecution, task.id);
+    execution.invocationId = nativeInvocationId(source);
+    execution.checkpointDigest = sha256HexSyncText(canonicalJson(task.state.checkpoint));
     return retain(tx, source);
   }, context);
 }
@@ -266,7 +283,7 @@ export async function retainNativeToolInvocation(
   }, context);
 }
 
-/** Resolve source from its actual task-owned document and current owner. */
+/** Resolve retained provenance and validate its actual task and current owner. */
 async function readNativeTaskSource(
   harness: Harness,
   input: { taskId: number; invocationId: string },
@@ -277,7 +294,6 @@ async function readNativeTaskSource(
   if (!task) return null;
   const retained = await harness.snapshot(
     NativeSource,
-    task.id,
     input.invocationId,
     context,
   );
@@ -341,22 +357,11 @@ export async function inspectNativeInvocationSource(
         "Native tool invocation conflicts with its committed execution intent",
       );
   } else {
-    const checkpoint = task.state.checkpoint;
-    const generation =
-      source.operation.purpose === "generation" &&
-      task.kind === "pi.generation" &&
-      (checkpoint["phase"] === "request" || checkpoint["phase"] === "poll") &&
-      checkpoint["cutoff"] === source.operation.cutoff;
-    const compaction =
-      source.operation.purpose === "compaction" &&
-      task.kind === "pi.compaction" &&
-      checkpoint["phase"] === "summarize" &&
-      checkpoint["tail"] === source.operation.cutoff;
+    const execution = await harness.snapshot(NativeModelExecution, task.id, context);
     if (
-      (!generation && !compaction) ||
-      checkpoint["attempt"] !== source.operation.attempt
-    )
-      return null;
+      execution?.invocationId !== input.invocationId ||
+      execution.checkpointDigest !== sha256HexSyncText(canonicalJson(task.state.checkpoint))
+    ) return null;
   }
   // A durable abort requests cleanup; it does not declare the owned operation terminal.
   const originatingInput = await retainedNativeInvocationOriginatingInput(harness, task.id, context);
