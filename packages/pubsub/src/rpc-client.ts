@@ -295,7 +295,7 @@ function eventToClientIngress(
   event: ServerLogEvent,
   phase: "replay" | "live",
 ): ClientIngressMessage {
-  if (!Number.isSafeInteger(event.id) || event.id < 0)
+  if (!Number.isSafeInteger(event.id) || event.id <= 0)
     throw new Error(
       "Channel log delivery requires its locally committed numeric cursor",
     );
@@ -944,10 +944,9 @@ export function connectViaRpc<
           serverEnvelopeCount = msg.envelopeCount;
         if (!emitRecoveryReplay) {
           if (!retainedProjectionTruncated) {
-            serverFirstEnvelopeSeq =
-              typeof msg.firstEnvelopeSeq === "number"
-                ? msg.firstEnvelopeSeq
-                : undefined;
+            serverFirstEnvelopeSeq = replayEvents.find(
+              (event) => event.pubsubId !== undefined,
+            )?.pubsubId;
           }
           serverHasMoreBefore =
             (typeof msg.hasMoreBefore === "boolean"
@@ -1163,7 +1162,7 @@ export function connectViaRpc<
   ): Promise<void> {
     if (snapshot.kind !== "receipt-snapshot") return;
     for (const event of snapshot.events) {
-      await handleServerMessage(eventToClientIngress(event, "replay"));
+      await handleServerMessage({ ...event, stream: "log", phase: "replay", attachments: event.attachments as WireAttachment[] | undefined });
     }
   }
 

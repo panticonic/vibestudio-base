@@ -446,7 +446,7 @@ export class ChannelLog {
         channelConfig: context.channelConfig,
         totalCount: window.pageInfo.totalCount,
         envelopeCount: window.pageInfo.totalCount,
-        firstEnvelopeSeq: window.pageInfo.firstSeq,
+        firstEnvelopeSeq: window.pageInfo.returnedFromSeq,
         replayFromId: window.pageInfo.returnedFromSeq,
         replayToId: window.pageInfo.returnedToSeq,
         snapshotLastSeq: window.pageInfo.snapshotLastSeq,

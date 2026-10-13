@@ -51,6 +51,7 @@ export function pubsubChannelEventToEnvelope<Payload>(
   channelId: string,
   payloadKind: string,
   wire: {
+    envelopeId?: string;
     pubsubId?: number;
     senderId?: string;
     ts?: number;
@@ -61,7 +62,7 @@ export function pubsubChannelEventToEnvelope<Payload>(
   const participantId = wire.senderId ?? "channel";
   const metadata = wire.senderMetadata;
   return {
-    envelopeId: `pubsub:${wire.pubsubId ?? crypto.randomUUID()}` as EnvelopeId,
+    envelopeId: (wire.envelopeId ?? `pubsub:${wire.pubsubId ?? crypto.randomUUID()}`) as EnvelopeId,
     channelId: channelId as ChannelId,
     seq: wire.pubsubId ?? 0,
     from: participantRefFromMetadata(participantId, metadata),
@@ -91,6 +92,7 @@ export function pubsubAgenticEventToEnvelope<
 >(
   channelId: string,
   wire: {
+    envelopeId?: string;
     pubsubId?: number;
     senderId?: string;
     ts?: number;
@@ -103,7 +105,7 @@ export function pubsubAgenticEventToEnvelope<
   const participantId = wire.senderId ?? wire.payload.actor.id;
   const metadata = wire.senderMetadata;
   return {
-    envelopeId: `pubsub:${wire.pubsubId ?? crypto.randomUUID()}` as EnvelopeId,
+    envelopeId: (wire.envelopeId ?? `pubsub:${wire.pubsubId ?? crypto.randomUUID()}`) as EnvelopeId,
     channelId: channelId as ChannelId,
     seq: wire.pubsubId ?? 0,
     from: participantRefFromMetadata(participantId, metadata),

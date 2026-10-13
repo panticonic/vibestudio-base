@@ -3499,7 +3499,7 @@ describe("PubSubChannel", () => {
     expect(afterOne.ready).toMatchObject({
       totalCount: 3,
       envelopeCount: 3,
-      firstEnvelopeSeq: 1,
+      firstEnvelopeSeq: 2,
     });
 
     const beforeThree = await instance.getReplayBefore(3, 1);

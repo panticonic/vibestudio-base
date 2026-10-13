@@ -645,7 +645,7 @@ export interface AgenticClient<T extends AgenticParticipantMetadata = AgenticPar
   readonly totalMessageCount: number | undefined;
   /** Count of replayable channel envelopes. */
   readonly envelopeCount: number | undefined;
-  /** Sequence of the first replayable channel envelope. */
+  /** Earliest durable envelope retained by this client for replay. */
   readonly firstEnvelopeSeq: number | undefined;
   /** Whether the server reported older envelopes before the initial replay window. */
   readonly hasMoreBefore: boolean | undefined;

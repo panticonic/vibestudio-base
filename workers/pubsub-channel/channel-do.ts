@@ -3111,14 +3111,13 @@ export class PubSubChannel
   }
 
   private receiptSnapshot(): BootstrapSnapshot {
-    const events: ServerLogEvent[] = this.deliveryProjection
+    const events: Array<Omit<ServerLogEvent, "id">> = this.deliveryProjection
       .receiptRows()
       .flatMap((receipt) => {
         if (receipt.state === "declined") return [];
         const ref = this.participantRef(receipt.participantId);
         return [
           {
-            id: 0,
             messageId: `receipt:${receipt.messageId}:${receipt.participantId}:${receipt.state}`,
             type: AGENTIC_EVENT_PAYLOAD_KIND,
             senderId: receipt.participantId,

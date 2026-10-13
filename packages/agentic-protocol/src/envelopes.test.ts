@@ -6,6 +6,11 @@ import {
 } from "./index.js";
 
 describe("canonical participant roles in wire envelopes", () => {
+  it("preserves sequence-less replay observation identity without claiming a durable cursor", () => {
+    const envelope = pubsubAgenticEventToEnvelope("channel", { envelopeId: "receipt:message:agent:read", payload: { actor: { id: "agent" } } });
+    expect(envelope.envelopeId).toBe("receipt:message:agent:read");
+    expect(envelope.seq).toBe(0);
+  });
   it.each(["headless", "agent", "panel", "external"])(
     "keeps %s attribution consistent with the canonical subscription",
     (type) => {

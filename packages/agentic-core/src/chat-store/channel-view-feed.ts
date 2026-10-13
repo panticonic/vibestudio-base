@@ -107,6 +107,7 @@ function initialSnapshot(): ChannelViewFeedSnapshot {
 }
 
 interface WireEvent {
+  envelopeId?: string;
   type?: string;
   delivery?: "log" | "signal";
   phase?: "replay" | "live";
@@ -124,6 +125,7 @@ interface WireEvent {
 
 interface ReplayLogEvent {
   id: number;
+  messageId: string;
   type: string;
   senderId?: string;
   ts?: number;
@@ -310,6 +312,7 @@ export class ChannelViewFeed implements ReadableStore<ChannelViewFeedSnapshot> {
           reduceChannelView(
             this.#view,
             pubsubAgenticEventToEnvelope(this.#channelId, {
+              ...(wire.envelopeId ? { envelopeId: wire.envelopeId } : {}),
               ...(wire.pubsubId !== undefined ? { pubsubId: wire.pubsubId } : {}),
               ...(wire.senderId !== undefined ? { senderId: wire.senderId } : {}),
               ...(wire.ts !== undefined ? { ts: wire.ts } : {}),
@@ -450,6 +453,7 @@ export class ChannelViewFeed implements ReadableStore<ChannelViewFeedSnapshot> {
     const payload = raw.payload as Record<string, unknown> | undefined;
     if (!payload) return view;
     const wire = {
+      envelopeId: raw.messageId,
       pubsubId: raw.id,
       ...(raw.senderId !== undefined ? { senderId: raw.senderId } : {}),
       ...(raw.ts !== undefined ? { ts: raw.ts } : {}),

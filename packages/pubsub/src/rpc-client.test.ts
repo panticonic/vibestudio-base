@@ -23,6 +23,7 @@ import { schemaRpcMock } from "@vibestudio/rpc/test-utils";
 import { createRecoveryCoordinator } from "@vibestudio/shell-core/recoveryCoordinator";
 import { encodeEventWatchRecord } from "@vibestudio/shared/events";
 import { z } from "zod";
+import { ChannelViewFeed } from "@workspace/agentic-core/chat-store";
 
 const CHANNEL = "test-channel";
 const DO_TARGET = `do:workers/pubsub-channel:PubSubChannel:${CHANNEL}`;
@@ -3377,6 +3378,36 @@ describe("connectViaRpc", () => {
       });
       expect(client.hasMoreBefore).toBe(true);
 
+      await client.close();
+    });
+
+    it("retains the earliest durable cursor across replay pages and sequence-less receipt observations", async () => {
+      const mock = createMockRpc();
+      const event = (id: number) => ({ id, messageId: `envelope-${id}`, type: AGENTIC_EVENT_PAYLOAD_KIND, payload: messageEvent(`msg-${id}`, `message ${id}`), senderId: "agent-1", contentClass: "internal", externalKeys: [], ts: Date.now() });
+      const receipt = (agent: string) => ({ messageId: `receipt:msg-7:${agent}:read`, type: AGENTIC_EVENT_PAYLOAD_KIND, payload: { kind: "message.read", actor: { kind: "agent", id: agent }, causality: { messageId: "msg-7" }, payload: { protocol: "agentic.trajectory.v1" }, createdAt: new Date().toISOString() }, senderId: agent, contentClass: "internal", externalKeys: [], ts: Date.now() });
+      mock.rpc.call.mockImplementation(async (_target: string, method: string) => {
+        if (method === "workers.resolveService") return resolvedChannelService();
+        if (method === "subscribe") return { ok: true, envelope: { mode: "after", logEvents: [event(7)], snapshots: [{ kind: "receipt-snapshot", events: [receipt("reader-a"), receipt("reader-b")], ts: Date.now() }], ready: { totalCount: 8, envelopeCount: 8, firstEnvelopeSeq: 7, replayFromId: 7, replayToId: 7, snapshotLastSeq: 8, hasMoreBefore: true, hasMoreAfter: true } } };
+        if (method === "getReplayAfter") return { mode: "after", logEvents: [event(8)], snapshots: [], ready: { totalCount: 8, envelopeCount: 8, firstEnvelopeSeq: 8, replayFromId: 8, replayToId: 8, snapshotLastSeq: 8, hasMoreBefore: true, hasMoreAfter: false } };
+        return undefined;
+      });
+      const client = connectViaRpc({ rpc: publicRpcMock(mock.rpc), channel: CHANNEL });
+      await client.ready();
+      expect(client.firstEnvelopeSeq).toBe(7);
+      const observations = client.events({ includeReplay: true });
+      const retained = [];
+      for (let index = 0; index < 4; index++) retained.push((await observations.next()).value!);
+      expect(retained.filter((item) => item.type === AGENTIC_EVENT_PAYLOAD_KIND && item.payload.kind === "message.read").map((item) => ({ id: item.envelopeId, seq: item.pubsubId }))).toEqual([
+        { id: "receipt:msg-7:reader-a:read", seq: undefined },
+        { id: "receipt:msg-7:reader-b:read", seq: undefined },
+      ]);
+      await observations.return?.();
+      const feed = new ChannelViewFeed({ channelId: CHANNEL });
+      const release = feed.follow(client);
+      await vi.waitFor(() => expect(Object.keys(feed.view.messages["msg-7"]?.readBy ?? {})).toHaveLength(2));
+      expect(feed.getSnapshot().hasMoreHistory).toBe(true);
+      release();
+      feed.dispose();
       await client.close();
     });
 
