@@ -25,6 +25,9 @@ import {
   LOCAL_FALLBACK_MODEL_REF,
   LOCAL_MODELS_EXTENSION_ID,
   LOCAL_PROVIDER_ID,
+  TEST_MODEL_REF,
+  TEST_MODEL_SPEC,
+  TEST_MODEL_PROVIDER_ID,
   WORKSPACE_DEFAULT_AGENT_CONFIG_FIELD,
   isModelUsable,
   piModelToSpec,
@@ -200,6 +203,32 @@ export function localEntryToCatalogEntry(
   };
 }
 
+function testModelCatalogEntry(): ModelCatalogEntry {
+  return {
+    ref: TEST_MODEL_REF,
+    id: TEST_MODEL_SPEC.id,
+    name: TEST_MODEL_SPEC.name,
+    provider: TEST_MODEL_PROVIDER_ID,
+    baseUrl: TEST_MODEL_SPEC.baseUrl,
+    reasoning: false,
+    vision: true,
+    contextWindow: TEST_MODEL_SPEC.contextWindow,
+    maxTokens: TEST_MODEL_SPEC.maxTokens,
+    thinkingLevels: [],
+    templatedBaseUrl: false,
+    connectable: false,
+    recommended: false,
+    auth: "none",
+    availability: { state: "ready", detail: "deterministic-test" },
+    modelSpec: {
+      ...TEST_MODEL_SPEC,
+      input: [...TEST_MODEL_SPEC.input],
+      cost: { ...TEST_MODEL_SPEC.cost },
+    },
+    capabilities: { tools: true },
+  };
+}
+
 function localAvailability(entry: LocalModelEntry): ModelAvailability {
   switch (entry.state) {
     case "ready":
@@ -229,15 +258,8 @@ function localAvailability(entry: LocalModelEntry): ModelAvailability {
 export function applyCloudAvailability(
   entry: ModelCatalogEntry,
   credentials: readonly StoredCredentialSummary[],
-  executionMode: "provider-credentials" | "deterministic-test",
 ): ModelCatalogEntry {
   if (entry.auth !== "url-bound") return entry;
-  if (executionMode === "deterministic-test") {
-    return {
-      ...entry,
-      availability: { state: "ready", detail: "deterministic-test" },
-    };
-  }
   const configured = credentials.find(
     (credential) =>
       credential.metadata?.["modelProviderId"] === entry.provider &&
@@ -335,6 +357,9 @@ export function pickFallbackModel(catalog: ModelCatalog): {
 } {
   const byRef = (ref: string) =>
     catalog.models.find((model) => model.ref === ref);
+  const testModel = byRef(TEST_MODEL_REF);
+  if (testModel?.capabilities.tools && isModelUsable(testModel))
+    return { ref: testModel.ref };
   const preferred = byRef(DEFAULT_AGENT_MODEL_REF);
   const preferredRef = preferred?.ref;
   if (preferred?.capabilities.tools && isModelUsable(preferred))
@@ -715,15 +740,13 @@ export class ModelSettingsDO extends DurableObjectBase implements ModelSettingsR
       this.storedCredentials(),
       config.then((workspaceConfig) => this.fetchLocalModels(workspaceConfig)),
     ]);
-    const executionMode =
-      this.env["VIBESTUDIO_TEST_MODE"] === "1"
-        ? ("deterministic-test" as const)
-        : ("provider-credentials" as const);
+    const testMode = this.env["VIBESTUDIO_TEST_MODE"] === "1";
     const models = [
       ...base.models.map((entry) =>
-        applyCloudAvailability(entry, credentials, executionMode),
+        applyCloudAvailability(entry, credentials),
       ),
       ...localEntries.map(localEntryToCatalogEntry),
+      ...(testMode ? [testModelCatalogEntry()] : []),
     ];
     const recommendedLocalModelRef = localEntries.some(
       (entry) =>
@@ -736,20 +759,25 @@ export class ModelSettingsDO extends DurableObjectBase implements ModelSettingsR
           )
         ? LOCAL_FALLBACK_MODEL_REF
         : null;
-    const providers: ModelCatalogProvider[] = localEntries.length
-      ? [
-          ...base.providers,
-          {
+    const providers: ModelCatalogProvider[] = [
+      ...base.providers,
+      ...(localEntries.length
+        ? [{
             id: LOCAL_PROVIDER_ID,
             label: "Local inference (experimental)",
-            baseUrls: Array.from(
-              new Set(localEntries.map((entry) => entry.baseUrl)),
-            ),
+            baseUrls: Array.from(new Set(localEntries.map((entry) => entry.baseUrl))),
             recommendedModelRef: recommendedLocalModelRef,
             connectable: false,
-          },
-        ]
-      : [...base.providers];
+          }]
+        : []),
+      ...(testMode ? [{
+        id: TEST_MODEL_PROVIDER_ID,
+        label: "Deterministic test provider",
+        baseUrls: [TEST_MODEL_SPEC.baseUrl],
+        recommendedModelRef: TEST_MODEL_REF,
+        connectable: false,
+      }] : []),
+    ];
     return { providers, models };
   }
 

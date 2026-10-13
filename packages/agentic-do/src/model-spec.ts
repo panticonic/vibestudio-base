@@ -16,6 +16,9 @@ import type {
 import {
   LOCAL_FALLBACK_MODEL,
   LOCAL_FALLBACK_MODEL_REF as CATALOG_LOCAL_FALLBACK_MODEL_REF,
+  TEST_MODEL_SPEC,
+  TEST_MODEL_PROVIDER_ID,
+  TEST_MODEL_ID,
   piModelToSpec,
   type PiModelInput,
 } from "@workspace/model-catalog/catalog";
@@ -116,6 +119,17 @@ export function materializeModel(
     return modelId === LOCAL_FALLBACK_MODEL.id
       ? bundledLocalFallbackModel()
       : null;
+  }
+  if (providerId === TEST_MODEL_PROVIDER_ID && modelId === TEST_MODEL_ID) {
+    return {
+      spec: {
+        ...TEST_MODEL_SPEC,
+        input: [...TEST_MODEL_SPEC.input],
+        cost: { ...TEST_MODEL_SPEC.cost },
+      },
+      auth: "none",
+      toolsCapable: true,
+    };
   }
   return materializeCloudModel(providerId, modelId);
 }

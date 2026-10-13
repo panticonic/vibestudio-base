@@ -9,6 +9,11 @@ import {
   fauxAssistantMessage,
   fauxProvider,
 } from "@panticonic/pi-ai";
+import {
+  TEST_MODEL_ID,
+  TEST_MODEL_PROVIDER_ID,
+  TEST_MODEL_SPEC,
+} from "@workspace/model-catalog/catalog";
 import { BACKGROUND_CONTEXT } from "@panticonic/pi-chord/context";
 import {
   createRegistry,
@@ -86,8 +91,16 @@ async function waitFor(check: () => boolean | Promise<boolean>) {
   throw new Error("Expected durable state was not reached");
 }
 
-function setup(provider = "faux", baseUrl = "https://provider.test/v1") {
-  const faux = fauxProvider({ provider });
+function setup(
+  provider = "faux",
+  baseUrl = "https://provider.test/v1",
+  deterministicTestProviderId?: string,
+  modelId?: string,
+) {
+  const faux = fauxProvider({
+    provider,
+    ...(modelId ? { models: [{ id: modelId, name: modelId }] } : {}),
+  });
   faux.getModel().baseUrl = baseUrl;
   const models = createModels();
   models.setProvider(faux.provider);
@@ -111,6 +124,9 @@ function setup(provider = "faux", baseUrl = "https://provider.test/v1") {
     stream: vi.fn<RpcWireCaller["stream"]>(),
   };
   const boundRpc: RpcCaller = schemaRpcMock(rpc);
+  const rpcForRequest = vi.fn<NativeModelProviderHost["rpcForRequest"]>(
+    () => ({ rpc: boundRpc, cleanupRpc: boundRpc }),
+  );
   const waitForAuthority = vi.fn<NativeModelProviderHost["waitForAuthority"]>(
     async (request) => ({
       status: "waiting",
@@ -124,7 +140,8 @@ function setup(provider = "faux", baseUrl = "https://provider.test/v1") {
   );
   const egressFetch = vi.fn<typeof fetch>();
   const port = createProtectedModelProvider({
-    rpcForRequest: () => ({ rpc: boundRpc, cleanupRpc: boundRpc }),
+    ...(deterministicTestProviderId ? { deterministicTestProviderId } : {}),
+    rpcForRequest,
     egressFetch,
     waitForAuthority,
   });
@@ -165,6 +182,7 @@ function setup(provider = "faux", baseUrl = "https://provider.test/v1") {
     models,
     registry,
     rpc,
+    rpcForRequest,
     waitForAuthority,
     egressFetch,
     port,
@@ -185,6 +203,25 @@ async function waiting(
 }
 
 describe("native protected model provider", () => {
+  it("runs the explicit deterministic Pi model without resolving credentials", async () => {
+    const state = setup(
+      TEST_MODEL_PROVIDER_ID,
+      TEST_MODEL_SPEC.baseUrl,
+      TEST_MODEL_PROVIDER_ID,
+      TEST_MODEL_ID,
+    );
+    state.faux.setResponses([fauxAssistantMessage("deterministic answer")]);
+    const { root } = await state.open();
+    const result = await (
+      await root.submit({ type: "input", content: "go" }, context)
+    ).wait(context);
+
+    expect(result.status).toBe("done");
+    expect(state.rpcForRequest).toHaveBeenCalledTimes(1);
+    expect(state.rpc.call).not.toHaveBeenCalled();
+    expect(state.waitForAuthority).not.toHaveBeenCalled();
+  });
+
   it("publishes actual credential wait and same-turn resume without carrying the stale wait reason", async () => {
     const state = setup();
     state.rpc.call.mockResolvedValue(null);
