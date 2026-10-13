@@ -341,9 +341,7 @@ It audits each buildable package from its declared entrypoints, then checks the
 dependency closure for Base, installable template compositions, and
 System-testing consumer overlays. Package imports and re-exports are assigned
 to the nearest owning manifest, so a runtime value import cannot be satisfied
-only by `devDependencies`; type-only imports may be. The terminal shim and
-workers explicitly configured with `vibestudio.terminal.renderer: "ink"` may
-use the host-provided `yoga.wasm` module binding. Run the check after editing a
+only by `devDependencies`; type-only imports may be. Run the check after editing a
 manifest: a build checks only the unit being built, so an app whose closure
 lost an owner may not fail until it is loaded on a device. Inside a workspace,
 `verify` runs the same check for the unit it verifies.
