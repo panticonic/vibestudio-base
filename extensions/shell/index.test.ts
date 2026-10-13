@@ -60,7 +60,7 @@ async function makeApi(
       }),
       ensureContextFolder,
     },
-    invocation: { current: invocationCurrent },
+    invocation: { current: invocationCurrent, signal: () => null },
     extensions: {
       invoke,
       invokeProvider,

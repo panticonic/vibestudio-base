@@ -50,6 +50,8 @@ export interface TerminalNotification {
 
 export interface PerSessionState {
   label?: string;
+  /** The session's id in the person's terminal registry (the terminal launch service). */
+  registryId?: string;
   cwd: string;
   originalArgv?: string[];
   readCursor: number;

@@ -11,6 +11,7 @@ import {
   DEFAULT_AGENT_MODEL_REF,
   LOCAL_DEFAULT_MODEL_REF,
   LOCAL_FALLBACK_MODEL_REF,
+  TEST_MODEL_REF,
   type DefaultAgentConfig,
   type ModelCatalog,
 } from "@workspace/model-catalog/catalog";
@@ -640,7 +641,7 @@ describe("ModelSettingsDO", () => {
     );
   });
 
-  it("reports the deterministic inference runtime as usable without a fake credential", async () => {
+  it("offers a separate deterministic provider without claiming cloud credentials", async () => {
     TestModelSettingsDO.config = { ...BASE_CONFIG };
     const { call } = await createTestDO(OfflineModelSettingsDO, {
       VIBESTUDIO_TEST_MODE: "1",
@@ -648,17 +649,18 @@ describe("ModelSettingsDO", () => {
 
     const snapshot = await call("getSettings");
     expect(snapshot).toMatchObject({
-      defaultModel: "openai:gpt-5",
+      defaultModel: TEST_MODEL_REF,
       defaultModelSource: "fallback",
     });
     const catalog = (snapshot as { catalog: ModelCatalog }).catalog;
-    expect(
-      catalog.models.find((model) => model.ref === "openai:gpt-5")
-        ?.availability,
-    ).toEqual({
-      state: "ready",
-      detail: "deterministic-test",
+    expect(catalog.models.find((model) => model.ref === TEST_MODEL_REF)).toMatchObject({
+      auth: "none",
+      capabilities: { tools: true },
+      availability: { state: "ready", detail: "deterministic-test" },
+      modelSpec: { api: "faux", provider: "vibestudio-test" },
     });
+    expect(catalog.models.find((model) => model.ref === "openai:gpt-5")?.availability)
+      .toMatchObject({ state: "needs-setup", detail: "no-credential" });
   });
 
   it("does not report an expired credential without persisted refresh material as ready", async () => {
@@ -876,7 +878,7 @@ it("resolves account-specific endpoint templates without exposing secret materia
     availability: { state: "needs-setup", detail: "no-credential" },
   });
   expect(
-    applyCloudAvailability(entry, [credential], "provider-credentials"),
+    applyCloudAvailability(entry, [credential]),
   ).toMatchObject({
     baseUrl: expected,
     modelSpec: { baseUrl: expected },
@@ -902,7 +904,7 @@ it("shows account model restrictions instead of marking every Copilot model read
     baseUrl,
   });
   expect(
-    applyCloudAvailability(entry, [credential], "provider-credentials")
+    applyCloudAvailability(entry, [credential])
       .availability,
   ).toMatchObject({
     state: "error",
@@ -914,7 +916,6 @@ it("shows account model restrictions instead of marking every Copilot model read
     applyCloudAvailability(
       { ...entry, id: "gpt-6.1-sol" },
       [credential],
-      "provider-credentials",
     ).availability.state,
   ).toBe("ready");
 });

@@ -454,13 +454,37 @@ export class SessionManager {
     this.updateFlowControl(session);
   }
 
-  awaitExit(session: Session): Promise<{ exitCode: number | null; signal?: string }> {
+  /**
+   * Resolves with the exit status once the process has exited. A waiter holds
+   * no resource of the session, so when the caller cancels (`signal`) it is
+   * released and rejects with the cancellation reason.
+   */
+  awaitExit(
+    session: Session,
+    signal?: AbortSignal | null
+  ): Promise<{ exitCode: number | null; signal?: string }> {
     if (!session.alive)
       return Promise.resolve({
         exitCode: session.exit?.code ?? null,
         signal: session.exit?.signal,
       });
-    return new Promise((resolve) => session.exitWaiters.push(resolve));
+    return new Promise((resolve, reject) => {
+      if (signal?.aborted) {
+        reject(signal.reason);
+        return;
+      }
+      const onAbort = () => {
+        const index = session.exitWaiters.indexOf(waiter);
+        if (index >= 0) session.exitWaiters.splice(index, 1);
+        reject(signal?.reason);
+      };
+      const waiter = (value: { exitCode: number | null; signal?: string }) => {
+        signal?.removeEventListener("abort", onAbort);
+        resolve(value);
+      };
+      signal?.addEventListener("abort", onAbort, { once: true });
+      session.exitWaiters.push(waiter);
+    });
   }
 
   watchInfo(session: Session): Response {

@@ -61,6 +61,15 @@
           "evidence": "intentional-broad"
         },
         {
+          "capability": "host-terminal.open",
+          "resource": {
+            "kind": "prefix",
+            "prefix": "host-terminal:"
+          },
+          "tier": "critical",
+          "evidence": "bounded-dynamic"
+        },
+        {
           "capability": "subagents.create",
           "resource": {
             "kind": "prefix",
@@ -68,6 +77,15 @@
           },
           "tier": "gated",
           "evidence": "intentional-broad"
+        },
+        {
+          "capability": "terminal-apps.run",
+          "resource": {
+            "kind": "exact",
+            "key": "terminal-app:shell"
+          },
+          "tier": "gated",
+          "evidence": "exact"
         },
         {
           "capability": "userland:extensions/shell/native.shell.execute#*",
@@ -131,15 +149,6 @@
           },
           "tier": "gated",
           "evidence": "intentional-broad"
-        },
-        {
-          "capability": "host-terminal.open",
-          "resource": {
-            "kind": "prefix",
-            "prefix": "host-terminal:"
-          },
-          "tier": "critical",
-          "evidence": "bounded-dynamic"
         }
       ]
     }
@@ -168,10 +177,10 @@
     "@xterm/headless": "^5.5.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
-    "zod": "^3.25.76"
+    "zod": "^3.25.76",
+    "@vibestudio/service-schemas": "workspace:*"
   },
   "devDependencies": {
-    "@vibestudio/service-schemas": "workspace:*",
     "vitest": "^3.2.7"
   }
 }

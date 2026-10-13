@@ -513,6 +513,7 @@ export async function activate(ctx: ExtensionContext) {
     async awaitExit(sessionId: string) {
       return sessions.awaitExit(
         sessions.requireOwner(sessionId, currentOwner(ctx).key),
+        ctx.invocation.signal(),
       );
     },
 

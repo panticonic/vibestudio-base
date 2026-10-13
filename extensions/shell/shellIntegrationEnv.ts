@@ -13,26 +13,27 @@ export type ShellLaunch = {
 const scriptRoot = path.join(path.dirname(fileURLToPath(import.meta.url)), "vscode-shell-integration");
 const shellEnvReportVars = ["PATH", "VIRTUAL_ENV", "CONDA_PREFIX", "NODE_ENV"];
 
+/**
+ * VS Code shell integration belongs to interactive shells only: a known shell
+ * started with no arguments. Any other launch (a program such as a terminal
+ * app, or a shell given explicit arguments) is not a shell prompt to decorate
+ * and is passed through untouched, so it never sees TERM_PROGRAM or VSCODE_*.
+ */
 export async function prepareVscodeShellIntegrationLaunch(
   launch: ShellLaunch
 ): Promise<ShellLaunch> {
-  if (launch.args.length > 0) {
-    return {
-      ...launch,
-      env: withBaseVscodeShellIntegrationEnv(launch.env),
-    };
-  }
+  if (launch.args.length > 0) return launch;
 
   const shell = shellBasename(launch.command);
-  const env = withBaseVscodeShellIntegrationEnv(launch.env);
   switch (shell) {
     case "bash":
       return {
         command: launch.command,
         args: ["--init-file", scriptPath("shellIntegration-bash.sh")],
-        env: { ...env, VSCODE_INJECTION: "1" },
+        env: { ...withBaseVscodeShellIntegrationEnv(launch.env), VSCODE_INJECTION: "1" },
       };
     case "zsh": {
+      const env = withBaseVscodeShellIntegrationEnv(launch.env);
       const zdotdir = await createZdotdir(env["ZDOTDIR"] || env["HOME"] || tmpdir());
       return {
         command: launch.command,
@@ -49,17 +50,17 @@ export async function prepareVscodeShellIntegrationLaunch(
       return {
         command: launch.command,
         args: ["--init-command", `source '${fishEscape(scriptPath("shellIntegration.fish"))}'`],
-        env,
+        env: withBaseVscodeShellIntegrationEnv(launch.env),
       };
     case "pwsh":
     case "powershell":
       return {
         command: launch.command,
         args: ["-NoExit", "-Command", `. ${powershellQuote(scriptPath("shellIntegration.ps1"))}`],
-        env,
+        env: withBaseVscodeShellIntegrationEnv(launch.env),
       };
     default:
-      return { ...launch, env };
+      return launch;
   }
 }
 

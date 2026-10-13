@@ -24,6 +24,18 @@ Core runtime mechanics live in this package. Projection and rendering details
 can live in sibling packages such as `../agentic-core` or `../agentic-protocol`.
 The standard chat worker is `../../workers/agent-worker`.
 
+## Model execution in tests
+
+The host may set `VIBESTUDIO_TEST_MODE=1` for an isolated test instance. Model
+settings then offers `vibestudio-test:deterministic` as a separate, ready model;
+cloud models retain their real credential availability. The native owner
+registers Pi's faux provider for that model only in test mode. A host-provided
+`VIBESTUDIO_TEST_MODEL_SCRIPT` controls inference output when a scenario needs
+specific tool calls. Keep generation, tool execution, authority, publication,
+and durable completion on the ordinary Pi path. Do not make cloud providers
+appear credentialed in test mode or synthesize channel terminals to satisfy a
+test.
+
 ## Automation turns
 
 `src/native-automation-runs.ts` implements automation runs:

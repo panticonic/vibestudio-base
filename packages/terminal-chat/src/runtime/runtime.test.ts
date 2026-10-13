@@ -98,10 +98,36 @@ describe("ChatRuntime", () => {
     expect(next.session).not.toBe(first.session);
   });
 
-  it("opens a fork in its own context and remembers it across restarts", async () => {
+  it("opens a fork in its own context with the fork's own agents, and remembers it across restarts", async () => {
     const state = new MemoryState();
-    const runtime = start(state);
-    await runtime.openConversation("chat-fork", "ctx-fork", { fork: true });
+    state.value = { installedAgents: [{ handle: "ai-chat", key: "ai-1" }] };
+    const cloned = "do:workers/agent-worker:AiChatWorker:ai-1~fork~abc";
+    const runtime = new ChatRuntime(
+      boot(
+        state,
+        fakeRpc({
+          "workers.resolveService": (args) => ({
+            kind: "durable-object",
+            targetId: `do:workers/pubsub-channel:PubSubChannel:${String(args[1])}`,
+          }),
+          getParticipants: () => [
+            { participantId: cloned, metadata: { type: "agent", handle: "ai-chat" } },
+          ],
+        }).rpc
+      )
+    );
+    runtimes.push(runtime);
+    runtime.start();
+    await runtime.openConversation("chat-fork", "ctx-fork");
+    expect(state.value["installedAgents"]).toEqual([
+      {
+        agentId: "AiChatWorker",
+        handle: "ai-chat",
+        key: "ai-1~fork~abc",
+        source: "workers/agent-worker",
+        className: "AiChatWorker",
+      },
+    ]);
     expect(runtime.getSnapshot().contextId).toBe("ctx-fork");
     expect(state.value["conversationContextId"]).toBe("ctx-fork");
     const again = start(state);

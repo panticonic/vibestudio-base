@@ -2,17 +2,18 @@ import { describe, expect, it, vi } from "vitest";
 import { defaultTerminalState } from "./terminalState.js";
 import { restoreTerminalState } from "./restore.js";
 import type { SessionInfo, ShellApi, TerminalState } from "./types.js";
+import type { TerminalLauncher } from "./terminalLauncher.js";
 import { VSCODE_SHELL_INTEGRATION_META_KEY } from "./vscodeShellIntegrationMeta.js";
 
 describe("terminal restore", () => {
   it("remaps focused pane to the corresponding newly opened session", async () => {
-    const shell = makeShell();
+    const { shell, launcher } = makeBackend();
     const state = { ...stateWithTree("old-b"), scrollbackBytes: 1024 * 1024 };
 
-    const result = await restoreTerminalState(shell, state);
+    const result = await restoreTerminalState(shell, launcher, state);
 
-    expect(shell.open).toHaveBeenNthCalledWith(1, { cwd: "/repo/a", label: "Restored shell (restarted)" });
-    expect(shell.open).toHaveBeenNthCalledWith(2, { cwd: "/repo/b", label: "Restored shell (restarted)" });
+    expect(launcher.open).toHaveBeenNthCalledWith(1, { cwd: "/repo/a", label: "Restored shell (restarted)" });
+    expect(launcher.open).toHaveBeenNthCalledWith(2, { cwd: "/repo/b", label: "Restored shell (restarted)" });
     expect(shell.setScrollbackLimit).toHaveBeenCalledWith("new-1", 1024 * 1024);
     expect(shell.setScrollbackLimit).toHaveBeenCalledWith("new-2", 1024 * 1024);
     expect(result.tree).toMatchObject({
@@ -32,10 +33,10 @@ describe("terminal restore", () => {
   });
 
   it("reattaches live server sessions without restarting or disposing them", async () => {
-    const shell = makeShell({ retainOldSessions: true });
-    const result = await restoreTerminalState(shell, stateWithTree("old-b"));
+    const { shell, launcher } = makeBackend({ retainOldSessions: true });
+    const result = await restoreTerminalState(shell, launcher, stateWithTree("old-b"));
 
-    expect(shell.open).not.toHaveBeenCalled();
+    expect(launcher.open).not.toHaveBeenCalled();
     expect(shell.dispose).not.toHaveBeenCalled();
     expect(result.focusedSessionId).toBe("old-b");
     expect(result.tree).toMatchObject({
@@ -45,10 +46,10 @@ describe("terminal restore", () => {
   });
 
   it("prunes leaves that fail to reopen and falls back to the first restored pane", async () => {
-    const shell = makeShell({ failCwd: "/repo/b" });
+    const { shell, launcher } = makeBackend({ failCwd: "/repo/b" });
     const state = stateWithTree("old-b");
 
-    const result = await restoreTerminalState(shell, state);
+    const result = await restoreTerminalState(shell, launcher, state);
 
     expect(result.tree).toEqual({ kind: "leaf", sessionId: "new-1" });
     expect(result.focusedSessionId).toBe("new-1");
@@ -56,14 +57,31 @@ describe("terminal restore", () => {
     expect(shell.dispose).toHaveBeenCalledWith("old-b");
   });
 
-  it("disposes newly opened restore sessions when post-open setup fails", async () => {
-    const shell = makeShell({ failGetSessionId: "new-2" });
+  it("starts a registered session again as itself instead of opening a new one", async () => {
+    const { shell, launcher } = makeBackend();
+    const state = stateWithTree("old-a");
+    state.perSession["old-a"] = { ...state.perSession["old-a"]!, registryId: "reg-a" };
+    state.perSession["old-b"] = { ...state.perSession["old-b"]!, registryId: "reg-b" };
+
+    const result = await restoreTerminalState(shell, launcher, state);
+
+    expect(launcher.resume).toHaveBeenCalledWith("reg-a");
+    expect(launcher.resume).toHaveBeenCalledWith("reg-b");
+    expect(launcher.open).not.toHaveBeenCalled();
+    expect(shell.dispose).not.toHaveBeenCalled();
+    expect(launcher.close).not.toHaveBeenCalled();
+    expect(result.perSession["resumed-reg-a"]?.registryId).toBe("reg-a");
+    expect(result.focusedSessionId).toBe("resumed-reg-a");
+  });
+
+  it("ends newly opened restore sessions when post-open setup fails", async () => {
+    const { shell, launcher } = makeBackend({ failGetSessionId: "new-2" });
     const state = stateWithTree("old-b");
 
-    const result = await restoreTerminalState(shell, state);
+    const result = await restoreTerminalState(shell, launcher, state);
 
     expect(result.tree).toEqual({ kind: "leaf", sessionId: "new-1" });
-    expect(shell.dispose).toHaveBeenCalledWith("new-2");
+    expect(launcher.close).toHaveBeenCalledWith("reg-new-2");
     expect(shell.dispose).toHaveBeenCalledWith("old-b");
   });
 
@@ -87,20 +105,31 @@ function stateWithTree(focusedSessionId: string): TerminalState {
   };
 }
 
-function makeShell(opts: { failCwd?: string; failGetSessionId?: string; retainOldSessions?: boolean } = {}): ShellApi {
+function makeBackend(
+  opts: { failCwd?: string; failGetSessionId?: string; retainOldSessions?: boolean } = {}
+): { shell: ShellApi; launcher: TerminalLauncher } {
   let nextId = 1;
   const sessions = new Map<string, SessionInfo>();
   if (opts.retainOldSessions) {
     sessions.set("old-a", session("old-a", "/repo/a", "Alpha"));
     sessions.set("old-b", session("old-b", "/repo/b", "Beta"));
   }
-  return {
+  const launcher: TerminalLauncher = {
     open: vi.fn(async (req: { cwd?: string; label?: string }) => {
       if (req.cwd === opts.failCwd) throw new Error("denied");
       const sessionId = `new-${nextId++}`;
       sessions.set(sessionId, session(sessionId, req.cwd ?? ".", req.label));
-      return { sessionId };
+      return { sessionId, registryId: `reg-${sessionId}` };
     }),
+    resume: vi.fn(async (registryId: string) => {
+      const sessionId = `resumed-${registryId}`;
+      sessions.set(sessionId, session(sessionId, "/repo/a", "Resumed"));
+      return { sessionId, registryId };
+    }),
+    restart: vi.fn(),
+    close: vi.fn(async () => {}),
+  };
+  const shell = {
     get: vi.fn(async (sessionId: string) => {
       if (sessionId === opts.failGetSessionId) throw new Error("get failed");
       const info = sessions.get(sessionId);
@@ -120,6 +149,7 @@ function makeShell(opts: { failCwd?: string; failGetSessionId?: string; retainOl
     setScrollbackLimit: vi.fn(),
     dispose: vi.fn(async () => undefined),
   } as unknown as ShellApi;
+  return { shell, launcher };
 }
 
 function session(sessionId: string, cwd: string, label = sessionId, liveCwd?: string): SessionInfo {

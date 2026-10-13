@@ -108,6 +108,23 @@ describe("SessionManager janitor", () => {
     manager.dispose(manager.requireOwner(live.sessionId, owner.key));
   });
 
+  it("releases an exit waiter when its caller cancels, leaving the process running", async () => {
+    const manager = new SessionManager({ onDispose: vi.fn() });
+    const root = await mkdtemp(join(tmpdir(), "session-manager-test-"));
+    const opened = manager.open(
+      { command: process.execPath, args: ["-e", "setInterval(() => {}, 1000)"], cwd: root, env: {}, cols: 80, rows: 24 },
+      OWNER
+    );
+    const session = manager.requireOwner(opened.sessionId, OWNER.key);
+    const cancel = new AbortController();
+    const waiting = manager.awaitExit(session, cancel.signal);
+    cancel.abort(new Error("caller cancelled"));
+    await expect(waiting).rejects.toThrow("caller cancelled");
+    expect(session.exitWaiters).toHaveLength(0);
+    expect(session.alive).toBe(true);
+    manager.dispose(session);
+  });
+
   it("preserves recently exited sessions until the TTL expires", async () => {
     const onDispose = vi.fn();
     const manager = new SessionManager({ onDispose }, { janitorIntervalMs: 60 * 60_000, exitedSessionTtlMs: 60_000 });

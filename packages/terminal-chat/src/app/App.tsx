@@ -723,7 +723,7 @@ export function TerminalChatApp({ runtime, input, control, approvalsKey = "Ctrl-
     if (host?.modelSettingsError) out.push({ tone: "error", title: host.modelSettingsError.title, message: host.modelSettingsError.message });
     if (host?.agentCatalogError) out.push({ tone: "warning", title: host.agentCatalogError.title, message: host.agentCatalogError.message });
     if (host?.recovery.status === "recovering") out.push({ tone: "info", title: "Bringing your agents back…", message: "They rejoin the conversation in a moment." });
-    if (host?.recovery.status === "failed" && host.recovery.error) out.push({ tone: "error", title: host.recovery.error.title, message: `${host.recovery.error.message} Ctrl-K → Reload models and agents.` });
+    if (host?.recovery.status === "failed" && host.recovery.error) out.push({ tone: "error", title: host.recovery.error.title, message: `${host.recovery.error.message} Ctrl-K → Reload models and agents, or Show diagnostics for the cause.` });
     if (deferred?.launchStage && deferred.launchStage !== "ready") {
       const label = deferred.launchStage === "failed" ? deferred.launchError?.title ?? "Your agent couldn't start" : stageLabel(deferred.launchStage);
       out.push({ tone: deferred.launchStage === "failed" ? "error" : "info", title: label, message: deferred.launchStage === "failed" ? `${deferred.launchError?.message ?? ""} /retry tries again.` : "" });
