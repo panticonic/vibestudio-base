@@ -40,6 +40,7 @@ import {
   agenticEventSchema,
 } from "@workspace/agentic-protocol";
 import { contextIdForTargetKey } from "@vibestudio/shared/runtime/contextIdentity";
+import { MODEL_SETTINGS_SERVICE_PROTOCOL } from "@workspace/model-catalog/catalog";
 import { AgentVesselBase } from "./agent-vessel.js";
 import {
   openPlatformAgentSession,
@@ -236,6 +237,21 @@ class SpawnVessel extends AgentVesselBase {
           };
         }
         if (destination === "main" && method === "workers.resolveService") {
+          if (args[0] === MODEL_SETTINGS_SERVICE_PROTOCOL)
+            return durableObjectServiceFixture(
+              "do:workers/model-settings:ModelSettingsDO:workspace",
+              {
+                origin: "workspace",
+                source: "workers/model-settings",
+                name: "model settings",
+                action: "provide",
+                presentation: { domain: "web", verb: "see" },
+                authority: { principals: ["code", "website"] },
+                protocols: [MODEL_SETTINGS_SERVICE_PROTOCOL],
+                className: "ModelSettingsDO",
+                objectKey: "workspace",
+              },
+            );
           expect(args[0]).toBe("vibestudio.channel.v1");
           const channel = String(args[1]);
           return durableObjectServiceFixture(
@@ -287,6 +303,24 @@ class SpawnVessel extends AgentVesselBase {
         const child = [...this.created.values()].find(
           (child) => child.id === destination,
         );
+        if (
+          destination ===
+            "do:workers/model-settings:ModelSettingsDO:workspace" &&
+          method === "getSettings"
+        )
+          return {
+            defaultAgentConfig: {
+              model: "workspace:default",
+              thinkingLevel: "low",
+              approvalLevel: 1,
+            },
+          };
+        if (
+          destination ===
+            "do:workers/model-settings:ModelSettingsDO:workspace" &&
+          method === "initializeDefaultAgentModel"
+        )
+          return undefined;
         if (child && method === "subscribeChannel")
           return { ok: true, participantId: child.id };
         if (child && method === "importChannelKnowledge")
