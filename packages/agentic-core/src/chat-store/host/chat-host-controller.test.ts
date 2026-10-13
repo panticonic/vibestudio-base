@@ -295,6 +295,33 @@ describe("ChatHostController recovery", () => {
     await vi.waitFor(() => expect(participantReads()).toHaveLength(2));
   });
 
+  it("reads a conversation's installed agents from its own roster", async () => {
+    const h = start(
+      harness({
+        state: { channelName: "c" },
+        wire: (_target, method) =>
+          method === "getParticipants"
+            ? [
+                { participantId: "user:u", metadata: { type: "user" } },
+                {
+                  participantId: "do:workers/agent-worker:AiChatWorker:ai-chat-1-key~fork~abc",
+                  metadata: { type: "agent", handle: "ai-chat" },
+                },
+              ]
+            : undefined,
+      })
+    );
+    await expect(h.controller.rosterAgents("c-fork")).resolves.toEqual([
+      {
+        agentId: "AiChatWorker",
+        handle: "ai-chat",
+        key: "ai-chat-1-key~fork~abc",
+        source: "workers/agent-worker",
+        className: "AiChatWorker",
+      },
+    ]);
+  });
+
   it("leaves a present agent alone", async () => {
     const h = start(
       harness({

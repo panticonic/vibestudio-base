@@ -182,12 +182,12 @@ export class ChatRuntime implements ReadableStore<ChatRuntimeSnapshot> {
 
   /** Start a new conversation in this terminal session's own context. */
   async newConversation(): Promise<void> {
-    await this.#switchTo({ channelName: null, contextId: this.#boot.contextId, keepAgents: false });
+    await this.#switchTo({ channelName: null, contextId: this.#boot.contextId });
   }
 
   /** Switch to an existing conversation (resume, or a fork in its own context). */
-  async openConversation(channelId: string, contextId: string, options: { fork?: boolean } = {}): Promise<void> {
-    await this.#switchTo({ channelName: channelId, contextId, keepAgents: options.fork === true });
+  async openConversation(channelId: string, contextId: string): Promise<void> {
+    await this.#switchTo({ channelName: channelId, contextId });
   }
 
   /** Conversations (channels) in the current conversation's context, newest first. */
@@ -213,12 +213,17 @@ export class ChatRuntime implements ReadableStore<ChatRuntimeSnapshot> {
       .sort((a, b) => b.createdAt - a.createdAt);
   }
 
-  async #switchTo(target: { channelName: string | null; contextId: string; keepAgents: boolean }): Promise<void> {
+  async #switchTo(target: { channelName: string | null; contextId: string }): Promise<void> {
+    // The conversation's agents are the ones on its own roster (a fork has its
+    // own clones); read them while the current host is still open.
+    const installedAgents =
+      target.channelName && this.#controller ? await this.#controller.rosterAgents(target.channelName) : null;
+    if (this.#disposed) return;
     const patch: Record<string, unknown> = {
       channelName: target.channelName,
       [CONVERSATION_CONTEXT_KEY]: target.contextId === this.#boot.contextId ? null : target.contextId,
+      installedAgents: installedAgents && installedAgents.length > 0 ? installedAgents : null,
     };
-    if (!target.keepAgents) patch["installedAgents"] = null;
     this.#closeConversation();
     await this.#boot.state.patch(patch);
     if (this.#disposed) return;
@@ -293,8 +298,8 @@ export class ChatRuntime implements ReadableStore<ChatRuntimeSnapshot> {
         observeEvent: (event) => this.#observe(event),
       },
       forkNav: {
-        switchTo: (channelId, forkContextId) => this.openConversation(channelId, forkContextId, { fork: true }),
-        openInNewPanel: (channelId, forkContextId) => this.openConversation(channelId, forkContextId, { fork: true }),
+        switchTo: (channelId, forkContextId) => this.openConversation(channelId, forkContextId),
+        openInNewPanel: (channelId, forkContextId) => this.openConversation(channelId, forkContextId),
         readForkCursors: () => controller.readForkCursors(),
         markForkRead: (channelId, headSeq) => controller.markForkRead(channelId, headSeq),
         onExternalFork: (fork) =>

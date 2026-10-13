@@ -737,6 +737,48 @@ export class ChatHostController implements ReadableStore<ChatHostSnapshot> {
     if (left) this.#recovery.trigger();
   }
 
+  /**
+   * The agents a conversation actually has, as installed-agent records. A
+   * conversation's installed agents are a function of its own roster, never
+   * carried over from the conversation the host came from: a fork's agents are
+   * clones with their own keys, and recovering the source's keys into the
+   * fork's context collides with the originals.
+   */
+  async rosterAgents(channelId: string): Promise<InstalledAgentRecord[]> {
+    const signal = new AbortController().signal;
+    const service = await resolveDurableObjectService(
+      this.#ports.rpc,
+      CHANNEL_SERVICE_PROTOCOL,
+      channelId,
+      { signal }
+    );
+    if (service.kind !== "durable-object" || !service.targetId) {
+      throw new Error("Channel service must resolve to a Durable Object service");
+    }
+    const participants = await this.#ports.rpc.call(
+      service.targetId,
+      channelClientRpcMethods["getParticipants"],
+      [],
+      { signal }
+    );
+    const agents: InstalledAgentRecord[] = [];
+    for (const participant of participants) {
+      const target = parseDoTargetId(participant.participantId);
+      const handle = participant.metadata?.["handle"];
+      if (!target || participant.metadata?.["type"] !== "agent" || typeof handle !== "string") {
+        continue;
+      }
+      agents.push({
+        agentId: target.className,
+        handle,
+        key: target.objectKey,
+        source: target.source,
+        className: target.className,
+      });
+    }
+    return agents;
+  }
+
   async #channelDurableObjects(channelId: string, signal: AbortSignal): Promise<ChannelDORef[]> {
     const channelService = await resolveDurableObjectService(
       this.#ports.rpc,
