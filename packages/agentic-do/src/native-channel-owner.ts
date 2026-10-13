@@ -1,4 +1,5 @@
 import type { RpcCaller } from "@vibestudio/rpc";
+import { TEST_MODEL_PROVIDER_ID } from "@workspace/model-catalog/catalog";
 import type { ChannelEndpoint } from "@workspace/pubsub";
 import {
   AGENTIC_EVENT_PAYLOAD_KIND,
@@ -76,7 +77,17 @@ export abstract class NativeChannelOwner<
   Configuration extends NativeChannelConfiguration = NativeChannelConfiguration,
 > extends NativeAgentOwner {
   private readonly nativeRegistry = createRegistry();
-  private readonly nativeModelRegistry = createProtectedNativeModels();
+  private readonly nativeModelRegistry = (() => {
+    const env = this.env as Record<string, unknown>;
+    const deterministicTestMode = env["VIBESTUDIO_TEST_MODE"] === "1";
+    return createProtectedNativeModels({
+      deterministicTestMode,
+      ...(deterministicTestMode &&
+      typeof env["VIBESTUDIO_TEST_MODEL_SCRIPT"] === "string"
+        ? { modelScript: env["VIBESTUDIO_TEST_MODEL_SCRIPT"] }
+        : {}),
+    });
+  })();
   private readonly nativeDefinitions = new Map<string, Configuration>();
   private readonly nativeChannels = new Map<string, Promise<Conversation>>();
   private readonly nativeChannelClients = new Map<
@@ -168,6 +179,10 @@ export abstract class NativeChannelOwner<
   /** All provider implementations belong to the installed native package. */
   protected nativeModels(): Models {
     return this.nativeModelRegistry;
+  }
+
+  private isDeterministicTestMode(): boolean {
+    return (this.env as Record<string, unknown>)["VIBESTUDIO_TEST_MODE"] === "1";
   }
 
   protected selectedNativeModelDescriptor(
@@ -326,6 +341,9 @@ export abstract class NativeChannelOwner<
       modelRequests: async (request, api, context) => {
         const bound: { execution?: NativeInvocationExecution } = {};
         const connection = await createProtectedModelProvider({
+          ...(this.isDeterministicTestMode()
+            ? { deterministicTestProviderId: TEST_MODEL_PROVIDER_ID }
+            : {}),
           rpcForRequest: async (request, api, context) =>
             (bound.execution = await this.bindNativeModelExecution(
               request,

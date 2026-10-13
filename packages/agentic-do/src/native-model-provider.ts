@@ -19,6 +19,11 @@ import { credentialsMethods } from "@vibestudio/service-schemas/credentials";
 import { sha256HexSyncText } from "@vibestudio/content-addressing";
 import { canonicalJson } from "@vibestudio/shared/canonicalJson";
 import { resolveProviderModelBaseUrl } from "@vibestudio/shared/providerConnect";
+import {
+  TEST_MODEL_ID,
+  TEST_MODEL_PROVIDER_ID,
+} from "@workspace/model-catalog/catalog";
+import { createDeterministicTestProvider } from "./deterministic-test-model.js";
 import type { StoredCredentialSummary } from "@workspace/runtime/credentials";
 import type { AuthorityInvocation } from "./native-authority-receipts.js";
 import {
@@ -56,13 +61,16 @@ export function hostProtectedModelProvider(provider: Provider): Provider {
   return { ...provider, auth: { apiKey: createProtectedModelAuth() } };
 }
 
-export function createProtectedNativeModels(): ReturnType<
-  typeof builtinModels
-> {
+export function createProtectedNativeModels(options: {
+  readonly deterministicTestMode?: boolean;
+  readonly modelScript?: unknown;
+} = {}): ReturnType<typeof builtinModels> {
   const models = builtinModels();
   for (const provider of models.getProviders()) {
     models.setProvider(hostProtectedModelProvider(provider));
   }
+  if (options.deterministicTestMode)
+    models.setProvider(createDeterministicTestProvider(options.modelScript));
   return models;
 }
 
@@ -71,6 +79,8 @@ const LOCAL_EXTENSION = "@workspace-extensions/local-models";
 
 /** The shipping owner supplies its actual host-authenticated task/trajectory boundary, never an inbound caller's authority. */
 export interface NativeModelProviderHost {
+  /** Exact test-only Pi provider enabled by the host only under TEST_MODE. */
+  readonly deterministicTestProviderId?: string;
   readonly notifyCredentialMissing?: (
     request: ModelRequestTarget,
     api: ModelRequestApi,
@@ -115,6 +125,19 @@ export function createProtectedModelProvider(
       });
     const { rpc, cleanupRpc } = await host.rpcForRequest(request, api, context);
     context.abortSignal?.throwIfAborted();
+    if (
+      host.deterministicTestProviderId === TEST_MODEL_PROVIDER_ID &&
+      request.model.provider === TEST_MODEL_PROVIDER_ID &&
+      request.model.id === TEST_MODEL_ID
+    ) {
+      await api.prepare(request.model, context);
+      context.abortSignal?.throwIfAborted();
+      return {
+        status: "ready",
+        options: { sessionId: String(request.taskId) },
+        close: async () => {},
+      };
+    }
     async function invoke(
       service: string,
       method: string,

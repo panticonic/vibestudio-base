@@ -15,6 +15,22 @@ export const MODEL_SETTINGS_SERVICE_PROTOCOL = "vibestudio.models.v1";
 /** Workspace config field holding the full default agent config (model + behavior). */
 export const WORKSPACE_DEFAULT_AGENT_CONFIG_FIELD = "defaultAgentConfig";
 export const DEFAULT_AGENT_MODEL_REF = "openai-codex:gpt-6.1-sol";
+/** Host-owned test inference is a separate provider, never a cloud credential. */
+export const TEST_MODEL_PROVIDER_ID = "vibestudio-test";
+export const TEST_MODEL_ID = "deterministic";
+export const TEST_MODEL_REF = `${TEST_MODEL_PROVIDER_ID}:${TEST_MODEL_ID}`;
+export const TEST_MODEL_SPEC = {
+  id: TEST_MODEL_ID,
+  name: "Deterministic test model",
+  api: "faux",
+  provider: TEST_MODEL_PROVIDER_ID,
+  baseUrl: "http://localhost:0",
+  reasoning: false,
+  input: ["text", "image"],
+  cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+  contextWindow: 128_000,
+  maxTokens: 16_384,
+} as const;
 /** The local provider id, preferred model, and guaranteed small fallback. */
 export const LOCAL_PROVIDER_ID = "local";
 export const LOCAL_DEFAULT_MODEL = {
@@ -92,7 +108,7 @@ export interface ModelCatalogProvider {
 }
 
 /** How the executor authenticates calls to this model (design §6.3). */
-export type ModelAuthMode = "url-bound" | "loopback";
+export type ModelAuthMode = "url-bound" | "loopback" | "none";
 
 /**
  * Serializable pi-ai `Model` literal — journaled with every request so replay
@@ -148,9 +164,8 @@ export function piModelToSpec(model: PiModelInput): PiModelSpec {
 }
 
 /** Live usability of a model (design §7.1) — worker-computed, shared by all
- *  consumers. Cloud: an active credential, a renewable expired credential, or
- *  the deterministic inference runtime used by system tests. Local: extension
- *  server state via models.changed events. */
+ *  consumers. Cloud depends on credentials; local depends on extension server
+ *  state; the host-owned test provider is ready only in test mode. */
 export type ModelAvailability =
   | {
       state: "ready";
