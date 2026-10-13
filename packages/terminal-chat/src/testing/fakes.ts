@@ -189,30 +189,6 @@ export function createFakeChat(initial: Partial<ChatSessionSnapshot> = {}) {
       sessionStore.set({ ...sessionStore.getSnapshot(), ...patch });
     },
     snapshot: () => sessionStore.getSnapshot(),
-    replaceLiveSessionWithoutRender() {
-      const nextCalls: FakeCalls = { submitted: [], interrupted: [], flushed: 0, agentCalls: [], loadEarlier: 0 };
-      const nextStore = new ValueStore<ChatSessionSnapshot>(fakeSessionSnapshot());
-      const nextSession = {
-        ...session,
-        getSnapshot: nextStore.getSnapshot,
-        subscribe: nextStore.subscribe,
-        setInput: (input: string) => nextStore.set({ ...nextStore.getSnapshot(), input }),
-        submit: async (_attachments: unknown, options: unknown) => {
-          const snapshot = nextStore.getSnapshot();
-          nextCalls.submitted.push({ text: snapshot.input, options });
-          nextStore.set({ ...snapshot, input: "" });
-        },
-      };
-      // Model the narrow handoff window: the runtime already owns the new
-      // conversation while React still has the previous render's closure.
-      (runtimeStore.getSnapshot() as { session: unknown }).session = nextSession;
-      return {
-        calls: nextCalls,
-        snapshot: nextStore.getSnapshot,
-        update: (patch: Partial<ChatSessionSnapshot>) =>
-          nextStore.set({ ...nextStore.getSnapshot(), ...patch }),
-      };
-    },
     addForm(form: Omit<PendingForm, "answer">): Promise<unknown> {
       return new Promise((resolve) => {
         const pending: PendingForm = {

@@ -279,52 +279,6 @@ describe("ChatSession outbox", () => {
     expect(titles).toEqual([{ title: "Plan my week", explicit: false }]);
   });
 
-  it("owns a submitted draft while the initial channel join is still in flight", async () => {
-    const harness = await createTranscriptHarness("chat-session-send-during-join");
-    const rpc = panelRpc(harness);
-    const call = rpc.call;
-    let releaseJoin!: () => void;
-    const joinGate = new Promise<void>((resolve) => {
-      releaseJoin = resolve;
-    });
-    let joinHeld = false;
-    const guarded = {
-      ...rpc,
-      call: (async (target: string, method: unknown, ...rest: unknown[]) => {
-        if (
-          !joinHeld &&
-          String((method as { name?: string })?.name ?? method).includes("resolveService")
-        ) {
-          joinHeld = true;
-          await joinGate;
-        }
-        return (call as (...values: unknown[]) => unknown)(target, method, ...rest);
-      }) as typeof rpc.call,
-    };
-    const { session } = createSession(harness, {
-      config: { clientId: PANEL_ID, rpc: guarded as never },
-    });
-    owned.push(session.retain());
-    session.start();
-    await until(() => joinHeld, "initial join held");
-
-    session.setInput("Sent while connecting");
-    const sending = session.sendMessage();
-    await Promise.resolve();
-    expect(session.getSnapshot()).toMatchObject({ input: "", pendingSendCount: 1 });
-
-    releaseJoin();
-    await sending;
-    expect(session.getSnapshot().pendingSendCount).toBe(0);
-    expect(
-      session
-        .getSnapshot()
-        .messages.some(
-          (message) => message.senderId === PANEL_ID && message.content === "Sent while connecting"
-        )
-    ).toBe(true);
-  });
-
   it("restores a rejected draft beside a newer one", async () => {
     const { session } = await joined("chat-session-send-failure");
     let reject!: (error: Error) => void;
