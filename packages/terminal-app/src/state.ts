@@ -7,6 +7,7 @@
  */
 import type { RpcClient } from "@vibestudio/rpc";
 import { mainRpcMethods } from "@vibestudio/service-schemas/mainRpc";
+import type { JsonValue } from "@vibestudio/shared/wireValues";
 
 export interface SessionStateStore {
   /** The latest committed state. */
@@ -29,7 +30,9 @@ export function sessionStateStore(
     get: () => state,
     patch(partial) {
       const next = queue.then(async () => {
-        state = await rpc.call("main", mainRpcMethods["runtime.patchEntityStateArgs"], [partial]);
+        // The wire schema admits JSON values only; anything else is refused there.
+        const patch = partial as Record<string, JsonValue>;
+        state = await rpc.call("main", mainRpcMethods["runtime.patchEntityStateArgs"], [patch]);
         for (const listener of [...listeners]) listener();
       });
       queue = next.catch(() => undefined);

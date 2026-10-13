@@ -28,6 +28,8 @@ export interface TerminalAppLaunch {
   contextId: string;
   /** Durable per-session state at launch. */
   state: Record<string, unknown>;
+  /** The app's display title (approvals and runtime listings name it). */
+  title: string;
   /** How the hosting terminal opens its approvals (shown to the person). */
   approvalsKey?: string;
 }
@@ -79,6 +81,7 @@ export function consumeTerminalLaunch(env: NodeJS.ProcessEnv = process.env): Ter
     sessionId: value.sessionId!,
     contextId: value.contextId!,
     state: value.state && typeof value.state === "object" ? value.state : {},
+    title: typeof value.title === "string" && value.title ? value.title : "Terminal app",
     ...(typeof value.approvalsKey === "string" ? { approvalsKey: value.approvalsKey } : {}),
   };
 }

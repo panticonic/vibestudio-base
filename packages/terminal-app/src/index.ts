@@ -16,6 +16,7 @@
 import { connectTerminalApp, type TerminalAppConnection } from "./connect.js";
 import { consumeTerminalLaunch, type TerminalAppLaunch } from "./launch.js";
 import { sessionStateStore, type SessionStateStore } from "./state.js";
+import { mainRpcMethods } from "@vibestudio/service-schemas/mainRpc";
 
 export { connectTerminalApp, type TerminalAppConnection } from "./connect.js";
 export {
@@ -35,5 +36,7 @@ export interface TerminalApp extends TerminalAppConnection {
 export async function startTerminalApp(options: { clientLabel?: string } = {}): Promise<TerminalApp> {
   const launch = consumeTerminalLaunch();
   const connection = await connectTerminalApp(launch, options);
+  // Name this runtime, as a panel does: approvals and runtime listings show it.
+  await connection.rpc.call("main", mainRpcMethods["runtime.setTitle"], [launch.title]);
   return { ...connection, launch, state: sessionStateStore(connection.rpc, launch.state) };
 }
