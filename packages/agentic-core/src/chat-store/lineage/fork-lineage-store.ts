@@ -24,8 +24,10 @@ import { readChannelSubscriptionRecords, type PubSubClient } from "@workspace/pu
 import type { ChatMessage } from "../../derived-types.js";
 import type { ConnectionConfig } from "../../types.js";
 import { StateCell, errorMessage, shallowEqual, type ReadableStore } from "../store.js";
+import { isSelfActor, presentActor } from "../../chat-presentation/actor.js";
 import type {
   ChannelProvenance,
+  ForkActor,
   ForkEntry,
   ForkNavHandlers,
   ForkTreeNode,
@@ -106,8 +108,12 @@ function forkProjectionToEntry(fork: ForkProjection): ForkEntry {
     contextId: fork.forkedContextId,
     label: fork.label || fork.reason || "Fork",
     reason: fork.reason,
-    actorName: fork.actor.displayName ?? fork.actor.id,
-    actorId: fork.actor.participantId ?? fork.actor.id,
+    actor: {
+      kind: fork.actor.kind,
+      id: fork.actor.id,
+      ...(fork.actor.participantId ? { participantId: fork.actor.participantId } : {}),
+      ...(fork.actor.displayName ? { displayName: fork.actor.displayName } : {}),
+    },
     forkPointId: fork.forkPointId,
     createdAtSeq: fork.createdAtSeq,
     headSeq: fork.headSeq,
@@ -193,6 +199,13 @@ export class ForkLineageStore implements ReadableStore<ForkUiState> {
     this.#openStream(binding);
   };
 
+  /** The local person's identities: channel participant and RPC principal. */
+  #selfIds(): Array<string | null | undefined> {
+    return [this.#inputs.selfId, this.#rpc.selfId];
+  }
+
+  readonly presentActor = (actor: ForkActor): string => presentActor(actor, this.#selfIds());
+
   readonly subscribe = (listener: () => void): (() => void) => this.#cell.subscribe(listener);
 
   readonly getSnapshot = (): ForkUiState => {
@@ -214,6 +227,7 @@ export class ForkLineageStore implements ReadableStore<ForkUiState> {
       forking: state.forking,
       error: state.actionError ?? state.loadError ?? state.streamError,
       liveUpdatesInterrupted: state.streamError !== undefined,
+      presentActor: this.presentActor,
       refresh: this.refresh,
       loadTree: this.loadTree,
       actions: this.#actions,
@@ -593,14 +607,13 @@ export class ForkLineageStore implements ReadableStore<ForkUiState> {
     for (const entry of children) {
       if (this.#seenForkIds.has(entry.forkId)) continue;
       this.#seenForkIds.add(entry.forkId);
-      const selfId = this.#inputs.selfId;
-      if (selfId !== null && entry.actorId === selfId) continue;
+      if (isSelfActor(entry.actor, this.#selfIds())) continue;
       void (async () => {
         try {
           await this.#inputs.nav?.onExternalFork?.({
             forkedChannelId: entry.channelId,
             forkedContextId: entry.contextId,
-            actorName: entry.actorName,
+            actorName: this.presentActor(entry.actor),
             forkPointId: entry.forkPointId,
           });
         } catch (cause) {

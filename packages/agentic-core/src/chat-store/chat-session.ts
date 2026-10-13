@@ -269,9 +269,21 @@ export function pruneAfterTurnIds(
   return next ?? prev;
 }
 
+/** Mark the messages a fork inherited from its parent's history. Returns the
+ *  input untouched for a conversation that is not a fork. */
+export function markInherited(messages: ChatMessage[], throughSeq: number | null): ChatMessage[] {
+  if (throughSeq === null) return messages;
+  return messages.map((message) =>
+    message.seq !== undefined && message.seq <= throughSeq
+      ? { ...message, inherited: true as const }
+      : message
+  );
+}
+
 function isPendingSelfMessage(message: ChatMessage, selfId: string | null): boolean {
   return (
     message.senderId === selfId &&
+    !message.inherited &&
     (message.kind ?? "message") === "message" &&
     !message.error &&
     !message.retracted &&
@@ -326,6 +338,7 @@ export class ChatSession implements ReadableStore<ChatSessionSnapshot> {
 
   // Reduction state that is not itself rendered.
   #channelMessages: ChatMessage[] = [];
+  #derivedInheritedThrough: number | null = null;
   #disconnectMessages: ChatMessage[] = [];
   #derivedDisconnectMessages: ChatMessage[] = [];
   /** Every participant seen since the last transport recovery (attribution). */
@@ -436,6 +449,12 @@ export class ChatSession implements ReadableStore<ChatSessionSnapshot> {
     // Reaction step: sub-stores follow every session snapshot. Registered
     // first, so they settle before any external subscriber renders.
     this.#cell.subscribe(() => this.#reconcileSubStores());
+    // Provenance arrives asynchronously; the transcript re-derives when it does.
+    this.forks?.subscribe(() => {
+      if (this.#inheritedThroughSeq() !== this.#derivedInheritedThrough) {
+        this.#cell.transaction(() => this.#derive());
+      }
+    });
     this.feed.subscribe(() => this.#cell.transaction(() => this.#derive()));
     this.#retain = new RetainCount({
       start: () => {
@@ -788,6 +807,13 @@ export class ChatSession implements ReadableStore<ChatSessionSnapshot> {
     }
   }
 
+  /** The last log position this conversation inherited from the one it was
+   *  forked from, or null for a conversation that is not a fork. */
+  #inheritedThroughSeq(): number | null {
+    const provenance = this.forks?.getSnapshot().provenance;
+    return provenance?.kind === "fork" ? provenance.forkPointId : null;
+  }
+
   /** Derive the rendered projections from reduced state. */
   #derive(): void {
     const feed = this.feed.getSnapshot();
@@ -796,11 +822,17 @@ export class ChatSession implements ReadableStore<ChatSessionSnapshot> {
     const disconnectsChanged = this.#disconnectMessages !== this.#derivedDisconnectMessages;
     this.#channelMessages = feed.messages;
     this.#derivedDisconnectMessages = this.#disconnectMessages;
+    const inheritedThrough = this.#inheritedThroughSeq();
+    const inheritedChanged = inheritedThrough !== this.#derivedInheritedThrough;
+    this.#derivedInheritedThrough = inheritedThrough;
     const messages =
-      channelMessagesChanged || disconnectsChanged
-        ? this.#disconnectMessages.length > 0
-          ? [...feed.messages, ...this.#disconnectMessages]
-          : feed.messages
+      channelMessagesChanged || disconnectsChanged || inheritedChanged
+        ? markInherited(
+            this.#disconnectMessages.length > 0
+              ? [...feed.messages, ...this.#disconnectMessages]
+              : feed.messages,
+            inheritedThrough
+          )
         : current.messages;
     if (messages.length > 0) this.#hasTranscriptMessages = true;
     const participants = current.participants;

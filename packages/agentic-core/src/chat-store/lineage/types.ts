@@ -4,6 +4,9 @@
  */
 
 import type { ChatMessage } from "../../derived-types.js";
+import type { PresentableActor } from "../../chat-presentation/actor.js";
+
+export type ForkActor = PresentableActor;
 
 /** Client-side mirror of the channel DO's `getProvenance()` result. */
 export type ChannelProvenance =
@@ -30,8 +33,8 @@ export interface ForkEntry {
   contextId: string;
   label: string;
   reason: string;
-  actorName: string;
-  actorId: string;
+  /** Who forked, as recorded; present with `ForkUiState.presentActor`. */
+  actor: ForkActor;
   forkPointId: number;
   createdAtSeq: number;
   /** Latest durable head reported by this fork. */
@@ -92,6 +95,9 @@ export interface ForkUiState {
   /** The live lineage stream stopped; `actions.retryLiveUpdates()` resumes it
    *  (the client's reconnect event also resumes it automatically). */
   liveUpdatesInterrupted?: boolean;
+  /** The label every surface shows for a fork's actor: "You" for the local
+   *  person, otherwise the actor's display name or role. */
+  presentActor: (actor: ForkActor) => string;
   /** Reconcile siblings + badges from durable heads (call on switcher/tree open). */
   refresh: () => void;
   /** Walk provenance up + forks down into the full lineage tree (lazy). */

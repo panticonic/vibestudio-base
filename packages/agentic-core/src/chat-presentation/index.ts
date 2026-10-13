@@ -6,6 +6,7 @@
 // with ANSI.
 // =============================================================================
 export * from "./action-format.js";
+export * from "./actor.js";
 export * from "./file-mutation.js";
 export * from "./invocation-status.js";
 export * from "./outbox.js";

@@ -779,6 +779,20 @@ export class ChatHostController implements ReadableStore<ChatHostSnapshot> {
     return agents;
   }
 
+  /**
+   * The persisted per-conversation state a surface must adopt when it moves to
+   * `channelId` (a fork, or any other conversation): the channel and the agents
+   * on that channel's own roster. Every surface that switches conversation
+   * applies this patch instead of carrying its current state over.
+   */
+  async conversationState(channelId: string): Promise<{
+    channelName: string;
+    installedAgents: InstalledAgentRecord[] | null;
+  }> {
+    const agents = await this.rosterAgents(channelId);
+    return { channelName: channelId, installedAgents: agents.length > 0 ? agents : null };
+  }
+
   async #channelDurableObjects(channelId: string, signal: AbortSignal): Promise<ChannelDORef[]> {
     const channelService = await resolveDurableObjectService(
       this.#ports.rpc,

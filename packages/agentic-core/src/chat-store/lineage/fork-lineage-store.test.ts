@@ -144,6 +144,22 @@ describe("ForkLineageStore", () => {
     release();
   });
 
+  it("recognises the local person by their RPC principal, not only their participant id", async () => {
+    const f = fixture();
+    const release = f.store.retain();
+    // The channel records the RPC principal ("panel-1"); the participant id differs.
+    f.store.setInputs({ client: f.client, selfId: "participant-1", replaySettled: true, nav: f.nav });
+    await until(() => f.store.getSnapshot().children.length === 1);
+    f.forks.push(fork("mine", "panel-1"));
+    f.store.refresh();
+    await until(() => f.store.getSnapshot().children.length === 2);
+    const mine = f.store.getSnapshot().children.find((entry) => entry.forkId === "mine")!;
+    expect(f.store.getSnapshot().presentActor(mine.actor)).toBe("You");
+    expect(f.store.getSnapshot().presentActor({ kind: "agent", id: "do:workers/x:Y:key" })).toBe("An agent");
+    expect(f.nav.onExternalFork).not.toHaveBeenCalled();
+    release();
+  });
+
   it("reports a stopped live stream and resumes it on retryLiveUpdates", async () => {
     const f = fixture();
     const release = f.store.retain();

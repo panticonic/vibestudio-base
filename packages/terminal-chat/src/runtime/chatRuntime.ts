@@ -216,13 +216,14 @@ export class ChatRuntime implements ReadableStore<ChatRuntimeSnapshot> {
   async #switchTo(target: { channelName: string | null; contextId: string }): Promise<void> {
     // The conversation's agents are the ones on its own roster (a fork has its
     // own clones); read them while the current host is still open.
-    const installedAgents =
-      target.channelName && this.#controller ? await this.#controller.rosterAgents(target.channelName) : null;
+    const conversation =
+      target.channelName && this.#controller
+        ? await this.#controller.conversationState(target.channelName)
+        : { channelName: target.channelName, installedAgents: null };
     if (this.#disposed) return;
     const patch: Record<string, unknown> = {
-      channelName: target.channelName,
+      ...conversation,
       [CONVERSATION_CONTEXT_KEY]: target.contextId === this.#boot.contextId ? null : target.contextId,
-      installedAgents: installedAgents && installedAgents.length > 0 ? installedAgents : null,
     };
     this.#closeConversation();
     await this.#boot.state.patch(patch);

@@ -107,6 +107,14 @@ describe("deriveOutboxMessages", () => {
     expect(result).toEqual(["a", "f"]);
   });
 
+  it("a fork's inherited history is never queued", () => {
+    const messages: ChatMessage[] = [
+      selfMessage("parent-queued", "queued in the parent", { inherited: true }),
+      selfMessage("own", "sent in the fork"),
+    ];
+    expect(deriveOutboxMessages(messages, SELF).map((m) => m.id)).toEqual(["own"]);
+  });
+
   it("an item leaves the outbox on first read (partial/read aggregate)", () => {
     const before = [
       selfMessage("a", "queued", {

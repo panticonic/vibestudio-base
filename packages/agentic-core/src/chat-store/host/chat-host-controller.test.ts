@@ -322,6 +322,28 @@ describe("ChatHostController recovery", () => {
     ]);
   });
 
+  it("adopts a conversation's own roster as its persisted state", async () => {
+    const h = start(
+      harness({
+        state: { channelName: "c" },
+        wire: async (_target, method) =>
+          method === "getParticipants"
+            ? [
+                { participantId: "user:u", metadata: { type: "user" } },
+                {
+                  participantId: "do:workers/agent-worker:AiChatWorker:ai-chat-1-key~fork~abc",
+                  metadata: { type: "agent", handle: "ai-chat" },
+                },
+              ]
+            : undefined,
+      })
+    );
+    await expect(h.controller.conversationState("c-fork")).resolves.toMatchObject({
+      channelName: "c-fork",
+      installedAgents: [{ key: "ai-chat-1-key~fork~abc" }],
+    });
+  });
+
   it("leaves a present agent alone", async () => {
     const h = start(
       harness({

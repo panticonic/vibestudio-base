@@ -6,13 +6,15 @@ import type { ChatMessage } from "../derived-types.js";
 
 /**
  * Resolve which outbox items the user authored and are still unread.
- * - self-authored, kind === "message", not error, not retracted, zero reads.
+ * - self-authored, kind === "message", not error, not retracted, zero reads,
+ *   and authored in this conversation (a fork's inherited history is not queued).
  * Sorted by existing message order (the array is already chronological).
  */
 export function deriveOutboxMessages(messages: ChatMessage[], selfId: string | null): ChatMessage[] {
   if (!selfId) return [];
   return messages.filter((m) => {
     if (m.senderId !== selfId) return false;
+    if (m.inherited) return false;
     if ((m.kind ?? "message") !== "message") return false;
     // Method invocations the user fired (e.g. `pause`/"send now") are projected
     // as self-authored kind:"message" rows with contentType:"invocation" and no

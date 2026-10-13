@@ -367,11 +367,14 @@ function ChatPanelInContext({
         ChatStateArgs & { contextId?: unknown }
       >();
       const { contextId: _obsoleteContextId, ...panelState } = current;
+      // A fork's agents are its own clones: adopt the fork's roster, never the
+      // source conversation's installed-agent keys (Identity collision).
+      const conversation = await controller.conversationState(forkChannelId);
       await panel.switchContext(forkContextId, {
-        stateArgs: { ...panelState, channelName: forkChannelId },
+        stateArgs: { ...panelState, ...conversation },
       });
     },
-    [channelName, resolvedContextId],
+    [channelName, resolvedContextId, controller],
   );
 
   // Side-by-side: open the fork in a fresh chat panel (news-panel shape).

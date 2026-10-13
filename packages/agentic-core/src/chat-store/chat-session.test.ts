@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { pruneAfterTurnIds, titleFromFirstUserMessage } from "./chat-session.js";
+import { markInherited, pruneAfterTurnIds, titleFromFirstUserMessage } from "./chat-session.js";
 import type { ChatMessage } from "../derived-types.js";
 
 const SELF = "panel:user";
@@ -55,5 +55,18 @@ describe("pruneAfterTurnIds", () => {
   it("is a no-op on an empty set", () => {
     const empty = new Set<string>();
     expect(pruneAfterTurnIds(empty, [], SELF)).toBe(empty);
+  });
+});
+
+describe("markInherited", () => {
+  it("marks history at or before the fork point and leaves the fork's own messages", () => {
+    const messages = [selfMsg("a", { seq: 3 }), selfMsg("b", { seq: 4 }), selfMsg("c")];
+    const marked = markInherited(messages, 3);
+    expect(marked.map((m) => m.inherited === true)).toEqual([true, false, false]);
+  });
+
+  it("is the identity for a conversation that is not a fork", () => {
+    const messages = [selfMsg("a", { seq: 1 })];
+    expect(markInherited(messages, null)).toBe(messages);
   });
 });

@@ -155,7 +155,7 @@ export interface ForkRowPayload {
   forkPointId: number;
   label: string;
   reason: string;
-  actor: { kind: string; id: string; displayName?: string };
+  actor: { kind: string; id: string; participantId?: string; displayName?: string };
   createdAtSeq: number;
   headSeq: number;
   archived: boolean;
@@ -293,6 +293,13 @@ export interface ChatMessage {
    * rows not yet round-tripped through the log.
    */
   seq?: number;
+  /**
+   * The message belongs to the history this conversation was forked from (at or
+   * before its fork point). History is context, not delivery: the fork's agents
+   * never receive it, so it can never be queued here, whatever its parent-side
+   * receipts said.
+   */
+  inherited?: true;
   /** Explicit supervisor `say` (from `ProjectedMessage.saliency`) — used to
    *  filter the SubagentRunCard's live say feed. */
   saliency?: "say";
