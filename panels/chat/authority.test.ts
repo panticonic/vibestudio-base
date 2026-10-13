@@ -26,17 +26,15 @@ describe("chat panel authority", () => {
     });
   });
 
-  it("can request approval to configure an OAuth client from client eval", () => {
+  it("configures an OAuth client from client eval without a manifest request", () => {
+    // credentials.configureClient is reviewed open (a host-owned protected-input
+    // prompt), which waives the unit request and grant at the live gate and in
+    // build admission. A gated request for it would be dead authority.
     expect(
-      manifest.vibestudio.authority.requests.find(
+      manifest.vibestudio.authority.requests.some(
         (request) => request.capability === "account-providers.configure"
       )
-    ).toEqual({
-      capability: "account-providers.configure",
-      resource: { kind: "exact", key: "account-providers.configure" },
-      tier: "gated",
-      evidence: "exact",
-    });
+    ).toBe(false);
   });
 
   it("can request a destination-scoped external browser approval from client eval", () => {
