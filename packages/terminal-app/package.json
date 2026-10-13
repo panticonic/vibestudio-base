@@ -1,0 +1,19 @@
+{
+  "name": "@workspace/terminal-app",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Runtime for terminal apps (panels hosted by terminals): reads the one-shot launch material, connects to the workspace as the app's own principal, and exposes the session's durable state.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@vibestudio/rpc": "workspace:*",
+    "@vibestudio/service-schemas": "workspace:*",
+    "@vibestudio/shared": "workspace:*",
+    "ws": "^8.21.1"
+  },
+  "devDependencies": {
+    "vitest": "^3.2.7"
+  }
+}
