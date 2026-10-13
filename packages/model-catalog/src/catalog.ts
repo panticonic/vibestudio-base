@@ -14,11 +14,23 @@
 export const MODEL_SETTINGS_SERVICE_PROTOCOL = "vibestudio.models.v1";
 /** Workspace config field holding the full default agent config (model + behavior). */
 export const WORKSPACE_DEFAULT_AGENT_CONFIG_FIELD = "defaultAgentConfig";
-export const DEFAULT_AGENT_MODEL_REF = "openai-codex:gpt-6.1-sol";
+
+/** Canonical model identity shared by configuration, catalogs, and runtime evidence. */
+export function canonicalModelRef(provider: string, modelId: string): string {
+  return `${provider}:${modelId}`;
+}
+
+export const DEFAULT_AGENT_MODEL_REF = canonicalModelRef(
+  "openai-codex",
+  "gpt-6.1-sol",
+);
 /** Host-owned test inference is a separate provider, never a cloud credential. */
 export const TEST_MODEL_PROVIDER_ID = "vibestudio-test";
 export const TEST_MODEL_ID = "deterministic";
-export const TEST_MODEL_REF = `${TEST_MODEL_PROVIDER_ID}:${TEST_MODEL_ID}`;
+export const TEST_MODEL_REF = canonicalModelRef(
+  TEST_MODEL_PROVIDER_ID,
+  TEST_MODEL_ID,
+);
 export const TEST_MODEL_SPEC = {
   id: TEST_MODEL_ID,
   name: "Deterministic test model",
@@ -35,7 +47,7 @@ export const TEST_MODEL_SPEC = {
 export const LOCAL_PROVIDER_ID = "local";
 export const LOCAL_DEFAULT_MODEL = {
   id: "qwen3.8-27b",
-  ref: "local:qwen3.8-27b",
+  ref: canonicalModelRef(LOCAL_PROVIDER_ID, "qwen3.8-27b"),
   name: "Qwen3.8 27B",
   contextWindow: 262_144,
   downloadSizeBytes: 16_464_440_224,
@@ -43,7 +55,7 @@ export const LOCAL_DEFAULT_MODEL = {
 export const LOCAL_DEFAULT_MODEL_REF = LOCAL_DEFAULT_MODEL.ref;
 export const LOCAL_FALLBACK_MODEL = {
   id: "lfm2.5-2.6b",
-  ref: "local:lfm2.5-2.6b",
+  ref: canonicalModelRef(LOCAL_PROVIDER_ID, "lfm2.5-2.6b"),
   name: "LFM2.5 2.6B",
   contextWindow: 128_000,
   downloadSizeBytes: 1_674_455_040,

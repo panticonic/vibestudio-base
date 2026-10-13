@@ -107,14 +107,9 @@ describe("appendInstalledAgent", () => {
 });
 
 describe("buildAgentSubscriptionConfig", () => {
-  it("layers full workspace defaults under global and per-agent config", () => {
+  it("layers explicit panel and per-agent config", () => {
     const result = buildAgentSubscriptionConfig({
       handle: "ai-chat-abcd",
-      workspaceDefaultAgentConfig: {
-        model: "openai:gpt-5",
-        thinkingLevel: "high",
-        approvalLevel: 1,
-      },
       globalConfig: {
         model: "openai:gpt-panel",
         approvalLevel: 2,
@@ -127,19 +122,15 @@ describe("buildAgentSubscriptionConfig", () => {
 
     expect(result.subscribeConfig).toMatchObject({
       model: "anthropic:claude-opus-4-1",
-      thinkingLevel: "high",
       approvalLevel: 2,
       systemPrompt: "global prompt",
       handle: "ai-chat-abcd",
     });
   });
 
-  it("persists a panel model override instead of the workspace default", () => {
+  it("keeps global overrides out of per-agent config", () => {
     const result = buildAgentSubscriptionConfig({
       handle: "system-testing-abcd",
-      workspaceDefaultAgentConfig: {
-        model: "openai-codex:gpt-5.6-sol",
-      },
       globalConfig: {
         model: "openai-codex:gpt-5.6-luna",
       },
@@ -147,31 +138,21 @@ describe("buildAgentSubscriptionConfig", () => {
     });
 
     expect(result.subscribeConfig["model"]).toBe("openai-codex:gpt-5.6-luna");
-    expect(result.perAgent["model"]).toBe("openai-codex:gpt-5.6-luna");
+    expect(result.perAgent).toEqual({});
   });
 
-  it("persists effective model and behavior defaults into the per-agent record", () => {
+  it("does not pin workspace defaults into the per-agent record", () => {
     const result = buildAgentSubscriptionConfig({
       handle: "ai-chat-abcd",
-      workspaceDefaultAgentConfig: {
-        model: "openai:gpt-5",
-        thinkingLevel: "medium",
-        approvalLevel: 1,
-      },
       perAgentConfig: {},
     });
 
-    expect(result.perAgent).toEqual({
-      model: "openai:gpt-5",
-      thinkingLevel: "medium",
-      approvalLevel: 1,
-    });
+    expect(result.perAgent).toEqual({});
   });
 
   it("strips caller-provided handles and applies panel-derived handle last", () => {
     const result = buildAgentSubscriptionConfig({
       handle: "safe-handle",
-      workspaceDefaultAgentConfig: { model: "openai:gpt-5" },
       perAgentConfig: {
         handle: "unsafe handle",
         approvalLevel: 0,
@@ -179,7 +160,6 @@ describe("buildAgentSubscriptionConfig", () => {
     });
 
     expect(result.subscribeConfig).toMatchObject({
-      model: "openai:gpt-5",
       approvalLevel: 0,
       handle: "safe-handle",
     });

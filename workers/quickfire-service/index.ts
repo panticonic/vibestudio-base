@@ -1,5 +1,3 @@
-import { resolveDurableObjectService } from "@vibestudio/service-schemas/clients/durableObjectServiceClient";
-import { modelSettingsRpcMethods } from "@workspace/model-catalog/rpc-contract";
 import { agentRpcMethods } from "@workspace/agentic-do/rpc-contract";
 import { mainRpcMethods } from "@vibestudio/service-schemas/mainRpc";
 import {
@@ -9,7 +7,6 @@ import {
 } from "@workspace/runtime/worker/kernel";
 import { launchAgentIntoChannel } from "@workspace/agentic-core/agent-launch";
 import { quickfireAgentConfig } from "@workspace/quickfire-core/agent";
-import { MODEL_SETTINGS_SERVICE_PROTOCOL } from "@workspace/model-catalog/catalog";
 
 import type { QuickfireSession } from "@workspace/quickfire-core/service";
 
@@ -225,13 +222,7 @@ export class QuickfireSessionsDO extends DurableObjectBase {
       );
     }
 
-    const [panel, settings] = await Promise.all([
-      this.panelFor(input.slotId),
-      (async () => {
-        const modelSettings = await resolveDurableObjectService(this.rpc, MODEL_SETTINGS_SERVICE_PROTOCOL);
-        return this.rpc.call(doTargetId(modelSettings), modelSettingsRpcMethods["getSettings"], []);
-      })(),
-    ]);
+    const panel = await this.panelFor(input.slotId);
     const suffix = crypto.randomUUID().slice(0, 12);
     const channelId = `quickfire-${suffix}`;
     const agentKey = `quickfire-agent-${suffix}`;
@@ -244,7 +235,6 @@ export class QuickfireSessionsDO extends DurableObjectBase {
       config: quickfireAgentConfig(
         input.slotId,
         panel,
-        settings.defaultAgentConfig,
       ),
       resourceBindings: agentResourceBindings(input.slotId, channelId),
       replay: true,

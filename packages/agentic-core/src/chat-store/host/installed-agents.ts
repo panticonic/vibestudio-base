@@ -1,5 +1,5 @@
 /** Installed-agent records and launch-config composition for chat hosts. */
-import type { DefaultAgentConfig } from "@workspace/model-catalog/catalog";
+import { mergeAgentConfig } from "@workspace/agentic-core/agent-subscription-config";
 
 /**
  * Return the host-bound panel context and reject any channel/UI claim that
@@ -52,7 +52,6 @@ export function appendInstalledAgent(
 
 export interface BuildAgentSubscriptionConfigOptions {
   handle: string;
-  workspaceDefaultAgentConfig: DefaultAgentConfig;
   globalConfig?: Record<string, unknown>;
   perAgentConfig?: Record<string, unknown>;
   systemPrompt?: string;
@@ -60,13 +59,11 @@ export interface BuildAgentSubscriptionConfigOptions {
 }
 
 /**
- * Build the config used to create/subscribe an agent. Workspace defaults are the
- * base, panel-level agentConfig overrides them, explicit per-agent config wins,
- * and handle is always derived by the panel.
+ * Build explicit panel overrides and channel presentation. Workspace defaults
+ * are applied by the shared launch primitive.
  */
 export function buildAgentSubscriptionConfig({
   handle,
-  workspaceDefaultAgentConfig,
   globalConfig,
   perAgentConfig,
   systemPrompt,
@@ -78,31 +75,10 @@ export function buildAgentSubscriptionConfig({
   const perAgent: Record<string, unknown> = { ...(perAgentConfig ?? {}) };
   delete perAgent["handle"];
 
-  const workspaceDefaults: Record<string, unknown> = {
-    model: workspaceDefaultAgentConfig.model,
-    ...(workspaceDefaultAgentConfig.thinkingLevel
-      ? { thinkingLevel: workspaceDefaultAgentConfig.thinkingLevel }
-      : {}),
-    ...(workspaceDefaultAgentConfig.fastMode !== undefined
-      ? { fastMode: workspaceDefaultAgentConfig.fastMode }
-      : {}),
-    ...(workspaceDefaultAgentConfig.approvalLevel !== undefined
-      ? { approvalLevel: workspaceDefaultAgentConfig.approvalLevel }
-      : {}),
-  };
-
   const subscribeConfig: Record<string, unknown> = {
-    ...workspaceDefaults,
-    ...(globalConfig ?? {}),
-    ...perAgent,
+    ...mergeAgentConfig(globalConfig, perAgent),
     handle,
   };
-
-  for (const key of ["model", "thinkingLevel", "approvalLevel"] as const) {
-    if (perAgent[key] === undefined && subscribeConfig[key] !== undefined) {
-      perAgent[key] = subscribeConfig[key];
-    }
-  }
 
   if (systemPrompt && subscribeConfig["systemPrompt"] === undefined) {
     subscribeConfig["systemPrompt"] = systemPrompt;

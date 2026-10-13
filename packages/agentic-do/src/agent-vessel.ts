@@ -1,6 +1,6 @@
 import { assertChannelDeliverySource } from "@vibestudio/shared/residentSession";
 import { createRpcMethodCaller } from "@vibestudio/shared/rpcMethods";
-import { localModelEntrySchema } from "@workspace/model-catalog/localModels";
+import { localModelsExtensionMethods } from "@workspace/model-catalog/localModels";
 import {
   compileMissionAuthorityPlan,
   createMissionsClient,
@@ -240,6 +240,7 @@ import type { ModelFailureClass } from "@workspace/agentic-core/model-failures";
 import type { RosterEntry } from "@workspace/agentic-core/agent-channel-roster";
 import {
   MODEL_SETTINGS_SERVICE_PROTOCOL,
+  canonicalModelRef,
   type AgentThinkingLevel as ThinkingLevel,
 } from "@workspace/model-catalog/catalog";
 
@@ -1535,13 +1536,16 @@ export abstract class AgentVesselBase extends NativeChannelOwner<NativeProductCh
       const entries = await this.rpc.call(
         "main",
         mainRpcMethods["extensions.invoke"],
-        [LOCAL_MODELS_EXTENSION_ID, "listModels", []],
+        [
+          LOCAL_MODELS_EXTENSION_ID,
+          localModelsExtensionMethods.listModels.method,
+          [],
+        ],
       );
-      const entry = Array.isArray(entries)
-        ? (entries
-            .map((candidate) => localModelEntrySchema.parse(candidate))
-            .find((candidate) => candidate.slug === slug) ?? null)
-        : null;
+      const entry =
+        localModelsExtensionMethods.listModels.result
+          .parse(entries)
+          .find((candidate) => candidate.slug === slug) ?? null;
       if (!entry) return;
       this.setStateValue(
         `agent:localModelEntry:${channelId}`,
@@ -4918,7 +4922,7 @@ export abstract class AgentVesselBase extends NativeChannelOwner<NativeProductCh
               model.provider,
               {
                 resumeAfterConnect: false,
-                modelRef: `${model.provider}:${model.id}`,
+                modelRef: canonicalModelRef(model.provider, model.id),
               },
               rpc,
             ),
@@ -7925,7 +7929,7 @@ export abstract class AgentVesselBase extends NativeChannelOwner<NativeProductCh
       request.model.provider,
       {
         resumeAfterConnect: true,
-        modelRef: `${request.model.provider}:${request.model.id}`,
+        modelRef: canonicalModelRef(request.model.provider, request.model.id),
       },
     );
   }

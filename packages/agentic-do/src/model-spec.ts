@@ -3,7 +3,8 @@
  * Cloud refs resolve through the installed native Pi registry; local refs use
  * the local-models extension descriptors. Each admitted request retains its
  * model descriptor, so recovery does not resolve it again against a changed
- * registry. Credentials are bound separately to the original invocation.
+ * registry. Cloud credentials are bound separately to the original invocation;
+ * local runtime authentication remains in host egress and never enters the DO.
  */
 
 import {

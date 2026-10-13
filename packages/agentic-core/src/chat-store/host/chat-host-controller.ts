@@ -839,12 +839,9 @@ export class ChatHostController implements ReadableStore<ChatHostSnapshot> {
     );
     if (missing.length === 0) return;
     progress.missing(missing.map((agent) => agent.handle));
-    const defaultAgentConfig = await this.resolveWorkspaceDefaultAgentConfig();
-    signal.throwIfAborted();
     for (const agent of missing) {
       const { subscribeConfig } = buildAgentSubscriptionConfig({
         handle: agent.handle,
-        workspaceDefaultAgentConfig: defaultAgentConfig,
         globalConfig: inputs.agentConfig,
         perAgentConfig: agent.config,
         systemPrompt: inputs.systemPrompt,
@@ -879,13 +876,11 @@ export class ChatHostController implements ReadableStore<ChatHostSnapshot> {
   /** Launch configuration is one coherent read of the latest durable state. */
   #buildSubscribeConfig(
     handle: string,
-    config: AgentSubscriptionConfig | undefined,
-    defaultAgentConfig: DefaultAgentConfig
+    config: AgentSubscriptionConfig | undefined
   ) {
     const current = this.#ports.state.get();
     return buildAgentSubscriptionConfig({
       handle,
-      workspaceDefaultAgentConfig: defaultAgentConfig,
       globalConfig: current.agentConfig,
       perAgentConfig: config,
       systemPrompt: current.systemPrompt,
@@ -917,12 +912,7 @@ export class ChatHostController implements ReadableStore<ChatHostSnapshot> {
     const requestedHandle =
       configHandle.trim() || matched?.proposedHandle || handleFromClass || DEFAULT_AGENT_HANDLE;
     const handleBase = sanitizeHandle(requestedHandle);
-    const defaultAgentConfig = await this.resolveWorkspaceDefaultAgentConfig();
-    const { subscribeConfig, perAgent } = this.#buildSubscribeConfig(
-      handleBase,
-      config,
-      defaultAgentConfig
-    );
+    const { subscribeConfig, perAgent } = this.#buildSubscribeConfig(handleBase, config);
     return {
       source,
       className,
@@ -1029,8 +1019,7 @@ export class ChatHostController implements ReadableStore<ChatHostSnapshot> {
     const configHandle = typeof config?.["handle"] === "string" ? (config["handle"] as string) : "";
     const handle = configHandle.trim() || agent?.proposedHandle || DEFAULT_AGENT_HANDLE;
     const agentKey = `${handle}-${this.#uuid().slice(0, 8)}`;
-    const defaultAgentConfig = await this.resolveWorkspaceDefaultAgentConfig();
-    const { subscribeConfig, perAgent } = this.#buildSubscribeConfig(handle, config, defaultAgentConfig);
+    const { subscribeConfig, perAgent } = this.#buildSubscribeConfig(handle, config);
     await unsubscribeAgentFromChannel(this.#ports.rpc, {
       source: target.source,
       className: target.className,

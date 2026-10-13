@@ -7,7 +7,7 @@ describe("quickfire agent referent contract", () => {
       title: "Build log",
       source: "panels/build-log",
       parentSlotId: "slot-root",
-    }, { model: "anthropic:connected-model", thinkingLevel: "low", approvalLevel: 1 });
+    });
 
   it("defines a general-purpose agent whose attached panel is context, not scope", () => {
     expect(QUICKFIRE_AGENT_PROMPT).toContain(
@@ -69,11 +69,9 @@ describe("quickfire agent referent contract", () => {
     });
   });
 
-  it("inherits the resolved workspace model and behavior", () => {
-    expect(config()).toMatchObject({
-      model: "anthropic:connected-model",
-      thinkingLevel: "low",
-      approvalLevel: 1,
-    });
+  it("leaves workspace model and behavior inheritance to the shared launcher", () => {
+    expect(config()).not.toHaveProperty("model");
+    expect(config()).not.toHaveProperty("thinkingLevel");
+    expect(config()).not.toHaveProperty("approvalLevel");
   });
 });

@@ -291,6 +291,11 @@ describe("native run activity publication", () => {
       ({ event }) => event.kind === "message.completed",
     )!.event;
     if (answer.kind !== "message.completed") throw new Error("Missing answer");
+    const completed = eventKindSchemas["message.completed"].parse(answer);
+    expect(completed.payload.model).toEqual({
+      ref: `faux:${f.faux.getModel().id}`,
+      provider: "faux",
+    });
     expect(remembered).toEqual([`faux:${f.faux.getModel().id}`]);
   });
 

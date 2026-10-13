@@ -471,8 +471,8 @@ async function owner(
 
 const authorityInvocation: AuthorityInvocation = {
   service: "credentials",
-  method: "resolveCredential",
-  args: [{ url: "https://provider.test/v1" }],
+  method: "resolveNativeModel",
+  args: [{ providerId: "faux", modelId: "faux-1", endpoint: null }],
 };
 
 function pendingAuthorityReceipt(
@@ -505,8 +505,8 @@ function pendingAuthorityReceipt(
         argsDigest: sha256HexSyncText(canonicalJson(authorityInvocation.args)),
         preparedStateDigest: "-",
         snapshotDigest: "c".repeat(64),
-        capability: "credentials.resolve",
-        resourceKey: "https://provider.test/v1",
+        capability: "model.use",
+        resourceKey: "model:faux/faux-1@account:provider",
       },
     ],
   };
@@ -2626,6 +2626,9 @@ describe("native canonical authority receipts", () => {
           purpose: "generation" as const,
           attempt: request.attempt,
           cutoff: request.cutoff,
+          providerId: request.model.provider,
+          modelId: request.model.id,
+          endpoint: request.model.baseUrl ?? null,
         },
       };
       const trajectory = channelTrajectoryFor("channel:owner");

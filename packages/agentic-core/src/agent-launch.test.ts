@@ -2,7 +2,9 @@ import { durableObjectServiceFixture } from "@vibestudio/service-schemas/test-ut
 import { schemaRpcMock } from "@vibestudio/rpc/test-utils";
 import { describe, expect, it, vi } from "vitest";
 import { CreateEntitySpecSchema } from "@vibestudio/service-schemas/runtime";
+import { MODEL_SETTINGS_SERVICE_PROTOCOL } from "@workspace/model-catalog/catalog";
 import {
+  createAgentEntity,
   buildAgentEntityCreateSpec,
   buildAgentTaskSeedEvent,
   createSubagentContext,
@@ -20,6 +22,21 @@ function makeRpc(
 ): AgentLaunchRpc & { wireCall: ReturnType<typeof vi.fn> } {
   const wireCall = vi.fn(
     async (target: string, method: string, args: unknown[]) => {
+      if (method === "workers.resolveService" && args[0] === MODEL_SETTINGS_SERVICE_PROTOCOL)
+        return durableObjectServiceFixture(
+          "do:workers/model-settings:ModelSettingsDO:workspace",
+          {
+            origin: "workspace",
+            source: "workers/model-settings",
+            name: "model settings",
+            action: "provide",
+            presentation: { domain: "web", verb: "see" },
+            authority: { principals: ["code", "website"] },
+            protocols: [MODEL_SETTINGS_SERVICE_PROTOCOL],
+            className: "ModelSettingsDO",
+            objectKey: "workspace",
+          },
+        );
       if (method === "workers.resolveService")
         return durableObjectServiceFixture(
           `do:workers/pubsub-channel:PubSubChannel:${args[1]}`,
@@ -35,6 +52,14 @@ function makeRpc(
             objectKey: String(args[1]),
           },
         );
+      if (method === "getSettings")
+        return {
+          defaultAgentConfig: {
+            model: "workspace:default",
+            thinkingLevel: "low",
+            approvalLevel: 1,
+          },
+        };
       if (impl) return impl(target, method, args);
       if (target === "main" && method === "runtime.createEntity") {
         const spec = args[0] as { contextId?: string };
@@ -135,7 +160,7 @@ describe("agent launch primitive", () => {
       contextId: "ctx-1",
     });
     expect(rpc.wireCall).toHaveBeenNthCalledWith(
-      1,
+      3,
       "main",
       "runtime.createEntity",
       [
@@ -152,19 +177,62 @@ describe("agent launch primitive", () => {
           stateArgs: expect.objectContaining({
             agentConfig: expect.objectContaining({
               model: "openai:gpt-5.3",
+              thinkingLevel: "low",
               approvalLevel: 1,
             }),
           }),
         }),
       ],
     );
-    expect(rpc.wireCall).toHaveBeenCalledTimes(1);
-    const spec = rpc.wireCall.mock.calls[0]![2][0] as {
+    expect(rpc.wireCall).toHaveBeenCalledTimes(3);
+    const spec = rpc.wireCall.mock.calls[2]![2][0] as {
       stateArgs: { agentConfig: unknown };
     };
     expect(spec.stateArgs.agentConfig).toEqual({
       model: "openai:gpt-5.3",
+      thinkingLevel: "low",
       approvalLevel: 1,
+    });
+  });
+
+  it("inherits workspace defaults through the public launch path", async () => {
+    const rpc = makeRpc();
+    await launchAgentIntoChannel(rpc, {
+      source: "workers/agent-worker",
+      className: "AiChatWorker",
+      key: "agent-1",
+      channelId: "ch-1",
+    });
+    const createCall = rpc.wireCall.mock.calls[2]!;
+    expect(createCall[1]).toBe("runtime.createEntity");
+    expect(createCall[2][0]).toMatchObject({
+      agentInitialization: { channelId: "ch-1", config: {} },
+      stateArgs: {
+        agentConfig: {
+          model: "workspace:default",
+          thinkingLevel: "low",
+          approvalLevel: 1,
+        },
+      },
+    });
+  });
+
+  it("applies workspace defaults when creating a provisional agent entity", async () => {
+    const rpc = makeRpc();
+    await createAgentEntity(rpc, {
+      source: "workers/agent-worker",
+      className: "AiChatWorker",
+      key: "agent-1",
+      config: { thinkingLevel: "high" },
+    });
+    expect(rpc.wireCall.mock.calls[2]![2][0]).toMatchObject({
+      stateArgs: {
+        agentConfig: {
+          model: "workspace:default",
+          thinkingLevel: "high",
+          approvalLevel: 1,
+        },
+      },
     });
   });
 
@@ -180,7 +248,7 @@ describe("agent launch primitive", () => {
         channelId: "ch-1",
       }),
     ).rejects.toThrow("subscribe failed");
-    expect(rpc.wireCall).toHaveBeenCalledTimes(1);
+    expect(rpc.wireCall).toHaveBeenCalledTimes(3);
   });
 
   it("refuses to subscribe an existing active agent into a different channel context", async () => {
@@ -212,7 +280,7 @@ describe("agent launch primitive", () => {
       /existing agent entity-1 in context ctx-original.*channel ch-fork.*ctx-fork/,
     );
 
-    expect(rpc.wireCall).toHaveBeenCalledTimes(1);
+    expect(rpc.wireCall).toHaveBeenCalledTimes(3);
   });
 
   it("imports native knowledge through the same stripped subscription config contract", async () => {

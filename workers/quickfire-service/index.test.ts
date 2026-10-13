@@ -165,16 +165,17 @@ class TestQuickfireSessionsDO extends QuickfireSessionsDO {
 }
 
 describe("QuickfireSessionsDO", () => {
-  it("propagates model discovery failure before allocating a channel or agent", async () => {
+  it("propagates model settings failure before creating the agent", async () => {
     const { instance } = await createTestDO(TestQuickfireSessionsDO);
     const failure = new Error("Model settings service disconnected");
     instance.modelSettingsFailure = failure;
     await expect(instance.sessionFor({ slotId: "slot-a" })).rejects.toBe(
       failure,
     );
-    expect(
-      instance.calls.some(({ method }) => method === "runtime.createEntity"),
-    ).toBe(false);
+    expect(instance.calls.some(({ method, args }) =>
+      method === "runtime.createEntity" &&
+      (args[0] as { className?: string }).className === "AiChatWorker"
+    )).toBe(false);
   });
 
   it("launches an ordinary AI chat agent with declarative prompt, tools, and panel binding", async () => {

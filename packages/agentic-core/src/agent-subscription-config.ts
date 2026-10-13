@@ -101,6 +101,14 @@ export const AGENT_SETTING_KEYS = [
 ] as const satisfies ReadonlyArray<keyof AgentConfig>;
 export type AgentSettingKey = (typeof AGENT_SETTING_KEYS)[number];
 
+/** One inheritance rule for every agent creation surface. */
+export function mergeAgentConfig(
+  workspaceDefault: object | undefined,
+  explicit: object | undefined
+): Record<string, unknown> {
+  return Object.assign({}, workspaceDefault, explicit) as Record<string, unknown>;
+}
+
 /**
  * The full per-agent SETUP config: behavior settings + channel presentation +
  * worker-specific extras. Produced by the panel UI, a worker manifest's

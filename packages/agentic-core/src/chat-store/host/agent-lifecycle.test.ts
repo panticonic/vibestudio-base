@@ -1,5 +1,6 @@
 import { schemaRpcMock } from "@vibestudio/rpc/test-utils";
 import { durableObjectServiceFixture } from "@vibestudio/service-schemas/test-utils";
+import { MODEL_SETTINGS_SERVICE_PROTOCOL } from "@workspace/model-catalog/catalog";
 /**
  * Panel-rpc harness: drives createAndSubscribeAgent against a mocked
  * `@workspace/runtime` rpc and asserts the per-agent config seeds into the
@@ -18,7 +19,11 @@ const mocks = vi.hoisted(() => ({
   patchStateArgs: vi.fn(),
   call: vi.fn(async (_target: string, method: string, args: unknown[]) => {
     if (method === "workers.resolveService")
-      return resolvedChannelService(String(args[1]));
+      return args[0] === MODEL_SETTINGS_SERVICE_PROTOCOL
+        ? resolvedModelSettingsService()
+        : resolvedChannelService(String(args[1]));
+    if (method === "getSettings")
+      return { defaultAgentConfig: { model: "workspace:default", approvalLevel: 2 } };
     if (method === "runtime.createEntity") {
       const spec = args[0] as { key: string; contextId?: string };
       const id = `do:workers/agent-worker:AiChatWorker:${spec.key}`;
@@ -53,6 +58,23 @@ function resolvedChannelService(channelId: string) {
       className: "PubSubChannel",
       objectKey: channelId,
     },
+  );
+}
+
+function resolvedModelSettingsService() {
+  return durableObjectServiceFixture(
+    "do:workers/model-settings:ModelSettingsDO:workspace",
+    {
+      origin: "workspace",
+      source: "workers/model-settings",
+      name: "model settings",
+      action: "provide",
+      presentation: { domain: "web", verb: "see" },
+      authority: { principals: ["code", "website"] },
+      protocols: [MODEL_SETTINGS_SERVICE_PROTOCOL],
+      className: "ModelSettingsDO",
+      objectKey: "workspace",
+    }
   );
 }
 
@@ -155,16 +177,25 @@ describe("createAndSubscribeAgent (panel-rpc harness)", () => {
       channelContextId: "ctx-1",
     });
     const order = mocks.call.mock.calls.map((c) => c[1]);
-    expect(order).toEqual(["runtime.createEntity"]);
-    const createSpec = callsFor("runtime.createEntity")[0]![0] as { contextId: string };
+    expect(order).toEqual(["workers.resolveService", "getSettings", "runtime.createEntity"]);
+    const createSpec = callsFor("runtime.createEntity")[0]![0] as { contextId: string; stateArgs: { agentConfig: Record<string, unknown> } };
     expect(createSpec.contextId).toBe("ctx-1");
+    expect(createSpec.stateArgs.agentConfig).toMatchObject({
+      model: "workspace:default",
+      approvalLevel: 2,
+    });
   });
 
   it("keeps activation pending across the exact workspace review", async () => {
     let subscriptionAttempts = 0;
     mocks.call.mockImplementation(async (_target: string, method: string, args: unknown[]) => {
       if (method === "workers.resolveService")
-        return resolvedChannelService(String(args[1]));
+        return args[0] === MODEL_SETTINGS_SERVICE_PROTOCOL
+          ? resolvedModelSettingsService()
+          : resolvedChannelService(String(args[1]));
+      if (method === "getSettings")
+        return { defaultAgentConfig: { model: "workspace:default", approvalLevel: 2 } };
+      if (method !== "runtime.createEntity") return { ok: true, participantId: "p-1" };
       subscriptionAttempts += 1;
       if (subscriptionAttempts === 1) {
         throw Object.assign(new Error("Waiting for workspace review"), {
@@ -234,7 +265,11 @@ function lifecycleRpc(): AgentLaunchRpc & { wireCall: ReturnType<typeof vi.fn> }
   const rpc = {
     call: vi.fn(async (_target: string, method: string, args: unknown[]) => {
       if (method === "workers.resolveService")
-        return resolvedChannelService(String(args[1]));
+        return args[0] === MODEL_SETTINGS_SERVICE_PROTOCOL
+          ? resolvedModelSettingsService()
+          : resolvedChannelService(String(args[1]));
+      if (method === "getSettings")
+        return { defaultAgentConfig: { model: "workspace:default", approvalLevel: 2 } };
       if (method === "runtime.createEntity") {
         const spec = args[0] as { key: string; contextId: string };
         const id = `do:workers/agent-worker:AiChatWorker:${spec.key}`;
@@ -255,11 +290,17 @@ describe("ProvisionalAgentLifecycle", () => {
     const intent = provisionalIntent("openai:gpt-5.3");
 
     await lifecycle.prepare(intent);
-    expect(rpc.wireCall.mock.calls.map((call) => call[1])).toEqual(["runtime.createEntity"]);
+    expect(rpc.wireCall.mock.calls.map((call) => call[1])).toEqual([
+      "workers.resolveService",
+      "getSettings",
+      "runtime.createEntity",
+    ]);
 
     const claimed = await lifecycle.claim(intent);
 
     expect(rpc.wireCall.mock.calls.map((call) => call[1])).toEqual([
+      "workers.resolveService",
+      "getSettings",
       "runtime.createEntity",
       "workers.resolveService",
       "subscribeChannel",
@@ -287,7 +328,11 @@ describe("ProvisionalAgentLifecycle", () => {
     let attempts = 0;
     rpc.wireCall.mockImplementation(async (_target, method, args) => {
       if (method === "workers.resolveService")
-        return resolvedChannelService(String(args[1]));
+        return args[0] === MODEL_SETTINGS_SERVICE_PROTOCOL
+          ? resolvedModelSettingsService()
+          : resolvedChannelService(String(args[1]));
+      if (method === "getSettings")
+        return { defaultAgentConfig: { model: "workspace:default", approvalLevel: 2 } };
       if (method === "runtime.createEntity") {
         const spec = args[0] as { key: string; contextId: string };
         const id = `do:workers/agent-worker:AiChatWorker:${spec.key}`;
@@ -330,16 +375,20 @@ describe("ProvisionalAgentLifecycle", () => {
     await lifecycle.prepare(provisionalIntent("anthropic:claude-sonnet-4-6"));
 
     expect(rpc.wireCall.mock.calls.map((call) => call[1])).toEqual([
+      "workers.resolveService",
+      "getSettings",
       "runtime.createEntity",
       "runtime.retireEntity",
+      "workers.resolveService",
+      "getSettings",
       "runtime.createEntity",
     ]);
-    expect(rpc.wireCall.mock.calls[1]).toEqual([
+    expect(rpc.wireCall.mock.calls[3]).toEqual([
       "main",
       "runtime.retireEntity",
       [{ id: "do:workers/agent-worker:AiChatWorker:ai-chat-aaaa-bbbb2222" }],
     ]);
-    const replacementSpec = rpc.wireCall.mock.calls[2]?.[2]?.[0] as {
+    const replacementSpec = rpc.wireCall.mock.calls[6]?.[2]?.[0] as {
       stateArgs: { agentConfig: Record<string, unknown> };
     };
     expect(replacementSpec.stateArgs.agentConfig).toMatchObject({
@@ -357,6 +406,8 @@ describe("ProvisionalAgentLifecycle", () => {
     await lifecycle.dispose();
 
     expect(rpc.wireCall.mock.calls.map((call) => call[1])).toEqual([
+      "workers.resolveService",
+      "getSettings",
       "runtime.createEntity",
       "runtime.retireEntity",
     ]);

@@ -29,6 +29,7 @@ import {
   TEST_MODEL_SPEC,
   TEST_MODEL_PROVIDER_ID,
   WORKSPACE_DEFAULT_AGENT_CONFIG_FIELD,
+  canonicalModelRef,
   isModelUsable,
   piModelToSpec,
   type AgentThinkingLevel,
@@ -47,7 +48,7 @@ import {
 } from "@workspace/model-catalog/providerConnect";
 import { pickRecommendedModelId } from "@workspace/model-catalog/modelRecommendations";
 import {
-  localModelEntrySchema,
+  localModelsExtensionMethods,
   type LocalModelEntry,
 } from "@workspace/model-catalog/localModels";
 import {
@@ -106,7 +107,8 @@ export async function buildModelCatalog(): Promise<ModelCatalog> {
   for (const providerId of providerIds) {
     const provModels = getBuiltinModels(providerId);
     const recommendedId = pickRecommendedModelId(providerId, provModels);
-    if (recommendedId) recommendedRefs.add(`${providerId}:${recommendedId}`);
+    if (recommendedId)
+      recommendedRefs.add(canonicalModelRef(providerId, recommendedId));
   }
 
   for (const providerId of providerIds) {
@@ -120,7 +122,7 @@ export async function buildModelCatalog(): Promise<ModelCatalog> {
       label: providerLabel(providerId),
       baseUrls,
       recommendedModelRef: recommendedModelId
-        ? `${providerId}:${recommendedModelId}`
+        ? canonicalModelRef(providerId, recommendedModelId)
         : null,
       connectable:
         providerIsConnectable(providerId) &&
@@ -128,7 +130,7 @@ export async function buildModelCatalog(): Promise<ModelCatalog> {
     });
 
     for (const model of provModels) {
-      const ref = `${providerId}:${model.id}`;
+      const ref = canonicalModelRef(providerId, model.id);
       const thinkingLevels = model.reasoning
         ? (getSupportedThinkingLevels(model).filter((level) =>
             AGENT_THINKING_LEVELS.has(level),
@@ -167,7 +169,7 @@ export function localEntryToCatalogEntry(
   entry: LocalModelEntry,
 ): ModelCatalogEntry {
   return {
-    ref: `${LOCAL_PROVIDER_ID}:${entry.slug}`,
+    ref: canonicalModelRef(LOCAL_PROVIDER_ID, entry.slug),
     id: entry.slug,
     name: entry.displayName,
     provider: LOCAL_PROVIDER_ID,
@@ -183,7 +185,8 @@ export function localEntryToCatalogEntry(
     // them; availability comes from live server state (design §6.3/§7.1).
     connectable: false,
     recommended:
-      `${LOCAL_PROVIDER_ID}:${entry.slug}` === LOCAL_DEFAULT_MODEL_REF,
+      canonicalModelRef(LOCAL_PROVIDER_ID, entry.slug) ===
+      LOCAL_DEFAULT_MODEL_REF,
     auth: "loopback",
     availability: localAvailability(entry),
     modelSpec: {
@@ -817,10 +820,10 @@ export class ModelSettingsDO extends DurableObjectBase implements ModelSettingsR
       );
     const entries = await this.rpc.call("main", mainRpcMethods["extensions.invoke"], [
       LOCAL_MODELS_EXTENSION_ID,
-      "listModels",
+      localModelsExtensionMethods.listModels.method,
       [],
     ]);
-    return localModelEntrySchema.array().parse(entries);
+    return localModelsExtensionMethods.listModels.result.parse(entries);
   }
 
   protected getWorkspaceConfig(): Promise<WorkspaceConfig> {

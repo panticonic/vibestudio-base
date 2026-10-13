@@ -1,5 +1,6 @@
 import { type Context, type JsonRepresentation } from "@panticonic/pi-chord";
 import type { Api, Model, Usage } from "@panticonic/pi-ai";
+import { canonicalModelRef } from "@workspace/model-catalog/catalog";
 import {
   AssistantEntry,
   defineDoc,
@@ -70,7 +71,7 @@ function route(
   return {
     provider: model.provider,
     model: model.id,
-    ref: `${model.provider}:${model.id}`,
+    ref: canonicalModelRef(model.provider, model.id),
     api: model.api,
     baseUrl: endpoint.toString(),
   };

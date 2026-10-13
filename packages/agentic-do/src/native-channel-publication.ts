@@ -22,6 +22,7 @@ import {
   type ToolExecutionResult,
 } from "@panticonic/pi-durable";
 import { classifyModelFailure } from "@workspace/agentic-core/model-failures";
+import { canonicalModelRef } from "@workspace/model-catalog/catalog";
 import { canonicalJson } from "@vibestudio/shared/canonicalJson";
 import {
   AGENTIC_PROTOCOL_VERSION,
@@ -555,7 +556,7 @@ export function createNativeChannelPublication(options: {
               "Successful native answer lost its original model response",
             );
           await options.onSuccessfulAnswer(
-            `${message.provider}:${message.model}`,
+            canonicalModelRef(message.provider, message.model),
           );
         }
         index++;
@@ -1043,7 +1044,7 @@ function assistantEvent(
         metadata: { pi: detached(message.usage) },
       },
       model: {
-        ref: `${message.provider}/${message.model}`,
+        ref: canonicalModelRef(message.provider, message.model),
         provider: message.provider,
       },
       metadata: {
