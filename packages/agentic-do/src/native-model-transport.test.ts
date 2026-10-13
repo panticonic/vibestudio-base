@@ -149,7 +149,7 @@ function upgraded(socket: Socket): Response {
 }
 
 describe("credentialed model transport ownership", () => {
-  it("injects an attested loopback key only into attributed transport and joins its response cancellation", async () => {
+  it("leaves local authentication to attributed host egress and joins response cancellation", async () => {
     const loopback = {
       ...model,
       provider: "local",
@@ -163,22 +163,17 @@ describe("credentialed model transport ownership", () => {
     const connection = createLoopbackModelConnection(
       {
         model: loopback,
-        apiKey: "extension-secret",
-        origins: ["http://127.0.0.1:32123"],
         egressFetch: egress,
       },
       BACKGROUND_CONTEXT,
     );
     expect(isModelCredentialSentinel(connection.options.apiKey)).toBe(true);
-    expect(connection.options.apiKey).not.toContain("extension-secret");
     const response = await connection.options.fetch(
       `${loopback.baseUrl}/chat/completions`,
       { headers: { authorization: `Bearer ${connection.options.apiKey}` } },
     );
     const init = egress.mock.calls[0]![1]!;
-    expect(new Headers(init.headers).get("authorization")).toBe(
-      "Bearer extension-secret",
-    );
+    expect(new Headers(init.headers).get("authorization")).toBeNull();
     expect(new Headers(init.headers).has(EGRESS_CREDENTIAL_HEADER)).toBe(false);
     expect(init.redirect).toBe("manual");
     const closing = connection.close(BACKGROUND_CONTEXT);
@@ -196,23 +191,21 @@ describe("credentialed model transport ownership", () => {
     ).rejects.toThrow();
   });
 
-  it("refuses loopback endpoints outside current provider attestation before acquiring any transport", () => {
+  it("refuses non-loopback local endpoints before acquiring any transport", () => {
     const egress = vi.fn<typeof fetch>();
     for (const baseUrl of [
       "https://foreign.test/v1",
-      "http://127.0.0.1:32124/v1",
+      "http://192.0.2.1:32124/v1",
     ]) {
       expect(() =>
         createLoopbackModelConnection(
           {
             model: { ...model, baseUrl },
-            apiKey: "key",
-            origins: ["http://127.0.0.1:32123"],
             egressFetch: egress,
           },
           BACKGROUND_CONTEXT,
         ),
-      ).toThrow("not attested");
+      ).toThrow("requires a loopback endpoint");
     }
     expect(egress).not.toHaveBeenCalled();
   });
@@ -229,8 +222,6 @@ describe("credentialed model transport ownership", () => {
     const connection = createLoopbackModelConnection(
       {
         model: loopback,
-        apiKey: "key",
-        origins: ["http://127.0.0.1:32123"],
         egressFetch: egress,
       },
       BACKGROUND_CONTEXT,
@@ -242,7 +233,7 @@ describe("credentialed model transport ownership", () => {
     });
     expect(
       new Headers(egress.mock.calls[0]![1]?.headers).get("authorization"),
-    ).toBe("Bearer key");
+    ).toBeNull();
     const closing = connection.close(BACKGROUND_CONTEXT);
     let closed = false;
     void closing.then(() => {

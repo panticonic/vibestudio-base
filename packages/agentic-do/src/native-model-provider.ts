@@ -16,6 +16,7 @@ import {
   type RpcCaller,
 } from "@vibestudio/rpc";
 import { credentialsMethods } from "@vibestudio/service-schemas/credentials";
+import { localModelRuntimeMethods } from "@vibestudio/service-schemas/localModelRuntime";
 import { sha256HexSyncText } from "@vibestudio/content-addressing";
 import { canonicalJson } from "@vibestudio/shared/canonicalJson";
 import { resolveProviderModelBaseUrl } from "@vibestudio/shared/providerConnect";
@@ -75,7 +76,6 @@ export function createProtectedNativeModels(options: {
 }
 
 const LOCAL_PROVIDER = "local";
-const LOCAL_EXTENSION = "@workspace-extensions/local-models";
 
 /** The shipping owner supplies its actual host-authenticated task/trajectory boundary, never an inbound caller's authority. */
 export interface NativeModelProviderHost {
@@ -174,42 +174,25 @@ export function createProtectedModelProvider(
       }
     }
     if (request.model.provider === LOCAL_PROVIDER) {
-      const loaded = await invoke("extensions", "invoke", [
-        LOCAL_EXTENSION,
-        "ensureLoaded",
-        [request.model.id],
+      const loaded = await invoke("localModelRuntime", "prepareNativeModel", [
+        {
+          providerId: request.model.provider,
+          modelId: request.model.id,
+          endpoint: request.model.baseUrl ?? null,
+        },
       ]);
       if ("status" in loaded) return loaded;
-      if (!object(loaded.value) || typeof loaded.value["baseUrl"] !== "string")
-        throw new Error("Local model provider returned no concrete endpoint");
+      const localRuntime = localModelRuntimeMethods.prepareNativeModel.returns.parse(
+        loaded.value,
+      );
       const prepared = await api.prepare(
-        { ...request.model, baseUrl: loaded.value["baseUrl"] },
+        { ...request.model, baseUrl: localRuntime.baseUrl },
         context,
       );
-      const authorized = await invoke("extensions", "invoke", [
-        LOCAL_EXTENSION,
-        "getLoopbackAuth",
-        [],
-      ]);
-      if ("status" in authorized) return authorized;
-      const auth = authorized.value;
-      if (
-        !object(auth) ||
-        typeof auth["apiKey"] !== "string" ||
-        !Array.isArray(auth["origins"]) ||
-        !auth["origins"].every(
-          (origin): origin is string => typeof origin === "string",
-        )
-      )
-        throw new Error(
-          "Local model provider returned no endpoint attestation",
-        );
       context.abortSignal?.throwIfAborted();
       return createLoopbackModelConnection(
         {
           model: prepared.model,
-          apiKey: auth["apiKey"],
-          origins: auth["origins"],
           egressFetch: host.egressFetch,
           onDiagnostic,
         },

@@ -140,12 +140,11 @@ export function createCredentialedModelConnection(
   return createModelConnection({ ...input, kind: "credential" }, context);
 }
 
-/** The extension owns its model server; this request owns only attributed HTTP/socket resources. */
+/** The extension owns its model server and secret. The host injects authentication
+ * only after attributing each request to the exact active native model task. */
 export function createLoopbackModelConnection(
   input: {
     readonly model: ModelTransportTarget;
-    readonly apiKey: string;
-    readonly origins: readonly string[];
     readonly egressFetch: typeof fetch;
     readonly onDiagnostic?: (event: NativeModelTransportDiagnostic) => void;
   },
@@ -167,8 +166,6 @@ type ModelTransportInput = {
     }
   | {
       readonly kind: "loopback";
-      readonly apiKey: string;
-      readonly origins: readonly string[];
     }
 );
 
@@ -197,17 +194,12 @@ function createModelConnection(
   if (credential && (!credentialId || credentialId !== credentialId.trim()))
     throw new Error("Model transport requires an exact credential identity");
   if (input.kind === "loopback") {
-    if (!input.apiKey || input.apiKey !== input.apiKey.trim())
-      throw new Error(
-        "Loopback model transport requires its activation-local key",
-      );
     if (
       base.protocol !== "http:" ||
-      !["127.0.0.1", "[::1]", "localhost"].includes(base.hostname) ||
-      !input.origins.includes(base.origin)
+      !["127.0.0.1", "[::1]", "localhost"].includes(base.hostname)
     )
       throw new Error(
-        "Loopback model endpoint is not attested by its provider",
+        "Local model transport requires a loopback endpoint",
       );
   }
   const transport =
@@ -218,7 +210,7 @@ function createModelConnection(
           cleanupRpc: input.cleanupRpc,
           client: createCredentialClient(input.rpc),
         }
-      : { kind: "loopback" as const, apiKey: input.apiKey };
+      : { kind: "loopback" as const };
   const egressFetch = input.egressFetch;
   const accountId =
     model.provider === "openai-codex"
@@ -609,7 +601,7 @@ function createModelConnection(
                 )
               : await egressFetch(url, {
                   method: request.method,
-                  headers: loopbackHeaders(headers, transport.apiKey),
+                  headers,
                   body,
                   signal,
                   redirect: "manual",
@@ -746,7 +738,7 @@ function createModelConnection(
               }
               headers.set(EGRESS_WEBSOCKET_SCOPE_HEADER, scopeId);
               headers.set(EGRESS_CREDENTIAL_HEADER, transport.credentialId);
-            } else headers.set("authorization", `Bearer ${transport.apiKey}`);
+            }
             report({ milestone: "upgrade_requested" });
             // Fetch owns cancellation only while the upgrade head is pending.
             // After headers, the accepted socket owns its protocol Close and
@@ -1000,12 +992,6 @@ function credentialHeaders(input: Headers): Headers {
     headers.delete(name);
   }
   for (const name of ROUTING_HEADERS) headers.delete(name);
-  return headers;
-}
-
-function loopbackHeaders(input: Headers, apiKey: string): Headers {
-  const headers = new Headers(input);
-  headers.set("authorization", `Bearer ${apiKey}`);
   return headers;
 }
 

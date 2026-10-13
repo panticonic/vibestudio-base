@@ -47,7 +47,7 @@ import {
 } from "@workspace/model-catalog/providerConnect";
 import { pickRecommendedModelId } from "@workspace/model-catalog/modelRecommendations";
 import {
-  localModelEntrySchema,
+  localModelsExtensionMethods,
   type LocalModelEntry,
 } from "@workspace/model-catalog/localModels";
 import {
@@ -817,10 +817,10 @@ export class ModelSettingsDO extends DurableObjectBase implements ModelSettingsR
       );
     const entries = await this.rpc.call("main", mainRpcMethods["extensions.invoke"], [
       LOCAL_MODELS_EXTENSION_ID,
-      "listModels",
+      localModelsExtensionMethods.listModels.method,
       [],
     ]);
-    return localModelEntrySchema.array().parse(entries);
+    return localModelsExtensionMethods.listModels.result.parse(entries);
   }
 
   protected getWorkspaceConfig(): Promise<WorkspaceConfig> {

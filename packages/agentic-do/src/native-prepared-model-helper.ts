@@ -7,6 +7,7 @@ import {
 } from "@panticonic/pi-chord";
 import type { RpcCaller } from "@vibestudio/rpc";
 import { credentialsMethods } from "@vibestudio/service-schemas/credentials";
+import { localModelRuntimeMethods } from "@vibestudio/service-schemas/localModelRuntime";
 import { resolveProviderModelBaseUrl } from "@vibestudio/shared/providerConnect";
 import {
   createCredentialedModelConnection,
@@ -56,34 +57,20 @@ export async function withPreparedNativeModel<T>(
   let model: JsonRepresentation<Model<Api>> = original;
   let connection: CredentialedModelConnection;
   if (model.provider === "local") {
-    const loaded = await invoke("extensions.invoke", [
-      "@workspace-extensions/local-models",
-      "ensureLoaded",
-      [model.id],
-    ]);
-    if (!object(loaded) || typeof loaded["baseUrl"] !== "string")
-      throw new Error("Local model helper returned no concrete endpoint");
-    model = { ...model, baseUrl: loaded["baseUrl"] };
-    const auth = await invoke("extensions.invoke", [
-      "@workspace-extensions/local-models",
-      "getLoopbackAuth",
-      [],
-    ]);
-    if (
-      !object(auth) ||
-      typeof auth["apiKey"] !== "string" ||
-      !Array.isArray(auth["origins"]) ||
-      !auth["origins"].every(
-        (value): value is string => typeof value === "string",
-      )
-    )
-      throw new Error("Local model helper returned no endpoint attestation");
+    const runtime = localModelRuntimeMethods.prepareNativeModel.returns.parse(
+      await invoke("localModelRuntime.prepareNativeModel", [
+        {
+          providerId: model.provider,
+          modelId: model.id,
+          endpoint: model.baseUrl ?? null,
+        },
+      ]),
+    );
+    model = { ...model, baseUrl: runtime.baseUrl };
     context.abortSignal?.throwIfAborted();
     connection = createLoopbackModelConnection(
       {
         model,
-        apiKey: auth["apiKey"],
-        origins: auth["origins"],
         egressFetch: host.egressFetch,
       },
       context,
@@ -142,8 +129,4 @@ export async function withPreparedNativeModel<T>(
   await connection.close(context);
   host.released?.(connection);
   return value;
-}
-
-function object(value: unknown): value is Record<string, unknown> {
-  return value !== null && typeof value === "object" && !Array.isArray(value);
 }

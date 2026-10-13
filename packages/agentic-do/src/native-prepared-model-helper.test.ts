@@ -92,16 +92,9 @@ describe("protected one-shot native model connection", () => {
       credentialId: "credential:actual",
     });
   });
-  it("prepares the actual activation-local endpoint and key instead of sending a guessed local URL", async () => {
+  it("prepares the host-authorized local endpoint without receiving its key", async () => {
     const f = fixture();
-    f.calls.mockImplementation(async (_target, _method, args) =>
-      args[1] === "ensureLoaded"
-        ? { baseUrl: "http://127.0.0.1:32123/v1" }
-        : {
-            apiKey: "activation-local-key",
-            origins: ["http://127.0.0.1:32123"],
-          },
-    );
+    f.calls.mockResolvedValue({ baseUrl: "http://127.0.0.1:32123/v1" });
     const model = {
       ...f.model,
       provider: "local",
@@ -121,18 +114,19 @@ describe("protected one-shot native model connection", () => {
     expect(f.calls.mock.calls.map((call) => call.slice(0, 3))).toEqual([
       [
         "main",
-        "extensions.invoke",
-        ["@workspace-extensions/local-models", "ensureLoaded", [model.id]],
-      ],
-      [
-        "main",
-        "extensions.invoke",
-        ["@workspace-extensions/local-models", "getLoopbackAuth", []],
+        "localModelRuntime.prepareNativeModel",
+        [
+          {
+            providerId: "local",
+            modelId: model.id,
+            endpoint: model.baseUrl,
+          },
+        ],
       ],
     ]);
     expect(
       new Headers(f.egress.mock.calls[0]?.[1]?.headers).get("authorization"),
-    ).toBe("Bearer activation-local-key");
+    ).toBeNull();
     expect(f.owned.size).toBe(0);
   });
   it("publishes connect-only readiness only for exact absent credential and preserves original protected failures", async () => {

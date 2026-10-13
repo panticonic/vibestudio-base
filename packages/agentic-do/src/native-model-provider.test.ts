@@ -518,23 +518,22 @@ describe("native protected model provider", () => {
     ).toEqual([]);
   });
 
-  it("prepares the actual loopback endpoint before protected key acquisition and never passes its key to the provider", async () => {
+  it("prepares the exact host-authorized loopback endpoint without exposing its key", async () => {
     const state = setup("local", "http://127.0.0.1:0/v1");
     state.rpc.call.mockImplementation(async (_target, method, args) => {
-      expect(method).toBe("extensions.invoke");
-      if (args[1] === "ensureLoaded")
-        return { baseUrl: "http://127.0.0.1:32123/v1" };
-      if (args[1] === "getLoopbackAuth")
-        return {
-          apiKey: "activation-secret",
-          origins: ["http://127.0.0.1:32123"],
-        };
-      throw new Error("Unexpected local invocation");
+      expect(method).toBe("localModelRuntime.prepareNativeModel");
+      expect(args).toEqual([
+        {
+          providerId: "local",
+          modelId: state.faux.getModel().id,
+          endpoint: "http://127.0.0.1:0/v1",
+        },
+      ]);
+      return { baseUrl: "http://127.0.0.1:32123/v1" };
     });
     state.faux.setResponses([
       (_messages, options, _state, model) => {
         expect(model.baseUrl).toBe("http://127.0.0.1:32123/v1");
-        expect(options?.apiKey).not.toContain("activation-secret");
         expect(
           typeof options?.apiKey === "string" &&
             isModelCredentialSentinel(options.apiKey),
@@ -550,91 +549,8 @@ describe("native protected model provider", () => {
         ).wait(context)
       ).status,
     ).toBe("done");
-    expect(state.rpc.call.mock.calls.map((call) => call[2])).toEqual([
-      [
-        "@workspace-extensions/local-models",
-        "ensureLoaded",
-        [state.faux.getModel().id],
-      ],
-      ["@workspace-extensions/local-models", "getLoopbackAuth", []],
-    ]);
+    expect(state.rpc.call).toHaveBeenCalledTimes(1);
     expect(state.egressFetch).not.toHaveBeenCalled();
-  });
-
-  it("refuses a changed loopback endpoint after replacement rather than rebinding a prepared approval", async () => {
-    const directory = await mkdtemp(join(tmpdir(), "native-local-prepared-"));
-    const state = setup("local", "http://127.0.0.1:0/v1");
-    let endpoint = "http://127.0.0.1:32123/v1";
-    const acquisition: AcquisitionInfo = {
-      acquisitionId: "local-key-approval",
-      ownerRuntimeId: owner.runtimeId,
-      snapshotDigest: "snapshot",
-      capability: "runtime.use",
-      resourceKey: "local",
-      tier: "gated",
-      cardType: "permission.gated",
-      renderedAction: "Use local model",
-      pending: true,
-    };
-    let authCalls = 0;
-    state.rpc.call.mockImplementation(async (_target, _method, args) => {
-      if (args[1] === "ensureLoaded") return { baseUrl: endpoint };
-      authCalls++;
-      throw new RpcBoundaryError("approval", "access", "EACQUIRE", undefined, {
-        acquisition,
-      });
-    });
-    state.waitForAuthority.mockImplementation(async (request, api) => {
-      expect(request.model.baseUrl).toBe("http://127.0.0.1:0/v1");
-      expect(api.prepared?.model.baseUrl).toBe("http://127.0.0.1:32123/v1");
-      return {
-        status: "waiting",
-        condition: {
-          kind: "input",
-          conversationId: request.conversationId,
-          after: request.cutoff,
-          kinds: ["test.authority"],
-        },
-      };
-    });
-    state.faux.setResponses([fauxAssistantMessage("must not dispatch")]);
-    let opened = await state.open(
-      await openNodeSqliteStorage(join(directory, "session.sqlite")),
-    );
-    try {
-      const submission = await opened.root.submit(
-        { type: "input", content: "go" },
-        context,
-      );
-      await waitFor(
-        async () =>
-          (await waiting(opened.harness, opened.root.id))?.status === "waiting",
-      );
-      await opened.harness.close(context);
-      endpoint = "http://127.0.0.1:32124/v1";
-      opened = await state.open(
-        await openNodeSqliteStorage(join(directory, "session.sqlite")),
-      );
-      await opened.harness.commit(
-        (tx) => tx.appendEntry(opened.root.id, { kind: "test.authority" }),
-        context,
-      );
-      expect(
-        await (await opened.harness.submission(submission.id, context))!.wait(
-          context,
-        ),
-      ).toMatchObject({
-        status: "unanswered",
-        reason: "faulted",
-        detail: "Model preparation conflicts with its committed endpoint",
-      });
-      expect(authCalls).toBe(1);
-      expect(state.faux.state.callCount).toBe(0);
-      expect(state.egressFetch).not.toHaveBeenCalled();
-    } finally {
-      await opened.harness.close(context);
-      await rm(directory, { recursive: true, force: true });
-    }
   });
 
   for (const local of [false, true]) {
@@ -688,15 +604,23 @@ describe("native protected model provider", () => {
         api,
         acquisition,
         {
-          service: local ? "extensions" : "credentials",
-          method: local ? "invoke" : "resolveNativeModel",
+          service: local ? "localModelRuntime" : "credentials",
+          method: local ? "prepareNativeModel" : "resolveNativeModel",
           args: local
             ? [
-                "@workspace-extensions/local-models",
-                "ensureLoaded",
-                [request.model.id],
+                {
+                  providerId: "local",
+                  modelId: request.model.id,
+                  endpoint: request.model.baseUrl ?? null,
+                },
               ]
-            : [{ providerId: request.model.provider, modelId: request.model.id, endpoint: request.model.baseUrl ?? null }],
+            : [
+                {
+                  providerId: request.model.provider,
+                  modelId: request.model.id,
+                  endpoint: request.model.baseUrl ?? null,
+                },
+              ],
         },
         context,
       );

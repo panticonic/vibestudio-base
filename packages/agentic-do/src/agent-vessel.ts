@@ -1,6 +1,6 @@
 import { assertChannelDeliverySource } from "@vibestudio/shared/residentSession";
 import { createRpcMethodCaller } from "@vibestudio/shared/rpcMethods";
-import { localModelEntrySchema } from "@workspace/model-catalog/localModels";
+import { localModelsExtensionMethods } from "@workspace/model-catalog/localModels";
 import {
   compileMissionAuthorityPlan,
   createMissionsClient,
@@ -1535,13 +1535,16 @@ export abstract class AgentVesselBase extends NativeChannelOwner<NativeProductCh
       const entries = await this.rpc.call(
         "main",
         mainRpcMethods["extensions.invoke"],
-        [LOCAL_MODELS_EXTENSION_ID, "listModels", []],
+        [
+          LOCAL_MODELS_EXTENSION_ID,
+          localModelsExtensionMethods.listModels.method,
+          [],
+        ],
       );
-      const entry = Array.isArray(entries)
-        ? (entries
-            .map((candidate) => localModelEntrySchema.parse(candidate))
-            .find((candidate) => candidate.slug === slug) ?? null)
-        : null;
+      const entry =
+        localModelsExtensionMethods.listModels.result
+          .parse(entries)
+          .find((candidate) => candidate.slug === slug) ?? null;
       if (!entry) return;
       this.setStateValue(
         `agent:localModelEntry:${channelId}`,
