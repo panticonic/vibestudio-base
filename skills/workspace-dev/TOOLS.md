@@ -332,9 +332,8 @@ generic.
 ```tsx
 import { extensions } from "@workspace/runtime";
 
-const shell = extensions.use("@workspace-extensions/shell", {
-  streamingMethods: ["attach"],
-});
+const shell = extensions.use("@workspace-extensions/shell");
+const output = await shell.attach(sessionId, { size: { cols: 80, rows: 24 } }); // a Response
 ```
 
 To find extension identities from eval, read the unit inventory:
@@ -359,8 +358,8 @@ that the requested operation needs it.
 #### Shell command execution
 
 Use the shell extension's `exec` method for a finite command whose full
-stdout/stderr fits in one structured result. Prefer argv mode (`shell: false`)
-so `/bin/sh` does not reinterpret the arguments:
+stdout/stderr fits in one structured result. Prefer argv intent so `/bin/sh`
+does not reinterpret the arguments:
 
 ```ts
 const result = await services.extensions.invoke(
@@ -368,9 +367,7 @@ const result = await services.extensions.invoke(
   "exec",
   [
     {
-      command: "/usr/bin/printf",
-      args: ["hello from argv mode"],
-      shell: false,
+      intent: { kind: "argv", executable: "/usr/bin/printf", args: ["hello from argv mode"] },
       timeoutMs: 5_000,
       maxOutputBytes: 64 * 1024,
     },
@@ -379,11 +376,17 @@ const result = await services.extensions.invoke(
 return result;
 ```
 
-The request fields are `command`, `args`, `cwd`, `env`, `shell`, `timeoutMs`,
-`stdin`, `maxOutputBytes`, and optionally `contextId` plus a freshly issued
-`contextAttachToken`. `timeout`, `cancelled`, and a single shell command string
-are not accepted as aliases. The result is `{ exitCode, stdout, stderr,
-durationMs, timedOut?, truncated? }`.
+The request fields are `intent` (`{ kind: "argv", executable, args }` or
+`{ kind: "script", script }` for intentional shell syntax), `cwd`, `env`,
+`timeoutMs`, `stdin`, `maxOutputBytes`, and optionally `contextId`. The result
+is `{ exitCode, stdout, stderr, durationMs, timedOut?, truncated? }`.
+
+Interactive sessions (`open`, `attach`, `write`, `resize`, `acknowledge`, ...)
+belong to the person the caller acts for, so the same person resumes them from
+any of their clients. `attach` returns a framed stream; read it with
+`readPtyStream` from `@workspace/pty-stream`, acknowledge consumed bytes with
+`acknowledge(sessionId, attachId, bytes)`, and resume with
+`attach(sessionId, { after })` using the position a `PtyStreamCursor` tracked.
 
 `exec` requires the `native.shell.execute` capability declared in the shell
 extension's manifest. The calling panel, worker, DO, or agent eval is the

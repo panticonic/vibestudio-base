@@ -143,6 +143,8 @@ function currentInvocationContextId(ctx: ExtensionContext): string | undefined {
   return invocation?.chainCaller?.contextId ?? invocation?.caller.contextId;
 }
 
+export type { SessionInfo, SessionInfoEvent } from "./types.js";
+
 /** Public API surface of this extension — the awaited return of {@link activate}. */
 export type Api = Awaited<ReturnType<typeof activate>>;
 declare module "@vibestudio/extension" {
