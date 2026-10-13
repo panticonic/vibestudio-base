@@ -1,15 +1,15 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { PubSubClient } from "@workspace/pubsub";
+import type { EventStreamItem, PubSubClient } from "@workspace/pubsub";
 import { ChannelSignalsStore } from "./channel-signals-store.js";
 
 function controllableClient() {
-  const pending: Array<(value: IteratorResult<unknown>) => void> = [];
-  const queued: unknown[] = [];
+  const pending: Array<(value: IteratorResult<EventStreamItem>) => void> = [];
+  const queued: EventStreamItem[] = [];
   let returned = false;
-  const iterator: AsyncIterableIterator<unknown> = {
+  const iterator: AsyncIterableIterator<EventStreamItem> = {
     next: () =>
       queued.length > 0
-        ? Promise.resolve({ value: queued.shift(), done: false })
+        ? Promise.resolve({ value: queued.shift()!, done: false })
         : new Promise((resolve) => pending.push(resolve)),
     return: async () => {
       returned = true;
@@ -20,14 +20,26 @@ function controllableClient() {
       return this;
     },
   };
-  const client = { events: vi.fn(() => iterator) } as unknown as Pick<PubSubClient, "events">;
+  const client = { events: vi.fn(() => iterator) } satisfies Pick<PubSubClient, "events">;
+  const emitEvent = (event: EventStreamItem) => {
+    const resolve = pending.shift();
+    if (resolve) resolve({ value: event, done: false });
+    else queued.push(event);
+  };
   return {
     client,
     emit(content: string, contentType = "status") {
-      const event = { delivery: "signal", type: "signal", content, contentType, ts: Date.now() };
-      const resolve = pending.shift();
-      if (resolve) resolve({ value: event, done: false });
-      else queued.push(event);
+      emitEvent({
+        delivery: "signal",
+        type: "signal",
+        senderId: "agent",
+        content,
+        contentType,
+        ts: Date.now(),
+      });
+    },
+    completeReplay(generation: number) {
+      emitEvent({ type: "replay-complete", delivery: "control", generation, hasMoreBefore: false });
     },
     get returned() {
       return returned;
@@ -71,5 +83,24 @@ describe("ChannelSignalsStore", () => {
     expect(debug).toHaveBeenCalledTimes(1);
     release();
     debug.mockRestore();
+  });
+
+  it("keeps replay readiness controls out of the working-pill window", async () => {
+    const source = controllableClient();
+    const store = new ChannelSignalsStore(source.client);
+    const release = store.retain();
+    source.completeReplay(1);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(store.getSnapshot()).toEqual([]);
+    expect(vi.getTimerCount()).toBe(0);
+    source.emit("Thinking");
+    await vi.advanceTimersByTimeAsync(0);
+    const before = store.getSnapshot();
+    source.completeReplay(2);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(store.getSnapshot()).toBe(before);
+    expect(before.map((signal) => signal.content)).toEqual(["Thinking"]);
+    expect(vi.getTimerCount()).toBe(1);
+    release();
   });
 });

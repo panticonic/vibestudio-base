@@ -23,8 +23,8 @@
 import {
   iterateChannelReplayAfterPages,
   type Attachment,
-  type IncomingEvent,
   type PubSubClient,
+  type EventStreamItem,
 } from "@workspace/pubsub";
 import {
   AGENTIC_EVENT_PAYLOAD_KIND,
@@ -81,7 +81,6 @@ export type ChannelFeedClient = Pick<
   | "connected"
   | "hasMoreBefore"
   | "firstEnvelopeSeq"
-  | "onReady"
   | "getReplayBefore"
   | "getReplayAfter"
 >;
@@ -140,7 +139,6 @@ interface ReplayLogEvent {
 interface Generation {
   readonly lifetime: AbortController;
   client: ChannelFeedClient | null;
-  readyOff: (() => void) | null;
 }
 
 export interface ChannelViewFeedOptions {
@@ -168,7 +166,7 @@ export class ChannelViewFeed implements ReadableStore<ChannelViewFeedSnapshot> {
   constructor(options: ChannelViewFeedOptions = {}) {
     this.#channelId = options.channelId ?? "";
     this.#maxVisible = options.maxVisible ?? TRANSCRIPT_MAX_VISIBLE;
-    this.#generation = { lifetime: new AbortController(), client: null, readyOff: null };
+    this.#generation = { lifetime: new AbortController(), client: null };
   }
 
   readonly getSnapshot = (): ChannelViewFeedSnapshot => this.#cell.getSnapshot();
@@ -197,37 +195,13 @@ export class ChannelViewFeed implements ReadableStore<ChannelViewFeedSnapshot> {
   }
 
   /**
-   * Bind the client that owns this generation's paging and replay readiness.
-   * The ready marker finalizes replay: pending replay projection is applied
-   * and `hasMoreHistory` adopts the server's continuation flag.
+   * Bind this generation's paging client. Transport readiness cannot settle
+   * the view: the subscriber's ordered replay-complete control does that.
    */
   attach(client: ChannelFeedClient): void {
     if (this.#disposed) return;
-    const generation = this.#generation;
-    generation.readyOff?.();
-    generation.readyOff = null;
-    generation.client = client;
+    this.#generation.client = client;
     this.#channelId = client.channelId;
-    const settle = () => {
-      if (this.#generation !== generation || generation.lifetime.signal.aborted) return;
-      // The ready marker names the oldest envelope of the join replay. It is
-      // the paging anchor even when that envelope projects nothing (or has not
-      // been consumed yet), so history before it stays reachable.
-      const first = client.firstEnvelopeSeq;
-      if (typeof first === "number" && first > 0) {
-        this.#oldestSeq = Math.min(this.#oldestSeq ?? Infinity, first);
-      }
-      this.#cell.transaction(() => {
-        this.#flushReplay();
-        this.#cell.update({ hasMoreHistory: Boolean(client.hasMoreBefore), replaySettled: true });
-      });
-    };
-    if (client.connected) {
-      settle();
-      return;
-    }
-    this.#cell.update({ replaySettled: false, hasMoreHistory: Boolean(client.hasMoreBefore) });
-    generation.readyOff = client.onReady(settle);
   }
 
   /**
@@ -247,7 +221,11 @@ export class ChannelViewFeed implements ReadableStore<ChannelViewFeedSnapshot> {
           this.ingest(event);
         }
         if (!signal.aborted && this.#generation === generation) {
-          this.#cell.transaction(() => this.#flushReplay());
+          this.#cell.transaction(() => {
+            this.#flushReplay();
+            if (!this.getSnapshot().replaySettled)
+              this.#cell.update({ error: "Channel event stream ended before replay delivery completed" });
+          });
         }
       } catch (error) {
         if (!signal.aborted && this.#generation === generation) {
@@ -271,8 +249,17 @@ export class ChannelViewFeed implements ReadableStore<ChannelViewFeedSnapshot> {
   }
 
   /** Reduce one channel client event. */
-  ingest(event: IncomingEvent | WireEvent): void {
+  ingest(event: EventStreamItem | WireEvent): void {
     if (this.#disposed) return;
+    if (event.delivery === "control") {
+      if (event.firstEnvelopeSeq !== undefined)
+        this.#oldestSeq = Math.min(this.#oldestSeq ?? Infinity, event.firstEnvelopeSeq);
+      this.#cell.transaction(() => {
+        this.#flushReplay();
+        this.#cell.update({ hasMoreHistory: event.hasMoreBefore, replaySettled: true });
+      });
+      return;
+    }
     const wire = event as WireEvent;
     // Paging includes durable events that do not render as messages.
     if (wire.delivery !== "signal" && wire.pubsubId !== undefined) {
@@ -408,10 +395,8 @@ export class ChannelViewFeed implements ReadableStore<ChannelViewFeedSnapshot> {
 
   #retireGeneration(reason: Error): void {
     const previous = this.#generation;
-    previous.readyOff?.();
-    previous.readyOff = null;
     previous.lifetime.abort(reason);
-    this.#generation = { lifetime: new AbortController(), client: null, readyOff: null };
+    this.#generation = { lifetime: new AbortController(), client: null };
     if (this.#replayTimer !== null) clearTimeout(this.#replayTimer);
     if (this.#deltaTimer !== null) clearTimeout(this.#deltaTimer);
     this.#replayTimer = null;

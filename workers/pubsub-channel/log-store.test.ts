@@ -33,11 +33,11 @@ describe("ChannelLog owner history", () => {
     const feed = new ChannelViewFeed({ channelId: "channel-1" });
     const anchors: number[] = [];
     feed.attach({ channelId: "channel-1", connected: true, hasMoreBefore: true, firstEnvelopeSeq: tail.ready.firstEnvelopeSeq,
-      onReady: () => () => {},
       getReplayBefore: (anchor, limit) => { anchors.push(anchor); return log.replayBefore(anchor, limit!, {}); },
       getReplayAfter: (request) => log.replayAfter(request, {}),
     });
     for (const event of tail.logEvents) feed.ingest({ ...event, pubsubId: event.id, envelopeId: event.messageId, delivery: "log", phase: "replay" });
+    feed.ingest({ type: "replay-complete", delivery: "control", generation: 1, firstEnvelopeSeq: tail.ready.firstEnvelopeSeq, hasMoreBefore: true });
     await feed.loadEarlierMessages();
     expect(anchors).toEqual([7]);
     expect(feed.getSnapshot().messages.some((message) => message.content.includes("original question"))).toBe(true);

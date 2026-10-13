@@ -172,7 +172,7 @@ new ChatSession(options: ChatSessionOptions)
 | `view` | `ChannelViewState` | The reduced channel view the messages were derived from (turns, invocations, approvals, credential requests, forks…). |
 | `hasMoreHistory` / `loadingMore` | `boolean` | History paging state. |
 | `historyError` | `string \| null` | Last history-page or transcript-stream failure (cleared when paging is retried). |
-| `replaySettled` | `boolean` | Initial replay finished; `messages` reflects prior history. |
+| `replaySettled` | `boolean` | Replay completion was consumed and buffered messages were projected. |
 | `actionBar`, `messageTypes` | | Canonical action bar and custom message type definitions. |
 | `hasOpenTurn` | `boolean` | An agent turn is open or waiting. |
 | `agentBusy` | `boolean` | Typing row, roster typing flag, or open turn. |
@@ -339,15 +339,17 @@ detail, and `retry()` starts a new attempt.
 Used by the session, the child transcript store and quickfire; use it directly
 only to render a channel you do not join as a chat participant.
 
-- `ingest(event)` — reduce one client event.
-- `attach(client)` — bind paging and replay readiness for this generation.
-- `follow(client)` — `reset` + `attach` + consume `client.events()`; returns
+- `ingest(event)` — reduce one client event; an ordered, non-durable
+  `replay-complete` control flushes the projection and settles replay readiness.
+- `attach(client)` — bind paging for this generation, not replay readiness.
+- `follow(client)` — `reset` + `attach` + consume `client.events({ includeReplay: true })`; returns
   the release.
 - `reset(channelId?)`, `loadEarlierMessages()`,
   `backfillAfterLocalPublish(pubsubId)`, `view` (latest reduced state).
 - Snapshot: `{ view, messages, actionBar, messageTypes, hasMoreHistory,
   loadingMore, hasOpenTurn, replaySettled, error }`. The paging anchor is the
-  lower of the oldest envelope seen and the client's `firstEnvelopeSeq`; a page
+  lower of the oldest durable envelope seen and the consumed replay boundary's
+  `firstEnvelopeSeq`; receipt observations have no durable sequence. A page
   that claims more history without advancing it sets `error`.
 
 ## `ChatHostController`

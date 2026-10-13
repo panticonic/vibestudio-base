@@ -553,7 +553,15 @@ export interface EventStreamOptions extends EventFilterOptions {
   includeSignals?: boolean;
 }
 
-export type EventStreamItem = IncomingEvent;
+/** A non-durable control boundary after this subscriber consumed a replay generation. */
+export interface ChannelReplayBoundary {
+  type: "replay-complete";
+  delivery: "control";
+  generation: number;
+  firstEnvelopeSeq?: number;
+  hasMoreBefore: boolean;
+}
+export type EventStreamItem = IncomingEvent | ChannelReplayBoundary;
 
 /**
  * Agentic messaging client.

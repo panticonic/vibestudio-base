@@ -669,8 +669,12 @@ export class ChatSession implements ReadableStore<ChatSessionSnapshot> {
    * delivered event (stream or resident); a host with its own delivery route
    * may call it too.
    */
-  ingest(event: IncomingEvent): void {
+  ingest(event: import("@workspace/pubsub").EventStreamItem): void {
     this.#resetFeedForNewGeneration();
+    if (event.type === "replay-complete") {
+      this.feed.ingest(event);
+      return;
+    }
     if (event.type === "agent-debug") {
       this.#cell.transaction(() => this.#applyDebugEvent(event));
     } else {

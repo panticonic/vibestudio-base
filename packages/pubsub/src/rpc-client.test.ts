@@ -6,7 +6,8 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { connectViaRpc, resolveRpcChannelTarget } from "./rpc-client.js";
 import type { PubSubClient } from "./client.js";
 import type {
-  IncomingEvent,
+  EventStreamItem,
+  IncomingAgenticEvent,
   MethodExecutionContext,
 } from "./protocol-types.js";
 import {
@@ -161,6 +162,10 @@ function createMockRpc() {
   const subscribeStarted = new Promise<void>((resolve) => {
     resolveSubscribeStarted = resolve;
   });
+  let resolveSubscriptionBodyReady!: () => void;
+  const subscriptionBodyReady = new Promise<void>((resolve) => {
+    resolveSubscriptionBodyReady = resolve;
+  });
   const encoder = new TextEncoder();
 
   const rpc: MockRpc = {
@@ -233,6 +238,7 @@ function createMockRpc() {
         const body = new ReadableStream<Uint8Array>({
           start(controller) {
             streamController = controller;
+            resolveSubscriptionBodyReady();
             controller.enqueue(
               encoder.encode(
                 `${JSON.stringify({ kind: "subscribed", result })}\n`,
@@ -370,6 +376,7 @@ function createMockRpc() {
     streamSignals,
     priorSignalStatesAtOpen,
     subscribeStarted,
+    subscriptionBodyReady,
     closeSubscription,
     failSubscription,
   };
@@ -732,10 +739,12 @@ describe("connectViaRpc", () => {
       const handlerGate = new Promise<void>((resolve) => {
         releaseHandler = resolve;
       });
-      const residentEventHandler = vi.fn(async (event: IncomingEvent) => {
+      let handledPayloads = 0;
+      const residentEventHandler = vi.fn(async (event: EventStreamItem) => {
+        if (event.type === "replay-complete") return;
         if (!("payload" in event))
           throw new Error("expected a payload-bearing resident event");
-        if (residentEventHandler.mock.calls.length === 1) {
+        if (++handledPayloads === 1) {
           expect(event.payload).toMatchObject({
             payload: { request: { value: "hydrated" } },
           });
@@ -858,10 +867,11 @@ describe("connectViaRpc", () => {
         deliverySettled = true;
       });
       await vi.waitFor(() =>
-        expect(residentEventHandler).toHaveBeenCalledOnce(),
+        expect(residentEventHandler).toHaveBeenCalledTimes(2),
       );
       expect(deliverySettled).toBe(false);
-      const pendingEvent = residentEventHandler.mock.calls[0]![0];
+      const pendingEvent = residentEventHandler.mock.calls[1]![0];
+      if (pendingEvent.type === "replay-complete") throw new Error("Expected the finite payload delivery after replay completion");
       expect(pendingEvent.pubsubId).toBe(1);
       const overlap = Promise.resolve(
         receiver!({
@@ -887,11 +897,11 @@ describe("connectViaRpc", () => {
         }),
       );
       await Promise.resolve();
-      expect(residentEventHandler).toHaveBeenCalledOnce();
+      expect(residentEventHandler).toHaveBeenCalledTimes(2);
       releaseHandler!();
       await Promise.all([delivery, overlap]);
       expect(deliverySettled).toBe(true);
-      expect(residentEventHandler).toHaveBeenCalledOnce();
+      expect(residentEventHandler).toHaveBeenCalledTimes(2);
       expect(pendingEvent.pubsubId).toBe(1);
 
       await receiver!({
@@ -1634,6 +1644,50 @@ describe("connectViaRpc", () => {
       }
     });
 
+    it("orders a bounded pending recovery replay before its subscriber completion boundary", async () => {
+      const mock = createMockRpc();
+      const recovery = createRecoveryCoordinator();
+      const client = connectViaRpc({ rpc: publicRpcMock(mock.rpc), channel: CHANNEL, recoveryCoordinator: recovery, replayMessageLimit: 2 });
+      await emitReplayAndReady(mock.emit, []);
+      await client.ready();
+      await recovery.run("resubscribe");
+      await vi.waitFor(() => expect(client.connected).toBe(false));
+      const iterator = client.events({ includeReplay: true });
+      const first = iterator.next();
+      await emitReplayAndReady(mock.emit, [], [1, 2, 3].map((id) => ({ id, content: `recovered ${id}`, senderId: "agent-1" })));
+      await expect(first).resolves.toMatchObject({ value: { pubsubId: 2 } });
+      await expect(iterator.next()).resolves.toMatchObject({ value: { pubsubId: 3 } });
+      await expect(iterator.next()).resolves.toMatchObject({ value: { type: "replay-complete", generation: 2, firstEnvelopeSeq: 2, hasMoreBefore: true } });
+      mock.emit({ stream: "log", phase: "live", id: 4, type: AGENTIC_EVENT_PAYLOAD_KIND, payload: messageEvent("msg-4", "live after replay"), senderId: "agent-1", ts: Date.now() });
+      await expect(iterator.next()).resolves.toMatchObject({ value: { pubsubId: 4 } });
+      await iterator.return?.();
+      await client.close();
+    });
+
+    it("propagates the original failed readiness through a pending replay subscription", async () => {
+      const mock = createMockRpc();
+      const client = connectViaRpc({ rpc: publicRpcMock(mock.rpc), channel: CHANNEL });
+      const iterator = client.events({ includeReplay: true });
+      const observed = expect(iterator.next()).rejects.toThrow("Original channel bootstrap failure");
+      await mock.subscriptionBodyReady;
+      mock.failSubscription(new Error("Original channel bootstrap failure"));
+      await observed;
+      await iterator.return?.();
+      await client.close();
+    });
+
+    it("admits live-only signal observers immediately without awaiting replay readiness", async () => {
+      const mock = createMockRpc();
+      const client = connectViaRpc({ rpc: publicRpcMock(mock.rpc), channel: CHANNEL });
+      const iterator = client.events({ includeSignals: true });
+      const first = iterator.next();
+      await mock.subscribeStarted;
+      mock.emit({ stream: "signal", type: "signal", payload: { content: "immediate signal" }, senderId: "agent-1", ts: Date.now() });
+      await expect(first).resolves.toMatchObject({ value: { content: "immediate signal" } });
+      await iterator.return?.();
+      await client.close();
+    });
+
     it("seeds late event subscribers with streamed replay after ready", async () => {
       const client = connectViaRpc({
         rpc: publicRpcMock(mockRpc),
@@ -1671,6 +1725,7 @@ describe("connectViaRpc", () => {
           },
         },
       });
+      await expect(iter.next()).resolves.toMatchObject({ value: { type: "replay-complete", firstEnvelopeSeq: 201 } });
 
       await client.close();
     });
@@ -1941,6 +1996,7 @@ describe("connectViaRpc", () => {
 
     it("surfaces the committed author acknowledgement without a transport echo", async () => {
       const iterator = client.events({ includeReplay: true });
+      await expect(iterator.next()).resolves.toMatchObject({ value: { type: "replay-complete" } });
       let observed: unknown;
       const first = iterator.next().then(({ value }) => {
         observed = value;
@@ -3128,6 +3184,7 @@ describe("connectViaRpc", () => {
         await emitReplayAndReady(mock.emit, []);
         await client.ready();
         const events = client.events({ includeReplay: true });
+        await expect(events.next()).resolves.toMatchObject({ value: { type: "replay-complete" } });
         mock.emit({
           stream: "log",
           phase: "live",
@@ -3236,6 +3293,7 @@ describe("connectViaRpc", () => {
       await emitReplayAndReady(mock.emit, []);
       await client.ready();
       const events = client.events({ includeReplay: true });
+      await expect(events.next()).resolves.toMatchObject({ value: { type: "replay-complete" } });
       const firstEnvelope = {
         id: 1,
         messageId: "canonical-envelope",
@@ -3248,6 +3306,7 @@ describe("connectViaRpc", () => {
       };
       mock.emit({ kind: "log", phase: "live", event: firstEnvelope });
       const first = (await events.next()).value!;
+      if (first.type === "replay-complete") throw new Error("Expected the first live durable envelope after replay completion");
       expect(first.pubsubId).toBe(1);
       expect(first.envelopeId).toBe("canonical-envelope");
       mock.emit({ kind: "log", phase: "live", event: firstEnvelope });
@@ -3262,6 +3321,7 @@ describe("connectViaRpc", () => {
         ts: 101,
       });
       const second = (await events.next()).value!;
+      if (second.type === "replay-complete") throw new Error("Expected the second live durable envelope");
       expect(second.pubsubId).toBe(2);
       expect(first.pubsubId).toBe(1);
       await client.close();
@@ -3397,7 +3457,7 @@ describe("connectViaRpc", () => {
       const observations = client.events({ includeReplay: true });
       const retained = [];
       for (let index = 0; index < 4; index++) retained.push((await observations.next()).value!);
-      expect(retained.filter((item) => item.type === AGENTIC_EVENT_PAYLOAD_KIND && item.payload.kind === "message.read").map((item) => ({ id: item.envelopeId, seq: item.pubsubId }))).toEqual([
+      expect(retained.filter((item): item is IncomingAgenticEvent => item.type === AGENTIC_EVENT_PAYLOAD_KIND && item.payload.kind === "message.read").map((item) => ({ id: item.envelopeId, seq: item.pubsubId }))).toEqual([
         { id: "receipt:msg-7:reader-a:read", seq: undefined },
         { id: "receipt:msg-7:reader-b:read", seq: undefined },
       ]);

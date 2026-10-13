@@ -23,7 +23,7 @@ import {
 } from "@workspace/tool-ui";
 import type { SandboxOptions } from "@workspace/eval";
 import type { FeedbackComponentProps } from "@workspace/tool-ui";
-import { AGENTIC_EVENT_PAYLOAD_KIND, type AgenticEvent } from "@workspace/agentic-protocol";
+import { AGENTIC_EVENT_PAYLOAD_KIND } from "@workspace/agentic-protocol";
 import { type ChatSandboxValue } from "@workspace/agentic-core";
 
 import { fsMethods } from "@vibestudio/service-schemas/fs";
@@ -207,9 +207,8 @@ export function useChatFeedback({
         // so this observation is their cancellation path.
         for await (const event of client.events()) {
           if (cancelled) break;
-          const wire = event as { type?: string; payload?: AgenticEvent };
-          if (wire.type !== AGENTIC_EVENT_PAYLOAD_KIND || !wire.payload) continue;
-          const ev = wire.payload;
+          if (event.type !== AGENTIC_EVENT_PAYLOAD_KIND) continue;
+          const ev = event.payload;
           if (ev.kind !== "invocation.cancelled" && ev.kind !== "invocation.abandoned") continue;
           const callId = ev.causality?.transportCallId ?? ev.causality?.invocationId;
           if (!callId) continue;
