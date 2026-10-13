@@ -62,10 +62,12 @@ export function hostProtectedModelProvider(provider: Provider): Provider {
   return { ...provider, auth: { apiKey: createProtectedModelAuth() } };
 }
 
-export function createProtectedNativeModels(options: {
-  readonly deterministicTestMode?: boolean;
-  readonly modelScript?: unknown;
-} = {}): ReturnType<typeof builtinModels> {
+export function createProtectedNativeModels(
+  options: {
+    readonly deterministicTestMode?: boolean;
+    readonly modelScript?: unknown;
+  } = {},
+): ReturnType<typeof builtinModels> {
   const models = builtinModels();
   for (const provider of models.getProviders()) {
     models.setProvider(hostProtectedModelProvider(provider));
@@ -182,9 +184,8 @@ export function createProtectedModelProvider(
         },
       ]);
       if ("status" in loaded) return loaded;
-      const localRuntime = localModelRuntimeMethods.prepareNativeModel.returns.parse(
-        loaded.value,
-      );
+      const localRuntime =
+        localModelRuntimeMethods.prepareNativeModel.returns.parse(loaded.value);
       const prepared = await api.prepare(
         { ...request.model, baseUrl: localRuntime.baseUrl },
         context,
@@ -349,7 +350,13 @@ function acquisitionInfo(error: unknown): AcquisitionInfo | undefined {
       "template.suggest",
     ].includes(acquisition["cardType"]) ||
     typeof acquisition["renderedAction"] !== "string" ||
-    typeof acquisition["pending"] !== "boolean"
+    typeof acquisition["pending"] !== "boolean" ||
+    (acquisition["existingReview"] !== undefined &&
+      (!object(acquisition["existingReview"]) ||
+        typeof acquisition["existingReview"]["approvalId"] !== "string" ||
+        !acquisition["existingReview"]["approvalId"] ||
+        typeof acquisition["existingReview"]["title"] !== "string" ||
+        !acquisition["existingReview"]["title"]))
   )
     return undefined;
   return acquisition as unknown as AcquisitionInfo;
