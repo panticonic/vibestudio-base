@@ -236,7 +236,10 @@ export class ChatRuntime implements ReadableStore<ChatRuntimeSnapshot> {
       rpc: this.#boot.rpc,
       contextId,
       state: this.#state,
-      instanceId: `terminal-chat:${this.#boot.sessionId}`,
+      // One host instance per conversation context, as a chat panel gets a new
+      // runtime when it switches to a fork's context: agent identities derived
+      // from it must not collide across contexts.
+      instanceId: `terminal-chat:${this.#boot.sessionId}:${contextId}`,
       connection: this.#boot.rpc,
       notify: (notification) =>
         this.notify({

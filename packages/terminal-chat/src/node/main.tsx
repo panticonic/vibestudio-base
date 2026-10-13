@@ -41,8 +41,10 @@ export async function runTerminalChat(
   };
 
   // Library logging must not write over the screen: keep it as diagnostics
-  // (Ctrl-K → Show diagnostics) for the duration of the run.
-  const restoreConsole = captureConsole((level, text) => runtime.recordDiagnostic(level, text));
+  // (Ctrl-K → Show diagnostics). The capture stays for the rest of the
+  // program: teardown after the UI is gone (closing the conversation and the
+  // connection) still logs, and the terminal it would land on is the person's.
+  captureConsole((level, text) => runtime.recordDiagnostic(level, text));
   stdout.write(ALT_SCREEN_ON + ENTER_MODES);
   if (stdin.isTTY) stdin.setRawMode(true);
   stdin.setEncoding("utf8");
@@ -64,7 +66,6 @@ export async function runTerminalChat(
     if (stdin.isTTY) stdin.setRawMode(false);
     stdin.pause();
     stdout.write(LEAVE_MODES + ALT_SCREEN_OFF);
-    restoreConsole();
   };
   await new Promise<void>((resolve) => {
     const finish = () => {
@@ -85,16 +86,11 @@ export async function runTerminalChat(
 
 type Level = "debug" | "info" | "warn" | "error";
 
-function captureConsole(sink: (level: Level, text: string) => void): () => void {
+function captureConsole(sink: (level: Level, text: string) => void): void {
   const methods = { log: "info", info: "info", debug: "debug", warn: "warn", error: "error" } as const;
-  const originals = new Map<keyof typeof methods, (...args: unknown[]) => void>();
   for (const [name, level] of Object.entries(methods) as Array<[keyof typeof methods, Level]>) {
-    originals.set(name, console[name]);
     console[name] = (...args: unknown[]) => sink(level, args.map(format).join(" "));
   }
-  return () => {
-    for (const [name, original] of originals) console[name] = original;
-  };
 }
 
 function format(value: unknown): string {
