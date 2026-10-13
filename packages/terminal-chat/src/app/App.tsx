@@ -642,7 +642,7 @@ export function TerminalChatApp({ runtime, input, control, approvalsKey = "Ctrl-
   const host = rt.host;
   const model: ScreenModel = {
     size,
-    transcript: { source, scroll, selectedIndex: mode === "select" ? selectedIndex : -1, loadingOlder: !!chat?.loadingMore, hasMore: !!chat?.hasMoreHistory, historyError: chat?.historyError ?? null },
+    transcript: { source, scroll, selectedIndex: mode === "select" ? selectedIndex : -1, loadingOlder: !!chat?.loadingMore, replaySettled: !!chat?.replaySettled, hasMore: !!chat?.hasMoreHistory, historyError: chat?.historyError ?? null },
     empty: transcript.length === 0 ? emptyState() : null,
     overlay: overlay ? { overlay, queue: overlay.kind === "queue" ? queueItems() : [], undo: chat?.undoableAction ? "u undoes the last discard" : null } : null,
     form: form && pendingForm ? { state: form.state, args: pendingForm.args } : null,

@@ -37,6 +37,7 @@ export interface ScreenModel {
     scroll: ScrollState;
     selectedIndex: number;
     loadingOlder: boolean;
+    replaySettled: boolean;
     hasMore: boolean;
     historyError: string | null;
   };
@@ -210,6 +211,7 @@ function transcriptLines(model: ScreenModel, rows: number, columns: number): str
     if (model.transcript.historyError) header.push(style.red(truncate(`${symbols.cross} Older messages didn't load: ${model.transcript.historyError}. Scroll up to retry.`, columns)));
     else if (model.transcript.loadingOlder) header.push(style.gray(`${symbols.ellipsis} loading older messages`));
     else if (model.transcript.hasMore) header.push(style.gray("↑ older messages — scroll up (PgUp) to load them"));
+    else if (model.transcript.replaySettled) header.push(style.gray("↑ start of conversation"));
   }
   const body = header.length ? computeWindow(source, rows - header.length, model.transcript.scroll) : window;
   const out = [...header];

@@ -41,6 +41,20 @@ async function mount(initial: Parameters<typeof createFakeChat>[0] = {}, columns
 const agentReply = (id: string, content: string, extra: Partial<ChatMessage> = {}): ChatMessage => ({ id, senderId: "ai", content, ...extra });
 
 describe("TerminalChatApp", () => {
+  it("marks the true start of history only after replay and older paging settle", async () => {
+    const app = await mount({ messages: [agentReply("a1", "First reply")], replaySettled: false });
+    expect(app.text()).not.toContain("↑ start of conversation");
+    app.chat.update({ replaySettled: true, hasMoreHistory: true });
+    await settle();
+    expect(app.text()).toContain("↑ older messages");
+    app.chat.update({ hasMoreHistory: false, loadingMore: true });
+    await settle();
+    expect(app.text()).toContain("loading older messages");
+    expect(app.text()).not.toContain("↑ start of conversation");
+    app.chat.update({ loadingMore: false });
+    await settle();
+    expect(app.text()).toContain("↑ start of conversation");
+  });
   it("shows the empty state, the composer and the status line on a fresh conversation", async () => {
     const app = await mount();
     const screen = app.screen();
