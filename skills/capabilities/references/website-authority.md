@@ -20,6 +20,16 @@ still have a website-specific resource requirement. Eligibility alone grants
 nothing, critical effects still need a fresh decision, and cross-workspace
 exposure and both workspaces' boundary policies are separate requirements.
 
+Eligibility and authority must form one reachable contract. For every method
+declared `website: { kind: "eligible", ... }`, the effective authority after
+applying any method override or inherited service default must admit the
+`website` principal. Every prepared authority leaf on that method must admit
+it too, including both fixed requirements and the allowed-principal envelope
+for receiver-selected requirements. Otherwise the declaration promises a
+website route that authority can never satisfy. Close the method when websites
+must never call it; when they may, include `website` at every authority layer
+and keep the ordinary resource, relationship, tier, and approval checks.
+
 "Acquire" means the real operation goes through normal acquisition when it
 lacks an eligible grant. Don't add an approval for asking for another
 approval. Workspace connection is the only intentional separate prerequisite;

@@ -836,6 +836,15 @@ concrete reason. Eligibility grants no authority; connected websites must still
 satisfy the resource and disclosure rules. See
 [website authority](../capabilities/references/website-authority.md).
 
+An `eligible` method must also be reachable through its complete authority
+contract. Its effective principals, after any method override or inherited
+service policy, must include `website`. If the operation prepares additional
+authority, every fixed prepared requirement and every receiver-selected
+principal envelope must admit `website` as well. Do not leave an eligible
+method behind a code/user-only outer requirement or prepared leaf: that is a
+contradictory contract, not a useful denial. Declare the method `closed` when
+website access is intentionally unavailable.
+
 Missing policy means deny. Effects follow the rules in
 [Userland Services](#userland-services): `{ kind: "open" }` for an unprotected
 method (the service declaration adds the target requirement), or a
