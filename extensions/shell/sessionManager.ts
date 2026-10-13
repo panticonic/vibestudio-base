@@ -1,13 +1,22 @@
 import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
+import { readFile } from "node:fs/promises";
 import nodePty from "node-pty";
+import {
+  encodePtyStreamEvent,
+  FLOW_HIGH_WATERMARK_BYTES,
+  FLOW_LOW_WATERMARK_BYTES,
+  type PtyAttachOptions,
+  type PtyStreamEvent,
+} from "@workspace/pty-stream";
 import { nodeSetInterval, nodeSetTimeout } from "./nodeTimers.js";
 import { createDetectionState, scanChunk, type DetectionState } from "./portDetector.js";
 import type { OpenRequest, ScrollCursor, SessionInfo, SessionInfoEvent } from "./types.js";
 
 type PtyProcess = {
   pid: number;
-  onData(cb: (data: string) => void): void;
+  /** Spawned with `encoding: null`: raw output bytes, never decoded. */
+  onData(cb: (data: Buffer | string) => void): void;
   onExit(cb: (event: { exitCode: number; signal?: number }) => void): void;
   write(data: string): void;
   resize(cols: number, rows: number): void;
@@ -16,12 +25,27 @@ type PtyProcess = {
   kill(signal?: string): void;
 };
 
-type Listener = (chunk: Uint8Array | null) => void;
+/** Who a session belongs to, and which principal opened it. */
+export interface SessionOwner {
+  /**
+   * The owning person (`user:<userId>`) when the caller acts for one, so the
+   * session can be resumed from any of their devices and clients; otherwise
+   * the exact caller (`caller:<callerId>`), e.g. for system principals.
+   */
+  key: string;
+  launchedBy: { callerId: string; callerKind: string };
+}
+
+/** One attached client: its stream and its flow-control account (bytes). */
+interface Attachment {
+  id: string;
+  controller: ReadableStreamDefaultController<Uint8Array>;
+  unacknowledgedBytes: number;
+}
 
 interface Session {
   id: string;
-  ownerCallerId: string;
-  ownerKind: string;
+  owner: SessionOwner;
   label: string;
   command: { argv: string[]; cwd: string };
   contextId?: string;
@@ -34,15 +58,18 @@ interface Session {
   alive: boolean;
   exit?: { code: number | null; signal?: string; at: number };
   pty?: PtyProcess;
+  /** Retained output window; `chunks[0].start` is the oldest retained byte. */
   chunks: Array<{ start: number; end: number; bytes: Uint8Array }>;
+  /** Monotonic byte cursor: the address of the next output byte. Never reset. */
   cursor: number;
+  /** Incremented when the scrollback is cleared; positions of older epochs are void. */
+  epoch: number;
   scrollbackLimit: number;
   bytesOut: number;
   detection: DetectionState;
   meta: Record<string, unknown>;
-  listeners: Set<Listener>;
+  attachments: Map<string, Attachment>;
   exitWaiters: Array<(value: { exitCode: number | null; signal?: string }) => void>;
-  unacknowledgedChars: number;
   flowPaused: boolean;
 }
 
@@ -71,12 +98,9 @@ const META_BYTES = 16 * 1024;
 const EXITED_SESSION_TTL_MS = 60 * 60_000;
 const JANITOR_INTERVAL_MS = 30 * 60_000;
 const WATCH_ALL_HEARTBEAT_MS = 15_000;
-const CLEAR_SCREEN = new TextEncoder().encode("\x1b[2J\x1b[H");
-const FLOW_CONTROL_HIGH_WATERMARK_CHARS = 100000;
-const FLOW_CONTROL_LOW_WATERMARK_CHARS = 5000;
 
 type Watcher = {
-  ownerCallerId: string;
+  owner: string;
   controller: ReadableStreamDefaultController<Uint8Array>;
   heartbeat?: NodeJS.Timeout;
 };
@@ -86,10 +110,11 @@ type PendingSnapshot = {
   timer: NodeJS.Timeout;
 };
 
-function cursorFrom(value: ScrollCursor | undefined): number | null {
-  if (!value) return null;
-  const parsed = Number(value);
-  return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
+/** Skip UTF-8 continuation bytes so a trimmed window starts on a character. */
+function characterStart(bytes: Uint8Array): number {
+  let offset = 0;
+  while (offset < bytes.byteLength && offset < 3 && (bytes[offset]! & 0xc0) === 0x80) offset += 1;
+  return offset;
 }
 
 export class SessionManager {
@@ -131,7 +156,7 @@ export class SessionManager {
       env: NodeJS.ProcessEnv;
       contextId?: string;
     },
-    owner: { callerId: string; callerKind: string }
+    owner: SessionOwner
   ): { sessionId: string } {
     const id = randomUUID();
     const command = req.command ?? process.env["SHELL"] ?? "/bin/bash";
@@ -139,8 +164,7 @@ export class SessionManager {
     const label = req.label ?? [command, ...args].join(" ");
     const session: Session = {
       id,
-      ownerCallerId: owner.callerId,
-      ownerKind: owner.callerKind,
+      owner,
       label,
       command: { argv: [command, ...args], cwd: req.cwd },
       ...(req.contextId ? { contextId: req.contextId } : {}),
@@ -152,13 +176,13 @@ export class SessionManager {
       alive: true,
       chunks: [],
       cursor: 0,
+      epoch: 0,
       scrollbackLimit: SCROLLBACK_BYTES,
       bytesOut: 0,
       detection: createDetectionState(),
       meta: {},
-      listeners: new Set(),
+      attachments: new Map(),
       exitWaiters: [],
-      unacknowledgedChars: 0,
       flowPaused: false,
     };
 
@@ -168,15 +192,16 @@ export class SessionManager {
       rows: req.rows,
       cwd: req.cwd,
       env: req.env,
+      encoding: null,
     });
     session.pid = pty.pid;
     session.pty = pty;
-    pty.onData((data) => this.record(session, Buffer.from(data)));
+    pty.onData((data) => this.record(session, typeof data === "string" ? Buffer.from(data) : data));
     pty.onExit((event) =>
       this.markExit(session, event.exitCode, event.signal ? `SIG${event.signal}` : undefined)
     );
     this.sessions.set(id, session);
-    this.emitToOwner(session.ownerCallerId, {
+    this.emitToOwner(session.owner.key, {
       type: "opened",
       sessionId: id,
       info: this.info(session),
@@ -185,18 +210,18 @@ export class SessionManager {
     return { sessionId: id };
   }
 
-  requireOwner(sessionId: string, ownerCallerId: string): Session {
+  requireOwner(sessionId: string, owner: string): Session {
     const session = this.sessions.get(sessionId);
     if (!session) throw Object.assign(new Error("Unknown session"), { code: "ENOENT" });
-    if (session.ownerCallerId !== ownerCallerId) {
+    if (session.owner.key !== owner) {
       throw Object.assign(new Error("Not the session owner"), { code: "EACCES" });
     }
     return session;
   }
 
-  list(ownerCallerId: string): SessionInfo[] {
+  list(owner: string): SessionInfo[] {
     return Array.from(this.sessions.values())
-      .filter((session) => session.ownerCallerId === ownerCallerId)
+      .filter((session) => session.owner.key === owner)
       .map((session) => this.info(session));
   }
 
@@ -204,7 +229,8 @@ export class SessionManager {
     const detectedAgent = this.detectAgent?.(session.command.argv);
     return {
       sessionId: session.id,
-      ownerCallerId: session.ownerCallerId,
+      owner: session.owner.key,
+      launchedBy: session.owner.launchedBy,
       label: session.label,
       command: session.command,
       ...(session.contextId ? { contextId: session.contextId } : {}),
@@ -230,24 +256,22 @@ export class SessionManager {
   dispose(session: Session): void {
     this.clearPendingSnapshot(session.id);
     session.pty?.kill("SIGTERM");
-    for (const listener of session.listeners) listener(null);
-    session.listeners.clear();
+    this.closeAttachments(session);
     for (const waiter of session.exitWaiters.splice(0)) {
       waiter({ exitCode: session.exit?.code ?? null, signal: session.exit?.signal });
     }
     this.sessions.delete(session.id);
     this.lastSnapshotAt.delete(session.id);
     this.hooks.onDispose?.(session.id);
-    this.emitToOwner(session.ownerCallerId, { type: "disposed", sessionId: session.id });
+    this.emitToOwner(session.owner.key, { type: "disposed", sessionId: session.id });
   }
 
   ownerOf(sessionId: string): string | undefined {
-    return this.sessions.get(sessionId)?.ownerCallerId;
+    return this.sessions.get(sessionId)?.owner.key;
   }
 
-  ownerFor(sessionId: string): { callerId: string; callerKind: string } | undefined {
-    const session = this.sessions.get(sessionId);
-    return session ? { callerId: session.ownerCallerId, callerKind: session.ownerKind } : undefined;
+  ownerFor(sessionId: string): SessionOwner | undefined {
+    return this.sessions.get(sessionId)?.owner;
   }
 
   cwdOf(sessionId: string): string | undefined {
@@ -281,7 +305,7 @@ export class SessionManager {
         label: session.label,
         ...(session.contextId ? { contextId: session.contextId } : {}),
       },
-      { callerId: session.ownerCallerId, callerKind: session.ownerKind }
+      session.owner
     );
   }
 
@@ -296,6 +320,27 @@ export class SessionManager {
     this.emitSnapshot(session);
   }
 
+  /**
+   * Make the program in the foreground redraw at `cols`×`rows`. Resizing
+   * delivers SIGWINCH only when the size changes, so an unchanged size gets an
+   * explicit SIGWINCH to the terminal's foreground process group.
+   */
+  private redraw(session: Session, cols: number, rows: number): void {
+    if (!session.alive) return;
+    if (cols !== session.cols || rows !== session.rows) {
+      this.resize(session, cols, rows);
+      return;
+    }
+    void foregroundProcessGroup(session.pid).then((group) => {
+      if (!session.alive) return;
+      try {
+        process.kill(-group, "SIGWINCH");
+      } catch {
+        // The group exited between lookup and signal; nothing is left to redraw.
+      }
+    });
+  }
+
   kill(session: Session, signal: NodeJS.Signals = "SIGTERM"): void {
     session.pty?.kill(signal);
   }
@@ -305,14 +350,10 @@ export class SessionManager {
     maxBytes = session.scrollbackLimit
   ): { text: string; cursor: ScrollCursor } {
     const boundedMaxBytes = Math.min(MAX_SCROLLBACK_BYTES, Math.max(1024, maxBytes));
-    const start = Math.max(0, session.cursor - boundedMaxBytes);
-    const parts = session.chunks
-      .filter((chunk) => chunk.end > start)
-      .map((chunk) =>
-        chunk.start < start ? chunk.bytes.subarray(start - chunk.start) : chunk.bytes
-      );
+    const bytes = this.window(session, Math.max(0, session.cursor - boundedMaxBytes));
+    const aligned = bytes.subarray(characterStart(bytes));
     return {
-      text: Buffer.concat(parts.map((part) => Buffer.from(part))).toString("utf8"),
+      text: Buffer.from(aligned.buffer, aligned.byteOffset, aligned.byteLength).toString("utf8"),
       cursor: String(session.cursor),
     };
   }
@@ -323,57 +364,94 @@ export class SessionManager {
     this.emitSnapshot(session);
   }
 
+  /** Drop the retained output; attached clients receive `reset` and clear. */
   clearScrollback(session: Session): void {
     session.chunks = [];
-    session.cursor = 0;
-    for (const listener of session.listeners) listener(CLEAR_SCREEN);
+    session.epoch += 1;
+    for (const attachment of session.attachments.values()) {
+      this.send(attachment, { kind: "reset", epoch: session.epoch, cursor: session.cursor });
+    }
     this.emitSnapshot(session);
   }
 
-  attach(session: Session, opts?: { after?: ScrollCursor }): Response {
-    const after = cursorFrom(opts?.after);
-    const startCursor = after ?? session.cursor;
-    const replay = session.chunks
-      .filter((chunk) => chunk.end > startCursor)
-      .map((chunk) =>
-        chunk.start < startCursor ? chunk.bytes.subarray(startCursor - chunk.start) : chunk.bytes
-      );
-    let listener: Listener | null = null;
+  /**
+   * Attach to the session's output as a framed stream (`@workspace/pty-stream`).
+   * The stream opens with `hello`, replays the retained window after
+   * `opts.after` (with `reset` when that position belongs to an earlier epoch,
+   * or `gap` when part of it was trimmed), then follows live output until the
+   * process exits or the attacher cancels.
+   */
+  attach(session: Session, opts: PtyAttachOptions = {}): Response {
+    const attachment: Attachment = {
+      id: randomUUID(),
+      controller: undefined as unknown as ReadableStreamDefaultController<Uint8Array>,
+      unacknowledgedBytes: 0,
+    };
     const stream = new ReadableStream<Uint8Array>({
       start: (controller) => {
-        this.resetFlowControl(session);
-        for (const bytes of replay) controller.enqueue(bytes);
+        attachment.controller = controller;
+        const start = this.retainedStart(session);
+        this.send(attachment, {
+          kind: "hello",
+          attachId: attachment.id,
+          epoch: session.epoch,
+          start,
+          cursor: session.cursor,
+          alive: session.alive,
+          cols: session.cols,
+          rows: session.rows,
+        });
+        let from = start;
+        const after = opts.after;
+        if (after && after.epoch === session.epoch && after.cursor <= session.cursor) {
+          if (after.cursor < start) {
+            this.send(attachment, { kind: "gap", from: after.cursor, to: start });
+          } else {
+            from = after.cursor;
+          }
+        } else if (after) {
+          // A position from an earlier epoch (or past the end) cannot be
+          // continued: the client starts over from the retained window.
+          this.send(attachment, { kind: "reset", epoch: session.epoch, cursor: start });
+        }
+        const replay = this.window(session, from);
+        if (replay.byteLength > 0) {
+          this.send(attachment, { kind: "data", at: from, bytes: replay });
+          attachment.unacknowledgedBytes += replay.byteLength;
+        }
         if (!session.alive) {
+          this.send(attachment, {
+            kind: "exit",
+            code: session.exit?.code ?? null,
+            ...(session.exit?.signal ? { signal: session.exit.signal } : {}),
+          });
           controller.close();
           return;
         }
-        listener = (chunk) => {
-          if (chunk) {
-            this.noteAttachedOutput(session, chunk.byteLength);
-            controller.enqueue(chunk);
-          } else {
-            controller.close();
-          }
-        };
-        session.listeners.add(listener);
+        session.attachments.set(attachment.id, attachment);
+        this.updateFlowControl(session);
+        if (opts.size) this.redraw(session, opts.size.cols, opts.size.rows);
       },
       cancel: () => {
-        if (listener) session.listeners.delete(listener);
-        if (session.listeners.size === 0) this.resetFlowControl(session);
+        session.attachments.delete(attachment.id);
+        this.updateFlowControl(session);
       },
     });
     return new Response(stream, {
-      headers: { "content-type": "application/octet-stream" },
+      headers: { "content-type": "application/vnd.vibestudio.pty-stream" },
     });
   }
 
-  acknowledgeDataEvent(session: Session, charCount: number): void {
-    if (!Number.isFinite(charCount) || charCount <= 0) return;
-    session.unacknowledgedChars = Math.max(0, session.unacknowledgedChars - Math.floor(charCount));
-    if (session.flowPaused && session.unacknowledgedChars <= FLOW_CONTROL_LOW_WATERMARK_CHARS) {
-      session.flowPaused = false;
-      session.pty?.resume();
-    }
+  /** An attacher consumed `bytes` of output it was sent. */
+  acknowledge(session: Session, attachId: string, bytes: number): void {
+    const attachment = session.attachments.get(attachId);
+    if (!attachment) return; // Detached meanwhile; its account is already gone.
+    if (!Number.isFinite(bytes) || bytes <= 0) return;
+    attachment.unacknowledgedBytes = Math.max(
+      0,
+      attachment.unacknowledgedBytes - Math.floor(bytes)
+    );
+    this.updateFlowControl(session);
   }
 
   awaitExit(session: Session): Promise<{ exitCode: number | null; signal?: string }> {
@@ -402,16 +480,16 @@ export class SessionManager {
     return new Response(stream, { headers: { "content-type": "application/x-ndjson" } });
   }
 
-  watchAllInfo(ownerCallerId: string): Response {
+  watchAllInfo(owner: string): Response {
     let watcher: Watcher | null = null;
     const stream = new ReadableStream<Uint8Array>({
       start: (controller) => {
         watcher = {
-          ownerCallerId,
+          owner,
           controller,
         };
         this.allWatchers.add(watcher);
-        this.sendToWatcher(watcher, { type: "snapshot-batch", sessions: this.list(ownerCallerId) });
+        this.sendToWatcher(watcher, { type: "snapshot-batch", sessions: this.list(owner) });
       },
       cancel: () => {
         if (!watcher) return;
@@ -500,23 +578,58 @@ export class SessionManager {
     session.chunks.push({ start, end: session.cursor, bytes: chunk });
     this.trimScrollback(session);
     scanChunk(session.detection, chunk);
-    for (const listener of session.listeners) listener(chunk);
+    for (const attachment of session.attachments.values()) {
+      this.send(attachment, { kind: "data", at: start, bytes: chunk });
+      attachment.unacknowledgedBytes += chunk.byteLength;
+    }
+    this.updateFlowControl(session);
     this.emitSnapshot(session);
   }
 
-  private noteAttachedOutput(session: Session, charCount: number): void {
-    if (!session.listeners.size || session.flowPaused) return;
-    session.unacknowledgedChars += charCount;
-    if (session.unacknowledgedChars <= FLOW_CONTROL_HIGH_WATERMARK_CHARS) return;
-    session.flowPaused = true;
-    session.pty?.pause();
+  /**
+   * Pause the PTY while any attachment is more than the high watermark behind;
+   * resume once every attachment is back under the low watermark.
+   */
+  private updateFlowControl(session: Session): void {
+    let behind = 0;
+    for (const attachment of session.attachments.values()) {
+      behind = Math.max(behind, attachment.unacknowledgedBytes);
+    }
+    if (!session.flowPaused && behind > FLOW_HIGH_WATERMARK_BYTES) {
+      session.flowPaused = true;
+      session.pty?.pause();
+    } else if (session.flowPaused && behind <= FLOW_LOW_WATERMARK_BYTES) {
+      session.flowPaused = false;
+      session.pty?.resume();
+    }
   }
 
-  private resetFlowControl(session: Session): void {
-    session.unacknowledgedChars = 0;
-    if (!session.flowPaused) return;
-    session.flowPaused = false;
-    session.pty?.resume();
+  private send(attachment: Attachment, event: PtyStreamEvent): void {
+    for (const frame of encodePtyStreamEvent(event)) attachment.controller.enqueue(frame);
+  }
+
+  private closeAttachments(session: Session): void {
+    for (const attachment of session.attachments.values()) {
+      try {
+        attachment.controller.close();
+      } catch {
+        // The attacher cancelled concurrently; its stream is already closed.
+      }
+    }
+    session.attachments.clear();
+    this.updateFlowControl(session);
+  }
+
+  private retainedStart(session: Session): number {
+    return session.chunks[0]?.start ?? session.cursor;
+  }
+
+  /** The retained bytes from `from` (clamped to the window) to the cursor. */
+  private window(session: Session, from: number): Uint8Array {
+    const parts = session.chunks
+      .filter((chunk) => chunk.end > from)
+      .map((chunk) => (chunk.start < from ? chunk.bytes.subarray(from - chunk.start) : chunk.bytes));
+    return parts.length === 1 ? parts[0]! : new Uint8Array(Buffer.concat(parts));
   }
 
   private markExit(session: Session, code: number | null, signal?: string): void {
@@ -524,10 +637,12 @@ export class SessionManager {
     session.alive = false;
     session.exit = { code, ...(signal ? { signal } : {}), at: Date.now() };
     for (const waiter of session.exitWaiters.splice(0)) waiter({ exitCode: code, signal });
-    for (const listener of session.listeners) listener(null);
-    session.listeners.clear();
+    for (const attachment of session.attachments.values()) {
+      this.send(attachment, { kind: "exit", code, ...(signal ? { signal } : {}) });
+    }
+    this.closeAttachments(session);
     this.hooks.onExit?.(session.id);
-    this.emitToOwner(session.ownerCallerId, {
+    this.emitToOwner(session.owner.key, {
       type: "exit",
       sessionId: session.id,
       exit: session.exit,
@@ -542,8 +657,16 @@ export class SessionManager {
     }
     const first = session.chunks[0];
     if (first && first.start < start) {
-      const offset = start - first.start;
-      session.chunks[0] = { start, end: first.end, bytes: first.bytes.subarray(offset) };
+      const trimmed = first.bytes.subarray(start - first.start);
+      // Start the window on a character boundary so a replay never begins
+      // inside a UTF-8 sequence.
+      const aligned = trimmed.subarray(characterStart(trimmed));
+      session.chunks[0] = {
+        start: first.end - aligned.byteLength,
+        end: first.end,
+        bytes: aligned,
+      };
+      if (aligned.byteLength === 0) session.chunks.shift();
     }
   }
 
@@ -566,7 +689,7 @@ export class SessionManager {
 
   private emitSnapshotNow(session: Session): void {
     this.lastSnapshotAt.set(session.id, Date.now());
-    this.emitToOwner(session.ownerCallerId, {
+    this.emitToOwner(session.owner.key, {
       type: "snapshot",
       sessionId: session.id,
       info: this.info(session),
@@ -580,9 +703,9 @@ export class SessionManager {
     this.pendingSnapshots.delete(sessionId);
   }
 
-  private emitToOwner(ownerCallerId: string, event: SessionInfoEvent): void {
+  private emitToOwner(owner: string, event: SessionInfoEvent): void {
     for (const watcher of this.allWatchers) {
-      if (watcher.ownerCallerId !== ownerCallerId) continue;
+      if (watcher.owner !== owner) continue;
       try {
         this.sendToWatcher(watcher, event);
       } catch {
@@ -609,7 +732,7 @@ export class SessionManager {
   private sweepExitedSessions(): void {
     const cutoff = Date.now() - this.exitedSessionTtlMs;
     for (const session of this.sessions.values()) {
-      if (!session.alive && session.lastActivityAt < cutoff && session.listeners.size === 0) {
+      if (!session.alive && session.lastActivityAt < cutoff && session.attachments.size === 0) {
         this.dispose(session);
       }
     }
@@ -654,5 +777,31 @@ function readGitBranch(cwd: string): Promise<string | undefined> {
       // Branch context is a UI affordance only; session startup should not fail if git is unavailable.
       finish();
     }
+  });
+}
+
+/**
+ * The foreground process group of the session's terminal (who should redraw).
+ * Linux reads it from /proc (`tpgid`); elsewhere `ps` reports it.
+ */
+async function foregroundProcessGroup(pid: number): Promise<number> {
+  if (process.platform === "linux") {
+    const stat = await readFile(`/proc/${pid}/stat`, "utf8").catch(() => null);
+    // Fields after the parenthesised command name: state ppid pgrp session tty_nr tpgid.
+    const fields = stat?.slice(stat.lastIndexOf(")") + 2).split(" ");
+    const tpgid = Number(fields?.[5]);
+    return Number.isInteger(tpgid) && tpgid > 0 ? tpgid : pid;
+  }
+  return new Promise((resolve) => {
+    let out = "";
+    const child = spawn("ps", ["-o", "tpgid=", "-p", String(pid)], {
+      stdio: ["ignore", "pipe", "ignore"],
+    });
+    child.stdout?.on("data", (chunk: Buffer) => (out += chunk.toString("utf8")));
+    child.on("error", () => resolve(pid));
+    child.on("close", () => {
+      const tpgid = Number(out.trim());
+      resolve(Number.isInteger(tpgid) && tpgid > 0 ? tpgid : pid);
+    });
   });
 }

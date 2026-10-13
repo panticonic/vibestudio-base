@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { encodePtyStreamEvent, type PtyStreamEvent } from "@workspace/pty-stream";
 import type { ParsedNotification } from "./notificationParser.js";
 import { VscodeTerminalInstance } from "./vscodeTerminalInstance.js";
 import type { TerminalFrontend, TerminalFrontendFactory } from "./terminalFrontend.js";
@@ -34,7 +35,7 @@ describe("VscodeTerminalInstance", () => {
     const frontend = createFakeFrontend();
     const shell = createShell();
     const onNotification = vi.fn();
-    setScrollback(shell, "ready\x1b]9;[done] complete\x07\n");
+    setOutput(shell, "ready\x1b]9;[done] complete\x07\n");
     const instance = createInstance({ frontend, shell, onNotification });
 
     await instance.attach(hostElement());
@@ -51,7 +52,7 @@ describe("VscodeTerminalInstance", () => {
     vi.useFakeTimers();
     const frontend = createFakeFrontend();
     const shell = createShell();
-    setScrollback(shell, "ready");
+    setOutput(shell, "ready");
     const instance = createInstance({ frontend, shell });
 
     await instance.attach(hostElement());
@@ -65,13 +66,14 @@ describe("VscodeTerminalInstance", () => {
     vi.useFakeTimers();
     const frontend = createFakeFrontend();
     const shell = createShell();
-    setScrollback(shell, "x".repeat(5001));
+    setOutput(shell, "─".repeat(3000));
     const instance = createInstance({ frontend, shell });
 
     await instance.attach(hostElement());
     await vi.advanceTimersByTimeAsync(8);
 
-    expect(shell.acknowledgeDataEvent).toHaveBeenCalledWith("session-1", 5000);
+    // Acknowledged in bytes (three per box-drawing character), not characters.
+    expect(shell.acknowledge).toHaveBeenCalledWith("session-1", "attach-1", 9000);
   });
 
   it("keeps focus, fit, theme, find, and selection behind the frontend boundary", async () => {
@@ -165,6 +167,7 @@ function createInstance(opts: {
   return new VscodeTerminalInstance({
     sessionId: opts.sessionId ?? "session-1",
     shell: opts.shell,
+    recovery: { registerResubscribeHandler: () => () => {} },
     frontendFactory,
     fontFamily: "monospace",
     fontSize: 13,
@@ -182,15 +185,20 @@ function hostElement(): HTMLElement {
   return {} as HTMLElement;
 }
 
-function responseFromChunks(chunks: Uint8Array[]): Response {
+function responseFromEvents(events: PtyStreamEvent[]): Response {
   return new Response(
     new ReadableStream<Uint8Array>({
       start(controller) {
-        for (const chunk of chunks) controller.enqueue(chunk);
-        controller.close();
+        for (const event of events) {
+          for (const frame of encodePtyStreamEvent(event)) controller.enqueue(frame);
+        }
       },
     })
   );
+}
+
+function hello(cursor: number): PtyStreamEvent {
+  return { kind: "hello", attachId: "attach-1", epoch: 0, start: 0, cursor, alive: true, cols: 80, rows: 24 };
 }
 
 function createShell(): ShellApi {
@@ -198,24 +206,23 @@ function createShell(): ShellApi {
     exec: vi.fn(),
     open: vi.fn(),
     write: vi.fn(async () => {}),
-    acknowledgeDataEvent: vi.fn(async () => {}),
+    acknowledge: vi.fn(async () => {}),
     resize: vi.fn(async () => {}),
     kill: vi.fn(),
     list: vi.fn(),
     get: vi.fn(),
     getSessionInfo: vi.fn(async () => ({ alive: true })),
     watchSessionInfo: vi.fn(),
-    attach: vi.fn(async () => responseFromChunks([])),
+    attach: vi.fn(async () => responseFromEvents([hello(0)])),
     awaitExit: vi.fn(),
-    getScrollback: vi.fn(async () => ({ text: "", cursor: "0" })),
   } as unknown as ShellApi;
 }
 
-function setScrollback(shell: ShellApi, text: string): void {
-  vi.mocked(shell.getScrollback).mockResolvedValue({
-    text,
-    cursor: String(new TextEncoder().encode(text).byteLength),
-  });
+function setOutput(shell: ShellApi, text: string): void {
+  const bytes = new TextEncoder().encode(text);
+  vi.mocked(shell.attach).mockResolvedValue(
+    responseFromEvents([hello(bytes.byteLength), { kind: "data", at: 0, bytes }])
+  );
 }
 
 type FakeFrontend = TerminalFrontend & {

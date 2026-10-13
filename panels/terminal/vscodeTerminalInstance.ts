@@ -7,6 +7,7 @@ import { NotificationStreamParser, type ParsedNotification } from "./notificatio
 import type { XtermTheme } from "./paneTheme.js";
 import {
   VscodeTerminalProcessBridge,
+  type TerminalRecovery,
   type VscodeProcessDataEvent,
 } from "./vscodeTerminalProcess.js";
 import { VscodeTerminalResizeDebouncer } from "./vscodeTerminalResizeDebouncer.js";
@@ -25,6 +26,8 @@ type Disposable = { dispose(): void };
 export type VscodeTerminalInstanceOptions = {
   sessionId: string;
   shell: ShellApi;
+  /** The panel connection's recovery: the output stream re-attaches on resubscribe. */
+  recovery: TerminalRecovery;
   frontendFactory: TerminalFrontendFactory;
   fontFamily: string;
   fontSize: number;
@@ -103,16 +106,27 @@ export class VscodeTerminalInstance {
       });
       this.resizeObserver.observe(host);
 
+      let latestCols = 0;
+      let latestRows = 0;
       this.process = new VscodeTerminalProcessBridge({
         sessionId: this.options.sessionId,
         shell: this.options.shell,
+        recovery: this.options.recovery,
+        size: () => (latestCols > 0 && latestRows > 0 ? { cols: latestCols, rows: latestRows } : undefined),
         onData: (event) => this.handleProcessData(event),
+        // Full reset (RIS): the session's scrollback was cleared.
+        onReset: () => frontend.write("\x1bc"),
+        onGap: (lostBytes) =>
+          frontend.write(
+            `\r\n\x1b[2m[${lostBytes} bytes of earlier output were trimmed]\x1b[0m\r\n`
+          ),
+        onExit: () => this.frontend?.refresh(),
         onError: this.onError,
         onRecovered: this.options.onRecovered,
       });
       this.writeScheduler = new VscodeTerminalWriteScheduler({
         target: () => this.frontend,
-        acknowledge: (charCount) => this.process?.acknowledgeDataEvent(charCount),
+        acknowledge: (bytes) => this.process?.acknowledge(bytes),
         onWillData: (data) => {
           for (const notification of this.notificationParser.push(data)) {
             this.onNotification(notification);
@@ -124,8 +138,6 @@ export class VscodeTerminalInstance {
           this.updateScrollState();
         },
       });
-      let latestCols = 0;
-      let latestRows = 0;
       this.resizeDebouncer = new VscodeTerminalResizeDebouncer(
         () => true,
         () => frontend.getBufferLength(),
@@ -232,7 +244,7 @@ export class VscodeTerminalInstance {
   }
 
   private handleProcessData(event: VscodeProcessDataEvent): void {
-    void this.writeScheduler?.writeProcessData(event.data, event.trackCommit);
+    void this.writeScheduler?.writeProcessData(event.data, event.byteLength, event.trackCommit);
   }
 
   private updateScrollState(): void {

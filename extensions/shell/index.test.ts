@@ -42,9 +42,11 @@ async function makeApi(
     async (_provider: string, _method: string, _args: unknown[]) =>
       null as unknown,
   );
-  const invocationCurrent = vi.fn(() => ({
-    caller: { callerId: "panel:test", callerKind: "panel" },
-  }));
+  const invocationCurrent = vi.fn(
+    (): { caller: { callerId: string; callerKind: string; userId?: string } } => ({
+      caller: { callerId: "panel:test", callerKind: "panel" },
+    }),
+  );
   const subscriptions: Array<{ dispose(): void | Promise<void> }> = [];
   const ctx = {
     storage: { root },
@@ -257,6 +259,39 @@ describe("@workspace-extensions/shell", () => {
     await api.write(sessionId, "continue\n");
     await api.awaitExit(sessionId);
     await expect(api.getMeta(sessionId, "disposal")).resolves.toBe("survived");
+  });
+
+  it("lets the same person resume a session from another client, and no one else", async () => {
+    const { api, invocationCurrent } = await makeApi("allow");
+    invocationCurrent.mockReturnValue({
+      caller: { callerId: "shell:laptop", callerKind: "shell", userId: "alice" },
+    });
+    const { sessionId } = await api.open({
+      command: "node",
+      args: ["-e", "setTimeout(() => {}, 5000)"],
+    });
+
+    invocationCurrent.mockReturnValue({
+      caller: { callerId: "panel:desktop-terminal", callerKind: "panel", userId: "alice" },
+    });
+    const listed = await api.list();
+    expect(listed.map((info) => info.sessionId)).toEqual([sessionId]);
+    expect(listed[0]).toMatchObject({
+      owner: "user:alice",
+      launchedBy: { callerId: "shell:laptop", callerKind: "shell" },
+    });
+    await api.resize(sessionId, 100, 30);
+
+    invocationCurrent.mockReturnValue({
+      caller: { callerId: "shell:other", callerKind: "shell", userId: "bob" },
+    });
+    expect(await api.list()).toEqual([]);
+    await expect(api.write(sessionId, "x")).rejects.toMatchObject({ code: "EACCES" });
+
+    invocationCurrent.mockReturnValue({
+      caller: { callerId: "shell:laptop", callerKind: "shell", userId: "alice" },
+    });
+    await api.dispose(sessionId);
   });
 
   it("prevents public metadata RPCs from setting host-owned handoff keys", async () => {
@@ -545,7 +580,7 @@ describe("@workspace-extensions/shell", () => {
     );
   });
 
-  it("uses shell-created context tokens for the newly created context", async () => {
+  it("opens sessions in a context it created", async () => {
     const { api, ensureContextFolder, rpcCall } = await makeApi("allow");
     rpcCall.mockImplementation(async (_target: string, method: string) => {
       if (method === "runtime.createEntity")
@@ -561,8 +596,7 @@ describe("@workspace-extensions/shell", () => {
     });
 
     const created = await api.createContext({ title: "New terminal context" });
-    expect(created.contextId).toBe("ctx-new");
-    expect(created.contextAttachToken).toEqual(expect.any(String));
+    expect(created).toEqual({ contextId: "ctx-new" });
     expect(rpcCall).toHaveBeenCalledWith(
       "main",
       "runtime.createEntity",
@@ -581,7 +615,6 @@ describe("@workspace-extensions/shell", () => {
       command: "node",
       args: ["-e", "process.exit(0)"],
       contextId: created.contextId,
-      contextAttachToken: created.contextAttachToken,
     });
     await api.awaitExit(sessionId);
 

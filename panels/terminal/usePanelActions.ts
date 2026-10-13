@@ -6,7 +6,7 @@ type SetState = (updater: (state: TerminalState) => TerminalState) => void;
 type SetSessions = (
   updater: (sessions: Record<string, SessionInfo>) => Record<string, SessionInfo>
 ) => void;
-type ContextOpenOptions = { contextId?: string; contextAttachToken?: string };
+type ContextOpenOptions = { contextId?: string };
 
 export interface PanelActions {
   openSession(command?: string, opts?: ContextOpenOptions): Promise<string>;
@@ -103,7 +103,6 @@ export function createPanelActions(args: {
       ? {
           ...base,
           contextId: opts.contextId,
-          ...(opts.contextAttachToken ? { contextAttachToken: opts.contextAttachToken } : {}),
         }
       : base;
     const { sessionId } = await shell.open(req);
@@ -173,7 +172,6 @@ export function createPanelActions(args: {
       ...(command ? { command: "/bin/sh", args: ["-c", command], label: command } : {}),
       ...(inheritCwd && cwd ? { cwd } : {}),
       ...(contextId ? { contextId } : {}),
-      ...(opts?.contextAttachToken ? { contextAttachToken: opts.contextAttachToken } : {}),
     };
     const { sessionId } = await shell.open(req);
     const info = await shell.get(sessionId);

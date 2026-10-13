@@ -80,7 +80,7 @@
             "reason": "Controls native terminal processes and retained terminal data."
           }
         },
-        "acknowledgeDataEvent": {
+        "acknowledge": {
           "effect": {
             "kind": "open"
           },
@@ -291,6 +291,7 @@
   "dependencies": {
     "node-pty": "^1.1.0",
     "zod": "^3.25.76",
+    "@workspace/pty-stream": "workspace:*",
     "@vibestudio/service-schemas": "workspace:*"
   },
   "devDependencies": {

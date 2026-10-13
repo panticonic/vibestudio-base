@@ -15,11 +15,11 @@ describe("VscodeTerminalWriteScheduler", () => {
       acknowledge,
     });
 
-    scheduler.writeProcessData("hello");
+    scheduler.writeProcessData("héllo", 6);
 
     expect(acknowledge).not.toHaveBeenCalled();
     writeCallback?.();
-    expect(acknowledge).toHaveBeenCalledWith(5);
+    expect(acknowledge).toHaveBeenCalledWith(6);
   });
 
   it("splits shell integration command boundary sequences into separate writes", () => {
@@ -34,7 +34,7 @@ describe("VscodeTerminalWriteScheduler", () => {
       acknowledge: vi.fn(),
     });
 
-    scheduler.writeProcessData("before\x1b]633;C\x07after\x1b]633;D;0\x07tail");
+    scheduler.writeProcessData("before\x1b]633;C\x07after\x1b]633;D;0\x07tail", 29);
 
     expect(writes).toEqual(["before", "\x1b]633;C\x07", "after", "\x1b]633;D;0\x07", "tail"]);
   });
@@ -51,7 +51,7 @@ describe("VscodeTerminalWriteScheduler", () => {
       acknowledge: vi.fn(),
     });
 
-    const promise = scheduler.writeProcessData("lead\x1b]633;C\x07tail", true);
+    const promise = scheduler.writeProcessData("lead\x1b]633;C\x07tail", 15, true);
     let resolved = false;
     void promise?.then(() => {
       resolved = true;

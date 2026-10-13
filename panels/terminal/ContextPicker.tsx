@@ -3,13 +3,8 @@ import { Button, DropdownMenu } from "@radix-ui/themes";
 import { ChevronDownIcon } from "@radix-ui/react-icons";
 import type { ContextOption } from "./contextPickerModel.js";
 
-export interface PickedContextOptions {
-  contextAttachToken?: string;
-}
-
 export interface CreatedContext {
   contextId: string;
-  contextAttachToken: string;
 }
 
 /**
@@ -21,7 +16,7 @@ export interface CreatedContext {
 export function ContextPicker(props: {
   disabled?: boolean;
   /** Open a terminal; undefined contextId = workspace root. */
-  onPick(contextId?: string, opts?: PickedContextOptions): void;
+  onPick(contextId?: string): void;
   /** Fetch the live contexts (lazily, on open). */
   loadContexts(): Promise<ContextOption[]>;
   /** Create a new session context, resolving to its contextId and first-attach token. */
@@ -68,11 +63,7 @@ export function ContextPicker(props: {
         <DropdownMenu.Separator />
         <DropdownMenu.Item
           onSelect={() => {
-            void props.createContext().then((created) =>
-              props.onPick(created.contextId, {
-                contextAttachToken: created.contextAttachToken,
-              })
-            );
+            void props.createContext().then((created) => props.onPick(created.contextId));
           }}
         >
           New context…

@@ -1,3 +1,4 @@
+import { recoveryCoordinator } from "@workspace/runtime/internal/diagnostics";
 import {
   Box,
   Button,
@@ -144,6 +145,7 @@ export function PaneView(props: {
     const terminal = new VscodeTerminalInstance({
       sessionId,
       shell,
+      recovery: recoveryCoordinator,
       frontendFactory: createVscodeTerminalFrontend,
       fontFamily: props.fontFamily,
       fontSize: props.fontSize,

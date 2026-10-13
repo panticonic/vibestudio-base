@@ -3,50 +3,39 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
+import {
+  PtyStreamAcknowledger,
+  PtyStreamCursor,
+  readPtyStream,
+  type PtyStreamEvent,
+} from "@workspace/pty-stream";
 import type { ShellApi } from "./types.js";
 
-export const VscodeFlowControlConstants = {
-  /**
-   * The number of _unacknowledged_ chars to have been sent before the pty is paused in order for
-   * the client to catch up.
-   */
-  HighWatermarkChars: 100000,
-  /**
-   * After flow control pauses the pty for the client the catch up, this is the number of
-   * _unacknowledged_ chars to have been caught up to on the client before resuming the pty again.
-   */
-  LowWatermarkChars: 5000,
-  /**
-   * The number characters that are accumulated on the client side before sending an ack event.
-   * This must be less than or equal to LowWatermarkChars or the terminal max never unpause.
-   */
-  CharCountAckSize: 5000,
-} as const;
-
 export type VscodeProcessDataEvent = {
-  bytes: Uint8Array;
+  /** Output decoded with a streaming UTF-8 decoder (exact across chunk boundaries). */
   data: string;
+  /** Output bytes this event carries: what the frontend acknowledges once parsed. */
+  byteLength: number;
   trackCommit: boolean;
 };
 
-export class VscodeAckDataBufferer {
-  private unsentCharCount = 0;
-
-  constructor(private readonly callback: (charCount: number) => void) {}
-
-  ack(charCount: number): void {
-    this.unsentCharCount += charCount;
-    while (this.unsentCharCount > VscodeFlowControlConstants.CharCountAckSize) {
-      this.unsentCharCount -= VscodeFlowControlConstants.CharCountAckSize;
-      this.callback(VscodeFlowControlConstants.CharCountAckSize);
-    }
-  }
+/** Re-attach when the panel's connection to the server recovers. */
+export interface TerminalRecovery {
+  registerResubscribeHandler(name: string, fn: () => Promise<void> | void): () => void;
 }
 
 export type VscodeTerminalProcessBridgeOptions = {
   sessionId: string;
-  shell: ShellApi;
+  shell: Pick<ShellApi, "attach" | "acknowledge" | "write" | "resize">;
+  recovery: TerminalRecovery;
+  /** The frontend's current size, sent on a fresh attach so full-screen programs redraw. */
+  size(): { cols: number; rows: number } | undefined;
   onData(event: VscodeProcessDataEvent): void;
+  /** The session's scrollback was cleared: clear the frontend before more data. */
+  onReset(): void;
+  /** Output was trimmed before this client read it. */
+  onGap(lostBytes: number): void;
+  onExit(exit: { code: number | null; signal?: string }): void;
   onError(error: string): void;
   onRecovered?(): void;
 };
@@ -54,171 +43,149 @@ export type VscodeTerminalProcessBridgeOptions = {
 /**
  * vibestudio connectivity adapter for VS Code's terminal process-manager role.
  *
- * VS Code's `TerminalProcessManager` cannot be imported unchanged without its backend registry,
- * profile resolver, environment collections, remote authority services, telemetry, and workspace
- * services. This class keeps the upstream shape at the edge where it matters to the terminal
- * frontend: a process emits data events, accepts input/resize, has contained disposal, and tracks
- * client parse acknowledgement using VS Code's flow-control constants.
+ * It holds one attachment to the shell extension's framed output stream
+ * (`@workspace/pty-stream`): the first attach replays the retained output and
+ * asks the program to redraw at this frontend's size; later attaches resume
+ * exactly after the last byte this client consumed. A transport loss ends the
+ * stream, and the panel connection's recovery (resubscribe) re-attaches; an
+ * `exit` frame ends it for good. Flow control acknowledges parsed bytes.
  */
 export class VscodeTerminalProcessBridge {
-  private reader: ReadableStreamDefaultReader<Uint8Array> | null = null;
+  private attachment: AbortController | null = null;
   private disposed = false;
+  private exited = false;
+  private live = false;
   private generation = 0;
-  private lastCursor = 0;
-  private cursorWatchdog: ReturnType<typeof setTimeout> | null = null;
-  private streamFailed = false;
-  private readonly ackBufferer = new VscodeAckDataBufferer(() => {
-    void this.options.shell
-      .acknowledgeDataEvent?.(this.options.sessionId, VscodeFlowControlConstants.CharCountAckSize)
-      .catch((error: unknown) =>
-        console.warn(
-          `[terminal] Failed to acknowledge output for session ${this.options.sessionId}:`,
-          error
-        )
-      );
-  });
+  private failed = false;
+  private readonly cursor = new PtyStreamCursor();
+  private decoder = new TextDecoder();
+  private acknowledger: PtyStreamAcknowledger | null = null;
+  private unregisterRecovery: (() => void) | null = null;
 
   constructor(private readonly options: VscodeTerminalProcessBridgeOptions) {}
 
   async start(): Promise<void> {
-    await this.replayScrollback();
-    if (!this.disposed) this.connectLiveStream();
+    this.unregisterRecovery = this.options.recovery.registerResubscribeHandler(
+      `terminal:${this.options.sessionId}`,
+      () => (this.live || this.exited || this.disposed ? undefined : this.attach())
+    );
+    await this.attach();
   }
 
-  private async replayScrollback(): Promise<void> {
+  private async attach(): Promise<void> {
+    const generation = ++this.generation;
+    this.attachment?.abort();
+    this.attachment = null;
+    const after = this.cursor.resumeAfter();
+    const size = after ? undefined : this.options.size();
+    let response: Response;
     try {
-      const { text, cursor } = await this.options.shell.getScrollback(this.options.sessionId);
-      if (this.disposed) return;
-      this.lastCursor = cursorFrom(cursor);
-      if (text) {
-        this.options.onData({
-          bytes: new TextEncoder().encode(text),
-          data: text,
-          trackCommit: false,
-        });
+      response = await this.options.shell.attach(this.options.sessionId, {
+        ...(after ? { after } : {}),
+        ...(size ? { size } : {}),
+      });
+    } catch (err) {
+      this.fail(generation, err);
+      return;
+    }
+    if (this.disposed || generation !== this.generation) {
+      void response.body?.cancel().catch(() => {});
+      return;
+    }
+    if (!response.body) {
+      this.fail(generation, new Error("The shell returned no terminal output stream"));
+      return;
+    }
+    this.live = true;
+    if (this.failed) {
+      this.failed = false;
+      this.options.onRecovered?.();
+    }
+    const attachment = new AbortController();
+    this.attachment = attachment;
+    void this.read(readPtyStream(response.body, attachment.signal), generation);
+  }
+
+  private async read(
+    reader: AsyncGenerator<PtyStreamEvent, void, undefined>,
+    generation: number
+  ): Promise<void> {
+    try {
+      for await (const event of reader) {
+        if (this.disposed || generation !== this.generation) return;
+        this.handle(event);
+      }
+      if (this.disposed || generation !== this.generation) return;
+      this.live = false;
+      if (!this.exited) {
+        this.failed = true;
+        this.options.onError("Terminal output disconnected; it resumes when the connection returns.");
       }
     } catch (err) {
-      if (!this.disposed) {
-        this.options.onError(err instanceof Error ? err.message : "Terminal output failed");
-      }
+      this.fail(generation, err);
     }
   }
 
-  private connectLiveStream(): void {
-    const generation = ++this.generation;
-    void this.reader?.cancel().catch(() => {});
-    this.reader = null;
-    void this.readLiveStream(generation);
+  private handle(event: PtyStreamEvent): void {
+    this.cursor.apply(event);
+    switch (event.kind) {
+      case "hello": {
+        const sessionId = this.options.sessionId;
+        const attachId = event.attachId;
+        this.acknowledger = new PtyStreamAcknowledger(
+          (bytes) => this.options.shell.acknowledge(sessionId, attachId, bytes),
+          (error) =>
+            console.warn(`[terminal] Failed to acknowledge output for session ${sessionId}:`, error)
+        );
+        return;
+      }
+      case "data": {
+        const data = this.decoder.decode(event.bytes, { stream: true });
+        this.options.onData({ data, byteLength: event.bytes.byteLength, trackCommit: false });
+        return;
+      }
+      case "reset":
+        this.decoder = new TextDecoder();
+        this.options.onReset();
+        return;
+      case "gap":
+        this.decoder = new TextDecoder();
+        this.options.onGap(event.to - event.from);
+        return;
+      case "exit":
+        this.exited = true;
+        this.live = false;
+        this.options.onExit({ code: event.code, ...(event.signal ? { signal: event.signal } : {}) });
+        return;
+    }
   }
 
-  private async readLiveStream(generation: number): Promise<void> {
-    while (!this.disposed && generation === this.generation) {
-      try {
-        const response = await this.options.shell.attach(this.options.sessionId, {
-          after: String(this.lastCursor),
-        });
-        if (this.disposed || generation !== this.generation) return;
-        if (this.streamFailed) {
-          this.streamFailed = false;
-          this.options.onRecovered?.();
-        }
-        const reader = response.body?.getReader() ?? null;
-        this.reader = reader;
-        if (!reader) {
-          await delay(250);
-          continue;
-        }
-        const decoder = new TextDecoder();
-        while (!this.disposed && generation === this.generation) {
-          const next = await reader.read();
-          if (next.done) {
-            const tail = decoder.decode();
-            if (tail) {
-              this.options.onData({
-                bytes: new Uint8Array(0),
-                data: tail,
-                trackCommit: false,
-              });
-            }
-            break;
-          }
-          this.lastCursor += next.value.byteLength;
-          this.options.onData({
-            bytes: next.value,
-            data: decoder.decode(next.value, { stream: true }),
-            trackCommit: false,
-          });
-        }
-      } catch (err) {
-        if (!this.disposed && generation === this.generation) {
-          this.streamFailed = true;
-          this.options.onError(err instanceof Error ? err.message : "Terminal output failed");
-        }
-      } finally {
-        if (generation === this.generation) this.reader = null;
-      }
-      if (this.disposed || generation !== this.generation || !(await this.sessionAlive())) return;
-      await delay(250);
-    }
+  private fail(generation: number, err: unknown): void {
+    if (this.disposed || generation !== this.generation) return;
+    this.live = false;
+    this.failed = true;
+    this.options.onError(err instanceof Error ? err.message : "Terminal output failed");
   }
 
   async write(data: string): Promise<void> {
     await this.options.shell.write(this.options.sessionId, data);
-    this.scheduleCursorWatchdog();
   }
 
   resize(cols: number, rows: number): Promise<void> {
     return this.options.shell.resize(this.options.sessionId, cols, rows);
   }
 
-  acknowledgeDataEvent(charCount: number): void {
-    this.ackBufferer.ack(charCount);
+  /** The frontend parsed `bytes` of output. */
+  acknowledge(bytes: number): void {
+    this.acknowledger?.consumed(bytes);
   }
 
   dispose(): void {
     this.disposed = true;
     this.generation += 1;
-    if (this.cursorWatchdog) clearTimeout(this.cursorWatchdog);
-    void this.reader?.cancel().catch(() => {});
-    this.reader = null;
+    this.unregisterRecovery?.();
+    this.unregisterRecovery = null;
+    this.attachment?.abort();
+    this.attachment = null;
   }
-
-  private scheduleCursorWatchdog(): void {
-    if (this.cursorWatchdog) clearTimeout(this.cursorWatchdog);
-    this.cursorWatchdog = setTimeout(() => {
-      this.cursorWatchdog = null;
-      void this.reconnectIfScrollbackAdvanced();
-    }, 150);
-  }
-
-  private async reconnectIfScrollbackAdvanced(): Promise<void> {
-    if (this.disposed) return;
-    try {
-      const { cursor } = await this.options.shell.getScrollback(this.options.sessionId, 1024);
-      const remoteCursor = cursorFrom(cursor);
-      if (remoteCursor > this.lastCursor) {
-        this.connectLiveStream();
-      }
-    } catch {
-      // The live reader reports stream errors; this watchdog is best-effort recovery.
-    }
-  }
-
-  private async sessionAlive(): Promise<boolean> {
-    try {
-      return (await this.options.shell.getSessionInfo(this.options.sessionId)).alive;
-    } catch {
-      return false;
-    }
-  }
-}
-
-function cursorFrom(value: string | undefined): number {
-  if (!value) return 0;
-  const parsed = Number(value);
-  return Number.isFinite(parsed) && parsed >= 0 ? parsed : 0;
-}
-
-function delay(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
 }

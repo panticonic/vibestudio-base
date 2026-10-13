@@ -13,7 +13,7 @@ const expose = (method: string, handler: (...args: any[]) => unknown | Promise<u
   rpc.expose(method, (request) => handler(...request.args), {"kind":"closed","reason":"This handler controls an internal execution or presentation surface."});
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { CommandLauncher } from "./CommandLauncher.js";
-import { ContextPicker, type CreatedContext, type PickedContextOptions } from "./ContextPicker.js";
+import { ContextPicker, type CreatedContext } from "./ContextPicker.js";
 import { deriveContextOptions, type ContextOption } from "./contextPickerModel.js";
 import { documentTitleForPanel } from "./documentTitle.js";
 import { NotificationCenter } from "./NotificationCenter.js";
@@ -480,15 +480,8 @@ export function TerminalApp() {
     [shell]
   );
   const openTerminalInContext = useCallback(
-    (contextId?: string, contextOpts?: PickedContextOptions) => {
-      const opts = contextId
-        ? {
-            contextId,
-            ...(contextOpts?.contextAttachToken
-              ? { contextAttachToken: contextOpts.contextAttachToken }
-              : {}),
-          }
-        : undefined;
+    (contextId?: string) => {
+      const opts = contextId ? { contextId } : undefined;
       if (!state.tree) {
         void runInteractiveOpen(() => actions.openSession(undefined, opts));
       } else {
@@ -1143,7 +1136,7 @@ function EmptyTerminalState(props: {
   shellUnit: ShellUnitStatus | null;
   startedAt: number | null;
   onOpen(): void;
-  onPickContext(contextId?: string, opts?: PickedContextOptions): void;
+  onPickContext(contextId?: string): void;
   loadContexts(): Promise<ContextOption[]>;
   createContext(): Promise<CreatedContext>;
 }) {

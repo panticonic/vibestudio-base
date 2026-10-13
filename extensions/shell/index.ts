@@ -4,12 +4,14 @@ import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { mkdir, readdir, stat, unlink, writeFile } from "node:fs/promises";
 import type { ExtensionContext } from "@vibestudio/extension";
 import { runExec } from "./exec.js";
-import { SessionManager } from "./sessionManager.js";
+import { SessionManager, type SessionOwner } from "./sessionManager.js";
+import type { PtyAttachOptions } from "@workspace/pty-stream";
 import { prepareVscodeShellIntegrationLaunch } from "./shellIntegrationEnv.js";
 import { SnugServer } from "./snugServer.js";
 import { nodeSetInterval } from "./nodeTimers.js";
 import { detectAgent } from "./detectAgent.js";
 import {
+  attachRequestSchema,
   createContextRequestSchema,
   execRequestSchema,
   openRequestSchema,
@@ -19,7 +21,6 @@ const BLOCKED_ENV = /^(LD_PRELOAD|NODE_OPTIONS|PYTHONSTARTUP|SHELL)$|^DYLD_/;
 const SCRATCH_LIMIT_BYTES = 25 * 1024 * 1024;
 export const SCRATCH_TTL_MS = 24 * 60 * 60_000;
 const SCRATCH_JANITOR_INTERVAL_MS = 30 * 60_000;
-const CONTEXT_ATTACH_TOKEN_TTL_MS = 2 * 60_000;
 
 function error(code: string, message: string): Error {
   return Object.assign(new Error(message), { code });
@@ -118,17 +119,23 @@ function scratchFilename(ext: string): string {
   return `${stamp}-${suffix}.${normalizeScratchExt(ext)}`;
 }
 
-function currentOwner(ctx: ExtensionContext): {
-  callerId: string;
-  callerKind: string;
-} {
+/**
+ * Sessions belong to the person the caller acts for, so the same person can
+ * resume them from any device and client (terminal browser, desktop terminal
+ * panel) in this workspace. Principals that act for no person (system code)
+ * own their sessions by exact caller id. The opening principal is recorded.
+ */
+function currentOwner(ctx: ExtensionContext): SessionOwner {
   const caller = ctx.invocation.current()?.caller;
   if (!caller)
     throw error(
       "ENOCALLER",
       "shell extension requires a panel or worker caller",
     );
-  return { callerId: caller.callerId, callerKind: caller.callerKind };
+  return {
+    key: caller.userId ? `user:${caller.userId}` : `caller:${caller.callerId}`,
+    launchedBy: { callerId: caller.callerId, callerKind: caller.callerKind },
+  };
 }
 
 function currentInvocationContextId(ctx: ExtensionContext): string | undefined {
@@ -168,10 +175,6 @@ async function contextRevisionDisplay(
 }
 
 export async function activate(ctx: ExtensionContext) {
-  const freshContextTokens = new Map<
-    string,
-    { contextId: string; callerId: string; expiresAt: number }
-  >();
   let snug!: SnugServer;
   const retireSnugSession = (sessionId: string) => {
     void snug.unregister(sessionId).catch((error: unknown) => {
@@ -199,58 +202,8 @@ export async function activate(ctx: ExtensionContext) {
     const { scratch } = await ctx.workspace.ensureContextFolder(contextId);
     return scratch;
   };
-  const pruneFreshContextTokens = () => {
-    const now = Date.now();
-    for (const [token, claim] of freshContextTokens) {
-      if (claim.expiresAt <= now) freshContextTokens.delete(token);
-    }
-  };
-  const mintFreshContextToken = (
-    callerId: string,
-    contextId: string,
-  ): string => {
-    pruneFreshContextTokens();
-    const token = randomUUID();
-    freshContextTokens.set(token, {
-      callerId,
-      contextId,
-      expiresAt: Date.now() + CONTEXT_ATTACH_TOKEN_TTL_MS,
-    });
-    return token;
-  };
-  const consumeFreshContextToken = (
-    token: string | undefined,
-    callerId: string,
-    contextId: string,
-  ): boolean => {
-    if (!token) return false;
-    pruneFreshContextTokens();
-    const claim = freshContextTokens.get(token);
-    if (!claim || claim.callerId !== callerId || claim.contextId !== contextId)
-      return false;
-    freshContextTokens.delete(token);
-    return true;
-  };
-  const requireContextAttachApproval = async (
-    _operation: "exec" | "open",
-    contextId: string | undefined,
-    contextAttachToken: string | undefined,
-    owner: { callerId: string; callerKind: string },
-  ): Promise<void> => {
-    if (!contextId) return;
-    if (currentInvocationContextId(ctx) === contextId) return;
-    if (consumeFreshContextToken(contextAttachToken, owner.callerId, contextId))
-      return;
-    if (
-      sessions
-        .list(owner.callerId)
-        .some((session) => session.contextId === contextId)
-    )
-      return;
-    // The context receiver independently enforces context-boundary authority.
-  };
   snug = new SnugServer({
-    list: (ownerCallerId) => sessions.list(ownerCallerId),
+    list: (owner) => sessions.list(owner),
     setMeta: (sessionId, key, value) =>
       sessions.setMetaById(sessionId, key, value),
     getMeta: (sessionId, key) => sessions.getMetaById(sessionId, key),
@@ -274,7 +227,7 @@ export async function activate(ctx: ExtensionContext) {
         command,
         args,
         cwd,
-        caller: owner.callerId,
+        caller: owner.launchedBy.callerId,
       });
       // A split is subordinate to an already-authorized interactive session.
       const snugEnv = await snug.envForSession(cleanEnv({}).effective);
@@ -316,7 +269,7 @@ export async function activate(ctx: ExtensionContext) {
         action: "open-url",
         sourceSessionId: _sessionId,
         url,
-        caller: owner.callerId,
+        caller: owner.launchedBy.callerId,
       });
       sessions.setMetaById(_sessionId, "snugOpenUrl", {
         id: randomUUID(),
@@ -348,7 +301,7 @@ export async function activate(ctx: ExtensionContext) {
   return {
     async createContext(raw: unknown) {
       const parsed = createContextRequestSchema.parse(raw);
-      const owner = currentOwner(ctx);
+      currentOwner(ctx);
       const handle = await ctx.rpc.call(
         "main",
         mainRpcMethods["runtime.createEntity"],
@@ -371,22 +324,14 @@ export async function activate(ctx: ExtensionContext) {
               )
             : null;
       if (!contextId) throw error("EIO", "Failed to resolve new context id");
-      return {
-        contextId,
-        contextAttachToken: mintFreshContextToken(owner.callerId, contextId),
-      };
+      return { contextId };
     },
 
     async exec(raw: unknown) {
       const parsed = execRequestSchema.parse(raw);
-      const owner = currentOwner(ctx);
+      currentOwner(ctx);
+      // The context receiver (ensureContextFolder) enforces context authority.
       const contextId = parsed.contextId ?? currentInvocationContextId(ctx);
-      await requireContextAttachApproval(
-        "exec",
-        contextId,
-        parsed.contextAttachToken,
-        owner,
-      );
       const root = await confinementRoot(contextId);
       const cwd = resolveWithin(root, parsed.cwd);
       const environment = cleanEnv(parsed.env);
@@ -394,7 +339,6 @@ export async function activate(ctx: ExtensionContext) {
         env: _env,
         cwd: _cwd,
         contextId: _ctxId,
-        contextAttachToken: _contextAttachToken,
         ...execReq
       } = parsed;
       return runExec({
@@ -410,13 +354,8 @@ export async function activate(ctx: ExtensionContext) {
     async open(raw: unknown) {
       const parsed = openRequestSchema.parse(raw);
       const owner = currentOwner(ctx);
+      // The context receiver (ensureContextFolder) enforces context authority.
       const contextId = parsed.contextId ?? currentInvocationContextId(ctx);
-      await requireContextAttachApproval(
-        "open",
-        contextId,
-        parsed.contextAttachToken,
-        owner,
-      );
       const root = await confinementRoot(contextId);
       const cwd = resolveWithin(root, parsed.cwd);
       const command = parsed.command ?? process.env["SHELL"] ?? "/bin/bash";
@@ -426,7 +365,6 @@ export async function activate(ctx: ExtensionContext) {
         cwd: _cwd,
         command: _command,
         contextId: _ctxId,
-        contextAttachToken: _contextAttachToken,
         ...openReq
       } = parsed;
       let snugToken: string | undefined;
@@ -466,7 +404,7 @@ export async function activate(ctx: ExtensionContext) {
     async dispose(sessionId: string) {
       let session;
       try {
-        session = sessions.requireOwner(sessionId, currentOwner(ctx).callerId);
+        session = sessions.requireOwner(sessionId, currentOwner(ctx).key);
       } catch (err) {
         if ((err as NodeJS.ErrnoException).code === "ENOENT") return;
         throw err;
@@ -478,7 +416,7 @@ export async function activate(ctx: ExtensionContext) {
     async restart(sessionId: string, opts?: { cols?: number; rows?: number }) {
       const session = sessions.requireOwner(
         sessionId,
-        currentOwner(ctx).callerId,
+        currentOwner(ctx).key,
       );
       const snugEnv = await snug.envForSession(cleanEnv({}).effective);
       try {
@@ -504,21 +442,23 @@ export async function activate(ctx: ExtensionContext) {
 
     async write(sessionId: string, data: string) {
       sessions.write(
-        sessions.requireOwner(sessionId, currentOwner(ctx).callerId),
+        sessions.requireOwner(sessionId, currentOwner(ctx).key),
         data,
       );
     },
 
-    async acknowledgeDataEvent(sessionId: string, charCount: number) {
-      sessions.acknowledgeDataEvent(
-        sessions.requireOwner(sessionId, currentOwner(ctx).callerId),
-        charCount,
+    /** Flow control: the attachment `attachId` consumed `bytes` of output. */
+    async acknowledge(sessionId: string, attachId: string, bytes: number) {
+      sessions.acknowledge(
+        sessions.requireOwner(sessionId, currentOwner(ctx).key),
+        attachId,
+        bytes,
       );
     },
 
     async resize(sessionId: string, cols: number, rows: number) {
       sessions.resize(
-        sessions.requireOwner(sessionId, currentOwner(ctx).callerId),
+        sessions.requireOwner(sessionId, currentOwner(ctx).key),
         cols,
         rows,
       );
@@ -529,67 +469,68 @@ export async function activate(ctx: ExtensionContext) {
       signal?: "SIGINT" | "SIGTERM" | "SIGKILL" | "SIGHUP",
     ) {
       sessions.kill(
-        sessions.requireOwner(sessionId, currentOwner(ctx).callerId),
+        sessions.requireOwner(sessionId, currentOwner(ctx).key),
         signal ?? "SIGTERM",
       );
     },
 
     async list() {
-      return sessions.list(currentOwner(ctx).callerId);
+      return sessions.list(currentOwner(ctx).key);
     },
 
     async get(sessionId: string) {
       return sessions.info(
-        sessions.requireOwner(sessionId, currentOwner(ctx).callerId),
+        sessions.requireOwner(sessionId, currentOwner(ctx).key),
       );
     },
 
     async getSessionInfo(sessionId: string) {
       return sessions.info(
-        sessions.requireOwner(sessionId, currentOwner(ctx).callerId),
+        sessions.requireOwner(sessionId, currentOwner(ctx).key),
       );
     },
 
     async watchSessionInfo(sessionId: string) {
       return sessions.watchInfo(
-        sessions.requireOwner(sessionId, currentOwner(ctx).callerId),
+        sessions.requireOwner(sessionId, currentOwner(ctx).key),
       );
     },
 
     async watchAllSessionInfo() {
-      return sessions.watchAllInfo(currentOwner(ctx).callerId);
+      return sessions.watchAllInfo(currentOwner(ctx).key);
     },
 
-    async attach(sessionId: string, opts?: { after?: string }) {
+    /** Framed output stream; see `@workspace/pty-stream`. */
+    async attach(sessionId: string, opts?: PtyAttachOptions) {
       return sessions.attach(
-        sessions.requireOwner(sessionId, currentOwner(ctx).callerId),
-        opts,
+        sessions.requireOwner(sessionId, currentOwner(ctx).key),
+        attachRequestSchema.parse(opts) ?? {},
       );
     },
 
     async awaitExit(sessionId: string) {
       return sessions.awaitExit(
-        sessions.requireOwner(sessionId, currentOwner(ctx).callerId),
+        sessions.requireOwner(sessionId, currentOwner(ctx).key),
       );
     },
 
     async getScrollback(sessionId: string, maxBytes?: number) {
       return sessions.getScrollback(
-        sessions.requireOwner(sessionId, currentOwner(ctx).callerId),
+        sessions.requireOwner(sessionId, currentOwner(ctx).key),
         maxBytes,
       );
     },
 
     async setScrollbackLimit(sessionId: string, maxBytes: number) {
       sessions.setScrollbackLimit(
-        sessions.requireOwner(sessionId, currentOwner(ctx).callerId),
+        sessions.requireOwner(sessionId, currentOwner(ctx).key),
         maxBytes,
       );
     },
 
     async clearScrollback(sessionId: string) {
       sessions.clearScrollback(
-        sessions.requireOwner(sessionId, currentOwner(ctx).callerId),
+        sessions.requireOwner(sessionId, currentOwner(ctx).key),
       );
     },
 
@@ -615,7 +556,7 @@ export async function activate(ctx: ExtensionContext) {
       if (isReservedMetaKey(key))
         throw error("EACCES", `Reserved shell metadata key: ${key}`);
       sessions.setMeta(
-        sessions.requireOwner(sessionId, currentOwner(ctx).callerId),
+        sessions.requireOwner(sessionId, currentOwner(ctx).key),
         key,
         value,
       );
@@ -623,7 +564,7 @@ export async function activate(ctx: ExtensionContext) {
 
     async getMeta(sessionId: string, key?: string) {
       return sessions.getMeta(
-        sessions.requireOwner(sessionId, currentOwner(ctx).callerId),
+        sessions.requireOwner(sessionId, currentOwner(ctx).key),
         key,
       );
     },
@@ -632,14 +573,14 @@ export async function activate(ctx: ExtensionContext) {
       if (isReservedMetaKey(key))
         throw error("EACCES", `Reserved shell metadata key: ${key}`);
       sessions.deleteMeta(
-        sessions.requireOwner(sessionId, currentOwner(ctx).callerId),
+        sessions.requireOwner(sessionId, currentOwner(ctx).key),
         key,
       );
     },
 
     async setLabel(sessionId: string, label: string) {
       sessions.setLabel(
-        sessions.requireOwner(sessionId, currentOwner(ctx).callerId),
+        sessions.requireOwner(sessionId, currentOwner(ctx).key),
         label,
       );
     },
