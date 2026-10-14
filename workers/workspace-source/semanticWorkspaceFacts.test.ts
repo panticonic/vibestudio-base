@@ -93,12 +93,12 @@ describe("SemanticWorkspaceFacts", () => {
     expect(store.facts.entries(root, "file")).toHaveLength(22);
     expect(store.facts.entries(root, "live-path")).toHaveLength(3);
     sql.exec(
-      `UPDATE vcs_workspace_fact_roots SET repository_count = 4 WHERE workspace_fact_root_id = ?`,
+      `UPDATE vcs_workspace_fact_roots SET repository_count = 4, file_count = 21 WHERE workspace_fact_root_id = ?`,
       root
     );
     expect(() => store.facts.entries(root, "repository")).toThrow(/count disagrees/u);
     sql.exec(
-      `UPDATE vcs_workspace_fact_roots SET repository_count = 3 WHERE workspace_fact_root_id = ?`,
+      `UPDATE vcs_workspace_fact_roots SET repository_count = 3, file_count = 22 WHERE workspace_fact_root_id = ?`,
       root
     );
     // A repository read has no dependency on the file namespace, but the
