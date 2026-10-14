@@ -223,4 +223,13 @@ RPC callers should follow the call's cancellation and terminal lifecycle. Do
 not add timeout races or retries to turn a pending call into a synthetic
 failure; use a deadline only when the operation's contract requires one.
 
+For a long-lived observation, subscribe to `rpc.onRecovery(handler)`. The
+handler receives each completed future transport generation as `resubscribe`
+or `cold-recover` and the registration returns a disposer. It does not replay
+the initial connection. At that boundary, invalidate the old snapshot, cancel
+and join its owned request or stream, and then start one fresh snapshot read.
+Do not infer this boundary from `onStatusChange("connected")`, and do not await
+the replacement long poll inside the recovery handler; schedule the owned
+reconciliation and return.
+
 Import `storeRpcMethods` from the receiver’s contract module. Derive its descriptors from the real receiver with `createReceiverRpcMethods<Pick<Store, "listAvailableSlots">>(["listAvailableSlots"])`; public RPC accepts the descriptor and its argument tuple.

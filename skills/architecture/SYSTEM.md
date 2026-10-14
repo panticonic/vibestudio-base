@@ -88,6 +88,14 @@ to exactly one transport). On reconnect, `resubscribe` restores the desired
 subscriptions, and `cold-recover` is a one-time repair after a server restart.
 Handlers must be idempotent across reconnects.
 
+Portable runtimes expose those completed future recovery boundaries through
+`rpc.onRecovery(handler)`. It does not replay the initial connection. A
+long-lived observation must cancel and join its previous generation, then read
+a fresh snapshot after this signal; a `connected` status by itself does not
+prove that transport recovery is complete. Recovery handlers should schedule
+that reconciliation and return rather than waiting inside the handler for the
+new long poll they just started.
+
 ## The agentic stack
 
 The agent system is a two-layer userland architecture with no special host
