@@ -9263,39 +9263,38 @@ export class SemanticWorkspace {
     previousRoot: string | null,
     draft?: MutationDraft,
     explicitlyAffected?: readonly string[],
-    fullReplacement = previousRoot === null,
+    fullReplacement = previousRoot === null
   ): WorkspaceMaterializationRepository[] {
-    const repositoryIds = fullReplacement
-      ? this.deps.store.facts.entries(root, "repository").map(({ key }) => key)
-      : explicitlyAffected
-        ? [...new Set(explicitlyAffected)]
-        : draft
-          ? this.materializationDraftRepositoryIds(draft)
-          : [];
     if (fullReplacement) {
-      const present = repositoryIds
-        .sort(compareUtf16CodeUnits)
-        .map((repositoryId) => this.deps.store.facts.member(root, repositoryId))
+      const present = this.deps.store.facts
+        .entries(root, "repository")
+        .map(({ key, value }) => {
+          const member = this.deps.store.facts.memberByStateId(value);
+          if (!member || member.repositoryId !== key) {
+            throw new SemanticVcsError(
+              "IntegrityFailure",
+              `Publication repository index ${key} references an unrealized state`
+            );
+          }
+          return member;
+        })
         .filter(
           (repository): repository is Extract<WorkspaceRepositoryMember, { presence: "present" }> =>
             repository?.presence === "present"
-        );
+        )
+        .sort((left, right) => compareUtf16CodeUnits(left.repositoryId, right.repositoryId));
       const contentRoots = new Map(
         present.flatMap((repository) => {
           const contentRoot = this.deps.store.materializedRepositoryContentRoot(
             root,
-            repository.repositoryId,
+            repository.repositoryId
           );
-          return contentRoot
-            ? [[repository.repositoryId, contentRoot] as const]
-            : [];
-        }),
+          return contentRoot ? [[repository.repositoryId, contentRoot] as const] : [];
+        })
       );
       const snapshots = this.deps.store.facts.materializationSnapshotsAt(
         root,
-        present.filter(
-          (repository) => !contentRoots.has(repository.repositoryId),
-        ),
+        present.filter((repository) => !contentRoots.has(repository.repositoryId))
       );
       return present.map((repository) => {
         const contentRoot = contentRoots.get(repository.repositoryId);
@@ -9313,13 +9312,16 @@ export class SemanticWorkspace {
         };
       });
     }
+    const repositoryIds = explicitlyAffected
+      ? [...new Set(explicitlyAffected)]
+      : draft
+        ? this.materializationDraftRepositoryIds(draft)
+        : [];
     return repositoryIds
       .sort(compareUtf16CodeUnits)
       .flatMap((key): WorkspaceMaterializationRepository[] => {
         const member = this.deps.store.facts.member(root, key);
-        const previous = previousRoot
-          ? this.deps.store.facts.member(previousRoot, key)
-          : null;
+        const previous = previousRoot ? this.deps.store.facts.member(previousRoot, key) : null;
         if (!member) {
           if (previousRoot !== null && previous?.presence === "present") {
             return [

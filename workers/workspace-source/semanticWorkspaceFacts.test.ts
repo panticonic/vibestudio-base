@@ -17,8 +17,124 @@ import {
 } from "@workspace/vcs-engine";
 import { createSemanticVcsSchema } from "./semanticVcsSchema.js";
 import { SemanticWorkspaceFacts } from "./semanticWorkspaceFacts.js";
+import { SemanticVcsStore } from "./semanticVcsStore.js";
+
+async function enumerationFixture(fileCount: number) {
+  const sql = await createInMemorySql();
+  createSemanticVcsSchema(sql);
+  const store = new SemanticVcsStore(sql, () => "2026-10-14T00:00:00.000Z");
+  const repositories = Array.from({ length: 3 }, (_, repository) => ({
+    repoPath: `packages/repository-${repository}`,
+    files: Array.from({ length: repository === 0 ? fileCount : 1 }, (_, file) => ({
+      path: `file-${file}.ts`,
+      contentHash: "a".repeat(64),
+      mode: 0o100644,
+      contentKind: "text" as const,
+      byteLength: 1,
+      coordinateExtent: 1,
+    })),
+  }));
+  const context = store.initializeWorkspace("context:enumeration", "command:enumeration", {
+    source: { sourceUri: "fixture://enumeration", snapshotRevision: "v1" },
+    repositories,
+  });
+  return {
+    sql,
+    store,
+    repositories,
+    root: context.committed.workspaceFactRootId,
+  };
+}
 
 describe("SemanticWorkspaceFacts", () => {
+  it("enumerates repositories with file-count-independent radix SQL reads", async () => {
+    const nodeReadCounts = [];
+    for (const fileCount of [1, 1000]) {
+      const fixture = await enumerationFixture(fileCount);
+      const reads = vi.spyOn(fixture.sql, "exec");
+      const entries = fixture.store.facts.entries(fixture.root, "repository");
+      const members = entries.map(({ key, value }) => {
+        const member = fixture.store.facts.memberByStateId(value);
+        expect(member?.repositoryId).toBe(key);
+        return member;
+      });
+      expect(members.map((member) => member?.presence)).toEqual(["present", "present", "present"]);
+      expect(
+        members.map((member) => (member && "repoPath" in member ? member.repoPath : null)).sort()
+      ).toEqual(fixture.repositories.map(({ repoPath }) => repoPath));
+      const radixReads = reads.mock.calls.filter(([query]) =>
+        /FROM gad_persistent_radix_(?:nodes|edges)/u.test(query)
+      ).length;
+      nodeReadCounts.push(radixReads);
+      expect(radixReads).toBeLessThan(40);
+      reads.mockClear();
+      fixture.store.recordInitializedRepositoryContentRoots({
+        workspaceFactRootId: fixture.root,
+        provenanceId: "fixture:enumeration",
+        repositories: fixture.repositories.map(({ repoPath }) => ({
+          repoPath,
+          contentRoot: `state:${"b".repeat(64)}`,
+        })),
+      });
+      expect(
+        reads.mock.calls.filter(([query]) =>
+          /FROM gad_persistent_radix_(?:nodes|edges)/u.test(query)
+        )
+      ).toHaveLength(radixReads);
+      reads.mockRestore();
+      fixture.store.assertIntegrity();
+    }
+    expect(nodeReadCounts[1]).toBe(nodeReadCounts[0]);
+  });
+
+  it("requires complete kind counts while keeping full-root corruption visible to audits", async () => {
+    const { sql, store, root } = await enumerationFixture(20);
+    const repositories = store.facts.entries(root, "repository");
+    expect(store.facts.entries(root, "file")).toHaveLength(22);
+    expect(store.facts.entries(root, "live-path")).toHaveLength(3);
+    sql.exec(
+      `UPDATE vcs_workspace_fact_roots SET repository_count = 4 WHERE workspace_fact_root_id = ?`,
+      root
+    );
+    expect(() => store.facts.entries(root, "repository")).toThrow(/count disagrees/u);
+    sql.exec(
+      `UPDATE vcs_workspace_fact_roots SET repository_count = 3 WHERE workspace_fact_root_id = ?`,
+      root
+    );
+    // A repository read has no dependency on the file namespace, but the
+    // explicit full-root audit must still reject its damaged leaf.
+    const leaf = sql
+      .exec(`SELECT node_id FROM gad_persistent_radix_edges WHERE entry_key LIKE 'file:%' LIMIT 1`)
+      .toArray()[0]?.["node_id"];
+    if (!leaf) throw new Error("Fixture has no aggregate file leaf");
+    sql.exec(`DELETE FROM gad_persistent_radix_edges WHERE node_id = ?`, leaf);
+    expect(store.facts.entries(root, "repository")).toEqual(repositories);
+    expect(() => store.facts.assertIndexParity(root)).toThrow(
+      /leaf header or edges are malformed/u
+    );
+  });
+
+  it("retains repository identity binding when recording prepared content roots", async () => {
+    const { sql, store, repositories, root } = await enumerationFixture(1);
+    const entry = store.facts.entries(root, "repository")[0];
+    if (!entry) throw new Error("Fixture has no repository fact");
+    sql.exec(
+      `UPDATE vcs_repository_states SET repository_id = ? WHERE repository_state_id = ?`,
+      "cross-owned-repository",
+      entry.value
+    );
+    expect(() =>
+      store.recordInitializedRepositoryContentRoots({
+        workspaceFactRootId: root,
+        provenanceId: "fixture:enumeration",
+        repositories: repositories.map(({ repoPath }) => ({
+          repoPath,
+          contentRoot: `state:${"b".repeat(64)}`,
+        })),
+      })
+    ).toThrow(/Initialized repository index .* references an unrealized state/u);
+  });
+
   it("persists and reads one normalized workspace fact root", async () => {
     const sql = await createInMemorySql();
     createSemanticVcsSchema(sql);

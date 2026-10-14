@@ -1426,7 +1426,16 @@ export class SemanticVcsStore {
     }
     const members = this.facts
       .entries(input.workspaceFactRootId, "repository")
-      .map(({ key }) => this.facts.member(input.workspaceFactRootId, key))
+      .map(({ key, value }) => {
+        const member = this.facts.memberByStateId(value);
+        if (!member || member.repositoryId !== key) {
+          throw new SemanticVcsError(
+            "IntegrityFailure",
+            `Initialized repository index ${key} references an unrealized state`
+          );
+        }
+        return member;
+      })
       .filter(
         (member): member is Extract<NonNullable<typeof member>, { presence: "present" }> =>
           member?.presence === "present"

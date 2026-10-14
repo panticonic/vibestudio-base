@@ -710,17 +710,20 @@ export class SemanticWorkspaceFacts {
     workspaceFactRootId: string,
     indexKind: WorkspaceAggregateIndexKind
   ): Array<{ key: string; value: string }> {
-    const root = this.root(workspaceFactRootId);
-    const prefix = `${indexKind}:`;
-    return this.walkEntries(
-      "workspace-fact",
-      "utf16",
-      root.rootNodeId,
-      root.entryCount,
-      workspaceFactRootId
-    )
-      .filter((entry) => entry.key.startsWith(prefix))
-      .map((entry) => ({ key: entry.key.slice(prefix.length), value: entry.value }));
+    // Complete enumeration still follows only this fact-kind's lexical
+    // namespace. An unrelated file subtree is not a dependency of a
+    // repository read; full-root validation belongs to assertIndexParity.
+    const page = this.page(workspaceFactRootId, indexKind, {
+      limit: Number.MAX_SAFE_INTEGER,
+    });
+    if (page.next !== null || page.values.length !== page.total) {
+      throw new SemanticWorkspaceFactsError(
+        "IndexMismatch",
+        `Workspace ${indexKind} count disagrees with its committed radix`,
+        [workspaceFactRootId]
+      );
+    }
+    return page.values;
   }
 
   page(
@@ -853,13 +856,32 @@ export class SemanticWorkspaceFacts {
 
   assertIndexParity(workspaceFactRootId: string): void {
     const root = this.root(workspaceFactRootId);
-    const repositories = this.entries(workspaceFactRootId, "repository");
-    const paths = this.entries(workspaceFactRootId, "live-path");
-    const files = this.entries(workspaceFactRootId, "file");
+    // Audit every aggregate node once, including namespaces that an ordinary
+    // kind-scoped read deliberately does not visit.
+    const entries = this.walkEntries(
+      "workspace-fact",
+      "utf16",
+      root.rootNodeId,
+      root.entryCount,
+      workspaceFactRootId
+    );
+    const kindEntries = (kind: WorkspaceAggregateIndexKind) => {
+      const prefix = `${kind}:`;
+      return entries
+        .filter((entry) => entry.key.startsWith(prefix))
+        .map((entry) => ({
+          key: entry.key.slice(prefix.length),
+          value: entry.value,
+        }));
+    };
+    const repositories = kindEntries("repository");
+    const paths = kindEntries("live-path");
+    const files = kindEntries("file");
     if (
       repositories.length !== root.repositoryCount ||
       paths.length !== root.livePathCount ||
-      files.length !== root.fileCount
+      files.length !== root.fileCount ||
+      repositories.length + paths.length + files.length !== root.entryCount
     ) {
       throw new SemanticWorkspaceFactsError(
         "IndexMismatch",
