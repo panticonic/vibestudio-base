@@ -7,7 +7,7 @@
 import type { RpcClient } from "@vibestudio/rpc";
 
 /** The RPC surface the chat uses: an authenticated client of the workspace gateway. */
-export type ChatRpc = Pick<RpcClient, "call" | "stream" | "on" | "selfId" | "status" | "onStatusChange">;
+export type ChatRpc = Pick<RpcClient, "call" | "stream" | "on" | "selfId" | "status" | "onStatusChange" | "onRecovery">;
 
 /**
  * Durable per-session state held server-side for this terminal session.

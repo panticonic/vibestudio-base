@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { MethodExecutionContext } from "@workspace/pubsub";
 import type { ChatRpc, SessionStateStore, TerminalChatBootstrap } from "./bootstrap.js";
 import { ChatRuntime } from "./chatRuntime.js";
@@ -28,10 +28,15 @@ type EventListener = (event: { payload: unknown }) => void;
 function fakeRpc(handlers: Record<string, (args: unknown[]) => unknown> = {}) {
   const events = new Map<string, EventListener>();
   const calls: Array<{ method: string; args: unknown[] }> = [];
+  const recoveryHandlers = new Set<Parameters<ChatRpc["onRecovery"]>[0]>();
   const rpc = {
     selfId: "code:terminal-chat",
     status: () => "connected" as const,
     onStatusChange: () => () => {},
+    onRecovery: (handler: Parameters<ChatRpc["onRecovery"]>[0]) => {
+      recoveryHandlers.add(handler);
+      return () => recoveryHandlers.delete(handler);
+    },
     on: (event: string, listener: EventListener) => {
       events.set(event, listener);
       return () => events.delete(event);
@@ -47,7 +52,15 @@ function fakeRpc(handlers: Record<string, (args: unknown[]) => unknown> = {}) {
       throw new Error("no streams in this test");
     },
   };
-  return { rpc: rpc as unknown as ChatRpc, calls, emit: (event: string, payload: unknown) => events.get(event)?.({ payload }) };
+  return {
+    rpc: rpc as unknown as ChatRpc,
+    calls,
+    recoveryHandlers,
+    emitRecovery: (kind: Parameters<Parameters<ChatRpc["onRecovery"]>[0]>[0]) => {
+      for (const handler of recoveryHandlers) handler(kind);
+    },
+    emit: (event: string, payload: unknown) => events.get(event)?.({ payload }),
+  };
 }
 
 function boot(state = new MemoryState(), rpc = fakeRpc().rpc): TerminalChatBootstrap {
@@ -73,6 +86,18 @@ function start(state = new MemoryState()) {
 }
 
 describe("ChatRuntime", () => {
+  it("forwards the bootstrap's recovery lifecycle to its conversation host", async () => {
+    const fixture = fakeRpc();
+    const runtime = new ChatRuntime(boot(new MemoryState(), fixture.rpc));
+    runtimes.push(runtime);
+    runtime.start();
+    expect(fixture.recoveryHandlers.size).toBe(1);
+    fixture.emitRecovery("resubscribe");
+    runtime.dispose();
+    await vi.waitFor(() => expect(fixture.recoveryHandlers.size).toBe(0));
+    fixture.emitRecovery("cold-recover");
+  });
+
   it("mints a conversation in the session's context and opens a session on it", async () => {
     const state = new MemoryState();
     const runtime = start(state);

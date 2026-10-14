@@ -1,3 +1,4 @@
+import { createRpcClient } from "@vibestudio/rpc";
 import { schemaRpcMock } from "@vibestudio/rpc/test-utils";
 import { durableObjectServiceFixture } from "@vibestudio/service-schemas/test-utils";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -8,6 +9,7 @@ import {
 } from "@workspace/model-catalog/catalog";
 import { ChatHostController } from "./chat-host-controller.js";
 import type {
+  ChatHostConnectionPort,
   ChatHostPorts,
   ChatHostState,
   ChatHostStatePatch,
@@ -83,6 +85,7 @@ function harness(options: {
   wire?: Wire;
   getSettings?: () => Promise<ModelSettingsSnapshot>;
   listSources?: () => Promise<unknown>;
+  connection?: ChatHostConnectionPort;
 } = {}) {
   const state = new FakeState(options.state);
   const participants = options.participants ?? [];
@@ -155,6 +158,7 @@ function harness(options: {
     for (const handler of handlers.get(event) ?? []) handler();
   };
   const ports: ChatHostPorts = {
+    connection: options.connection,
     onWorkspaceEvent: (event, handler) => {
       const set = handlers.get(event) ?? new Set();
       handlers.set(event, set);
@@ -214,6 +218,54 @@ describe("ChatHostController bootstrap", () => {
 });
 
 describe("ChatHostController model settings", () => {
+  it("refreshes through the actual RPC recovery observer without a status transition", async () => {
+    const lifetime = new AbortController();
+    const recoveryHandlers = new Set<
+      Parameters<ChatHostConnectionPort["onRecovery"]>[0]
+    >();
+    const connection = createRpcClient({
+      selfId: "panel:chat-host",
+      lifetime: lifetime.signal,
+      transport: {
+        send: async () => {},
+        onMessage: () => () => {},
+        status: () => "connected",
+      },
+      onRecovery: (handler) => {
+        recoveryHandlers.add(handler);
+        return () => recoveryHandlers.delete(handler);
+      },
+    });
+    const getSettings = vi.fn(async () => settings());
+    const h = start(
+      harness({ state: { channelName: "c" }, getSettings, connection }),
+    );
+    try {
+      await vi.waitFor(() =>
+        expect(h.controller.getSnapshot().firstAgentModelPreflight).toBe(
+          "ready",
+        ),
+      );
+      expect(getSettings).toHaveBeenCalledTimes(1);
+      for (const handler of recoveryHandlers) handler("resubscribe");
+      await vi.waitFor(() => expect(getSettings).toHaveBeenCalledTimes(2));
+      await vi.waitFor(() =>
+        expect(h.controller.getSnapshot().firstAgentModelPreflight).toBe(
+          "ready",
+        ),
+      );
+      expect(connection.status()).toBe("connected");
+      h.controller.dispose();
+      for (const handler of recoveryHandlers) handler("cold-recover");
+      await Promise.resolve();
+      expect(getSettings).toHaveBeenCalledTimes(2);
+    } finally {
+      h.controller.dispose();
+      lifetime.abort();
+    }
+    expect(recoveryHandlers.size).toBe(0);
+  });
+
   it("shares one discovery flight and derives the first-agent preflight", async () => {
     let resolve!: (value: ModelSettingsSnapshot) => void;
     const getSettings = vi.fn(

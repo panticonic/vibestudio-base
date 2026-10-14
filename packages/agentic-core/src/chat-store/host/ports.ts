@@ -57,8 +57,8 @@ export interface ChatHostRpc {
   call: RpcCaller["call"];
 }
 
-/** Transport status of the rpc connection, when the host has one that can drop. */
-export type ChatHostConnectionPort = Pick<RpcClient, "status" | "onStatusChange">;
+/** Actual RPC transport status and completed recovery-generation observations. */
+export type ChatHostConnectionPort = Pick<RpcClient, "status" | "onStatusChange" | "onRecovery">;
 
 export interface ChatHostNotification {
   type: "info" | "warning" | "error";
@@ -85,7 +85,7 @@ export interface ChatHostPorts {
   state: StateArgsPort;
   /** Resolve once an exact workspace review is decided (approve or deny). */
   waitForReview?: WorkspaceReviewWaiter;
-  /** Rpc transport status; model discovery is re-read after a reconnect. */
+  /** RPC transport lifecycle; model discovery is re-read after generation recovery. */
   connection?: ChatHostConnectionPort;
   /**
    * Surface a failure of a user action that no snapshot field renders (e.g.
