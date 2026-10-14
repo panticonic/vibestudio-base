@@ -2,6 +2,7 @@ import { mainRpcMethod } from "@vibestudio/service-schemas/mainRpc";
 import type { ApiKeyAuth, Provider } from "@panticonic/pi-ai";
 import { builtinModels } from "@panticonic/pi-ai/providers/all";
 import type { Context, JsonValue } from "@panticonic/pi-chord";
+import { GenerationTask, LiveDoc } from "@panticonic/pi-durable";
 import type {
   ConversationId,
   Harness,
@@ -83,11 +84,6 @@ const LOCAL_PROVIDER = "local";
 export interface NativeModelProviderHost {
   /** Exact test-only Pi provider enabled by the host only under TEST_MODE. */
   readonly deterministicTestProviderId?: string;
-  readonly notifyCredentialMissing?: (
-    request: ModelRequestTarget,
-    api: ModelRequestApi,
-    context: Context,
-  ) => Promise<void>;
   readonly rpcForRequest: (
     request: ModelRequestTarget,
     api: ModelRequestApi,
@@ -243,7 +239,6 @@ export function createProtectedModelProvider(
       resolution = await resolve();
       if ("status" in resolution) return resolution;
       if (resolution.credential === null) {
-        await host.notifyCredentialMissing?.(request, api, context);
         const wait: ModelRequestWait = {
           status: "waiting",
           condition: {
@@ -291,22 +286,40 @@ export function createProtectedModelProvider(
   };
 }
 
-/** Called by the authenticated owner only after credentials.connect succeeds. This is a checkup hint, never a credential/result. */
+/** Append an owner-authenticated checkup hint, never a credential/result. Return whether
+ * it satisfies the current generation's credential wait, before scheduling resumes it. */
 export async function notifyModelCredentialChange(
   harness: Harness,
   owner: AgentExecutionOwner,
   conversationId: ConversationId,
   providerId: string,
   context: Context,
-): Promise<void> {
+): Promise<boolean> {
   const retained = await retainedAgentExecutionOwner(harness, context);
   if (canonicalJson(retained) !== canonicalJson(owner))
     throw new Error("Credential change belongs to a retired execution owner");
   const kind = credentialChangeKind(providerId);
-  await harness.commit(async (tx) => {
+  return harness.commit(async (tx) => {
     if (!(await tx.conversation(conversationId)))
       throw new Error("Credential change has no existing owned conversation");
-    await tx.appendEntry(conversationId, { kind, data: { providerId } });
+    const live = await tx.doc(LiveDoc, conversationId);
+    const task = live.run ? await tx.task(live.run.taskId) : undefined;
+    const entry = await tx.appendEntry(conversationId, {
+      kind,
+      data: { providerId },
+    });
+    return Boolean(
+      !live.run?.interruption &&
+      task?.kind === GenerationTask.definition.name &&
+      task.conversationId === conversationId &&
+      !task.abortRequested &&
+      task.state.status === "waiting" &&
+      task.state.mode === "run" &&
+      task.state.condition.kind === "input" &&
+      task.state.condition.conversationId === conversationId &&
+      task.state.condition.kinds.includes(kind) &&
+      entry.id > task.state.condition.after,
+    );
   }, context);
 }
 

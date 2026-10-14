@@ -1,9 +1,13 @@
 import type { RpcCaller } from "@vibestudio/rpc";
-import { TEST_MODEL_PROVIDER_ID } from "@workspace/model-catalog/catalog";
+import {
+  canonicalModelRef,
+  TEST_MODEL_PROVIDER_ID,
+} from "@workspace/model-catalog/catalog";
 import type { ChannelEndpoint } from "@workspace/pubsub";
 import {
   AGENTIC_EVENT_PAYLOAD_KIND,
   AGENTIC_PROTOCOL_VERSION,
+  type AgenticEvent,
 } from "@workspace/agentic-protocol";
 import { observeNativeModelStream } from "./native-model-stream.js";
 import type { Api, Model, Models, Provider } from "@panticonic/pi-ai";
@@ -13,6 +17,8 @@ import {
   createRegistry,
   configure,
   defineExtension,
+  GenerationTask,
+  LiveDoc,
   type AgentChange,
   type Conversation,
   type ConversationId,
@@ -58,6 +64,8 @@ import {
   hostProtectedModelProvider,
 } from "./native-model-provider.js";
 import { retainedAgentExecutionOwner } from "./native-agent-session.js";
+import { nativeTaskModelSource } from "./native-invocation-source.js";
+import { reprepareNativeCredentialGeneration } from "./native-credential-preparation.js";
 
 /** Product configuration captures prompt, tools and channel presentation together. */
 export interface NativeChannelConfiguration {
@@ -99,6 +107,17 @@ export abstract class NativeChannelOwner<
     }
   >();
   private readonly nativePublications = createNativeChannelPublication({
+    credentialWaitEvent: (channelId, wait, idempotencyKey, context) =>
+      this.runDetached(() =>
+        this.nativeCredentialWaitEvent(
+          channelId,
+          wait.taskId,
+          wait.providerId,
+          wait.modelRef,
+          idempotencyKey,
+          context,
+        ),
+      ),
     onSuccessfulAnswer: (modelRef) =>
       this.runDetached(() => this.onNativeSuccessfulAnswer(modelRef)),
     publish: async (channelId, participantId, event, idempotencyKey) =>
@@ -150,11 +169,14 @@ export abstract class NativeChannelOwner<
     return execution;
   }
 
-  protected abstract notifyNativeModelCredentialMissing(
-    request: ModelRequestTarget,
-    api: ModelRequestApi,
+  protected abstract nativeCredentialWaitEvent(
+    channelId: string,
+    taskId: TaskId,
+    providerId: string,
+    modelRef: string,
+    idempotencyKey: string,
     context: Context,
-  ): Promise<void>;
+  ): Promise<AgenticEvent<"ui.inline_rendered">>;
 
   protected async observeNativeModelConnection(
     _request: ModelRequestTarget,
@@ -182,7 +204,9 @@ export abstract class NativeChannelOwner<
   }
 
   private isDeterministicTestMode(): boolean {
-    return (this.env as Record<string, unknown>)["VIBESTUDIO_TEST_MODE"] === "1";
+    return (
+      (this.env as Record<string, unknown>)["VIBESTUDIO_TEST_MODE"] === "1"
+    );
   }
 
   protected selectedNativeModelDescriptor(
@@ -216,6 +240,58 @@ export abstract class NativeChannelOwner<
       },
       BACKGROUND_CONTEXT,
     );
+  }
+
+  /** Settings may supersede preparation awaiting credentials, before it produced a response. */
+  protected async credentialWaitingNativeGeneration(
+    channelId: string,
+    selectedModelRef: string,
+  ): Promise<TaskId | null> {
+    const conversation =
+      await this.admittedNativeChannelConversation(channelId);
+    if (!conversation) return null;
+    return conversation.commit(async (tx) => {
+      const run = (await tx.doc(LiveDoc, conversation.id)).run;
+      if (!run || run.interruption) return null;
+      const task = await tx.task(run.taskId);
+      if (
+        !task ||
+        task.kind !== GenerationTask.definition.name ||
+        task.abortRequested ||
+        task.state.status !== "waiting" ||
+        task.state.mode !== "run" ||
+        task.state.condition.kind !== "input" ||
+        task.state.condition.conversationId !== conversation.id
+      )
+        return null;
+      const source = await nativeTaskModelSource(tx, task);
+      return source?.operation.kind === "model" &&
+        canonicalModelRef(
+          source.operation.providerId,
+          source.operation.modelId,
+        ) !== selectedModelRef &&
+        task.state.condition.kinds.includes(
+          `vibestudio.model-credential-change:${source.operation.providerId}`,
+        )
+        ? task.id
+        : null;
+    }, BACKGROUND_CONTEXT);
+  }
+
+  protected async reprepareNativeGeneration(
+    channelId: string,
+    taskId: TaskId,
+  ): Promise<boolean> {
+    const conversation =
+      await this.admittedNativeChannelConversation(channelId);
+    return conversation
+      ? reprepareNativeCredentialGeneration(
+          this.admittedAgentSession(),
+          conversation,
+          taskId,
+          BACKGROUND_CONTEXT,
+        )
+      : false;
   }
 
   protected async prepareNativeChannelDefinition(
@@ -353,8 +429,6 @@ export abstract class NativeChannelOwner<
           egressFetch: fetch,
           waitForAuthority: (request, api, info, invocation, context) =>
             this.waitForAgentAuthority(request, api, info, invocation, context),
-          notifyCredentialMissing: (request, api, context) =>
-            this.notifyNativeModelCredentialMissing(request, api, context),
         })(request, api, context);
         if (connection.status !== "ready") return connection;
         let observed: ModelRequestConnection;

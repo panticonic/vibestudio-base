@@ -17,6 +17,7 @@ import {
   type RunningTask,
   type TaskId,
   type TaskRuntime,
+  type TaskWaitCondition,
   type SubmissionId,
   type Tx,
   type ToolExecutionResult,
@@ -59,19 +60,33 @@ import {
   type NativeWaitNotice,
 } from "./native-wait-presentation.js";
 import { nativeAutomationPresentation } from "./native-automation-runs.js";
+import { nativeTaskModelSource } from "./native-invocation-source.js";
+import { nativeInvocationId } from "@vibestudio/service-schemas/nativeInvocation";
+
+type PublicationItem =
+  | { event: JsonValue; key: string }
+  | {
+      credentialWait: {
+        taskId: TaskId;
+        providerId: string;
+        modelRef: string;
+        condition: Extract<TaskWaitCondition, { kind: "input" }>;
+      };
+      key: string;
+    };
 
 interface PublicationInput {
   channelId: string;
   participantId: string;
   previousTask: TaskId | null;
-  events: { event: JsonValue; key: string }[];
+  events: PublicationItem[];
   terminal: JsonValue | null;
   terminalCreatedAt: string | null;
 }
 interface PublicationCheckpoint {
   phase: "publish";
   index: number;
-  events: { event: JsonValue; key: string }[] | null;
+  events: PublicationItem[] | null;
 }
 function missingOrderedPredecessor(
   task: {
@@ -91,7 +106,7 @@ type NativeChannelProjectionState = JsonObject & {
   binding: JsonValue;
   /** Latest task for each actual channel/participant destination. */
   tails: Record<string, TaskId | null>;
-}
+};
 const Projection = defineDoc<NativeChannelProjectionState>({
   kind: "vibestudio.native-channel-projection",
   version: 3,
@@ -245,7 +260,12 @@ export async function waitForNativeAnswerPublication(
         throw new Error(
           "Native answer publication lost its exact canonical task",
         );
-      const event = agenticEventSchema.parse(input.events[0].event);
+      const item = input.events[0];
+      if (!item || !("event" in item))
+        throw new Error(
+          "Native answer debt references a credential presentation",
+        );
+      const event = agenticEventSchema.parse(item.event);
       if (
         event.kind !== "message.completed" ||
         event.causality?.messageId !== messageId ||
@@ -291,7 +311,8 @@ async function waitForPublicationChain(
   const binding = answerTask.input as unknown as PublicationInput;
   let current = answerTask;
   while (current.state.status !== "terminal") {
-    const previousId = (current.input as unknown as PublicationInput).previousTask;
+    const previousId = (current.input as unknown as PublicationInput)
+      .previousTask;
     if (previousId === null) break;
     if (seen.has(previousId))
       throw new Error("Native publication has cyclic ordered debt");
@@ -404,6 +425,13 @@ export async function readNativeChannelProjection(
 export function createNativeChannelPublication(options: {
   /** Joined with canonical final-answer publication; replay must be idempotent. */
   readonly onSuccessfulAnswer?: (modelRef: string) => Promise<void>;
+  /** Ordered publication debt admitted only with the actual credential wait. */
+  readonly credentialWaitEvent?: (
+    channelId: string,
+    wait: { taskId: TaskId; providerId: string; modelRef: string },
+    idempotencyKey: string,
+    context: Context,
+  ) => Promise<AgenticEvent<"ui.inline_rendered">>;
   readonly publish: (
     channelId: string,
     participantId: string,
@@ -437,8 +465,7 @@ export function createNativeChannelPublication(options: {
           if (abort) {
             await waitForPublicationChain(rt, predecessor, context);
             predecessor = await rt.waitForTask(previous.id, context);
-          }
-          else {
+          } else {
             await rt.commit(
               () => ({
                 status: "waiting",
@@ -482,7 +509,11 @@ export function createNativeChannelPublication(options: {
                 result["entryId"] as EntryRecord["id"],
                 context,
               );
-            if (publication.source.operation.kind !== "model" && publication.source.operation.kind !== "nested-tool" && !entry)
+            if (
+              publication.source.operation.kind !== "model" &&
+              publication.source.operation.kind !== "nested-tool" &&
+              !entry
+            )
               throw new Error(
                 "Native tool terminal has no canonical result entry",
               );
@@ -508,56 +539,90 @@ export function createNativeChannelPublication(options: {
       while (index < preparedEvents.length) {
         const item = preparedEvents[index];
         if (!item) throw new Error("Native publication has invalid progress");
-        const event = agenticEventSchema.parse(
-          detached(item.event),
-        ) as AgenticEvent;
-        const accepted = await options.publish(
-          task.input.channelId,
-          task.input.participantId,
-          event,
-          item.key,
-          context,
-        );
-        const acceptedByChannel =
-          event.kind === "message.read"
-            ? "recorded" in accepted && accepted.recorded === true
-            : "id" in accepted &&
-              Number.isSafeInteger(accepted.id) &&
-              (accepted.id ?? -1) >= 0;
-        if (!acceptedByChannel)
-          throw new Error(
-            "Native publication lacks canonical channel acceptance",
-          );
-        const answer = event.kind === "message.completed"
-          ? eventKindSchemas["message.completed"].parse(event)
-          : undefined;
-        if (
-          options.onSuccessfulAnswer &&
-          answer?.payload.role === "assistant" &&
-          answer.payload.tier === "primary" &&
-          answer.payload.outcome === "completed" &&
-          !answer.payload.failure
-        ) {
-          const entryId = answer.payload.metadata?.["nativeEntryId"];
-          if (typeof entryId !== "number")
-            throw new Error("Successful native answer has no original entry");
-          const entry = await rt.entry(entryId as EntryId, context);
-          const message = entry?.model?.find(
-            (_message, messageIndex) =>
-              `native:${entry.conversationId}:${entry.id}:${messageIndex}` ===
-              event.causality?.messageId,
-          );
+        let event: AgenticEvent | undefined;
+        if ("credentialWait" in item) {
+          const waiting = await rt.getTask(item.credentialWait.taskId, context);
           if (
-            !message ||
-            message.role !== "assistant" ||
-            assistantOutcome(message) !== "completed"
-          )
-            throw new Error(
-              "Successful native answer lost its original model response",
-            );
-          await options.onSuccessfulAnswer(
-            canonicalModelRef(message.provider, message.model),
+            waiting &&
+            !waiting.abortRequested &&
+            waiting.state.status === "waiting" &&
+            waiting.state.mode === "run" &&
+            waiting.state.condition.kind === "input" &&
+            waiting.state.condition.conversationId === waiting.conversationId &&
+            canonicalJson(waiting.state.condition) ===
+              canonicalJson(item.credentialWait.condition) &&
+            waiting.state.condition.kinds.includes(
+              `vibestudio.model-credential-change:${item.credentialWait.providerId}`,
+            )
+          ) {
+            if (!options.credentialWaitEvent)
+              throw new Error(
+                "Native credential wait has no product presentation",
+              );
+            event = agenticEventSchema.parse(
+              await options.credentialWaitEvent(
+                task.input.channelId,
+                item.credentialWait,
+                item.key,
+                context,
+              ),
+            ) as AgenticEvent;
+          }
+        } else {
+          event = agenticEventSchema.parse(
+            detached(item.event),
+          ) as AgenticEvent;
+        }
+        if (event) {
+          const accepted = await options.publish(
+            task.input.channelId,
+            task.input.participantId,
+            event,
+            item.key,
+            context,
           );
+          const acceptedByChannel =
+            event.kind === "message.read"
+              ? "recorded" in accepted && accepted.recorded === true
+              : "id" in accepted &&
+                Number.isSafeInteger(accepted.id) &&
+                (accepted.id ?? -1) >= 0;
+          if (!acceptedByChannel)
+            throw new Error(
+              "Native publication lacks canonical channel acceptance",
+            );
+          const answer =
+            event.kind === "message.completed"
+              ? eventKindSchemas["message.completed"].parse(event)
+              : undefined;
+          if (
+            options.onSuccessfulAnswer &&
+            answer?.payload.role === "assistant" &&
+            answer.payload.tier === "primary" &&
+            answer.payload.outcome === "completed" &&
+            !answer.payload.failure
+          ) {
+            const entryId = answer.payload.metadata?.["nativeEntryId"];
+            if (typeof entryId !== "number")
+              throw new Error("Successful native answer has no original entry");
+            const entry = await rt.entry(entryId as EntryId, context);
+            const message = entry?.model?.find(
+              (_message, messageIndex) =>
+                `native:${entry.conversationId}:${entry.id}:${messageIndex}` ===
+                event.causality?.messageId,
+            );
+            if (
+              !message ||
+              message.role !== "assistant" ||
+              assistantOutcome(message) !== "completed"
+            )
+              throw new Error(
+                "Successful native answer lost its original model response",
+              );
+            await options.onSuccessfulAnswer(
+              canonicalModelRef(message.provider, message.model),
+            );
+          }
         }
         index++;
         const acknowledged = index;
@@ -630,14 +695,28 @@ export function createNativeChannelPublication(options: {
   }
   return {
     task,
-    async enqueueStart(tx: Tx, publication: NativeInvocationStartPublication): Promise<TaskId> {
-      const conversationId = publication.source.task.conversationId as ConversationId;
-      return enqueue(tx, conversationId, {
-        channelId: publication.source.owner.channelId,
-        participantId: publication.source.owner.runtimeId,
-        actor: publication.start.actor,
-        policy: "all",
-      }, [{ event: detached(publication.start) as unknown as JsonValue, key: publication.startIdempotencyKey }]);
+    async enqueueStart(
+      tx: Tx,
+      publication: NativeInvocationStartPublication,
+    ): Promise<TaskId> {
+      const conversationId = publication.source.task
+        .conversationId as ConversationId;
+      return enqueue(
+        tx,
+        conversationId,
+        {
+          channelId: publication.source.owner.channelId,
+          participantId: publication.source.owner.runtimeId,
+          actor: publication.start.actor,
+          policy: "all",
+        },
+        [
+          {
+            event: detached(publication.start) as unknown as JsonValue,
+            key: publication.startIdempotencyKey,
+          },
+        ],
+      );
     },
     async bind(
       tx: Tx,
@@ -667,6 +746,46 @@ export function createNativeChannelPublication(options: {
       state.binding = binding as unknown as JsonValue;
     },
     prepareCommit: (async (tx, staged) => {
+      for (const task of staged.tasks) {
+        if (
+          task.abortRequested ||
+          task.state.status !== "waiting" ||
+          task.state.mode !== "run" ||
+          task.state.condition.kind !== "input" ||
+          task.state.condition.conversationId !== task.conversationId ||
+          !task.state.condition.kinds.some((kind) =>
+            kind.startsWith("vibestudio.model-credential-change:"),
+          )
+        )
+          continue;
+        const source = await nativeTaskModelSource(tx, task);
+        if (
+          source?.operation.kind !== "model" ||
+          !task.state.condition.kinds.includes(
+            `vibestudio.model-credential-change:${source.operation.providerId}`,
+          )
+        )
+          continue;
+        const binding = projection(
+          (await tx.doc(Projection, task.conversationId)).binding,
+        );
+        if (!binding)
+          throw new Error("Native credential wait has no channel projection");
+        await enqueue(tx, task.conversationId, binding, [
+          {
+            credentialWait: {
+              taskId: task.id,
+              providerId: source.operation.providerId,
+              modelRef: canonicalModelRef(
+                source.operation.providerId,
+                source.operation.modelId,
+              ),
+              condition: detached(task.state.condition),
+            },
+            key: `${nativeInvocationId(source)}:credential-wait:${task.state.condition.after}`,
+          },
+        ]);
+      }
       await prepareNativeChannelReadReceipts(
         tx,
         staged.submissions,
@@ -901,9 +1020,10 @@ export function createNativeChannelPublication(options: {
                         : "work_failed",
                     ...(input.detail !== undefined
                       ? {
-                          summary: typeof input.detail === "string"
-                            ? input.detail
-                            : canonicalJson(input.detail),
+                          summary:
+                            typeof input.detail === "string"
+                              ? input.detail
+                              : canonicalJson(input.detail),
                         }
                       : {}),
                   }
@@ -1128,7 +1248,11 @@ function terminalEvent(
     entry?.model?.filter((message) => message.role === "toolResult") ?? [];
   const result = publication.nestedResult ?? direct ?? modelResults[0];
   const protocolContent = direct?.output ?? modelResults[0]?.content ?? [];
-  if (publication.source.operation.kind === "nested-tool" && outcome.status === "completed" && !publication.nestedResult)
+  if (
+    publication.source.operation.kind === "nested-tool" &&
+    outcome.status === "completed" &&
+    !publication.nestedResult
+  )
     throw new Error("Nested native terminal has no retained program result");
   if (
     publication.source.operation.kind === "tool" &&
@@ -1152,10 +1276,13 @@ function terminalEvent(
         ? outcome.error
         : {
             message: publication.nestedResult
-              ? publication.nestedResult.diagnostics.map((item) => item.message).join("\n")
-              : protocolContent.filter((block) => block.type === "text")
-                .map((block) => (block.type === "text" ? block.text : ""))
-                .join("\n"),
+              ? publication.nestedResult.diagnostics
+                  .map((item) => item.message)
+                  .join("\n")
+              : protocolContent
+                  .filter((block) => block.type === "text")
+                  .map((block) => (block.type === "text" ? block.text : ""))
+                  .join("\n"),
             details: result?.details,
           };
     const failure = agentToolFailureFromUnknown(error, {
@@ -1192,12 +1319,12 @@ function terminalEvent(
             }
           : publication.source.operation.kind === "nested-tool"
             ? detached(publication.nestedResult!)
-          : {
-              protocolContent: detached(protocolContent),
-              ...(result?.details === undefined
-                ? {}
-                : { details: detached(result.details) }),
-            },
+            : {
+                protocolContent: detached(protocolContent),
+                ...(result?.details === undefined
+                  ? {}
+                  : { details: detached(result.details) }),
+              },
     }),
   };
 }

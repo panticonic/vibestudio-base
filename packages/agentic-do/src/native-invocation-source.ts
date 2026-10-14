@@ -28,7 +28,10 @@ import {
   type LoadedAgentImage,
 } from "./native-agent-session.js";
 import { nativeTaskProductContext } from "./native-product-context.js";
-import { retainedNativeConversationChannel, retainedNativeChannelOriginatingInput } from "./native-channel-session.js";
+import {
+  retainedNativeConversationChannel,
+  retainedNativeChannelOriginatingInput,
+} from "./native-channel-session.js";
 
 /** Immutable invocation provenance outlives task execution and its cleanup debt. */
 const NativeSource = defineDocFamily<{ source: JsonValue }, null>({
@@ -53,6 +56,35 @@ const NativeModelExecution = defineDoc<{
   checkpointWhen: () => true,
 });
 
+/** Read the current trusted model request witness, also used by committed wait presentation. */
+export async function nativeTaskModelSource(
+  tx: Tx,
+  task: TaskRecord<JsonValue, JsonValue, unknown>,
+): Promise<NativeInvocationSource | null> {
+  if (task.state.status === "terminal" || task.state.status === "completing")
+    return null;
+  const execution = await tx.doc(NativeModelExecution, task.id);
+  if (
+    !execution.invocationId ||
+    execution.checkpointDigest !==
+      sha256HexSyncText(canonicalJson(task.state.checkpoint))
+  )
+    return null;
+  const retained = await tx.doc(NativeSource, execution.invocationId, null);
+  if (retained.source === null) return null;
+  const source = nativeInvocationSourceSchema.parse(retained.source);
+  if (
+    nativeInvocationId(source) !== execution.invocationId ||
+    source.task.taskId !== task.id ||
+    source.task.conversationId !== task.conversationId ||
+    source.task.kind !== task.kind ||
+    source.task.version !== task.version ||
+    source.operation.kind !== "model"
+  )
+    throw new Error("Native model witness lost its original task source");
+  return source;
+}
+
 export async function nativeInvocationOwner(
   harness: Harness,
   image: LoadedAgentImage,
@@ -60,7 +92,11 @@ export async function nativeInvocationOwner(
   context: Context,
 ): Promise<NativeInvocationSource["owner"]> {
   const executor = await admittedAgentExecutor(harness, image, context);
-  const binding = await retainedNativeConversationChannel(harness, conversationId, context);
+  const binding = await retainedNativeConversationChannel(
+    harness,
+    conversationId,
+    context,
+  );
   return {
     ...executor.owner,
     channelId: binding.channelId,
@@ -72,12 +108,21 @@ export async function nativeInvocationOwner(
   };
 }
 
-
 /** Executable replacement preserves the original task attribution and intent.
  * Current execution is independently admitted against its loaded image. */
 function nativeTaskIntent(source: NativeInvocationSource): string {
-  const { incarnation: _incarnation, effectiveVersion: _version, executionDigest: _digest, channelId: _channel, ...owner } = source.owner;
-  return canonicalJson({ owner, task: source.task, operation: source.operation });
+  const {
+    incarnation: _incarnation,
+    effectiveVersion: _version,
+    executionDigest: _digest,
+    channelId: _channel,
+    ...owner
+  } = source.owner;
+  return canonicalJson({
+    owner,
+    task: source.task,
+    operation: source.operation,
+  });
 }
 
 async function retain(
@@ -86,11 +131,7 @@ async function retain(
 ): Promise<NativeInvocationSource> {
   const checked = nativeInvocationSourceSchema.parse(source);
   const id = nativeInvocationId(checked);
-  const retained = await tx.doc(
-    NativeSource,
-    id,
-    null,
-  );
+  const retained = await tx.doc(NativeSource, id, null);
   if (retained.source !== null) {
     const original = nativeInvocationSourceSchema.parse(retained.source);
     if (nativeTaskIntent(original) !== nativeTaskIntent(checked))
@@ -109,7 +150,12 @@ export async function retainNativeModelInvocation(
   image: LoadedAgentImage,
   context: Context,
 ): Promise<NativeInvocationSource> {
-  const owner = await nativeInvocationOwner(harness, image, request.conversationId, context);
+  const owner = await nativeInvocationOwner(
+    harness,
+    image,
+    request.conversationId,
+    context,
+  );
   const {
     operation: _operation,
     options: _options,
@@ -147,7 +193,9 @@ export async function retainNativeModelInvocation(
       throw new Error("Native model source does not match the invoking task");
     const execution = await tx.doc(NativeModelExecution, task.id);
     execution.invocationId = nativeInvocationId(source);
-    execution.checkpointDigest = sha256HexSyncText(canonicalJson(task.state.checkpoint));
+    execution.checkpointDigest = sha256HexSyncText(
+      canonicalJson(task.state.checkpoint),
+    );
     return retain(tx, source);
   }, context);
 }
@@ -161,19 +209,40 @@ export function nativeToolInvocationCoordinates(
     throw new Error("Native tool authority has no original call identity");
   if (input["kind"] === "nested") {
     const call = input["call"];
-    if (!isObject(call) || typeof call["id"] !== "string" || !call["id"] ||
-      typeof input["parent"] !== "number" || task.owner !== input["parent"] ||
-      typeof input["parentCallId"] !== "string" || !input["parentCallId"] ||
-      typeof input["key"] !== "string" || !input["key"])
+    if (
+      !isObject(call) ||
+      typeof call["id"] !== "string" ||
+      !call["id"] ||
+      typeof input["parent"] !== "number" ||
+      task.owner !== input["parent"] ||
+      typeof input["parentCallId"] !== "string" ||
+      !input["parentCallId"] ||
+      typeof input["key"] !== "string" ||
+      !input["key"]
+    )
       throw new Error("Nested native tool has no committed parent call");
-    return { kind: "nested-tool", parentTaskId: input["parent"], parentCallId: input["parentCallId"], key: input["key"], callId: call["id"] };
+    return {
+      kind: "nested-tool",
+      parentTaskId: input["parent"],
+      parentCallId: input["parentCallId"],
+      key: input["key"],
+      callId: call["id"],
+    };
   }
   if (typeof input["callId"] !== "string" || !input["callId"])
     throw new Error("Native tool authority has no original call identity");
   if (input["kind"] === "model" && typeof input["assistant"] === "number")
-    return { kind: "tool", assistantEntryId: input["assistant"], callId: input["callId"] };
+    return {
+      kind: "tool",
+      assistantEntryId: input["assistant"],
+      callId: input["callId"],
+    };
   if (input["kind"] === "direct" && typeof input["entryId"] === "number")
-    return { kind: "direct-tool", directEntryId: input["entryId"], callId: input["callId"] };
+    return {
+      kind: "direct-tool",
+      directEntryId: input["entryId"],
+      callId: input["callId"],
+    };
   throw new Error("Native tool authority has no original call identity");
 }
 
@@ -184,7 +253,12 @@ export async function retainNativeToolInvocation(
   image: LoadedAgentImage,
   context: Context,
 ): Promise<NativeInvocationSource> {
-  const owner = await nativeInvocationOwner(harness, image, api.conversationId, context);
+  const owner = await nativeInvocationOwner(
+    harness,
+    image,
+    api.conversationId,
+    context,
+  );
   return api.commit(async (tx) => {
     const task = await tx.task(api.taskId);
     if (
@@ -193,7 +267,6 @@ export async function retainNativeToolInvocation(
       task.conversationId !== api.conversationId ||
       task.state.status !== "running" ||
       !isObject(task.input) ||
-
       !isObject(task.state.checkpoint) ||
       task.state.checkpoint["phase"] !== "execute"
     )
@@ -205,20 +278,47 @@ export async function retainNativeToolInvocation(
       throw new Error("Native tool call conflicts with its invoking task");
     if (coordinates.kind === "nested-tool") {
       const parent = await tx.task(coordinates.parentTaskId as TaskId);
-      const retained = await tx.doc(NestedCallDoc, coordinates.parentTaskId as TaskId, coordinates.key, null);
+      const retained = await tx.doc(
+        NestedCallDoc,
+        coordinates.parentTaskId as TaskId,
+        coordinates.key,
+        null,
+      );
       const call = task.input["call"];
-      if (!parent || parent.conversationId !== task.conversationId ||
-        nativeToolInvocationCoordinates(parent).callId !== coordinates.parentCallId ||
-        retained.taskId !== task.id || !isObject(call) || typeof call["name"] !== "string" || !call["name"])
-        throw new Error("Nested native tool does not belong to its retained parent call");
+      if (
+        !parent ||
+        parent.conversationId !== task.conversationId ||
+        nativeToolInvocationCoordinates(parent).callId !==
+          coordinates.parentCallId ||
+        retained.taskId !== task.id ||
+        !isObject(call) ||
+        typeof call["name"] !== "string" ||
+        !call["name"]
+      )
+        throw new Error(
+          "Nested native tool does not belong to its retained parent call",
+        );
       return retain(tx, {
         owner,
-        task: { taskId: task.id, conversationId: task.conversationId, kind: task.kind, version: task.version },
-        operation: { ...coordinates, name: call["name"], argumentsDigest: sha256HexSyncText(canonicalJson(task.state.checkpoint["arguments"])) },
+        task: {
+          taskId: task.id,
+          conversationId: task.conversationId,
+          kind: task.kind,
+          version: task.version,
+        },
+        operation: {
+          ...coordinates,
+          name: call["name"],
+          argumentsDigest: sha256HexSyncText(
+            canonicalJson(task.state.checkpoint["arguments"]),
+          ),
+        },
       });
     }
     const direct = task.input["kind"] === "direct";
-    const entry = await tx.entry(task.input[direct ? "entryId" : "assistant"] as EntryId);
+    const entry = await tx.entry(
+      task.input[direct ? "entryId" : "assistant"] as EntryId,
+    );
     if (direct) {
       const source =
         entry && DirectToolCallEntry.is(entry) ? entry.data?.call : undefined;
@@ -326,8 +426,16 @@ export async function readRetainedNativeInvocationSource(
 ): Promise<NativeInvocationSource | null> {
   const task = await harness.getTask(input.taskId as TaskId, context);
   if (!task) return null;
-  const executor = await nativeInvocationOwner(harness, image, task.conversationId, context);
-  return (await readNativeTaskSource(harness, input, executor, context))?.source ?? null;
+  const executor = await nativeInvocationOwner(
+    harness,
+    image,
+    task.conversationId,
+    context,
+  );
+  return (
+    (await readNativeTaskSource(harness, input, executor, context))?.source ??
+    null
+  );
 }
 
 /** Host inspection reads the exact current task and admitted image. */
@@ -339,16 +447,27 @@ export async function inspectNativeInvocationSource(
 ): Promise<NativeInvocationInspection | null> {
   const actual = await harness.getTask(input.taskId as TaskId, context);
   if (!actual) return null;
-  const owner = await nativeInvocationOwner(harness, image, actual.conversationId, context);
+  const owner = await nativeInvocationOwner(
+    harness,
+    image,
+    actual.conversationId,
+    context,
+  );
   const original = await readNativeTaskSource(harness, input, owner, context);
-  if (!original || original.task.state.status === "terminal" || original.task.state.status === "completing") return null;
+  if (
+    !original ||
+    original.task.state.status === "terminal" ||
+    original.task.state.status === "completing"
+  )
+    return null;
   const { source, task } = original;
   if (!isObject(task.state.checkpoint))
     throw new Error("Native invocation has no committed execution intent");
   if (source.operation.kind !== "model") {
     if (
       !isObject(task.input) ||
-      canonicalJson(nativeToolInvocationCoordinates(task)) !== canonicalJson(nativeInvocationIdentity(source).operation) ||
+      canonicalJson(nativeToolInvocationCoordinates(task)) !==
+        canonicalJson(nativeInvocationIdentity(source).operation) ||
       task.state.checkpoint["phase"] !== "execute" ||
       sha256HexSyncText(canonicalJson(task.state.checkpoint["arguments"])) !==
         source.operation.argumentsDigest
@@ -357,14 +476,24 @@ export async function inspectNativeInvocationSource(
         "Native tool invocation conflicts with its committed execution intent",
       );
   } else {
-    const execution = await harness.snapshot(NativeModelExecution, task.id, context);
+    const execution = await harness.snapshot(
+      NativeModelExecution,
+      task.id,
+      context,
+    );
     if (
       execution?.invocationId !== input.invocationId ||
-      execution.checkpointDigest !== sha256HexSyncText(canonicalJson(task.state.checkpoint))
-    ) return null;
+      execution.checkpointDigest !==
+        sha256HexSyncText(canonicalJson(task.state.checkpoint))
+    )
+      return null;
   }
   // A durable abort requests cleanup; it does not declare the owned operation terminal.
-  const originatingInput = await retainedNativeInvocationOriginatingInput(harness, task.id, context);
+  const originatingInput = await retainedNativeInvocationOriginatingInput(
+    harness,
+    task.id,
+    context,
+  );
   return {
     source,
     executor: owner,
@@ -376,11 +505,14 @@ export async function inspectNativeInvocationSource(
 
 /** The placed input that actually owns this task, independent of transcript text. */
 export async function retainedNativeInvocationOriginatingInput(
-  harness: Harness, taskId: TaskId, context: Context,
+  harness: Harness,
+  taskId: TaskId,
+  context: Context,
 ): Promise<NativeInvocationInspection["originatingInput"]> {
   const product = await nativeTaskProductContext(harness, taskId, context);
   const original = product?.inputs[0];
-  return original === undefined ? null
+  return original === undefined
+    ? null
     : retainedNativeChannelOriginatingInput(harness, original, context);
 }
 

@@ -2075,11 +2075,13 @@ export abstract class AgentWorkerBase extends AgentVesselBase {
       },
       {
         name: "connectModelCredential",
-        description: "Connect a model credential for the current provider",
+        description:
+          "Connect a model provider; an explicit model choice resumes its waiting turn after successful setup",
       },
       {
         name: "setModel",
-        description: "Set the live model in provider:model format",
+        description:
+          "Choose the model for future turns in provider:model format",
       },
       {
         name: "setThinkingLevel",

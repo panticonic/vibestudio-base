@@ -14,6 +14,7 @@ import {
   defineExtension,
   defineTool,
   Harness,
+  LiveDoc,
   MemoryStorage,
   type Conversation,
   type ModelRequestPort,
@@ -145,6 +146,48 @@ const failure = () =>
       '{"error":{"code":"invalid_api_key","message":"Invalid API key"}}',
   });
 describe("native original product model policy", () => {
+  it("explicitly reprepares unchanged original inputs with current policy while ordinary configuration remains pinned", async () => {
+    const f = await fixture();
+    f.block();
+    const original = await f.submit();
+    await f.harness.runPass(context);
+    const live = await f.harness.snapshot(LiveDoc, f.conversation.id, context);
+    const oldTask = live!.run!.taskId;
+    const current = {
+      ...settings,
+      primaryModel: { provider: "faux", modelId: "changed" },
+    };
+    await f.conversation.commit(
+      (tx) => f.policy.configure(tx, f.conversation.id, current),
+      context,
+    );
+    await f.conversation.configure({ model: current.primaryModel }, context);
+    expect(await f.conversation.reprepare(oldTask, context)).toBe(true);
+    const requests: string[] = [];
+    f.faux.setResponses([
+      (_messages, _options, _state, model) => {
+        requests.push(model.id);
+        return fauxAssistantMessage("Reprepared answer");
+      },
+    ]);
+    await f.release();
+    expect(await original.wait(context)).toMatchObject({ status: "done" });
+    expect(requests).toEqual(["changed"]);
+    const users = (
+      await f.conversation.entries({}, 100, undefined, context)
+    ).items.filter((entry) => entry.kind === "pi.user");
+    expect(users).toHaveLength(1);
+    expect(users[0]!.model).toEqual([
+      expect.objectContaining({
+        role: "user",
+        content: "Actual original input",
+      }),
+    ]);
+    expect((await f.harness.getTask(oldTask, context))!.state).toMatchObject({
+      status: "terminal",
+      outcome: { status: "aborted" },
+    });
+  });
   it("pins original fallback across credential wait and settings edits, retains it through tools, and selects current settings only for fresh input", async () => {
     const f = await fixture();
     const calls: string[] = [];

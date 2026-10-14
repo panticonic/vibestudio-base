@@ -124,9 +124,10 @@ function setup(
     stream: vi.fn<RpcWireCaller["stream"]>(),
   };
   const boundRpc: RpcCaller = schemaRpcMock(rpc);
-  const rpcForRequest = vi.fn<NativeModelProviderHost["rpcForRequest"]>(
-    () => ({ rpc: boundRpc, cleanupRpc: boundRpc }),
-  );
+  const rpcForRequest = vi.fn<NativeModelProviderHost["rpcForRequest"]>(() => ({
+    rpc: boundRpc,
+    cleanupRpc: boundRpc,
+  }));
   const waitForAuthority = vi.fn<NativeModelProviderHost["waitForAuthority"]>(
     async (request) => ({
       status: "waiting",
@@ -139,15 +140,11 @@ function setup(
     }),
   );
   const egressFetch = vi.fn<typeof fetch>();
-  const notifyCredentialMissing = vi.fn<
-    NonNullable<NativeModelProviderHost["notifyCredentialMissing"]>
-  >(async () => {});
   const port = createProtectedModelProvider({
     ...(deterministicTestProviderId ? { deterministicTestProviderId } : {}),
     rpcForRequest,
     egressFetch,
     waitForAuthority,
-    notifyCredentialMissing,
   });
   async function open(storage: Storage = new MemoryStorage()) {
     const harness = await openBoundAgentSession(
@@ -189,7 +186,6 @@ function setup(
     rpcForRequest,
     waitForAuthority,
     egressFetch,
-    notifyCredentialMissing,
     port,
     open,
     reports,
@@ -288,13 +284,25 @@ describe("native protected model provider", () => {
       reason: "model_credential_required",
       summary: "Waiting for model connection",
     });
-    expect(state.notifyCredentialMissing).toHaveBeenCalledOnce();
-    expect(state.notifyCredentialMissing.mock.calls[0]?.[0]).toMatchObject({
-      conversationId: root.id,
-      model: { provider: "faux", id: state.faux.getModel().id },
+    expect(await waiting(harness, root.id)).toMatchObject({
+      status: "waiting",
+      mode: "run",
+      condition: {
+        kind: "input",
+        conversationId: root.id,
+        kinds: ["vibestudio.model-credential-change:faux"],
+      },
     });
     state.rpc.call.mockResolvedValue(summary());
-    await notifyModelCredentialChange(harness, owner, root.id, "faux", context);
+    expect(
+      await notifyModelCredentialChange(
+        harness,
+        owner,
+        root.id,
+        "faux",
+        context,
+      ),
+    ).toBe(true);
     await input.wait(context);
     await harness.runPass(context);
     expect(lifecycle().map((event) => event.kind)).toEqual([
@@ -338,7 +346,13 @@ describe("native protected model provider", () => {
     expect(state.rpc.call).toHaveBeenCalledWith(
       "main",
       "credentials.resolveNativeModel",
-      [{ providerId: "faux", modelId: state.faux.getModel().id, endpoint: "https://{tenant}.provider.test/v1" }],
+      [
+        {
+          providerId: "faux",
+          modelId: state.faux.getModel().id,
+          endpoint: "https://{tenant}.provider.test/v1",
+        },
+      ],
       expect.objectContaining({
         authorityAcquisition: "return",
         idempotencyKey: expect.stringMatching(/^model:[a-f0-9]{64}$/),
@@ -365,16 +379,26 @@ describe("native protected model provider", () => {
     const first = await waiting(harness, root.id);
     expect(state.rpc.call).toHaveBeenCalledTimes(2);
     expect(state.faux.state.callCount).toBe(0);
-    await notifyModelCredentialChange(
-      harness,
-      owner,
-      root.id,
-      "another-provider",
-      context,
-    );
+    expect(
+      await notifyModelCredentialChange(
+        harness,
+        owner,
+        root.id,
+        "another-provider",
+        context,
+      ),
+    ).toBe(false);
     await harness.runPass(context);
     expect(state.rpc.call).toHaveBeenCalledTimes(2);
-    await notifyModelCredentialChange(harness, owner, root.id, "faux", context);
+    expect(
+      await notifyModelCredentialChange(
+        harness,
+        owner,
+        root.id,
+        "faux",
+        context,
+      ),
+    ).toBe(true);
     await waitFor(
       async () =>
         state.rpc.call.mock.calls.length === 4 &&
@@ -385,7 +409,15 @@ describe("native protected model provider", () => {
     await harness.runPass(context);
     expect(state.rpc.call).toHaveBeenCalledTimes(4);
     credential = summary();
-    await notifyModelCredentialChange(harness, owner, root.id, "faux", context);
+    expect(
+      await notifyModelCredentialChange(
+        harness,
+        owner,
+        root.id,
+        "faux",
+        context,
+      ),
+    ).toBe(true);
     expect((await submission.wait(context)).status).toBe("done");
     expect(state.faux.state.callCount).toBe(1);
     expect(state.waitForAuthority).not.toHaveBeenCalled();
@@ -404,6 +436,95 @@ describe("native protected model provider", () => {
       ).status,
     ).toBe("done");
     expect(state.rpc.call).toHaveBeenCalledTimes(2);
+  });
+
+  it("appends checkup hints without claiming idle, completed, or stopped generations resumed", async () => {
+    const state = setup();
+    state.rpc.call.mockResolvedValue(summary());
+    state.faux.setResponses([fauxAssistantMessage("done")]);
+    const { harness, root } = await state.open();
+    expect(
+      await notifyModelCredentialChange(
+        harness,
+        owner,
+        root.id,
+        "faux",
+        context,
+      ),
+    ).toBe(false);
+    await (
+      await root.submit({ type: "input", content: "first" }, context)
+    ).wait(context);
+    expect(
+      await notifyModelCredentialChange(
+        harness,
+        owner,
+        root.id,
+        "faux",
+        context,
+      ),
+    ).toBe(false);
+
+    state.rpc.call.mockResolvedValue(null);
+    const stopped = await root.submit(
+      { type: "input", content: "stop this" },
+      context,
+    );
+    await waitFor(
+      async () => (await waiting(harness, root.id))?.status === "waiting",
+    );
+    await root.abort(context);
+    expect((await stopped.wait(context)).status).toBe("unanswered");
+    expect(
+      await notifyModelCredentialChange(
+        harness,
+        owner,
+        root.id,
+        "faux",
+        context,
+      ),
+    ).toBe(false);
+    expect(
+      (await root.entries({}, 100, undefined, context)).items.filter(
+        (entry) => entry.kind === "vibestudio.model-credential-change:faux",
+      ),
+    ).toHaveLength(3);
+  });
+
+  it("does not claim a generation waiting for authority resumed on credential change", async () => {
+    const state = setup();
+    state.rpc.call.mockRejectedValue(
+      new RpcBoundaryError("approval", "access", "EACQUIRE", undefined, {
+        acquisition: {
+          acquisitionId: "acquisition-one",
+          ownerRuntimeId: owner.runtimeId,
+          snapshotDigest: "snapshot",
+          capability: "credentials.use",
+          resourceKey: "resource",
+          tier: "gated",
+          cardType: "permission.gated",
+          renderedAction: "Use",
+          pending: true,
+        },
+      }),
+    );
+    const { harness, root } = await state.open();
+    await root.submit({ type: "input", content: "go" }, context);
+    await waitFor(
+      async () => (await waiting(harness, root.id))?.status === "waiting",
+    );
+    expect(
+      await notifyModelCredentialChange(
+        harness,
+        owner,
+        root.id,
+        "faux",
+        context,
+      ),
+    ).toBe(false);
+    await harness.runPass(context);
+    expect(state.rpc.call).toHaveBeenCalledOnce();
+    expect((await waiting(harness, root.id))?.status).toBe("waiting");
   });
 
   it("retains a connect checkup delivered after the frontier but before task parking", async () => {
@@ -428,7 +549,15 @@ describe("native protected model provider", () => {
       context,
     );
     await reading.promise;
-    await notifyModelCredentialChange(harness, owner, root.id, "faux", context);
+    expect(
+      await notifyModelCredentialChange(
+        harness,
+        owner,
+        root.id,
+        "faux",
+        context,
+      ),
+    ).toBe(false);
     returnAbsence.resolve();
     expect((await submission.wait(context)).status).toBe("done");
     expect(calls).toBe(3);

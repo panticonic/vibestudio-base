@@ -9,7 +9,10 @@ import { resolveDurableObjectService } from "@vibestudio/service-schemas/clients
 import { missionsRpcMethods } from "@vibestudio/service-schemas/missions";
 import { channelClientRpcMethods } from "@workspace/pubsub/rpc-contract";
 import { agentRpcMethods } from "@workspace/agentic-do/rpc-contract";
-import { gadRpcMethods, createGadServiceClient } from "@vibestudio/service-schemas/clients/gadServiceClient";
+import {
+  gadRpcMethods,
+  createGadServiceClient,
+} from "@vibestudio/service-schemas/clients/gadServiceClient";
 import type {
   RpcMethodArgs,
   RpcMethodResult,
@@ -26,6 +29,8 @@ import { openAICompletionsApi } from "@panticonic/pi-ai/api/openai-completions.l
 import { BACKGROUND_CONTEXT } from "@panticonic/pi-chord/context";
 import {
   defineExtension,
+  GenerationTask,
+  LiveDoc,
   bindTool,
   type Conversation,
   type ConversationId,
@@ -106,7 +111,10 @@ import {
   type NativeChildLaunchIntent,
 } from "./native-child-launch.js";
 import { createNativeInputSettlement } from "./native-input-settlement.js";
-import { completeNativeModelHelper, NativeModelHelperTask } from "./native-model-helper.js";
+import {
+  completeNativeModelHelper,
+  NativeModelHelperTask,
+} from "./native-model-helper.js";
 
 import { OwnedMethodCalls } from "./owned-method-calls.js";
 import {
@@ -240,11 +248,11 @@ import type { ModelFailureClass } from "@workspace/agentic-core/model-failures";
 import type { RosterEntry } from "@workspace/agentic-core/agent-channel-roster";
 import {
   MODEL_SETTINGS_SERVICE_PROTOCOL,
-  canonicalModelRef,
   type AgentThinkingLevel as ThinkingLevel,
 } from "@workspace/model-catalog/catalog";
 
 import { modelTransportRuntimeEvidence } from "./model-transport-runtime.js";
+import { nativeCredentialProviderOptions } from "./native-credential-presentation.js";
 
 import type { AgentProductMetadata } from "@workspace/agentic-core/agent-product-metadata";
 
@@ -1382,9 +1390,10 @@ export abstract class AgentVesselBase extends NativeChannelOwner<NativeProductCh
   protected async updateSettings(
     patch: StoredSettings,
   ): Promise<AgentSettings> {
+    const channels = this.nativeReasoningChannelIds();
     const next = { ...this.storedSettings(), ...patch };
     this.setStateValue(AGENT_SETTINGS_KEY, JSON.stringify(next));
-    for (const channelId of this.nativeReasoningChannelIds())
+    for (const channelId of channels)
       await this.refreshNativeChannelConfiguration(channelId);
     return this.getAgentSettings();
   }
@@ -3466,12 +3475,39 @@ export abstract class AgentVesselBase extends NativeChannelOwner<NativeProductCh
           | ConnectCredentialEnvelope = handoffTarget
           ? { spec: request, handoffTarget }
           : request;
+        let waiting: TaskId | null = null;
+        if (input.modelRef) {
+          const selected = this.materializedModel(channelId, input.modelRef);
+          if (!selected || selected.spec.provider !== input.providerId)
+            return {
+              isError: true,
+              result: {
+                error:
+                  "Selected model does not belong to the requested provider",
+              },
+            };
+          waiting = await this.credentialWaitingNativeGeneration(
+            channelId,
+            input.modelRef,
+          );
+        }
         const credential = await this.rpc.call(
           "main",
           mainRpcMethods["credentials.connect"],
           [connectParams],
           { signal },
         );
+        signal?.throwIfAborted();
+        let reprepared = false;
+        if (input.modelRef) {
+          if (input.modelRef !== this.getAgentSettings().model)
+            await this.updateSettings({ model: input.modelRef });
+          if (waiting !== null)
+            reprepared = await this.reprepareNativeGeneration(
+              channelId,
+              waiting,
+            );
+        }
         const harness = await this.agentSession(BACKGROUND_CONTEXT);
         const owner = await retainedAgentExecutionOwner(
           harness,
@@ -3479,15 +3515,16 @@ export abstract class AgentVesselBase extends NativeChannelOwner<NativeProductCh
         );
         const conversation =
           await this.admittedNativeChannelConversation(channelId);
-        if (conversation)
-          await notifyModelCredentialChange(
-            harness,
-            owner,
-            conversation.id,
-            input.providerId,
-            BACKGROUND_CONTEXT,
-          );
-        return { result: { credential, resumed: conversation !== null } };
+        const awakened = conversation
+          ? await notifyModelCredentialChange(
+              harness,
+              owner,
+              conversation.id,
+              input.providerId,
+              BACKGROUND_CONTEXT,
+            )
+          : false;
+        return { result: { credential, resumed: reprepared || awakened } };
       }
       case "setModel": {
         const model = (args as { model?: unknown } | null)?.model;
@@ -4884,7 +4921,10 @@ export abstract class AgentVesselBase extends NativeChannelOwner<NativeProductCh
     selected: Model<Api>,
     transcript: import("@panticonic/pi-ai").Context,
     options: { temperature?: number; maxTokens?: number },
-    context: Context = { ...BACKGROUND_CONTEXT, abortSignal: this.rpcAbortSignal ?? undefined },
+    context: Context = {
+      ...BACKGROUND_CONTEXT,
+      abortSignal: this.rpcAbortSignal ?? undefined,
+    },
     parent?: ToolExecutionApi,
   ): Promise<import("@panticonic/pi-ai").AssistantMessage> {
     const harness = await this.agentSession(context);
@@ -4896,8 +4936,15 @@ export abstract class AgentVesselBase extends NativeChannelOwner<NativeProductCh
     const operation = Promise.resolve().then(async () =>
       completeNativeModelHelper(
         harness,
-        await this.nativeChannelConversation(channelId, { ...context, abortSignal }),
-        selected, transcript, options, { ...context, abortSignal }, parent,
+        await this.nativeChannelConversation(channelId, {
+          ...context,
+          abortSignal,
+        }),
+        selected,
+        transcript,
+        options,
+        { ...context, abortSignal },
+        parent,
       ),
     );
     const owned = { controller, operation };
@@ -4912,23 +4959,37 @@ export abstract class AgentVesselBase extends NativeChannelOwner<NativeProductCh
   private async releaseNativeModelHelpers(reason: Error): Promise<void> {
     const operations = [...this.nativeHelperOperations];
     for (const { controller } of operations) controller.abort(reason);
-    const outcomes = await Promise.allSettled(operations.map(({ operation }) => operation));
-    const failures = outcomes.filter((outcome): outcome is PromiseRejectedResult =>
-      outcome.status === "rejected" && outcome.reason !== reason,
-    ).map((outcome) => outcome.reason);
-    if (failures.length) throw new AggregateError(failures, "One-shot model resource cleanup failed");
+    const outcomes = await Promise.allSettled(
+      operations.map(({ operation }) => operation),
+    );
+    const failures = outcomes
+      .filter(
+        (outcome): outcome is PromiseRejectedResult =>
+          outcome.status === "rejected" && outcome.reason !== reason,
+      )
+      .map((outcome) => outcome.reason);
+    if (failures.length)
+      throw new AggregateError(
+        failures,
+        "One-shot model resource cleanup failed",
+      );
   }
 
   /** The credential-connect inline card (same renderer the chat panel ships). */
-  protected async publishCredentialConnectCard(
+  protected credentialConnectCard(
     channelId: string,
     providerId: string,
-    opts: { resumeAfterConnect: boolean; reason?: string; modelRef?: string },
-    rpc: RpcClient = this.rpc,
-  ): Promise<void> {
+    opts: {
+      resumeAfterConnect: boolean;
+      idempotencyKey: string;
+      providerOptions?: ReturnType<typeof nativeCredentialProviderOptions>;
+      reason?: string;
+      modelRef?: string;
+    },
+  ): AgenticEvent<"ui.inline_rendered"> {
     const participantId =
       this.subscriptions.getParticipantId(channelId) ?? this.participantId();
-    const cardId = `model-credential-${providerId}:${channelId}`;
+    const cardId = opts.idempotencyKey;
     const event: AgenticEvent<"ui.inline_rendered"> = {
       kind: "ui.inline_rendered",
       actor: { kind: "agent", id: participantId, displayName: participantId },
@@ -4947,18 +5008,14 @@ export abstract class AgentVesselBase extends NativeChannelOwner<NativeProductCh
           resumeAfterConnect: opts.resumeAfterConnect,
           ...(opts.reason ? { reason: opts.reason } : {}),
           ...(this.getModelCredentialSetupProps(providerId) ?? {}),
+          ...(opts.providerOptions
+            ? { providerOptions: opts.providerOptions }
+            : {}),
         },
       },
       createdAt: new Date().toISOString(),
     };
-    await this.createChannelClient(channelId, rpc).publishAgenticEvent(
-      participantId,
-      event,
-      {
-        idempotencyKey: cardId,
-        senderMetadata: { type: "agent", name: participantId },
-      },
-    );
+    return event;
   }
 
   // ── Fork ─────────────────────────────────────────────────────────────────
@@ -7866,24 +7923,33 @@ export abstract class AgentVesselBase extends NativeChannelOwner<NativeProductCh
     return { recorded: true };
   }
 
-  protected override async notifyNativeModelCredentialMissing(
-    request: ModelRequestTarget,
-    _api: ModelRequestApi,
+  protected override async nativeCredentialWaitEvent(
+    channelId: string,
+    taskId: TaskId,
+    providerId: string,
+    modelRef: string,
+    idempotencyKey: string,
     context: Context,
-  ): Promise<void> {
-    const binding = await retainedNativeConversationChannel(
-      this.admittedAgentSession(),
-      request.conversationId,
-      context,
-    );
-    await this.publishCredentialConnectCard(
-      binding.channelId,
-      request.model.provider,
-      {
-        resumeAfterConnect: true,
-        modelRef: canonicalModelRef(request.model.provider, request.model.id),
-      },
-    );
+  ): Promise<AgenticEvent<"ui.inline_rendered">> {
+    const harness = this.admittedAgentSession();
+    const task = await harness.getTask(taskId, context);
+    const run = task
+      ? (await harness.snapshot(LiveDoc, task.conversationId, context))?.run
+      : null;
+    const providerOptions =
+      task?.kind === GenerationTask.definition.name && run?.taskId === taskId
+        ? nativeCredentialProviderOptions(
+            this.nativeModels(),
+            (ref) => this.materializedModel(channelId, ref),
+            modelRef,
+          )
+        : undefined;
+    return this.credentialConnectCard(channelId, providerId, {
+      resumeAfterConnect: true,
+      idempotencyKey,
+      ...(providerOptions ? { providerOptions } : {}),
+      modelRef,
+    });
   }
 
   private readonly nativeSuspendExecution = createNativeSuspendExecution({
