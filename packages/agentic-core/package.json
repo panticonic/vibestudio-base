@@ -31,8 +31,8 @@
     "@workspace/eval": "workspace:*",
     "@workspace/model-catalog": "workspace:*",
     "@workspace/pubsub": "workspace:*",
-    "@panticonic/pi-durable": "1.1.0-vibestudio.2",
-    "@panticonic/pi-chord": "1.1.0-vibestudio.2",
+    "@panticonic/pi-durable": "1.2.0-vibestudio.1",
+    "@panticonic/pi-chord": "1.2.0-vibestudio.1",
     "zod": "^3.25.76",
     "@workspace/channel-fork": "workspace:*"
   },

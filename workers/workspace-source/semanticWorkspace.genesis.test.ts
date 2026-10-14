@@ -9,6 +9,28 @@ import { snapshotFixture, snapshotContentRelations } from "./semanticWorkspace.g
 
 const ingress = { causalParent: null };
 describe("flat workspace genesis", () => {
+  it("retains repository identity binding in protected publication", async () => {
+    const f = await snapshotFixture();
+    const entry = f.store.facts.entries(f.initial.committed.workspaceFactRootId, "repository")[0];
+    if (!entry) throw new Error("Fixture has no repository fact");
+    f.sql.exec(
+      `UPDATE vcs_repository_states SET repository_id = ? WHERE repository_state_id = ?`,
+      "cross-owned-repository",
+      entry.value
+    );
+    await expect(
+      f.semantic.dispatch("vcsPush", {
+        ingress,
+        input: {
+          contextId: "context:snapshot",
+          commandId: "command:publication",
+          expectedCommittedEventId: f.initial.committed.ref.eventId,
+          expectedMainEventId: f.initial.committed.ref.eventId,
+        },
+      })
+    ).rejects.toThrow(/Publication repository index .* references an unrealized state/u);
+  });
+
   it("stores one snapshot event and no manufactured history, including after reopening", async () => {
     const f = await snapshotFixture();
     for (const table of [

@@ -50,8 +50,19 @@ Session knobs are method calls on the agent participant:
   `mentioned-strict`, `mentioned-or-followup`, or `from-participants`.
 - `getAgentSettings()` returns current values and whether each came from state,
   subscription config, or defaults.
-- `connectModelCredential({ providerId, ... })` starts the provider's OAuth or
-  API-key credential flow.
+- `connectModelCredential({ providerId, modelRef?, ... })` starts the provider's OAuth or
+  API-key credential flow. Choosing another provider on a credential card sends
+  the selected model in this same operation. The server validates its provider,
+  connects credentials, then updates the selection and explicitly supersedes only
+  the original generation captured while parked for credentials. Failed or cancelled
+  setup preserves that wait and its selection. Pi joins the old preparation and preserves
+  the original chat input; it prepares a fresh request with current model policy.
+  Ordinary `setModel` changes apply to new turns. Prepared or dispatched requests
+  and their post-tool continuations retain the original turn's policy.
+  The result's `resumed` value means the exact original generation was reprepared
+  or the credential hint matched an actual live credential wait. It does not mean the agent has answered. The card shows
+  “Continuing…” only for that matched wake; explicit Cancel cancels credential
+  setup, while presentation replacement alone does not cancel server-owned work.
 
 ## Switching The Default Model
 
@@ -110,14 +121,20 @@ Use `inline_ui`, `ActionButton`, or a small action bar that calls the agent
 participant's methods. A minimal inline UI can call:
 
 ```tsx
-await chat.callMethod(agentParticipantId, "setThinkingLevel", { level: "high" });
+await chat.callMethod(agentParticipantId, "setThinkingLevel", {
+  level: "high",
+});
 await chat.callMethod(agentParticipantId, "setFastMode", { enabled: true });
 await chat.callMethod(agentParticipantId, "setApprovalLevel", { level: 1 });
 await chat.callMethod(agentParticipantId, "setRespondPolicy", {
   policy: "from-participants",
   from: ["participant-id"],
 });
-const settings = await chat.callMethod(agentParticipantId, "getAgentSettings", {});
+const settings = await chat.callMethod(
+  agentParticipantId,
+  "getAgentSettings",
+  {},
+);
 ```
 
 ## Per-Channel Overrides

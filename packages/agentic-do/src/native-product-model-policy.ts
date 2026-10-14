@@ -4,6 +4,7 @@ import {
   defineDoc,
   defineDocFamily,
   GenerationTask,
+  LiveDoc,
   hook,
   type ConversationId,
   type ConversationStreamOptions,
@@ -96,6 +97,27 @@ export function createNativeProductModelPolicy() {
       }) as JsonRepresentation<NativeProductModelSettings>;
     },
     prepareCommit: async (tx: Tx, staged: HarnessCommit): Promise<void> => {
+      for (const task of staged.tasks) {
+        if (
+          task.kind !== GenerationTask.definition.name ||
+          !task.abortRequested
+        )
+          continue;
+        const run = (await tx.doc(LiveDoc, task.conversationId)).run;
+        if (run?.taskId !== task.id || run.interruption?.kind !== "reprepare")
+          continue;
+        const settings = (await tx.doc(Config, task.conversationId)).settings;
+        if (!settings)
+          throw new Error(
+            "Reprepared input has no current model configuration",
+          );
+        // Explicit selection is a new policy decision for the same original input.
+        // Ordinary setting edits and tool handovers do not revise this policy.
+        for (const inputId of run.inputs) {
+          const input = await tx.doc(InputPolicy, String(inputId), null);
+          input.settings = settings;
+        }
+      }
       for (const task of staged.tasks) {
         if (
           task.kind !== GenerationTask.definition.name ||

@@ -28,7 +28,7 @@ extensions:
   - source: extensions/test-runner
 initPanels:
   - source: about/new
-minimumAppVersion: 0.1.84
+minimumAppVersion: 0.1.105
 providers:
   cdpClient:
     source: "@workspace/cdp-client"

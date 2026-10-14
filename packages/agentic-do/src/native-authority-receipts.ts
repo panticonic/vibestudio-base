@@ -1,4 +1,7 @@
-import { nativeToolInvocationCoordinates, readRetainedNativeInvocationSource } from "./native-invocation-source.js";
+import {
+  nativeToolInvocationCoordinates,
+  readRetainedNativeInvocationSource,
+} from "./native-invocation-source.js";
 import type { Context, JsonValue } from "@panticonic/pi-chord";
 import {
   acceptReceipt,
@@ -20,6 +23,7 @@ import {
   type AuthorityAcquisitionReceipt,
 } from "@vibestudio/service-schemas/authority";
 import { canonicalJson } from "@vibestudio/shared/canonicalJson";
+import { recordNativeWaitPresentation } from "./native-wait-presentation.js";
 import { sha256HexSyncText } from "@vibestudio/content-addressing";
 import {
   nativeInvocationId,
@@ -214,14 +218,20 @@ export async function bindAuthorityAcquisition(
   }
   // Acknowledgement belongs to owner reconciliation, outside model admission.
   // Its lost response must not fault a task whose readiness already committed.
-  return {
-    status: "waiting",
-    condition: {
-      kind: "receipt",
-      key: receipt.acquisitionId,
-      binding: receipt.bindingDigest,
-    },
+  const condition = {
+    kind: "receipt" as const,
+    key: receipt.acquisitionId,
+    binding: receipt.bindingDigest,
   };
+  await api.commit(async (tx) => {
+    await recordNativeWaitPresentation(tx, request.taskId, condition, {
+      reason: "input_required",
+      summary: info.existingReview
+        ? `Finish reviewing ${info.existingReview.title} to continue.`
+        : `Your approval is needed to ${info.renderedAction}.`,
+    });
+  }, context);
+  return { status: "waiting", condition };
 }
 
 function assertCanonicalAdmission(
@@ -519,7 +529,15 @@ export async function reconcileAuthorityReceipts(
         task.conversationId!,
         context,
       );
-      await assertNativeReceipt(harness, receipt, sourceOwner, image, task, identity, context);
+      await assertNativeReceipt(
+        harness,
+        receipt,
+        sourceOwner,
+        image,
+        task,
+        identity,
+        context,
+      );
       await harness.commit(
         (tx) => retainNativeReceipt(tx, receipt, task, owner, image),
         context,
@@ -577,7 +595,15 @@ export async function withdrawNativeToolAuthorities(
     const identity = receipt.invocations[0]!.nativeInvocation;
     if (!identity)
       throw new Error("Native tool authority has no original coordinates");
-    await assertNativeReceipt(harness, receipt, sourceOwner, image, task, identity, context);
+    await assertNativeReceipt(
+      harness,
+      receipt,
+      sourceOwner,
+      image,
+      task,
+      identity,
+      context,
+    );
     await api.commit(
       (tx) => retainNativeReceipt(tx, receipt, task, owner, image),
       context,
@@ -639,11 +665,23 @@ async function assertNativeReceipt(
   if (identity.operation.kind === "model") {
     // Settlement debt can outlive the request phase. Validate its retained
     // source, admitted by the trusted model port, rather than current activity.
-    const source = await readRetainedNativeInvocationSource(harness, {
-      taskId: task.id, invocationId: nativeInvocationId(identity),
-    }, image, context);
-    if (!source || canonicalJson(nativeInvocationIdentity(source)) !== canonicalJson(identity))
-      throw new Error("Authority receipt has no original admitted native model request");
+    const source = await readRetainedNativeInvocationSource(
+      harness,
+      {
+        taskId: task.id,
+        invocationId: nativeInvocationId(identity),
+      },
+      image,
+      context,
+    );
+    if (
+      !source ||
+      canonicalJson(nativeInvocationIdentity(source)) !==
+        canonicalJson(identity)
+    )
+      throw new Error(
+        "Authority receipt has no original admitted native model request",
+      );
   }
   const trajectory = channelTrajectoryFor(owner.channelId);
   const parent = {

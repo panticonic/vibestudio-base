@@ -3,7 +3,17 @@ import {
   getProviderConnectPreset,
 } from "@workspace/model-catalog/providerConnect";
 import { useEffect, useRef, useState } from "react";
-import { Box, Button, Callout, Card, Code, Flex, Spinner, Text, TextField } from "@radix-ui/themes";
+import {
+  Box,
+  Button,
+  Callout,
+  Card,
+  Code,
+  Flex,
+  Spinner,
+  Text,
+  TextField,
+} from "@radix-ui/themes";
 import { getVibestudioHostPlatform } from "@workspace/react/responsive";
 
 interface CredentialFlow {
@@ -39,7 +49,12 @@ interface ModelCredentialRequiredCardProps {
 }
 
 interface ChatApi {
-  callMethod: (participantId: string, method: string, args: unknown) => Promise<unknown>;
+  callMethod: (
+    participantId: string,
+    method: string,
+    args: unknown,
+    options?: { signal?: AbortSignal },
+  ) => Promise<unknown>;
 }
 
 export default function ModelCredentialRequiredCard({
@@ -58,7 +73,8 @@ export default function ModelCredentialRequiredCard({
   ) => Promise<void>;
 }) {
   const providerId = props.providerId ?? "";
-  const currentModelRef = typeof props.modelRef === "string" ? props.modelRef : "";
+  const currentModelRef =
+    typeof props.modelRef === "string" ? props.modelRef : "";
   const fallbackOption: ProviderOption = {
     providerId,
     providerLabel: providerId,
@@ -78,16 +94,24 @@ export default function ModelCredentialRequiredCard({
     providerOptions.find((option) => option.modelRef === selectedModelRef) ??
     providerOptions[0] ??
     fallbackOption;
+  const modelSelection = props.providerOptions?.length
+    ? selectedOption.modelRef
+    : undefined;
   const selectedProviderId = selectedOption.providerId || providerId;
-  const selectedModelBaseUrl = selectedOption.modelBaseUrl || props.modelBaseUrl;
+  const selectedModelBaseUrl =
+    selectedOption.modelBaseUrl || props.modelBaseUrl;
   const definition = getProviderConnectPreset(selectedProviderId);
   const methods = definition?.methods ?? [];
   const [configuration, setConfiguration] = useState<Record<string, string>>(
     props.configuration ?? {},
   );
-  const [selectedMethodId, setSelectedMethodId] = useState<string | undefined>(props.method);
-  const selectedMethod = methods.find((method) => method.id === selectedMethodId) ?? methods[0];
-  const selectedFlow = selectedMethod?.flow ?? selectedOption.flow ?? props.flow;
+  const [selectedMethodId, setSelectedMethodId] = useState<string | undefined>(
+    props.method,
+  );
+  const selectedMethod =
+    methods.find((method) => method.id === selectedMethodId) ?? methods[0];
+  const selectedFlow =
+    selectedMethod?.flow ?? selectedOption.flow ?? props.flow;
   const reconnectReason =
     typeof props.reason === "string" && props.reason.trim() ? props.reason : "";
   const diagnosticReason =
@@ -95,13 +119,28 @@ export default function ModelCredentialRequiredCard({
       ? props.diagnosticReason
       : "";
   const failureCode =
-    typeof props.failureCode === "string" && props.failureCode.trim() ? props.failureCode : "";
-  const [status, setStatus] = useState<"idle" | "starting" | "waiting" | "done" | "error">("idle");
-  const [activeOpenMode, setActiveOpenMode] = useState<"internal" | "external" | null>(null);
+    typeof props.failureCode === "string" && props.failureCode.trim()
+      ? props.failureCode
+      : "";
+  const [status, setStatus] = useState<
+    "idle" | "starting" | "waiting" | "done" | "error"
+  >("idle");
+  const [activeOpenMode, setActiveOpenMode] = useState<
+    "internal" | "external" | null
+  >(null);
   const [error, setError] = useState("");
+  const [resumed, setResumed] = useState(false);
 
   const operation = useRef<AbortController | null>(null);
-  useEffect(() => () => operation.current?.abort(), []);
+  const panelOwnedOperation = useRef(false);
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+      if (panelOwnedOperation.current) operation.current?.abort();
+    };
+  }, []);
   const startCredential = async (openMode: "internal" | "external") => {
     if (!selectedFlow) return;
     setStatus("starting");
@@ -109,6 +148,7 @@ export default function ModelCredentialRequiredCard({
     setError("");
     const controller = new AbortController();
     operation.current = controller;
+    panelOwnedOperation.current = Boolean(onConnect);
     try {
       if (onConnect) {
         await onConnect(
@@ -118,49 +158,72 @@ export default function ModelCredentialRequiredCard({
           controller.signal,
           configuration,
         );
-        if (!controller.signal.aborted && operation.current === controller) setStatus("done");
+        if (
+          mounted.current &&
+          !controller.signal.aborted &&
+          operation.current === controller
+        )
+          setStatus("done");
         return;
       }
       if (!chat || !props.agentParticipantId) {
         throw new Error("Missing agent participant for credential setup");
       }
-      if (selectedOption.modelRef && selectedOption.modelRef !== currentModelRef) {
-        await chat.callMethod(props.agentParticipantId, "setModel", {
-          model: selectedOption.modelRef,
-        });
-        if (props.persistAgentModel) {
-          void props
-            .persistAgentModel(props.agentParticipantId, selectedOption.modelRef)
-            .catch((err: unknown) => {
-              console.warn("[ModelCredentialRequiredCard] model persistence failed:", err);
-            });
-        }
-      }
       setStatus("waiting");
-      const connected = await chat.callMethod(props.agentParticipantId, "connectModelCredential", {
-        providerId: selectedProviderId,
-        configuration,
-        ...(selectedMethodId ? { method: selectedMethod?.id } : {}),
-        modelBaseUrl: selectedModelBaseUrl,
-        modelRef: selectedOption.modelRef,
-        browserOpenMode: openMode,
-        browserHandoffCallerId: props.browserHandoffCallerId,
-        browserHandoffCallerKind: props.browserHandoffCallerKind,
-      });
+      const connected = await chat.callMethod(
+        props.agentParticipantId,
+        "connectModelCredential",
+        {
+          providerId: selectedProviderId,
+          configuration,
+          method: selectedMethod?.id,
+          modelBaseUrl: selectedModelBaseUrl,
+          ...(modelSelection ? { modelRef: modelSelection } : {}),
+          browserOpenMode: openMode,
+          browserHandoffCallerId: props.browserHandoffCallerId,
+          browserHandoffCallerKind: props.browserHandoffCallerKind,
+        },
+        { signal: controller.signal },
+      );
+      controller.signal.throwIfAborted();
       if (connected && typeof connected === "object") {
         const response = connected as {
           isError?: boolean;
           error?: string;
-          result?: { error?: string };
+          resumed?: boolean;
+          result?: { error?: string; resumed?: boolean };
         };
         if (response.isError || response.error || response.result?.error)
           throw new Error(
-            response.error ?? response.result?.error ?? "Provider connection failed. Try again.",
+            response.error ??
+              response.result?.error ??
+              "Provider connection failed. Try again.",
           );
+        const result = response.result ?? response;
+        if (typeof result.resumed !== "boolean")
+          throw new Error(
+            "Provider connection returned no generation readiness result",
+          );
+        if (mounted.current) setResumed(result.resumed);
+      } else {
+        throw new Error(
+          "Provider connection returned no generation readiness result",
+        );
       }
-      if (operation.current === controller) setStatus("done");
+      if (modelSelection && props.persistAgentModel) {
+        void props
+          .persistAgentModel(props.agentParticipantId, modelSelection)
+          .catch((err: unknown) => {
+            console.warn(
+              "[ModelCredentialRequiredCard] model persistence failed:",
+              err,
+            );
+          });
+      }
+      if (mounted.current && operation.current === controller)
+        setStatus("done");
     } catch (err) {
-      if (operation.current !== controller) return;
+      if (!mounted.current || operation.current !== controller) return;
       if (controller.signal.aborted) {
         setStatus("idle");
         return;
@@ -170,7 +233,7 @@ export default function ModelCredentialRequiredCard({
     } finally {
       if (operation.current === controller) {
         operation.current = null;
-        setActiveOpenMode(null);
+        if (mounted.current) setActiveOpenMode(null);
       }
     }
   };
@@ -178,13 +241,16 @@ export default function ModelCredentialRequiredCard({
   const busy = status === "starting" || status === "waiting";
   const workspaceBrowserAvailable = getVibestudioHostPlatform() !== "mobile";
   const needsDesktop =
-    !workspaceBrowserAvailable && selectedMethod?.redirectPolicy === "loopback-required";
+    !workspaceBrowserAvailable &&
+    selectedMethod?.redirectPolicy === "loopback-required";
   const unsupported = !selectedFlow;
   const apiKeyFlow = selectedFlow?.type === "api-key";
   const internalBrowserLabel = reconnectReason
     ? "Refresh in workspace browser"
     : "Use workspace browser";
-  const externalBrowserLabel = reconnectReason ? "Refresh in system browser" : "Use system browser";
+  const externalBrowserLabel = reconnectReason
+    ? "Refresh in system browser"
+    : "Use system browser";
   const apiKeyButtonLabel =
     status === "done"
       ? "Connected"
@@ -299,7 +365,9 @@ export default function ModelCredentialRequiredCard({
         ) : null}
         {unsupported ? (
           <Callout.Root color="amber" size="1">
-            <Callout.Text>No built-in setup is available for this model provider.</Callout.Text>
+            <Callout.Text>
+              No built-in setup is available for this model provider.
+            </Callout.Text>
           </Callout.Root>
         ) : null}
         {status === "done" ? (
@@ -307,7 +375,9 @@ export default function ModelCredentialRequiredCard({
             <Callout.Text>
               {onConnect
                 ? "Provider connected. You can start chatting."
-                : "Provider connected. Continuing…"}
+                : resumed
+                  ? "Provider connected. Continuing…"
+                  : "Provider connected."}
             </Callout.Text>
           </Callout.Root>
         ) : null}
@@ -318,7 +388,7 @@ export default function ModelCredentialRequiredCard({
               : "Finish signing in in your browser. For device sign-in, use the code shown in the approval bar."}
           </Text>
         ) : null}
-        {busy && onConnect ? (
+        {busy ? (
           <Button
             size="1"
             variant="soft"
@@ -340,8 +410,8 @@ export default function ModelCredentialRequiredCard({
         {needsDesktop ? (
           <Callout.Root color="amber" size="1">
             <Callout.Text>
-              This subscription sign-in requires a desktop browser. Connect this provider on
-              desktop, or choose an API key if available.
+              This subscription sign-in requires a desktop browser. Connect this
+              provider on desktop, or choose an API key if available.
             </Callout.Text>
           </Callout.Root>
         ) : apiKeyFlow ? (
@@ -364,7 +434,9 @@ export default function ModelCredentialRequiredCard({
                 onClick={() => void startCredential("internal")}
                 disabled={busy || unsupported || status === "done"}
               >
-                {busy && activeOpenMode === "internal" ? <Spinner size="1" /> : null}
+                {busy && activeOpenMode === "internal" ? (
+                  <Spinner size="1" />
+                ) : null}
                 {internalBrowserLabel}
               </Button>
             ) : null}
@@ -375,14 +447,16 @@ export default function ModelCredentialRequiredCard({
               onClick={() => void startCredential("external")}
               disabled={busy || unsupported || status === "done"}
             >
-              {busy && activeOpenMode === "external" ? <Spinner size="1" /> : null}
+              {busy && activeOpenMode === "external" ? (
+                <Spinner size="1" />
+              ) : null}
               {externalBrowserLabel}
             </Button>
             <details className="agent-config-details">
               <summary>Sign-in help</summary>
               <Text as="p" size="1" color="gray">
-                Choose the browser with the account you want to use, or sign in to either. Your
-                credentials stay in the secure credential store.
+                Choose the browser with the account you want to use, or sign in
+                to either. Your credentials stay in the secure credential store.
               </Text>
             </details>
           </Flex>

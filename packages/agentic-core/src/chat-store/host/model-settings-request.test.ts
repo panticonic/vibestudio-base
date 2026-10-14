@@ -87,6 +87,9 @@ describe("model discovery connection transitions", () => {
   function connection() {
     let status: import("@vibestudio/rpc").RpcConnectionStatus = "connected";
     const listeners = new Set<(value: typeof status) => void>();
+    const recoveryListeners = new Set<
+      (kind: "resubscribe" | "cold-recover") => void
+    >();
     return {
       status: () => status,
       onStatusChange(fn: (value: typeof status) => void) {
@@ -99,7 +102,15 @@ describe("model discovery connection transitions", () => {
         status = value;
         for (const fn of listeners) fn(value);
       },
+      onRecovery(fn: (kind: "resubscribe" | "cold-recover") => void) {
+        recoveryListeners.add(fn);
+        return () => recoveryListeners.delete(fn);
+      },
+      recover(kind: "resubscribe" | "cold-recover" = "resubscribe") {
+        for (const fn of recoveryListeners) fn(kind);
+      },
       listeners,
+      recoveryListeners,
     };
   }
   it("joins the old request and rejects an obsolete reconnect before refreshing", async () => {
@@ -125,12 +136,16 @@ describe("model discovery connection transitions", () => {
     await Promise.resolve();
     expect(reconnect).not.toHaveBeenCalled();
     rpc.set("connected");
+    rpc.recover();
     await Promise.resolve();
     await Promise.resolve();
     expect(reconnect).toHaveBeenCalledTimes(1);
-    expect(invalidate).toHaveBeenCalledTimes(2);
+    // Each lost status invalidates immediately, and the authoritative recovery
+    // boundary retires any observation that survived without a status edge.
+    expect(invalidate).toHaveBeenCalledTimes(3);
     await close();
     expect(rpc.listeners.size).toBe(0);
+    expect(rpc.recoveryListeners.size).toBe(0);
   });
   it("joins panel disposal and never refreshes after it was closed", async () => {
     const rpc = connection();
@@ -158,5 +173,76 @@ describe("model discovery connection transitions", () => {
     await joined;
     expect(reconnect).not.toHaveBeenCalled();
     expect(rpc.listeners.size).toBe(0);
+    expect(rpc.recoveryListeners.size).toBe(0);
+  });
+
+  it("refreshes an initial status-only connection without a recovery replay", async () => {
+    const rpc = connection();
+    rpc.set("connecting");
+    const reconnect = vi.fn();
+    const close = ownModelSettingsConnection(rpc, {
+      current: () => null,
+      reconnect,
+      invalidate: vi.fn(),
+      failure: vi.fn(),
+    });
+
+    rpc.set("connected");
+    await Promise.resolve();
+    expect(reconnect).toHaveBeenCalledOnce();
+    await close();
+  });
+
+  it("joins and replaces discovery on recovery without a status transition", async () => {
+    const rpc = connection();
+    const body = deferred<string>();
+    const request = ownModelSettingsRequest(() => body.promise);
+    const observed = request.promise.catch((error: unknown) => error);
+    await Promise.resolve();
+    const reconnect = vi.fn();
+    const invalidate = vi.fn();
+    const close = ownModelSettingsConnection(rpc, {
+      current: () => request,
+      reconnect,
+      invalidate,
+      failure: vi.fn(),
+    });
+
+    rpc.recover("cold-recover");
+    expect(invalidate).toHaveBeenCalledOnce();
+    expect(reconnect).not.toHaveBeenCalled();
+    body.resolve("obsolete");
+    await observed;
+    await Promise.resolve();
+    expect(reconnect).toHaveBeenCalledOnce();
+
+    await close();
+  });
+
+  it("reports a retired request failure once before starting the fresh generation", async () => {
+    const rpc = connection();
+    const body = deferred<string>();
+    const request = ownModelSettingsRequest(() => body.promise);
+    const observed = request.promise.catch((error: unknown) => error);
+    await Promise.resolve();
+    const reconnect = vi.fn();
+    const failure = vi.fn();
+    const close = ownModelSettingsConnection(rpc, {
+      current: () => request,
+      reconnect,
+      invalidate: vi.fn(),
+      failure,
+    });
+    const original = new Error("discovery cleanup failed");
+
+    rpc.recover();
+    body.reject(original);
+    await observed;
+    await Promise.resolve();
+    expect(failure).toHaveBeenCalledOnce();
+    expect(failure).toHaveBeenCalledWith(original);
+    expect(reconnect).toHaveBeenCalledOnce();
+
+    await expect(close()).rejects.toBe(original);
   });
 });

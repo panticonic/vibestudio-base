@@ -28,24 +28,38 @@ function deferred<T>() {
 function harness() {
   let status: RpcConnectionStatus = "connected";
   const listeners = new Set<(next: RpcConnectionStatus) => void>();
+  const recoveries = new Set<(kind: "resubscribe" | "cold-recover") => void>();
   const call = vi.fn<(...args: unknown[]) => Promise<"reported" | "stale">>();
   const onError = vi.fn();
   const reporter = createPanelBootReporter({
-    rpc: { ...schemaRpcMock({ call }), status: () => status,
-onStatusChange: (listener) => {
+    rpc: {
+      ...schemaRpcMock({ call }),
+      status: () => status,
+      onStatusChange: (listener) => {
         listeners.add(listener);
         return () => listeners.delete(listener);
-      } },
+      },
+      onRecovery: (listener) => {
+        recoveries.add(listener);
+        return () => recoveries.delete(listener);
+      },
+    },
     observeView: view,
     onError,
   });
-  return { ...schemaRpcMock({ call }), onError,
-reporter,
-setStatus(next: RpcConnectionStatus) {
+  return {
+    ...schemaRpcMock({ call }),
+    onError,
+    reporter,
+    setStatus(next: RpcConnectionStatus) {
       status = next;
       for (const listener of listeners) listener(next);
     },
-listenerCount: () => listeners.size };
+    recover(kind: "resubscribe" | "cold-recover" = "resubscribe") {
+      for (const listener of recoveries) listener(kind);
+    },
+    listenerCount: () => listeners.size + recoveries.size,
+  };
 }
 
 describe("createPanelBootReporter", () => {
@@ -60,10 +74,12 @@ describe("createPanelBootReporter", () => {
 
     first.resolve("reported");
     await vi.waitFor(() => expect(h.call).toHaveBeenCalledTimes(2));
-    expect(h.call.mock.calls[1]?.[2]).toEqual([observation({ phase: "ready" })]);
+    expect(h.call.mock.calls[1]?.[2]).toEqual([
+      observation({ phase: "ready" }),
+    ]);
   });
 
-  it("retains ambiguous evidence across disconnect and retries on reconnect", async () => {
+  it("retains ambiguous evidence across a status-only reconnect", async () => {
     const h = harness();
     const first = deferred<"reported">();
     h.call.mockReturnValueOnce(first.promise).mockResolvedValueOnce("reported");
@@ -76,6 +92,29 @@ describe("createPanelBootReporter", () => {
     expect(h.onError).not.toHaveBeenCalled();
 
     h.setStatus("connected");
+    await vi.waitFor(() => expect(h.call).toHaveBeenCalledTimes(2));
+  });
+
+  it("retries ambiguous evidence after recovery without a status transition", async () => {
+    const h = harness();
+    const first = deferred<"reported">();
+    h.call.mockReturnValueOnce(first.promise).mockResolvedValueOnce("reported");
+    h.reporter.publish({ phase: "booting" });
+
+    h.recover("cold-recover");
+    first.reject(new Error("old generation retired"));
+    await vi.waitFor(() => expect(h.call).toHaveBeenCalledTimes(2));
+    expect(h.onError).not.toHaveBeenCalled();
+  });
+
+  it("does not let an old-generation acknowledgement retire pending evidence", async () => {
+    const h = harness();
+    const first = deferred<"reported">();
+    h.call.mockReturnValueOnce(first.promise).mockResolvedValueOnce("reported");
+    h.reporter.publish({ phase: "booting" });
+
+    h.recover("resubscribe");
+    first.resolve("reported");
     await vi.waitFor(() => expect(h.call).toHaveBeenCalledTimes(2));
   });
 
