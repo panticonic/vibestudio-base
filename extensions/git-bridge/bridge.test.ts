@@ -12,6 +12,7 @@ import * as path from "node:path";
 import { sha256Hex, sha256HexSyncText } from "@vibestudio/content-addressing";
 import type { GitCommitTreeEntry } from "@vibestudio/git";
 import { GitBridge, provenanceGitUri, type BridgeHost } from "./bridge.js";
+import { mirrorCommitTreeIndex } from "./testGitTreeFixture.js";
 
 const fsPromisesMocks = vi.hoisted(() => ({
   rm: vi.fn(),
@@ -392,6 +393,7 @@ describe("GitBridge semantic snapshot boundary", () => {
       commitBlob("binary.dat", Buffer.from([0xff, 0xfe])),
       commitBlob("index.ts", "export const value = 1;\n"),
     ]);
+    mirrorCommitTreeIndex(bridge.git);
     vi.spyOn(bridge.git, "statusMatrix").mockResolvedValue([
       ["binary.dat", 1, 1, 1],
       ["index.ts", 1, 1, 1],
@@ -610,6 +612,7 @@ describe("GitBridge semantic snapshot boundary", () => {
     vi.spyOn(bridge.git, "readCommitTree").mockResolvedValue([
       commitBlob("index.ts", "same\n"),
     ]);
+    mirrorCommitTreeIndex(bridge.git);
     const statusMatrix = vi
       .spyOn(bridge.git, "statusMatrix")
       .mockResolvedValue([["index.ts", 1, 1, 1]]);
@@ -721,6 +724,7 @@ describe("GitBridge semantic snapshot boundary", () => {
     vi.spyOn(bridge.git, "readCommitTree").mockResolvedValue([
       commitBlob("index.ts", "same\n"),
     ]);
+    mirrorCommitTreeIndex(bridge.git);
     vi.spyOn(bridge.git, "statusMatrix").mockResolvedValue([
       ["index.ts", 1, 1, 1],
     ]);
@@ -772,6 +776,7 @@ describe("GitBridge semantic snapshot boundary", () => {
     vi.spyOn(bridge.git, "readCommitTree").mockResolvedValue([
       commitBlob("index.ts", "captured\n"),
     ]);
+    mirrorCommitTreeIndex(bridge.git);
     vi.spyOn(bridge.git, "statusMatrix").mockResolvedValue([
       ["index.ts", 1, 1, 1],
     ]);
@@ -829,6 +834,7 @@ describe("GitBridge semantic snapshot boundary", () => {
       commitBlob(".env", "SECRET=not-imported\n"),
       commitBlob("index.ts", "same\n"),
     ]);
+    mirrorCommitTreeIndex(bridge.git);
     vi.spyOn(bridge.git, "statusMatrix").mockResolvedValue([
       [".env", 1, 1, 1],
       ["index.ts", 1, 1, 1],
@@ -860,6 +866,7 @@ describe("GitBridge semantic snapshot boundary", () => {
         bytes: Buffer.from("target"),
       },
     ]);
+    mirrorCommitTreeIndex(bridge.git);
 
     await expect(bridge.importLockedInner(repoPath, {})).rejects.toThrow(
       /link \(blob, mode 120000\).*only regular files and executable files are importable/,
@@ -899,6 +906,7 @@ describe("GitBridge semantic snapshot boundary", () => {
     vi.spyOn(bridge.git, "readCommitTree").mockResolvedValue([
       commitBlob("index.ts", "committed\n"),
     ]);
+    mirrorCommitTreeIndex(bridge.git);
     const statusMatrix = vi
       .spyOn(bridge.git, "statusMatrix")
       .mockResolvedValue([["index.ts", 1, 2, 2]]);
@@ -936,6 +944,7 @@ describe("GitBridge semantic snapshot boundary", () => {
     vi.spyOn(bridge.git, "readCommitTree").mockResolvedValue([
       commitBlob("index.ts", "committed\n"),
     ]);
+    mirrorCommitTreeIndex(bridge.git);
     vi.spyOn(bridge.git, "statusMatrix").mockResolvedValue([
       ["index.ts", 1, 1, 1],
     ]);
@@ -1016,6 +1025,7 @@ describe("GitBridge semantic snapshot boundary", () => {
     vi.spyOn(bridge.git, "readCommitTree").mockResolvedValue([
       commitBlob("index.ts", "exported\n", 0o100755),
     ]);
+    mirrorCommitTreeIndex(bridge.git);
     vi.spyOn(bridge.git, "log").mockResolvedValue([
       {
         oid: "git:main",

@@ -9,6 +9,7 @@ import {
   type GitCommitTreeEntry,
   type GitLogEntry,
 } from "@vibestudio/git";
+import { mirrorCommitTreeIndex } from "./testGitTreeFixture.js";
 import { sha256Hex } from "@vibestudio/content-addressing";
 import { registerRemoteProvider } from "@workspace/integrations/remoteProviders";
 import { TemplatePublishEngine } from "./templatePublish.js";
@@ -245,6 +246,7 @@ beforeEach(() => {
   vi.spyOn(GitClient.prototype, "readCommitTree").mockImplementation(
     async (_dir, commit) => state.trees.get(commit) ?? [],
   );
+  mirrorCommitTreeIndex(GitClient.prototype);
   vi.spyOn(GitClient.prototype, "createTag").mockImplementation(
     async (dir, tag, commit) => {
       const tags = checkoutTags.get(dir) ?? new Map<string, string>();

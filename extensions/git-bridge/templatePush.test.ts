@@ -8,6 +8,7 @@ import {
   type GitCommitTreeEntry,
   type GitLogEntry,
 } from "@vibestudio/git";
+import { mirrorCommitTreeIndex } from "./testGitTreeFixture.js";
 import { sha256Hex } from "@vibestudio/content-addressing";
 import { TemplatePushEngine } from "./templatePush.js";
 import type { ProtectedRepositorySnapshot } from "./bridge.js";
@@ -243,6 +244,7 @@ beforeEach(() => {
   vi.spyOn(GitClient.prototype, "readCommitTree").mockImplementation(
     async (_dir, oid) => trees.get(oid) ?? []
   );
+  mirrorCommitTreeIndex(GitClient.prototype);
   vi.spyOn(GitClient.prototype, "fetch").mockImplementation(async () => ({
     fetchHead: remoteHead,
     fetchHeadDescription: remoteHead ? "branch" : null,
