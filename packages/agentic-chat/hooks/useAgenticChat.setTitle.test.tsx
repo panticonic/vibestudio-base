@@ -163,6 +163,9 @@ describe("useAgenticChat set_title", () => {
         selfId: "panel:runtime-entity",
         call: createRpcCall(),
         stream: vi.fn(async () => new Response()),
+        streamReadable: vi.fn(async () => {
+          throw new Error("Unexpected readable RPC");
+        }),
         on: vi.fn(() => () => undefined),
       },
     };
@@ -209,6 +212,9 @@ describe("useAgenticChat set_title", () => {
         selfId: "panel:runtime-entity",
         call: createRpcCall(),
         stream: vi.fn(async () => new Response()),
+        streamReadable: vi.fn(async () => {
+          throw new Error("Unexpected readable RPC");
+        }),
         on: vi.fn(() => () => undefined),
       },
     };
@@ -249,6 +255,9 @@ describe("useAgenticChat set_title", () => {
         selfId: "panel:chat",
         call: createRpcCall(),
         stream: vi.fn(async () => new Response()),
+        streamReadable: vi.fn(async () => {
+          throw new Error("Unexpected readable RPC");
+        }),
         on: vi.fn(() => () => undefined),
       },
     };
@@ -294,6 +303,9 @@ describe("useAgenticChat set_title", () => {
         selfId: "panel:chat",
         call: createRpcCall(),
         stream: vi.fn(async () => new Response()),
+        streamReadable: vi.fn(async () => {
+          throw new Error("Unexpected readable RPC");
+        }),
         on: vi.fn(() => () => undefined),
       },
     };
@@ -332,6 +344,9 @@ describe("useAgenticChat set_title", () => {
         selfId: "panel:chat",
         call,
         stream: vi.fn(async () => new Response()),
+        streamReadable: vi.fn(async () => {
+          throw new Error("Unexpected readable RPC");
+        }),
         on: vi.fn(() => () => undefined),
       },
     };
@@ -370,6 +385,9 @@ describe("useAgenticChat set_title", () => {
         selfId: "panel:chat",
         call: createRpcCall(),
         stream: vi.fn(async () => new Response()),
+        streamReadable: vi.fn(async () => {
+          throw new Error("Unexpected readable RPC");
+        }),
         on: vi.fn(() => () => undefined),
       },
     };
@@ -452,6 +470,9 @@ describe("useAgenticChat set_title", () => {
             selfId: "panel:chat",
             call,
             stream: vi.fn(async () => new Response()),
+            streamReadable: vi.fn(async () => {
+              throw new Error("Unexpected readable RPC");
+            }),
             on: vi.fn(() => () => undefined),
           },
         },
@@ -525,6 +546,9 @@ describe("useAgenticChat set_title", () => {
         selfId: "panel:chat",
         call: createRpcCall(),
         stream: vi.fn(async () => new Response()),
+        streamReadable: vi.fn(async () => {
+          throw new Error("Unexpected readable RPC");
+        }),
         on: vi.fn(() => () => undefined),
       },
     };
@@ -594,6 +618,9 @@ describe("useAgenticChat set_title", () => {
         selfId: "panel:chat",
         call: createRpcCall(),
         stream: vi.fn(async () => new Response()),
+        streamReadable: vi.fn(async () => {
+          throw new Error("Unexpected readable RPC");
+        }),
         on: vi.fn(() => () => undefined),
       },
     };
@@ -629,6 +656,9 @@ describe("useAgenticChat set_title", () => {
         selfId: "panel:chat",
         call: createRpcCall(),
         stream: vi.fn(async () => new Response()),
+        streamReadable: vi.fn(async () => {
+          throw new Error("Unexpected readable RPC");
+        }),
         on: vi.fn(() => () => undefined),
       },
     };
@@ -670,6 +700,9 @@ describe("useAgenticChat set_title", () => {
         selfId: "panel:chat",
         call,
         stream: vi.fn(async () => new Response()),
+        streamReadable: vi.fn(async () => {
+          throw new Error("Unexpected readable RPC");
+        }),
         on: vi.fn(() => () => undefined),
       },
     };
@@ -708,6 +741,9 @@ describe("useAgenticChat set_title", () => {
         selfId: "panel:runtime-entity",
         call,
         stream: vi.fn(async () => new Response()),
+        streamReadable: vi.fn(async () => {
+          throw new Error("Unexpected readable RPC");
+        }),
         on: vi.fn(() => () => undefined),
       },
     };

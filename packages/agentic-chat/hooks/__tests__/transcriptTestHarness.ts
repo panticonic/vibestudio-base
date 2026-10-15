@@ -202,7 +202,7 @@ export async function createTranscriptHarness(
     return {
       ...schemaRpcMock({
         call,
-        stream: vi.fn(
+        streamReadable: vi.fn(
           async (
             target: string,
             method: string,
@@ -215,7 +215,15 @@ export async function createTranscriptHarness(
                 `streaming client rpc ${target}.${method} did not return a Response`,
               );
             }
-            if (!response.body || !options?.signal) return response;
+            if (!response.body)
+              throw new Error("Channel subscription returned no body");
+            const head = {
+              status: response.status,
+              statusText: response.statusText,
+              headers: [...response.headers.entries()],
+              finalUrl: response.url,
+            };
+            if (!options?.signal) return { ...head, body: response.body };
 
             const reader = response.body.getReader();
             const signal = options.signal;
@@ -256,11 +264,7 @@ export async function createTranscriptHarness(
                 return stop(reason);
               },
             });
-            return new Response(body, {
-              status: response.status,
-              statusText: response.statusText,
-              headers: response.headers,
-            });
+            return { ...head, body };
           },
         ),
       }),

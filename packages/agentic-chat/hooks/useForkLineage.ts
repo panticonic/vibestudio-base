@@ -30,7 +30,7 @@ import type {
 const CHANNEL_SERVICE_PROTOCOL = "vibestudio.channel.v1";
 const FORK_HEAD_CHANGED_SIGNAL = "fork.head_changed";
 
-type ForkRpc = Pick<ConnectionConfig["rpc"], "call" | "stream"> &
+type ForkRpc = Pick<ConnectionConfig["rpc"], "call" | "streamReadable"> &
   Partial<Pick<ConnectionConfig["rpc"], "selfId">>;
 
 interface ForkListResult {
@@ -263,7 +263,7 @@ export function useForkLineage(options: UseForkLineageOptions): ForkUiState {
   // A response-owned stream provides live invalidations. Durable heads from
   // listForks remain the source of truth after reconnect or missed signals.
   useEffect(() => {
-    if (!enabled || !lineageRootId || !selfId || !rpc.stream || !client) return;
+    if (!enabled || !lineageRootId || !selfId || !client) return;
     let active: AbortController | undefined;
     const subscribe = () => {
       active?.abort();
@@ -273,7 +273,7 @@ export function useForkLineage(options: UseForkLineageOptions): ForkUiState {
         try {
           const target = await resolveChannelTarget(rpc, lineageRootId);
           if (abort.signal.aborted) return;
-          const response = await rpc.stream!(
+          const response = await rpc.streamReadable(
             target,
             channelClientRpcMethods.subscribeLineage,
             [selfId],

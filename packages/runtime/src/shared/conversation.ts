@@ -27,7 +27,7 @@ export interface ConversationClient {
 }
 
 export function createConversationClient(
-  rpc: Pick<RpcClient, "call" | "stream">
+  rpc: Pick<RpcClient, "call" | "streamReadable">,
 ): ConversationClient {
   return {
     history: (channelTargetId, options) => {
@@ -39,7 +39,11 @@ export function createConversationClient(
       );
     },
     send: (channelTargetId, text, options) => {
-      return rpc.call(channelTargetId, channelClientRpcMethods["sendAsCaller"], [text, options ?? {}]);
+      return rpc.call(
+        channelTargetId,
+        channelClientRpcMethods["sendAsCaller"],
+        [text, options ?? {}],
+      );
     },
     subscribe: async (
       channelTargetId,
@@ -48,7 +52,7 @@ export function createConversationClient(
       onRecord,
       options,
     ) => {
-      const response = await rpc.stream(
+      const response = await rpc.streamReadable(
         channelTargetId,
         channelClientRpcMethods["subscribe"],
         [participantId, metadata],

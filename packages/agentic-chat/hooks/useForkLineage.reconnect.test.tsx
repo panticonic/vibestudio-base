@@ -35,8 +35,8 @@ function harness() {
     controller: ReadableStreamDefaultController<Uint8Array>;
     signal: AbortSignal;
   }> = [];
-  const stream = vi.fn<
-    import("@vibestudio/rpc/internal").RpcWireCaller["stream"]
+  const streamReadable = vi.fn<
+    import("@vibestudio/rpc/internal").RpcWireClient["streamReadable"]
   >(async (_target, _method, _args, options) => {
     const body = new ReadableStream<Uint8Array>({
       start(controller) {
@@ -46,11 +46,11 @@ function harness() {
         );
       },
     });
-    return new Response(body);
+    return { status: 200, statusText: "OK", headers: [], finalUrl: "", body };
   });
   const rpc: UseForkLineageOptions["rpc"] = {
     ...schemaRpcMock({
-      stream,
+      streamReadable,
       call: async (_target: string, method: string, args: unknown[]) => {
         if (method === "workers.resolveService")
           return resolvedChannelService(String(args[1]));
@@ -94,7 +94,7 @@ function harness() {
   );
   return {
     ...mounted,
-    stream,
+    streamReadable,
     streams,
     reconnectHandlers,
     reconnect() {
@@ -138,7 +138,7 @@ describe("fork lineage recovery", () => {
   it("reopens an idle disconnected subscription, reloads durable state, and receives new heads", async () => {
     const h = harness();
     try {
-      await waitFor(() => expect(h.stream).toHaveBeenCalledTimes(1));
+      await waitFor(() => expect(h.streamReadable).toHaveBeenCalledTimes(1));
       await act(async () =>
         h.streams[0]!.controller.error(
           new Error("ConnectionLost(ApplicationClosed)"),
@@ -151,7 +151,7 @@ describe("fork lineage recovery", () => {
       );
       h.updateSnapshot();
       await act(async () => h.reconnect());
-      await waitFor(() => expect(h.stream).toHaveBeenCalledTimes(2));
+      await waitFor(() => expect(h.streamReadable).toHaveBeenCalledTimes(2));
       await waitFor(() =>
         expect(h.result.current.children[0]).toMatchObject({
           label: "Changed while offline",
@@ -174,9 +174,9 @@ describe("fork lineage recovery", () => {
   it("ignores a late failure from the old stream after recovery", async () => {
     const h = harness();
     try {
-      await waitFor(() => expect(h.stream).toHaveBeenCalledTimes(1));
+      await waitFor(() => expect(h.streamReadable).toHaveBeenCalledTimes(1));
       await act(async () => h.reconnect());
-      await waitFor(() => expect(h.stream).toHaveBeenCalledTimes(2));
+      await waitFor(() => expect(h.streamReadable).toHaveBeenCalledTimes(2));
       await act(async () =>
         h.streams[0]!.controller.error(
           new Error("late old connection failure"),
@@ -195,7 +195,7 @@ describe("fork lineage recovery", () => {
   it("clears recovered read failures but preserves unrelated action failures", async () => {
     const h = harness();
     try {
-      await waitFor(() => expect(h.stream).toHaveBeenCalledTimes(1));
+      await waitFor(() => expect(h.streamReadable).toHaveBeenCalledTimes(1));
       h.failRead(true);
       await act(async () => h.reconnect());
       await waitFor(() =>
@@ -211,7 +211,7 @@ describe("fork lineage recovery", () => {
         ),
       );
       await act(async () => h.reconnect());
-      await waitFor(() => expect(h.stream).toHaveBeenCalledTimes(4));
+      await waitFor(() => expect(h.streamReadable).toHaveBeenCalledTimes(4));
       expect(h.result.current.error).toBe(
         "Could not save: storage unavailable",
       );

@@ -228,7 +228,7 @@ export interface RpcChannelTargetOptions {
   /** Transport used for the context-bound service resolution call. */
   rpc: Pick<RpcConnectOptions["rpc"], "call">;
   /** Stable host transport that carries workspace review events. */
-  reviewRpc: Pick<RpcConnectOptions["rpc"], "stream">;
+  reviewRpc: Pick<RpcConnectOptions["rpc"], "streamReadable">;
   channel: string;
   protocol?: string;
   signal?: AbortSignal;
@@ -329,7 +329,7 @@ export interface RpcConnectOptions<
 > {
   rpc: {
     call: import("@vibestudio/rpc").RpcCaller["call"];
-    stream: import("@vibestudio/rpc").RpcCaller["stream"];
+    streamReadable: import("@vibestudio/rpc").RpcClient["streamReadable"];
     selfId: string;
     registerResidentSession?: ResidentSessionRegistrar["registerResidentSession"];
   };
@@ -2252,7 +2252,7 @@ export function connectViaRpc<
           });
           return;
         }
-        const response = await rpc.stream(
+        const response = await rpc.streamReadable(
           await getDoTarget(controller.signal),
           channelClientRpcMethods["subscribe"],
           [deliveryId, metadata, subscriptionId],

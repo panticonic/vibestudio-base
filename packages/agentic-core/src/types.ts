@@ -61,6 +61,7 @@ export interface ConnectionConfig {
   rpc: {
     call: import("@vibestudio/rpc").RpcCaller["call"];
     stream: import("@vibestudio/rpc").RpcCaller["stream"];
+    streamReadable: import("@vibestudio/rpc").RpcClient["streamReadable"];
     on: import("@vibestudio/rpc").RpcClient["on"];
     selfId: string;
     registerResidentSession?: ResidentSessionRegistrar["registerResidentSession"];

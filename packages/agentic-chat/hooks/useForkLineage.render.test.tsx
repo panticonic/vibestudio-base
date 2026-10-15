@@ -36,7 +36,12 @@ function message(content: string): ChatMessage {
 describe("useForkLineage render stability", () => {
   it("keeps its action projection stable when a non-fork message streams", () => {
     const rpc: UseForkLineageOptions["rpc"] = {
-      ...schemaRpcMock({ call: async () => undefined }),
+      ...schemaRpcMock({
+        call: async () => undefined,
+        streamReadable: async () => {
+          throw new Error("Unexpected readable RPC");
+        },
+      }),
       selfId: "panel-1",
     };
     const base = {
@@ -64,6 +69,9 @@ describe("useForkLineage render stability", () => {
   it("loads the durable fork roster and reconciles unread from persisted cursors", async () => {
     const rpc: UseForkLineageOptions["rpc"] = {
       ...schemaRpcMock({
+        streamReadable: async () => {
+          throw new Error("Unexpected readable RPC");
+        },
         call: async (target: string, method: string, args: unknown[]) => {
           if (target === "main" && method === "workers.resolveService") {
             return resolvedChannelService(String(args[1]));
@@ -156,6 +164,9 @@ describe("useForkLineage render stability", () => {
     };
     const rpc: UseForkLineageOptions["rpc"] = {
       ...schemaRpcMock({
+        streamReadable: async () => {
+          throw new Error("Unexpected readable RPC");
+        },
         call: async (target: string, method: string, args: unknown[]) => {
           if (target === "main" && method === "workers.resolveService") {
             return resolvedChannelService(String(args[1]));
@@ -220,6 +231,9 @@ describe("useForkLineage render stability", () => {
   it("surfaces cursor persistence failures instead of dropping them", async () => {
     const rpc: UseForkLineageOptions["rpc"] = {
       ...schemaRpcMock({
+        streamReadable: async () => {
+          throw new Error("Unexpected readable RPC");
+        },
         call: async (target: string, method: string, args: unknown[]) => {
           if (target === "main" && method === "workers.resolveService") {
             return resolvedChannelService(String(args[1]));
@@ -274,19 +288,22 @@ describe("useForkLineage render stability", () => {
   it("quietly retries a read cursor after the workspace review resolves", async () => {
     const rpc: UseForkLineageOptions["rpc"] = {
       ...schemaRpcMock({
-        stream: async () =>
-          new Response(
-            new ReadableStream<Uint8Array>({
-              start(controller) {
-                controller.enqueue(
-                  encodeChannelSubscriptionRecord({
-                    kind: "subscribed",
-                    result: {},
-                  }),
-                );
-              },
-            }),
-          ),
+        streamReadable: async () => ({
+          status: 200,
+          statusText: "OK",
+          headers: [],
+          finalUrl: "",
+          body: new ReadableStream<Uint8Array>({
+            start(controller) {
+              controller.enqueue(
+                encodeChannelSubscriptionRecord({
+                  kind: "subscribed",
+                  result: {},
+                }),
+              );
+            },
+          }),
+        }),
         call: async (target: string, method: string, args: unknown[]) => {
           if (target === "main" && method === "workers.resolveService") {
             return resolvedChannelService(String(args[1]));
