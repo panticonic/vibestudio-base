@@ -33,6 +33,43 @@ function message(content: string): ChatMessage {
   };
 }
 
+function lineageSubscriptionFixture() {
+  const signals: AbortSignal[] = [];
+  const bodies: ReadableStream<Uint8Array>[] = [];
+  const streamReadable = vi.fn<
+    import("@vibestudio/rpc/internal").RpcWireClient["streamReadable"]
+  >(async (_target, _method, _args, options) => {
+    const signal = options!.signal!;
+    signals.push(signal);
+    let onAbort: () => void;
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        onAbort = () => controller.close();
+        if (signal.aborted) {
+          controller.close();
+          return;
+        }
+        signal.addEventListener("abort", onAbort, { once: true });
+        controller.enqueue(
+          encodeChannelSubscriptionRecord({ kind: "subscribed", result: {} }),
+        );
+      },
+      cancel() {
+        signal.removeEventListener("abort", onAbort);
+      },
+    });
+    bodies.push(body);
+    return {
+      status: 200,
+      statusText: "OK",
+      headers: [],
+      finalUrl: "",
+      body,
+    };
+  });
+  return { streamReadable, signals, bodies };
+}
+
 describe("useForkLineage render stability", () => {
   it("keeps its action projection stable when a non-fork message streams", () => {
     const rpc: UseForkLineageOptions["rpc"] = {
@@ -67,11 +104,10 @@ describe("useForkLineage render stability", () => {
   });
 
   it("loads the durable fork roster and reconciles unread from persisted cursors", async () => {
+    const subscription = lineageSubscriptionFixture();
     const rpc: UseForkLineageOptions["rpc"] = {
       ...schemaRpcMock({
-        streamReadable: async () => {
-          throw new Error("Unexpected readable RPC");
-        },
+        streamReadable: subscription.streamReadable,
         call: async (target: string, method: string, args: unknown[]) => {
           if (target === "main" && method === "workers.resolveService") {
             return resolvedChannelService(String(args[1]));
@@ -107,7 +143,7 @@ describe("useForkLineage render stability", () => {
       openInNewPanel: () => {},
       readForkCursors: () => ({ "child-channel": 7, "root-channel": 12 }),
     };
-    const { result } = renderHook(() =>
+    const { result, unmount } = renderHook(() =>
       useForkLineage({
         rpc,
         channelId: "root-channel",
@@ -129,9 +165,17 @@ describe("useForkLineage render stability", () => {
       headSeq: 9,
       unread: true,
     });
+    await waitFor(() => expect(subscription.streamReadable).toHaveBeenCalled());
+    expect(result.current.error).toBeUndefined();
+    unmount();
+    await waitFor(() => {
+      expect(subscription.signals.every((signal) => signal.aborted)).toBe(true);
+      expect(subscription.bodies.every((body) => !body.locked)).toBe(true);
+    });
   });
 
   it("loads the complete lineage tree instead of only the current spine", async () => {
+    const subscription = lineageSubscriptionFixture();
     const projection = (
       parentChannelId: string,
       forkId: string,
@@ -164,9 +208,7 @@ describe("useForkLineage render stability", () => {
     };
     const rpc: UseForkLineageOptions["rpc"] = {
       ...schemaRpcMock({
-        streamReadable: async () => {
-          throw new Error("Unexpected readable RPC");
-        },
+        streamReadable: subscription.streamReadable,
         call: async (target: string, method: string, args: unknown[]) => {
           if (target === "main" && method === "workers.resolveService") {
             return resolvedChannelService(String(args[1]));
@@ -198,7 +240,7 @@ describe("useForkLineage render stability", () => {
       }),
       selfId: "panel-1",
     };
-    const { result } = renderHook(() =>
+    const { result, unmount } = renderHook(() =>
       useForkLineage({
         rpc,
         channelId: "child-a",
@@ -226,14 +268,20 @@ describe("useForkLineage render stability", () => {
     expect(tree[0]?.children[0]?.children.map((node) => node.label)).toEqual([
       "Path C",
     ]);
+    await waitFor(() => expect(subscription.streamReadable).toHaveBeenCalled());
+    expect(result.current.error).toBeUndefined();
+    unmount();
+    await waitFor(() => {
+      expect(subscription.signals.every((signal) => signal.aborted)).toBe(true);
+      expect(subscription.bodies.every((body) => !body.locked)).toBe(true);
+    });
   });
 
   it("surfaces cursor persistence failures instead of dropping them", async () => {
+    const subscription = lineageSubscriptionFixture();
     const rpc: UseForkLineageOptions["rpc"] = {
       ...schemaRpcMock({
-        streamReadable: async () => {
-          throw new Error("Unexpected readable RPC");
-        },
+        streamReadable: subscription.streamReadable,
         call: async (target: string, method: string, args: unknown[]) => {
           if (target === "main" && method === "workers.resolveService") {
             return resolvedChannelService(String(args[1]));
@@ -253,7 +301,7 @@ describe("useForkLineage render stability", () => {
         throw new Error("storage unavailable");
       },
     };
-    const { result } = renderHook(() =>
+    const { result, unmount } = renderHook(() =>
       useForkLineage({
         rpc,
         channelId: "root-channel",
@@ -283,27 +331,19 @@ describe("useForkLineage render stability", () => {
     expect(result.current.error).toBe(
       "Could not save the conversation read position: storage unavailable",
     );
+    expect(subscription.streamReadable).toHaveBeenCalled();
+    unmount();
+    await waitFor(() => {
+      expect(subscription.signals.every((signal) => signal.aborted)).toBe(true);
+      expect(subscription.bodies.every((body) => !body.locked)).toBe(true);
+    });
   });
 
   it("quietly retries a read cursor after the workspace review resolves", async () => {
+    const subscription = lineageSubscriptionFixture();
     const rpc: UseForkLineageOptions["rpc"] = {
       ...schemaRpcMock({
-        streamReadable: async () => ({
-          status: 200,
-          statusText: "OK",
-          headers: [],
-          finalUrl: "",
-          body: new ReadableStream<Uint8Array>({
-            start(controller) {
-              controller.enqueue(
-                encodeChannelSubscriptionRecord({
-                  kind: "subscribed",
-                  result: {},
-                }),
-              );
-            },
-          }),
-        }),
+        streamReadable: subscription.streamReadable,
         call: async (target: string, method: string, args: unknown[]) => {
           if (target === "main" && method === "workers.resolveService") {
             return resolvedChannelService(String(args[1]));
@@ -339,7 +379,7 @@ describe("useForkLineage render stability", () => {
       readForkCursors: () => ({}),
       markForkRead,
     };
-    const { result, rerender } = renderHook(
+    const { result, rerender, unmount } = renderHook(
       ({ retrySignal }: { retrySignal: number }) =>
         useForkLineage({
           rpc,
@@ -364,5 +404,11 @@ describe("useForkLineage render stability", () => {
     await waitFor(() => expect(markForkRead).toHaveBeenCalledTimes(2));
     expect(markForkRead).toHaveBeenLastCalledWith("root-channel", 12);
     expect(result.current.error).toBeUndefined();
+    expect(subscription.streamReadable).toHaveBeenCalled();
+    unmount();
+    await waitFor(() => {
+      expect(subscription.signals.every((signal) => signal.aborted)).toBe(true);
+      expect(subscription.bodies.every((body) => !body.locked)).toBe(true);
+    });
   });
 });

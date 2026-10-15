@@ -339,7 +339,9 @@ describe("ConnectionManager owned readiness", () => {
     });
     const connecting = manager.connect({ channelId: "chat-1", methods: {} });
     try {
-      await vi.waitFor(() => expect(config.rpc!.stream).toHaveBeenCalledOnce());
+      await vi.waitFor(() =>
+        expect(config.rpc!.streamReadable).toHaveBeenCalledOnce(),
+      );
       sendReady(stream);
       await boundary;
       expect(manager.status).toBe("connecting");
@@ -399,7 +401,9 @@ describe("ConnectionManager owned readiness", () => {
       signal: owner.signal,
     });
     const rejected = expect(connecting).rejects.toBe(reason);
-    await vi.waitFor(() => expect(config.rpc!.stream).toHaveBeenCalledOnce());
+    await vi.waitFor(() =>
+      expect(config.rpc!.streamReadable).toHaveBeenCalledOnce(),
+    );
     sendReady(stream);
     await boundary;
     owner.abort(reason);
@@ -449,7 +453,9 @@ describe("ConnectionManager owned readiness", () => {
       name: "AggregateError",
       errors: [callbackFailure, cleanupFailure],
     });
-    await vi.waitFor(() => expect(config.rpc!.stream).toHaveBeenCalledOnce());
+    await vi.waitFor(() =>
+      expect(config.rpc!.streamReadable).toHaveBeenCalledOnce(),
+    );
     sendReady(stream);
     await rejected;
     expect(callbackSignal.reason).toBe(callbackFailure);
@@ -491,7 +497,9 @@ describe("ConnectionManager owned readiness", () => {
         name: "AggregateError",
         errors: [failure, observerFailure],
       });
-      await vi.waitFor(() => expect(config.rpc!.stream).toHaveBeenCalledOnce());
+      await vi.waitFor(() =>
+        expect(config.rpc!.streamReadable).toHaveBeenCalledOnce(),
+      );
       sendReady(stream);
       await rejected;
       expect(callbackSignal.reason).toBe(failure);
@@ -557,7 +565,7 @@ describe("ConnectionManager owned readiness", () => {
       });
       try {
         await vi.waitFor(() =>
-          expect(config.rpc!.stream).toHaveBeenCalledOnce(),
+          expect(config.rpc!.streamReadable).toHaveBeenCalledOnce(),
         );
         sendReady(stream);
         await rejected;
